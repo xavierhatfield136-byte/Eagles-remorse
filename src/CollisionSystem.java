@@ -1,0 +1,121 @@
+import java.util.List;
+
+public class CollisionSystem {
+
+    private CollisionSystem() {}
+
+    public static boolean circleHit(double ax, double ay, double ar, double bx, double by, double br) {
+        double dx = ax - bx;
+        double dy = ay - by;
+        double r = ar + br;
+        return (dx * dx + dy * dy) <= (r * r);
+    }
+
+    /** Projectiles hit ships of the opposing faction. */
+    public static void handleProjectilesVsShips(List<Projectile> projectiles, List<Ship> ships) {
+        if (projectiles == null || ships == null) return;
+        for (Projectile p : projectiles) {
+            if (!p.alive) continue;
+            for (Ship s : ships) {
+                if (!s.alive) continue;
+                if (s.faction.isFriendlyTo(p.faction)) continue;
+
+                if (circleHit(p.x, p.y, p.radius, s.x, s.y, s.radius)) {
+                    // Cosmetic impact effects (no gameplay impact)
+                    double dirX = p.vx;
+                    double dirY = p.vy;
+                    double len = Math.sqrt(dirX * dirX + dirY * dirY);
+                    if (len > 1e-9) { dirX /= len; dirY /= len; }
+                    VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
+
+                    // Small screen shake for heavier hits
+                    if (p instanceof Missile) ScreenShake.kick(3.5);
+                    else if (p.damage >= 3) ScreenShake.kick(1.8);
+
+                    s.takeDamage(p.damage);
+                    p.alive = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Projectiles can also hit other projectiles (currently: CIWS pellets can hit missiles).
+     *
+     * This is kept lightweight by only checking pellet-vs-missile pairs.
+     */
+    public static void handleProjectilesVsProjectiles(List<Projectile> projectiles) {
+        if (projectiles == null || projectiles.isEmpty()) return;
+
+        for (Projectile p : projectiles) {
+            if (!p.alive) continue;
+            if (!(p instanceof CIWSPellet pellet)) continue;
+
+            for (Projectile q : projectiles) {
+                if (!q.alive) continue;
+                if (!(q instanceof Missile m)) continue;
+                if (pellet.faction.isFriendlyTo(m.faction)) continue;
+
+                if (circleHit(pellet.x, pellet.y, pellet.radius, m.x, m.y, m.radius)) {
+                    pellet.alive = false;
+                    m.alive = false;
+                    VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 2);
+                    Explosion.spawnShieldHit(m.x, m.y);
+                    break;
+                }
+            }
+        }
+    }
+
+    /** Solid asteroids push ships out (no damage). */
+    public static void handleShipsVsAsteroids(List<Ship> ships, List<Asteroid> asteroids) {
+        if (ships == null || asteroids == null || asteroids.isEmpty()) return;
+
+        for (Ship s : ships) {
+            if (s == null || !s.alive) continue;
+            for (Asteroid a : asteroids) {
+                double dx = s.x - a.x;
+                double dy = s.y - a.y;
+                double rr = s.radius + a.radius;
+                double d2 = dx * dx + dy * dy;
+                if (d2 >= rr * rr) continue;
+
+                double d = Math.sqrt(Math.max(1e-9, d2));
+                double push = rr - d;
+
+                double nx = dx / d;
+                double ny = dy / d;
+
+                s.x += nx * push;
+                s.y += ny * push;
+
+                // damp motion so they don't jitter through
+                s.vx *= 0.65;
+                s.vy *= 0.65;
+            }
+        }
+    }
+
+    /** Projectiles die on asteroids. */
+    public static void handleProjectilesVsAsteroids(List<Projectile> projectiles, List<Asteroid> asteroids) {
+        if (projectiles == null || asteroids == null || asteroids.isEmpty()) return;
+
+        for (Projectile p : projectiles) {
+            if (!p.alive) continue;
+            for (Asteroid a : asteroids) {
+                if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.radius)) {
+                    p.alive = false;
+                    VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, 1);
+                    Explosion.spawnShieldHit(p.x, p.y);
+                    break;
+                }
+            }
+        }
+    }
+
+    public static void cleanupProjectiles(List<Projectile> projectiles) {
+        if (projectiles == null) return;
+        projectiles.removeIf(p -> !p.alive);
+    }
+}

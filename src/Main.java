@@ -1,0 +1,273 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.KeyEvent;
+import java.util.function.Consumer;
+
+public class Main {
+
+    private final JFrame frame;
+    private final CardLayout cards;
+    private final JPanel root;
+
+    private final MainMenuPanel menuPanel;
+    private GamePanel gamePanel;
+
+    // Fullscreen management (Swing)
+    private final GraphicsDevice device;
+    private boolean fullscreen = false;
+    private Rectangle windowedBounds = null;
+
+    public Main() {
+        device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+
+        frame = new JFrame("Space Game");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        cards = new CardLayout();
+        root = new JPanel(cards);
+
+        menuPanel = new MainMenuPanel(this::startGame, () -> System.exit(0));
+        root.add(menuPanel, "menu");
+
+        frame.setContentPane(root);
+        frame.pack();
+        frame.setResizable(true);
+        frame.setLocationRelativeTo(null);
+
+        cards.show(root, "menu");
+    }
+
+    private void startGame(GameConfig config) {
+        if (gamePanel != null) {
+            root.remove(gamePanel);
+            gamePanel = null;
+        }
+
+        // Apply fullscreen choice before showing the game card.
+        setFullscreen(config.fullscreen);
+
+        gamePanel = new GamePanel(config, this::showMenu, this::toggleFullscreen);
+        root.add(gamePanel, "game");
+
+        cards.show(root, "game");
+        root.revalidate();
+        root.repaint();
+
+        SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
+    }
+
+    private void showMenu() {
+        cards.show(root, "menu");
+        root.revalidate();
+        root.repaint();
+        SwingUtilities.invokeLater(menuPanel::requestFocusInWindow);
+    }
+
+    private void toggleFullscreen() {
+        setFullscreen(!fullscreen);
+    }
+
+    private void setFullscreen(boolean on) {
+        if (on == fullscreen) return;
+
+        if (on) {
+            // Remember windowed bounds so we can restore them.
+            windowedBounds = frame.getBounds();
+
+            // Fullscreen requires undecorated; must dispose to change it.
+            frame.dispose();
+            frame.setUndecorated(true);
+            frame.setVisible(true);
+
+            device.setFullScreenWindow(frame);
+            fullscreen = true;
+
+        } else {
+            // Exit fullscreen first.
+            device.setFullScreenWindow(null);
+
+            frame.dispose();
+            frame.setUndecorated(false);
+            frame.setVisible(true);
+
+            if (windowedBounds != null) {
+                frame.setBounds(windowedBounds);
+            } else {
+                frame.pack();
+                frame.setLocationRelativeTo(null);
+            }
+            fullscreen = false;
+        }
+
+        // Re-validate layout after mode switch.
+        root.revalidate();
+        root.repaint();
+
+        // Restore focus to the current panel.
+        SwingUtilities.invokeLater(() -> {
+            if (gamePanel != null && root.isAncestorOf(gamePanel)) gamePanel.requestFocusInWindow();
+            else menuPanel.requestFocusInWindow();
+        });
+        if (gamePanel != null) {
+            SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
+        }
+
+    }
+
+    public void showWindow() {
+        frame.setVisible(true);
+        SwingUtilities.invokeLater(menuPanel::requestFocusInWindow);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Main().showWindow());
+    }
+}
+
+/**
+ * Game startup options selected in the main menu.
+ * (Package-private so other files in the default package can use it.)
+ */
+class GameConfig {
+    public final GameMode mode;
+    public final int worldW;
+    public final int worldH;
+    public final boolean randomEvents;
+    public final long seed;
+    public final boolean fullscreen;
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
+        this.mode = mode;
+        this.worldW = worldW;
+        this.worldH = worldH;
+        this.randomEvents = randomEvents;
+        this.seed = seed;
+        this.fullscreen = fullscreen;
+    }
+}
+
+/**
+ * High-level game modes.
+ */
+enum GameMode {
+    SKIRMISH,
+    SANDBOX,
+    RESOURCE_RUSH
+}
+
+/**
+ * Simple main menu. Package-private to keep file count down.
+ */
+class MainMenuPanel extends JPanel {
+
+    public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onQuit) {
+        setPreferredSize(new Dimension(1280, 720));
+        setBackground(Color.BLACK);
+        setFocusable(true);
+
+        JLabel title = new JLabel("SPACE GAME");
+        title.setForeground(Color.WHITE);
+        title.setFont(new Font("Consolas", Font.BOLD, 48));
+
+        JComboBox<GameMode> modeBox = new JComboBox<>(GameMode.values());
+
+        JComboBox<String> mapBox = new JComboBox<>(new String[]{
+                "Small (5000 x 5000)",
+                "Medium (10000 x 10000)",
+                "Large (20000 x 20000)"
+        });
+
+        JCheckBox events = new JCheckBox("Enable Random Events");
+        events.setOpaque(false);
+        events.setForeground(Color.WHITE);
+        events.setSelected(true);
+
+        JCheckBox fullscreen = new JCheckBox("Start Fullscreen");
+        fullscreen.setOpaque(false);
+        fullscreen.setForeground(Color.WHITE);
+        fullscreen.setSelected(false);
+
+        JTextField seedField = new JTextField("0", 12);
+
+        JButton start = new JButton("Start");
+        JButton quit = new JButton("Quit");
+
+        start.addActionListener(e -> {
+            GameMode mode = (GameMode) modeBox.getSelectedItem();
+
+            int w = 5000, h = 5000;
+            if (mapBox.getSelectedIndex() == 1) { w = 10000; h = 10000; }
+            if (mapBox.getSelectedIndex() == 2) { w = 20000; h = 20000; }
+
+            long seed;
+            try {
+                seed = Long.parseLong(seedField.getText().trim());
+            } catch (Exception ex) {
+                seed = System.nanoTime();
+            }
+            if (seed == 0) seed = System.nanoTime();
+
+            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected()));
+        });
+
+        quit.addActionListener(e -> onQuit.run());
+
+        JPanel card = new JPanel(new GridBagLayout());
+        card.setOpaque(false);
+
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(10, 10, 10, 10);
+        c.gridx = 0;
+        c.gridy = 0;
+        c.gridwidth = 2;
+        card.add(title, c);
+
+        c.gridwidth = 1;
+        c.gridy++;
+        c.gridx = 0;
+        card.add(label("Mode:"), c);
+        c.gridx = 1;
+        card.add(modeBox, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        card.add(label("Map Size:"), c);
+        c.gridx = 1;
+        card.add(mapBox, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        card.add(label("Seed:"), c);
+        c.gridx = 1;
+        card.add(seedField, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        card.add(events, c);
+
+        c.gridy++;
+        card.add(fullscreen, c);
+
+        c.gridy++;
+        c.gridwidth = 1;
+        c.gridx = 0;
+        card.add(start, c);
+        c.gridx = 1;
+        card.add(quit, c);
+
+        setLayout(new GridBagLayout());
+        add(card);
+
+        // Convenience: Alt+Enter toggles fullscreen in-game, but in menu we can at least
+        // show that this is the toggle key later (Step 3+).
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.ALT_DOWN_MASK), "noop");
+    }
+
+    private JLabel label(String text) {
+        JLabel l = new JLabel(text);
+        l.setForeground(new Color(255, 255, 255, 210));
+        l.setFont(new Font("Consolas", Font.PLAIN, 18));
+        return l;
+    }
+}
