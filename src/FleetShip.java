@@ -1089,6 +1089,11 @@ public class FleetShip extends Ship {
 
                 hasCIWS = false;
             }
+
+        // Apply baseline core stats from the single source of truth.
+        // (Keeps tuning centralized in RoleStats.)
+        RoleStats.applyCore(this, role);
+
         }
     }
 }

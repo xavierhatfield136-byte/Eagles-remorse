@@ -66,6 +66,9 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     private void tick() {
+        // Apply developer time scaling (F5) without changing the engine constant.
+        final double dt = GameContext.DT * DevTools.getTimeScale();
+
         // Pause freezes simulation
         if (ctx.state == GameState.PAUSED) {
             if (ctx.eventBannerT > 0) ctx.eventBannerT -= GameContext.DT;
@@ -73,27 +76,27 @@ public class GamePanel extends JPanel implements ActionListener {
         }
 
         // Update controls -> aim
-        controls.update(GameContext.DT);
+        controls.update(dt);
         double mouseWorldX = ctx.camX + controls.getMouseX();
         double mouseWorldY = ctx.camY + controls.getMouseY();
-                ctx.cursorWorldX = mouseWorldX;
+        ctx.cursorWorldX = mouseWorldX;
         ctx.cursorWorldY = mouseWorldY;
-controls.updateAim(mouseWorldX, mouseWorldY);
+        controls.updateAim(mouseWorldX, mouseWorldY);
 
         // Physics: movement, firing, collisions
-        PhysicsSystem.update(ctx, GameContext.DT);
+        PhysicsSystem.update(ctx, dt);
 
         // AI
-        AISystem.update(ctx, GameContext.DT);
+        AISystem.update(ctx, dt);
 
         // Economy (mining/salvage/win checks)
-        EconomySystem.update(ctx, GameContext.DT);
+        EconomySystem.update(ctx, dt);
 
         // Pings fade
-        UISystem.updatePings(ctx, GameContext.DT);
+        UISystem.updatePings(ctx, dt);
 
         // Events
-        EventSystem.update(ctx, GameContext.DT);
+        EventSystem.update(ctx, dt);
 
         // Camera last
         CameraSystem.update(ctx, viewportW(), viewportH());

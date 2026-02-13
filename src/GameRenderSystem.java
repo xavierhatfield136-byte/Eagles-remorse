@@ -69,6 +69,7 @@ public final class GameRenderSystem {
                 ctx.camY,
                 viewportW,
                 viewportH
+
         );
 
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
@@ -107,6 +108,11 @@ public final class GameRenderSystem {
             int hy = y + 42;
             g2.drawString(hint, hx, hy);
         }
+// Dev debug overlay (F3)
+if (DevTools.isDebugOverlay()) {
+    try { DevOverlay.draw(g2, ctx, viewportW, viewportH); } catch (Throwable ignored) {}
+}
+
     }
 
     // Reflection bridge so Renderer can call hangar tier from GamePanel if your version has compilation dependencies.
