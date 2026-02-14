@@ -970,7 +970,10 @@ public class FleetShip extends Ship {
             // Structures
             // -----------------------
             case BASE -> {
-                name = (faction == Faction.ENEMY ? "Base (ENEMY)" : "Base (ALLY)");
+                if (faction == Faction.ENEMY) name = "Base (ENEMY)";
+                else if (faction == Faction.TEAM_C) name = "Base (TEAM C)";
+                else if (faction == Faction.TEAM_D) name = "Base (TEAM D)";
+                else name = "Base (ALLY)";
                 radius = 60;
                 hpMax = 240;
                 hp = hpMax;
@@ -1089,11 +1092,10 @@ public class FleetShip extends Ship {
 
                 hasCIWS = false;
             }
+        }
 
         // Apply baseline core stats from the single source of truth.
         // (Keeps tuning centralized in RoleStats.)
         RoleStats.applyCore(this, role);
-
-        }
     }
 }

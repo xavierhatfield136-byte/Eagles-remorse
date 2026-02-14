@@ -23,7 +23,8 @@ public final class TargetingSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
-            if (s.faction == Faction.ENEMY && s.role != ShipRole.BASE) enemies.add(s);
+            if (s.role == ShipRole.BASE) continue;
+            if (TeamSystem.isHostileToPlayer(ctx, s.faction)) enemies.add(s);
         }
         if (enemies.isEmpty()) {
             ctx.lockedTarget = null;
@@ -46,7 +47,13 @@ public final class TargetingSystem {
     }
 
     public static Ship getPreferredEnemyTarget(GameContext ctx, Ship seeker) {
-        if (ctx.lockedTarget != null && isAlive(ctx.lockedTarget) && seeker.faction == Faction.ALLY) return ctx.lockedTarget;
+        if (ctx.lockedTarget != null && isAlive(ctx.lockedTarget)
+                && seeker.faction != null
+                && ctx.player != null
+                && seeker.faction.isFriendlyTo(ctx.player.faction)
+                && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)) {
+            return ctx.lockedTarget;
+        }
 
         Ship best = null;
         double bestD2 = Double.MAX_VALUE;
@@ -56,11 +63,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (s.role == ShipRole.BASE) continue;
 
-            if (seeker.faction == Faction.ALLY && s.faction == Faction.ENEMY) {
-                double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);
-                if (d2 < bestD2) { bestD2 = d2; best = s; }
-            }
-            if (seeker.faction == Faction.ENEMY && s.faction == Faction.ALLY) {
+            if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
                 double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);
                 if (d2 < bestD2) { bestD2 = d2; best = s; }
             }
@@ -74,7 +77,7 @@ public final class TargetingSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
-            if (s.faction != Faction.ENEMY) continue;
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (s.role == ShipRole.BASE) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {

@@ -8,6 +8,8 @@ import java.util.List;
  * - vx/vy are already scaled by dt (per tick), so integration is x += vx; y += vy.
  */
 public abstract class Ship {
+    private static int NEXT_ID = 1;
+    public final int id = NEXT_ID++;
     /** Backwards-compatible alias used by Turret/GamePanel. */
     public void onFire() {
         onFiredWeapon();
@@ -88,6 +90,24 @@ public abstract class Ship {
     /** Buffer for fractional mining accumulation. */
     private double miningBuffer = 0.0;
 
+    // ------------------------------
+    // Miner AI state (NPCs)
+    // ------------------------------
+    public enum MinerState {
+        SEEK_ASTEROID,
+        MOVE_TO_ASTEROID,
+        MINING,
+        RETURN_TO_BASE,
+        DEPOSIT,
+        IDLE
+    }
+
+    public MinerState minerState = MinerState.SEEK_ASTEROID;
+    public Asteroid minerTarget = null;
+    public Ship minerHomeBase = null;
+    public double minerDebugTimer = 0.0;
+    public String minerDebugNote = "";
+
     // Shield
     public double shieldMax = 0;
     public double shield = 0;
@@ -96,6 +116,35 @@ public abstract class Ship {
 
     // Turrets
     public final List<Turret> turrets = new ArrayList<>();
+
+    // Primary weapon family (Energy Navy only for now)
+    public enum PrimaryWeaponFamily {
+        ENERGY_BOLT,
+        BEAM_BOLT
+    }
+
+    public static final double BEAM_BOLT_SPEED = 650.0;
+    public static final double BEAM_BOLT_DAMAGE_MULT = 3.0;
+    public static final double BEAM_BOLT_FIRE_RATE_MULT = 0.35;
+    public static final int BEAM_BOLT_LIFE = 120; // frames (~1200px at 650 px/s)
+
+    public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
+
+    private static final class GunBaseline {
+        final double cooldown;
+        final int damage;
+        final double bulletSpeed;
+        final int bulletLife;
+
+        GunBaseline(Turret t) {
+            this.cooldown = t.cooldown;
+            this.damage = t.damage;
+            this.bulletSpeed = t.bulletSpeed;
+            this.bulletLife = t.bulletLife;
+        }
+    }
+
+    private final java.util.IdentityHashMap<Turret, GunBaseline> gunBaselines = new java.util.IdentityHashMap<>();
 
     // CIWS (point defense)
     public boolean hasCIWS = false;
@@ -150,7 +199,15 @@ public abstract class Ship {
     private double hullRegenBuffer = 0;
 
     public void addTurret(Turret t) {
-        if (t != null) turrets.add(t);
+        if (t != null) {
+            turrets.add(t);
+            if (t.kind == Turret.Kind.GUN) {
+                cacheGunBaseline(t);
+                if (primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT) {
+                    applyPrimaryWeaponFamily();
+                }
+            }
+        }
     }
 
     public void update(double dt) {
@@ -232,6 +289,38 @@ public abstract class Ship {
             baseSpawnTimer -= dt;
             if (baseSpawnTimer < 0) baseSpawnTimer = 0;
         }
+    }
+
+    public void applyPrimaryWeaponFamily() {
+        for (Turret t : turrets) {
+            if (t == null) continue;
+            if (t.kind != Turret.Kind.GUN) continue;
+
+            GunBaseline base = gunBaselines.get(t);
+            if (base == null) {
+                base = cacheGunBaseline(t);
+            }
+
+            if (primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT) {
+                t.damage = Math.max(1, (int) Math.round(base.damage * BEAM_BOLT_DAMAGE_MULT));
+                t.cooldown = base.cooldown / BEAM_BOLT_FIRE_RATE_MULT;
+                t.bulletSpeed = BEAM_BOLT_SPEED;
+                t.bulletLife = BEAM_BOLT_LIFE;
+            } else {
+                t.damage = base.damage;
+                t.cooldown = base.cooldown;
+                t.bulletSpeed = base.bulletSpeed;
+                t.bulletLife = base.bulletLife;
+            }
+        }
+    }
+
+    private GunBaseline cacheGunBaseline(Turret t) {
+        GunBaseline base = gunBaselines.get(t);
+        if (base != null) return base;
+        base = new GunBaseline(t);
+        gunBaselines.put(t, base);
+        return base;
     }
 
     public void healHull(double amount) {

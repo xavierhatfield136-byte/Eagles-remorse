@@ -61,6 +61,7 @@ public final class EventSystem {
 
     private static void triggerRaiders(GameContext ctx) {
         SpawnSystem.spawnEnemyGroup(ctx, ctx.player.x + 900 + ctx.rng.nextDouble() * 400, ctx.player.y + 600 + ctx.rng.nextDouble() * 400);
+        SpawnSystem.spawnAllyGroup(ctx, ctx.player.x - 900 - ctx.rng.nextDouble() * 400, ctx.player.y - 600 - ctx.rng.nextDouble() * 400);
         showBanner(ctx, "RAIDERS INBOUND", 2.5);
     }
 }

@@ -28,6 +28,7 @@ public class GameContext {
     // Bases
     public Ship allyBase;
     public Ship enemyBase;
+    public final java.util.EnumMap<Faction, Ship> teamBases = new java.util.EnumMap<>(Faction.class);
 
     // Camera
     public double camX = 0;
@@ -74,6 +75,10 @@ public class GameContext {
     public double orePriceT = 0.0;
     public double miningMul = 1.0;
     public double miningT = 0.0;
+
+    // Permanent base upgrade multipliers (stack with temporary events)
+    public double orePriceBaseMul = 1.0;
+    public double miningBaseMul = 1.0;
 
     // Waves
     public double enemyWaveTimer = 2.0;

@@ -26,7 +26,7 @@ public final class PhysicsSystem {
 
             if (ctx.autoLockTurrets) {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
-                if (isAlive(ctx.lockedTarget) && ctx.lockedTarget.faction == Faction.ENEMY) {
+                if (isAlive(ctx.lockedTarget) && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
                     autoTarget = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1600);
@@ -43,7 +43,7 @@ public final class PhysicsSystem {
 
             if (ctx.firingSecondary) {
                 Ship target = isAlive(ctx.lockedTarget) ? ctx.lockedTarget : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100);
-                if (target != null && target.faction == Faction.ENEMY) {
+                if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
                     ctx.projectiles.addAll(ctx.player.fireSecondary(target, dt));
                 }
             }
@@ -87,7 +87,7 @@ public final class PhysicsSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
-            if (s.faction != Faction.ENEMY) continue;
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (s.role == ShipRole.BASE) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {

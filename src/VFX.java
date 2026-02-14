@@ -33,6 +33,8 @@ public final class VFX {
             p.x += p.vx;
             p.y += p.vy;
             p.angle += p.angleVel;
+            if (p.type == Type.MUZZLE_BLOOM) p.size += 0.8;
+            if (p.type == Type.SHIELD) p.size += 1.4;
             p.life--;
             if (p.life <= 0) it.remove();
         }
@@ -49,9 +51,15 @@ public final class VFX {
             switch (p.type) {
                 case MUZZLE -> {
                     int a = (int) MathUtil.clamp(alpha, 0, 220);
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
                     int w = (int) Math.round(p.size * 1.6);
                     int h = (int) Math.round(p.size * 1.0);
+
+                    // soft glow
+                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * 0.35, 0, 120)));
+                    g2.fillOval((int) Math.round(p.x - w), (int) Math.round(p.y - h), w * 2, h * 2);
+
+                    // bright core
+                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
                     g2.fillOval((int) Math.round(p.x - w / 2.0), (int) Math.round(p.y - h / 2.0), w, h);
 
                     // little streak
@@ -61,6 +69,15 @@ public final class VFX {
                     int ex = (int) Math.round(p.x + Math.cos(p.angle) * (p.size * 2.0));
                     int ey = (int) Math.round(p.y + Math.sin(p.angle) * (p.size * 2.0));
                     g2.drawLine(sx, sy, ex, ey);
+                }
+                case MUZZLE_BLOOM -> {
+                    int a = (int) MathUtil.clamp(alpha, 0, 160);
+                    Stroke old = g2.getStroke();
+                    g2.setStroke(new BasicStroke((float) Math.max(1.0, p.size * 0.25)));
+                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                    int r = (int) Math.round(p.size);
+                    g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                    g2.setStroke(old);
                 }
                 case SPARK -> {
                     g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), alpha));
@@ -114,6 +131,15 @@ public final class VFX {
                     // outline
                     g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.6, 0, 160)));
                     g2.drawPolygon(xs, ys, 4);
+                }
+                case SHIELD -> {
+                    int a = (int) MathUtil.clamp(alpha, 0, 190);
+                    Stroke old = g2.getStroke();
+                    g2.setStroke(new BasicStroke((float) Math.max(1.2, p.size * 0.12)));
+                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                    int r = (int) Math.round(p.size);
+                    g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                    g2.setStroke(old);
                 }
             }
         }
@@ -207,6 +233,23 @@ public final class VFX {
         p.baseAlpha = 220;
         p.color = missile ? new Color(255, 230, 140) : new Color(255, 245, 210);
         addCapped(p);
+
+        if (!DevTools.isFancyVfxEnabled()) return;
+
+        Particle bloom = new Particle();
+        bloom.type = Type.MUZZLE_BLOOM;
+        bloom.x = x;
+        bloom.y = y;
+        bloom.angle = angle;
+        bloom.size = missile ? 14 : 10;
+        bloom.maxLife = bloom.life = missile ? 9 : 7;
+        bloom.baseAlpha = 160;
+        bloom.color = missile ? new Color(255, 220, 140) : new Color(180, 235, 255);
+        addCapped(bloom);
+
+        if (!missile) {
+            spawnMuzzleSparks(x, y, angle, 5);
+        }
     }
 
     public static void spawnImpactSparks(double x, double y, double dirX, double dirY, int strength) {
@@ -233,6 +276,47 @@ public final class VFX {
             p.vx = Math.cos(a) * sp * DEFAULT_DT;
             p.vy = Math.sin(a) * sp * DEFAULT_DT;
 
+            addCapped(p);
+        }
+    }
+
+    public static void spawnShieldRipple(double x, double y, double radius, Color color) {
+        Particle p = new Particle();
+        p.type = Type.SHIELD;
+        p.x = x;
+        p.y = y;
+        p.vx = 0;
+        p.vy = 0;
+        p.angle = 0;
+        p.size = Math.max(8.0, radius);
+        p.maxLife = p.life = 10;
+        p.baseAlpha = 190;
+        p.color = (color != null) ? color : new Color(120, 220, 255);
+        addCapped(p);
+    }
+
+    public static void spawnHitSparks(double x, double y, double dirX, double dirY) {
+        spawnImpactSparks(x, y, dirX, dirY, 1);
+    }
+
+    private static void spawnMuzzleSparks(double x, double y, double angle, int count) {
+        int n = MathUtil.clamp(count, 3, 8);
+        for (int i = 0; i < n; i++) {
+            double a = angle + (RNG.nextDouble() - 0.5) * Math.toRadians(50);
+            double sp = 140 + RNG.nextDouble() * 220;
+
+            Particle p = new Particle();
+            p.type = Type.SPARK;
+            p.x = x + Math.cos(a) * 2.0;
+            p.y = y + Math.sin(a) * 2.0;
+            p.angle = a;
+            p.size = 1.1 + RNG.nextDouble() * 1.6;
+            p.maxLife = p.life = 8 + RNG.nextInt(6);
+            p.baseAlpha = 190;
+            p.color = new Color(255, 220, 140);
+
+            p.vx = Math.cos(a) * sp * DEFAULT_DT;
+            p.vy = Math.sin(a) * sp * DEFAULT_DT;
             addCapped(p);
         }
     }
@@ -288,12 +372,14 @@ public final class VFX {
 
     private enum Type {
         MUZZLE,
+        MUZZLE_BLOOM,
         SPARK,
         SMOKE,
         ENGINE,
         FIRE,
         DEBRIS,
-        SALVAGE
+        SALVAGE,
+        SHIELD
     }
 
     private static final class Particle {

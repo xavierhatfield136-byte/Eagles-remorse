@@ -21,13 +21,14 @@ public final class EconomySystem {
 
         // Mode win checks
         if (ctx.config.mode == GameMode.RESOURCE_RUSH) checkResourceRushWin(ctx);
+        if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) checkFourTeamDominationWin(ctx);
     }
 
     private static void doMining(GameContext ctx, Ship miner, double dt) {
         Asteroid a = findBestAsteroidNear(ctx, miner.x, miner.y, 220);
         if (a == null) return;
 
-        double rate = getMiningRate(miner) * ctx.miningMul;
+        double rate = getMiningRate(miner) * ctx.miningMul * ctx.miningBaseMul;
         double mined = mineAsteroid(a, rate * dt);
         if (mined > 0) {
             addOreToShip(miner, mined);
@@ -54,7 +55,7 @@ public final class EconomySystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (s.role != ShipRole.BASE) continue;
-            if (s.faction != Faction.ALLY) continue;
+            if (!TeamSystem.isFriendlyToPlayer(ctx, s.faction)) continue;
             if (GameMath.dist2(ctx.player.x, ctx.player.y, s.x, s.y) < (120 * 120)) return s;
         }
         return null;
@@ -64,42 +65,253 @@ public final class EconomySystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (s.role != ShipRole.MINER) continue;
-            if (s.hp <= 0) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            updateMinerState(ctx, s, dt);
+        }
+    }
 
-            Ship base = (s.faction == Faction.ALLY) ? ctx.allyBase : ctx.enemyBase;
-            if (base == null || base.hp <= 0) continue;
+    // ------------------------------
+    // Miner AI state machine
+    // ------------------------------
 
-            if (GameMath.dist2(s.x, s.y, base.x, base.y) < (130 * 130)) {
-                double ore = getShipOre(s);
-                if (ore > 0) {
-                    base.oreStockpile += (int) Math.round(ore);
-                    if (s.faction == Faction.ALLY) {
-                        ctx.credits += (int) Math.round(ore * GameContext.ORE_PRICE * ctx.orePriceMul);
-                    }
-                    setShipOre(s, 0);
-                }
-                // repair a bit (hp/hpMax are ints in this codebase)
-                int heal = (int) Math.round(18 * dt);
-                if (heal > 0) s.hp = Math.min(s.hpMax, s.hp + heal);
-                continue;
-            }
+    private static final double MINER_SEARCH_RADIUS = 2400.0;
+    private static final double MINER_DEPOSIT_RANGE = 120.0;
+    private static final double MINER_FULL_FRAC = 0.90;
 
-            if (getShipOre(s) >= 180) {
-                aiGoTo(s, base.x, base.y, dt);
-                continue;
-            }
+    private static void updateMinerState(GameContext ctx, Ship s, double dt) {
+        // Ensure we have a home base
+        if (s.minerHomeBase == null || !s.minerHomeBase.alive || s.minerHomeBase.hp <= 0) {
+            s.minerHomeBase = findHomeBaseFor(ctx, s);
+        }
 
-            Asteroid a = findBestAsteroidNear(ctx, s.x, s.y, 320);
-            if (a != null) {
-                aiGoTo(s, a.x, a.y, dt);
-                if (GameMath.dist2(s.x, s.y, a.x, a.y) < (90 * 90)) {
-                    double mined = mineAsteroid(a, getMiningRate(s) * ctx.miningMul * dt);
-                    if (mined > 0) addOreToShip(s, mined);
-                }
-            } else {
-                aiWander(s, dt, ctx.WORLD_W, ctx.WORLD_H);
+        boolean hasBase = (s.minerHomeBase != null && s.minerHomeBase.alive && s.minerHomeBase.hp > 0);
+        if (!hasBase && s.minerState != Ship.MinerState.IDLE) {
+            s.minerState = Ship.MinerState.IDLE;
+        }
+
+        // Periodic debug logging (once per second)
+        if (DevTools.isDebugOverlay()) {
+            s.minerDebugTimer += dt;
+            if (s.minerDebugTimer >= 1.0) {
+                s.minerDebugTimer = 0.0;
+                logMinerStatus(ctx, s);
             }
         }
+
+        double cargo = getShipOre(s);
+        double cargoMax = Math.max(1, s.cargoMax);
+        boolean cargoFullEnough = cargo >= cargoMax * MINER_FULL_FRAC;
+
+        if (cargoFullEnough && s.minerState != Ship.MinerState.RETURN_TO_BASE && s.minerState != Ship.MinerState.DEPOSIT) {
+            s.minerState = Ship.MinerState.RETURN_TO_BASE;
+        }
+
+        switch (s.minerState) {
+            case SEEK_ASTEROID -> {
+                Asteroid a = findBestAsteroidForMiner(ctx, s, MINER_SEARCH_RADIUS);
+                if (a == null) {
+                    s.minerTarget = null;
+                    s.minerDebugNote = findNoAsteroidReason(ctx);
+                    aiWander(s, dt, ctx.WORLD_W, ctx.WORLD_H);
+                    break;
+                }
+                s.minerTarget = a;
+                s.minerDebugNote = "";
+                s.minerState = Ship.MinerState.MOVE_TO_ASTEROID;
+            }
+            case MOVE_TO_ASTEROID -> {
+                Asteroid a = s.minerTarget;
+                if (a == null || getAsteroidOre(a) <= 0.01) {
+                    s.minerTarget = null;
+                    s.minerDebugNote = "target depleted";
+                    s.minerState = Ship.MinerState.SEEK_ASTEROID;
+                    break;
+                }
+                s.minerDebugNote = "";
+                steerTo(s, a.x, a.y, dt);
+                if (inMiningRange(s, a)) {
+                    s.minerState = Ship.MinerState.MINING;
+                }
+            }
+            case MINING -> {
+                Asteroid a = s.minerTarget;
+                if (a == null || getAsteroidOre(a) <= 0.01) {
+                    s.minerTarget = null;
+                    s.minerDebugNote = "target depleted";
+                    s.minerState = Ship.MinerState.SEEK_ASTEROID;
+                    break;
+                }
+                s.minerDebugNote = "";
+
+                if (!inMiningRange(s, a)) {
+                    s.minerState = Ship.MinerState.MOVE_TO_ASTEROID;
+                    break;
+                }
+
+                double dtScaled = dt * ctx.miningMul * ctx.miningBaseMul;
+                int mined = s.tryMine(a, dtScaled);
+                if (mined > 0) {
+                    try { VFX.spawnEngineWisp(s.x, s.y, s.vx, s.vy); } catch (Throwable ignored) {}
+                }
+                double newCargo = getShipOre(s);
+                if (newCargo >= cargoMax * MINER_FULL_FRAC) {
+                    s.minerState = Ship.MinerState.RETURN_TO_BASE;
+                }
+            }
+            case RETURN_TO_BASE -> {
+                if (!hasBase) {
+                    s.minerState = Ship.MinerState.IDLE;
+                    break;
+                }
+                Ship base = s.minerHomeBase;
+                s.minerDebugNote = "";
+                steerTo(s, base.x, base.y, dt);
+                if (inDepositRange(s, base)) {
+                    s.minerState = Ship.MinerState.DEPOSIT;
+                }
+            }
+            case DEPOSIT -> {
+                if (!hasBase) {
+                    s.minerState = Ship.MinerState.IDLE;
+                    break;
+                }
+                Ship base = s.minerHomeBase;
+                s.minerDebugNote = "";
+                if (inDepositRange(s, base)) {
+                    int moved = s.depositCargoTo(base);
+                    if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction)) {
+                        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
+                        ctx.credits += (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+                    }
+                    // repair a bit (hp/hpMax are ints in this codebase)
+                    int heal = (int) Math.round(18 * dt);
+                    if (heal > 0) s.hp = Math.min(s.hpMax, s.hp + heal);
+                }
+                s.minerState = Ship.MinerState.SEEK_ASTEROID;
+            }
+            case IDLE -> {
+                // If we regain a base, resume work.
+                s.minerDebugNote = hasBase ? "" : "no base";
+                if (hasBase) s.minerState = Ship.MinerState.SEEK_ASTEROID;
+            }
+        }
+    }
+
+    private static Ship findHomeBaseFor(GameContext ctx, Ship miner) {
+        Ship best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (s.role != ShipRole.BASE) continue;
+            if (s.faction != miner.faction) continue;
+            if (!s.alive || s.hp <= 0) continue;
+            double d2 = GameMath.dist2(miner.x, miner.y, s.x, s.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = s;
+            }
+        }
+        return best;
+    }
+
+    private static Asteroid findBestAsteroidForMiner(GameContext ctx, Ship miner, double maxDist) {
+        Asteroid best = null;
+        double bestD2 = maxDist * maxDist;
+        if (ctx.asteroids == null || ctx.asteroids.isEmpty()) return null;
+        for (Asteroid a : ctx.asteroids) {
+            double ore = getAsteroidOre(a);
+            if (ore <= 0.01) continue;
+            double d2 = GameMath.dist2(miner.x, miner.y, a.x, a.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    private static String findNoAsteroidReason(GameContext ctx) {
+        if (ctx.asteroids == null || ctx.asteroids.isEmpty()) return "no asteroids";
+        for (Asteroid a : ctx.asteroids) {
+            if (getAsteroidOre(a) > 0.01) return "";
+        }
+        return "all ore depleted";
+    }
+
+    private static boolean inMiningRange(Ship s, Asteroid a) {
+        double dx = a.x - s.x;
+        double dy = a.y - s.y;
+        double reach = Math.max(0.0, s.miningRange) + s.radius + a.radius;
+        return (dx * dx + dy * dy) <= (reach * reach);
+    }
+
+    private static boolean inDepositRange(Ship s, Ship base) {
+        double dx = base.x - s.x;
+        double dy = base.y - s.y;
+        double reach = MINER_DEPOSIT_RANGE + s.radius + base.radius;
+        return (dx * dx + dy * dy) <= (reach * reach);
+    }
+
+    private static void steerTo(Ship s, double tx, double ty, double dt) {
+        double dx = tx - s.x;
+        double dy = ty - s.y;
+        double len = Math.sqrt(dx * dx + dy * dy) + 1e-9;
+        double speed = Math.max(55.0, s.desiredSpeed);
+        double vx = (dx / len) * speed;
+        double vy = (dy / len) * speed;
+        if (dt <= 0) {
+            s.vx = 0;
+            s.vy = 0;
+            return;
+        }
+        s.vx = vx * dt;
+        s.vy = vy * dt;
+        s.angle = Math.atan2(vy, vx);
+    }
+
+    private static void logMinerStatus(GameContext ctx, Ship s) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("MINER #").append(s.id).append(" ")
+                .append(s.minerState).append(" cargo=").append(s.cargo).append("/").append(s.cargoMax);
+
+        if (s.minerTarget != null) {
+            double d = Math.hypot(s.minerTarget.x - s.x, s.minerTarget.y - s.y);
+            sb.append(" distA=").append((int) Math.round(d));
+        } else {
+            sb.append(" distA=?");
+        }
+
+        if (s.minerHomeBase != null) {
+            double d = Math.hypot(s.minerHomeBase.x - s.x, s.minerHomeBase.y - s.y);
+            sb.append(" distB=").append((int) Math.round(d));
+        } else {
+            sb.append(" distB=?");
+        }
+
+        if (s.minerDebugNote != null && !s.minerDebugNote.isBlank()) {
+            sb.append(" note=").append(s.minerDebugNote);
+        }
+
+        System.out.println(sb);
+    }
+
+    private static Ship getBaseForFaction(GameContext ctx, Faction faction) {
+        Ship direct = ctx.teamBases.get(faction);
+        if (direct == null && faction != null) {
+            if (faction == Faction.ALLY) direct = ctx.allyBase;
+            else if (faction == Faction.ENEMY) direct = ctx.enemyBase;
+        }
+        if (direct != null && direct.role == ShipRole.BASE && direct.faction == faction && direct.hp > 0) {
+            return direct;
+        }
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (s.role != ShipRole.BASE) continue;
+            if (s.faction != faction) continue;
+            if (s.hp <= 0) continue;
+            return s;
+        }
+        return null;
     }
 
     public static int getOreTotalForFaction(GameContext ctx, Faction f) {
@@ -125,6 +337,19 @@ public final class EconomySystem {
         }
     }
 
+    private static void checkFourTeamDominationWin(GameContext ctx) {
+        Faction[] teams = Faction.fourTeamFactions();
+        int alive = TeamSystem.countAliveTeams(ctx, teams);
+        if (alive <= 1) {
+            ctx.gameOver = true;
+            ctx.state = GameState.GAME_OVER;
+
+            Faction winner = TeamSystem.getLastAliveTeam(ctx, teams);
+            if (winner == null) ctx.gameOverText = "DRAW";
+            else ctx.gameOverText = winner.teamName() + " WINS";
+        }
+    }
+
     // ---- Compatibility helpers for varying codebases ----
 
     private static double getMiningRate(Ship s) {
@@ -135,26 +360,56 @@ public final class EconomySystem {
 
     private static void aiGoTo(Ship s, double x, double y, double dt) {
         try { s.getClass().getMethod("aiGoTo", double.class, double.class, double.class).invoke(s, x, y, dt); return; } catch (Throwable ignored) {}
-        // Fallback: naive steer
+        // Fallback: direct velocity set using ship preferred speed.
         double dx = x - s.x, dy = y - s.y;
         double len = Math.sqrt(dx*dx + dy*dy) + 1e-9;
-        s.vx += (dx/len) * 40 * dt;
-        s.vy += (dy/len) * 40 * dt;
+        double speed = Math.max(45.0, s.desiredSpeed);
+        s.vx = (dx / len) * speed * dt;
+        s.vy = (dy / len) * speed * dt;
     }
 
     private static void aiWander(Ship s, double dt, int w, int h) {
-        try { s.getClass().getMethod("aiWander", double.class, int.class, int.class).invoke(s, dt, w, h); } catch (Throwable ignored) {}
+        try { s.getClass().getMethod("aiWander", double.class, int.class, int.class).invoke(s, dt, w, h); return; } catch (Throwable ignored) {}
+        // Fallback wander: slow deterministic drift, with center pull to avoid edge camping.
+        double t = System.nanoTime() * 1e-9 + (s.hashCode() * 0.001);
+        double tx = s.x + Math.cos(t * 0.7) * 180.0;
+        double ty = s.y + Math.sin(t * 0.9) * 180.0;
+        tx = GameMath.clamp(tx, 80, w - 80);
+        ty = GameMath.clamp(ty, 80, h - 80);
+        aiGoTo(s, tx, ty, dt);
     }
 
     private static double getShipOre(Ship s) {
-        try { return (double) s.getClass().getField("ore").get(s); } catch (Throwable ignored) {}
-        try { return (double) s.getClass().getField("cargo").get(s); } catch (Throwable ignored) {}
+        try {
+            Object v = s.getClass().getField("ore").get(s);
+            if (v instanceof Number n) return n.doubleValue();
+        } catch (Throwable ignored) {}
+        try {
+            Object v = s.getClass().getField("cargo").get(s);
+            if (v instanceof Number n) return n.doubleValue();
+        } catch (Throwable ignored) {}
         return 0.0;
     }
 
     private static void setShipOre(Ship s, double v) {
-        try { s.getClass().getField("ore").set(s, v); return; } catch (Throwable ignored) {}
-        try { s.getClass().getField("cargo").set(s, v); } catch (Throwable ignored) {}
+        int iv = (int) Math.max(0, Math.round(v));
+        try {
+            java.lang.reflect.Field f = s.getClass().getField("ore");
+            Class<?> t = f.getType();
+            if (t == int.class || t == Integer.class) f.set(s, iv);
+            else if (t == double.class || t == Double.class) f.set(s, (double) iv);
+            else if (t == float.class || t == Float.class) f.set(s, (float) iv);
+            else f.set(s, iv);
+            return;
+        } catch (Throwable ignored) {}
+        try {
+            java.lang.reflect.Field f = s.getClass().getField("cargo");
+            Class<?> t = f.getType();
+            if (t == int.class || t == Integer.class) f.set(s, iv);
+            else if (t == double.class || t == Double.class) f.set(s, (double) iv);
+            else if (t == float.class || t == Float.class) f.set(s, (float) iv);
+            else f.set(s, iv);
+        } catch (Throwable ignored) {}
     }
 
     private static void addOreToShip(Ship s, double add) {

@@ -84,8 +84,7 @@ public final class UISystem {
     public static void addPing(GameContext ctx, double x, double y, double seconds) {
         int factionCode = 0;
         if (ctx.player != null) {
-            if (ctx.player.faction == Faction.ALLY) factionCode = 1;
-            else if (ctx.player.faction == Faction.ENEMY) factionCode = 2;
+            factionCode = pingCodeForFaction(ctx.player.faction);
         }
         ctx.mapPings.add(new Renderer.MapPing(x, y, seconds, factionCode));
     }
@@ -96,5 +95,258 @@ public final class UISystem {
             p.t -= dt;
             if (p.t <= 0) ctx.mapPings.remove(i);
         }
+    }
+
+    public static void tryBuyBeamBolt(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+
+        Player player = ctx.player;
+        int cost = 220;
+
+        if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
+            EventSystem.showBanner(ctx, "BEAM BOLT ALREADY EQUIPPED", 1.4);
+            return;
+        }
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+
+        ctx.credits -= cost;
+        player.primaryWeaponFamily = Ship.PrimaryWeaponFamily.BEAM_BOLT;
+        player.applyPrimaryWeaponFamily();
+        EventSystem.showBanner(ctx, "BEAM BOLT ONLINE", 1.6);
+    }
+
+    public static void tryEquipEnergyBolt(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+
+        Player player = ctx.player;
+        if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT) {
+            EventSystem.showBanner(ctx, "ENERGY BOLT ALREADY EQUIPPED", 1.4);
+            return;
+        }
+
+        player.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;
+        player.applyPrimaryWeaponFamily();
+        EventSystem.showBanner(ctx, "ENERGY BOLT ONLINE", 1.2);
+    }
+
+    public static void tryBuyHullPlating(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        int cost = 60;
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        ctx.player.hpMax += 10;
+        ctx.player.hp += 10;
+        EventSystem.showBanner(ctx, "HULL UPGRADED", 1.2);
+    }
+
+    public static void tryBuyShieldArray(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        Player p = ctx.player;
+        if (!p.shieldActive || p.shieldMax <= 0) {
+            EventSystem.showBanner(ctx, "NO SHIELD SYSTEM", 1.4);
+            return;
+        }
+        int cost = 70;
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        p.shieldMax += 12.0;
+        p.shieldRegen += 0.3;
+        p.shield += 12.0;
+        EventSystem.showBanner(ctx, "SHIELD ARRAY UPGRADED", 1.2);
+    }
+
+    public static void tryAddGunTurret(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        int cost = 100;
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        ctx.player.addGunTurret();
+        EventSystem.showBanner(ctx, "GUN TURRET ADDED", 1.2);
+    }
+
+    public static void tryAddMissileRack(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        int cost = 140;
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        ctx.player.addMissileTurret();
+        EventSystem.showBanner(ctx, "MISSILE RACK ADDED", 1.2);
+    }
+
+    public static void tryUpgradeCIWS(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        if (!ctx.player.hasCIWS) {
+            EventSystem.showBanner(ctx, "NO CIWS SYSTEM", 1.4);
+            return;
+        }
+        int cost = 120;
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        ctx.player.upgradeCIWS();
+        EventSystem.showBanner(ctx, "CIWS UPGRADED", 1.2);
+    }
+
+    public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.shopOpen) return;
+        if (ctx.player.role == role) {
+            EventSystem.showBanner(ctx, "HULL ALREADY EQUIPPED", 1.2);
+            return;
+        }
+        int hangarTier = getMaxHangarTierForPlayer(ctx);
+        if (hangarTier < requiredTier) {
+            EventSystem.showBanner(ctx, "HANGAR TIER TOO LOW", 1.4);
+            return;
+        }
+        if (ctx.credits < cost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
+            return;
+        }
+        ctx.credits -= cost;
+        ctx.player.applyHull(role, ctx.player.x, ctx.player.y);
+        EventSystem.showBanner(ctx, "HULL SWAPPED", 1.2);
+    }
+
+    public static void tryUpgradeBase(GameContext ctx, int which) {
+        if (ctx == null) return;
+        if (!ctx.baseMenuOpen) return;
+        Ship base = EconomySystem.getDockedFriendlyBase(ctx);
+        if (base == null) {
+            EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE", 1.4);
+            return;
+        }
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
+
+        int max = switch (which) {
+            case 5 -> 3;
+            default -> 5;
+        };
+
+        int current = switch (which) {
+            case 1 -> up.hullLv;
+            case 2 -> up.shieldLv;
+            case 3 -> up.turretLv;
+            case 4 -> up.miningLv;
+            case 5 -> up.hangarLv;
+            default -> 0;
+        };
+
+        if (current >= max) {
+            EventSystem.showBanner(ctx, "UPGRADE MAXED", 1.2);
+            return;
+        }
+
+        int nextLv = current + 1;
+        int cCost = switch (which) {
+            case 1 -> 150 + 200 * nextLv;
+            case 2 -> 170 + 210 * nextLv;
+            case 3 -> 210 + 250 * nextLv;
+            case 4 -> 140 + 170 * nextLv;
+            case 5 -> 380 + 420 * nextLv;
+            default -> 0;
+        };
+        int oCost = switch (which) {
+            case 1 -> 40 + 70 * nextLv;
+            case 2 -> 50 + 80 * nextLv;
+            case 3 -> 60 + 90 * nextLv;
+            case 4 -> 40 + 110 * nextLv;
+            case 5 -> 100 + 170 * nextLv;
+            default -> 0;
+        };
+
+        if (ctx.credits < cCost || base.oreStockpile < oCost) {
+            EventSystem.showBanner(ctx, "INSUFFICIENT RESOURCES", 1.4);
+            return;
+        }
+
+        ctx.credits -= cCost;
+        base.oreStockpile -= oCost;
+
+        switch (which) {
+            case 1 -> {
+                up.hullLv++;
+                base.hpMax += 40;
+                base.hp += 40;
+                EventSystem.showBanner(ctx, "HULL FORTIFIED", 1.2);
+            }
+            case 2 -> {
+                up.shieldLv++;
+                base.shieldMax += 30.0;
+                base.shieldRegen += 0.8;
+                base.shieldActive = true;
+                base.shield += 30.0;
+                EventSystem.showBanner(ctx, "SHIELD ARRAY UPGRADED", 1.2);
+            }
+            case 3 -> {
+                up.turretLv++;
+                if (base.turrets != null) {
+                    for (Turret t : base.turrets) {
+                        if (t == null) continue;
+                        t.damage = Math.max(1, t.damage + 1);
+                        t.cooldown = Math.max(0.05, t.cooldown * 0.95);
+                    }
+                }
+                EventSystem.showBanner(ctx, "TURRET SYSTEMS UPGRADED", 1.2);
+            }
+            case 4 -> {
+                up.miningLv++;
+                ctx.miningBaseMul = Math.min(2.0, ctx.miningBaseMul + 0.06);
+                ctx.orePriceBaseMul = Math.min(2.0, ctx.orePriceBaseMul + 0.05);
+                EventSystem.showBanner(ctx, "MINING OPS UPGRADED", 1.2);
+            }
+            case 5 -> {
+                up.hangarLv++;
+                EventSystem.showBanner(ctx, "HANGAR EXPANDED", 1.2);
+            }
+        }
+    }
+
+    public static int getMaxHangarTierForPlayer(GameContext ctx) {
+        if (ctx == null || ctx.baseUpgrades == null) return 0;
+        int best = 0;
+        for (java.util.Map.Entry<Ship, BaseUpgrades> e : ctx.baseUpgrades.entrySet()) {
+            Ship b = e.getKey();
+            if (b == null || !b.alive) continue;
+            if (!TeamSystem.isFriendlyToPlayer(ctx, b.faction)) continue;
+            BaseUpgrades up = e.getValue();
+            if (up == null) continue;
+            if (up.hangarLv > best) best = up.hangarLv;
+        }
+        return best;
+    }
+
+    private static int pingCodeForFaction(Faction faction) {
+        if (faction == null) return 0;
+        if (faction == Faction.PLAYER) return 0;
+        if (faction == Faction.ALLY) return 1;
+        if (faction == Faction.ENEMY) return 2;
+        if (faction == Faction.TEAM_C) return 3;
+        if (faction == Faction.TEAM_D) return 4;
+        return 0;
     }
 }

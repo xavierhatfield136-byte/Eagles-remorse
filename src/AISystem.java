@@ -11,11 +11,16 @@ public final class AISystem {
         ctx.enemyWaveTimer -= dt;
         if (ctx.enemyWaveTimer <= 0) {
             ctx.enemyWaveTimer = 14.0 + ctx.rng.nextDouble() * 10.0;
-            if (ctx.config.mode != GameMode.SANDBOX) {
+            if (ctx.config.mode != GameMode.SANDBOX && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION) {
                 SpawnSystem.spawnEnemyGroup(
                         ctx,
                         ctx.player.x + 900 + ctx.rng.nextDouble() * 500,
                         ctx.player.y - 600 + ctx.rng.nextDouble() * 400
+                );
+                SpawnSystem.spawnAllyGroup(
+                        ctx,
+                        ctx.player.x - 900 - ctx.rng.nextDouble() * 500,
+                        ctx.player.y + 600 + ctx.rng.nextDouble() * 400
                 );
             }
         }
@@ -25,6 +30,29 @@ public final class AISystem {
             if (s == null) continue;
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
+            if (s.role == ShipRole.BASE) {
+                // Bases stay put but can still defend themselves.
+                s.vx = 0;
+                s.vy = 0;
+                Ship target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
+                if (target != null && target.alive && !target.dying) {
+                    fireIfAble(ctx, s, target, dt, Math.hypot(target.x - s.x, target.y - s.y));
+                }
+                s.tryCIWS(dt, ctx.projectiles);
+                continue;
+            }
+            if (s.role == ShipRole.MINER) {
+                // Mining movement is handled in EconomySystem. Miners only do opportunistic self-defense here.
+                Ship target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
+                if (target != null && target.alive && !target.dying) {
+                    double d = Math.hypot(target.x - s.x, target.y - s.y);
+                    if (d <= 280) {
+                        fireIfAble(ctx, s, target, dt, d);
+                    }
+                }
+                s.tryCIWS(dt, ctx.projectiles);
+                continue;
+            }
 
             Ship target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
             if (target != null && target.alive && !target.dying) {
@@ -85,7 +113,12 @@ public final class AISystem {
             if (t == null) continue;
 
             // Rough engagement gating by weapon kind
-            double maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
+            double maxRange;
+            if (s.role == ShipRole.BASE) {
+                maxRange = (t.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0;
+            } else {
+                maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
+            }
             if (dist > maxRange) continue;
 
             // Aim with lead for guns; direct for missiles

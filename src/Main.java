@@ -152,7 +152,8 @@ class GameConfig {
 enum GameMode {
     SKIRMISH,
     SANDBOX,
-    RESOURCE_RUSH
+    RESOURCE_RUSH,
+    FOUR_TEAM_DOMINATION
 }
 
 /**
@@ -192,8 +193,8 @@ class MainMenuPanel extends JPanel {
         JButton start = new JButton("Start");
         JButton quit = new JButton("Quit");
 
-        start.addActionListener(e -> {
-            GameMode mode = (GameMode) modeBox.getSelectedItem();
+        java.util.function.Consumer<GameMode> startWithMode = (overrideMode) -> {
+            GameMode mode = (overrideMode != null) ? overrideMode : (GameMode) modeBox.getSelectedItem();
 
             int w = 5000, h = 5000;
             if (mapBox.getSelectedIndex() == 1) { w = 10000; h = 10000; }
@@ -208,7 +209,9 @@ class MainMenuPanel extends JPanel {
             if (seed == 0) seed = System.nanoTime();
 
             onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected()));
-        });
+        };
+
+        start.addActionListener(e -> startWithMode.accept(null));
 
         quit.addActionListener(e -> onQuit.run());
 
@@ -262,6 +265,14 @@ class MainMenuPanel extends JPanel {
         // Convenience: Alt+Enter toggles fullscreen in-game, but in menu we can at least
         // show that this is the toggle key later (Step 3+).
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.ALT_DOWN_MASK), "noop");
+
+        // Dev hotkey: quick-start Four Team Domination (uses current map size/seed settings).
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "dev_four_team");
+        getActionMap().put("dev_four_team", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                startWithMode.accept(GameMode.FOUR_TEAM_DOMINATION);
+            }
+        });
     }
 
     private JLabel label(String text) {

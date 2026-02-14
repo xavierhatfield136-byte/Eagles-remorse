@@ -34,9 +34,8 @@ public final class DoctrineRegistry {
 
     public static DoctrineProfile forFaction(Faction faction) {
         if (faction == null) return KINETIC_CONSORTIUM;
-        if (faction == Faction.ENEMY) return KINETIC_CONSORTIUM;
-        // PLAYER + ALLY
-        return ENERGY_NAVY;
+        if (faction.teamId() == Faction.ALLY.teamId()) return ENERGY_NAVY;
+        return KINETIC_CONSORTIUM;
     }
 
     /**

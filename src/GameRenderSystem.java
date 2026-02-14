@@ -4,6 +4,9 @@ import java.util.List;
 public final class GameRenderSystem {
     private GameRenderSystem(){}
 
+    private static final java.util.WeakHashMap<Ship, Integer> LAST_HP = new java.util.WeakHashMap<>();
+    private static final java.util.WeakHashMap<Ship, Double> LAST_SHIELD = new java.util.WeakHashMap<>();
+
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
@@ -14,6 +17,10 @@ public final class GameRenderSystem {
 
         g2.setColor(new Color(255, 255, 255, 28));
         g2.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
+
+        if (DevTools.isFancyVfxEnabled()) {
+            updateDamageVfx(ctx);
+        }
 
         Renderer.drawAsteroids(g2, ctx.asteroids);
         Renderer.drawSalvage(g2, ctx.salvage);
@@ -42,8 +49,8 @@ public final class GameRenderSystem {
         boolean resRush = (ctx.config != null && ctx.config.mode == GameMode.RESOURCE_RUSH);
 
         Ship docked = EconomySystem.getDockedFriendlyBase(ctx);
-        int hangarTier = 0;
-        try { hangarTier = (int) GamePanelReflect.getMaxHangarTierForPlayer(); } catch (Throwable ignored) {}
+        int hangarTier = UISystem.getMaxHangarTierForPlayer(ctx);
+        int maxHangarTier = 3;
 
         Renderer.drawHUD(
                 g2,
@@ -85,7 +92,7 @@ public final class GameRenderSystem {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
                 Renderer.drawBaseUpgradeOverlay(g2, base.name, ctx.credits, base.oreStockpile,
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
-                        hangarTier);
+                        maxHangarTier);
             }
         }
 
@@ -115,8 +122,37 @@ if (DevTools.isDebugOverlay()) {
 
     }
 
-    // Reflection bridge so Renderer can call hangar tier from GamePanel if your version has compilation dependencies.
-    static final class GamePanelReflect {
-        static int getMaxHangarTierForPlayer() { return 0; }
+    private static void updateDamageVfx(GameContext ctx) {
+        if (ctx == null || ctx.ships == null) return;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive) {
+                LAST_HP.remove(s);
+                LAST_SHIELD.remove(s);
+                continue;
+            }
+
+            Integer prevHp = LAST_HP.get(s);
+            Double prevShield = LAST_SHIELD.get(s);
+
+            if (prevShield != null && prevShield > s.shield) {
+                double ang = Math.random() * Math.PI * 2.0;
+                double hx = s.x + Math.cos(ang) * (s.radius + 2);
+                double hy = s.y + Math.sin(ang) * (s.radius + 2);
+                VFX.spawnShieldRipple(hx, hy, s.radius + 6, new java.awt.Color(120, 220, 255));
+            }
+
+            if (prevHp != null && prevHp > s.hp) {
+                double ang = Math.random() * Math.PI * 2.0;
+                double hx = s.x + Math.cos(ang) * (s.radius * 0.85);
+                double hy = s.y + Math.sin(ang) * (s.radius * 0.85);
+                VFX.spawnHitSparks(hx, hy, Math.cos(ang), Math.sin(ang));
+            }
+
+            LAST_HP.put(s, s.hp);
+            LAST_SHIELD.put(s, s.shield);
+        }
     }
+
+    // (Removed reflection bridge; hangar tier is computed from base upgrades.)
 }

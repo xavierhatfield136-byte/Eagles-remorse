@@ -1,5 +1,10 @@
 import java.awt.*;
+import java.awt.geom.Area;
+import java.awt.geom.Rectangle2D;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 public class Renderer {
@@ -10,7 +15,7 @@ public class Renderer {
     public static final class MapPing {
         public double x, y;
         public double t; // seconds remaining
-        public int faction; // 0=player, 1=ally, 2=enemy
+        public int faction; // 0=player, 1=team A, 2=team B, 3=team C, 4=team D
 
         public MapPing(double x, double y, double t, int faction) {
             this.x = x;
@@ -200,27 +205,54 @@ public class Renderer {
                 double ly = m.y + Math.sin(m.angle) * (m.radius + 5);
                 g2.drawLine((int) Math.round(m.x), (int) Math.round(m.y), (int) Math.round(lx), (int) Math.round(ly));
             } else if (p instanceof EnergyBolt eb) {
-                // Yamato 2199-style heavy energy bolt (thick luminous shot + glow trail)
+                // Yamato 2199-style energy bolts (standard + BEAM_BOLT variant)
                 int x = (int) Math.round(eb.x);
                 int y = (int) Math.round(eb.y);
 
-                // Short trailing glow based on velocity (per-tick) for visibility
-                int tx = (int) Math.round(eb.x - eb.vx * 6.0);
-                int ty = (int) Math.round(eb.y - eb.vy * 6.0);
+                double vx = eb.vx;
+                double vy = eb.vy;
+                double vlen = Math.hypot(vx, vy);
+                double nx = (vlen > 1e-6) ? (vx / vlen) : Math.cos(eb.angle);
+                double ny = (vlen > 1e-6) ? (vy / vlen) : Math.sin(eb.angle);
 
-                g2.setColor(new Color(120, 220, 255, 120));
-                g2.drawLine(tx, ty, x, y);
-
-                // Thicker core
                 int r = (int) Math.round(Math.max(2.0, eb.radius));
-                g2.setColor(new Color(190, 245, 255, 220));
-                g2.fillOval(x - r, y - r, r * 2, r * 2);
+                if (eb.isBeamBolt()) r = (int) Math.round(Math.max(r, 4.0));
 
-                // Small forward "spark" to make direction obvious
-                int fx = (int) Math.round(eb.x + Math.cos(eb.angle) * (r + 6));
-                int fy = (int) Math.round(eb.y + Math.sin(eb.angle) * (r + 6));
-                g2.setColor(new Color(220, 255, 255, 180));
-                g2.drawLine(x, y, fx, fy);
+                Stroke old = g2.getStroke();
+
+                // soft outer glow line
+                g2.setStroke(new BasicStroke(r * 1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(eb.isBeamBolt() ? new Color(80, 190, 255, 70) : new Color(110, 210, 255, 70));
+                int gx1 = (int) Math.round(eb.x - nx * (r * 2.6));
+                int gy1 = (int) Math.round(eb.y - ny * (r * 2.6));
+                int gx2 = (int) Math.round(eb.x + nx * (r * 1.4));
+                int gy2 = (int) Math.round(eb.y + ny * (r * 1.4));
+                g2.drawLine(gx1, gy1, gx2, gy2);
+
+                // bright core line
+                g2.setStroke(new BasicStroke(r * 0.75f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(eb.isBeamBolt() ? new Color(220, 255, 255, 235) : new Color(190, 245, 255, 220));
+                g2.drawLine(gx1, gy1, gx2, gy2);
+
+                // end-cap flare
+                int fx = (int) Math.round(eb.x + nx * (r * 2.0));
+                int fy = (int) Math.round(eb.y + ny * (r * 2.0));
+                g2.setColor(eb.isBeamBolt() ? new Color(235, 255, 255, 200) : new Color(220, 255, 255, 180));
+                g2.fillOval(fx - r, fy - r, r * 2, r * 2);
+
+                // subtle trailing segments (motion blur)
+                g2.setStroke(new BasicStroke(r * 0.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(140, 220, 255, 70));
+                for (int i = 1; i <= 2; i++) {
+                    double t = r * (3.0 + i * 2.0);
+                    int tx1 = (int) Math.round(eb.x - nx * (r * 1.6 + t));
+                    int ty1 = (int) Math.round(eb.y - ny * (r * 1.6 + t));
+                    int tx2 = (int) Math.round(eb.x - nx * (r * 0.4 + t));
+                    int ty2 = (int) Math.round(eb.y - ny * (r * 0.4 + t));
+                    g2.drawLine(tx1, ty1, tx2, ty2);
+                }
+
+                g2.setStroke(old);
             } else {
                 // Bullet / generic projectile with a small motion trail
                 int r = (int) Math.round(Math.max(1.0, p.radius));
@@ -292,6 +324,16 @@ public class Renderer {
                 y += 24;
             }
         }
+        if (!resourceRush && gameOverText != null && !gameOverText.isBlank()) {
+            String msg = gameOverText;
+            g2.setFont(new Font("Consolas", Font.BOLD, 22));
+            g2.setColor(new Color(255, 255, 255, 220));
+            FontMetrics fm = g2.getFontMetrics();
+            int tx = (g2.getClipBounds().width - fm.stringWidth(msg)) / 2;
+            g2.drawString(msg, Math.max(10, tx), 52);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+            g2.setColor(new Color(255, 255, 255, 220));
+        }
 
         g2.drawString("HP: " + player.hp + " / " + player.hpMax, x, y);
         int barW = 240;
@@ -319,7 +361,7 @@ public class Renderer {
         y += 18;
         g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
         y += 18;
-        g2.drawString("TAB: shop/loadout (5-9 upgrades, F1-F9/F11-F12 hulls)   B: base upgrades", x, y);
+        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11-F12 hulls)   B: base upgrades", x, y);
         y += 18;
         g2.drawString("Q: missile salvo   E: shield overcharge   F: mine", x, y);
         y += 18;
@@ -342,9 +384,7 @@ public class Renderer {
             String hp   = lockedTarget.hp + "/" + lockedTarget.hpMax;
 
             // Color the lock line slightly by faction for readability.
-            if (lockedTarget.faction == Faction.ENEMY) g2.setColor(new Color(255, 170, 170, 220));
-            else if (lockedTarget.faction == Faction.ALLY) g2.setColor(new Color(170, 220, 255, 220));
-            else g2.setColor(new Color(255, 255, 255, 220));
+            g2.setColor(factionHudColor(lockedTarget.faction, 220));
 
             g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  HP " + hp + "  D " + dist, x, y);
             g2.setColor(new Color(255, 255, 255, 170));
@@ -481,6 +521,30 @@ public class Renderer {
                 if (t.kind == Turret.Kind.GUN) gunCount++;
                 else if (t.kind == Turret.Kind.MISSILE) missileCount++;
             }
+        }
+
+        // 3: Energy bolt primary
+        {
+            boolean isEnergy = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT;
+            int cost = 0;
+            boolean can = true;
+            String detail = isEnergy
+                    ? "Primary: ENERGY_BOLT (standard)"
+                    : "Primary: Beam Bolt \u2192 Energy Bolt";
+            drawShopLine(g2, x + 14, ty, "3", "Energy Bolt Primary", detail, cost, can, true, isEnergy ? "ACTIVE" : null);
+            ty += 22;
+        }
+
+        // 4: Beam bolt primary
+        {
+            boolean isBeam = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
+            int cost = isBeam ? 0 : 220;
+            boolean can = credits >= cost;
+            String detail = isBeam
+                    ? "Primary: BEAM_BOLT (heavy energy bolt)"
+                    : "Primary: Energy Bolt \u2192 Beam Bolt";
+            drawShopLine(g2, x + 14, ty, "4", "Beam Bolt Primary", detail, cost, can, true, isBeam ? "ACTIVE" : null);
+            ty += 22;
         }
 
         // 5: Hull +10
@@ -846,9 +910,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int px = x0 + (int) Math.round(rx * size);
             int py = y0 + (int) Math.round(ry * size);
 
-            if (s.faction == Faction.ENEMY) g2.setColor(new Color(255, 90, 90, 220));
-            else if (s.faction == Faction.PLAYER) g2.setColor(new Color(90, 255, 140, 240));
-            else g2.setColor(new Color(140, 180, 255, 220));
+            g2.setColor(factionMapColor(s.faction, (s == player), 220));
 
             int r = (s.role == ShipRole.BASE) ? 4 : 2;
             g2.fillOval(px - r, py - r, r * 2, r * 2);
@@ -885,6 +947,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 Color c = switch (ping.faction) {
                     case 2 -> new Color(255, 90, 90, a);
                     case 1 -> new Color(140, 180, 255, a);
+                    case 3 -> new Color(255, 200, 90, a);
+                    case 4 -> new Color(200, 140, 255, a);
                     default -> new Color(90, 255, 140, a);
                 };
                 g2.setColor(c);
@@ -983,9 +1047,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 if (s == null || !s.alive) continue;
                 Point p = W2M.apply(s.x, s.y);
 
-                Color c = (s.faction == Faction.ENEMY)
-                        ? new Color(255, 90, 90, 200)
-                        : (s.faction == Faction.PLAYER ? new Color(90, 255, 140, 220) : new Color(140, 180, 255, 200));
+                Color c = factionMapColor(s.faction, (s == player), 200);
 
                 int rr = (s.role == ShipRole.BASE) ? 4 : 2;
                 g2.setColor(c);
@@ -1014,6 +1076,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 Color c = switch (ping.faction) {
                     case 2 -> new Color(255, 90, 90, a);
                     case 1 -> new Color(140, 180, 255, a);
+                    case 3 -> new Color(255, 200, 90, a);
+                    case 4 -> new Color(200, 140, 255, a);
                     default -> new Color(90, 255, 140, a);
                 };
 
@@ -1044,21 +1108,364 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     // IMPORTANT: This is the method that was likely stubbed/empty in your current project.
     public static void drawShip(Graphics2D g2, Ship ship) {
+        ShipRenderer.drawShip(g2, ship);
+    }
+
+    /**
+     * Modular ship visual pipeline:
+     * - Role-based local-coordinate silhouettes
+     * - Deterministic panel/window greebles
+     * - Engine cones and hardpoint mounts
+     */
+    private static final class ShipRenderer {
+        private static final Map<String, ShipVisual> CACHE = new HashMap<>();
+
+        static void drawShip(Graphics2D g2, Ship ship) {
+            if (!ship.alive) return;
+
+            Color hull;
+            Color trim;
+            hull = factionHullColor(ship.faction);
+            trim = factionTrimColor(ship.faction);
+
+            int wx = (int) Math.round(ship.x);
+            int wy = (int) Math.round(ship.y);
+
+            Graphics2D g = (Graphics2D) g2.create();
+            g.translate(wx, wy);
+            g.rotate(ship.angle);
+
+            double sig = ship.effectiveSignature();
+            if (ship.isStealth && sig < 0.99) {
+                float a = (float) (0.22 + 0.78 * sig);
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            }
+
+            ShipVisual visual = getVisual(ship);
+            Area hullArea = buildArea(visual.hullPolys);
+
+            drawHullShadow(g, visual);
+            drawHullAndSuper(g, visual, hull, trim);
+            drawPanelsAndWindows(g, ship, visual, hullArea);
+            drawEngines(g, ship, visual);
+            drawHardpoints(g, ship, visual);
+
+            if (ship.shieldActive && ship.shieldMax > 0 && ship.shield > 0) {
+                double frac = Math.max(0, Math.min(1, ship.shield / ship.shieldMax));
+                g.setColor(new Color(120, 200, 255, (int) (40 + 90 * frac)));
+                int rr = (int) Math.round(ship.radius + 7);
+                g.drawOval(-rr, -rr, rr * 2, rr * 2);
+            }
+
+            if (!visual.hullPolys.isEmpty()) {
+                drawDamageDecals(g, ship, visual.hullPolys.get(0));
+            }
+
+            if (ship.isStealth && sig < 0.99 && !visual.hullPolys.isEmpty()) {
+                g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
+                g.setColor(new Color(120, 220, 255, 110));
+                g.draw(visual.hullPolys.get(0));
+            }
+
+            g.dispose();
+
+            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+            g2.setColor(new Color(255, 255, 255, 130));
+            g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+        }
+
+        private static ShipVisual getVisual(Ship ship) {
+            int r = (int) Math.round(Math.max(8.0, ship.radius));
+            String key = ship.role + ":" + r;
+            ShipVisual cached = CACHE.get(key);
+            if (cached != null) return cached;
+
+            ShipVisual v = buildVisual(ship.role, r);
+            CACHE.put(key, v);
+            return v;
+        }
+
+        private static ShipVisual buildVisual(ShipRole role, int r) {
+            ShipVisual v = new ShipVisual();
+            if (role == null) role = ShipRole.FRIGATE;
+
+            switch (role) {
+                case PICKET -> {
+                    v.hullPolys.add(poly(new int[]{r + 9, r - 4, -r + 2, -r, -r + 2, r - 4},
+                            new int[]{0, -r / 2, -r / 3, 0, r / 3, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 4, r / 2, r / 5}, new int[]{-r / 5, 0, r / 5}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r + 2}, new int[]{-r / 3, -r / 2, -r / 6}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r + 2}, new int[]{r / 3, r / 2, r / 6}));
+                    v.engines.add(new EnginePoint(-r + 1, 0));
+                }
+                case PATROL -> {
+                    v.hullPolys.add(poly(new int[]{r + 7, r - 2, -r + 4, -r, -r + 4, r - 2},
+                            new int[]{0, -r / 2, -r / 3, 0, r / 3, r / 2}));
+                    v.superPolys.add(poly(new int[]{0, r / 3, r / 6, -r / 6}, new int[]{-r / 5, 0, r / 5, r / 5}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, r / 4));
+                }
+                case LIGHT_CRUISER -> {
+                    v.hullPolys.add(poly(new int[]{r + 12, r - 7, -r + 2, -r, -r + 8, -r, -r + 2, r - 7},
+                            new int[]{0, -r / 2, -r / 2, -r / 6, 0, r / 6, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 5, r / 4, r / 8, -r / 6}, new int[]{-r / 4, -r / 8, r / 4, r / 4}));
+                    v.superPolys.add(poly(new int[]{r / 10, r / 3, r / 4, r / 12}, new int[]{-r / 7, -r / 10, r / 7, r / 6}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r / 2, -r + 2}, new int[]{-r / 2, -r / 3, -r / 6, -r / 4}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r / 2, -r + 2}, new int[]{r / 2, r / 3, r / 6, r / 4}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 3));
+                    v.engines.add(new EnginePoint(-r + 1, r / 3));
+                }
+                case MEDIUM_CRUISER, CRUISER -> {
+                    v.hullPolys.add(poly(new int[]{r + 14, r - 7, r - 14, -r + 1, -r, -r + 10, -r, -r + 1, r - 14, r - 7},
+                            new int[]{0, -r / 2, -r / 2, -r / 2, -r / 6, 0, r / 6, r / 2, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 6, r / 3, r / 5, -r / 8}, new int[]{-r / 5, -r / 8, r / 5, r / 4}));
+                    v.superPolys.add(poly(new int[]{r / 8, r / 2, r / 3, r / 12}, new int[]{-r / 7, -r / 12, r / 7, r / 5}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r + 2}, new int[]{-r / 2, -r / 3, -r / 5}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r + 2}, new int[]{r / 2, r / 3, r / 5}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 2 + 3));
+                    v.engines.add(new EnginePoint(-r + 1, 0));
+                    v.engines.add(new EnginePoint(-r + 1, r / 2 - 3));
+                }
+                case BATTLECRUISER -> {
+                    v.hullPolys.add(poly(new int[]{r + 16, r - 6, r - 16, -r + 2, -r, -r + 13, -r, -r + 2, r - 16, r - 6},
+                            new int[]{0, -r / 2, -r / 2, -r / 2, -r / 4, 0, r / 4, r / 2, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 5, r / 3, r / 4, -r / 7}, new int[]{-r / 4, -r / 6, r / 4, r / 3}));
+                    v.superPolys.add(poly(new int[]{r / 8, r / 2, r / 3, r / 10}, new int[]{-r / 6, -r / 9, r / 8, r / 6}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{-r / 2, -r / 3, -r / 6}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{r / 2, r / 3, r / 6}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 2 + 4));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 6));
+                    v.engines.add(new EnginePoint(-r + 1, r / 6));
+                    v.engines.add(new EnginePoint(-r + 1, r / 2 - 4));
+                }
+                case BATTLESHIP -> {
+                    v.hullPolys.add(poly(new int[]{r + 18, r - 8, r - 18, -r + 2, -r, -r + 15, -r, -r + 2, r - 18, r - 8},
+                            new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 6, r / 3, r / 4, -r / 8}, new int[]{-r / 4, -r / 6, r / 4, r / 4}));
+                    v.superPolys.add(poly(new int[]{r / 8, r / 2, r / 3, r / 8}, new int[]{-r / 6, -r / 8, r / 8, r / 6}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{-r / 2, -r / 3, -r / 8}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{r / 2, r / 3, r / 8}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 2 + 4));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, 0));
+                    v.engines.add(new EnginePoint(-r + 1, r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, r / 2 - 4));
+                }
+                case DREADNOUGHT -> {
+                    v.hullPolys.add(poly(new int[]{r + 20, r - 11, r - 22, -r + 2, -r, -r + 17, -r, -r + 2, r - 22, r - 11},
+                            new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 6, r / 3, r / 4, -r / 10}, new int[]{-r / 4, -r / 7, r / 4, r / 3}));
+                    v.superPolys.add(poly(new int[]{r / 12, r / 2, r / 3, r / 8}, new int[]{-r / 5, -r / 8, r / 8, r / 5}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 4, -r + 2}, new int[]{-r / 2, -r / 3, -r / 7}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 4, -r + 2}, new int[]{r / 2, r / 3, r / 7}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 2 + 5));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 3));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 6));
+                    v.engines.add(new EnginePoint(-r + 1, r / 6));
+                    v.engines.add(new EnginePoint(-r + 1, r / 3));
+                    v.engines.add(new EnginePoint(-r + 1, r / 2 - 5));
+                }
+                case MINER -> {
+                    // Industrial silhouette: chunkier bow, side pods, mining rig.
+                    v.hullPolys.add(poly(new int[]{r + 5, r - 7, -r + 6, -r, -r + 6, r - 7},
+                            new int[]{0, -r / 2, -r / 2, 0, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 3, r / 3, r / 4, -r / 3}, new int[]{-r / 4, -r / 4, r / 4, r / 4}));
+                    v.superPolys.add(poly(new int[]{r / 4, r / 2, r / 2, r / 4}, new int[]{-r / 5, -r / 6, r / 6, r / 5}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r / 2, -r + 2}, new int[]{-r / 2, -r / 2, -r / 6, -r / 4}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 2, -r / 2, -r + 2}, new int[]{r / 2, r / 2, r / 6, r / 4}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, r / 4));
+                }
+                case BASE -> {
+                    v.station = true;
+                    v.stationOuter = r;
+                    v.stationInner = Math.max(8, r - 14);
+                    v.stationSpokes = 6;
+                }
+                default -> {
+                    // Generic frigate line
+                    v.hullPolys.add(poly(new int[]{r + 8, r - 6, -r, -r + 8, -r, r - 6},
+                            new int[]{0, -r / 2, -r / 2, 0, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 4, r / 3, r / 5, -r / 6}, new int[]{-r / 5, 0, r / 5, r / 5}));
+                    v.engines.add(new EnginePoint(-r + 1, 0));
+                }
+            }
+
+            return v;
+        }
+
+        private static void drawHullShadow(Graphics2D g, ShipVisual v) {
+            g.setColor(new Color(0, 0, 0, 70));
+            g.translate(4, 4);
+            if (v.station) {
+                int ro = (int) Math.round(v.stationOuter);
+                int ri = (int) Math.round(v.stationInner);
+                g.fillOval(-ro, -ro, ro * 2, ro * 2);
+                g.setColor(new Color(0, 0, 0, 120));
+                g.fillOval(-ri, -ri, ri * 2, ri * 2);
+            } else {
+                for (Polygon p : v.hullPolys) g.fillPolygon(p);
+            }
+            g.translate(-4, -4);
+        }
+
+        private static void drawHullAndSuper(Graphics2D g, ShipVisual v, Color hull, Color trim) {
+            if (v.station) {
+                int ro = (int) Math.round(v.stationOuter);
+                int ri = (int) Math.round(v.stationInner);
+                g.setColor(new Color(hull.getRed(), hull.getGreen(), hull.getBlue(), 190));
+                g.fillOval(-ro, -ro, ro * 2, ro * 2);
+                g.setColor(new Color(0, 0, 0, 160));
+                g.fillOval(-ri, -ri, ri * 2, ri * 2);
+                g.setColor(new Color(trim.getRed(), trim.getGreen(), trim.getBlue(), 170));
+                g.drawOval(-ro, -ro, ro * 2, ro * 2);
+                g.drawOval(-ri, -ri, ri * 2, ri * 2);
+                for (int i = 0; i < v.stationSpokes; i++) {
+                    double a = (Math.PI * 2.0 * i) / v.stationSpokes;
+                    int x1 = (int) Math.round(Math.cos(a) * (ri + 2));
+                    int y1 = (int) Math.round(Math.sin(a) * (ri + 2));
+                    int x2 = (int) Math.round(Math.cos(a) * (ro - 2));
+                    int y2 = (int) Math.round(Math.sin(a) * (ro - 2));
+                    g.drawLine(x1, y1, x2, y2);
+                }
+                return;
+            }
+
+            Rectangle2D bounds = buildArea(v.hullPolys).getBounds2D();
+            int backX = (int) Math.round(bounds.getMinX());
+            int frontX = (int) Math.round(bounds.getMaxX());
+            Color hullDark = new Color(Math.max(0, hull.getRed() - 35), Math.max(0, hull.getGreen() - 35), Math.max(0, hull.getBlue() - 35));
+            Color hullLight = new Color(Math.min(255, hull.getRed() + 25), Math.min(255, hull.getGreen() + 25), Math.min(255, hull.getBlue() + 25));
+            GradientPaint gp = new GradientPaint(backX, 0, hullDark, frontX, 0, hullLight);
+
+            g.setPaint(gp);
+            for (Polygon p : v.hullPolys) g.fillPolygon(p);
+            g.setPaint(null);
+
+            for (Polygon p : v.superPolys) {
+                g.setColor(new Color(trim.getRed(), trim.getGreen(), trim.getBlue(), 120));
+                g.fillPolygon(p);
+                g.setColor(new Color(0, 0, 0, 100));
+                g.drawPolygon(p);
+            }
+
+            for (Polygon p : v.fins) {
+                g.setColor(new Color(hullDark.getRed(), hullDark.getGreen(), hullDark.getBlue(), 160));
+                g.fillPolygon(p);
+            }
+
+            g.setColor(new Color(0, 0, 0, 115));
+            for (Polygon p : v.hullPolys) g.drawPolygon(p);
+        }
+
+        private static void drawPanelsAndWindows(Graphics2D g, Ship ship, ShipVisual v, Area hullArea) {
+            if (v.station || hullArea == null) return;
+
+            Shape oldClip = g.getClip();
+            g.setClip(hullArea);
+
+            int seed = System.identityHashCode(ship) * 31 + (ship.role == null ? 0 : ship.role.ordinal() * 17);
+            Random rng = new Random(seed);
+            int detail = Math.max(4, (int) Math.round(ship.radius / 4.0));
+
+            g.setColor(new Color(255, 255, 255, 55));
+            for (int i = 0; i < detail; i++) {
+                int x1 = (int) Math.round(-ship.radius + rng.nextDouble() * ship.radius * 2.0);
+                int y1 = (int) Math.round(-ship.radius + rng.nextDouble() * ship.radius * 2.0);
+                int x2 = x1 + 4 + rng.nextInt(Math.max(4, (int) ship.radius / 2 + 2));
+                int y2 = y1 + rng.nextInt(5) - 2;
+                g.drawLine(x1, y1, x2, y2);
+            }
+
+            g.setColor(new Color(230, 245, 255, 75));
+            int windows = Math.max(3, detail / 2);
+            for (int i = 0; i < windows; i++) {
+                int x = (int) Math.round(-ship.radius / 2 + rng.nextDouble() * ship.radius);
+                int y = (int) Math.round(-ship.radius / 3 + rng.nextDouble() * ship.radius * 0.66);
+                g.fillRect(x, y, 2, 2);
+            }
+
+            g.setClip(oldClip);
+        }
+
+        private static void drawEngines(Graphics2D g, Ship ship, ShipVisual v) {
+            if (v.station) {
+                int ro = (int) Math.round(v.stationOuter + 6);
+                g.setColor(new Color(120, 220, 255, 95));
+                g.drawOval(-ro, -ro, ro * 2, ro * 2);
+                return;
+            }
+
+            for (EnginePoint p : v.engines) {
+                int ex = p.x;
+                int ey = p.y;
+
+                // cone bloom behind engine
+                Polygon cone = new Polygon(
+                        new int[]{ex - 1, ex - (int) (ship.radius * 0.42), ex - (int) (ship.radius * 0.42)},
+                        new int[]{ey, ey - 5, ey + 5}, 3);
+                g.setColor(new Color(120, 220, 255, 60));
+                g.fillPolygon(cone);
+
+                g.setColor(new Color(120, 220, 255, 120));
+                g.fillOval(ex - 5, ey - 3, 7, 7);
+                g.setColor(new Color(120, 220, 255, 70));
+                g.fillOval(ex - 9, ey - 7, 13, 13);
+            }
+        }
+
+        private static void drawHardpoints(Graphics2D g, Ship ship, ShipVisual v) {
+            if (!v.station) {
+                g.setColor(new Color(255, 255, 255, 85));
+                for (Turret t : ship.turrets) {
+                    int r = (int) Math.round(Math.max(3, t.radius + 1));
+                    g.drawOval((int) Math.round(t.localX - r), (int) Math.round(t.localY - r), r * 2, r * 2);
+                }
+            }
+            drawTurrets(g, ship);
+        }
+
+        private static Area buildArea(List<Polygon> polys) {
+            if (polys == null || polys.isEmpty()) return null;
+            Area a = new Area();
+            for (Polygon p : polys) a.add(new Area(p));
+            return a;
+        }
+
+        private static Polygon poly(int[] xs, int[] ys) {
+            return new Polygon(xs, ys, Math.min(xs.length, ys.length));
+        }
+    }
+
+    private static final class ShipVisual {
+        final List<Polygon> hullPolys = new ArrayList<>();
+        final List<Polygon> superPolys = new ArrayList<>();
+        final List<Polygon> fins = new ArrayList<>();
+        final List<EnginePoint> engines = new ArrayList<>();
+        boolean station = false;
+        double stationOuter = 0;
+        double stationInner = 0;
+        int stationSpokes = 0;
+    }
+
+    private static final class EnginePoint {
+        final int x;
+        final int y;
+
+        EnginePoint(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
+    private static void drawShipLegacy(Graphics2D g2, Ship ship) {
         if (!ship.alive) return;
 
         // Color palette per faction
         Color hull;
         Color trim;
-        if (ship.faction == Faction.ENEMY) {
-            hull = new Color(220, 80, 80);
-            trim = new Color(255, 170, 170);
-        } else if (ship.faction == Faction.PLAYER) {
-            hull = new Color(70, 220, 120);
-            trim = new Color(200, 255, 220);
-        } else {
-            hull = new Color(120, 160, 245);
-            trim = new Color(220, 230, 255);
-        }
+        hull = factionHullColor(ship.faction);
+        trim = factionTrimColor(ship.faction);
 
         int wx = (int) Math.round(ship.x);
         int wy = (int) Math.round(ship.y);
@@ -1698,14 +2105,52 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int[] xs = {x0, x1, x2};
         int[] ys = {y0, y1, y2};
 
-        Color fill = new Color(255, 255, 255, 210);
-        if (target.faction == Faction.ENEMY) fill = new Color(255, 170, 170, 220);
-        if (target.faction == Faction.ALLY)  fill = new Color(170, 220, 255, 220);
+        Color fill = factionHudColor(target.faction, 220);
 
         g2.setColor(fill);
         g2.fillPolygon(xs, ys, 3);
         g2.setColor(new Color(0, 0, 0, 160));
         g2.drawPolygon(xs, ys, 3);
+    }
+
+    private static Color factionHullColor(Faction f) {
+        if (f == Faction.ENEMY) return new Color(220, 80, 80);
+        if (f == Faction.PLAYER) return new Color(70, 220, 120);
+        if (f == Faction.TEAM_C) return new Color(220, 170, 70);
+        if (f == Faction.TEAM_D) return new Color(165, 120, 220);
+        return new Color(120, 160, 245);
+    }
+
+    private static Color factionTrimColor(Faction f) {
+        if (f == Faction.ENEMY) return new Color(255, 170, 170);
+        if (f == Faction.PLAYER) return new Color(200, 255, 220);
+        if (f == Faction.TEAM_C) return new Color(255, 220, 160);
+        if (f == Faction.TEAM_D) return new Color(220, 190, 255);
+        return new Color(220, 230, 255);
+    }
+
+    private static Color factionHudColor(Faction f, int alpha) {
+        Color base;
+        if (f == Faction.ENEMY) base = new Color(255, 170, 170);
+        else if (f == Faction.PLAYER) base = new Color(180, 255, 220);
+        else if (f == Faction.TEAM_C) base = new Color(255, 220, 160);
+        else if (f == Faction.TEAM_D) base = new Color(220, 190, 255);
+        else base = new Color(170, 220, 255);
+        return withAlpha(base, alpha);
+    }
+
+    private static Color factionMapColor(Faction f, boolean isPlayer, int alpha) {
+        Color base;
+        if (isPlayer || f == Faction.PLAYER) base = new Color(90, 255, 140);
+        else if (f == Faction.ENEMY) base = new Color(255, 90, 90);
+        else if (f == Faction.TEAM_C) base = new Color(255, 200, 90);
+        else if (f == Faction.TEAM_D) base = new Color(200, 140, 255);
+        else base = new Color(140, 180, 255);
+        return withAlpha(base, alpha);
+    }
+
+    private static Color withAlpha(Color c, int alpha) {
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), MathUtil.clamp(alpha, 0, 255));
     }
 
 }
