@@ -150,9 +150,32 @@ public class GamePanel extends JPanel implements ActionListener {
             requestFocusInWindow();
         });
 
-        // Mining hold E uses KeyListener semantics; bind press/release
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_E, 0, false), "miningDown", () -> ctx.miningKeyDown = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_E, 0, true), "miningUp", () -> ctx.miningKeyDown = false);
+        // Mining hold F uses KeyListener semantics; bind press/release
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, false), "miningDown", () -> ctx.miningKeyDown = true);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, true), "miningUp", () -> ctx.miningKeyDown = false);
+
+        // Abilities
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_E, 0, false), "shieldOvercharge", () -> {
+            if (ctx.player == null || !ctx.player.alive) return;
+            if (ctx.state != GameState.RUNNING) return;
+            if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen) return;
+            ctx.player.tryShieldOvercharge();
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0, false), "missileSalvo", () -> {
+            if (ctx.player == null || !ctx.player.alive) return;
+            if (ctx.state != GameState.RUNNING) return;
+            if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen) return;
+
+            Ship target = null;
+            if (isAlive(ctx.lockedTarget) && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)) {
+                target = ctx.lockedTarget;
+            } else {
+                target = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100);
+            }
+            if (target == null) return;
+            if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return;
+            ctx.projectiles.addAll(ctx.player.tryMissileSalvo(target, GameContext.DT));
+        });
 
         // Menu
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", () -> { if (exitToMenu != null) exitToMenu.run(); });
@@ -169,5 +192,27 @@ public class GamePanel extends JPanel implements ActionListener {
         am.put(name, new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { action.run(); }
         });
+    }
+
+    private static boolean isAlive(Ship s) {
+        if (s == null) return false;
+        return s.alive && !s.dying && s.hp > 0;
+    }
+
+    private static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
+        Ship best = null;
+        double bestD2 = maxDist * maxDist;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!isAlive(s)) continue;
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+            if (s.role == ShipRole.BASE) continue;
+            double d2 = GameMath.dist2(x, y, s.x, s.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = s;
+            }
+        }
+        return best;
     }
 }

@@ -11,7 +11,7 @@ public final class EconomySystem {
             if (s.life <= 0) ctx.salvage.remove(i);
         }
 
-        // Mining for player (hold E)
+        // Mining for player (hold F)
         if (ctx.miningKeyDown && ctx.player != null) {
             doMining(ctx, ctx.player, dt);
         }
