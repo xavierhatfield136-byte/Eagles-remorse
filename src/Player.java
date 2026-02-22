@@ -14,7 +14,7 @@ public class Player extends Ship {
     private double overShieldTimer = 0;
     private double overShieldAdded = 0;
 
-    private double missileSalvoCooldown = 4.0;
+    private double missileSalvoCooldown = 2.4;
     private double missileSalvoTimer = 0;
 
     public Player(double x, double y) {
@@ -97,7 +97,7 @@ public class Player extends Ship {
         return true;
     }
 
-    /** Ability: fires 3 missiles in a quick spread (if you have a missile turret ready). */
+    /** Ability: fires a 4-missile salvo in a quick spread (if you have a missile turret ready). */
     public List<Projectile> tryMissileSalvo(Ship target, double dt) {
         List<Projectile> out = new ArrayList<>();
         if (!alive || target == null || !target.alive) return out;
@@ -124,11 +124,20 @@ public class Player extends Ship {
         double mx = launcher.worldX(this) + Math.cos(baseAng) * (launcher.radius + 4);
         double my = launcher.worldY(this) + Math.sin(baseAng) * (launcher.radius + 4);
 
-        double spread = 0.12;
+        double spread = 0.16;
+        double ms = Turret.MISSILE_SPEED_MULT;
+        double mt = Turret.MISSILE_TURN_MULT;
+        double md = Turret.MISSILE_DAMAGE_MULT;
+        double ml = Turret.MISSILE_LIFE_MULT;
+        int salvoDamage = Math.max(1, (int) Math.round(launcher.damage * md));
+        int salvoLife = Math.max(1, (int) Math.round(launcher.missileLife * ml));
         out.add(new Missile(mx, my, MathUtil.normalizeAngle(baseAng - spread), target, dt,
-                launcher.missileSpeed, launcher.missileTurnRate, launcher.damage, launcher.missileLife, 6.0, faction));
+                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction));
         out.add(new Missile(mx, my, MathUtil.normalizeAngle(baseAng + spread), target, dt,
-                launcher.missileSpeed, launcher.missileTurnRate, launcher.damage, launcher.missileLife, 6.0, faction));
+                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction));
+        out.add(new Missile(mx, my, baseAng, target, dt,
+                launcher.missileSpeed * ms * 1.10, launcher.missileTurnRate * mt * 1.10,
+                Math.max(1, (int) Math.round(salvoDamage * 1.15)), salvoLife, 6.5, faction));
 
         return out;
     }
@@ -215,6 +224,11 @@ public class Player extends Ship {
         this.isCarrier = t.isCarrier;
         this.fighterLaunchCooldown = t.fighterLaunchCooldown;
         this.maxFighters = t.maxFighters;
+        this.carrierCommandMode = t.carrierCommandMode;
+        this.carrierAutoLaunch = t.carrierAutoLaunch;
+        this.wingState = Ship.WingState.ATTACK;
+        this.carrierOwnerId = -1;
+        this.carrierOrphanTimer = -1.0;
 
         this.isBase = false;
 

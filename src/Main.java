@@ -1,5 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
 import java.util.function.Consumer;
 
@@ -39,6 +41,7 @@ public class Main {
 
     private void startGame(GameConfig config) {
         if (gamePanel != null) {
+            gamePanel.shutdown();
             root.remove(gamePanel);
             gamePanel = null;
         }
@@ -57,6 +60,11 @@ public class Main {
     }
 
     private void showMenu() {
+        if (gamePanel != null) {
+            gamePanel.shutdown();
+            root.remove(gamePanel);
+            gamePanel = null;
+        }
         cards.show(root, "menu");
         root.revalidate();
         root.repaint();
@@ -120,6 +128,7 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        ErrorLog.installGlobalHandler();
         SwingUtilities.invokeLater(() -> new Main().showWindow());
     }
 }
@@ -150,10 +159,22 @@ class GameConfig {
  * High-level game modes.
  */
 enum GameMode {
-    SKIRMISH,
-    SANDBOX,
-    RESOURCE_RUSH,
-    FOUR_TEAM_DOMINATION
+    CAMPAIGN_OPS("Campaign Ops"),
+    LAST_STAND("Last Stand"),
+    RESOURCE_RUSH("Resource Rush"),
+    FOUR_TEAM_DOMINATION("4 Team Domination"),
+    SHOWCASE("Showcase");
+
+    private final String label;
+
+    GameMode(String label) {
+        this.label = label;
+    }
+
+    @Override
+    public String toString() {
+        return label;
+    }
 }
 
 /**
@@ -193,8 +214,27 @@ class MainMenuPanel extends JPanel {
         JButton start = new JButton("Start");
         JButton quit = new JButton("Quit");
 
+        MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
+        modeBox.setSelectedItem(MenuSettingsStore.resolveMode(persisted.modeName));
+        mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
+        events.setSelected(persisted.randomEvents);
+        fullscreen.setSelected(persisted.fullscreen);
+        seedField.setText(persisted.seedText);
+
+        Runnable persistSettings = () -> {
+            MenuSettingsStore.MenuSettings save = new MenuSettingsStore.MenuSettings();
+            GameMode currentMode = (GameMode) modeBox.getSelectedItem();
+            save.modeName = (currentMode == null) ? GameMode.CAMPAIGN_OPS.name() : currentMode.name();
+            save.mapIndex = mapBox.getSelectedIndex();
+            save.randomEvents = events.isSelected();
+            save.fullscreen = fullscreen.isSelected();
+            save.seedText = seedField.getText();
+            MenuSettingsStore.save(save);
+        };
+
         java.util.function.Consumer<GameMode> startWithMode = (overrideMode) -> {
             GameMode mode = (overrideMode != null) ? overrideMode : (GameMode) modeBox.getSelectedItem();
+            if (mode == null) mode = GameMode.CAMPAIGN_OPS;
 
             int w = 5000, h = 5000;
             if (mapBox.getSelectedIndex() == 1) { w = 10000; h = 10000; }
@@ -208,12 +248,28 @@ class MainMenuPanel extends JPanel {
             }
             if (seed == 0) seed = System.nanoTime();
 
+            persistSettings.run();
             onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected()));
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
 
-        quit.addActionListener(e -> onQuit.run());
+        quit.addActionListener(e -> {
+            persistSettings.run();
+            onQuit.run();
+        });
+
+        modeBox.addActionListener(e -> persistSettings.run());
+        mapBox.addActionListener(e -> persistSettings.run());
+        events.addActionListener(e -> persistSettings.run());
+        fullscreen.addActionListener(e -> persistSettings.run());
+        seedField.addActionListener(e -> persistSettings.run());
+        seedField.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                persistSettings.run();
+            }
+        });
 
         JPanel card = new JPanel(new GridBagLayout());
         card.setOpaque(false);

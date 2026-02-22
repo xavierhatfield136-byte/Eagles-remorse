@@ -1097,5 +1097,47 @@ public class FleetShip extends Ship {
         // Apply baseline core stats from the single source of truth.
         // (Keeps tuning centralized in RoleStats.)
         RoleStats.applyCore(this, role);
+        rebalanceEnemyMissileLoadout();
+    }
+
+    private void rebalanceEnemyMissileLoadout() {
+        if (faction == null) return;
+        if (faction.teamId() == Faction.ALLY.teamId()) return;
+        if (turrets == null || turrets.isEmpty()) return;
+
+        double cooldownMul = 1.10;
+        double damageMul = 0.92;
+        double speedMul = 0.95;
+        double turnMul = 0.93;
+        double lifeMul = 0.95;
+
+        if (role == ShipRole.MISSILE_BOAT || role == ShipRole.BOMBER || role == ShipRole.STEALTH_SHIP) {
+            cooldownMul = 1.04;
+            damageMul = 0.96;
+            speedMul = 0.97;
+            turnMul = 0.96;
+            lifeMul = 0.98;
+        } else if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) {
+            cooldownMul = 1.16;
+            damageMul = 0.90;
+            speedMul = 0.93;
+            turnMul = 0.91;
+            lifeMul = 0.93;
+        } else if (role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP || role == ShipRole.DREADNOUGHT) {
+            cooldownMul = 1.12;
+            damageMul = 0.94;
+            speedMul = 0.95;
+            turnMul = 0.92;
+            lifeMul = 0.95;
+        }
+
+        for (Turret t : turrets) {
+            if (t == null || t.kind != Turret.Kind.MISSILE) continue;
+            t.cooldown = t.cooldown * cooldownMul;
+            t.damage = Math.max(1, (int) Math.round(t.damage * damageMul));
+            t.missileSpeed = t.missileSpeed * speedMul;
+            t.missileTurnRate = t.missileTurnRate * turnMul;
+            t.missileLife = Math.max(1, (int) Math.round(t.missileLife * lifeMul));
+        }
     }
 }

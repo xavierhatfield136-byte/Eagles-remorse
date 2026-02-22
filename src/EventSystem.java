@@ -7,8 +7,6 @@ public final class EventSystem {
     }
 
     public static void update(GameContext ctx, double dt) {
-        if (ctx.config == null || !ctx.config.randomEvents) return;
-
         if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
 
         // decay modifiers
@@ -20,6 +18,9 @@ public final class EventSystem {
             ctx.miningT -= dt;
             if (ctx.miningT <= 0) ctx.miningMul = 1.0;
         }
+
+        if (ctx.config == null || !ctx.config.randomEvents) return;
+        if (CampaignSystem.suppressRandomEvents(ctx)) return;
 
         ctx.nextEventTimer -= dt;
         if (ctx.nextEventTimer > 0) return;

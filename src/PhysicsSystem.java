@@ -20,16 +20,22 @@ public final class PhysicsSystem {
             s.update(dt);
         }
 
+        if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
+            return;
+        }
+
         // --- Player weapons (skip while in menus) ---
         if (ctx.player != null && ctx.player.alive && !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen) {
             Ship autoTarget = null;
+            double rangeMul = CampaignSystem.targetingRangeMul(ctx);
+            boolean autoLockSuppressed = CampaignSystem.suppressAutoLock(ctx);
 
-            if (ctx.autoLockTurrets) {
+            if (ctx.autoLockTurrets && !autoLockSuppressed) {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
                 if (isAlive(ctx.lockedTarget) && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
-                    autoTarget = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1600);
+                    autoTarget = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1600 * rangeMul);
                 }
             }
 
@@ -42,7 +48,9 @@ public final class PhysicsSystem {
             }
 
             if (ctx.firingSecondary) {
-                Ship target = isAlive(ctx.lockedTarget) ? ctx.lockedTarget : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100);
+                Ship target = isAlive(ctx.lockedTarget)
+                        ? ctx.lockedTarget
+                        : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
                     ctx.projectiles.addAll(ctx.player.fireSecondary(target, dt));
                 }
@@ -69,6 +77,9 @@ public final class PhysicsSystem {
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
         CollisionSystem.handleProjectilesVsAsteroids(ctx.projectiles, ctx.asteroids);
         CollisionSystem.handleProjectilesVsShips(ctx.projectiles, ctx.ships);
+
+        // --- Cleanup destroyed ships (keep player object even if dead) ---
+        ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));
 
         // --- VFX / explosions ---
         try { Explosion.updateAll(dt); } catch (Throwable ignored) {}

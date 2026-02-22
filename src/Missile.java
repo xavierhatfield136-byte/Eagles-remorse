@@ -1,17 +1,20 @@
 public class Missile extends Projectile {
 
     public double angle;
-    public double speed = 220;                   // units/sec
-    public double turnRate = Math.toRadians(180);// rad/sec
+    public double speed = 300;                   // units/sec
+    public double turnRate = Math.toRadians(280);// rad/sec
 
     public Ship target;
+    public int interceptHp = 2;
+    public double blastRadius = 56.0;
+    public double splashDamageMul = 0.60;
 
     public Missile(double x, double y, double angle, Ship target, double dt) {
-        this(x, y, angle, target, dt, 220, Math.toRadians(180), 3, 180, 6.0, Faction.PLAYER);
+        this(x, y, angle, target, dt, 300, Math.toRadians(280), 5, 240, 7.0, Faction.PLAYER);
     }
 
     public Missile(double x, double y, double angle, Ship target, double dt, Faction faction) {
-        this(x, y, angle, target, dt, 220, Math.toRadians(180), 3, 180, 6.0, faction);
+        this(x, y, angle, target, dt, 300, Math.toRadians(280), 5, 240, 7.0, faction);
     }
 
     public Missile(
@@ -33,18 +36,26 @@ public class Missile extends Projectile {
 
         this.speed = speed;
         this.turnRate = turnRate;
+        this.interceptHp = (damage >= 8) ? 3 : 2;
+        this.blastRadius = Math.max(38.0, radius * 8.0);
+        this.splashDamageMul = 0.60;
 
         vx = Math.cos(angle) * this.speed * dt;
         vy = Math.sin(angle) * this.speed * dt;
     }
 
+    public boolean applyInterceptHit(int damage) {
+        int d = Math.max(1, damage);
+        interceptHp -= d;
+        if (interceptHp <= 0) {
+            alive = false;
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public void update(double dt) {
-        // Cosmetic smoke trail
-        double tx = x - Math.cos(angle) * (radius + 5);
-        double ty = y - Math.sin(angle) * (radius + 5);
-        VFX.spawnMissileSmoke(tx, ty);
-
         if (target != null && target.alive) {
             double desired = Math.atan2(target.y - y, target.x - x);
             double delta = MathUtil.normalizeAngle(desired - angle);

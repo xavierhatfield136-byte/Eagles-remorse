@@ -1,11 +1,18 @@
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import javax.imageio.ImageIO;
 
 public class Renderer {
 
@@ -198,12 +205,7 @@ public class Renderer {
             }
 
             if (p instanceof Missile m) {
-                g2.setColor(new Color(120, 220, 255));
-                int d = (int) Math.round(m.radius * 2);
-                g2.fillOval((int) Math.round(m.x - m.radius), (int) Math.round(m.y - m.radius), d, d);
-                double lx = m.x + Math.cos(m.angle) * (m.radius + 5);
-                double ly = m.y + Math.sin(m.angle) * (m.radius + 5);
-                g2.drawLine((int) Math.round(m.x), (int) Math.round(m.y), (int) Math.round(lx), (int) Math.round(ly));
+                drawMissile(g2, m);
             } else if (p instanceof EnergyBolt eb) {
                 // Yamato 2199-style energy bolts (standard + BEAM_BOLT variant)
                 int x = (int) Math.round(eb.x);
@@ -271,8 +273,113 @@ public class Renderer {
         }
     }
 
+    private static void drawMissile(Graphics2D g2, Missile m) {
+        BufferedImage skin = ProjectileSkinLibrary.getMissileSkin();
+        if (skin != null) {
+            drawMissileSkin(g2, m, skin);
+        } else {
+            drawMissileFallback(g2, m);
+        }
+
+        double nx = Math.cos(m.angle);
+        double ny = Math.sin(m.angle);
+        double tailOffset = m.radius * 1.1;
+        double trailLen = Math.max(12.0, m.radius * 4.8);
+
+        int x1 = (int) Math.round(m.x - nx * tailOffset);
+        int y1 = (int) Math.round(m.y - ny * tailOffset);
+        int x2 = (int) Math.round(m.x - nx * (tailOffset + trailLen));
+        int y2 = (int) Math.round(m.y - ny * (tailOffset + trailLen));
+
+        Color trail = missileExhaustColor(m.faction);
+        g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 120));
+        g2.drawLine(x1, y1, x2, y2);
+    }
+
+    private static void drawMissileSkin(Graphics2D g2, Missile m, BufferedImage skin) {
+        double len = Math.max(16.0, m.radius * 3.8);
+        double width = Math.max(6.0, m.radius * 1.8);
+        int drawW = (int) Math.round(len);
+        int drawH = (int) Math.round(width);
+
+        Graphics2D gx = (Graphics2D) g2.create();
+        gx.translate(m.x, m.y);
+        gx.rotate(m.angle);
+        gx.drawImage(skin, -drawW / 2, -drawH / 2, drawW, drawH, null);
+
+        Color stripe = missileStripeColor(m.faction);
+        int bandW = Math.max(2, (int) Math.round(drawW * 0.12));
+        int bandH = Math.max(3, (int) Math.round(drawH * 0.64));
+        int bandX = (int) Math.round(-drawW * 0.10);
+        gx.setColor(new Color(stripe.getRed(), stripe.getGreen(), stripe.getBlue(), 170));
+        gx.fillRoundRect(bandX, -bandH / 2, bandW, bandH, bandW, bandW);
+
+        int flare = Math.max(2, (int) Math.round(drawH * 0.34));
+        int flareX = (int) Math.round(drawW * 0.30);
+        gx.setColor(new Color(255, 250, 220, 170));
+        gx.fillOval(flareX, -flare / 2, flare, flare);
+        gx.dispose();
+    }
+
+    private static void drawMissileFallback(Graphics2D g2, Missile m) {
+        double len = Math.max(16.0, m.radius * 3.8);
+        double width = Math.max(6.0, m.radius * 1.8);
+        int hw = (int) Math.round(width * 0.5);
+        int hl = (int) Math.round(len * 0.5);
+        int nose = (int) Math.round(len * 0.22);
+        int tail = (int) Math.round(len * 0.20);
+
+        Graphics2D gx = (Graphics2D) g2.create();
+        gx.translate(m.x, m.y);
+        gx.rotate(m.angle);
+
+        Polygon body = new Polygon();
+        body.addPoint(-hl + tail, -hw);
+        body.addPoint(hl - nose, -hw);
+        body.addPoint(hl, 0);
+        body.addPoint(hl - nose, hw);
+        body.addPoint(-hl + tail, hw);
+        body.addPoint(-hl, hw / 2);
+        body.addPoint(-hl, -hw / 2);
+        gx.setColor(new Color(176, 192, 208, 230));
+        gx.fillPolygon(body);
+        gx.setColor(new Color(255, 255, 255, 70));
+        gx.drawPolygon(body);
+
+        Color stripe = missileStripeColor(m.faction);
+        int bandW = Math.max(2, (int) Math.round(len * 0.12));
+        int bandH = Math.max(3, (int) Math.round(width * 0.64));
+        int bandX = (int) Math.round(-len * 0.08);
+        gx.setColor(new Color(stripe.getRed(), stripe.getGreen(), stripe.getBlue(), 170));
+        gx.fillRoundRect(bandX, -bandH / 2, bandW, bandH, bandW, bandW);
+
+        gx.dispose();
+    }
+
+    private static Color missileStripeColor(Faction faction) {
+        if (faction == null) return new Color(110, 220, 255);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(110, 220, 255);
+            case ENEMY -> new Color(255, 122, 94);
+            case TEAM_C -> new Color(150, 255, 120);
+            case TEAM_D -> new Color(238, 186, 78);
+        };
+    }
+
+    private static Color missileExhaustColor(Faction faction) {
+        if (faction == null) return new Color(255, 186, 120);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(130, 226, 255);
+            case ENEMY -> new Color(255, 170, 112);
+            case TEAM_C -> new Color(160, 255, 148);
+            case TEAM_D -> new Color(255, 220, 138);
+        };
+    }
+
     public static void drawHUD(Graphics2D g2, Player player, int credits, int hangarTier, boolean dockedAtBase, boolean shopOpen, boolean autoLock, Ship lockedTarget,
+                               int playerWingActive, int playerWingCap, int lockedWingActive, int lockedWingCap,
                                boolean resourceRush, int allyOre, int enemyOre, int goal, String gameOverText,
+                               String objectiveTitle, String objectiveDetail,
                                String eventBanner, double eventBannerT, double orePriceMul, double orePriceT, double miningMul, double miningT,
                                double camX, double camY, int viewW, int viewH) {
         int x = 14;
@@ -286,6 +393,17 @@ public class Renderer {
 
         g2.drawString("CREDITS: " + credits, x, y);
         y += 30;
+
+        if (objectiveTitle != null && !objectiveTitle.isBlank()) {
+            g2.setColor(new Color(255, 230, 150, 230));
+            g2.drawString(objectiveTitle, x, y);
+            y += 18;
+            g2.setColor(new Color(255, 255, 255, 220));
+        }
+        if (objectiveDetail != null && !objectiveDetail.isBlank()) {
+            g2.drawString("OBJ: " + objectiveDetail, x, y);
+            y += 20;
+        }
 
         g2.drawString("HANGAR TIER: " + hangarTier + "  (dock + B to upgrade)", x, y);
 
@@ -361,16 +479,27 @@ public class Renderer {
         y += 18;
         g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
         y += 18;
-        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11-F12 hulls)   B: base upgrades", x, y);
+        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/- hulls)   B: base upgrades", x, y);
         y += 18;
         g2.drawString("Q: missile salvo   E: shield overcharge   F: mine", x, y);
         y += 18;
+        if (player.isCarrier) {
+            g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
+            y += 18;
+        }
         g2.drawString("ESC: pause/resume   Alt+Enter: fullscreen", x, y);
 
         y += 22;
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString("AUTO-LOCK: " + (autoLock ? "ON" : "OFF"), x, y);
         y += 18;
+
+        if (playerWingCap > 0) {
+            g2.drawString("WING: " + playerWingActive + " / " + playerWingCap
+                    + "  MODE: " + player.carrierCommandMode.name()
+                    + "  AUTO: " + (player.carrierAutoLaunch ? "ON" : "OFF"), x, y);
+            y += 18;
+        }
 
         if (lockedTarget == null || !lockedTarget.alive) {
             g2.drawString("LOCK: None", x, y);
@@ -382,11 +511,12 @@ public class Renderer {
             String role = (lockedTarget.role == null ? "" : lockedTarget.role.name());
             String fac  = (lockedTarget.faction == null ? "" : lockedTarget.faction.name());
             String hp   = lockedTarget.hp + "/" + lockedTarget.hpMax;
+            String wing = (lockedWingCap > 0) ? ("  WING " + lockedWingActive + "/" + lockedWingCap) : "";
 
             // Color the lock line slightly by faction for readability.
             g2.setColor(factionHudColor(lockedTarget.faction, 220));
 
-            g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  HP " + hp + "  D " + dist, x, y);
+            g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  HP " + hp + "  D " + dist + wing, x, y);
             g2.setColor(new Color(255, 255, 255, 170));
 
             drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH);
@@ -613,7 +743,7 @@ public class Renderer {
         g2.drawLine(x + 14, ty - 10, x + w - 14, ty - 10);
 
         // ------------------------------
-        // Hull swaps (F-keys)
+        // Hull swaps
         // ------------------------------
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 255, 255, 220));
@@ -640,6 +770,8 @@ public class Renderer {
         ty = drawHullLine(g2, x + 14, ty, "F9", ShipRole.BATTLESHIP, 2200, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F11", ShipRole.STEALTH_SHIP, 1200, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F12", ShipRole.DREADNOUGHT, 3200, credits, hangarTier, player, reqTier);
+        ty = drawHullLine(g2, x + 14, ty, "0", ShipRole.CARRIER, 2800, credits, hangarTier, player, reqTier);
+        ty = drawHullLine(g2, x + 14, ty, "-", ShipRole.DRONE_CARRIER, 3000, credits, hangarTier, player, reqTier);
 
         // Footer hint
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -1143,9 +1275,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             ShipVisual visual = getVisual(ship);
             Area hullArea = buildArea(visual.hullPolys);
+            boolean hasSkin = ShipSkinLibrary.hasSkin(ship.role, ship.faction);
 
-            drawHullShadow(g, visual);
-            drawHullAndSuper(g, visual, hull, trim);
+            if (!hasSkin) {
+                drawHullShadow(g, visual);
+                drawHullAndSuper(g, visual, hull, trim);
+            }
+            drawHullSkin(g, ship, visual, hullArea);
             drawPanelsAndWindows(g, ship, visual, hullArea);
             drawEngines(g, ship, visual);
             drawHardpoints(g, ship, visual);
@@ -1360,6 +1496,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static void drawPanelsAndWindows(Graphics2D g, Ship ship, ShipVisual v, Area hullArea) {
             if (v.station || hullArea == null) return;
+            if (ShipSkinLibrary.hasSkin(ship.role, ship.faction)) return;
 
             Shape oldClip = g.getClip();
             g.setClip(hullArea);
@@ -1386,6 +1523,34 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
 
             g.setClip(oldClip);
+        }
+
+        private static void drawHullSkin(Graphics2D g, Ship ship, ShipVisual v, Area hullArea) {
+            if (v.station) return;
+            BufferedImage skin = ShipSkinLibrary.getSkin(ship.role, ship.faction);
+            if (skin == null) return;
+
+            Rectangle2D bounds = (hullArea == null)
+                    ? new Rectangle2D.Double(-ship.radius, -ship.radius, ship.radius * 2.0, ship.radius * 2.0)
+                    : hullArea.getBounds2D();
+
+            double pad = Math.max(1.0, ship.radius * 0.08);
+            int dx = (int) Math.round(bounds.getMinX() - pad);
+            int dy = (int) Math.round(bounds.getMinY() - pad);
+            int dw = Math.max(1, (int) Math.round(bounds.getWidth() + pad * 2.0));
+            int dh = Math.max(1, (int) Math.round(bounds.getHeight() + pad * 2.0));
+
+            // Option 2: overscale skin a bit so it better covers procedural hull geometry.
+            final double SKIN_SCALE = 1.5;
+            int sw = Math.max(1, (int) Math.round(dw * SKIN_SCALE));
+            int sh = Math.max(1, (int) Math.round(dh * SKIN_SCALE));
+            int sx = dx - (sw - dw) / 2;
+            int sy = dy - (sh - dh) / 2;
+
+            Composite old = g.getComposite();
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.95f));
+            g.drawImage(skin, sx, sy, sw, sh, null);
+            g.setComposite(old);
         }
 
         private static void drawEngines(Graphics2D g, Ship ship, ShipVisual v) {
@@ -1415,13 +1580,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static void drawHardpoints(Graphics2D g, Ship ship, ShipVisual v) {
-            if (!v.station) {
-                g.setColor(new Color(255, 255, 255, 85));
-                for (Turret t : ship.turrets) {
-                    int r = (int) Math.round(Math.max(3, t.radius + 1));
-                    g.drawOval((int) Math.round(t.localX - r), (int) Math.round(t.localY - r), r * 2, r * 2);
-                }
-            }
             drawTurrets(g, ship);
         }
 
@@ -1455,6 +1613,109 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         EnginePoint(int x, int y) {
             this.x = x;
             this.y = y;
+        }
+    }
+
+    private static final class ShipSkinLibrary {
+        private static final String SKIN_DIR = "assets/ship_skins";
+        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final Set<String> MISS = new HashSet<>();
+
+        static boolean hasSkin(ShipRole role, Faction faction) {
+            return getSkin(role, faction) != null;
+        }
+
+        static BufferedImage getSkin(ShipRole role, Faction faction) {
+            String roleKey = keyForRole(role);
+            String factionKey = keyForFaction(faction);
+            String key = roleKey + "|" + factionKey;
+            if (CACHE.containsKey(key)) return CACHE.get(key);
+            if (MISS.contains(key)) return null;
+
+            BufferedImage img = loadRoleSkin(factionKey, roleKey);
+            if (img != null) {
+                CACHE.put(key, img);
+                return img;
+            }
+
+            img = loadRoleSkin(roleKey + "_" + factionKey);
+            if (img != null) {
+                CACHE.put(key, img);
+                return img;
+            }
+
+            img = loadRoleSkin(roleKey);
+            if (img != null) {
+                CACHE.put(key, img);
+                return img;
+            }
+
+            BufferedImage fallback = loadRoleSkin("default_" + factionKey);
+            if (fallback != null) {
+                CACHE.put(key, fallback);
+                return fallback;
+            }
+
+            fallback = loadRoleSkin("default");
+            if (fallback != null) {
+                CACHE.put(key, fallback);
+                return fallback;
+            }
+
+            MISS.add(key);
+            return null;
+        }
+
+        private static BufferedImage loadRoleSkin(String key) {
+            String path = SKIN_DIR + "/" + key + ".png";
+            try {
+                File f = new File(path);
+                if (f.isFile()) {
+                    return ImageIO.read(f);
+                }
+            } catch (IOException ignored) {}
+            return null;
+        }
+
+        private static BufferedImage loadRoleSkin(String factionKey, String roleKey) {
+            return loadRoleSkin(factionKey + "/" + roleKey);
+        }
+
+        private static String keyForRole(ShipRole role) {
+            if (role == null) return "frigate";
+            return role.name().toLowerCase(Locale.ROOT);
+        }
+
+        private static String keyForFaction(Faction faction) {
+            if (faction == null) return "ally";
+            return switch (faction) {
+                case PLAYER, ALLY -> "ally";
+                case ENEMY -> "enemy";
+                case TEAM_C -> "team_c";
+                case TEAM_D -> "team_d";
+            };
+        }
+    }
+
+    private static final class ProjectileSkinLibrary {
+        private static final String SKIN_DIR = "assets/projectile_skins";
+        private static BufferedImage missileSkin;
+        private static boolean missileSkinLoaded = false;
+
+        static BufferedImage getMissileSkin() {
+            if (missileSkinLoaded) return missileSkin;
+            missileSkinLoaded = true;
+            missileSkin = loadSkin("missile");
+            return missileSkin;
+        }
+
+        private static BufferedImage loadSkin(String key) {
+            String path = SKIN_DIR + "/" + key + ".png";
+            try {
+                File f = new File(path);
+                if (f.isFile()) return ImageIO.read(f);
+            } catch (IOException ignored) {}
+            return null;
         }
     }
 
@@ -1785,27 +2046,252 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static void drawTurrets(Graphics2D g2, Ship ship) {
+        if (ship == null || ship.turrets == null) return;
+
+        Color accent = factionTrimColor(ship.faction);
+        final double GLOBAL_TURRET_SCALE = 0.5;
         for (Turret t : ship.turrets) {
-            g2.setColor(new Color(255, 255, 255, 170));
-            int r = (int) Math.round(t.radius);
-            g2.fillOval((int) Math.round(t.localX - t.radius), (int) Math.round(t.localY - t.radius), r * 2, r * 2);
+            if (t == null) continue;
 
             double rel = MathUtil.normalizeAngle(t.angle - ship.angle);
-            double bx = t.localX + Math.cos(rel) * t.barrelLen;
-            double by = t.localY + Math.sin(rel) * t.barrelLen;
-            g2.setColor(new Color(0, 0, 0, 150));
-            g2.drawLine((int) Math.round(t.localX), (int) Math.round(t.localY), (int) Math.round(bx), (int) Math.round(by));
+            double fireFrac = turretFireFraction(t);
+            TurretVisualScale scale = turretVisualScale(ship.role, t.kind);
+            double bodyScale = scale.bodyScale * GLOBAL_TURRET_SCALE;
+            double barrelScale = scale.barrelScale * GLOBAL_TURRET_SCALE;
+
+            Graphics2D tg = (Graphics2D) g2.create();
+            tg.translate(t.localX, t.localY);
+            tg.rotate(rel);
 
             if (t.kind == Turret.Kind.MISSILE) {
-                g2.setColor(new Color(255, 255, 255, 90));
-                g2.drawRect((int) Math.round(t.localX - t.radius - 2), (int) Math.round(t.localY - t.radius - 2), (r + 2) * 2, (r + 2) * 2);
+                drawMissilePodTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+            } else if (isHeavyTurretRole(ship.role)) {
+                drawHeavyTripleTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+            } else if (ship.role == ShipRole.STEALTH_SHIP) {
+                drawStealthFlushTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+            } else if (ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
+                drawBeamEmitterTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+            } else {
+                drawTwinGunTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
             }
+
+            tg.dispose();
         }
 
         if (ship.hasCIWS) {
-            g2.setColor(new Color(255, 255, 255, 90));
-            g2.drawOval(-3, -3, 6, 6);
-            g2.drawLine(0, 0, 8, 0);
+            drawCIWSTurret(g2, turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GLOBAL_TURRET_SCALE);
+        }
+    }
+
+    private static boolean isHeavyTurretRole(ShipRole role) {
+        return role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP || role == ShipRole.DREADNOUGHT;
+    }
+
+    private static double turretFireFraction(Turret t) {
+        if (t == null || t.cooldown <= 1e-6) return 0.0;
+        double frac = t.getCooldownRemaining() / t.cooldown;
+        return Math.max(0.0, Math.min(1.0, frac));
+    }
+
+    private static Color mix(Color a, Color b, double t) {
+        double clamped = Math.max(0.0, Math.min(1.0, t));
+        int r = (int) Math.round(a.getRed() * (1.0 - clamped) + b.getRed() * clamped);
+        int g = (int) Math.round(a.getGreen() * (1.0 - clamped) + b.getGreen() * clamped);
+        int bl = (int) Math.round(a.getBlue() * (1.0 - clamped) + b.getBlue() * clamped);
+        return new Color(clamp255(r), clamp255(g), clamp255(bl));
+    }
+
+    private static TurretVisualScale turretVisualScale(ShipRole role, Turret.Kind kind) {
+        if (role == null) return new TurretVisualScale(1.0, 1.0, 1.0);
+        return switch (role) {
+            case PATROL, PICKET, FIGHTER -> new TurretVisualScale(0.84, 0.86, 0.88);
+            case FRIGATE, MISSILE_BOAT, CIWS_CORVETTE, MINER -> new TurretVisualScale(0.95, 0.96, 0.95);
+            case LIGHT_CRUISER, CRUISER, MEDIUM_CRUISER, STEALTH_SHIP -> new TurretVisualScale(1.08, 1.07, 1.02);
+            case BATTLECRUISER -> new TurretVisualScale(1.25, 1.15, 1.10);
+            case BATTLESHIP -> new TurretVisualScale(1.35, 1.20, 1.18);
+            case DREADNOUGHT -> new TurretVisualScale(1.48, 1.26, 1.26);
+            case CARRIER -> {
+                if (kind == Turret.Kind.MISSILE) yield new TurretVisualScale(1.12, 1.06, 1.10);
+                yield new TurretVisualScale(0.96, 0.94, 1.05);
+            }
+            case BASE -> new TurretVisualScale(1.30, 1.18, 1.30);
+            default -> new TurretVisualScale(1.0, 1.0, 1.0);
+        };
+    }
+
+    private static void drawTwinGunTurret(Graphics2D g, Turret t, Color accent, double fireFrac, double bodyScale, double barrelScale) {
+        int r = (int) Math.max(4, Math.round(t.radius * bodyScale));
+        int baseW = r + 4;
+        int baseH = r + 3;
+        int capW = r + 8;
+        int capH = r + 5;
+        int barrelLen = (int) Math.max(8, Math.round(t.barrelLen * barrelScale));
+        int recoil = (int) Math.round(fireFrac * 3.0);
+
+        g.setColor(new Color(36, 40, 48, 210));
+        g.fillOval(-baseW / 2, -baseH / 2, baseW, baseH);
+
+        g.setColor(mix(new Color(120, 128, 140), accent, 0.35));
+        g.fillRoundRect(-capW / 2, -capH / 2, capW, capH, 4, 4);
+        g.setColor(new Color(0, 0, 0, 150));
+        g.drawRoundRect(-capW / 2, -capH / 2, capW, capH, 4, 4);
+
+        int yOff = Math.max(2, r / 3);
+        int bw = Math.max(2, r / 3);
+        g.setColor(new Color(210, 220, 235, 235));
+        g.fillRoundRect(0 - recoil, -yOff - bw / 2, barrelLen, bw, 2, 2);
+        g.fillRoundRect(0 - recoil, yOff - bw / 2, barrelLen, bw, 2, 2);
+        g.setColor(new Color(28, 30, 36, 180));
+        g.drawRoundRect(0 - recoil, -yOff - bw / 2, barrelLen, bw, 2, 2);
+        g.drawRoundRect(0 - recoil, yOff - bw / 2, barrelLen, bw, 2, 2);
+
+        if (fireFrac > 0.82) {
+            int fx = barrelLen - recoil;
+            g.setColor(new Color(255, 230, 150, 160));
+            g.fillOval(fx - 3, -yOff - 2, 6, 6);
+            g.fillOval(fx - 3, yOff - 2, 6, 6);
+        }
+    }
+
+    private static void drawHeavyTripleTurret(Graphics2D g, Turret t, Color accent, double fireFrac, double bodyScale, double barrelScale) {
+        int r = (int) Math.max(5, Math.round((t.radius + 1) * bodyScale));
+        int baseW = r + 7;
+        int baseH = r + 5;
+        int capW = r + 12;
+        int capH = r + 7;
+        int barrelLen = (int) Math.max(11, Math.round((t.barrelLen + 2) * barrelScale));
+        int recoil = (int) Math.round(fireFrac * 4.0);
+
+        g.setColor(new Color(58, 66, 80, 200));
+        g.fillRoundRect(-baseW / 2, -baseH / 2, baseW, baseH, 4, 4);
+
+        g.setColor(mix(new Color(110, 118, 134), accent, 0.40));
+        g.fillRoundRect(-capW / 2, -capH / 2, capW, capH, 5, 5);
+        g.setColor(new Color(0, 0, 0, 160));
+        g.drawRoundRect(-capW / 2, -capH / 2, capW, capH, 5, 5);
+
+        int bw = Math.max(2, r / 3);
+        int[] ys = new int[]{-Math.max(3, r / 2), 0, Math.max(3, r / 2)};
+        g.setColor(new Color(210, 220, 235, 235));
+        for (int y : ys) {
+            g.fillRoundRect(1 - recoil, y - bw / 2, barrelLen, bw, 2, 2);
+            g.setColor(new Color(28, 30, 36, 180));
+            g.drawRoundRect(1 - recoil, y - bw / 2, barrelLen, bw, 2, 2);
+            g.setColor(new Color(210, 220, 235, 235));
+        }
+
+        if (fireFrac > 0.8) {
+            int fx = 1 + barrelLen - recoil;
+            g.setColor(new Color(255, 225, 135, 170));
+            for (int y : ys) g.fillOval(fx - 3, y - 3, 6, 6);
+        }
+    }
+
+    private static void drawMissilePodTurret(Graphics2D g, Turret t, Color accent, double fireFrac, double bodyScale, double barrelScale) {
+        int r = (int) Math.max(4, Math.round(t.radius * bodyScale));
+        int w = r + 10;
+        int h = r + 8;
+        int recoil = (int) Math.round(fireFrac * 2.0);
+
+        g.setColor(new Color(34, 38, 46, 215));
+        g.fillRoundRect(-w / 2, -h / 2, w, h, 4, 4);
+        g.setColor(mix(new Color(126, 132, 142), accent, 0.30));
+        g.fillRoundRect(-w / 2 + 1, -h / 2 + 1, w - 2, h - 2, 4, 4);
+
+        g.setColor(new Color(20, 24, 30, 190));
+        int cell = Math.max(2, r / 3);
+        for (int yy = -1; yy <= 1; yy += 2) {
+            for (int xx = 0; xx < 3; xx++) {
+                int cx = -w / 4 + xx * (cell + 2);
+                int cy = yy * (cell + 1) - recoil;
+                g.fillRect(cx, cy, cell, cell);
+            }
+        }
+
+        int hatchLen = (int) Math.max(8, Math.round(t.barrelLen * 0.55 * barrelScale));
+        g.setColor(new Color(190, 205, 225, 220));
+        g.fillRoundRect(0 - recoil, -1, hatchLen, 2, 2, 2);
+        if (fireFrac > 0.85) {
+            int fx = hatchLen - recoil;
+            g.setColor(new Color(255, 180, 110, 170));
+            g.fillOval(fx - 3, -3, 6, 6);
+        }
+    }
+
+    private static void drawBeamEmitterTurret(Graphics2D g, Turret t, Color accent, double fireFrac, double bodyScale, double barrelScale) {
+        int r = (int) Math.max(4, Math.round(t.radius * bodyScale));
+        int w = r + 8;
+        int h = r + 5;
+        int barrelLen = (int) Math.max(8, Math.round(t.barrelLen * 0.85 * barrelScale));
+        int recoil = (int) Math.round(fireFrac * 2.0);
+
+        g.setColor(new Color(34, 40, 50, 210));
+        g.fillOval(-w / 2, -h / 2, w, h);
+        g.setColor(mix(new Color(118, 130, 146), accent, 0.25));
+        g.fillRoundRect(-w / 2, -h / 2, w, h, 5, 5);
+
+        g.setColor(new Color(150, 210, 255, 160));
+        g.fillOval(-2, -2, 4, 4);
+        g.setColor(new Color(210, 240, 255, 215));
+        g.drawRoundRect(0 - recoil, -1, barrelLen, 2, 2, 2);
+
+        if (fireFrac > 0.62) {
+            int glow = (int) Math.round(70 + fireFrac * 120);
+            g.setColor(new Color(120, 220, 255, Math.max(0, Math.min(220, glow))));
+            g.fillOval(barrelLen - recoil - 4, -4, 8, 8);
+        }
+    }
+
+    private static void drawStealthFlushTurret(Graphics2D g, Turret t, Color accent, double fireFrac, double bodyScale, double barrelScale) {
+        int r = (int) Math.max(4, Math.round(t.radius * bodyScale));
+        int len = (int) Math.max(9, Math.round(t.barrelLen * 0.8 * barrelScale));
+        int recoil = (int) Math.round(fireFrac * 2.0);
+
+        Polygon p = new Polygon(
+                new int[]{-r, 0, r + 2, 0},
+                new int[]{0, -r / 2, 0, r / 2}, 4);
+        g.setColor(mix(new Color(68, 86, 108), accent, 0.18));
+        g.fillPolygon(p);
+        g.setColor(new Color(150, 210, 245, 130));
+        g.drawLine(-1, 0, len - recoil, 0);
+
+        if (fireFrac > 0.8) {
+            int fx = len - recoil;
+            g.setColor(new Color(170, 235, 255, 130));
+            g.fillOval(fx - 2, -2, 4, 4);
+        }
+    }
+
+    private static void drawCIWSTurret(Graphics2D g2, double ciwsScale) {
+        Graphics2D g = (Graphics2D) g2.create();
+        int rr = Math.max(3, (int) Math.round(4 * ciwsScale));
+        int barrelLen = Math.max(7, (int) Math.round(9 * ciwsScale));
+        g.setColor(new Color(80, 90, 105, 200));
+        g.fillOval(-rr, -rr, rr * 2, rr * 2);
+        g.setColor(new Color(205, 220, 240, 200));
+        g.drawOval(-rr, -rr, rr * 2, rr * 2);
+
+        long t = System.nanoTime();
+        double a = (t % 2_000_000_000L) / 2_000_000_000.0 * Math.PI * 2.0;
+        for (int i = 0; i < 3; i++) {
+            double aa = a + i * (Math.PI * 2.0 / 3.0);
+            int x2 = (int) Math.round(Math.cos(aa) * barrelLen);
+            int y2 = (int) Math.round(Math.sin(aa) * barrelLen);
+            g.setColor(new Color(190, 210, 235, 170));
+            g.drawLine(0, 0, x2, y2);
+        }
+        g.dispose();
+    }
+
+    private static final class TurretVisualScale {
+        final double bodyScale;
+        final double barrelScale;
+        final double ciwsScale;
+
+        TurretVisualScale(double bodyScale, double barrelScale, double ciwsScale) {
+            this.bodyScale = bodyScale;
+            this.barrelScale = barrelScale;
+            this.ciwsScale = ciwsScale;
         }
     }
 

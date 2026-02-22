@@ -11,6 +11,7 @@ public final class GameRenderSystem {
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
         Renderer.drawSpaceBackground(g2, ctx.camX, ctx.camY, viewportW, viewportH, seed);
+        drawModifierWorldTint(ctx, g2, viewportW, viewportH);
 
         // World space
         g2.translate(-ctx.camX, -ctx.camY);
@@ -40,6 +41,7 @@ public final class GameRenderSystem {
         } catch (Throwable ignored) {}
 
         Renderer.drawWorldMarkers(g2, ctx.ships, ctx.lockedTarget);
+        drawCampaignMarkers(ctx, g2);
 
         // Back to screen space
         g2.translate(ctx.camX, ctx.camY);
@@ -51,6 +53,16 @@ public final class GameRenderSystem {
         Ship docked = EconomySystem.getDockedFriendlyBase(ctx);
         int hangarTier = UISystem.getMaxHangarTierForPlayer(ctx);
         int maxHangarTier = 3;
+        int playerWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.player);
+        int playerWingCap = (ctx.player != null && ctx.player.isCarrier) ? Math.max(0, ctx.player.maxFighters) : 0;
+        int lockedWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.lockedTarget);
+        int lockedWingCap = (ctx.lockedTarget != null && ctx.lockedTarget.isCarrier) ? Math.max(0, ctx.lockedTarget.maxFighters) : 0;
+        String objectiveTitle = CampaignSystem.hudObjectiveTitle(ctx);
+        String objectiveDetail = CampaignSystem.hudObjectiveDetail(ctx);
+        if ((objectiveTitle == null || objectiveTitle.isBlank()) && LastStandSystem.isActive(ctx)) {
+            objectiveTitle = LastStandSystem.hudTitle(ctx);
+            objectiveDetail = LastStandSystem.hudDetail(ctx);
+        }
 
         Renderer.drawHUD(
                 g2,
@@ -61,11 +73,17 @@ public final class GameRenderSystem {
                 ctx.shopOpen,
                 ctx.autoLockTurrets,
                 ctx.lockedTarget,
+                playerWingActive,
+                playerWingCap,
+                lockedWingActive,
+                lockedWingCap,
                 resRush,
                 allyOre,
                 enemyOre,
                 ctx.resourceGoal,
                 ctx.gameOverText,
+                objectiveTitle,
+                objectiveDetail,
                 ctx.eventBanner,
                 ctx.eventBannerT,
                 ctx.orePriceMul,
@@ -78,6 +96,7 @@ public final class GameRenderSystem {
                 viewportH
 
         );
+        drawModifierChips(ctx, g2, viewportW);
 
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
 
@@ -95,6 +114,8 @@ public final class GameRenderSystem {
                         maxHangarTier);
             }
         }
+
+        drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
 
         if (ctx.state == GameState.PAUSED) {
             g2.setColor(new Color(0, 0, 0, 160));
@@ -120,6 +141,104 @@ if (DevTools.isDebugOverlay()) {
     try { DevOverlay.draw(g2, ctx, viewportW, viewportH); } catch (Throwable ignored) {}
 }
 
+    }
+
+    private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2) {
+        if (!CampaignSystem.hasCapturePoint(ctx)) return;
+        double x = CampaignSystem.captureX(ctx);
+        double y = CampaignSystem.captureY(ctx);
+        double r = CampaignSystem.captureRadius(ctx);
+
+        int ix = (int) Math.round(x);
+        int iy = (int) Math.round(y);
+        int ir = (int) Math.round(r);
+
+        g2.setColor(new Color(255, 220, 120, 40));
+        g2.fillOval(ix - ir, iy - ir, ir * 2, ir * 2);
+        g2.setColor(new Color(255, 220, 120, 180));
+        g2.drawOval(ix - ir, iy - ir, ir * 2, ir * 2);
+        g2.drawLine(ix - 12, iy, ix + 12, iy);
+        g2.drawLine(ix, iy - 12, ix, iy + 12);
+    }
+
+    private static void drawCampaignTransitionOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        if (!CampaignSystem.isTransitioning(ctx)) return;
+
+        String label = CampaignSystem.transitionLabel(ctx);
+        int secs = (int) Math.ceil(CampaignSystem.transitionSeconds(ctx));
+        String timer = "Next sector in " + Math.max(0, secs) + "s";
+        String top = CampaignSystem.transitionSummaryTop(ctx);
+        String bottom = CampaignSystem.transitionSummaryBottom(ctx);
+
+        int w = Math.min(620, viewportW - 80);
+        int h = 148;
+        int x = (viewportW - w) / 2;
+        int y = viewportH - h - 36;
+
+        g2.setColor(new Color(0, 0, 0, 170));
+        g2.fillRoundRect(x, y, w, h, 16, 16);
+        g2.setColor(new Color(255, 255, 255, 180));
+        g2.drawRoundRect(x, y, w, h, 16, 16);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        g2.setColor(new Color(255, 230, 150, 230));
+        FontMetrics fm1 = g2.getFontMetrics();
+        int tx1 = x + (w - fm1.stringWidth(label)) / 2;
+        g2.drawString(label, tx1, y + 42);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 16));
+        g2.setColor(new Color(255, 255, 255, 220));
+        FontMetrics fm2 = g2.getFontMetrics();
+        int tx2 = x + (w - fm2.stringWidth(timer)) / 2;
+        g2.drawString(timer, tx2, y + 72);
+
+        if (top != null && !top.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+            g2.setColor(new Color(220, 235, 255, 220));
+            FontMetrics fm3 = g2.getFontMetrics();
+            int tx3 = x + (w - fm3.stringWidth(top)) / 2;
+            g2.drawString(top, tx3, y + 98);
+        }
+        if (bottom != null && !bottom.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+            g2.setColor(new Color(255, 230, 170, 225));
+            FontMetrics fm4 = g2.getFontMetrics();
+            int tx4 = x + (w - fm4.stringWidth(bottom)) / 2;
+            g2.drawString(bottom, tx4, y + 120);
+        }
+    }
+
+    private static void drawModifierWorldTint(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        Color tint = CampaignSystem.worldTint(ctx);
+        if (tint == null || tint.getAlpha() <= 0) return;
+        g2.setColor(tint);
+        g2.fillRect(0, 0, viewportW, viewportH);
+    }
+
+    private static void drawModifierChips(GameContext ctx, Graphics2D g2, int viewportW) {
+        String[] chips = CampaignSystem.activeModifierLabels(ctx);
+        if (chips == null || chips.length == 0) return;
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        FontMetrics fm = g2.getFontMetrics();
+
+        int x = viewportW - 18;
+        int y = 16;
+        for (String chip : chips) {
+            if (chip == null || chip.isBlank()) continue;
+            int w = fm.stringWidth(chip) + 16;
+            int h = 20;
+            int px = x - w;
+            int py = y;
+
+            g2.setColor(new Color(0, 0, 0, 145));
+            g2.fillRoundRect(px, py, w, h, 10, 10);
+            g2.setColor(new Color(255, 230, 150, 210));
+            g2.drawRoundRect(px, py, w, h, 10, 10);
+            g2.drawString(chip, px + 8, py + 14);
+
+            y += h + 6;
+        }
     }
 
     private static void updateDamageVfx(GameContext ctx) {

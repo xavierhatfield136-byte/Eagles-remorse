@@ -1,6 +1,9 @@
 public final class EconomySystem {
     private EconomySystem(){}
 
+    private static final double PERIODIC_MINER_SPAWN_INTERVAL = 20.0;
+    private static final int PERIODIC_MINERS_PER_TEAM = 2;
+
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
 
@@ -19,6 +22,9 @@ public final class EconomySystem {
         // NPC mining & deposits
         handleNpcMiningAndDeposits(ctx, dt);
 
+        // Periodic miner reinforcements for teams still in the match.
+        updatePeriodicMinerReinforcements(ctx, dt);
+
         // Mode win checks
         if (ctx.config.mode == GameMode.RESOURCE_RUSH) checkResourceRushWin(ctx);
         if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) checkFourTeamDominationWin(ctx);
@@ -29,6 +35,7 @@ public final class EconomySystem {
         if (a == null) return;
 
         double rate = getMiningRate(miner) * ctx.miningMul * ctx.miningBaseMul;
+        rate *= CampaignSystem.miningRateMul(ctx);
         double mined = mineAsteroid(a, rate * dt);
         if (mined > 0) {
             addOreToShip(miner, mined);
@@ -67,6 +74,48 @@ public final class EconomySystem {
             if (s.role != ShipRole.MINER) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             updateMinerState(ctx, s, dt);
+        }
+    }
+
+    private static void updatePeriodicMinerReinforcements(GameContext ctx, double dt) {
+        if (ctx == null) return;
+        ctx.minerReinforcementTimer -= Math.max(0.0, dt);
+        while (ctx.minerReinforcementTimer <= 0.0) {
+            ctx.minerReinforcementTimer += PERIODIC_MINER_SPAWN_INTERVAL;
+            spawnPeriodicMinersForAliveTeams(ctx);
+        }
+    }
+
+    private static void spawnPeriodicMinersForAliveTeams(GameContext ctx) {
+        java.util.EnumSet<Faction> teams = java.util.EnumSet.noneOf(Faction.class);
+        teams.addAll(ctx.teamBases.keySet());
+        if (ctx.allyBase != null) teams.add(Faction.ALLY);
+        if (ctx.enemyBase != null) teams.add(Faction.ENEMY);
+
+        for (Faction team : teams) {
+            if (team == null) continue;
+            if (!TeamSystem.isTeamAlive(ctx, team)) continue;
+
+            Ship base = TeamSystem.getBaseForTeam(ctx, team);
+            if (base == null) continue;
+            if (!base.alive || base.dying || base.hp <= 0) continue;
+
+            spawnMinersAtBase(ctx, team, base, PERIODIC_MINERS_PER_TEAM);
+        }
+    }
+
+    private static void spawnMinersAtBase(GameContext ctx, Faction team, Ship base, int count) {
+        int n = Math.max(0, count);
+        for (int i = 0; i < n; i++) {
+            double a = ctx.rng.nextDouble() * Math.PI * 2.0;
+            double r = base.radius + 80.0 + ctx.rng.nextDouble() * 70.0;
+            double sx = base.x + Math.cos(a) * r;
+            double sy = base.y + Math.sin(a) * r;
+
+            Ship miner = SpawnSystem.spawnTeamShip(ctx, ShipRole.MINER, team, sx, sy);
+            if (miner == null) continue;
+            miner.minerHomeBase = base;
+            miner.minerState = Ship.MinerState.SEEK_ASTEROID;
         }
     }
 
@@ -149,6 +198,7 @@ public final class EconomySystem {
                 }
 
                 double dtScaled = dt * ctx.miningMul * ctx.miningBaseMul;
+                dtScaled *= CampaignSystem.miningRateMul(ctx);
                 int mined = s.tryMine(a, dtScaled);
                 if (mined > 0) {
                     try { VFX.spawnEngineWisp(s.x, s.y, s.vx, s.vy); } catch (Throwable ignored) {}
@@ -181,6 +231,7 @@ public final class EconomySystem {
                     int moved = s.depositCargoTo(base);
                     if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction)) {
                         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
+                        priceMul *= CampaignSystem.oreCreditMul(ctx);
                         ctx.credits += (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
                     }
                     // repair a bit (hp/hpMax are ints in this codebase)

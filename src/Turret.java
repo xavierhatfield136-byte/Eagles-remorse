@@ -7,6 +7,12 @@
  */
 public class Turret {
 
+    // Universal missile buff (applies to all factions/ships).
+    public static final double MISSILE_DAMAGE_MULT = 1.55;
+    public static final double MISSILE_SPEED_MULT = 1.28;
+    public static final double MISSILE_TURN_MULT = 1.32;
+    public static final double MISSILE_LIFE_MULT = 1.22;
+
     public enum Kind {
         GUN,
         MISSILE
@@ -142,7 +148,12 @@ public class Turret {
             }
             return new Bullet(mx, my, angle, dt, bulletSpeed, damage, bulletLife, 3.0, host.faction);
         } else {
-            return new Missile(mx, my, angle, missileTarget, dt, missileSpeed, missileTurnRate, damage, missileLife, 6.0, host.faction);
+            int missileDamage = Math.max(1, (int) Math.round(damage * MISSILE_DAMAGE_MULT));
+            double missileSpd = missileSpeed * MISSILE_SPEED_MULT;
+            double missileTurn = missileTurnRate * MISSILE_TURN_MULT;
+            int missileLifetime = Math.max(1, (int) Math.round(missileLife * MISSILE_LIFE_MULT));
+            double missileRadius = Math.max(6.0, radius);
+            return new Missile(mx, my, angle, missileTarget, dt, missileSpd, missileTurn, missileDamage, missileLifetime, missileRadius, host.faction);
         }
     }
 

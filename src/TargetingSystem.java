@@ -61,7 +61,6 @@ public final class TargetingSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
-            if (s.role == ShipRole.BASE) continue;
 
             if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
                 double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);

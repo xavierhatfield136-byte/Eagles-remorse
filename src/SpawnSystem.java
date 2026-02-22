@@ -2,8 +2,14 @@ import java.util.Random;
 
 public final class SpawnSystem {
     private SpawnSystem(){}
+    public static final int MAX_MINERS_PER_FACTION = 4;
 
     public static void initWorld(GameContext ctx) {
+        if (ctx.config.mode == GameMode.SHOWCASE) {
+            initShowcase(ctx);
+            return;
+        }
+
         if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             initFourTeamDomination(ctx);
             return;
@@ -41,10 +47,22 @@ public final class SpawnSystem {
         // Starting escort + enemies
         spawnAlly(ctx, ShipRole.FRIGATE, ctx.player.x - 120, ctx.player.y + 90);
         spawnAlly(ctx, ShipRole.CIWS_CORVETTE, ctx.player.x - 170, ctx.player.y - 40);
-        spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
+
+        if (ctx.config.mode == GameMode.LAST_STAND) {
+            // Last Stand starts with stronger allied defense and staged incoming waves.
+            spawnAlly(ctx, ShipRole.PICKET, ctx.allyBase.x - 180, ctx.allyBase.y - 80);
+            spawnAlly(ctx, ShipRole.FRIGATE, ctx.allyBase.x - 210, ctx.allyBase.y + 110);
+            spawnAlly(ctx, ShipRole.MISSILE_BOAT, ctx.allyBase.x - 250, ctx.allyBase.y + 10);
+            LastStandSystem.init(ctx);
+        } else {
+            spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
+        }
 
         // Apply doctrine tuning (Step 5B/5C) if present
         tryApplyDoctrine(ctx);
+
+        // Campaign scaffolding
+        CampaignSystem.init(ctx);
     }
 
     private static void tryApplyDoctrine(GameContext ctx) {
@@ -68,6 +86,12 @@ public final class SpawnSystem {
     }
 
     public static Ship spawnTeamShip(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
+        if (role == ShipRole.MINER) {
+            if (TeamSystem.countAliveMiners(ctx, faction) >= MAX_MINERS_PER_FACTION) {
+                return null;
+            }
+        }
+
         double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
         double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
         Ship s = new FleetShip(role, faction, sx, sy);
@@ -221,5 +245,91 @@ public final class SpawnSystem {
                     " id=" + base.id +
                     " pos=(" + (int) Math.round(base.x) + "," + (int) Math.round(base.y) + ")");
         }
+    }
+
+    private static void initShowcase(GameContext ctx) {
+        ctx.ships.clear();
+        ctx.projectiles.clear();
+        ctx.asteroids.clear();
+        ctx.salvage.clear();
+        ctx.teamBases.clear();
+        ctx.baseUpgrades.clear();
+
+        // Keep the player around as camera anchor.
+        double spacingX = 260.0;
+        double spacingY = 250.0;
+        int maxPerRow = Math.max(4, (int) Math.floor((ctx.WORLD_W - 220.0 * 2.0) / spacingX));
+        int totalSlots = ShipRole.values().length;
+        int rowsPlanned = Math.max(1, (int) Math.ceil(totalSlots / (double) maxPerRow));
+        double usedW = Math.max(0.0, (Math.min(totalSlots, maxPerRow) - 1) * spacingX);
+        double usedH = Math.max(0.0, (rowsPlanned - 1) * spacingY);
+        double startX = GameMath.clamp((ctx.WORLD_W - usedW) * 0.5, 120.0, ctx.WORLD_W - 120.0);
+        double startY = GameMath.clamp((ctx.WORLD_H - usedH - 240.0) * 0.5, 180.0, ctx.WORLD_H - 260.0);
+
+        double playerX = startX;
+        double playerY = startY;
+        ctx.player = new Player(ShipRole.FRIGATE, playerX, playerY);
+        ctx.player.name = "Showcase Camera";
+        ctx.player.vx = 0;
+        ctx.player.vy = 0;
+        ctx.player.angle = 0;
+        ctx.ships.add(ctx.player);
+
+        ShipRole[] roles = ShipRole.values();
+        int shipSlot = 1; // slot 0 is player frigate
+        int factionIndex = 0;
+        Faction[] factions = new Faction[]{Faction.ALLY, Faction.ENEMY, Faction.TEAM_C, Faction.TEAM_D};
+
+        for (ShipRole role : roles) {
+            if (role == ShipRole.FRIGATE) continue;
+
+            int row = shipSlot / maxPerRow;
+            int col = shipSlot % maxPerRow;
+            double sx = startX + col * spacingX;
+            double sy = startY + row * spacingY;
+            sx = GameMath.clamp(sx, 80.0, ctx.WORLD_W - 80.0);
+            sy = GameMath.clamp(sy, 80.0, ctx.WORLD_H - 180.0);
+
+            Faction faction = factions[factionIndex % factions.length];
+            factionIndex++;
+            Ship s = new FleetShip(role, faction, sx, sy);
+            s.vx = 0;
+            s.vy = 0;
+            s.angle = 0;
+
+            ctx.ships.add(s);
+            if (role == ShipRole.BASE) {
+                if (faction == Faction.ENEMY) ctx.enemyBase = s;
+                else if (faction == Faction.ALLY) ctx.allyBase = s;
+                ctx.teamBases.put(faction, s);
+                ctx.baseUpgrades.put(s, new BaseUpgrades());
+            }
+            shipSlot++;
+        }
+
+        int rowsUsed = Math.max(1, (int) Math.ceil((shipSlot + 1.0) / maxPerRow));
+        double projectileY = Math.min(ctx.WORLD_H - 140.0, startY + rowsUsed * spacingY + 80.0);
+        double projectileStartX = startX;
+        double projectileStep = 220.0;
+
+        // Static display set: one sample of each projectile class/style.
+        ctx.projectiles.add(new Bullet(projectileStartX + projectileStep * 0, projectileY, 0.0, 0.0,
+                760.0, 1, 1_000_000, 3.0, Faction.ALLY));
+        ctx.projectiles.add(new EnergyBolt(projectileStartX + projectileStep * 1, projectileY, 0.0, 0.0,
+                860.0, 2, 1_000_000, 4.5, Faction.ENEMY));
+        ctx.projectiles.add(new EnergyBolt(projectileStartX + projectileStep * 2, projectileY, 0.0, 0.0,
+                Ship.BEAM_BOLT_SPEED, 4, 1_000_000, 7.0, Faction.TEAM_C));
+        ctx.projectiles.add(new Missile(projectileStartX + projectileStep * 3, projectileY, 0.0, null, GameContext.DT,
+                0.0, 0.0, 5, 1_000_000, 7.0, Faction.ALLY));
+        ctx.projectiles.add(new CIWSPellet(projectileStartX + projectileStep * 4, projectileY, 0.0, 0.0,
+                950.0, 1, 1_000_000, 2.0, Faction.TEAM_D));
+
+        tryApplyDoctrine(ctx);
+
+        ctx.credits = 0;
+        ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
+        ctx.nextEventTimer = Double.POSITIVE_INFINITY;
+        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF";
+        ctx.eventBannerT = 9999.0;
     }
 }

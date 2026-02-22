@@ -82,13 +82,36 @@ public class GameContext {
 
     // Waves
     public double enemyWaveTimer = 2.0;
+    public double minerReinforcementTimer = 20.0;
+
+    // Campaign progression (CAMPAIGN_OPS)
+    public CampaignSystem.CampaignState campaign = null;
+    public CampaignUnlockProfile campaignUnlockProfile = null;
+
+    // Last Stand progression
+    public double lastStandElapsed = 0.0;
+    public double lastStandGoalSec = 15.0 * 60.0;
+    public double lastStandWaveTimer = 6.0;
+    public int lastStandWaveIndex = 0;
+
+    // Runtime performance telemetry (debug overlay / frame pacing checks).
+    public double perfFps = 0.0;
+    public double perfFrameMs = 0.0;
+    public double perfFrameJitterMs = 0.0;
+    public double perfUpdateMs = 0.0;
+    public double perfRenderMs = 0.0;
+    public int perfUpdateSteps = 0;
+    public int perfDroppedUpdates = 0;
 
     public GameContext(GameConfig config) {
         this.config = (config == null)
-                ? new GameConfig(GameMode.SKIRMISH, 5000, 5000, true, System.nanoTime(), false)
+                ? new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, System.nanoTime(), false)
                 : config;
         this.WORLD_W = this.config.worldW;
         this.WORLD_H = this.config.worldH;
         this.rng = new Random(this.config.seed);
+        if (this.config.mode == GameMode.CAMPAIGN_OPS) {
+            this.campaignUnlockProfile = CampaignUnlockProfile.load();
+        }
     }
 }

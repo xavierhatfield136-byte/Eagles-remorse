@@ -5,23 +5,33 @@ public final class AISystem {
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
+        if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) return;
         if (!DevTools.isAIEnabled()) return;
 
-        // spawn waves (unchanged behavior)
-        ctx.enemyWaveTimer -= dt;
-        if (ctx.enemyWaveTimer <= 0) {
-            ctx.enemyWaveTimer = 14.0 + ctx.rng.nextDouble() * 10.0;
-            if (ctx.config.mode != GameMode.SANDBOX && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION) {
-                SpawnSystem.spawnEnemyGroup(
-                        ctx,
-                        ctx.player.x + 900 + ctx.rng.nextDouble() * 500,
-                        ctx.player.y - 600 + ctx.rng.nextDouble() * 400
-                );
-                SpawnSystem.spawnAllyGroup(
-                        ctx,
-                        ctx.player.x - 900 - ctx.rng.nextDouble() * 500,
-                        ctx.player.y + 600 + ctx.rng.nextDouble() * 400
-                );
+        // Generic wave spawner (disabled for Last Stand and 4-team, which have custom pacing).
+        if (ctx.config.mode != GameMode.LAST_STAND
+                && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION
+                && !CampaignSystem.useAuthoredWaveSchedule(ctx)) {
+            ctx.enemyWaveTimer -= dt;
+            if (ctx.enemyWaveTimer <= 0) {
+                ctx.enemyWaveTimer = CampaignSystem.nextWaveDelay(ctx);
+                int groups = CampaignSystem.groupsPerWave(ctx);
+                for (int i = 0; i < groups; i++) {
+                    SpawnSystem.spawnEnemyGroup(
+                            ctx,
+                            ctx.player.x + 900 + ctx.rng.nextDouble() * 500,
+                            ctx.player.y - 600 + ctx.rng.nextDouble() * 400
+                    );
+                }
+
+                int allyGroups = Math.max(1, groups - 1);
+                for (int i = 0; i < allyGroups; i++) {
+                    SpawnSystem.spawnAllyGroup(
+                            ctx,
+                            ctx.player.x - 900 - ctx.rng.nextDouble() * 500,
+                            ctx.player.y + 600 + ctx.rng.nextDouble() * 400
+                    );
+                }
             }
         }
 
@@ -108,6 +118,7 @@ public final class AISystem {
 
     private static void fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist) {
         if (ctx.projectiles == null) return;
+        double rangeMul = CampaignSystem.targetingRangeMul(ctx);
 
         for (Turret t : s.turrets) {
             if (t == null) continue;
@@ -119,6 +130,7 @@ public final class AISystem {
             } else {
                 maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
             }
+            maxRange *= rangeMul;
             if (dist > maxRange) continue;
 
             // Aim with lead for guns; direct for missiles

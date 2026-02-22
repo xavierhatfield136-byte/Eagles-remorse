@@ -33,6 +33,9 @@ public class CollisionSystem {
                     else if (p.damage >= 3) ScreenShake.kick(1.8);
 
                     s.takeDamage(p.damage);
+                    if (p instanceof Missile m) {
+                        applyMissileBlast(m, s, ships);
+                    }
                     p.alive = false;
                     break;
                 }
@@ -59,9 +62,13 @@ public class CollisionSystem {
 
                 if (circleHit(pellet.x, pellet.y, pellet.radius, m.x, m.y, m.radius)) {
                     pellet.alive = false;
-                    m.alive = false;
-                    VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 2);
-                    Explosion.spawnShieldHit(m.x, m.y);
+                    boolean killed = m.applyInterceptHit(1);
+                    if (killed) {
+                        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 2);
+                        Explosion.spawnShieldHit(m.x, m.y);
+                    } else {
+                        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 1);
+                    }
                     break;
                 }
             }
@@ -117,5 +124,28 @@ public class CollisionSystem {
     public static void cleanupProjectiles(List<Projectile> projectiles) {
         if (projectiles == null) return;
         projectiles.removeIf(p -> !p.alive);
+    }
+
+    private static void applyMissileBlast(Missile m, Ship directHit, List<Ship> ships) {
+        if (m == null || ships == null || ships.isEmpty()) return;
+        double rr = Math.max(20.0, m.blastRadius);
+        double baseSplash = Math.max(1.0, m.damage * m.splashDamageMul);
+
+        for (Ship s : ships) {
+            if (s == null || !s.alive) continue;
+            if (s == directHit) continue;
+            if (s.faction.isFriendlyTo(m.faction)) continue;
+
+            double d = Math.hypot(s.x - m.x, s.y - m.y);
+            double maxD = rr + s.radius;
+            if (d > maxD) continue;
+
+            double falloff = 1.0 - (d / Math.max(1.0, maxD));
+            int splash = Math.max(1, (int) Math.round(baseSplash * (0.35 + 0.65 * falloff)));
+            s.takeDamage(splash);
+        }
+
+        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage));
+        Explosion.spawnShieldHit(m.x, m.y);
     }
 }

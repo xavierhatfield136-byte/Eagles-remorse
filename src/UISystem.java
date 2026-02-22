@@ -211,6 +211,55 @@ public final class UISystem {
         EventSystem.showBanner(ctx, "CIWS UPGRADED", 1.2);
     }
 
+    public static void tryCarrierLaunch(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        Player p = ctx.player;
+
+        boolean launched = CarrierSystem.tryLaunchOne(ctx, p);
+        if (launched) {
+            int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
+            EventSystem.showBanner(ctx, "WING LAUNCHED  " + active + "/" + p.maxFighters, 1.1);
+            return;
+        }
+
+        int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
+        if (active >= Math.max(0, p.maxFighters)) {
+            EventSystem.showBanner(ctx, "DECK FULL  " + active + "/" + p.maxFighters, 1.2);
+            return;
+        }
+        if (!p.canLaunchFighter()) {
+            EventSystem.showBanner(ctx, "DECK CYCLE IN PROGRESS", 1.2);
+            return;
+        }
+        EventSystem.showBanner(ctx, "LAUNCH NOT AVAILABLE", 1.2);
+    }
+
+    public static void tryCarrierRecall(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        int recalled = CarrierSystem.recallWing(ctx, ctx.player);
+        if (recalled <= 0) {
+            EventSystem.showBanner(ctx, "NO WING TO RECALL", 1.1);
+            return;
+        }
+        EventSystem.showBanner(ctx, "RECALL ORDER  " + recalled + " CRAFT", 1.2);
+    }
+
+    public static void tryCarrierToggleMode(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        Player p = ctx.player;
+        p.carrierCommandMode = (p.carrierCommandMode == Ship.CarrierCommandMode.ATTACK)
+                ? Ship.CarrierCommandMode.DEFEND
+                : Ship.CarrierCommandMode.ATTACK;
+        EventSystem.showBanner(ctx, "WING MODE: " + p.carrierCommandMode.name(), 1.2);
+    }
+
+    public static void tryCarrierToggleAutoLaunch(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        Player p = ctx.player;
+        p.carrierAutoLaunch = !p.carrierAutoLaunch;
+        EventSystem.showBanner(ctx, "AUTO-LAUNCH: " + (p.carrierAutoLaunch ? "ON" : "OFF"), 1.2);
+    }
+
     public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.shopOpen) return;
@@ -348,5 +397,15 @@ public final class UISystem {
         if (faction == Faction.TEAM_C) return 3;
         if (faction == Faction.TEAM_D) return 4;
         return 0;
+    }
+
+    private static boolean ensurePlayerCarrier(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return false;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
+        if (!ctx.player.isCarrier) {
+            EventSystem.showBanner(ctx, "CURRENT HULL IS NOT A CARRIER", 1.2);
+            return false;
+        }
+        return true;
     }
 }

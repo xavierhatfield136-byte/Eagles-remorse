@@ -164,10 +164,30 @@ public abstract class Ship {
     public double ciwsPelletRadius = 1.8;
 
     // Carrier
+    public enum WingState {
+        ATTACK,
+        RTB
+    }
+
+    public enum CarrierCommandMode {
+        ATTACK,
+        DEFEND
+    }
+
     public boolean isCarrier = false;
     public double fighterLaunchCooldown = 4.0;
     private double fighterTimer = 0;
     public int maxFighters = 4;
+    /** Carrier command mode used by launched wing craft behavior. */
+    public CarrierCommandMode carrierCommandMode = CarrierCommandMode.ATTACK;
+    /** If false, this carrier won't auto-launch replacement craft. */
+    public boolean carrierAutoLaunch = true;
+    /** If this is a launched strike craft, the owning carrier ship id; otherwise -1. */
+    public int carrierOwnerId = -1;
+    /** Seconds until orphaned craft despawns; -1 while not orphaned. */
+    public double carrierOrphanTimer = -1.0;
+    /** Active strike-craft behavior state. */
+    public WingState wingState = WingState.ATTACK;
 
     // Base / capture
     public boolean isBase = false;
@@ -211,8 +231,20 @@ public abstract class Ship {
     }
 
     public void update(double dt) {
+        if (!alive && !dying) return;
+
         // Dying ships drift, burn, and then explode into debris.
         if (dying) {
+            // Once exploded, stop the death-loop update path entirely.
+            if (deathExploded) {
+                dying = false;
+                vx = 0;
+                vy = 0;
+                wreckVx = 0;
+                wreckVy = 0;
+                return;
+            }
+
             // Override any AI/input velocity changes by using wreck velocities.
             vx = wreckVx;
             vy = wreckVy;

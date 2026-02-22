@@ -60,6 +60,8 @@ public final class InputSystem {
                         case KeyEvent.VK_F9 -> UISystem.trySwapHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
                         case KeyEvent.VK_F11 -> UISystem.trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
                         case KeyEvent.VK_F12 -> UISystem.trySwapHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
+                        case KeyEvent.VK_0 -> UISystem.trySwapHull(ctx, ShipRole.CARRIER, 2800, 3);
+                        case KeyEvent.VK_MINUS -> UISystem.trySwapHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
                         default -> handled = false;
                     }
                     if (handled) return;
