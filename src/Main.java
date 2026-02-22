@@ -6,13 +6,20 @@ import java.awt.event.KeyEvent;
 import java.util.function.Consumer;
 
 public class Main {
+    private static final String CARD_TITLE = "title";
+    private static final String CARD_MENU = "menu";
+    private static final String CARD_GAME = "game";
+    private static final String CARD_CREDITS = "credits";
 
     private final JFrame frame;
     private final CardLayout cards;
     private final JPanel root;
 
+    private final TitleSequencePanel titlePanel;
     private final MainMenuPanel menuPanel;
+    private final CreditsPanel creditsPanel;
     private GamePanel gamePanel;
+    private String activeCard = CARD_MENU;
 
     // Fullscreen management (Swing)
     private final GraphicsDevice device;
@@ -22,21 +29,24 @@ public class Main {
     public Main() {
         device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
 
-        frame = new JFrame("Space Game");
+        frame = new JFrame(AppInfo.windowTitle());
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         cards = new CardLayout();
         root = new JPanel(cards);
 
-        menuPanel = new MainMenuPanel(this::startGame, () -> System.exit(0));
-        root.add(menuPanel, "menu");
+        titlePanel = new TitleSequencePanel(this::showMenu);
+        menuPanel = new MainMenuPanel(this::startGame, this::showCredits, () -> System.exit(0));
+        creditsPanel = new CreditsPanel(this::showMenu);
+
+        root.add(titlePanel, CARD_TITLE);
+        root.add(menuPanel, CARD_MENU);
+        root.add(creditsPanel, CARD_CREDITS);
 
         frame.setContentPane(root);
         frame.pack();
         frame.setResizable(true);
         frame.setLocationRelativeTo(null);
-
-        cards.show(root, "menu");
     }
 
     private void startGame(GameConfig config) {
@@ -50,13 +60,9 @@ public class Main {
         setFullscreen(config.fullscreen);
 
         gamePanel = new GamePanel(config, this::showMenu, this::toggleFullscreen);
-        root.add(gamePanel, "game");
+        root.add(gamePanel, CARD_GAME);
 
-        cards.show(root, "game");
-        root.revalidate();
-        root.repaint();
-
-        SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
+        showCard(CARD_GAME);
     }
 
     private void showMenu() {
@@ -65,10 +71,28 @@ public class Main {
             root.remove(gamePanel);
             gamePanel = null;
         }
-        cards.show(root, "menu");
+        showCard(CARD_MENU);
+    }
+
+    private void showCredits() {
+        showCard(CARD_CREDITS);
+    }
+
+    private void showCard(String cardName) {
+        cards.show(root, cardName);
+        activeCard = cardName;
         root.revalidate();
         root.repaint();
-        SwingUtilities.invokeLater(menuPanel::requestFocusInWindow);
+        SwingUtilities.invokeLater(() -> {
+            switch (activeCard) {
+                case CARD_GAME -> {
+                    if (gamePanel != null) gamePanel.requestFocusInWindow();
+                }
+                case CARD_CREDITS -> creditsPanel.requestFocusInWindow();
+                case CARD_TITLE -> titlePanel.requestFocusInWindow();
+                default -> menuPanel.requestFocusInWindow();
+            }
+        });
     }
 
     private void toggleFullscreen() {
@@ -113,18 +137,25 @@ public class Main {
 
         // Restore focus to the current panel.
         SwingUtilities.invokeLater(() -> {
-            if (gamePanel != null && root.isAncestorOf(gamePanel)) gamePanel.requestFocusInWindow();
-            else menuPanel.requestFocusInWindow();
+            switch (activeCard) {
+                case CARD_GAME -> {
+                    if (gamePanel != null && root.isAncestorOf(gamePanel)) gamePanel.requestFocusInWindow();
+                }
+                case CARD_CREDITS -> creditsPanel.requestFocusInWindow();
+                case CARD_TITLE -> titlePanel.requestFocusInWindow();
+                default -> menuPanel.requestFocusInWindow();
+            }
         });
-        if (gamePanel != null) {
-            SwingUtilities.invokeLater(gamePanel::requestFocusInWindow);
-        }
-
     }
 
     public void showWindow() {
         frame.setVisible(true);
-        SwingUtilities.invokeLater(menuPanel::requestFocusInWindow);
+        if (AppInfo.SKIP_TITLE_SEQUENCE) {
+            showMenu();
+            return;
+        }
+        showCard(CARD_TITLE);
+        titlePanel.start();
     }
 
     public static void main(String[] args) {
@@ -182,7 +213,7 @@ enum GameMode {
  */
 class MainMenuPanel extends JPanel {
 
-    public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onQuit) {
+    public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onCredits, Runnable onQuit) {
         setPreferredSize(new Dimension(1280, 720));
         setBackground(Color.BLACK);
         setFocusable(true);
@@ -212,7 +243,11 @@ class MainMenuPanel extends JPanel {
         JTextField seedField = new JTextField("0", 12);
 
         JButton start = new JButton("Start");
+        JButton credits = new JButton("Credits");
         JButton quit = new JButton("Quit");
+        JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
+        versionLabel.setForeground(new Color(180, 180, 180));
+        versionLabel.setFont(new Font("Consolas", Font.PLAIN, 14));
 
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
         modeBox.setSelectedItem(MenuSettingsStore.resolveMode(persisted.modeName));
@@ -253,6 +288,11 @@ class MainMenuPanel extends JPanel {
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
+
+        credits.addActionListener(e -> {
+            persistSettings.run();
+            onCredits.run();
+        });
 
         quit.addActionListener(e -> {
             persistSettings.run();
@@ -313,7 +353,15 @@ class MainMenuPanel extends JPanel {
         c.gridx = 0;
         card.add(start, c);
         c.gridx = 1;
+        card.add(credits, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        c.gridwidth = 2;
         card.add(quit, c);
+
+        c.gridy++;
+        card.add(versionLabel, c);
 
         setLayout(new GridBagLayout());
         add(card);

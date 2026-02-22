@@ -519,6 +519,20 @@ public class Renderer {
             g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  HP " + hp + "  D " + dist + wing, x, y);
             g2.setColor(new Color(255, 255, 255, 170));
 
+            String archetype = EnemyArchetypeIntel.archetypeLabel(lockedTarget.role);
+            String counter = EnemyArchetypeIntel.counterHint(lockedTarget.role);
+            if (!archetype.isBlank()) {
+                y += 18;
+                g2.setColor(new Color(220, 235, 255, 215));
+                g2.drawString("ARCHETYPE: " + archetype, x, y);
+            }
+            if (!counter.isBlank()) {
+                y += 18;
+                g2.setColor(new Color(255, 225, 160, 220));
+                g2.drawString("COUNTER: " + counter, x, y);
+                g2.setColor(new Color(255, 255, 255, 170));
+            }
+
             drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH);
         }
         y += 18;// Top-center event banner
