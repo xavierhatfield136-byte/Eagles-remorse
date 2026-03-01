@@ -19,6 +19,9 @@ public final class EconomySystem {
             doMining(ctx, ctx.player, dt);
         }
 
+        // Player deposits mined ore when docked at a friendly base.
+        handlePlayerDeposit(ctx);
+
         // NPC mining & deposits
         handleNpcMiningAndDeposits(ctx, dt);
 
@@ -34,11 +37,10 @@ public final class EconomySystem {
         Asteroid a = findBestAsteroidNear(ctx, miner.x, miner.y, 220);
         if (a == null) return;
 
-        double rate = getMiningRate(miner) * ctx.miningMul * ctx.miningBaseMul;
-        rate *= CampaignSystem.miningRateMul(ctx);
-        double mined = mineAsteroid(a, rate * dt);
+        double dtScaled = dt * ctx.miningMul * ctx.miningBaseMul;
+        dtScaled *= CampaignSystem.miningRateMul(ctx);
+        int mined = miner.tryMine(a, dtScaled);
         if (mined > 0) {
-            addOreToShip(miner, mined);
             try { VFX.spawnEngineWisp(miner.x, miner.y, miner.vx, miner.vy); } catch (Throwable ignored) {}
         }
     }
@@ -66,6 +68,22 @@ public final class EconomySystem {
             if (GameMath.dist2(ctx.player.x, ctx.player.y, s.x, s.y) < (120 * 120)) return s;
         }
         return null;
+    }
+
+    private static void handlePlayerDeposit(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
+        if (ctx.player.cargo <= 0) return;
+
+        Ship base = getDockedFriendlyBase(ctx);
+        if (base == null) return;
+
+        int moved = ctx.player.depositCargoTo(base);
+        if (moved <= 0) return;
+
+        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
+        priceMul *= CampaignSystem.oreCreditMul(ctx);
+        ctx.credits += (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
     }
 
     private static void handleNpcMiningAndDeposits(GameContext ctx, double dt) {

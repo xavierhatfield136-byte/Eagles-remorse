@@ -1,0 +1,148 @@
+{
+  "harnessVersion": 1,
+  "scenario": "campaign_ops_m1_assisted",
+  "seeds": [10101, 20202, 30303],
+  "results": [
+    {
+      "seed": 10101,
+      "pass": true,
+      "failReason": "",
+      "finalSector": 4,
+      "gameOver": false,
+      "finalCredits": 11739,
+      "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
+      "sectors": [
+        {
+          "sector": 1,
+          "objectiveType": "SURVIVE",
+          "objectiveGoal": 360,
+          "timeLimitSec": 630,
+          "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
+          "clearElapsedSecRounded": 360,
+          "clearTicks": 21600,
+          "creditsAfterClear": 10544,
+          "sideCompleted": true,
+          "sideFailed": false
+        },
+        {
+          "sector": 2,
+          "objectiveType": "DESTROY",
+          "objectiveGoal": 16,
+          "timeLimitSec": 720,
+          "sideObjectiveType": "KILL_COUNT",
+          "clearElapsedSecRounded": 0,
+          "clearTicks": 1,
+          "creditsAfterClear": 10993,
+          "sideCompleted": false,
+          "sideFailed": false
+        },
+        {
+          "sector": 3,
+          "objectiveType": "CAPTURE",
+          "objectiveGoal": 120,
+          "timeLimitSec": 780,
+          "sideObjectiveType": "CLEAR_BEFORE_TIME",
+          "clearElapsedSecRounded": 120,
+          "clearTicks": 7200,
+          "creditsAfterClear": 11739,
+          "sideCompleted": true,
+          "sideFailed": false
+        }
+      ]
+    },
+    {
+      "seed": 20202,
+      "pass": true,
+      "failReason": "",
+      "finalSector": 4,
+      "gameOver": false,
+      "finalCredits": 11739,
+      "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
+      "sectors": [
+        {
+          "sector": 1,
+          "objectiveType": "SURVIVE",
+          "objectiveGoal": 360,
+          "timeLimitSec": 630,
+          "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
+          "clearElapsedSecRounded": 360,
+          "clearTicks": 21600,
+          "creditsAfterClear": 10544,
+          "sideCompleted": true,
+          "sideFailed": false
+        },
+        {
+          "sector": 2,
+          "objectiveType": "DESTROY",
+          "objectiveGoal": 16,
+          "timeLimitSec": 720,
+          "sideObjectiveType": "KILL_COUNT",
+          "clearElapsedSecRounded": 0,
+          "clearTicks": 1,
+          "creditsAfterClear": 10993,
+          "sideCompleted": false,
+          "sideFailed": false
+        },
+        {
+          "sector": 3,
+          "objectiveType": "CAPTURE",
+          "objectiveGoal": 120,
+          "timeLimitSec": 780,
+          "sideObjectiveType": "CLEAR_BEFORE_TIME",
+          "clearElapsedSecRounded": 120,
+          "clearTicks": 7200,
+          "creditsAfterClear": 11739,
+          "sideCompleted": true,
+          "sideFailed": false
+        }
+      ]
+    },
+    {
+      "seed": 30303,
+      "pass": true,
+      "failReason": "",
+      "finalSector": 4,
+      "gameOver": false,
+      "finalCredits": 11739,
+      "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
+      "sectors": [
+        {
+          "sector": 1,
+          "objectiveType": "SURVIVE",
+          "objectiveGoal": 360,
+          "timeLimitSec": 630,
+          "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
+          "clearElapsedSecRounded": 360,
+          "clearTicks": 21600,
+          "creditsAfterClear": 10544,
+          "sideCompleted": true,
+          "sideFailed": false
+        },
+        {
+          "sector": 2,
+          "objectiveType": "DESTROY",
+          "objectiveGoal": 16,
+          "timeLimitSec": 720,
+          "sideObjectiveType": "KILL_COUNT",
+          "clearElapsedSecRounded": 0,
+          "clearTicks": 1,
+          "creditsAfterClear": 10993,
+          "sideCompleted": false,
+          "sideFailed": false
+        },
+        {
+          "sector": 3,
+          "objectiveType": "CAPTURE",
+          "objectiveGoal": 120,
+          "timeLimitSec": 780,
+          "sideObjectiveType": "CLEAR_BEFORE_TIME",
+          "clearElapsedSecRounded": 120,
+          "clearTicks": 7200,
+          "creditsAfterClear": 11739,
+          "sideCompleted": true,
+          "sideFailed": false
+        }
+      ]
+    }
+  ]
+}

@@ -16,7 +16,20 @@ public final class AISystem {
             if (ctx.enemyWaveTimer <= 0) {
                 ctx.enemyWaveTimer = CampaignSystem.nextWaveDelay(ctx);
                 int groups = CampaignSystem.groupsPerWave(ctx);
-                for (int i = 0; i < groups; i++) {
+                int enemyGroups = groups;
+                int allyGroups = Math.max(1, groups - 1);
+
+                if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
+                    // Resource Rush should not snowball into red-only pressure.
+                    allyGroups = groups;
+                    int enemyAlive = TeamSystem.countAliveShips(ctx, Faction.ENEMY);
+                    int allyAlive = TeamSystem.countAliveShips(ctx, Faction.ALLY);
+                    int deficit = enemyAlive - allyAlive;
+                    if (deficit >= 3) {
+                        allyGroups += Math.min(2, deficit / 3);
+                    }
+                }
+                for (int i = 0; i < enemyGroups; i++) {
                     SpawnSystem.spawnEnemyGroup(
                             ctx,
                             ctx.player.x + 900 + ctx.rng.nextDouble() * 500,
@@ -24,7 +37,6 @@ public final class AISystem {
                     );
                 }
 
-                int allyGroups = Math.max(1, groups - 1);
                 for (int i = 0; i < allyGroups; i++) {
                     SpawnSystem.spawnAllyGroup(
                             ctx,
@@ -120,6 +132,17 @@ public final class AISystem {
         if (ctx.projectiles == null) return;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
 
+        if (s.hasWaveMotionGun) {
+            double waveRange = 2200.0 * rangeMul;
+            if (dist <= waveRange) {
+                WaveMotionShot shot = s.tryFireWaveMotionGun(target, dt);
+                if (shot != null) {
+                    ctx.projectiles.add(shot);
+                    ScreenShake.kick(3.5);
+                }
+            }
+        }
+
         for (Turret t : s.turrets) {
             if (t == null) continue;
 
@@ -170,6 +193,7 @@ public final class AISystem {
             case BATTLECRUISER -> 500;
             case BATTLESHIP -> 560;
             case DREADNOUGHT -> 610;
+            case SUPERSHIP -> 880;
             case CARRIER, DRONE_CARRIER, TRANSPORT -> 720;
             case STEALTH_SHIP -> 520;
             default -> 380; // fallback for any roles you add later

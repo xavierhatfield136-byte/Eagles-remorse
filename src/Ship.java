@@ -117,6 +117,20 @@ public abstract class Ship {
     // Turrets
     public final List<Turret> turrets = new ArrayList<>();
 
+    // Superweapon (wave-motion gun)
+    public boolean hasWaveMotionGun = false;
+    public double waveMotionChargeTime = 0.0;
+    public double waveMotionCooldown = 24.0;
+    private double waveMotionTimer = 0.0;
+    private double waveMotionChargeTimer = 0.0;
+    private boolean waveMotionCharging = false;
+    private WaveMotionShot pendingWaveMotionShot = null;
+    public int waveMotionDamage = 52;
+    public double waveMotionSpeed = 1500.0;
+    public int waveMotionLife = 140;
+    public double waveMotionRadius = 12.0;
+    public int waveMotionMaxHits = 18;
+
     // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
         ENERGY_BOLT,
@@ -312,6 +326,19 @@ public abstract class Ship {
         ciwsTimer -= dt;
         if (ciwsTimer < 0) ciwsTimer = 0;
 
+        if (waveMotionTimer > 0) {
+            waveMotionTimer -= dt;
+            if (waveMotionTimer < 0) waveMotionTimer = 0;
+        }
+        if (waveMotionCharging) {
+            waveMotionChargeTimer -= dt;
+            if (waveMotionChargeTimer <= 0.0) {
+                waveMotionChargeTimer = 0.0;
+                waveMotionCharging = false;
+                pendingWaveMotionShot = spawnWaveMotionShotForward(dt);
+            }
+        }
+
         if (isCarrier) {
             fighterTimer -= dt;
             if (fighterTimer < 0) fighterTimer = 0;
@@ -397,6 +424,9 @@ public abstract class Ship {
     private void startDeathSequence() {
         if (dying) return;
         dying = true;
+        waveMotionCharging = false;
+        waveMotionChargeTimer = 0.0;
+        pendingWaveMotionShot = null;
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
@@ -639,5 +669,70 @@ public abstract class Ship {
 
     public void resetBaseSpawnTimer() {
         baseSpawnTimer = baseSpawnCooldown;
+    }
+
+    public double getWaveMotionRemaining() {
+        return Math.max(waveMotionTimer, waveMotionCharging ? waveMotionChargeTimer : 0.0);
+    }
+
+    public boolean isWaveMotionCharging() {
+        return waveMotionCharging;
+    }
+
+    public WaveMotionShot pollWaveMotionShot() {
+        WaveMotionShot shot = pendingWaveMotionShot;
+        pendingWaveMotionShot = null;
+        return shot;
+    }
+
+    public void resetWaveMotionCooldown() {
+        waveMotionTimer = 0.0;
+        waveMotionChargeTimer = 0.0;
+        waveMotionCharging = false;
+        pendingWaveMotionShot = null;
+    }
+
+    public boolean canFireWaveMotionGun() {
+        if (!alive || dying) return false;
+        if (!hasWaveMotionGun) return false;
+        return waveMotionTimer <= 0.0 && !waveMotionCharging;
+    }
+
+    public WaveMotionShot tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
+        if (!canFireWaveMotionGun()) return null;
+        if (dt <= 0.0) return null;
+
+        if (waveMotionChargeTime > 0.0) {
+            waveMotionCharging = true;
+            waveMotionChargeTimer = waveMotionChargeTime;
+            return null;
+        }
+
+        return spawnWaveMotionShotForward(dt);
+    }
+
+    public WaveMotionShot tryFireWaveMotionGun(Ship target, double dt) {
+        return tryFireWaveMotionGunAt(0.0, 0.0, dt);
+    }
+
+    private WaveMotionShot spawnWaveMotionShotForward(double dt) {
+        double aim = angle;
+        double sx = x + Math.cos(aim) * (radius + 10.0);
+        double sy = y + Math.sin(aim) * (radius + 10.0);
+
+        waveMotionTimer = Math.max(1.0, waveMotionCooldown);
+        onFiredWeapon();
+        return new WaveMotionShot(
+                sx,
+                sy,
+                aim,
+                dt,
+                waveMotionSpeed,
+                waveMotionDamage,
+                waveMotionLife,
+                waveMotionRadius,
+                waveMotionMaxHits,
+                faction
+        );
     }
 }

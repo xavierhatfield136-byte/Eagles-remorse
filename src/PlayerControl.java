@@ -12,7 +12,12 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
         this.player = player;
     }
 
+    public InputSnapshot snapshot() {
+        return new InputSnapshot(up, down, left, right, boost, mouseX, mouseY);
+    }
+
     public void update(double dt) {
+        if (player == null) return;
         double speed = 220;
         if (boost) speed *= 1.6;
 
@@ -33,6 +38,7 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
     }
 
     public void updateAim(double worldX, double worldY) {
+        if (player == null) return;
         double dx = worldX - player.x;
         double dy = worldY - player.y;
         player.angle = Math.atan2(dy, dx);

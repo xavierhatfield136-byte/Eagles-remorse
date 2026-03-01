@@ -22,6 +22,7 @@ public enum ShipRole {
     // Large ships
     BATTLESHIP,
     DREADNOUGHT,
+    SUPERSHIP,
     CARRIER,
     DRONE_CARRIER,
     TRANSPORT,

@@ -19,6 +19,18 @@ public final class PhysicsSystem {
             if (s == null) continue;
             s.update(dt);
         }
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            WaveMotionShot shot = s.pollWaveMotionShot();
+            if (shot == null) continue;
+            ctx.projectiles.add(shot);
+            if (s == ctx.player) {
+                EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
+                ScreenShake.kick(8.0);
+            } else {
+                ScreenShake.kick(3.5);
+            }
+        }
 
         if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
             return;

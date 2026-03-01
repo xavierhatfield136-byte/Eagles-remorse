@@ -1,0 +1,23 @@
+name: Compile Check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  java-compile-check:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Compile check
+        shell: pwsh
+        run: ./scripts/check-compile.ps1

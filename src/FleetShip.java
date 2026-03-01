@@ -4,7 +4,7 @@
  * Roles:
  * - Small craft: FIGHTER / BOMBER / PD_CRAFT / DRONE
  * - Medium ships: FRIGATE / MISSILE_BOAT / CIWS_CORVETTE / CRUISER
- * - Large ships: BATTLESHIP / CARRIER / DRONE_CARRIER / TRANSPORT
+ * - Large ships: BATTLESHIP / DREADNOUGHT / SUPERSHIP / CARRIER / DRONE_CARRIER / TRANSPORT
  * - Structures: BASE / STATIC_TURRET
  *
  * Notes:
@@ -761,6 +761,91 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 2;
             }
 
+            case SUPERSHIP -> {
+                if (faction == Faction.ENEMY) name = "Enemy Wave-Motion Battleship";
+                else if (faction == Faction.TEAM_C) name = "Team C Wave-Motion Battleship";
+                else if (faction == Faction.TEAM_D) name = "Team D Wave-Motion Battleship";
+                else name = "Wave-Motion Battleship";
+
+                radius = 52;
+                hpMax = 170;
+                hp = hpMax;
+
+                shieldMax = 120;
+                shield = shieldMax;
+                shieldRegen = 4.2;
+                shieldActive = true;
+
+                desiredSpeed = 52;
+                bountyValue = 1600;
+
+                Turret a1 = new Turret(Turret.Kind.GUN, 38, -18);
+                a1.cooldown = 0.34;
+                a1.damage = 5;
+                a1.bulletSpeed = 1020;
+                a1.bulletLife = 250;
+                a1.primary = true;
+                a1.radius = 12;
+                a1.barrelLen = 30;
+                addTurret(a1);
+
+                Turret a2 = new Turret(Turret.Kind.GUN, 38, 18);
+                a2.cooldown = 0.34;
+                a2.damage = 5;
+                a2.bulletSpeed = 1020;
+                a2.bulletLife = 250;
+                a2.primary = true;
+                a2.radius = 12;
+                a2.barrelLen = 30;
+                addTurret(a2);
+
+                Turret s1 = new Turret(Turret.Kind.GUN, 14, -24);
+                s1.cooldown = 0.27;
+                s1.damage = 3;
+                s1.bulletSpeed = 940;
+                s1.bulletLife = 220;
+                s1.primary = true;
+                s1.radius = 10;
+                s1.barrelLen = 24;
+                addTurret(s1);
+
+                Turret s2 = new Turret(Turret.Kind.GUN, 14, 24);
+                s2.cooldown = 0.27;
+                s2.damage = 3;
+                s2.bulletSpeed = 940;
+                s2.bulletLife = 220;
+                s2.primary = true;
+                s2.radius = 10;
+                s2.barrelLen = 24;
+                addTurret(s2);
+
+                Turret mb = new Turret(Turret.Kind.MISSILE, 2, 0);
+                mb.cooldown = 1.55;
+                mb.damage = 10;
+                mb.primary = false;
+                mb.missileSpeed = 305;
+                mb.missileTurnRate = Math.toRadians(190);
+                mb.missileLife = 360;
+                mb.radius = 13;
+                mb.barrelLen = 20;
+                addTurret(mb);
+
+                hasWaveMotionGun = true;
+                waveMotionChargeTime = 3.0;
+                waveMotionCooldown = 22.0;
+                waveMotionDamage = 62;
+                waveMotionSpeed = 1600.0;
+                waveMotionLife = 170;
+                waveMotionRadius = 14.0;
+                waveMotionMaxHits = 26;
+
+                hasCIWS = true;
+                ciwsQuality = 0.45;
+                ciwsRange = 320;
+                ciwsCooldown = 0.11;
+                ciwsPelletsPerBurst = 3;
+            }
+
             case CARRIER -> {
                 name = (faction == Faction.ENEMY ? "Enemy Carrier" : "Carrier");
                 radius = 34;
@@ -1123,7 +1208,8 @@ public class FleetShip extends Ship {
             speedMul = 0.93;
             turnMul = 0.91;
             lifeMul = 0.93;
-        } else if (role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP || role == ShipRole.DREADNOUGHT) {
+        } else if (role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP
+                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP) {
             cooldownMul = 1.12;
             damageMul = 0.94;
             speedMul = 0.95;

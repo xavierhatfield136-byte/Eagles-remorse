@@ -1,0 +1,191 @@
+import java.awt.*;
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Locale;
+
+public final class DevOverlay {
+    private DevOverlay() {}
+
+    public static void draw(Graphics2D g2, GameContext ctx, int w, int h) {
+        int pad = 10;
+        int x = pad, y = pad;
+        int lineH = 16;
+
+        int minerLines = 0;
+        if (ctx != null && ctx.ships != null) {
+            for (Ship s : ctx.ships) {
+                if (s == null) continue;
+                if (s.role != ShipRole.MINER) continue;
+                minerLines++;
+                if (minerLines >= 6) break;
+            }
+        }
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+
+        int lineCount = 14 + minerLines;
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
+            lineCount++;
+        }
+
+        // Background panel
+        int boxW = 360;
+        int boxH = 10 + lineH * lineCount;
+        g2.setColor(new Color(0, 0, 0, 165));
+        g2.fillRoundRect(x - 6, y - 6, boxW, boxH, 12, 12);
+        g2.setColor(new Color(255, 255, 255, 60));
+        g2.drawRoundRect(x - 6, y - 6, boxW, boxH, 12, 12);
+
+        g2.setColor(new Color(255, 255, 255, 220));
+        y += lineH;
+        drawLine(g2, x, y, "DEV OVERLAY  (F3)   AI: " + (DevTools.isAIEnabled() ? "ON" : "OFF") +
+                "   Time: " + DevTools.getTimeScale() + "x");
+
+        y += lineH;
+        drawLine(g2, x, y, "State: " + safe(ctx, "state"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Ships: " + sizeOf(ctx, "ships") +
+                "  Projectiles: " + sizeOf(ctx, "projectiles") +
+                "  Asteroids: " + sizeOf(ctx, "asteroids"));
+
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
+            Faction[] teams = Faction.fourTeamFactions();
+            int alive = TeamSystem.countAliveTeams(ctx, teams);
+            Faction leader = TeamSystem.getShipCountLeader(ctx, teams);
+            y += lineH;
+            drawLine(g2, x, y, "Teams Alive: " + alive +
+                    "  Leader: " + (leader == null ? "?" : leader.teamName()));
+        }
+
+        y += lineH;
+        drawLine(g2, x, y, "Salvage: " + sizeOf(ctx, "salvage") +
+                "  Explosions: " + staticSize("Explosion", "active"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Credits: " + safe(ctx, "credits") + "  OrePriceMul: " + safe(ctx, "orePriceMul"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Perf: " + fmt2(safeD(ctx, "perfFps")) + " fps"
+                + "  Frame: " + fmt2(safeD(ctx, "perfFrameMs")) + "ms"
+                + "  Jitter: " + fmt2(safeD(ctx, "perfFrameJitterMs")) + "ms");
+
+        y += lineH;
+        drawLine(g2, x, y, "Update: " + fmt2(safeD(ctx, "perfUpdateMs")) + "ms"
+                + "  Render: " + fmt2(safeD(ctx, "perfRenderMs")) + "ms"
+                + "  Steps: " + safe(ctx, "perfUpdateSteps")
+                + "  Drop: " + safe(ctx, "perfDroppedUpdates"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Cam: (" + (int) safeD(ctx, "camX") + ", " + (int) safeD(ctx, "camY") + ")  View: " + w + "x" + h);
+
+        y += lineH;
+        // cursor world coords are optional
+        Object cwx = getFieldValue(ctx, "cursorWorldX");
+        Object cwy = getFieldValue(ctx, "cursorWorldY");
+        if (cwx != null && cwy != null) {
+            drawLine(g2, x, y, "CursorWorld: (" + (int) toDouble(cwx) + ", " + (int) toDouble(cwy) + ")");
+        } else {
+            drawLine(g2, x, y, "CursorWorld: (n/a)");
+        }
+
+        y += lineH;
+        Object player = getFieldValue(ctx, "player");
+        if (player != null) {
+            drawLine(g2, x, y, "Player HP: " + safe(player, "hp") + "/" + safe(player, "hpMax") +
+                    "  SH: " + safe(player, "shield") + "/" + safe(player, "shieldMax"));
+        } else {
+            drawLine(g2, x, y, "Player: null");
+        }
+
+        y += lineH;
+        drawLine(g2, x, y, "Locked: " + (getFieldValue(ctx, "lockedTarget") != null));
+
+        y += lineH;
+        drawLine(g2, x, y, "Shop: " + safe(ctx, "shopOpen") +
+                "  BaseMenu: " + safe(ctx, "baseMenuOpen") +
+                "  Map: " + safe(ctx, "mapOpen"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Fire: L=" + safe(ctx, "firingPrimary") + "  R=" + safe(ctx, "firingSecondary") +
+                "  AutoLock=" + safe(ctx, "autoLockTurrets"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Fancy VFX (F10): " + (DevTools.isFancyVfxEnabled() ? "ON" : "OFF"));
+
+        if (minerLines > 0) {
+            int shown = 0;
+            for (Ship s : ctx.ships) {
+                if (s == null) continue;
+                if (s.role != ShipRole.MINER) continue;
+
+                double distA = -1;
+                if (s.minerTarget != null) distA = Math.hypot(s.minerTarget.x - s.x, s.minerTarget.y - s.y);
+                double distB = -1;
+                if (s.minerHomeBase != null) distB = Math.hypot(s.minerHomeBase.x - s.x, s.minerHomeBase.y - s.y);
+
+                y += lineH;
+                String line = "MINER #" + s.id + " " + (s.minerState == null ? "?" : s.minerState.name()) +
+                        " cargo=" + s.cargo + "/" + s.cargoMax +
+                        " distA=" + (distA < 0 ? "?" : (int) Math.round(distA)) +
+                        " distB=" + (distB < 0 ? "?" : (int) Math.round(distB));
+                drawLine(g2, x, y, line);
+
+                shown++;
+                if (shown >= 6) break;
+            }
+        }
+    }
+
+    private static void drawLine(Graphics2D g2, int x, int y, String s) {
+        g2.drawString(s, x, y);
+    }
+
+    private static String fmt2(double v) {
+        return String.format(Locale.US, "%.2f", v);
+    }
+
+    private static Object getFieldValue(Object obj, String field) {
+        if (obj == null) return null;
+        try {
+            Field f = obj.getClass().getDeclaredField(field);
+            f.setAccessible(true);
+            return f.get(obj);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static String safe(Object obj, String field) {
+        Object v = getFieldValue(obj, field);
+        return v == null ? "?" : String.valueOf(v);
+    }
+
+    private static double safeD(Object obj, String field) {
+        Object v = getFieldValue(obj, field);
+        if (v == null) return 0.0;
+        return toDouble(v);
+    }
+
+    private static double toDouble(Object v) {
+        if (v instanceof Number n) return n.doubleValue();
+        try { return Double.parseDouble(String.valueOf(v)); } catch (Throwable ignored) { return 0.0; }
+    }
+
+    private static int sizeOf(Object obj, String field) {
+        Object v = getFieldValue(obj, field);
+        if (v instanceof List<?> list) return list.size();
+        return -1;
+    }
+
+    private static int staticSize(String className, String staticField) {
+        try {
+            Class<?> c = Class.forName(className);
+            Field f = c.getDeclaredField(staticField);
+            f.setAccessible(true);
+            Object v = f.get(null);
+            if (v instanceof List<?> list) return list.size();
+        } catch (Throwable ignored) {}
+        return -1;
+    }
+}

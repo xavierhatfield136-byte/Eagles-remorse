@@ -218,7 +218,7 @@ class MainMenuPanel extends JPanel {
         setBackground(Color.BLACK);
         setFocusable(true);
 
-        JLabel title = new JLabel("SPACE GAME");
+        JLabel title = new JLabel(AppInfo.APP_NAME.toUpperCase());
         title.setForeground(Color.WHITE);
         title.setFont(new Font("Consolas", Font.BOLD, 48));
 

@@ -16,11 +16,24 @@ public class CollisionSystem {
         if (projectiles == null || ships == null) return;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            boolean waveShot = p instanceof WaveMotionShot;
             for (Ship s : ships) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
 
                 if (circleHit(p.x, p.y, p.radius, s.x, s.y, s.radius)) {
+                    if (waveShot) {
+                        WaveMotionShot ws = (WaveMotionShot) p;
+                        if (!ws.canDamage(s)) continue;
+                        ws.markDamaged(s);
+                        s.takeDamage(p.damage);
+                        VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, Math.max(3, p.damage));
+                        ScreenShake.kick(2.2);
+                        ws.consumeHit();
+                        if (!p.alive) break;
+                        continue;
+                    }
+
                     // Cosmetic impact effects (no gameplay impact)
                     double dirX = p.vx;
                     double dirY = p.vy;
@@ -110,6 +123,7 @@ public class CollisionSystem {
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            if (p instanceof WaveMotionShot) continue;
             for (Asteroid a : asteroids) {
                 if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.radius)) {
                     p.alive = false;

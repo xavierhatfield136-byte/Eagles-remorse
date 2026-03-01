@@ -7,11 +7,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 public class Renderer {
@@ -47,44 +49,22 @@ public class Renderer {
         return String.format(java.util.Locale.US, "%.1f", v);
     }
 
-    // NEW: simple deterministic starfield background (screen space)
+    // Layered environment backgrounds with procedural fallback.
     public static void drawSpaceBackground(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
-        double px = camX * 0.20;
-        double py = camY * 0.20;
+        BufferedImage bgBase = EnvironmentSkinLibrary.backgroundBase();
+        BufferedImage bgNebula = EnvironmentSkinLibrary.backgroundNebula();
+        BufferedImage bgStars = EnvironmentSkinLibrary.backgroundStars();
+        BufferedImage bgDust = EnvironmentSkinLibrary.backgroundDust();
 
-        int tile = 256;
-        int startX = (int) Math.floor(px / tile) - 1;
-        int startY = (int) Math.floor(py / tile) - 1;
-        int endX = (int) Math.floor((px + viewW) / tile) + 1;
-        int endY = (int) Math.floor((py + viewH) / tile) + 1;
-
-        for (int tx = startX; tx <= endX; tx++) {
-            for (int ty = startY; ty <= endY; ty++) {
-                long mix = seed;
-                mix ^= (long) tx * 0x9E3779B97F4A7C15L;
-                mix ^= (long) ty * 0xC2B2AE3D27D4EB4FL;
-                mix ^= (mix >>> 33);
-                mix *= 0xff51afd7ed558ccdL;
-                mix ^= (mix >>> 33);
-
-                Random r = new Random(mix);
-
-                int stars = 10 + r.nextInt(10);
-                for (int i = 0; i < stars; i++) {
-                    int sx = tx * tile + r.nextInt(tile);
-                    int sy = ty * tile + r.nextInt(tile);
-
-                    int x = (int) Math.round(sx - px);
-                    int y = (int) Math.round(sy - py);
-
-                    int size = 1 + r.nextInt(2);
-                    int a = 40 + r.nextInt(90);
-
-                    g2.setColor(new Color(255, 255, 255, a));
-                    g2.fillRect(x, y, size, size);
-                }
-            }
+        if (bgBase == null && bgNebula == null && bgStars == null && bgDust == null) {
+            drawSpaceBackgroundFallback(g2, camX, camY, viewW, viewH, seed);
+            return;
         }
+
+        drawTiledParallaxLayer(g2, bgBase, camX, camY, viewW, viewH, 0.05, 1.00f);
+        drawTiledParallaxLayer(g2, bgNebula, camX, camY, viewW, viewH, 0.10, 0.72f);
+        drawTiledParallaxLayer(g2, bgStars, camX, camY, viewW, viewH, 0.16, 0.95f);
+        drawTiledParallaxLayer(g2, bgDust, camX, camY, viewW, viewH, 0.24, 0.62f);
     }
 
     public static void drawShips(Graphics2D g2, List<Ship> ships) {
@@ -101,6 +81,12 @@ public class Renderer {
         if (asteroids == null) return;
         for (Asteroid a : asteroids) {
             if (a == null) continue;
+
+            BufferedImage skin = EnvironmentSkinLibrary.pickAsteroidSprite(a);
+            if (skin != null) {
+                drawAsteroidSprite(g2, a, skin);
+                continue;
+            }
 
             int r = (int) Math.round(a.radius);
             int x = (int) Math.round(a.x);
@@ -143,6 +129,92 @@ public class Renderer {
                 g2.drawOval(x - rr2, y - rr2, rr2 * 2, rr2 * 2);
             }
         }
+    }
+
+    private static void drawSpaceBackgroundFallback(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
+        double px = camX * 0.20;
+        double py = camY * 0.20;
+
+        int tile = 256;
+        int startX = (int) Math.floor(px / tile) - 1;
+        int startY = (int) Math.floor(py / tile) - 1;
+        int endX = (int) Math.floor((px + viewW) / tile) + 1;
+        int endY = (int) Math.floor((py + viewH) / tile) + 1;
+
+        for (int tx = startX; tx <= endX; tx++) {
+            for (int ty = startY; ty <= endY; ty++) {
+                long mix = seed;
+                mix ^= (long) tx * 0x9E3779B97F4A7C15L;
+                mix ^= (long) ty * 0xC2B2AE3D27D4EB4FL;
+                mix ^= (mix >>> 33);
+                mix *= 0xff51afd7ed558ccdL;
+                mix ^= (mix >>> 33);
+
+                Random r = new Random(mix);
+                int stars = 10 + r.nextInt(10);
+                for (int i = 0; i < stars; i++) {
+                    int sx = tx * tile + r.nextInt(tile);
+                    int sy = ty * tile + r.nextInt(tile);
+                    int x = (int) Math.round(sx - px);
+                    int y = (int) Math.round(sy - py);
+                    int size = 1 + r.nextInt(2);
+                    int a = 40 + r.nextInt(90);
+                    g2.setColor(new Color(255, 255, 255, a));
+                    g2.fillRect(x, y, size, size);
+                }
+            }
+        }
+    }
+
+    private static void drawTiledParallaxLayer(Graphics2D g2, BufferedImage tile,
+                                               double camX, double camY, int viewW, int viewH,
+                                               double parallax, float alpha) {
+        if (tile == null || alpha <= 0f) return;
+
+        int tw = Math.max(1, tile.getWidth());
+        int th = Math.max(1, tile.getHeight());
+        double px = camX * parallax;
+        double py = camY * parallax;
+        int startX = (int) Math.floor(px / tw) - 1;
+        int startY = (int) Math.floor(py / th) - 1;
+        int endX = (int) Math.floor((px + viewW) / tw) + 1;
+        int endY = (int) Math.floor((py + viewH) / th) + 1;
+
+        Composite old = g2.getComposite();
+        if (alpha < 0.999f) {
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
+        }
+
+        for (int tx = startX; tx <= endX; tx++) {
+            for (int ty = startY; ty <= endY; ty++) {
+                int x = (int) Math.round(tx * tw - px);
+                int y = (int) Math.round(ty * th - py);
+                g2.drawImage(tile, x, y, tw, th, null);
+            }
+        }
+
+        g2.setComposite(old);
+    }
+
+    private static void drawAsteroidSprite(Graphics2D g2, Asteroid a, BufferedImage skin) {
+        int x = (int) Math.round(a.x);
+        int y = (int) Math.round(a.y);
+        int draw = Math.max(14, (int) Math.round(a.radius * 3.0));
+
+        Graphics2D ga = (Graphics2D) g2.create();
+        ga.translate(x, y);
+        ga.rotate(a.spin * 0.35);
+        ga.drawImage(skin, -draw / 2, -draw / 2, draw, draw, null);
+
+        double frac = (a.oreMax <= 0) ? 0.0 : Math.max(0.0, Math.min(1.0, (double) a.ore / (double) a.oreMax));
+        if (a.rich && frac > 0.05) {
+            int rr = Math.max(8, (int) Math.round(a.radius * 1.28));
+            int alpha = MathUtil.clamp((int) Math.round(24 + 72 * frac), 0, 140);
+            ga.setColor(new Color(255, 210, 120, alpha));
+            ga.drawOval(-rr, -rr, rr * 2, rr * 2);
+        }
+
+        ga.dispose();
     }
 
     // ------------------------------
@@ -206,6 +278,34 @@ public class Renderer {
 
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
+            } else if (p instanceof WaveMotionShot ws) {
+                int x = (int) Math.round(ws.x);
+                int y = (int) Math.round(ws.y);
+                double nx = Math.cos(ws.angle);
+                double ny = Math.sin(ws.angle);
+
+                int len = (int) Math.round(Math.max(30.0, ws.radius * 5.6));
+                int tail = len / 2;
+                int head = len / 2;
+
+                int x1 = (int) Math.round(ws.x - nx * tail);
+                int y1 = (int) Math.round(ws.y - ny * tail);
+                int x2 = (int) Math.round(ws.x + nx * head);
+                int y2 = (int) Math.round(ws.y + ny * head);
+
+                Stroke old = g2.getStroke();
+                g2.setStroke(new BasicStroke((float) Math.max(6.0, ws.radius * 2.3), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(80, 205, 255, 110));
+                g2.drawLine(x1, y1, x2, y2);
+
+                g2.setStroke(new BasicStroke((float) Math.max(2.8, ws.radius * 1.1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(230, 255, 255, 240));
+                g2.drawLine(x1, y1, x2, y2);
+
+                int glow = (int) Math.round(Math.max(8.0, ws.radius * 1.6));
+                g2.setColor(new Color(140, 235, 255, 170));
+                g2.fillOval(x - glow, y - glow, glow * 2, glow * 2);
+                g2.setStroke(old);
             } else if (p instanceof EnergyBolt eb) {
                 // Yamato 2199-style energy bolts (standard + BEAM_BOLT variant)
                 int x = (int) Math.round(eb.x);
@@ -406,6 +506,7 @@ public class Renderer {
         }
 
         g2.drawString("HANGAR TIER: " + hangarTier + "  (dock + B to upgrade)", x, y);
+        y += 18;
 
         // Cargo / mining
         if (player.cargoMax > 0) {
@@ -413,7 +514,7 @@ public class Renderer {
             y += 18;
             if (dockedAtBase) {
                 g2.setColor(new Color(160, 220, 255, 220));
-                g2.drawString("DOCKED: Press B for Base Upgrades (1-5)", x, y);
+                g2.drawString("DOCKED: Ore auto-deposits   Press B for Base Upgrades (1-5)", x, y);
                 g2.setColor(new Color(255, 255, 255, 220));
             }
             y += 18;
@@ -479,9 +580,12 @@ public class Renderer {
         y += 18;
         g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
         y += 18;
-        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/- hulls)   B: base upgrades", x, y);
+        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/-/= hulls)   B: base upgrades", x, y);
         y += 18;
-        g2.drawString("Q: missile salvo   E: shield overcharge   F: mine", x, y);
+        String abilityKeys = player.hasWaveMotionGun
+                ? "Q: missile salvo   E: shield overcharge   X: wave gun   F: mine"
+                : "Q: missile salvo   E: shield overcharge   F: mine";
+        g2.drawString(abilityKeys, x, y);
         y += 18;
         if (player.isCarrier) {
             g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
@@ -493,6 +597,15 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString("AUTO-LOCK: " + (autoLock ? "ON" : "OFF"), x, y);
         y += 18;
+
+        if (player.hasWaveMotionGun) {
+            double rem = player.getWaveMotionRemaining();
+            String wave = player.isWaveMotionCharging()
+                    ? ("CHARGING " + Math.max(1, (int) Math.ceil(rem)) + "s")
+                    : ((rem <= 0.0) ? "READY" : (Math.max(1, (int) Math.ceil(rem)) + "s"));
+            g2.drawString("WAVE GUN: " + wave, x, y);
+            y += 18;
+        }
 
         if (playerWingCap > 0) {
             g2.drawString("WING: " + playerWingActive + " / " + playerWingCap
@@ -633,7 +746,7 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 150));
-        g2.drawString("TAB/ESC close   1-9 buy   F-keys swap hull", x + 14, y + 44);
+        g2.drawString("TAB/ESC close   1-9 buy   F-keys/0/-/= swap hull", x + 14, y + 44);
 
         // Readouts
         int ty = y + 70;
@@ -769,7 +882,7 @@ public class Renderer {
             case PATROL, PICKET, FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> 0;
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
             case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP -> 2;
-            case DREADNOUGHT, CARRIER, DRONE_CARRIER, TRANSPORT -> 3;
+            case DREADNOUGHT, CARRIER, DRONE_CARRIER, TRANSPORT, SUPERSHIP -> 3;
             default -> 0;
         };
 
@@ -786,6 +899,7 @@ public class Renderer {
         ty = drawHullLine(g2, x + 14, ty, "F12", ShipRole.DREADNOUGHT, 3200, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "0", ShipRole.CARRIER, 2800, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "-", ShipRole.DRONE_CARRIER, 3000, credits, hangarTier, player, reqTier);
+        ty = drawHullLine(g2, x + 14, ty, "=", ShipRole.SUPERSHIP, 5200, credits, hangarTier, player, reqTier);
 
         // Footer hint
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -1289,14 +1403,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             ShipVisual visual = getVisual(ship);
             Area hullArea = buildArea(visual.hullPolys);
-            boolean hasSkin = ShipSkinLibrary.hasSkin(ship.role, ship.faction);
+            ShipSkinSet skinSet = ShipSkinLibrary.getSkinSet(ship.role, ship.faction);
+            boolean hasAlbedoSkin = skinSet != null && skinSet.hasAlbedo();
 
-            if (!hasSkin) {
+            if (!hasAlbedoSkin) {
                 drawHullShadow(g, visual);
                 drawHullAndSuper(g, visual, hull, trim);
             }
-            drawHullSkin(g, ship, visual, hullArea);
-            drawPanelsAndWindows(g, ship, visual, hullArea);
+            drawHullSkin(g, ship, visual, hullArea, hull, trim, skinSet);
+            drawPanelsAndWindows(g, ship, visual, hullArea, hasAlbedoSkin);
             drawEngines(g, ship, visual);
             drawHardpoints(g, ship, visual);
 
@@ -1415,6 +1530,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     v.engines.add(new EnginePoint(-r + 1, r / 3));
                     v.engines.add(new EnginePoint(-r + 1, r / 2 - 5));
                 }
+                case SUPERSHIP -> {
+                    v.hullPolys.add(poly(new int[]{r + 24, r - 8, r - 24, -r + 3, -r, -r + 18, -r, -r + 3, r - 24, r - 8},
+                            new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2}));
+                    v.superPolys.add(poly(new int[]{-r / 6, r / 4, r / 4, -r / 10}, new int[]{-r / 4, -r / 8, r / 4, r / 3}));
+                    v.superPolys.add(poly(new int[]{r / 6, r / 2, r / 3, r / 7}, new int[]{-r / 6, -r / 10, r / 10, r / 6}));
+                    v.superPolys.add(poly(new int[]{r / 3, r / 2, r / 2, r / 3}, new int[]{-r / 7, -r / 11, r / 11, r / 7}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{-r / 2, -r / 4, -r / 8}));
+                    v.fins.add(poly(new int[]{-r + 2, -r / 3, -r + 2}, new int[]{r / 2, r / 4, r / 8}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 2 + 6));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, 0));
+                    v.engines.add(new EnginePoint(-r + 1, r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, r / 2 - 6));
+                }
                 case MINER -> {
                     // Industrial silhouette: chunkier bow, side pods, mining rig.
                     v.hullPolys.add(poly(new int[]{r + 5, r - 7, -r + 6, -r, -r + 6, r - 7},
@@ -1508,9 +1637,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             for (Polygon p : v.hullPolys) g.drawPolygon(p);
         }
 
-        private static void drawPanelsAndWindows(Graphics2D g, Ship ship, ShipVisual v, Area hullArea) {
+        private static void drawPanelsAndWindows(Graphics2D g, Ship ship, ShipVisual v, Area hullArea, boolean hasAlbedoSkin) {
             if (v.station || hullArea == null) return;
-            if (ShipSkinLibrary.hasSkin(ship.role, ship.faction)) return;
+            if (hasAlbedoSkin) return;
 
             Shape oldClip = g.getClip();
             g.setClip(hullArea);
@@ -1539,10 +1668,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.setClip(oldClip);
         }
 
-        private static void drawHullSkin(Graphics2D g, Ship ship, ShipVisual v, Area hullArea) {
-            if (v.station) return;
-            BufferedImage skin = ShipSkinLibrary.getSkin(ship.role, ship.faction);
-            if (skin == null) return;
+        private static void drawHullSkin(Graphics2D g, Ship ship, ShipVisual v, Area hullArea,
+                                         Color hull, Color trim, ShipSkinSet skinSet) {
+            if (skinSet == null || !skinSet.hasAnyLayer()) return;
 
             Rectangle2D bounds = (hullArea == null)
                     ? new Rectangle2D.Double(-ship.radius, -ship.radius, ship.radius * 2.0, ship.radius * 2.0)
@@ -1554,17 +1682,94 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int dw = Math.max(1, (int) Math.round(bounds.getWidth() + pad * 2.0));
             int dh = Math.max(1, (int) Math.round(bounds.getHeight() + pad * 2.0));
 
-            // Option 2: overscale skin a bit so it better covers procedural hull geometry.
-            final double SKIN_SCALE = 1.5;
-            int sw = Math.max(1, (int) Math.round(dw * SKIN_SCALE));
-            int sh = Math.max(1, (int) Math.round(dh * SKIN_SCALE));
-            int sx = dx - (sw - dw) / 2;
-            int sy = dy - (sh - dh) / 2;
+            // Draw the authored sprite on a square canvas around the ship center.
+            // Using hull bounds directly can collapse wide sprites into a thin strip.
+            final double SKIN_SCALE = 2.1;
+            int baseSpan = Math.max(Math.max(dw, dh), (int) Math.round(ship.radius * 2.0));
+            int sw = Math.max(1, (int) Math.round(baseSpan * SKIN_SCALE));
+            int sh = sw;
+            int sx = -sw / 2;
+            int sy = -sh / 2;
 
+            drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
+            boolean hasAuxLayers = skinSet.panel != null || skinSet.ao != null
+                    || skinSet.emissive != null || skinSet.damage != null;
+            if (!hasAuxLayers) return;
+
+            Shape oldClip = g.getClip();
+            if (hullArea != null) {
+                if (oldClip == null) {
+                    g.setClip(hullArea);
+                } else {
+                    Area combined = new Area(oldClip);
+                    combined.intersect(hullArea);
+                    g.setClip(combined);
+                }
+            }
+
+            drawSkinLayer(g, skinSet.panel, sx, sy, sw, sh, 0.46f);
+            drawSkinLayer(g, skinSet.ao, sx, sy, sw, sh, 0.50f);
+
+            if (skinSet.damage != null && ship.hpMax > 0) {
+                double damageFrac = Math.max(0.0, Math.min(1.0, 1.0 - ship.hp / (double) ship.hpMax));
+                float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
+                if (damageAlpha > 0.16f) {
+                    drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha);
+                    if (damageFrac > 0.50) drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha * 0.36f);
+                }
+            }
+
+            if (skinSet.emissive != null) {
+                drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.50f);
+                drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.17f);
+            }
+
+            applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
+            g.setClip(oldClip);
+        }
+
+        private static void drawSkinLayer(Graphics2D g, BufferedImage layer,
+                                          int x, int y, int w, int h, float alpha) {
+            if (layer == null || alpha <= 0f) return;
+            float a = (float) Math.max(0.0, Math.min(1.0, alpha));
             Composite old = g.getComposite();
-            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.95f));
-            g.drawImage(skin, sx, sy, sw, sh, null);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            g.drawImage(layer, x, y, w, h, null);
             g.setComposite(old);
+        }
+
+        private static void applyFactionSkinLighting(Graphics2D g, Rectangle2D bounds, Faction faction, Color hull, Color trim) {
+            int x = (int) Math.round(bounds.getMinX());
+            int y = (int) Math.round(bounds.getMinY());
+            int w = Math.max(1, (int) Math.round(bounds.getWidth()));
+            int h = Math.max(1, (int) Math.round(bounds.getHeight()));
+            HullLightingPreset preset = HullLightingPreset.forFaction(faction, hull, trim);
+
+            Paint oldPaint = g.getPaint();
+            Composite oldComposite = g.getComposite();
+
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+            g.setPaint(new GradientPaint(
+                    x, y + h / 2f, withAlpha(preset.rimColor, preset.rimAlpha),
+                    x + w * 0.40f, y + h / 2f, withAlpha(preset.rimColor, 0)));
+            g.fillRect(x, y, w, h);
+
+            g.setPaint(new GradientPaint(
+                    x, y + h / 2f, withAlpha(preset.keyColor, 0),
+                    x + w, y + h / 2f, withAlpha(preset.keyColor, preset.keyAlpha)));
+            g.fillRect(x, y, w, h);
+
+            g.setPaint(new GradientPaint(
+                    x, y, withAlpha(Color.WHITE, preset.deckAlpha),
+                    x, y + h, withAlpha(Color.BLACK, preset.bellyAlpha)));
+            g.fillRect(x, y, w, h);
+
+            g.setPaint(oldPaint);
+            g.setComposite(oldComposite);
+        }
+
+        private static Color withAlpha(Color c, int alpha) {
+            return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(0, Math.min(255, alpha)));
         }
 
         private static void drawEngines(Graphics2D g, Ship ship, ShipVisual v) {
@@ -1630,64 +1835,152 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static final class ShipSkinSet {
+        final BufferedImage albedo;
+        final BufferedImage panel;
+        final BufferedImage ao;
+        final BufferedImage emissive;
+        final BufferedImage damage;
+
+        ShipSkinSet(BufferedImage albedo, BufferedImage panel, BufferedImage ao,
+                    BufferedImage emissive, BufferedImage damage) {
+            this.albedo = albedo;
+            this.panel = panel;
+            this.ao = ao;
+            this.emissive = emissive;
+            this.damage = damage;
+        }
+
+        boolean hasAlbedo() {
+            return albedo != null;
+        }
+
+        boolean hasAnyLayer() {
+            return albedo != null || panel != null || ao != null || emissive != null || damage != null;
+        }
+    }
+
+    private static final class HullLightingPreset {
+        final Color keyColor;
+        final Color rimColor;
+        final int keyAlpha;
+        final int rimAlpha;
+        final int deckAlpha;
+        final int bellyAlpha;
+
+        HullLightingPreset(Color keyColor, Color rimColor,
+                           int keyAlpha, int rimAlpha, int deckAlpha, int bellyAlpha) {
+            this.keyColor = keyColor;
+            this.rimColor = rimColor;
+            this.keyAlpha = keyAlpha;
+            this.rimAlpha = rimAlpha;
+            this.deckAlpha = deckAlpha;
+            this.bellyAlpha = bellyAlpha;
+        }
+
+        static HullLightingPreset forFaction(Faction faction, Color hull, Color trim) {
+            Color baseKey = brighten(hull, 46);
+            Color baseRim = brighten(trim, 24);
+            if (faction == null) {
+                return new HullLightingPreset(baseKey, baseRim, 56, 48, 30, 24);
+            }
+            return switch (faction) {
+                case PLAYER, ALLY -> new HullLightingPreset(baseKey, baseRim, 62, 52, 30, 23);
+                case ENEMY -> new HullLightingPreset(baseKey, baseRim, 52, 40, 26, 26);
+                case TEAM_C -> new HullLightingPreset(baseKey, baseRim, 58, 46, 29, 24);
+                case TEAM_D -> new HullLightingPreset(baseKey, baseRim, 57, 48, 28, 24);
+            };
+        }
+
+        private static Color brighten(Color c, int delta) {
+            return new Color(
+                    Math.min(255, c.getRed() + delta),
+                    Math.min(255, c.getGreen() + delta),
+                    Math.min(255, c.getBlue() + delta));
+        }
+    }
+
     private static final class ShipSkinLibrary {
         private static final String SKIN_DIR = "assets/ship_skins";
-        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
+        private static final Map<String, ShipSkinSet> CACHE = new HashMap<>();
         private static final Set<String> MISS = new HashSet<>();
 
         static boolean hasSkin(ShipRole role, Faction faction) {
-            return getSkin(role, faction) != null;
+            ShipSkinSet set = getSkinSet(role, faction);
+            return set != null && set.hasAlbedo();
         }
 
         static BufferedImage getSkin(ShipRole role, Faction faction) {
+            ShipSkinSet set = getSkinSet(role, faction);
+            return (set == null) ? null : set.albedo;
+        }
+
+        static ShipSkinSet getSkinSet(ShipRole role, Faction faction) {
             String roleKey = keyForRole(role);
             String factionKey = keyForFaction(faction);
             String key = roleKey + "|" + factionKey;
             if (CACHE.containsKey(key)) return CACHE.get(key);
             if (MISS.contains(key)) return null;
 
-            BufferedImage img = loadRoleSkin(factionKey, roleKey);
-            if (img != null) {
-                CACHE.put(key, img);
-                return img;
-            }
+            BufferedImage albedo = loadLayer(roleKey, factionKey, "albedo", true);
+            BufferedImage panel = loadLayer(roleKey, factionKey, "panel", false);
+            BufferedImage ao = loadLayer(roleKey, factionKey, "ao", false);
+            BufferedImage emissive = loadLayer(roleKey, factionKey, "emissive", false);
+            BufferedImage damage = loadLayer(roleKey, factionKey, "damage", false);
 
-            img = loadRoleSkin(roleKey + "_" + factionKey);
-            if (img != null) {
-                CACHE.put(key, img);
-                return img;
-            }
-
-            img = loadRoleSkin(roleKey);
-            if (img != null) {
-                CACHE.put(key, img);
-                return img;
-            }
-
-            BufferedImage fallback = loadRoleSkin("default_" + factionKey);
-            if (fallback != null) {
-                CACHE.put(key, fallback);
-                return fallback;
-            }
-
-            fallback = loadRoleSkin("default");
-            if (fallback != null) {
-                CACHE.put(key, fallback);
-                return fallback;
+            ShipSkinSet set = new ShipSkinSet(albedo, panel, ao, emissive, damage);
+            if (set.hasAnyLayer()) {
+                CACHE.put(key, set);
+                return set;
             }
 
             MISS.add(key);
             return null;
         }
 
+        private static BufferedImage loadLayer(String roleKey, String factionKey, String layerKey, boolean includeLegacyRoleFallback) {
+            String layerSuffix = "_" + layerKey;
+
+            BufferedImage img = loadRoleSkin(factionKey + "/" + roleKey + layerSuffix);
+            if (img != null) return img;
+
+            img = loadRoleSkin(roleKey + "_" + factionKey + layerSuffix);
+            if (img != null) return img;
+
+            img = loadRoleSkin(roleKey + layerSuffix);
+            if (img != null) return img;
+
+            img = loadRoleSkin("default_" + factionKey + layerSuffix);
+            if (img != null) return img;
+
+            img = loadRoleSkin("default" + layerSuffix);
+            if (img != null) return img;
+
+            if (!includeLegacyRoleFallback) return null;
+
+            img = loadRoleSkin(factionKey, roleKey);
+            if (img != null) return img;
+
+            img = loadRoleSkin(roleKey + "_" + factionKey);
+            if (img != null) return img;
+
+            img = loadRoleSkin(roleKey);
+            if (img != null) return img;
+
+            img = loadRoleSkin("default_" + factionKey);
+            if (img != null) return img;
+
+            return loadRoleSkin("default");
+        }
+
         private static BufferedImage loadRoleSkin(String key) {
-            String path = SKIN_DIR + "/" + key + ".png";
-            try {
-                File f = new File(path);
-                if (f.isFile()) {
-                    return ImageIO.read(f);
-                }
-            } catch (IOException ignored) {}
+            for (File root : SKIN_ROOTS) {
+                File f = new File(root, key + ".png");
+                try {
+                    if (f.isFile()) return ImageIO.read(f);
+                } catch (IOException ignored) {}
+            }
             return null;
         }
 
@@ -1708,6 +2001,335 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case TEAM_C -> "team_c";
                 case TEAM_D -> "team_d";
             };
+        }
+
+        private static List<File> resolveSkinRoots(String relativeDir) {
+            List<File> roots = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+
+            addRootCandidate(new File(relativeDir), roots, seen);
+            addAncestorCandidates(new File(System.getProperty("user.dir", ".")), relativeDir, 8, roots, seen);
+
+            try {
+                File codeSource = new File(Renderer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                File start = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+                addAncestorCandidates(start, relativeDir, 8, roots, seen);
+            } catch (Exception ignored) {}
+
+            return roots;
+        }
+
+        private static void addAncestorCandidates(File start, String relativeDir, int maxDepth,
+                                                  List<File> roots, Set<String> seen) {
+            File current = start;
+            for (int i = 0; i <= maxDepth && current != null; i++) {
+                addRootCandidate(new File(current, relativeDir), roots, seen);
+                current = current.getParentFile();
+            }
+        }
+
+        private static void addRootCandidate(File dir, List<File> roots, Set<String> seen) {
+            if (dir == null || !dir.isDirectory()) return;
+            try {
+                String canonical = dir.getCanonicalPath();
+                if (seen.add(canonical)) roots.add(dir);
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private static final class TurretSkinLibrary {
+        private static final String SKIN_DIR = "assets/turret_skins";
+        private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
+        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final Set<String> MISS = new HashSet<>();
+
+        static BufferedImage getTurretSkin(String styleKey, ShipRole role, Faction faction) {
+            String safeStyle = (styleKey == null || styleKey.isBlank()) ? "twin_gun" : styleKey.toLowerCase(Locale.ROOT);
+            String roleKey = keyForRole(role);
+            String factionKey = keyForFaction(faction);
+            String key = roleKey + "|" + factionKey + "|" + safeStyle;
+            if (CACHE.containsKey(key)) return CACHE.get(key);
+            if (MISS.contains(key)) return null;
+
+            BufferedImage img = loadSkin(factionKey + "/" + roleKey + "_" + safeStyle);
+            if (img == null) img = loadSkin(roleKey + "_" + factionKey + "_" + safeStyle);
+            if (img == null) img = loadSkin(roleKey + "_" + safeStyle);
+            if (img == null) img = loadSkin(factionKey + "/" + safeStyle);
+            if (img == null) img = loadSkin(safeStyle + "_" + factionKey);
+            if (img == null) img = loadSkin(safeStyle);
+            if (img == null) img = loadSkin("default_" + factionKey + "_" + safeStyle);
+            if (img == null) img = loadSkin("default_" + safeStyle);
+            if (img == null) img = loadSkin("default_" + factionKey);
+            if (img == null) img = loadSkin("default");
+
+            if (img != null) {
+                CACHE.put(key, img);
+                return img;
+            }
+
+            MISS.add(key);
+            return null;
+        }
+
+        private static BufferedImage loadSkin(String key) {
+            for (File root : SKIN_ROOTS) {
+                File f = new File(root, key + ".png");
+                try {
+                    if (f.isFile()) return ImageIO.read(f);
+                } catch (IOException ignored) {}
+            }
+            return null;
+        }
+
+        private static String keyForRole(ShipRole role) {
+            if (role == null) return "frigate";
+            return role.name().toLowerCase(Locale.ROOT);
+        }
+
+        private static String keyForFaction(Faction faction) {
+            if (faction == null) return "ally";
+            return switch (faction) {
+                case PLAYER, ALLY -> "ally";
+                case ENEMY -> "enemy";
+                case TEAM_C -> "team_c";
+                case TEAM_D -> "team_d";
+            };
+        }
+
+        private static List<File> resolveSkinRoots(String relativeDir) {
+            List<File> roots = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+
+            addRootCandidate(new File(relativeDir), roots, seen);
+            addAncestorCandidates(new File(System.getProperty("user.dir", ".")), relativeDir, 8, roots, seen);
+
+            try {
+                File codeSource = new File(Renderer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                File start = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+                addAncestorCandidates(start, relativeDir, 8, roots, seen);
+            } catch (Exception ignored) {}
+
+            return roots;
+        }
+
+        private static void addAncestorCandidates(File start, String relativeDir, int maxDepth,
+                                                  List<File> roots, Set<String> seen) {
+            File current = start;
+            for (int i = 0; i <= maxDepth && current != null; i++) {
+                addRootCandidate(new File(current, relativeDir), roots, seen);
+                current = current.getParentFile();
+            }
+        }
+
+        private static void addRootCandidate(File dir, List<File> roots, Set<String> seen) {
+            if (dir == null || !dir.isDirectory()) return;
+            try {
+                String canonical = dir.getCanonicalPath();
+                if (seen.add(canonical)) roots.add(dir);
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private static final class EnvironmentSkinLibrary {
+        private static final String BG_DIR = "assets/environment_overhaul_dropzone/background";
+        private static final String AST_DIR = "assets/environment_overhaul_dropzone/asteroids";
+        private static final List<File> BG_ROOTS = resolveRoots(BG_DIR);
+        private static final List<File> AST_ROOTS = resolveRoots(AST_DIR);
+
+        private static boolean bgLoaded = false;
+        private static BufferedImage bgBase;
+        private static BufferedImage bgNebula;
+        private static BufferedImage bgStars;
+        private static BufferedImage bgDust;
+
+        private static boolean astLoaded = false;
+        private static final Map<String, List<BufferedImage>> AST_NORMAL = new HashMap<>();
+        private static final Map<String, List<BufferedImage>> AST_ORE = new HashMap<>();
+
+        static BufferedImage backgroundBase() {
+            ensureBackgroundLoaded();
+            return bgBase;
+        }
+
+        static BufferedImage backgroundNebula() {
+            ensureBackgroundLoaded();
+            return bgNebula;
+        }
+
+        static BufferedImage backgroundStars() {
+            ensureBackgroundLoaded();
+            return bgStars;
+        }
+
+        static BufferedImage backgroundDust() {
+            ensureBackgroundLoaded();
+            return bgDust;
+        }
+
+        static BufferedImage pickAsteroidSprite(Asteroid a) {
+            if (a == null) return null;
+            ensureAsteroidsLoaded();
+            if (AST_NORMAL.isEmpty() && AST_ORE.isEmpty()) return null;
+
+            String sizeKey = sizeKeyForRadius(a.radius);
+            List<BufferedImage> preferred = a.rich ? AST_ORE.get(sizeKey) : AST_NORMAL.get(sizeKey);
+            List<BufferedImage> fallback = a.rich ? AST_NORMAL.get(sizeKey) : AST_ORE.get(sizeKey);
+            List<BufferedImage> pool = (preferred != null && !preferred.isEmpty()) ? preferred : fallback;
+            if (pool == null || pool.isEmpty()) return null;
+
+            int idx = stableVariantIndex(a, pool.size());
+            return pool.get(idx);
+        }
+
+        private static void ensureBackgroundLoaded() {
+            if (bgLoaded) return;
+            bgLoaded = true;
+
+            bgBase = loadFirst(BG_ROOTS, new String[]{
+                    "bg_space_base_4096_a",
+                    "bg_space_base_tile_4096",
+                    "bg_space_base_4096",
+                    "bg_space_base_tile",
+                    "bg_space_base"
+            });
+            bgNebula = loadFirst(BG_ROOTS, new String[]{
+                    "bg_nebula_overlay_4096_a",
+                    "bg_nebula_overlay_tile_4096",
+                    "bg_nebula_overlay_4096",
+                    "bg_nebula_overlay_tile",
+                    "bg_nebula_overlay"
+            });
+            bgStars = loadFirst(BG_ROOTS, new String[]{
+                    "bg_star_overlay_sparse_2048_a",
+                    "bg_star_overlay_tile_2048",
+                    "bg_star_overlay_sparse_2048",
+                    "bg_star_overlay_tile",
+                    "bg_star_overlay_sparse"
+            });
+            bgDust = loadFirst(BG_ROOTS, new String[]{
+                    "bg_dust_parallax_2048_a",
+                    "bg_dust_overlay_tile_2048",
+                    "bg_dust_parallax_2048",
+                    "bg_dust_overlay_tile",
+                    "bg_dust_overlay"
+            });
+        }
+
+        private static void ensureAsteroidsLoaded() {
+            if (astLoaded) return;
+            astLoaded = true;
+
+            AST_NORMAL.clear();
+            AST_ORE.clear();
+            AST_NORMAL.put("small", new ArrayList<>());
+            AST_NORMAL.put("med", new ArrayList<>());
+            AST_NORMAL.put("large", new ArrayList<>());
+            AST_ORE.put("small", new ArrayList<>());
+            AST_ORE.put("med", new ArrayList<>());
+            AST_ORE.put("large", new ArrayList<>());
+
+            List<File> files = new ArrayList<>();
+            for (File root : AST_ROOTS) {
+                File[] pngs = root.listFiles((d, n) -> n != null && n.toLowerCase(Locale.ROOT).endsWith(".png"));
+                if (pngs == null) continue;
+                for (File f : pngs) files.add(f);
+                if (!files.isEmpty()) break;
+            }
+
+            files.sort(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+            for (File f : files) {
+                String name = f.getName().toLowerCase(Locale.ROOT);
+                if (!name.startsWith("ast_") || !name.endsWith(".png")) continue;
+
+                String stem = name.substring(0, name.length() - 4);
+                boolean ore = stem.endsWith("_ore");
+                if (ore) stem = stem.substring(0, stem.length() - 4);
+
+                String[] parts = stem.split("_");
+                if (parts.length < 3) continue;
+                String size = normalizeAstSize(parts[1]);
+                if (size == null) continue;
+
+                try {
+                    BufferedImage img = ImageIO.read(f);
+                    if (img == null) continue;
+                    (ore ? AST_ORE : AST_NORMAL).get(size).add(img);
+                } catch (IOException ignored) {}
+            }
+        }
+
+        private static String normalizeAstSize(String raw) {
+            if (raw == null) return null;
+            String s = raw.toLowerCase(Locale.ROOT);
+            if (s.equals("small")) return "small";
+            if (s.equals("med") || s.equals("medium")) return "med";
+            if (s.equals("large")) return "large";
+            return null;
+        }
+
+        private static String sizeKeyForRadius(double radius) {
+            if (radius <= 30.0) return "small";
+            if (radius <= 46.0) return "med";
+            return "large";
+        }
+
+        private static int stableVariantIndex(Asteroid a, int modulo) {
+            if (modulo <= 1) return 0;
+            long h = 1469598103934665603L;
+            h ^= Double.doubleToLongBits(a.x);
+            h *= 1099511628211L;
+            h ^= Double.doubleToLongBits(a.y);
+            h *= 1099511628211L;
+            h ^= Double.doubleToLongBits(a.radius);
+            h *= 1099511628211L;
+            h ^= (long) a.oreMax * 1315423911L;
+            int v = (int) (h ^ (h >>> 32));
+            return Math.floorMod(v, modulo);
+        }
+
+        private static BufferedImage loadFirst(List<File> roots, String[] keys) {
+            for (File root : roots) {
+                for (String key : keys) {
+                    File f = new File(root, key + ".png");
+                    try {
+                        if (f.isFile()) return ImageIO.read(f);
+                    } catch (IOException ignored) {}
+                }
+            }
+            return null;
+        }
+
+        private static List<File> resolveRoots(String relativeDir) {
+            List<File> roots = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+
+            addRootCandidate(new File(relativeDir), roots, seen);
+            addAncestorCandidates(new File(System.getProperty("user.dir", ".")), relativeDir, 8, roots, seen);
+
+            try {
+                File codeSource = new File(Renderer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                File start = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+                addAncestorCandidates(start, relativeDir, 8, roots, seen);
+            } catch (Exception ignored) {}
+
+            return roots;
+        }
+
+        private static void addAncestorCandidates(File start, String relativeDir, int maxDepth,
+                                                  List<File> roots, Set<String> seen) {
+            File current = start;
+            for (int i = 0; i <= maxDepth && current != null; i++) {
+                addRootCandidate(new File(current, relativeDir), roots, seen);
+                current = current.getParentFile();
+            }
+        }
+
+        private static void addRootCandidate(File dir, List<File> roots, Set<String> seen) {
+            if (dir == null || !dir.isDirectory()) return;
+            try {
+                String canonical = dir.getCanonicalPath();
+                if (seen.add(canonical)) roots.add(dir);
+            } catch (IOException ignored) {}
         }
     }
 
@@ -1768,6 +2390,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case BATTLECRUISER -> hullBattlecruiser(ship.radius);
             case BATTLESHIP -> hullBattleship(ship.radius);
             case DREADNOUGHT -> hullDreadnought(ship.radius);
+            case SUPERSHIP -> hullDreadnought(ship.radius);
             case CARRIER -> hullCarrier(ship.radius);
             case BASE -> hullBase(ship.radius);
             default -> hullFrigate(ship.radius);
@@ -1855,6 +2478,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case BATTLECRUISER -> hullBattlecruiser(ship.radius);
             case BATTLESHIP -> hullBattleship(ship.radius);
             case DREADNOUGHT -> hullDreadnought(ship.radius);
+            case SUPERSHIP -> hullDreadnought(ship.radius);
             case CARRIER -> hullCarrier(ship.radius);
             case BASE -> hullBase(ship.radius);
             default -> hullFrigate(ship.radius);
@@ -1878,7 +2502,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         // Simple portholes / windows on larger hulls
         if (ship.role == ShipRole.LIGHT_CRUISER || ship.role == ShipRole.MEDIUM_CRUISER || ship.role == ShipRole.CRUISER
-                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT
+                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP
+                || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP
                 || ship.role == ShipRole.CARRIER) {
             g.setColor(new Color(255, 255, 255, 65));
             int n = Math.max(4, r / 4);
@@ -1915,7 +2540,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int bw = r / 3;
         int bh = r / 3;
 
-        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.BATTLECRUISER) {
+        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT
+                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.SUPERSHIP) {
             bx = r / 10;
             by = -r / 5;
             bw = r / 2;
@@ -1995,7 +2621,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g.drawRect(-r / 4, -r / 5, r / 3, r / 2);
                 g.drawRect(r / 10, -r / 7, r / 4, r / 3);
             }
-            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT -> {
+            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> {
                 g.setColor(new Color(255, 255, 255, 75));
                 g.drawLine(-r + 6, -r / 2, r + 10, -r / 6);
                 g.drawLine(-r + 6, r / 2, r + 10, r / 6);
@@ -2046,13 +2672,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         if (ship.role == ShipRole.CARRIER || ship.role == ShipRole.MISSILE_BOAT
                 || ship.role == ShipRole.LIGHT_CRUISER || ship.role == ShipRole.MEDIUM_CRUISER || ship.role == ShipRole.CRUISER
-                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT) {
+                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP
+                || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
             g.setColor(new Color(120, 220, 255, 120));
             g.fillOval(ex - 6, -r / 3 - 4, 8, 8);
             g.fillOval(ex - 6, r / 3 - 4, 8, 8);
         }
 
-        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT) {
+        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
             g.setColor(new Color(120, 220, 255, 105));
             g.fillOval(ex - 8, -r / 2 - 4, 10, 10);
             g.fillOval(ex - 8, r / 2 - 4, 10, 10);
@@ -2072,33 +2699,88 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             TurretVisualScale scale = turretVisualScale(ship.role, t.kind);
             double bodyScale = scale.bodyScale * GLOBAL_TURRET_SCALE;
             double barrelScale = scale.barrelScale * GLOBAL_TURRET_SCALE;
+            String styleKey = turretStyleKey(ship, t);
+            BufferedImage turretSkin = TurretSkinLibrary.getTurretSkin(styleKey, ship.role, ship.faction);
 
             Graphics2D tg = (Graphics2D) g2.create();
             tg.translate(t.localX, t.localY);
             tg.rotate(rel);
 
-            if (t.kind == Turret.Kind.MISSILE) {
-                drawMissilePodTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
-            } else if (isHeavyTurretRole(ship.role)) {
-                drawHeavyTripleTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
-            } else if (ship.role == ShipRole.STEALTH_SHIP) {
-                drawStealthFlushTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
-            } else if (ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
-                drawBeamEmitterTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+            if (turretSkin != null) {
+                drawTurretSkinSprite(tg, turretSkin, styleKey, fireFrac, bodyScale);
             } else {
-                drawTwinGunTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                if (t.kind == Turret.Kind.MISSILE) {
+                    drawMissilePodTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                } else if (isHeavyTurretRole(ship.role)) {
+                    drawHeavyTripleTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                } else if (ship.role == ShipRole.STEALTH_SHIP) {
+                    drawStealthFlushTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                } else if (ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
+                    drawBeamEmitterTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                } else {
+                    drawTwinGunTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
+                }
             }
 
             tg.dispose();
         }
 
         if (ship.hasCIWS) {
-            drawCIWSTurret(g2, turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GLOBAL_TURRET_SCALE);
+            double ciwsScale = turretVisualScale(ship.role, Turret.Kind.GUN).ciwsScale * GLOBAL_TURRET_SCALE;
+            BufferedImage ciwsSkin = TurretSkinLibrary.getTurretSkin("ciws", ship.role, ship.faction);
+            if (ciwsSkin != null) drawCiwsSkinSprite(g2, ciwsSkin, ciwsScale);
+            else drawCIWSTurret(g2, ciwsScale);
         }
     }
 
+    private static String turretStyleKey(Ship ship, Turret t) {
+        if (t == null) return "twin_gun";
+        if (t.kind == Turret.Kind.MISSILE) return "missile_pod";
+        if (ship != null && isHeavyTurretRole(ship.role)) return "heavy_triple";
+        if (ship != null && ship.role == ShipRole.STEALTH_SHIP) return "stealth_flush";
+        if (ship != null && ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) return "beam_emitter";
+        return "twin_gun";
+    }
+
+    private static void drawTurretSkinSprite(Graphics2D g, BufferedImage skin, String styleKey,
+                                             double fireFrac, double bodyScale) {
+        if (skin == null) return;
+        double scaleNorm = Math.max(0.55, bodyScale / 0.5);
+        double w = 26.0 * scaleNorm;
+        double h = 16.0 * scaleNorm;
+
+        if ("heavy_triple".equals(styleKey)) {
+            w *= 1.24;
+            h *= 1.12;
+        } else if ("missile_pod".equals(styleKey)) {
+            w *= 1.14;
+            h *= 1.08;
+        } else if ("stealth_flush".equals(styleKey)) {
+            w *= 0.96;
+            h *= 0.88;
+        } else if ("beam_emitter".equals(styleKey)) {
+            w *= 1.05;
+            h *= 1.02;
+        }
+
+        int drawW = Math.max(8, (int) Math.round(w));
+        int drawH = Math.max(6, (int) Math.round(h));
+        int recoilPx = (int) Math.round(fireFrac * Math.max(1.0, drawW * 0.07));
+        int x = -drawW / 2 - recoilPx;
+        int y = -drawH / 2;
+        g.drawImage(skin, x, y, drawW, drawH, null);
+    }
+
+    private static void drawCiwsSkinSprite(Graphics2D g, BufferedImage skin, double ciwsScale) {
+        if (skin == null) return;
+        double scaleNorm = Math.max(0.65, ciwsScale / 0.5);
+        int draw = Math.max(10, (int) Math.round(20.0 * scaleNorm));
+        g.drawImage(skin, -draw / 2, -draw / 2, draw, draw, null);
+    }
+
     private static boolean isHeavyTurretRole(ShipRole role) {
-        return role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP || role == ShipRole.DREADNOUGHT;
+        return role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP
+                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP;
     }
 
     private static double turretFireFraction(Turret t) {
@@ -2124,6 +2806,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case BATTLECRUISER -> new TurretVisualScale(1.25, 1.15, 1.10);
             case BATTLESHIP -> new TurretVisualScale(1.35, 1.20, 1.18);
             case DREADNOUGHT -> new TurretVisualScale(1.48, 1.26, 1.26);
+            case SUPERSHIP -> new TurretVisualScale(1.64, 1.34, 1.34);
             case CARRIER -> {
                 if (kind == Turret.Kind.MISSILE) yield new TurretVisualScale(1.12, 1.06, 1.10);
                 yield new TurretVisualScale(0.96, 0.94, 1.05);
@@ -2319,35 +3002,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (dmg < 0.12) return;
 
         int r = (int) Math.max(8, Math.round(ship.radius));
-        int n = (int) Math.round(3 + dmg * 10);
+        int n = (int) Math.round(4 + dmg * 12);
 
         long seed = (long) System.identityHashCode(ship) * 0x9E3779B97F4A7C15L;
         Random rng = new Random(seed);
+        Shape oldClip = g.getClip();
+        Stroke oldStroke = g.getStroke();
+        g.setClip(hullPoly);
 
-        // Scorch marks
-        for (int i = 0; i < n; i++) {
-            int tries = 0;
-            int px = 0, py = 0;
-            while (tries++ < 14) {
-                px = -r + rng.nextInt(r * 2 + 1);
-                py = -r + rng.nextInt(r * 2 + 1);
-                if (hullPoly.contains(px, py)) break;
-            }
-
-            int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (3 + dmg * 9)));
-            int a = (int) MathUtil.clamp(40 + dmg * 120, 0, 160);
-            g.setColor(new Color(0, 0, 0, a));
-            g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
-
-            // hot edge / ember tint
-            g.setColor(new Color(255, 200, 120, (int) MathUtil.clamp(18 + dmg * 45, 0, 80)));
-            g.drawOval(px - sz, py - sz, sz * 2, sz * 2);
-        }
-
-        // If very damaged, add a little smoke haze on top
-        if (dmg > 0.55) {
-            int smoke = (int) Math.round(2 + dmg * 6);
-            for (int i = 0; i < smoke; i++) {
+        try {
+            // Scorch marks
+            for (int i = 0; i < n; i++) {
                 int tries = 0;
                 int px = 0, py = 0;
                 while (tries++ < 14) {
@@ -2355,11 +3020,84 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     py = -r + rng.nextInt(r * 2 + 1);
                     if (hullPoly.contains(px, py)) break;
                 }
-                int sz = (int) Math.max(6, Math.round(6 + rng.nextDouble() * 10));
-                int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
-                g.setColor(new Color(30, 30, 30, a));
+
+                int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (4 + dmg * 10)));
+                int a = (int) MathUtil.clamp(48 + dmg * 140, 0, 175);
+                g.setColor(new Color(0, 0, 0, a));
                 g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
+
+                // Hot edge / ember tint
+                g.setColor(new Color(255, 196, 116, (int) MathUtil.clamp(20 + dmg * 56, 0, 96)));
+                g.drawOval(px - sz, py - sz, sz * 2, sz * 2);
             }
+
+            // Raking impact streaks and carved plate scratches.
+            int streaks = (int) Math.round(2 + dmg * 10);
+            for (int i = 0; i < streaks; i++) {
+                int tries = 0;
+                int px = 0, py = 0;
+                while (tries++ < 14) {
+                    px = -r + rng.nextInt(r * 2 + 1);
+                    py = -r + rng.nextInt(r * 2 + 1);
+                    if (hullPoly.contains(px, py)) break;
+                }
+
+                double ang = rng.nextDouble() * Math.PI * 2.0;
+                double bias = (rng.nextDouble() - 0.5) * 0.45;
+                double dir = ang * 0.35 + bias;
+                int len = (int) Math.round(4 + rng.nextDouble() * (6 + dmg * r * 0.38));
+                int x2 = px + (int) Math.round(Math.cos(dir) * len);
+                int y2 = py + (int) Math.round(Math.sin(dir) * len);
+
+                float w = (float) Math.max(1.0, 0.8 + dmg * 2.1 * (0.6 + rng.nextDouble() * 0.8));
+                g.setStroke(new BasicStroke(w, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(new Color(10, 10, 12, (int) MathUtil.clamp(42 + dmg * 120, 0, 170)));
+                g.drawLine(px, py, x2, y2);
+
+                g.setStroke(new BasicStroke(Math.max(1f, w * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(new Color(255, 166, 98, (int) MathUtil.clamp(14 + dmg * 56, 0, 90)));
+                g.drawLine(px, py, x2, y2);
+            }
+
+            // Breach holes at critical damage.
+            if (dmg > 0.72) {
+                int breaches = (int) Math.round(1 + (dmg - 0.72) * 8.0);
+                for (int i = 0; i < breaches; i++) {
+                    int tries = 0;
+                    int px = 0, py = 0;
+                    while (tries++ < 16) {
+                        px = -r + rng.nextInt(r * 2 + 1);
+                        py = -r + rng.nextInt(r * 2 + 1);
+                        if (hullPoly.contains(px, py)) break;
+                    }
+                    int sz = (int) Math.max(4, Math.round(4 + rng.nextDouble() * (3 + dmg * 8)));
+                    g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(88 + dmg * 122, 0, 205)));
+                    g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
+                    g.setColor(new Color(255, 174, 102, (int) MathUtil.clamp(24 + dmg * 52, 0, 96)));
+                    g.drawOval(px - sz, py - sz, sz * 2, sz * 2);
+                }
+            }
+
+            // If very damaged, add a little smoke haze on top.
+            if (dmg > 0.55) {
+                int smoke = (int) Math.round(2 + dmg * 6);
+                for (int i = 0; i < smoke; i++) {
+                    int tries = 0;
+                    int px = 0, py = 0;
+                    while (tries++ < 14) {
+                        px = -r + rng.nextInt(r * 2 + 1);
+                        py = -r + rng.nextInt(r * 2 + 1);
+                        if (hullPoly.contains(px, py)) break;
+                    }
+                    int sz = (int) Math.max(6, Math.round(6 + rng.nextDouble() * 10));
+                    int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
+                    g.setColor(new Color(30, 30, 30, a));
+                    g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
+                }
+            }
+        } finally {
+            g.setStroke(oldStroke);
+            g.setClip(oldClip);
         }
     }
 

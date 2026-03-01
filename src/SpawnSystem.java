@@ -54,6 +54,10 @@ public final class SpawnSystem {
             spawnAlly(ctx, ShipRole.FRIGATE, ctx.allyBase.x - 210, ctx.allyBase.y + 110);
             spawnAlly(ctx, ShipRole.MISSILE_BOAT, ctx.allyBase.x - 250, ctx.allyBase.y + 10);
             LastStandSystem.init(ctx);
+        } else if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
+            // Keep opening pressure symmetric in Resource Rush.
+            spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
+            spawnAllyGroup(ctx, ctx.player.x - 600, ctx.player.y + 450);
         } else {
             spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
         }
@@ -118,6 +122,7 @@ public final class SpawnSystem {
         spawnEnemy(ctx, ShipRole.PICKET, x + 70, y + 50);
         spawnEnemy(ctx, ShipRole.FRIGATE, x - 90, y + 70);
         if (ctx.rng.nextDouble() < 0.35) spawnEnemy(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
+        if (ctx.rng.nextDouble() < 0.08) spawnEnemy(ctx, ShipRole.SUPERSHIP, x + 180, y - 40);
     }
 
     public static void spawnAllyGroup(GameContext ctx, double x, double y) {
@@ -125,6 +130,7 @@ public final class SpawnSystem {
         spawnAlly(ctx, ShipRole.PICKET, x + 70, y + 50);
         spawnAlly(ctx, ShipRole.FRIGATE, x - 90, y + 70);
         if (ctx.rng.nextDouble() < 0.35) spawnAlly(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
+        if (ctx.rng.nextDouble() < 0.08) spawnAlly(ctx, ShipRole.SUPERSHIP, x - 180, y + 40);
     }
 
     public static void spawnAsteroidField(GameContext ctx) {
@@ -233,6 +239,12 @@ public final class SpawnSystem {
         ox = (ctx.rng.nextDouble() - 0.5) * 220.0;
         oy = (ctx.rng.nextDouble() - 0.5) * 220.0;
         spawnTeamShip(ctx, ShipRole.FRIGATE, team, base.x + ox, base.y + oy);
+
+        if (ctx.rng.nextDouble() < 0.20) {
+            ox = (ctx.rng.nextDouble() - 0.5) * 260.0;
+            oy = (ctx.rng.nextDouble() - 0.5) * 260.0;
+            spawnTeamShip(ctx, ShipRole.SUPERSHIP, team, base.x + ox, base.y + oy);
+        }
     }
 
     private static void logBaseSpawns(GameContext ctx, Faction[] teams) {
