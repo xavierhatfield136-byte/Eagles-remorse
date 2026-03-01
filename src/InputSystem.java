@@ -9,6 +9,12 @@ public final class InputSystem {
 
         panel.addKeyListener(controls);
         panel.addMouseMotionListener(controls);
+        panel.addMouseWheelListener(e -> {
+            int rot = e.getWheelRotation();
+            if (rot == 0) return;
+            CameraSystem.stepZoom(ctx, -rot);
+            CameraSystem.update(ctx, panel.viewportW(), panel.viewportH());
+        });
 
         panel.installBindings(ctx, controls, exitToMenu, toggleFullscreen);
 

@@ -3,6 +3,10 @@ public final class EconomySystem {
 
     private static final double PERIODIC_MINER_SPAWN_INTERVAL = 20.0;
     private static final int PERIODIC_MINERS_PER_TEAM = 2;
+    private static final int MAX_STATION_TURRETS_PER_BASE = 4;
+    private static final double STATION_TURRET_RING_RADIUS = 210.0;
+    private static final double STATION_TURRET_RING_JITTER = 36.0;
+    private static final double STATION_TURRET_MIN_SPACING = 80.0;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -24,6 +28,7 @@ public final class EconomySystem {
 
         // NPC mining & deposits
         handleNpcMiningAndDeposits(ctx, dt);
+        updateStationTurretStructures(ctx);
 
         // Periodic miner reinforcements for teams still in the match.
         updatePeriodicMinerReinforcements(ctx, dt);
@@ -135,6 +140,97 @@ public final class EconomySystem {
             miner.minerHomeBase = base;
             miner.minerState = Ship.MinerState.SEEK_ASTEROID;
         }
+    }
+
+    private static void updateStationTurretStructures(GameContext ctx) {
+        if (ctx == null) return;
+        if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) return;
+
+        java.util.LinkedHashSet<Ship> bases = new java.util.LinkedHashSet<>();
+        if (ctx.allyBase != null) bases.add(ctx.allyBase);
+        if (ctx.enemyBase != null) bases.add(ctx.enemyBase);
+        if (ctx.teamBases != null) {
+            for (Ship b : ctx.teamBases.values()) {
+                if (b != null) bases.add(b);
+            }
+        }
+
+        for (Ship base : bases) {
+            if (base == null) continue;
+            if (!base.alive || base.dying || base.hp <= 0) continue;
+            if (base.role != ShipRole.BASE) continue;
+            if (!base.canSpawnDefender()) continue;
+
+            int current = countStationTurretsForBase(ctx, base);
+            int capFromBase = Math.max(1, Math.min(MAX_STATION_TURRETS_PER_BASE, base.maxDefenders / 2));
+            if (current >= capFromBase) continue;
+
+            Ship turret = spawnStationTurretAtBase(ctx, base);
+            if (turret == null) continue;
+
+            turret.minerHomeBase = base; // ownership anchor for upkeep counting
+            turret.vx = 0;
+            turret.vy = 0;
+            turret.desiredSpeed = 0;
+            base.resetBaseSpawnTimer();
+        }
+    }
+
+    private static int countStationTurretsForBase(GameContext ctx, Ship base) {
+        int count = 0;
+        double nearRange = (STATION_TURRET_RING_RADIUS + 160.0);
+        double nearRange2 = nearRange * nearRange;
+
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.STATIC_TURRET) continue;
+            if (s.faction != base.faction) continue;
+
+            if (s.minerHomeBase == base) {
+                count++;
+                continue;
+            }
+
+            // Backward-compatible fallback for older spawned turrets without anchor metadata.
+            double d2 = GameMath.dist2(s.x, s.y, base.x, base.y);
+            if (d2 <= nearRange2) count++;
+        }
+        return count;
+    }
+
+    private static Ship spawnStationTurretAtBase(GameContext ctx, Ship base) {
+        if (ctx == null || base == null) return null;
+
+        for (int attempt = 0; attempt < 12; attempt++) {
+            double a = ctx.rng.nextDouble() * Math.PI * 2.0;
+            double r = STATION_TURRET_RING_RADIUS + (ctx.rng.nextDouble() - 0.5) * STATION_TURRET_RING_JITTER;
+            double sx = base.x + Math.cos(a) * r;
+            double sy = base.y + Math.sin(a) * r;
+
+            sx = GameMath.clamp(sx, 30, ctx.WORLD_W - 30);
+            sy = GameMath.clamp(sy, 30, ctx.WORLD_H - 30);
+
+            if (!isStationTurretSpawnClear(ctx, base, sx, sy)) continue;
+
+            return SpawnSystem.spawnTeamShip(ctx, ShipRole.STATIC_TURRET, base.faction, sx, sy);
+        }
+        return null;
+    }
+
+    private static boolean isStationTurretSpawnClear(GameContext ctx, Ship base, double x, double y) {
+        if (ctx == null || base == null) return false;
+
+        double minSpacing2 = STATION_TURRET_MIN_SPACING * STATION_TURRET_MIN_SPACING;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.STATIC_TURRET) continue;
+            if (s.faction != base.faction) continue;
+
+            if (GameMath.dist2(s.x, s.y, x, y) < minSpacing2) return false;
+        }
+        return true;
     }
 
     // ------------------------------

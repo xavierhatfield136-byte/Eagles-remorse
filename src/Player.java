@@ -79,7 +79,7 @@ public class Player extends Ship {
     /** Ability: instantly boosts shields and grants a short overshield. */
     public boolean tryShieldOvercharge() {
         if (!alive) return false;
-        if (!shieldActive || shieldMax <= 0) return false;
+        if (!isShieldOnline()) return false;
         if (shieldOverchargeTimer > 0) return false;
 
         shieldOverchargeTimer = shieldOverchargeCooldown;
@@ -204,12 +204,34 @@ public class Player extends Ship {
         this.shield = t.shield;
         this.shieldRegen = t.shieldRegen;
         this.shieldActive = t.shieldActive;
+        this.shieldRebootDelay = t.shieldRebootDelay;
+        this.shieldFacingMode = t.shieldFacingMode;
+        this.shieldFacingAngle = t.shieldFacingAngle;
+        this.shieldAutoTrackRate = t.shieldAutoTrackRate;
+        this.shieldDirectionalArc = t.shieldDirectionalArc;
+        this.resetShieldState();
         this.desiredSpeed = t.desiredSpeed;
+        this.desiredSpeedBase = (t.desiredSpeedBase > 0.0) ? t.desiredSpeedBase : t.desiredSpeed;
+        this.powerPreset = t.powerPreset;
+        this.setPowerAllocation(t.powerEnginesFrac(), t.powerShieldsFrac(), t.powerWeaponsFrac(), t.powerSystemsFrac());
+        this.crewOrder = t.crewOrder;
 
         this.cargo = t.cargo;
         this.cargoMax = t.cargoMax;
         this.miningRate = t.miningRate;
         this.miningRange = t.miningRange;
+        this.isStealth = t.isStealth;
+        this.signature = t.signature;
+        this.revealTimer = t.revealTimer;
+        this.cloakEnabled = t.cloakEnabled;
+        this.cloakActive = t.cloakActive;
+        this.cloakEnergyMax = t.cloakEnergyMax;
+        this.cloakEnergy = t.cloakEnergy;
+        this.cloakDrainPerSec = t.cloakDrainPerSec;
+        this.cloakRechargePerSec = t.cloakRechargePerSec;
+        this.cloakMinEnergyToEngage = t.cloakMinEnergyToEngage;
+        this.cloakSignature = t.cloakSignature;
+        this.resetInternalSystems();
 
         this.hasCIWS = t.hasCIWS;
         this.ciwsRange = t.ciwsRange;
@@ -229,6 +251,9 @@ public class Player extends Ship {
         this.waveMotionLife = t.waveMotionLife;
         this.waveMotionRadius = t.waveMotionRadius;
         this.waveMotionMaxHits = t.waveMotionMaxHits;
+        this.waveMotionBeamDuration = t.waveMotionBeamDuration;
+        this.waveMotionBeamTickInterval = t.waveMotionBeamTickInterval;
+        this.waveMotionBeamDamageScale = t.waveMotionBeamDamageScale;
         this.resetWaveMotionCooldown();
 
         this.isCarrier = t.isCarrier;
@@ -288,7 +313,7 @@ public class Player extends Ship {
         for (Turret t : turrets) {
             if (!t.primary) continue;
             if (t.kind != Turret.Kind.GUN) continue;
-            t.aimAtLead(dt, this, target, t.bulletSpeed);
+            t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
             Projectile p = t.fire(this, null, dt);
             if (p != null) {
                 out.add(p);

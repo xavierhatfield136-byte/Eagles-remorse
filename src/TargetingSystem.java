@@ -3,11 +3,15 @@ import java.util.List;
 
 public final class TargetingSystem {
     private TargetingSystem(){}
+    private static final double CLOAK_PROX_REVEAL_RANGE = 220.0;
+    private static final double CLOAK_BASE_SENSOR_BONUS = 130.0;
+    private static final double CLOAK_CARRIER_SENSOR_BONUS = 70.0;
 
     public static void lockClosestToMouse(GameContext ctx, PlayerControl controls) {
-        double mx = ctx.camX + controls.getMouseX();
-        double my = ctx.camY + controls.getMouseY();
-        Ship s = findClosestEnemyToPoint(ctx, mx, my, 280);
+        double mx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
+        double my = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
+        Ship observer = (ctx == null ? null : ctx.player);
+        Ship s = findClosestEnemyToPoint(ctx, observer, mx, my, 280);
         if (s == null) {
             ctx.eventBanner = "NO ENEMY NEAR CURSOR";
             ctx.eventBannerT = 1.2;
@@ -24,7 +28,9 @@ public final class TargetingSystem {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (s.role == ShipRole.BASE) continue;
-            if (TeamSystem.isHostileToPlayer(ctx, s.faction)) enemies.add(s);
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+            if (!isDetectableToObserver(ctx.player, s)) continue;
+            enemies.add(s);
         }
         if (enemies.isEmpty()) {
             ctx.lockedTarget = null;
@@ -51,7 +57,8 @@ public final class TargetingSystem {
                 && seeker.faction != null
                 && ctx.player != null
                 && seeker.faction.isFriendlyTo(ctx.player.faction)
-                && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)) {
+                && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)
+                && isDetectableToObserver(seeker, ctx.lockedTarget)) {
             return ctx.lockedTarget;
         }
 
@@ -63,6 +70,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
 
             if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
+                if (!isDetectableToObserver(seeker, s)) continue;
                 double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);
                 if (d2 < bestD2) { bestD2 = d2; best = s; }
             }
@@ -71,6 +79,11 @@ public final class TargetingSystem {
     }
 
     public static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
+        Ship observer = (ctx == null ? null : ctx.player);
+        return findClosestEnemyToPoint(ctx, observer, x, y, maxDist);
+    }
+
+    public static Ship findClosestEnemyToPoint(GameContext ctx, Ship observer, double x, double y, double maxDist) {
         Ship best = null;
         double bestD2 = maxDist * maxDist;
         for (Ship s : ctx.ships) {
@@ -78,6 +91,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (s.role == ShipRole.BASE) continue;
+            if (!isDetectableToObserver(observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -85,6 +99,23 @@ public final class TargetingSystem {
             }
         }
         return best;
+    }
+
+    public static boolean isDetectableToObserver(Ship observer, Ship target) {
+        if (target == null) return false;
+        if (!target.isStealth) return true;
+        if (!target.isCloaked()) return true;
+        if (target.revealTimer > 0.0) return true;
+        if (observer == null) return false;
+
+        double revealRange = CLOAK_PROX_REVEAL_RANGE + target.radius + observer.radius * 0.25;
+        if (observer.role == ShipRole.BASE || observer.role == ShipRole.STATIC_TURRET) {
+            revealRange += CLOAK_BASE_SENSOR_BONUS;
+        } else if (observer.isCarrier) {
+            revealRange += CLOAK_CARRIER_SENSOR_BONUS;
+        }
+        revealRange *= Math.max(0.20, observer.sensorRangeMultiplier());
+        return GameMath.dist2(observer.x, observer.y, target.x, target.y) <= revealRange * revealRange;
     }
 
     // Compatibility: some versions have s.dead, others have isAlive() or hp<=0; handle both.

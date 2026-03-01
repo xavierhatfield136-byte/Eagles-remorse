@@ -67,8 +67,8 @@ public final class UISystem {
     }
 
     public static void setWaypointAtCursor(GameContext ctx, PlayerControl controls) {
-        double wx = ctx.camX + controls.getMouseX();
-        double wy = ctx.camY + controls.getMouseY();
+        double wx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
+        double wy = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
         ctx.waypointX = GameMath.clamp(wx, 0, ctx.WORLD_W);
         ctx.waypointY = GameMath.clamp(wy, 0, ctx.WORLD_H);
         addPing(ctx, ctx.waypointX, ctx.waypointY, 2.2);
@@ -76,8 +76,8 @@ public final class UISystem {
     }
 
     public static void pingAtCursor(GameContext ctx, PlayerControl controls) {
-        double wx = ctx.camX + controls.getMouseX();
-        double wy = ctx.camY + controls.getMouseY();
+        double wx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
+        double wy = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
         addPing(ctx, wx, wy, 1.8);
     }
 

@@ -26,7 +26,7 @@ public class CollisionSystem {
                         WaveMotionShot ws = (WaveMotionShot) p;
                         if (!ws.canDamage(s)) continue;
                         ws.markDamaged(s);
-                        s.takeDamage(p.damage);
+                        s.takeDamage(p.damage, p.x, p.y);
                         VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, Math.max(3, p.damage));
                         ScreenShake.kick(2.2);
                         ws.consumeHit();
@@ -45,7 +45,7 @@ public class CollisionSystem {
                     if (p instanceof Missile) ScreenShake.kick(3.5);
                     else if (p.damage >= 3) ScreenShake.kick(1.8);
 
-                    s.takeDamage(p.damage);
+                    s.takeDamage(p.damage, p.x, p.y);
                     if (p instanceof Missile m) {
                         applyMissileBlast(m, s, ships);
                     }
@@ -156,7 +156,7 @@ public class CollisionSystem {
 
             double falloff = 1.0 - (d / Math.max(1.0, maxD));
             int splash = Math.max(1, (int) Math.round(baseSplash * (0.35 + 0.65 * falloff)));
-            s.takeDamage(splash);
+            s.takeDamage(splash, m.x, m.y);
         }
 
         VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage));

@@ -104,8 +104,8 @@ public final class GameSimulationRuntime {
                 ? new InputSnapshot(false, false, false, false, false, 0, 0)
                 : input;
 
-        double mouseWorldX = ctx.camX + snap.mouseX;
-        double mouseWorldY = ctx.camY + snap.mouseY;
+        double mouseWorldX = CameraSystem.screenToWorldX(ctx, snap.mouseX);
+        double mouseWorldY = CameraSystem.screenToWorldY(ctx, snap.mouseY);
         ctx.cursorWorldX = mouseWorldX;
         ctx.cursorWorldY = mouseWorldY;
 

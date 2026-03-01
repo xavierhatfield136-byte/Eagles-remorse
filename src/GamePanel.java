@@ -119,6 +119,18 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_M, 0, false), "toggleMap", () -> GameplayActions.toggleMap(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_G, 0, false), "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, false), "zoomIn", () -> {
+            CameraSystem.stepZoom(ctx, +1);
+            CameraSystem.update(ctx, viewportW(), viewportH());
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK, false), "zoomOut", () -> {
+            CameraSystem.stepZoom(ctx, -1);
+            CameraSystem.update(ctx, viewportW(), viewportH());
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK, false), "zoomReset", () -> {
+            CameraSystem.resetZoom(ctx);
+            CameraSystem.update(ctx, viewportW(), viewportH());
+        });
 
         // Toggle turret auto-lock
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_T, 0, false), "toggleTurretAuto", () -> GameplayActions.toggleTurretAutoLock(ctx));
@@ -154,6 +166,21 @@ public class GamePanel extends JPanel implements ActionListener {
         });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Z, 0, false), "carrierAutoLaunch", () -> {
             GameplayActions.tryCarrierToggleAutoLaunch(ctx);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Y, 0, false), "cyclePowerPreset", () -> {
+            GameplayActions.cyclePowerPreset(ctx);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_U, 0, false), "cycleCrewOrder", () -> {
+            GameplayActions.cycleCrewOrder(ctx);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_I, 0, false), "cycleShieldFacingMode", () -> {
+            GameplayActions.cycleShieldFacingMode(ctx);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_J, 0, false), "shieldFaceLeft", () -> {
+            GameplayActions.rotateShieldFacing(ctx, -1);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_K, 0, false), "shieldFaceRight", () -> {
+            GameplayActions.rotateShieldFacing(ctx, +1);
         });
 
         // Menu

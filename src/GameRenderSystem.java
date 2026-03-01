@@ -1,5 +1,4 @@
 import java.awt.*;
-import java.util.List;
 
 public final class GameRenderSystem {
     private GameRenderSystem(){}
@@ -12,39 +11,40 @@ public final class GameRenderSystem {
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
         Renderer.drawSpaceBackground(g2, ctx.camX, ctx.camY, viewportW, viewportH, seed);
         drawModifierWorldTint(ctx, g2, viewportW, viewportH);
+        double zoom = CameraSystem.normalizedZoom(ctx);
 
         // World space
-        g2.translate(-ctx.camX, -ctx.camY);
+        Graphics2D worldG = (Graphics2D) g2.create();
+        worldG.scale(zoom, zoom);
+        worldG.translate(-ctx.camX, -ctx.camY);
 
-        g2.setColor(new Color(255, 255, 255, 28));
-        g2.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
+        worldG.setColor(new Color(255, 255, 255, 28));
+        worldG.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
 
         if (DevTools.isFancyVfxEnabled()) {
             updateDamageVfx(ctx);
         }
 
-        Renderer.drawAsteroids(g2, ctx.asteroids);
-        Renderer.drawSalvage(g2, ctx.salvage);
-        Renderer.drawShips(g2, ctx.ships);
-        Renderer.drawProjectiles(g2, ctx.projectiles);
+        Renderer.drawAsteroids(worldG, ctx.asteroids);
+        Renderer.drawSalvage(worldG, ctx.salvage);
+        Renderer.drawShips(worldG, ctx.ships);
+        Renderer.drawProjectiles(worldG, ctx.projectiles);
 
-        try { VFX.drawAll(g2); } catch (Throwable ignored) {}
+        try { VFX.drawAll(worldG); } catch (Throwable ignored) {}
 
         try {
             for (Explosion e : Explosion.active) {
                 double f = e.frac();
                 int size = (e.maxT <= 0.20) ? 10 : 22;
                 int a = (int) Math.round(180 * f);
-                g2.setColor(new Color(255, 200, 120, Math.max(0, Math.min(a, 220))));
-                g2.fillOval((int) Math.round(e.x - size / 2.0), (int) Math.round(e.y - size / 2.0), size, size);
+                worldG.setColor(new Color(255, 200, 120, Math.max(0, Math.min(a, 220))));
+                worldG.fillOval((int) Math.round(e.x - size / 2.0), (int) Math.round(e.y - size / 2.0), size, size);
             }
         } catch (Throwable ignored) {}
 
-        Renderer.drawWorldMarkers(g2, ctx.ships, ctx.lockedTarget);
-        drawCampaignMarkers(ctx, g2);
-
-        // Back to screen space
-        g2.translate(ctx.camX, ctx.camY);
+        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget);
+        drawCampaignMarkers(ctx, worldG);
+        worldG.dispose();
 
         int allyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ALLY);
         int enemyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ENEMY);
@@ -93,7 +93,8 @@ public final class GameRenderSystem {
                 ctx.camX,
                 ctx.camY,
                 viewportW,
-                viewportH
+                viewportH,
+                zoom
 
         );
         drawModifierChips(ctx, g2, viewportW);
@@ -101,7 +102,8 @@ public final class GameRenderSystem {
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
 
         if (ctx.mapOpen) {
-            Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY, ctx.player,
+            Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
+                    CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
                     ctx.ships, ctx.asteroids, ctx.salvage, ctx.waypointX, ctx.waypointY, ctx.mapPings, ctx.eventBanner);
         }
 

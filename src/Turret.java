@@ -9,9 +9,10 @@ public class Turret {
 
     // Universal missile buff (applies to all factions/ships).
     public static final double MISSILE_DAMAGE_MULT = 1.55;
-    public static final double MISSILE_SPEED_MULT = 1.28;
+    public static final double MISSILE_SPEED_MULT = 1.40;
     public static final double MISSILE_TURN_MULT = 1.32;
     public static final double MISSILE_LIFE_MULT = 1.22;
+    public static final double GUN_PROJECTILE_SPEED_MULT = 1.18;
 
     public enum Kind {
         GUN,
@@ -113,6 +114,11 @@ public class Turret {
         aimAt(dt, host, ip[0], ip[1]);
     }
 
+    public static double effectiveGunProjectileSpeed(Turret t) {
+        if (t == null) return 0.0;
+        return t.bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
+    }
+
     private void rotateToward(double dt, double desired) {
         double delta = MathUtil.normalizeAngle(desired - angle);
         double max = turnRate * dt;
@@ -127,7 +133,11 @@ public class Turret {
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
         if (!canFire()) return null;
 
-        coolLeft = cooldown;
+        double cycleMul = (host == null) ? 1.0 : host.weaponCycleRateMultiplier();
+        double damageMul = (host == null) ? 1.0 : host.weaponDamageMultiplier();
+        cycleMul = Math.max(0.20, cycleMul);
+        damageMul = Math.max(0.20, damageMul);
+        coolLeft = cooldown / cycleMul;
 
         if (host != null) host.onFire();
 
@@ -142,13 +152,15 @@ public class Turret {
             // Doctrine-based main projectile style.
             // ENERGY_NAVY uses a Yamato 2199-style heavy energy bolt (visible, medium speed).
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.
+            double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
+            int gunDamage = Math.max(1, (int) Math.round(damage * damageMul));
             DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
-                return new EnergyBolt(mx, my, angle, dt, bulletSpeed, damage, bulletLife, 4.5, host.faction);
+                return new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5, host.faction);
             }
-            return new Bullet(mx, my, angle, dt, bulletSpeed, damage, bulletLife, 3.0, host.faction);
+            return new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 3.0, host.faction);
         } else {
-            int missileDamage = Math.max(1, (int) Math.round(damage * MISSILE_DAMAGE_MULT));
+            int missileDamage = Math.max(1, (int) Math.round(damage * MISSILE_DAMAGE_MULT * damageMul));
             double missileSpd = missileSpeed * MISSILE_SPEED_MULT;
             double missileTurn = missileTurnRate * MISSILE_TURN_MULT;
             int missileLifetime = Math.max(1, (int) Math.round(missileLife * MISSILE_LIFE_MULT));

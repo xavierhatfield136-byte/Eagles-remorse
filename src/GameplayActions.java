@@ -70,10 +70,12 @@ public final class GameplayActions {
         if (!canIssueCombatAction(ctx)) return;
 
         Ship target;
-        if (isAlive(ctx.lockedTarget) && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)) {
+        if (isAlive(ctx.lockedTarget)
+                && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
             target = ctx.lockedTarget;
         } else {
-            target = TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100);
+            target = TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, ctx.player.x, ctx.player.y, 1100);
         }
         if (target == null) return;
         if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return;
@@ -112,6 +114,31 @@ public final class GameplayActions {
     public static void tryCarrierToggleAutoLaunch(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         UISystem.tryCarrierToggleAutoLaunch(ctx);
+    }
+
+    public static void cyclePowerPreset(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        Ship.PowerPreset preset = ctx.player.cyclePowerPreset();
+        EventSystem.showBanner(ctx, "POWER: " + preset.name(), 0.8);
+    }
+
+    public static void cycleCrewOrder(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        Ship.CrewOrder order = ctx.player.cycleCrewOrder();
+        EventSystem.showBanner(ctx, "CREW ORDER: " + order.name(), 0.8);
+    }
+
+    public static void cycleShieldFacingMode(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        Ship.ShieldFacingMode mode = ctx.player.cycleShieldFacingMode();
+        EventSystem.showBanner(ctx, "SHIELD MODE: " + mode.name(), 0.8);
+    }
+
+    public static void rotateShieldFacing(GameContext ctx, int dir) {
+        if (!canIssueCombatAction(ctx)) return;
+        int step = (dir < 0) ? -1 : 1;
+        ctx.player.shieldFacingMode = Ship.ShieldFacingMode.MANUAL;
+        ctx.player.rotateShieldFacing(Math.toRadians(12.0 * step));
     }
 
     public static boolean tryHandleShopHotkey(GameContext ctx, int keyCode) {

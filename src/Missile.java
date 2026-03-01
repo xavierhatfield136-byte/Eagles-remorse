@@ -1,4 +1,6 @@
 public class Missile extends Projectile {
+    public static final int BASE_INTERCEPT_HP = 3;
+    public static final int HEAVY_INTERCEPT_HP = 4;
 
     public double angle;
     public double speed = 300;                   // units/sec
@@ -36,7 +38,7 @@ public class Missile extends Projectile {
 
         this.speed = speed;
         this.turnRate = turnRate;
-        this.interceptHp = (damage >= 8) ? 3 : 2;
+        this.interceptHp = (damage >= 8) ? HEAVY_INTERCEPT_HP : BASE_INTERCEPT_HP;
         this.blastRadius = Math.max(38.0, radius * 8.0);
         this.splashDamageMul = 0.60;
 

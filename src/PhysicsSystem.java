@@ -38,13 +38,18 @@ public final class PhysicsSystem {
 
         // --- Player weapons (skip while in menus) ---
         if (ctx.player != null && ctx.player.alive && !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen) {
+            if (ctx.lockedTarget != null && !TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
+                ctx.lockedTarget = null;
+            }
             Ship autoTarget = null;
             double rangeMul = CampaignSystem.targetingRangeMul(ctx);
             boolean autoLockSuppressed = CampaignSystem.suppressAutoLock(ctx);
 
             if (ctx.autoLockTurrets && !autoLockSuppressed) {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
-                if (isAlive(ctx.lockedTarget) && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)) {
+                if (isAlive(ctx.lockedTarget)
+                        && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                        && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
                     autoTarget = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1600 * rangeMul);
@@ -60,7 +65,7 @@ public final class PhysicsSystem {
             }
 
             if (ctx.firingSecondary) {
-                Ship target = isAlive(ctx.lockedTarget)
+                Ship target = (isAlive(ctx.lockedTarget) && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
                         ? ctx.lockedTarget
                         : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
@@ -105,19 +110,6 @@ public final class PhysicsSystem {
     }
 
     private static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
-        Ship best = null;
-        double bestD2 = maxDist * maxDist;
-        for (Ship s : ctx.ships) {
-            if (s == null) continue;
-            if (!isAlive(s)) continue;
-            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
-            if (s.role == ShipRole.BASE) continue;
-            double d2 = GameMath.dist2(x, y, s.x, s.y);
-            if (d2 < bestD2) {
-                bestD2 = d2;
-                best = s;
-            }
-        }
-        return best;
+        return TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, x, y, maxDist);
     }
 }

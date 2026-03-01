@@ -19,6 +19,7 @@ public final class CarrierSystem {
     private static final double RECOVERY_PAD = 10.0;
     private static final double DEFEND_RANGE = 320.0;
     private static final double DEFEND_ORBIT = 170.0;
+    private static final int BOMBER_SLOT_INTERVAL = 4;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null || ctx.gameOver) return;
@@ -43,7 +44,8 @@ public final class CarrierSystem {
             if (activeWing >= Math.max(0, carrier.maxFighters)) continue;
             if (!carrier.canLaunchFighter()) continue;
 
-            Ship launched = launchCraft(ctx, carrier, ShipRole.FIGHTER, dt, activeWing);
+            ShipRole launchRole = chooseLaunchRole(carrier, activeWing);
+            Ship launched = launchCraft(ctx, carrier, launchRole, dt, activeWing);
             if (launched == null) continue;
 
             carrier.resetFighterTimer();
@@ -61,7 +63,8 @@ public final class CarrierSystem {
         if (activeWing >= Math.max(0, carrier.maxFighters)) return false;
         if (countGlobalLaunchedCraft(ctx) >= MAX_GLOBAL_LAUNCHED_CRAFT) return false;
 
-        Ship launched = launchCraft(ctx, carrier, ShipRole.FIGHTER, GameContext.DT, activeWing);
+        ShipRole launchRole = chooseLaunchRole(carrier, activeWing);
+        Ship launched = launchCraft(ctx, carrier, launchRole, GameContext.DT, activeWing);
         if (launched == null) return false;
         carrier.resetFighterTimer();
         return true;
@@ -242,6 +245,17 @@ public final class CarrierSystem {
         craft.vx = carrier.vx + ca * launchSpeedPerSec * dt;
         craft.vy = carrier.vy + sa * launchSpeedPerSec * dt;
         return craft;
+    }
+
+    private static ShipRole chooseLaunchRole(Ship carrier, int activeWing) {
+        if (carrier == null) return ShipRole.FIGHTER;
+        if (!carrier.isCarrier) return ShipRole.FIGHTER;
+
+        // Every Nth launched craft from a carrier is a bomber to add strike capability.
+        int ordinal = Math.max(0, activeWing) + 1;
+        if (ordinal % BOMBER_SLOT_INTERVAL == 0) return ShipRole.BOMBER;
+
+        return ShipRole.FIGHTER;
     }
 
     private static void retireCraft(Ship s) {

@@ -481,7 +481,7 @@ public class Renderer {
                                boolean resourceRush, int allyOre, int enemyOre, int goal, String gameOverText,
                                String objectiveTitle, String objectiveDetail,
                                String eventBanner, double eventBannerT, double orePriceMul, double orePriceT, double miningMul, double miningT,
-                               double camX, double camY, int viewW, int viewH) {
+                               double camX, double camY, int viewW, int viewH, double zoom) {
         int x = 14;
         int y = 18;
 
@@ -572,6 +572,20 @@ public class Renderer {
             double shFrac = Math.max(0, Math.min(1, player.shield / player.shieldMax));
             g2.setColor(new Color(120, 200, 255, 210));
             g2.fillRect(x + 1, shY + 1, (int) Math.round((barW - 1) * shFrac), barH - 1);
+            if (!player.isShieldOnline()) {
+                g2.setColor(new Color(255, 170, 120, 220));
+                g2.drawString("SHIELD REBOOT: " + fmt1(player.getShieldOfflineRemaining()) + "s", x + barW + 12, shY + barH);
+            }
+        }
+        if (player.isStealth) {
+            int cy = shY + 18;
+            g2.setColor(new Color(255, 255, 255, 70));
+            g2.drawRect(x, cy, barW, barH);
+            double cFrac = player.cloakEnergyFrac();
+            g2.setColor(player.isCloaked() ? new Color(120, 255, 200, 210) : new Color(200, 220, 255, 170));
+            g2.fillRect(x + 1, cy + 1, (int) Math.round((barW - 1) * cFrac), barH - 1);
+            g2.setColor(new Color(190, 245, 220, 210));
+            g2.drawString("CLOAK: " + (player.isCloaked() ? "ACTIVE" : "EXPOSED"), x + barW + 12, cy + barH);
         }
 
         y = 200;
@@ -587,6 +601,12 @@ public class Renderer {
                 : "Q: missile salvo   E: shield overcharge   F: mine";
         g2.drawString(abilityKeys, x, y);
         y += 18;
+        g2.drawString("Y: power preset   U: crew order   I: shield mode   J/K: shield face", x, y);
+        y += 18;
+        if (player.isStealth) {
+            g2.drawString("Stealth hull: cloak auto-engages when not firing/taking hits", x, y);
+            y += 18;
+        }
         if (player.isCarrier) {
             g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
             y += 18;
@@ -597,6 +617,24 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString("AUTO-LOCK: " + (autoLock ? "ON" : "OFF"), x, y);
         y += 18;
+
+        int pEng = (int) Math.round(player.powerEnginesFrac() * 100.0);
+        int pShd = (int) Math.round(player.powerShieldsFrac() * 100.0);
+        int pWep = (int) Math.round(player.powerWeaponsFrac() * 100.0);
+        int pSys = Math.max(0, 100 - pEng - pShd - pWep);
+        g2.drawString("POWER[" + player.powerPreset.name() + "] E:" + pEng + "% S:" + pShd + "% W:" + pWep + "% SYS:" + pSys + "%", x, y);
+        y += 18;
+
+        int readinessPct = (int) Math.round(player.crewReadiness() * 100.0);
+        int fatiguePct = (int) Math.round(player.crewFatigue() * 100.0);
+        g2.drawString("CREW[" + player.crewOrder.name() + "] READY " + readinessPct + "%  FATIGUE " + fatiguePct + "%", x, y);
+        y += 18;
+
+        if (player.shieldActive && player.shieldMax > 0) {
+            int facingDeg = (int) Math.round(Math.toDegrees(MathUtil.normalizeAngle(player.getShieldFacingAngle())));
+            g2.drawString("SHIELD[" + player.shieldFacingMode.name() + "] FACING " + facingDeg + " DEG  ARC " + (int) Math.round(player.shieldArcDegrees()) + " DEG", x, y);
+            y += 18;
+        }
 
         if (player.hasWaveMotionGun) {
             double rem = player.getWaveMotionRemaining();
@@ -646,7 +684,7 @@ public class Renderer {
                 g2.setColor(new Color(255, 255, 255, 170));
             }
 
-            drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH);
+            drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH, zoom);
         }
         y += 18;// Top-center event banner
         if (eventBanner != null && !eventBanner.isBlank() && eventBannerT > 0) {
@@ -1226,6 +1264,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                         int viewW, int viewH,
                                         int worldW, int worldH,
                                         double camX, double camY,
+                                        double camViewW, double camViewH,
                                         Player player,
                                         List<Ship> ships,
                                         List<Asteroid> asteroids,
@@ -1350,8 +1389,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         // Camera viewport rectangle
         double vx0 = camX;
         double vy0 = camY;
-        double vx1 = camX + viewW;
-        double vy1 = camY + viewH;
+        double vx1 = camX + camViewW;
+        double vy1 = camY + camViewH;
 
         Point p0 = W2M.apply(vx0, vy0);
         Point p1 = W2M.apply(vx1, vy1);
@@ -3293,12 +3332,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
      * If the locked target is offscreen, draw a small arrow at the edge of the screen pointing toward it.
      * Coordinates are in screen space (camX/camY are the world-space camera origin).
      */
-    static void drawOffscreenTargetIndicator(Graphics2D g2, Ship target, double camX, double camY, int viewW, int viewH) {
+    static void drawOffscreenTargetIndicator(Graphics2D g2, Ship target, double camX, double camY, int viewW, int viewH, double zoom) {
         if (target == null || !target.alive) return;
 
+        double z = Math.max(1e-6, zoom);
         // Target in screen coords
-        double sx = target.x - camX;
-        double sy = target.y - camY;
+        double sx = (target.x - camX) * z;
+        double sy = (target.y - camY) * z;
 
         if (sx >= 0 && sx <= viewW && sy >= 0 && sy <= viewH) return; // on screen
 

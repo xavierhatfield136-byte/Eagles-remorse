@@ -52,8 +52,8 @@ public final class AISystem {
             if (s == null) continue;
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
-            if (s.role == ShipRole.BASE) {
-                // Bases stay put but can still defend themselves.
+            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
+                // Bases and static defense turrets stay put but can still defend themselves.
                 s.vx = 0;
                 s.vy = 0;
                 Ship target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
@@ -148,7 +148,7 @@ public final class AISystem {
 
             // Rough engagement gating by weapon kind
             double maxRange;
-            if (s.role == ShipRole.BASE) {
+            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
                 maxRange = (t.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0;
             } else {
                 maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
@@ -158,7 +158,7 @@ public final class AISystem {
 
             // Aim with lead for guns; direct for missiles
             if (t.kind == Turret.Kind.GUN) {
-                t.aimAtLead(dt, s, target, t.bulletSpeed);
+                t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
             } else {
                 t.aimAt(dt, s, target);
             }

@@ -113,6 +113,19 @@ public abstract class Ship {
     public double shield = 0;
     public double shieldRegen = 0.0;
     public boolean shieldActive = false;
+    public double shieldRebootDelay = 2.2;
+    private double shieldOfflineTimer = 0.0;
+    public enum ShieldFacingMode {
+        AUTO_TRACK,
+        FORWARD,
+        MANUAL
+    }
+    public ShieldFacingMode shieldFacingMode = ShieldFacingMode.AUTO_TRACK;
+    public double shieldFacingAngle = Double.NaN;
+    public double shieldAutoTrackRate = Math.toRadians(210.0);
+    public double shieldDirectionalArc = Math.toRadians(120.0);
+    private double recentShieldImpactAngle = Double.NaN;
+    private double recentShieldImpactTimer = 0.0;
 
     // Turrets
     public final List<Turret> turrets = new ArrayList<>();
@@ -125,11 +138,18 @@ public abstract class Ship {
     private double waveMotionChargeTimer = 0.0;
     private boolean waveMotionCharging = false;
     private WaveMotionShot pendingWaveMotionShot = null;
-    public int waveMotionDamage = 52;
+    private double queuedWaveMotionAim = Double.NaN;
+    public int waveMotionDamage = 68;
     public double waveMotionSpeed = 1500.0;
     public int waveMotionLife = 140;
     public double waveMotionRadius = 12.0;
     public int waveMotionMaxHits = 18;
+    public double waveMotionBeamDuration = 0.95;
+    public double waveMotionBeamTickInterval = 0.12;
+    public double waveMotionBeamDamageScale = 0.34;
+    private double waveMotionBeamTimer = 0.0;
+    private double waveMotionBeamTickTimer = 0.0;
+    private double waveMotionBeamAim = Double.NaN;
 
     // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
@@ -220,6 +240,53 @@ public abstract class Ship {
 
     // Movement
     public double desiredSpeed = 110;
+    public double desiredSpeedBase = 110;
+
+    // Power management
+    public enum PowerPreset {
+        BALANCED,
+        ATTACK,
+        DEFENSE,
+        PURSUIT
+    }
+    public PowerPreset powerPreset = PowerPreset.BALANCED;
+    private double powerEngines = 0.25;
+    private double powerShields = 0.25;
+    private double powerWeapons = 0.25;
+    private double powerSystems = 0.25;
+
+    // Crew interactions
+    public enum CrewOrder {
+        BALANCED,
+        GUNNERY,
+        ENGINEERING,
+        DAMAGE_CONTROL
+    }
+    public CrewOrder crewOrder = CrewOrder.BALANCED;
+    private double crewFatigue = 0.12;     // 0..1
+    private double crewCasualtyRate = 0.0; // 0..1
+    private double crewReadiness = 1.0;    // 0..1
+    private double crewCombatStress = 0.0;
+    private double crewEngineMul = 1.0;
+    private double crewShieldMul = 1.0;
+    private double crewWeaponMul = 1.0;
+    private double crewSystemMul = 1.0;
+    private double hullRegenBuffer = 0;
+
+    // Internal system damage model
+    public enum InternalSystem {
+        ENGINES,
+        SHIELDS,
+        REACTOR_CORE,
+        SENSORS,
+        WEAPONS,
+        BRIDGE,
+        WARP_ENGINES,
+        MAGAZINES
+    }
+    private final java.util.EnumMap<InternalSystem, Double> systemHp = new java.util.EnumMap<>(InternalSystem.class);
+    private final java.util.EnumMap<InternalSystem, Double> systemHpMax = new java.util.EnumMap<>(InternalSystem.class);
+    private boolean internalSystemsInitialized = false;
 
     // Stealth
     /** If true, this ship is harder to target/lock unless revealed or very close. */
@@ -228,9 +295,17 @@ public abstract class Ship {
     public double signature = 1.0;
     /** Seconds remaining that this ship is "revealed" (shots/hits make you easier to see). */
     public double revealTimer = 0.0;
-
-    // For fractional healing (bases)
-    private double hullRegenBuffer = 0;
+    /** Active cloak state for stealth ships. */
+    public boolean cloakActive = false;
+    /** If false, stealth ships will not engage cloak (debug/gameplay toggle hook). */
+    public boolean cloakEnabled = true;
+    /** Cloak resource model. */
+    public double cloakEnergyMax = 9.0;
+    public double cloakEnergy = cloakEnergyMax;
+    public double cloakDrainPerSec = 1.15;
+    public double cloakRechargePerSec = 0.95;
+    public double cloakMinEnergyToEngage = 1.0;
+    public double cloakSignature = 0.08;
 
     public void addTurret(Turret t) {
         if (t != null) {
@@ -316,9 +391,23 @@ public abstract class Ship {
             revealTimer -= dt;
             if (revealTimer < 0) revealTimer = 0;
         }
+        if (recentShieldImpactTimer > 0.0) {
+            recentShieldImpactTimer -= dt;
+            if (recentShieldImpactTimer < 0.0) recentShieldImpactTimer = 0.0;
+        }
+        ensureInternalSystemsInitialized();
+        ensurePowerInitialized();
+        updateCrewState(dt);
+        updateDerivedSystemEffects();
+        updateShieldFacing(dt);
+        updateStealthCloak(dt);
 
-        if (shieldActive && shield < shieldMax) {
-            shield = Math.min(shieldMax, shield + shieldRegen * dt);
+        if (shieldOfflineTimer > 0.0) {
+            shieldOfflineTimer -= dt;
+            if (shieldOfflineTimer < 0.0) shieldOfflineTimer = 0.0;
+        }
+        if (isShieldOnline() && shield < shieldMax) {
+            shield = Math.min(shieldMax, shield + shieldRegen * shieldRegenMultiplier() * dt);
         }
 
         for (Turret t : turrets) t.update(dt);
@@ -335,7 +424,27 @@ public abstract class Ship {
             if (waveMotionChargeTimer <= 0.0) {
                 waveMotionChargeTimer = 0.0;
                 waveMotionCharging = false;
-                pendingWaveMotionShot = spawnWaveMotionShotForward(dt);
+                double aim = Double.isFinite(queuedWaveMotionAim) ? queuedWaveMotionAim : angle;
+                pendingWaveMotionShot = fireWaveMotionShot(dt, aim);
+                queuedWaveMotionAim = Double.NaN;
+            }
+        }
+        if (waveMotionBeamTimer > 0.0) {
+            waveMotionBeamTimer -= dt;
+            waveMotionBeamTickTimer -= dt;
+            if (waveMotionBeamTimer < 0.0) waveMotionBeamTimer = 0.0;
+
+            if (waveMotionBeamTimer > 0.0 && waveMotionBeamTickTimer <= 0.0) {
+                double aim = Double.isFinite(waveMotionBeamAim) ? waveMotionBeamAim : angle;
+                if (pendingWaveMotionShot == null || !pendingWaveMotionShot.alive) {
+                    pendingWaveMotionShot = createWaveMotionPulse(dt, aim, true);
+                }
+                waveMotionBeamTickTimer = Math.max(0.03, waveMotionBeamTickInterval);
+            }
+
+            if (waveMotionBeamTimer <= 0.0) {
+                waveMotionBeamTickTimer = 0.0;
+                waveMotionBeamAim = Double.NaN;
             }
         }
 
@@ -395,26 +504,41 @@ public abstract class Ship {
     }
 
     public void healShield(double amount) {
-        if (!alive || !shieldActive || shieldMax <= 0) return;
+        if (!alive || !isShieldOnline()) return;
         if (amount <= 0) return;
         shield = Math.min(shieldMax, shield + amount);
     }
 
     public void takeDamage(int dmg) {
+        takeDamage(dmg, Double.NaN, Double.NaN);
+    }
+
+    public void takeDamage(int dmg, double hitX, double hitY) {
         if (!alive) return;
         if (dying) return;
+        if (dmg <= 0) return;
 
         // Getting hit briefly reveals stealth ships.
         reveal(2.5);
+        crewCombatStress = Math.max(crewCombatStress, 1.4);
 
-        if (shieldActive && shield > 0) {
-            shield -= dmg;
-            if (shield < 0) shield = 0;
+        if (isShieldOnline() && shield > 0) {
+            double scaledDamage = dmg * directionalShieldDamageScale(hitX, hitY);
+            shield -= scaledDamage;
+            if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
+                recentShieldImpactAngle = Math.atan2(hitY - y, hitX - x);
+                recentShieldImpactTimer = 1.2;
+            }
+            if (shield <= 0) {
+                shield = 0;
+                shieldOfflineTimer = Math.max(shieldOfflineTimer, shieldRebootDelay);
+            }
             Explosion.spawnShieldHit(x, y);
             return;
         }
 
         hp -= dmg;
+        applySystemDamageFromHullHit(dmg, hitX, hitY);
         if (hp <= 0) {
             hp = 0;
             startDeathSequence();
@@ -427,6 +551,10 @@ public abstract class Ship {
         waveMotionCharging = false;
         waveMotionChargeTimer = 0.0;
         pendingWaveMotionShot = null;
+        queuedWaveMotionAim = Double.NaN;
+        waveMotionBeamTimer = 0.0;
+        waveMotionBeamTickTimer = 0.0;
+        waveMotionBeamAim = Double.NaN;
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
@@ -580,18 +708,458 @@ public abstract class Ship {
     public void reveal(double seconds) {
         if (!isStealth) return;
         revealTimer = Math.max(revealTimer, seconds);
+        cloakActive = false;
     }
 
     /** Called when this ship fires a weapon; helps prevent perma-cloaking while shooting. */
     public void onFiredWeapon() {
         reveal(1.4);
+        crewCombatStress = Math.max(crewCombatStress, 1.0);
     }
 
     /** Effective signature (used by targeting). */
     public double effectiveSignature() {
         if (!isStealth) return 1.0;
+        if (isCloaked()) {
+            return Math.max(0.03, Math.min(0.30, Math.min(signature, cloakSignature)));
+        }
         if (revealTimer > 0) return 1.0;
-        return Math.max(0.15, Math.min(1.0, signature));
+        return Math.max(0.20, Math.min(1.0, signature));
+    }
+
+    public boolean isCloaked() {
+        if (!isStealth) return false;
+        if (!cloakEnabled) return false;
+        if (!cloakActive) return false;
+        if (revealTimer > 0) return false;
+        return cloakEnergy > 0.01;
+    }
+
+    public double cloakEnergyFrac() {
+        if (!isStealth) return 0.0;
+        if (cloakEnergyMax <= 0.0) return 0.0;
+        return Math.max(0.0, Math.min(1.0, cloakEnergy / cloakEnergyMax));
+    }
+
+    private void updateStealthCloak(double dt) {
+        if (!isStealth || dt <= 0.0) return;
+
+        if (cloakEnergyMax <= 0.01) cloakEnergyMax = 0.01;
+        cloakEnergy = Math.max(0.0, Math.min(cloakEnergyMax, cloakEnergy));
+
+        if (!cloakEnabled || revealTimer > 0.0) {
+            cloakActive = false;
+            cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
+            return;
+        }
+
+        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage) {
+            cloakActive = true;
+        }
+
+        if (cloakActive) {
+            cloakEnergy -= cloakDrainPerSec * dt;
+            if (cloakEnergy <= 0.0) {
+                cloakEnergy = 0.0;
+                cloakActive = false;
+                // Briefly expose after cloak burnout.
+                revealTimer = Math.max(revealTimer, 1.0);
+            }
+        } else {
+            cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
+        }
+    }
+
+    public void resetInternalSystems() {
+        internalSystemsInitialized = false;
+        systemHp.clear();
+        systemHpMax.clear();
+    }
+
+    public double systemHealthFraction(InternalSystem system) {
+        ensureInternalSystemsInitialized();
+        if (system == null) return 1.0;
+        Double hpv = systemHp.get(system);
+        Double maxv = systemHpMax.get(system);
+        if (hpv == null || maxv == null || maxv <= 1e-6) return 1.0;
+        return Math.max(0.0, Math.min(1.0, hpv / maxv));
+    }
+
+    public boolean isSystemDestroyed(InternalSystem system) {
+        return systemHealthFraction(system) <= 0.001;
+    }
+
+    public PowerPreset cyclePowerPreset() {
+        PowerPreset[] presets = PowerPreset.values();
+        int idx = powerPreset.ordinal() + 1;
+        if (idx >= presets.length) idx = 0;
+        setPowerPreset(presets[idx]);
+        return powerPreset;
+    }
+
+    public void setPowerPreset(PowerPreset preset) {
+        if (preset == null) preset = PowerPreset.BALANCED;
+        powerPreset = preset;
+        switch (preset) {
+            case ATTACK -> setPowerAllocation(0.20, 0.20, 0.44, 0.16);
+            case DEFENSE -> setPowerAllocation(0.18, 0.46, 0.20, 0.16);
+            case PURSUIT -> setPowerAllocation(0.48, 0.14, 0.22, 0.16);
+            default -> setPowerAllocation(0.25, 0.25, 0.25, 0.25);
+        }
+    }
+
+    public void setPowerAllocation(double engines, double shields, double weapons, double systems) {
+        powerEngines = Math.max(0.0, engines);
+        powerShields = Math.max(0.0, shields);
+        powerWeapons = Math.max(0.0, weapons);
+        powerSystems = Math.max(0.0, systems);
+        normalizePowerAllocation();
+    }
+
+    public double powerEnginesFrac() { return powerEngines; }
+    public double powerShieldsFrac() { return powerShields; }
+    public double powerWeaponsFrac() { return powerWeapons; }
+    public double powerSystemsFrac() { return powerSystems; }
+
+    public CrewOrder cycleCrewOrder() {
+        CrewOrder[] orders = CrewOrder.values();
+        int idx = crewOrder.ordinal() + 1;
+        if (idx >= orders.length) idx = 0;
+        crewOrder = orders[idx];
+        return crewOrder;
+    }
+
+    public double crewReadiness() {
+        return Math.max(0.0, Math.min(1.0, crewReadiness));
+    }
+
+    public double crewFatigue() {
+        return Math.max(0.0, Math.min(1.0, crewFatigue));
+    }
+
+    public ShieldFacingMode cycleShieldFacingMode() {
+        ShieldFacingMode[] modes = ShieldFacingMode.values();
+        int idx = shieldFacingMode.ordinal() + 1;
+        if (idx >= modes.length) idx = 0;
+        shieldFacingMode = modes[idx];
+        if (shieldFacingMode == ShieldFacingMode.FORWARD) {
+            shieldFacingAngle = angle;
+        } else if (!Double.isFinite(shieldFacingAngle)) {
+            shieldFacingAngle = angle;
+        }
+        return shieldFacingMode;
+    }
+
+    public void rotateShieldFacing(double deltaRad) {
+        if (!Double.isFinite(deltaRad) || deltaRad == 0.0) return;
+        if (!Double.isFinite(shieldFacingAngle)) shieldFacingAngle = angle;
+        shieldFacingAngle = MathUtil.normalizeAngle(shieldFacingAngle + deltaRad);
+    }
+
+    public double getShieldFacingAngle() {
+        if (!Double.isFinite(shieldFacingAngle)) return angle;
+        return shieldFacingAngle;
+    }
+
+    public double shieldArcDegrees() {
+        return Math.toDegrees(Math.max(0.0, shieldDirectionalArc));
+    }
+
+    public double weaponDamageMultiplier() {
+        double weapons = systemHealthFraction(InternalSystem.WEAPONS);
+        double reactor = systemHealthFraction(InternalSystem.REACTOR_CORE);
+        double out = 0.28 + 0.52 * weapons + 0.20 * reactor;
+        out *= weaponsPowerMultiplier();
+        out *= crewWeaponMul;
+        return Math.max(0.12, Math.min(1.50, out));
+    }
+
+    public double weaponCycleRateMultiplier() {
+        double weapons = systemHealthFraction(InternalSystem.WEAPONS);
+        double reactor = systemHealthFraction(InternalSystem.REACTOR_CORE);
+        double out = 0.32 + 0.48 * weapons + 0.20 * reactor;
+        out *= weaponsPowerMultiplier();
+        out *= crewWeaponMul;
+        return Math.max(0.12, Math.min(1.45, out));
+    }
+
+    public double sensorRangeMultiplier() {
+        double sensors = systemHealthFraction(InternalSystem.SENSORS);
+        double bridge = systemHealthFraction(InternalSystem.BRIDGE);
+        double out = 0.35 + 0.45 * sensors + 0.20 * bridge;
+        out *= systemsPowerMultiplier();
+        out *= crewSystemMul;
+        return Math.max(0.16, Math.min(1.25, out));
+    }
+
+    public double shieldSystemMultiplier() {
+        return Math.max(0.0, Math.min(1.0, systemHealthFraction(InternalSystem.SHIELDS)));
+    }
+
+    public double shieldRegenMultiplier() {
+        double regen = shieldSystemMultiplier();
+        regen *= shieldsPowerMultiplier();
+        regen *= crewShieldMul;
+        return Math.max(0.0, Math.min(1.65, regen));
+    }
+
+    private void ensureInternalSystemsInitialized() {
+        if (internalSystemsInitialized) return;
+
+        if (desiredSpeedBase <= 0.0) desiredSpeedBase = Math.max(0.0, desiredSpeed);
+        double base = Math.max(20.0, hpMax + shieldMax * 0.40 + radius * 0.60);
+
+        initSystem(InternalSystem.ENGINES, base * 0.78);
+        initSystem(InternalSystem.SHIELDS, shieldActive ? base * 0.74 : base * 0.36);
+        initSystem(InternalSystem.REACTOR_CORE, base * 0.88);
+        initSystem(InternalSystem.SENSORS, base * 0.58);
+        initSystem(InternalSystem.WEAPONS, base * 0.80);
+        initSystem(InternalSystem.BRIDGE, base * 0.54);
+        initSystem(InternalSystem.WARP_ENGINES, base * 0.62);
+        initSystem(InternalSystem.MAGAZINES, base * 0.70);
+        internalSystemsInitialized = true;
+    }
+
+    private void initSystem(InternalSystem system, double hp) {
+        double max = Math.max(6.0, hp);
+        systemHpMax.put(system, max);
+        systemHp.put(system, max);
+    }
+
+    private void ensurePowerInitialized() {
+        if (powerEngines == 0.0 && powerShields == 0.0 && powerWeapons == 0.0 && powerSystems == 0.0) {
+            setPowerPreset(powerPreset);
+            return;
+        }
+        normalizePowerAllocation();
+    }
+
+    private void normalizePowerAllocation() {
+        double sum = powerEngines + powerShields + powerWeapons + powerSystems;
+        if (sum <= 1e-6) {
+            powerEngines = 0.25;
+            powerShields = 0.25;
+            powerWeapons = 0.25;
+            powerSystems = 0.25;
+            return;
+        }
+        powerEngines /= sum;
+        powerShields /= sum;
+        powerWeapons /= sum;
+        powerSystems /= sum;
+    }
+
+    private double enginesPowerMultiplier() {
+        return Math.max(0.35, Math.min(1.35, 0.58 + 0.82 * powerEngines));
+    }
+
+    private double shieldsPowerMultiplier() {
+        return Math.max(0.18, Math.min(1.45, 0.52 + 0.98 * powerShields));
+    }
+
+    private double weaponsPowerMultiplier() {
+        return Math.max(0.20, Math.min(1.50, 0.52 + 0.98 * powerWeapons));
+    }
+
+    private double systemsPowerMultiplier() {
+        return Math.max(0.28, Math.min(1.30, 0.58 + 0.84 * powerSystems));
+    }
+
+    private void updateCrewState(double dt) {
+        if (dt <= 0.0) return;
+
+        if (crewCombatStress > 0.0) {
+            crewCombatStress -= dt;
+            if (crewCombatStress < 0.0) crewCombatStress = 0.0;
+        }
+
+        double stress = (crewCombatStress > 0.0) ? 1.0 : 0.0;
+        double lowHullPressure = (hpMax > 0 && hp < hpMax * 0.42) ? 1.0 : 0.0;
+        crewFatigue += dt * (0.030 * stress + 0.020 * lowHullPressure - 0.018 * (1.0 - stress));
+        crewFatigue = MathUtil.clamp(crewFatigue, 0.0, 1.0);
+
+        // Casualties are persistent but recover slowly over time through medbay/automation.
+        crewCasualtyRate -= dt * 0.0015;
+        crewCasualtyRate = MathUtil.clamp(crewCasualtyRate, 0.0, 0.70);
+
+        double readinessBase = 1.0 - 0.36 * crewFatigue - 0.45 * crewCasualtyRate;
+        crewReadiness = MathUtil.clamp(readinessBase, 0.28, 1.0);
+
+        double fatiguePenalty = 1.0 - 0.32 * crewFatigue;
+        double casualtyPenalty = 1.0 - 0.42 * crewCasualtyRate;
+        double base = MathUtil.clamp(crewReadiness * fatiguePenalty * casualtyPenalty, 0.30, 1.0);
+
+        double engines = 1.0;
+        double shields = 1.0;
+        double weapons = 1.0;
+        double systems = 1.0;
+        switch (crewOrder) {
+            case GUNNERY -> {
+                weapons = 1.20;
+                shields = 0.88;
+                engines = 0.94;
+                systems = 0.94;
+            }
+            case ENGINEERING -> {
+                engines = 1.12;
+                shields = 1.16;
+                systems = 1.14;
+                weapons = 0.86;
+            }
+            case DAMAGE_CONTROL -> {
+                shields = 1.12;
+                systems = 1.22;
+                engines = 0.86;
+                weapons = 0.80;
+                ensureInternalSystemsInitialized();
+                repairDamagedSystems((0.55 + 0.55 * crewReadiness) * dt);
+                healHull((0.16 + 0.22 * crewReadiness) * dt);
+            }
+            default -> {
+                // Balanced
+            }
+        }
+
+        crewEngineMul = MathUtil.clamp(base * engines, 0.35, 1.30);
+        crewShieldMul = MathUtil.clamp(base * shields, 0.30, 1.35);
+        crewWeaponMul = MathUtil.clamp(base * weapons, 0.28, 1.35);
+        crewSystemMul = MathUtil.clamp(base * systems, 0.30, 1.35);
+    }
+
+    private void repairDamagedSystems(double amount) {
+        if (amount <= 0.0) return;
+        InternalSystem lowest = null;
+        double lowestFrac = 1.0;
+        for (InternalSystem s : InternalSystem.values()) {
+            double f = systemHealthFraction(s);
+            if (f < lowestFrac) {
+                lowestFrac = f;
+                lowest = s;
+            }
+        }
+        if (lowest == null || lowestFrac >= 0.999) return;
+        Double hpv = systemHp.get(lowest);
+        Double maxv = systemHpMax.get(lowest);
+        if (hpv == null || maxv == null || maxv <= 0.0) return;
+        hpv = Math.min(maxv, hpv + amount * maxv * 0.16 * systemsPowerMultiplier());
+        systemHp.put(lowest, hpv);
+    }
+
+    private void updateShieldFacing(double dt) {
+        if (!shieldActive || shieldMax <= 0.0) return;
+        if (!Double.isFinite(shieldFacingAngle)) shieldFacingAngle = angle;
+
+        if (shieldFacingMode == ShieldFacingMode.FORWARD) {
+            shieldFacingAngle = angle;
+            return;
+        }
+        if (shieldFacingMode == ShieldFacingMode.MANUAL) {
+            return;
+        }
+
+        double target = angle;
+        double v2 = vx * vx + vy * vy;
+        if (v2 > 1e-8) {
+            target = Math.atan2(vy, vx);
+        }
+        if (recentShieldImpactTimer > 0.0 && Double.isFinite(recentShieldImpactAngle)) {
+            target = recentShieldImpactAngle;
+        }
+
+        double delta = MathUtil.normalizeAngle(target - shieldFacingAngle);
+        double maxStep = Math.max(0.0, shieldAutoTrackRate * dt);
+        delta = MathUtil.clamp(delta, -maxStep, maxStep);
+        shieldFacingAngle = MathUtil.normalizeAngle(shieldFacingAngle + delta);
+    }
+
+    private double directionalShieldDamageScale(double hitX, double hitY) {
+        if (!Double.isFinite(hitX) || !Double.isFinite(hitY)) return 1.0;
+        if (!Double.isFinite(shieldFacingAngle)) return 1.0;
+
+        double hitAngle = Math.atan2(hitY - y, hitX - x);
+        double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - shieldFacingAngle));
+        double halfArc = Math.max(Math.toRadians(35.0), shieldDirectionalArc * 0.5);
+        double arcT = MathUtil.clamp(rel / halfArc, 0.0, 1.0);
+
+        // In-arc hits are mitigated heavily, out-of-arc hits leak through.
+        double arcScale = 0.62 + arcT * 0.72;
+        double systems = Math.max(0.30, Math.min(1.30, shieldSystemMultiplier() * systemsPowerMultiplier() * crewShieldMul));
+        double powerScale = 1.22 - 0.36 * shieldsPowerMultiplier();
+        double total = arcScale * powerScale / Math.max(0.35, systems);
+        return Math.max(0.35, Math.min(1.95, total));
+    }
+
+    private void updateDerivedSystemEffects() {
+        if (desiredSpeedBase <= 0.0) desiredSpeedBase = Math.max(0.0, desiredSpeed);
+
+        double engine = systemHealthFraction(InternalSystem.ENGINES);
+        double warp = systemHealthFraction(InternalSystem.WARP_ENGINES);
+        double bridge = systemHealthFraction(InternalSystem.BRIDGE);
+        double mobility = 0.24 + 0.52 * engine + 0.16 * warp + 0.08 * bridge;
+        mobility *= enginesPowerMultiplier();
+        mobility *= crewEngineMul;
+        mobility = Math.max(0.18, Math.min(1.38, mobility));
+        desiredSpeed = desiredSpeedBase * mobility;
+    }
+
+    private void applySystemDamageFromHullHit(int hullDamage, double hitX, double hitY) {
+        if (hullDamage <= 0) return;
+        ensureInternalSystemsInitialized();
+
+        int rolls = (hullDamage >= 9) ? 2 : 1;
+        for (int i = 0; i < rolls; i++) {
+            InternalSystem system = pickSystemForHit(hitX, hitY);
+            if (system == null) continue;
+
+            double dmg = Math.max(1.0, hullDamage * (0.58 + Math.random() * 0.82));
+            damageSystem(system, dmg);
+        }
+
+        double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.36;
+        crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
+
+        if (isSystemDestroyed(InternalSystem.MAGAZINES) && Math.random() < 0.10) {
+            int cookoff = Math.max(1, (int) Math.round(hullDamage * 0.45));
+            hp -= cookoff;
+            Explosion.spawnShieldHit(x, y);
+        }
+    }
+
+    private InternalSystem pickSystemForHit(double hitX, double hitY) {
+        if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
+            double hitAngle = Math.atan2(hitY - y, hitX - x);
+            double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - angle));
+            if (rel < Math.toRadians(45.0) && Math.random() < 0.55) {
+                InternalSystem[] front = { InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.BRIDGE };
+                return front[(int) Math.floor(Math.random() * front.length)];
+            }
+            if (rel > Math.toRadians(135.0) && Math.random() < 0.55) {
+                InternalSystem[] rear = { InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.REACTOR_CORE };
+                return rear[(int) Math.floor(Math.random() * rear.length)];
+            }
+        }
+
+        InternalSystem[] systems = InternalSystem.values();
+        int idx = (int) Math.floor(Math.random() * systems.length);
+        if (idx < 0 || idx >= systems.length) idx = 0;
+        InternalSystem s = systems[idx];
+        if (s == InternalSystem.SHIELDS && !shieldActive && Math.random() < 0.7) {
+            s = (Math.random() < 0.5) ? InternalSystem.ENGINES : InternalSystem.WEAPONS;
+        }
+        return s;
+    }
+
+    private void damageSystem(InternalSystem system, double damage) {
+        if (system == null || damage <= 0.0) return;
+        Double hpv = systemHp.get(system);
+        if (hpv == null) return;
+        hpv = Math.max(0.0, hpv - damage);
+        systemHp.put(system, hpv);
+
+        if (system == InternalSystem.SHIELDS && hpv <= 0.0) {
+            shield = 0.0;
+            shieldOfflineTimer = Math.max(shieldOfflineTimer, shieldRebootDelay * 1.5);
+        }
     }
 
     /**
@@ -690,6 +1258,10 @@ public abstract class Ship {
         waveMotionChargeTimer = 0.0;
         waveMotionCharging = false;
         pendingWaveMotionShot = null;
+        queuedWaveMotionAim = Double.NaN;
+        waveMotionBeamTimer = 0.0;
+        waveMotionBeamTickTimer = 0.0;
+        waveMotionBeamAim = Double.NaN;
     }
 
     public boolean canFireWaveMotionGun() {
@@ -701,6 +1273,8 @@ public abstract class Ship {
     public WaveMotionShot tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
         if (!canFireWaveMotionGun()) return null;
         if (dt <= 0.0) return null;
+        double aim = resolveWaveMotionAim(targetX, targetY);
+        queuedWaveMotionAim = aim;
 
         if (waveMotionChargeTime > 0.0) {
             waveMotionCharging = true;
@@ -708,30 +1282,84 @@ public abstract class Ship {
             return null;
         }
 
-        return spawnWaveMotionShotForward(dt);
+        queuedWaveMotionAim = Double.NaN;
+        return fireWaveMotionShot(dt, aim);
     }
 
     public WaveMotionShot tryFireWaveMotionGun(Ship target, double dt) {
-        return tryFireWaveMotionGunAt(0.0, 0.0, dt);
+        if (target == null) return tryFireWaveMotionGunAt(Double.NaN, Double.NaN, dt);
+        return tryFireWaveMotionGunAt(target.x, target.y, dt);
     }
 
-    private WaveMotionShot spawnWaveMotionShotForward(double dt) {
-        double aim = angle;
+    public boolean isShieldOnline() {
+        return shieldActive
+                && shieldMax > 0
+                && shieldSystemMultiplier() > 0.05
+                && powerShields > 0.04
+                && shieldOfflineTimer <= 0.0;
+    }
+
+    public double getShieldOfflineRemaining() {
+        return Math.max(0.0, shieldOfflineTimer);
+    }
+
+    public void resetShieldState() {
+        shieldOfflineTimer = 0.0;
+        recentShieldImpactTimer = 0.0;
+        recentShieldImpactAngle = Double.NaN;
+        if (shieldFacingMode == ShieldFacingMode.FORWARD) {
+            shieldFacingAngle = angle;
+        }
+    }
+
+    private double resolveWaveMotionAim(double targetX, double targetY) {
+        if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return angle;
+        double dx = targetX - x;
+        double dy = targetY - y;
+        double d2 = dx * dx + dy * dy;
+        if (d2 < 1e-8) return angle;
+        return Math.atan2(dy, dx);
+    }
+
+    private WaveMotionShot fireWaveMotionShot(double dt, double aim) {
+        angle = aim;
+        waveMotionTimer = Math.max(1.0, waveMotionCooldown);
+        waveMotionBeamTimer = Math.max(0.0, waveMotionBeamDuration);
+        waveMotionBeamTickTimer = Math.max(0.03, waveMotionBeamTickInterval);
+        waveMotionBeamAim = aim;
+        onFiredWeapon();
+
+        return createWaveMotionPulse(dt, aim, false);
+    }
+
+    private WaveMotionShot createWaveMotionPulse(double dt, double aim, boolean beamTick) {
         double sx = x + Math.cos(aim) * (radius + 10.0);
         double sy = y + Math.sin(aim) * (radius + 10.0);
 
-        waveMotionTimer = Math.max(1.0, waveMotionCooldown);
-        onFiredWeapon();
+        int damage = waveMotionDamage;
+        double speed = waveMotionSpeed;
+        int life = waveMotionLife;
+        double radius = waveMotionRadius;
+        int maxHits = waveMotionMaxHits;
+
+        if (beamTick) {
+            damage = Math.max(1, (int) Math.round(waveMotionDamage * waveMotionBeamDamageScale));
+            speed = waveMotionSpeed * 1.12;
+            life = Math.max(18, (int) Math.round(waveMotionLife * 0.42));
+            radius = waveMotionRadius * 0.92;
+            maxHits = Math.max(6, (int) Math.round(waveMotionMaxHits * 0.45));
+        }
+
         return new WaveMotionShot(
                 sx,
                 sy,
                 aim,
                 dt,
-                waveMotionSpeed,
-                waveMotionDamage,
-                waveMotionLife,
-                waveMotionRadius,
-                waveMotionMaxHits,
+                speed,
+                damage,
+                life,
+                radius,
+                maxHits,
                 faction
         );
     }

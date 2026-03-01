@@ -112,6 +112,14 @@ public class FleetShip extends Ship {
                 isStealth = true;
                 signature = 0.35;
                 revealTimer = 0;
+                cloakEnabled = true;
+                cloakActive = true;
+                cloakEnergyMax = 10.0;
+                cloakEnergy = cloakEnergyMax;
+                cloakDrainPerSec = 1.05;
+                cloakRechargePerSec = 1.20;
+                cloakMinEnergyToEngage = 0.8;
+                cloakSignature = 0.07;
 
                 Turret burstGun = new Turret(Turret.Kind.GUN, 11, 0);
                 burstGun.cooldown = 0.10;
@@ -833,11 +841,14 @@ public class FleetShip extends Ship {
                 hasWaveMotionGun = true;
                 waveMotionChargeTime = 3.0;
                 waveMotionCooldown = 22.0;
-                waveMotionDamage = 62;
+                waveMotionDamage = 88;
                 waveMotionSpeed = 1600.0;
                 waveMotionLife = 170;
                 waveMotionRadius = 14.0;
                 waveMotionMaxHits = 26;
+                waveMotionBeamDuration = 1.15;
+                waveMotionBeamTickInterval = 0.11;
+                waveMotionBeamDamageScale = 0.36;
 
                 hasCIWS = true;
                 ciwsQuality = 0.45;
@@ -1183,6 +1194,8 @@ public class FleetShip extends Ship {
         // (Keeps tuning centralized in RoleStats.)
         RoleStats.applyCore(this, role);
         rebalanceEnemyMissileLoadout();
+        desiredSpeedBase = Math.max(0.0, desiredSpeed);
+        resetInternalSystems();
     }
 
     private void rebalanceEnemyMissileLoadout() {
