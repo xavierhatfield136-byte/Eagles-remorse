@@ -111,6 +111,18 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
+        if (p.hasWaveMotionGun) p.trackWaveMotionAim(mouseWorldX, mouseWorldY);
+
+        boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);
+
+        if (ctx.state != GameState.RUNNING) {
+            if (helmAutoApplied) return;
+            p.vx = 0.0;
+            p.vy = 0.0;
+            return;
+        }
+
+        if (helmAutoApplied) return;
 
         double speed = 220.0;
         if (snap.boost) speed *= 1.6;
@@ -122,6 +134,12 @@ public final class GameSimulationRuntime {
         double turnRate = turnRateForRadius(p.radius);
         p.angle = MathUtil.normalizeAngle(p.angle + turnInput * turnRate * dt);
 
+        if (p.hasWaveMotionGun && p.isWaveMotionCharging()) {
+            double desired = Math.atan2(mouseWorldY - p.y, mouseWorldX - p.x);
+            double assistRate = Math.toRadians(260.0);
+            p.angle = rotateToward(p.angle, desired, assistRate * dt);
+        }
+
         // Thrust follows hull heading.
         double throttle = 0.0;
         if (snap.up) throttle += 1.0;
@@ -130,6 +148,12 @@ public final class GameSimulationRuntime {
         double vy = Math.sin(p.angle) * speed * throttle;
         p.vx = vx * dt;
         p.vy = vy * dt;
+    }
+
+    private static double rotateToward(double current, double desired, double maxStep) {
+        double delta = MathUtil.normalizeAngle(desired - current);
+        double step = MathUtil.clamp(delta, -Math.abs(maxStep), Math.abs(maxStep));
+        return MathUtil.normalizeAngle(current + step);
     }
 
     private static double turnRateForRadius(double radius) {

@@ -97,7 +97,7 @@ public class CollisionSystem {
             for (Asteroid a : asteroids) {
                 double dx = s.x - a.x;
                 double dy = s.y - a.y;
-                double rr = s.radius + a.radius;
+                double rr = s.radius + a.collisionRadius();
                 double d2 = dx * dx + dy * dy;
                 if (d2 >= rr * rr) continue;
 
@@ -125,7 +125,7 @@ public class CollisionSystem {
             if (!p.alive) continue;
             if (p instanceof WaveMotionShot) continue;
             for (Asteroid a : asteroids) {
-                if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.radius)) {
+                if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.collisionRadius())) {
                     p.alive = false;
                     VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, 1);
                     Explosion.spawnShieldHit(p.x, p.y);

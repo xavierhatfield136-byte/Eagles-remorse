@@ -28,16 +28,16 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.state == GameState.PAUSED) return;
-                if (ctx.shopOpen || ctx.baseMenuOpen) return;
+                if (ctx.shopOpen || ctx.baseMenuOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return;
 
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimary = true;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondary = true;
+                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
+                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;
                 if (SwingUtilities.isMiddleMouseButton(e)) GameplayActions.lockUnderMouse(ctx, controls);
             }
 
             @Override public void mouseReleased(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimary = false;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondary = false;
+                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = false;
+                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = false;
             }
         });
 
@@ -45,9 +45,12 @@ public final class InputSystem {
             @Override
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
+                if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
+                if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
-                GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode);
+                if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;
+                DevTools.handleKeyPressed(keyCode);
             }
         });
 

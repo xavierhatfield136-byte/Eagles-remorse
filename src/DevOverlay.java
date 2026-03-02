@@ -38,8 +38,8 @@ public final class DevOverlay {
 
         g2.setColor(new Color(255, 255, 255, 220));
         y += lineH;
-        drawLine(g2, x, y, "DEV OVERLAY  (F3)   AI: " + (DevTools.isAIEnabled() ? "ON" : "OFF") +
-                "   Time: " + DevTools.getTimeScale() + "x");
+        drawLine(g2, x, y, "DEV OVERLAY (F3)  HEATMAP(F2): " + (DevTools.isAsteroidHeatmapEnabled() ? "ON" : "OFF")
+                + "  AI: " + (DevTools.isAIEnabled() ? "ON" : "OFF") + "  Time: " + DevTools.getTimeScale() + "x");
 
         y += lineH;
         drawLine(g2, x, y, "State: " + safe(ctx, "state"));
@@ -107,8 +107,12 @@ public final class DevOverlay {
                 "  Map: " + safe(ctx, "mapOpen"));
 
         y += lineH;
-        drawLine(g2, x, y, "Fire: L=" + safe(ctx, "firingPrimary") + "  R=" + safe(ctx, "firingSecondary") +
-                "  AutoLock=" + safe(ctx, "autoLockTurrets"));
+        boolean lMan = boolField(ctx, "firingPrimaryManual");
+        boolean rMan = boolField(ctx, "firingSecondaryManual");
+        boolean lAuto = boolField(ctx, "firingPrimaryAuto");
+        boolean rAuto = boolField(ctx, "firingSecondaryAuto");
+        drawLine(g2, x, y, "Fire M[L=" + lMan + " R=" + rMan + "]  AI[L=" + lAuto + " R=" + rAuto + "]"
+                + "  AutoLock=" + safe(ctx, "autoLockTurrets"));
 
         y += lineH;
         drawLine(g2, x, y, "Fancy VFX (F10): " + (DevTools.isFancyVfxEnabled() ? "ON" : "OFF"));
@@ -159,6 +163,12 @@ public final class DevOverlay {
     private static String safe(Object obj, String field) {
         Object v = getFieldValue(obj, field);
         return v == null ? "?" : String.valueOf(v);
+    }
+
+    private static boolean boolField(Object obj, String field) {
+        Object v = getFieldValue(obj, field);
+        if (v instanceof Boolean b) return b;
+        return false;
     }
 
     private static double safeD(Object obj, String field) {

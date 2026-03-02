@@ -187,12 +187,22 @@ public class Player extends Ship {
         addTurret(rack);
     }
 
-    public void upgradeCIWS() {
-        if (!hasCIWS) return;
+    public boolean isCIWSUpgradeMaxed() {
+        if (!hasCIWS) return false;
+        return ciwsQuality >= (1.0 - 1e-9)
+                && ciwsRange >= (380.0 - 1e-9)
+                && ciwsPelletsPerBurst >= 8
+                && ciwsCooldown <= (0.04 + 1e-9);
+    }
+
+    public boolean upgradeCIWS() {
+        if (!hasCIWS) return false;
+        if (isCIWSUpgradeMaxed()) return false;
         ciwsQuality = Math.min(1.0, ciwsQuality + 0.20);
         ciwsRange = Math.min(380, ciwsRange + 25);
         ciwsPelletsPerBurst = Math.min(8, ciwsPelletsPerBurst + 1);
         ciwsCooldown = Math.max(0.04, ciwsCooldown - 0.01);
+        return true;
     }
 
     private void copyFrom(FleetShip t) {

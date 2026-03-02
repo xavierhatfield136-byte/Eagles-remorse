@@ -26,9 +26,13 @@ public final class GameRenderSystem {
         }
 
         Renderer.drawAsteroids(worldG, ctx.asteroids);
+        if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
+            Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids);
+        }
         Renderer.drawSalvage(worldG, ctx.salvage);
         Renderer.drawShips(worldG, ctx.ships);
         Renderer.drawProjectiles(worldG, ctx.projectiles);
+        Renderer.drawWaveMotionAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
 
         try { VFX.drawAll(worldG); } catch (Throwable ignored) {}
 
@@ -42,7 +46,7 @@ public final class GameRenderSystem {
             }
         } catch (Throwable ignored) {}
 
-        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget);
+        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets);
         drawCampaignMarkers(ctx, worldG);
         worldG.dispose();
 
@@ -63,6 +67,14 @@ public final class GameRenderSystem {
             objectiveTitle = LastStandSystem.hudTitle(ctx);
             objectiveDetail = LastStandSystem.hudDetail(ctx);
         }
+        String stationStatus = "STATIONS "
+                + "C:" + (ctx.captainAutomation ? "AI" : "MAN") + "  "
+                + "H:" + (ctx.helmAutomation ? "AI" : "MAN") + "  "
+                + "T:" + (ctx.tacticalAutomation ? "AI" : "MAN") + "  "
+                + "E:" + (ctx.engineeringAutomation ? "AI" : "MAN") + "  "
+                + "S:" + (ctx.scienceAutomation ? "AI" : "MAN");
+        String overlayStatus = activeOverlayLabel(ctx);
+        String contextHint = buildContextHint(ctx, docked);
 
         Renderer.drawHUD(
                 g2,
@@ -94,7 +106,11 @@ public final class GameRenderSystem {
                 ctx.camY,
                 viewportW,
                 viewportH,
-                zoom
+                zoom,
+                stationStatus,
+                ctx.hudDetail,
+                contextHint,
+                overlayStatus
 
         );
         drawModifierChips(ctx, g2, viewportW);
@@ -115,6 +131,14 @@ public final class GameRenderSystem {
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
                         maxHangarTier);
             }
+        }
+
+        if (ctx.powerManagementOpen && ctx.player != null) {
+            Renderer.drawPowerManagementOverlay(g2, ctx.player, ctx.powerManagementFocus);
+        }
+
+        if (ctx.crewStationsOpen && ctx.player != null) {
+            Renderer.drawCrewStationsOverlay(g2, ctx);
         }
 
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
@@ -143,6 +167,65 @@ if (DevTools.isDebugOverlay()) {
     try { DevOverlay.draw(g2, ctx, viewportW, viewportH); } catch (Throwable ignored) {}
 }
 
+    }
+
+    private static String activeOverlayLabel(GameContext ctx) {
+        if (ctx == null) return "";
+        if (ctx.shopOpen) return "OVERLAY: SHOP/LOADOUT";
+        if (ctx.baseMenuOpen) return "OVERLAY: BASE UPGRADES";
+        if (ctx.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
+        if (ctx.crewStationsOpen) return "OVERLAY: CREW STATIONS";
+        if (ctx.mapOpen) return "OVERLAY: STRATEGIC MAP";
+        if (ctx.state == GameState.PAUSED) return "OVERLAY: PAUSED";
+        return "";
+    }
+
+    private static String buildContextHint(GameContext ctx, Ship dockedBase) {
+        if (ctx == null || ctx.player == null) return "";
+        Ship p = ctx.player;
+
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) {
+            return "Overlay active: combat input blocked, station AI continues running. Press ESC to close.";
+        }
+        if (!p.alive || p.dying || p.hp <= 0) {
+            return "";
+        }
+
+        double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
+        double shieldFrac = (p.shieldMax <= 0.0) ? 1.0 : (p.shield / Math.max(1e-9, p.shieldMax));
+        if (hpFrac < 0.35 || shieldFrac < 0.20) {
+            return "Critical survivability: fall back to friendly support and cycle DEFENSE power preset.";
+        }
+        if (dockedBase != null) {
+            return "Docked at base: ore auto-deposits. Press B for base upgrades, TAB for loadout.";
+        }
+        if (ctx.lockedTarget == null || !ctx.lockedTarget.alive || ctx.lockedTarget.dying) {
+            if (hasHostileNearPlayer(ctx, 920.0)) {
+                return "No target lock while hostiles are nearby. Press L (or middle click) to lock quickly.";
+            }
+        } else if (p.hasWaveMotionGun && p.isWaveMotionCharging()) {
+            return "Wave gun charging: hold heading steady until charge completes.";
+        }
+        if (p.isCarrier) {
+            int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
+            if (active <= 0) {
+                return "Carrier wing idle: press C to launch, V to set wing behavior.";
+            }
+        }
+        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL).";
+    }
+
+    private static boolean hasHostileNearPlayer(GameContext ctx, double radius) {
+        if (ctx == null || ctx.player == null || ctx.ships == null || radius <= 0.0) return false;
+        double r2 = radius * radius;
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s == ctx.player) continue;
+            if (s.faction == null || ctx.player.faction == null) continue;
+            if (s.faction.isFriendlyTo(ctx.player.faction)) continue;
+            if (GameMath.dist2(s.x, s.y, ctx.player.x, ctx.player.y) <= r2) return true;
+        }
+        return false;
     }
 
     private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2) {

@@ -112,11 +112,14 @@ public class GamePanel extends JPanel implements ActionListener {
         });
 
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_B, 0, false), "toggleBaseMenu", () -> GameplayActions.toggleBaseMenu(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_O, 0, false), "togglePowerManagement", () -> GameplayActions.togglePowerManagement(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_H, 0, false), "toggleCrewStations", () -> GameplayActions.toggleCrewStations(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_L, 0, false), "lockUnderMouse", () -> GameplayActions.lockUnderMouse(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_OPEN_BRACKET, 0, false), "cycleLeft", () -> GameplayActions.cycleLockedTarget(ctx, -1));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_CLOSE_BRACKET, 0, false), "cycleRight", () -> GameplayActions.cycleLockedTarget(ctx, +1));
 
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_M, 0, false), "toggleMap", () -> GameplayActions.toggleMap(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_N, 0, false), "cycleHudDetail", () -> GameplayActions.cycleHudDetail(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_G, 0, false), "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, false), "zoomIn", () -> {
@@ -187,10 +190,10 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", () -> { if (exitToMenu != null) exitToMenu.run(); });
 
         // Primary/secondary fire
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimary = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, true), "primaryUp", () -> ctx.firingPrimary = false);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, false), "secondaryDown", () -> ctx.firingSecondary = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, true), "secondaryUp", () -> ctx.firingSecondary = false);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimaryManual = true);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, true), "primaryUp", () -> ctx.firingPrimaryManual = false);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, false), "secondaryDown", () -> ctx.firingSecondaryManual = true);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, true), "secondaryUp", () -> ctx.firingSecondaryManual = false);
     }
 
     private void bind(InputMap im, ActionMap am, KeyStroke ks, String name, Runnable action) {

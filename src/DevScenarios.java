@@ -28,7 +28,11 @@ public final class DevScenarios {
         ActionMap am = c.getActionMap();
         im.put(ks, name);
         am.put(name, new AbstractAction() {
-            @Override public void actionPerformed(ActionEvent e) { fn.accept(e); }
+            @Override public void actionPerformed(ActionEvent e) {
+                // Keep scenario hotkeys in explicit dev mode so gameplay/shop hotkeys don't trigger them.
+                if (!DevTools.isDebugOverlay()) return;
+                fn.accept(e);
+            }
         });
     }
 

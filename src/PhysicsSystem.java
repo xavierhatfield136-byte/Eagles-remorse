@@ -36,14 +36,18 @@ public final class PhysicsSystem {
             return;
         }
 
-        // --- Player weapons (skip while in menus) ---
-        if (ctx.player != null && ctx.player.alive && !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen) {
+        // --- Player weapons ---
+        if (ctx.player != null && ctx.player.alive) {
             if (ctx.lockedTarget != null && !TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                 ctx.lockedTarget = null;
             }
             Ship autoTarget = null;
             double rangeMul = CampaignSystem.targetingRangeMul(ctx);
             boolean autoLockSuppressed = CampaignSystem.suppressAutoLock(ctx);
+            boolean manualAllowed = !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen
+                    && !ctx.powerManagementOpen && !ctx.crewStationsOpen;
+            boolean firePrimary = (manualAllowed && ctx.firingPrimaryManual) || ctx.firingPrimaryAuto;
+            boolean fireSecondary = (manualAllowed && ctx.firingSecondaryManual) || ctx.firingSecondaryAuto;
 
             if (ctx.autoLockTurrets && !autoLockSuppressed) {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
@@ -56,7 +60,7 @@ public final class PhysicsSystem {
                 }
             }
 
-            if (ctx.firingPrimary) {
+            if (firePrimary) {
                 if (autoTarget != null) {
                     ctx.projectiles.addAll(ctx.player.firePrimary(autoTarget, dt));
                 } else {
@@ -64,7 +68,7 @@ public final class PhysicsSystem {
                 }
             }
 
-            if (ctx.firingSecondary) {
+            if (fireSecondary) {
                 Ship target = (isAlive(ctx.lockedTarget) && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
                         ? ctx.lockedTarget
                         : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);

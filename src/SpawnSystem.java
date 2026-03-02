@@ -17,13 +17,13 @@ public final class SpawnSystem {
 
         ctx.teamBases.clear();
 
-        // Player
-        ctx.player = new Player(ShipRole.FRIGATE, ctx.WORLD_W / 2.0, ctx.WORLD_H / 2.0);
-        ctx.ships.add(ctx.player);
-
-        // Bases
-        ctx.allyBase = new FleetShip(ShipRole.BASE, Faction.ALLY, ctx.player.x - 700, ctx.player.y + 380);
-        ctx.enemyBase = new FleetShip(ShipRole.BASE, Faction.ENEMY, ctx.player.x + 1400, ctx.player.y - 900);
+        // Bases anchor to edge lanes that scale with map size.
+        double[] allyBasePos = edgeBasePosition(ctx, true);
+        double[] enemyBasePos = edgeBasePosition(ctx, false);
+        ctx.allyBase = new FleetShip(ShipRole.BASE, Faction.ALLY, allyBasePos[0], allyBasePos[1]);
+        ctx.enemyBase = new FleetShip(ShipRole.BASE, Faction.ENEMY, enemyBasePos[0], enemyBasePos[1]);
+        clampBaseToBounds(ctx, ctx.allyBase);
+        clampBaseToBounds(ctx, ctx.enemyBase);
         ctx.ships.add(ctx.allyBase);
         ctx.ships.add(ctx.enemyBase);
         ctx.teamBases.put(Faction.ALLY, ctx.allyBase);
@@ -31,6 +31,12 @@ public final class SpawnSystem {
 
         ctx.baseUpgrades.put(ctx.allyBase, new BaseUpgrades());
         ctx.baseUpgrades.put(ctx.enemyBase, new BaseUpgrades());
+
+        // Player spawns near ally base with an inward offset.
+        double px = GameMath.clamp(ctx.allyBase.x + Math.max(220.0, ctx.WORLD_W * 0.08), 40.0, ctx.WORLD_W - 40.0);
+        double py = GameMath.clamp(ctx.allyBase.y - Math.max(120.0, ctx.WORLD_H * 0.04), 40.0, ctx.WORLD_H - 40.0);
+        ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ctx.ships.add(ctx.player);
 
         // Resource field
         spawnAsteroidField(ctx);
@@ -56,10 +62,10 @@ public final class SpawnSystem {
             LastStandSystem.init(ctx);
         } else if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
             // Keep opening pressure symmetric in Resource Rush.
-            spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
-            spawnAllyGroup(ctx, ctx.player.x - 600, ctx.player.y + 450);
+            spawnEnemyGroup(ctx, ctx.enemyBase.x - 420, ctx.enemyBase.y + 280);
+            spawnAllyGroup(ctx, ctx.allyBase.x + 420, ctx.allyBase.y - 280);
         } else {
-            spawnEnemyGroup(ctx, ctx.player.x + 600, ctx.player.y - 450);
+            spawnEnemyGroup(ctx, ctx.enemyBase.x - 520, ctx.enemyBase.y + 320);
         }
 
         // Apply doctrine tuning (Step 5B/5C) if present
@@ -227,6 +233,18 @@ public final class SpawnSystem {
         base.y = GameMath.clamp(base.y, r + pad, ctx.WORLD_H - r - pad);
     }
 
+    private static double[] edgeBasePosition(GameContext ctx, boolean ally) {
+        if (ctx == null) return new double[]{0.0, 0.0};
+        double minDim = Math.min(ctx.WORLD_W, ctx.WORLD_H);
+        double margin = Math.max(140.0, Math.min(minDim * 0.085, 560.0));
+        double laneInset = Math.max(170.0, Math.min(ctx.WORLD_H * 0.22, 640.0));
+
+        double x = ally ? margin : (ctx.WORLD_W - margin);
+        // Diagonal lanes reduce immediate straight-line base pressure.
+        double y = ally ? (ctx.WORLD_H - laneInset) : laneInset;
+        return new double[]{x, y};
+    }
+
     private static void spawnTeamStart(GameContext ctx, Faction team, Ship base) {
         double ox = (ctx.rng.nextDouble() - 0.5) * 180.0;
         double oy = (ctx.rng.nextDouble() - 0.5) * 180.0;
@@ -267,16 +285,20 @@ public final class SpawnSystem {
         ctx.teamBases.clear();
         ctx.baseUpgrades.clear();
 
-        // Keep the player around as camera anchor.
-        double spacingX = 260.0;
-        double spacingY = 250.0;
-        int maxPerRow = Math.max(4, (int) Math.floor((ctx.WORLD_W - 220.0 * 2.0) / spacingX));
-        int totalSlots = ShipRole.values().length;
-        int rowsPlanned = Math.max(1, (int) Math.ceil(totalSlots / (double) maxPerRow));
-        double usedW = Math.max(0.0, (Math.min(totalSlots, maxPerRow) - 1) * spacingX);
-        double usedH = Math.max(0.0, (rowsPlanned - 1) * spacingY);
-        double startX = GameMath.clamp((ctx.WORLD_W - usedW) * 0.5, 120.0, ctx.WORLD_W - 120.0);
-        double startY = GameMath.clamp((ctx.WORLD_H - usedH - 240.0) * 0.5, 180.0, ctx.WORLD_H - 260.0);
+        // Arrange all showcase ships in a square grid so hulls do not overlap.
+        ShipRole[] roles = ShipRole.values();
+        int roleCount = 0;
+        for (ShipRole r : roles) {
+            if (r == ShipRole.FRIGATE) continue;
+            roleCount++;
+        }
+        int totalShips = roleCount + 1; // +player
+        int perSide = Math.max(3, (int) Math.ceil(Math.sqrt(totalShips)));
+        double spacing = 230.0;
+        double gridW = (perSide - 1) * spacing;
+        double gridH = (perSide - 1) * spacing;
+        double startX = GameMath.clamp((ctx.WORLD_W - gridW) * 0.5, 90.0, ctx.WORLD_W - 90.0 - gridW);
+        double startY = GameMath.clamp((ctx.WORLD_H - gridH - 260.0) * 0.5, 90.0, ctx.WORLD_H - 90.0 - gridH);
 
         double playerX = startX;
         double playerY = startY;
@@ -284,44 +306,42 @@ public final class SpawnSystem {
         ctx.player.name = "Showcase Camera";
         ctx.player.vx = 0;
         ctx.player.vy = 0;
-        ctx.player.angle = 0;
+        ctx.player.angle = 0.0; // face right
         ctx.ships.add(ctx.player);
 
-        ShipRole[] roles = ShipRole.values();
-        int shipSlot = 1; // slot 0 is player frigate
+        int gridSlot = 1; // slot 0 is the player
         int factionIndex = 0;
         Faction[] factions = new Faction[]{Faction.ALLY, Faction.ENEMY, Faction.TEAM_C, Faction.TEAM_D};
+        double maxShowcaseY = playerY;
 
         for (ShipRole role : roles) {
             if (role == ShipRole.FRIGATE) continue;
 
-            int row = shipSlot / maxPerRow;
-            int col = shipSlot % maxPerRow;
-            double sx = startX + col * spacingX;
-            double sy = startY + row * spacingY;
-            sx = GameMath.clamp(sx, 80.0, ctx.WORLD_W - 80.0);
-            sy = GameMath.clamp(sy, 80.0, ctx.WORLD_H - 180.0);
+            int row = gridSlot / perSide;
+            int col = gridSlot % perSide;
+            double sx = GameMath.clamp(startX + col * spacing, 80.0, ctx.WORLD_W - 80.0);
+            double sy = GameMath.clamp(startY + row * spacing, 80.0, ctx.WORLD_H - 180.0);
 
             Faction faction = factions[factionIndex % factions.length];
             factionIndex++;
             Ship s = new FleetShip(role, faction, sx, sy);
             s.vx = 0;
             s.vy = 0;
-            s.angle = 0;
+            s.angle = 0.0; // face right
 
             ctx.ships.add(s);
+            if (sy > maxShowcaseY) maxShowcaseY = sy;
             if (role == ShipRole.BASE) {
                 if (faction == Faction.ENEMY) ctx.enemyBase = s;
                 else if (faction == Faction.ALLY) ctx.allyBase = s;
                 ctx.teamBases.put(faction, s);
                 ctx.baseUpgrades.put(s, new BaseUpgrades());
             }
-            shipSlot++;
+            gridSlot++;
         }
 
-        int rowsUsed = Math.max(1, (int) Math.ceil((shipSlot + 1.0) / maxPerRow));
-        double projectileY = Math.min(ctx.WORLD_H - 140.0, startY + rowsUsed * spacingY + 80.0);
-        double projectileStartX = startX;
+        double projectileY = Math.min(ctx.WORLD_H - 140.0, maxShowcaseY + 120.0);
+        double projectileStartX = GameMath.clamp(startX, 120.0, ctx.WORLD_W - 120.0);
         double projectileStep = 220.0;
 
         // Static display set: one sample of each projectile class/style.

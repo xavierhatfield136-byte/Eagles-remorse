@@ -45,6 +45,11 @@ public class Asteroid {
         spin = MathUtil.normalizeAngle(spin + spinRate * dt);
     }
 
+    public double collisionRadius() {
+        return Math.max(BalanceConfig.ASTEROID_COLLISION_RADIUS_MIN,
+                radius * BalanceConfig.ASTEROID_COLLISION_RADIUS_SCALE);
+    }
+
     /** Take up to amount ore from this asteroid and return what was actually taken. */
     public int takeOre(int amount) {
         if (amount <= 0 || ore <= 0) return 0;

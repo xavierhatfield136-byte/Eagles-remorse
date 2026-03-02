@@ -49,6 +49,12 @@ public class Renderer {
         return String.format(java.util.Locale.US, "%.1f", v);
     }
 
+    private static String signedPct(double mul) {
+        double v = (mul - 1.0) * 100.0;
+        if (!Double.isFinite(v)) v = 0.0;
+        return String.format(Locale.US, "%+.0f%%", v);
+    }
+
     // Layered environment backgrounds with procedural fallback.
     public static void drawSpaceBackground(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
         BufferedImage bgBase = EnvironmentSkinLibrary.backgroundBase();
@@ -129,6 +135,38 @@ public class Renderer {
                 g2.drawOval(x - rr2, y - rr2, rr2 * 2, rr2 * 2);
             }
         }
+    }
+
+    public static void drawAsteroidDangerHeatmap(Graphics2D g2, List<Asteroid> asteroids) {
+        if (g2 == null || asteroids == null || asteroids.isEmpty()) return;
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(1.1f));
+        for (Asteroid a : asteroids) {
+            if (a == null) continue;
+            int x = (int) Math.round(a.x);
+            int y = (int) Math.round(a.y);
+
+            double coll = a.collisionRadius();
+            int cr = (int) Math.round(coll);
+            g2.setColor(new Color(255, 80, 80, 130));
+            g2.drawOval(x - cr, y - cr, cr * 2, cr * 2);
+
+            double light = coll + BalanceConfig.ASTEROID_AVOID_CLEARANCE_BASE * BalanceConfig.asteroidAvoidanceClearanceScale(ShipRole.FIGHTER);
+            double frig = coll + BalanceConfig.ASTEROID_AVOID_CLEARANCE_BASE * BalanceConfig.asteroidAvoidanceClearanceScale(ShipRole.FRIGATE);
+            double cap = coll + BalanceConfig.ASTEROID_AVOID_CLEARANCE_BASE * BalanceConfig.asteroidAvoidanceClearanceScale(ShipRole.BATTLESHIP);
+
+            int lr = (int) Math.round(light);
+            int fr = (int) Math.round(frig);
+            int car = (int) Math.round(cap);
+            g2.setColor(new Color(255, 190, 80, 90));
+            g2.drawOval(x - lr, y - lr, lr * 2, lr * 2);
+            g2.setColor(new Color(255, 215, 120, 70));
+            g2.drawOval(x - fr, y - fr, fr * 2, fr * 2);
+            g2.setColor(new Color(255, 240, 170, 55));
+            g2.drawOval(x - car, y - car, car * 2, car * 2);
+        }
+        g2.setStroke(old);
     }
 
     private static void drawSpaceBackgroundFallback(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
@@ -373,6 +411,53 @@ public class Renderer {
         }
     }
 
+    public static void drawWaveMotionAimCue(Graphics2D g2, Player player, double cursorWorldX, double cursorWorldY) {
+        if (g2 == null || player == null) return;
+        if (!player.alive || player.dying || player.hp <= 0) return;
+        if (!player.hasWaveMotionGun) return;
+        if (!player.isWaveMotionCharging()) return;
+
+        double aim = player.getWaveMotionAimAngle();
+        double len = 2200.0;
+        double sx = player.x + Math.cos(aim) * (player.radius + 10.0);
+        double sy = player.y + Math.sin(aim) * (player.radius + 10.0);
+        double ex = sx + Math.cos(aim) * len;
+        double ey = sy + Math.sin(aim) * len;
+
+        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, player.getWaveMotionChargeProgress()));
+        boolean charging = player.isWaveMotionCharging();
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.0);
+
+        Stroke oldStroke = g2.getStroke();
+        int warnAlpha = charging ? (int) Math.round(120 + 95 * Math.max(chargeFrac, pulse)) : 72;
+
+        g2.setStroke(new BasicStroke(charging ? (7.2f + chargeFrac * 4.0f) : 5.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 32, 32, MathUtil.clamp(warnAlpha, 40, 230)));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        g2.setStroke(new BasicStroke(charging ? 2.8f : 2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 210, 210, charging ? 200 : 130));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        if (Double.isFinite(cursorWorldX) && Double.isFinite(cursorWorldY)) {
+            int cx = (int) Math.round(cursorWorldX);
+            int cy = (int) Math.round(cursorWorldY);
+            int r = charging ? 28 : 22;
+            int r2 = charging ? 44 : 34;
+            g2.setColor(new Color(255, 64, 64, charging ? 215 : 160));
+            g2.drawOval(cx - r, cy - r, r * 2, r * 2);
+            g2.setColor(new Color(255, 140, 140, charging ? 180 : 120));
+            g2.drawOval(cx - r2, cy - r2, r2 * 2, r2 * 2);
+            int tick = charging ? 20 : 14;
+            g2.drawLine(cx - tick, cy, cx - 5, cy);
+            g2.drawLine(cx + 5, cy, cx + tick, cy);
+            g2.drawLine(cx, cy - tick, cx, cy - 5);
+            g2.drawLine(cx, cy + 5, cx, cy + tick);
+        }
+
+        g2.setStroke(oldStroke);
+    }
+
     private static void drawMissile(Graphics2D g2, Missile m) {
         BufferedImage skin = ProjectileSkinLibrary.getMissileSkin();
         if (skin != null) {
@@ -481,7 +566,8 @@ public class Renderer {
                                boolean resourceRush, int allyOre, int enemyOre, int goal, String gameOverText,
                                String objectiveTitle, String objectiveDetail,
                                String eventBanner, double eventBannerT, double orePriceMul, double orePriceT, double miningMul, double miningT,
-                               double camX, double camY, int viewW, int viewH, double zoom) {
+                               double camX, double camY, int viewW, int viewH, double zoom, String stationStatus,
+                               GameContext.HudDetail hudDetail, String contextHint, String overlayStatus) {
         int x = 14;
         int y = 18;
 
@@ -589,34 +675,66 @@ public class Renderer {
         }
 
         y = 200;
+        GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.FULL : hudDetail;
         g2.setColor(new Color(255, 255, 255, 170));
-        g2.drawString("LMB: guns   RMB: missiles", x, y);
-        y += 18;
-        g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
-        y += 18;
-        g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/-/= hulls)   B: base upgrades", x, y);
-        y += 18;
-        String abilityKeys = player.hasWaveMotionGun
-                ? "Q: missile salvo   E: shield overcharge   X: wave gun   F: mine"
-                : "Q: missile salvo   E: shield overcharge   F: mine";
-        g2.drawString(abilityKeys, x, y);
-        y += 18;
-        g2.drawString("Y: power preset   U: crew order   I: shield mode   J/K: shield face", x, y);
-        y += 18;
-        if (player.isStealth) {
-            g2.drawString("Stealth hull: cloak auto-engages when not firing/taking hits", x, y);
+        if (detail == GameContext.HudDetail.FULL) {
+            g2.drawString("LMB: guns   RMB: missiles", x, y);
             y += 18;
-        }
-        if (player.isCarrier) {
-            g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
+            g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
             y += 18;
+            g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/-/= hulls)   B: base upgrades", x, y);
+            y += 18;
+            String abilityKeys = player.hasWaveMotionGun
+                    ? "Q: missile salvo   E: shield overcharge   X: wave gun   F: mine"
+                    : "Q: missile salvo   E: shield overcharge   F: mine";
+            g2.drawString(abilityKeys, x, y);
+            y += 18;
+            g2.drawString("O: power mgmt   H: crew stations   Y: power preset   U: crew order   I: shield mode   J/K: shield face", x, y);
+            y += 18;
+            if (player.isStealth) {
+                g2.drawString("Stealth hull: cloak auto-engages when not firing/taking hits", x, y);
+                y += 18;
+            }
+            if (player.isCarrier) {
+                g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
+                y += 18;
+            }
+            g2.drawString("ESC: pause/resume   Alt+Enter: fullscreen   N: cycle HUD detail", x, y);
+            y += 22;
+        } else if (detail == GameContext.HudDetail.COMPACT) {
+            g2.drawString("LOCK: L / [ ]   FIRE: LMB RMB SPACE SHIFT   TARGET AI: T", x, y);
+            y += 18;
+            g2.drawString("ABILITIES: Q salvo   E overcharge" + (player.hasWaveMotionGun ? "   X wave gun" : "") + "   F mine", x, y);
+            y += 18;
+            g2.drawString("OVERLAYS: TAB shop   B base   M map   O power   H stations", x, y);
+            y += 18;
+            g2.drawString("N: HUD detail   ESC: pause/resume", x, y);
+            y += 22;
+        } else {
+            g2.drawString("N: HUD detail   L: lock   TAB/B/M/O/H: overlays", x, y);
+            y += 22;
         }
-        g2.drawString("ESC: pause/resume   Alt+Enter: fullscreen", x, y);
 
-        y += 22;
+        if (contextHint != null && !contextHint.isBlank()) {
+            g2.setColor(new Color(255, 225, 150, 225));
+            g2.drawString("HINT: " + contextHint, x, y);
+            y += 20;
+            g2.setColor(new Color(255, 255, 255, 170));
+        }
+
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString("AUTO-LOCK: " + (autoLock ? "ON" : "OFF"), x, y);
         y += 18;
+        if (stationStatus != null && !stationStatus.isBlank()) {
+            g2.drawString(stationStatus, x, y);
+            y += 18;
+        }
+        if (overlayStatus != null && !overlayStatus.isBlank()) {
+            g2.setColor(new Color(180, 220, 255, 220));
+            g2.drawString(overlayStatus, x, y);
+            y += 18;
+            g2.setColor(new Color(255, 255, 255, 170));
+        }
 
         int pEng = (int) Math.round(player.powerEnginesFrac() * 100.0);
         int pShd = (int) Math.round(player.powerShieldsFrac() * 100.0);
@@ -626,8 +744,7 @@ public class Renderer {
         y += 18;
 
         int readinessPct = (int) Math.round(player.crewReadiness() * 100.0);
-        int fatiguePct = (int) Math.round(player.crewFatigue() * 100.0);
-        g2.drawString("CREW[" + player.crewOrder.name() + "] READY " + readinessPct + "%  FATIGUE " + fatiguePct + "%", x, y);
+        g2.drawString("CREW[" + player.crewOrder.name() + "] READINESS " + readinessPct + "%", x, y);
         y += 18;
 
         if (player.shieldActive && player.shieldMax > 0) {
@@ -715,7 +832,9 @@ public class Renderer {
         }
     }
 
-    public static void drawWorldMarkers(Graphics2D g2, List<Ship> ships, Ship lockedTarget) {
+    public static void drawWorldMarkers(Graphics2D g2, List<Ship> ships, Ship lockedTarget,
+                                        java.util.Map<Faction, Ship> commandShips,
+                                        java.util.Map<Faction, Ship> sharedTargets) {
         if (lockedTarget != null && lockedTarget.alive) {
             int x = (int) Math.round(lockedTarget.x);
             int y = (int) Math.round(lockedTarget.y);
@@ -726,6 +845,14 @@ public class Renderer {
             g2.drawLine(x + rr, y, x + rr - 10, y);
             g2.drawLine(x, y - rr, x, y - rr + 10);
             g2.drawLine(x, y + rr, x, y + rr - 10);
+        }
+
+        if (commandShips != null && !commandShips.isEmpty()) {
+            for (java.util.Map.Entry<Faction, Ship> e : commandShips.entrySet()) {
+                Ship cmd = (e == null) ? null : e.getValue();
+                if (cmd == null || !cmd.alive || cmd.dying || cmd.hp <= 0) continue;
+                drawCommandShipBeacon(g2, cmd, e.getKey(), (sharedTargets == null) ? null : sharedTargets.get(e.getKey()));
+            }
         }
 
         if (ships == null) return;
@@ -752,6 +879,40 @@ public class Renderer {
             int start = x - w / 2 + 1 + (int) Math.round((w - 2) * p);
             int rem = (x + w / 2 - 1) - start;
             if (rem > 0) g2.fillRoundRect(start, y + 1, rem, h - 2, 7, 7);
+        }
+    }
+
+    private static void drawCommandShipBeacon(Graphics2D g2, Ship cmd, Faction faction, Ship sharedTarget) {
+        if (g2 == null || cmd == null) return;
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 3.2 + cmd.id * 0.31);
+        int x = (int) Math.round(cmd.x);
+        int y = (int) Math.round(cmd.y - cmd.radius - 34);
+        int r = (int) Math.round(8 + 5 * pulse);
+
+        Color base = factionHudColor(faction, 220);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 70));
+        g2.fillOval(x - r - 6, y - r - 6, (r + 6) * 2, (r + 6) * 2);
+
+        Polygon p = new Polygon();
+        p.addPoint(x, y - r);
+        p.addPoint(x + r, y);
+        p.addPoint(x, y + r);
+        p.addPoint(x - r, y);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 210));
+        g2.fillPolygon(p);
+        g2.setColor(new Color(255, 255, 255, 190));
+        g2.drawPolygon(p);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(255, 255, 255, 220));
+        g2.drawString("CMD", x - 10, y - r - 4);
+
+        if (sharedTarget != null && sharedTarget.alive && !sharedTarget.dying && sharedTarget.hp > 0) {
+            Stroke old = g2.getStroke();
+            g2.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 0f, new float[]{6f, 6f}, 0f));
+            g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 90));
+            g2.drawLine((int) Math.round(cmd.x), (int) Math.round(cmd.y), (int) Math.round(sharedTarget.x), (int) Math.round(sharedTarget.y));
+            g2.setStroke(old);
         }
     }
 
@@ -884,9 +1045,11 @@ public class Renderer {
 
         // 9: CIWS upgrade
         {
-            int cost = 120;
-            boolean available = player.hasCIWS;
-            boolean can = available && credits >= cost;
+            boolean hasCiws = player.hasCIWS;
+            boolean maxed = hasCiws && player.isCIWSUpgradeMaxed();
+            int cost = maxed ? 0 : 120;
+            boolean available = hasCiws;
+            boolean can = available && (maxed || credits >= cost);
 
             double nextQ = Math.min(1.0, player.ciwsQuality + 0.20);
             double nextRange = Math.min(380.0, player.ciwsRange + 25.0);
@@ -894,12 +1057,17 @@ public class Renderer {
             double nextCd = Math.max(0.04, player.ciwsCooldown - 0.01);
 
             String detail = available
-                    ? ("Quality " + fmt1(player.ciwsQuality) + " \u2192 " + fmt1(nextQ)
+                    ? (maxed
+                    ? ("Quality " + fmt1(player.ciwsQuality)
+                    + "   Range " + (int) Math.round(player.ciwsRange)
+                    + "   Burst " + player.ciwsPelletsPerBurst
+                    + "   CD " + fmt1(player.ciwsCooldown))
+                    : ("Quality " + fmt1(player.ciwsQuality) + " \u2192 " + fmt1(nextQ)
                     + "   Range " + (int) Math.round(player.ciwsRange) + " \u2192 " + (int) Math.round(nextRange)
                     + "   Burst " + player.ciwsPelletsPerBurst + " \u2192 " + nextPellets
-                    + "   CD " + fmt1(player.ciwsCooldown) + " \u2192 " + fmt1(nextCd))
+                    + "   CD " + fmt1(player.ciwsCooldown) + " \u2192 " + fmt1(nextCd)))
                     : "Unavailable (this hull has no CIWS)";
-            drawShopLine(g2, x + 14, ty, "9", "Upgrade CIWS", detail, cost, can, available, null);
+            drawShopLine(g2, x + 14, ty, "9", "Upgrade CIWS", detail, cost, can, available, maxed ? "MAX" : null);
             ty += 26;
         }
 
@@ -1020,6 +1188,202 @@ public class Renderer {
 
 
 
+
+    public static void drawPowerManagementOverlay(Graphics2D g2, Player player, int focusSlot) {
+        if (g2 == null || player == null) return;
+
+        Rectangle clip = g2.getClipBounds();
+        int w = Math.min(620, clip.width - 120);
+        int h = 340;
+        int x = (clip.width - w) / 2;
+        int y = Math.max(54, (clip.height - h) / 2);
+
+        g2.setColor(new Color(0, 0, 0, 205));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        g2.setColor(new Color(255, 255, 255, 110));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setColor(new Color(255, 240, 180, 230));
+        g2.drawString("POWER MANAGEMENT", x + 18, y + 30);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(255, 255, 255, 170));
+        g2.drawString("O/ESC close   1-4 select bus   <-/-> or [/] adjust   F1-F4 presets", x + 18, y + 48);
+
+        String[] labels = {"ENGINES", "SHIELDS", "WEAPONS", "SYSTEMS"};
+        double[] values = {
+                player.powerEnginesFrac(),
+                player.powerShieldsFrac(),
+                player.powerWeaponsFrac(),
+                player.powerSystemsFrac()
+        };
+
+        int rowY = y + 82;
+        int barW = 300;
+        int barH = 16;
+        for (int i = 0; i < labels.length; i++) {
+            int ry = rowY + i * 38;
+            boolean focus = (i == Math.max(0, Math.min(3, focusSlot)));
+            int pct = (int) Math.round(values[i] * 100.0);
+
+            g2.setColor(focus ? new Color(255, 230, 170, 220) : new Color(255, 255, 255, 200));
+            g2.setFont(new Font("Consolas", focus ? Font.BOLD : Font.PLAIN, 14));
+            g2.drawString((i + 1) + ": " + labels[i], x + 20, ry + 13);
+
+            int bx = x + 150;
+            int by = ry;
+            g2.setColor(new Color(255, 255, 255, 70));
+            g2.drawRoundRect(bx, by, barW, barH, 8, 8);
+            int fill = (int) Math.round((barW - 2) * Math.max(0.0, Math.min(1.0, values[i])));
+            Color c = switch (i) {
+                case 0 -> new Color(120, 255, 150, 210);
+                case 1 -> new Color(120, 210, 255, 210);
+                case 2 -> new Color(255, 170, 120, 210);
+                default -> new Color(220, 180, 255, 210);
+            };
+            g2.setColor(c);
+            g2.fillRoundRect(bx + 1, by + 1, Math.max(0, fill), barH - 2, 7, 7);
+
+            g2.setColor(new Color(255, 255, 255, 220));
+            g2.setFont(new Font("Consolas", Font.BOLD, 13));
+            g2.drawString(String.format(Locale.US, "%3d%%", pct), bx + barW + 14, ry + 13);
+        }
+
+        double speedMul = (player.desiredSpeedBase > 0.01) ? (player.desiredSpeed / player.desiredSpeedBase) : 1.0;
+        double weaponDmg = player.weaponDamageMultiplier();
+        double weaponCycle = player.weaponCycleRateMultiplier();
+        double sensor = player.sensorRangeMultiplier();
+        double shield = player.shieldRegenMultiplier();
+
+        int py = y + 248;
+        g2.setFont(new Font("Consolas", Font.BOLD, 13));
+        g2.setColor(new Color(255, 255, 255, 210));
+        g2.drawString("Effects Preview", x + 20, py);
+        py += 20;
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(200, 245, 220, 220));
+        g2.drawString("Mobility: " + signedPct(speedMul) + "   Weapon Damage: " + signedPct(weaponDmg), x + 20, py);
+        py += 16;
+        g2.setColor(new Color(255, 225, 180, 220));
+        g2.drawString("Fire Rate: " + signedPct(weaponCycle) + "   Sensor Range: " + signedPct(sensor), x + 20, py);
+        py += 16;
+        g2.setColor(new Color(180, 225, 255, 220));
+        g2.drawString("Shield Effectiveness: " + signedPct(shield), x + 20, py);
+
+        g2.setColor(new Color(255, 255, 255, 145));
+        g2.drawString("Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT", x + 20, y + h - 18);
+    }
+
+    public static void drawCrewStationsOverlay(Graphics2D g2, GameContext ctx) {
+        if (g2 == null || ctx == null || ctx.player == null) return;
+
+        Rectangle clip = g2.getClipBounds();
+        int w = Math.min(760, clip.width - 80);
+        int h = 390;
+        int x = (clip.width - w) / 2;
+        int y = Math.max(40, (clip.height - h) / 2);
+
+        g2.setColor(new Color(0, 0, 0, 210));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        g2.setColor(new Color(255, 255, 255, 110));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+
+        g2.setColor(new Color(255, 240, 180, 230));
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.drawString("CREW STATIONS", x + 18, y + 30);
+
+        g2.setColor(new Color(255, 255, 255, 170));
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.drawString("H/ESC close   F1-F5 stations   A toggle station AI   <-/-> cycle station", x + 18, y + 48);
+
+        int tx = x + 18;
+        int ty = y + 66;
+        for (GameContext.CrewStation station : GameContext.CrewStation.values()) {
+            boolean active = (station == ctx.activeCrewStation);
+            boolean auto = UISystem.stationAutomation(ctx, station);
+            int tw = 122;
+            g2.setColor(active ? new Color(255, 220, 140, 180) : new Color(255, 255, 255, 45));
+            g2.fillRoundRect(tx, ty, tw, 24, 10, 10);
+            g2.setColor(active ? new Color(255, 245, 210, 220) : new Color(255, 255, 255, 120));
+            g2.drawRoundRect(tx, ty, tw, 24, 10, 10);
+            g2.setFont(new Font("Consolas", active ? Font.BOLD : Font.PLAIN, 12));
+            g2.drawString(station.name(), tx + 8, ty + 16);
+            g2.setColor(auto ? new Color(120, 255, 170, 210) : new Color(255, 150, 140, 210));
+            g2.drawString(auto ? "AI" : "MAN", tx + 92, ty + 16);
+            tx += tw + 8;
+        }
+
+        int ly = y + 126;
+        g2.setColor(new Color(255, 255, 255, 210));
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2.drawString("Current Readouts", x + 18, ly);
+        ly += 20;
+
+        int lockDist = -1;
+        if (ctx.lockedTarget != null && ctx.lockedTarget.alive) {
+            lockDist = (int) Math.round(Math.hypot(ctx.lockedTarget.x - ctx.player.x, ctx.lockedTarget.y - ctx.player.y));
+        }
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(210, 235, 255, 220));
+        g2.drawString("Captain: " + ctx.captainDirective + "   Helm: " + ctx.helmMode + "   Tactical: " + ctx.tacticalMode, x + 18, ly);
+        ly += 16;
+        g2.drawString("Engineering: " + ctx.engineeringMode + "   Fleet: " + ctx.alliedFleetCommand + " / " + ctx.alliedFleetFormation, x + 18, ly);
+        ly += 16;
+        g2.drawString("Lock: " + ((ctx.lockedTarget == null) ? "NONE" : (ctx.lockedTarget.name + " (" + Math.max(0, lockDist) + "m)"))
+                + "   Science EW: " + (ctx.scienceJamming ? "JAMMING" : "PASSIVE"), x + 18, ly);
+        ly += 16;
+        g2.drawString("Crew: " + ctx.player.crewOrder + "  Readiness " + (int) Math.round(ctx.player.crewReadiness() * 100.0) + "%", x + 18, ly);
+
+        ly += 28;
+        g2.setColor(new Color(255, 255, 255, 220));
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2.drawString("Station Controls", x + 18, ly);
+        ly += 20;
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+
+        switch (ctx.activeCrewStation) {
+            case CAPTAIN -> {
+                g2.setColor(new Color(255, 230, 175, 220));
+                g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 EMERGENCY  5 MINE", x + 18, ly);
+                ly += 16;
+                g2.drawString("6 ESCORT  7 DEFEND  8 REPAIR  9 RTB  0 CYCLE FLEET FORMATION", x + 18, ly);
+                ly += 16;
+                g2.drawString("Q/W/E/R assign nearest friendly ATTACK/DEFEND/REPAIR/RTB, T clears override.", x + 18, ly);
+                ly += 16;
+                g2.drawString("Captain directives set ship posture and allied fleet command behavior.", x + 18, ly);
+            }
+            case HELM -> {
+                g2.setColor(new Color(200, 240, 255, 220));
+                g2.drawString("1 INTERCEPT  2 ORBIT  3 MAINTAIN RANGE  4 EVASIVE", x + 18, ly);
+                ly += 16;
+                g2.drawString("Helm automation sets heading/throttle for target pursuit and maneuvering.", x + 18, ly);
+            }
+            case TACTICAL -> {
+                g2.setColor(new Color(255, 210, 180, 220));
+                g2.drawString("1 HOLD FIRE  2 DEFENSIVE FIRE  3 AGGRESSIVE FIRE", x + 18, ly);
+                ly += 16;
+                g2.drawString("Tactical automation drives primary/secondary firing states and lock usage.", x + 18, ly);
+            }
+            case ENGINEERING -> {
+                g2.setColor(new Color(200, 255, 200, 220));
+                g2.drawString("1 BALANCED  2 ATTACK BIAS  3 DEFENSE BIAS  4 DAMAGE CONTROL", x + 18, ly);
+                ly += 16;
+                g2.drawString("Engineering automation controls power distribution and repair-focused crew orders.", x + 18, ly);
+            }
+            case SCIENCE -> {
+                g2.setColor(new Color(220, 210, 255, 220));
+                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK  3 TOGGLE EW/JAMMING", x + 18, ly);
+                ly += 16;
+                g2.drawString("Science automation manages target acquisition using current sensor capability.", x + 18, ly);
+            }
+        }
+
+        g2.setColor(new Color(255, 255, 255, 145));
+        g2.drawString("Manual flight/fire/power input immediately disables corresponding station AI.", x + 18, y + h - 16);
+    }
 
     public static void drawBaseUpgradeOverlay(Graphics2D g2, String baseName, int credits, int baseOre,
                                               int hullLv, int shieldLv, int turretLv, int miningLv, int hangarLv,
@@ -1433,6 +1797,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Graphics2D g = (Graphics2D) g2.create();
             g.translate(wx, wy);
             g.rotate(ship.angle);
+            double roleScale = roleVisualScale(ship.role);
+            if (Math.abs(roleScale - 1.0) > 1e-6) {
+                g.scale(roleScale, roleScale);
+            }
 
             double sig = ship.effectiveSignature();
             if (ship.isStealth && sig < 0.99) {
@@ -1461,8 +1829,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g.drawOval(-rr, -rr, rr * 2, rr * 2);
             }
 
-            if (!visual.hullPolys.isEmpty()) {
-                drawDamageDecals(g, ship, visual.hullPolys.get(0));
+            if (hullArea != null) {
+                drawDamageDecals(g, ship, hullArea);
             }
 
             if (ship.isStealth && sig < 0.99 && !visual.hullPolys.isEmpty()) {
@@ -1476,6 +1844,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setFont(new Font("Consolas", Font.PLAIN, 12));
             g2.setColor(new Color(255, 255, 255, 130));
             g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+        }
+
+        private static double roleVisualScale(ShipRole role) {
+            if (role == null) return 1.0;
+            return switch (role) {
+                case FIGHTER -> 0.78;
+                case BOMBER -> 0.84;
+                default -> 1.0;
+            };
         }
 
         private static ShipVisual getVisual(Ship ship) {
@@ -3032,33 +3409,31 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
 
-    private static void drawDamageDecals(Graphics2D g, Ship ship, Polygon hullPoly) {
-        if (ship == null || hullPoly == null) return;
+    private static void drawDamageDecals(Graphics2D g, Ship ship, Shape hullShape) {
+        if (ship == null || hullShape == null) return;
         if (ship.hpMax <= 0) return;
 
         double hpFrac = Math.max(0.0, Math.min(1.0, ship.hp / (double) ship.hpMax));
         double dmg = 1.0 - hpFrac; // 0..1
         if (dmg < 0.12) return;
 
-        int r = (int) Math.max(8, Math.round(ship.radius));
+        Rectangle bounds = hullShape.getBounds();
+        if (bounds.width <= 0 || bounds.height <= 0) return;
+        int span = Math.max(bounds.width, bounds.height);
         int n = (int) Math.round(4 + dmg * 12);
 
         long seed = (long) System.identityHashCode(ship) * 0x9E3779B97F4A7C15L;
         Random rng = new Random(seed);
         Shape oldClip = g.getClip();
         Stroke oldStroke = g.getStroke();
-        g.setClip(hullPoly);
+        g.setClip(hullShape);
 
         try {
             // Scorch marks
             for (int i = 0; i < n; i++) {
-                int tries = 0;
-                int px = 0, py = 0;
-                while (tries++ < 14) {
-                    px = -r + rng.nextInt(r * 2 + 1);
-                    py = -r + rng.nextInt(r * 2 + 1);
-                    if (hullPoly.contains(px, py)) break;
-                }
+                Point hit = randomPointInShape(rng, bounds, hullShape, 18);
+                int px = hit.x;
+                int py = hit.y;
 
                 int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (4 + dmg * 10)));
                 int a = (int) MathUtil.clamp(48 + dmg * 140, 0, 175);
@@ -3073,18 +3448,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             // Raking impact streaks and carved plate scratches.
             int streaks = (int) Math.round(2 + dmg * 10);
             for (int i = 0; i < streaks; i++) {
-                int tries = 0;
-                int px = 0, py = 0;
-                while (tries++ < 14) {
-                    px = -r + rng.nextInt(r * 2 + 1);
-                    py = -r + rng.nextInt(r * 2 + 1);
-                    if (hullPoly.contains(px, py)) break;
-                }
+                Point hit = randomPointInShape(rng, bounds, hullShape, 18);
+                int px = hit.x;
+                int py = hit.y;
 
                 double ang = rng.nextDouble() * Math.PI * 2.0;
                 double bias = (rng.nextDouble() - 0.5) * 0.45;
                 double dir = ang * 0.35 + bias;
-                int len = (int) Math.round(4 + rng.nextDouble() * (6 + dmg * r * 0.38));
+                int len = (int) Math.round(4 + rng.nextDouble() * (6 + dmg * span * 0.38));
                 int x2 = px + (int) Math.round(Math.cos(dir) * len);
                 int y2 = py + (int) Math.round(Math.sin(dir) * len);
 
@@ -3102,13 +3473,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (dmg > 0.72) {
                 int breaches = (int) Math.round(1 + (dmg - 0.72) * 8.0);
                 for (int i = 0; i < breaches; i++) {
-                    int tries = 0;
-                    int px = 0, py = 0;
-                    while (tries++ < 16) {
-                        px = -r + rng.nextInt(r * 2 + 1);
-                        py = -r + rng.nextInt(r * 2 + 1);
-                        if (hullPoly.contains(px, py)) break;
-                    }
+                    Point hit = randomPointInShape(rng, bounds, hullShape, 22);
+                    int px = hit.x;
+                    int py = hit.y;
                     int sz = (int) Math.max(4, Math.round(4 + rng.nextDouble() * (3 + dmg * 8)));
                     g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(88 + dmg * 122, 0, 205)));
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
@@ -3121,13 +3488,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (dmg > 0.55) {
                 int smoke = (int) Math.round(2 + dmg * 6);
                 for (int i = 0; i < smoke; i++) {
-                    int tries = 0;
-                    int px = 0, py = 0;
-                    while (tries++ < 14) {
-                        px = -r + rng.nextInt(r * 2 + 1);
-                        py = -r + rng.nextInt(r * 2 + 1);
-                        if (hullPoly.contains(px, py)) break;
-                    }
+                    Point hit = randomPointInShape(rng, bounds, hullShape, 18);
+                    int px = hit.x;
+                    int py = hit.y;
                     int sz = (int) Math.max(6, Math.round(6 + rng.nextDouble() * 10));
                     int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
                     g.setColor(new Color(30, 30, 30, a));
@@ -3138,6 +3501,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.setStroke(oldStroke);
             g.setClip(oldClip);
         }
+    }
+
+    private static Point randomPointInShape(Random rng, Rectangle bounds, Shape shape, int tries) {
+        int px = (int) Math.round(bounds.getCenterX());
+        int py = (int) Math.round(bounds.getCenterY());
+        int maxTries = Math.max(6, tries);
+        for (int t = 0; t < maxTries; t++) {
+            px = bounds.x + rng.nextInt(Math.max(1, bounds.width));
+            py = bounds.y + rng.nextInt(Math.max(1, bounds.height));
+            if (shape.contains(px, py)) return new Point(px, py);
+        }
+        return new Point(px, py);
     }
 
     private static Polygon hullFighter(double radius) {

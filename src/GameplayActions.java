@@ -7,7 +7,7 @@ public final class GameplayActions {
             if (exitToMenu != null) exitToMenu.run();
             return;
         }
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen) {
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) {
             UISystem.closeAllOverlays(ctx);
             return;
         }
@@ -18,7 +18,7 @@ public final class GameplayActions {
         if (ctx == null || ctx.player == null) return false;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
         if (ctx.state != GameState.RUNNING) return false;
-        return !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen;
+        return !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen && !ctx.powerManagementOpen && !ctx.crewStationsOpen;
     }
 
     public static void toggleShop(GameContext ctx) {
@@ -36,13 +36,25 @@ public final class GameplayActions {
         UISystem.toggleBaseMenu(ctx);
     }
 
+    public static void togglePowerManagement(GameContext ctx) {
+        if (ctx == null) return;
+        UISystem.togglePowerManagement(ctx);
+    }
+
+    public static void toggleCrewStations(GameContext ctx) {
+        if (ctx == null) return;
+        UISystem.toggleCrewStations(ctx);
+    }
+
     public static void lockUnderMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
+        ctx.scienceAutomation = false;
         TargetingSystem.lockClosestToMouse(ctx, controls);
     }
 
     public static void cycleLockedTarget(GameContext ctx, int dir) {
         if (ctx == null) return;
+        ctx.scienceAutomation = false;
         TargetingSystem.cycleLockedTarget(ctx, dir);
     }
 
@@ -59,6 +71,14 @@ public final class GameplayActions {
     public static void toggleTurretAutoLock(GameContext ctx) {
         if (ctx == null) return;
         ctx.autoLockTurrets = !ctx.autoLockTurrets;
+    }
+
+    public static void cycleHudDetail(GameContext ctx) {
+        if (ctx == null) return;
+        GameContext.HudDetail[] modes = GameContext.HudDetail.values();
+        int next = (ctx.hudDetail.ordinal() + 1) % modes.length;
+        ctx.hudDetail = modes[next];
+        EventSystem.showBanner(ctx, "HUD: " + ctx.hudDetail.name(), 0.8);
     }
 
     public static void tryShieldOvercharge(GameContext ctx) {
@@ -119,12 +139,14 @@ public final class GameplayActions {
     public static void cyclePowerPreset(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         Ship.PowerPreset preset = ctx.player.cyclePowerPreset();
+        ctx.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "POWER: " + preset.name(), 0.8);
     }
 
     public static void cycleCrewOrder(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         Ship.CrewOrder order = ctx.player.cycleCrewOrder();
+        ctx.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "CREW ORDER: " + order.name(), 0.8);
     }
 
@@ -167,6 +189,132 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_EQUALS -> UISystem.trySwapHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
             default -> {
                 return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {
+        if (ctx == null || !ctx.powerManagementOpen) return false;
+        switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_1 -> UISystem.selectPowerManagementSlot(ctx, 0);
+            case java.awt.event.KeyEvent.VK_2 -> UISystem.selectPowerManagementSlot(ctx, 1);
+            case java.awt.event.KeyEvent.VK_3 -> UISystem.selectPowerManagementSlot(ctx, 2);
+            case java.awt.event.KeyEvent.VK_4 -> UISystem.selectPowerManagementSlot(ctx, 3);
+            case java.awt.event.KeyEvent.VK_UP -> UISystem.cyclePowerManagementSlot(ctx, -1);
+            case java.awt.event.KeyEvent.VK_DOWN -> UISystem.cyclePowerManagementSlot(ctx, +1);
+            case java.awt.event.KeyEvent.VK_LEFT, java.awt.event.KeyEvent.VK_OPEN_BRACKET, java.awt.event.KeyEvent.VK_MINUS, java.awt.event.KeyEvent.VK_SUBTRACT -> UISystem.stepPowerAllocation(ctx, -1);
+            case java.awt.event.KeyEvent.VK_RIGHT, java.awt.event.KeyEvent.VK_CLOSE_BRACKET, java.awt.event.KeyEvent.VK_EQUALS, java.awt.event.KeyEvent.VK_ADD -> UISystem.stepPowerAllocation(ctx, +1);
+            case java.awt.event.KeyEvent.VK_F1 -> UISystem.applyPowerPreset(ctx, Ship.PowerPreset.BALANCED);
+            case java.awt.event.KeyEvent.VK_F2 -> UISystem.applyPowerPreset(ctx, Ship.PowerPreset.ATTACK);
+            case java.awt.event.KeyEvent.VK_F3 -> UISystem.applyPowerPreset(ctx, Ship.PowerPreset.DEFENSE);
+            case java.awt.event.KeyEvent.VK_F4 -> UISystem.applyPowerPreset(ctx, Ship.PowerPreset.PURSUIT);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean tryHandleCrewStationsHotkey(GameContext ctx, int keyCode) {
+        if (ctx == null || !ctx.crewStationsOpen) return false;
+        boolean handled = false;
+
+        switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_F1 -> {
+                UISystem.selectCrewStation(ctx, GameContext.CrewStation.CAPTAIN);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_F2 -> {
+                UISystem.selectCrewStation(ctx, GameContext.CrewStation.HELM);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_F3 -> {
+                UISystem.selectCrewStation(ctx, GameContext.CrewStation.TACTICAL);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_F4 -> {
+                UISystem.selectCrewStation(ctx, GameContext.CrewStation.ENGINEERING);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_F5 -> {
+                UISystem.selectCrewStation(ctx, GameContext.CrewStation.SCIENCE);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_LEFT -> {
+                UISystem.cycleCrewStation(ctx, -1);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_RIGHT -> {
+                UISystem.cycleCrewStation(ctx, +1);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_A -> {
+                UISystem.toggleActiveStationAutomation(ctx);
+                handled = true;
+            }
+            default -> {
+                // handled below by station-specific bindings
+            }
+        }
+        if (handled) return true;
+
+        switch (ctx.activeCrewStation) {
+            case CAPTAIN -> {
+                if (keyCode == java.awt.event.KeyEvent.VK_1) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.BALANCED);
+                else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.ATTACK);
+                else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.DEFENSE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_4) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.EMERGENCY);
+                else if (keyCode == java.awt.event.KeyEvent.VK_5) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.MINE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_6) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.ESCORT);
+                else if (keyCode == java.awt.event.KeyEvent.VK_7) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.DEFEND);
+                else if (keyCode == java.awt.event.KeyEvent.VK_8) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.REPAIR);
+                else if (keyCode == java.awt.event.KeyEvent.VK_9) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.RTB);
+                else if (keyCode == java.awt.event.KeyEvent.VK_0) UISystem.cycleAlliedFleetFormation(ctx);
+                else if (keyCode == java.awt.event.KeyEvent.VK_Q) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.ATTACK);
+                else if (keyCode == java.awt.event.KeyEvent.VK_W) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.DEFEND);
+                else if (keyCode == java.awt.event.KeyEvent.VK_E) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.REPAIR);
+                else if (keyCode == java.awt.event.KeyEvent.VK_R) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.RTB);
+                else if (keyCode == java.awt.event.KeyEvent.VK_T) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.AUTO);
+                else return false;
+                return true;
+            }
+            case HELM -> {
+                if (keyCode == java.awt.event.KeyEvent.VK_1) UISystem.setHelmMode(ctx, GameContext.HelmMode.INTERCEPT);
+                else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.setHelmMode(ctx, GameContext.HelmMode.ORBIT);
+                else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.setHelmMode(ctx, GameContext.HelmMode.MAINTAIN_RANGE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_4) UISystem.setHelmMode(ctx, GameContext.HelmMode.EVASIVE);
+                else return false;
+                return true;
+            }
+            case TACTICAL -> {
+                if (keyCode == java.awt.event.KeyEvent.VK_1) UISystem.setTacticalMode(ctx, GameContext.TacticalMode.HOLD_FIRE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.setTacticalMode(ctx, GameContext.TacticalMode.DEFENSIVE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.setTacticalMode(ctx, GameContext.TacticalMode.AGGRESSIVE);
+                else return false;
+                return true;
+            }
+            case ENGINEERING -> {
+                if (keyCode == java.awt.event.KeyEvent.VK_1) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.BALANCED);
+                else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.ATTACK);
+                else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.DEFENSE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_4) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.DAMAGE_CONTROL);
+                else return false;
+                return true;
+            }
+            case SCIENCE -> {
+                if (keyCode == java.awt.event.KeyEvent.VK_1) {
+                    ctx.scienceAutomation = false;
+                    UISystem.scienceLockNearest(ctx);
+                } else if (keyCode == java.awt.event.KeyEvent.VK_2) {
+                    ctx.scienceAutomation = false;
+                    UISystem.scienceClearLock(ctx);
+                } else if (keyCode == java.awt.event.KeyEvent.VK_3) {
+                    ctx.scienceAutomation = false;
+                    UISystem.toggleScienceJamming(ctx);
+                }
+                else return false;
+                return true;
             }
         }
         return true;

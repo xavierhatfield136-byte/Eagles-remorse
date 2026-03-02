@@ -43,8 +43,12 @@ public class GameContext {
     public double cursorWorldY = 0;
 
 // Input-derived actions
-    public boolean firingPrimary = false;
-    public boolean firingSecondary = false;
+    // Manual fire input (mouse / keyboard). These are blocked by overlays.
+    public boolean firingPrimaryManual = false;
+    public boolean firingSecondaryManual = false;
+    // Tactical station automation fire requests. These continue while overlays are open.
+    public boolean firingPrimaryAuto = false;
+    public boolean firingSecondaryAuto = false;
     public boolean miningKeyDown = false;
 
     // Targeting
@@ -56,6 +60,85 @@ public class GameContext {
     public boolean shopOpen = false;
     public boolean baseMenuOpen = false;
     public boolean mapOpen = false;
+    public boolean powerManagementOpen = false;
+    public boolean crewStationsOpen = false;
+    public int powerManagementFocus = 0; // 0=engines 1=shields 2=weapons 3=systems
+
+    public enum CrewStation {
+        CAPTAIN,
+        HELM,
+        TACTICAL,
+        ENGINEERING,
+        SCIENCE
+    }
+    public enum HelmMode {
+        INTERCEPT,
+        ORBIT,
+        MAINTAIN_RANGE,
+        EVASIVE
+    }
+    public enum TacticalMode {
+        HOLD_FIRE,
+        DEFENSIVE,
+        AGGRESSIVE
+    }
+    public enum EngineeringMode {
+        BALANCED,
+        ATTACK,
+        DEFENSE,
+        DAMAGE_CONTROL
+    }
+    public enum CaptainDirective {
+        BALANCED,
+        ATTACK,
+        DEFENSE,
+        EMERGENCY,
+        MINE,
+        ESCORT,
+        DEFEND,
+        REPAIR,
+        RTB
+    }
+    public enum FleetCommand {
+        AUTO,
+        FORM_UP,
+        ATTACK,
+        DEFEND,
+        ESCORT,
+        REPAIR,
+        RTB,
+        RETREAT,
+        MINE
+    }
+    public enum FleetFormation {
+        WEDGE,
+        LINE,
+        SCREEN
+    }
+    public enum HudDetail {
+        FULL,
+        COMPACT,
+        MINIMAL
+    }
+    public CrewStation activeCrewStation = CrewStation.CAPTAIN;
+    public HelmMode helmMode = HelmMode.INTERCEPT;
+    public TacticalMode tacticalMode = TacticalMode.DEFENSIVE;
+    public EngineeringMode engineeringMode = EngineeringMode.BALANCED;
+    public CaptainDirective captainDirective = CaptainDirective.BALANCED;
+    public HudDetail hudDetail = HudDetail.FULL;
+    public boolean captainAutomation = false;
+    public boolean helmAutomation = false;
+    public boolean tacticalAutomation = false;
+    public boolean engineeringAutomation = false;
+    public boolean scienceAutomation = true;
+    public boolean scienceJamming = false;
+    public double helmDesiredRange = 480.0;
+    public boolean miningAuto = false;
+    public FleetCommand alliedFleetCommand = FleetCommand.AUTO;
+    public FleetFormation alliedFleetFormation = FleetFormation.WEDGE;
+    public final Map<Integer, FleetCommand> shipFleetCommandOverrides = new HashMap<>();
+    public final java.util.EnumMap<Faction, Ship> fleetCommandShips = new java.util.EnumMap<>(Faction.class);
+    public final java.util.EnumMap<Faction, Ship> fleetSharedTargets = new java.util.EnumMap<>(Faction.class);
 
     // Waypoint / pings
     public double waypointX = Double.NaN;

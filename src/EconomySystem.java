@@ -7,6 +7,10 @@ public final class EconomySystem {
     private static final double STATION_TURRET_RING_RADIUS = 210.0;
     private static final double STATION_TURRET_RING_JITTER = 36.0;
     private static final double STATION_TURRET_MIN_SPACING = 80.0;
+    private static final double BASE_SHIP_DEPLOY_RADIUS = 260.0;
+    private static final double BASE_SHIP_DEPLOY_JITTER = 64.0;
+    private static final double BASE_SHIP_DEPLOY_MIN_SPACING = 96.0;
+    private static final double BASE_SHIP_SUPPORT_RANGE = 1020.0;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -19,7 +23,7 @@ public final class EconomySystem {
         }
 
         // Mining for player (hold F)
-        if (ctx.miningKeyDown && ctx.player != null) {
+        if ((ctx.miningKeyDown || ctx.miningAuto) && ctx.player != null) {
             doMining(ctx, ctx.player, dt);
         }
 
@@ -161,6 +165,16 @@ public final class EconomySystem {
             if (base.role != ShipRole.BASE) continue;
             if (!base.canSpawnDefender()) continue;
 
+            int combatNear = countCombatShipsForBase(ctx, base);
+            int shipCapFromBase = Math.max(2, Math.min(12, base.maxDefenders));
+            if (combatNear < shipCapFromBase) {
+                Ship deployed = spawnCombatShipAtBase(ctx, base, combatNear, shipCapFromBase);
+                if (deployed != null) {
+                    base.resetBaseSpawnTimer();
+                    continue;
+                }
+            }
+
             int current = countStationTurretsForBase(ctx, base);
             int capFromBase = Math.max(1, Math.min(MAX_STATION_TURRETS_PER_BASE, base.maxDefenders / 2));
             if (current >= capFromBase) continue;
@@ -199,6 +213,85 @@ public final class EconomySystem {
         return count;
     }
 
+    private static int countCombatShipsForBase(GameContext ctx, Ship base) {
+        if (ctx == null || base == null || base.faction == null) return 0;
+        double maxD2 = BASE_SHIP_SUPPORT_RANGE * BASE_SHIP_SUPPORT_RANGE;
+        int count = 0;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s == base) continue;
+            if (s.faction == null || s.faction.teamId() != base.faction.teamId()) continue;
+            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
+            if (s.role == ShipRole.MINER || s.role == ShipRole.HAULER || s.role == ShipRole.TRANSPORT) continue;
+            if (GameMath.dist2(s.x, s.y, base.x, base.y) > maxD2) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static Ship spawnCombatShipAtBase(GameContext ctx, Ship base, int combatNear, int shipCapFromBase) {
+        if (ctx == null || base == null || base.faction == null) return null;
+        for (int attempt = 0; attempt < 12; attempt++) {
+            double a = ctx.rng.nextDouble() * Math.PI * 2.0;
+            double r = BASE_SHIP_DEPLOY_RADIUS + (ctx.rng.nextDouble() - 0.5) * BASE_SHIP_DEPLOY_JITTER;
+            double sx = base.x + Math.cos(a) * r;
+            double sy = base.y + Math.sin(a) * r;
+            sx = GameMath.clamp(sx, 30, ctx.WORLD_W - 30);
+            sy = GameMath.clamp(sy, 30, ctx.WORLD_H - 30);
+            if (!isCombatSpawnClear(ctx, base, sx, sy)) continue;
+
+            ShipRole role = chooseCombatRoleForBase(ctx, base, combatNear, shipCapFromBase);
+            Ship ship = SpawnSystem.spawnTeamShip(ctx, role, base.faction, sx, sy);
+            if (ship == null) continue;
+
+            // Freshly produced defenders roll out at reduced speed then join fleet AI next tick.
+            ship.vx = base.vx * 0.6;
+            ship.vy = base.vy * 0.6;
+            ship.angle = base.angle;
+            return ship;
+        }
+        return null;
+    }
+
+    private static boolean isCombatSpawnClear(GameContext ctx, Ship base, double x, double y) {
+        if (ctx == null || base == null) return false;
+        double minSpacing2 = BASE_SHIP_DEPLOY_MIN_SPACING * BASE_SHIP_DEPLOY_MIN_SPACING;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s == base) continue;
+            if (GameMath.dist2(s.x, s.y, x, y) < minSpacing2) return false;
+        }
+        for (Asteroid a : ctx.asteroids) {
+            if (a == null) continue;
+            double min = a.collisionRadius() + 32.0;
+            if (GameMath.dist2(a.x, a.y, x, y) < min * min) return false;
+        }
+        return true;
+    }
+
+    private static ShipRole chooseCombatRoleForBase(GameContext ctx, Ship base, int combatNear, int shipCapFromBase) {
+        if (ctx == null || base == null) return ShipRole.FRIGATE;
+        double pressure = (shipCapFromBase <= 0) ? 1.0 : (combatNear / (double) shipCapFromBase);
+        double roll = ctx.rng.nextDouble();
+        if (pressure < 0.28) {
+            if (base.maxDefenders >= 10 && roll < 0.10) return ShipRole.LIGHT_CRUISER;
+            if (roll < 0.26) return ShipRole.MISSILE_BOAT;
+            if (roll < 0.48) return ShipRole.CIWS_CORVETTE;
+            return ShipRole.FRIGATE;
+        }
+        if (pressure < 0.64) {
+            if (roll < 0.16) return ShipRole.MISSILE_BOAT;
+            if (roll < 0.34) return ShipRole.CIWS_CORVETTE;
+            if (roll < 0.62) return ShipRole.PICKET;
+            return ShipRole.FRIGATE;
+        }
+        if (roll < 0.40) return ShipRole.PATROL;
+        if (roll < 0.72) return ShipRole.PICKET;
+        return ShipRole.CIWS_CORVETTE;
+    }
+
     private static Ship spawnStationTurretAtBase(GameContext ctx, Ship base) {
         if (ctx == null || base == null) return null;
 
@@ -213,7 +306,14 @@ public final class EconomySystem {
 
             if (!isStationTurretSpawnClear(ctx, base, sx, sy)) continue;
 
-            return SpawnSystem.spawnTeamShip(ctx, ShipRole.STATIC_TURRET, base.faction, sx, sy);
+            Ship turret = SpawnSystem.spawnTeamShip(ctx, ShipRole.STATIC_TURRET, base.faction, sx, sy);
+            if (turret != null) {
+                BaseUpgrades up = ctx.baseUpgrades.get(base);
+                if (up != null && up.turretLv > 0) {
+                    UISystem.applyTurretSystemsUpgrade(turret, up.turretLv);
+                }
+            }
+            return turret;
         }
         return null;
     }
@@ -491,6 +591,25 @@ public final class EconomySystem {
     private static void checkResourceRushWin(GameContext ctx) {
         int allyOre = getOreTotalForFaction(ctx, Faction.ALLY);
         int enemyOre = getOreTotalForFaction(ctx, Faction.ENEMY);
+        boolean allyAlive = TeamSystem.isTeamAlive(ctx, Faction.ALLY);
+        boolean enemyAlive = TeamSystem.isTeamAlive(ctx, Faction.ENEMY);
+
+        if (!allyAlive || !enemyAlive) {
+            ctx.gameOver = true;
+            ctx.state = GameState.GAME_OVER;
+
+            if (allyAlive == enemyAlive) {
+                ctx.gameOverText = "DRAW";
+                return;
+            }
+
+            Faction winner = allyAlive ? Faction.ALLY : Faction.ENEMY;
+            Faction loser = allyAlive ? Faction.ENEMY : Faction.ALLY;
+            boolean friendlyWin = (ctx.player != null && winner.isFriendlyTo(ctx.player.faction));
+            String side = friendlyWin ? "VICTORY" : "DEFEAT";
+            ctx.gameOverText = side + " - " + winner.teamName() + " ELIMINATED " + loser.teamName();
+            return;
+        }
 
         if (allyOre >= ctx.resourceGoal || enemyOre >= ctx.resourceGoal) {
             ctx.gameOver = true;
@@ -516,12 +635,6 @@ public final class EconomySystem {
     }
 
     // ---- Compatibility helpers for varying codebases ----
-
-    private static double getMiningRate(Ship s) {
-        try { return (double) s.getClass().getMethod("getMiningRate").invoke(s); } catch (Throwable ignored) {}
-        try { return (double) s.getClass().getField("miningRate").get(s); } catch (Throwable ignored) {}
-        return 60.0;
-    }
 
     private static void aiGoTo(Ship s, double x, double y, double dt) {
         try { s.getClass().getMethod("aiGoTo", double.class, double.class, double.class).invoke(s, x, y, dt); return; } catch (Throwable ignored) {}
@@ -556,44 +669,10 @@ public final class EconomySystem {
         return 0.0;
     }
 
-    private static void setShipOre(Ship s, double v) {
-        int iv = (int) Math.max(0, Math.round(v));
-        try {
-            java.lang.reflect.Field f = s.getClass().getField("ore");
-            Class<?> t = f.getType();
-            if (t == int.class || t == Integer.class) f.set(s, iv);
-            else if (t == double.class || t == Double.class) f.set(s, (double) iv);
-            else if (t == float.class || t == Float.class) f.set(s, (float) iv);
-            else f.set(s, iv);
-            return;
-        } catch (Throwable ignored) {}
-        try {
-            java.lang.reflect.Field f = s.getClass().getField("cargo");
-            Class<?> t = f.getType();
-            if (t == int.class || t == Integer.class) f.set(s, iv);
-            else if (t == double.class || t == Double.class) f.set(s, (double) iv);
-            else if (t == float.class || t == Float.class) f.set(s, (float) iv);
-            else f.set(s, iv);
-        } catch (Throwable ignored) {}
-    }
-
-    private static void addOreToShip(Ship s, double add) {
-        setShipOre(s, getShipOre(s) + add);
-    }
-
     private static double getAsteroidOre(Asteroid a) {
         try { return (double) a.getClass().getField("ore").get(a); } catch (Throwable ignored) {}
         try { return ((Number) a.getClass().getField("ore").get(a)).doubleValue(); } catch (Throwable ignored) {}
         return 0;
     }
 
-    private static double mineAsteroid(Asteroid a, double amt) {
-        try { return ((Number) a.getClass().getMethod("mine", double.class).invoke(a, amt)).doubleValue(); } catch (Throwable ignored) {}
-        try { return ((Number) a.getClass().getMethod("takeOre", double.class).invoke(a, amt)).doubleValue(); } catch (Throwable ignored) {}
-        // If no method, just reduce field
-        double ore = getAsteroidOre(a);
-        double mined = Math.min(ore, amt);
-        try { a.getClass().getField("ore").set(a, ore - mined); } catch (Throwable ignored) {}
-        return mined;
-    }
 }

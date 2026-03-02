@@ -19,6 +19,8 @@ public final class CarrierSystem {
     private static final double RECOVERY_PAD = 10.0;
     private static final double DEFEND_RANGE = 320.0;
     private static final double DEFEND_ORBIT = 170.0;
+    private static final double ATTACK_SEARCH_RANGE = 1450.0;
+    private static final double ATTACK_LEASH_RANGE = 980.0;
     private static final int BOMBER_SLOT_INTERVAL = 4;
 
     public static void update(GameContext ctx, double dt) {
@@ -148,6 +150,8 @@ public final class CarrierSystem {
 
             if (carrier.carrierCommandMode == Ship.CarrierCommandMode.DEFEND) {
                 applyDefend(ctx, s, carrier, dt);
+            } else {
+                applyAttack(ctx, s, carrier, dt);
             }
         }
     }
@@ -177,6 +181,30 @@ public final class CarrierSystem {
 
         double orbitDir = ((craft.hashCode() & 1) == 0) ? 1.0 : -1.0;
         orbit(craft, carrier.x, carrier.y, DEFEND_ORBIT, Math.max(115.0, craft.desiredSpeed * 0.9), dt, orbitDir);
+    }
+
+    private static void applyAttack(GameContext ctx, Ship craft, Ship carrier, double dt) {
+        Ship hostile = findClosestHostileToPoint(ctx, craft, craft.x, craft.y, ATTACK_SEARCH_RANGE);
+        if (hostile != null) {
+            steerToward(craft, hostile.x, hostile.y, Math.max(135.0, craft.desiredSpeed * 1.02), dt);
+            return;
+        }
+
+        double d = Math.hypot(craft.x - carrier.x, craft.y - carrier.y);
+        if (d > ATTACK_LEASH_RANGE) {
+            steerToward(craft, carrier.x, carrier.y, Math.max(130.0, craft.desiredSpeed), dt);
+            return;
+        }
+
+        // No hostile in range: hold a loose forward screen near the carrier.
+        double fx = Math.cos(carrier.angle);
+        double fy = Math.sin(carrier.angle);
+        double tx = carrier.x + fx * (carrier.radius + 220.0);
+        double ty = carrier.y + fy * (carrier.radius + 220.0);
+        double side = ((craft.id & 1) == 0) ? -1.0 : 1.0;
+        tx += -fy * side * 140.0;
+        ty += fx * side * 140.0;
+        steerToward(craft, tx, ty, Math.max(120.0, craft.desiredSpeed * 0.92), dt);
     }
 
     private static Ship findClosestHostileToPoint(GameContext ctx, Ship carrier, double x, double y, double maxDist) {
@@ -277,7 +305,7 @@ public final class CarrierSystem {
         }
         s.vx = vxPerSec * dt;
         s.vy = vyPerSec * dt;
-        s.angle = Math.atan2(vyPerSec, vxPerSec);
+        rotateToward(s, Math.atan2(vyPerSec, vxPerSec), dt);
     }
 
     private static void steerToward(Ship s, double tx, double ty, double speedPerSec, double dt) {
@@ -311,5 +339,18 @@ public final class CarrierSystem {
         double dx = bx - ax;
         double dy = by - ay;
         return dx * dx + dy * dy;
+    }
+
+    private static void rotateToward(Ship s, double desiredAngle, double dt) {
+        if (s == null || dt <= 0.0) return;
+        double maxRate = switch (s.role) {
+            case FIGHTER, BOMBER, DRONE, PD_CRAFT -> Math.toRadians(190.0);
+            case PICKET, PATROL, STEALTH_SHIP -> Math.toRadians(160.0);
+            default -> Math.toRadians(120.0);
+        };
+        double delta = MathUtil.normalizeAngle(desiredAngle - s.angle);
+        double maxDelta = maxRate * dt;
+        delta = MathUtil.clamp(delta, -maxDelta, maxDelta);
+        s.angle = MathUtil.normalizeAngle(s.angle + delta);
     }
 }

@@ -242,6 +242,13 @@ public abstract class Ship {
     public double desiredSpeed = 110;
     public double desiredSpeedBase = 110;
 
+    // AI engagement memory (used for lane adaptation and anti-stall behavior).
+    public double aiBadApproachTimer = 0.0;
+    public double aiBadApproachAngle = Double.NaN;
+    public double aiNoFireTimer = 0.0;
+    public double aiLastEngagementX = Double.NaN;
+    public double aiLastEngagementY = Double.NaN;
+
     // Power management
     public enum PowerPreset {
         BALANCED,
@@ -263,7 +270,7 @@ public abstract class Ship {
         DAMAGE_CONTROL
     }
     public CrewOrder crewOrder = CrewOrder.BALANCED;
-    private double crewFatigue = 0.12;     // 0..1
+    private double crewFatigue = 0.0;      // retained for save/compat, no gameplay effect
     private double crewCasualtyRate = 0.0; // 0..1
     private double crewReadiness = 1.0;    // 0..1
     private double crewCombatStress = 0.0;
@@ -834,7 +841,7 @@ public abstract class Ship {
     }
 
     public double crewFatigue() {
-        return Math.max(0.0, Math.min(1.0, crewFatigue));
+        return 0.0;
     }
 
     public ShieldFacingMode cycleShieldFacingMode() {
@@ -973,21 +980,18 @@ public abstract class Ship {
             if (crewCombatStress < 0.0) crewCombatStress = 0.0;
         }
 
-        double stress = (crewCombatStress > 0.0) ? 1.0 : 0.0;
-        double lowHullPressure = (hpMax > 0 && hp < hpMax * 0.42) ? 1.0 : 0.0;
-        crewFatigue += dt * (0.030 * stress + 0.020 * lowHullPressure - 0.018 * (1.0 - stress));
-        crewFatigue = MathUtil.clamp(crewFatigue, 0.0, 1.0);
+        // Crew fatigue gameplay was removed; keep it pinned to zero.
+        crewFatigue = 0.0;
 
         // Casualties are persistent but recover slowly over time through medbay/automation.
         crewCasualtyRate -= dt * 0.0015;
         crewCasualtyRate = MathUtil.clamp(crewCasualtyRate, 0.0, 0.70);
 
-        double readinessBase = 1.0 - 0.36 * crewFatigue - 0.45 * crewCasualtyRate;
+        double readinessBase = 1.0 - 0.45 * crewCasualtyRate;
         crewReadiness = MathUtil.clamp(readinessBase, 0.28, 1.0);
 
-        double fatiguePenalty = 1.0 - 0.32 * crewFatigue;
         double casualtyPenalty = 1.0 - 0.42 * crewCasualtyRate;
-        double base = MathUtil.clamp(crewReadiness * fatiguePenalty * casualtyPenalty, 0.30, 1.0);
+        double base = MathUtil.clamp(crewReadiness * casualtyPenalty, 0.30, 1.0);
 
         double engines = 1.0;
         double shields = 1.0;
@@ -1247,6 +1251,23 @@ public abstract class Ship {
         return waveMotionCharging;
     }
 
+    public double getWaveMotionChargeProgress() {
+        if (!waveMotionCharging) return 0.0;
+        if (waveMotionChargeTime <= 1e-9) return 1.0;
+        double t = 1.0 - (waveMotionChargeTimer / waveMotionChargeTime);
+        return Math.max(0.0, Math.min(1.0, t));
+    }
+
+    public boolean isWaveMotionBeamActive() {
+        return waveMotionBeamTimer > 0.0;
+    }
+
+    public double getWaveMotionAimAngle() {
+        if (waveMotionCharging && Double.isFinite(queuedWaveMotionAim)) return queuedWaveMotionAim;
+        if (waveMotionBeamTimer > 0.0 && Double.isFinite(waveMotionBeamAim)) return waveMotionBeamAim;
+        return angle;
+    }
+
     public WaveMotionShot pollWaveMotionShot() {
         WaveMotionShot shot = pendingWaveMotionShot;
         pendingWaveMotionShot = null;
@@ -1268,6 +1289,13 @@ public abstract class Ship {
         if (!alive || dying) return false;
         if (!hasWaveMotionGun) return false;
         return waveMotionTimer <= 0.0 && !waveMotionCharging;
+    }
+
+    public void trackWaveMotionAim(double targetX, double targetY) {
+        if (!hasWaveMotionGun) return;
+        double aim = resolveWaveMotionAim(targetX, targetY);
+        if (waveMotionCharging) queuedWaveMotionAim = aim;
+        if (waveMotionBeamTimer > 0.0) waveMotionBeamAim = aim;
     }
 
     public WaveMotionShot tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
