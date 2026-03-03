@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -115,6 +116,19 @@ public abstract class Ship {
     public boolean shieldActive = false;
     public double shieldRebootDelay = 2.2;
     private double shieldOfflineTimer = 0.0;
+    public static final int SHIELD_FACE_COUNT = 4;
+    public static final int SHIELD_FACE_FORE = 0;
+    public static final int SHIELD_FACE_LEFT = 1;
+    public static final int SHIELD_FACE_RIGHT = 2;
+    public static final int SHIELD_FACE_REAR = 3;
+    private static final double SHIELD_FACE_REGEN_LOCK_SECONDS = 10.0;
+    private static final double SHIELD_FACE_SWAP_TRIGGER_FRAC = 0.20;
+    private static final double SHIELD_FACE_SWAP_ADVANTAGE_FRAC = 0.10;
+    private static final String[] SHIELD_FACE_NAMES = {"FORE", "LEFT", "RIGHT", "REAR"};
+    private final double[] shieldFaces = new double[SHIELD_FACE_COUNT];
+    private final double[] shieldFaceRegenLock = new double[SHIELD_FACE_COUNT];
+    private double shieldFacesSyncedMax = Double.NaN;
+    private boolean shieldFacesInitialized = false;
     public enum ShieldFacingMode {
         AUTO_TRACK,
         FORWARD,
@@ -147,6 +161,7 @@ public abstract class Ship {
     public double waveMotionBeamDuration = 0.95;
     public double waveMotionBeamTickInterval = 0.12;
     public double waveMotionBeamDamageScale = 0.34;
+    private static final double WAVE_MOTION_PROJECTILE_RATE_MULT = 3.0;
     private double waveMotionBeamTimer = 0.0;
     private double waveMotionBeamTickTimer = 0.0;
     private double waveMotionBeamAim = Double.NaN;
@@ -295,6 +310,25 @@ public abstract class Ship {
     private final java.util.EnumMap<InternalSystem, Double> systemHpMax = new java.util.EnumMap<>(InternalSystem.class);
     private boolean internalSystemsInitialized = false;
 
+    // Hull impact/breach data in ship-local coordinates (used for exact decal placement).
+    public static final class HullImpactMark {
+        public final double localX;
+        public final double localY;
+        public final double severity;
+        public final double breachRadius;
+
+        private HullImpactMark(double localX, double localY, double severity, double breachRadius) {
+            this.localX = localX;
+            this.localY = localY;
+            this.severity = severity;
+            this.breachRadius = breachRadius;
+        }
+    }
+
+    private static final int MAX_HULL_IMPACT_MARKS = 64;
+    private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
+    private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
+
     // Stealth
     /** If true, this ship is harder to target/lock unless revealed or very close. */
     public boolean isStealth = false;
@@ -408,13 +442,15 @@ public abstract class Ship {
         updateDerivedSystemEffects();
         updateShieldFacing(dt);
         updateStealthCloak(dt);
+        ensureShieldFacesSynced();
 
         if (shieldOfflineTimer > 0.0) {
             shieldOfflineTimer -= dt;
             if (shieldOfflineTimer < 0.0) shieldOfflineTimer = 0.0;
         }
+        updateShieldFaceRegenLocks(dt);
         if (isShieldOnline() && shield < shieldMax) {
-            shield = Math.min(shieldMax, shield + shieldRegen * shieldRegenMultiplier() * dt);
+            distributeShieldRegen(shieldRegen * shieldRegenMultiplier() * dt);
         }
 
         for (Turret t : turrets) t.update(dt);
@@ -446,7 +482,7 @@ public abstract class Ship {
                 if (pendingWaveMotionShot == null || !pendingWaveMotionShot.alive) {
                     pendingWaveMotionShot = createWaveMotionPulse(dt, aim, true);
                 }
-                waveMotionBeamTickTimer = Math.max(0.03, waveMotionBeamTickInterval);
+                waveMotionBeamTickTimer = waveMotionTickSpacing();
             }
 
             if (waveMotionBeamTimer <= 0.0) {
@@ -513,7 +549,8 @@ public abstract class Ship {
     public void healShield(double amount) {
         if (!alive || !isShieldOnline()) return;
         if (amount <= 0) return;
-        shield = Math.min(shieldMax, shield + amount);
+        ensureShieldFacesSynced();
+        distributeShieldRegen(amount);
     }
 
     public void takeDamage(int dmg) {
@@ -521,6 +558,10 @@ public abstract class Ship {
     }
 
     public void takeDamage(int dmg, double hitX, double hitY) {
+        takeDamage(dmg, hitX, hitY, Double.NaN, Double.NaN);
+    }
+
+    public void takeDamage(int dmg, double hitX, double hitY, double impactVx, double impactVy) {
         if (!alive) return;
         if (dying) return;
         if (dmg <= 0) return;
@@ -528,23 +569,41 @@ public abstract class Ship {
         // Getting hit briefly reveals stealth ships.
         reveal(2.5);
         crewCombatStress = Math.max(crewCombatStress, 1.4);
+        ensureShieldFacesSynced();
+
+        double impactAngle = resolveShieldImpactAngle(hitX, hitY, impactVx, impactVy);
+        double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        double shieldFacingForHit = getShieldFacingAngle();
+        if (shieldFacingMode == ShieldFacingMode.AUTO_TRACK && Double.isFinite(threatFacingAngle)) {
+            shieldFacingForHit = autoFacingTargetForThreat(threatFacingAngle);
+            if (Double.isFinite(shieldFacingForHit)) {
+                // Keep visual facing and damage-facing in sync during incoming fire.
+                shieldFacingAngle = shieldFacingForHit;
+            }
+        }
 
         if (isShieldOnline() && shield > 0) {
-            double scaledDamage = dmg * directionalShieldDamageScale(hitX, hitY);
-            shield -= scaledDamage;
-            if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
-                recentShieldImpactAngle = Math.atan2(hitY - y, hitX - x);
+            int face = shieldFaceForImpactAngle(impactAngle, shieldFacingForHit);
+            double faceHpBefore = shieldFaceValue(face);
+            if (Double.isFinite(threatFacingAngle)) {
+                recentShieldImpactAngle = threatFacingAngle;
                 recentShieldImpactTimer = 1.2;
             }
-            if (shield <= 0) {
-                shield = 0;
-                shieldOfflineTimer = Math.max(shieldOfflineTimer, shieldRebootDelay);
+            if (faceHpBefore > 1e-6) {
+                double scaledDamage = dmg * directionalShieldDamageScaleFromAngle(impactAngle, shieldFacingForHit);
+                applyShieldDamageToFace(face, scaledDamage);
+                if (shield <= 0) {
+                    forceShieldOffline(shieldRebootDelay);
+                }
+                double fx = Double.isFinite(hitX) ? hitX : x;
+                double fy = Double.isFinite(hitY) ? hitY : y;
+                Explosion.spawnShieldHit(fx, fy);
+                return;
             }
-            Explosion.spawnShieldHit(x, y);
-            return;
         }
 
         hp -= dmg;
+        registerHullImpact(dmg, hitX, hitY);
         applySystemDamageFromHullHit(dmg, hitX, hitY);
         if (hp <= 0) {
             hp = 0;
@@ -783,6 +842,14 @@ public abstract class Ship {
         systemHpMax.clear();
     }
 
+    public List<HullImpactMark> hullImpactMarks() {
+        return hullImpactMarksView;
+    }
+
+    public void clearHullImpactMarks() {
+        hullImpactMarks.clear();
+    }
+
     public double systemHealthFraction(InternalSystem system) {
         ensureInternalSystemsInitialized();
         if (system == null) return 1.0;
@@ -866,6 +933,32 @@ public abstract class Ship {
     public double getShieldFacingAngle() {
         if (!Double.isFinite(shieldFacingAngle)) return angle;
         return shieldFacingAngle;
+    }
+
+    public int shieldFaceCount() {
+        return SHIELD_FACE_COUNT;
+    }
+
+    public String shieldFaceName(int face) {
+        if (face < 0 || face >= SHIELD_FACE_COUNT) return "?";
+        return SHIELD_FACE_NAMES[face];
+    }
+
+    public double shieldFaceValue(int face) {
+        ensureShieldFacesSynced();
+        if (face < 0 || face >= SHIELD_FACE_COUNT) return 0.0;
+        return shieldFaces[face];
+    }
+
+    public double shieldFaceMax(int face) {
+        if (face < 0 || face >= SHIELD_FACE_COUNT) return 0.0;
+        return perFaceShieldMax();
+    }
+
+    public double shieldFaceFraction(int face) {
+        double max = shieldFaceMax(face);
+        if (max <= 1e-9) return 0.0;
+        return Math.max(0.0, Math.min(1.0, shieldFaceValue(face) / max));
     }
 
     public double shieldArcDegrees() {
@@ -1052,6 +1145,7 @@ public abstract class Ship {
     private void updateShieldFacing(double dt) {
         if (!shieldActive || shieldMax <= 0.0) return;
         if (!Double.isFinite(shieldFacingAngle)) shieldFacingAngle = angle;
+        ensureShieldFacesSynced();
 
         if (shieldFacingMode == ShieldFacingMode.FORWARD) {
             shieldFacingAngle = angle;
@@ -1067,7 +1161,7 @@ public abstract class Ship {
             target = Math.atan2(vy, vx);
         }
         if (recentShieldImpactTimer > 0.0 && Double.isFinite(recentShieldImpactAngle)) {
-            target = recentShieldImpactAngle;
+            target = autoFacingTargetForThreat(recentShieldImpactAngle);
         }
 
         double delta = MathUtil.normalizeAngle(target - shieldFacingAngle);
@@ -1076,12 +1170,66 @@ public abstract class Ship {
         shieldFacingAngle = MathUtil.normalizeAngle(shieldFacingAngle + delta);
     }
 
-    private double directionalShieldDamageScale(double hitX, double hitY) {
-        if (!Double.isFinite(hitX) || !Double.isFinite(hitY)) return 1.0;
-        if (!Double.isFinite(shieldFacingAngle)) return 1.0;
+    private int bestShieldFaceForSwap(int activeFace) {
+        int out = activeFace;
+        double activeFrac = shieldFaceFraction(activeFace);
+        double bestFrac = activeFrac;
+        int opposite = oppositeShieldFace(activeFace);
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+            if (i == activeFace) continue;
+            if (i == opposite) continue;
+            double frac = shieldFaceFraction(i);
+            if (frac <= 0.01) continue;
+            if (frac > bestFrac + SHIELD_FACE_SWAP_ADVANTAGE_FRAC) {
+                bestFrac = frac;
+                out = i;
+            }
+        }
+        return out;
+    }
 
-        double hitAngle = Math.atan2(hitY - y, hitX - x);
-        double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - shieldFacingAngle));
+    private int oppositeShieldFace(int face) {
+        return switch (face) {
+            case SHIELD_FACE_FORE -> SHIELD_FACE_REAR;
+            case SHIELD_FACE_REAR -> SHIELD_FACE_FORE;
+            case SHIELD_FACE_LEFT -> SHIELD_FACE_RIGHT;
+            case SHIELD_FACE_RIGHT -> SHIELD_FACE_LEFT;
+            default -> -1;
+        };
+    }
+
+    private double targetFacingAngleForFaceAtThreat(double threatAngle, int face) {
+        if (!Double.isFinite(threatAngle)) return getShieldFacingAngle();
+        return switch (face) {
+            case SHIELD_FACE_FORE -> threatAngle;
+            case SHIELD_FACE_LEFT -> MathUtil.normalizeAngle(threatAngle + Math.PI * 0.5);
+            case SHIELD_FACE_RIGHT -> MathUtil.normalizeAngle(threatAngle - Math.PI * 0.5);
+            case SHIELD_FACE_REAR -> MathUtil.normalizeAngle(threatAngle - Math.PI);
+            default -> threatAngle;
+        };
+    }
+
+    private double autoFacingTargetForThreat(double threatAngle) {
+        if (!Double.isFinite(threatAngle)) return getShieldFacingAngle();
+        double target = threatAngle;
+
+        // Determine which face is currently absorbing this threat and swap if it's near collapse.
+        int activeFace = shieldFaceForImpactAngle(threatAngle, getShieldFacingAngle());
+        double activeFrac = shieldFaceFraction(activeFace);
+        if (activeFrac <= SHIELD_FACE_SWAP_TRIGGER_FRAC) {
+            int replacement = bestShieldFaceForSwap(activeFace);
+            if (replacement != activeFace) {
+                target = targetFacingAngleForFaceAtThreat(threatAngle, replacement);
+            }
+        }
+        return target;
+    }
+
+    private double directionalShieldDamageScaleFromAngle(double hitAngle, double facingAngle) {
+        if (!Double.isFinite(hitAngle)) return 1.0;
+        if (!Double.isFinite(facingAngle)) return 1.0;
+
+        double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - facingAngle));
         double halfArc = Math.max(Math.toRadians(35.0), shieldDirectionalArc * 0.5);
         double arcT = MathUtil.clamp(rel / halfArc, 0.0, 1.0);
 
@@ -1091,6 +1239,169 @@ public abstract class Ship {
         double powerScale = 1.22 - 0.36 * shieldsPowerMultiplier();
         double total = arcScale * powerScale / Math.max(0.35, systems);
         return Math.max(0.35, Math.min(1.95, total));
+    }
+
+    private double perFaceShieldMax() {
+        return (shieldMax <= 0.0) ? 0.0 : (shieldMax / SHIELD_FACE_COUNT);
+    }
+
+    private void ensureShieldFacesSynced() {
+        if (!shieldFacesInitialized) {
+            syncShieldFacesFromAggregate();
+            return;
+        }
+
+        double max = Math.max(0.0, shieldMax);
+        double clampedShield = MathUtil.clamp(shield, 0.0, max);
+        double faceSum = 0.0;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) faceSum += Math.max(0.0, shieldFaces[i]);
+
+        boolean shieldEditedExternally = Math.abs(faceSum - clampedShield) > 1e-3;
+        boolean maxChanged = Math.abs(max - shieldFacesSyncedMax) > 1e-6;
+        if (shieldEditedExternally || maxChanged) {
+            syncShieldFacesFromAggregate();
+            return;
+        }
+
+        shield = clampedShield;
+    }
+
+    private void syncShieldFacesFromAggregate() {
+        double max = Math.max(0.0, shieldMax);
+        if (!shieldActive || max <= 0.0) {
+            for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaces[i] = 0.0;
+            shield = 0.0;
+            shieldFacesSyncedMax = max;
+            shieldFacesInitialized = true;
+            return;
+        }
+
+        shield = MathUtil.clamp(shield, 0.0, max);
+        double perFace = max / SHIELD_FACE_COUNT;
+        double each = shield / SHIELD_FACE_COUNT;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+            shieldFaces[i] = Math.min(perFace, each);
+        }
+        shieldFacesSyncedMax = max;
+        shieldFacesInitialized = true;
+    }
+
+    private void syncAggregateShieldFromFaces() {
+        double max = Math.max(0.0, shieldMax);
+        double perFace = perFaceShieldMax();
+        double total = 0.0;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+            shieldFaceRegenLock[i] = Math.max(0.0, shieldFaceRegenLock[i]);
+            shieldFaces[i] = MathUtil.clamp(shieldFaces[i], 0.0, perFace);
+            total += shieldFaces[i];
+        }
+        shield = MathUtil.clamp(total, 0.0, max);
+        shieldFacesSyncedMax = max;
+        shieldFacesInitialized = true;
+    }
+
+    private void updateShieldFaceRegenLocks(double dt) {
+        if (dt <= 0.0) return;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+            if (shieldFaceRegenLock[i] <= 0.0) continue;
+            shieldFaceRegenLock[i] -= dt;
+            if (shieldFaceRegenLock[i] < 0.0) shieldFaceRegenLock[i] = 0.0;
+        }
+    }
+
+    private void distributeShieldRegen(double amount) {
+        if (amount <= 0.0 || shieldMax <= 0.0 || !shieldActive) return;
+        ensureShieldFacesSynced();
+
+        double rem = amount;
+        double perFace = perFaceShieldMax();
+        for (int pass = 0; pass < 4 && rem > 1e-6; pass++) {
+            int open = 0;
+            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+                if (shieldFaceRegenLock[i] > 0.0) continue;
+                if (shieldFaces[i] + 1e-9 < perFace) open++;
+            }
+            if (open <= 0) break;
+
+            double share = rem / open;
+            double consumed = 0.0;
+            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+                if (shieldFaceRegenLock[i] > 0.0) continue;
+                double room = perFace - shieldFaces[i];
+                if (room <= 1e-9) continue;
+                double add = Math.min(room, share);
+                shieldFaces[i] += add;
+                consumed += add;
+            }
+            rem -= consumed;
+            if (consumed <= 1e-9) break;
+        }
+
+        syncAggregateShieldFromFaces();
+    }
+
+    private double resolveShieldImpactAngle(double hitX, double hitY, double impactVx, double impactVy) {
+        if (Double.isFinite(impactVx) && Double.isFinite(impactVy)) {
+            double v2 = impactVx * impactVx + impactVy * impactVy;
+            if (v2 > 1e-8) {
+                // Prefer the projectile's previous position to identify which side it approached from.
+                if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
+                    double prevX = hitX - impactVx;
+                    double prevY = hitY - impactVy;
+                    double dx = prevX - x;
+                    double dy = prevY - y;
+                    if (dx * dx + dy * dy > 1e-8) {
+                        return Math.atan2(dy, dx);
+                    }
+                }
+
+                // Fallback: source direction is opposite travel vector.
+                return MathUtil.normalizeAngle(Math.atan2(impactVy, impactVx) + Math.PI);
+            }
+        }
+        if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
+            return Math.atan2(hitY - y, hitX - x);
+        }
+        return Double.NaN;
+    }
+
+    private double resolveShieldThreatFacingAngle(double hitX, double hitY, double impactVx, double impactVy) {
+        return resolveShieldImpactAngle(hitX, hitY, impactVx, impactVy);
+    }
+
+    private int shieldFaceForImpactAngle(double hitAngle) {
+        return shieldFaceForImpactAngle(hitAngle, getShieldFacingAngle());
+    }
+
+    private int shieldFaceForImpactAngle(double hitAngle, double facingAngle) {
+        if (!Double.isFinite(hitAngle)) return SHIELD_FACE_FORE;
+        if (!Double.isFinite(facingAngle)) facingAngle = getShieldFacingAngle();
+        double rel = MathUtil.normalizeAngle(hitAngle - facingAngle);
+        double abs = Math.abs(rel);
+        if (abs <= Math.toRadians(45.0)) return SHIELD_FACE_FORE;
+        if (abs >= Math.toRadians(135.0)) return SHIELD_FACE_REAR;
+        return (rel > 0.0) ? SHIELD_FACE_RIGHT : SHIELD_FACE_LEFT;
+    }
+
+    private void applyShieldDamageToFace(int face, double amount) {
+        if (amount <= 0.0) return;
+        ensureShieldFacesSynced();
+
+        int idx = Math.max(0, Math.min(SHIELD_FACE_COUNT - 1, face));
+        double before = shieldFaces[idx];
+        shieldFaces[idx] = Math.max(0.0, shieldFaces[idx] - amount);
+        if (before > 1e-6 && shieldFaces[idx] <= 1e-6) {
+            shieldFaceRegenLock[idx] = Math.max(shieldFaceRegenLock[idx], SHIELD_FACE_REGEN_LOCK_SECONDS);
+        }
+        syncAggregateShieldFromFaces();
+    }
+
+    private void forceShieldOffline(double duration) {
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaces[i] = 0.0;
+        shield = 0.0;
+        shieldOfflineTimer = Math.max(shieldOfflineTimer, duration);
+        shieldFacesSyncedMax = Math.max(0.0, shieldMax);
+        shieldFacesInitialized = true;
     }
 
     private void updateDerivedSystemEffects() {
@@ -1109,15 +1420,18 @@ public abstract class Ship {
     private void applySystemDamageFromHullHit(int hullDamage, double hitX, double hitY) {
         if (hullDamage <= 0) return;
         ensureInternalSystemsInitialized();
+        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(this, hitX, hitY, true);
 
         int rolls = (hullDamage >= 9) ? 2 : 1;
         for (int i = 0; i < rolls; i++) {
-            InternalSystem system = pickSystemForHit(hitX, hitY);
+            InternalSystem system = pickSystemForHit(impact, hitX, hitY);
             if (system == null) continue;
 
             double dmg = Math.max(1.0, hullDamage * (0.58 + Math.random() * 0.82));
             damageSystem(system, dmg);
         }
+
+        applyBreachSystemEffects(impact, hullDamage);
 
         double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.36;
         crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
@@ -1129,28 +1443,108 @@ public abstract class Ship {
         }
     }
 
-    private InternalSystem pickSystemForHit(double hitX, double hitY) {
+    private InternalSystem pickSystemForHit(HullGeometry.ImpactSample impact, double hitX, double hitY) {
+        if (impact != null && impact.onHull) {
+            double nx = impact.normalizedX;
+            double ny = impact.normalizedY;
+            double ay = Math.abs(ny);
+
+            if (nx > 0.48) {
+                if (ay < 0.22) return pickSystem(InternalSystem.BRIDGE, InternalSystem.SENSORS, InternalSystem.WEAPONS);
+                return pickSystem(InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.SHIELDS);
+            }
+            if (nx < -0.44) {
+                if (ay < 0.28) return pickSystem(InternalSystem.ENGINES, InternalSystem.REACTOR_CORE, InternalSystem.WARP_ENGINES);
+                return pickSystem(InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.SHIELDS);
+            }
+            if (ay > 0.58) {
+                return pickSystem(InternalSystem.SHIELDS, InternalSystem.MAGAZINES, InternalSystem.WEAPONS);
+            }
+            if (Math.abs(nx) < 0.20 && ay < 0.25) {
+                return pickSystem(InternalSystem.REACTOR_CORE, InternalSystem.MAGAZINES, InternalSystem.WEAPONS);
+            }
+            if (nx >= 0.0) {
+                return pickSystem(InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.BRIDGE, InternalSystem.REACTOR_CORE);
+            }
+            return pickSystem(InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.REACTOR_CORE, InternalSystem.MAGAZINES);
+        }
+
         if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
             double hitAngle = Math.atan2(hitY - y, hitX - x);
             double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - angle));
             if (rel < Math.toRadians(45.0) && Math.random() < 0.55) {
-                InternalSystem[] front = { InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.BRIDGE };
-                return front[(int) Math.floor(Math.random() * front.length)];
+                return pickSystem(InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.BRIDGE);
             }
             if (rel > Math.toRadians(135.0) && Math.random() < 0.55) {
-                InternalSystem[] rear = { InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.REACTOR_CORE };
-                return rear[(int) Math.floor(Math.random() * rear.length)];
+                return pickSystem(InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.REACTOR_CORE);
             }
         }
 
-        InternalSystem[] systems = InternalSystem.values();
+        return pickSystem(InternalSystem.values());
+    }
+
+    private InternalSystem pickSystem(InternalSystem... systems) {
+        if (systems == null || systems.length == 0) return null;
         int idx = (int) Math.floor(Math.random() * systems.length);
         if (idx < 0 || idx >= systems.length) idx = 0;
-        InternalSystem s = systems[idx];
-        if (s == InternalSystem.SHIELDS && !shieldActive && Math.random() < 0.7) {
-            s = (Math.random() < 0.5) ? InternalSystem.ENGINES : InternalSystem.WEAPONS;
+        InternalSystem out = systems[idx];
+        if (out == InternalSystem.SHIELDS && !shieldActive && Math.random() < 0.7) {
+            out = (Math.random() < 0.5) ? InternalSystem.ENGINES : InternalSystem.WEAPONS;
         }
-        return s;
+        return out;
+    }
+
+    private void applyBreachSystemEffects(HullGeometry.ImpactSample impact, int hullDamage) {
+        if (impact == null || !impact.onHull) return;
+        if (hullDamage <= 0 || hpMax <= 0) return;
+
+        double hpFrac = Math.max(0.0, Math.min(1.0, hp / (double) hpMax));
+        double severity = MathUtil.clamp(hullDamage / (double) hpMax, 0.02, 1.0);
+        double breachScore = severity + Math.max(0.0, 0.52 - hpFrac) * 1.35;
+        if (hullDamage >= 10) breachScore += 0.20;
+        if (Math.abs(impact.normalizedX) < 0.22 && Math.abs(impact.normalizedY) < 0.22) breachScore += 0.10;
+        if (breachScore < 0.60 && Math.random() > breachScore * 0.70) return;
+
+        InternalSystem breachedSystem = pickSystemForHit(impact, Double.NaN, Double.NaN);
+        if (breachedSystem == null) return;
+
+        boolean catastrophic = breachScore > 1.05
+                || (hullDamage >= Math.max(10, hpMax / 8) && Math.random() < 0.60);
+        if (catastrophic) {
+            destroySystem(breachedSystem);
+            return;
+        }
+
+        double breachDamage = Math.max(6.0, hullDamage * (1.25 + severity * 1.8));
+        damageSystem(breachedSystem, breachDamage);
+    }
+
+    private void registerHullImpact(int hullDamage, double hitX, double hitY) {
+        if (hullDamage <= 0) return;
+
+        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(this, hitX, hitY, true);
+        if (impact == null || !impact.onHull) return;
+
+        double hpDenom = Math.max(1.0, (double) hpMax);
+        double severity = MathUtil.clamp(hullDamage / hpDenom, 0.06, 1.0);
+        double hpFrac = Math.max(0.0, Math.min(1.0, hp / hpDenom));
+
+        double breachChance = 0.08 + severity * 0.36 + Math.max(0.0, 0.58 - hpFrac) * 0.78;
+        if (hullDamage >= 9) breachChance += 0.14;
+        if (Math.abs(impact.normalizedX) < 0.24 && Math.abs(impact.normalizedY) < 0.24) breachChance += 0.08;
+        breachChance = MathUtil.clamp(breachChance, 0.0, 0.95);
+
+        double breachRadius = 0.0;
+        if (Math.random() < breachChance) {
+            double base = Math.max(2.8, radius * 0.06);
+            double bonus = radius * (0.06 + severity * 0.17);
+            breachRadius = MathUtil.clamp(base + bonus, 2.8, Math.max(4.0, radius * 0.42));
+        }
+
+        if (hullImpactMarks.size() >= MAX_HULL_IMPACT_MARKS) {
+            hullImpactMarks.remove(0);
+        }
+        hullImpactMarks.add(new HullImpactMark(impact.localX, impact.localY, severity, breachRadius));
     }
 
     private void damageSystem(InternalSystem system, double damage) {
@@ -1161,8 +1555,16 @@ public abstract class Ship {
         systemHp.put(system, hpv);
 
         if (system == InternalSystem.SHIELDS && hpv <= 0.0) {
-            shield = 0.0;
-            shieldOfflineTimer = Math.max(shieldOfflineTimer, shieldRebootDelay * 1.5);
+            forceShieldOffline(shieldRebootDelay * 1.5);
+        }
+    }
+
+    private void destroySystem(InternalSystem system) {
+        if (system == null) return;
+        if (!systemHp.containsKey(system)) return;
+        systemHp.put(system, 0.0);
+        if (system == InternalSystem.SHIELDS) {
+            forceShieldOffline(shieldRebootDelay * 1.5);
         }
     }
 
@@ -1320,6 +1722,7 @@ public abstract class Ship {
     }
 
     public boolean isShieldOnline() {
+        ensureShieldFacesSynced();
         return shieldActive
                 && shieldMax > 0
                 && shieldSystemMultiplier() > 0.05
@@ -1332,9 +1735,11 @@ public abstract class Ship {
     }
 
     public void resetShieldState() {
+        ensureShieldFacesSynced();
         shieldOfflineTimer = 0.0;
         recentShieldImpactTimer = 0.0;
         recentShieldImpactAngle = Double.NaN;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaceRegenLock[i] = 0.0;
         if (shieldFacingMode == ShieldFacingMode.FORWARD) {
             shieldFacingAngle = angle;
         }
@@ -1353,11 +1758,15 @@ public abstract class Ship {
         angle = aim;
         waveMotionTimer = Math.max(1.0, waveMotionCooldown);
         waveMotionBeamTimer = Math.max(0.0, waveMotionBeamDuration);
-        waveMotionBeamTickTimer = Math.max(0.03, waveMotionBeamTickInterval);
+        waveMotionBeamTickTimer = waveMotionTickSpacing();
         waveMotionBeamAim = aim;
         onFiredWeapon();
 
         return createWaveMotionPulse(dt, aim, false);
+    }
+
+    private double waveMotionTickSpacing() {
+        return Math.max(0.03, waveMotionBeamTickInterval / WAVE_MOTION_PROJECTILE_RATE_MULT);
     }
 
     private WaveMotionShot createWaveMotionPulse(double dt, double aim, boolean beamTick) {

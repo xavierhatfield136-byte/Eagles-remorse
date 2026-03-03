@@ -10,6 +10,11 @@ public final class SpawnSystem {
             return;
         }
 
+        if (ctx.config.mode == GameMode.SHOOTING_RANGE) {
+            initShootingRange(ctx);
+            return;
+        }
+
         if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             initFourTeamDomination(ctx);
             return;
@@ -363,5 +368,70 @@ public final class SpawnSystem {
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
         ctx.eventBanner = "SHOWCASE MODE  -  AI OFF";
         ctx.eventBannerT = 9999.0;
+    }
+
+    private static void initShootingRange(GameContext ctx) {
+        ctx.ships.clear();
+        ctx.projectiles.clear();
+        ctx.asteroids.clear();
+        ctx.salvage.clear();
+        ctx.teamBases.clear();
+        ctx.baseUpgrades.clear();
+        ctx.allyBase = null;
+        ctx.enemyBase = null;
+
+        double px = GameMath.clamp(Math.max(240.0, ctx.WORLD_W * 0.16), 90.0, ctx.WORLD_W - 90.0);
+        double py = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
+        ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ctx.player.name = "Player";
+        ctx.player.vx = 0.0;
+        ctx.player.vy = 0.0;
+        ctx.player.angle = 0.0;
+        ctx.ships.add(ctx.player);
+
+        spawnRangeTarget(ctx, ShipRole.PATROL, px + 420, py - 180, "RANGE TARGET LIGHT (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.FRIGATE, px + 620, py - 60, "RANGE TARGET MEDIUM (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, px + 760, py + 120, "RANGE TARGET CIWS (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, px + 980, py - 140, "RANGE TARGET CRUISER (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, px + 1220, py + 40, "RANGE TARGET HEAVY (SHIELD)", true);
+
+        ctx.credits = 10000;
+        ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
+        ctx.nextEventTimer = Double.POSITIVE_INFINITY;
+        ctx.minerReinforcementTimer = Double.POSITIVE_INFINITY;
+        ctx.eventBanner = "SHOOTING RANGE  -  STATIONARY TARGETS";
+        ctx.eventBannerT = 6.0;
+    }
+
+    private static Ship spawnRangeTarget(GameContext ctx, ShipRole role, double x, double y, String label, boolean keepShields) {
+        double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
+        double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
+        Ship s = new FleetShip(role, Faction.ENEMY, sx, sy);
+
+        s.name = label;
+        s.angle = Math.PI;
+        s.vx = 0.0;
+        s.vy = 0.0;
+        s.desiredSpeed = 0.0;
+        s.desiredSpeedBase = 0.0;
+        s.bountyValue = 0;
+        s.turrets.clear();
+        s.hasCIWS = false;
+        s.isCarrier = false;
+        s.carrierAutoLaunch = false;
+        s.hasWaveMotionGun = false;
+
+        if (!keepShields) {
+            s.shieldMax = 0.0;
+            s.shield = 0.0;
+            s.shieldRegen = 0.0;
+            s.shieldActive = false;
+        } else {
+            s.shieldActive = s.shieldMax > 0.0;
+            s.shield = Math.min(s.shieldMax, Math.max(0.0, s.shield));
+        }
+
+        ctx.ships.add(s);
+        return s;
     }
 }

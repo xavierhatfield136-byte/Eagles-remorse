@@ -10,6 +10,7 @@ import java.util.Iterator;
  *  F7 = Missile Boat vs CIWS Corvette
  *  F8 = Cruiser vs 2 frigates
  *  F9 = Reset arena (remove NPC ships + clear projectiles)
+ *  Ctrl+F12 = Shooting range (stationary target lineup)
  */
 public final class DevScenarios {
     private DevScenarios(){}
@@ -21,6 +22,7 @@ public final class DevScenarios {
         bind(panel, "dev_f8", KeyStroke.getKeyStroke("F8"), e -> spawnCruiserVsTwoFrigates(ctx));
         bind(panel, "dev_f9", KeyStroke.getKeyStroke("F9"), e -> resetArena(ctx));
         bind(panel, "dev_f11", KeyStroke.getKeyStroke("F11"), e -> spawnMiners(ctx));
+        bind(panel, "dev_ctrl_f12", KeyStroke.getKeyStroke("ctrl F12"), e -> spawnShootingRange(ctx));
     }
 
     private static void bind(JComponent c, String name, KeyStroke ks, java.util.function.Consumer<ActionEvent> fn) {
@@ -84,10 +86,60 @@ public final class DevScenarios {
         spawn(ctx, ShipRole.MINER, Faction.ENEMY, ctx.enemyBase.x + 190, ctx.enemyBase.y + 40);
     }
 
-    private static void spawn(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
+    public static void spawnShootingRange(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+
+        resetArena(ctx);
+        double x = ctx.player.x;
+        double y = ctx.player.y;
+
+        Ship t1 = spawn(ctx, ShipRole.PATROL, Faction.ENEMY, x + 420, y - 180);
+        setupRangeTarget(t1, "RANGE TARGET LIGHT (HULL)", false);
+
+        Ship t2 = spawn(ctx, ShipRole.FRIGATE, Faction.ENEMY, x + 620, y - 60);
+        setupRangeTarget(t2, "RANGE TARGET MEDIUM (SHIELD)", true);
+
+        Ship t3 = spawn(ctx, ShipRole.CIWS_CORVETTE, Faction.ENEMY, x + 760, y + 120);
+        setupRangeTarget(t3, "RANGE TARGET CIWS (HULL)", false);
+
+        Ship t4 = spawn(ctx, ShipRole.LIGHT_CRUISER, Faction.ENEMY, x + 980, y - 140);
+        setupRangeTarget(t4, "RANGE TARGET CRUISER (SHIELD)", true);
+
+        Ship t5 = spawn(ctx, ShipRole.BATTLECRUISER, Faction.ENEMY, x + 1220, y + 40);
+        setupRangeTarget(t5, "RANGE TARGET HEAVY (SHIELD)", true);
+
+        EventSystem.showBanner(ctx, "DEV SCENARIO: SHOOTING RANGE", 2.2);
+    }
+
+    private static void setupRangeTarget(Ship s, String label, boolean keepShields) {
+        if (s == null) return;
+        s.name = label;
+        s.desiredSpeed = 0;
+        s.desiredSpeedBase = 0;
+        s.vx = 0;
+        s.vy = 0;
+        s.bountyValue = 0;
+        s.turrets.clear();
+        s.hasCIWS = false;
+        s.isCarrier = false;
+        s.carrierAutoLaunch = false;
+        s.hasWaveMotionGun = false;
+
+        if (!keepShields) {
+            s.shieldMax = 0;
+            s.shield = 0;
+            s.shieldRegen = 0;
+            s.shieldActive = false;
+        } else {
+            s.shieldActive = s.shieldMax > 0;
+            s.shield = Math.min(s.shieldMax, Math.max(0.0, s.shield));
+        }
+    }
+
+    private static Ship spawn(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
         if (role == ShipRole.MINER &&
                 TeamSystem.countAliveMiners(ctx, faction) >= SpawnSystem.MAX_MINERS_PER_FACTION) {
-            return;
+            return null;
         }
 
         Ship s;
@@ -117,5 +169,6 @@ public final class DevScenarios {
                     " miningRange=" + s.miningRange +
                     " cargoMax=" + s.cargoMax);
         }
+        return s;
     }
 }

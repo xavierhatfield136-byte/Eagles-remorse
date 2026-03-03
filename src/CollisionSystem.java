@@ -16,42 +16,99 @@ public class CollisionSystem {
         if (projectiles == null || ships == null) return;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            // CIWS is point-defense only: pellets should only interact with missiles.
+            if (p instanceof CIWSPellet) continue;
             boolean waveShot = p instanceof WaveMotionShot;
+            VFX.ImpactStyle impactStyle = impactStyleFor(p);
             for (Ship s : ships) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
 
-                if (circleHit(p.x, p.y, p.radius, s.x, s.y, s.radius)) {
-                    if (waveShot) {
-                        WaveMotionShot ws = (WaveMotionShot) p;
-                        if (!ws.canDamage(s)) continue;
-                        ws.markDamaged(s);
-                        s.takeDamage(p.damage, p.x, p.y);
-                        VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, Math.max(3, p.damage));
-                        ScreenShake.kick(2.2);
-                        ws.consumeHit();
-                        if (!p.alive) break;
-                        continue;
-                    }
+                double shipHitRadius = HullGeometry.broadPhaseRadius(s);
+                if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
+                if (!HullGeometry.projectileIntersectsShip(p, s)) continue;
+                if (waveShot) {
+                    WaveMotionShot ws = (WaveMotionShot) p;
+                    if (!ws.canDamage(s)) continue;
+                    ws.markDamaged(s);
 
-                    // Cosmetic impact effects (no gameplay impact)
                     double dirX = p.vx;
                     double dirY = p.vy;
                     double len = Math.sqrt(dirX * dirX + dirY * dirY);
-                    if (len > 1e-9) { dirX /= len; dirY /= len; }
-                    VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
-
-                    // Small screen shake for heavier hits
-                    if (p instanceof Missile) ScreenShake.kick(3.5);
-                    else if (p.damage >= 3) ScreenShake.kick(1.8);
-
-                    s.takeDamage(p.damage, p.x, p.y);
-                    if (p instanceof Missile m) {
-                        applyMissileBlast(m, s, ships);
+                    if (len > 1e-9) {
+                        dirX /= len;
+                        dirY /= len;
+                    } else {
+                        dirX = Math.cos(ws.angle);
+                        dirY = Math.sin(ws.angle);
                     }
-                    p.alive = false;
-                    break;
+
+                    double shieldBefore = s.shield;
+                    int hpBefore = s.hp;
+                    s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
+                    boolean shieldHit = s.shield < shieldBefore - 1e-6;
+                    boolean hullHit = s.hp < hpBefore;
+                    if (shieldHit) {
+                        VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
+                    }
+                    if (hullHit) {
+                        VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
+                    }
+                    if (!shieldHit && !hullHit) {
+                        VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(2, p.damage));
+                    }
+
+                    ScreenShake.kick(2.2);
+                    ws.consumeHit();
+                    if (!p.alive) break;
+                    continue;
                 }
+
+                double dirX = p.vx;
+                double dirY = p.vy;
+                double len = Math.sqrt(dirX * dirX + dirY * dirY);
+                if (len > 1e-9) {
+                    dirX /= len;
+                    dirY /= len;
+                } else {
+                    dirX = s.x - p.x;
+                    dirY = s.y - p.y;
+                    double dlen = Math.sqrt(dirX * dirX + dirY * dirY);
+                    if (dlen > 1e-9) {
+                        dirX /= dlen;
+                        dirY /= dlen;
+                    } else {
+                        dirX = 1.0;
+                        dirY = 0.0;
+                    }
+                }
+
+                double shieldBefore = s.shield;
+                int hpBefore = s.hp;
+
+                // Small screen shake for heavier hits
+                if (p instanceof Missile) ScreenShake.kick(3.5);
+                else if (p.damage >= 3) ScreenShake.kick(1.8);
+
+                s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
+                if (p instanceof Missile m) {
+                    applyMissileBlast(m, s, ships);
+                }
+
+                boolean shieldHit = s.shield < shieldBefore - 1e-6;
+                boolean hullHit = s.hp < hpBefore;
+                if (shieldHit) {
+                    VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
+                }
+                if (hullHit) {
+                    VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
+                }
+                if (!shieldHit && !hullHit) {
+                    VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
+                }
+
+                p.alive = false;
+                break;
             }
         }
     }
@@ -77,10 +134,10 @@ public class CollisionSystem {
                     pellet.alive = false;
                     boolean killed = m.applyInterceptHit(1);
                     if (killed) {
-                        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 2);
+                        VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.KINETIC);
                         Explosion.spawnShieldHit(m.x, m.y);
                     } else {
-                        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, 1);
+                        VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.KINETIC);
                     }
                     break;
                 }
@@ -123,11 +180,12 @@ public class CollisionSystem {
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            if (p instanceof CIWSPellet) continue;
             if (p instanceof WaveMotionShot) continue;
             for (Asteroid a : asteroids) {
                 if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.collisionRadius())) {
                     p.alive = false;
-                    VFX.spawnImpactSparks(p.x, p.y, p.vx, p.vy, 1);
+                    VFX.spawnHullImpact(p.x, p.y, p.vx, p.vy, 1, impactStyleFor(p));
                     Explosion.spawnShieldHit(p.x, p.y);
                     break;
                 }
@@ -151,7 +209,7 @@ public class CollisionSystem {
             if (s.faction.isFriendlyTo(m.faction)) continue;
 
             double d = Math.hypot(s.x - m.x, s.y - m.y);
-            double maxD = rr + s.radius;
+            double maxD = rr + HullGeometry.broadPhaseRadius(s);
             if (d > maxD) continue;
 
             double falloff = 1.0 - (d / Math.max(1.0, maxD));
@@ -159,7 +217,17 @@ public class CollisionSystem {
             s.takeDamage(splash, m.x, m.y);
         }
 
-        VFX.spawnImpactSparks(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage));
+        VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage), VFX.ImpactStyle.EXPLOSIVE);
         Explosion.spawnShieldHit(m.x, m.y);
+    }
+
+    private static VFX.ImpactStyle impactStyleFor(Projectile p) {
+        if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
+        if (p instanceof WaveMotionShot) return VFX.ImpactStyle.BEAM;
+        if (p instanceof EnergyBolt bolt) {
+            return bolt.isBeamBolt() ? VFX.ImpactStyle.BEAM : VFX.ImpactStyle.ENERGY;
+        }
+        if (p instanceof CIWSPellet) return VFX.ImpactStyle.KINETIC;
+        return VFX.ImpactStyle.KINETIC;
     }
 }

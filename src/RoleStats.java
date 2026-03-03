@@ -3,7 +3,7 @@
  *
  * Tuning workflow:
  *  - Adjust values here
- *  - Use F6/F7/F8 scenarios + F5 time-scale + debug overlay to evaluate
+ *  - Use dev scenarios (F6/F7/F8/Ctrl+F12) + F5 time-scale + debug overlay to evaluate
  *  - Commit when a set feels good
  *
  * Note: Doctrine multipliers (Energy vs Kinetic, etc.) still apply on top of these baselines.

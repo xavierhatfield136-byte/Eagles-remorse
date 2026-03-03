@@ -1,6 +1,7 @@
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.geom.Area;
+import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +18,9 @@ import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 public class Renderer {
+
+    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW"};
+    private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H"};
 
     // ------------------------------------------------------------
     // Option 8: Strategic map / waypoints / pings
@@ -43,6 +47,93 @@ public class Renderer {
         return new Rectangle(x, y, w, h);
     }
 
+    public static Rectangle getCoreMenuBarRect(int viewW, int viewH) {
+        int margin = 10;
+        int h = 42;
+        int maxW = 740;
+        int avail = Math.max(220, viewW - margin * 2);
+        int w = Math.min(maxW, avail);
+        int x = (viewW - w) / 2;
+        int y = viewH - h - margin;
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle getCoreMenuButtonRect(int viewW, int viewH, int index) {
+        if (index < 0 || index >= CORE_MENU_LABELS.length) return new Rectangle();
+        Rectangle bar = getCoreMenuBarRect(viewW, viewH);
+        int pad = 8;
+        int gap = 6;
+        int innerW = Math.max(1, bar.width - pad * 2);
+        int cellW = (innerW - gap * (CORE_MENU_LABELS.length - 1)) / CORE_MENU_LABELS.length;
+        int x = bar.x + pad + index * (cellW + gap);
+        int y = bar.y + 6;
+        int w = Math.max(24, cellW);
+        int h = Math.max(18, bar.height - 12);
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static int coreMenuButtonAt(int viewW, int viewH, int mouseX, int mouseY) {
+        for (int i = 0; i < CORE_MENU_LABELS.length; i++) {
+            Rectangle r = getCoreMenuButtonRect(viewW, viewH, i);
+            if (r.contains(mouseX, mouseY)) return i;
+        }
+        return -1;
+    }
+
+    public static void drawCoreMenuBar(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null) return;
+        Rectangle bar = getCoreMenuBarRect(viewW, viewH);
+
+        g2.setColor(new Color(0, 0, 0, 158));
+        g2.fillRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
+        g2.setColor(new Color(255, 255, 255, 95));
+        g2.drawRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
+
+        boolean[] open = {
+                ctx.shopOpen,
+                ctx.baseMenuOpen,
+                ctx.mapOpen,
+                ctx.powerManagementOpen,
+                ctx.crewStationsOpen
+        };
+        boolean baseAvailable = EconomySystem.getDockedFriendlyBase(ctx) != null;
+        boolean controlsDisabled = ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER;
+
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        FontMetrics fm = g2.getFontMetrics();
+
+        for (int i = 0; i < CORE_MENU_LABELS.length; i++) {
+            Rectangle br = getCoreMenuButtonRect(viewW, viewH, i);
+            boolean disabled = controlsDisabled || (i == 1 && !baseAvailable);
+            boolean active = open[i];
+
+            Color fill;
+            if (disabled) fill = new Color(60, 60, 65, 160);
+            else if (active) fill = new Color(70, 145, 220, 185);
+            else fill = new Color(28, 32, 40, 180);
+            g2.setColor(fill);
+            g2.fillRoundRect(br.x, br.y, br.width, br.height, 10, 10);
+
+            if (disabled) g2.setColor(new Color(160, 160, 170, 130));
+            else if (active) g2.setColor(new Color(215, 242, 255, 220));
+            else g2.setColor(new Color(200, 220, 255, 180));
+            g2.drawRoundRect(br.x, br.y, br.width, br.height, 10, 10);
+
+            String label;
+            if (br.width < 64) label = CORE_MENU_LABELS[i].substring(0, Math.min(2, CORE_MENU_LABELS[i].length()));
+            else if (br.width < 96) label = CORE_MENU_LABELS[i];
+            else label = CORE_MENU_LABELS[i] + " [" + CORE_MENU_HOTKEYS[i] + "]";
+            int tx = br.x + (br.width - fm.stringWidth(label)) / 2;
+            int ty = br.y + (br.height + fm.getAscent() - fm.getDescent()) / 2;
+            if (disabled) g2.setColor(new Color(170, 170, 176, 155));
+            else g2.setColor(new Color(240, 245, 255, active ? 240 : 210));
+            g2.drawString(label, tx, ty);
+        }
+
+        g2.setFont(oldFont);
+    }
+
 
 
     private static String fmt1(double v) {
@@ -53,6 +144,153 @@ public class Renderer {
         double v = (mul - 1.0) * 100.0;
         if (!Double.isFinite(v)) v = 0.0;
         return String.format(Locale.US, "%+.0f%%", v);
+    }
+
+    private static Color mixColor(Color a, Color b, double t) {
+        if (a == null) a = Color.WHITE;
+        if (b == null) b = Color.WHITE;
+        double k = Math.max(0.0, Math.min(1.0, t));
+        int r = (int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * k);
+        int g = (int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * k);
+        int bl = (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * k);
+        return new Color(MathUtil.clamp(r, 0, 255), MathUtil.clamp(g, 0, 255), MathUtil.clamp(bl, 0, 255));
+    }
+
+    private static Color shieldFaceColor(int face, int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        return switch (face) {
+            case Ship.SHIELD_FACE_FORE -> new Color(130, 225, 255, a);
+            case Ship.SHIELD_FACE_LEFT -> new Color(120, 190, 255, a);
+            case Ship.SHIELD_FACE_RIGHT -> new Color(120, 190, 255, a);
+            case Ship.SHIELD_FACE_REAR -> new Color(110, 170, 240, a);
+            default -> new Color(120, 200, 255, a);
+        };
+    }
+
+    private static String shieldFaceReadout(Ship ship) {
+        if (ship == null || ship.shieldFaceCount() <= 0) return "N/A";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ship.shieldFaceCount(); i++) {
+            if (i > 0) sb.append("  ");
+            int cur = (int) Math.round(ship.shieldFaceValue(i));
+            int max = (int) Math.round(ship.shieldFaceMax(i));
+            sb.append(ship.shieldFaceName(i)).append(" ").append(cur).append("/").append(max);
+        }
+        return sb.toString();
+    }
+
+    private static void drawShieldArcSegment(Graphics2D g, double radius, double centerAngle, double span) {
+        int steps = 18;
+        double start = centerAngle - span * 0.5;
+        Path2D.Double path = new Path2D.Double();
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            double a = start + span * t;
+            double px = Math.cos(a) * radius;
+            double py = Math.sin(a) * radius;
+            if (i == 0) path.moveTo(px, py);
+            else path.lineTo(px, py);
+        }
+        g.draw(path);
+    }
+
+    private static void drawShieldArcBand(Graphics2D g, double innerRadius, double outerRadius, double centerAngle, double span) {
+        if (g == null) return;
+        if (!Double.isFinite(innerRadius) || !Double.isFinite(outerRadius)) return;
+        if (outerRadius <= innerRadius || span <= 0.0) return;
+
+        int steps = 24;
+        double start = centerAngle - span * 0.5;
+        Path2D.Double path = new Path2D.Double();
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            double a = start + span * t;
+            double x = Math.cos(a) * outerRadius;
+            double y = Math.sin(a) * outerRadius;
+            if (i == 0) path.moveTo(x, y);
+            else path.lineTo(x, y);
+        }
+        for (int i = steps; i >= 0; i--) {
+            double t = i / (double) steps;
+            double a = start + span * t;
+            double x = Math.cos(a) * innerRadius;
+            double y = Math.sin(a) * innerRadius;
+            path.lineTo(x, y);
+        }
+        path.closePath();
+        g.fill(path);
+    }
+
+    private static double shieldFaceCenterAngle(Ship ship, int face) {
+        double facing = (ship == null) ? 0.0 : ship.getShieldFacingAngle();
+        return switch (face) {
+            case Ship.SHIELD_FACE_FORE -> facing;
+            case Ship.SHIELD_FACE_LEFT -> facing - Math.PI * 0.5;
+            case Ship.SHIELD_FACE_RIGHT -> facing + Math.PI * 0.5;
+            case Ship.SHIELD_FACE_REAR -> facing + Math.PI;
+            default -> facing;
+        };
+    }
+
+    private static void drawShipShieldFaces(Graphics2D g, Ship ship) {
+        if (g == null || ship == null) return;
+        if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
+
+        double radius = ship.radius + 5.8;
+        double span = Math.toRadians(78.0);
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 5.5);
+        Stroke prevStroke = g.getStroke();
+        g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+        for (int i = 0; i < ship.shieldFaceCount(); i++) {
+            // drawShip() already rotated the graphics context by ship.angle,
+            // so convert world-space shield-facing angles into ship-local angles.
+            double center = MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, i) - ship.angle);
+            double frac = ship.shieldFaceFraction(i);
+            double energy = Math.max(0.0, Math.min(1.0, frac));
+            Color base = shieldFaceColor(i, 255);
+
+            // Depleted face still shows a dim scaffold.
+            g.setColor(withAlpha(base, 22));
+            drawShieldArcBand(g, radius - 0.2, radius + 1.2, center, span + Math.toRadians(2.0));
+
+            if (energy <= 0.0) continue;
+
+            // Layered bands produce a faceted energy-field look.
+            for (int layer = 0; layer < 3; layer++) {
+                double t = layer / 2.0;
+                double inner = radius + layer * 1.35;
+                double outer = inner + 1.35 + (1.05 - t * 0.32) * (0.8 + energy * 1.6);
+                int alpha = (int) Math.round((28 + energy * 92 + pulse * 20) * (1.0 - layer * 0.24));
+                Color layerColor = mixColor(base, new Color(220, 246, 255), 0.15 + 0.20 * (1.0 - t));
+                g.setColor(withAlpha(layerColor, alpha));
+                drawShieldArcBand(g, inner, outer, center, span * (1.0 - layer * 0.05));
+            }
+
+            int edgeAlpha = (int) Math.round(52 + energy * 132 + pulse * 18);
+            g.setColor(withAlpha(mixColor(base, Color.WHITE, 0.38), edgeAlpha));
+            drawShieldArcSegment(g, radius + 3.8, center, span * 0.96);
+
+            // Angled field struts for directional readability.
+            double edgeA = span * 0.43;
+            double r1 = radius + 0.4;
+            double r2 = radius + 4.5;
+            for (int side = -1; side <= 1; side += 2) {
+                double a = center + edgeA * side;
+                int sx = (int) Math.round(Math.cos(a) * r1);
+                int sy = (int) Math.round(Math.sin(a) * r1);
+                int ex = (int) Math.round(Math.cos(a) * r2);
+                int ey = (int) Math.round(Math.sin(a) * r2);
+                g.setColor(withAlpha(layerColorForFace(base), (int) Math.round(36 + energy * 82)));
+                g.drawLine(sx, sy, ex, ey);
+            }
+        }
+
+        g.setStroke(prevStroke);
+    }
+
+    private static Color layerColorForFace(Color base) {
+        return mixColor(base, new Color(208, 242, 255), 0.42);
     }
 
     // Layered environment backgrounds with procedural fallback.
@@ -303,14 +541,35 @@ public class Renderer {
                 int r = (int) Math.round(Math.max(1.0, pellet.radius));
                 int x = (int) Math.round(pellet.x);
                 int y = (int) Math.round(pellet.y);
+                Color core = mixColor(projectileCoreColor(pellet.faction), Color.WHITE, 0.42);
+                Color trail = projectileTrailColor(pellet.faction);
+                double speed = Math.hypot(pellet.vx, pellet.vy);
+                double trailLen = Math.max(8.0, Math.min(22.0, 8.0 + speed * 0.16));
+                double nx = Math.cos(pellet.angle);
+                double ny = Math.sin(pellet.angle);
 
-                g2.setColor(new Color(255, 255, 255, 220));
+                BufferedImage skin = ProjectileSkinLibrary.getCiwsPelletSkin();
+                if (skin != null) {
+                    drawOrientedProjectileSkin(g2, skin, pellet.x, pellet.y, pellet.angle,
+                            Math.max(7.0, r * 3.6), Math.max(3.0, r * 1.8), 0.95f);
+                }
+
+                Stroke old = g2.getStroke();
+                g2.setStroke(new BasicStroke(Math.max(1.2f, r * 0.9f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(trail, 145));
+                g2.drawLine(x, y,
+                        (int) Math.round(pellet.x - nx * trailLen),
+                        (int) Math.round(pellet.y - ny * trailLen));
+
+                g2.setStroke(new BasicStroke(Math.max(1.0f, r * 0.55f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(255, 255, 255, 185));
+                g2.drawLine(x, y,
+                        (int) Math.round(pellet.x - nx * (trailLen * 0.55)),
+                        (int) Math.round(pellet.y - ny * (trailLen * 0.55)));
+                g2.setStroke(old);
+
+                g2.setColor(withAlpha(core, 228));
                 g2.fillOval(x - r, y - r, r * 2, r * 2);
-
-                double lx = pellet.x - Math.cos(pellet.angle) * 10;
-                double ly = pellet.y - Math.sin(pellet.angle) * 10;
-                g2.setColor(new Color(255, 255, 255, 140));
-                g2.drawLine(x, y, (int) Math.round(lx), (int) Math.round(ly));
                 continue;
             }
 
@@ -321,6 +580,9 @@ public class Renderer {
                 int y = (int) Math.round(ws.y);
                 double nx = Math.cos(ws.angle);
                 double ny = Math.sin(ws.angle);
+                Color beam = beamColorForFaction(ws.faction);
+                Color hot = mixColor(beam, Color.WHITE, 0.76);
+                double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 9.5);
 
                 int len = (int) Math.round(Math.max(30.0, ws.radius * 5.6));
                 int tail = len / 2;
@@ -331,17 +593,27 @@ public class Renderer {
                 int x2 = (int) Math.round(ws.x + nx * head);
                 int y2 = (int) Math.round(ws.y + ny * head);
 
+                BufferedImage skin = ProjectileSkinLibrary.getWaveShotSkin();
+                if (skin != null) {
+                    drawOrientedProjectileSkin(g2, skin, ws.x, ws.y, ws.angle,
+                            Math.max(28.0, ws.radius * 5.8), Math.max(8.0, ws.radius * 2.8), 0.92f);
+                }
+
                 Stroke old = g2.getStroke();
-                g2.setStroke(new BasicStroke((float) Math.max(6.0, ws.radius * 2.3), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(new Color(80, 205, 255, 110));
+                g2.setStroke(new BasicStroke((float) Math.max(6.0, ws.radius * 2.5), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(beam, (int) Math.round(115 + pulse * 28)));
                 g2.drawLine(x1, y1, x2, y2);
 
-                g2.setStroke(new BasicStroke((float) Math.max(2.8, ws.radius * 1.1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(new Color(230, 255, 255, 240));
+                g2.setStroke(new BasicStroke((float) Math.max(3.2, ws.radius * 1.3), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(hot, 236));
+                g2.drawLine(x1, y1, x2, y2);
+
+                g2.setStroke(new BasicStroke((float) Math.max(1.4, ws.radius * 0.58), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(Color.WHITE, 190));
                 g2.drawLine(x1, y1, x2, y2);
 
                 int glow = (int) Math.round(Math.max(8.0, ws.radius * 1.6));
-                g2.setColor(new Color(140, 235, 255, 170));
+                g2.setColor(withAlpha(mixColor(beam, Color.WHITE, 0.26), (int) Math.round(150 + pulse * 30)));
                 g2.fillOval(x - glow, y - glow, glow * 2, glow * 2);
                 g2.setStroke(old);
             } else if (p instanceof EnergyBolt eb) {
@@ -354,15 +626,26 @@ public class Renderer {
                 double vlen = Math.hypot(vx, vy);
                 double nx = (vlen > 1e-6) ? (vx / vlen) : Math.cos(eb.angle);
                 double ny = (vlen > 1e-6) ? (vy / vlen) : Math.sin(eb.angle);
+                Color base = eb.isBeamBolt()
+                        ? mixColor(beamColorForFaction(eb.faction), new Color(135, 230, 255), 0.36)
+                        : projectileCoreColor(eb.faction);
+                Color glow = mixColor(base, Color.WHITE, eb.isBeamBolt() ? 0.42 : 0.30);
 
                 int r = (int) Math.round(Math.max(2.0, eb.radius));
                 if (eb.isBeamBolt()) r = (int) Math.round(Math.max(r, 4.0));
+
+                BufferedImage skin = ProjectileSkinLibrary.getEnergyBoltSkin(eb.isBeamBolt());
+                if (skin != null) {
+                    drawOrientedProjectileSkin(g2, skin, eb.x, eb.y, Math.atan2(ny, nx),
+                            Math.max(14.0, r * (eb.isBeamBolt() ? 4.4 : 3.6)),
+                            Math.max(6.0, r * 1.8), 0.90f);
+                }
 
                 Stroke old = g2.getStroke();
 
                 // soft outer glow line
                 g2.setStroke(new BasicStroke(r * 1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(eb.isBeamBolt() ? new Color(80, 190, 255, 70) : new Color(110, 210, 255, 70));
+                g2.setColor(withAlpha(glow, eb.isBeamBolt() ? 90 : 74));
                 int gx1 = (int) Math.round(eb.x - nx * (r * 2.6));
                 int gy1 = (int) Math.round(eb.y - ny * (r * 2.6));
                 int gx2 = (int) Math.round(eb.x + nx * (r * 1.4));
@@ -371,18 +654,18 @@ public class Renderer {
 
                 // bright core line
                 g2.setStroke(new BasicStroke(r * 0.75f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(eb.isBeamBolt() ? new Color(220, 255, 255, 235) : new Color(190, 245, 255, 220));
+                g2.setColor(withAlpha(mixColor(base, Color.WHITE, 0.72), eb.isBeamBolt() ? 238 : 224));
                 g2.drawLine(gx1, gy1, gx2, gy2);
 
                 // end-cap flare
                 int fx = (int) Math.round(eb.x + nx * (r * 2.0));
                 int fy = (int) Math.round(eb.y + ny * (r * 2.0));
-                g2.setColor(eb.isBeamBolt() ? new Color(235, 255, 255, 200) : new Color(220, 255, 255, 180));
+                g2.setColor(withAlpha(glow, eb.isBeamBolt() ? 210 : 182));
                 g2.fillOval(fx - r, fy - r, r * 2, r * 2);
 
                 // subtle trailing segments (motion blur)
                 g2.setStroke(new BasicStroke(r * 0.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(new Color(140, 220, 255, 70));
+                g2.setColor(withAlpha(glow, 82));
                 for (int i = 1; i <= 2; i++) {
                     double t = r * (3.0 + i * 2.0);
                     int tx1 = (int) Math.round(eb.x - nx * (r * 1.6 + t));
@@ -398,14 +681,35 @@ public class Renderer {
                 int r = (int) Math.round(Math.max(1.0, p.radius));
                 int x = (int) Math.round(p.x);
                 int y = (int) Math.round(p.y);
+                double speed = Math.hypot(p.vx, p.vy);
+                double nx = (speed > 1e-6) ? p.vx / speed : 1.0;
+                double ny = (speed > 1e-6) ? p.vy / speed : 0.0;
+                double trailLen = Math.max(6.0, Math.min(28.0, 7.0 + speed * 0.15));
+                Color trail = projectileTrailColor(p.faction);
+                Color core = projectileCoreColor(p.faction);
 
-                int tx = (int) Math.round(p.x - p.vx * 3.0);
-                int ty = (int) Math.round(p.y - p.vy * 3.0);
+                BufferedImage skin = ProjectileSkinLibrary.getBulletSkin();
+                if (skin != null) {
+                    drawOrientedProjectileSkin(g2, skin, p.x, p.y, Math.atan2(ny, nx),
+                            Math.max(7.0, r * 2.7), Math.max(3.0, r * 1.8), 0.9f);
+                }
 
-                g2.setColor(new Color(255, 255, 160, 120));
+                int tx = (int) Math.round(p.x - nx * trailLen);
+                int ty = (int) Math.round(p.y - ny * trailLen);
+                int tx2 = (int) Math.round(p.x - nx * (trailLen * 0.56));
+                int ty2 = (int) Math.round(p.y - ny * (trailLen * 0.56));
+
+                Stroke old = g2.getStroke();
+                g2.setStroke(new BasicStroke(Math.max(1.1f, r * 0.86f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(trail, 132));
                 g2.drawLine(tx, ty, x, y);
 
-                g2.setColor(new Color(255, 255, 180, 220));
+                g2.setStroke(new BasicStroke(Math.max(1.0f, r * 0.50f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(255, 255, 255, 172));
+                g2.drawLine(tx2, ty2, x, y);
+                g2.setStroke(old);
+
+                g2.setColor(withAlpha(core, 224));
                 g2.fillOval(x - r, y - r, r * 2, r * 2);
             }
         }
@@ -561,6 +865,52 @@ public class Renderer {
         };
     }
 
+    private static Color projectileCoreColor(Faction faction) {
+        if (faction == null) return new Color(255, 232, 162);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(180, 232, 255);
+            case ENEMY -> new Color(255, 188, 142);
+            case TEAM_C -> new Color(186, 255, 182);
+            case TEAM_D -> new Color(255, 228, 150);
+        };
+    }
+
+    private static Color projectileTrailColor(Faction faction) {
+        if (faction == null) return new Color(255, 202, 130);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(132, 214, 255);
+            case ENEMY -> new Color(255, 150, 110);
+            case TEAM_C -> new Color(150, 238, 126);
+            case TEAM_D -> new Color(255, 204, 124);
+        };
+    }
+
+    private static Color beamColorForFaction(Faction faction) {
+        if (faction == null) return new Color(125, 226, 255);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(110, 225, 255);
+            case ENEMY -> new Color(255, 122, 96);
+            case TEAM_C -> new Color(144, 255, 154);
+            case TEAM_D -> new Color(255, 214, 122);
+        };
+    }
+
+    private static void drawOrientedProjectileSkin(Graphics2D g2, BufferedImage skin, double x, double y, double angle,
+                                                   double length, double width, float alpha) {
+        if (g2 == null || skin == null) return;
+        int drawW = (int) Math.round(Math.max(2.0, length));
+        int drawH = (int) Math.round(Math.max(2.0, width));
+        Graphics2D gx = (Graphics2D) g2.create();
+        gx.translate(x, y);
+        gx.rotate(angle);
+        if (alpha < 0.999f) {
+            float a = Math.max(0.0f, Math.min(1.0f, alpha));
+            gx.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+        }
+        gx.drawImage(skin, -drawW / 2, -drawH / 2, drawW, drawH, null);
+        gx.dispose();
+    }
+
     public static void drawHUD(Graphics2D g2, Player player, int credits, int hangarTier, boolean dockedAtBase, boolean shopOpen, boolean autoLock, Ship lockedTarget,
                                int playerWingActive, int playerWingCap, int lockedWingActive, int lockedWingCap,
                                boolean resourceRush, int allyOre, int enemyOre, int goal, String gameOverText,
@@ -653,11 +1003,18 @@ public class Renderer {
 
         int shY = hpY + 18;
         if (player.shieldActive && player.shieldMax > 0) {
-            g2.setColor(new Color(255, 255, 255, 70));
-            g2.drawRect(x, shY, barW, barH);
-            double shFrac = Math.max(0, Math.min(1, player.shield / player.shieldMax));
-            g2.setColor(new Color(120, 200, 255, 210));
-            g2.fillRect(x + 1, shY + 1, (int) Math.round((barW - 1) * shFrac), barH - 1);
+            int faces = Math.max(1, player.shieldFaceCount());
+            int gap = 4;
+            int segW = Math.max(12, (barW - gap * (faces - 1)) / faces);
+            for (int i = 0; i < faces; i++) {
+                int sx = x + i * (segW + gap);
+                g2.setColor(new Color(255, 255, 255, 70));
+                g2.drawRect(sx, shY, segW, barH);
+                double frac = player.shieldFaceFraction(i);
+                int fill = (int) Math.round((segW - 1) * Math.max(0.0, Math.min(1.0, frac)));
+                g2.setColor(shieldFaceColor(i, 210));
+                g2.fillRect(sx + 1, shY + 1, fill, barH - 1);
+            }
             if (!player.isShieldOnline()) {
                 g2.setColor(new Color(255, 170, 120, 220));
                 g2.drawString("SHIELD REBOOT: " + fmt1(player.getShieldOfflineRemaining()) + "s", x + barW + 12, shY + barH);
@@ -684,6 +1041,8 @@ public class Renderer {
             y += 18;
             g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/-/= hulls)   B: base upgrades", x, y);
             y += 18;
+            g2.drawString("BOTTOM BAR: click SHOP / BASE / MAP / POWER / CREW for quick overlay access", x, y);
+            y += 18;
             String abilityKeys = player.hasWaveMotionGun
                     ? "Q: missile salvo   E: shield overcharge   X: wave gun   F: mine"
                     : "Q: missile salvo   E: shield overcharge   F: mine";
@@ -708,10 +1067,12 @@ public class Renderer {
             y += 18;
             g2.drawString("OVERLAYS: TAB shop   B base   M map   O power   H stations", x, y);
             y += 18;
+            g2.drawString("BOTTOM BAR: click to open overlays quickly", x, y);
+            y += 18;
             g2.drawString("N: HUD detail   ESC: pause/resume", x, y);
             y += 22;
         } else {
-            g2.drawString("N: HUD detail   L: lock   TAB/B/M/O/H: overlays", x, y);
+            g2.drawString("N: HUD detail   L: lock   TAB/B/M/O/H or bottom bar: overlays", x, y);
             y += 22;
         }
 
@@ -750,6 +1111,8 @@ public class Renderer {
         if (player.shieldActive && player.shieldMax > 0) {
             int facingDeg = (int) Math.round(Math.toDegrees(MathUtil.normalizeAngle(player.getShieldFacingAngle())));
             g2.drawString("SHIELD[" + player.shieldFacingMode.name() + "] FACING " + facingDeg + " DEG  ARC " + (int) Math.round(player.shieldArcDegrees()) + " DEG", x, y);
+            y += 18;
+            g2.drawString(shieldFaceReadout(player), x, y);
             y += 18;
         }
 
@@ -1271,6 +1634,8 @@ public class Renderer {
         py += 16;
         g2.setColor(new Color(180, 225, 255, 220));
         g2.drawString("Shield Effectiveness: " + signedPct(shield), x + 20, py);
+        py += 16;
+        g2.drawString("Shield Faces: " + shieldFaceReadout(player), x + 20, py);
 
         g2.setColor(new Color(255, 255, 255, 145));
         g2.drawString("Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT", x + 20, y + h - 18);
@@ -1822,12 +2187,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawEngines(g, ship, visual);
             drawHardpoints(g, ship, visual);
 
-            if (ship.shieldActive && ship.shieldMax > 0 && ship.shield > 0) {
-                double frac = Math.max(0, Math.min(1, ship.shield / ship.shieldMax));
-                g.setColor(new Color(120, 200, 255, (int) (40 + 90 * frac)));
-                int rr = (int) Math.round(ship.radius + 7);
-                g.drawOval(-rr, -rr, rr * 2, rr * 2);
-            }
+            drawShipShieldFaces(g, ship);
 
             if (hullArea != null) {
                 drawDamageDecals(g, ship, hullArea);
@@ -1847,12 +2207,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static double roleVisualScale(ShipRole role) {
-            if (role == null) return 1.0;
-            return switch (role) {
-                case FIGHTER -> 0.78;
-                case BOMBER -> 0.84;
-                default -> 1.0;
-            };
+            return HullGeometry.roleVisualScale(role);
         }
 
         private static ShipVisual getVisual(Ship ship) {
@@ -2752,13 +3107,57 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static final class ProjectileSkinLibrary {
         private static final String SKIN_DIR = "assets/projectile_skins";
         private static BufferedImage missileSkin;
+        private static BufferedImage energyBoltSkin;
+        private static BufferedImage beamBoltSkin;
+        private static BufferedImage waveShotSkin;
+        private static BufferedImage bulletSkin;
+        private static BufferedImage ciwsPelletSkin;
         private static boolean missileSkinLoaded = false;
+        private static boolean energyBoltSkinLoaded = false;
+        private static boolean beamBoltSkinLoaded = false;
+        private static boolean waveShotSkinLoaded = false;
+        private static boolean bulletSkinLoaded = false;
+        private static boolean ciwsPelletSkinLoaded = false;
 
         static BufferedImage getMissileSkin() {
             if (missileSkinLoaded) return missileSkin;
             missileSkinLoaded = true;
             missileSkin = loadSkin("missile");
             return missileSkin;
+        }
+
+        static BufferedImage getEnergyBoltSkin(boolean beamBoltVariant) {
+            if (beamBoltVariant) {
+                if (beamBoltSkinLoaded) return beamBoltSkin;
+                beamBoltSkinLoaded = true;
+                beamBoltSkin = loadSkin("beam_bolt");
+                return beamBoltSkin;
+            }
+            if (energyBoltSkinLoaded) return energyBoltSkin;
+            energyBoltSkinLoaded = true;
+            energyBoltSkin = loadSkin("energy_bolt");
+            return energyBoltSkin;
+        }
+
+        static BufferedImage getWaveShotSkin() {
+            if (waveShotSkinLoaded) return waveShotSkin;
+            waveShotSkinLoaded = true;
+            waveShotSkin = loadSkin("wave_shot");
+            return waveShotSkin;
+        }
+
+        static BufferedImage getBulletSkin() {
+            if (bulletSkinLoaded) return bulletSkin;
+            bulletSkinLoaded = true;
+            bulletSkin = loadSkin("bullet");
+            return bulletSkin;
+        }
+
+        static BufferedImage getCiwsPelletSkin() {
+            if (ciwsPelletSkinLoaded) return ciwsPelletSkin;
+            ciwsPelletSkinLoaded = true;
+            ciwsPelletSkin = loadSkin("ciws_pellet");
+            return ciwsPelletSkin;
         }
 
         private static BufferedImage loadSkin(String key) {
@@ -2849,13 +3248,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         // Bridge / superstructure
         drawBridge(g, ship);
 
-        // Shield ring
-        if (ship.shieldActive && ship.shieldMax > 0 && ship.shield > 0) {
-            double frac = Math.max(0, Math.min(1, ship.shield / ship.shieldMax));
-            g.setColor(new Color(120, 200, 255, (int) (40 + 90 * frac)));
-            int rr = (int) Math.round(ship.radius + 7);
-            g.drawOval(-rr, -rr, rr * 2, rr * 2);
-        }
+        // Shield ring/faces
+        drawShipShieldFaces(g, ship);
 
         // Turrets
         drawTurrets(g, ship);
@@ -3420,80 +3814,80 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Rectangle bounds = hullShape.getBounds();
         if (bounds.width <= 0 || bounds.height <= 0) return;
         int span = Math.max(bounds.width, bounds.height);
-        int n = (int) Math.round(4 + dmg * 12);
+        List<Ship.HullImpactMark> marks = ship.hullImpactMarks();
 
-        long seed = (long) System.identityHashCode(ship) * 0x9E3779B97F4A7C15L;
-        Random rng = new Random(seed);
         Shape oldClip = g.getClip();
         Stroke oldStroke = g.getStroke();
         g.setClip(hullShape);
 
         try {
-            // Scorch marks
-            for (int i = 0; i < n; i++) {
-                Point hit = randomPointInShape(rng, bounds, hullShape, 18);
-                int px = hit.x;
-                int py = hit.y;
+            if (!marks.isEmpty()) {
+                int mCount = marks.size();
+                int start = Math.max(0, mCount - 40);
+                for (int i = start; i < mCount; i++) {
+                    Ship.HullImpactMark mark = marks.get(i);
+                    int px = (int) Math.round(mark.localX);
+                    int py = (int) Math.round(mark.localY);
+                    double sev = MathUtil.clamp(mark.severity, 0.04, 1.0);
 
-                int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (4 + dmg * 10)));
-                int a = (int) MathUtil.clamp(48 + dmg * 140, 0, 175);
-                g.setColor(new Color(0, 0, 0, a));
-                g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
+                    int scorchSz = (int) Math.round(Math.max(3.0, 2.0 + sev * 10.0 + dmg * 5.0));
+                    int scorchA = (int) MathUtil.clamp(54 + sev * 108 + dmg * 42, 0, 200);
+                    g.setColor(new Color(0, 0, 0, scorchA));
+                    g.fillOval(px - scorchSz, py - scorchSz, scorchSz * 2, scorchSz * 2);
 
-                // Hot edge / ember tint
-                g.setColor(new Color(255, 196, 116, (int) MathUtil.clamp(20 + dmg * 56, 0, 96)));
-                g.drawOval(px - sz, py - sz, sz * 2, sz * 2);
-            }
+                    // Deformation: a displaced dent shadow + warm rim at the impact point.
+                    int dent = Math.max(2, (int) Math.round(2 + sev * 6));
+                    g.setColor(new Color(5, 5, 6, (int) MathUtil.clamp(26 + sev * 80, 0, 145)));
+                    g.fillOval(px - dent + 1, py - dent + 1, dent * 2, dent * 2);
+                    g.setColor(new Color(255, 186, 110, (int) MathUtil.clamp(14 + sev * 60 + dmg * 24, 0, 108)));
+                    g.drawOval(px - scorchSz, py - scorchSz, scorchSz * 2, scorchSz * 2);
 
-            // Raking impact streaks and carved plate scratches.
-            int streaks = (int) Math.round(2 + dmg * 10);
-            for (int i = 0; i < streaks; i++) {
-                Point hit = randomPointInShape(rng, bounds, hullShape, 18);
-                int px = hit.x;
-                int py = hit.y;
+                    double seedA = Math.abs(mark.localX * 0.027 + mark.localY * 0.019 + i * 0.171);
+                    double dir = (seedA - Math.floor(seedA)) * Math.PI * 2.0;
+                    int len = (int) Math.round(4 + sev * 18 + dmg * span * 0.10);
+                    int x2 = px + (int) Math.round(Math.cos(dir) * len);
+                    int y2 = py + (int) Math.round(Math.sin(dir) * len);
+                    float width = (float) Math.max(1.0, 0.9 + sev * 2.2);
+                    g.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.setColor(new Color(12, 12, 14, (int) MathUtil.clamp(52 + sev * 95, 0, 180)));
+                    g.drawLine(px, py, x2, y2);
+                    g.setStroke(new BasicStroke(Math.max(1f, width * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.setColor(new Color(255, 168, 100, (int) MathUtil.clamp(12 + sev * 52, 0, 96)));
+                    g.drawLine(px, py, x2, y2);
 
-                double ang = rng.nextDouble() * Math.PI * 2.0;
-                double bias = (rng.nextDouble() - 0.5) * 0.45;
-                double dir = ang * 0.35 + bias;
-                int len = (int) Math.round(4 + rng.nextDouble() * (6 + dmg * span * 0.38));
-                int x2 = px + (int) Math.round(Math.cos(dir) * len);
-                int y2 = py + (int) Math.round(Math.sin(dir) * len);
-
-                float w = (float) Math.max(1.0, 0.8 + dmg * 2.1 * (0.6 + rng.nextDouble() * 0.8));
-                g.setStroke(new BasicStroke(w, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g.setColor(new Color(10, 10, 12, (int) MathUtil.clamp(42 + dmg * 120, 0, 170)));
-                g.drawLine(px, py, x2, y2);
-
-                g.setStroke(new BasicStroke(Math.max(1f, w * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g.setColor(new Color(255, 166, 98, (int) MathUtil.clamp(14 + dmg * 56, 0, 90)));
-                g.drawLine(px, py, x2, y2);
-            }
-
-            // Breach holes at critical damage.
-            if (dmg > 0.72) {
-                int breaches = (int) Math.round(1 + (dmg - 0.72) * 8.0);
-                for (int i = 0; i < breaches; i++) {
-                    Point hit = randomPointInShape(rng, bounds, hullShape, 22);
-                    int px = hit.x;
-                    int py = hit.y;
-                    int sz = (int) Math.max(4, Math.round(4 + rng.nextDouble() * (3 + dmg * 8)));
-                    g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(88 + dmg * 122, 0, 205)));
-                    g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
-                    g.setColor(new Color(255, 174, 102, (int) MathUtil.clamp(24 + dmg * 52, 0, 96)));
-                    g.drawOval(px - sz, py - sz, sz * 2, sz * 2);
+                    if (mark.breachRadius > 0.01) {
+                        int br = (int) Math.round(Math.max(2.0, mark.breachRadius));
+                        g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(95 + sev * 110, 0, 220)));
+                        g.fillOval(px - br, py - br, br * 2, br * 2);
+                        g.setColor(new Color(255, 170, 96, (int) MathUtil.clamp(26 + sev * 58, 0, 112)));
+                        g.drawOval(px - br, py - br, br * 2, br * 2);
+                    }
                 }
-            }
 
-            // If very damaged, add a little smoke haze on top.
-            if (dmg > 0.55) {
-                int smoke = (int) Math.round(2 + dmg * 6);
-                for (int i = 0; i < smoke; i++) {
+                if (dmg > 0.55) {
+                    int smoke = Math.min(8, Math.max(2, (int) Math.round(2 + dmg * 6)));
+                    for (int i = 0; i < smoke; i++) {
+                        Ship.HullImpactMark mark = marks.get(Math.max(0, mCount - 1 - i % Math.max(1, mCount)));
+                        int px = (int) Math.round(mark.localX);
+                        int py = (int) Math.round(mark.localY);
+                        int sz = (int) Math.max(6, Math.round(6 + (0.4 + mark.severity) * 8));
+                        int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
+                        g.setColor(new Color(30, 30, 30, a));
+                        g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
+                    }
+                }
+            } else {
+                // Fallback for legacy/non-positional damage events.
+                int n = (int) Math.round(4 + dmg * 12);
+                long seed = (long) System.identityHashCode(ship) * 0x9E3779B97F4A7C15L;
+                Random rng = new Random(seed);
+                for (int i = 0; i < n; i++) {
                     Point hit = randomPointInShape(rng, bounds, hullShape, 18);
                     int px = hit.x;
                     int py = hit.y;
-                    int sz = (int) Math.max(6, Math.round(6 + rng.nextDouble() * 10));
-                    int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
-                    g.setColor(new Color(30, 30, 30, a));
+                    int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (4 + dmg * 10)));
+                    int a = (int) MathUtil.clamp(48 + dmg * 140, 0, 175);
+                    g.setColor(new Color(0, 0, 0, a));
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
                 }
             }
@@ -3803,6 +4197,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Color withAlpha(Color c, int alpha) {
+        if (c == null) c = Color.WHITE;
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), MathUtil.clamp(alpha, 0, 255));
     }
 

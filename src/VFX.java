@@ -19,9 +19,16 @@ public final class VFX {
 
     private VFX() {}
 
-    private static final int MAX = 2200;
+    private static final int MAX = 1800;
     private static final List<Particle> active = new ArrayList<>();
     private static final Random RNG = new Random();
+
+    public enum ImpactStyle {
+        KINETIC,
+        ENERGY,
+        EXPLOSIVE,
+        BEAM
+    }
 
     // Spawn helpers may be called from places that don't have dt handy.
     private static final double DEFAULT_DT = 1.0 / 60.0;
@@ -35,6 +42,8 @@ public final class VFX {
             p.angle += p.angleVel;
             if (p.type == Type.MUZZLE_BLOOM) p.size += 0.8;
             if (p.type == Type.SHIELD) p.size += 1.4;
+            if (p.type == Type.SMOKE) p.size += 0.12;
+            if (p.type == Type.FIRE) p.size += 0.08;
             p.life--;
             if (p.life <= 0) it.remove();
         }
@@ -86,7 +95,8 @@ public final class VFX {
                 }
                 case SMOKE -> {
                     int a = (int) MathUtil.clamp(alpha, 0, 130);
-                    g2.setColor(new Color(120, 200, 255, a));
+                    Color c = (p.color != null) ? p.color : new Color(120, 200, 255);
+                    g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), a));
                     int r = (int) Math.round(p.size);
                     g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
                 }
@@ -99,6 +109,11 @@ public final class VFX {
                 }
                 case FIRE -> {
                     int a = (int) MathUtil.clamp(alpha, 0, 180);
+                    int glowA = (int) MathUtil.clamp(a * 0.35, 0, 110);
+                    int glowR = (int) Math.max(2, Math.round(p.size * 1.9));
+                    g2.setColor(new Color(255, 160, 88, glowA));
+                    g2.fillOval((int) Math.round(p.x - glowR), (int) Math.round(p.y - glowR), glowR * 2, glowR * 2);
+
                     g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
                     int r = (int) Math.max(1, Math.round(p.size));
                     g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
@@ -139,7 +154,19 @@ public final class VFX {
                     g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
                     int r = (int) Math.round(p.size);
                     g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                    g2.setColor(new Color(220, 245, 255, (int) MathUtil.clamp(a * 0.55, 0, 140)));
+                    int r2 = (int) Math.max(2, Math.round(p.size * 0.68));
+                    g2.drawOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
                     g2.setStroke(old);
+                }
+                case IMPACT_BLOOM -> {
+                    int a = (int) MathUtil.clamp(alpha, 0, 180);
+                    int r = (int) Math.max(2, Math.round(p.size));
+                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * 0.35, 0, 120)));
+                    g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                    g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.40, 0, 120)));
+                    int r2 = (int) Math.max(1, Math.round(p.size * 0.42));
+                    g2.fillOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
                 }
             }
         }
@@ -171,10 +198,10 @@ public final class VFX {
 
     /** Debris burst when a ship finally explodes. baseVx/baseVy are per-tick deltas to inherit. */
     public static void spawnDebrisBurst(double x, double y, double baseVx, double baseVy, int count) {
-        count = MathUtil.clamp(count, 6, 42);
+        count = MathUtil.clamp(count, 5, 30);
         for (int i = 0; i < count; i++) {
             double a = RNG.nextDouble() * Math.PI * 2.0;
-            double sp = 90 + RNG.nextDouble() * 340;
+            double sp = 80 + RNG.nextDouble() * 300;
 
             Particle p = new Particle();
             p.type = Type.DEBRIS;
@@ -183,7 +210,7 @@ public final class VFX {
             p.angle = a;
             p.angleVel = (RNG.nextDouble() - 0.5) * 0.25;
             p.size = 1.6 + RNG.nextDouble() * 2.2;
-            p.maxLife = p.life = 34 + RNG.nextInt(52);
+            p.maxLife = p.life = 30 + RNG.nextInt(40);
             p.baseAlpha = 200;
             p.color = new Color(200, 210, 225);
 
@@ -253,29 +280,136 @@ public final class VFX {
     }
 
     public static void spawnImpactSparks(double x, double y, double dirX, double dirY, int strength) {
-        if (strength <= 0) strength = 1;
-        int count = MathUtil.clamp(4 + strength * 2, 4, 18);
+        spawnImpactBurst(x, y, dirX, dirY,
+                MathUtil.clamp(4 + Math.max(1, strength) * 2, 4, 18),
+                new Color(255, 210, 120),
+                Math.toRadians(140),
+                110, 240,
+                10, 12,
+                1.2, 1.8,
+                200);
+    }
+
+    public static void spawnHullImpact(double x, double y, double dirX, double dirY, int strength, ImpactStyle style) {
+        ImpactStyle s = (style == null) ? ImpactStyle.KINETIC : style;
+        int n = MathUtil.clamp(4 + Math.max(1, strength) * 2, 4, 22);
+        Color tint = switch (s) {
+            case KINETIC -> new Color(255, 205, 130);
+            case ENERGY -> new Color(130, 225, 255);
+            case EXPLOSIVE -> new Color(255, 165, 95);
+            case BEAM -> new Color(165, 245, 255);
+        };
+        double spread = switch (s) {
+            case EXPLOSIVE -> Math.toRadians(180);
+            case BEAM -> Math.toRadians(78);
+            case ENERGY -> Math.toRadians(98);
+            case KINETIC -> Math.toRadians(130);
+        };
+        int lifeMin = (s == ImpactStyle.BEAM) ? 8 : 10;
+        int lifeRange = (s == ImpactStyle.EXPLOSIVE) ? 16 : 12;
+        double sizeMin = (s == ImpactStyle.EXPLOSIVE) ? 1.4 : 1.2;
+        double sizeRange = (s == ImpactStyle.EXPLOSIVE) ? 2.2 : 1.8;
+        spawnImpactBurst(x, y, dirX, dirY, n, tint, spread, 95, 260, lifeMin, lifeRange, sizeMin, sizeRange, 210);
+
+        if (s == ImpactStyle.EXPLOSIVE) {
+            spawnSmokeBurst(x, y, MathUtil.clamp(2 + strength / 2, 2, 8), new Color(84, 84, 88), 4.0, 3.4);
+            spawnImpactBloom(x, y, 10 + strength * 1.8, new Color(255, 175, 108), 14, 170);
+        } else if (s == ImpactStyle.ENERGY || s == ImpactStyle.BEAM) {
+            spawnImpactBloom(x, y, 8 + strength * 1.4, tint, 12, 145);
+        } else if (strength >= 4) {
+            spawnSmokeBurst(x, y, 1 + strength / 4, new Color(96, 92, 90), 3.5, 2.8);
+        }
+    }
+
+    public static void spawnShieldImpact(double x, double y, double dirX, double dirY, int strength, ImpactStyle style) {
+        ImpactStyle s = (style == null) ? ImpactStyle.KINETIC : style;
+        Color tint = switch (s) {
+            case KINETIC -> new Color(132, 216, 255);
+            case ENERGY -> new Color(120, 235, 255);
+            case EXPLOSIVE -> new Color(156, 226, 255);
+            case BEAM -> new Color(175, 248, 255);
+        };
+        spawnShieldRipple(x, y, 7.0 + Math.max(0, strength) * 1.8, tint);
+        spawnImpactBurst(x, y, dirX, dirY,
+                MathUtil.clamp(3 + Math.max(1, strength), 3, 12),
+                tint,
+                Math.toRadians(105),
+                80, 190,
+                8, 8,
+                1.0, 1.4,
+                185);
+        spawnImpactBloom(x, y, 7 + strength * 1.1, tint, 10, 130);
+        if (s == ImpactStyle.EXPLOSIVE) {
+            spawnSmokeBurst(x, y, 1 + strength / 5, new Color(88, 106, 122), 2.8, 2.4);
+        }
+    }
+
+    private static void spawnImpactBurst(double x, double y, double dirX, double dirY,
+                                         int count, Color color, double spread,
+                                         double speedMin, double speedRange,
+                                         int lifeMin, int lifeRange,
+                                         double sizeMin, double sizeRange,
+                                         int baseAlpha) {
+        count = MathUtil.clamp(count, 2, 26);
+        if (color == null) color = new Color(255, 210, 120);
         double baseAng = Math.atan2(dirY, dirX);
+        if (!Double.isFinite(baseAng)) baseAng = RNG.nextDouble() * Math.PI * 2.0;
+        double halfSpread = Math.max(0.02, spread * 0.5);
 
         for (int i = 0; i < count; i++) {
-            double a = baseAng + (RNG.nextDouble() - 0.5) * Math.toRadians(140);
-            double sp = 110 + RNG.nextDouble() * 240;
-            int life = 10 + RNG.nextInt(12);
+            double a = baseAng + (RNG.nextDouble() - 0.5) * (halfSpread * 2.0);
+            double sp = Math.max(1.0, speedMin + RNG.nextDouble() * Math.max(1.0, speedRange));
+            int life = Math.max(4, lifeMin + RNG.nextInt(Math.max(1, lifeRange)));
 
             Particle p = new Particle();
             p.type = Type.SPARK;
             p.x = x;
             p.y = y;
             p.angle = a;
-            p.size = 1.2 + RNG.nextDouble() * 1.8;
+            p.size = Math.max(0.6, sizeMin + RNG.nextDouble() * Math.max(0.1, sizeRange));
             p.maxLife = p.life = life;
-            p.baseAlpha = 200;
-            p.color = new Color(255, 210, 120);
+            p.baseAlpha = MathUtil.clamp(baseAlpha, 20, 255);
+            p.color = color;
 
             // Convert to per-tick deltas
             p.vx = Math.cos(a) * sp * DEFAULT_DT;
             p.vy = Math.sin(a) * sp * DEFAULT_DT;
 
+            addCapped(p);
+        }
+    }
+
+    private static void spawnImpactBloom(double x, double y, double size, Color color, int life, int alpha) {
+        Particle p = new Particle();
+        p.type = Type.IMPACT_BLOOM;
+        p.x = x;
+        p.y = y;
+        p.vx = 0.0;
+        p.vy = 0.0;
+        p.angle = 0.0;
+        p.size = Math.max(2.0, size);
+        p.maxLife = p.life = Math.max(4, life);
+        p.baseAlpha = MathUtil.clamp(alpha, 24, 255);
+        p.color = (color != null) ? color : new Color(255, 200, 135);
+        addCapped(p);
+    }
+
+    private static void spawnSmokeBurst(double x, double y, int count, Color color, double sizeMin, double sizeRange) {
+        int n = MathUtil.clamp(count, 1, 10);
+        for (int i = 0; i < n; i++) {
+            Particle p = new Particle();
+            p.type = Type.SMOKE;
+            p.x = x + (RNG.nextDouble() - 0.5) * 6.0;
+            p.y = y + (RNG.nextDouble() - 0.5) * 6.0;
+            p.angle = 0.0;
+            p.size = Math.max(1.8, sizeMin + RNG.nextDouble() * Math.max(0.1, sizeRange));
+            p.maxLife = p.life = 16 + RNG.nextInt(22);
+            p.baseAlpha = 120;
+            double a = RNG.nextDouble() * Math.PI * 2.0;
+            double sp = 10 + RNG.nextDouble() * 28;
+            p.vx = Math.cos(a) * sp * DEFAULT_DT;
+            p.vy = Math.sin(a) * sp * DEFAULT_DT;
+            p.color = (color != null) ? color : new Color(112, 112, 116);
             addCapped(p);
         }
     }
@@ -365,8 +499,9 @@ public final class VFX {
 
     private static void addCapped(Particle p) {
         active.add(p);
-        while (active.size() > MAX) {
-            active.remove(0);
+        int overflow = active.size() - MAX;
+        if (overflow > 0) {
+            active.subList(0, overflow).clear();
         }
     }
 
@@ -379,7 +514,8 @@ public final class VFX {
         FIRE,
         DEBRIS,
         SALVAGE,
-        SHIELD
+        SHIELD,
+        IMPACT_BLOOM
     }
 
     private static final class Particle {

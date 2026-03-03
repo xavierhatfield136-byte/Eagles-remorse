@@ -194,6 +194,7 @@ enum GameMode {
     LAST_STAND("Last Stand"),
     RESOURCE_RUSH("Resource Rush"),
     FOUR_TEAM_DOMINATION("4 Team Domination"),
+    SHOOTING_RANGE("Shooting Range"),
     SHOWCASE("Showcase");
 
     private final String label;

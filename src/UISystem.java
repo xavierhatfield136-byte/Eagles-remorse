@@ -1,5 +1,6 @@
 import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
+import javax.swing.SwingUtilities;
 
 public final class UISystem {
     private UISystem(){}
@@ -98,6 +99,26 @@ public final class UISystem {
         } else {
             ctx.state = GameState.RUNNING;
         }
+    }
+
+    public static boolean handleCoreMenuClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || e == null) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+
+        int idx = Renderer.coreMenuButtonAt(viewportW, viewportH, e.getX(), e.getY());
+        if (idx < 0) return false;
+
+        switch (idx) {
+            case 0 -> toggleShop(ctx);
+            case 1 -> toggleBaseMenu(ctx);
+            case 2 -> toggleMap(ctx);
+            case 3 -> togglePowerManagement(ctx);
+            case 4 -> toggleCrewStations(ctx);
+            default -> {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static void selectPowerManagementSlot(GameContext ctx, int idx) {

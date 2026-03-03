@@ -44,6 +44,9 @@ public class Player extends Ship {
         if (this.miningRate <= 0) this.miningRate = 10.0;
         if (this.miningRange <= 0) this.miningRange = 56.0;
 
+        // New hull means old impact/breach marks are no longer valid.
+        clearHullImpactMarks();
+
         // Ensure player faction
         this.faction = Faction.PLAYER;
     }

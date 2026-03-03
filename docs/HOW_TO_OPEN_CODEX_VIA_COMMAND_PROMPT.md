@@ -3,6 +3,7 @@
 ## Open Codex In This Project
 ```bat
 cd "C:\Users\xhatf\IdeaProjects\game"
+cd "C:\Users\xhatf\IdeaProjects\game"
 codex --full-auto
 ```
 

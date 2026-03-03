@@ -38,11 +38,12 @@ public final class GameRenderSystem {
 
         try {
             for (Explosion e : Explosion.active) {
-                double f = e.frac();
-                int size = (e.maxT <= 0.20) ? 10 : 22;
-                int a = (int) Math.round(180 * f);
-                worldG.setColor(new Color(255, 200, 120, Math.max(0, Math.min(a, 220))));
-                worldG.fillOval((int) Math.round(e.x - size / 2.0), (int) Math.round(e.y - size / 2.0), size, size);
+                if (e == null) continue;
+                if (e.kind == Explosion.Kind.SHIELD_HIT) {
+                    drawShieldImpactExplosion(worldG, e);
+                } else {
+                    drawDeathExplosion(worldG, e);
+                }
             }
         } catch (Throwable ignored) {}
 
@@ -162,6 +163,10 @@ public final class GameRenderSystem {
             int hy = y + 42;
             g2.drawString(hint, hx, hy);
         }
+
+        // Persistent quick-access overlays bar.
+        Renderer.drawCoreMenuBar(g2, ctx, viewportW, viewportH);
+
 // Dev debug overlay (F3)
 if (DevTools.isDebugOverlay()) {
     try { DevOverlay.draw(g2, ctx, viewportW, viewportH); } catch (Throwable ignored) {}
@@ -323,6 +328,46 @@ if (DevTools.isDebugOverlay()) {
             g2.drawString(chip, px + 8, py + 14);
 
             y += h + 6;
+        }
+    }
+
+    private static void drawShieldImpactExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        double age = e.ageFrac();
+        int outerR = (int) Math.round(6 + age * 14);
+        int innerR = (int) Math.max(2, Math.round(2 + age * 7));
+
+        int ringA = (int) MathUtil.clamp(180 * rem, 0, 210);
+        int coreA = (int) MathUtil.clamp(140 * rem, 0, 170);
+
+        g2.setColor(new Color(126, 222, 255, ringA));
+        g2.drawOval((int) Math.round(e.x - outerR), (int) Math.round(e.y - outerR), outerR * 2, outerR * 2);
+
+        g2.setColor(new Color(220, 248, 255, coreA));
+        g2.fillOval((int) Math.round(e.x - innerR), (int) Math.round(e.y - innerR), innerR * 2, innerR * 2);
+    }
+
+    private static void drawDeathExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        double age = e.ageFrac();
+
+        int blastR = (int) Math.round(8 + age * 44);
+        int coreR = (int) Math.round(4 + Math.min(1.0, age * 1.9) * 11);
+        int smokeR = (int) Math.round(14 + Math.max(0.0, age - 0.24) * 42);
+
+        int blastA = (int) MathUtil.clamp(220 * rem, 0, 230);
+        int coreA = (int) MathUtil.clamp((age < 0.65 ? 240 : 180) * rem, 0, 240);
+        int smokeA = (int) MathUtil.clamp(Math.max(0.0, age - 0.14) * 180 * rem, 0, 120);
+
+        g2.setColor(new Color(255, 152, 88, blastA));
+        g2.fillOval((int) Math.round(e.x - blastR), (int) Math.round(e.y - blastR), blastR * 2, blastR * 2);
+
+        g2.setColor(new Color(255, 228, 180, coreA));
+        g2.fillOval((int) Math.round(e.x - coreR), (int) Math.round(e.y - coreR), coreR * 2, coreR * 2);
+
+        if (smokeA > 4) {
+            g2.setColor(new Color(78, 78, 82, smokeA));
+            g2.drawOval((int) Math.round(e.x - smokeR), (int) Math.round(e.y - smokeR), smokeR * 2, smokeR * 2);
         }
     }
 

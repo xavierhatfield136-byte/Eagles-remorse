@@ -23,7 +23,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 14 + minerLines;
+        int lineCount = 15 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -40,6 +40,9 @@ public final class DevOverlay {
         y += lineH;
         drawLine(g2, x, y, "DEV OVERLAY (F3)  HEATMAP(F2): " + (DevTools.isAsteroidHeatmapEnabled() ? "ON" : "OFF")
                 + "  AI: " + (DevTools.isAIEnabled() ? "ON" : "OFF") + "  Time: " + DevTools.getTimeScale() + "x");
+
+        y += lineH;
+        drawLine(g2, x, y, "Scenarios: F6/F7/F8/F9, Ctrl+F12=shooting range");
 
         y += lineH;
         drawLine(g2, x, y, "State: " + safe(ctx, "state"));

@@ -18,11 +18,14 @@ public final class InputSystem {
 
         panel.installBindings(ctx, controls, exitToMenu, toggleFullscreen);
 
-        // Dev scenarios (F6-F9)
+        // Dev scenarios (F6-F9/F11/Ctrl+F12)
         DevScenarios.installBindings(panel, ctx);
 
         panel.addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent e) {
+                if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (ctx.mapOpen) {
                     UISystem.handleMapClick(ctx, e, panel.viewportW(), panel.viewportH());
                     return;

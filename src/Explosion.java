@@ -9,7 +9,13 @@ public class Explosion {
 
     public static final List<Explosion> active = new ArrayList<>();
 
+    public enum Kind {
+        SHIELD_HIT,
+        DEATH
+    }
+
     public final double x, y;
+    public final Kind kind;
 
     // seconds remaining
     private double t;
@@ -17,19 +23,20 @@ public class Explosion {
     // for drawing convenience (optional)
     public final double maxT;
 
-    private Explosion(double x, double y, double seconds) {
+    private Explosion(double x, double y, double seconds, Kind kind) {
         this.x = x;
         this.y = y;
+        this.kind = (kind == null) ? Kind.DEATH : kind;
         this.t = seconds;
         this.maxT = seconds;
     }
 
     public static void spawnShieldHit(double x, double y) {
-        addCapped(new Explosion(x, y, 0.14)); // ~8-9 frames at 60fps
+        addCapped(new Explosion(x, y, 0.16, Kind.SHIELD_HIT)); // short impact ripple
     }
 
     public static void spawnDeath(double x, double y) {
-        addCapped(new Explosion(x, y, 0.55)); // ~33 frames
+        addCapped(new Explosion(x, y, 0.64, Kind.DEATH)); // staged blast
     }
 
     private static void addCapped(Explosion e) {
@@ -60,5 +67,10 @@ public class Explosion {
     public double frac() {
         if (maxT <= 0) return 0;
         return Math.max(0.0, Math.min(1.0, t / maxT));
+    }
+
+    /** 0..1 fraction elapsed. */
+    public double ageFrac() {
+        return 1.0 - frac();
     }
 }

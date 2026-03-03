@@ -30,7 +30,7 @@
 - [x] Add shield facing control (manual/assisted facing).
 - [x] Add directional shield behavior (incoming angle affects shield effectiveness).
 - [x] Temporarily disable shields after shield HP is reduced to 0 (with recharge/reboot delay).
-- [ ] Make it so that the shield is split up into 4 faces, foreward, left, right, and rear, and are visually separated.
+- [x] Make it so that the shield is split up into 4 faces, foreward, left, right, and rear, and are visually separated.
 ## Weapon Usability and AI
 - [x] Make wave-motion-gun-capable ships easier to aim (player usability pass).
 - [x] Fix NPC wave-motion ships so they aim special weapon correctly before firing.
@@ -42,17 +42,23 @@
 ## Phase 2 - Graphics and Visual Overhauls
 
 ## Visual Upgrades using chatgpt to generate sprites if needed.
-- [ ] Laser visual update (beam style, glow, impact readability).
-- [ ] Projectile visual update (tracers, color coding, travel readability).
-- [ ] Fire graphics update (ship burn effects, sustained flames, heat bloom).
-- [ ] Destruction graphics update (multi-stage explosions, debris, smoke).
-- [ ] Shield graphics overhaul so shields look like layered/angled energy fields instead of a simple blue circle.
-- [ ] Update impact hit effects so hull vs shield impacts look different based on projectile type.
+- [ ] Add crew portraits/faces and hook them into crew UI/stations.
+- [ ] Add crew voice system (voice lines/callouts tied to crew events and combat states).
+- [x] Keep core menus always visible as a bottom-screen clickable bar for quick edits/access.
+- [ ] Add full audio pass (weapon SFX, impact SFX, UI sounds, ambient/music mix pass).
+- [ ] Complete all remaining visual-upgrade items already listed in this section.
+- [x] Laser visual update (beam style, glow, impact readability).
+- [x] Projectile visual update (tracers, color coding, travel readability).
+- [x] Fire graphics update (ship burn effects, sustained flames, heat bloom).
+- [x] Destruction graphics update (multi-stage explosions, debris, smoke).
+- [x] Shield graphics overhaul so shields look like layered/angled energy fields instead of a simple blue circle.
+- [x] Update impact hit effects so hull vs shield impacts look different based on projectile type.
+- [x] Update explosion effects to simple animation and lower lag caused by particles
 
 ## Hull Breach and Deformation
-- [ ] Implement real-time ship mesh/hull deformation from impacts.
-- [ ] Render visible holes at exact impact locations on hull.
-- [ ] If a breached location overlaps a system zone, mark that system damaged/destroyed.
+- [x] Implement real-time ship mesh/hull deformation from impacts.
+- [x] Render visible holes at exact impact locations on hull.
+- [x] If a breached location overlaps a system zone, mark that system damaged/destroyed.
 ## other stuff i found
 - [x] when all enemy units are eliminated in resource rush, immediately declare victory for the correct side and faction
 - [x] add aiming redicle for wave motion gun ship, make it a large red aiming laser that warns all that the weapon is about to be fired. make it so that the wave motion gun of the player ship and the whole player ship try to point where the player mouse is at, allowing for reliable aim
