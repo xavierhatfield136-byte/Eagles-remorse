@@ -1,0 +1,90 @@
+plugins {
+    id "java"
+    id "checkstyle"
+    id "pmd"
+    id "com.github.spotbugs" version "6.4.4"
+}
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src"]
+        }
+        resources {
+            srcDirs = ["assets"]
+        }
+    }
+    test {
+        java {
+            srcDirs = ["test"]
+        }
+    }
+}
+
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:5.12.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+checkstyle {
+    toolVersion = "10.26.1"
+}
+
+tasks.withType(Checkstyle).configureEach {
+    ignoreFailures = true
+    showViolations = false
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+    }
+}
+
+pmd {
+    toolVersion = "7.15.0"
+    consoleOutput = false
+    ignoreFailures = true
+    ruleSetFiles = files("${rootDir}/config/pmd/ruleset.xml")
+    ruleSets = []
+}
+
+tasks.withType(Pmd).configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+    }
+}
+
+spotbugs {
+    effort = "max"
+    reportLevel = "medium"
+    ignoreFailures = true
+}
+
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+    }
+}
+
+tasks.named("check") {
+    dependsOn("spotbugsMain")
+}
