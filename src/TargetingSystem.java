@@ -118,20 +118,8 @@ public final class TargetingSystem {
         return GameMath.dist2(observer.x, observer.y, target.x, target.y) <= revealRange * revealRange;
     }
 
-    // Compatibility: some versions have s.dead, others have isAlive() or hp<=0; handle both.
     private static boolean isAlive(Ship s) {
-        try {
-            // If Ship has boolean dead
-            java.lang.reflect.Field f = s.getClass().getField("dead");
-            Object v = f.get(s);
-            if (v instanceof Boolean) return !((Boolean)v);
-        } catch (Throwable ignored) {}
-        try {
-            java.lang.reflect.Method m = s.getClass().getMethod("isAlive");
-            Object v = m.invoke(s);
-            if (v instanceof Boolean) return (Boolean)v;
-        } catch (Throwable ignored) {}
-        // fallback
-        return s.hp > 0;
+        if (s == null) return false;
+        return s.alive && !s.dying && s.hp > 0;
     }
 }

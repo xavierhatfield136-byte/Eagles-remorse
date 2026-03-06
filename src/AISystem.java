@@ -50,6 +50,8 @@ public final class AISystem {
     private static final Map<Integer, Integer> TEAM_DELAYED_TARGET_IDS = new HashMap<>();
     private static final Map<Integer, Double> CLOSEST_RETARGET_TIMERS = new HashMap<>();
     private static final Map<Integer, Integer> CLOSEST_RETARGET_TARGET_IDS = new HashMap<>();
+    private static final Map<Integer, Double> IMMEDIATE_THREAT_SCAN_TIMERS = new HashMap<>();
+    private static final Map<Integer, Double> ENGAGEMENT_SCAN_BACKOFF_TIMERS = new HashMap<>();
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
 
     public static void update(GameContext ctx, double dt) {
@@ -160,7 +162,7 @@ public final class AISystem {
                 continue;
             }
 
-            Ship target = selectEngagementTarget(ctx, fleetState, s);
+            Ship target = selectEngagementTarget(ctx, fleetState, s, dt);
             if (target != null && target.alive && !target.dying) {
                 fight(ctx, s, target, dt);
             } else {
@@ -767,19 +769,25 @@ public final class AISystem {
         if (flagship == null || !flagship.alive || flagship.dying || flagship.hp <= 0) return false;
         if (s.role == ShipRole.MINER) return false;
 
+        boolean playerDirected = playerCanDirectTeamFleet(ctx, s, flagship);
         GameContext.FleetCommand cmd = resolveFleetCommand(ctx, s, flagship);
         if (cmd == null || cmd == GameContext.FleetCommand.AUTO) return false;
         if (isRepairOrderCommand(cmd)) {
             s.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS);
         }
 
-        Ship target = selectEngagementTarget(ctx, state, s);
+        Ship target = selectEngagementTarget(ctx, state, s, dt);
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
         target = constrainTargetForCommand(ctx, s, flagship, base, cmd, target);
         double speed = Math.max(55.0, s.desiredSpeed);
         SquadObjective objective = (state.squadObjectives == null)
                 ? SquadObjective.HOLD
                 : state.squadObjectives.getOrDefault(s.id, SquadObjective.HOLD);
+        if (playerDirected) {
+            // When player is fleet flagship, explicit command posture should dominate
+            // over autonomous reserve/flank role reassignment.
+            objective = SquadObjective.HOLD;
+        }
         if (cmd == GameContext.FleetCommand.DEFEND
                 || cmd == GameContext.FleetCommand.ESCORT
                 || cmd == GameContext.FleetCommand.REPAIR
@@ -849,12 +857,13 @@ public final class AISystem {
 
         List<Ship> members = state.members.get(teamId);
         int slot = formationSlotIndex(members, flagship, s);
-        GameContext.FleetFormation desiredFormation = playerCanDirectTeamFleet(ctx, s, flagship)
+        int wingCount = formationWingCount(members, flagship);
+        GameContext.FleetFormation desiredFormation = playerDirected
                 ? ctx.alliedFleetFormation
                 : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
         double spacingMul = state.autoFormationSpacing.getOrDefault(teamId, 1.0);
-        double[] anchor = formationAnchor(flagship, slot, s.radius, preferredRange(s) * 0.35 * spacingMul,
-                desiredFormation);
+        double[] anchor = formationAnchor(
+                flagship, slot, wingCount, s.radius, preferredRange(s) * 0.35 * spacingMul, desiredFormation, cmd);
         Ship threatFocus = state.missileThreatFocus.get(teamId);
         if (isPointDefenseRole(s) && isAlive(threatFocus) && threatFocus != s) {
             anchor[0] = anchor[0] * 0.48 + threatFocus.x * 0.52;
@@ -950,7 +959,17 @@ public final class AISystem {
                 }
             }
             case ATTACK -> {
-                if (target != null && target.alive && !target.dying && objective != SquadObjective.RESERVE) {
+                if (playerDirected) {
+                    double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
+                    double anchorHold = Math.max(120.0, s.radius * 3.8);
+                    if (ad > anchorHold) {
+                        moveToward(s, anchor[0], anchor[1], speed * 1.04 * coherenceSpeedMul, dt);
+                    } else if (target != null && target.alive && !target.dying) {
+                        fight(ctx, s, target, dt, teamConfidence, SquadObjective.HOLD);
+                    } else {
+                        moveToward(s, anchor[0], anchor[1], speed * 0.92 * coherenceSpeedMul, dt);
+                    }
+                } else if (target != null && target.alive && !target.dying && objective != SquadObjective.RESERVE) {
                     fight(ctx, s, target, dt, teamConfidence, objective);
                 } else {
                     double spdMul = (objective == SquadObjective.INTERCEPT) ? 1.08 : (objective == SquadObjective.RESERVE ? 0.80 : 0.96);
@@ -1038,29 +1057,133 @@ public final class AISystem {
         return state.sharedTargets.get(s.faction.teamId());
     }
 
-    private static Ship selectEngagementTarget(GameContext ctx, FleetState state, Ship seeker) {
+    private static Ship selectEngagementTarget(GameContext ctx, FleetState state, Ship seeker, double dt) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
 
-        Ship immediate = findImmediateThreat(ctx, seeker, Math.max(210.0, preferredRange(seeker) * 0.62));
-        if (isAlive(immediate)) return immediate;
+        Ship immediate = scanImmediateThreatWithBackoff(
+                ctx, seeker, Math.max(0.0, dt), Math.max(210.0, preferredRange(seeker) * 0.62));
+        if (isAlive(immediate)) {
+            clearEngagementScanBackoff(seeker);
+            return immediate;
+        }
 
         Ship periodic = periodicClosestRetargetTarget(ctx, seeker);
-        if (isAlive(periodic) && canShipThreatenTarget(ctx, seeker, periodic)) return periodic;
+        if (isAlive(periodic) && canShipThreatenTarget(ctx, seeker, periodic)) {
+            clearEngagementScanBackoff(seeker);
+            return periodic;
+        }
 
         Ship shared = sharedTargetForTeam(state, seeker);
         if (shouldCommitToSharedTarget(state, seeker, shared) && canShipThreatenTarget(ctx, seeker, shared)) {
+            clearEngagementScanBackoff(seeker);
             return shared;
         }
 
+        if (shouldDeferEngagementScan(seeker, Math.max(0.0, dt))) {
+            if (isAlive(shared)) return shared;
+            return null;
+        }
+
         Ship preferred = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
-        if (isAlive(preferred) && canShipThreatenTarget(ctx, seeker, preferred)) return preferred;
+        if (isAlive(preferred) && canShipThreatenTarget(ctx, seeker, preferred)) {
+            clearEngagementScanBackoff(seeker);
+            return preferred;
+        }
 
         Ship reachable = findBestReachableEnemyTarget(ctx, seeker, shared, preferred);
-        if (isAlive(reachable)) return reachable;
+        if (isAlive(reachable)) {
+            clearEngagementScanBackoff(seeker);
+            return reachable;
+        }
+
+        if (isAlive(preferred) || isAlive(shared)) {
+            armEngagementScanBackoff(ctx, seeker, false);
+        } else {
+            armEngagementScanBackoff(ctx, seeker, true);
+        }
 
         if (isAlive(preferred)) return preferred;
         if (isAlive(shared)) return shared;
         return null;
+    }
+
+    private static Ship scanImmediateThreatWithBackoff(GameContext ctx, Ship seeker, double dt, double radius) {
+        if (ctx == null || seeker == null || seeker.faction == null) return null;
+        double t = IMMEDIATE_THREAT_SCAN_TIMERS.getOrDefault(seeker.id, 0.0) - dt;
+        if (t > 0.0) {
+            IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, t);
+            return null;
+        }
+        Ship immediate = findImmediateThreat(ctx, seeker, radius);
+        double jitter = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
+        double baseCadence = isAlive(immediate)
+                ? 0.08
+                : idleImmediateThreatCadence((seeker == null) ? null : seeker.role);
+        IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, baseCadence * (0.88 + jitter * 0.42));
+        return immediate;
+    }
+
+    private static double idleImmediateThreatCadence(ShipRole role) {
+        if (role == null) return 0.22;
+        return switch (role) {
+            case DRONE, FIGHTER, STEALTH_SHIP, PATROL -> 0.14;
+            case FRIGATE, PICKET, CIWS_CORVETTE, MISSILE_BOAT -> 0.18;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.22;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 0.28;
+            case BASE, STATIC_TURRET -> 0.34;
+            case MINER, HAULER, TRANSPORT -> 0.30;
+            default -> 0.22;
+        };
+    }
+
+    private static boolean shouldDeferEngagementScan(Ship seeker, double dt) {
+        if (seeker == null) return false;
+        double t = ENGAGEMENT_SCAN_BACKOFF_TIMERS.getOrDefault(seeker.id, 0.0) - dt;
+        if (t > 0.0) {
+            ENGAGEMENT_SCAN_BACKOFF_TIMERS.put(seeker.id, t);
+            return true;
+        }
+        ENGAGEMENT_SCAN_BACKOFF_TIMERS.remove(seeker.id);
+        return false;
+    }
+
+    private static void clearEngagementScanBackoff(Ship seeker) {
+        if (seeker == null) return;
+        ENGAGEMENT_SCAN_BACKOFF_TIMERS.remove(seeker.id);
+    }
+
+    private static void armEngagementScanBackoff(GameContext ctx, Ship seeker, boolean hardMiss) {
+        if (seeker == null) return;
+        double jitter = (ctx == null || ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
+        double base = hardMiss ? hardMissScanBackoff((seeker == null) ? null : seeker.role)
+                : softMissScanBackoff((seeker == null) ? null : seeker.role);
+        ENGAGEMENT_SCAN_BACKOFF_TIMERS.put(seeker.id, base * (0.85 + jitter * 0.45));
+    }
+
+    private static double softMissScanBackoff(ShipRole role) {
+        if (role == null) return 0.22;
+        return switch (role) {
+            case DRONE, FIGHTER, STEALTH_SHIP, PATROL -> 0.14;
+            case FRIGATE, PICKET, CIWS_CORVETTE, MISSILE_BOAT -> 0.18;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.24;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 0.30;
+            case BASE, STATIC_TURRET -> 0.34;
+            case MINER, HAULER, TRANSPORT -> 0.28;
+            default -> 0.22;
+        };
+    }
+
+    private static double hardMissScanBackoff(ShipRole role) {
+        if (role == null) return 0.58;
+        return switch (role) {
+            case DRONE, FIGHTER, STEALTH_SHIP, PATROL -> 0.30;
+            case FRIGATE, PICKET, CIWS_CORVETTE, MISSILE_BOAT -> 0.42;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.62;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 0.82;
+            case BASE, STATIC_TURRET -> 1.05;
+            case MINER, HAULER, TRANSPORT -> 0.92;
+            default -> 0.58;
+        };
     }
 
     private static Ship findImmediateThreat(GameContext ctx, Ship seeker, double radius) {
@@ -1152,6 +1275,8 @@ public final class AISystem {
         if (ships == null || ships.isEmpty()) {
             CLOSEST_RETARGET_TIMERS.clear();
             CLOSEST_RETARGET_TARGET_IDS.clear();
+            IMMEDIATE_THREAT_SCAN_TIMERS.clear();
+            ENGAGEMENT_SCAN_BACKOFF_TIMERS.clear();
             return;
         }
         java.util.HashSet<Integer> liveIds = new java.util.HashSet<>();
@@ -1161,6 +1286,8 @@ public final class AISystem {
         }
         CLOSEST_RETARGET_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
         CLOSEST_RETARGET_TARGET_IDS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+        IMMEDIATE_THREAT_SCAN_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+        ENGAGEMENT_SCAN_BACKOFF_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
     }
 
     private static void tickClosestWeaponRetarget(GameContext ctx, Ship seeker, double dt) {
@@ -1389,7 +1516,31 @@ public final class AISystem {
         return idx;
     }
 
-    private static double[] formationAnchor(Ship flagship, int slot, double radius, double baseSpacing, GameContext.FleetFormation formation) {
+    private static int formationWingCount(List<Ship> members, Ship flagship) {
+        if (members == null || members.isEmpty()) return 0;
+        int n = 0;
+        for (Ship s : members) {
+            if (s == null || s == flagship) continue;
+            if (!isAlive(s)) continue;
+            n++;
+        }
+        return Math.max(0, n);
+    }
+
+    private static double commandFormationLeadBias(GameContext.FleetCommand cmd) {
+        if (cmd == null) return 0.0;
+        return switch (cmd) {
+            case ATTACK -> 0.55;
+            case FORM_UP -> 0.28;
+            case ESCORT -> 0.10;
+            case DEFEND -> -0.22;
+            case RETREAT, RTB, REPAIR -> -0.36;
+            default -> 0.0;
+        };
+    }
+
+    private static double[] formationAnchor(Ship flagship, int slot, int wingCount, double radius, double baseSpacing,
+                                            GameContext.FleetFormation formation, GameContext.FleetCommand command) {
         if (flagship == null) return new double[]{0.0, 0.0};
         double spacing = Math.max(70.0, baseSpacing + radius * 1.2);
         double fx = Math.cos(flagship.angle);
@@ -1403,9 +1554,15 @@ public final class AISystem {
         GameContext.FleetFormation f = (formation == null) ? GameContext.FleetFormation.WEDGE : formation;
         switch (f) {
             case LINE -> {
-                int col = n - 3;
-                offX = -fx * spacing * 0.8 + rx * col * spacing * 0.9;
-                offY = -fy * spacing * 0.8 + ry * col * spacing * 0.9;
+                int aliveWing = Math.max(1, wingCount);
+                int cols = Math.min(9, Math.max(3, aliveWing));
+                if ((cols & 1) == 0) cols += 1;
+                int colIndex = n % cols;
+                int row = n / cols;
+                double center = (cols - 1) * 0.5;
+                double col = colIndex - center;
+                offX = rx * col * spacing * 0.95 - fx * row * spacing * 0.92;
+                offY = ry * col * spacing * 0.95 - fy * row * spacing * 0.92;
             }
             case SCREEN -> {
                 double ang = (n % 8) * (Math.PI * 2.0 / 8.0);
@@ -1420,6 +1577,9 @@ public final class AISystem {
                 offY = -fy * row * spacing + ry * side * row * spacing * 0.78;
             }
         }
+        double lead = commandFormationLeadBias(command) * spacing;
+        offX += fx * lead;
+        offY += fy * lead;
         return new double[]{flagship.x + offX, flagship.y + offY};
     }
 

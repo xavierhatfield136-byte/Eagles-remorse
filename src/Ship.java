@@ -1467,9 +1467,22 @@ public abstract class Ship {
                 ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
                 double spreadChance = MathUtil.clamp(0.34 * hz.fireIntensity, 0.0, 0.85);
                 if (def != null && def.neighbors.length > 0 && Math.random() < spreadChance) {
-                    int idx = (int) Math.floor(Math.random() * def.neighbors.length);
-                    if (idx < 0 || idx >= def.neighbors.length) idx = 0;
-                    igniteRoomFire(def.neighbors[idx], hz.fireIntensity * (0.62 + Math.random() * 0.42));
+                    java.util.ArrayList<ShipRoomLayout.RoomId> eligible = new java.util.ArrayList<>();
+                    for (ShipRoomLayout.RoomId nid : def.neighbors) {
+                        if (nid == null) continue;
+                        double nMax = roomHpMax.getOrDefault(nid, 0.0);
+                        if (nMax <= 1e-9) continue;
+                        double nCur = roomHp.getOrDefault(nid, nMax);
+                        double frac = nCur / nMax;
+                        if (frac < 0.90) {
+                            eligible.add(nid);
+                        }
+                    }
+                    if (!eligible.isEmpty()) {
+                        int idx = (int) Math.floor(Math.random() * eligible.size());
+                        if (idx < 0 || idx >= eligible.size()) idx = 0;
+                        igniteRoomFire(eligible.get(idx), hz.fireIntensity * (0.62 + Math.random() * 0.42));
+                    }
                 }
                 hz.spreadTimer = 0.62 + Math.random() * 0.55;
             }
