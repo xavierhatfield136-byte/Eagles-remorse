@@ -18,8 +18,8 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
 
     public void update(double dt) {
         if (player == null) return;
-        double speed = 220;
-        if (boost) speed *= 1.6;
+        // Keep legacy control path aligned with runtime input handling.
+        double speed = Math.max(55.0, player.desiredSpeed);
 
         double vx = 0, vy = 0;
         if (up) vy -= speed;

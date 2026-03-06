@@ -125,8 +125,8 @@ public final class GameSimulationRuntime {
 
         if (helmAutoApplied) return;
 
-        double speed = 220.0;
-        if (snap.boost) speed *= 1.6;
+        // Manual WASD uses the same speed ceiling basis as AI/autopilot movement.
+        double speed = Math.max(55.0, p.desiredSpeed);
 
         // Hull steering: A/D rotate the craft, with larger ships turning more slowly.
         double turnInput = 0.0;

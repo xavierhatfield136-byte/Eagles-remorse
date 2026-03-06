@@ -1221,7 +1221,7 @@ public final class CampaignSystem {
         st.bossDropsCollected++;
 
         ctx.player.hpMax += 14;
-        ctx.player.hp = Math.min(ctx.player.hpMax, ctx.player.hp + 14);
+        ctx.player.healHull(14);
         if (ctx.player.shieldActive) {
             ctx.player.shieldMax += 28.0;
             ctx.player.shield = Math.min(ctx.player.shieldMax, ctx.player.shield + 28.0);
@@ -1265,7 +1265,7 @@ public final class CampaignSystem {
         st.bossDropsCollected++;
 
         ctx.player.hpMax += 36;
-        ctx.player.hp = Math.min(ctx.player.hpMax, ctx.player.hp + 36);
+        ctx.player.healHull(36);
         if (ctx.player.shieldActive) {
             ctx.player.shieldMax += 40.0;
             ctx.player.shield = Math.min(ctx.player.shieldMax, ctx.player.shield + 40.0);
@@ -1351,7 +1351,7 @@ public final class CampaignSystem {
 
     private static void healAndRefitPlayer(GameContext ctx) {
         if (ctx.player == null) return;
-        ctx.player.hp = ctx.player.hpMax;
+        ctx.player.fullyRepairHull();
         if (ctx.player.shieldActive && ctx.player.shieldMax > 0) {
             ctx.player.shield = ctx.player.shieldMax;
         }
@@ -1393,7 +1393,7 @@ public final class CampaignSystem {
     private static void applyReinforcedHullPackage(Player player) {
         if (player == null) return;
         player.hpMax += 30;
-        player.hp = Math.min(player.hpMax, player.hp + 30);
+        player.healHull(30);
         if (player.shieldActive) {
             player.shieldMax += 20;
             player.shield = Math.min(player.shieldMax, player.shield + 20);

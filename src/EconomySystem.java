@@ -1168,7 +1168,7 @@ public final class EconomySystem {
                     }
                     // repair a bit (hp/hpMax are ints in this codebase)
                     int heal = (int) Math.round(18 * dt);
-                    if (heal > 0) s.hp = Math.min(s.hpMax, s.hp + heal);
+                    if (heal > 0) s.healHull(heal);
                 }
                 s.minerState = Ship.MinerState.SEEK_ASTEROID;
             }

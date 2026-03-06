@@ -372,7 +372,7 @@ public final class UISystem {
         }
         ctx.credits -= cost;
         ctx.player.hpMax += 10;
-        ctx.player.hp += 10;
+        ctx.player.healHull(10);
         EventSystem.showBanner(ctx, "HULL UPGRADED", 1.2);
     }
 
@@ -580,7 +580,7 @@ public final class UISystem {
             case 1 -> {
                 up.hullLv++;
                 base.hpMax += 40;
-                base.hp += 40;
+                base.healHull(40);
                 EventSystem.showBanner(ctx, "HULL FORTIFIED", 1.2);
             }
             case 2 -> {
