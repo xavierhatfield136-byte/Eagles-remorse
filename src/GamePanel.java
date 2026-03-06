@@ -170,6 +170,9 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Z, 0, false), "carrierAutoLaunch", () -> {
             GameplayActions.tryCarrierToggleAutoLaunch(ctx);
         });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0, false), "teleportToBase", () -> {
+            GameplayActions.tryTeleportToBase(ctx);
+        });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Y, 0, false), "cyclePowerPreset", () -> {
             GameplayActions.cyclePowerPreset(ctx);
         });

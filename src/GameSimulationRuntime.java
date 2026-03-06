@@ -5,6 +5,8 @@ public final class GameSimulationRuntime {
     private static final long MAX_ELAPSED_NS = 250_000_000L;
     private static final int MAX_UPDATE_STEPS = 6;
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
+    private static final double TELEPORT_CHARGE_SECONDS = 5.0;
+    private static final double TELEPORT_DISRUPT_TOLERANCE_SECONDS = 0.05;
 
     private final GameContext ctx;
 
@@ -81,6 +83,7 @@ public final class GameSimulationRuntime {
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
+            updatePlayerTeleportCharge(dt);
             if (ctx.player != null) {
                 ctx.player.x = GameMath.clamp(ctx.player.x, 0, ctx.WORLD_W);
                 ctx.player.y = GameMath.clamp(ctx.player.y, 0, ctx.WORLD_H);
@@ -91,6 +94,7 @@ public final class GameSimulationRuntime {
         }
 
         PhysicsSystem.update(ctx, dt);
+        updatePlayerTeleportCharge(dt);
         AISystem.update(ctx, dt);
         CarrierSystem.update(ctx, dt);
         EconomySystem.update(ctx, dt);
@@ -108,6 +112,57 @@ public final class GameSimulationRuntime {
         if (!isPlayerRepairOrderActive()) return;
         if (ctx.player.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS)) {
             EventSystem.showBanner(ctx, "DAMAGE CONTROL COMPLETE", 1.4);
+        }
+    }
+
+    private void updatePlayerTeleportCharge(double dt) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.playerTeleportCharging) return;
+        if (dt <= 0.0) return;
+
+        Player p = ctx.player;
+        if (!p.alive || p.dying || p.hp <= 0) {
+            cancelPlayerTeleport("RTB TELEPORT ABORTED", 1.0);
+            return;
+        }
+
+        Ship base = TeamSystem.getBaseForTeam(ctx, p.faction);
+        if (base == null || !base.alive || base.dying || base.hp <= 0) {
+            cancelPlayerTeleport("RTB TELEPORT ABORTED", 1.0);
+            return;
+        }
+
+        double elapsed = TELEPORT_CHARGE_SECONDS - Math.max(0.0, ctx.playerTeleportChargeRemaining);
+        if (p.secondsSinceDamage() + TELEPORT_DISRUPT_TOLERANCE_SECONDS < elapsed) {
+            cancelPlayerTeleport("RTB TELEPORT DISRUPTED", 1.2);
+            return;
+        }
+
+        ctx.playerTeleportChargeRemaining = Math.max(0.0, ctx.playerTeleportChargeRemaining - dt);
+        if (ctx.playerTeleportChargeRemaining > 1e-6) return;
+
+        double ang = ((ctx.rng != null) ? ctx.rng.nextDouble() : Math.random()) * Math.PI * 2.0;
+        double dockDist = Math.max(90.0, base.radius + p.radius + 40.0);
+        double tx = base.x + Math.cos(ang) * dockDist;
+        double ty = base.y + Math.sin(ang) * dockDist;
+        p.x = GameMath.clamp(tx, 0, ctx.WORLD_W);
+        p.y = GameMath.clamp(ty, 0, ctx.WORLD_H);
+        p.vx = 0.0;
+        p.vy = 0.0;
+        ctx.waypointX = base.x;
+        ctx.waypointY = base.y;
+        ctx.playerTeleportCharging = false;
+        ctx.playerTeleportChargeRemaining = 0.0;
+        EventSystem.showBanner(ctx, "RTB TELEPORT COMPLETE", 1.2);
+    }
+
+    private void cancelPlayerTeleport(String banner, double seconds) {
+        if (ctx == null) return;
+        if (!ctx.playerTeleportCharging) return;
+        ctx.playerTeleportCharging = false;
+        ctx.playerTeleportChargeRemaining = 0.0;
+        if (banner != null && !banner.isBlank()) {
+            EventSystem.showBanner(ctx, banner, Math.max(0.1, seconds));
         }
     }
 

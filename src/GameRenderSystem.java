@@ -196,6 +196,10 @@ if (DevTools.isDebugOverlay()) {
         if (!p.alive || p.dying || p.hp <= 0) {
             return "";
         }
+        if (ctx.playerTeleportCharging) {
+            double t = Math.max(0.0, ctx.playerTeleportChargeRemaining);
+            return String.format("RTB teleport charging: %.1fs remaining (taking damage disrupts).", t);
+        }
 
         double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
         double shieldFrac = (p.shieldMax <= 0.0) ? 1.0 : (p.shield / Math.max(1e-9, p.shieldMax));

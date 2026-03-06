@@ -156,6 +156,24 @@ public final class GameplayActions {
         EventSystem.showBanner(ctx, "SHIELD MODE: " + mode.name(), 0.8);
     }
 
+    public static void tryTeleportToBase(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
+        if (base == null || !base.alive || base.dying || base.hp <= 0) {
+            EventSystem.showBanner(ctx, "TELEPORT UNAVAILABLE: NO FRIENDLY BASE", 1.4);
+            return;
+        }
+        if (ctx.playerTeleportCharging) {
+            ctx.playerTeleportCharging = false;
+            ctx.playerTeleportChargeRemaining = 0.0;
+            EventSystem.showBanner(ctx, "RTB TELEPORT CANCELLED", 1.0);
+            return;
+        }
+        ctx.playerTeleportCharging = true;
+        ctx.playerTeleportChargeRemaining = 5.0;
+        EventSystem.showBanner(ctx, "RTB TELEPORT CHARGING (5.0S)", 1.2);
+    }
+
     public static void rotateShieldFacing(GameContext ctx, int dir) {
         if (!canIssueCombatAction(ctx)) return;
         int step = (dir < 0) ? -1 : 1;
@@ -276,6 +294,9 @@ public final class GameplayActions {
                 else if (keyCode == java.awt.event.KeyEvent.VK_E) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.REPAIR);
                 else if (keyCode == java.awt.event.KeyEvent.VK_R) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.RTB);
                 else if (keyCode == java.awt.event.KeyEvent.VK_T) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.AUTO);
+                else if (keyCode == java.awt.event.KeyEvent.VK_MINUS || keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
+                    tryTeleportToBase(ctx);
+                }
                 else return false;
                 return true;
             }

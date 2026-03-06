@@ -1362,9 +1362,9 @@ public abstract class Ship {
             hz = new RoomHazardState(roomId);
             roomHazards.put(roomId, hz);
         }
-        hz.fireIntensity = Math.max(hz.fireIntensity, MathUtil.clamp(intensity, 0.0, 2.0));
-        if (hz.damageTickTimer <= 0.0) hz.damageTickTimer = 0.25 + Math.random() * 0.25;
-        if (hz.spreadTimer <= 0.0) hz.spreadTimer = 0.75 + Math.random() * 0.65;
+        hz.fireIntensity = Math.max(hz.fireIntensity, MathUtil.clamp(intensity, 0.0, 2.6));
+        if (hz.damageTickTimer <= 0.0) hz.damageTickTimer = 0.18 + Math.random() * 0.16;
+        if (hz.spreadTimer <= 0.0) hz.spreadTimer = 0.50 + Math.random() * 0.45;
     }
 
     private void damageRoom(ShipRoomLayout.RoomDef room, double damage,
@@ -1416,7 +1416,7 @@ public abstract class Ship {
         logRoomDamage(room.id, normalizedX, normalizedY, damage, fromHazard);
 
         if (room.primarySystem != null) {
-            double sysScale = fromHazard ? 0.42 : 0.70;
+            double sysScale = fromHazard ? 0.68 : 0.70;
             damageSystem(room.primarySystem, damage * sysScale);
         }
 
@@ -1430,10 +1430,10 @@ public abstract class Ship {
 
         if (!fromHazard) {
             double fracLost = (before - after) / Math.max(1e-6, max);
-            double ignitionChance = 0.05 + fracLost * 0.34;
-            if (room.critical) ignitionChance += 0.08;
-            if (Math.random() < MathUtil.clamp(ignitionChance, 0.0, 0.70)) {
-                igniteRoomFire(room.id, 0.25 + fracLost * 1.20);
+            double ignitionChance = 0.10 + fracLost * 0.50;
+            if (room.critical) ignitionChance += 0.12;
+            if (Math.random() < MathUtil.clamp(ignitionChance, 0.0, 0.88)) {
+                igniteRoomFire(room.id, 0.40 + fracLost * 1.45);
             }
         }
 
@@ -1449,27 +1449,29 @@ public abstract class Ship {
 
         for (RoomHazardState hz : roomHazards.values()) {
             if (hz == null || !hz.active()) continue;
-            hz.fireIntensity = Math.max(0.0, hz.fireIntensity - dt * 0.035);
+            hz.fireIntensity = Math.max(0.0, hz.fireIntensity - dt * 0.012);
 
             hz.damageTickTimer -= dt;
             if (hz.damageTickTimer <= 0.0) {
                 ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
                 if (def != null) {
-                    double roomDmg = Math.max(0.5, hz.fireIntensity * (0.9 + Math.random() * 1.2));
+                    double roomDmg = Math.max(1.2, hz.fireIntensity * (2.0 + Math.random() * 1.6));
+                    if (def.critical) roomDmg *= 1.20;
                     damageRoom(def, roomDmg, Double.NaN, Double.NaN, true);
                 }
-                hz.damageTickTimer = 0.70 + Math.random() * 0.55;
+                hz.damageTickTimer = 0.38 + Math.random() * 0.32;
             }
 
             hz.spreadTimer -= dt;
             if (hz.spreadTimer <= 0.0) {
                 ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
-                if (def != null && def.neighbors.length > 0 && Math.random() < 0.18 * hz.fireIntensity) {
+                double spreadChance = MathUtil.clamp(0.34 * hz.fireIntensity, 0.0, 0.85);
+                if (def != null && def.neighbors.length > 0 && Math.random() < spreadChance) {
                     int idx = (int) Math.floor(Math.random() * def.neighbors.length);
                     if (idx < 0 || idx >= def.neighbors.length) idx = 0;
-                    igniteRoomFire(def.neighbors[idx], hz.fireIntensity * (0.40 + Math.random() * 0.35));
+                    igniteRoomFire(def.neighbors[idx], hz.fireIntensity * (0.62 + Math.random() * 0.42));
                 }
-                hz.spreadTimer = 1.2 + Math.random() * 1.0;
+                hz.spreadTimer = 0.62 + Math.random() * 0.55;
             }
         }
     }
@@ -1610,7 +1612,7 @@ public abstract class Ship {
             }
             RoomHazardState hz = roomHazards.get(lowestRoom);
             if (hz != null && hz.fireIntensity > 0.0) {
-                hz.fireIntensity = Math.max(0.0, hz.fireIntensity - amount * 0.40);
+                hz.fireIntensity = Math.max(0.0, hz.fireIntensity - amount * 0.18);
             }
         }
 

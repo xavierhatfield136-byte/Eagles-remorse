@@ -124,10 +124,10 @@ public final class PhysicsSystem {
         }
 
         // --- Collisions ---
-        CollisionSystem.handleProjectilesVsProjectiles(ctx.projectiles);
+        CollisionSystem.handleProjectilesVsProjectiles(ctx, ctx.projectiles);
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
-        CollisionSystem.handleProjectilesVsAsteroids(ctx.projectiles, ctx.asteroids);
-        CollisionSystem.handleProjectilesVsShips(ctx.projectiles, ctx.ships);
+        CollisionSystem.handleProjectilesVsAsteroids(ctx, ctx.projectiles, ctx.asteroids);
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
 
         // --- Cleanup destroyed ships (keep player object even if dead) ---
         ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));

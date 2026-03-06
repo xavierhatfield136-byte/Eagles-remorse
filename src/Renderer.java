@@ -1803,6 +1803,8 @@ public class Renderer {
                 ly += 16;
                 g2.drawString("Q/W/E/R assign nearest friendly ATTACK/DEFEND/REPAIR/RTB, T clears override.", readoutX, ly);
                 ly += 16;
+                g2.drawString("- or BACKSPACE: charge 5s teleport to base (damage disrupts).", readoutX, ly);
+                ly += 16;
                 g2.drawString("Captain directives set ship posture and allied fleet command behavior.", readoutX, ly);
             }
             case HELM -> {

@@ -139,6 +139,8 @@ public class GameContext {
     public final Map<Integer, FleetCommand> shipFleetCommandOverrides = new HashMap<>();
     public final java.util.EnumMap<Faction, Ship> fleetCommandShips = new java.util.EnumMap<>(Faction.class);
     public final java.util.EnumMap<Faction, Ship> fleetSharedTargets = new java.util.EnumMap<>(Faction.class);
+    public boolean playerTeleportCharging = false;
+    public double playerTeleportChargeRemaining = 0.0;
 
     // Waypoint / pings
     public double waypointX = Double.NaN;
