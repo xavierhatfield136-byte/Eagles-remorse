@@ -341,8 +341,10 @@ public abstract class Ship {
     }
 
     private static final int MAX_HULL_IMPACT_MARKS = 64;
+    private static final double HULL_IMPACT_DECAY_IDLE_SECONDS = 10.0;
     private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
     private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
+    private double hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
 
     public static final class RoomDamageEvent {
         public final ShipRoomLayout.RoomId roomId;
@@ -493,6 +495,7 @@ public abstract class Ship {
             recentShieldImpactTimer -= dt;
             if (recentShieldImpactTimer < 0.0) recentShieldImpactTimer = 0.0;
         }
+        updateHullImpactDecay(dt);
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
         ensurePowerInitialized();
@@ -696,6 +699,7 @@ public abstract class Ship {
         if (!alive) return;
         if (dying) return;
         if (dmg <= 0) return;
+        hullImpactNoDamageTimer = 0.0;
 
         // Getting hit briefly reveals stealth ships.
         reveal(2.5);
@@ -998,6 +1002,7 @@ public abstract class Ship {
 
     public void clearHullImpactMarks() {
         hullImpactMarks.clear();
+        hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
     }
 
     public List<RoomStatus> roomStatusSnapshot() {
@@ -2012,6 +2017,19 @@ public abstract class Ship {
             hullImpactMarks.remove(0);
         }
         hullImpactMarks.add(new HullImpactMark(impact.localX, impact.localY, severity, breachRadius));
+        hullImpactNoDamageTimer = 0.0;
+    }
+
+    private void updateHullImpactDecay(double dt) {
+        if (dt <= 0.0) return;
+        if (hullImpactMarks.isEmpty()) {
+            hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
+            return;
+        }
+        hullImpactNoDamageTimer += dt;
+        if (hullImpactNoDamageTimer >= HULL_IMPACT_DECAY_IDLE_SECONDS) {
+            clearHullImpactMarks();
+        }
     }
 
     private void damageSystem(InternalSystem system, double damage) {

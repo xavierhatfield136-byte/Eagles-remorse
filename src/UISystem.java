@@ -624,6 +624,7 @@ public final class UISystem {
 
     public static int getMaxHangarTierForPlayer(GameContext ctx) {
         if (ctx == null || ctx.baseUpgrades == null) return 0;
+        if (ctx.config != null && ctx.config.mode == GameMode.SHOOTING_RANGE) return 3;
         int best = 0;
         for (java.util.Map.Entry<Ship, BaseUpgrades> e : ctx.baseUpgrades.entrySet()) {
             Ship b = e.getKey();
@@ -708,7 +709,7 @@ public final class UISystem {
                 ctx.alliedFleetCommand = GameContext.FleetCommand.ESCORT;
             }
             case DEFEND -> {
-                ctx.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
+                ctx.helmMode = GameContext.HelmMode.ORBIT;
                 ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
                 ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);

@@ -19,7 +19,8 @@ public final class VFX {
 
     private VFX() {}
 
-    private static final int MAX = 1800;
+    // Keep this tighter during fleet-heavy modes (Resource Rush, late waves).
+    private static final int MAX = 1100;
     private static final List<Particle> active = new ArrayList<>();
     private static final Random RNG = new Random();
 
@@ -280,44 +281,51 @@ public final class VFX {
     }
 
     public static void spawnImpactSparks(double x, double y, double dirX, double dirY, int strength) {
-        spawnImpactBurst(x, y, dirX, dirY,
-                MathUtil.clamp(4 + Math.max(1, strength) * 2, 4, 18),
-                new Color(255, 210, 120),
-                Math.toRadians(140),
-                110, 240,
-                10, 12,
-                1.2, 1.8,
-                200);
+        // Lightweight fallback impact: single compact bloom (no spark spray).
+        int sev = Math.max(1, strength);
+        spawnImpactBloom(
+                x, y,
+                4.4 + sev * 0.9,
+                new Color(255, 160, 84),
+                8,
+                175
+        );
     }
 
     public static void spawnHullImpact(double x, double y, double dirX, double dirY, int strength, ImpactStyle style) {
         ImpactStyle s = (style == null) ? ImpactStyle.KINETIC : style;
-        int n = MathUtil.clamp(4 + Math.max(1, strength) * 2, 4, 22);
+        int sev = Math.max(1, strength);
         Color tint = switch (s) {
             case KINETIC -> new Color(255, 205, 130);
             case ENERGY -> new Color(130, 225, 255);
             case EXPLOSIVE -> new Color(255, 165, 95);
             case BEAM -> new Color(165, 245, 255);
         };
-        double spread = switch (s) {
-            case EXPLOSIVE -> Math.toRadians(180);
-            case BEAM -> Math.toRadians(78);
-            case ENERGY -> Math.toRadians(98);
-            case KINETIC -> Math.toRadians(130);
-        };
-        int lifeMin = (s == ImpactStyle.BEAM) ? 8 : 10;
-        int lifeRange = (s == ImpactStyle.EXPLOSIVE) ? 16 : 12;
-        double sizeMin = (s == ImpactStyle.EXPLOSIVE) ? 1.4 : 1.2;
-        double sizeRange = (s == ImpactStyle.EXPLOSIVE) ? 2.2 : 1.8;
-        spawnImpactBurst(x, y, dirX, dirY, n, tint, spread, 95, 260, lifeMin, lifeRange, sizeMin, sizeRange, 210);
 
-        if (s == ImpactStyle.EXPLOSIVE) {
-            spawnSmokeBurst(x, y, MathUtil.clamp(2 + strength / 2, 2, 8), new Color(84, 84, 88), 4.0, 3.4);
-            spawnImpactBloom(x, y, 10 + strength * 1.8, new Color(255, 175, 108), 14, 170);
-        } else if (s == ImpactStyle.ENERGY || s == ImpactStyle.BEAM) {
-            spawnImpactBloom(x, y, 8 + strength * 1.4, tint, 12, 145);
-        } else if (strength >= 4) {
-            spawnSmokeBurst(x, y, 1 + strength / 4, new Color(96, 92, 90), 3.5, 2.8);
+        // Performance-focused hull hit: no particle spray, just a compact flash.
+        double size = switch (s) {
+            case EXPLOSIVE -> 6.4 + sev * 1.2;
+            case BEAM -> 5.2 + sev * 0.9;
+            case ENERGY -> 5.0 + sev * 0.95;
+            case KINETIC -> 4.8 + sev * 0.85;
+        };
+        int life = switch (s) {
+            case EXPLOSIVE -> 12;
+            case BEAM -> 9;
+            case ENERGY -> 10;
+            case KINETIC -> 9;
+        };
+        int alpha = switch (s) {
+            case EXPLOSIVE -> 195;
+            case BEAM -> 170;
+            case ENERGY -> 180;
+            case KINETIC -> 175;
+        };
+        spawnImpactBloom(x, y, size, tint, life, alpha);
+
+        // Explosive impacts get a tiny secondary flash instead of debris/smoke plumes.
+        if (s == ImpactStyle.EXPLOSIVE && sev >= 3) {
+            spawnImpactBloom(x, y, Math.max(3.5, size * 0.62), new Color(255, 216, 170), 8, 155);
         }
     }
 

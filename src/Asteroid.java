@@ -3,15 +3,21 @@
  *
  * Asteroids:
  * - Block ship movement (ships are pushed out, no damage)
- * - Block projectiles (projectiles die on contact)
+ * - Can be mined for ore
+ * - Can be destroyed by sustained weapons fire
  */
 public class Asteroid {
+    private static int NEXT_ID = 1;
+    public final int id = NEXT_ID++;
+
     public double x, y;
     public double radius;
 
     // Resource content
     public int oreMax;
     public int ore;
+    public int hpMax;
+    public int hp;
 
 
     // Event modifiers / visuals
@@ -32,6 +38,8 @@ public class Asteroid {
 
         this.oreMax = Math.max(0, oreAmount);
         this.ore = this.oreMax;
+        this.hpMax = computeDurability();
+        this.hp = this.hpMax;
 
 
         // Mark as \"rich\" for rendering emphasis when ore payload is high.
@@ -56,5 +64,23 @@ public class Asteroid {
         int take = Math.min(amount, ore);
         ore -= take;
         return take;
+    }
+
+    public boolean applyWeaponDamage(int damage) {
+        if (damage <= 0) return hp <= 0;
+        if (hp <= 0) return true;
+        hp = Math.max(0, hp - damage);
+        if (hp <= 0) {
+            // Destroyed asteroids are no longer mineable.
+            ore = 0;
+        }
+        return hp <= 0;
+    }
+
+    private int computeDurability() {
+        double sizeFactor = Math.max(8.0, collisionRadius()) * 2.4;
+        double oreFactor = Math.sqrt(Math.max(0, oreMax)) * 0.85;
+        int durability = (int) Math.round(26.0 + sizeFactor + oreFactor);
+        return Math.max(24, durability);
     }
 }

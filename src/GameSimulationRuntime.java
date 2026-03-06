@@ -132,7 +132,7 @@ public final class GameSimulationRuntime {
         double turnInput = 0.0;
         if (snap.left) turnInput -= 1.0;
         if (snap.right) turnInput += 1.0;
-        double turnRate = turnRateForRadius(p.radius);
+        double turnRate = turnRateForShip(p);
         p.angle = MathUtil.normalizeAngle(p.angle + turnInput * turnRate * dt);
 
         if (p.hasWaveMotionGun && p.isWaveMotionCharging()) {
@@ -145,10 +145,27 @@ public final class GameSimulationRuntime {
         double throttle = 0.0;
         if (snap.up) throttle += 1.0;
         if (snap.down) throttle -= 1.0;
-        double vx = Math.cos(p.angle) * speed * throttle;
-        double vy = Math.sin(p.angle) * speed * throttle;
-        p.vx = vx * dt;
-        p.vy = vy * dt;
+        double thrustMul = (throttle >= 0.0) ? 1.0 : reverseThrustMul((p == null) ? null : p.role);
+        double desiredVxPerSec = Math.cos(p.angle) * speed * throttle * thrustMul;
+        double desiredVyPerSec = Math.sin(p.angle) * speed * throttle * thrustMul;
+
+        double curVxPerSec = (dt <= 1e-9) ? 0.0 : (p.vx / dt);
+        double curVyPerSec = (dt <= 1e-9) ? 0.0 : (p.vy / dt);
+        double responsePerSec = handlingResponsePerSec((p == null) ? null : p.role);
+        double blend = MathUtil.clamp(responsePerSec * dt, 0.0, 1.0);
+
+        if (Math.abs(throttle) <= 1e-6) {
+            // No thrust input: bleed momentum by role handling, so heavier hulls drift longer.
+            double damp = MathUtil.clamp(responsePerSec * 0.90 * dt, 0.0, 1.0);
+            curVxPerSec += (0.0 - curVxPerSec) * damp;
+            curVyPerSec += (0.0 - curVyPerSec) * damp;
+        } else {
+            curVxPerSec += (desiredVxPerSec - curVxPerSec) * blend;
+            curVyPerSec += (desiredVyPerSec - curVyPerSec) * blend;
+        }
+
+        p.vx = curVxPerSec * dt;
+        p.vy = curVyPerSec * dt;
     }
 
     private static double rotateToward(double current, double desired, double maxStep) {
@@ -160,6 +177,76 @@ public final class GameSimulationRuntime {
     private static double turnRateForRadius(double radius) {
         double r = Math.max(8.0, radius);
         return GameMath.clamp(4.2 - r * 0.05, 0.85, 3.8);
+    }
+
+    private static double turnRateForShip(Ship ship) {
+        if (ship == null) return turnRateForRadius(16.0);
+        ShipRole role = ship.role;
+        double roleMul = (role == null) ? 1.0 : switch (role) {
+            case DRONE -> 1.28;
+            case FIGHTER -> 1.24;
+            case STEALTH_SHIP -> 1.20;
+            case PATROL -> 1.15;
+            case PD_CRAFT -> 1.14;
+            case CIWS_CORVETTE -> 1.10;
+            case BOMBER -> 1.05;
+            case FRIGATE -> 1.00;
+            case PICKET -> 0.95;
+            case LIGHT_CRUISER -> 0.92;
+            case BATTLECRUISER -> 0.90;
+            case MINER -> 0.88;
+            case MISSILE_BOAT -> 0.85;
+            case MEDIUM_CRUISER, CRUISER -> 0.80;
+            case TRANSPORT -> 0.78;
+            case DRONE_CARRIER -> 0.76;
+            case HAULER -> 0.74;
+            case BATTLESHIP -> 0.72;
+            case CARRIER -> 0.68;
+            case DREADNOUGHT -> 0.62;
+            case SUPERSHIP -> 0.50;
+            default -> 1.0;
+        };
+        return turnRateForRadius(ship.radius) * roleMul;
+    }
+
+    private static double reverseThrustMul(ShipRole role) {
+        if (role == null) return 0.62;
+        return switch (role) {
+            case DRONE, FIGHTER -> 0.96;
+            case STEALTH_SHIP, PATROL, PD_CRAFT, CIWS_CORVETTE -> 0.86;
+            case BOMBER, PICKET, MISSILE_BOAT -> 0.68;
+            case FRIGATE, LIGHT_CRUISER -> 0.72;
+            case MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.58;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 0.42;
+            case CARRIER, DRONE_CARRIER -> 0.46;
+            case TRANSPORT, HAULER, MINER -> 0.52;
+            default -> 0.62;
+        };
+    }
+
+    private static double handlingResponsePerSec(ShipRole role) {
+        if (role == null) return 8.5;
+        return switch (role) {
+            case DRONE -> 13.0;
+            case FIGHTER -> 12.0;
+            case STEALTH_SHIP -> 11.5;
+            case PATROL, PD_CRAFT -> 10.8;
+            case CIWS_CORVETTE -> 10.2;
+            case BOMBER -> 9.2;
+            case FRIGATE -> 9.0;
+            case PICKET -> 8.4;
+            case LIGHT_CRUISER -> 8.0;
+            case MISSILE_BOAT -> 7.6;
+            case BATTLECRUISER -> 7.2;
+            case MINER -> 7.0;
+            case MEDIUM_CRUISER, CRUISER -> 6.5;
+            case DRONE_CARRIER, TRANSPORT, HAULER -> 6.0;
+            case BATTLESHIP -> 5.4;
+            case CARRIER -> 5.0;
+            case DREADNOUGHT -> 4.6;
+            case SUPERSHIP -> 4.0;
+            default -> 8.5;
+        };
     }
 
     private static double smooth(double prev, double sample, double alpha) {

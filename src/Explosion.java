@@ -5,7 +5,7 @@ import java.util.List;
 public class Explosion {
 
     // Hard cap so even if something goes wrong, the game never floods effects.
-    private static final int MAX_EFFECTS = 1200;
+    private static final int MAX_EFFECTS = 900;
 
     public static final List<Explosion> active = new ArrayList<>();
 
@@ -32,7 +32,7 @@ public class Explosion {
     }
 
     public static void spawnShieldHit(double x, double y) {
-        addCapped(new Explosion(x, y, 0.16, Kind.SHIELD_HIT)); // short impact ripple
+        addCapped(new Explosion(x, y, 0.12, Kind.SHIELD_HIT)); // short impact ripple
     }
 
     public static void spawnDeath(double x, double y) {

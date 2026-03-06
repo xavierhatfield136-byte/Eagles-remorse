@@ -771,10 +771,19 @@ public final class AISystem {
 
         Ship target = selectEngagementTarget(ctx, state, s);
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
+        target = constrainTargetForCommand(ctx, s, flagship, base, cmd, target);
         double speed = Math.max(55.0, s.desiredSpeed);
         SquadObjective objective = (state.squadObjectives == null)
                 ? SquadObjective.HOLD
                 : state.squadObjectives.getOrDefault(s.id, SquadObjective.HOLD);
+        if (cmd == GameContext.FleetCommand.DEFEND
+                || cmd == GameContext.FleetCommand.ESCORT
+                || cmd == GameContext.FleetCommand.REPAIR
+                || cmd == GameContext.FleetCommand.RTB
+                || cmd == GameContext.FleetCommand.RETREAT
+                || cmd == GameContext.FleetCommand.MINE) {
+            objective = SquadObjective.HOLD;
+        }
         double teamConfidence = sharedTargetConfidence(state, s);
 
         if (s == flagship) {
@@ -793,23 +802,25 @@ public final class AISystem {
                     return true;
                 }
                 case DEFEND, FORM_UP, ESCORT -> {
-                    if (target != null && target.alive && !target.dying) {
+                    double keep = (base == null) ? Math.max(260.0, preferredRange(s) * 0.90)
+                            : Math.max(260.0, base.radius + 150.0);
+                    double defendPerimeter = (base == null) ? Math.max(780.0, preferredRange(s) * 1.8)
+                            : Math.max(860.0, base.radius + 560.0);
+                    boolean targetInPerimeter = target != null
+                            && (base == null
+                            ? Math.hypot(target.x - s.x, target.y - s.y) <= defendPerimeter
+                            : Math.hypot(target.x - base.x, target.y - base.y) <= defendPerimeter);
+                    if (target != null && target.alive && !target.dying && targetInPerimeter) {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
-                        if (d > preferredRange(s) * 1.15) {
-                            moveToward(s, target.x, target.y, speed * 1.03, dt);
+                        if (d > preferredRange(s) * 1.12) {
+                            moveToward(s, target.x, target.y, speed * 1.00, dt);
                         } else {
                             fight(ctx, s, target, dt, teamConfidence, SquadObjective.HOLD);
                         }
-                    } else if (cmd == GameContext.FleetCommand.ESCORT && base != null) {
-                        double keep = Math.max(260.0, base.radius + 140.0);
-                        orbit(s, base.x, base.y, keep, speed * 0.85, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
+                    } else if (base != null) {
+                        orbit(s, base.x, base.y, keep, speed * 0.84, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
                     } else {
-                        Ship hostileBase = findClosestHostileBase(ctx, s);
-                        if (isAlive(hostileBase)) {
-                            moveToward(s, hostileBase.x, hostileBase.y, speed * 0.95, dt);
-                        } else {
-                            wander(ctx, s, dt);
-                        }
+                        wander(ctx, s, dt);
                     }
                     s.tryCIWS(dt, ctx.projectiles);
                     return true;
@@ -949,6 +960,25 @@ public final class AISystem {
 
         s.tryCIWS(dt, ctx.projectiles);
         return true;
+    }
+
+    private static Ship constrainTargetForCommand(GameContext ctx, Ship self, Ship flagship, Ship base,
+                                                  GameContext.FleetCommand cmd, Ship target) {
+        if (cmd == null || !isAlive(target) || self == null) return null;
+        if (cmd == GameContext.FleetCommand.ATTACK) return target;
+
+        double dSelf = Math.hypot(target.x - self.x, target.y - self.y);
+        double cx = (base != null) ? base.x : ((flagship != null) ? flagship.x : self.x);
+        double cy = (base != null) ? base.y : ((flagship != null) ? flagship.y : self.y);
+        double dAnchor = Math.hypot(target.x - cx, target.y - cy);
+
+        return switch (cmd) {
+            case DEFEND, ESCORT -> (dAnchor <= Math.max(840.0, ((base == null) ? 520.0 : base.radius + 560.0))
+                    || dSelf <= 560.0) ? target : null;
+            case FORM_UP -> (dSelf <= 1300.0) ? target : null;
+            case REPAIR, RTB, RETREAT, MINE -> (dSelf <= 420.0) ? target : null;
+            default -> target;
+        };
     }
 
     private static GameContext.FleetCommand resolveFleetCommand(GameContext ctx, Ship ship, Ship flagship) {
@@ -1389,19 +1419,29 @@ public final class AISystem {
     private static void fight(GameContext ctx, Ship s, Ship target, double dt, double teamConfidence, SquadObjective objective) {
         // Determine preferred range by role
         double range = preferredRange(s);
+        double aggression = roleAggressionBias((s == null) ? null : s.role);
+        double standoff = roleStandoffBias((s == null) ? null : s.role);
+        double approachMul = roleApproachSpeedMul((s == null) ? null : s.role);
+        double orbitMul = roleOrbitSpeedMul((s == null) ? null : s.role);
+        range *= (1.0 + standoff * 0.18);
         double selfHull = hullFrac(s);
         double selfShield = shieldFrac(s);
         double targetHull = hullFrac(target);
-        boolean push = (selfHull > 0.62 && selfShield > 0.36 && targetHull < 0.45);
-        boolean fallBack = (selfHull < 0.46 || selfShield < 0.26);
+        double pushHullReq = 0.62 - aggression * 0.10;
+        double pushShieldReq = 0.36 - aggression * 0.09;
+        double targetVulnReq = 0.45 + aggression * 0.08;
+        double fallbackHullReq = 0.46 + standoff * 0.08 - aggression * 0.05;
+        double fallbackShieldReq = 0.26 + standoff * 0.07 - aggression * 0.04;
+        boolean push = (selfHull > pushHullReq && selfShield > pushShieldReq && targetHull < targetVulnReq);
+        boolean fallBack = (selfHull < fallbackHullReq || selfShield < fallbackShieldReq);
         double supportBalance = localSupportBalance(ctx, s, target, Math.max(560.0, range * 1.55));
         if (!isCapitalRole(s.role) && supportBalance < -0.95) fallBack = true;
         if (supportBalance > 1.15 && selfHull > 0.52 && selfShield > 0.30) push = true;
         if (push && supportBalance < -0.45) push = false;
         if (objective == SquadObjective.RESERVE && supportBalance < 0.25) fallBack = true;
         if (objective == SquadObjective.INTERCEPT && supportBalance > -0.30 && selfHull > 0.40) fallBack = false;
-        if (push) range *= 0.72;
-        if (fallBack) range *= 1.32;
+        if (push) range *= Math.max(0.62, 0.72 - aggression * 0.06);
+        if (fallBack) range *= 1.32 + Math.max(0.0, standoff) * 0.10;
         double d2 = dist2(s.x, s.y, target.x, target.y);
         double d = Math.sqrt(d2);
 
@@ -1430,15 +1470,15 @@ public final class AISystem {
                 double side = ((s.id & 1) == 0) ? -1.0 : 1.0;
                 double sx = -ty * side;
                 double sy = tx * side;
-                moveToward(s, target.x + sx * 140.0, target.y + sy * 140.0, speed * (push ? 1.08 : 1.0), dt);
+                moveToward(s, target.x + sx * 140.0, target.y + sy * 140.0, speed * (push ? 1.08 : 1.0) * approachMul, dt);
             } else {
-                moveToward(s, target.x, target.y, speed * (push ? 1.08 : 1.0), dt);
+                moveToward(s, target.x, target.y, speed * (push ? 1.08 : 1.0) * approachMul, dt);
             }
-        } else if (fallBack && d < range * 0.95) {
-            retreatFromTarget(ctx, s, target, speed, dt);
+        } else if (fallBack && d < range * (0.95 + Math.max(0.0, standoff) * 0.12 - Math.max(0.0, aggression) * 0.10)) {
+            retreatFromTarget(ctx, s, target, speed * (1.0 + Math.max(0.0, standoff) * 0.10), dt);
         } else {
             // orbit at preferred range
-            orbit(s, target.x, target.y, range, speed * (fallBack ? 0.98 : 0.95), dt, orbitDir);
+            orbit(s, target.x, target.y, range, speed * (fallBack ? 0.98 : 0.95) * orbitMul, dt, orbitDir);
         }
 
         // Fire control
@@ -1490,6 +1530,13 @@ public final class AISystem {
         for (Turret t : s.turrets) {
             if (t == null) continue;
 
+            // Always track assigned target, even when weapon is cooling down or out of range.
+            if (t.kind == Turret.Kind.GUN) {
+                t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
+            } else {
+                t.aimAt(dt, s, target);
+            }
+
             // Rough engagement gating by weapon kind
             double maxRange;
             if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
@@ -1499,13 +1546,6 @@ public final class AISystem {
             }
             maxRange *= rangeMul;
             if (dist > maxRange) continue;
-
-            // Aim with lead for guns; direct for missiles
-            if (t.kind == Turret.Kind.GUN) {
-                t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
-            } else {
-                t.aimAt(dt, s, target);
-            }
 
             // Only fire if ready and roughly aligned
             if (!t.canFire()) continue;
@@ -1587,21 +1627,127 @@ public final class AISystem {
         if (s == null) return 380;
         // Keep roles feeling different
         return switch (s.role) {
-            case FIGHTER, DRONE, PD_CRAFT -> 220;
-            case PICKET, PATROL -> 320;
-            case FRIGATE, CIWS_CORVETTE -> 360;
-            case MISSILE_BOAT -> 620;
-            case LIGHT_CRUISER -> 420;
-            case MEDIUM_CRUISER, CRUISER -> 460;
-            case BATTLECRUISER -> 500;
-            case BATTLESHIP -> 560;
-            case DREADNOUGHT -> 610;
-            case SUPERSHIP -> 880;
-            case CARRIER, DRONE_CARRIER, TRANSPORT -> 720;
-            case STEALTH_SHIP -> 520;
+            case FIGHTER, DRONE -> 210;
+            case PD_CRAFT -> 260;
+            case BOMBER -> 560;
+            case PATROL -> 300;
+            case PICKET -> 460;
+            case FRIGATE -> 370;
+            case CIWS_CORVETTE -> 280;
+            case MISSILE_BOAT -> 760;
+            case LIGHT_CRUISER -> 440;
+            case MEDIUM_CRUISER, CRUISER -> 520;
+            case BATTLECRUISER -> 460;
+            case BATTLESHIP -> 650;
+            case DREADNOUGHT -> 730;
+            case SUPERSHIP -> 980;
+            case CARRIER -> 920;
+            case DRONE_CARRIER -> 820;
+            case TRANSPORT, HAULER, MINER -> 760;
+            case STEALTH_SHIP -> 420;
             default -> 380; // fallback for any roles you add later
         };
 
+    }
+
+    private static double roleAggressionBias(ShipRole role) {
+        if (role == null) return 0.0;
+        return switch (role) {
+            case DRONE -> 0.65;
+            case FIGHTER -> 0.55;
+            case STEALTH_SHIP -> 0.55;
+            case PATROL -> 0.45;
+            case CIWS_CORVETTE -> 0.35;
+            case BATTLECRUISER -> 0.30;
+            case FRIGATE -> 0.10;
+            case PD_CRAFT -> 0.10;
+            case LIGHT_CRUISER -> 0.08;
+            case MEDIUM_CRUISER, CRUISER -> 0.00;
+            case PICKET -> -0.05;
+            case BATTLESHIP -> -0.12;
+            case DRONE_CARRIER -> -0.16;
+            case DREADNOUGHT -> -0.18;
+            case SUPERSHIP -> -0.22;
+            case MISSILE_BOAT -> -0.25;
+            case CARRIER -> -0.28;
+            case BOMBER -> 0.15;
+            case TRANSPORT, HAULER, MINER -> -0.35;
+            default -> 0.0;
+        };
+    }
+
+    private static double roleStandoffBias(ShipRole role) {
+        if (role == null) return 0.0;
+        return switch (role) {
+            case MISSILE_BOAT -> 0.75;
+            case TRANSPORT, HAULER, MINER -> 0.70;
+            case CARRIER -> 0.62;
+            case SUPERSHIP -> 0.48;
+            case DRONE_CARRIER -> 0.46;
+            case DREADNOUGHT -> 0.40;
+            case BOMBER -> 0.40;
+            case PICKET -> 0.35;
+            case BATTLESHIP -> 0.32;
+            case MEDIUM_CRUISER, CRUISER -> 0.18;
+            case PD_CRAFT -> 0.15;
+            case LIGHT_CRUISER -> 0.12;
+            case FRIGATE -> 0.00;
+            case STEALTH_SHIP -> -0.05;
+            case BATTLECRUISER -> -0.12;
+            case CIWS_CORVETTE -> -0.20;
+            case PATROL -> -0.25;
+            case FIGHTER -> -0.30;
+            case DRONE -> -0.35;
+            default -> 0.0;
+        };
+    }
+
+    private static double roleApproachSpeedMul(ShipRole role) {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case DRONE -> 1.22;
+            case FIGHTER -> 1.18;
+            case STEALTH_SHIP -> 1.15;
+            case CIWS_CORVETTE -> 1.14;
+            case PATROL -> 1.12;
+            case BATTLECRUISER -> 1.06;
+            case PD_CRAFT -> 1.05;
+            case FRIGATE, LIGHT_CRUISER -> 1.00;
+            case MEDIUM_CRUISER, CRUISER -> 0.98;
+            case PICKET -> 0.95;
+            case DRONE_CARRIER -> 0.92;
+            case MISSILE_BOAT, BATTLESHIP -> 0.92;
+            case DREADNOUGHT -> 0.88;
+            case CARRIER -> 0.86;
+            case SUPERSHIP -> 0.82;
+            case TRANSPORT, HAULER, MINER -> 0.80;
+            case BOMBER -> 1.00;
+            default -> 1.0;
+        };
+    }
+
+    private static double roleOrbitSpeedMul(ShipRole role) {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case FIGHTER -> 1.20;
+            case DRONE -> 1.18;
+            case STEALTH_SHIP -> 1.12;
+            case CIWS_CORVETTE -> 1.10;
+            case PATROL, PD_CRAFT -> 1.05;
+            case FRIGATE -> 1.00;
+            case BATTLECRUISER -> 1.00;
+            case PICKET, LIGHT_CRUISER -> 0.98;
+            case MEDIUM_CRUISER, CRUISER -> 0.95;
+            case BOMBER -> 0.94;
+            case MISSILE_BOAT -> 0.88;
+            case BATTLESHIP -> 0.86;
+            case DRONE_CARRIER -> 0.84;
+            case DREADNOUGHT -> 0.80;
+            case CARRIER -> 0.78;
+            case SUPERSHIP -> 0.74;
+            case TRANSPORT, HAULER, MINER -> 0.70;
+            default -> 1.0;
+        };
     }
 
     // --- helpers (dt-safe) ---
@@ -1615,11 +1761,26 @@ public final class AISystem {
     private static double maxTurnRateRadPerSec(Ship s) {
         if (s == null || s.role == null) return Math.toRadians(140.0);
         return switch (s.role) {
-            case FIGHTER, DRONE, PD_CRAFT, BOMBER -> Math.toRadians(180.0);
-            case PICKET, PATROL, STEALTH_SHIP -> Math.toRadians(150.0);
-            case FRIGATE, MISSILE_BOAT, CIWS_CORVETTE, LIGHT_CRUISER -> Math.toRadians(128.0);
-            case MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> Math.toRadians(96.0);
-            case BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER, TRANSPORT -> Math.toRadians(72.0);
+            case DRONE -> Math.toRadians(200.0);
+            case FIGHTER -> Math.toRadians(192.0);
+            case PD_CRAFT -> Math.toRadians(186.0);
+            case STEALTH_SHIP -> Math.toRadians(178.0);
+            case PATROL -> Math.toRadians(172.0);
+            case BOMBER -> Math.toRadians(165.0);
+            case CIWS_CORVETTE -> Math.toRadians(154.0);
+            case PICKET -> Math.toRadians(146.0);
+            case FRIGATE -> Math.toRadians(132.0);
+            case LIGHT_CRUISER -> Math.toRadians(122.0);
+            case MISSILE_BOAT -> Math.toRadians(118.0);
+            case BATTLECRUISER -> Math.toRadians(104.0);
+            case MINER -> Math.toRadians(96.0);
+            case MEDIUM_CRUISER, CRUISER -> Math.toRadians(94.0);
+            case TRANSPORT, HAULER -> Math.toRadians(82.0);
+            case DRONE_CARRIER -> Math.toRadians(78.0);
+            case BATTLESHIP -> Math.toRadians(72.0);
+            case CARRIER -> Math.toRadians(68.0);
+            case DREADNOUGHT -> Math.toRadians(64.0);
+            case SUPERSHIP -> Math.toRadians(52.0);
             default -> Math.toRadians(120.0);
         };
     }

@@ -9,6 +9,7 @@ public class WaveMotionShot extends Projectile {
     public final double angle;
     private int remainingHits;
     private final Set<Integer> hitShipIds = new HashSet<>();
+    private final Set<Integer> hitAsteroidIds = new HashSet<>();
 
     public WaveMotionShot(
             double x,
@@ -44,6 +45,16 @@ public class WaveMotionShot extends Projectile {
     public void markDamaged(Ship s) {
         if (s == null) return;
         hitShipIds.add(s.id);
+    }
+
+    public boolean canDamage(Asteroid a) {
+        if (a == null) return false;
+        return !hitAsteroidIds.contains(a.id);
+    }
+
+    public void markDamaged(Asteroid a) {
+        if (a == null) return;
+        hitAsteroidIds.add(a.id);
     }
 
     public void consumeHit() {

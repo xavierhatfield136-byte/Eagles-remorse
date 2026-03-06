@@ -61,6 +61,24 @@ public final class PhysicsSystem {
                 }
             }
 
+            Ship aimTarget = null;
+            if (isAlive(autoTarget)
+                    && TeamSystem.isHostileToPlayer(ctx, autoTarget.faction)
+                    && TargetingSystem.isDetectableToObserver(ctx.player, autoTarget)) {
+                aimTarget = autoTarget;
+            } else if (isAlive(ctx.lockedTarget)
+                    && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                    && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
+                aimTarget = ctx.lockedTarget;
+            }
+
+            // Turrets track continuously even when not firing.
+            if (aimTarget != null) {
+                ctx.player.aimAllTurretsAtTarget(aimTarget, dt);
+            } else {
+                ctx.player.aimPrimaryTurretsAt(ctx.cursorWorldX, ctx.cursorWorldY, dt);
+            }
+
             if (firePrimary) {
                 int beforePrimary = ctx.projectiles.size();
                 if (autoTarget != null) {

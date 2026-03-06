@@ -104,7 +104,12 @@ public final class SpawnSystem {
     }
 
     public static Ship spawnTeamShip(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
-        if (role == ShipRole.MINER) {
+        if (ctx == null || role == null || faction == null) return null;
+
+        ShipRole spawnRole = resolveSpawnRoleForFaction(ctx, faction, role);
+        if (spawnRole == null) return null;
+
+        if (spawnRole == ShipRole.MINER) {
             if (TeamSystem.countAliveMiners(ctx, faction) >= MAX_MINERS_PER_FACTION) {
                 return null;
             }
@@ -112,11 +117,111 @@ public final class SpawnSystem {
 
         double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
         double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
-        Ship s = new FleetShip(role, faction, sx, sy);
+        Ship s = new FleetShip(spawnRole, faction, sx, sy);
         ctx.ships.add(s);
         try { DoctrineRegistry.applyToShip(s); } catch (Throwable ignored) {}
-        if (role == ShipRole.MINER) logMinerSpawn(s);
+        if (spawnRole == ShipRole.MINER) logMinerSpawn(s);
         return s;
+    }
+
+    public static int requiredHangarTierForRole(ShipRole role) {
+        if (role == null) return 0;
+        return switch (role) {
+            case BASE, STATIC_TURRET,
+                 MINER, HAULER,
+                 PICKET, PATROL,
+                 FIGHTER, BOMBER, PD_CRAFT, DRONE,
+                 FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> 0;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
+            case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP, TRANSPORT -> 2;
+            case DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 3;
+        };
+    }
+
+    public static int maxHangarTierForFaction(GameContext ctx, Faction faction) {
+        if (ctx == null || faction == null) return 0;
+        int best = 0;
+        boolean hasAliveBase = false;
+
+        if (ctx.baseUpgrades != null && !ctx.baseUpgrades.isEmpty()) {
+            for (java.util.Map.Entry<Ship, BaseUpgrades> e : ctx.baseUpgrades.entrySet()) {
+                Ship base = (e == null) ? null : e.getKey();
+                if (base == null) continue;
+                if (base.role != ShipRole.BASE) continue;
+                if (!base.alive || base.dying || base.hp <= 0) continue;
+                if (base.faction == null || base.faction.teamId() != faction.teamId()) continue;
+                hasAliveBase = true;
+                BaseUpgrades up = e.getValue();
+                if (up != null) best = Math.max(best, up.hangarLv);
+            }
+        }
+
+        if (!hasAliveBase) {
+            for (Ship b : ctx.teamBases.values()) {
+                if (b == null) continue;
+                if (b.role != ShipRole.BASE) continue;
+                if (!b.alive || b.dying || b.hp <= 0) continue;
+                if (b.faction == null || b.faction.teamId() != faction.teamId()) continue;
+                hasAliveBase = true;
+                break;
+            }
+        }
+        if (!hasAliveBase && ctx.allyBase != null && ctx.allyBase.alive && !ctx.allyBase.dying
+                && ctx.allyBase.hp > 0 && ctx.allyBase.faction != null
+                && ctx.allyBase.faction.teamId() == faction.teamId()) hasAliveBase = true;
+        if (!hasAliveBase && ctx.enemyBase != null && ctx.enemyBase.alive && !ctx.enemyBase.dying
+                && ctx.enemyBase.hp > 0 && ctx.enemyBase.faction != null
+                && ctx.enemyBase.faction.teamId() == faction.teamId()) hasAliveBase = true;
+
+        if (!hasAliveBase) return 0;
+        return Math.max(0, Math.min(3, best));
+    }
+
+    private static ShipRole resolveSpawnRoleForFaction(GameContext ctx, Faction faction, ShipRole requested) {
+        if (requested == null) return null;
+        int availableTier = maxHangarTierForFaction(ctx, faction);
+        if (requiredHangarTierForRole(requested) <= availableTier) return requested;
+
+        for (ShipRole fallback : fallbackRolesFor(requested)) {
+            if (fallback == null) continue;
+            if (requiredHangarTierForRole(fallback) <= availableTier) return fallback;
+        }
+        return null;
+    }
+
+    private static ShipRole[] fallbackRolesFor(ShipRole role) {
+        if (role == null) return new ShipRole[0];
+        return switch (role) {
+            case SUPERSHIP -> new ShipRole[]{
+                    ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case DREADNOUGHT -> new ShipRole[]{
+                    ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case BATTLESHIP -> new ShipRole[]{
+                    ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case BATTLECRUISER -> new ShipRole[]{
+                    ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case MEDIUM_CRUISER, CRUISER -> new ShipRole[]{
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case LIGHT_CRUISER -> new ShipRole[]{ShipRole.FRIGATE};
+            case STEALTH_SHIP -> new ShipRole[]{ShipRole.MISSILE_BOAT, ShipRole.PICKET, ShipRole.FRIGATE};
+            case CARRIER -> new ShipRole[]{
+                    ShipRole.DRONE_CARRIER, ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case DRONE_CARRIER -> new ShipRole[]{
+                    ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case TRANSPORT -> new ShipRole[]{ShipRole.HAULER, ShipRole.FRIGATE};
+            default -> new ShipRole[]{role};
+        };
     }
 
     private static void logMinerSpawn(Ship s) {

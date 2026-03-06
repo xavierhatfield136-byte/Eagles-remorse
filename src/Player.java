@@ -301,10 +301,10 @@ public class Player extends Ship {
     public List<Projectile> firePrimary(double targetX, double targetY, double dt) {
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
+        aimPrimaryTurretsAt(targetX, targetY, dt);
         for (Turret t : turrets) {
             if (!t.primary) continue;
             if (t.kind != Turret.Kind.GUN) continue;
-            t.aimAt(dt, this, targetX, targetY);
             Projectile p = t.fire(this, null, dt);
             if (p != null) {
                 out.add(p);
@@ -323,10 +323,10 @@ public class Player extends Ship {
         if (target == null) return new ArrayList<>();
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
+        aimGunTurretsAtTarget(target, dt);
         for (Turret t : turrets) {
             if (!t.primary) continue;
             if (t.kind != Turret.Kind.GUN) continue;
-            t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
             Projectile p = t.fire(this, null, dt);
             if (p != null) {
                 out.add(p);
@@ -340,11 +340,11 @@ public class Player extends Ship {
     public List<Projectile> fireSecondary(Ship target, double dt) {
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
+        aimMissileTurretsAtTarget(target, dt);
         for (Turret t : turrets) {
             if (t.primary) continue;
             if (t.kind != Turret.Kind.MISSILE) continue;
             if (target == null) continue;
-            t.aimAt(dt, this, target);
             Projectile p = t.fire(this, target, dt);
             if (p != null) {
                 out.add(p);
@@ -353,5 +353,38 @@ public class Player extends Ship {
         }
         if (fired) onFiredWeapon();
         return out;
+    }
+
+    public void aimPrimaryTurretsAt(double targetX, double targetY, double dt) {
+        for (Turret t : turrets) {
+            if (t == null) continue;
+            if (!t.primary) continue;
+            if (t.kind != Turret.Kind.GUN) continue;
+            t.aimAt(dt, this, targetX, targetY);
+        }
+    }
+
+    public void aimGunTurretsAtTarget(Ship target, double dt) {
+        if (target == null) return;
+        for (Turret t : turrets) {
+            if (t == null) continue;
+            if (t.kind != Turret.Kind.GUN) continue;
+            t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+        }
+    }
+
+    public void aimMissileTurretsAtTarget(Ship target, double dt) {
+        if (target == null) return;
+        for (Turret t : turrets) {
+            if (t == null) continue;
+            if (t.kind != Turret.Kind.MISSILE) continue;
+            t.aimAt(dt, this, target);
+        }
+    }
+
+    public void aimAllTurretsAtTarget(Ship target, double dt) {
+        if (target == null) return;
+        aimGunTurretsAtTarget(target, dt);
+        aimMissileTurretsAtTarget(target, dt);
     }
 }

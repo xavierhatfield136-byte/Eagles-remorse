@@ -27,8 +27,12 @@ public final class EconomySystem {
     private static final double NPC_REFIT_DOCK_RANGE = 220.0;
     private static final double NPC_REFIT_THREAT_RANGE = 780.0;
     private static final double NPC_REFIT_MAX_JUMP_MUL = 1.90;
+    private static final double NPC_BASE_UPGRADE_CHECK_INTERVAL = 4.5;
+    private static final int NPC_BASE_UPGRADE_MIN_ORE_RESERVE = 160;
+    private static final int NPC_BASE_UPGRADE_PASSES = 1;
     private static final WeakHashMap<GameContext, EnumMap<Faction, CommanderPersonality>> TEAM_PERSONALITIES = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, EnumMap<Faction, Double>> TEAM_REFIT_TIMERS = new WeakHashMap<>();
+    private static final WeakHashMap<GameContext, EnumMap<Faction, Double>> TEAM_BASE_UPGRADE_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
 
     private enum CommanderPersonality {
@@ -71,6 +75,7 @@ public final class EconomySystem {
         handleNpcMiningAndDeposits(ctx, dt);
         updateStationTurretStructures(ctx);
         applyFriendlyBaseRepairAuras(ctx, dt);
+        updateNpcBaseUpgradePrograms(ctx, dt);
         updateNpcRefitPrograms(ctx, dt);
 
         // Periodic miner reinforcements for teams still in the match.
@@ -356,6 +361,235 @@ public final class EconomySystem {
         }
     }
 
+    private static void updateNpcBaseUpgradePrograms(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        EnumMap<Faction, Double> teamTimers = teamBaseUpgradeTimers(ctx);
+        EnumSet<Faction> teams = EnumSet.noneOf(Faction.class);
+        teams.addAll(ctx.teamBases.keySet());
+        if (ctx.allyBase != null) teams.add(Faction.ALLY);
+        if (ctx.enemyBase != null) teams.add(Faction.ENEMY);
+
+        for (Faction team : teams) {
+            if (team == null) continue;
+            if (!TeamSystem.isTeamAlive(ctx, team)) continue;
+
+            Ship base = getBaseForFaction(ctx, team);
+            if (base == null || !base.alive || base.dying || base.hp <= 0) continue;
+
+            double timer = teamTimers.getOrDefault(team, NPC_BASE_UPGRADE_CHECK_INTERVAL * (0.55 + ctx.rng.nextDouble() * 0.85));
+            timer -= dt;
+            if (timer > 0.0) {
+                teamTimers.put(team, timer);
+                continue;
+            }
+
+            teamTimers.put(team, NPC_BASE_UPGRADE_CHECK_INTERVAL * (0.85 + ctx.rng.nextDouble() * 0.45));
+            for (int i = 0; i < NPC_BASE_UPGRADE_PASSES; i++) {
+                if (!runTeamBaseUpgradePass(ctx, team, base)) break;
+            }
+        }
+    }
+
+    private static boolean runTeamBaseUpgradePass(GameContext ctx, Faction team, Ship base) {
+        if (ctx == null || team == null || base == null) return false;
+        if (!base.alive || base.dying || base.hp <= 0) return false;
+        if (base.faction == null || base.faction.teamId() != team.teamId()) return false;
+
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
+        int oreBudget = Math.max(0, base.oreStockpile - npcOreReserveForBase(base, up));
+        if (oreBudget <= 0) return false;
+
+        CommanderPersonality personality = commanderPersonality(ctx, team);
+        int hangarCandidate = (up.hangarLv < 3) ? 5 : 0;
+        int chosen = 0;
+
+        if (hangarCandidate != 0 && shouldPrioritizeHangarUpgrade(ctx, team, base, up, personality)) {
+            int cost = npcBaseUpgradeOreEquivalent(hangarCandidate, up.hangarLv + 1);
+            if (oreBudget >= cost) chosen = hangarCandidate;
+        }
+
+        if (chosen == 0) {
+            List<Integer> order = baseUpgradePriorityOrder(ctx, team, base, up, personality);
+            for (Integer which : order) {
+                if (which == null) continue;
+                int level = baseUpgradeLevel(up, which);
+                int max = baseUpgradeMaxLevel(which);
+                if (level >= max) continue;
+                int cost = npcBaseUpgradeOreEquivalent(which, level + 1);
+                if (cost <= 0 || oreBudget < cost) continue;
+                chosen = which;
+                break;
+            }
+        }
+
+        if (chosen == 0) return false;
+        int nextLv = baseUpgradeLevel(up, chosen) + 1;
+        int cost = npcBaseUpgradeOreEquivalent(chosen, nextLv);
+        if (cost <= 0 || base.oreStockpile < cost) return false;
+
+        base.oreStockpile -= cost;
+        applyBaseUpgrade(ctx, base, up, chosen);
+        return true;
+    }
+
+    private static boolean shouldPrioritizeHangarUpgrade(GameContext ctx, Faction team, Ship base, BaseUpgrades up,
+                                                         CommanderPersonality personality) {
+        if (ctx == null || team == null || base == null || up == null) return false;
+        if (up.hangarLv >= 3) return false;
+        if (up.hangarLv <= 0) return true;
+
+        EnumMap<CombatBucket, Integer> buckets = countCombatBucketsForTeam(ctx, team);
+        int combatShips = totalBucketCount(buckets);
+        int defendersNear = countCombatShipsForBase(ctx, base);
+        int pressureTarget = 5 + up.hangarLv * 3;
+        if (combatShips >= pressureTarget || defendersNear >= pressureTarget) return true;
+
+        if (personality == CommanderPersonality.FLAGSHIP_CORE || personality == CommanderPersonality.CARRIER_GROUP
+                || personality == CommanderPersonality.STEALTH_RAIDERS) {
+            return ctx.rng.nextDouble() < 0.58;
+        }
+        return ctx.rng.nextDouble() < 0.32;
+    }
+
+    private static List<Integer> baseUpgradePriorityOrder(GameContext ctx, Faction team, Ship base, BaseUpgrades up,
+                                                          CommanderPersonality personality) {
+        List<Integer> order = new ArrayList<>(6);
+        boolean underFire = hasHostileNear(ctx, base, NPC_REFIT_THREAT_RANGE * 1.25)
+                || hasIncomingThreat(ctx, base, NPC_REFIT_THREAT_RANGE * 0.95);
+        double hullFrac = base.hp / (double) Math.max(1, base.hpMax);
+        double shieldFrac = (base.shieldMax > 1e-9) ? (base.shield / base.shieldMax) : 1.0;
+
+        if (underFire || hullFrac < 0.78 || shieldFrac < 0.55) {
+            addUniqueUpgrade(order, 2);
+            addUniqueUpgrade(order, 1);
+            addUniqueUpgrade(order, 3);
+        } else {
+            addUniqueUpgrade(order, 3);
+            addUniqueUpgrade(order, 2);
+            addUniqueUpgrade(order, 1);
+        }
+
+        if (up != null && up.hangarLv < 3) addUniqueUpgrade(order, 5);
+
+        if (personality == CommanderPersonality.ARTILLERY_LINE) {
+            moveUpgradeToFront(order, 3);
+        } else if (personality == CommanderPersonality.CARRIER_GROUP || personality == CommanderPersonality.FLAGSHIP_CORE
+                || personality == CommanderPersonality.STEALTH_RAIDERS) {
+            moveUpgradeToFront(order, 5);
+        } else if (personality == CommanderPersonality.ESCORT_WING) {
+            moveUpgradeToFront(order, 2);
+        }
+        return order;
+    }
+
+    private static void applyBaseUpgrade(GameContext ctx, Ship base, BaseUpgrades up, int which) {
+        if (ctx == null || base == null || up == null) return;
+        switch (which) {
+            case 1 -> {
+                if (up.hullLv >= 5) return;
+                up.hullLv++;
+                base.hpMax += 40;
+                base.healHull(40);
+            }
+            case 2 -> {
+                if (up.shieldLv >= 5) return;
+                up.shieldLv++;
+                base.shieldMax += 30.0;
+                base.shieldRegen += 0.8;
+                base.shieldActive = true;
+                base.shield += 30.0;
+            }
+            case 3 -> {
+                if (up.turretLv >= 5) return;
+                up.turretLv++;
+                UISystem.applyTurretSystemsUpgrade(base, 1);
+            }
+            case 4 -> {
+                if (up.miningLv >= 5) return;
+                up.miningLv++;
+                ctx.miningBaseMul = Math.min(2.0, ctx.miningBaseMul + 0.06);
+                ctx.orePriceBaseMul = Math.min(2.0, ctx.orePriceBaseMul + 0.05);
+            }
+            case 5 -> {
+                if (up.hangarLv >= 3) return;
+                up.hangarLv++;
+            }
+            default -> {
+                return;
+            }
+        }
+    }
+
+    private static int npcOreReserveForBase(Ship base, BaseUpgrades up) {
+        int reserve = NPC_BASE_UPGRADE_MIN_ORE_RESERVE;
+        if (base != null) reserve += Math.max(0, Math.min(260, base.maxDefenders * 12));
+        if (up != null) reserve += Math.max(0, (3 - Math.min(3, up.hangarLv)) * 70);
+        return reserve;
+    }
+
+    private static int npcBaseUpgradeOreEquivalent(int which, int nextLv) {
+        if (which <= 0 || nextLv <= 0) return Integer.MAX_VALUE;
+        int oreCost = baseUpgradeOreCost(which, nextLv);
+        int creditCost = baseUpgradeCreditCost(which, nextLv);
+        if (oreCost == Integer.MAX_VALUE || creditCost == Integer.MAX_VALUE) return Integer.MAX_VALUE;
+        return oreCost + (int) Math.round(creditCost * 0.32);
+    }
+
+    private static int baseUpgradeCreditCost(int which, int nextLv) {
+        if (nextLv <= 0) return Integer.MAX_VALUE;
+        return switch (which) {
+            case 1 -> 150 + 200 * nextLv;
+            case 2 -> 170 + 210 * nextLv;
+            case 3 -> 210 + 250 * nextLv;
+            case 4 -> 140 + 170 * nextLv;
+            case 5 -> 380 + 420 * nextLv;
+            default -> Integer.MAX_VALUE;
+        };
+    }
+
+    private static int baseUpgradeOreCost(int which, int nextLv) {
+        if (nextLv <= 0) return Integer.MAX_VALUE;
+        return switch (which) {
+            case 1 -> 40 + 70 * nextLv;
+            case 2 -> 50 + 80 * nextLv;
+            case 3 -> 60 + 90 * nextLv;
+            case 4 -> 40 + 110 * nextLv;
+            case 5 -> 100 + 170 * nextLv;
+            default -> Integer.MAX_VALUE;
+        };
+    }
+
+    private static int baseUpgradeMaxLevel(int which) {
+        return switch (which) {
+            case 5 -> 3;
+            case 1, 2, 3, 4 -> 5;
+            default -> 0;
+        };
+    }
+
+    private static int baseUpgradeLevel(BaseUpgrades up, int which) {
+        if (up == null) return 0;
+        return switch (which) {
+            case 1 -> up.hullLv;
+            case 2 -> up.shieldLv;
+            case 3 -> up.turretLv;
+            case 4 -> up.miningLv;
+            case 5 -> up.hangarLv;
+            default -> 0;
+        };
+    }
+
+    private static void addUniqueUpgrade(List<Integer> out, int which) {
+        if (out == null || which <= 0) return;
+        if (!out.contains(which)) out.add(which);
+    }
+
+    private static void moveUpgradeToFront(List<Integer> order, int which) {
+        if (order == null || which <= 0) return;
+        if (!order.remove(Integer.valueOf(which))) return;
+        order.add(0, which);
+    }
+
     private static void updateNpcRefitPrograms(GameContext ctx, double dt) {
         if (ctx == null || dt <= 0.0) return;
         Map<Integer, Double> cooldowns = shipRefitCooldowns(ctx);
@@ -396,6 +630,7 @@ public final class EconomySystem {
         if (ctx == null || team == null) return;
         Ship base = getBaseForFaction(ctx, team);
         if (base == null || !base.alive || base.dying || base.hp <= 0) return;
+        int maxHangarTier = SpawnSystem.maxHangarTierForFaction(ctx, team);
 
         CommanderPersonality personality = commanderPersonality(ctx, team);
         EnumMap<CombatBucket, Integer> counts = countCombatBucketsForTeam(ctx, team);
@@ -413,7 +648,7 @@ public final class EconomySystem {
             if (!isShipDockedAndSafeForRefit(ctx, ship, base)) continue;
 
             CombatBucket targetBucket = chooseNeededBucket(personality, counts, desired);
-            ShipRole nextRole = chooseUpgradeTargetRole(ship, personality, targetBucket, base.oreStockpile);
+            ShipRole nextRole = chooseUpgradeTargetRole(ship, personality, targetBucket, base.oreStockpile, maxHangarTier);
             if (nextRole == null || nextRole == ship.role) continue;
 
             int oreCost = refitOreCost(ship.role, nextRole);
@@ -488,7 +723,8 @@ public final class EconomySystem {
         return false;
     }
 
-    private static ShipRole chooseUpgradeTargetRole(Ship ship, CommanderPersonality personality, CombatBucket targetBucket, int availableOre) {
+    private static ShipRole chooseUpgradeTargetRole(Ship ship, CommanderPersonality personality, CombatBucket targetBucket,
+                                                    int availableOre, int maxHangarTier) {
         if (ship == null) return null;
         ShipRole current = ship.role;
         if (current == null) return null;
@@ -507,6 +743,7 @@ public final class EconomySystem {
 
         for (ShipRole candidate : candidates) {
             if (candidate == null || candidate == current) continue;
+            if (SpawnSystem.requiredHangarTierForRole(candidate) > maxHangarTier) continue;
             double nextScore = roleCombatScore(candidate);
             if (nextScore <= currentScore + 8.0) continue;
             if (nextScore > currentScore * NPC_REFIT_MAX_JUMP_MUL) continue;
@@ -991,6 +1228,10 @@ public final class EconomySystem {
 
     private static EnumMap<Faction, Double> teamRefitTimers(GameContext ctx) {
         return TEAM_REFIT_TIMERS.computeIfAbsent(ctx, k -> new EnumMap<>(Faction.class));
+    }
+
+    private static EnumMap<Faction, Double> teamBaseUpgradeTimers(GameContext ctx) {
+        return TEAM_BASE_UPGRADE_TIMERS.computeIfAbsent(ctx, k -> new EnumMap<>(Faction.class));
     }
 
     private static Map<Integer, Double> shipRefitCooldowns(GameContext ctx) {

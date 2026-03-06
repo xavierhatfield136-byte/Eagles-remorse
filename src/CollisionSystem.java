@@ -174,21 +174,46 @@ public class CollisionSystem {
         }
     }
 
-    /** Projectiles die on asteroids. */
+    /** Projectiles damage asteroids; most shots are consumed on impact. */
     public static void handleProjectilesVsAsteroids(List<Projectile> projectiles, List<Asteroid> asteroids) {
         if (projectiles == null || asteroids == null || asteroids.isEmpty()) return;
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             if (p instanceof CIWSPellet) continue;
-            if (p instanceof WaveMotionShot) continue;
-            for (Asteroid a : asteroids) {
-                if (circleHit(p.x, p.y, p.radius, a.x, a.y, a.collisionRadius())) {
-                    p.alive = false;
-                    VFX.spawnHullImpact(p.x, p.y, p.vx, p.vy, 1, impactStyleFor(p));
-                    Explosion.spawnShieldHit(p.x, p.y);
-                    break;
+            WaveMotionShot ws = (p instanceof WaveMotionShot) ? (WaveMotionShot) p : null;
+            for (int ai = asteroids.size() - 1; ai >= 0; ai--) {
+                Asteroid a = asteroids.get(ai);
+                if (a == null) {
+                    asteroids.remove(ai);
+                    continue;
                 }
+                if (!circleHit(p.x, p.y, p.radius, a.x, a.y, a.collisionRadius())) continue;
+
+                if (ws != null) {
+                    if (!ws.canDamage(a)) continue;
+                    ws.markDamaged(a);
+                }
+
+                int impactDamage = Math.max(1, p.damage);
+                boolean destroyed = a.applyWeaponDamage(impactDamage);
+
+                VFX.spawnHullImpact(
+                        p.x, p.y, p.vx, p.vy,
+                        Math.max(1, impactDamage),
+                        impactStyleFor(p)
+                );
+                Explosion.spawnShieldHit(p.x, p.y);
+
+                if (destroyed) {
+                    Explosion.spawnShieldHit(a.x, a.y);
+                    ScreenShake.kick(Math.min(5.0, 1.2 + a.collisionRadius() * 0.06));
+                    asteroids.remove(ai);
+                }
+
+                if (ws != null) ws.consumeHit();
+                else p.alive = false;
+                break;
             }
         }
     }

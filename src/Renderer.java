@@ -22,6 +22,16 @@ public class Renderer {
 
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW"};
     private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H"};
+    private static final long XRAY_PERCENT_REFRESH_NS = 180_000_000L;
+    private static final Font XRAY_TITLE_FONT = new Font("Consolas", Font.BOLD, 13);
+    private static final Font XRAY_SUBTITLE_FONT = new Font("Consolas", Font.PLAIN, 11);
+    private static final Font XRAY_SYMBOL_FONT = new Font("Consolas", Font.BOLD, 10);
+    private static final Font XRAY_HP_FONT = new Font("Consolas", Font.PLAIN, 10);
+    private static final String[] XRAY_PCT_LABELS = buildXrayPctLabels();
+    private static final java.util.WeakHashMap<Ship, EnumMap<ShipRoomLayout.RoomId, Integer>> XRAY_ROOM_PCT_CACHE =
+            new java.util.WeakHashMap<>();
+    private static final java.util.WeakHashMap<Ship, Long> XRAY_ROOM_PCT_CACHE_TS =
+            new java.util.WeakHashMap<>();
 
     // ------------------------------------------------------------
     // Option 8: Strategic map / waypoints / pings
@@ -1838,9 +1848,9 @@ public class Renderer {
         g2.drawRoundRect(x, y, w, h, 12, 12);
 
         g2.setColor(new Color(205, 235, 255, 220));
-        g2.setFont(new Font("Consolas", Font.BOLD, 13));
+        g2.setFont(XRAY_TITLE_FONT);
         g2.drawString((title == null || title.isBlank()) ? "TACTICAL X-RAY" : title, x + 10, y + 18);
-        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setFont(XRAY_SUBTITLE_FONT);
         g2.setColor(new Color(175, 218, 255, 205));
         if (subtitle != null && !subtitle.isBlank()) {
             g2.drawString(subtitle, x + 10, y + 32);
@@ -1859,8 +1869,12 @@ public class Renderer {
         g2.drawLine(mapX + mapW / 2, mapY + 6, mapX + mapW / 2, mapY + mapH - 6);
         g2.drawLine(mapX + 6, mapY + mapH / 2, mapX + mapW - 6, mapY + mapH / 2);
 
-        EnumMap<ShipRoomLayout.RoomId, Double> hitFlash = new EnumMap<>(ShipRoomLayout.RoomId.class);
+        double[] hitFlash = new double[ShipRoomLayout.RoomId.values().length];
         long nowNanos = System.nanoTime();
+        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(ship.role);
+        refreshXrayPercentCache(ship, rooms, nowNanos);
+        EnumMap<ShipRoomLayout.RoomId, Integer> pctCache = xrayPercentCacheFor(ship);
+
         List<Ship.RoomDamageEvent> events = ship.recentRoomDamageEvents();
         if (events != null) {
             for (int i = events.size() - 1; i >= 0; i--) {
@@ -1869,26 +1883,36 @@ public class Renderer {
                 double ageSec = (nowNanos - ev.timestampNanos) / 1_000_000_000.0;
                 if (ageSec < 0.0 || ageSec > 2.4) continue;
                 double strength = Math.max(0.0, 1.0 - ageSec / 2.4);
-                Double prev = hitFlash.get(ev.roomId);
-                if (prev == null || strength > prev) hitFlash.put(ev.roomId, strength);
+                int roomIdx = ev.roomId.ordinal();
+                if (roomIdx < 0 || roomIdx >= hitFlash.length) continue;
+                if (strength > hitFlash[roomIdx]) hitFlash[roomIdx] = strength;
             }
         }
 
         String hottestRoomLabel = null;
         double hottestHit = 0.0;
 
-        List<Ship.RoomStatus> rooms = ship.roomStatusSnapshot();
-        Font symbolFont = new Font("Consolas", Font.BOLD, 10);
-        Font hpFont = new Font("Consolas", Font.PLAIN, 10);
+        g2.setFont(XRAY_SYMBOL_FONT);
+        FontMetrics symFm = g2.getFontMetrics();
+        g2.setFont(XRAY_HP_FONT);
+        FontMetrics hpFm = g2.getFontMetrics();
+
         Stroke oldStroke = g2.getStroke();
-        for (Ship.RoomStatus room : rooms) {
-            Polygon p = xrayRoomPolygon(mapX, mapY, mapW, mapH, room.normalizedXs, room.normalizedYs);
+        for (ShipRoomLayout.RoomDef room : rooms) {
+            Polygon p = xrayRoomPolygon(mapX, mapY, mapW, mapH, room.xs, room.ys);
             if (p == null || p.npoints < 3) continue;
-            double frac = (room.hpMax <= 1e-9) ? 1.0 : Math.max(0.0, Math.min(1.0, room.hp / room.hpMax));
-            double hitStrength = Math.max(0.0, Math.min(1.0, hitFlash.getOrDefault(room.roomId, 0.0)));
+
+            int pctVal = pctCache.getOrDefault(room.id, -1);
+            if (pctVal < 0) {
+                pctVal = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(room.id) * 100.0), 0, 100);
+            }
+            double frac = pctVal * 0.01;
+            double fireIntensity = ship.roomFireIntensity(room.id);
+            int roomIdx = room.id.ordinal();
+            double hitStrength = (roomIdx >= 0 && roomIdx < hitFlash.length) ? hitFlash[roomIdx] : 0.0;
 
             Color fill;
-            if (room.fireIntensity > 0.06) fill = new Color(255, 110, 45, 170);
+            if (fireIntensity > 0.06) fill = new Color(255, 110, 45, 170);
             else if (frac > 0.70) fill = new Color(95, 210, 255, 88);
             else if (frac > 0.35) fill = new Color(255, 195, 90, 120);
             else fill = new Color(255, 82, 82, 155);
@@ -1913,9 +1937,8 @@ public class Renderer {
             int cx = (int) Math.round(b.getCenterX());
             int cy = (int) Math.round(b.getCenterY());
 
-            String symbol = xrayRoomSymbol(room.roomId);
-            g2.setFont(symbolFont);
-            FontMetrics symFm = g2.getFontMetrics();
+            String symbol = xrayRoomSymbol(room.id);
+            g2.setFont(XRAY_SYMBOL_FONT);
             int sw = symFm.stringWidth(symbol);
             int sh = symFm.getAscent();
             int sx = cx - sw / 2 - 4;
@@ -1930,9 +1953,8 @@ public class Renderer {
             g2.setColor(new Color(250, 252, 255, 230));
             g2.drawString(symbol, sx + 4, sy + sh);
 
-            String pct = (int) Math.round(frac * 100.0) + "%";
-            g2.setFont(hpFont);
-            FontMetrics hpFm = g2.getFontMetrics();
+            String pct = XRAY_PCT_LABELS[MathUtil.clamp(pctVal, 0, 100)];
+            g2.setFont(XRAY_HP_FONT);
             int px = cx - hpFm.stringWidth(pct) / 2;
             int py = cy + 12;
             g2.setColor(new Color(245, 250, 255, 210));
@@ -1965,6 +1987,36 @@ public class Renderer {
             ys[i] = y + (int) Math.round((ny * 0.5 + 0.5) * h);
         }
         return new Polygon(xs, ys, n);
+    }
+
+    private static String[] buildXrayPctLabels() {
+        String[] labels = new String[101];
+        for (int i = 0; i <= 100; i++) {
+            labels[i] = i + "%";
+        }
+        return labels;
+    }
+
+    private static EnumMap<ShipRoomLayout.RoomId, Integer> xrayPercentCacheFor(Ship ship) {
+        return XRAY_ROOM_PCT_CACHE.computeIfAbsent(
+                ship,
+                k -> new EnumMap<>(ShipRoomLayout.RoomId.class)
+        );
+    }
+
+    private static void refreshXrayPercentCache(Ship ship, List<ShipRoomLayout.RoomDef> rooms, long nowNanos) {
+        if (ship == null || rooms == null || rooms.isEmpty()) return;
+        EnumMap<ShipRoomLayout.RoomId, Integer> cache = xrayPercentCacheFor(ship);
+        long last = XRAY_ROOM_PCT_CACHE_TS.getOrDefault(ship, 0L);
+        boolean refreshDue = (nowNanos - last) >= XRAY_PERCENT_REFRESH_NS;
+        if (!refreshDue && cache.size() >= rooms.size()) return;
+
+        for (ShipRoomLayout.RoomDef room : rooms) {
+            if (room == null || room.id == null) continue;
+            int pct = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(room.id) * 100.0), 0, 100);
+            cache.put(room.id, pct);
+        }
+        XRAY_ROOM_PCT_CACHE_TS.put(ship, nowNanos);
     }
 
     private static void drawLockedTargetXrayHud(Graphics2D g2, Player player, Ship lockedTarget,
@@ -4162,7 +4214,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         try {
             if (!marks.isEmpty()) {
                 int mCount = marks.size();
-                int start = Math.max(0, mCount - 40);
+                int start = Math.max(0, mCount - 18);
                 for (int i = start; i < mCount; i++) {
                     Ship.HullImpactMark mark = marks.get(i);
                     int px = (int) Math.round(mark.localX);

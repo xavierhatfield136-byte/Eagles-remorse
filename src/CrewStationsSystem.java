@@ -19,16 +19,10 @@ public final class CrewStationsSystem {
         GameContext.CaptainDirective directive = (ctx.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
                 : ctx.captainDirective;
-        boolean captainNavPriority = ctx.captainAutomation && (
-                directive == GameContext.CaptainDirective.MINE
-                        || directive == GameContext.CaptainDirective.ESCORT
-                        || directive == GameContext.CaptainDirective.DEFEND
-                        || directive == GameContext.CaptainDirective.REPAIR
-                        || directive == GameContext.CaptainDirective.RTB
-        );
-        if (ctx.scienceAutomation && !captainNavPriority) applyScienceAutomation(ctx);
+        boolean captainNavPriority = isCaptainNavigationDirective(directive) && ctx.captainAutomation;
+        if (ctx.scienceAutomation) applyScienceAutomation(ctx);
         if (ctx.engineeringAutomation) applyEngineeringAutomation(ctx);
-        if (ctx.tacticalAutomation) applyTacticalAutomation(ctx);
+        if (ctx.tacticalAutomation) applyTacticalAutomation(ctx, captainNavPriority, directive);
         else {
             ctx.firingPrimaryAuto = false;
             ctx.firingSecondaryAuto = false;
@@ -71,15 +65,13 @@ public final class CrewStationsSystem {
                 if (base != null) {
                     ctx.waypointX = base.x;
                     ctx.waypointY = base.y;
-                    ctx.helmDesiredRange = Math.max(260.0, base.radius + 160.0);
+                    ctx.helmDesiredRange = Math.max(280.0, base.radius + 180.0);
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
+                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
                 if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
                 if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
-                Ship defendThreat = (base == null)
-                        ? target
-                        : TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, base.x, base.y, 1100.0);
-                ctx.lockedTarget = defendThreat;
+                // Defense stays anchored to the base perimeter; tactical auto can still engage nearby threats.
+                ctx.lockedTarget = null;
                 ctx.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
             }
             case EMERGENCY -> {
@@ -110,7 +102,7 @@ public final class CrewStationsSystem {
                     ctx.waypointY = escort.y;
                     ctx.helmDesiredRange = Math.max(200.0, escort.radius + ctx.player.radius + 120.0);
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
+                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
                 if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
                 if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.lockedTarget = null;
@@ -206,16 +198,10 @@ public final class CrewStationsSystem {
         if (ctx == null || ctx.player == null) return;
         double scanRange = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
         if (ctx.scienceJamming) scanRange *= 0.85;
-
-        if (!isValidTarget(ctx, ctx.lockedTarget)) {
-            ctx.lockedTarget = preferredTarget(ctx, scanRange);
-            return;
-        }
-
-        double d = Math.hypot(ctx.lockedTarget.x - ctx.player.x, ctx.lockedTarget.y - ctx.player.y);
-        if (d > scanRange) {
-            ctx.lockedTarget = preferredTarget(ctx, scanRange);
-        }
+        // Science station continuously refreshes lock to the nearest viable contact.
+        ctx.lockedTarget = TargetingSystem.findClosestEnemyToPoint(
+                ctx, ctx.player, ctx.player.x, ctx.player.y, scanRange
+        );
     }
 
     private static void applyEngineeringAutomation(GameContext ctx) {
@@ -247,7 +233,8 @@ public final class CrewStationsSystem {
         }
     }
 
-    private static void applyTacticalAutomation(GameContext ctx) {
+    private static void applyTacticalAutomation(GameContext ctx, boolean captainNavPriority,
+                                                GameContext.CaptainDirective directive) {
         if (ctx == null || ctx.player == null) return;
         Player p = ctx.player;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
@@ -258,8 +245,12 @@ public final class CrewStationsSystem {
             ctx.firingSecondaryAuto = false;
             return;
         }
-        ctx.lockedTarget = target;
         double d = Math.hypot(target.x - p.x, target.y - p.y);
+        boolean lockForHelm = !captainNavPriority || directive == GameContext.CaptainDirective.ATTACK
+                || directive == GameContext.CaptainDirective.EMERGENCY;
+        if (lockForHelm && ctx.tacticalMode != GameContext.TacticalMode.HOLD_FIRE) {
+            ctx.lockedTarget = target;
+        }
 
         switch (ctx.tacticalMode) {
             case HOLD_FIRE -> {
@@ -267,12 +258,16 @@ public final class CrewStationsSystem {
                 ctx.firingSecondaryAuto = false;
             }
             case DEFENSIVE -> {
-                ctx.firingPrimaryAuto = d <= 900.0 * rangeMul;
-                ctx.firingSecondaryAuto = d <= 760.0 * rangeMul;
+                double primaryRange = captainNavPriority ? 620.0 * rangeMul : 900.0 * rangeMul;
+                double secondaryRange = captainNavPriority ? 520.0 * rangeMul : 760.0 * rangeMul;
+                ctx.firingPrimaryAuto = d <= primaryRange;
+                ctx.firingSecondaryAuto = d <= secondaryRange;
             }
             case AGGRESSIVE -> {
-                ctx.firingPrimaryAuto = d <= 1500.0 * rangeMul;
-                ctx.firingSecondaryAuto = d <= 1120.0 * rangeMul;
+                double primaryRange = captainNavPriority ? 920.0 * rangeMul : 1500.0 * rangeMul;
+                double secondaryRange = captainNavPriority ? 760.0 * rangeMul : 1120.0 * rangeMul;
+                ctx.firingPrimaryAuto = d <= primaryRange;
+                ctx.firingSecondaryAuto = d <= secondaryRange;
             }
         }
     }
@@ -286,30 +281,55 @@ public final class CrewStationsSystem {
             return;
         }
 
+        GameContext.CaptainDirective directive = (ctx.captainDirective == null)
+                ? GameContext.CaptainDirective.BALANCED
+                : ctx.captainDirective;
+        boolean captainNavPriority = ctx.captainAutomation && isCaptainNavigationDirective(directive);
+        boolean hasWaypoint = Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY);
         Ship target = preferredTarget(ctx, 2800.0);
         double speed = Math.max(80.0, p.desiredSpeed);
 
         switch (ctx.helmMode) {
             case INTERCEPT -> {
-                if (target != null) moveToward(p, target.x, target.y, speed, dt);
-                else if (Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY)) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                if (captainNavPriority && hasWaypoint) {
+                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                } else if (target != null) {
+                    moveToward(p, target.x, target.y, speed, dt);
+                } else if (hasWaypoint) {
+                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                }
                 else {
                     p.vx = 0;
                     p.vy = 0;
                 }
             }
             case ORBIT -> {
-                if (target != null) orbit(p, target.x, target.y, Math.max(260.0, ctx.helmDesiredRange), speed * 0.92, dt, 1.0);
-                else if (Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY)) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                if (captainNavPriority && hasWaypoint) {
+                    orbit(p, ctx.waypointX, ctx.waypointY, Math.max(260.0, ctx.helmDesiredRange), speed * 0.92, dt, 1.0);
+                } else if (target != null) {
+                    orbit(p, target.x, target.y, Math.max(260.0, ctx.helmDesiredRange), speed * 0.92, dt, 1.0);
+                } else if (hasWaypoint) {
+                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                }
             }
             case MAINTAIN_RANGE -> {
-                if (target == null) {
-                    if (Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY)) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                double tx;
+                double ty;
+                if (captainNavPriority && hasWaypoint) {
+                    tx = ctx.waypointX;
+                    ty = ctx.waypointY;
+                } else if (target != null) {
+                    tx = target.x;
+                    ty = target.y;
+                } else if (hasWaypoint) {
+                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    break;
+                } else {
                     break;
                 }
                 double desired = Math.max(260.0, ctx.helmDesiredRange);
-                double dx = target.x - p.x;
-                double dy = target.y - p.y;
+                double dx = tx - p.x;
+                double dy = ty - p.y;
                 double d = Math.hypot(dx, dy) + 1e-9;
                 double ux = dx / d;
                 double uy = dy / d;
@@ -320,11 +340,26 @@ public final class CrewStationsSystem {
                 } else {
                     setVelPerSec(p, -uy * speed * 0.85, ux * speed * 0.85, dt);
                 }
-                p.angle = Math.atan2(target.y - p.y, target.x - p.x);
+                p.angle = Math.atan2(ty - p.y, tx - p.x);
             }
             case EVASIVE -> {
                 if (target == null) {
-                    if (Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY)) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    if (hasWaypoint) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    break;
+                }
+                if (captainNavPriority && hasWaypoint) {
+                    double tx = ctx.waypointX - p.x;
+                    double ty = ctx.waypointY - p.y;
+                    double tl = Math.hypot(tx, ty) + 1e-9;
+                    double ux = tx / tl;
+                    double uy = ty / tl;
+                    double px = -uy;
+                    double py = ux;
+                    double weave = Math.sin(System.nanoTime() * 1e-9 * 4.2 + p.id * 0.31);
+                    double vx = (ux * 0.92 + px * 0.28 * weave) * speed;
+                    double vy = (uy * 0.92 + py * 0.28 * weave) * speed;
+                    setVelPerSec(p, vx, vy, dt);
+                    p.angle = Math.atan2(vy, vx);
                     break;
                 }
                 double dx = target.x - p.x;
@@ -342,6 +377,14 @@ public final class CrewStationsSystem {
                 p.angle = Math.atan2(target.y - p.y, target.x - p.x);
             }
         }
+    }
+
+    private static boolean isCaptainNavigationDirective(GameContext.CaptainDirective directive) {
+        if (directive == null) return false;
+        return switch (directive) {
+            case MINE, ESCORT, DEFEND, REPAIR, RTB -> true;
+            default -> false;
+        };
     }
 
     private static Ship preferredTarget(GameContext ctx, double range) {

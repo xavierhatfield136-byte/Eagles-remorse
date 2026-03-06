@@ -407,19 +407,13 @@ if (DevTools.isDebugOverlay()) {
 
             Integer prevHp = LAST_HP.get(s);
             Double prevShield = LAST_SHIELD.get(s);
-
+            // CollisionSystem already spawns per-hit impact effects.
+            // Avoid duplicating hit VFX here to keep large fleet battles performant.
             if (prevShield != null && prevShield > s.shield) {
-                double ang = Math.random() * Math.PI * 2.0;
-                double hx = s.x + Math.cos(ang) * (s.radius + 2);
-                double hy = s.y + Math.sin(ang) * (s.radius + 2);
-                VFX.spawnShieldRipple(hx, hy, s.radius + 6, new java.awt.Color(120, 220, 255));
+                // Intentionally no extra per-ship shield effect.
             }
-
             if (prevHp != null && prevHp > s.hp) {
-                double ang = Math.random() * Math.PI * 2.0;
-                double hx = s.x + Math.cos(ang) * (s.radius * 0.85);
-                double hy = s.y + Math.sin(ang) * (s.radius * 0.85);
-                VFX.spawnHitSparks(hx, hy, Math.cos(ang), Math.sin(ang));
+                // Intentionally no extra per-ship hull effect.
             }
 
             LAST_HP.put(s, s.hp);
