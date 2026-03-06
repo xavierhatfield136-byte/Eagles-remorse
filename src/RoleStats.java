@@ -47,7 +47,7 @@ public final class RoleStats {
     public static Stats get(ShipRole role) {
         if (role == null) return defaultStats();
         return switch (role) {
-            case PICKET -> new Stats(16, 13, 14, 1.6, 165, 88, -1, -1, -1);
+            case PICKET -> new Stats(16, 13, 16, 1.8, 160, 88, -1, -1, -1);
             case PATROL -> new Stats(13, 9, 7, 1.0, 225, 62, -1, -1, -1);
             case STEALTH_SHIP -> new Stats(15, 10, 9, 1.2, 245, 145, -1, -1, -1);
             case FIGHTER -> new Stats(12, 6, 0, 0.0, 270, 35, -1, -1, -1);
@@ -55,19 +55,19 @@ public final class RoleStats {
             case PD_CRAFT -> new Stats(13, 7, 5, 0.9, 250, 52, -1, -1, -1);
             case DRONE -> new Stats(10, 4, 0, 0.0, 300, 20, -1, -1, -1);
             case FRIGATE -> new Stats(18, 19, 18, 2.0, 152, 96, -1, -1, -1);
-            case MISSILE_BOAT -> new Stats(20, 12, 9, 1.3, 112, 112, -1, -1, -1);
-            case CIWS_CORVETTE -> new Stats(16, 13, 9, 1.5, 195, 98, -1, -1, -1);
+            case MISSILE_BOAT -> new Stats(20, 11, 8, 1.2, 108, 112, -1, -1, -1);
+            case CIWS_CORVETTE -> new Stats(16, 12, 8, 1.4, 205, 98, -1, -1, -1);
             case LIGHT_CRUISER -> new Stats(23, 26, 24, 2.3, 128, 152, -1, -1, -1);
             case MEDIUM_CRUISER -> new Stats(27, 40, 30, 2.7, 102, 198, -1, -1, -1);
             case CRUISER -> new Stats(27, 40, 30, 2.7, 102, 198, -1, -1, -1);
-            case BATTLECRUISER -> new Stats(32, 54, 34, 2.8, 98, 388, -1, -1, -1);
-            case BATTLESHIP -> new Stats(36, 82, 52, 3.2, 70, 440, -1, -1, -1);
+            case BATTLECRUISER -> new Stats(32, 52, 32, 2.6, 104, 388, -1, -1, -1);
+            case BATTLESHIP -> new Stats(36, 84, 56, 3.4, 68, 440, -1, -1, -1);
             case DREADNOUGHT -> new Stats(44, 122, 82, 3.8, 58, 900, -1, -1, -1);
             case SUPERSHIP -> new Stats(52, 182, 134, 4.6, 48, 1700, -1, -1, -1);
-            case CARRIER -> new Stats(34, 52, 36, 3.1, 84, 372, -1, -1, -1);
-            case DRONE_CARRIER -> new Stats(32, 40, 24, 2.4, 104, 332, -1, -1, -1);
-            case TRANSPORT -> new Stats(24, 24, 20, 2.1, 118, 155, -1, -1, -1);
-            case MINER -> new Stats(18, 15, 9, 1.4, 132, 122, 180, 22.0, 64.0);
+            case CARRIER -> new Stats(34, 54, 38, 3.2, 80, 372, -1, -1, -1);
+            case DRONE_CARRIER -> new Stats(32, 38, 20, 2.2, 110, 332, -1, -1, -1);
+            case TRANSPORT -> new Stats(24, 26, 22, 2.2, 122, 155, -1, -1, -1);
+            case MINER -> new Stats(18, 15, 9, 1.4, 136, 122, 180, 22.0, 64.0);
             case HAULER -> new Stats(22, 24, 16, 1.9, 102, 145, 420, 0.0, 0.0);
             case BASE -> new Stats(60, 240, 190, 7.0, 0, 900, -1, -1, -1);
             case STATIC_TURRET -> new Stats(16, 22, 10, 1.5, 0, 120, -1, -1, -1);

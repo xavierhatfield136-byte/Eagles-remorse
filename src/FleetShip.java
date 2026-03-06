@@ -43,10 +43,10 @@ public class FleetShip extends Ship {
                 bountyValue = 70;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 11, 0);
-                gun.cooldown = 0.12;
+                gun.cooldown = 0.10;
                 gun.damage = 1;
-                gun.bulletSpeed = 820;
-                gun.bulletLife = 110;
+                gun.bulletSpeed = 860;
+                gun.bulletLife = 100;
                 gun.primary = true;
                 gun.radius = 5.5;
                 gun.barrelLen = 14;
@@ -54,8 +54,8 @@ public class FleetShip extends Ship {
 
                 // light CIWS
                 hasCIWS = true;
-                ciwsQuality = 0.35;
-                ciwsRange = 220;
+                ciwsQuality = 0.30;
+                ciwsRange = 210;
                 ciwsCooldown = 0.12;
                 ciwsPelletsPerBurst = 2;
             }
@@ -75,10 +75,10 @@ public class FleetShip extends Ship {
                 bountyValue = 90;
 
                 Turret longGun = new Turret(Turret.Kind.GUN, 13, 0);
-                longGun.cooldown = 0.18;
-                longGun.damage = 2;
-                longGun.bulletSpeed = 900;
-                longGun.bulletLife = 165;
+                longGun.cooldown = 0.22;
+                longGun.damage = 3;
+                longGun.bulletSpeed = 980;
+                longGun.bulletLife = 220;
                 longGun.primary = true;
                 longGun.radius = 6;
                 longGun.barrelLen = 18;
@@ -86,10 +86,10 @@ public class FleetShip extends Ship {
 
                 // better CIWS than patrol, worse than corvette
                 hasCIWS = true;
-                ciwsQuality = 0.70;
-                ciwsRange = 280;
-                ciwsCooldown = 0.07;
-                ciwsPelletsPerBurst = 4;
+                ciwsQuality = 0.62;
+                ciwsRange = 270;
+                ciwsCooldown = 0.075;
+                ciwsPelletsPerBurst = 3;
                 ciwsPelletSpeed = 980;
                 ciwsPelletLife = 18;
             }
@@ -122,9 +122,9 @@ public class FleetShip extends Ship {
                 cloakSignature = 0.07;
 
                 Turret burstGun = new Turret(Turret.Kind.GUN, 11, 0);
-                burstGun.cooldown = 0.10;
+                burstGun.cooldown = 0.085;
                 burstGun.damage = 1;
-                burstGun.bulletSpeed = 860;
+                burstGun.bulletSpeed = 880;
                 burstGun.bulletLife = 120;
                 burstGun.primary = true;
                 burstGun.radius = 5.5;
@@ -133,11 +133,11 @@ public class FleetShip extends Ship {
 
                 // small missile rack for surprise strikes
                 Turret rack = new Turret(Turret.Kind.MISSILE, 5, 0);
-                rack.cooldown = 1.15;
-                rack.damage = 4;
-                rack.missileSpeed = 270;
-                rack.missileTurnRate = Math.toRadians(260);
-                rack.missileLife = 230;
+                rack.cooldown = 0.95;
+                rack.damage = 5;
+                rack.missileSpeed = 295;
+                rack.missileTurnRate = Math.toRadians(280);
+                rack.missileLife = 250;
                 rack.primary = false;
                 rack.radius = 8;
                 rack.barrelLen = 12;
@@ -145,9 +145,9 @@ public class FleetShip extends Ship {
 
                 // weak CIWS
                 hasCIWS = true;
-                ciwsQuality = 0.20;
-                ciwsRange = 200;
-                ciwsCooldown = 0.16;
+                ciwsQuality = 0.15;
+                ciwsRange = 180;
+                ciwsCooldown = 0.17;
                 ciwsPelletsPerBurst = 1;
             }
 
@@ -168,10 +168,10 @@ public class FleetShip extends Ship {
                 bountyValue = 35;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 10, 0);
-                gun.cooldown = 0.10;
+                gun.cooldown = 0.09;
                 gun.damage = 1;
-                gun.bulletSpeed = 860;
-                gun.bulletLife = 95;
+                gun.bulletSpeed = 900;
+                gun.bulletLife = 100;
                 gun.primary = true;
                 gun.radius = 5;
                 gun.barrelLen = 14;
@@ -193,7 +193,7 @@ public class FleetShip extends Ship {
                 bountyValue = 55;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 10, 0);
-                gun.cooldown = 0.16;
+                gun.cooldown = 0.20;
                 gun.damage = 1;
                 gun.bulletSpeed = 820;
                 gun.bulletLife = 90;
@@ -201,11 +201,11 @@ public class FleetShip extends Ship {
                 addTurret(gun);
 
                 Turret rack = new Turret(Turret.Kind.MISSILE, 4, 0);
-                rack.cooldown = 0.95;
-                rack.damage = 4;
-                rack.missileSpeed = 270;
-                rack.missileTurnRate = Math.toRadians(260);
-                rack.missileLife = 240;
+                rack.cooldown = 0.90;
+                rack.damage = 5;
+                rack.missileSpeed = 280;
+                rack.missileTurnRate = Math.toRadians(250);
+                rack.missileLife = 260;
                 rack.primary = false;
                 rack.radius = 7;
                 rack.barrelLen = 12;
@@ -234,10 +234,10 @@ public class FleetShip extends Ship {
                 bountyValue = 50;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 9, 0);
-                gun.cooldown = 0.14;
+                gun.cooldown = 0.13;
                 gun.damage = 1;
-                gun.bulletSpeed = 820;
-                gun.bulletLife = 85;
+                gun.bulletSpeed = 840;
+                gun.bulletLife = 90;
                 gun.primary = true;
                 addTurret(gun);
 
@@ -266,10 +266,10 @@ public class FleetShip extends Ship {
                 bountyValue = 18;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 8, 0);
-                gun.cooldown = 0.12;
+                gun.cooldown = 0.10;
                 gun.damage = 1;
-                gun.bulletSpeed = 820;
-                gun.bulletLife = 75;
+                gun.bulletSpeed = 860;
+                gun.bulletLife = 80;
                 gun.primary = true;
                 gun.radius = 4.6;
                 gun.barrelLen = 12;
@@ -294,7 +294,7 @@ public class FleetShip extends Ship {
                 bountyValue = 90;
 
                 Turret foreGun = new Turret(Turret.Kind.GUN, 14, 0);
-                foreGun.cooldown = 0.14;
+                foreGun.cooldown = 0.13;
                 foreGun.damage = 1;
                 foreGun.bulletSpeed = 780;
                 foreGun.bulletLife = 120;
@@ -302,7 +302,7 @@ public class FleetShip extends Ship {
                 addTurret(foreGun);
 
                 Turret aftGun = new Turret(Turret.Kind.GUN, -10, 0);
-                aftGun.cooldown = 0.22;
+                aftGun.cooldown = 0.20;
                 aftGun.damage = 1;
                 aftGun.bulletSpeed = 720;
                 aftGun.bulletLife = 110;
@@ -311,11 +311,11 @@ public class FleetShip extends Ship {
                 addTurret(aftGun);
 
                 Turret rack = new Turret(Turret.Kind.MISSILE, 6, 8);
-                rack.cooldown = 1.05;
+                rack.cooldown = 0.98;
                 rack.damage = 3;
-                rack.missileSpeed = 245;
+                rack.missileSpeed = 255;
                 rack.missileTurnRate = Math.toRadians(220);
-                rack.missileLife = 205;
+                rack.missileLife = 220;
                 rack.primary = false;
                 rack.radius = 7;
                 rack.barrelLen = 10;
@@ -345,15 +345,15 @@ public class FleetShip extends Ship {
                 bountyValue = 95;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 12, -6);
-                g1.cooldown = 0.16;
+                g1.cooldown = 0.12;
                 g1.primary = true;
-                g1.bulletSpeed = 760;
+                g1.bulletSpeed = 800;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 12, 6);
-                g2.cooldown = 0.16;
+                g2.cooldown = 0.12;
                 g2.primary = true;
-                g2.bulletSpeed = 760;
+                g2.bulletSpeed = 800;
                 addTurret(g2);
 
                 // BEST CIWS SHIP
@@ -382,44 +382,44 @@ public class FleetShip extends Ship {
                 bountyValue = 105;
 
                 Turret gunL = new Turret(Turret.Kind.GUN, 10, -8);
-                gunL.cooldown = 0.18;
+                gunL.cooldown = 0.24;
                 gunL.damage = 1;
-                gunL.bulletSpeed = 740;
+                gunL.bulletSpeed = 700;
                 gunL.primary = true;
                 addTurret(gunL);
 
                 Turret gunR = new Turret(Turret.Kind.GUN, 10, 8);
-                gunR.cooldown = 0.18;
+                gunR.cooldown = 0.24;
                 gunR.damage = 1;
-                gunR.bulletSpeed = 740;
+                gunR.bulletSpeed = 700;
                 gunR.primary = true;
                 addTurret(gunR);
 
                 Turret tubes1 = new Turret(Turret.Kind.MISSILE, 6, -4);
-                tubes1.cooldown = 0.80;
-                tubes1.damage = 4;
-                tubes1.missileSpeed = 260;
-                tubes1.missileTurnRate = Math.toRadians(260);
-                tubes1.missileLife = 230;
+                tubes1.cooldown = 0.70;
+                tubes1.damage = 5;
+                tubes1.missileSpeed = 285;
+                tubes1.missileTurnRate = Math.toRadians(255);
+                tubes1.missileLife = 300;
                 tubes1.primary = false;
                 tubes1.radius = 8;
                 addTurret(tubes1);
 
                 Turret tubes2 = new Turret(Turret.Kind.MISSILE, 6, 4);
-                tubes2.cooldown = 0.80;
-                tubes2.damage = 4;
-                tubes2.missileSpeed = 260;
-                tubes2.missileTurnRate = Math.toRadians(260);
-                tubes2.missileLife = 230;
+                tubes2.cooldown = 0.70;
+                tubes2.damage = 5;
+                tubes2.missileSpeed = 285;
+                tubes2.missileTurnRate = Math.toRadians(255);
+                tubes2.missileLife = 300;
                 tubes2.primary = false;
                 tubes2.radius = 8;
                 addTurret(tubes2);
 
                 // very weak CIWS
                 hasCIWS = true;
-                ciwsQuality = 0.18;
-                ciwsRange = 190;
-                ciwsCooldown = 0.16;
+                ciwsQuality = 0.12;
+                ciwsRange = 170;
+                ciwsCooldown = 0.17;
                 ciwsPelletsPerBurst = 1;
             }
 
@@ -438,42 +438,42 @@ public class FleetShip extends Ship {
                 bountyValue = 150;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 16, -9);
-                g1.cooldown = 0.19;
+                g1.cooldown = 0.17;
                 g1.damage = 2;
-                g1.bulletSpeed = 845;
-                g1.bulletLife = 145;
+                g1.bulletSpeed = 870;
+                g1.bulletLife = 170;
                 g1.primary = true;
                 g1.radius = 7;
                 g1.barrelLen = 18;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 16, 9);
-                g2.cooldown = 0.18;
+                g2.cooldown = 0.17;
                 g2.damage = 2;
-                g2.bulletSpeed = 845;
-                g2.bulletLife = 145;
+                g2.bulletSpeed = 870;
+                g2.bulletLife = 170;
                 g2.primary = true;
                 g2.radius = 7;
                 g2.barrelLen = 18;
                 addTurret(g2);
 
                 Turret rear = new Turret(Turret.Kind.GUN, -12, 0);
-                rear.cooldown = 0.23;
+                rear.cooldown = 0.21;
                 rear.damage = 1;
-                rear.bulletSpeed = 780;
-                rear.bulletLife = 135;
+                rear.bulletSpeed = 810;
+                rear.bulletLife = 155;
                 rear.primary = true;
                 rear.radius = 6;
                 rear.barrelLen = 14;
                 addTurret(rear);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 5, 0);
-                mb.cooldown = 1.25;
-                mb.damage = 4;
+                mb.cooldown = 1.15;
+                mb.damage = 5;
                 mb.primary = false;
-                mb.missileSpeed = 265;
-                mb.missileTurnRate = Math.toRadians(210);
-                mb.missileLife = 245;
+                mb.missileSpeed = 275;
+                mb.missileTurnRate = Math.toRadians(205);
+                mb.missileLife = 270;
                 mb.radius = 9;
                 mb.barrelLen = 14;
                 addTurret(mb);
@@ -500,42 +500,42 @@ public class FleetShip extends Ship {
                 bountyValue = 190;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 19, -11);
-                g1.cooldown = 0.18;
+                g1.cooldown = 0.17;
                 g1.damage = 2;
-                g1.bulletSpeed = 875;
-                g1.bulletLife = 155;
+                g1.bulletSpeed = 900;
+                g1.bulletLife = 180;
                 g1.primary = true;
                 g1.radius = 7;
                 g1.barrelLen = 18;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 19, 11);
-                g2.cooldown = 0.18;
+                g2.cooldown = 0.17;
                 g2.damage = 2;
-                g2.bulletSpeed = 875;
-                g2.bulletLife = 155;
+                g2.bulletSpeed = 900;
+                g2.bulletLife = 180;
                 g2.primary = true;
                 g2.radius = 7;
                 g2.barrelLen = 18;
                 addTurret(g2);
 
                 Turret rear = new Turret(Turret.Kind.GUN, -15, 0);
-                rear.cooldown = 0.21;
+                rear.cooldown = 0.20;
                 rear.damage = 1;
-                rear.bulletSpeed = 800;
-                rear.bulletLife = 140;
+                rear.bulletSpeed = 830;
+                rear.bulletLife = 165;
                 rear.primary = true;
                 rear.radius = 6;
                 rear.barrelLen = 14;
                 addTurret(rear);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 6, 0);
-                mb.cooldown = 1.15;
+                mb.cooldown = 1.05;
                 mb.damage = 5;
                 mb.primary = false;
-                mb.missileSpeed = 270;
-                mb.missileTurnRate = Math.toRadians(215);
-                mb.missileLife = 255;
+                mb.missileSpeed = 280;
+                mb.missileTurnRate = Math.toRadians(210);
+                mb.missileLife = 285;
                 mb.radius = 9;
                 mb.barrelLen = 14;
                 addTurret(mb);
@@ -562,58 +562,58 @@ public class FleetShip extends Ship {
                 bountyValue = 380;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 24, -13);
-                g1.cooldown = 0.25;
+                g1.cooldown = 0.22;
                 g1.damage = 3;
-                g1.bulletSpeed = 940;
-                g1.bulletLife = 195;
+                g1.bulletSpeed = 970;
+                g1.bulletLife = 190;
                 g1.primary = true;
                 g1.radius = 9;
                 g1.barrelLen = 22;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 24, 13);
-                g2.cooldown = 0.25;
+                g2.cooldown = 0.22;
                 g2.damage = 3;
-                g2.bulletSpeed = 940;
-                g2.bulletLife = 195;
+                g2.bulletSpeed = 970;
+                g2.bulletLife = 190;
                 g2.primary = true;
                 g2.radius = 9;
                 g2.barrelLen = 22;
                 addTurret(g2);
 
                 Turret g3 = new Turret(Turret.Kind.GUN, 4, -16);
-                g3.cooldown = 0.28;
+                g3.cooldown = 0.24;
                 g3.damage = 2;
-                g3.bulletSpeed = 900;
-                g3.bulletLife = 180;
+                g3.bulletSpeed = 930;
+                g3.bulletLife = 175;
                 g3.primary = true;
                 g3.radius = 8;
                 g3.barrelLen = 20;
                 addTurret(g3);
 
                 Turret g4 = new Turret(Turret.Kind.GUN, 4, 16);
-                g4.cooldown = 0.28;
+                g4.cooldown = 0.24;
                 g4.damage = 2;
-                g4.bulletSpeed = 900;
-                g4.bulletLife = 180;
+                g4.bulletSpeed = 930;
+                g4.bulletLife = 175;
                 g4.primary = true;
                 g4.radius = 8;
                 g4.barrelLen = 20;
                 addTurret(g4);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 0, 0);
-                mb.cooldown = 1.25;
+                mb.cooldown = 1.10;
                 mb.damage = 6;
                 mb.primary = false;
-                mb.missileSpeed = 285;
-                mb.missileTurnRate = Math.toRadians(205);
-                mb.missileLife = 285;
+                mb.missileSpeed = 295;
+                mb.missileTurnRate = Math.toRadians(215);
+                mb.missileLife = 270;
                 mb.radius = 10;
                 mb.barrelLen = 16;
                 addTurret(mb);
 
                 hasCIWS = true;
-                ciwsQuality = 0.22;
+                ciwsQuality = 0.24;
                 ciwsRange = 265;
                 ciwsCooldown = 0.14;
                 ciwsPelletsPerBurst = 1;
@@ -637,58 +637,58 @@ public class FleetShip extends Ship {
                 bountyValue = 420;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 26, -14);
-                g1.cooldown = 0.26;
-                g1.damage = 3;
-                g1.bulletSpeed = 920;
-                g1.bulletLife = 190;
+                g1.cooldown = 0.34;
+                g1.damage = 4;
+                g1.bulletSpeed = 980;
+                g1.bulletLife = 270;
                 g1.primary = true;
                 g1.radius = 9;
                 g1.barrelLen = 22;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 26, 14);
-                g2.cooldown = 0.26;
-                g2.damage = 3;
-                g2.bulletSpeed = 920;
-                g2.bulletLife = 190;
+                g2.cooldown = 0.34;
+                g2.damage = 4;
+                g2.bulletSpeed = 980;
+                g2.bulletLife = 270;
                 g2.primary = true;
                 g2.radius = 9;
                 g2.barrelLen = 22;
                 addTurret(g2);
 
                 Turret g3 = new Turret(Turret.Kind.GUN, 4, -18);
-                g3.cooldown = 0.30;
+                g3.cooldown = 0.36;
                 g3.damage = 2;
-                g3.bulletSpeed = 880;
-                g3.bulletLife = 175;
+                g3.bulletSpeed = 920;
+                g3.bulletLife = 240;
                 g3.primary = true;
                 g3.radius = 8;
                 g3.barrelLen = 20;
                 addTurret(g3);
 
                 Turret g4 = new Turret(Turret.Kind.GUN, 4, 18);
-                g4.cooldown = 0.30;
+                g4.cooldown = 0.36;
                 g4.damage = 2;
-                g4.bulletSpeed = 880;
-                g4.bulletLife = 175;
+                g4.bulletSpeed = 920;
+                g4.bulletLife = 240;
                 g4.primary = true;
                 g4.radius = 8;
                 g4.barrelLen = 20;
                 addTurret(g4);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, -2, 0);
-                mb.cooldown = 1.35;
-                mb.damage = 6;
+                mb.cooldown = 1.50;
+                mb.damage = 7;
                 mb.primary = false;
-                mb.missileSpeed = 270;
-                mb.missileTurnRate = Math.toRadians(190);
-                mb.missileLife = 280;
+                mb.missileSpeed = 280;
+                mb.missileTurnRate = Math.toRadians(180);
+                mb.missileLife = 320;
                 mb.radius = 10;
                 mb.barrelLen = 16;
                 addTurret(mb);
 
                 hasCIWS = true;
-                ciwsQuality = 0.20;
+                ciwsQuality = 0.18;
                 ciwsRange = 250;
                 ciwsCooldown = 0.15;
                 ciwsPelletsPerBurst = 1;
@@ -710,20 +710,20 @@ public class FleetShip extends Ship {
 
                 // Heavy batteries
                 Turret a1 = new Turret(Turret.Kind.GUN, 32, -18);
-                a1.cooldown = 0.34;
-                a1.damage = 4;
-                a1.bulletSpeed = 980;
-                a1.bulletLife = 230;
+                a1.cooldown = 0.38;
+                a1.damage = 5;
+                a1.bulletSpeed = 1020;
+                a1.bulletLife = 300;
                 a1.primary = true;
                 a1.radius = 11;
                 a1.barrelLen = 26;
                 addTurret(a1);
 
                 Turret a2 = new Turret(Turret.Kind.GUN, 32, 18);
-                a2.cooldown = 0.34;
-                a2.damage = 4;
-                a2.bulletSpeed = 980;
-                a2.bulletLife = 230;
+                a2.cooldown = 0.38;
+                a2.damage = 5;
+                a2.bulletSpeed = 1020;
+                a2.bulletLife = 300;
                 a2.primary = true;
                 a2.radius = 11;
                 a2.barrelLen = 26;
@@ -731,20 +731,20 @@ public class FleetShip extends Ship {
 
                 // Secondary guns
                 Turret s1 = new Turret(Turret.Kind.GUN, 10, -22);
-                s1.cooldown = 0.28;
-                s1.damage = 2;
-                s1.bulletSpeed = 920;
-                s1.bulletLife = 210;
+                s1.cooldown = 0.34;
+                s1.damage = 3;
+                s1.bulletSpeed = 960;
+                s1.bulletLife = 255;
                 s1.primary = true;
                 s1.radius = 9;
                 s1.barrelLen = 22;
                 addTurret(s1);
 
                 Turret s2 = new Turret(Turret.Kind.GUN, 10, 22);
-                s2.cooldown = 0.28;
-                s2.damage = 2;
-                s2.bulletSpeed = 920;
-                s2.bulletLife = 210;
+                s2.cooldown = 0.34;
+                s2.damage = 3;
+                s2.bulletSpeed = 960;
+                s2.bulletLife = 255;
                 s2.primary = true;
                 s2.radius = 9;
                 s2.barrelLen = 22;
@@ -752,18 +752,18 @@ public class FleetShip extends Ship {
 
                 // Missile bank
                 Turret mb = new Turret(Turret.Kind.MISSILE, 0, 0);
-                mb.cooldown = 1.45;
-                mb.damage = 8;
+                mb.cooldown = 1.55;
+                mb.damage = 9;
                 mb.primary = false;
-                mb.missileSpeed = 290;
-                mb.missileTurnRate = Math.toRadians(185);
-                mb.missileLife = 330;
+                mb.missileSpeed = 300;
+                mb.missileTurnRate = Math.toRadians(175);
+                mb.missileLife = 380;
                 mb.radius = 12;
                 mb.barrelLen = 18;
                 addTurret(mb);
 
                 hasCIWS = true;
-                ciwsQuality = 0.30;
+                ciwsQuality = 0.26;
                 ciwsRange = 285;
                 ciwsCooldown = 0.14;
                 ciwsPelletsPerBurst = 2;
@@ -788,62 +788,62 @@ public class FleetShip extends Ship {
                 bountyValue = 1600;
 
                 Turret a1 = new Turret(Turret.Kind.GUN, 38, -18);
-                a1.cooldown = 0.34;
-                a1.damage = 5;
-                a1.bulletSpeed = 1020;
-                a1.bulletLife = 250;
+                a1.cooldown = 0.36;
+                a1.damage = 6;
+                a1.bulletSpeed = 1080;
+                a1.bulletLife = 320;
                 a1.primary = true;
                 a1.radius = 12;
                 a1.barrelLen = 30;
                 addTurret(a1);
 
                 Turret a2 = new Turret(Turret.Kind.GUN, 38, 18);
-                a2.cooldown = 0.34;
-                a2.damage = 5;
-                a2.bulletSpeed = 1020;
-                a2.bulletLife = 250;
+                a2.cooldown = 0.36;
+                a2.damage = 6;
+                a2.bulletSpeed = 1080;
+                a2.bulletLife = 320;
                 a2.primary = true;
                 a2.radius = 12;
                 a2.barrelLen = 30;
                 addTurret(a2);
 
                 Turret s1 = new Turret(Turret.Kind.GUN, 14, -24);
-                s1.cooldown = 0.27;
-                s1.damage = 3;
-                s1.bulletSpeed = 940;
-                s1.bulletLife = 220;
+                s1.cooldown = 0.30;
+                s1.damage = 4;
+                s1.bulletSpeed = 980;
+                s1.bulletLife = 280;
                 s1.primary = true;
                 s1.radius = 10;
                 s1.barrelLen = 24;
                 addTurret(s1);
 
                 Turret s2 = new Turret(Turret.Kind.GUN, 14, 24);
-                s2.cooldown = 0.27;
-                s2.damage = 3;
-                s2.bulletSpeed = 940;
-                s2.bulletLife = 220;
+                s2.cooldown = 0.30;
+                s2.damage = 4;
+                s2.bulletSpeed = 980;
+                s2.bulletLife = 280;
                 s2.primary = true;
                 s2.radius = 10;
                 s2.barrelLen = 24;
                 addTurret(s2);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 2, 0);
-                mb.cooldown = 1.55;
-                mb.damage = 10;
+                mb.cooldown = 1.65;
+                mb.damage = 11;
                 mb.primary = false;
-                mb.missileSpeed = 305;
-                mb.missileTurnRate = Math.toRadians(190);
-                mb.missileLife = 360;
+                mb.missileSpeed = 320;
+                mb.missileTurnRate = Math.toRadians(185);
+                mb.missileLife = 420;
                 mb.radius = 13;
                 mb.barrelLen = 20;
                 addTurret(mb);
 
                 hasWaveMotionGun = true;
-                waveMotionChargeTime = 3.0;
-                waveMotionCooldown = 22.0;
-                waveMotionDamage = 88;
-                waveMotionSpeed = 1600.0;
-                waveMotionLife = 170;
+                waveMotionChargeTime = 3.4;
+                waveMotionCooldown = 26.0;
+                waveMotionDamage = 96;
+                waveMotionSpeed = 1700.0;
+                waveMotionLife = 190;
                 waveMotionRadius = 14.0;
                 waveMotionMaxHits = 26;
                 waveMotionBeamDuration = 1.15;
@@ -872,31 +872,36 @@ public class FleetShip extends Ship {
                 bountyValue = 360;
 
                 Turret leftGun = new Turret(Turret.Kind.GUN, 14, -18);
-                leftGun.cooldown = 0.18;
+                leftGun.cooldown = 0.22;
                 leftGun.damage = 1;
+                leftGun.bulletSpeed = 780;
+                leftGun.bulletLife = 150;
                 leftGun.primary = true;
                 addTurret(leftGun);
 
                 Turret rightGun = new Turret(Turret.Kind.GUN, 14, 18);
-                rightGun.cooldown = 0.18;
+                rightGun.cooldown = 0.22;
                 rightGun.damage = 1;
+                rightGun.bulletSpeed = 780;
+                rightGun.bulletLife = 150;
                 rightGun.primary = true;
                 addTurret(rightGun);
 
                 Turret rearGun = new Turret(Turret.Kind.GUN, -14, 0);
-                rearGun.cooldown = 0.22;
+                rearGun.cooldown = 0.25;
                 rearGun.damage = 1;
+                rearGun.bulletSpeed = 760;
+                rearGun.bulletLife = 150;
                 rearGun.primary = true;
-                rearGun.bulletSpeed = 740;
                 addTurret(rearGun);
 
                 Turret missiles = new Turret(Turret.Kind.MISSILE, 6, 0);
-                missiles.cooldown = 1.35;
+                missiles.cooldown = 1.45;
                 missiles.damage = 4;
                 missiles.primary = false;
-                missiles.missileSpeed = 255;
-                missiles.missileTurnRate = Math.toRadians(200);
-                missiles.missileLife = 240;
+                missiles.missileSpeed = 265;
+                missiles.missileTurnRate = Math.toRadians(195);
+                missiles.missileLife = 270;
                 addTurret(missiles);
 
                 hasCIWS = true;
@@ -925,22 +930,26 @@ public class FleetShip extends Ship {
                 bountyValue = 340;
 
                 Turret g1 = new Turret(Turret.Kind.GUN, 14, -14);
-                g1.cooldown = 0.18;
+                g1.cooldown = 0.16;
+                g1.bulletSpeed = 820;
+                g1.bulletLife = 140;
                 g1.primary = true;
                 addTurret(g1);
 
                 Turret g2 = new Turret(Turret.Kind.GUN, 14, 14);
-                g2.cooldown = 0.18;
+                g2.cooldown = 0.16;
+                g2.bulletSpeed = 820;
+                g2.bulletLife = 140;
                 g2.primary = true;
                 addTurret(g2);
 
                 Turret missiles = new Turret(Turret.Kind.MISSILE, 6, 0);
-                missiles.cooldown = 1.55;
+                missiles.cooldown = 1.30;
                 missiles.damage = 4;
                 missiles.primary = false;
-                missiles.missileSpeed = 250;
-                missiles.missileTurnRate = Math.toRadians(200);
-                missiles.missileLife = 235;
+                missiles.missileSpeed = 270;
+                missiles.missileTurnRate = Math.toRadians(215);
+                missiles.missileLife = 250;
                 addTurret(missiles);
 
                 hasCIWS = true;
@@ -950,8 +959,8 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 1;
 
                 isCarrier = true;
-                fighterLaunchCooldown = 3.3;
-                maxFighters = 14;
+                fighterLaunchCooldown = 3.0;
+                maxFighters = 16;
             }
 
             case TRANSPORT -> {
@@ -969,9 +978,10 @@ public class FleetShip extends Ship {
                 bountyValue = 150;
 
                 Turret gun = new Turret(Turret.Kind.GUN, 14, 0);
-                gun.cooldown = 0.22;
+                gun.cooldown = 0.28;
                 gun.damage = 1;
-                gun.bulletSpeed = 760;
+                gun.bulletSpeed = 740;
+                gun.bulletLife = 115;
                 gun.primary = true;
                 addTurret(gun);
 
@@ -1012,10 +1022,10 @@ public class FleetShip extends Ship {
 
                 // Light defensive gun
                 Turret gun = new Turret(Turret.Kind.GUN, 12, 0);
-                gun.cooldown = 0.20;
+                gun.cooldown = 0.26;
                 gun.damage = 1;
-                gun.bulletSpeed = 760;
-                gun.bulletLife = 120;
+                gun.bulletSpeed = 740;
+                gun.bulletLife = 110;
                 gun.primary = true;
                 gun.radius = 5.5;
                 gun.barrelLen = 14;
@@ -1048,10 +1058,10 @@ public class FleetShip extends Ship {
 
                 // Basic gun
                 Turret gun = new Turret(Turret.Kind.GUN, 14, 0);
-                gun.cooldown = 0.24;
+                gun.cooldown = 0.30;
                 gun.damage = 1;
-                gun.bulletSpeed = 740;
-                gun.bulletLife = 120;
+                gun.bulletSpeed = 720;
+                gun.bulletLife = 110;
                 gun.primary = true;
                 addTurret(gun);
 

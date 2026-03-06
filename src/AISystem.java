@@ -50,6 +50,7 @@ public final class AISystem {
     private static final Map<Integer, Integer> TEAM_DELAYED_TARGET_IDS = new HashMap<>();
     private static final Map<Integer, Double> CLOSEST_RETARGET_TIMERS = new HashMap<>();
     private static final Map<Integer, Integer> CLOSEST_RETARGET_TARGET_IDS = new HashMap<>();
+    private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -768,6 +769,9 @@ public final class AISystem {
 
         GameContext.FleetCommand cmd = resolveFleetCommand(ctx, s, flagship);
         if (cmd == null || cmd == GameContext.FleetCommand.AUTO) return false;
+        if (isRepairOrderCommand(cmd)) {
+            s.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS);
+        }
 
         Ship target = selectEngagementTarget(ctx, state, s);
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
@@ -979,6 +983,13 @@ public final class AISystem {
             case REPAIR, RTB, RETREAT, MINE -> (dSelf <= 420.0) ? target : null;
             default -> target;
         };
+    }
+
+    private static boolean isRepairOrderCommand(GameContext.FleetCommand cmd) {
+        if (cmd == null) return false;
+        return cmd == GameContext.FleetCommand.REPAIR
+                || cmd == GameContext.FleetCommand.RTB
+                || cmd == GameContext.FleetCommand.RETREAT;
     }
 
     private static GameContext.FleetCommand resolveFleetCommand(GameContext ctx, Ship ship, Ship flagship) {
@@ -1538,12 +1549,18 @@ public final class AISystem {
             }
 
             // Rough engagement gating by weapon kind
-            double maxRange;
+            double gunRange;
+            double missileRange;
             if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
-                maxRange = (t.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0;
+                gunRange = 900.0;
+                missileRange = 1400.0;
             } else {
-                maxRange = (t.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0;
+                gunRange = 520.0;
+                missileRange = 900.0;
             }
+            gunRange *= gunRangeRoleMul((s == null) ? null : s.role);
+            missileRange *= missileRangeRoleMul((s == null) ? null : s.role);
+            double maxRange = (t.kind == Turret.Kind.MISSILE) ? missileRange : gunRange;
             maxRange *= rangeMul;
             if (dist > maxRange) continue;
 
@@ -1746,6 +1763,50 @@ public final class AISystem {
             case CARRIER -> 0.78;
             case SUPERSHIP -> 0.74;
             case TRANSPORT, HAULER, MINER -> 0.70;
+            default -> 1.0;
+        };
+    }
+
+    private static double gunRangeRoleMul(ShipRole role) {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case PICKET -> 1.38;
+            case BATTLESHIP -> 1.32;
+            case DREADNOUGHT -> 1.36;
+            case SUPERSHIP -> 1.42;
+            case BATTLECRUISER -> 1.18;
+            case LIGHT_CRUISER -> 1.12;
+            case MEDIUM_CRUISER, CRUISER -> 1.16;
+            case CARRIER, DRONE_CARRIER -> 1.04;
+            case FRIGATE -> 1.00;
+            case MISSILE_BOAT -> 0.90;
+            case CIWS_CORVETTE -> 0.86;
+            case PATROL -> 0.92;
+            case STEALTH_SHIP -> 0.94;
+            case FIGHTER, DRONE, PD_CRAFT, BOMBER -> 0.82;
+            case TRANSPORT, HAULER, MINER -> 0.78;
+            default -> 1.0;
+        };
+    }
+
+    private static double missileRangeRoleMul(ShipRole role) {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case MISSILE_BOAT -> 1.28;
+            case BOMBER -> 1.20;
+            case CARRIER -> 1.18;
+            case DRONE_CARRIER -> 1.14;
+            case DREADNOUGHT -> 1.16;
+            case SUPERSHIP -> 1.22;
+            case BATTLESHIP -> 1.14;
+            case BATTLECRUISER -> 1.08;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1.05;
+            case STEALTH_SHIP -> 1.02;
+            case FRIGATE -> 1.00;
+            case CIWS_CORVETTE -> 0.92;
+            case PICKET, PATROL -> 0.90;
+            case FIGHTER, DRONE, PD_CRAFT -> 0.80;
+            case TRANSPORT, HAULER, MINER -> 0.86;
             default -> 1.0;
         };
     }

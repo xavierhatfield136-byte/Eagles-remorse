@@ -173,8 +173,10 @@ public abstract class Ship {
     }
 
     public static final double BEAM_BOLT_SPEED = 650.0;
-    public static final double BEAM_BOLT_DAMAGE_MULT = 3.0;
-    public static final double BEAM_BOLT_FIRE_RATE_MULT = 0.35;
+    public static final double BEAM_BOLT_FIRE_RATE_MULT = 0.30;
+    public static final double BEAM_BOLT_DPS_MULT = 1.20;
+    // 4.0 * 0.30 = 1.20x DPS target versus baseline guns.
+    public static final double BEAM_BOLT_DAMAGE_MULT = 4.0;
     public static final int BEAM_BOLT_LIFE = 120; // frames (~1200px at 650 px/s)
 
     public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
@@ -345,6 +347,8 @@ public abstract class Ship {
     private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
     private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
     private double hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
+    private double noDamageTimerSeconds = 0.0;
+    private boolean instantRepairConsumed = false;
 
     public static final class RoomDamageEvent {
         public final ShipRoomLayout.RoomId roomId;
@@ -486,6 +490,7 @@ public abstract class Ship {
 
         x += vx;
         y += vy;
+        if (dt > 0.0) noDamageTimerSeconds += dt;
 
         if (revealTimer > 0) {
             revealTimer -= dt;
@@ -680,6 +685,27 @@ public abstract class Ship {
         syncHullFromRoomIntegrity();
     }
 
+    public double secondsSinceDamage() {
+        return Math.max(0.0, noDamageTimerSeconds);
+    }
+
+    public boolean tryInstantRepairFromOrder(double requiredNoDamageSeconds) {
+        if (!alive || dying) return false;
+        if (instantRepairConsumed) return false;
+        double req = Math.max(0.0, requiredNoDamageSeconds);
+        if (noDamageTimerSeconds + 1e-9 < req) return false;
+
+        // Full refit: restore internal systems/rooms/shield state in one step.
+        resetInternalSystems();
+        fullyRepairHull();
+        resetShieldState();
+        if (shieldActive && shieldMax > 0.0) shield = shieldMax;
+        clearHullImpactMarks();
+
+        instantRepairConsumed = true;
+        return true;
+    }
+
     public void healShield(double amount) {
         if (!alive || !isShieldOnline()) return;
         if (amount <= 0) return;
@@ -700,6 +726,8 @@ public abstract class Ship {
         if (dying) return;
         if (dmg <= 0) return;
         hullImpactNoDamageTimer = 0.0;
+        noDamageTimerSeconds = 0.0;
+        instantRepairConsumed = false;
 
         // Getting hit briefly reveals stealth ships.
         reveal(2.5);
@@ -994,6 +1022,8 @@ public abstract class Ship {
         roomDisabledSystems.clear();
         roomDamageEvents.clear();
         hullRegenBuffer = 0.0;
+        noDamageTimerSeconds = 0.0;
+        instantRepairConsumed = false;
     }
 
     public List<HullImpactMark> hullImpactMarks() {
@@ -1351,6 +1381,8 @@ public abstract class Ship {
         double max = roomHpMax.getOrDefault(room.id, 0.0);
         if (max <= 0.0) return;
         double before = roomHp.getOrDefault(room.id, max);
+        noDamageTimerSeconds = 0.0;
+        instantRepairConsumed = false;
 
         // Damage saturation: if this room is already destroyed, spread hit damage
         // evenly across nearby operational rooms.

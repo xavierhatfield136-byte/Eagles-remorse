@@ -4,6 +4,7 @@ public final class GameSimulationRuntime {
     private static final long STEP_NS = 1_000_000_000L / TARGET_FPS;
     private static final long MAX_ELAPSED_NS = 250_000_000L;
     private static final int MAX_UPDATE_STEPS = 6;
+    private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
 
     private final GameContext ctx;
 
@@ -76,6 +77,7 @@ public final class GameSimulationRuntime {
         }
 
         applyPlayerInput(dt, input);
+        applyPlayerRepairOrderInstantHeal();
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
@@ -98,6 +100,21 @@ public final class GameSimulationRuntime {
         EventSystem.update(ctx, dt);
         AudioSystem.update(ctx, dt);
         CameraSystem.update(ctx, viewportW, viewportH);
+    }
+
+    private void applyPlayerRepairOrderInstantHeal() {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
+        if (!isPlayerRepairOrderActive()) return;
+        if (ctx.player.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS)) {
+            EventSystem.showBanner(ctx, "DAMAGE CONTROL COMPLETE", 1.4);
+        }
+    }
+
+    private boolean isPlayerRepairOrderActive() {
+        if (ctx == null) return false;
+        if (ctx.captainDirective == GameContext.CaptainDirective.REPAIR) return true;
+        return ctx.alliedFleetCommand == GameContext.FleetCommand.REPAIR;
     }
 
     private void applyPlayerInput(double dt, InputSnapshot input) {
