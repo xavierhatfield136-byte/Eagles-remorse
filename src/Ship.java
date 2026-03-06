@@ -363,7 +363,7 @@ public abstract class Ship {
     public void update(double dt) {
         if (!alive && !dying) return;
 
-        // Dying ships drift, burn, and then explode into debris.
+        // Dying ships drift, burn, then detonate as a single fireball (no debris burst effects).
         if (dying) {
             // Once exploded, stop the death-loop update path entirely.
             if (deathExploded) {
@@ -390,7 +390,7 @@ public abstract class Ship {
             // Slow tumble
             angle += wreckSpin * dt;
 
-            // Spawn intermittent fire + smoke
+            // Spawn intermittent fire + smoke while spiraling out.
             dyingTimer += dt;
             fireSpawnTimer += dt;
             if (fireSpawnTimer >= 0.06) {
@@ -401,27 +401,9 @@ public abstract class Ship {
                 VFX.spawnShipFire(x + jx, y + jy, intensity);
             }
 
-            // After a short burn, explode and hand off to VFX/Explosion.
             if (!deathExploded && dyingTimer >= burnDuration) {
-                deathExploded = true;
-
-                // Big boom
-                Explosion.spawnDeath(x, y);
-                ScreenShake.kick(8.0);
-
-                // Debris + "salvage" visuals
-                double baseSpdX = wreckVx;
-                double baseSpdY = wreckVy;
-                VFX.spawnDebrisBurst(x, y, baseSpdX, baseSpdY, (int) Math.max(10, radius * 0.9));
-                VFX.spawnSalvageBurst(x, y, baseSpdX, baseSpdY, 3 + (int) (Math.random() * 4));
-
-                // Real collectible salvage pickups
-                spawnExplosionSalvage(baseSpdX, baseSpdY);
-
-                // Mark dead so GamePanel awards bounty + removes from list.
-                alive = false;
+                explodeIntoFireball(wreckVx, wreckVy);
             }
-
             return;
         }
 
@@ -625,18 +607,32 @@ public abstract class Ship {
         fireSpawnTimer = 0.0;
         deathExploded = false;
 
-        // Keep current drift; add a touch of forward momentum.
+        // Preserve final motion for drift.
         wreckVx = vx;
         wreckVy = vy;
 
-        // Random burn time (feels more organic)
+        // Burn for a short random time before detonation.
         burnDuration = 1.2 + Math.random() * 1.1;
 
-        // Random tumble
+        // Random tumble while drifting out of control.
         wreckSpin = (Math.random() - 0.5) * 2.4;
 
-        // Initial sparks
+        // Initial sparks on kill impact.
         VFX.spawnImpactSparks(x, y, 0.0, 0.0, 3);
+    }
+
+    private void explodeIntoFireball(double baseVx, double baseVy) {
+        if (deathExploded) return;
+        deathExploded = true;
+        Explosion.spawnDeath(x, y);
+        ScreenShake.kick(8.0);
+        spawnExplosionSalvage(baseVx, baseVy);
+        alive = false;
+        dying = false;
+        vx = 0.0;
+        vy = 0.0;
+        wreckVx = 0.0;
+        wreckVy = 0.0;
     }
 
     /**

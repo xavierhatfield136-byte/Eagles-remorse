@@ -1,5 +1,6 @@
 import java.util.HashMap;
 import java.util.Map;
+import java.awt.Polygon;
 
 /**
  * Shared hull-shape geometry used by collision and damage systems.
@@ -104,60 +105,18 @@ public final class HullGeometry {
             return HullProfile.circular(r * scale);
         }
 
-        double[] xs;
-        double[] ys;
+        Polygon p = ShipHullSilhouette.hullPolygon(role, r);
+        if (p == null || p.npoints < 3) {
+            return HullProfile.circular(Math.max(1.0, r * scale));
+        }
 
-        switch (role) {
-            case PICKET -> {
-                xs = scaled(scale, r + 9, r - 4, -r + 2, -r, -r + 2, r - 4);
-                ys = scaled(scale, 0, -r / 2.0, -r / 3.0, 0, r / 3.0, r / 2.0);
-            }
-            case PATROL -> {
-                xs = scaled(scale, r + 7, r - 2, -r + 4, -r, -r + 4, r - 2);
-                ys = scaled(scale, 0, -r / 2.0, -r / 3.0, 0, r / 3.0, r / 2.0);
-            }
-            case LIGHT_CRUISER -> {
-                xs = scaled(scale, r + 12, r - 7, -r + 2, -r, -r + 8, -r, -r + 2, r - 7);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 6.0, 0, r / 6.0, r / 2.0, r / 2.0);
-            }
-            case MEDIUM_CRUISER, CRUISER -> {
-                xs = scaled(scale, r + 14, r - 7, r - 14, -r + 1, -r, -r + 10, -r, -r + 1, r - 14, r - 7);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 2.0, -r / 6.0, 0, r / 6.0, r / 2.0, r / 2.0, r / 2.0);
-            }
-            case BATTLECRUISER -> {
-                xs = scaled(scale, r + 16, r - 6, r - 16, -r + 2, -r, -r + 13, -r, -r + 2, r - 16, r - 6);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 2.0, -r / 4.0, 0, r / 4.0, r / 2.0, r / 2.0, r / 2.0);
-            }
-            case BATTLESHIP -> {
-                xs = scaled(scale, r + 18, r - 8, r - 18, -r + 2, -r, -r + 15, -r, -r + 2, r - 18, r - 8);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 2.0, -r / 3.0, 0, r / 3.0, r / 2.0, r / 2.0, r / 2.0);
-            }
-            case DREADNOUGHT -> {
-                xs = scaled(scale, r + 20, r - 11, r - 22, -r + 2, -r, -r + 17, -r, -r + 2, r - 22, r - 11);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 2.0, -r / 3.0, 0, r / 3.0, r / 2.0, r / 2.0, r / 2.0);
-            }
-            case SUPERSHIP -> {
-                xs = scaled(scale, r + 24, r - 8, r - 24, -r + 3, -r, -r + 18, -r, -r + 3, r - 24, r - 8);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, -r / 2.0, -r / 3.0, 0, r / 3.0, r / 2.0, r / 2.0, r / 2.0);
-            }
-            case MINER -> {
-                xs = scaled(scale, r + 5, r - 7, -r + 6, -r, -r + 6, r - 7);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, 0, r / 2.0, r / 2.0);
-            }
-            default -> {
-                xs = scaled(scale, r + 8, r - 6, -r, -r + 8, -r, r - 6);
-                ys = scaled(scale, 0, -r / 2.0, -r / 2.0, 0, r / 2.0, r / 2.0);
-            }
+        double[] xs = new double[p.npoints];
+        double[] ys = new double[p.npoints];
+        for (int i = 0; i < p.npoints; i++) {
+            xs[i] = p.xpoints[i] * scale;
+            ys[i] = p.ypoints[i] * scale;
         }
         return HullProfile.polygon(xs, ys);
-    }
-
-    private static double[] scaled(double scale, double... values) {
-        double[] out = new double[values.length];
-        for (int i = 0; i < values.length; i++) {
-            out[i] = values[i] * scale;
-        }
-        return out;
     }
 
     public static final class LocalPoint {

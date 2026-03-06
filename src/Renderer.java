@@ -2404,6 +2404,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 }
             }
 
+            if (!v.station) {
+                Polygon canonicalHull = ShipHullSilhouette.hullPolygon(role, r);
+                if (canonicalHull != null && canonicalHull.npoints >= 3) {
+                    v.hullPolys.clear();
+                    v.hullPolys.add(canonicalHull);
+                }
+            }
+
             return v;
         }
 
@@ -2510,17 +2518,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     ? new Rectangle2D.Double(-ship.radius, -ship.radius, ship.radius * 2.0, ship.radius * 2.0)
                     : hullArea.getBounds2D();
 
-            double pad = Math.max(1.0, ship.radius * 0.08);
-            int dx = (int) Math.round(bounds.getMinX() - pad);
-            int dy = (int) Math.round(bounds.getMinY() - pad);
-            int dw = Math.max(1, (int) Math.round(bounds.getWidth() + pad * 2.0));
-            int dh = Math.max(1, (int) Math.round(bounds.getHeight() + pad * 2.0));
-
             // Draw the authored sprite on a square canvas around the ship center.
-            // Using hull bounds directly can collapse wide sprites into a thin strip.
-            final double SKIN_SCALE = 2.1;
-            int baseSpan = Math.max(Math.max(dw, dh), (int) Math.round(ship.radius * 2.0));
-            int sw = Math.max(1, (int) Math.round(baseSpan * SKIN_SCALE));
+            int baseSpan = Math.max(1, (int) Math.round(ship.radius * 2.0));
+            int sw = Math.max(1, (int) Math.round(baseSpan * ShipHullSilhouette.skinRenderScale()));
             int sh = sw;
             int sx = -sw / 2;
             int sy = -sh / 2;
