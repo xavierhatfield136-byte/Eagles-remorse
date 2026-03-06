@@ -26,6 +26,7 @@ public final class PhysicsSystem {
             ctx.projectiles.add(shot);
             if (s == ctx.player) {
                 EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
+                AudioSystem.onWeaponWave(ctx);
                 ScreenShake.kick(8.0);
             } else {
                 ScreenShake.kick(3.5);
@@ -61,10 +62,14 @@ public final class PhysicsSystem {
             }
 
             if (firePrimary) {
+                int beforePrimary = ctx.projectiles.size();
                 if (autoTarget != null) {
                     ctx.projectiles.addAll(ctx.player.firePrimary(autoTarget, dt));
                 } else {
                     ctx.projectiles.addAll(ctx.player.firePrimary(ctx.cursorWorldX, ctx.cursorWorldY, dt));
+                }
+                if (ctx.projectiles.size() > beforePrimary) {
+                    AudioSystem.onWeaponPrimary(ctx);
                 }
             }
 
@@ -73,7 +78,11 @@ public final class PhysicsSystem {
                         ? ctx.lockedTarget
                         : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
+                    int beforeSecondary = ctx.projectiles.size();
                     ctx.projectiles.addAll(ctx.player.fireSecondary(target, dt));
+                    if (ctx.projectiles.size() > beforeSecondary) {
+                        AudioSystem.onWeaponSecondary(ctx);
+                    }
                 }
             }
         }
@@ -88,7 +97,10 @@ public final class PhysicsSystem {
         // --- Projectiles update / cull ---
         for (Iterator<Projectile> it = ctx.projectiles.iterator(); it.hasNext(); ) {
             Projectile p = it.next();
-            if (p == null) { it.remove(); continue; }
+            if (p == null) {
+                it.remove();
+                continue;
+            }
             p.update(dt);
             if (!p.alive) it.remove();
         }
@@ -103,8 +115,14 @@ public final class PhysicsSystem {
         ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));
 
         // --- VFX / explosions ---
-        try { Explosion.updateAll(dt); } catch (Throwable ignored) {}
-        try { VFX.updateAll(dt); } catch (Throwable ignored) {}
+        try {
+            Explosion.updateAll(dt);
+        } catch (Throwable ignored) {
+        }
+        try {
+            VFX.updateAll(dt);
+        } catch (Throwable ignored) {
+        }
     }
 
     private static boolean isAlive(Ship s) {
@@ -117,3 +135,4 @@ public final class PhysicsSystem {
         return TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, x, y, maxDist);
     }
 }
+

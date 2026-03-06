@@ -3,6 +3,9 @@ import java.util.Random;
 public final class SpawnSystem {
     private SpawnSystem(){}
     public static final int MAX_MINERS_PER_FACTION = 4;
+    // Performance + economy rebalance: fewer rocks, much richer yields per asteroid.
+    private static final double ASTEROID_DENSITY_SCALE = 0.22;
+    private static final double ASTEROID_ORE_MULTIPLIER = 10.0;
 
     public static void initWorld(GameContext ctx) {
         if (ctx.config.mode == GameMode.SHOWCASE) {
@@ -146,7 +149,8 @@ public final class SpawnSystem {
 
     public static void spawnAsteroidField(GameContext ctx) {
         ctx.asteroids.clear();
-        int n = (ctx.WORLD_W <= 6000) ? 120 : (ctx.WORLD_W <= 12000 ? 220 : 380);
+        int baseCount = (ctx.WORLD_W <= 6000) ? 120 : (ctx.WORLD_W <= 12000 ? 220 : 380);
+        int n = Math.max(18, (int) Math.round(baseCount * ASTEROID_DENSITY_SCALE));
         Random rng = ctx.rng;
         for (int i = 0; i < n; i++) {
             double x = 0;
@@ -158,7 +162,7 @@ public final class SpawnSystem {
                 if (isClearOfBases(ctx, x, y, 220)) { ok = true; break; }
             }
             if (!ok) continue;
-            double ore = 200 + rng.nextDouble() * 800;
+            double ore = (200 + rng.nextDouble() * 800) * ASTEROID_ORE_MULTIPLIER;
             double r = 18 + rng.nextDouble() * 45;
             // Asteroid constructor varies across your versions; keep as int ore to match common signature.
             ctx.asteroids.add(new Asteroid(x, y, r, (int)Math.round(ore)));

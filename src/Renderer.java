@@ -1645,12 +1645,12 @@ public class Renderer {
         if (g2 == null || ctx == null || ctx.player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(760, clip.width - 80);
-        int h = 390;
+        int w = Math.min(1010, clip.width - 56);
+        int h = 438;
         int x = (clip.width - w) / 2;
-        int y = Math.max(40, (clip.height - h) / 2);
+        int y = Math.max(34, (clip.height - h) / 2);
 
-        g2.setColor(new Color(0, 0, 0, 210));
+        g2.setColor(new Color(0, 0, 0, 214));
         g2.fillRoundRect(x, y, w, h, 18, 18);
         g2.setColor(new Color(255, 255, 255, 110));
         g2.drawRoundRect(x, y, w, h, 18, 18);
@@ -1663,27 +1663,88 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.drawString("H/ESC close   F1-F5 stations   A toggle station AI   <-/-> cycle station", x + 18, y + 48);
 
-        int tx = x + 18;
-        int ty = y + 66;
+        int portraitPaneX = x + 18;
+        int portraitPaneY = y + 70;
+        int portraitPaneW = 232;
+        int portraitPaneH = h - 88;
+
+        g2.setColor(new Color(255, 255, 255, 28));
+        g2.fillRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
+        g2.setColor(new Color(255, 255, 255, 95));
+        g2.drawRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
+
+        CrewPortraitSystem.PortraitAsset activePortrait = CrewPortraitSystem.getPortrait(ctx.activeCrewStation);
+        BufferedImage portraitImage = (activePortrait == null) ? null : activePortrait.image();
+
+        int portraitX = portraitPaneX + 10;
+        int portraitY = portraitPaneY + 24;
+        int portraitW = portraitPaneW - 20;
+        int portraitH = portraitPaneH - 62;
+
+        g2.setColor(new Color(0, 0, 0, 145));
+        g2.fillRoundRect(portraitX, portraitY, portraitW, portraitH, 10, 10);
+
+        if (portraitImage != null) {
+            double sx = portraitW / (double) portraitImage.getWidth();
+            double sy = portraitH / (double) portraitImage.getHeight();
+            double scale = Math.min(sx, sy);
+            int dw = Math.max(1, (int) Math.round(portraitImage.getWidth() * scale));
+            int dh = Math.max(1, (int) Math.round(portraitImage.getHeight() * scale));
+            int dx = portraitX + (portraitW - dw) / 2;
+            int dy = portraitY + (portraitH - dh) / 2;
+            g2.drawImage(portraitImage, dx, dy, dw, dh, null);
+        }
+
+        g2.setColor(new Color(255, 255, 255, 118));
+        g2.drawRoundRect(portraitX, portraitY, portraitW, portraitH, 10, 10);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 13));
+        g2.setColor(new Color(255, 245, 210, 225));
+        g2.drawString(ctx.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        String source = (activePortrait == null) ? "portrait: unavailable" : ("portrait: " + activePortrait.sourceLabel());
+        g2.setColor((activePortrait != null && activePortrait.fromDisk())
+                ? new Color(180, 255, 205, 220)
+                : new Color(255, 220, 170, 220));
+        g2.drawString(source, portraitPaneX + 12, portraitPaneY + portraitPaneH - 10);
+
+        int panelX = portraitPaneX + portraitPaneW + 14;
+        int panelW = x + w - panelX - 14;
+
+        int tabX = panelX + 8;
+        int tabY = y + 70;
+        int tabGap = 8;
+        int stationCount = GameContext.CrewStation.values().length;
+        int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
+
         for (GameContext.CrewStation station : GameContext.CrewStation.values()) {
             boolean active = (station == ctx.activeCrewStation);
             boolean auto = UISystem.stationAutomation(ctx, station);
-            int tw = 122;
             g2.setColor(active ? new Color(255, 220, 140, 180) : new Color(255, 255, 255, 45));
-            g2.fillRoundRect(tx, ty, tw, 24, 10, 10);
+            g2.fillRoundRect(tabX, tabY, tw, 24, 10, 10);
             g2.setColor(active ? new Color(255, 245, 210, 220) : new Color(255, 255, 255, 120));
-            g2.drawRoundRect(tx, ty, tw, 24, 10, 10);
+            g2.drawRoundRect(tabX, tabY, tw, 24, 10, 10);
+
+            CrewPortraitSystem.PortraitAsset iconAsset = CrewPortraitSystem.getPortrait(station);
+            BufferedImage icon = (iconAsset == null) ? null : iconAsset.image();
+            if (icon != null) {
+                g2.drawImage(icon, tabX + 6, tabY + 4, 16, 16, null);
+            }
+
             g2.setFont(new Font("Consolas", active ? Font.BOLD : Font.PLAIN, 12));
-            g2.drawString(station.name(), tx + 8, ty + 16);
-            g2.setColor(auto ? new Color(120, 255, 170, 210) : new Color(255, 150, 140, 210));
-            g2.drawString(auto ? "AI" : "MAN", tx + 92, ty + 16);
-            tx += tw + 8;
+            g2.setColor(new Color(250, 250, 250, 220));
+            g2.drawString(station.name(), tabX + 26, tabY + 16);
+            g2.setColor(auto ? new Color(120, 255, 170, 220) : new Color(255, 150, 140, 220));
+            g2.drawString(auto ? "AI" : "MAN", tabX + tw - 34, tabY + 16);
+            tabX += tw + tabGap;
         }
 
+        int readoutX = panelX + 12;
         int ly = y + 126;
         g2.setColor(new Color(255, 255, 255, 210));
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
-        g2.drawString("Current Readouts", x + 18, ly);
+        g2.drawString("Current Readouts", readoutX, ly);
         ly += 20;
 
         int lockDist = -1;
@@ -1693,63 +1754,65 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(210, 235, 255, 220));
-        g2.drawString("Captain: " + ctx.captainDirective + "   Helm: " + ctx.helmMode + "   Tactical: " + ctx.tacticalMode, x + 18, ly);
+        g2.drawString("Captain: " + ctx.captainDirective + "   Helm: " + ctx.helmMode + "   Tactical: " + ctx.tacticalMode, readoutX, ly);
         ly += 16;
-        g2.drawString("Engineering: " + ctx.engineeringMode + "   Fleet: " + ctx.alliedFleetCommand + " / " + ctx.alliedFleetFormation, x + 18, ly);
+        g2.drawString("Engineering: " + ctx.engineeringMode + "   Fleet: " + ctx.alliedFleetCommand + " / " + ctx.alliedFleetFormation, readoutX, ly);
         ly += 16;
         g2.drawString("Lock: " + ((ctx.lockedTarget == null) ? "NONE" : (ctx.lockedTarget.name + " (" + Math.max(0, lockDist) + "m)"))
-                + "   Science EW: " + (ctx.scienceJamming ? "JAMMING" : "PASSIVE"), x + 18, ly);
+                + "   Science EW: " + (ctx.scienceJamming ? "JAMMING" : "PASSIVE"), readoutX, ly);
         ly += 16;
-        g2.drawString("Crew: " + ctx.player.crewOrder + "  Readiness " + (int) Math.round(ctx.player.crewReadiness() * 100.0) + "%", x + 18, ly);
+        g2.drawString("Crew: " + ctx.player.crewOrder + "  Readiness " + (int) Math.round(ctx.player.crewReadiness() * 100.0) + "%", readoutX, ly);
+        ly += 16;
+        String voice = (ctx.voiceCaptionT > 0.0 && ctx.voiceCaption != null && !ctx.voiceCaption.isBlank()) ? ctx.voiceCaption : "IDLE";
+        g2.drawString("Voice: " + voice, readoutX, ly);
 
         ly += 28;
         g2.setColor(new Color(255, 255, 255, 220));
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
-        g2.drawString("Station Controls", x + 18, ly);
+        g2.drawString("Station Controls", readoutX, ly);
         ly += 20;
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
 
         switch (ctx.activeCrewStation) {
             case CAPTAIN -> {
                 g2.setColor(new Color(255, 230, 175, 220));
-                g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 EMERGENCY  5 MINE", x + 18, ly);
+                g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 EMERGENCY  5 MINE", readoutX, ly);
                 ly += 16;
-                g2.drawString("6 ESCORT  7 DEFEND  8 REPAIR  9 RTB  0 CYCLE FLEET FORMATION", x + 18, ly);
+                g2.drawString("6 ESCORT  7 DEFEND  8 REPAIR  9 RTB  0 CYCLE FLEET FORMATION", readoutX, ly);
                 ly += 16;
-                g2.drawString("Q/W/E/R assign nearest friendly ATTACK/DEFEND/REPAIR/RTB, T clears override.", x + 18, ly);
+                g2.drawString("Q/W/E/R assign nearest friendly ATTACK/DEFEND/REPAIR/RTB, T clears override.", readoutX, ly);
                 ly += 16;
-                g2.drawString("Captain directives set ship posture and allied fleet command behavior.", x + 18, ly);
+                g2.drawString("Captain directives set ship posture and allied fleet command behavior.", readoutX, ly);
             }
             case HELM -> {
                 g2.setColor(new Color(200, 240, 255, 220));
-                g2.drawString("1 INTERCEPT  2 ORBIT  3 MAINTAIN RANGE  4 EVASIVE", x + 18, ly);
+                g2.drawString("1 INTERCEPT  2 ORBIT  3 MAINTAIN RANGE  4 EVASIVE", readoutX, ly);
                 ly += 16;
-                g2.drawString("Helm automation sets heading/throttle for target pursuit and maneuvering.", x + 18, ly);
+                g2.drawString("Helm automation sets heading/throttle for target pursuit and maneuvering.", readoutX, ly);
             }
             case TACTICAL -> {
                 g2.setColor(new Color(255, 210, 180, 220));
-                g2.drawString("1 HOLD FIRE  2 DEFENSIVE FIRE  3 AGGRESSIVE FIRE", x + 18, ly);
+                g2.drawString("1 HOLD FIRE  2 DEFENSIVE FIRE  3 AGGRESSIVE FIRE", readoutX, ly);
                 ly += 16;
-                g2.drawString("Tactical automation drives primary/secondary firing states and lock usage.", x + 18, ly);
+                g2.drawString("Tactical automation drives primary/secondary firing states and lock usage.", readoutX, ly);
             }
             case ENGINEERING -> {
                 g2.setColor(new Color(200, 255, 200, 220));
-                g2.drawString("1 BALANCED  2 ATTACK BIAS  3 DEFENSE BIAS  4 DAMAGE CONTROL", x + 18, ly);
+                g2.drawString("1 BALANCED  2 ATTACK BIAS  3 DEFENSE BIAS  4 DAMAGE CONTROL", readoutX, ly);
                 ly += 16;
-                g2.drawString("Engineering automation controls power distribution and repair-focused crew orders.", x + 18, ly);
+                g2.drawString("Engineering automation controls power distribution and repair-focused crew orders.", readoutX, ly);
             }
             case SCIENCE -> {
                 g2.setColor(new Color(220, 210, 255, 220));
-                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK  3 TOGGLE EW/JAMMING", x + 18, ly);
+                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK  3 TOGGLE EW/JAMMING", readoutX, ly);
                 ly += 16;
-                g2.drawString("Science automation manages target acquisition using current sensor capability.", x + 18, ly);
+                g2.drawString("Science automation manages target acquisition using current sensor capability.", readoutX, ly);
             }
         }
 
         g2.setColor(new Color(255, 255, 255, 145));
-        g2.drawString("Manual flight/fire/power input immediately disables corresponding station AI.", x + 18, y + h - 16);
+        g2.drawString("Manual flight/fire/power input immediately disables corresponding station AI.", readoutX, y + h - 16);
     }
-
     public static void drawBaseUpgradeOverlay(Graphics2D g2, String baseName, int credits, int baseOre,
                                               int hullLv, int shieldLv, int turretLv, int miningLv, int hangarLv,
                                               int maxHangarTier) {
@@ -4202,3 +4265,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
 }
+
+
+

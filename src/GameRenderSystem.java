@@ -114,6 +114,7 @@ public final class GameRenderSystem {
                 overlayStatus
 
         );
+        drawVoiceCaption(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
@@ -233,6 +234,29 @@ if (DevTools.isDebugOverlay()) {
         return false;
     }
 
+    private static void drawVoiceCaption(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        if (ctx == null || g2 == null) return;
+        if (ctx.voiceCaptionT <= 0.0 || ctx.voiceCaption == null || ctx.voiceCaption.isBlank()) return;
+
+        String text = ctx.voiceCaption;
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        FontMetrics fm = g2.getFontMetrics();
+
+        int w = Math.min(viewportW - 28, fm.stringWidth(text) + 24);
+        int h = 30;
+        int x = (viewportW - w) / 2;
+        int y = viewportH - 90;
+
+        g2.setColor(new Color(0, 0, 0, 165));
+        g2.fillRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(new Color(205, 225, 255, 190));
+        g2.drawRoundRect(x, y, w, h, 12, 12);
+
+        g2.setColor(new Color(245, 250, 255, 230));
+        int tx = x + (w - fm.stringWidth(text)) / 2;
+        int ty = y + (h + fm.getAscent() - fm.getDescent()) / 2;
+        g2.drawString(text, tx, ty);
+    }
     private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2) {
         if (!CampaignSystem.hasCapturePoint(ctx)) return;
         double x = CampaignSystem.captureX(ctx);
@@ -405,3 +429,7 @@ if (DevTools.isDebugOverlay()) {
 
     // (Removed reflection bridge; hangar tier is computed from base upgrades.)
 }
+
+
+
+

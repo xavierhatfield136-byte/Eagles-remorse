@@ -157,7 +157,8 @@ public class GameContext {
     public double nextEventTimer = 18.0;
     public String eventBanner = "";
     public double eventBannerT = 0.0;
-
+    public String voiceCaption = "";
+    public double voiceCaptionT = 0.0;
     public double orePriceMul = 1.0;
     public double orePriceT = 0.0;
     public double miningMul = 1.0;
@@ -202,3 +203,5 @@ public class GameContext {
         }
     }
 }
+
+

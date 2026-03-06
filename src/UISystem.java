@@ -6,6 +6,8 @@ public final class UISystem {
     private UISystem(){}
 
     public static void closeAllOverlays(GameContext ctx) {
+        if (ctx == null) return;
+        boolean hadOverlay = ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen;
         ctx.shopOpen = false;
         ctx.baseMenuOpen = false;
         ctx.mapOpen = false;
@@ -13,9 +15,11 @@ public final class UISystem {
         ctx.crewStationsOpen = false;
         clearManualCombatInputs(ctx);
         if (!ctx.gameOver) ctx.state = GameState.RUNNING;
+        if (hadOverlay) AudioSystem.onUiClose(ctx);
     }
 
     public static void toggleShop(GameContext ctx) {
+        if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         ctx.shopOpen = !ctx.shopOpen;
         if (ctx.shopOpen) {
@@ -25,12 +29,15 @@ public final class UISystem {
             ctx.crewStationsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.SHOP;
+            AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
         }
     }
 
     public static void toggleMap(GameContext ctx) {
+        if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         ctx.mapOpen = !ctx.mapOpen;
         if (ctx.mapOpen) {
@@ -40,12 +47,15 @@ public final class UISystem {
             ctx.crewStationsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.MAP;
+            AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
         }
     }
 
     public static void toggleBaseMenu(GameContext ctx) {
+        if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         Ship dock = EconomySystem.getDockedFriendlyBase(ctx);
         if (dock == null) {
@@ -60,8 +70,10 @@ public final class UISystem {
             ctx.crewStationsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.BASE_MENU;
+            AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
         }
     }
 
@@ -78,8 +90,10 @@ public final class UISystem {
             ctx.crewStationsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.POWER_MANAGEMENT;
+            AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
         }
     }
 
@@ -96,11 +110,12 @@ public final class UISystem {
             ctx.powerManagementOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.CREW_STATIONS;
+            AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
         }
     }
-
     public static boolean handleCoreMenuClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || e == null) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
@@ -815,3 +830,5 @@ public final class UISystem {
         ctx.firingSecondaryManual = false;
     }
 }
+
+

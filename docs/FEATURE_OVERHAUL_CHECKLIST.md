@@ -1,4 +1,4 @@
-# Feature Overhaul Checklist
+﻿# Feature Overhaul Checklist
 
 ## Phase 1 - Non-Graphics First
 
@@ -42,11 +42,11 @@
 ## Phase 2 - Graphics and Visual Overhauls
 
 ## Visual Upgrades using chatgpt to generate sprites if needed.
-- [ ] Add crew portraits/faces and hook them into crew UI/stations.
-- [ ] Add crew voice system (voice lines/callouts tied to crew events and combat states).
+- [x] Add crew portraits/faces and hook them into crew UI/stations.
+- [x] Add crew voice system (voice lines/callouts tied to crew events and combat states).
 - [x] Keep core menus always visible as a bottom-screen clickable bar for quick edits/access.
-- [ ] Add full audio pass (weapon SFX, impact SFX, UI sounds, ambient/music mix pass).
-- [ ] Complete all remaining visual-upgrade items already listed in this section.
+- [x] Add full audio pass (weapon SFX, impact SFX, UI sounds, ambient/music mix pass).
+- [x] Complete all remaining visual-upgrade items already listed in this section.
 - [x] Laser visual update (beam style, glow, impact readability).
 - [x] Projectile visual update (tracers, color coding, travel readability).
 - [x] Fire graphics update (ship burn effects, sustained flames, heat bloom).
@@ -112,3 +112,6 @@
   - [x] add threat forecasting from projectile trajectories to preemptively dodge likely impact corridors
   - [x] add battle-line coherence scoring that rewards maintaining crossfire and penalizes isolated outrunners
   - [x] add command-latency/fog modeling for enemy fleets to create exploitable coordination delays
+
+
+

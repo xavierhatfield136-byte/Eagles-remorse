@@ -96,6 +96,7 @@ public final class GameSimulationRuntime {
         LastStandSystem.update(ctx, dt);
         UISystem.updatePings(ctx, dt);
         EventSystem.update(ctx, dt);
+        AudioSystem.update(ctx, dt);
         CameraSystem.update(ctx, viewportW, viewportH);
     }
 
@@ -167,3 +168,5 @@ public final class GameSimulationRuntime {
         return prev + (sample - prev) * Math.max(0.0, Math.min(1.0, alpha));
     }
 }
+
+
