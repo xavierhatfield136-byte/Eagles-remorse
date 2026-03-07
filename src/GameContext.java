@@ -24,6 +24,8 @@ public class GameContext {
     public final List<Projectile> projectiles = new ArrayList<>();
     public final List<Asteroid> asteroids = new ArrayList<>();
     public final List<Salvage> salvage = new ArrayList<>();
+    public final List<DamageEvent> damageEvents = new ArrayList<>();
+    public final List<AudioEvent> audioEvents = new ArrayList<>();
 
     // Bases
     public Ship allyBase;
@@ -62,7 +64,7 @@ public class GameContext {
     public boolean mapOpen = false;
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
-    public int powerManagementFocus = 0; // 0=engines 1=shields 2=weapons 3=systems
+    public int powerManagementFocus = 0; // 0=propulsion 1=shield 2=tactical 3=sensor 4=engineering 5=auxiliary
 
     public enum CrewStation {
         CAPTAIN,
@@ -120,12 +122,22 @@ public class GameContext {
         COMPACT,
         MINIMAL
     }
+    public enum XrayFilterMode {
+        ALL,
+        DAMAGE,
+        HAZARD,
+        POWER,
+        DISABLED
+    }
     public CrewStation activeCrewStation = CrewStation.CAPTAIN;
     public HelmMode helmMode = HelmMode.INTERCEPT;
     public TacticalMode tacticalMode = TacticalMode.DEFENSIVE;
     public EngineeringMode engineeringMode = EngineeringMode.BALANCED;
     public CaptainDirective captainDirective = CaptainDirective.BALANCED;
     public HudDetail hudDetail = HudDetail.FULL;
+    public XrayFilterMode xrayFilterMode = XrayFilterMode.ALL;
+    public ShipRoomLayout.RoomId xrayFocusedRoom = null;
+    public ShipRoomLayout.RoomId xrayHoveredRoom = null;
     public boolean captainAutomation = false;
     public boolean helmAutomation = false;
     public boolean tacticalAutomation = false;
@@ -159,8 +171,15 @@ public class GameContext {
     public double nextEventTimer = 18.0;
     public String eventBanner = "";
     public double eventBannerT = 0.0;
+    public double hazardHintCooldown = 0.0;
+    public double hazardCriticalCooldown = 0.0;
+    public double cursorScreenX = 0.0;
+    public double cursorScreenY = 0.0;
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
+    public boolean voiceCaptionsEnabled = true;
+    public CrewStation voiceMixFocus = CrewStation.CAPTAIN;
+    public final java.util.EnumMap<CrewStation, Double> voiceRoleVolumes = new java.util.EnumMap<>(CrewStation.class);
     public double orePriceMul = 1.0;
     public double orePriceT = 0.0;
     public double miningMul = 1.0;
@@ -200,9 +219,38 @@ public class GameContext {
         this.WORLD_W = this.config.worldW;
         this.WORLD_H = this.config.worldH;
         this.rng = new Random(this.config.seed);
+        initAudioPreferences();
         if (this.config.mode == GameMode.CAMPAIGN_OPS) {
             this.campaignUnlockProfile = CampaignUnlockProfile.load();
         }
+    }
+
+    private void initAudioPreferences() {
+        for (CrewStation station : CrewStation.values()) {
+            voiceRoleVolumes.put(station, 1.0);
+        }
+        MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
+        voiceCaptionsEnabled = persisted.voiceCaptionsEnabled;
+        voiceRoleVolumes.put(CrewStation.CAPTAIN, clampVoiceVol(persisted.voiceVolumeCaptain));
+        voiceRoleVolumes.put(CrewStation.HELM, clampVoiceVol(persisted.voiceVolumeHelm));
+        voiceRoleVolumes.put(CrewStation.TACTICAL, clampVoiceVol(persisted.voiceVolumeTactical));
+        voiceRoleVolumes.put(CrewStation.ENGINEERING, clampVoiceVol(persisted.voiceVolumeEngineering));
+        voiceRoleVolumes.put(CrewStation.SCIENCE, clampVoiceVol(persisted.voiceVolumeScience));
+    }
+
+    public double voiceRoleVolume(CrewStation station) {
+        if (station == null) return 1.0;
+        return clampVoiceVol(voiceRoleVolumes.getOrDefault(station, 1.0));
+    }
+
+    public void setVoiceRoleVolume(CrewStation station, double value) {
+        if (station == null) return;
+        voiceRoleVolumes.put(station, clampVoiceVol(value));
+    }
+
+    private static double clampVoiceVol(double v) {
+        if (!Double.isFinite(v)) return 1.0;
+        return MathUtil.clamp(v, 0.0, 2.0);
     }
 }
 

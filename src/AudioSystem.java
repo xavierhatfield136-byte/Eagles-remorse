@@ -3,6 +3,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -19,83 +20,146 @@ import javax.sound.sampled.FloatControl;
 import javax.sound.sampled.LineEvent;
 
 public final class AudioSystem {
+    private static final int MAX_AUDIO_EVENT_LOG = 8192;
     private static final Random RNG = new Random();
     private static final WeakHashMap<GameContext, RuntimeState> STATE = new WeakHashMap<>();
+    private static final Map<String, Double> VOICE_COOLDOWN_SEC_BY_KEY = new HashMap<>();
     private static final ExecutorService PLAYBACK_EXEC = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "game-audio");
         t.setDaemon(true);
         return t;
     });
     private static final List<Clip> ACTIVE_CLIPS = Collections.synchronizedList(new ArrayList<>());
+    private static volatile boolean TELEMETRY_ONLY = false;
 
     private static Clip ambientClip;
 
     private AudioSystem() {}
 
     private enum VoiceCue {
-        CAPTAIN_COMBAT_START("captain", "combat_start", "All stations, battle posture.", 6.0, 3),
+        CAPTAIN_COMBAT_START("captain", "combat_start", 6.0, 3, 2,
+                "All stations, battle posture.",
+                "All hands, combat stations."),
+        CAPTAIN_COMBAT_END("captain", "combat_end", 6.0, 2, 1,
+                "Area secure. Stand down from combat alert."),
+        CAPTAIN_ORDER_PUSH("captain", "order_push", 4.0, 2, 3,
+                "Press the attack now.",
+                "Advance and maintain pressure.",
+                "Push forward. Do not let them regroup."),
+        CAPTAIN_ORDER_RETREAT("captain", "order_retreat", 4.0, 3, 3,
+                "Break contact and fall back.",
+                "Disengage and regroup.",
+                "Retreat vector now."),
+        CAPTAIN_ORDER_ESCORT("captain", "order_escort", 4.0, 2, 3,
+                "Escort posture. Protect the objective.",
+                "Form escort screen around the asset.",
+                "Escort detail, tighten formation."),
+        CAPTAIN_ORDER_DEFEND("captain", "order_defend", 4.0, 2, 3,
+                "Hold the line. Defensive posture.",
+                "Defensive stations. Hold position.",
+                "Maintain defense coverage."),
 
-        HELM_INTERCEPT("helm", "intercept", "Intercept course set.", 4.0, 1),
-        HELM_EVASIVE("helm", "evasive", "Executing evasive pattern.", 4.0, 2),
-        HELM_RTB("helm", "rtb", "Returning to base vector.", 5.0, 2),
+        HELM_INTERCEPT("helm", "intercept", 4.0, 1, 3,
+                "Intercept course set.",
+                "Course laid in for intercept.",
+                "Intercept vector confirmed."),
+        HELM_EVASIVE("helm", "evasive", 4.0, 2, 3,
+                "Executing evasive pattern.",
+                "Evasive maneuvers underway.",
+                "Evasive profile engaged."),
+        HELM_RTB("helm", "rtb", 5.0, 2, 2,
+                "Returning to base vector.",
+                "Base return course plotted."),
 
-        TACTICAL_TARGET_LOCK("tactical", "target_lock", "Target lock confirmed.", 1.8, 1),
-        TACTICAL_TARGET_LOST("tactical", "target_lost", "Target lock lost.", 1.8, 1),
-        TACTICAL_MISSILES_INBOUND("tactical", "missiles_inbound", "Missiles inbound.", 2.8, 3),
+        TACTICAL_TARGET_LOCK("tactical", "target_lock", 1.8, 1, 3,
+                "Target lock confirmed.",
+                "Lock acquired.",
+                "Weapons lock solid."),
+        TACTICAL_TARGET_LOST("tactical", "target_lost", 1.8, 1, 3,
+                "Target lock lost.",
+                "Lock broken.",
+                "Contact lost from lock."),
+        TACTICAL_MISSILES_INBOUND("tactical", "missiles_inbound", 2.8, 3, 3,
+                "Missiles inbound.",
+                "Incoming missiles, bearing update.",
+                "Missile threat, impact window closing."),
 
-        ENGINEERING_SHIELDS_LOW("engineering", "shields_low", "Shield integrity critical.", 4.5, 3),
-        ENGINEERING_REACTOR_HIT("engineering", "reactor_hit", "Reactor section damaged.", 4.5, 3),
-        ENGINEERING_REPAIRS_STARTED("engineering", "repairs_started", "Damage control underway.", 4.5, 2),
+        ENGINEERING_SHIELDS_LOW("engineering", "shields_low", 4.5, 3, 3,
+                "Shield integrity critical.",
+                "Shields are failing.",
+                "Shield reserves below safe limits."),
+        ENGINEERING_REACTOR_HIT("engineering", "reactor_hit", 4.5, 3, 3,
+                "Reactor section damaged.",
+                "Reactor taking damage.",
+                "Reactor instability rising."),
+        ENGINEERING_REPAIRS_STARTED("engineering", "repairs_started", 4.5, 2, 3,
+                "Damage control underway.",
+                "Repair teams are moving.",
+                "Engineering teams commencing repairs."),
+        ENGINEERING_REPAIRS_COMPLETED("engineering", "repairs_completed", 4.5, 2, 3,
+                "Damage control complete.",
+                "Repairs complete.",
+                "Repair cycle finished."),
 
-        SCIENCE_NEW_CONTACT("science", "new_contact", "New hostile contact detected.", 4.0, 2),
-        SCIENCE_JAMMED("science", "jammed", "Sensors are being jammed.", 5.5, 2),
-        SCIENCE_SCAN_COMPLETE("science", "scan_complete", "Scan complete.", 4.0, 1);
+        SCIENCE_NEW_CONTACT("science", "new_contact", 4.0, 2, 2,
+                "New hostile contact detected.",
+                "Additional contact on sensors."),
+        SCIENCE_JAMMED("science", "jammed", 5.5, 2, 2,
+                "Sensors are being jammed.",
+                "Electronic interference detected."),
+        SCIENCE_SCAN_COMPLETE("science", "scan_complete", 4.0, 1, 1,
+                "Scan complete.");
 
         final String role;
         final String eventId;
-        final String caption;
+        final String cooldownKey;
+        final String[] captions;
         final double cooldownSec;
         final int priority;
+        final int requiredVariants;
 
-        VoiceCue(String role, String eventId, String caption, double cooldownSec, int priority) {
+        VoiceCue(String role, String eventId, double cooldownSec, int priority, int requiredVariants, String... captions) {
             this.role = role;
             this.eventId = eventId;
-            this.caption = caption;
+            this.cooldownKey = role + "." + eventId;
             this.cooldownSec = cooldownSec;
             this.priority = priority;
+            this.requiredVariants = Math.max(1, requiredVariants);
+            if (captions == null || captions.length == 0) {
+                this.captions = new String[]{eventId};
+            } else {
+                this.captions = captions.clone();
+            }
+            VOICE_COOLDOWN_SEC_BY_KEY.put(this.cooldownKey, this.cooldownSec);
         }
 
         String roleLabel() {
             return role.toUpperCase(Locale.US);
         }
+
+        String captionForVariant(int variantIndex) {
+            if (captions.length == 0) return eventId;
+            int idx = Math.floorMod(variantIndex, captions.length);
+            return captions[idx];
+        }
+
+        int captionVariantCount() {
+            return Math.max(1, captions.length);
+        }
     }
 
     private enum SfxCue {
-        UI_OPEN("ui", "open", 760.0, 70, -18.0, 0.05),
-        UI_CLOSE("ui", "close", 520.0, 70, -18.5, 0.05),
+        UI_OPEN("ui.open"),
+        UI_CLOSE("ui.close"),
+        WEAPON_PRIMARY("weapon.primary_fire"),
+        WEAPON_SECONDARY("weapon.secondary_fire"),
+        WEAPON_WAVE("weapon.wave_fire"),
+        IMPACT_EXPLOSION("impact.explosion");
 
-        WEAPON_PRIMARY("weapons", "primary_fire", 160.0, 52, -15.0, 0.04),
-        WEAPON_SECONDARY("weapons", "secondary_fire", 100.0, 120, -13.0, 0.08),
-        WEAPON_WAVE("weapons", "wave_fire", 64.0, 260, -10.0, 0.75),
-
-        IMPACT_SHIELD("impacts", "shield_hit", 420.0, 92, -13.0, 0.05),
-        IMPACT_HULL("impacts", "hull_hit", 210.0, 95, -12.0, 0.05),
-        IMPACT_EXPLOSION("impacts", "explosion", 84.0, 210, -9.0, 0.24);
-
-        final String folder;
         final String eventId;
-        final double fallbackHz;
-        final int fallbackMs;
-        final double gainDb;
-        final double cooldownSec;
 
-        SfxCue(String folder, String eventId, double fallbackHz, int fallbackMs, double gainDb, double cooldownSec) {
-            this.folder = folder;
+        SfxCue(String eventId) {
             this.eventId = eventId;
-            this.fallbackHz = fallbackHz;
-            this.fallbackMs = fallbackMs;
-            this.gainDb = gainDb;
-            this.cooldownSec = cooldownSec;
         }
     }
 
@@ -115,7 +179,15 @@ public final class AudioSystem {
         GameContext.CaptainDirective lastCaptainDirective;
 
         final EnumMap<VoiceCue, Double> voiceCooldownUntil = new EnumMap<>(VoiceCue.class);
-        final EnumMap<SfxCue, Double> sfxCooldownUntil = new EnumMap<>(SfxCue.class);
+        final Map<String, Double> sfxCooldownUntil = new HashMap<>();
+        final Map<String, Double> voiceDedupeUntil = new HashMap<>();
+        final Map<String, Double> roleThrottleUntil = new HashMap<>();
+        final Map<String, Integer> lastVariantByKey = new HashMap<>();
+        final Map<String, Integer> lastSfxVariantByEvent = new HashMap<>();
+        final EnumMap<Ship.InternalSystem, Double> lastSystemFractions =
+                new EnumMap<>(Ship.InternalSystem.class);
+        final EnumMap<ShipRoomLayout.RoomId, Double> lastRoomFireIntensity =
+                new EnumMap<>(ShipRoomLayout.RoomId.class);
 
         int activeVoicePriority = 0;
         double voicePriorityUntilSec = 0.0;
@@ -136,6 +208,13 @@ public final class AudioSystem {
                 s.lastExplosionCount = explosionCount();
                 s.lastHelmMode = ctx.helmMode;
                 s.lastCaptainDirective = ctx.captainDirective;
+                for (Ship.InternalSystem system : Ship.InternalSystem.values()) {
+                    s.lastSystemFractions.put(system, ctx.player.systemHealthFraction(system));
+                }
+                for (Ship.RoomStatus room : ctx.player.roomStatusSnapshot()) {
+                    if (room == null || room.roomId == null) continue;
+                    s.lastRoomFireIntensity.put(room.roomId, room.fireIntensity);
+                }
             }
             return s;
         }
@@ -148,20 +227,31 @@ public final class AudioSystem {
 
         private AssetLibrary() {}
 
-        static File pickVoice(String role, String eventId) {
+        static VoicePick pickVoice(String role, String eventId, int preferredVariantIndex) {
             if (role == null || eventId == null) return null;
             String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
             List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
             if (files.isEmpty()) return null;
-            return files.get(RNG.nextInt(files.size()));
+            int idx = Math.floorMod(preferredVariantIndex, files.size());
+            return new VoicePick(files.get(idx), idx, files.size());
         }
 
-        static File pickSfx(String folder, String eventId) {
-            if (folder == null || eventId == null) return null;
-            String key = "audio/" + folder.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
-            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_AUDIO, folder), eventId));
+        static int voiceVariantCount(String role, String eventId) {
+            if (role == null || eventId == null) return 0;
+            String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
+            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
+            return files.size();
+        }
+
+        static SfxPick pickSfx(SfxManifest.EventSpec spec, int preferredVariantIndex) {
+            if (spec == null) return null;
+            String folder = spec.folder();
+            String eventPrefix = spec.filePrefix();
+            String key = "audio/" + folder.toLowerCase(Locale.US) + "/" + eventPrefix.toLowerCase(Locale.US);
+            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_AUDIO, folder), eventPrefix));
             if (files.isEmpty()) return null;
-            return files.get(RNG.nextInt(files.size()));
+            int idx = Math.floorMod(preferredVariantIndex, files.size());
+            return new SfxPick(files.get(idx), idx, files.size());
         }
 
         private static List<File> scan(File dir, String eventId) {
@@ -179,6 +269,9 @@ public final class AudioSystem {
             out.sort(Comparator.comparing(File::getName));
             return out;
         }
+
+        record VoicePick(File file, int variantIndex, int variantCount) {}
+        record SfxPick(File file, int variantIndex, int variantCount) {}
     }
 
     public static void update(GameContext ctx, double dt) {
@@ -198,6 +291,7 @@ public final class AudioSystem {
 
         processVoiceSignals(ctx, st, now);
         processImpactSignals(ctx, st, now);
+        processHazardAndSubsystemSignals(ctx, st, now);
         applyAmbientMix(ctx);
 
         st.lastHp = ctx.player.hp;
@@ -225,6 +319,66 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.WEAPON_WAVE);
     }
 
+    public static void onShieldImpact(GameContext ctx, VFX.ImpactStyle style) {
+        if (ctx == null) return;
+        RuntimeState st = stateFor(ctx);
+        triggerSfxEvent(ctx, st, shieldImpactEventId(style), nowSec());
+    }
+
+    public static void onHullImpact(GameContext ctx, VFX.ImpactStyle style) {
+        if (ctx == null) return;
+        RuntimeState st = stateFor(ctx);
+        triggerSfxEvent(ctx, st, hullImpactEventId(style), nowSec());
+    }
+
+    public static void onExplosion(GameContext ctx) {
+        triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION);
+    }
+
+    public static void setTelemetryOnly(boolean telemetryOnly) {
+        TELEMETRY_ONLY = telemetryOnly;
+        if (telemetryOnly && ambientClip != null) {
+            try {
+                ambientClip.stop();
+                ambientClip.close();
+            } catch (Throwable ignored) {
+            }
+            ambientClip = null;
+        }
+    }
+
+    static double voiceCooldownSeconds(String cooldownKey) {
+        if (cooldownKey == null) return 0.0;
+        return VOICE_COOLDOWN_SEC_BY_KEY.getOrDefault(cooldownKey, 0.0);
+    }
+
+    public record VoiceEventSpec(
+            String role,
+            String eventId,
+            int priority,
+            double cooldownSec,
+            int requiredVariants,
+            int captionVariants,
+            int assetVariants) {}
+
+    public static List<VoiceEventSpec> voiceEventMatrix() {
+        List<VoiceEventSpec> out = new ArrayList<>();
+        for (VoiceCue cue : VoiceCue.values()) {
+            int assets = AssetLibrary.voiceVariantCount(cue.role, cue.eventId);
+            out.add(new VoiceEventSpec(
+                    cue.role,
+                    cue.eventId,
+                    cue.priority,
+                    cue.cooldownSec,
+                    cue.requiredVariants,
+                    cue.captionVariantCount(),
+                    assets
+            ));
+        }
+        out.sort(Comparator.comparing(VoiceEventSpec::role).thenComparing(VoiceEventSpec::eventId));
+        return out;
+    }
+
     private static RuntimeState stateFor(GameContext ctx) {
         return STATE.computeIfAbsent(ctx, RuntimeState::seed);
     }
@@ -233,6 +387,8 @@ public final class AudioSystem {
         int hostiles = countHostiles(ctx);
         if (!st.hadCombatContact && hostiles > 0) {
             emitVoice(ctx, st, VoiceCue.CAPTAIN_COMBAT_START, now);
+        } else if (st.hadCombatContact && hostiles <= 0) {
+            emitVoice(ctx, st, VoiceCue.CAPTAIN_COMBAT_END, now);
         }
 
         Ship currentLock = validLockedTarget(ctx) ? ctx.lockedTarget : null;
@@ -263,6 +419,8 @@ public final class AudioSystem {
         boolean repairsNow = repairsActive(ctx);
         if (repairsNow && !st.lastRepairsActive) {
             emitVoice(ctx, st, VoiceCue.ENGINEERING_REPAIRS_STARTED, now);
+        } else if (!repairsNow && st.lastRepairsActive) {
+            emitVoice(ctx, st, VoiceCue.ENGINEERING_REPAIRS_COMPLETED, now);
         }
 
         if (ctx.scienceJamming && !st.lastScienceJamming) {
@@ -281,8 +439,20 @@ public final class AudioSystem {
             }
         }
 
-        if (ctx.captainDirective != st.lastCaptainDirective && ctx.captainDirective == GameContext.CaptainDirective.RTB) {
-            emitVoice(ctx, st, VoiceCue.HELM_RTB, now);
+        if (ctx.captainDirective != st.lastCaptainDirective) {
+            if (ctx.captainDirective == GameContext.CaptainDirective.RTB) {
+                emitVoice(ctx, st, VoiceCue.HELM_RTB, now);
+                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_RETREAT, now);
+            } else if (ctx.captainDirective == GameContext.CaptainDirective.ATTACK) {
+                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_PUSH, now);
+            } else if (ctx.captainDirective == GameContext.CaptainDirective.ESCORT) {
+                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_ESCORT, now);
+            } else if (ctx.captainDirective == GameContext.CaptainDirective.DEFEND) {
+                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_DEFEND, now);
+            } else if (ctx.captainDirective == GameContext.CaptainDirective.REPAIR
+                    || ctx.captainDirective == GameContext.CaptainDirective.EMERGENCY) {
+                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_RETREAT, now);
+            }
         }
 
         st.hadCombatContact = hostiles > 0;
@@ -300,16 +470,42 @@ public final class AudioSystem {
     private static void processImpactSignals(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || ctx.player == null) return;
 
-        if (ctx.player.shield < st.lastShield - 0.18) {
-            triggerSfx(ctx, st, SfxCue.IMPACT_SHIELD, now);
-        }
-        if (ctx.player.hp < st.lastHp) {
-            triggerSfx(ctx, st, SfxCue.IMPACT_HULL, now);
-        }
-
         int explosionsNow = explosionCount();
         if (explosionsNow > st.lastExplosionCount) {
             triggerSfx(ctx, st, SfxCue.IMPACT_EXPLOSION, now);
+        }
+    }
+
+    private static void processHazardAndSubsystemSignals(GameContext ctx, RuntimeState st, double now) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        Ship player = ctx.player;
+
+        // Subsystem failure callouts/SFX.
+        for (Ship.InternalSystem system : Ship.InternalSystem.values()) {
+            double prev = st.lastSystemFractions.getOrDefault(system, 1.0);
+            double curr = player.systemHealthFraction(system);
+            if (prev > 1e-6 && curr <= 1e-6) {
+                String ev = subsystemOfflineEventId(system);
+                if (ev != null) triggerSfxEvent(ctx, st, ev, now);
+            }
+            st.lastSystemFractions.put(system, curr);
+        }
+
+        // Fire hazard lifecycle cues.
+        List<Ship.RoomStatus> rooms = player.roomStatusSnapshot();
+        for (Ship.RoomStatus room : rooms) {
+            if (room == null || room.roomId == null) continue;
+            double prev = st.lastRoomFireIntensity.getOrDefault(room.roomId, 0.0);
+            double curr = Math.max(0.0, room.fireIntensity);
+
+            if (prev <= 0.05 && curr > 0.05) {
+                triggerSfxEvent(ctx, st, "hazard.fire_ignition", now);
+            } else if (curr - prev > 0.35) {
+                triggerSfxEvent(ctx, st, "hazard.fire_spread", now);
+            } else if (prev > 0.25 && curr < prev - 0.20) {
+                triggerSfxEvent(ctx, st, "hazard.fire_suppression", now);
+            }
+            st.lastRoomFireIntensity.put(room.roomId, curr);
         }
     }
 
@@ -318,15 +514,28 @@ public final class AudioSystem {
 
         Double cd = st.voiceCooldownUntil.get(cue);
         if (cd != null && now < cd) return;
+        Double dedupe = st.voiceDedupeUntil.get(cue.cooldownKey);
+        if (dedupe != null && now < dedupe) return;
+        Double roleThrottle = st.roleThrottleUntil.get(cue.role);
+        if (roleThrottle != null && now < roleThrottle && cue.priority < 3) return;
         if (now < st.voicePriorityUntilSec && cue.priority < st.activeVoicePriority) return;
 
         st.voiceCooldownUntil.put(cue, now + Math.max(0.25, cue.cooldownSec));
+        st.voiceDedupeUntil.put(cue.cooldownKey, now + Math.max(0.35, Math.min(2.4, cue.cooldownSec)));
+        st.roleThrottleUntil.put(cue.role, now + roleThrottleSeconds(cue.priority));
         st.activeVoicePriority = cue.priority;
         st.voicePriorityUntilSec = now + 0.9;
 
-        File wav = AssetLibrary.pickVoice(cue.role, cue.eventId);
-        if (wav != null) {
-            playFileAsync(wav, false, -12.0);
+        int fallbackVariantCount = cue.captionVariantCount();
+        int variantIndex = chooseVariantIndex(st, cue.cooldownKey, fallbackVariantCount);
+        String caption = cue.captionForVariant(variantIndex);
+
+        double roleVol = voiceRoleVolume(ctx, cue.role);
+        double roleVolGainDb = volumeToGainOffsetDb(roleVol);
+        AssetLibrary.VoicePick voicePick = AssetLibrary.pickVoice(cue.role, cue.eventId, variantIndex);
+        if (voicePick != null && voicePick.file() != null) {
+            variantIndex = voicePick.variantIndex();
+            playFileAsync(voicePick.file(), false, -12.0 + roleVolGainDb);
         } else {
             double roleTone = switch (cue.role) {
                 case "captain" -> 230.0;
@@ -336,11 +545,24 @@ public final class AudioSystem {
                 case "science" -> 300.0;
                 default -> 260.0;
             };
-            playToneAsync(roleTone, 100, -20.0, false);
+            double variantTone = roleTone + variantIndex * 16.0 + RNG.nextDouble() * 4.0;
+            int variantMs = 90 + variantIndex * 24;
+            playToneAsync(variantTone, variantMs, -20.0 + roleVolGainDb, false);
         }
+        st.lastVariantByKey.put(cue.cooldownKey, variantIndex);
 
-        ctx.voiceCaption = cue.roleLabel() + ": " + cue.caption;
-        ctx.voiceCaptionT = 1.8;
+        if (ctx.voiceCaptionsEnabled) {
+            ctx.voiceCaption = cue.roleLabel() + ": " + caption;
+            ctx.voiceCaptionT = 1.8;
+        }
+        logAudioEvent(ctx, new AudioEvent(
+                "voice." + cue.eventId,
+                cue.priority,
+                cue.cooldownKey,
+                variantIndex,
+                "voice",
+                System.nanoTime()
+        ));
     }
 
     private static void triggerSfx(GameContext ctx, SfxCue cue) {
@@ -350,31 +572,59 @@ public final class AudioSystem {
 
     private static void triggerSfx(GameContext ctx, RuntimeState st, SfxCue cue, double now) {
         if (cue == null || st == null) return;
+        triggerSfxEvent(ctx, st, cue.eventId, now);
+    }
 
-        Double cd = st.sfxCooldownUntil.get(cue);
+    private static void triggerSfxEvent(GameContext ctx, RuntimeState st, String eventId, double now) {
+        if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
+        SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
+        if (spec == null) return;
+
+        Double cd = st.sfxCooldownUntil.get(spec.eventId());
         if (cd != null && now < cd) return;
-        st.sfxCooldownUntil.put(cue, now + Math.max(0.02, cue.cooldownSec));
+        st.sfxCooldownUntil.put(spec.eventId(), now + Math.max(0.02, spec.cooldownSec()));
 
-        File wav = AssetLibrary.pickSfx(cue.folder, cue.eventId);
-        if (wav != null) {
-            playFileAsync(wav, false, cue.gainDb);
-        } else {
-            playToneAsync(cue.fallbackHz, cue.fallbackMs, cue.gainDb, false);
+        int variants = Math.max(1, SfxManifest.variantCount(spec));
+        int variant = chooseSfxVariantIndex(st, spec.eventId(), variants);
+        AssetLibrary.SfxPick pick = AssetLibrary.pickSfx(spec, variant);
+        boolean hasAsset = (pick != null && pick.file() != null);
+        if (pick != null && pick.file() != null) {
+            variant = pick.variantIndex();
+            double gain = spec.gainDb() + sfxVoiceDuckingDb(ctx, spec.priority());
+            playFileAsync(pick.file(), false, gain);
         }
+        st.lastSfxVariantByEvent.put(spec.eventId(), variant);
+
+        logAudioEvent(ctx, new AudioEvent(
+                "sfx." + spec.eventId(),
+                spec.priority(),
+                "sfx." + spec.eventId(),
+                hasAsset ? variant : -1,
+                hasAsset ? "sfx" : "sfx_missing",
+                System.nanoTime()
+        ));
     }
 
     private static void ensureAmbientLoop(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || st == null) return;
+        if (TELEMETRY_ONLY) return;
         if (ambientClip != null && ambientClip.isOpen()) {
             if (!ambientClip.isRunning()) ambientClip.loop(Clip.LOOP_CONTINUOUSLY);
             return;
         }
 
-        File ambientFile = AssetLibrary.pickSfx("ambient", "bridge_ambient");
-        if (ambientFile != null) {
-            ambientClip = createClipFromFile(ambientFile, -26.0);
+        SfxManifest.EventSpec[] ambienceChoices = new SfxManifest.EventSpec[]{
+                SfxManifest.byId("ambience.bridge_ambient"),
+                SfxManifest.byId("ambience.engine_loop"),
+                SfxManifest.byId("ambience.station_hum")
+        };
+        SfxManifest.EventSpec ambientSpec = ambienceChoices[RNG.nextInt(ambienceChoices.length)];
+        AssetLibrary.SfxPick ambientPick = AssetLibrary.pickSfx(ambientSpec, RNG.nextInt(4));
+        if (ambientPick != null && ambientPick.file() != null) {
+            ambientClip = createClipFromFile(ambientPick.file(), ambientSpec == null ? -26.0 : ambientSpec.gainDb());
         } else {
-            ambientClip = createToneClip(58.0, 8000, -30.0, true);
+            // No tone fallback for SFX/ambience; silence is preferred over placeholder beeps.
+            ambientClip = null;
         }
 
         if (ambientClip != null) {
@@ -392,6 +642,7 @@ public final class AudioSystem {
     }
 
     private static void playFileAsync(File wav, boolean loop, double gainDb) {
+        if (TELEMETRY_ONLY) return;
         if (wav == null || !wav.isFile()) return;
         PLAYBACK_EXEC.execute(() -> {
             Clip clip = createClipFromFile(wav, gainDb);
@@ -404,6 +655,7 @@ public final class AudioSystem {
     }
 
     private static void playToneAsync(double hz, int ms, double gainDb, boolean loop) {
+        if (TELEMETRY_ONLY) return;
         PLAYBACK_EXEC.execute(() -> {
             Clip clip = createToneClip(hz, ms, gainDb, loop);
             if (clip == null) return;
@@ -545,8 +797,102 @@ public final class AudioSystem {
         }
     }
 
+    private static double roleThrottleSeconds(int priority) {
+        if (priority >= 3) return 0.15;
+        if (priority == 2) return 0.38;
+        return 0.65;
+    }
+
+    private static int chooseVariantIndex(RuntimeState st, String key, int variantCount) {
+        if (variantCount <= 1 || st == null || key == null) return 0;
+        int count = Math.max(1, variantCount);
+        int last = st.lastVariantByKey.getOrDefault(key, -1);
+        int idx = RNG.nextInt(count);
+        if (idx == last) {
+            idx = (idx + 1 + RNG.nextInt(Math.max(1, count - 1))) % count;
+        }
+        return idx;
+    }
+
+    private static int chooseSfxVariantIndex(RuntimeState st, String eventId, int variantCount) {
+        if (variantCount <= 1 || st == null || eventId == null) return 0;
+        int count = Math.max(1, variantCount);
+        int last = st.lastSfxVariantByEvent.getOrDefault(eventId, -1);
+        int idx = RNG.nextInt(count);
+        if (idx == last) {
+            idx = (idx + 1 + RNG.nextInt(Math.max(1, count - 1))) % count;
+        }
+        return idx;
+    }
+
+    private static double sfxVoiceDuckingDb(GameContext ctx, int sfxPriority) {
+        if (ctx == null) return 0.0;
+        if (ctx.voiceCaptionT <= 0.0) return 0.0;
+        if (sfxPriority >= 3) return -1.0;
+        if (sfxPriority == 2) return -2.5;
+        return -4.0;
+    }
+
+    private static String shieldImpactEventId(VFX.ImpactStyle style) {
+        if (style == null) return "impact.shield.kinetic";
+        return switch (style) {
+            case ENERGY -> "impact.shield.energy";
+            case BEAM -> "impact.shield.beam";
+            case EXPLOSIVE -> "impact.shield.explosive";
+            default -> "impact.shield.kinetic";
+        };
+    }
+
+    private static String hullImpactEventId(VFX.ImpactStyle style) {
+        if (style == null) return "impact.hull.kinetic";
+        return switch (style) {
+            case ENERGY -> "impact.hull.energy";
+            case BEAM -> "impact.hull.beam";
+            case EXPLOSIVE -> "impact.hull.explosive";
+            default -> "impact.hull.kinetic";
+        };
+    }
+
+    private static String subsystemOfflineEventId(Ship.InternalSystem system) {
+        if (system == null) return null;
+        return switch (system) {
+            case ENGINES, WARP_ENGINES -> "subsystem.engines_offline";
+            case REACTOR_CORE -> "subsystem.reactor_offline";
+            case SENSORS, BRIDGE -> "subsystem.sensors_offline";
+            case WEAPONS, MAGAZINES -> "subsystem.weapons_offline";
+            case SHIELDS -> "subsystem.shields_offline";
+        };
+    }
+
+    private static double voiceRoleVolume(GameContext ctx, String role) {
+        if (ctx == null) return 1.0;
+        if (role == null) return 1.0;
+        return switch (role) {
+            case "captain" -> ctx.voiceRoleVolume(GameContext.CrewStation.CAPTAIN);
+            case "helm" -> ctx.voiceRoleVolume(GameContext.CrewStation.HELM);
+            case "tactical" -> ctx.voiceRoleVolume(GameContext.CrewStation.TACTICAL);
+            case "engineering" -> ctx.voiceRoleVolume(GameContext.CrewStation.ENGINEERING);
+            case "science" -> ctx.voiceRoleVolume(GameContext.CrewStation.SCIENCE);
+            default -> 1.0;
+        };
+    }
+
+    private static double volumeToGainOffsetDb(double linearVolume) {
+        double v = Math.max(0.0, Math.min(2.0, linearVolume));
+        if (v <= 1e-4) return -80.0;
+        return 20.0 * Math.log10(v);
+    }
+
     private static double nowSec() {
         return System.nanoTime() * 1e-9;
+    }
+
+    private static void logAudioEvent(GameContext ctx, AudioEvent event) {
+        if (ctx == null || event == null) return;
+        if (ctx.audioEvents.size() >= MAX_AUDIO_EVENT_LOG) {
+            ctx.audioEvents.remove(0);
+        }
+        ctx.audioEvents.add(event);
     }
 }
 

@@ -81,6 +81,16 @@ public final class GameplayActions {
         EventSystem.showBanner(ctx, "HUD: " + ctx.hudDetail.name(), 0.8);
     }
 
+    public static void cycleXrayFilter(GameContext ctx, int dir) {
+        if (!canIssueCombatAction(ctx)) return;
+        UISystem.cycleXrayFilterMode(ctx, dir);
+    }
+
+    public static void clearXrayFocus(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        UISystem.clearXrayRoomFocus(ctx);
+    }
+
     public static void tryShieldOvercharge(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         ctx.player.tryShieldOvercharge();
@@ -156,6 +166,11 @@ public final class GameplayActions {
         EventSystem.showBanner(ctx, "SHIELD MODE: " + mode.name(), 0.8);
     }
 
+    public static void toggleEmergencyThrust(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        UISystem.toggleEmergencyThrustMode(ctx);
+    }
+
     public static void tryTeleportToBase(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
@@ -219,6 +234,12 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_2 -> UISystem.selectPowerManagementSlot(ctx, 1);
             case java.awt.event.KeyEvent.VK_3 -> UISystem.selectPowerManagementSlot(ctx, 2);
             case java.awt.event.KeyEvent.VK_4 -> UISystem.selectPowerManagementSlot(ctx, 3);
+            case java.awt.event.KeyEvent.VK_5 -> UISystem.selectPowerManagementSlot(ctx, 4);
+            case java.awt.event.KeyEvent.VK_6 -> UISystem.selectPowerManagementSlot(ctx, 5);
+            case java.awt.event.KeyEvent.VK_7 -> UISystem.toggleOverloadMode(ctx);
+            case java.awt.event.KeyEvent.VK_8 -> UISystem.cycleOverloadBus(ctx, +1);
+            case java.awt.event.KeyEvent.VK_9 -> UISystem.cycleEngineeringPriority(ctx, +1);
+            case java.awt.event.KeyEvent.VK_0 -> UISystem.toggleEmergencyThrustMode(ctx);
             case java.awt.event.KeyEvent.VK_UP -> UISystem.cyclePowerManagementSlot(ctx, -1);
             case java.awt.event.KeyEvent.VK_DOWN -> UISystem.cyclePowerManagementSlot(ctx, +1);
             case java.awt.event.KeyEvent.VK_LEFT, java.awt.event.KeyEvent.VK_OPEN_BRACKET, java.awt.event.KeyEvent.VK_MINUS, java.awt.event.KeyEvent.VK_SUBTRACT -> UISystem.stepPowerAllocation(ctx, -1);
@@ -271,6 +292,26 @@ public final class GameplayActions {
                 UISystem.toggleActiveStationAutomation(ctx);
                 handled = true;
             }
+            case java.awt.event.KeyEvent.VK_C -> {
+                UISystem.toggleVoiceCaptions(ctx);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_Z -> {
+                UISystem.cycleVoiceMixFocus(ctx, -1);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_X -> {
+                UISystem.cycleVoiceMixFocus(ctx, +1);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_COMMA -> {
+                UISystem.stepVoiceMixVolume(ctx, -1);
+                handled = true;
+            }
+            case java.awt.event.KeyEvent.VK_PERIOD -> {
+                UISystem.stepVoiceMixVolume(ctx, +1);
+                handled = true;
+            }
             default -> {
                 // handled below by station-specific bindings
             }
@@ -305,6 +346,7 @@ public final class GameplayActions {
                 else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.setHelmMode(ctx, GameContext.HelmMode.ORBIT);
                 else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.setHelmMode(ctx, GameContext.HelmMode.MAINTAIN_RANGE);
                 else if (keyCode == java.awt.event.KeyEvent.VK_4) UISystem.setHelmMode(ctx, GameContext.HelmMode.EVASIVE);
+                else if (keyCode == java.awt.event.KeyEvent.VK_5) UISystem.toggleEmergencyThrustMode(ctx);
                 else return false;
                 return true;
             }
@@ -320,6 +362,10 @@ public final class GameplayActions {
                 else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.ATTACK);
                 else if (keyCode == java.awt.event.KeyEvent.VK_3) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.DEFENSE);
                 else if (keyCode == java.awt.event.KeyEvent.VK_4) UISystem.setEngineeringMode(ctx, GameContext.EngineeringMode.DAMAGE_CONTROL);
+                else if (keyCode == java.awt.event.KeyEvent.VK_5) UISystem.toggleOverloadMode(ctx);
+                else if (keyCode == java.awt.event.KeyEvent.VK_6) UISystem.cycleOverloadBus(ctx, +1);
+                else if (keyCode == java.awt.event.KeyEvent.VK_7) UISystem.cycleEngineeringPriority(ctx, +1);
+                else if (keyCode == java.awt.event.KeyEvent.VK_8) UISystem.suppressHottestFire(ctx);
                 else return false;
                 return true;
             }

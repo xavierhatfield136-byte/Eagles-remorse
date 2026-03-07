@@ -1,5 +1,6 @@
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -273,11 +274,48 @@ public abstract class Ship {
         DEFENSE,
         PURSUIT
     }
+    public enum PowerBus {
+        PROPULSION,
+        SHIELD,
+        TACTICAL,
+        SENSOR,
+        ENGINEERING,
+        AUXILIARY
+    }
+    public enum SubsystemState {
+        NOMINAL,
+        STRESSED,
+        DAMAGED,
+        OFFLINE,
+        DESTROYED
+    }
+    public enum EngineeringPriority {
+        BALANCED,
+        REACTOR,
+        PROPULSION,
+        SHIELDS,
+        WEAPONS,
+        SENSORS
+    }
     public PowerPreset powerPreset = PowerPreset.BALANCED;
+    // Legacy 4-way bus fields retained for compatibility with existing APIs/callers.
     private double powerEngines = 0.25;
     private double powerShields = 0.25;
     private double powerWeapons = 0.25;
     private double powerSystems = 0.25;
+    // New Phase 4 subsystem buses.
+    private double powerSensors = 0.125;
+    private double powerEngineering = 0.125;
+    private double powerAuxiliary = 0.125;
+    private EngineeringPriority engineeringPriority = EngineeringPriority.BALANCED;
+    private PowerBus overloadBus = PowerBus.TACTICAL;
+    private boolean overloadActive = false;
+    private double overloadHeat = 0.0;
+    private double overloadStressDebt = 0.0;
+    private double overloadCooldownTimer = 0.0;
+    private boolean emergencyThrustActive = false;
+    private double emergencyThrustHeat = 0.0;
+    private double emergencyThrustCooldown = 0.0;
 
     // Crew interactions
     public enum CrewOrder {
@@ -326,6 +364,7 @@ public abstract class Ship {
     private static final double ROOM_CONDEMNED_THRESHOLD = 0.30;
     private final List<RoomDamageEvent> roomDamageEvents = new ArrayList<>();
     private final List<RoomDamageEvent> roomDamageEventsView = Collections.unmodifiableList(roomDamageEvents);
+    private RoomDamageResult lastRoomDamageResult = RoomDamageResult.NONE;
 
     // Hull impact/breach data in ship-local coordinates (used for exact decal placement).
     public static final class HullImpactMark {
@@ -333,12 +372,15 @@ public abstract class Ship {
         public final double localY;
         public final double severity;
         public final double breachRadius;
+        public final ShipRoomLayout.RoomId roomId;
 
-        private HullImpactMark(double localX, double localY, double severity, double breachRadius) {
+        private HullImpactMark(double localX, double localY, double severity, double breachRadius,
+                               ShipRoomLayout.RoomId roomId) {
             this.localX = localX;
             this.localY = localY;
             this.severity = severity;
             this.breachRadius = breachRadius;
+            this.roomId = roomId;
         }
     }
 
@@ -347,8 +389,51 @@ public abstract class Ship {
     private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
     private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
     private double hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
+    private static final double CATASTROPHIC_CHAIN_GRACE_SECONDS = 4.0;
+    private static final double CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC = 0.22;
+    private double catastrophicChainGraceTimer = 0.0;
     private double noDamageTimerSeconds = 0.0;
     private boolean instantRepairConsumed = false;
+
+    private static final class HullDamageSplit {
+        private final ShipRoomLayout.RoomDef primaryRoom;
+        private final double primaryRoomHpBefore;
+        private double roomLocalHpLoss = 0.0;
+        private int hazardRolls = 0;
+        private final LinkedHashSet<String> subsystemTransitions = new LinkedHashSet<>();
+
+        private HullDamageSplit(ShipRoomLayout.RoomDef primaryRoom, double primaryRoomHpBefore) {
+            this.primaryRoom = primaryRoom;
+            this.primaryRoomHpBefore = Math.max(0.0, primaryRoomHpBefore);
+        }
+
+        private void absorb(RoomDamageResult result) {
+            if (result == null || result == RoomDamageResult.NONE) return;
+            roomLocalHpLoss += Math.max(0.0, result.roomLocalHpLoss);
+            hazardRolls += Math.max(0, result.hazardRolls);
+            if (result.subsystemTransitions != null) subsystemTransitions.addAll(result.subsystemTransitions);
+        }
+
+        private RoomDamageResult finish(Ship ship, int hullBefore) {
+            double before = primaryRoomHpBefore;
+            double after = primaryRoomHpBefore;
+            String roomId = "";
+            if (primaryRoom != null) {
+                roomId = primaryRoom.id.name();
+                double cur = ship.roomHp.getOrDefault(primaryRoom.id, before);
+                after = Math.max(0.0, cur);
+            }
+            return new RoomDamageResult(
+                    roomId,
+                    before,
+                    after,
+                    hazardRolls,
+                    new ArrayList<>(subsystemTransitions),
+                    ship.hp - hullBefore,
+                    roomLocalHpLoss
+            );
+        }
+    }
 
     public static final class RoomDamageEvent {
         public final ShipRoomLayout.RoomId roomId;
@@ -400,6 +485,9 @@ public abstract class Ship {
         double fireIntensity = 0.0; // 0..2
         double damageTickTimer = 0.0;
         double spreadTimer = 0.0;
+        double suppressionBoost = 0.0;
+        double instabilityTimer = 0.0;
+        double vfxTimer = 0.0;
 
         RoomHazardState(ShipRoomLayout.RoomId roomId) {
             this.roomId = roomId;
@@ -491,6 +579,10 @@ public abstract class Ship {
         x += vx;
         y += vy;
         if (dt > 0.0) noDamageTimerSeconds += dt;
+        if (catastrophicChainGraceTimer > 0.0) {
+            catastrophicChainGraceTimer -= dt;
+            if (catastrophicChainGraceTimer < 0.0) catastrophicChainGraceTimer = 0.0;
+        }
 
         if (revealTimer > 0) {
             revealTimer -= dt;
@@ -504,6 +596,8 @@ public abstract class Ship {
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
         ensurePowerInitialized();
+        updatePowerBusState(dt);
+        updateEmergencyThrustState(dt);
         updateCrewState(dt);
         updateDerivedSystemEffects();
         updateRoomHazards(dt);
@@ -678,6 +772,9 @@ public abstract class Ship {
                 hz.fireIntensity = 0.0;
                 hz.damageTickTimer = 0.0;
                 hz.spreadTimer = 0.0;
+                hz.suppressionBoost = 0.0;
+                hz.instabilityTimer = 0.0;
+                hz.vfxTimer = 0.0;
             }
         }
         hullRegenBuffer = 0.0;
@@ -725,6 +822,7 @@ public abstract class Ship {
         if (!alive) return;
         if (dying) return;
         if (dmg <= 0) return;
+        lastRoomDamageResult = RoomDamageResult.NONE;
         hullImpactNoDamageTimer = 0.0;
         noDamageTimerSeconds = 0.0;
         instantRepairConsumed = false;
@@ -734,6 +832,9 @@ public abstract class Ship {
         crewCombatStress = Math.max(crewCombatStress, 1.4);
         ensureRoomSystemsInitialized();
         ensureShieldFacesSynced();
+        HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
+        ShipRoomLayout.RoomDef primaryRoom = resolvePrimaryRoomForHullHit(impact, hitX, hitY, impactVx, impactVy);
+        int hullDamage = dmg;
 
         double impactAngle = resolveShieldImpactAngle(hitX, hitY, impactVx, impactVy);
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
@@ -754,7 +855,9 @@ public abstract class Ship {
                 recentShieldImpactTimer = 1.2;
             }
             if (faceHpBefore > 1e-6) {
-                double scaledDamage = dmg * directionalShieldDamageScaleFromAngle(impactAngle, shieldFacingForHit);
+                double shieldScale = directionalShieldDamageScaleFromAngle(impactAngle, shieldFacingForHit);
+                double scaledDamage = dmg * shieldScale;
+                double overflow = Math.max(0.0, scaledDamage - faceHpBefore);
                 applyShieldDamageToFace(face, scaledDamage);
                 if (shield <= 0) {
                     forceShieldOffline(shieldRebootDelay);
@@ -762,12 +865,20 @@ public abstract class Ship {
                 double fx = Double.isFinite(hitX) ? hitX : x;
                 double fy = Double.isFinite(hitY) ? hitY : y;
                 Explosion.spawnShieldHit(fx, fy);
-                return;
+                if (overflow <= 1e-6) {
+                    return;
+                }
+
+                // Residual bleed-through still gets attenuated by shield geometry.
+                double bleedThroughScale = MathUtil.clamp(0.42 + 0.36 * shieldScale, 0.24, 0.88);
+                hullDamage = Math.max(1, (int) Math.round(overflow * bleedThroughScale));
             }
         }
 
-        registerHullImpact(dmg, hitX, hitY);
-        applySystemDamageFromHullHit(dmg, hitX, hitY);
+        registerHullImpact(hullDamage, impact, primaryRoom);
+        int hullBefore = hp;
+        RoomDamageResult split = applySystemDamageFromHullHit(hullDamage, impact, primaryRoom, hullBefore);
+        if (split != null) lastRoomDamageResult = split;
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
     }
@@ -1021,9 +1132,14 @@ public abstract class Ship {
         roomHazards.clear();
         roomDisabledSystems.clear();
         roomDamageEvents.clear();
+        lastRoomDamageResult = RoomDamageResult.NONE;
         hullRegenBuffer = 0.0;
         noDamageTimerSeconds = 0.0;
         instantRepairConsumed = false;
+        catastrophicChainGraceTimer = 0.0;
+        emergencyThrustActive = false;
+        emergencyThrustHeat = 0.0;
+        emergencyThrustCooldown = 0.0;
     }
 
     public List<HullImpactMark> hullImpactMarks() {
@@ -1054,6 +1170,64 @@ public abstract class Ship {
         return roomDamageEventsView;
     }
 
+    public RoomDamageResult lastRoomDamageResult() {
+        return lastRoomDamageResult;
+    }
+
+    public List<ShipRoom> shipRoomSnapshot() {
+        ensureRoomSystemsInitialized();
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        List<ShipRoom> out = new ArrayList<>(defs.size());
+        String profileId = ShipRoomLayout.profileIdForRole(role);
+        for (ShipRoomLayout.RoomDef d : defs) {
+            if (d == null || d.id == null) continue;
+            double maxv = roomHpMax.getOrDefault(d.id, 0.0);
+            double hpv = roomHp.getOrDefault(d.id, maxv);
+            RoomHazardState hz = roomHazards.get(d.id);
+            double fire = (hz == null) ? 0.0 : hz.fireIntensity;
+
+            int statusFlags = 0;
+            if (hpv <= 1e-6) statusFlags |= ShipRoom.STATUS_DESTROYED;
+            if (fire > 1e-4) statusFlags |= ShipRoom.STATUS_FIRE_ACTIVE;
+            if (d.critical) statusFlags |= ShipRoom.STATUS_CRITICAL;
+
+            List<String> tags = new ArrayList<>(3);
+            if (d.primarySystem != null) tags.add(d.primarySystem.name().toLowerCase());
+            if (d.critical) tags.add("critical");
+            if (fire > 1e-4) tags.add("hazard_fire");
+
+            out.add(new ShipRoom(
+                    d.id.name(),
+                    profileId,
+                    flattenPolygon(d.xs, d.ys),
+                    maxv,
+                    hpv,
+                    d.critical ? 1.0 : 0.45,
+                    tags,
+                    statusFlags
+            ));
+        }
+        return out;
+    }
+
+    public List<HazardState> hazardStateSnapshot() {
+        ensureRoomSystemsInitialized();
+        if (roomHazards.isEmpty()) return List.of();
+        List<HazardState> out = new ArrayList<>(roomHazards.size());
+        for (RoomHazardState hz : roomHazards.values()) {
+            if (hz == null || hz.roomId == null) continue;
+            out.add(new HazardState(
+                    "fire:" + hz.roomId.name().toLowerCase(),
+                    hz.roomId.name(),
+                    "fire",
+                    hz.fireIntensity,
+                    hz.spreadTimer,
+                    hazardSuppressionState(hz)
+            ));
+        }
+        return out;
+    }
+
     public double roomHealthFraction(ShipRoomLayout.RoomId roomId) {
         ensureRoomSystemsInitialized();
         if (roomId == null) return 1.0;
@@ -1068,6 +1242,69 @@ public abstract class Ship {
         RoomHazardState hz = roomHazards.get(roomId);
         if (hz == null) return 0.0;
         return Math.max(0.0, hz.fireIntensity);
+    }
+
+    public int activeFireRoomCount() {
+        ensureRoomSystemsInitialized();
+        int count = 0;
+        for (RoomHazardState hz : roomHazards.values()) {
+            if (hz != null && hz.fireIntensity > 0.05) count++;
+        }
+        return count;
+    }
+
+    public double totalFireIntensity() {
+        ensureRoomSystemsInitialized();
+        double total = 0.0;
+        for (RoomHazardState hz : roomHazards.values()) {
+            if (hz == null) continue;
+            total += Math.max(0.0, hz.fireIntensity);
+        }
+        return total;
+    }
+
+    public boolean hasActiveFireHazards() {
+        return activeFireRoomCount() > 0;
+    }
+
+    public ShipRoomLayout.RoomId hottestFireRoom() {
+        ensureRoomSystemsInitialized();
+        ShipRoomLayout.RoomId hottest = null;
+        double hottestIntensity = 0.05;
+        for (RoomHazardState hz : roomHazards.values()) {
+            if (hz == null || hz.roomId == null) continue;
+            if (hz.fireIntensity > hottestIntensity) {
+                hottestIntensity = hz.fireIntensity;
+                hottest = hz.roomId;
+            }
+        }
+        return hottest;
+    }
+
+    public boolean suppressHottestFire() {
+        if (!alive || dying) return false;
+        ShipRoomLayout.RoomId target = hottestFireRoom();
+        if (target == null) return false;
+        double effort = 0.18 + 0.24 * engineeringPowerMultiplier() + 0.16 * crewReadiness();
+        return applyFireSuppression(target, effort, true) > 1e-4;
+    }
+
+    public boolean suppressFireInRoom(ShipRoomLayout.RoomId roomId) {
+        if (!alive || dying || roomId == null) return false;
+        double effort = 0.16 + 0.20 * engineeringPowerMultiplier() + 0.12 * crewReadiness();
+        return applyFireSuppression(roomId, effort, true) > 1e-4;
+    }
+
+    private static double[] flattenPolygon(double[] xs, double[] ys) {
+        if (xs == null || ys == null) return new double[0];
+        int n = Math.min(xs.length, ys.length);
+        if (n <= 0) return new double[0];
+        double[] out = new double[n * 2];
+        for (int i = 0; i < n; i++) {
+            out[i * 2] = xs[i];
+            out[i * 2 + 1] = ys[i];
+        }
+        return out;
     }
 
     public double systemHealthFraction(InternalSystem system) {
@@ -1095,25 +1332,217 @@ public abstract class Ship {
         if (preset == null) preset = PowerPreset.BALANCED;
         powerPreset = preset;
         switch (preset) {
-            case ATTACK -> setPowerAllocation(0.20, 0.20, 0.44, 0.16);
-            case DEFENSE -> setPowerAllocation(0.18, 0.46, 0.20, 0.16);
-            case PURSUIT -> setPowerAllocation(0.48, 0.14, 0.22, 0.16);
-            default -> setPowerAllocation(0.25, 0.25, 0.25, 0.25);
+            case ATTACK -> setPowerBusAllocation(0.16, 0.13, 0.31, 0.12, 0.16, 0.12);
+            case DEFENSE -> setPowerBusAllocation(0.13, 0.30, 0.14, 0.14, 0.19, 0.10);
+            case PURSUIT -> setPowerBusAllocation(0.33, 0.12, 0.18, 0.12, 0.14, 0.11);
+            default -> setPowerBusAllocation(0.18, 0.18, 0.19, 0.15, 0.18, 0.12);
         }
     }
 
+    // Legacy 4-way API: systems share is split across sensor/engineering/aux buses.
     public void setPowerAllocation(double engines, double shields, double weapons, double systems) {
-        powerEngines = Math.max(0.0, engines);
-        powerShields = Math.max(0.0, shields);
-        powerWeapons = Math.max(0.0, weapons);
-        powerSystems = Math.max(0.0, systems);
+        double support = Math.max(0.0, systems);
+        setPowerBusAllocation(
+                Math.max(0.0, engines),
+                Math.max(0.0, shields),
+                Math.max(0.0, weapons),
+                support * 0.34,
+                support * 0.42,
+                support * 0.24
+        );
+    }
+
+    public void setPowerBusAllocation(double propulsion,
+                                      double shield,
+                                      double tactical,
+                                      double sensor,
+                                      double engineering,
+                                      double auxiliary) {
+        powerEngines = Math.max(0.0, propulsion);
+        powerShields = Math.max(0.0, shield);
+        powerWeapons = Math.max(0.0, tactical);
+        powerSensors = Math.max(0.0, sensor);
+        powerEngineering = Math.max(0.0, engineering);
+        powerAuxiliary = Math.max(0.0, auxiliary);
         normalizePowerAllocation();
+    }
+
+    public double powerBusFraction(PowerBus bus) {
+        PowerBus b = (bus == null) ? PowerBus.ENGINEERING : bus;
+        return switch (b) {
+            case PROPULSION -> powerEngines;
+            case SHIELD -> powerShields;
+            case TACTICAL -> powerWeapons;
+            case SENSOR -> powerSensors;
+            case ENGINEERING -> powerEngineering;
+            case AUXILIARY -> powerAuxiliary;
+        };
+    }
+
+    public double[] powerBusFractions() {
+        return new double[]{
+                powerEngines,
+                powerShields,
+                powerWeapons,
+                powerSensors,
+                powerEngineering,
+                powerAuxiliary
+        };
+    }
+
+    public double powerBusEffect(PowerBus bus) {
+        return powerBusEffectiveMultiplier(bus);
     }
 
     public double powerEnginesFrac() { return powerEngines; }
     public double powerShieldsFrac() { return powerShields; }
     public double powerWeaponsFrac() { return powerWeapons; }
-    public double powerSystemsFrac() { return powerSystems; }
+    public double powerSystemsFrac() { return powerSensors + powerEngineering + powerAuxiliary; }
+    public double powerSensorsFrac() { return powerSensors; }
+    public double powerEngineeringFrac() { return powerEngineering; }
+    public double powerAuxiliaryFrac() { return powerAuxiliary; }
+
+    public EngineeringPriority engineeringPriority() {
+        return engineeringPriority;
+    }
+
+    public EngineeringPriority cycleEngineeringPriority() {
+        EngineeringPriority[] values = EngineeringPriority.values();
+        int idx = engineeringPriority.ordinal() + 1;
+        if (idx >= values.length) idx = 0;
+        engineeringPriority = values[idx];
+        return engineeringPriority;
+    }
+
+    public void setEngineeringPriority(EngineeringPriority priority) {
+        engineeringPriority = (priority == null) ? EngineeringPriority.BALANCED : priority;
+    }
+
+    public PowerBus overloadBus() {
+        return overloadBus;
+    }
+
+    public void setOverloadBus(PowerBus bus) {
+        overloadBus = (bus == null) ? PowerBus.TACTICAL : bus;
+    }
+
+    public PowerBus cycleOverloadBus(int dir) {
+        PowerBus[] values = PowerBus.values();
+        int step = (dir < 0) ? -1 : 1;
+        int idx = overloadBus.ordinal() + step;
+        if (idx < 0) idx = values.length - 1;
+        if (idx >= values.length) idx = 0;
+        overloadBus = values[idx];
+        return overloadBus;
+    }
+
+    public boolean isOverloadActive() {
+        return overloadActive;
+    }
+
+    public boolean isOverloadAvailable() {
+        return overloadCooldownTimer <= 1e-6;
+    }
+
+    public double overloadHeat() {
+        return Math.max(0.0, Math.min(1.0, overloadHeat));
+    }
+
+    public double overloadStressDebt() {
+        return Math.max(0.0, overloadStressDebt);
+    }
+
+    public double overloadCooldownRemaining() {
+        return Math.max(0.0, overloadCooldownTimer);
+    }
+
+    public boolean isEmergencyThrustActive() {
+        return emergencyThrustActive;
+    }
+
+    public double emergencyThrustHeat() {
+        return MathUtil.clamp(emergencyThrustHeat, 0.0, 1.0);
+    }
+
+    public double emergencyThrustCooldownRemaining() {
+        return Math.max(0.0, emergencyThrustCooldown);
+    }
+
+    public double emergencyThrustSpeedMultiplier() {
+        if (!emergencyThrustActive) return 1.0;
+        double heatPenalty = 1.0 - Math.min(0.22, emergencyThrustHeat * 0.20);
+        double propulsion = 0.82 + 0.18 * propulsionRoomIntegrity();
+        return MathUtil.clamp(1.30 * heatPenalty * propulsion, 1.04, 1.34);
+    }
+
+    public boolean setEmergencyThrustMode(boolean enabled) {
+        if (!enabled) {
+            emergencyThrustActive = false;
+            return true;
+        }
+        if (emergencyThrustCooldown > 1e-6) return false;
+        if (propulsionRoomIntegrity() < 0.18) return false;
+        if (overloadActive && overloadBus == PowerBus.PROPULSION) return false;
+        emergencyThrustActive = true;
+        return true;
+    }
+
+    public boolean toggleEmergencyThrustMode() {
+        return setEmergencyThrustMode(!emergencyThrustActive);
+    }
+
+    public double propulsionRoomIntegrity() {
+        ensureRoomSystemsInitialized();
+        double engine = roomHealthFraction(ShipRoomLayout.RoomId.ENGINES);
+        double warp = roomHealthFraction(ShipRoomLayout.RoomId.WARP_DRIVE);
+        return MathUtil.clamp(engine * 0.65 + warp * 0.35, 0.0, 1.0);
+    }
+
+    public double propulsionMobilityMultiplier() {
+        double r = propulsionRoomIntegrity();
+        return MathUtil.clamp(0.24 + 0.76 * Math.pow(r, 0.90), 0.20, 1.0);
+    }
+
+    public double propulsionHandlingMultiplier() {
+        double r = propulsionRoomIntegrity();
+        return MathUtil.clamp(0.30 + 0.70 * Math.pow(r, 0.82), 0.24, 1.0);
+    }
+
+    public boolean setOverloadMode(boolean enabled) {
+        if (!enabled) {
+            overloadActive = false;
+            return true;
+        }
+        if (overloadCooldownTimer > 1e-6) return false;
+        if (emergencyThrustActive && overloadBus == PowerBus.PROPULSION) return false;
+        overloadActive = true;
+        return true;
+    }
+
+    public boolean toggleOverloadMode() {
+        return setOverloadMode(!overloadActive);
+    }
+
+    public SubsystemState subsystemState(InternalSystem system) {
+        if (system == null) return SubsystemState.NOMINAL;
+        double health = systemHealthFraction(system);
+        if (health <= 0.001) return SubsystemState.DESTROYED;
+
+        PowerBus bus = powerBusForSystem(system);
+        double busMul = powerBusEffectiveMultiplier(bus);
+        if (health < 0.15 || busMul < 0.20) return SubsystemState.OFFLINE;
+
+        double integrated = health * (0.58 + 0.42 * Math.min(1.0, busMul));
+        if (integrated < 0.38) return SubsystemState.DAMAGED;
+
+        if (health < 0.62
+                || busMul < 0.86
+                || overloadHeat >= 0.82
+                || overloadStressDebt >= 0.85) {
+            return SubsystemState.STRESSED;
+        }
+        return SubsystemState.NOMINAL;
+    }
 
     public CrewOrder cycleCrewOrder() {
         CrewOrder[] orders = CrewOrder.values();
@@ -1207,8 +1636,15 @@ public abstract class Ship {
         double sensors = systemHealthFraction(InternalSystem.SENSORS);
         double bridge = systemHealthFraction(InternalSystem.BRIDGE);
         double out = 0.35 + 0.45 * sensors + 0.20 * bridge;
-        out *= systemsPowerMultiplier();
+        out *= sensorPowerMultiplier();
         out *= crewSystemMul;
+        double localFirePenalty = 0.0;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.SENSORS) * 0.36;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.BRIDGE) * 0.28;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.POWER_CONDUITS) * 0.18;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.INTEGRITY_FIELD) * 0.12;
+        localFirePenalty += totalFireIntensity() * 0.05;
+        out *= (1.0 - MathUtil.clamp(localFirePenalty, 0.0, 0.72));
         return Math.max(0.16, Math.min(1.25, out));
     }
 
@@ -1347,6 +1783,59 @@ public abstract class Ship {
         return null;
     }
 
+    private HullGeometry.ImpactSample resolveHullImpactSample(double hitX, double hitY,
+                                                              double impactVx, double impactVy) {
+        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(this, hitX, hitY, true);
+        if (impact != null && impact.onHull) return impact;
+
+        if (Double.isFinite(impactVx) && Double.isFinite(impactVy)) {
+            double vLen = Math.hypot(impactVx, impactVy);
+            if (vLen > 1e-9) {
+                double nx = -impactVx / vLen;
+                double ny = -impactVy / vLen;
+                double probe = Math.max(8.0, radius + 8.0);
+                double wx = x + nx * probe;
+                double wy = y + ny * probe;
+                HullGeometry.ImpactSample fromVelocity = HullGeometry.sampleImpact(this, wx, wy, true);
+                if (fromVelocity != null && fromVelocity.onHull) return fromVelocity;
+            }
+        }
+
+        return impact;
+    }
+
+    private ShipRoomLayout.RoomDef resolvePrimaryRoomForHullHit(HullGeometry.ImpactSample impact,
+                                                                 double hitX,
+                                                                 double hitY,
+                                                                 double impactVx,
+                                                                 double impactVy) {
+        ShipRoomLayout.RoomDef room = resolveRoomForImpact(impact, hitX, hitY);
+        if (room != null) return room;
+
+        if (impact != null && Double.isFinite(impact.normalizedX) && Double.isFinite(impact.normalizedY)) {
+            room = RoomHitResolver.resolve(role, impact.normalizedX, impact.normalizedY);
+            if (room != null) return room;
+        }
+
+        if (Double.isFinite(impactVx) && Double.isFinite(impactVy)) {
+            double len = Math.hypot(impactVx, impactVy);
+            if (len > 1e-9) {
+                double wx = -impactVx / len;
+                double wy = -impactVy / len;
+                double c = Math.cos(angle);
+                double s = Math.sin(angle);
+                double lx = wx * c + wy * s;
+                double ly = -wx * s + wy * c;
+                room = RoomHitResolver.resolve(role, lx, ly);
+                if (room != null) return room;
+            }
+        }
+
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        if (defs != null && !defs.isEmpty()) return defs.get(0);
+        return null;
+    }
+
     private void logRoomDamage(ShipRoomLayout.RoomId roomId, double normalizedX, double normalizedY,
                                double damage, boolean fromHazard) {
         if (roomId == null || damage <= 0.0) return;
@@ -1365,6 +1854,9 @@ public abstract class Ship {
         hz.fireIntensity = Math.max(hz.fireIntensity, MathUtil.clamp(intensity, 0.0, 2.6));
         if (hz.damageTickTimer <= 0.0) hz.damageTickTimer = 0.18 + Math.random() * 0.16;
         if (hz.spreadTimer <= 0.0) hz.spreadTimer = 0.50 + Math.random() * 0.45;
+        if (hz.instabilityTimer <= 0.0) hz.instabilityTimer = 0.40 + Math.random() * 0.35;
+        if (hz.vfxTimer <= 0.0) hz.vfxTimer = 0.06 + Math.random() * 0.08;
+        hz.suppressionBoost = Math.max(0.0, hz.suppressionBoost - intensity * 0.08);
     }
 
     private void damageRoom(ShipRoomLayout.RoomDef room, double damage,
@@ -1381,6 +1873,9 @@ public abstract class Ship {
         double max = roomHpMax.getOrDefault(room.id, 0.0);
         if (max <= 0.0) return;
         double before = roomHp.getOrDefault(room.id, max);
+        int hullBefore = hp;
+        int hazardRolls = 0;
+        List<String> subsystemTransitions = new ArrayList<>(4);
         noDamageTimerSeconds = 0.0;
         instantRepairConsumed = false;
 
@@ -1401,12 +1896,30 @@ public abstract class Ship {
             }
             if (!recipients.isEmpty()) {
                 double split = damage / recipients.size();
+                double redirectedRoomLoss = 0.0;
+                int redirectedHazardRolls = 0;
                 for (ShipRoomLayout.RoomDef recipient : recipients) {
                     damageRoom(recipient, split, normalizedX, normalizedY, false, false);
+                    RoomDamageResult redirected = lastRoomDamageResult;
+                    if (redirected != null && redirected != RoomDamageResult.NONE) {
+                        redirectedRoomLoss += redirected.roomLocalHpLoss;
+                        redirectedHazardRolls += redirected.hazardRolls;
+                        subsystemTransitions.addAll(redirected.subsystemTransitions);
+                    }
                 }
                 logRoomDamage(room.id, normalizedX, normalizedY, damage, false);
                 syncHullFromRoomIntegrity();
                 evaluateCondemnedStateFromRooms();
+                double afterSpread = roomHp.getOrDefault(room.id, before);
+                lastRoomDamageResult = new RoomDamageResult(
+                        room.id.name(),
+                        before,
+                        afterSpread,
+                        redirectedHazardRolls,
+                        subsystemTransitions,
+                        hp - hullBefore,
+                        redirectedRoomLoss
+                );
             }
             return;
         }
@@ -1416,30 +1929,61 @@ public abstract class Ship {
         logRoomDamage(room.id, normalizedX, normalizedY, damage, fromHazard);
 
         if (room.primarySystem != null) {
+            double sysBefore = systemHealthFraction(room.primarySystem);
             double sysScale = fromHazard ? 0.68 : 0.70;
             damageSystem(room.primarySystem, damage * sysScale);
+            double sysAfter = systemHealthFraction(room.primarySystem);
+            if (sysBefore > 1e-6 && sysAfter <= 1e-6) {
+                subsystemTransitions.add(room.primarySystem.name() + ":offline");
+            }
         }
 
-        if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS && !fromHazard && Math.random() < 0.20) {
-            damageSystem(pickSystem(InternalSystem.SHIELDS, InternalSystem.WEAPONS, InternalSystem.SENSORS), damage * 0.22);
+        if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS && !fromHazard) {
+            hazardRolls++;
+            if (Math.random() < 0.20) {
+                InternalSystem redirected = pickSystem(InternalSystem.SHIELDS, InternalSystem.WEAPONS, InternalSystem.SENSORS);
+                if (redirected != null) {
+                    double sysBefore = systemHealthFraction(redirected);
+                    damageSystem(redirected, damage * 0.22);
+                    double sysAfter = systemHealthFraction(redirected);
+                    if (sysBefore > 1e-6 && sysAfter <= 1e-6) {
+                        subsystemTransitions.add(redirected.name() + ":offline");
+                    }
+                }
+            }
         }
 
-        if (room.id == ShipRoomLayout.RoomId.INTEGRITY_FIELD && after <= max * 0.20 && Math.random() < 0.08) {
-            forceShieldOffline(Math.max(0.8, shieldRebootDelay * 0.55));
+        if (room.id == ShipRoomLayout.RoomId.INTEGRITY_FIELD && after <= max * 0.20) {
+            hazardRolls++;
+            if (Math.random() < 0.08) {
+                forceShieldOffline(Math.max(0.8, shieldRebootDelay * 0.55));
+                subsystemTransitions.add(InternalSystem.SHIELDS.name() + ":offline");
+            }
         }
 
         if (!fromHazard) {
+            hazardRolls++;
             double fracLost = (before - after) / Math.max(1e-6, max);
             double ignitionChance = 0.10 + fracLost * 0.50;
             if (room.critical) ignitionChance += 0.12;
             if (Math.random() < MathUtil.clamp(ignitionChance, 0.0, 0.88)) {
                 igniteRoomFire(room.id, 0.40 + fracLost * 1.45);
+                subsystemTransitions.add("hazard:fire_ignited");
             }
         }
 
         enforceRoomSystemAvailability();
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
+        lastRoomDamageResult = new RoomDamageResult(
+                room.id.name(),
+                before,
+                after,
+                hazardRolls,
+                subsystemTransitions,
+                hp - hullBefore,
+                Math.max(0.0, before - after)
+        );
     }
 
     private void updateRoomHazards(double dt) {
@@ -1448,24 +1992,60 @@ public abstract class Ship {
         if (roomHazards.isEmpty()) return;
 
         for (RoomHazardState hz : roomHazards.values()) {
-            if (hz == null || !hz.active()) continue;
-            hz.fireIntensity = Math.max(0.0, hz.fireIntensity - dt * 0.012);
+            if (hz == null || hz.roomId == null) continue;
+            if (!hz.active()) {
+                hz.fireIntensity = 0.0;
+                hz.damageTickTimer = 0.0;
+                hz.spreadTimer = 0.0;
+                hz.instabilityTimer = 0.0;
+                hz.vfxTimer = 0.0;
+                hz.suppressionBoost = Math.max(0.0, hz.suppressionBoost - dt * 0.90);
+                continue;
+            }
+
+            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
+            double roomFrac = roomHealthFraction(hz.roomId);
+            double fuel = 0.20 + (1.0 - roomFrac) * 0.95 + ((def != null && def.critical) ? 0.18 : 0.0);
+            double growthRate = (hz.fireIntensity < 1.25)
+                    ? (0.045 + fuel * 0.070)
+                    : (0.015 + fuel * 0.024);
+            double passiveSuppression = (crewOrder == CrewOrder.DAMAGE_CONTROL)
+                    ? (0.05 + 0.12 * crewReadiness * engineeringPowerMultiplier())
+                    : 0.0;
+            double suppressionRate = 0.018 + passiveSuppression + hz.suppressionBoost * 0.22;
+            double burnoutRate = (roomFrac < 0.24) ? (0.010 + (0.24 - roomFrac) * 0.22) : 0.0;
+            hz.fireIntensity = MathUtil.clamp(
+                    hz.fireIntensity + (growthRate - suppressionRate - burnoutRate) * dt,
+                    0.0,
+                    2.8
+            );
+            hz.suppressionBoost = Math.max(0.0, hz.suppressionBoost - dt * (0.42 + hz.fireIntensity * 0.12));
 
             hz.damageTickTimer -= dt;
             if (hz.damageTickTimer <= 0.0) {
-                ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
                 if (def != null) {
-                    double roomDmg = Math.max(1.2, hz.fireIntensity * (2.0 + Math.random() * 1.6));
-                    if (def.critical) roomDmg *= 1.20;
+                    double roomDmg = Math.max(0.8, hz.fireIntensity * (1.6 + Math.random() * 1.8));
+                    if (def.critical) roomDmg *= 1.24;
+                    roomDmg *= (1.0 - Math.min(0.45, hz.suppressionBoost * 0.20));
                     damageRoom(def, roomDmg, Double.NaN, Double.NaN, true);
+                    applyHazardSubsystemInstability(def, hz);
                 }
-                hz.damageTickTimer = 0.38 + Math.random() * 0.32;
+                hz.damageTickTimer = 0.34 + Math.random() * 0.36 + Math.min(0.24, hz.suppressionBoost * 0.12);
+            }
+
+            hz.instabilityTimer -= dt;
+            if (hz.instabilityTimer <= 0.0 && hz.fireIntensity > 0.55) {
+                if (def != null) applyHazardSubsystemInstability(def, hz);
+                hz.instabilityTimer = 0.48 + Math.random() * 0.52;
             }
 
             hz.spreadTimer -= dt;
             if (hz.spreadTimer <= 0.0) {
-                ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
-                double spreadChance = MathUtil.clamp(0.34 * hz.fireIntensity, 0.0, 0.85);
+                double spreadChance = MathUtil.clamp(
+                        0.10 + hz.fireIntensity * 0.26 + roomFuelFactor(hz.roomId) * 0.14 - hz.suppressionBoost * 0.30,
+                        0.0,
+                        0.90
+                );
                 if (def != null && def.neighbors.length > 0 && Math.random() < spreadChance) {
                     java.util.ArrayList<ShipRoomLayout.RoomId> eligible = new java.util.ArrayList<>();
                     for (ShipRoomLayout.RoomId nid : def.neighbors) {
@@ -1474,58 +2054,236 @@ public abstract class Ship {
                         if (nMax <= 1e-9) continue;
                         double nCur = roomHp.getOrDefault(nid, nMax);
                         double frac = nCur / nMax;
-                        if (frac < 0.90) {
+                        RoomHazardState nHz = roomHazards.get(nid);
+                        if (nHz != null && nHz.fireIntensity > 1.10) continue;
+                        if (frac < 0.98 || Math.random() < 0.28) {
                             eligible.add(nid);
                         }
                     }
                     if (!eligible.isEmpty()) {
                         int idx = (int) Math.floor(Math.random() * eligible.size());
                         if (idx < 0 || idx >= eligible.size()) idx = 0;
-                        igniteRoomFire(eligible.get(idx), hz.fireIntensity * (0.62 + Math.random() * 0.42));
+                        double spreadIntensity = MathUtil.clamp(
+                                0.30 + hz.fireIntensity * (0.42 + Math.random() * 0.30),
+                                0.20,
+                                2.2
+                        );
+                        igniteRoomFire(eligible.get(idx), spreadIntensity);
                     }
                 }
-                hz.spreadTimer = 0.62 + Math.random() * 0.55;
+                hz.spreadTimer = 0.56 + Math.random() * 0.62 + Math.min(0.20, hz.suppressionBoost * 0.10);
+            }
+
+            hz.vfxTimer -= dt;
+            if (hz.vfxTimer <= 0.0) {
+                spawnRoomFireVfx(def, hz.fireIntensity);
+                hz.vfxTimer = Math.max(0.04, 0.20 + Math.random() * 0.16 - hz.fireIntensity * 0.05);
+            }
+
+            if (hz.fireIntensity <= 0.02) {
+                hz.fireIntensity = 0.0;
+                hz.damageTickTimer = 0.0;
+                hz.spreadTimer = 0.0;
+                hz.instabilityTimer = 0.0;
+                hz.vfxTimer = 0.0;
             }
         }
     }
 
     private void ensurePowerInitialized() {
-        if (powerEngines == 0.0 && powerShields == 0.0 && powerWeapons == 0.0 && powerSystems == 0.0) {
+        if (powerEngines == 0.0
+                && powerShields == 0.0
+                && powerWeapons == 0.0
+                && powerSensors == 0.0
+                && powerEngineering == 0.0
+                && powerAuxiliary == 0.0) {
             setPowerPreset(powerPreset);
             return;
         }
         normalizePowerAllocation();
     }
 
+    private void updatePowerBusState(double dt) {
+        if (dt <= 0.0) return;
+        overloadCooldownTimer = Math.max(0.0, overloadCooldownTimer - dt);
+        overloadStressDebt = Math.max(0.0, overloadStressDebt - dt * 0.008);
+
+        if (overloadActive) {
+            if (overloadCooldownTimer > 1e-6) {
+                overloadActive = false;
+            } else {
+                double busLoad = powerBusFraction(overloadBus);
+                double heatGain = dt * (0.18 + busLoad * 0.42 + overloadStressDebt * 0.11);
+                overloadHeat += heatGain;
+                overloadStressDebt += dt * (0.035 + busLoad * 0.09);
+                if (overloadHeat >= 1.0) {
+                    overloadActive = false;
+                    overloadHeat = 1.0;
+                    overloadCooldownTimer = Math.max(overloadCooldownTimer, 2.8 + overloadStressDebt * 4.2);
+                    applyOverloadCollapsePenalty();
+                }
+            }
+        } else {
+            double coolRate = dt * (0.12 + powerEngineering * 0.16 + crewSystemMul * 0.05);
+            overloadHeat = Math.max(0.0, overloadHeat - coolRate);
+            if (overloadCooldownTimer <= 0.0 && overloadHeat < 0.22) {
+                overloadStressDebt = Math.max(0.0, overloadStressDebt - dt * 0.040);
+            }
+        }
+        overloadStressDebt = MathUtil.clamp(overloadStressDebt, 0.0, 2.2);
+    }
+
+    private void updateEmergencyThrustState(double dt) {
+        if (dt <= 0.0) return;
+        emergencyThrustCooldown = Math.max(0.0, emergencyThrustCooldown - dt);
+        if (emergencyThrustActive) {
+            double propulsion = propulsionRoomIntegrity();
+            emergencyThrustHeat += dt * (0.16 + (1.0 - propulsion) * 0.32 + overloadHeat * 0.10);
+            if (emergencyThrustHeat >= 1.0 || propulsion < 0.14) {
+                emergencyThrustActive = false;
+                emergencyThrustHeat = 1.0;
+                emergencyThrustCooldown = Math.max(emergencyThrustCooldown, 2.2 + (1.0 - propulsion) * 2.8);
+                applyEmergencyThrustFailure();
+            }
+        } else {
+            double cool = dt * (0.14 + engineeringPowerMultiplier() * 0.12 + crewEngineMul * 0.05);
+            emergencyThrustHeat = Math.max(0.0, emergencyThrustHeat - cool);
+        }
+    }
+
+    private void applyEmergencyThrustFailure() {
+        Double engMax = systemHpMax.get(InternalSystem.ENGINES);
+        if (engMax != null && engMax > 1e-6) {
+            damageSystem(InternalSystem.ENGINES, engMax * 0.05);
+        }
+        if (Math.random() < 0.32) {
+            Double warpMax = systemHpMax.get(InternalSystem.WARP_ENGINES);
+            if (warpMax != null && warpMax > 1e-6) {
+                damageSystem(InternalSystem.WARP_ENGINES, warpMax * 0.05);
+            }
+        }
+        if (Math.random() < 0.18) {
+            Double reactorMax = systemHpMax.get(InternalSystem.REACTOR_CORE);
+            if (reactorMax != null && reactorMax > 1e-6) {
+                damageSystem(InternalSystem.REACTOR_CORE, reactorMax * 0.03);
+            }
+        }
+        crewCombatStress = Math.max(crewCombatStress, 2.8);
+    }
+
+    private void applyOverloadCollapsePenalty() {
+        InternalSystem focus = switch (overloadBus) {
+            case PROPULSION -> InternalSystem.ENGINES;
+            case SHIELD -> InternalSystem.SHIELDS;
+            case TACTICAL -> InternalSystem.WEAPONS;
+            case SENSOR -> InternalSystem.SENSORS;
+            case ENGINEERING -> InternalSystem.REACTOR_CORE;
+            case AUXILIARY -> InternalSystem.BRIDGE;
+        };
+        double max = systemHpMax.getOrDefault(focus, 0.0);
+        if (max > 1e-6) {
+            damageSystem(focus, max * 0.06);
+        }
+        if (overloadBus == PowerBus.SHIELD) {
+            forceShieldOffline(Math.max(0.9, shieldRebootDelay * 0.80));
+        }
+    }
+
     private void normalizePowerAllocation() {
-        double sum = powerEngines + powerShields + powerWeapons + powerSystems;
+        double sum = powerEngines
+                + powerShields
+                + powerWeapons
+                + powerSensors
+                + powerEngineering
+                + powerAuxiliary;
         if (sum <= 1e-6) {
-            powerEngines = 0.25;
-            powerShields = 0.25;
-            powerWeapons = 0.25;
-            powerSystems = 0.25;
+            powerEngines = 0.18;
+            powerShields = 0.18;
+            powerWeapons = 0.19;
+            powerSensors = 0.15;
+            powerEngineering = 0.18;
+            powerAuxiliary = 0.12;
             return;
         }
         powerEngines /= sum;
         powerShields /= sum;
         powerWeapons /= sum;
-        powerSystems /= sum;
+        powerSensors /= sum;
+        powerEngineering /= sum;
+        powerAuxiliary /= sum;
+        powerSystems = powerSensors + powerEngineering + powerAuxiliary;
+    }
+
+    private PowerBus powerBusForSystem(InternalSystem system) {
+        if (system == null) return PowerBus.ENGINEERING;
+        return switch (system) {
+            case ENGINES, WARP_ENGINES -> PowerBus.PROPULSION;
+            case SHIELDS -> PowerBus.SHIELD;
+            case WEAPONS, MAGAZINES -> PowerBus.TACTICAL;
+            case SENSORS, BRIDGE -> PowerBus.SENSOR;
+            case REACTOR_CORE -> PowerBus.ENGINEERING;
+        };
+    }
+
+    private double powerBusNominalTarget(PowerBus bus) {
+        if (bus == null) return 0.16;
+        return switch (bus) {
+            case PROPULSION, SHIELD, TACTICAL, ENGINEERING -> 0.18;
+            case SENSOR -> 0.15;
+            case AUXILIARY -> 0.12;
+        };
+    }
+
+    private double powerBusEffectiveMultiplier(PowerBus bus) {
+        PowerBus b = (bus == null) ? PowerBus.ENGINEERING : bus;
+        double alloc = powerBusFraction(b);
+        double target = Math.max(0.05, powerBusNominalTarget(b));
+        double ratio = alloc / target;
+        double mul;
+        if (ratio >= 1.0) {
+            mul = 1.0 + 0.30 * Math.tanh((ratio - 1.0) * 1.9);
+        } else {
+            mul = Math.pow(Math.max(0.02, ratio), 1.65);
+        }
+
+        if (overloadActive && b == overloadBus) {
+            mul *= 1.24;
+        }
+        if (overloadCooldownTimer > 0.0) {
+            double coolPenalty = 0.08 + Math.min(0.26, overloadStressDebt * 0.11 + overloadHeat * 0.16);
+            mul *= (1.0 - coolPenalty);
+        }
+        if (overloadStressDebt > 0.0) {
+            mul *= (1.0 - Math.min(0.20, overloadStressDebt * 0.07));
+        }
+        return MathUtil.clamp(mul, 0.08, 1.55);
     }
 
     private double enginesPowerMultiplier() {
-        return Math.max(0.35, Math.min(1.35, 0.58 + 0.82 * powerEngines));
+        return powerBusEffectiveMultiplier(PowerBus.PROPULSION);
     }
 
     private double shieldsPowerMultiplier() {
-        return Math.max(0.18, Math.min(1.45, 0.52 + 0.98 * powerShields));
+        return powerBusEffectiveMultiplier(PowerBus.SHIELD);
     }
 
     private double weaponsPowerMultiplier() {
-        return Math.max(0.20, Math.min(1.50, 0.52 + 0.98 * powerWeapons));
+        return powerBusEffectiveMultiplier(PowerBus.TACTICAL);
     }
 
     private double systemsPowerMultiplier() {
-        return Math.max(0.28, Math.min(1.30, 0.58 + 0.84 * powerSystems));
+        double engineering = powerBusEffectiveMultiplier(PowerBus.ENGINEERING);
+        double sensor = powerBusEffectiveMultiplier(PowerBus.SENSOR);
+        double auxiliary = powerBusEffectiveMultiplier(PowerBus.AUXILIARY);
+        return MathUtil.clamp(engineering * 0.45 + sensor * 0.35 + auxiliary * 0.20, 0.10, 1.45);
+    }
+
+    private double engineeringPowerMultiplier() {
+        return powerBusEffectiveMultiplier(PowerBus.ENGINEERING);
+    }
+
+    private double sensorPowerMultiplier() {
+        return powerBusEffectiveMultiplier(PowerBus.SENSOR);
     }
 
     private void updateCrewState(double dt) {
@@ -1580,6 +2338,22 @@ public abstract class Ship {
             }
         }
 
+        double fireLoad = totalFireIntensity();
+        int fireRooms = activeFireRoomCount();
+        if (fireRooms > 0) {
+            double diversion = MathUtil.clamp(fireRooms * 0.07 + fireLoad * 0.05, 0.0, 0.48);
+            if (crewOrder != CrewOrder.DAMAGE_CONTROL) {
+                weapons *= (1.0 - diversion * 0.70);
+                engines *= (1.0 - diversion * 0.38);
+                shields *= (1.0 - diversion * 0.44);
+                systems *= (1.0 - diversion * 0.32);
+            } else {
+                systems *= (1.0 + Math.min(0.22, fireLoad * 0.09));
+            }
+            base *= (1.0 - diversion * 0.30);
+            crewCombatStress = Math.max(crewCombatStress, 0.8 + fireLoad * 0.55);
+        }
+
         crewEngineMul = MathUtil.clamp(base * engines, 0.35, 1.30);
         crewShieldMul = MathUtil.clamp(base * shields, 0.30, 1.35);
         crewWeaponMul = MathUtil.clamp(base * weapons, 0.28, 1.35);
@@ -1588,20 +2362,13 @@ public abstract class Ship {
 
     private void repairDamagedSystems(double amount) {
         if (amount <= 0.0) return;
-        InternalSystem lowest = null;
-        double lowestFrac = 1.0;
-        for (InternalSystem s : InternalSystem.values()) {
-            double f = systemHealthFraction(s);
-            if (f < lowestFrac) {
-                lowestFrac = f;
-                lowest = s;
-            }
-        }
+        InternalSystem lowest = repairPrioritySystemTarget();
+        double lowestFrac = (lowest == null) ? 1.0 : systemHealthFraction(lowest);
         if (lowest == null || lowestFrac >= 0.999) return;
         Double hpv = systemHp.get(lowest);
         Double maxv = systemHpMax.get(lowest);
         if (hpv == null || maxv == null || maxv <= 0.0) return;
-        hpv = Math.min(maxv, hpv + amount * maxv * 0.16 * systemsPowerMultiplier());
+        hpv = Math.min(maxv, hpv + amount * maxv * 0.16 * engineeringPowerMultiplier());
         systemHp.put(lowest, hpv);
 
         ensureRoomSystemsInitialized();
@@ -1620,17 +2387,166 @@ public abstract class Ship {
             double maxRoom = roomHpMax.getOrDefault(lowestRoom, 0.0);
             if (maxRoom > 0.0) {
                 double curRoom = roomHp.getOrDefault(lowestRoom, maxRoom);
-                curRoom = Math.min(maxRoom, curRoom + amount * maxRoom * 0.10 * systemsPowerMultiplier());
+                curRoom = Math.min(maxRoom, curRoom + amount * maxRoom * 0.10 * engineeringPowerMultiplier());
                 roomHp.put(lowestRoom, curRoom);
             }
-            RoomHazardState hz = roomHazards.get(lowestRoom);
-            if (hz != null && hz.fireIntensity > 0.0) {
-                hz.fireIntensity = Math.max(0.0, hz.fireIntensity - amount * 0.18);
-            }
+            applyFireSuppression(lowestRoom, amount * 0.22, false);
+        }
+        ShipRoomLayout.RoomId hottestFire = hottestFireRoom();
+        if (hottestFire != null && hottestFire != lowestRoom) {
+            applyFireSuppression(hottestFire, amount * 0.24, false);
         }
 
         enforceRoomSystemAvailability();
         syncHullFromRoomIntegrity();
+    }
+
+    private double applyFireSuppression(ShipRoomLayout.RoomId roomId, double effort, boolean manual) {
+        if (roomId == null || effort <= 0.0) return 0.0;
+        ensureRoomSystemsInitialized();
+        RoomHazardState hz = roomHazards.get(roomId);
+        if (hz == null || hz.fireIntensity <= 1e-4) return 0.0;
+
+        double before = hz.fireIntensity;
+        double scale = 0.70 + 0.65 * engineeringPowerMultiplier() + 0.35 * crewReadiness;
+        if (manual) scale *= 1.22;
+        if (crewOrder == CrewOrder.DAMAGE_CONTROL) scale *= 1.12;
+        double reduced = effort * scale;
+        hz.fireIntensity = Math.max(0.0, hz.fireIntensity - reduced);
+        hz.suppressionBoost = Math.min(2.2, hz.suppressionBoost + effort * (manual ? 1.8 : 0.9));
+        hz.damageTickTimer = Math.max(0.16, hz.damageTickTimer + effort * 0.10);
+        hz.spreadTimer = Math.max(hz.spreadTimer, 0.40 + effort * 0.60);
+        if (hz.fireIntensity <= 0.02) {
+            hz.fireIntensity = 0.0;
+            hz.damageTickTimer = 0.0;
+            hz.spreadTimer = 0.0;
+            hz.instabilityTimer = 0.0;
+            hz.vfxTimer = 0.0;
+        }
+        return before - hz.fireIntensity;
+    }
+
+    private String hazardSuppressionState(RoomHazardState hz) {
+        if (hz == null || hz.fireIntensity <= 0.02) return "contained";
+        if (hz.suppressionBoost > 0.35) return "active";
+        if (crewOrder == CrewOrder.DAMAGE_CONTROL) return "passive";
+        if (hz.fireIntensity > 1.35) return "overwhelmed";
+        return "passive";
+    }
+
+    private double roomFuelFactor(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return 0.0;
+        double max = roomHpMax.getOrDefault(roomId, 0.0);
+        if (max <= 1e-9) return 0.0;
+        double cur = roomHp.getOrDefault(roomId, max);
+        return MathUtil.clamp(1.0 - (cur / max), 0.0, 1.0);
+    }
+
+    private void applyHazardSubsystemInstability(ShipRoomLayout.RoomDef room, RoomHazardState hz) {
+        if (room == null || hz == null) return;
+        double chance = MathUtil.clamp(0.06 + hz.fireIntensity * 0.18 + (room.critical ? 0.08 : 0.0), 0.0, 0.72);
+        if (Math.random() > chance) return;
+
+        InternalSystem primary = (room.primarySystem != null) ? room.primarySystem : secondaryInstabilitySystem(room.id);
+        if (primary != null) {
+            double max = systemHpMax.getOrDefault(primary, 0.0);
+            if (max > 1e-6) {
+                damageSystem(primary, max * (0.007 + hz.fireIntensity * 0.012));
+            }
+        }
+
+        InternalSystem secondary = secondaryInstabilitySystem(room.id);
+        if (secondary != null && secondary != primary && Math.random() < 0.45) {
+            double max = systemHpMax.getOrDefault(secondary, 0.0);
+            if (max > 1e-6) {
+                damageSystem(secondary, max * (0.004 + hz.fireIntensity * 0.008));
+            }
+        }
+
+        if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS
+                && hz.fireIntensity > 1.35
+                && Math.random() < 0.16) {
+            forceShieldOffline(Math.max(0.5, shieldRebootDelay * 0.35));
+        }
+        if (room.id == ShipRoomLayout.RoomId.MAGAZINES
+                && hz.fireIntensity > 1.10
+                && Math.random() < 0.12) {
+            double weaponMax = systemHpMax.getOrDefault(InternalSystem.WEAPONS, 0.0);
+            if (weaponMax > 1e-6) {
+                damageSystem(InternalSystem.WEAPONS, weaponMax * 0.015);
+            }
+        }
+    }
+
+    private InternalSystem secondaryInstabilitySystem(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return null;
+        return switch (roomId) {
+            case REACTOR, POWER_CONDUITS -> InternalSystem.SHIELDS;
+            case INTEGRITY_FIELD -> InternalSystem.REACTOR_CORE;
+            case SENSORS, BRIDGE -> InternalSystem.BRIDGE;
+            case MAIN_WEAPON, MISSILE_LAUNCHERS, MAGAZINES -> InternalSystem.WEAPONS;
+            case ENGINES, WARP_DRIVE -> InternalSystem.WARP_ENGINES;
+        };
+    }
+
+    private void spawnRoomFireVfx(ShipRoomLayout.RoomDef room, double intensity) {
+        if (intensity <= 0.05) return;
+        double localX = (Math.random() - 0.5) * radius * 0.24;
+        double localY = (Math.random() - 0.5) * radius * 0.24;
+
+        if (room != null && room.xs != null && room.ys != null) {
+            int n = Math.min(room.xs.length, room.ys.length);
+            if (n > 0) {
+                double cx = 0.0;
+                double cy = 0.0;
+                for (int i = 0; i < n; i++) {
+                    cx += room.xs[i];
+                    cy += room.ys[i];
+                }
+                cx /= n;
+                cy /= n;
+                double jitter = 0.10 + Math.min(0.22, intensity * 0.06);
+                localX = (cx + (Math.random() - 0.5) * jitter) * radius;
+                localY = (cy + (Math.random() - 0.5) * jitter) * radius;
+            }
+        }
+
+        double ca = Math.cos(angle);
+        double sa = Math.sin(angle);
+        double wx = x + localX * ca - localY * sa;
+        double wy = y + localX * sa + localY * ca;
+        VFX.spawnShipFire(wx, wy, Math.min(2.0, 0.45 + intensity * 0.65));
+    }
+
+    private InternalSystem repairPrioritySystemTarget() {
+        InternalSystem preferred = switch (engineeringPriority) {
+            case REACTOR -> InternalSystem.REACTOR_CORE;
+            case PROPULSION -> pickLowerHealth(InternalSystem.ENGINES, InternalSystem.WARP_ENGINES);
+            case SHIELDS -> InternalSystem.SHIELDS;
+            case WEAPONS -> pickLowerHealth(InternalSystem.WEAPONS, InternalSystem.MAGAZINES);
+            case SENSORS -> pickLowerHealth(InternalSystem.SENSORS, InternalSystem.BRIDGE);
+            default -> null;
+        };
+        if (preferred != null && systemHealthFraction(preferred) < 0.999) return preferred;
+
+        InternalSystem lowest = null;
+        double lowestFrac = 1.0;
+        for (InternalSystem s : InternalSystem.values()) {
+            double f = systemHealthFraction(s);
+            if (f < lowestFrac) {
+                lowestFrac = f;
+                lowest = s;
+            }
+        }
+        return lowest;
+    }
+
+    private InternalSystem pickLowerHealth(InternalSystem a, InternalSystem b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        double af = systemHealthFraction(a);
+        double bf = systemHealthFraction(b);
+        return (af <= bf) ? a : b;
     }
 
     private void updateShieldFacing(double dt) {
@@ -1903,17 +2819,30 @@ public abstract class Ship {
         double bridge = systemHealthFraction(InternalSystem.BRIDGE);
         double mobility = 0.24 + 0.52 * engine + 0.16 * warp + 0.08 * bridge;
         mobility *= enginesPowerMultiplier();
+        mobility *= propulsionMobilityMultiplier();
+        mobility *= emergencyThrustSpeedMultiplier();
         mobility *= crewEngineMul;
         mobility = Math.max(0.18, Math.min(1.38, mobility));
         desiredSpeed = desiredSpeedBase * mobility;
     }
 
-    private void applySystemDamageFromHullHit(int hullDamage, double hitX, double hitY) {
-        if (hullDamage <= 0) return;
+    private RoomDamageResult applySystemDamageFromHullHit(int hullDamage,
+                                                          HullGeometry.ImpactSample impact,
+                                                          ShipRoomLayout.RoomDef primaryRoom,
+                                                          int hullBefore) {
+        if (hullDamage <= 0) return RoomDamageResult.NONE;
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
-        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(this, hitX, hitY, true);
-        ShipRoomLayout.RoomDef primaryRoom = resolveRoomForImpact(impact, hitX, hitY);
+        if (primaryRoom == null) {
+            primaryRoom = resolvePrimaryRoomForHullHit(impact, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
+        }
+
+        double primaryBefore = 0.0;
+        if (primaryRoom != null) {
+            double max = roomHpMax.getOrDefault(primaryRoom.id, 0.0);
+            primaryBefore = roomHp.getOrDefault(primaryRoom.id, max);
+        }
+        HullDamageSplit split = new HullDamageSplit(primaryRoom, primaryBefore);
 
         int rolls = (hullDamage >= 9) ? 2 : 1;
         for (int i = 0; i < rolls; i++) {
@@ -1929,27 +2858,184 @@ public abstract class Ship {
                 double nx = (impact == null) ? Double.NaN : impact.normalizedX;
                 double ny = (impact == null) ? Double.NaN : impact.normalizedY;
                 damageRoom(room, dmg, nx, ny, false);
+                split.absorb(lastRoomDamageResult);
             } else {
-                InternalSystem system = pickSystemForHit(impact, hitX, hitY);
+                InternalSystem system = pickSystemForHit(impact, Double.NaN, Double.NaN);
                 if (system != null) damageSystem(system, dmg);
             }
         }
 
+        RoomDamageResult previous = lastRoomDamageResult;
         applyBreachSystemEffects(impact, hullDamage);
+        if (lastRoomDamageResult != previous) {
+            split.absorb(lastRoomDamageResult);
+        }
+
+        previous = lastRoomDamageResult;
+        applyCatastrophicFailureRules(primaryRoom, impact, hullDamage);
+        if (lastRoomDamageResult != previous) {
+            split.absorb(lastRoomDamageResult);
+        }
 
         double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.36;
         crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
+        return split.finish(this, hullBefore);
+    }
 
-        if (isSystemDestroyed(InternalSystem.MAGAZINES) && Math.random() < 0.10) {
-            int cookoff = Math.max(1, (int) Math.round(hullDamage * 0.45));
-            ShipRoomLayout.RoomDef mags = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.MAGAZINES);
-            if (mags != null) {
-                double nx = (impact == null) ? Double.NaN : impact.normalizedX;
-                double ny = (impact == null) ? Double.NaN : impact.normalizedY;
-                damageRoom(mags, cookoff, nx, ny, false);
+    private void applyCatastrophicFailureRules(ShipRoomLayout.RoomDef primaryRoom,
+                                               HullGeometry.ImpactSample impact,
+                                               int hullDamage) {
+        if (primaryRoom == null || hullDamage <= 0 || hpMax <= 0) return;
+        if (primaryRoom.id == null) return;
+
+        double graceScale = (catastrophicChainGraceTimer > 0.0) ? 0.34 : 1.0;
+        double severity = MathUtil.clamp(hullDamage / (double) hpMax, 0.02, 1.0);
+        boolean triggered = false;
+
+        if (primaryRoom.id == ShipRoomLayout.RoomId.REACTOR
+                || primaryRoom.id == ShipRoomLayout.RoomId.POWER_CONDUITS) {
+            double reactorFrac = roomHealthFraction(ShipRoomLayout.RoomId.REACTOR);
+            double chance = (0.08 + (1.0 - reactorFrac) * 0.45 + severity * 0.18) * graceScale;
+            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.78)) {
+                triggered = triggerReactorCriticalChain(impact, hullDamage, severity);
             }
-            Explosion.spawnShieldHit(x, y);
         }
+
+        if (!triggered && (primaryRoom.id == ShipRoomLayout.RoomId.MAGAZINES
+                || primaryRoom.id == ShipRoomLayout.RoomId.MISSILE_LAUNCHERS
+                || isSystemDestroyed(InternalSystem.MAGAZINES))) {
+            double magsFrac = roomHealthFraction(ShipRoomLayout.RoomId.MAGAZINES);
+            double chance = (0.10 + (1.0 - magsFrac) * 0.42 + severity * 0.20) * graceScale;
+            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.82)) {
+                triggered = triggerMagazineDetonationRisk(impact, hullDamage, severity);
+            }
+        }
+
+        if (!triggered && (primaryRoom.id == ShipRoomLayout.RoomId.INTEGRITY_FIELD
+                || roomHealthFraction(ShipRoomLayout.RoomId.INTEGRITY_FIELD) < 0.28)) {
+            double integFrac = roomHealthFraction(ShipRoomLayout.RoomId.INTEGRITY_FIELD);
+            double chance = (0.11 + (1.0 - integFrac) * 0.48 + severity * 0.12) * graceScale;
+            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.80)) {
+                triggered = triggerIntegrityFieldCollapse(impact, hullDamage, severity);
+            }
+        }
+
+        if (triggered) {
+            catastrophicChainGraceTimer = CATASTROPHIC_CHAIN_GRACE_SECONDS;
+        }
+    }
+
+    private boolean triggerReactorCriticalChain(HullGeometry.ImpactSample impact,
+                                                int hullDamage,
+                                                double severity) {
+        ShipRoomLayout.RoomDef reactor = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.REACTOR);
+        ShipRoomLayout.RoomDef conduits = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.POWER_CONDUITS);
+        if (reactor == null) return false;
+
+        double reactorBefore = roomHp.getOrDefault(reactor.id, roomHpMax.getOrDefault(reactor.id, 0.0));
+        double chainBudget = Math.max(2.0, hpMax * CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * (0.65 + 0.35 * severity));
+        double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+        double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+        double reactorDamage = Math.max(2.0, Math.min(chainBudget * 0.72, hullDamage * (0.55 + 0.85 * severity)));
+        damageRoom(reactor, reactorDamage, nx, ny, false);
+
+        RoomDamageResult base = lastRoomDamageResult;
+        List<String> transitions = new ArrayList<>();
+        if (base != null && base != RoomDamageResult.NONE) transitions.addAll(base.subsystemTransitions);
+        transitions.add("reactor:critical_chain");
+
+        if (conduits != null && chainBudget > reactorDamage + 0.5) {
+            double spill = Math.max(1.0, chainBudget - reactorDamage);
+            damageRoom(conduits, spill, nx, ny, false);
+            RoomDamageResult spillResult = lastRoomDamageResult;
+            if (spillResult != null && spillResult != RoomDamageResult.NONE) {
+                transitions.addAll(spillResult.subsystemTransitions);
+            }
+        }
+        igniteRoomFire(ShipRoomLayout.RoomId.REACTOR, 1.15 + severity * 0.80);
+        transitions.add("hazard:fire_ignited");
+        syncHullFromRoomIntegrity();
+        evaluateCondemnedStateFromRooms();
+
+        double before = (base == null || base == RoomDamageResult.NONE) ? reactorBefore : base.hpBefore;
+        double after = roomHp.getOrDefault(reactor.id, 0.0);
+        lastRoomDamageResult = new RoomDamageResult(
+                reactor.id.name(),
+                before,
+                after,
+                2,
+                transitions,
+                0,
+                Math.max(0.0, before - after)
+        );
+        return true;
+    }
+
+    private boolean triggerMagazineDetonationRisk(HullGeometry.ImpactSample impact,
+                                                  int hullDamage,
+                                                  double severity) {
+        ShipRoomLayout.RoomDef mags = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.MAGAZINES);
+        if (mags == null) return false;
+
+        double magsBefore = roomHp.getOrDefault(mags.id, roomHpMax.getOrDefault(mags.id, 0.0));
+        double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+        double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+        double chainBudget = Math.max(2.0, hpMax * CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * (0.55 + 0.30 * severity));
+        double magsDamage = Math.max(2.0, Math.min(chainBudget, hullDamage * (0.52 + 0.90 * severity)));
+        damageRoom(mags, magsDamage, nx, ny, false);
+
+        RoomDamageResult base = lastRoomDamageResult;
+        List<String> transitions = new ArrayList<>();
+        if (base != null && base != RoomDamageResult.NONE) transitions.addAll(base.subsystemTransitions);
+        transitions.add("magazines:detonation_risk");
+        Explosion.spawnShieldHit(x, y);
+        lastRoomDamageResult = new RoomDamageResult(
+                mags.id.name(),
+                (base == null || base == RoomDamageResult.NONE) ? magsBefore : base.hpBefore,
+                roomHp.getOrDefault(mags.id, 0.0),
+                (base == null || base == RoomDamageResult.NONE) ? 1 : Math.max(1, base.hazardRolls),
+                transitions,
+                (base == null || base == RoomDamageResult.NONE) ? 0 : base.shipStructuralDelta,
+                (base == null || base == RoomDamageResult.NONE)
+                        ? Math.max(0.0, magsBefore - roomHp.getOrDefault(mags.id, 0.0))
+                        : Math.max(base.roomLocalHpLoss, base.hpBefore - roomHp.getOrDefault(mags.id, 0.0))
+        );
+        return true;
+    }
+
+    private boolean triggerIntegrityFieldCollapse(HullGeometry.ImpactSample impact,
+                                                  int hullDamage,
+                                                  double severity) {
+        ShipRoomLayout.RoomDef integrity = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.INTEGRITY_FIELD);
+        if (integrity == null) return false;
+
+        double integrityBefore = roomHp.getOrDefault(integrity.id, roomHpMax.getOrDefault(integrity.id, 0.0));
+        double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+        double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+        double collapseBudget = Math.max(1.0, hpMax * (CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * 0.80));
+        double dmg = Math.max(1.0, Math.min(collapseBudget, hullDamage * (0.42 + 0.62 * severity)));
+        damageRoom(integrity, dmg, nx, ny, false);
+        RoomDamageResult base = lastRoomDamageResult;
+
+        forceShieldOffline(Math.max(1.25, shieldRebootDelay * (1.6 + 0.75 * severity)));
+        damageSystem(InternalSystem.SHIELDS, hullDamage * (0.38 + 0.26 * severity));
+        List<String> transitions = new ArrayList<>();
+        if (base != null && base != RoomDamageResult.NONE) transitions.addAll(base.subsystemTransitions);
+        transitions.add("integrity:field_collapse");
+        transitions.add(InternalSystem.SHIELDS.name() + ":offline");
+
+        lastRoomDamageResult = new RoomDamageResult(
+                integrity.id.name(),
+                (base == null || base == RoomDamageResult.NONE) ? integrityBefore : base.hpBefore,
+                roomHp.getOrDefault(integrity.id, 0.0),
+                (base == null || base == RoomDamageResult.NONE) ? 1 : Math.max(1, base.hazardRolls),
+                transitions,
+                (base == null || base == RoomDamageResult.NONE) ? 0 : base.shipStructuralDelta,
+                (base == null || base == RoomDamageResult.NONE)
+                        ? Math.max(0.0, integrityBefore - roomHp.getOrDefault(integrity.id, 0.0))
+                        : Math.max(base.roomLocalHpLoss, base.hpBefore - roomHp.getOrDefault(integrity.id, 0.0))
+        );
+        return true;
     }
 
     private InternalSystem pickSystemForHit(HullGeometry.ImpactSample impact, double hitX, double hitY) {
@@ -2018,30 +3104,55 @@ public abstract class Ship {
         ShipRoomLayout.RoomDef breachedRoom = resolveRoomForImpact(impact, Double.NaN, Double.NaN);
         if (breachedRoom == null) return;
 
-        boolean catastrophic = breachScore > 1.05
-                || (hullDamage >= Math.max(10, hpMax / 8) && Math.random() < 0.60);
+        double graceScale = (catastrophicChainGraceTimer > 0.0) ? 0.36 : 1.0;
+        double catastrophicChance = (breachScore > 1.05) ? 0.72 : 0.0;
+        if (hullDamage >= Math.max(10, hpMax / 8)) catastrophicChance = Math.max(catastrophicChance, 0.60);
+        catastrophicChance *= graceScale;
+        boolean catastrophic = Math.random() < MathUtil.clamp(catastrophicChance, 0.0, 0.90);
         if (catastrophic) {
+            int hullBefore = hp;
+            List<String> transitions = new ArrayList<>(3);
+            double before = roomHp.getOrDefault(breachedRoom.id, 0.0);
             if (breachedRoom.primarySystem != null) destroySystem(breachedRoom.primarySystem);
+            if (breachedRoom.primarySystem != null) {
+                transitions.add(breachedRoom.primarySystem.name() + ":destroyed");
+            }
             Double maxRoom = roomHpMax.get(breachedRoom.id);
             if (maxRoom != null && maxRoom > 0.0) {
-                roomHp.put(breachedRoom.id, 0.0);
-                logRoomDamage(breachedRoom.id, impact.normalizedX, impact.normalizedY, maxRoom, false);
+                double capFrac = (catastrophicChainGraceTimer > 0.0) ? 0.34 : 0.68;
+                double loss = Math.max(maxRoom * 0.24, hullDamage * (1.10 + severity * 1.45));
+                loss = Math.min(loss, maxRoom * capFrac);
+                double after = Math.max(0.0, before - loss);
+                roomHp.put(breachedRoom.id, after);
+                logRoomDamage(breachedRoom.id, impact.normalizedX, impact.normalizedY, Math.max(0.0, before - after), false);
             }
             igniteRoomFire(breachedRoom.id, 0.95 + severity * 0.65);
+            transitions.add("hazard:fire_ignited");
             enforceRoomSystemAvailability();
             syncHullFromRoomIntegrity();
             evaluateCondemnedStateFromRooms();
+            catastrophicChainGraceTimer = CATASTROPHIC_CHAIN_GRACE_SECONDS;
+            lastRoomDamageResult = new RoomDamageResult(
+                    breachedRoom.id.name(),
+                    before,
+                    roomHp.getOrDefault(breachedRoom.id, 0.0),
+                    1,
+                    transitions,
+                    hp - hullBefore,
+                    Math.max(0.0, before - roomHp.getOrDefault(breachedRoom.id, 0.0))
+            );
             return;
         }
 
         double breachDamage = Math.max(6.0, hullDamage * (1.25 + severity * 1.8));
+        breachDamage = Math.min(breachDamage, Math.max(6.0, hpMax * (0.18 + (catastrophicChainGraceTimer > 0.0 ? 0.05 : 0.12))));
         damageRoom(breachedRoom, breachDamage, impact.normalizedX, impact.normalizedY, false);
     }
 
-    private void registerHullImpact(int hullDamage, double hitX, double hitY) {
+    private void registerHullImpact(int hullDamage,
+                                    HullGeometry.ImpactSample impact,
+                                    ShipRoomLayout.RoomDef room) {
         if (hullDamage <= 0) return;
-
-        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(this, hitX, hitY, true);
         if (impact == null || !impact.onHull) return;
 
         double hpDenom = Math.max(1.0, (double) hpMax);
@@ -2063,7 +3174,8 @@ public abstract class Ship {
         if (hullImpactMarks.size() >= MAX_HULL_IMPACT_MARKS) {
             hullImpactMarks.remove(0);
         }
-        hullImpactMarks.add(new HullImpactMark(impact.localX, impact.localY, severity, breachRadius));
+        ShipRoomLayout.RoomId roomId = (room == null) ? null : room.id;
+        hullImpactMarks.add(new HullImpactMark(impact.localX, impact.localY, severity, breachRadius, roomId));
         hullImpactNoDamageTimer = 0.0;
     }
 

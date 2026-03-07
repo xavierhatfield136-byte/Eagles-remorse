@@ -120,6 +120,8 @@ public class GamePanel extends JPanel implements ActionListener {
 
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_M, 0, false), "toggleMap", () -> GameplayActions.toggleMap(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_N, 0, false), "cycleHudDetail", () -> GameplayActions.cycleHudDetail(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_BACK_QUOTE, 0, false), "cycleXrayFilter", () -> GameplayActions.cycleXrayFilter(ctx, +1));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_QUOTE, 0, false), "clearXrayFocus", () -> GameplayActions.clearXrayFocus(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_G, 0, false), "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, false), "zoomIn", () -> {
@@ -187,6 +189,9 @@ public class GamePanel extends JPanel implements ActionListener {
         });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_K, 0, false), "shieldFaceRight", () -> {
             GameplayActions.rotateShieldFacing(ctx, +1);
+        });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SEMICOLON, 0, false), "toggleEmergencyThrust", () -> {
+            GameplayActions.toggleEmergencyThrust(ctx);
         });
 
         // Menu

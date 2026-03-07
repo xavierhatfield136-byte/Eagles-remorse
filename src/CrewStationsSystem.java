@@ -1,5 +1,38 @@
+import java.util.EnumMap;
+
 public final class CrewStationsSystem {
     private CrewStationsSystem() {}
+
+    private static final class EngineeringPolicy {
+        final Ship.PowerPreset preset;
+        final Ship.CrewOrder crewOrder;
+        final Ship.EngineeringPriority priority;
+        final boolean overload;
+
+        EngineeringPolicy(Ship.PowerPreset preset,
+                          Ship.CrewOrder crewOrder,
+                          Ship.EngineeringPriority priority,
+                          boolean overload) {
+            this.preset = preset;
+            this.crewOrder = crewOrder;
+            this.priority = priority;
+            this.overload = overload;
+        }
+    }
+
+    private static final EnumMap<GameContext.EngineeringMode, EngineeringPolicy> ENGINEERING_POLICY =
+            new EnumMap<>(GameContext.EngineeringMode.class);
+
+    static {
+        ENGINEERING_POLICY.put(GameContext.EngineeringMode.BALANCED,
+                new EngineeringPolicy(Ship.PowerPreset.BALANCED, Ship.CrewOrder.BALANCED, Ship.EngineeringPriority.BALANCED, false));
+        ENGINEERING_POLICY.put(GameContext.EngineeringMode.ATTACK,
+                new EngineeringPolicy(Ship.PowerPreset.ATTACK, Ship.CrewOrder.GUNNERY, Ship.EngineeringPriority.WEAPONS, true));
+        ENGINEERING_POLICY.put(GameContext.EngineeringMode.DEFENSE,
+                new EngineeringPolicy(Ship.PowerPreset.DEFENSE, Ship.CrewOrder.ENGINEERING, Ship.EngineeringPriority.SHIELDS, false));
+        ENGINEERING_POLICY.put(GameContext.EngineeringMode.DAMAGE_CONTROL,
+                new EngineeringPolicy(Ship.PowerPreset.DEFENSE, Ship.CrewOrder.DAMAGE_CONTROL, Ship.EngineeringPriority.REACTOR, false));
+    }
 
     public static boolean updatePlayerAutomation(GameContext ctx, InputSnapshot snap, double dt) {
         if (ctx == null || ctx.player == null) return false;
@@ -42,6 +75,20 @@ public final class CrewStationsSystem {
         GameContext.CaptainDirective directive = (ctx.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
                 : ctx.captainDirective;
+        double fireLoad = ctx.player.totalFireIntensity();
+        int fireRooms = ctx.player.activeFireRoomCount();
+
+        if (fireRooms >= 2 || fireLoad >= 2.1) {
+            if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.EVASIVE;
+            if (ctx.tacticalAutomation) ctx.tacticalMode = (fireLoad >= 2.8)
+                    ? GameContext.TacticalMode.HOLD_FIRE
+                    : GameContext.TacticalMode.DEFENSIVE;
+            if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+            if (fireRooms >= 3 || fireLoad >= 3.0) {
+                ctx.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
+            }
+            return;
+        }
 
         // Preservation-first fallback always takes precedence.
         if (hpFrac < 0.35 || (directive != GameContext.CaptainDirective.ATTACK && shieldFrac < 0.16)) {
@@ -209,28 +256,19 @@ public final class CrewStationsSystem {
         Player p = ctx.player;
 
         double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
-        if (hpFrac < 0.30) {
+        double fireLoad = p.totalFireIntensity();
+        int fireRooms = p.activeFireRoomCount();
+        if (hpFrac < 0.30 || fireRooms >= 2 || fireLoad >= 1.7) {
             ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
         }
-
-        switch (ctx.engineeringMode) {
-            case ATTACK -> {
-                p.setPowerPreset(Ship.PowerPreset.ATTACK);
-                p.crewOrder = Ship.CrewOrder.GUNNERY;
-            }
-            case DEFENSE -> {
-                p.setPowerPreset(Ship.PowerPreset.DEFENSE);
-                p.crewOrder = Ship.CrewOrder.ENGINEERING;
-            }
-            case DAMAGE_CONTROL -> {
-                p.setPowerPreset(Ship.PowerPreset.DEFENSE);
-                p.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
-            }
-            default -> {
-                p.setPowerPreset(Ship.PowerPreset.BALANCED);
-                p.crewOrder = Ship.CrewOrder.BALANCED;
-            }
-        }
+        EngineeringPolicy policy = ENGINEERING_POLICY.getOrDefault(
+                ctx.engineeringMode,
+                ENGINEERING_POLICY.get(GameContext.EngineeringMode.BALANCED)
+        );
+        p.setPowerPreset(policy.preset);
+        p.crewOrder = policy.crewOrder;
+        p.setEngineeringPriority(policy.priority);
+        p.setOverloadMode(policy.overload && ctx.tacticalMode == GameContext.TacticalMode.AGGRESSIVE);
     }
 
     private static void applyTacticalAutomation(GameContext ctx, boolean captainNavPriority,
@@ -287,7 +325,7 @@ public final class CrewStationsSystem {
         boolean captainNavPriority = ctx.captainAutomation && isCaptainNavigationDirective(directive);
         boolean hasWaypoint = Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY);
         Ship target = preferredTarget(ctx, 2800.0);
-        double speed = Math.max(80.0, p.desiredSpeed);
+        double speed = MovementModel.speedCeiling(p);
 
         switch (ctx.helmMode) {
             case INTERCEPT -> {
@@ -340,7 +378,7 @@ public final class CrewStationsSystem {
                 } else {
                     setVelPerSec(p, -uy * speed * 0.85, ux * speed * 0.85, dt);
                 }
-                p.angle = Math.atan2(ty - p.y, tx - p.x);
+                rotateShipToward(p, Math.atan2(ty - p.y, tx - p.x), dt);
             }
             case EVASIVE -> {
                 if (target == null) {
@@ -359,7 +397,7 @@ public final class CrewStationsSystem {
                     double vx = (ux * 0.92 + px * 0.28 * weave) * speed;
                     double vy = (uy * 0.92 + py * 0.28 * weave) * speed;
                     setVelPerSec(p, vx, vy, dt);
-                    p.angle = Math.atan2(vy, vx);
+                    rotateShipToward(p, Math.atan2(vy, vx), dt);
                     break;
                 }
                 double dx = target.x - p.x;
@@ -374,7 +412,7 @@ public final class CrewStationsSystem {
                 double vx = (tx * weave + ux * away) * speed;
                 double vy = (ty * weave + uy * away) * speed;
                 setVelPerSec(p, vx, vy, dt);
-                p.angle = Math.atan2(target.y - p.y, target.x - p.x);
+                rotateShipToward(p, Math.atan2(target.y - p.y, target.x - p.x), dt);
             }
         }
     }
@@ -401,9 +439,14 @@ public final class CrewStationsSystem {
     }
 
     private static void setVelPerSec(Ship ship, double vxPerSec, double vyPerSec, double dt) {
-        if (ship == null || dt <= 0.0) return;
-        ship.vx = vxPerSec * dt;
-        ship.vy = vyPerSec * dt;
+        if (ship == null) return;
+        if (dt <= 0.0) {
+            ship.vx = 0.0;
+            ship.vy = 0.0;
+            return;
+        }
+        boolean thrusting = Math.hypot(vxPerSec, vyPerSec) > 1e-4;
+        MovementModel.applyDesiredVelocity(ship, vxPerSec, vyPerSec, dt, thrusting);
     }
 
     private static void moveToward(Ship ship, double tx, double ty, double speedPerSec, double dt) {
@@ -414,7 +457,7 @@ public final class CrewStationsSystem {
         double vx = (dx / len) * speedPerSec;
         double vy = (dy / len) * speedPerSec;
         setVelPerSec(ship, vx, vy, dt);
-        ship.angle = Math.atan2(vy, vx);
+        rotateShipToward(ship, Math.atan2(vy, vx), dt);
     }
 
     private static void orbit(Ship ship, double cx, double cy, double desiredRange, double speedPerSec, double dt, double dir) {
@@ -432,6 +475,14 @@ public final class CrewStationsSystem {
         double vx = (tx * (1.0 - blend) + ux * blend * radial) * speedPerSec;
         double vy = (ty * (1.0 - blend) + uy * blend * radial) * speedPerSec;
         setVelPerSec(ship, vx, vy, dt);
-        ship.angle = Math.atan2(cy - ship.y, cx - ship.x);
+        rotateShipToward(ship, Math.atan2(vy, vx), dt);
+    }
+
+    private static void rotateShipToward(Ship ship, double desiredAngle, double dt) {
+        if (ship == null || dt <= 0.0) return;
+        double delta = MathUtil.normalizeAngle(desiredAngle - ship.angle);
+        double maxDelta = MovementModel.turnRateRadPerSec(ship) * dt;
+        delta = MathUtil.clamp(delta, -maxDelta, maxDelta);
+        ship.angle = MathUtil.normalizeAngle(ship.angle + delta);
     }
 }

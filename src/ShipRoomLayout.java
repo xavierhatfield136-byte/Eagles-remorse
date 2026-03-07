@@ -82,20 +82,12 @@ public final class ShipRoomLayout {
         return profile(role).rooms;
     }
 
+    public static String profileIdForRole(ShipRole role) {
+        return profileKey(role);
+    }
+
     public static RoomDef roomForHit(ShipRole role, double normalizedX, double normalizedY) {
-        if (!Double.isFinite(normalizedX) || !Double.isFinite(normalizedY)) return null;
-        Profile p = profile(role);
-        RoomDef nearest = null;
-        double bestD2 = Double.POSITIVE_INFINITY;
-        for (RoomDef r : p.rooms) {
-            if (r.contains(normalizedX, normalizedY)) return r;
-            double d2 = r.distanceSqToCentroid(normalizedX, normalizedY);
-            if (d2 < bestD2) {
-                bestD2 = d2;
-                nearest = r;
-            }
-        }
-        return nearest;
+        return RoomHitResolver.resolve(role, normalizedX, normalizedY);
     }
 
     public static RoomDef roomForId(ShipRole role, RoomId id) {

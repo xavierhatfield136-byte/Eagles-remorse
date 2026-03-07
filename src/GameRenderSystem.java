@@ -109,6 +109,7 @@ public final class GameRenderSystem {
                 viewportH,
                 zoom,
                 stationStatus,
+                ctx,
                 ctx.hudDetail,
                 contextHint,
                 overlayStatus
@@ -201,6 +202,23 @@ if (DevTools.isDebugOverlay()) {
             return String.format("RTB teleport charging: %.1fs remaining (taking damage disrupts).", t);
         }
 
+        int fireRooms = p.activeFireRoomCount();
+        if (fireRooms > 0) {
+            double fireLoad = p.totalFireIntensity();
+            ShipRoomLayout.RoomId hotspot = p.hottestFireRoom();
+            String hotspotLabel = (hotspot == null) ? "UNKNOWN" : hotspot.name();
+            if (hotspot != null) {
+                ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, hotspot);
+                if (def != null && def.label != null && !def.label.isBlank()) {
+                    hotspotLabel = def.label;
+                }
+            }
+            if (fireRooms >= 2 || fireLoad >= 2.1) {
+                return "Fire emergency in " + hotspotLabel + ". Open crew stations (H), engineering, then press 8 to suppress.";
+            }
+            return "Local fire detected in " + hotspotLabel + ". Engineering can suppress hotspots with key 8.";
+        }
+
         double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
         double shieldFrac = (p.shieldMax <= 0.0) ? 1.0 : (p.shield / Math.max(1e-9, p.shieldMax));
         if (hpFrac < 0.35 || shieldFrac < 0.20) {
@@ -240,6 +258,7 @@ if (DevTools.isDebugOverlay()) {
 
     private static void drawVoiceCaption(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         if (ctx == null || g2 == null) return;
+        if (!ctx.voiceCaptionsEnabled) return;
         if (ctx.voiceCaptionT <= 0.0 || ctx.voiceCaption == null || ctx.voiceCaption.isBlank()) return;
 
         String text = ctx.voiceCaption;

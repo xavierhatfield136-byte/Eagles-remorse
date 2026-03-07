@@ -5,6 +5,8 @@ Runtime audio now supports these folders:
 - `ambient/`
 - `weapons/`
 - `impacts/`
+- `hazards/`
+- `subsystems/`
 - `ui/`
 
 Use WAV files (`PCM 16-bit`, `44100` or `48000` Hz, mono or stereo).
@@ -30,5 +32,15 @@ UI:
 - `ui/open_01.wav`
 - `ui/close_01.wav`
 
-If files are missing, the game falls back to synthesized placeholder tones so audio remains functional.
+Phase 3 note:
+
+- SFX no longer use synthesized tone fallback in normal gameplay loops.
+- Missing files are logged as `sfx_missing` telemetry events.
+
+Validation and generation harnesses:
+
+- Build classes: `./gradlew compileJava`
+- Generate placeholder authored SFX pack: `java -cp build/classes/java/main AudioAssetStubGenerator`
+- Manifest + clipping validation (strict): `java -cp build/classes/java/main SfxValidationHarness --strict`
+- Runtime missing-asset soak: `java -cp build/classes/java/main SfxSoakHarness --seconds=180 --seed=90909`
 

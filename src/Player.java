@@ -226,7 +226,11 @@ public class Player extends Ship {
         this.desiredSpeed = t.desiredSpeed;
         this.desiredSpeedBase = (t.desiredSpeedBase > 0.0) ? t.desiredSpeedBase : t.desiredSpeed;
         this.powerPreset = t.powerPreset;
-        this.setPowerAllocation(t.powerEnginesFrac(), t.powerShieldsFrac(), t.powerWeaponsFrac(), t.powerSystemsFrac());
+        double[] buses = t.powerBusFractions();
+        this.setPowerBusAllocation(buses[0], buses[1], buses[2], buses[3], buses[4], buses[5]);
+        this.setEngineeringPriority(t.engineeringPriority());
+        this.setOverloadBus(t.overloadBus());
+        this.setOverloadMode(false);
         this.crewOrder = t.crewOrder;
 
         this.cargo = t.cargo;

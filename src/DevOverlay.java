@@ -23,7 +23,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 15 + minerLines;
+        int lineCount = 16 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -120,6 +120,12 @@ public final class DevOverlay {
         y += lineH;
         drawLine(g2, x, y, "Fancy VFX (F10): " + (DevTools.isFancyVfxEnabled() ? "ON" : "OFF"));
 
+        y += lineH;
+        drawLine(g2, x, y, "RoomDbg Ctrl+F2 poly[" + onOff(DevTools.isRoomPolygonsEnabled())
+                + "] Ctrl+F3 hits[" + onOff(DevTools.isRoomImpactPointsEnabled())
+                + "] Ctrl+F4 hp[" + onOff(DevTools.isRoomHpBarsEnabled())
+                + "] Ctrl+F5 hazard[" + onOff(DevTools.isRoomHazardsEnabled()) + "]");
+
         if (minerLines > 0) {
             int shown = 0;
             for (Ship s : ctx.ships) {
@@ -150,6 +156,10 @@ public final class DevOverlay {
 
     private static String fmt2(double v) {
         return String.format(Locale.US, "%.2f", v);
+    }
+
+    private static String onOff(boolean v) {
+        return v ? "ON" : "OFF";
     }
 
     private static Object getFieldValue(Object obj, String field) {

@@ -2,6 +2,7 @@ import java.util.List;
 
 public class CollisionSystem {
     private static final double DAMAGE_VFX_MAX_DIST_FROM_PLAYER = 1150.0;
+    private static final int MAX_DAMAGE_EVENT_LOG = 2048;
 
     private CollisionSystem() {}
 
@@ -47,6 +48,7 @@ public class CollisionSystem {
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
                     s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
+                    logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
                     boolean showImpactVfx = shouldRenderDamageVfx(ctx, s, p.x, p.y);
@@ -54,11 +56,13 @@ public class CollisionSystem {
                         if (showImpactVfx) {
                             VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
+                        AudioSystem.onShieldImpact(ctx, impactStyle);
                     }
                     if (hullHit) {
                         if (showImpactVfx) {
                             VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
+                        AudioSystem.onHullImpact(ctx, impactStyle);
                     }
                     if (!shieldHit && !hullHit) {
                         if (showImpactVfx) {
@@ -102,6 +106,7 @@ public class CollisionSystem {
                 }
 
                 s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
+                logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
                 }
@@ -112,11 +117,13 @@ public class CollisionSystem {
                     if (showImpactVfx) {
                         VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
+                    AudioSystem.onShieldImpact(ctx, impactStyle);
                 }
                 if (hullHit) {
                     if (showImpactVfx) {
                         VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
+                    AudioSystem.onHullImpact(ctx, impactStyle);
                 }
                 if (!shieldHit && !hullHit) {
                     if (showImpactVfx) {
@@ -155,10 +162,12 @@ public class CollisionSystem {
                             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.KINETIC);
                             Explosion.spawnShieldHit(m.x, m.y);
                         }
+                        AudioSystem.onExplosion(ctx);
                     } else {
                         if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
                             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.KINETIC);
                         }
+                        AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.KINETIC);
                     }
                     break;
                 }
@@ -228,12 +237,14 @@ public class CollisionSystem {
                     );
                     Explosion.spawnShieldHit(p.x, p.y);
                 }
+                AudioSystem.onHullImpact(ctx, impactStyleFor(p));
 
                 if (destroyed) {
                     if (showImpactVfx) {
                         Explosion.spawnShieldHit(a.x, a.y);
                         ScreenShake.kick(Math.min(5.0, 1.2 + a.collisionRadius() * 0.06));
                     }
+                    AudioSystem.onExplosion(ctx);
                     asteroids.remove(ai);
                 }
 
@@ -266,12 +277,14 @@ public class CollisionSystem {
             double falloff = 1.0 - (d / Math.max(1.0, maxD));
             int splash = Math.max(1, (int) Math.round(baseSplash * (0.35 + 0.65 * falloff)));
             s.takeDamage(splash, m.x, m.y);
+            logDamageEvent(ctx, "missile_splash:" + System.identityHashCode(m), splash, VFX.ImpactStyle.EXPLOSIVE, s, m.x, m.y);
         }
 
         if (shouldRenderDamageVfx(ctx, directHit, m.x, m.y)) {
             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage), VFX.ImpactStyle.EXPLOSIVE);
             Explosion.spawnShieldHit(m.x, m.y);
         }
+        AudioSystem.onExplosion(ctx);
     }
 
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {
@@ -293,5 +306,36 @@ public class CollisionSystem {
         }
         return GameMath.dist2(x, y, ctx.player.x, ctx.player.y)
                 <= DAMAGE_VFX_MAX_DIST_FROM_PLAYER * DAMAGE_VFX_MAX_DIST_FROM_PLAYER;
+    }
+
+    private static void logDamageEvent(GameContext ctx,
+                                       String sourceId,
+                                       double energy,
+                                       VFX.ImpactStyle style,
+                                       Ship target,
+                                       double worldX,
+                                       double worldY) {
+        if (ctx == null || target == null) return;
+        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(target, worldX, worldY, true);
+        double localX = (impact == null) ? Double.NaN : impact.localX;
+        double localY = (impact == null) ? Double.NaN : impact.localY;
+        String damageType = (style == null) ? "kinetic" : style.name().toLowerCase();
+        RoomDamageResult result = target.lastRoomDamageResult();
+        DamageEvent event = new DamageEvent(
+                sourceId,
+                target.id,
+                worldX,
+                worldY,
+                localX,
+                localY,
+                damageType,
+                energy,
+                System.nanoTime(),
+                (result == null) ? RoomDamageResult.NONE : result
+        );
+        if (ctx.damageEvents.size() >= MAX_DAMAGE_EVENT_LOG) {
+            ctx.damageEvents.remove(0);
+        }
+        ctx.damageEvents.add(event);
     }
 }

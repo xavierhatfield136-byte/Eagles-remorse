@@ -28,6 +28,12 @@ public final class MenuSettingsStore {
         public boolean randomEvents = true;
         public boolean fullscreen = false;
         public String seedText = "0";
+        public boolean voiceCaptionsEnabled = true;
+        public double voiceVolumeCaptain = 1.0;
+        public double voiceVolumeHelm = 1.0;
+        public double voiceVolumeTactical = 1.0;
+        public double voiceVolumeEngineering = 1.0;
+        public double voiceVolumeScience = 1.0;
 
         void normalize() {
             version = 1;
@@ -39,6 +45,12 @@ public final class MenuSettingsStore {
             seedText = seedText.trim();
             if (seedText.isBlank()) seedText = "0";
             if (seedText.length() > 32) seedText = seedText.substring(0, 32);
+
+            voiceVolumeCaptain = clampVoiceVolume(voiceVolumeCaptain);
+            voiceVolumeHelm = clampVoiceVolume(voiceVolumeHelm);
+            voiceVolumeTactical = clampVoiceVolume(voiceVolumeTactical);
+            voiceVolumeEngineering = clampVoiceVolume(voiceVolumeEngineering);
+            voiceVolumeScience = clampVoiceVolume(voiceVolumeScience);
         }
     }
 
@@ -56,6 +68,12 @@ public final class MenuSettingsStore {
                 s.randomEvents = parseBoolean(props, "randomEvents", s.randomEvents);
                 s.fullscreen = parseBoolean(props, "fullscreen", s.fullscreen);
                 s.seedText = props.getProperty("seedText", s.seedText);
+                s.voiceCaptionsEnabled = parseBoolean(props, "voiceCaptionsEnabled", s.voiceCaptionsEnabled);
+                s.voiceVolumeCaptain = parseDouble(props, "voiceVolumeCaptain", s.voiceVolumeCaptain);
+                s.voiceVolumeHelm = parseDouble(props, "voiceVolumeHelm", s.voiceVolumeHelm);
+                s.voiceVolumeTactical = parseDouble(props, "voiceVolumeTactical", s.voiceVolumeTactical);
+                s.voiceVolumeEngineering = parseDouble(props, "voiceVolumeEngineering", s.voiceVolumeEngineering);
+                s.voiceVolumeScience = parseDouble(props, "voiceVolumeScience", s.voiceVolumeScience);
             } catch (IOException ex) {
                 ErrorLog.logException("[settings] load_failed path=" + SETTINGS_FILE, ex);
             }
@@ -84,6 +102,12 @@ public final class MenuSettingsStore {
             props.setProperty("randomEvents", String.valueOf(s.randomEvents));
             props.setProperty("fullscreen", String.valueOf(s.fullscreen));
             props.setProperty("seedText", s.seedText);
+            props.setProperty("voiceCaptionsEnabled", String.valueOf(s.voiceCaptionsEnabled));
+            props.setProperty("voiceVolumeCaptain", String.valueOf(s.voiceVolumeCaptain));
+            props.setProperty("voiceVolumeHelm", String.valueOf(s.voiceVolumeHelm));
+            props.setProperty("voiceVolumeTactical", String.valueOf(s.voiceVolumeTactical));
+            props.setProperty("voiceVolumeEngineering", String.valueOf(s.voiceVolumeEngineering));
+            props.setProperty("voiceVolumeScience", String.valueOf(s.voiceVolumeScience));
 
             Path tmp = SETTINGS_FILE.resolveSibling(SETTINGS_FILE.getFileName() + ".tmp");
             try (FileChannel channel = FileChannel.open(
@@ -145,6 +169,19 @@ public final class MenuSettingsStore {
         String raw = props.getProperty(key);
         if (raw == null) return fallback;
         return Boolean.parseBoolean(raw.trim());
+    }
+
+    private static double parseDouble(Properties props, String key, double fallback) {
+        try {
+            return Double.parseDouble(props.getProperty(key, String.valueOf(fallback)).trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static double clampVoiceVolume(double value) {
+        if (!Double.isFinite(value)) return 1.0;
+        return MathUtil.clamp(value, 0.0, 2.0);
     }
 
     private static void deleteTempQuietly(Path tmp) {

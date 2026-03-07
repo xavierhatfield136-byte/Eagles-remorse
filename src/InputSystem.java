@@ -26,6 +26,9 @@ public final class InputSystem {
                 if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
+                if (UISystem.handleXrayClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (ctx.mapOpen) {
                     UISystem.handleMapClick(ctx, e, panel.viewportW(), panel.viewportH());
                     return;
@@ -53,7 +56,7 @@ public final class InputSystem {
                 if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;
-                DevTools.handleKeyPressed(keyCode);
+                DevTools.handleKeyPressed(e);
             }
         });
 

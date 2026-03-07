@@ -775,11 +775,12 @@ public final class AISystem {
         if (isRepairOrderCommand(cmd)) {
             s.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS);
         }
+        applyHazardCommandPosture(s, cmd);
 
         Ship target = selectEngagementTarget(ctx, state, s, dt);
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
         target = constrainTargetForCommand(ctx, s, flagship, base, cmd, target);
-        double speed = Math.max(55.0, s.desiredSpeed);
+        double speed = MovementModel.speedCeiling(s);
         SquadObjective objective = (state.squadObjectives == null)
                 ? SquadObjective.HOLD
                 : state.squadObjectives.getOrDefault(s.id, SquadObjective.HOLD);
@@ -1011,6 +1012,28 @@ public final class AISystem {
                 || cmd == GameContext.FleetCommand.RETREAT;
     }
 
+    private static void applyHazardCommandPosture(Ship ship, GameContext.FleetCommand cmd) {
+        if (ship == null || cmd == null) return;
+        double fireLoad = ship.totalFireIntensity();
+        int fireRooms = ship.activeFireRoomCount();
+
+        if (isRepairOrderCommand(cmd) || fireRooms >= 2 || fireLoad >= 1.9) {
+            ship.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
+            ship.setPowerPreset(Ship.PowerPreset.DEFENSE);
+            ship.setEngineeringPriority(Ship.EngineeringPriority.REACTOR);
+            ship.setOverloadMode(false);
+            return;
+        }
+
+        if (cmd == GameContext.FleetCommand.ATTACK) {
+            ship.crewOrder = Ship.CrewOrder.GUNNERY;
+            ship.setPowerPreset(Ship.PowerPreset.ATTACK);
+        } else if (cmd == GameContext.FleetCommand.DEFEND || cmd == GameContext.FleetCommand.ESCORT) {
+            ship.crewOrder = Ship.CrewOrder.ENGINEERING;
+            ship.setPowerPreset(Ship.PowerPreset.DEFENSE);
+        }
+    }
+
     private static GameContext.FleetCommand resolveFleetCommand(GameContext ctx, Ship ship, Ship flagship) {
         if (ctx == null || ship == null) return GameContext.FleetCommand.AUTO;
         GameContext.FleetCommand override = ctx.shipFleetCommandOverrides.get(ship.id);
@@ -1025,6 +1048,10 @@ public final class AISystem {
 
         double hpFrac = hullFrac(ship);
         double shFrac = shieldFrac(ship);
+        double fireLoad = ship.totalFireIntensity();
+        int fireRooms = ship.activeFireRoomCount();
+        if (fireRooms >= 3 || fireLoad >= 3.4) return GameContext.FleetCommand.RETREAT;
+        if (fireRooms >= 2 || fireLoad >= 2.1) return GameContext.FleetCommand.REPAIR;
         if (hpFrac < 0.38 || shFrac < 0.22) return GameContext.FleetCommand.RETREAT;
         if (ship.role == ShipRole.MINER) return GameContext.FleetCommand.MINE;
         if (flagship != null) {
@@ -1619,7 +1646,7 @@ public final class AISystem {
         // Movement:
         // - If far: close in
         // - If close: orbit/strafe to avoid stacking
-        double speed = Math.max(55.0, s.desiredSpeed);
+        double speed = MovementModel.speedCeiling(s);
 
         double orbitDir = ((s.hashCode() & 1) == 0) ? 1.0 : -1.0;
         if (s.aiBadApproachTimer > 0.0 && Double.isFinite(s.aiBadApproachAngle)) {
@@ -1663,7 +1690,7 @@ public final class AISystem {
         // Simple wander: drift toward the player's general area, but loosely.
         double tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
         double ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
-        moveToward(s, tx, ty, Math.max(40.0, s.desiredSpeed * 0.7), dt);
+        moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
         s.tryCIWS(dt, ctx.projectiles);
     }
@@ -1974,36 +2001,14 @@ public final class AISystem {
     // --- helpers (dt-safe) ---
 
     private static void setVelPerSec(Ship s, double vxPerSec, double vyPerSec, double dt) {
+        if (s == null) return;
         if (dt <= 0) { s.vx = 0; s.vy = 0; return; }
-        s.vx = vxPerSec * dt;
-        s.vy = vyPerSec * dt;
+        boolean thrusting = Math.hypot(vxPerSec, vyPerSec) > 1e-4;
+        MovementModel.applyDesiredVelocity(s, vxPerSec, vyPerSec, dt, thrusting);
     }
 
     private static double maxTurnRateRadPerSec(Ship s) {
-        if (s == null || s.role == null) return Math.toRadians(140.0);
-        return switch (s.role) {
-            case DRONE -> Math.toRadians(200.0);
-            case FIGHTER -> Math.toRadians(192.0);
-            case PD_CRAFT -> Math.toRadians(186.0);
-            case STEALTH_SHIP -> Math.toRadians(178.0);
-            case PATROL -> Math.toRadians(172.0);
-            case BOMBER -> Math.toRadians(165.0);
-            case CIWS_CORVETTE -> Math.toRadians(154.0);
-            case PICKET -> Math.toRadians(146.0);
-            case FRIGATE -> Math.toRadians(132.0);
-            case LIGHT_CRUISER -> Math.toRadians(122.0);
-            case MISSILE_BOAT -> Math.toRadians(118.0);
-            case BATTLECRUISER -> Math.toRadians(104.0);
-            case MINER -> Math.toRadians(96.0);
-            case MEDIUM_CRUISER, CRUISER -> Math.toRadians(94.0);
-            case TRANSPORT, HAULER -> Math.toRadians(82.0);
-            case DRONE_CARRIER -> Math.toRadians(78.0);
-            case BATTLESHIP -> Math.toRadians(72.0);
-            case CARRIER -> Math.toRadians(68.0);
-            case DREADNOUGHT -> Math.toRadians(64.0);
-            case SUPERSHIP -> Math.toRadians(52.0);
-            default -> Math.toRadians(120.0);
-        };
+        return MovementModel.turnRateRadPerSec(s);
     }
 
     private static void rotateShipToward(Ship s, double desiredAngle, double dt) {

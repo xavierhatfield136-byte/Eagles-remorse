@@ -769,10 +769,9 @@ public final class EconomySystem {
         double preserveVy = ship.vy;
         Ship.PowerPreset preservePreset = ship.powerPreset;
         Ship.CrewOrder preserveCrew = ship.crewOrder;
-        double pe = ship.powerEnginesFrac();
-        double ps = ship.powerShieldsFrac();
-        double pw = ship.powerWeaponsFrac();
-        double py = ship.powerSystemsFrac();
+        double[] preserveBuses = ship.powerBusFractions();
+        Ship.EngineeringPriority preservePriority = ship.engineeringPriority();
+        Ship.PowerBus preserveOverloadBus = ship.overloadBus();
         GameContext.FleetCommand override = (ctx.shipFleetCommandOverrides == null) ? null : ctx.shipFleetCommandOverrides.get(ship.id);
 
         copyShipFromTemplate(ship, template);
@@ -780,9 +779,15 @@ public final class EconomySystem {
         ship.angle = preserveAngle;
         ship.vx = preserveVx * 0.25 + ((homeBase == null) ? 0.0 : homeBase.vx * 0.35);
         ship.vy = preserveVy * 0.25 + ((homeBase == null) ? 0.0 : homeBase.vy * 0.35);
-        ship.setPowerAllocation(pe, ps, pw, py);
+        ship.setPowerBusAllocation(
+                preserveBuses[0], preserveBuses[1], preserveBuses[2],
+                preserveBuses[3], preserveBuses[4], preserveBuses[5]
+        );
         ship.powerPreset = preservePreset;
         ship.crewOrder = preserveCrew;
+        ship.setEngineeringPriority(preservePriority);
+        ship.setOverloadBus(preserveOverloadBus);
+        ship.setOverloadMode(false);
         ship.minerHomeBase = homeBase;
         ship.hp = ship.hpMax;
         ship.shield = ship.shieldMax;

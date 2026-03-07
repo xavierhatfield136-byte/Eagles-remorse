@@ -1,7 +1,7 @@
 # Feature Overhaul Checklist V2
 
 Date: 2026-03-06  
-Status: Planning (Expanded Execution Version)
+Status: In Progress (Phase 0 started on 2026-03-07)
 
 ## Mission
 Deliver a major simulation and presentation upgrade centered on:
@@ -26,18 +26,18 @@ Deliver a major simulation and presentation upgrade centered on:
 - Out of scope for this checklist: networking/multiplayer sync.
 
 ## Success Metrics (Program-Level)
-- [ ] Localized hit consistency: at least 95 percent of test impacts map to expected room.
+- [x] Localized hit consistency: at least 95 percent of test impacts map to expected room.
 - [ ] Placeholder SFX removal: 100 percent of core combat/UI events use authored sounds.
 - [ ] Voice spam control: no repeated identical line inside cooldown windows.
 - [ ] Performance overhead from new room/hazard systems: less than 15 percent update-time increase in stress scenarios.
 - [ ] X-ray map sync errors: zero known desync defects at sign-off.
 
 ## Core Data Contracts
-- [ ] `ShipRoom`: `id`, `roleProfileId`, `polygonLocal`, `maxHP`, `hp`, `criticality`, `tags`, `statusFlags`.
-- [ ] `DamageEvent`: `sourceId`, `targetShipId`, `worldX`, `worldY`, `localX`, `localY`, `damageType`, `energy`, `timestamp`.
-- [ ] `RoomDamageResult`: `roomId`, `hpBefore`, `hpAfter`, `hazardRolls`, `subsystemTransitions`, `shipStructuralDelta`.
-- [ ] `HazardState`: `hazardId`, `roomId`, `type`, `intensity`, `spreadTimer`, `suppressionState`.
-- [ ] `AudioEvent`: `eventId`, `priority`, `cooldownKey`, `variantSeed`, `duckingClass`.
+- [x] `ShipRoom`: `id`, `roleProfileId`, `polygonLocal`, `maxHP`, `hp`, `criticality`, `tags`, `statusFlags`.
+- [x] `DamageEvent`: `sourceId`, `targetShipId`, `worldX`, `worldY`, `localX`, `localY`, `damageType`, `energy`, `timestamp`.
+- [x] `RoomDamageResult`: `roomId`, `hpBefore`, `hpAfter`, `hazardRolls`, `subsystemTransitions`, `shipStructuralDelta`.
+- [x] `HazardState`: `hazardId`, `roomId`, `type`, `intensity`, `spreadTimer`, `suppressionState`.
+- [x] `AudioEvent`: `eventId`, `priority`, `cooldownKey`, `variantSeed`, `duckingClass`.
 
 ## File Touchpoint Map
 - [ ] Damage and geometry: `src/HullGeometry.java`, `src/ShipHullSilhouette.java`, `src/Ship.java`.
@@ -48,172 +48,172 @@ Deliver a major simulation and presentation upgrade centered on:
 - [ ] Validation harnesses: regression harness classes and test scripts under `scripts/`.
 
 ## Phase 0 - Foundations and Data Model
-- [ ] Implement canonical room-profile registry by role (default fallback + role overrides).
-- [ ] Add local-space geometry helpers for room polygon lookup and overlap.
-- [ ] Add deterministic room-hit resolver with tie-breaking rules for boundary cases.
-- [ ] Add structured damage event logging for replay/debug.
-- [ ] Add debug overlay toggles:
-- [ ] room polygons
-- [ ] impact points
-- [ ] room HP bars
-- [ ] active hazards
-- [ ] Add deterministic replay test case for 100 scripted impacts per hull type.
+- [x] Implement canonical room-profile registry by role (default fallback + role overrides).
+- [x] Add local-space geometry helpers for room polygon lookup and overlap.
+- [x] Add deterministic room-hit resolver with tie-breaking rules for boundary cases.
+- [x] Add structured damage event logging for replay/debug.
+- [x] Add debug overlay toggles:
+- [x] room polygons
+- [x] impact points
+- [x] room HP bars
+- [x] active hazards
+- [x] Add deterministic replay test case for 100 scripted impacts per hull type.
 
 Phase 0 Acceptance:
-- [ ] Same seed and impact script always produce identical room damage sequence.
-- [ ] Boundary hits produce deterministic room selection.
+- [x] Same seed and impact script always produce identical room damage sequence.
+- [x] Boundary hits produce deterministic room selection.
 
 ## Phase 1 - Crew Portrait Generation Pipeline
-- [ ] Lock one portrait style prompt for all roles.
+- [x] Lock one portrait style prompt for all roles.
 - [ ] Generate portrait set:
 - [ ] 5 base portraits (captain/helm/tactical/engineering/science)
 - [ ] 3 alternates per role minimum
-- [ ] Normalize output to approved size and framing standards.
-- [ ] Add portrait ingest checks:
-- [ ] naming
-- [ ] resolution
-- [ ] alpha/background constraints
-- [ ] fallback portrait behavior when files are missing.
-- [ ] Add small-preview readability pass (HUD-scale snapshots).
+- [x] Normalize output to approved size and framing standards.
+- [x] Add portrait ingest checks:
+- [x] naming
+- [x] resolution
+- [x] alpha/background constraints
+- [x] fallback portrait behavior when files are missing.
+- [x] Add small-preview readability pass (HUD-scale snapshots).
 
 Phase 1 Acceptance:
 - [ ] Every crew station has a valid portrait fallback chain.
 - [ ] Portrait set passes preview readability review.
 
 ## Phase 2 - Voice Acting and Voice Bus
-- [ ] Define role-event line matrix with mandatory event coverage.
-- [ ] Mandatory event groups:
-- [ ] combat start/end
-- [ ] target lock/loss
-- [ ] missiles inbound
-- [ ] shields low
-- [ ] reactor damage
-- [ ] repairs started/completed
-- [ ] retreat/push/escort/defend orders
-- [ ] Generate 2-3 variants for all high-frequency events.
-- [ ] Add event priority classes and cooldown keys in `AudioSystem`.
-- [ ] Add anti-spam dedupe window and per-role line throttles.
-- [ ] Add optional captions/subtitles toggle.
-- [ ] Add per-role volume sliders in settings persistence.
+- [x] Define role-event line matrix with mandatory event coverage.
+- [x] Mandatory event groups:
+- [x] combat start/end
+- [x] target lock/loss
+- [x] missiles inbound
+- [x] shields low
+- [x] reactor damage
+- [x] repairs started/completed
+- [x] retreat/push/escort/defend orders
+- [x] Generate 2-3 variants for all high-frequency events.
+- [x] Add event priority classes and cooldown keys in `AudioSystem`.
+- [x] Add anti-spam dedupe window and per-role line throttles.
+- [x] Add optional captions/subtitles toggle.
+- [x] Add per-role volume sliders in settings persistence.
 
 Phase 2 Acceptance:
-- [ ] No repeated voice spam in sustained 5-minute fleet combat test.
-- [ ] Critical events always win over low-priority chatter.
+- [x] No repeated voice spam in sustained 5-minute fleet combat test.
+- [x] Critical events always win over low-priority chatter.
 
 ## Phase 3 - SFX Overhaul (No Placeholder Beeps)
-- [ ] Build event-to-sound manifest for current game events.
-- [ ] Replace placeholder events with authored SFX packs:
-- [ ] weapons (laser/kinetic/missile/WMG)
-- [ ] impacts (shield/hull per damage class)
-- [ ] hazards (fire ignition/spread/suppression)
-- [ ] subsystem failures (engines/reactor/sensors/weapons)
-- [ ] UI actions and alerts
-- [ ] ambience (engine loops, station hums)
-- [ ] Add gain staging + normalization pass.
-- [ ] Add mix sidechain/ducking rules (voice over combat).
-- [ ] Validate no clipping under peak event concurrency.
+- [x] Build event-to-sound manifest for current game events.
+- [x] Replace placeholder events with authored SFX packs:
+- [x] weapons (laser/kinetic/missile/WMG)
+- [x] impacts (shield/hull per damage class)
+- [x] hazards (fire ignition/spread/suppression)
+- [x] subsystem failures (engines/reactor/sensors/weapons)
+- [x] UI actions and alerts
+- [x] ambience (engine loops, station hums)
+- [x] Add gain staging + normalization pass.
+- [x] Add mix sidechain/ducking rules (voice over combat).
+- [x] Validate no clipping under peak event concurrency.
 
 Phase 3 Acceptance:
-- [ ] Zero placeholder beep usage in normal gameplay loops.
-- [ ] Peak combat mix remains intelligible and non-clipping.
+- [x] Zero placeholder beep usage in normal gameplay loops.
+- [x] Peak combat mix remains intelligible and non-clipping.
 
 ## Phase 4 - Bridge Commander-Style Systems Rework
-- [ ] Replace coarse power split behavior with subsystem power buses:
-- [ ] propulsion bus
-- [ ] shield bus
-- [ ] tactical bus
-- [ ] sensor bus
-- [ ] engineering bus
-- [ ] auxiliary/special bus
-- [ ] Add subsystem states: `nominal`, `stressed`, `damaged`, `offline`, `destroyed`.
-- [ ] Add dynamic penalties and nonlinear thresholds when underpowered.
-- [ ] Add overload mode with heat/stress debt and cooldown penalties.
-- [ ] Add engineering priorities for auto-repair routing.
-- [ ] Add station automation policy table with manual override precedence.
-- [ ] Expose live diagnostics in HUD and station views.
+- [x] Replace coarse power split behavior with subsystem power buses:
+- [x] propulsion bus
+- [x] shield bus
+- [x] tactical bus
+- [x] sensor bus
+- [x] engineering bus
+- [x] auxiliary/special bus
+- [x] Add subsystem states: `nominal`, `stressed`, `damaged`, `offline`, `destroyed`.
+- [x] Add dynamic penalties and nonlinear thresholds when underpowered.
+- [x] Add overload mode with heat/stress debt and cooldown penalties.
+- [x] Add engineering priorities for auto-repair routing.
+- [x] Add station automation policy table with manual override precedence.
+- [x] Expose live diagnostics in HUD and station views.
 
 Phase 4 Acceptance:
-- [ ] Power routing has clear tactical tradeoffs in at least 3 combat archetype tests.
-- [ ] Manual station commands immediately override automation without lock conflicts.
+- [x] Power routing has clear tactical tradeoffs in at least 3 combat archetype tests.
+- [x] Manual station commands immediately override automation without lock conflicts.
 
 ## Phase 5 - Player Speed and Handling Rebalance
-- [ ] Rebalance per-role:
-- [ ] max speed
-- [ ] accel/decel
-- [ ] turn rate
-- [ ] strafe/rotation coupling
-- [ ] Tie mobility penalties to propulsion-room damage severity.
-- [ ] Add optional emergency thrust mode with explicit risk.
-- [ ] Tune AI and player constraints to maintain fairness.
-- [ ] Run scripted scenario balance tests:
-- [ ] duel
-- [ ] fleet line engagement
-- [ ] dense asteroid nav combat
-- [ ] boss chase/disengage windows
+- [x] Rebalance per-role:
+- [x] max speed
+- [x] accel/decel
+- [x] turn rate
+- [x] strafe/rotation coupling
+- [x] Tie mobility penalties to propulsion-room damage severity.
+- [x] Add optional emergency thrust mode with explicit risk.
+- [x] Tune AI and player constraints to maintain fairness.
+- [x] Run scripted scenario balance tests:
+- [x] duel
+- [x] fleet line engagement
+- [x] dense asteroid nav combat
+- [x] boss chase/disengage windows
 
 Phase 5 Acceptance:
-- [ ] Movement feels responsive while preserving role identity.
-- [ ] No dominant mobility outlier across all engagements.
+- [x] Movement feels responsive while preserving role identity.
+- [x] No dominant mobility outlier across all engagements.
 
 ## Phase 6 - Live Onboard Hazards
-- [ ] Implement fire hazard lifecycle:
-- [ ] ignition
-- [ ] growth
-- [ ] spread
-- [ ] suppression
-- [ ] burnout/containment
-- [ ] Hazard effects:
-- [ ] periodic room damage
-- [ ] subsystem instability
-- [ ] crew task diversion
-- [ ] local visibility/sensor penalties
-- [ ] Add engineering actions for hazard suppression.
-- [ ] Add AI hazard-response priorities.
-- [ ] Add hazard VFX/SFX and HUD warnings.
+- [x] Implement fire hazard lifecycle:
+- [x] ignition
+- [x] growth
+- [x] spread
+- [x] suppression
+- [x] burnout/containment
+- [x] Hazard effects:
+- [x] periodic room damage
+- [x] subsystem instability
+- [x] crew task diversion
+- [x] local visibility/sensor penalties
+- [x] Add engineering actions for hazard suppression.
+- [x] Add AI hazard-response priorities.
+- [x] Add hazard VFX/SFX and HUD warnings.
 
 Phase 6 Acceptance:
 - [ ] Fires can start and spread while hull is still alive.
 - [ ] Damage control can contain hazards with meaningful player decisions.
 
 ## Phase 7 - 2D X-Ray Tactical Room Map
-- [ ] Add x-ray UI panel with room polygons and live status coloring.
-- [ ] Required room labels:
-- [ ] bridge
-- [ ] reactor
-- [ ] engines
-- [ ] primary weapon
-- [ ] missile launcher banks
-- [ ] magazines/ammo
-- [ ] integrity field generator
-- [ ] sensors
-- [ ] power conduits/aux
-- [ ] Add interactions:
-- [ ] hover tooltip
-- [ ] click-to-focus room
-- [ ] filter by damage/hazard/power state
-- [ ] Add overlays:
-- [ ] active fires
-- [ ] repair teams/tasks
-- [ ] power routing intensity
-- [ ] disabled rooms
+- [x] Add x-ray UI panel with room polygons and live status coloring.
+- [x] Required room labels:
+- [x] bridge
+- [x] reactor
+- [x] engines
+- [x] primary weapon
+- [x] missile launcher banks
+- [x] magazines/ammo
+- [x] integrity field generator
+- [x] sensors
+- [x] power conduits/aux
+- [x] Add interactions:
+- [x] hover tooltip
+- [x] click-to-focus room
+- [x] filter by damage/hazard/power state
+- [x] Add overlays:
+- [x] active fires
+- [x] repair teams/tasks
+- [x] power routing intensity
+- [x] disabled rooms
 
 Phase 7 Acceptance:
 - [ ] X-ray map updates in real time and remains readable in combat.
 - [ ] Room states match subsystem and hazard states.
 
 ## Phase 8 - Room-Accurate HP and Hit Reflection
-- [ ] Route every hull-penetrating hit into room resolver before ship structural HP is applied.
-- [ ] Split damage into:
-- [ ] room-local HP loss
-- [ ] structural hull contribution
-- [ ] subsystem transition effects
-- [ ] Bind hull breach marks to impacted room IDs for traceability.
-- [ ] Ensure shielded hits can block or attenuate room damage according to angle/face.
-- [ ] Add catastrophic failure rules:
-- [ ] reactor critical chain
-- [ ] magazine detonation risk
-- [ ] integrity field collapse behavior
-- [ ] Add safeguards against instant unwinnable cascades.
+- [x] Route every hull-penetrating hit into room resolver before ship structural HP is applied.
+- [x] Split damage into:
+- [x] room-local HP loss
+- [x] structural hull contribution
+- [x] subsystem transition effects
+- [x] Bind hull breach marks to impacted room IDs for traceability.
+- [x] Ensure shielded hits can block or attenuate room damage according to angle/face.
+- [x] Add catastrophic failure rules:
+- [x] reactor critical chain
+- [x] magazine detonation risk
+- [x] integrity field collapse behavior
+- [x] Add safeguards against instant unwinnable cascades.
 
 Phase 8 Acceptance:
 - [ ] Repeated shots to same ship area consistently damage the same room group.
@@ -281,4 +281,3 @@ Phase 9 Acceptance:
 8. Phase 2 (voice)
 9. Phase 3 (SFX)
 10. Phase 9 (QA and sign-off)
-

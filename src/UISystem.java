@@ -138,15 +138,15 @@ public final class UISystem {
 
     public static void selectPowerManagementSlot(GameContext ctx, int idx) {
         if (ctx == null) return;
-        ctx.powerManagementFocus = Math.max(0, Math.min(3, idx));
+        ctx.powerManagementFocus = Math.max(0, Math.min(5, idx));
     }
 
     public static void cyclePowerManagementSlot(GameContext ctx, int dir) {
         if (ctx == null) return;
         int step = (dir < 0) ? -1 : 1;
         int next = ctx.powerManagementFocus + step;
-        if (next < 0) next = 3;
-        if (next > 3) next = 0;
+        if (next < 0) next = 5;
+        if (next > 5) next = 0;
         ctx.powerManagementFocus = next;
     }
 
@@ -157,15 +157,10 @@ public final class UISystem {
 
     public static void adjustPowerAllocation(GameContext ctx, int channel, double delta) {
         if (ctx == null || ctx.player == null) return;
-        if (channel < 0 || channel > 3) return;
+        if (channel < 0 || channel > 5) return;
         if (!Double.isFinite(delta) || Math.abs(delta) < 1e-9) return;
 
-        double[] p = new double[]{
-                ctx.player.powerEnginesFrac(),
-                ctx.player.powerShieldsFrac(),
-                ctx.player.powerWeaponsFrac(),
-                ctx.player.powerSystemsFrac()
-        };
+        double[] p = ctx.player.powerBusFractions();
 
         double oldVal = p[channel];
         double newVal = Math.max(0.0, Math.min(1.0, oldVal + delta));
@@ -175,13 +170,13 @@ public final class UISystem {
 
         if (applied > 0.0) {
             double othersTotal = 0.0;
-            for (int i = 0; i < 4; i++) if (i != channel) othersTotal += p[i];
+            for (int i = 0; i < p.length; i++) if (i != channel) othersTotal += p[i];
             if (othersTotal <= 1e-9) {
-                double each = (1.0 - p[channel]) / 3.0;
-                for (int i = 0; i < 4; i++) if (i != channel) p[i] = each;
+                double each = (1.0 - p[channel]) / Math.max(1.0, p.length - 1.0);
+                for (int i = 0; i < p.length; i++) if (i != channel) p[i] = each;
             } else {
                 double remove = applied;
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < p.length; i++) {
                     if (i == channel) continue;
                     double share = p[i] / othersTotal;
                     p[i] -= remove * share;
@@ -191,15 +186,15 @@ public final class UISystem {
         } else {
             double freed = -applied;
             double avail = 0.0;
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < p.length; i++) {
                 if (i == channel) continue;
                 avail += (1.0 - p[i]);
             }
             if (avail <= 1e-9) {
-                double each = (1.0 - p[channel]) / 3.0;
-                for (int i = 0; i < 4; i++) if (i != channel) p[i] = each;
+                double each = (1.0 - p[channel]) / Math.max(1.0, p.length - 1.0);
+                for (int i = 0; i < p.length; i++) if (i != channel) p[i] = each;
             } else {
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < p.length; i++) {
                     if (i == channel) continue;
                     double share = (1.0 - p[i]) / avail;
                     p[i] += freed * share;
@@ -208,7 +203,7 @@ public final class UISystem {
         }
 
         normalizePower(p);
-        ctx.player.setPowerAllocation(p[0], p[1], p[2], p[3]);
+        ctx.player.setPowerBusAllocation(p[0], p[1], p[2], p[3], p[4], p[5]);
         // Manual engineering input immediately overrides automation.
         ctx.engineeringAutomation = false;
     }
@@ -220,21 +215,112 @@ public final class UISystem {
         ctx.engineeringAutomation = false;
     }
 
+    public static void toggleOverloadMode(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        ctx.engineeringAutomation = false;
+        boolean before = ctx.player.isOverloadActive();
+        boolean changed = ctx.player.toggleOverloadMode();
+        if (!changed && !before && !ctx.player.isOverloadAvailable()) {
+            EventSystem.showBanner(ctx, "OVERLOAD COOLING DOWN", 1.0);
+            return;
+        }
+        EventSystem.showBanner(ctx, "OVERLOAD: " + (ctx.player.isOverloadActive() ? "ENGAGED" : "OFF"), 0.9);
+    }
+
+    public static void cycleOverloadBus(GameContext ctx, int dir) {
+        if (ctx == null || ctx.player == null) return;
+        Ship.PowerBus bus = ctx.player.cycleOverloadBus(dir);
+        ctx.engineeringAutomation = false;
+        EventSystem.showBanner(ctx, "OVERLOAD BUS: " + bus.name(), 0.9);
+    }
+
+    public static void cycleEngineeringPriority(GameContext ctx, int dir) {
+        if (ctx == null || ctx.player == null) return;
+        Ship.EngineeringPriority next;
+        if (dir >= 0) next = ctx.player.cycleEngineeringPriority();
+        else {
+            Ship.EngineeringPriority[] vals = Ship.EngineeringPriority.values();
+            int idx = ctx.player.engineeringPriority().ordinal() - 1;
+            if (idx < 0) idx = vals.length - 1;
+            next = vals[idx];
+            ctx.player.setEngineeringPriority(next);
+        }
+        ctx.engineeringAutomation = false;
+        EventSystem.showBanner(ctx, "ENG PRIORITY: " + next.name(), 0.9);
+    }
+
+    public static void suppressHottestFire(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        Player p = ctx.player;
+        if (!p.alive || p.dying || p.hp <= 0) return;
+
+        ShipRoomLayout.RoomId target = p.hottestFireRoom();
+        if (target == null || !p.hasActiveFireHazards()) {
+            EventSystem.showBanner(ctx, "NO ACTIVE FIRE HAZARDS", 1.0);
+            return;
+        }
+
+        boolean suppressed = p.suppressHottestFire();
+        ctx.engineeringAutomation = false;
+        ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+        if (!suppressed) {
+            EventSystem.showBanner(ctx, "SUPPRESSION BURST INEFFECTIVE", 1.0);
+            return;
+        }
+
+        String label = target.name();
+        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, target);
+        if (def != null && def.label != null && !def.label.isBlank()) {
+            label = def.label;
+        }
+        int active = p.activeFireRoomCount();
+        EventSystem.showBanner(ctx, "SUPPRESSING " + label + "  (" + active + " FIRE ROOM" + (active == 1 ? "" : "S") + ")", 1.0);
+    }
+
+    public static void toggleEmergencyThrustMode(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        Player p = ctx.player;
+        if (!p.alive || p.dying || p.hp <= 0) return;
+
+        if (p.isEmergencyThrustActive()) {
+            p.setEmergencyThrustMode(false);
+            EventSystem.showBanner(ctx, "EMERGENCY THRUST: OFF", 0.9);
+            return;
+        }
+
+        if (p.emergencyThrustCooldownRemaining() > 1e-6) {
+            EventSystem.showBanner(ctx, "EMERGENCY THRUST COOLING DOWN", 1.0);
+            return;
+        }
+        if (p.isOverloadActive() && p.overloadBus() == Ship.PowerBus.PROPULSION) {
+            EventSystem.showBanner(ctx, "DISABLE PROPULSION OVERLOAD FIRST", 1.1);
+            return;
+        }
+        if (p.propulsionRoomIntegrity() < 0.18) {
+            EventSystem.showBanner(ctx, "PROPULSION TOO DAMAGED", 1.1);
+            return;
+        }
+        if (!p.setEmergencyThrustMode(true)) {
+            EventSystem.showBanner(ctx, "EMERGENCY THRUST UNAVAILABLE", 1.0);
+            return;
+        }
+        ctx.helmAutomation = false;
+        EventSystem.showBanner(ctx, "EMERGENCY THRUST: ENGAGED", 1.0);
+    }
+
     private static void normalizePower(double[] p) {
-        if (p == null || p.length < 4) return;
+        if (p == null || p.length == 0) return;
         double sum = 0.0;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < p.length; i++) {
             if (!Double.isFinite(p[i]) || p[i] < 0.0) p[i] = 0.0;
             sum += p[i];
         }
         if (sum <= 1e-9) {
-            p[0] = 0.25;
-            p[1] = 0.25;
-            p[2] = 0.25;
-            p[3] = 0.25;
+            double each = 1.0 / p.length;
+            for (int i = 0; i < p.length; i++) p[i] = each;
             return;
         }
-        for (int i = 0; i < 4; i++) p[i] /= sum;
+        for (int i = 0; i < p.length; i++) p[i] /= sum;
     }
 
     public static void selectCrewStation(GameContext ctx, GameContext.CrewStation station) {
@@ -278,6 +364,81 @@ public final class UISystem {
         if (ctx == null) return;
         GameContext.CrewStation s = ctx.activeCrewStation;
         setStationAutomation(ctx, s, !stationAutomation(ctx, s));
+    }
+
+    public static void cycleVoiceMixFocus(GameContext ctx, int dir) {
+        if (ctx == null) return;
+        GameContext.CrewStation[] values = GameContext.CrewStation.values();
+        int step = (dir < 0) ? -1 : 1;
+        int idx = ctx.voiceMixFocus.ordinal() + step;
+        if (idx < 0) idx = values.length - 1;
+        if (idx >= values.length) idx = 0;
+        ctx.voiceMixFocus = values[idx];
+        EventSystem.showBanner(ctx, "VOICE MIX FOCUS: " + ctx.voiceMixFocus.name(), 0.9);
+    }
+
+    public static void stepVoiceMixVolume(GameContext ctx, int dir) {
+        if (ctx == null) return;
+        double current = ctx.voiceRoleVolume(ctx.voiceMixFocus);
+        double next = current + ((dir < 0) ? -0.05 : 0.05);
+        next = MathUtil.clamp(next, 0.0, 2.0);
+        ctx.setVoiceRoleVolume(ctx.voiceMixFocus, next);
+        persistVoicePreferences(ctx);
+        int pct = (int) Math.round(next * 100.0);
+        EventSystem.showBanner(ctx, "VOICE " + ctx.voiceMixFocus.name() + ": " + pct + "%", 0.8);
+    }
+
+    public static void toggleVoiceCaptions(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.voiceCaptionsEnabled = !ctx.voiceCaptionsEnabled;
+        if (!ctx.voiceCaptionsEnabled) {
+            ctx.voiceCaption = "";
+            ctx.voiceCaptionT = 0.0;
+        }
+        persistVoicePreferences(ctx);
+        EventSystem.showBanner(ctx, "VOICE CAPTIONS: " + (ctx.voiceCaptionsEnabled ? "ON" : "OFF"), 1.0);
+    }
+
+    public static void cycleXrayFilterMode(GameContext ctx, int dir) {
+        if (ctx == null) return;
+        GameContext.XrayFilterMode[] modes = GameContext.XrayFilterMode.values();
+        int step = (dir < 0) ? -1 : 1;
+        int idx = ctx.xrayFilterMode.ordinal() + step;
+        if (idx < 0) idx = modes.length - 1;
+        if (idx >= modes.length) idx = 0;
+        ctx.xrayFilterMode = modes[idx];
+        EventSystem.showBanner(ctx, "X-RAY FILTER: " + ctx.xrayFilterMode.name(), 0.9);
+    }
+
+    public static void clearXrayRoomFocus(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.xrayFocusedRoom = null;
+        EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
+    }
+
+    public static boolean handleXrayClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.player == null || e == null) return false;
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return false;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return false;
+
+        ShipRoomLayout.RoomId roomId = Renderer.playerXrayRoomAt(ctx, viewportW, viewportH, e.getX(), e.getY());
+        if (roomId == null) return false;
+
+        if (SwingUtilities.isRightMouseButton(e)) {
+            ctx.xrayFocusedRoom = null;
+            EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
+            return true;
+        }
+        if (!SwingUtilities.isLeftMouseButton(e)) return true;
+
+        if (ctx.xrayFocusedRoom == roomId) {
+            ctx.xrayFocusedRoom = null;
+            EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
+            return true;
+        }
+        ctx.xrayFocusedRoom = roomId;
+        EventSystem.showBanner(ctx, "X-RAY FOCUS: " + xrayRoomLabel(roomId), 0.9);
+        return true;
     }
 
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
@@ -825,10 +986,38 @@ public final class UISystem {
         return true;
     }
 
+    private static String xrayRoomLabel(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return "UNKNOWN";
+        return switch (roomId) {
+            case BRIDGE -> "BRIDGE";
+            case REACTOR -> "REACTOR";
+            case ENGINES -> "ENGINES";
+            case MAIN_WEAPON -> "PRIMARY WEAPON";
+            case MISSILE_LAUNCHERS -> "MISSILE LAUNCHER BANKS";
+            case MAGAZINES -> "MAGAZINES / AMMO";
+            case INTEGRITY_FIELD -> "INTEGRITY FIELD GENERATOR";
+            case SENSORS -> "SENSORS";
+            case POWER_CONDUITS -> "POWER CONDUITS / AUX";
+            case WARP_DRIVE -> "WARP DRIVE";
+        };
+    }
+
     private static void clearManualCombatInputs(GameContext ctx) {
         if (ctx == null) return;
         ctx.firingPrimaryManual = false;
         ctx.firingSecondaryManual = false;
+    }
+
+    private static void persistVoicePreferences(GameContext ctx) {
+        if (ctx == null) return;
+        MenuSettingsStore.MenuSettings settings = MenuSettingsStore.load();
+        settings.voiceCaptionsEnabled = ctx.voiceCaptionsEnabled;
+        settings.voiceVolumeCaptain = ctx.voiceRoleVolume(GameContext.CrewStation.CAPTAIN);
+        settings.voiceVolumeHelm = ctx.voiceRoleVolume(GameContext.CrewStation.HELM);
+        settings.voiceVolumeTactical = ctx.voiceRoleVolume(GameContext.CrewStation.TACTICAL);
+        settings.voiceVolumeEngineering = ctx.voiceRoleVolume(GameContext.CrewStation.ENGINEERING);
+        settings.voiceVolumeScience = ctx.voiceRoleVolume(GameContext.CrewStation.SCIENCE);
+        MenuSettingsStore.save(settings);
     }
 }
 
