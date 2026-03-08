@@ -2,6 +2,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Random;
 
 /**
  * Base ship.
@@ -11,6 +12,28 @@ import java.util.List;
  */
 public abstract class Ship {
     private static int NEXT_ID = 1;
+    private static final Object SHIP_RNG_LOCK = new Object();
+    private static Random deterministicRandom = null;
+
+    public static void enableDeterministicRandom(long seed) {
+        synchronized (SHIP_RNG_LOCK) {
+            deterministicRandom = new Random(seed);
+        }
+    }
+
+    public static void disableDeterministicRandom() {
+        synchronized (SHIP_RNG_LOCK) {
+            deterministicRandom = null;
+        }
+    }
+
+    private static double randomUnit() {
+        synchronized (SHIP_RNG_LOCK) {
+            if (deterministicRandom != null) return deterministicRandom.nextDouble();
+        }
+        return Math.random();
+    }
+
     public final int id = NEXT_ID++;
     /** Backwards-compatible alias used by Turret/GamePanel. */
     public void onFire() {
@@ -564,9 +587,9 @@ public abstract class Ship {
             fireSpawnTimer += dt;
             if (fireSpawnTimer >= 0.06) {
                 fireSpawnTimer = 0.0;
-                double jx = (Math.random() - 0.5) * radius * 0.9;
-                double jy = (Math.random() - 0.5) * radius * 0.9;
-                double intensity = 0.6 + Math.random() * 0.8;
+                double jx = (randomUnit() - 0.5) * radius * 0.9;
+                double jy = (randomUnit() - 0.5) * radius * 0.9;
+                double intensity = 0.6 + randomUnit() * 0.8;
                 VFX.spawnShipFire(x + jx, y + jy, intensity);
             }
 
@@ -902,10 +925,10 @@ public abstract class Ship {
         wreckVy = vy;
 
         // Burn for a short random time before detonation.
-        burnDuration = 1.2 + Math.random() * 1.1;
+        burnDuration = 1.2 + randomUnit() * 1.1;
 
         // Random tumble while drifting out of control.
-        wreckSpin = (Math.random() - 0.5) * 2.4;
+        wreckSpin = (randomUnit() - 0.5) * 2.4;
 
         // Initial sparks on kill impact.
         VFX.spawnImpactSparks(x, y, 0.0, 0.0, 3);
@@ -949,8 +972,8 @@ public abstract class Ship {
         }
 
         // Randomize a bit so it feels organic.
-        totalCredits = (int) Math.round(totalCredits * (0.75 + Math.random() * 0.55));
-        totalOre = (int) Math.round(totalOre * (0.70 + Math.random() * 0.60));
+        totalCredits = (int) Math.round(totalCredits * (0.75 + randomUnit() * 0.55));
+        totalOre = (int) Math.round(totalOre * (0.70 + randomUnit() * 0.60));
 
         // How many pickups?
         int count = 2 + (int) Math.floor(size / 14.0);
@@ -972,8 +995,8 @@ public abstract class Ship {
                 c = remainingC;
                 o = remainingO;
             } else {
-                double fracC = 0.18 + Math.random() * 0.28;
-                double fracO = 0.18 + Math.random() * 0.28;
+                double fracC = 0.18 + randomUnit() * 0.28;
+                double fracO = 0.18 + randomUnit() * 0.28;
                 c = (int) Math.round(remainingC * fracC);
                 o = (int) Math.round(remainingO * fracO);
             }
@@ -984,16 +1007,16 @@ public abstract class Ship {
             if (remainingO < 0) remainingO = 0;
 
             // Impulse direction/speed.
-            double a = Math.random() * Math.PI * 2.0;
-            double sp = 90 + Math.random() * 320; // units/sec
+            double a = randomUnit() * Math.PI * 2.0;
+            double sp = 90 + randomUnit() * 320; // units/sec
 
             double svx = baseVx + Math.cos(a) * sp * dtTick;
             double svy = baseVy + Math.sin(a) * sp * dtTick;
 
-            double ox = (Math.random() - 0.5) * radius * 0.6;
-            double oy = (Math.random() - 0.5) * radius * 0.6;
+            double ox = (randomUnit() - 0.5) * radius * 0.6;
+            double oy = (randomUnit() - 0.5) * radius * 0.6;
 
-            double life = 22.0 + Math.random() * 16.0;
+            double life = 22.0 + randomUnit() * 16.0;
 
             lootSpawner.spawn(x + ox, y + oy, svx, svy, c, o, life);
         }
@@ -1852,10 +1875,10 @@ public abstract class Ship {
             roomHazards.put(roomId, hz);
         }
         hz.fireIntensity = Math.max(hz.fireIntensity, MathUtil.clamp(intensity, 0.0, 2.6));
-        if (hz.damageTickTimer <= 0.0) hz.damageTickTimer = 0.18 + Math.random() * 0.16;
-        if (hz.spreadTimer <= 0.0) hz.spreadTimer = 0.50 + Math.random() * 0.45;
-        if (hz.instabilityTimer <= 0.0) hz.instabilityTimer = 0.40 + Math.random() * 0.35;
-        if (hz.vfxTimer <= 0.0) hz.vfxTimer = 0.06 + Math.random() * 0.08;
+        if (hz.damageTickTimer <= 0.0) hz.damageTickTimer = 0.18 + randomUnit() * 0.16;
+        if (hz.spreadTimer <= 0.0) hz.spreadTimer = 0.50 + randomUnit() * 0.45;
+        if (hz.instabilityTimer <= 0.0) hz.instabilityTimer = 0.40 + randomUnit() * 0.35;
+        if (hz.vfxTimer <= 0.0) hz.vfxTimer = 0.06 + randomUnit() * 0.08;
         hz.suppressionBoost = Math.max(0.0, hz.suppressionBoost - intensity * 0.08);
     }
 
@@ -1940,7 +1963,7 @@ public abstract class Ship {
 
         if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS && !fromHazard) {
             hazardRolls++;
-            if (Math.random() < 0.20) {
+            if (randomUnit() < 0.20) {
                 InternalSystem redirected = pickSystem(InternalSystem.SHIELDS, InternalSystem.WEAPONS, InternalSystem.SENSORS);
                 if (redirected != null) {
                     double sysBefore = systemHealthFraction(redirected);
@@ -1955,7 +1978,7 @@ public abstract class Ship {
 
         if (room.id == ShipRoomLayout.RoomId.INTEGRITY_FIELD && after <= max * 0.20) {
             hazardRolls++;
-            if (Math.random() < 0.08) {
+            if (randomUnit() < 0.08) {
                 forceShieldOffline(Math.max(0.8, shieldRebootDelay * 0.55));
                 subsystemTransitions.add(InternalSystem.SHIELDS.name() + ":offline");
             }
@@ -1966,7 +1989,7 @@ public abstract class Ship {
             double fracLost = (before - after) / Math.max(1e-6, max);
             double ignitionChance = 0.10 + fracLost * 0.50;
             if (room.critical) ignitionChance += 0.12;
-            if (Math.random() < MathUtil.clamp(ignitionChance, 0.0, 0.88)) {
+            if (randomUnit() < MathUtil.clamp(ignitionChance, 0.0, 0.88)) {
                 igniteRoomFire(room.id, 0.40 + fracLost * 1.45);
                 subsystemTransitions.add("hazard:fire_ignited");
             }
@@ -2024,19 +2047,19 @@ public abstract class Ship {
             hz.damageTickTimer -= dt;
             if (hz.damageTickTimer <= 0.0) {
                 if (def != null) {
-                    double roomDmg = Math.max(0.8, hz.fireIntensity * (1.6 + Math.random() * 1.8));
+                    double roomDmg = Math.max(0.8, hz.fireIntensity * (1.6 + randomUnit() * 1.8));
                     if (def.critical) roomDmg *= 1.24;
                     roomDmg *= (1.0 - Math.min(0.45, hz.suppressionBoost * 0.20));
                     damageRoom(def, roomDmg, Double.NaN, Double.NaN, true);
                     applyHazardSubsystemInstability(def, hz);
                 }
-                hz.damageTickTimer = 0.34 + Math.random() * 0.36 + Math.min(0.24, hz.suppressionBoost * 0.12);
+                hz.damageTickTimer = 0.34 + randomUnit() * 0.36 + Math.min(0.24, hz.suppressionBoost * 0.12);
             }
 
             hz.instabilityTimer -= dt;
             if (hz.instabilityTimer <= 0.0 && hz.fireIntensity > 0.55) {
                 if (def != null) applyHazardSubsystemInstability(def, hz);
-                hz.instabilityTimer = 0.48 + Math.random() * 0.52;
+                hz.instabilityTimer = 0.48 + randomUnit() * 0.52;
             }
 
             hz.spreadTimer -= dt;
@@ -2046,7 +2069,7 @@ public abstract class Ship {
                         0.0,
                         0.90
                 );
-                if (def != null && def.neighbors.length > 0 && Math.random() < spreadChance) {
+                if (def != null && def.neighbors.length > 0 && randomUnit() < spreadChance) {
                     java.util.ArrayList<ShipRoomLayout.RoomId> eligible = new java.util.ArrayList<>();
                     for (ShipRoomLayout.RoomId nid : def.neighbors) {
                         if (nid == null) continue;
@@ -2056,28 +2079,28 @@ public abstract class Ship {
                         double frac = nCur / nMax;
                         RoomHazardState nHz = roomHazards.get(nid);
                         if (nHz != null && nHz.fireIntensity > 1.10) continue;
-                        if (frac < 0.98 || Math.random() < 0.28) {
+                        if (frac < 0.98 || randomUnit() < 0.28) {
                             eligible.add(nid);
                         }
                     }
                     if (!eligible.isEmpty()) {
-                        int idx = (int) Math.floor(Math.random() * eligible.size());
+                        int idx = (int) Math.floor(randomUnit() * eligible.size());
                         if (idx < 0 || idx >= eligible.size()) idx = 0;
                         double spreadIntensity = MathUtil.clamp(
-                                0.30 + hz.fireIntensity * (0.42 + Math.random() * 0.30),
+                                0.30 + hz.fireIntensity * (0.42 + randomUnit() * 0.30),
                                 0.20,
                                 2.2
                         );
                         igniteRoomFire(eligible.get(idx), spreadIntensity);
                     }
                 }
-                hz.spreadTimer = 0.56 + Math.random() * 0.62 + Math.min(0.20, hz.suppressionBoost * 0.10);
+                hz.spreadTimer = 0.56 + randomUnit() * 0.62 + Math.min(0.20, hz.suppressionBoost * 0.10);
             }
 
             hz.vfxTimer -= dt;
             if (hz.vfxTimer <= 0.0) {
                 spawnRoomFireVfx(def, hz.fireIntensity);
-                hz.vfxTimer = Math.max(0.04, 0.20 + Math.random() * 0.16 - hz.fireIntensity * 0.05);
+                hz.vfxTimer = Math.max(0.04, 0.20 + randomUnit() * 0.16 - hz.fireIntensity * 0.05);
             }
 
             if (hz.fireIntensity <= 0.02) {
@@ -2156,13 +2179,13 @@ public abstract class Ship {
         if (engMax != null && engMax > 1e-6) {
             damageSystem(InternalSystem.ENGINES, engMax * 0.05);
         }
-        if (Math.random() < 0.32) {
+        if (randomUnit() < 0.32) {
             Double warpMax = systemHpMax.get(InternalSystem.WARP_ENGINES);
             if (warpMax != null && warpMax > 1e-6) {
                 damageSystem(InternalSystem.WARP_ENGINES, warpMax * 0.05);
             }
         }
-        if (Math.random() < 0.18) {
+        if (randomUnit() < 0.18) {
             Double reactorMax = systemHpMax.get(InternalSystem.REACTOR_CORE);
             if (reactorMax != null && reactorMax > 1e-6) {
                 damageSystem(InternalSystem.REACTOR_CORE, reactorMax * 0.03);
@@ -2445,7 +2468,7 @@ public abstract class Ship {
     private void applyHazardSubsystemInstability(ShipRoomLayout.RoomDef room, RoomHazardState hz) {
         if (room == null || hz == null) return;
         double chance = MathUtil.clamp(0.06 + hz.fireIntensity * 0.18 + (room.critical ? 0.08 : 0.0), 0.0, 0.72);
-        if (Math.random() > chance) return;
+        if (randomUnit() > chance) return;
 
         InternalSystem primary = (room.primarySystem != null) ? room.primarySystem : secondaryInstabilitySystem(room.id);
         if (primary != null) {
@@ -2456,7 +2479,7 @@ public abstract class Ship {
         }
 
         InternalSystem secondary = secondaryInstabilitySystem(room.id);
-        if (secondary != null && secondary != primary && Math.random() < 0.45) {
+        if (secondary != null && secondary != primary && randomUnit() < 0.45) {
             double max = systemHpMax.getOrDefault(secondary, 0.0);
             if (max > 1e-6) {
                 damageSystem(secondary, max * (0.004 + hz.fireIntensity * 0.008));
@@ -2465,12 +2488,12 @@ public abstract class Ship {
 
         if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS
                 && hz.fireIntensity > 1.35
-                && Math.random() < 0.16) {
+                && randomUnit() < 0.16) {
             forceShieldOffline(Math.max(0.5, shieldRebootDelay * 0.35));
         }
         if (room.id == ShipRoomLayout.RoomId.MAGAZINES
                 && hz.fireIntensity > 1.10
-                && Math.random() < 0.12) {
+                && randomUnit() < 0.12) {
             double weaponMax = systemHpMax.getOrDefault(InternalSystem.WEAPONS, 0.0);
             if (weaponMax > 1e-6) {
                 damageSystem(InternalSystem.WEAPONS, weaponMax * 0.015);
@@ -2491,8 +2514,8 @@ public abstract class Ship {
 
     private void spawnRoomFireVfx(ShipRoomLayout.RoomDef room, double intensity) {
         if (intensity <= 0.05) return;
-        double localX = (Math.random() - 0.5) * radius * 0.24;
-        double localY = (Math.random() - 0.5) * radius * 0.24;
+        double localX = (randomUnit() - 0.5) * radius * 0.24;
+        double localY = (randomUnit() - 0.5) * radius * 0.24;
 
         if (room != null && room.xs != null && room.ys != null) {
             int n = Math.min(room.xs.length, room.ys.length);
@@ -2506,8 +2529,8 @@ public abstract class Ship {
                 cx /= n;
                 cy /= n;
                 double jitter = 0.10 + Math.min(0.22, intensity * 0.06);
-                localX = (cx + (Math.random() - 0.5) * jitter) * radius;
-                localY = (cy + (Math.random() - 0.5) * jitter) * radius;
+                localX = (cx + (randomUnit() - 0.5) * jitter) * radius;
+                localY = (cy + (randomUnit() - 0.5) * jitter) * radius;
             }
         }
 
@@ -2846,10 +2869,10 @@ public abstract class Ship {
 
         int rolls = (hullDamage >= 9) ? 2 : 1;
         for (int i = 0; i < rolls; i++) {
-            double dmg = Math.max(1.0, hullDamage * (0.58 + Math.random() * 0.82));
+            double dmg = Math.max(1.0, hullDamage * (0.58 + randomUnit() * 0.82));
             ShipRoomLayout.RoomDef room = primaryRoom;
-            if (room != null && i > 0 && room.neighbors.length > 0 && Math.random() < 0.38) {
-                int idx = (int) Math.floor(Math.random() * room.neighbors.length);
+            if (room != null && i > 0 && room.neighbors.length > 0 && randomUnit() < 0.38) {
+                int idx = (int) Math.floor(randomUnit() * room.neighbors.length);
                 if (idx < 0 || idx >= room.neighbors.length) idx = 0;
                 ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, room.neighbors[idx]);
                 if (neighbor != null) room = neighbor;
@@ -2896,7 +2919,7 @@ public abstract class Ship {
                 || primaryRoom.id == ShipRoomLayout.RoomId.POWER_CONDUITS) {
             double reactorFrac = roomHealthFraction(ShipRoomLayout.RoomId.REACTOR);
             double chance = (0.08 + (1.0 - reactorFrac) * 0.45 + severity * 0.18) * graceScale;
-            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.78)) {
+            if (randomUnit() < MathUtil.clamp(chance, 0.0, 0.78)) {
                 triggered = triggerReactorCriticalChain(impact, hullDamage, severity);
             }
         }
@@ -2906,7 +2929,7 @@ public abstract class Ship {
                 || isSystemDestroyed(InternalSystem.MAGAZINES))) {
             double magsFrac = roomHealthFraction(ShipRoomLayout.RoomId.MAGAZINES);
             double chance = (0.10 + (1.0 - magsFrac) * 0.42 + severity * 0.20) * graceScale;
-            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.82)) {
+            if (randomUnit() < MathUtil.clamp(chance, 0.0, 0.82)) {
                 triggered = triggerMagazineDetonationRisk(impact, hullDamage, severity);
             }
         }
@@ -2915,7 +2938,7 @@ public abstract class Ship {
                 || roomHealthFraction(ShipRoomLayout.RoomId.INTEGRITY_FIELD) < 0.28)) {
             double integFrac = roomHealthFraction(ShipRoomLayout.RoomId.INTEGRITY_FIELD);
             double chance = (0.11 + (1.0 - integFrac) * 0.48 + severity * 0.12) * graceScale;
-            if (Math.random() < MathUtil.clamp(chance, 0.0, 0.80)) {
+            if (randomUnit() < MathUtil.clamp(chance, 0.0, 0.80)) {
                 triggered = triggerIntegrityFieldCollapse(impact, hullDamage, severity);
             }
         }
@@ -3067,10 +3090,10 @@ public abstract class Ship {
         if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
             double hitAngle = Math.atan2(hitY - y, hitX - x);
             double rel = Math.abs(MathUtil.normalizeAngle(hitAngle - angle));
-            if (rel < Math.toRadians(45.0) && Math.random() < 0.55) {
+            if (rel < Math.toRadians(45.0) && randomUnit() < 0.55) {
                 return pickSystem(InternalSystem.WEAPONS, InternalSystem.SENSORS, InternalSystem.BRIDGE);
             }
-            if (rel > Math.toRadians(135.0) && Math.random() < 0.55) {
+            if (rel > Math.toRadians(135.0) && randomUnit() < 0.55) {
                 return pickSystem(InternalSystem.ENGINES, InternalSystem.WARP_ENGINES, InternalSystem.REACTOR_CORE);
             }
         }
@@ -3080,11 +3103,11 @@ public abstract class Ship {
 
     private InternalSystem pickSystem(InternalSystem... systems) {
         if (systems == null || systems.length == 0) return null;
-        int idx = (int) Math.floor(Math.random() * systems.length);
+        int idx = (int) Math.floor(randomUnit() * systems.length);
         if (idx < 0 || idx >= systems.length) idx = 0;
         InternalSystem out = systems[idx];
-        if (out == InternalSystem.SHIELDS && !shieldActive && Math.random() < 0.7) {
-            out = (Math.random() < 0.5) ? InternalSystem.ENGINES : InternalSystem.WEAPONS;
+        if (out == InternalSystem.SHIELDS && !shieldActive && randomUnit() < 0.7) {
+            out = (randomUnit() < 0.5) ? InternalSystem.ENGINES : InternalSystem.WEAPONS;
         }
         return out;
     }
@@ -3099,7 +3122,7 @@ public abstract class Ship {
         double breachScore = severity + Math.max(0.0, 0.52 - hpFrac) * 1.35;
         if (hullDamage >= 10) breachScore += 0.20;
         if (Math.abs(impact.normalizedX) < 0.22 && Math.abs(impact.normalizedY) < 0.22) breachScore += 0.10;
-        if (breachScore < 0.60 && Math.random() > breachScore * 0.70) return;
+        if (breachScore < 0.60 && randomUnit() > breachScore * 0.70) return;
 
         ShipRoomLayout.RoomDef breachedRoom = resolveRoomForImpact(impact, Double.NaN, Double.NaN);
         if (breachedRoom == null) return;
@@ -3108,7 +3131,7 @@ public abstract class Ship {
         double catastrophicChance = (breachScore > 1.05) ? 0.72 : 0.0;
         if (hullDamage >= Math.max(10, hpMax / 8)) catastrophicChance = Math.max(catastrophicChance, 0.60);
         catastrophicChance *= graceScale;
-        boolean catastrophic = Math.random() < MathUtil.clamp(catastrophicChance, 0.0, 0.90);
+        boolean catastrophic = randomUnit() < MathUtil.clamp(catastrophicChance, 0.0, 0.90);
         if (catastrophic) {
             int hullBefore = hp;
             List<String> transitions = new ArrayList<>(3);
@@ -3165,7 +3188,7 @@ public abstract class Ship {
         breachChance = MathUtil.clamp(breachChance, 0.0, 0.95);
 
         double breachRadius = 0.0;
-        if (Math.random() < breachChance) {
+        if (randomUnit() < breachChance) {
             double base = Math.max(2.8, radius * 0.06);
             double bonus = radius * (0.06 + severity * 0.17);
             breachRadius = MathUtil.clamp(base + bonus, 2.8, Math.max(4.0, radius * 0.42));
@@ -3253,7 +3276,7 @@ public abstract class Ship {
         int pellets = Math.max(1, ciwsPelletsPerBurst);
 
         for (int i = 0; i < pellets; i++) {
-            double jitter = (Math.random() - 0.5) * 2.0 * spread;
+            double jitter = (randomUnit() - 0.5) * 2.0 * spread;
             double a = MathUtil.normalizeAngle(aim + jitter);
 
             double sx = x + Math.cos(a) * (radius + 8);

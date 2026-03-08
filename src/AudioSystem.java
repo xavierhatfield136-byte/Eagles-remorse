@@ -184,11 +184,15 @@ public final class AudioSystem {
         final Map<String, Double> roleThrottleUntil = new HashMap<>();
         final Map<String, Integer> lastVariantByKey = new HashMap<>();
         final Map<String, Integer> lastSfxVariantByEvent = new HashMap<>();
+        final Map<String, Integer> voiceDispatchByEvent = new HashMap<>();
+        final Map<String, Integer> voiceDropByReason = new HashMap<>();
         final EnumMap<Ship.InternalSystem, Double> lastSystemFractions =
                 new EnumMap<>(Ship.InternalSystem.class);
         final EnumMap<ShipRoomLayout.RoomId, Double> lastRoomFireIntensity =
                 new EnumMap<>(ShipRoomLayout.RoomId.class);
 
+        int voiceDispatchCount = 0;
+        int voiceDropCount = 0;
         int activeVoicePriority = 0;
         double voicePriorityUntilSec = 0.0;
 
@@ -361,6 +365,12 @@ public final class AudioSystem {
             int captionVariants,
             int assetVariants) {}
 
+    public record VoiceTelemetrySnapshot(
+            int dispatchCount,
+            int dropCount,
+            Map<String, Integer> dispatchByEvent,
+            Map<String, Integer> dropsByReason) {}
+
     public static List<VoiceEventSpec> voiceEventMatrix() {
         List<VoiceEventSpec> out = new ArrayList<>();
         for (VoiceCue cue : VoiceCue.values()) {
@@ -377,6 +387,22 @@ public final class AudioSystem {
         }
         out.sort(Comparator.comparing(VoiceEventSpec::role).thenComparing(VoiceEventSpec::eventId));
         return out;
+    }
+
+    public static VoiceTelemetrySnapshot voiceTelemetry(GameContext ctx) {
+        if (ctx == null) {
+            return new VoiceTelemetrySnapshot(0, 0, Map.of(), Map.of());
+        }
+        RuntimeState st = stateFor(ctx);
+        if (st == null) {
+            return new VoiceTelemetrySnapshot(0, 0, Map.of(), Map.of());
+        }
+        return new VoiceTelemetrySnapshot(
+                st.voiceDispatchCount,
+                st.voiceDropCount,
+                Collections.unmodifiableMap(new HashMap<>(st.voiceDispatchByEvent)),
+                Collections.unmodifiableMap(new HashMap<>(st.voiceDropByReason))
+        );
     }
 
     private static RuntimeState stateFor(GameContext ctx) {
@@ -513,12 +539,24 @@ public final class AudioSystem {
         if (ctx == null || st == null || cue == null) return;
 
         Double cd = st.voiceCooldownUntil.get(cue);
-        if (cd != null && now < cd) return;
+        if (cd != null && now < cd) {
+            noteVoiceDrop(st, cue, "cooldown");
+            return;
+        }
         Double dedupe = st.voiceDedupeUntil.get(cue.cooldownKey);
-        if (dedupe != null && now < dedupe) return;
+        if (dedupe != null && now < dedupe) {
+            noteVoiceDrop(st, cue, "dedupe");
+            return;
+        }
         Double roleThrottle = st.roleThrottleUntil.get(cue.role);
-        if (roleThrottle != null && now < roleThrottle && cue.priority < 3) return;
-        if (now < st.voicePriorityUntilSec && cue.priority < st.activeVoicePriority) return;
+        if (roleThrottle != null && now < roleThrottle && cue.priority < 3) {
+            noteVoiceDrop(st, cue, "role_throttle");
+            return;
+        }
+        if (now < st.voicePriorityUntilSec && cue.priority < st.activeVoicePriority) {
+            noteVoiceDrop(st, cue, "priority_window");
+            return;
+        }
 
         st.voiceCooldownUntil.put(cue, now + Math.max(0.25, cue.cooldownSec));
         st.voiceDedupeUntil.put(cue.cooldownKey, now + Math.max(0.35, Math.min(2.4, cue.cooldownSec)));
@@ -563,6 +601,20 @@ public final class AudioSystem {
                 "voice",
                 System.nanoTime()
         ));
+        noteVoiceDispatch(st, cue);
+    }
+
+    private static void noteVoiceDrop(RuntimeState st, VoiceCue cue, String reason) {
+        if (st == null || cue == null || reason == null) return;
+        st.voiceDropCount++;
+        String key = cue.eventId + ":" + reason;
+        st.voiceDropByReason.put(key, st.voiceDropByReason.getOrDefault(key, 0) + 1);
+    }
+
+    private static void noteVoiceDispatch(RuntimeState st, VoiceCue cue) {
+        if (st == null || cue == null) return;
+        st.voiceDispatchCount++;
+        st.voiceDispatchByEvent.put(cue.eventId, st.voiceDispatchByEvent.getOrDefault(cue.eventId, 0) + 1);
     }
 
     private static void triggerSfx(GameContext ctx, SfxCue cue) {
