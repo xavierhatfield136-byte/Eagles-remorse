@@ -180,6 +180,8 @@ public class GameContext {
     public boolean voiceCaptionsEnabled = true;
     public CrewStation voiceMixFocus = CrewStation.CAPTAIN;
     public final java.util.EnumMap<CrewStation, Double> voiceRoleVolumes = new java.util.EnumMap<>(CrewStation.class);
+    public final java.util.EnumMap<CrewStation, Integer> portraitExpressionLevel = new java.util.EnumMap<>(CrewStation.class);
+    public final java.util.EnumMap<CrewStation, Double> portraitExpressionTimerSec = new java.util.EnumMap<>(CrewStation.class);
     public double orePriceMul = 1.0;
     public double orePriceT = 0.0;
     public double miningMul = 1.0;
@@ -228,6 +230,8 @@ public class GameContext {
     private void initAudioPreferences() {
         for (CrewStation station : CrewStation.values()) {
             voiceRoleVolumes.put(station, 1.0);
+            portraitExpressionLevel.put(station, 0);
+            portraitExpressionTimerSec.put(station, 0.0);
         }
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
         voiceCaptionsEnabled = persisted.voiceCaptionsEnabled;
@@ -246,6 +250,29 @@ public class GameContext {
     public void setVoiceRoleVolume(CrewStation station, double value) {
         if (station == null) return;
         voiceRoleVolumes.put(station, clampVoiceVol(value));
+    }
+
+    public int portraitExpression(CrewStation station) {
+        if (station == null) return 0;
+        return MathUtil.clamp(portraitExpressionLevel.getOrDefault(station, 0), 0, 3);
+    }
+
+    public void setPortraitExpression(CrewStation station, int expression, double holdSec) {
+        if (station == null) return;
+        portraitExpressionLevel.put(station, MathUtil.clamp(expression, 0, 3));
+        portraitExpressionTimerSec.put(station, Math.max(0.0, holdSec));
+    }
+
+    public void decayPortraitExpressions(double dt) {
+        double step = Math.max(0.0, dt);
+        if (step <= 0.0) return;
+        for (CrewStation station : CrewStation.values()) {
+            double t = Math.max(0.0, portraitExpressionTimerSec.getOrDefault(station, 0.0) - step);
+            portraitExpressionTimerSec.put(station, t);
+            if (t <= 0.0) {
+                portraitExpressionLevel.put(station, 0);
+            }
+        }
     }
 
     private static double clampVoiceVol(double v) {

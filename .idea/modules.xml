@@ -3,7 +3,6 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/client-3dimentions/client-3dimentions.iml" filepath="$PROJECT_DIR$/client-3dimentions/client-3dimentions.iml" />
-      <module fileurl="file://$PROJECT_DIR$/game.iml" filepath="$PROJECT_DIR$/game.iml" />
     </modules>
   </component>
 </project>

@@ -285,6 +285,7 @@ public final class AudioSystem {
             ctx.voiceCaptionT = Math.max(0.0, ctx.voiceCaptionT - Math.max(0.0, dt));
             if (ctx.voiceCaptionT <= 0.0) ctx.voiceCaption = "";
         }
+        ctx.decayPortraitExpressions(dt);
 
         RuntimeState st = stateFor(ctx);
         double now = nowSec();
@@ -588,6 +589,7 @@ public final class AudioSystem {
             playToneAsync(variantTone, variantMs, -20.0 + roleVolGainDb, false);
         }
         st.lastVariantByKey.put(cue.cooldownKey, variantIndex);
+        applyPortraitExpression(ctx, cue, variantIndex);
 
         if (ctx.voiceCaptionsEnabled) {
             ctx.voiceCaption = cue.roleLabel() + ": " + caption;
@@ -918,14 +920,32 @@ public final class AudioSystem {
 
     private static double voiceRoleVolume(GameContext ctx, String role) {
         if (ctx == null) return 1.0;
-        if (role == null) return 1.0;
+        GameContext.CrewStation station = stationForRole(role);
+        if (station == null) return 1.0;
+        return ctx.voiceRoleVolume(station);
+    }
+
+    private static void applyPortraitExpression(GameContext ctx, VoiceCue cue, int variantIndex) {
+        if (ctx == null || cue == null) return;
+        GameContext.CrewStation station = stationForRole(cue.role);
+        if (station == null) return;
+
+        int priority = MathUtil.clamp(cue.priority, 1, 3);
+        int variantBias = Math.floorMod(variantIndex, 2);
+        int expression = MathUtil.clamp(priority + variantBias - 1, 1, 3);
+        double holdSec = 1.15 + cue.priority * 0.28;
+        ctx.setPortraitExpression(station, expression, holdSec);
+    }
+
+    private static GameContext.CrewStation stationForRole(String role) {
+        if (role == null) return null;
         return switch (role) {
-            case "captain" -> ctx.voiceRoleVolume(GameContext.CrewStation.CAPTAIN);
-            case "helm" -> ctx.voiceRoleVolume(GameContext.CrewStation.HELM);
-            case "tactical" -> ctx.voiceRoleVolume(GameContext.CrewStation.TACTICAL);
-            case "engineering" -> ctx.voiceRoleVolume(GameContext.CrewStation.ENGINEERING);
-            case "science" -> ctx.voiceRoleVolume(GameContext.CrewStation.SCIENCE);
-            default -> 1.0;
+            case "captain" -> GameContext.CrewStation.CAPTAIN;
+            case "helm" -> GameContext.CrewStation.HELM;
+            case "tactical" -> GameContext.CrewStation.TACTICAL;
+            case "engineering" -> GameContext.CrewStation.ENGINEERING;
+            case "science" -> GameContext.CrewStation.SCIENCE;
+            default -> null;
         };
     }
 

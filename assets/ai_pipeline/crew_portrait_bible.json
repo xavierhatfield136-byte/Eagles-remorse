@@ -1,0 +1,80 @@
+{
+  "style_lock_prompt": "Photorealistic modern digital color portrait of one adult male starship crew member, one person only, upper-body framing from mid-torso up, face centered and fully visible, realistic human facial anatomy, natural skin texture, realistic eyes and teeth, short practical haircut, soft cinematic lighting, clean simple background, sharp focus on the face, contemporary photography look, TRON-inspired light-tech bridge uniform, conservative full-coverage clothing, high collar and long sleeves, only face and hands visible skin, no exposed chest or shoulders, no text, no logo, no watermark",
+  "negative_prompt": "black and white, grayscale, monochrome, sepia, vintage photo, old photo, antique photo, 1920s photo, 1930s photo, retro film, film grain, scratched film, aged paper texture, daguerreotype, female, woman, girl, feminine face, androgynous appearance, heavy makeup, false eyelashes, painted nails, cleavage, bra, bikini, skimpy outfit, nudity, nsfw, exposed chest, exposed shoulders, exposed midriff, transparent clothing, cgi, 3d render, anime, cartoon, painting, doll, wax skin, plastic skin, over-smoothing, deformed face, asymmetrical eyes, distorted mouth, extra fingers, extra limbs, extra head, duplicate people, two people, crowd, blurry face, lowres, cropped face, busy background, helmet, visor, mask, face covering, text, watermark, logo, signature",
+  "quality_constraints": [
+    "solo portrait, single character only",
+    "one visible face only",
+    "centered composition",
+    "upper-body framing from mid-torso up",
+    "clear face visibility",
+    "modern digital color photography look",
+    "contemporary portrait style",
+    "not vintage or monochrome",
+    "male adult crew member only",
+    "natural masculine facial structure",
+    "not feminine or androgynous",
+    "short practical hairstyle",
+    "no face coverings",
+    "TRON-inspired light-tech uniform styling",
+    "high collar and long sleeves",
+    "only face and hands visible skin",
+    "no visible text on clothing",
+    "no revealing clothing",
+    "simple smooth background",
+    "natural human proportions",
+    "no extra arms or fingers",
+    "no text overlays"
+  ],
+  "roles": [
+    {
+      "role": "captain",
+      "portrait_prompt": "Single male captain in his 40s to early 50s, one person only, male not female. Captain should be confident, stoic, sure of himself and his actions, but still listening to the player. Seasoned professional, steady direct gaze, subtle age lines, attentive posture, light stubble and masculine jawline, conservative TRON-inspired command uniform.",
+      "expression_prompts": {
+        "base": "neutral stoic expression, calm command confidence.",
+        "alt_01": "active listening expression, attentive eyes, respectful focus.",
+        "alt_02": "decisive expression, sure and composed, firm but natural jawline.",
+        "alt_03": "serious high-pressure expression, controlled, no panic."
+      }
+    },
+    {
+      "role": "helm",
+      "portrait_prompt": "Single young male helm officer in his 20s, one person only, male not female. Helm should be a confident younger member of the crew who gets excited easily. Expressive eyes and youthful features, still professional, clean-shaven masculine face, conservative TRON-inspired pilot uniform.",
+      "expression_prompts": {
+        "base": "neutral alert expression, eager confidence.",
+        "alt_01": "engaged listening expression, excited curiosity, slight grin.",
+        "alt_02": "focused piloting mindset expression, confident determination.",
+        "alt_03": "high-adrenaline but controlled expression, intense excitement, not fearful."
+      }
+    },
+    {
+      "role": "tactical",
+      "portrait_prompt": "Single male tactical officer in his 30s to 40s, one person only, male not female. Tactical should be reserved, precise, and level-headed, and only care about doing the job right. Emotionally controlled, job-first mindset, disciplined posture, short practical haircut and masculine facial structure, conservative TRON-inspired tactical uniform.",
+      "expression_prompts": {
+        "base": "neutral disciplined expression, analytical stillness.",
+        "alt_01": "analytical listening expression, precise focus, subtle brow tension.",
+        "alt_02": "targeting precision expression, steady eyes, controlled intensity.",
+        "alt_03": "urgent situation expression, calm and level-headed, purely task-focused."
+      }
+    },
+    {
+      "role": "engineering",
+      "portrait_prompt": "Single older male engineering officer in his late 50s to 60s, one person only, male not female. Engineering should be older with age in his voice, more cheerful, yet realistic about the situation. Clear age in his face, weathered and kind features, experienced veteran demeanor, gray stubble, conservative TRON-inspired engineering uniform.",
+      "expression_prompts": {
+        "base": "warm neutral expression, approachable and experienced.",
+        "alt_01": "cheerful supportive listening expression, reassuring slight smile.",
+        "alt_02": "practical problem-solving expression, focused realism.",
+        "alt_03": "crisis expression, serious and grounded, no panic."
+      }
+    },
+    {
+      "role": "science",
+      "portrait_prompt": "Single nerdy male science officer in his 30s, one person only, male not female. Science officer should be nerdy and around 30 years old. Sharp analytical personality, intelligent expressive eyes, curious and highly competent, believable real-world masculine facial features, optional subtle glasses, conservative TRON-inspired science uniform.",
+      "expression_prompts": {
+        "base": "neutral thoughtful expression, composed curiosity.",
+        "alt_01": "attentive listening expression, nerdy inquisitive focus.",
+        "alt_02": "active analysis expression, bright concentration, discovery excitement.",
+        "alt_03": "electronic-warfare pressure expression, concentrated urgency, controlled."
+      }
+    }
+  ]
+}

@@ -26,4 +26,11 @@ Validation and generation harnesses:
 - Build classes: `./gradlew compileJava`
 - Generate placeholder variant WAVs: `java -cp build/classes/java/main VoiceAssetStubGenerator`
 - Coverage check (strict): `java -cp build/classes/java/main VoiceCoverageHarness --strict`
+- Quality check (strict): `java -cp build/classes/java/main VoiceAssetQualityHarness --strict`
 - 5-minute anti-spam soak: `java -cp build/classes/java/main VoiceSoakHarness --seconds=300 --seed=424242`
+
+Local AI generation:
+
+- Configure role models: `assets/ai_pipeline/local_tts_voices.json` (copy from `.example`)
+- Generate role lines with local Piper: `./scripts/generate-local-crew-voice.ps1 -VoiceConfigPath assets/ai_pipeline/local_tts_voices.json`
+- Full local pipeline: `./scripts/run-local-ai-crew-pipeline.ps1 -VoiceConfigPath assets/ai_pipeline/local_tts_voices.json`

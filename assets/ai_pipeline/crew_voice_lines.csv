@@ -1,0 +1,64 @@
+role,event_id,variant,text,emotion,intensity,scene
+captain,combat_start,1,"All stations, battle posture.",command,2,combat_open
+captain,combat_start,2,"All hands, combat stations.",command,2,combat_open
+captain,combat_end,1,"Area secure. Stand down from combat alert.",relief,1,combat_close
+captain,order_push,1,"Press the attack now.",command,2,tactical_order
+captain,order_push,2,"Advance and maintain pressure.",command,2,tactical_order
+captain,order_push,3,"Push forward. Do not let them regroup.",command,3,tactical_order
+captain,order_retreat,1,"Break contact and fall back.",urgent,3,tactical_order
+captain,order_retreat,2,"Disengage and regroup.",urgent,2,tactical_order
+captain,order_retreat,3,"Retreat vector now.",urgent,3,tactical_order
+captain,order_escort,1,"Escort posture. Protect the objective.",command,2,tactical_order
+captain,order_escort,2,"Form escort screen around the asset.",command,2,tactical_order
+captain,order_escort,3,"Escort detail, tighten formation.",command,2,tactical_order
+captain,order_defend,1,"Hold the line. Defensive posture.",command,2,tactical_order
+captain,order_defend,2,"Defensive stations. Hold position.",command,2,tactical_order
+captain,order_defend,3,"Maintain defense coverage.",command,2,tactical_order
+helm,intercept,1,"Intercept course set.",focused,1,navigation
+helm,intercept,2,"Course laid in for intercept.",focused,1,navigation
+helm,intercept,3,"Intercept vector confirmed.",focused,1,navigation
+helm,evasive,1,"Executing evasive pattern.",urgent,2,navigation
+helm,evasive,2,"Evasive maneuvers underway.",urgent,2,navigation
+helm,evasive,3,"Evasive profile engaged.",urgent,2,navigation
+helm,evasive,4,"Hard break and weave now.",urgent,3,navigation
+helm,evasive,5,"Rolling evasive pattern, holding course correction.",urgent,3,navigation
+helm,rtb,1,"Returning to base vector.",focused,1,navigation
+helm,rtb,2,"Base return course plotted.",focused,1,navigation
+helm,rtb,3,"Coming home on base approach.",focused,1,navigation
+helm,intercept,4,"Fast intercept lane confirmed.",focused,2,navigation
+tactical,target_lock,1,"Target lock confirmed.",focused,1,fire_control
+tactical,target_lock,2,"Lock acquired.",focused,1,fire_control
+tactical,target_lock,3,"Weapons lock solid.",focused,1,fire_control
+tactical,target_lock,4,"Tracking solution stable.",focused,1,fire_control
+tactical,target_lost,1,"Target lock lost.",urgent,1,fire_control
+tactical,target_lost,2,"Lock broken.",urgent,1,fire_control
+tactical,target_lost,3,"Contact lost from lock.",urgent,1,fire_control
+tactical,target_lost,4,"Target left firing envelope.",urgent,1,fire_control
+tactical,missiles_inbound,1,"Missiles inbound.",urgent,3,threat_alert
+tactical,missiles_inbound,2,"Incoming missiles, bearing update.",urgent,3,threat_alert
+tactical,missiles_inbound,3,"Missile threat, impact window closing.",urgent,3,threat_alert
+tactical,missiles_inbound,4,"Defensive grid now, missile wave incoming.",urgent,3,threat_alert
+engineering,shields_low,1,"Shield integrity critical.",urgent,3,damage_control
+engineering,shields_low,2,"Shields are failing.",urgent,3,damage_control
+engineering,shields_low,3,"Shield reserves below safe limits.",urgent,3,damage_control
+engineering,reactor_hit,1,"Reactor section damaged.",urgent,3,damage_control
+engineering,reactor_hit,2,"Reactor taking damage.",urgent,3,damage_control
+engineering,reactor_hit,3,"Reactor instability rising.",urgent,3,damage_control
+engineering,repairs_started,1,"Damage control underway.",focused,2,damage_control
+engineering,repairs_started,2,"Repair teams are moving.",focused,2,damage_control
+engineering,repairs_started,3,"Engineering teams commencing repairs.",focused,2,damage_control
+engineering,repairs_completed,1,"Damage control complete.",relief,1,damage_control
+engineering,repairs_completed,2,"Repairs complete.",relief,1,damage_control
+engineering,repairs_completed,3,"Repair cycle finished.",relief,1,damage_control
+science,new_contact,1,"New hostile contact detected.",focused,2,sensors
+science,new_contact,2,"Additional contact on sensors.",focused,2,sensors
+science,new_contact,3,"Contact bloom expanding on long range scan.",focused,2,sensors
+science,new_contact,4,"Fresh signature acquired, marking hostile.",focused,2,sensors
+science,jammed,1,"Sensors are being jammed.",urgent,2,sensors
+science,jammed,2,"Electronic interference detected.",urgent,2,sensors
+science,jammed,3,"Signal-to-noise collapse, heavy jamming.",urgent,3,sensors
+science,jammed,4,"Sensor channels are saturated by interference.",urgent,3,sensors
+science,jammed,5,"Data integrity dropping under jamming pressure.",urgent,3,sensors
+science,scan_complete,1,"Scan complete.",focused,1,sensors
+science,scan_complete,2,"Analysis package complete.",focused,1,sensors
+science,scan_complete,3,"Full scan resolved and verified.",focused,1,sensors

@@ -1,0 +1,44 @@
+{
+  "global": {
+    "sample_rate_hz": 48000,
+    "target_lufs": -16.0,
+    "target_true_peak_dbfs": -3.0
+  },
+  "roles": {
+    "captain": {
+      "model_path": "C:/models/piper/en_US-voice-low.onnx",
+      "speaker": null,
+      "length_scale": 1.02,
+      "noise_scale": 0.58,
+      "noise_w": 0.75
+    },
+    "helm": {
+      "model_path": "C:/models/piper/en_US-voice-low.onnx",
+      "speaker": null,
+      "length_scale": 0.95,
+      "noise_scale": 0.7,
+      "noise_w": 0.82
+    },
+    "tactical": {
+      "model_path": "C:/models/piper/en_US-voice-low.onnx",
+      "speaker": null,
+      "length_scale": 0.94,
+      "noise_scale": 0.5,
+      "noise_w": 0.72
+    },
+    "engineering": {
+      "model_path": "C:/models/piper/en_US-voice-low.onnx",
+      "speaker": null,
+      "length_scale": 1.08,
+      "noise_scale": 0.62,
+      "noise_w": 0.8
+    },
+    "science": {
+      "model_path": "C:/models/piper/en_US-voice-low.onnx",
+      "speaker": null,
+      "length_scale": 0.98,
+      "noise_scale": 0.65,
+      "noise_w": 0.79
+    }
+  }
+}

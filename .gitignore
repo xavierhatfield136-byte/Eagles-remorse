@@ -31,3 +31,7 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Local AI pipeline machine-specific config ###
+assets/ai_pipeline/local_tts_voices.json
+assets/ai_pipeline/models/

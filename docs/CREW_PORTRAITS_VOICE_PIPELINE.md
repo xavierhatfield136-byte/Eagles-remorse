@@ -2,6 +2,9 @@
 
 Date: 2026-03-03
 
+Update: for the local-model workflow and automated generation scripts, see
+`docs/LOCAL_AI_CREW_PIPELINE.md`.
+
 ## Goal
 
 Ship crew portraits and voice callouts quickly, with consistent style and file naming so engineering hookup is simple.

@@ -29,3 +29,9 @@ Validation/readability harness:
 
 - `./gradlew compileJava`
 - `java -cp build/classes/java/main CrewPortraitPipelineHarness`
+
+Local AI generation:
+
+- Portrait bible: `assets/ai_pipeline/crew_portrait_bible.json`
+- Generate portraits from local SD API: `./scripts/generate-local-crew-portraits.ps1`
+- Full local pipeline: `./scripts/run-local-ai-crew-pipeline.ps1`

@@ -24,6 +24,7 @@ import javax.imageio.ImageIO;
 public final class CrewPortraitSystem {
     private static final File ROOT = new File("assets/crew_portraits");
     private static final String[] CANDIDATE_SUFFIXES = {"", "_alt_01", "_alt_02", "_alt_03"};
+    private static final int MAX_EXPRESSION_LEVEL = 3;
     private static final String[] ROLE_KEYS = {"captain", "helm", "tactical", "engineering", "science"};
     private static final Pattern VALID_NAME =
             Pattern.compile("^(captain|helm|tactical|engineering|science)(?:_(alt_0[1-3]))?\\.png$");
@@ -32,8 +33,9 @@ public final class CrewPortraitSystem {
     private static final double HUD_READABILITY_MIN = 0.22;
     private static final Map<String, PortraitAsset> CACHE = new HashMap<>();
     public static final String STYLE_LOCK_PROMPT =
-            "Stylized sci-fi bridge officer portrait, chest-up, clean cinematic lighting, realistic proportions, " +
-                    "sharp facial detail, subtle uniform paneling, cool starship bridge background, " +
+            "Photorealistic solo portrait of one real human starship bridge officer, one person only, bareheaded with no helmet or headgear, head-and-shoulders chest-up framing, face centered and fully visible, natural skin texture, " +
+                    "physically accurate face anatomy, realistic eye detail, cinematic practical lighting, " +
+                    "subtle depth of field, sharp focus on face, clean futuristic bridge uniform with smooth technical fabric and minimal seam lines, no armor or tactical gear, simple uncluttered background with soft neutral gradient and faint starship tones, " +
                     "high readability at small UI sizes, no text, no logo, no watermark";
 
     private CrewPortraitSystem() {}
@@ -48,12 +50,18 @@ public final class CrewPortraitSystem {
             List<PortraitIssue> issues) {}
 
     public static PortraitAsset getPortrait(GameContext.CrewStation station) {
+        return getPortrait(station, 0);
+    }
+
+    public static PortraitAsset getPortrait(GameContext.CrewStation station, int expressionLevel) {
         String role = roleKey(station);
+        int expression = MathUtil.clamp(expressionLevel, 0, MAX_EXPRESSION_LEVEL);
+        String cacheKey = role + "#" + expression;
         synchronized (CACHE) {
-            PortraitAsset cached = CACHE.get(role);
+            PortraitAsset cached = CACHE.get(cacheKey);
             if (cached != null) return cached;
-            PortraitAsset loaded = loadPortrait(role);
-            CACHE.put(role, loaded);
+            PortraitAsset loaded = loadPortrait(role, expression);
+            CACHE.put(cacheKey, loaded);
             return loaded;
         }
     }
@@ -74,7 +82,7 @@ public final class CrewPortraitSystem {
     }
 
     public static List<String> fallbackChainFor(GameContext.CrewStation station) {
-        return fallbackChainForRole(roleKey(station));
+        return fallbackChainForRole(roleKey(station), 0);
     }
 
     public static PortraitAudit auditLibrary() {
@@ -168,9 +176,9 @@ public final class CrewPortraitSystem {
         }
     }
 
-    private static PortraitAsset loadPortrait(String role) {
+    private static PortraitAsset loadPortrait(String role, int expressionLevel) {
         if (role == null || role.isBlank()) role = "captain";
-        for (String name : fallbackChainForRole(role)) {
+        for (String name : fallbackChainForRole(role, expressionLevel)) {
             File file = new File(ROOT, name);
             if (!file.isFile()) continue;
             try {
@@ -185,18 +193,33 @@ public final class CrewPortraitSystem {
         return new PortraitAsset(buildPlaceholder(role), false, role + " (placeholder)");
     }
 
-    private static List<String> fallbackChainForRole(String role) {
+    private static List<String> fallbackChainForRole(String role, int expressionLevel) {
         String normalizedRole = normalizeRole(role);
-        List<String> chain = new ArrayList<>(CANDIDATE_SUFFIXES.length * 2);
+        List<String> chain = new ArrayList<>(CANDIDATE_SUFFIXES.length * 2 + 2);
+        String preferred = expressionSuffix(expressionLevel);
+        if (!preferred.isBlank()) {
+            chain.add(normalizedRole + preferred + ".png");
+        }
         for (String suffix : CANDIDATE_SUFFIXES) {
-            chain.add(normalizedRole + suffix + ".png");
+            String name = normalizedRole + suffix + ".png";
+            if (!chain.contains(name)) chain.add(name);
         }
         if (!"captain".equals(normalizedRole)) {
+            if (!preferred.isBlank()) {
+                chain.add("captain" + preferred + ".png");
+            }
             for (String suffix : CANDIDATE_SUFFIXES) {
-                chain.add("captain" + suffix + ".png");
+                String name = "captain" + suffix + ".png";
+                if (!chain.contains(name)) chain.add(name);
             }
         }
         return chain;
+    }
+
+    private static String expressionSuffix(int expressionLevel) {
+        int level = MathUtil.clamp(expressionLevel, 0, MAX_EXPRESSION_LEVEL);
+        if (level <= 0) return "";
+        return "_alt_0" + level;
     }
 
     private static String normalizeRole(String role) {
