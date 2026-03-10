@@ -51,7 +51,7 @@ public final class SfxManifest {
             event("impact.shield.energy", "impacts", "shield_energy", Category.IMPACT, 2, 0.05, -13.0, 2, true),
             event("impact.shield.beam", "impacts", "shield_beam", Category.IMPACT, 2, 0.05, -13.0, 2, true),
             event("impact.shield.explosive", "impacts", "shield_explosive", Category.IMPACT, 2, 0.05, -13.0, 2, true),
-            event("impact.hull.kinetic", "impacts", "hull_kinetic", Category.IMPACT, 2, 0.05, -12.0, 2, true),
+            event("impact.hull.kinetic", "impacts", "hull_kinetic", Category.IMPACT, 2, 0.05, -10.5, 2, true),
             event("impact.hull.energy", "impacts", "hull_energy", Category.IMPACT, 2, 0.05, -12.0, 2, true),
             event("impact.hull.beam", "impacts", "hull_beam", Category.IMPACT, 2, 0.05, -12.0, 2, true),
             event("impact.hull.explosive", "impacts", "hull_explosive", Category.IMPACT, 2, 0.05, -12.0, 2, true),

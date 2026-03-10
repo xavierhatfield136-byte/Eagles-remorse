@@ -68,6 +68,8 @@ public class CollisionSystem {
                         if (showImpactVfx) {
                             VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(2, p.damage));
                         }
+                        // Preserve audible feedback for glancing/mitigated hull contacts.
+                        AudioSystem.onHullImpact(ctx, impactStyle);
                     }
 
                     if (showImpactVfx) ScreenShake.kick(2.2);
@@ -129,6 +131,8 @@ public class CollisionSystem {
                     if (showImpactVfx) {
                         VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
                     }
+                    // Preserve audible feedback for glancing/mitigated hull contacts.
+                    AudioSystem.onHullImpact(ctx, impactStyle);
                 }
 
                 p.alive = false;
