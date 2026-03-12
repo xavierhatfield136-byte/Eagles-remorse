@@ -73,8 +73,8 @@ tasks.withType(Pmd).configureEach {
 }
 
 spotbugs {
-    effort = "max"
-    reportLevel = "medium"
+    effort = com.github.spotbugs.snom.Effort.valueOf("MAX")
+    reportLevel = com.github.spotbugs.snom.Confidence.valueOf("MEDIUM")
     ignoreFailures = true
 }
 

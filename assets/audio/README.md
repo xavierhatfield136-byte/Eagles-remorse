@@ -24,8 +24,14 @@ Weapons:
 - `weapons/wave_fire_01.wav`
 
 Impacts:
-- `impacts/shield_hit_01.wav`
-- `impacts/hull_hit_01.wav`
+- `impacts/shield_kinetic_01.wav`
+- `impacts/shield_energy_01.wav`
+- `impacts/shield_beam_01.wav`
+- `impacts/shield_explosive_01.wav`
+- `impacts/hull_kinetic_01.wav`
+- `impacts/hull_energy_01.wav`
+- `impacts/hull_beam_01.wav`
+- `impacts/hull_explosive_01.wav`
 - `impacts/explosion_01.wav`
 
 UI:

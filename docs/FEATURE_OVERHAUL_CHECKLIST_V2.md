@@ -242,7 +242,7 @@ Phase 9 Acceptance:
 ## Performance and Stability Budgets
 - [x] Room-hit resolution overhead target: less than 0.2 ms average per 100 impact checks.
 - [x] Hazard update overhead target: less than 1.0 ms per frame at 200 active ships.
-- [ ] X-ray UI draw overhead target: less than 0.7 ms when open.
+- [x] X-ray UI draw overhead target: less than 0.7 ms when open.
 - [x] Audio event dispatch overhead target: less than 0.2 ms/frame average.
 - [x] Memory overhead target for room/hazard state: less than 40 MB at fleet stress profile.
 

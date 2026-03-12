@@ -28,10 +28,19 @@ public class Renderer {
     private static final Font XRAY_SYMBOL_FONT = new Font("Consolas", Font.BOLD, 10);
     private static final Font XRAY_HP_FONT = new Font("Consolas", Font.PLAIN, 10);
     private static final String[] XRAY_PCT_LABELS = buildXrayPctLabels();
+    // Cache rendered x-ray panels for a short window to avoid rebuilding the full panel every draw.
+    private static final long XRAY_PANEL_FRAME_CACHE_NS = 36_000_000L;
     private static final java.util.WeakHashMap<Ship, EnumMap<ShipRoomLayout.RoomId, Integer>> XRAY_ROOM_PCT_CACHE =
             new java.util.WeakHashMap<>();
     private static final java.util.WeakHashMap<Ship, Long> XRAY_ROOM_PCT_CACHE_TS =
             new java.util.WeakHashMap<>();
+    private static final java.util.WeakHashMap<Ship, XrayPanelFrameCache> XRAY_PANEL_CACHE =
+            new java.util.WeakHashMap<>();
+    private static final Font XRAY_META_FONT = new Font("Consolas", Font.PLAIN, 10);
+    private static final Font XRAY_REPAIR_FONT = new Font("Consolas", Font.BOLD, 8);
+    private static final Stroke XRAY_HIT_STROKE = new BasicStroke(1.8f);
+    private static final Stroke XRAY_DISABLED_STROKE = new BasicStroke(1.5f);
+    private static final Stroke XRAY_FOCUS_STROKE = new BasicStroke(2.1f);
 
     // ------------------------------------------------------------
     // Option 8: Strategic map / waypoints / pings
@@ -1971,6 +1980,73 @@ public class Renderer {
         }
     }
 
+    private static final class XrayPanelFrameCache {
+        BufferedImage image;
+        int width;
+        int height;
+        int titleHash;
+        int subtitleHash;
+        boolean interactive;
+        GameContext.XrayFilterMode filterMode;
+        ShipRoomLayout.RoomId focusedRoom;
+        int cursorX;
+        int cursorY;
+        ShipRoomLayout.RoomId hoveredRoom;
+        long renderedAtNanos;
+    }
+
+    private static XrayPanelFrameCache xrayPanelCacheFor(Ship ship) {
+        return XRAY_PANEL_CACHE.computeIfAbsent(ship, k -> new XrayPanelFrameCache());
+    }
+
+    private static BufferedImage ensureXrayPanelImage(XrayPanelFrameCache cache, int w, int h) {
+        if (cache.image == null || cache.width != w || cache.height != h) {
+            cache.image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            cache.width = w;
+            cache.height = h;
+        }
+        return cache.image;
+    }
+
+    private static boolean canReuseXrayPanelCache(XrayPanelFrameCache cache,
+                                                  long nowNanos,
+                                                  int w, int h,
+                                                  String title, String subtitle,
+                                                  boolean interactive,
+                                                  GameContext.XrayFilterMode filterMode,
+                                                  ShipRoomLayout.RoomId focusedRoom,
+                                                  int cursorX, int cursorY) {
+        if (cache == null || cache.image == null) return false;
+        if (cache.width != w || cache.height != h) return false;
+        if (cache.interactive != interactive) return false;
+        if ((nowNanos - cache.renderedAtNanos) > XRAY_PANEL_FRAME_CACHE_NS) return false;
+        if (cache.titleHash != java.util.Objects.hashCode(title)) return false;
+        if (cache.subtitleHash != java.util.Objects.hashCode(subtitle)) return false;
+        if (!interactive) return true;
+        if (cache.filterMode != filterMode) return false;
+        if (cache.focusedRoom != focusedRoom) return false;
+        return cache.cursorX == cursorX && cache.cursorY == cursorY;
+    }
+
+    private static void updateXrayPanelCacheMeta(XrayPanelFrameCache cache,
+                                                 long nowNanos,
+                                                 String title, String subtitle,
+                                                 boolean interactive,
+                                                 GameContext.XrayFilterMode filterMode,
+                                                 ShipRoomLayout.RoomId focusedRoom,
+                                                 int cursorX, int cursorY,
+                                                 ShipRoomLayout.RoomId hoveredRoom) {
+        cache.renderedAtNanos = nowNanos;
+        cache.titleHash = java.util.Objects.hashCode(title);
+        cache.subtitleHash = java.util.Objects.hashCode(subtitle);
+        cache.interactive = interactive;
+        cache.filterMode = filterMode;
+        cache.focusedRoom = focusedRoom;
+        cache.cursorX = cursorX;
+        cache.cursorY = cursorY;
+        cache.hoveredRoom = hoveredRoom;
+    }
+
     public static ShipRoomLayout.RoomId playerXrayRoomAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         XrayStackLayout layout = computeXrayStackLayout(ctx.player, ctx.lockedTarget, ctx.shopOpen, viewW, viewH);
@@ -1987,6 +2063,52 @@ public class Renderer {
 
     private static void drawShipXrayPanel(Graphics2D g2, GameContext ctx, Ship ship, int x, int y, int w, int h,
                                           String title, String subtitle, boolean interactive) {
+        if (g2 == null || ship == null) return;
+        if (w < 80 || h < 80) return;
+
+        long nowNanos = System.nanoTime();
+        GameContext.XrayFilterMode filterMode = (ctx == null || ctx.xrayFilterMode == null)
+                ? GameContext.XrayFilterMode.ALL
+                : ctx.xrayFilterMode;
+        ShipRoomLayout.RoomId focusedRoom = (ctx == null) ? null : ctx.xrayFocusedRoom;
+        int cursorX = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenX);
+        int cursorY = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenY);
+
+        XrayPanelFrameCache cache = xrayPanelCacheFor(ship);
+        if (canReuseXrayPanelCache(cache, nowNanos, w, h, title, subtitle, interactive, filterMode, focusedRoom, cursorX, cursorY)) {
+            if (interactive && ctx != null) ctx.xrayHoveredRoom = cache.hoveredRoom;
+            g2.drawImage(cache.image, x, y, null);
+            return;
+        }
+
+        BufferedImage panelImage = ensureXrayPanelImage(cache, w, h);
+        Graphics2D cg = panelImage.createGraphics();
+        try {
+            cg.setComposite(AlphaComposite.Clear);
+            cg.fillRect(0, 0, w, h);
+            cg.setComposite(AlphaComposite.SrcOver);
+            cg.translate(-x, -y);
+            drawShipXrayPanelImmediate(cg, ctx, ship, x, y, w, h, title, subtitle, interactive);
+        } finally {
+            cg.dispose();
+        }
+
+        ShipRoomLayout.RoomId hoveredRoom = (interactive && ctx != null) ? ctx.xrayHoveredRoom : null;
+        updateXrayPanelCacheMeta(
+                cache,
+                nowNanos,
+                title, subtitle,
+                interactive,
+                filterMode,
+                focusedRoom,
+                cursorX, cursorY,
+                hoveredRoom
+        );
+        g2.drawImage(panelImage, x, y, null);
+    }
+
+    private static void drawShipXrayPanelImmediate(Graphics2D g2, GameContext ctx, Ship ship, int x, int y, int w, int h,
+                                                   String title, String subtitle, boolean interactive) {
         if (g2 == null || ship == null) return;
         if (w < 80 || h < 80) return;
 
@@ -2101,7 +2223,7 @@ public class Renderer {
 
             if (hitStrength > 0.01) {
                 int a = MathUtil.clamp((int) Math.round(130 + hitStrength * 110), 0, 255);
-                g2.setStroke(new BasicStroke(1.8f));
+                g2.setStroke(XRAY_HIT_STROKE);
                 g2.setColor(new Color(255, 245, 145, a));
                 g2.drawPolygon(p);
                 g2.setStroke(oldStroke);
@@ -2114,7 +2236,7 @@ public class Renderer {
             if (disabled) {
                 Rectangle b = p.getBounds();
                 g2.setColor(new Color(20, 22, 28, 180));
-                g2.setStroke(new BasicStroke(1.5f));
+                g2.setStroke(XRAY_DISABLED_STROKE);
                 g2.drawLine(b.x + 2, b.y + 2, b.x + b.width - 2, b.y + b.height - 2);
                 g2.drawLine(b.x + 2, b.y + b.height - 2, b.x + b.width - 2, b.y + 2);
                 g2.setStroke(oldStroke);
@@ -2160,7 +2282,7 @@ public class Renderer {
                 g2.setColor(new Color(145, 255, 170, 200));
                 g2.fillOval(cx - 4, cy + 14, 8, 8);
                 g2.setColor(new Color(10, 35, 16, 220));
-                g2.setFont(new Font("Consolas", Font.BOLD, 8));
+                g2.setFont(XRAY_REPAIR_FONT);
                 g2.drawString("R", cx - 3, cy + 21);
             }
             // Overlay: power routing intensity bar
@@ -2179,7 +2301,7 @@ public class Renderer {
             g2.fillRect(barX, barY, barFill, 2);
 
             if (focused || hovered) {
-                g2.setStroke(new BasicStroke(2.1f));
+                g2.setStroke(XRAY_FOCUS_STROKE);
                 g2.setColor(new Color(130, 220, 255, 230));
                 g2.drawPolygon(p);
                 g2.setStroke(oldStroke);
@@ -2196,21 +2318,21 @@ public class Renderer {
             String roomLabel = xrayRoomDisplayLabel(detailRoom);
             double power = xrayPowerRoutingIntensity(ship, roomDef);
             String line = roomLabel + "  HP " + pct + "%  FIRE " + String.format("%.2f", fire) + "  POWER " + (int) Math.round(power * 100.0) + "%";
-            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setFont(XRAY_META_FONT);
             g2.setColor(new Color(220, 244, 255, 220));
             g2.drawString(line, x + 10, y + h - 10);
             drawXrayTooltip(g2, mapRect, cursorX, cursorY, roomLabel, pct, fire, power, ship, roomDef);
         } else if (hottestRoomLabel != null && hottestHit > 0.01) {
-            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setFont(XRAY_META_FONT);
             g2.setColor(new Color(255, 228, 164, 230));
             g2.drawString("HIT ROOM: " + hottestRoomLabel, x + 10, y + h - 10);
         } else {
-            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setFont(XRAY_META_FONT);
             g2.setColor(new Color(170, 210, 240, 180));
             g2.drawString("HIT ROOM: NONE", x + 10, y + h - 10);
         }
 
-        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setFont(XRAY_META_FONT);
         g2.setColor(new Color(190, 230, 255, 180));
         g2.drawString("RED<35%  AMBER<70%  BLUE>=70%  ORANGE=FIRE", x + 10, y + h - 34);
         String filterLabel = (filterMode == null) ? "ALL" : filterMode.name();
@@ -2311,7 +2433,7 @@ public class Renderer {
                 && ship.isSystemDestroyed(roomDef.primarySystem)) ? "DISABLED" : "ONLINE");
 
         Font oldFont = g2.getFont();
-        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setFont(XRAY_META_FONT);
         FontMetrics fm = g2.getFontMetrics();
         int tw = Math.max(fm.stringWidth(line1), Math.max(fm.stringWidth(line2), fm.stringWidth(line3))) + 14;
         int th = 44;

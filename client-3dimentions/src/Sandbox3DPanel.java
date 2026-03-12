@@ -96,18 +96,28 @@ final class Sandbox3DPanel extends JPanel implements ActionListener {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (UISystem.handleCoreMenuClick(ctx, e, viewportW(), viewportH())) {
+                    return;
+                }
+                if (UISystem.handleXrayClick(ctx, e, viewportW(), viewportH())) {
+                    return;
+                }
+                if (ctx.mapOpen) {
+                    UISystem.handleMapClick(ctx, e, viewportW(), viewportH());
+                    return;
+                }
                 if (ctx.state == GameState.PAUSED) return;
-                if (ctx.shopOpen || ctx.baseMenuOpen) return;
+                if (ctx.shopOpen || ctx.baseMenuOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return;
 
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimary = true;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondary = true;
+                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
+                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;
                 if (SwingUtilities.isMiddleMouseButton(e)) GameplayActions.lockUnderMouse(ctx, controls);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimary = false;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondary = false;
+                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = false;
+                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = false;
             }
         });
 
@@ -115,9 +125,12 @@ final class Sandbox3DPanel extends JPanel implements ActionListener {
             @Override
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
+                if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
+                if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
                 GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode);
+                DevTools.handleKeyPressed(e);
             }
         });
     }
@@ -150,10 +163,10 @@ final class Sandbox3DPanel extends JPanel implements ActionListener {
             if (onExit != null) onExit.run();
         });
 
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimary = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, true), "primaryUp", () -> ctx.firingPrimary = false);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, false), "secondaryDown", () -> ctx.firingSecondary = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, true), "secondaryUp", () -> ctx.firingSecondary = false);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimaryManual = true);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, true), "primaryUp", () -> ctx.firingPrimaryManual = false);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, false), "secondaryDown", () -> ctx.firingSecondaryManual = true);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, true), "secondaryUp", () -> ctx.firingSecondaryManual = false);
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, false), "miningDown", () -> ctx.miningKeyDown = true);
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, true), "miningUp", () -> ctx.miningKeyDown = false);
 

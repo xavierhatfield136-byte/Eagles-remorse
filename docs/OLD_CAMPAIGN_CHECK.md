@@ -1,4 +1,4 @@
-# M3 3D Campaign Validation (Sectors 1-3)
+# Legacy M3 3D Campaign Validation (Sectors 1-3)
 
 ## Goal
 - Complete the remaining M3 item: validate `CAMPAIGN_OPS` loop through sectors `1-3` in `Main3D`.

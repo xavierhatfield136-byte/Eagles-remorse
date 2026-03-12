@@ -1,7 +1,7 @@
 # 3D Client Module (`client-3dimentions`)
 
 Purpose:
-- Host the new LibGDX-based 3D frontend.
+- Host the migration 3D frontend sandbox.
 - Reuse shared simulation logic from the core module.
 
 Current status:
@@ -18,4 +18,5 @@ Run (from terminal):
 
 Notes:
 - This is a migration bootstrap renderer (pseudo-3D projection), not final art/runtime.
+- The current client path is Swing-based; this module is intentionally framework-light for rapid iteration.
 - Targeting, objective text, and waypoint indicators are rendered in world space.
