@@ -198,7 +198,7 @@ Phase 6 Acceptance:
 - [x] disabled rooms
 
 Phase 7 Acceptance:
-- [ ] X-ray map updates in real time and remains readable in combat.
+- [x] X-ray map updates in real time and remains readable in combat.
 - [x] Room states match subsystem and hazard states.
 
 ## Phase 8 - Room-Accurate HP and Hit Reflection

@@ -26,7 +26,7 @@ public final class PhysicsSystem {
             ctx.projectiles.add(shot);
             if (s == ctx.player) {
                 EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
-                AudioSystem.onWeaponWave(ctx);
+                AudioSystem.onWeaponWave(ctx, s);
                 ScreenShake.kick(8.0);
             } else {
                 ScreenShake.kick(3.5);
@@ -87,7 +87,7 @@ public final class PhysicsSystem {
                     ctx.projectiles.addAll(ctx.player.firePrimary(ctx.cursorWorldX, ctx.cursorWorldY, dt));
                 }
                 if (ctx.projectiles.size() > beforePrimary) {
-                    AudioSystem.onWeaponPrimary(ctx);
+                    AudioSystem.onWeaponPrimary(ctx, ctx.player);
                 }
             }
 
@@ -99,7 +99,7 @@ public final class PhysicsSystem {
                     int beforeSecondary = ctx.projectiles.size();
                     ctx.projectiles.addAll(ctx.player.fireSecondary(target, dt));
                     if (ctx.projectiles.size() > beforeSecondary) {
-                        AudioSystem.onWeaponSecondary(ctx);
+                        AudioSystem.onWeaponSecondary(ctx, ctx.player);
                     }
                 }
             }

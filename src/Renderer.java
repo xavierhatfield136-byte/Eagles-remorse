@@ -176,15 +176,27 @@ public class Renderer {
         return new Color(MathUtil.clamp(r, 0, 255), MathUtil.clamp(g, 0, 255), MathUtil.clamp(bl, 0, 255));
     }
 
-    private static Color shieldFaceColor(int face, int alpha) {
-        int a = Math.max(0, Math.min(255, alpha));
-        return switch (face) {
-            case Ship.SHIELD_FACE_FORE -> new Color(130, 225, 255, a);
-            case Ship.SHIELD_FACE_LEFT -> new Color(120, 190, 255, a);
-            case Ship.SHIELD_FACE_RIGHT -> new Color(120, 190, 255, a);
-            case Ship.SHIELD_FACE_REAR -> new Color(110, 170, 240, a);
-            default -> new Color(120, 200, 255, a);
+    private static Color shieldTeamColor(Ship ship) {
+        Faction faction = (ship == null || ship.faction == null) ? Faction.ALLY : ship.faction;
+        return switch (faction.teamId()) {
+            case 1 -> new Color(255, 132, 132); // Team B / Enemy
+            case 2 -> new Color(126, 246, 170); // Team C
+            case 3 -> new Color(255, 214, 138); // Team D
+            default -> new Color(128, 206, 255); // Team A / Player / Ally
         };
+    }
+
+    private static Color shieldFaceColor(Ship ship, int face, int alpha) {
+        int a = Math.max(0, Math.min(255, alpha));
+        Color base = shieldTeamColor(ship);
+        Color faceTint = switch (face) {
+            case Ship.SHIELD_FACE_FORE -> mixColor(base, Color.WHITE, 0.24);
+            case Ship.SHIELD_FACE_LEFT -> base;
+            case Ship.SHIELD_FACE_RIGHT -> base;
+            case Ship.SHIELD_FACE_REAR -> mixColor(base, new Color(44, 50, 68), 0.20);
+            default -> base;
+        };
+        return new Color(faceTint.getRed(), faceTint.getGreen(), faceTint.getBlue(), a);
     }
 
     private static String shieldFaceReadout(Ship ship) {
@@ -268,7 +280,7 @@ public class Renderer {
             double center = MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, i) - ship.angle);
             double frac = ship.shieldFaceFraction(i);
             double energy = Math.max(0.0, Math.min(1.0, frac));
-            Color base = shieldFaceColor(i, 255);
+            Color base = shieldFaceColor(ship, i, 255);
 
             // Depleted face still shows a dim scaffold.
             g.setColor(withAlpha(base, 22));
@@ -342,7 +354,12 @@ public class Renderer {
     // ------------------------------
 
     public static void drawAsteroids(Graphics2D g2, List<Asteroid> asteroids) {
+        drawAsteroids(g2, asteroids, null);
+    }
+
+    public static void drawAsteroids(Graphics2D g2, List<Asteroid> asteroids, Player player) {
         if (asteroids == null) return;
+        Asteroid promptAsteroid = findNearbyAsteroidPromptTarget(asteroids, player);
         for (Asteroid a : asteroids) {
             if (a == null) continue;
 
@@ -393,6 +410,7 @@ public class Renderer {
                 g2.drawOval(x - rr2, y - rr2, rr2 * 2, rr2 * 2);
             }
         }
+        drawAsteroidMinePrompt(g2, promptAsteroid);
     }
 
     public static void drawAsteroidDangerHeatmap(Graphics2D g2, List<Asteroid> asteroids) {
@@ -511,6 +529,50 @@ public class Renderer {
         }
 
         ga.dispose();
+    }
+
+    private static Asteroid findNearbyAsteroidPromptTarget(List<Asteroid> asteroids, Player player) {
+        if (asteroids == null || asteroids.isEmpty() || player == null) return null;
+        if (!player.alive || player.dying || player.hp <= 0) return null;
+        double range = Math.max(150.0, player.miningRange + 48.0);
+        double bestD2 = range * range;
+        Asteroid best = null;
+        for (Asteroid a : asteroids) {
+            if (a == null || a.ore <= 0) continue;
+            double d2 = GameMath.dist2(player.x, player.y, a.x, a.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    private static void drawAsteroidMinePrompt(Graphics2D g2, Asteroid asteroid) {
+        if (g2 == null || asteroid == null) return;
+        String label = "ORE [F]";
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+
+        int tx = (int) Math.round(asteroid.x - fm.stringWidth(label) / 2.0);
+        int ty = (int) Math.round(asteroid.y - asteroid.radius - 12.0);
+        int pad = 6;
+        int bw = fm.stringWidth(label) + pad * 2;
+        int bh = 16;
+        int bx = tx - pad;
+        int by = ty - fm.getAscent() + 1;
+
+        g2.setColor(new Color(8, 10, 16, 172));
+        g2.fillRoundRect(bx, by, bw, bh, 10, 10);
+        g2.setColor(new Color(168, 218, 255, 176));
+        g2.drawRoundRect(bx, by, bw, bh, 10, 10);
+        g2.setColor(new Color(255, 244, 170, 226));
+        g2.drawString(label, tx, ty);
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
     }
 
     // ------------------------------
@@ -940,6 +1002,7 @@ public class Renderer {
                                GameContext ctx, GameContext.HudDetail hudDetail, String contextHint, String overlayStatus) {
         int x = 14;
         int y = 18;
+        XrayStackLayout xrayLayout = computeXrayStackLayout(player, lockedTarget, shopOpen, viewW, viewH);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
         g2.setColor(new Color(255, 255, 255, 220));
@@ -966,7 +1029,7 @@ public class Renderer {
 
         // Cargo / mining
         if (player.cargoMax > 0) {
-            g2.drawString("CARGO: " + player.cargo + " / " + player.cargoMax + "   (Hold F to mine)", x, y);
+            g2.drawString("CARGO: " + player.cargo + " / " + player.cargoMax, x, y);
             y += 18;
             if (dockedAtBase) {
                 g2.setColor(new Color(160, 220, 255, 220));
@@ -1010,95 +1073,9 @@ public class Renderer {
             g2.setColor(new Color(255, 255, 255, 220));
         }
 
-        g2.drawString("HP: " + player.hp + " / " + player.hpMax, x, y);
-        int barW = 240;
-        int barH = 10;
-
-        int hpY = y + 8;
-        g2.setColor(new Color(255, 255, 255, 70));
-        g2.drawRect(x, hpY, barW, barH);
-        double hpFrac = player.hpMax <= 0 ? 0 : Math.max(0, Math.min(1, (double) player.hp / player.hpMax));
-        g2.setColor(new Color(80, 255, 120, 210));
-        g2.fillRect(x + 1, hpY + 1, (int) Math.round((barW - 1) * hpFrac), barH - 1);
-
-        int shY = hpY + 18;
-        if (player.shieldActive && player.shieldMax > 0) {
-            int faces = Math.max(1, player.shieldFaceCount());
-            int gap = 4;
-            int segW = Math.max(12, (barW - gap * (faces - 1)) / faces);
-            for (int i = 0; i < faces; i++) {
-                int sx = x + i * (segW + gap);
-                g2.setColor(new Color(255, 255, 255, 70));
-                g2.drawRect(sx, shY, segW, barH);
-                double frac = player.shieldFaceFraction(i);
-                int fill = (int) Math.round((segW - 1) * Math.max(0.0, Math.min(1.0, frac)));
-                g2.setColor(shieldFaceColor(i, 210));
-                g2.fillRect(sx + 1, shY + 1, fill, barH - 1);
-            }
-            if (!player.isShieldOnline()) {
-                g2.setColor(new Color(255, 170, 120, 220));
-                g2.drawString("SHIELD REBOOT: " + fmt1(player.getShieldOfflineRemaining()) + "s", x + barW + 12, shY + barH);
-            }
-        }
-        if (player.isStealth) {
-            int cy = shY + 18;
-            g2.setColor(new Color(255, 255, 255, 70));
-            g2.drawRect(x, cy, barW, barH);
-            double cFrac = player.cloakEnergyFrac();
-            g2.setColor(player.isCloaked() ? new Color(120, 255, 200, 210) : new Color(200, 220, 255, 170));
-            g2.fillRect(x + 1, cy + 1, (int) Math.round((barW - 1) * cFrac), barH - 1);
-            g2.setColor(new Color(190, 245, 220, 210));
-            g2.drawString("CLOAK: " + (player.isCloaked() ? "ACTIVE" : "EXPOSED"), x + barW + 12, cy + barH);
-        }
-
         y = 200;
         GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.FULL : hudDetail;
-        g2.setColor(new Color(255, 255, 255, 170));
-        if (detail == GameContext.HudDetail.FULL) {
-            g2.drawString("LMB: guns   RMB: missiles", x, y);
-            y += 18;
-            g2.drawString("L: lock under mouse   [ ]: cycle targets   T: auto-lock", x, y);
-            y += 18;
-            g2.drawString("TAB: shop/loadout (3-9 upgrades, F1-F9/F11/F12/0/-/= hulls)   B: base upgrades", x, y);
-            y += 18;
-            g2.drawString("BOTTOM BAR: click SHOP / BASE / MAP / POWER / CREW for quick overlay access", x, y);
-            y += 18;
-            String abilityKeys = player.hasWaveMotionGun
-                    ? "Q: missile salvo   E: shield overcharge   X: wave gun   F: mine   ;: emergency thrust"
-                    : "Q: missile salvo   E: shield overcharge   F: mine   ;: emergency thrust";
-            g2.drawString(abilityKeys, x, y);
-            y += 18;
-            g2.drawString("O: power mgmt   H: crew stations   Y: power preset   U: crew order   I: shield mode   J/K: shield face", x, y);
-            y += 18;
-            g2.drawString("`: cycle x-ray filter   ': clear x-ray focus   click room in x-ray to focus   RMB clears focus", x, y);
-            y += 18;
-            if (player.isStealth) {
-                g2.drawString("Stealth hull: cloak auto-engages when not firing/taking hits", x, y);
-                y += 18;
-            }
-            if (player.isCarrier) {
-                g2.drawString("C: launch wing   R: recall wing   V: attack/defend   Z: auto-launch", x, y);
-                y += 18;
-            }
-            g2.drawString("ESC: pause/resume   Alt+Enter: fullscreen   N: cycle HUD detail", x, y);
-            y += 22;
-        } else if (detail == GameContext.HudDetail.COMPACT) {
-            g2.drawString("LOCK: L / [ ]   FIRE: LMB RMB SPACE SHIFT   TARGET AI: T", x, y);
-            y += 18;
-            g2.drawString("ABILITIES: Q salvo   E overcharge" + (player.hasWaveMotionGun ? "   X wave gun" : "") + "   F mine   ; e-thrust", x, y);
-            y += 18;
-            g2.drawString("OVERLAYS: TAB shop   B base   M map   O power   H stations", x, y);
-            y += 18;
-            g2.drawString("X-RAY: ` filter   ' clear focus   click room to focus", x, y);
-            y += 18;
-            g2.drawString("BOTTOM BAR: click to open overlays quickly", x, y);
-            y += 18;
-            g2.drawString("N: HUD detail   ESC: pause/resume", x, y);
-            y += 22;
-        } else {
-            g2.drawString("N: HUD detail   L: lock   TAB/B/M/O/H or bottom bar: overlays", x, y);
-            y += 22;
-        }
+        y = drawHudControlsCard(g2, player, detail, x, y, viewW);
 
         if (contextHint != null && !contextHint.isBlank()) {
             g2.setColor(new Color(255, 225, 150, 225));
@@ -1178,13 +1155,12 @@ public class Renderer {
 
             String role = (lockedTarget.role == null ? "" : lockedTarget.role.name());
             String fac  = (lockedTarget.faction == null ? "" : lockedTarget.faction.name());
-            String hp   = lockedTarget.hp + "/" + lockedTarget.hpMax;
             String wing = (lockedWingCap > 0) ? ("  WING " + lockedWingActive + "/" + lockedWingCap) : "";
 
             // Color the lock line slightly by faction for readability.
             g2.setColor(factionHudColor(lockedTarget.faction, 220));
 
-            g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  HP " + hp + "  D " + dist + wing, x, y);
+            g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  D " + dist + wing, x, y);
             g2.setColor(new Color(255, 255, 255, 170));
 
             String archetype = EnemyArchetypeIntel.archetypeLabel(lockedTarget.role);
@@ -1226,12 +1202,274 @@ public class Renderer {
         }
 
         drawLockedTargetXrayHud(g2, ctx, player, lockedTarget, shopOpen, viewW, viewH);
+        drawBottomCombatVitals(g2, player, lockedTarget, xrayLayout, viewW, viewH);
+        drawCursorWeaponHints(g2, ctx, player, camX, camY, zoom, viewW, viewH);
 
 
 
         if (shopOpen) {
             drawShopOverlay(g2, player, credits, hangarTier);
         }
+    }
+
+    private static int drawHudControlsCard(Graphics2D g2, Player player, GameContext.HudDetail detail, int x, int y, int viewW) {
+        if (g2 == null || player == null) return y;
+        GameContext.HudDetail mode = (detail == null) ? GameContext.HudDetail.FULL : detail;
+        java.util.List<String> rows = buildHudControlsRows(player, mode);
+        if (rows.isEmpty()) return y;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font rowFont = new Font("Consolas", Font.PLAIN, 13);
+        g2.setFont(rowFont);
+        FontMetrics rowFm = g2.getFontMetrics();
+
+        int panelW = Math.max(360, Math.min(780, viewW - x - 18));
+        int contentW = Math.max(220, panelW - 24);
+
+        java.util.List<String> wrappedRows = new ArrayList<>();
+        for (String row : rows) {
+            wrappedRows.addAll(wrapHudText(rowFm, row, contentW));
+        }
+
+        int rowH = 15;
+        g2.setFont(titleFont);
+        g2.setColor(new Color(210, 234, 255, 220));
+        g2.drawString("HUD [" + mode.name() + "]  N: cycle detail", x, y + 14);
+
+        int rowY = y + 31;
+        for (int i = 0; i < wrappedRows.size(); i++) {
+            g2.setColor(new Color(206, 224, 244, 190));
+            g2.drawString(wrappedRows.get(i), x, rowY);
+            rowY += rowH;
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+        return rowY + 6;
+    }
+
+    private static java.util.List<String> buildHudControlsRows(Player player, GameContext.HudDetail detail) {
+        java.util.List<String> rows = new ArrayList<>();
+        if (detail == GameContext.HudDetail.MINIMAL) {
+            rows.add("QUICK: L lock target | TAB/B/M/O/H overlays | bottom bar access");
+            rows.add("META: ESC pause/resume | N HUD detail");
+            return rows;
+        }
+
+        if (detail == GameContext.HudDetail.COMPACT) {
+            rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasWaveMotionGun ? " | X superweapon" : ""));
+            rows.add("TARGETING: L lock | [ ] cycle | T auto-lock");
+            rows.add("SYSTEM: Y preset | U crew | I shield mode | J/K shield face");
+            rows.add("OVERLAYS: TAB shop | B base | M map | O power | H crew | bottom bar");
+            rows.add("X-RAY: ` filter | ' clear focus | click room focus");
+            rows.add("META: ESC pause/resume");
+            return rows;
+        }
+
+        rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasWaveMotionGun ? " | X superweapon" : ""));
+        rows.add("UTILITY: F mine | ; emergency thrust | E shield overcharge");
+        rows.add("TARGETING: L lock under mouse | [ ] cycle targets | T auto-lock");
+        rows.add("SYSTEMS: O power mgmt | H crew stations | Y power preset | U crew order");
+        rows.add("SHIELDS: I shield mode | J/K shield facing");
+        rows.add("X-RAY: ` cycle filter | ' clear focus | click room to focus | RMB clears focus");
+        rows.add("OVERLAYS: TAB shop/loadout | B base upgrades | bottom bar quick access");
+        if (player.isStealth) rows.add("STEALTH: cloak auto-engages while not firing or taking hits");
+        if (player.isCarrier) rows.add("CARRIER: C launch wing | R recall | V attack/defend | Z auto-launch");
+        rows.add("META: ESC pause/resume | Alt+Enter fullscreen");
+        return rows;
+    }
+
+    private static java.util.List<String> wrapHudText(FontMetrics fm, String text, int maxWidth) {
+        java.util.List<String> out = new ArrayList<>();
+        if (fm == null || text == null || text.isBlank() || maxWidth <= 0) return out;
+        String[] words = text.trim().split("\\s+");
+        String line = "";
+        for (String word : words) {
+            if (word == null || word.isBlank()) continue;
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && fm.stringWidth(candidate) > maxWidth) {
+                out.add(line);
+                line = word;
+            } else {
+                line = candidate;
+            }
+        }
+        if (!line.isEmpty()) out.add(line);
+        return out;
+    }
+
+    private static void drawBottomCombatVitals(Graphics2D g2, Player player, Ship lockedTarget,
+                                               XrayStackLayout layout, int viewW, int viewH) {
+        if (g2 == null || player == null) return;
+
+        int cardW = 220;
+        int cardH = 100;
+        int margin = 12;
+        int sideGap = 12;
+
+        int playerX;
+        int playerY;
+        int targetX;
+        int targetY;
+
+        if (layout != null) {
+            playerX = Math.max(margin, layout.panelX - cardW - sideGap);
+            playerY = layout.playerY + Math.max(0, (layout.playerH - cardH) / 2);
+            targetX = Math.min(viewW - cardW - margin, layout.panelX + layout.panelW + sideGap);
+            targetY = (layout.targetVisible && layout.targetH > 0)
+                    ? layout.targetY + Math.max(0, (layout.targetH - cardH) / 2)
+                    : playerY;
+        } else {
+            Rectangle menu = getCoreMenuBarRect(viewW, viewH);
+            int cx = viewW / 2;
+            playerX = Math.max(margin, cx - cardW - 18);
+            targetX = Math.min(viewW - cardW - margin, cx + 18);
+            playerY = Math.max(100, menu.y - cardH - 12);
+            targetY = playerY;
+        }
+
+        drawShipVitalsCard(
+                g2, player, "PLAYER VITALS", playerX, playerY, cardW, cardH,
+                factionHudColor(player.faction, 220),
+                true
+        );
+
+        boolean validTarget = lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0
+                && (lockedTarget.faction == null || player.faction == null || !lockedTarget.faction.isFriendlyTo(player.faction));
+        if (validTarget) {
+            String title = "TARGET VITALS";
+            if (lockedTarget.name != null && !lockedTarget.name.isBlank()) title = lockedTarget.name;
+            drawShipVitalsCard(
+                    g2, lockedTarget, title, targetX, targetY, cardW, cardH,
+                    factionHudColor(lockedTarget.faction, 220),
+                    false
+            );
+        }
+    }
+
+    private static void drawShipVitalsCard(Graphics2D g2, Ship ship, String title,
+                                           int x, int y, int w, int h, Color accent, boolean showOverchargeHint) {
+        if (g2 == null || ship == null) return;
+        Color frame = (accent == null) ? new Color(175, 210, 255, 150) : withAlpha(accent, 178);
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(frame.getRed(), frame.getGreen(), frame.getBlue(), 220));
+        g2.drawString(title, x, y + 12);
+        g2.setColor(new Color(frame.getRed(), frame.getGreen(), frame.getBlue(), 120));
+        g2.drawLine(x, y + 16, x + w, y + 16);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        int meterW = w;
+        int meterH = 10;
+        int meterX = x;
+        int hullY = y + 34;
+        int shieldY = y + 62;
+
+        double hullFrac = (ship.hpMax <= 0) ? 0.0 : Math.max(0.0, Math.min(1.0, ship.hp / (double) ship.hpMax));
+        drawVitalsMeter(g2, meterX, hullY, meterW, meterH, "HULL " + ship.hp + "/" + ship.hpMax, hullFrac,
+                new Color(92, 246, 124, 218));
+
+        if (ship.shieldActive && ship.shieldMax > 0.0) {
+            double shieldFrac = Math.max(0.0, Math.min(1.0, ship.shield / Math.max(1e-9, ship.shieldMax)));
+            int shieldNow = (int) Math.round(Math.max(0.0, ship.shield));
+            int shieldMax = (int) Math.round(Math.max(0.0, ship.shieldMax));
+            drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD " + shieldNow + "/" + shieldMax, shieldFrac,
+                    shieldFaceColor(ship, Ship.SHIELD_FACE_FORE, 216));
+            if (showOverchargeHint) {
+                drawHudHintChip(g2, "E shield overcharge", x + w - 2, shieldY - 2, -1);
+            }
+            if (!ship.isShieldOnline()) {
+                g2.setColor(new Color(255, 185, 136, 210));
+                g2.drawString("REBOOT " + fmt1(ship.getShieldOfflineRemaining()) + "s", meterX, y + h - 16);
+            }
+        } else {
+            drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD N/A", 0.0, new Color(135, 160, 190, 160));
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    private static void drawVitalsMeter(Graphics2D g2, int x, int y, int w, int h,
+                                        String label, double frac, Color fillColor) {
+        if (g2 == null) return;
+        double f = Math.max(0.0, Math.min(1.0, frac));
+        g2.setColor(new Color(255, 255, 255, 75));
+        g2.drawRect(x, y, w, h);
+        int fillW = (int) Math.round((w - 1) * f);
+        g2.setColor(fillColor == null ? new Color(160, 210, 255, 188) : fillColor);
+        if (fillW > 0) g2.fillRect(x + 1, y + 1, fillW, h - 1);
+        g2.setColor(new Color(225, 240, 255, 212));
+        g2.drawString(label, x, y - 2);
+    }
+
+    private static void drawCursorWeaponHints(Graphics2D g2, GameContext ctx, Player player,
+                                              double camX, double camY, double zoom, int viewW, int viewH) {
+        if (g2 == null || ctx == null || player == null) return;
+        if (hudBlockingMenuOpen(ctx)) return;
+        if (zoom <= 0.0) return;
+
+        double sx = (ctx.cursorWorldX - camX) * zoom;
+        double sy = (ctx.cursorWorldY - camY) * zoom;
+        if (!Double.isFinite(sx) || !Double.isFinite(sy)) return;
+
+        int mx = MathUtil.clamp((int) Math.round(sx), 18, Math.max(18, viewW - 18));
+        int my = MathUtil.clamp((int) Math.round(sy), 18, Math.max(18, viewH - 18));
+
+        int horizontalGap = 16;
+        int verticalGap = 24;
+        drawHudHintChip(g2, "LMB guns", mx - horizontalGap, my, -1);
+        drawHudHintChip(g2, "RMB missiles", mx + horizontalGap, my, +1);
+        drawHudHintChip(g2, "Q missile salvo", mx, my + verticalGap, 0);
+        if (player.role == ShipRole.SUPERSHIP || player.hasWaveMotionGun) {
+            drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
+        }
+    }
+
+    private static boolean hudBlockingMenuOpen(GameContext ctx) {
+        if (ctx == null) return false;
+        return ctx.shopOpen
+                || ctx.baseMenuOpen
+                || ctx.mapOpen
+                || ctx.powerManagementOpen
+                || ctx.crewStationsOpen
+                || ctx.state == GameState.PAUSED
+                || ctx.state == GameState.GAME_OVER;
+    }
+
+    // align: -1 right-align to anchor, +1 left-align to anchor, 0 center on anchor.
+    private static void drawHudHintChip(Graphics2D g2, String text, int anchorX, int baselineY, int align) {
+        if (g2 == null || text == null || text.isBlank()) return;
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        int padX = 2;
+        int textW = fm.stringWidth(text);
+
+        int textX;
+        if (align < 0) {
+            textX = anchorX - textW - padX;
+        } else if (align > 0) {
+            textX = anchorX + padX;
+        } else {
+            textX = anchorX - textW / 2;
+        }
+
+        g2.setColor(new Color(4, 8, 14, 210));
+        g2.drawString(text, textX + 1, baselineY + 1);
+        g2.setColor(new Color(236, 244, 255, 228));
+        g2.drawString(text, textX, baselineY);
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
     }
 
     public static void drawWorldMarkers(Graphics2D g2, List<Ship> ships, Ship lockedTarget,

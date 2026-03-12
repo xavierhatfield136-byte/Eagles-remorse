@@ -21,6 +21,8 @@ import javax.sound.sampled.LineEvent;
 
 public final class AudioSystem {
     private static final int MAX_AUDIO_EVENT_LOG = 8192;
+    private static final double WORLD_SFX_HEARING_RADIUS = 1400.0;
+    private static final double WORLD_SFX_HEARING_RADIUS2 = WORLD_SFX_HEARING_RADIUS * WORLD_SFX_HEARING_RADIUS;
     private static final Random RNG = new Random();
     private static final WeakHashMap<GameContext, RuntimeState> STATE = new WeakHashMap<>();
     private static final Map<String, Double> VOICE_COOLDOWN_SEC_BY_KEY = new HashMap<>();
@@ -209,7 +211,7 @@ public final class AudioSystem {
                 s.lastReactorFrac = reactorFrac(ctx.player);
                 s.lastHp = ctx.player.hp;
                 s.lastShield = ctx.player.shield;
-                s.lastExplosionCount = explosionCount();
+                s.lastExplosionCount = explosionCountNearPlayer(ctx);
                 s.lastHelmMode = ctx.helmMode;
                 s.lastCaptainDirective = ctx.captainDirective;
                 for (Ship.InternalSystem system : Ship.InternalSystem.values()) {
@@ -301,7 +303,7 @@ public final class AudioSystem {
 
         st.lastHp = ctx.player.hp;
         st.lastShield = ctx.player.shield;
-        st.lastExplosionCount = explosionCount();
+        st.lastExplosionCount = explosionCountNearPlayer(ctx);
     }
 
     public static void onUiOpen(GameContext ctx) {
@@ -316,28 +318,64 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.WEAPON_PRIMARY);
     }
 
+    public static void onWeaponPrimary(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WEAPON_PRIMARY);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WEAPON_PRIMARY, source.x, source.y);
+    }
+
     public static void onWeaponSecondary(GameContext ctx) {
         triggerSfx(ctx, SfxCue.WEAPON_SECONDARY);
+    }
+
+    public static void onWeaponSecondary(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WEAPON_SECONDARY);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WEAPON_SECONDARY, source.x, source.y);
     }
 
     public static void onWeaponWave(GameContext ctx) {
         triggerSfx(ctx, SfxCue.WEAPON_WAVE);
     }
 
+    public static void onWeaponWave(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WEAPON_WAVE);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WEAPON_WAVE, source.x, source.y);
+    }
+
     public static void onShieldImpact(GameContext ctx, VFX.ImpactStyle style) {
+        onShieldImpact(ctx, style, Double.NaN, Double.NaN);
+    }
+
+    public static void onShieldImpact(GameContext ctx, VFX.ImpactStyle style, double sourceX, double sourceY) {
         if (ctx == null) return;
         RuntimeState st = stateFor(ctx);
-        triggerSfxEvent(ctx, st, shieldImpactEventId(style), nowSec());
+        triggerSfxEvent(ctx, st, shieldImpactEventId(style), nowSec(), sourceX, sourceY);
     }
 
     public static void onHullImpact(GameContext ctx, VFX.ImpactStyle style) {
+        onHullImpact(ctx, style, Double.NaN, Double.NaN);
+    }
+
+    public static void onHullImpact(GameContext ctx, VFX.ImpactStyle style, double sourceX, double sourceY) {
         if (ctx == null) return;
         RuntimeState st = stateFor(ctx);
-        triggerSfxEvent(ctx, st, hullImpactEventId(style), nowSec());
+        triggerSfxEvent(ctx, st, hullImpactEventId(style), nowSec(), sourceX, sourceY);
     }
 
     public static void onExplosion(GameContext ctx) {
-        triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION);
+        onExplosion(ctx, Double.NaN, Double.NaN);
+    }
+
+    public static void onExplosion(GameContext ctx, double sourceX, double sourceY) {
+        triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION, sourceX, sourceY);
     }
 
     public static void setTelemetryOnly(boolean telemetryOnly) {
@@ -497,10 +535,11 @@ public final class AudioSystem {
     private static void processImpactSignals(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || ctx.player == null) return;
 
-        int explosionsNow = explosionCount();
+        int explosionsNow = explosionCountNearPlayer(ctx);
         if (explosionsNow > st.lastExplosionCount) {
             triggerSfx(ctx, st, SfxCue.IMPACT_EXPLOSION, now);
         }
+        st.lastExplosionCount = explosionsNow;
     }
 
     private static void processHazardAndSubsystemSignals(GameContext ctx, RuntimeState st, double now) {
@@ -624,13 +663,28 @@ public final class AudioSystem {
         triggerSfx(ctx, st, cue, nowSec());
     }
 
+    private static void triggerSfx(GameContext ctx, SfxCue cue, double sourceX, double sourceY) {
+        RuntimeState st = (ctx == null) ? null : stateFor(ctx);
+        triggerSfx(ctx, st, cue, nowSec(), sourceX, sourceY);
+    }
+
     private static void triggerSfx(GameContext ctx, RuntimeState st, SfxCue cue, double now) {
         if (cue == null || st == null) return;
         triggerSfxEvent(ctx, st, cue.eventId, now);
     }
 
+    private static void triggerSfx(GameContext ctx, RuntimeState st, SfxCue cue, double now, double sourceX, double sourceY) {
+        if (cue == null || st == null) return;
+        triggerSfxEvent(ctx, st, cue.eventId, now, sourceX, sourceY);
+    }
+
     private static void triggerSfxEvent(GameContext ctx, RuntimeState st, String eventId, double now) {
+        triggerSfxEvent(ctx, st, eventId, now, Double.NaN, Double.NaN);
+    }
+
+    private static void triggerSfxEvent(GameContext ctx, RuntimeState st, String eventId, double now, double sourceX, double sourceY) {
         if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
+        if (!shouldPlayWorldSfxAt(ctx, sourceX, sourceY)) return;
         SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
         if (spec == null) return;
 
@@ -843,12 +897,25 @@ public final class AudioSystem {
         return Math.max(0.0, Math.min(1.0, ship.systemHealthFraction(Ship.InternalSystem.REACTOR_CORE)));
     }
 
-    private static int explosionCount() {
+    private static int explosionCountNearPlayer(GameContext ctx) {
         try {
-            return (Explosion.active == null) ? 0 : Explosion.active.size();
+            if (Explosion.active == null) return 0;
+            if (ctx == null || ctx.player == null) return Explosion.active.size();
+            int count = 0;
+            for (Explosion e : Explosion.active) {
+                if (e == null) continue;
+                if (GameMath.dist2(e.x, e.y, ctx.player.x, ctx.player.y) <= WORLD_SFX_HEARING_RADIUS2) count++;
+            }
+            return count;
         } catch (Throwable ignored) {
             return 0;
         }
+    }
+
+    private static boolean shouldPlayWorldSfxAt(GameContext ctx, double sourceX, double sourceY) {
+        if (!Double.isFinite(sourceX) || !Double.isFinite(sourceY)) return true;
+        if (ctx == null || ctx.player == null) return true;
+        return GameMath.dist2(sourceX, sourceY, ctx.player.x, ctx.player.y) <= WORLD_SFX_HEARING_RADIUS2;
     }
 
     private static double roleThrottleSeconds(int priority) {

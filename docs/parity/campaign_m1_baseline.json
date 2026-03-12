@@ -9,7 +9,7 @@
       "failReason": "",
       "finalSector": 4,
       "gameOver": false,
-      "finalCredits": 11739,
+      "finalCredits": 1838,
       "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
       "sectors": [
         {
@@ -20,7 +20,7 @@
           "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
           "clearElapsedSecRounded": 360,
           "clearTicks": 21600,
-          "creditsAfterClear": 10544,
+          "creditsAfterClear": 644,
           "sideCompleted": true,
           "sideFailed": false
         },
@@ -32,7 +32,7 @@
           "sideObjectiveType": "KILL_COUNT",
           "clearElapsedSecRounded": 0,
           "clearTicks": 1,
-          "creditsAfterClear": 10993,
+          "creditsAfterClear": 1092,
           "sideCompleted": false,
           "sideFailed": false
         },
@@ -44,7 +44,7 @@
           "sideObjectiveType": "CLEAR_BEFORE_TIME",
           "clearElapsedSecRounded": 120,
           "clearTicks": 7200,
-          "creditsAfterClear": 11739,
+          "creditsAfterClear": 1838,
           "sideCompleted": true,
           "sideFailed": false
         }
@@ -56,7 +56,7 @@
       "failReason": "",
       "finalSector": 4,
       "gameOver": false,
-      "finalCredits": 11739,
+      "finalCredits": 1838,
       "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
       "sectors": [
         {
@@ -67,7 +67,7 @@
           "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
           "clearElapsedSecRounded": 360,
           "clearTicks": 21600,
-          "creditsAfterClear": 10544,
+          "creditsAfterClear": 644,
           "sideCompleted": true,
           "sideFailed": false
         },
@@ -79,7 +79,7 @@
           "sideObjectiveType": "KILL_COUNT",
           "clearElapsedSecRounded": 0,
           "clearTicks": 1,
-          "creditsAfterClear": 10993,
+          "creditsAfterClear": 1092,
           "sideCompleted": false,
           "sideFailed": false
         },
@@ -91,7 +91,7 @@
           "sideObjectiveType": "CLEAR_BEFORE_TIME",
           "clearElapsedSecRounded": 120,
           "clearTicks": 7200,
-          "creditsAfterClear": 11739,
+          "creditsAfterClear": 1838,
           "sideCompleted": true,
           "sideFailed": false
         }
@@ -103,7 +103,7 @@
       "failReason": "",
       "finalSector": 4,
       "gameOver": false,
-      "finalCredits": 11739,
+      "finalCredits": 1838,
       "objectiveFlow": "SURVIVE>DESTROY>CAPTURE",
       "sectors": [
         {
@@ -114,7 +114,7 @@
           "sideObjectiveType": "NO_HULL_DAMAGE_WINDOW",
           "clearElapsedSecRounded": 360,
           "clearTicks": 21600,
-          "creditsAfterClear": 10544,
+          "creditsAfterClear": 644,
           "sideCompleted": true,
           "sideFailed": false
         },
@@ -126,7 +126,7 @@
           "sideObjectiveType": "KILL_COUNT",
           "clearElapsedSecRounded": 0,
           "clearTicks": 1,
-          "creditsAfterClear": 10993,
+          "creditsAfterClear": 1092,
           "sideCompleted": false,
           "sideFailed": false
         },
@@ -138,7 +138,7 @@
           "sideObjectiveType": "CLEAR_BEFORE_TIME",
           "clearElapsedSecRounded": 120,
           "clearTicks": 7200,
-          "creditsAfterClear": 11739,
+          "creditsAfterClear": 1838,
           "sideCompleted": true,
           "sideFailed": false
         }

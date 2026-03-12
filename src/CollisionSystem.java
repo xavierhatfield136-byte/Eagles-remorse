@@ -56,20 +56,20 @@ public class CollisionSystem {
                         if (showImpactVfx) {
                             VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
-                        AudioSystem.onShieldImpact(ctx, impactStyle);
+                        AudioSystem.onShieldImpact(ctx, impactStyle, p.x, p.y);
                     }
                     if (hullHit) {
                         if (showImpactVfx) {
                             VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
-                        AudioSystem.onHullImpact(ctx, impactStyle);
+                        AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
                     }
                     if (!shieldHit && !hullHit) {
                         if (showImpactVfx) {
                             VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(2, p.damage));
                         }
                         // Preserve audible feedback for glancing/mitigated hull contacts.
-                        AudioSystem.onHullImpact(ctx, impactStyle);
+                        AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
                     }
 
                     if (showImpactVfx) ScreenShake.kick(2.2);
@@ -119,20 +119,20 @@ public class CollisionSystem {
                     if (showImpactVfx) {
                         VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
-                    AudioSystem.onShieldImpact(ctx, impactStyle);
+                    AudioSystem.onShieldImpact(ctx, impactStyle, p.x, p.y);
                 }
                 if (hullHit) {
                     if (showImpactVfx) {
                         VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
-                    AudioSystem.onHullImpact(ctx, impactStyle);
+                    AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
                 }
                 if (!shieldHit && !hullHit) {
                     if (showImpactVfx) {
                         VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
                     }
                     // Preserve audible feedback for glancing/mitigated hull contacts.
-                    AudioSystem.onHullImpact(ctx, impactStyle);
+                    AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
                 }
 
                 p.alive = false;
@@ -166,12 +166,12 @@ public class CollisionSystem {
                             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.KINETIC);
                             Explosion.spawnShieldHit(m.x, m.y);
                         }
-                        AudioSystem.onExplosion(ctx);
+                        AudioSystem.onExplosion(ctx, m.x, m.y);
                     } else {
                         if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
                             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.KINETIC);
                         }
-                        AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.KINETIC);
+                        AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.KINETIC, m.x, m.y);
                     }
                     break;
                 }
@@ -241,14 +241,14 @@ public class CollisionSystem {
                     );
                     Explosion.spawnShieldHit(p.x, p.y);
                 }
-                AudioSystem.onHullImpact(ctx, impactStyleFor(p));
+                AudioSystem.onHullImpact(ctx, impactStyleFor(p), p.x, p.y);
 
                 if (destroyed) {
                     if (showImpactVfx) {
                         Explosion.spawnShieldHit(a.x, a.y);
                         ScreenShake.kick(Math.min(5.0, 1.2 + a.collisionRadius() * 0.06));
                     }
-                    AudioSystem.onExplosion(ctx);
+                    AudioSystem.onExplosion(ctx, a.x, a.y);
                     asteroids.remove(ai);
                 }
 
@@ -288,7 +288,7 @@ public class CollisionSystem {
             VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, Math.max(2, m.damage), VFX.ImpactStyle.EXPLOSIVE);
             Explosion.spawnShieldHit(m.x, m.y);
         }
-        AudioSystem.onExplosion(ctx);
+        AudioSystem.onExplosion(ctx, m.x, m.y);
     }
 
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {

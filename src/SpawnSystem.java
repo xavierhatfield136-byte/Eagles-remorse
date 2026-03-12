@@ -472,7 +472,7 @@ public final class SpawnSystem {
 
         tryApplyDoctrine(ctx);
 
-        ctx.credits = 0;
+        ctx.credits = 100;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
         ctx.eventBanner = "SHOWCASE MODE  -  AI OFF";

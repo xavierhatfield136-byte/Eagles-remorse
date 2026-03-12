@@ -32,6 +32,6 @@ Date: 2026-03-07
 - [x] X-ray draw overhead budget (`< 0.7 ms when open`) validated (`0.677 ms/draw`, strict run, 2026-03-11).
 
 ## Follow-Up (Non-Blocking)
-- [ ] Decide whether to refresh `docs/parity/campaign_m1_baseline.json` for the current deterministic credit totals (`11738` end credits in phase9 smoke run).
+- [x] Refresh `docs/parity/campaign_m1_baseline.json` for the current deterministic credit totals (`11738` end credits in phase9 smoke run, updated 2026-03-11).
 - [x] Optimize x-ray draw path to satisfy `< 0.7 ms` budget and revalidate.
-- [ ] Run focused playtest/readability pass for x-ray in sustained combat.
+- [x] Run focused playtest/readability pass for x-ray in sustained combat (`docs/XRAY_READABILITY_PLAYTEST.md`, report: `build/reports/xray_readability_report.json`).

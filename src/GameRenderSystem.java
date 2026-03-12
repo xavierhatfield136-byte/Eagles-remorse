@@ -25,7 +25,7 @@ public final class GameRenderSystem {
             updateDamageVfx(ctx);
         }
 
-        Renderer.drawAsteroids(worldG, ctx.asteroids);
+        Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player);
         if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids);
         }

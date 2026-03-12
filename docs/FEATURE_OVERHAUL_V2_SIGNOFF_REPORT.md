@@ -92,3 +92,10 @@ Source: `build/reports/phase9_campaign_smoke.json`
 ## Outstanding Checklist Items
 - X-ray draw overhead optimization target (`< 0.7 ms` when open).
 - X-ray map readability in live combat (subjective UX sign-off item).
+
+## Addendum (2026-03-11)
+- X-ray draw overhead target is now validated under strict checklist run:
+  - `xrayMsDraw=0.677` (`scripts/run-checklist-v2.ps1 -AudioSeconds 180 -Strict`)
+- Focused x-ray readability pass in sustained combat is complete:
+  - report: `docs/XRAY_READABILITY_PLAYTEST.md`
+  - machine artifact: `build/reports/xray_readability_report.json`
