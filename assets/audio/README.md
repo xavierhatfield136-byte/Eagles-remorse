@@ -8,8 +8,22 @@ Runtime audio now supports these folders:
 - `hazards/`
 - `subsystems/`
 - `ui/`
+- `dropoff/` (staging only; not loaded by runtime)
 
 Use WAV files (`PCM 16-bit`, `44100` or `48000` Hz, mono or stereo).
+
+## Dropoff Workflow
+
+Use `dropoff/` as a staging bin for newly generated/renamed SFX.
+
+Recommended flow:
+
+1. Generate and rename files to match `docs/sfx_generation_jobs.csv`.
+2. Place them in `assets/audio/dropoff/`.
+3. Move each file into its runtime folder (`weapons/`, `impacts/`, etc.).
+4. Run:
+   - `java -cp build/classes/java/main SfxValidationHarness --strict`
+   - `java -cp build/classes/java/main SfxSoakHarness --seconds=180 --seed=90909`
 
 ## Naming
 

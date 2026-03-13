@@ -134,13 +134,19 @@ public class Player extends Ship {
         double ml = Turret.MISSILE_LIFE_MULT;
         int salvoDamage = Math.max(1, (int) Math.round(launcher.damage * md));
         int salvoLife = Math.max(1, (int) Math.round(launcher.missileLife * ml));
-        out.add(new Missile(mx, my, MathUtil.normalizeAngle(baseAng - spread), target, dt,
-                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction));
-        out.add(new Missile(mx, my, MathUtil.normalizeAngle(baseAng + spread), target, dt,
-                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction));
-        out.add(new Missile(mx, my, baseAng, target, dt,
+        Projectile left = new Missile(mx, my, MathUtil.normalizeAngle(baseAng - spread), target, dt,
+                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction);
+        left.sourceShipId = id;
+        out.add(left);
+        Projectile right = new Missile(mx, my, MathUtil.normalizeAngle(baseAng + spread), target, dt,
+                launcher.missileSpeed * ms, launcher.missileTurnRate * mt, salvoDamage, salvoLife, 6.0, faction);
+        right.sourceShipId = id;
+        out.add(right);
+        Projectile center = new Missile(mx, my, baseAng, target, dt,
                 launcher.missileSpeed * ms * 1.10, launcher.missileTurnRate * mt * 1.10,
-                Math.max(1, (int) Math.round(salvoDamage * 1.15)), salvoLife, 6.5, faction));
+                Math.max(1, (int) Math.round(salvoDamage * 1.15)), salvoLife, 6.5, faction);
+        center.sourceShipId = id;
+        out.add(center);
 
         return out;
     }

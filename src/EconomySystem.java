@@ -145,7 +145,8 @@ public final class EconomySystem {
 
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
         priceMul *= CampaignSystem.oreCreditMul(ctx);
-        ctx.credits += (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+        int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
     }
 
     private static void handleNpcMiningAndDeposits(GameContext ctx, double dt) {
@@ -986,6 +987,8 @@ public final class EconomySystem {
         ship.alive = true;
         ship.dying = false;
         ship.bountyClaimed = false;
+        ship.playerTaggedForKillCredit = false;
+        ship.playerKillCreditPaid = false;
         ship.minerTarget = null;
         ship.miningTarget = null;
         ship.resetShieldState();
@@ -1609,7 +1612,8 @@ public final class EconomySystem {
                     if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction)) {
                         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
                         priceMul *= CampaignSystem.oreCreditMul(ctx);
-                        ctx.credits += (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+                        int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+                        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
                     }
                     // repair a bit (hp/hpMax are ints in this codebase)
                     int heal = (int) Math.round(18 * dt);

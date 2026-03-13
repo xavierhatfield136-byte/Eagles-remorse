@@ -157,16 +157,22 @@ public class Turret {
             int gunDamage = Math.max(1, (int) Math.round(damage * damageMul));
             DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
-                return new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5, host.faction);
+                Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5, host.faction);
+                p.sourceShipId = host.id;
+                return p;
             }
-            return new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 3.0, host.faction);
+            Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 3.0, host.faction);
+            p.sourceShipId = host.id;
+            return p;
         } else {
             int missileDamage = Math.max(1, (int) Math.round(damage * MISSILE_DAMAGE_MULT * damageMul));
             double missileSpd = missileSpeed * MISSILE_SPEED_MULT;
             double missileTurn = missileTurnRate * MISSILE_TURN_MULT;
             int missileLifetime = Math.max(1, (int) Math.round(missileLife * MISSILE_LIFE_MULT));
             double missileRadius = Math.max(6.0, radius);
-            return new Missile(mx, my, angle, missileTarget, dt, missileSpd, missileTurn, missileDamage, missileLifetime, missileRadius, host.faction);
+            Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd, missileTurn, missileDamage, missileLifetime, missileRadius, host.faction);
+            p.sourceShipId = host.id;
+            return p;
         }
     }
 

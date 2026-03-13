@@ -93,6 +93,10 @@ public abstract class Ship {
     // Economy
     public int bountyValue = 0;
     public boolean bountyClaimed = false;
+    /** True once the player has landed at least one damaging contact on this ship. */
+    public boolean playerTaggedForKillCredit = false;
+    /** One-shot guard so kill-assist credits are only paid once per ship. */
+    public boolean playerKillCreditPaid = false;
 
     // ------------------------------
     // Mining / cargo / base stockpile (Economy loop)
@@ -3325,7 +3329,7 @@ public abstract class Ship {
             double sx = x + Math.cos(a) * (radius + 8);
             double sy = y + Math.sin(a) * (radius + 8);
 
-            projectiles.add(new CIWSPellet(
+            Projectile pellet = new CIWSPellet(
                     sx,
                     sy,
                     a,
@@ -3335,7 +3339,9 @@ public abstract class Ship {
                     ciwsPelletLife,
                     ciwsPelletRadius,
                     faction
-            ));
+            );
+            pellet.sourceShipId = id;
+            projectiles.add(pellet);
         }
     }
 
@@ -3497,7 +3503,7 @@ public abstract class Ship {
             maxHits = Math.max(6, (int) Math.round(waveMotionMaxHits * 0.45));
         }
 
-        return new WaveMotionShot(
+        WaveMotionShot shot = new WaveMotionShot(
                 sx,
                 sy,
                 aim,
@@ -3509,5 +3515,7 @@ public abstract class Ship {
                 maxHits,
                 faction
         );
+        shot.sourceShipId = id;
+        return shot;
     }
 }

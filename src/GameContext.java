@@ -162,7 +162,13 @@ public class GameContext {
     // Economy
     public int credits = 100;
     public static final int ORE_PRICE = 4;
+    public static final double CREDIT_EARNINGS_MUL = 1.5;
     public int resourceGoal = 600;
+
+    public static int scaleCreditEarnings(int baseCredits) {
+        if (baseCredits <= 0) return 0;
+        return (int) Math.round(baseCredits * CREDIT_EARNINGS_MUL);
+    }
 
     // Base upgrades
     public final Map<Ship, BaseUpgrades> baseUpgrades = new HashMap<>();

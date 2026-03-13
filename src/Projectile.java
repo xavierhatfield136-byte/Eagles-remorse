@@ -14,6 +14,8 @@ public abstract class Projectile {
 
     // Who fired this projectile (used for friendly-fire rules)
     public Faction faction = Faction.ENEMY;
+    // Runtime source tracking for kill-assist crediting and telemetry.
+    public int sourceShipId = -1;
 
     public boolean alive = true;
 

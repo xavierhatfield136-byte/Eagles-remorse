@@ -509,7 +509,7 @@ public final class CampaignSystem {
         st.sideObjectiveLabel = side.label;
         st.sideObjectiveGoal = Math.max(0.0, side.goal);
         st.sideObjectiveProgress = 0.0;
-        st.sideObjectiveRewardCredits = Math.max(0, side.rewardCredits);
+        st.sideObjectiveRewardCredits = GameContext.scaleCreditEarnings(Math.max(0, side.rewardCredits));
         st.sideObjectiveCompleted = false;
         st.sideObjectiveFailed = false;
         st.sideObjectiveBaseKills = st.kills;
@@ -1099,7 +1099,8 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (st == null) return;
 
-        int bonus = (int) Math.round((250 + st.sector * 70) * st.sectorCreditBonusMul);
+        int bonusBase = (int) Math.round((250 + st.sector * 70) * st.sectorCreditBonusMul);
+        int bonus = GameContext.scaleCreditEarnings(bonusBase);
         int sideBonus = resolveSideObjectiveBonusOnClear(ctx, st);
         ctx.credits += bonus;
         if (sideBonus > 0) ctx.credits += sideBonus;
@@ -1150,7 +1151,7 @@ public final class CampaignSystem {
                     st.unlockAuxGunGranted = true;
                     unlock = "UNLOCK: AUX GUN MODULE";
                 } else {
-                    duplicateBonus = 160;
+                    duplicateBonus = GameContext.scaleCreditEarnings(160);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -1160,7 +1161,7 @@ public final class CampaignSystem {
                     st.unlockMissileTierGranted = 1;
                     unlock = "UNLOCK: MISSILE RACK";
                 } else {
-                    duplicateBonus = 200;
+                    duplicateBonus = GameContext.scaleCreditEarnings(200);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -1171,7 +1172,7 @@ public final class CampaignSystem {
                     st.unlockCiwsGranted = true;
                     unlock = "UNLOCK: CIWS SUITE";
                 } else {
-                    duplicateBonus = 220;
+                    duplicateBonus = GameContext.scaleCreditEarnings(220);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -1181,7 +1182,7 @@ public final class CampaignSystem {
                     st.unlockHullGranted = true;
                     unlock = "UNLOCK: REINFORCED HULL PACKAGE";
                 } else {
-                    duplicateBonus = 260;
+                    duplicateBonus = GameContext.scaleCreditEarnings(260);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -1191,7 +1192,7 @@ public final class CampaignSystem {
                     st.unlockMissileTierGranted = 2;
                     unlock = "UNLOCK: HEAVY MISSILE PACKAGE";
                 } else {
-                    duplicateBonus = 300;
+                    duplicateBonus = GameContext.scaleCreditEarnings(300);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }

@@ -33,6 +33,7 @@ public class CollisionSystem {
                     WaveMotionShot ws = (WaveMotionShot) p;
                     if (!ws.canDamage(s)) continue;
                     ws.markDamaged(s);
+                    markPlayerHitContribution(ctx, p, s);
 
                     double dirX = p.vx;
                     double dirY = p.vy;
@@ -78,6 +79,7 @@ public class CollisionSystem {
                     continue;
                 }
 
+                markPlayerHitContribution(ctx, p, s);
                 double dirX = p.vx;
                 double dirY = p.vy;
                 double len = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -280,6 +282,7 @@ public class CollisionSystem {
 
             double falloff = 1.0 - (d / Math.max(1.0, maxD));
             int splash = Math.max(1, (int) Math.round(baseSplash * (0.35 + 0.65 * falloff)));
+            markPlayerHitContribution(ctx, m, s);
             s.takeDamage(splash, m.x, m.y);
             logDamageEvent(ctx, "missile_splash:" + System.identityHashCode(m), splash, VFX.ImpactStyle.EXPLOSIVE, s, m.x, m.y);
         }
@@ -310,6 +313,20 @@ public class CollisionSystem {
         }
         return GameMath.dist2(x, y, ctx.player.x, ctx.player.y)
                 <= DAMAGE_VFX_MAX_DIST_FROM_PLAYER * DAMAGE_VFX_MAX_DIST_FROM_PLAYER;
+    }
+
+    private static void markPlayerHitContribution(GameContext ctx, Projectile projectile, Ship target) {
+        if (ctx == null || ctx.player == null) return;
+        if (projectile == null || target == null) return;
+        if (!target.alive || target.dying) return;
+        if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return;
+        if (!isProjectileFromPlayer(ctx, projectile)) return;
+        target.playerTaggedForKillCredit = true;
+    }
+
+    private static boolean isProjectileFromPlayer(GameContext ctx, Projectile projectile) {
+        if (ctx == null || ctx.player == null || projectile == null) return false;
+        return projectile.sourceShipId == ctx.player.id;
     }
 
     private static void logDamageEvent(GameContext ctx,

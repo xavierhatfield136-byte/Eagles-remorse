@@ -127,6 +127,7 @@ public final class PhysicsSystem {
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
         CollisionSystem.handleProjectilesVsAsteroids(ctx, ctx.projectiles, ctx.asteroids);
         CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+        awardPlayerKillAssistCredits(ctx);
 
         // --- Cleanup destroyed ships (keep player object even if dead) ---
         ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));
@@ -150,6 +151,23 @@ public final class PhysicsSystem {
 
     private static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
         return TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, x, y, maxDist);
+    }
+
+    private static void awardPlayerKillAssistCredits(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        for (Ship s : ctx.ships) {
+            if (s == null || s == ctx.player) continue;
+            if (!s.dying) continue;
+            if (!s.playerTaggedForKillCredit) continue;
+            if (s.playerKillCreditPaid) continue;
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+
+            int baseReward = Math.max(0, (int) Math.round(Math.max(0, s.bountyValue) * 0.5));
+            int reward = GameContext.scaleCreditEarnings(baseReward);
+            if (reward > 0) ctx.credits += reward;
+            s.playerKillCreditPaid = true;
+            s.bountyClaimed = true;
+        }
     }
 }
 
