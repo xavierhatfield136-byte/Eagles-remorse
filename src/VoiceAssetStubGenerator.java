@@ -59,8 +59,8 @@ public final class VoiceAssetStubGenerator {
             case "science" -> 335.0;
             default -> 250.0;
         };
-        int h = Math.abs((role + ":" + eventId).hashCode());
-        double tone = base + (h % 70) + variant * 18.0;
+        int toneBucket = Math.floorMod((role + ":" + eventId).hashCode(), 70);
+        double tone = base + toneBucket + variant * 18.0;
 
         byte[] data = new byte[frames * 2];
         for (int i = 0; i < frames; i++) {

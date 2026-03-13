@@ -133,7 +133,8 @@ public final class SpawnSystem {
                  FIGHTER, BOMBER, PD_CRAFT, DRONE,
                  FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> 0;
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
-            case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP, TRANSPORT -> 2;
+            case TRANSPORT -> 1;
+            case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP -> 2;
             case DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 3;
         };
     }
@@ -240,6 +241,7 @@ public final class SpawnSystem {
         spawnEnemy(ctx, ShipRole.PATROL, x + 0, y + 0);
         spawnEnemy(ctx, ShipRole.PICKET, x + 70, y + 50);
         spawnEnemy(ctx, ShipRole.FRIGATE, x - 90, y + 70);
+        if (ctx.rng.nextDouble() < 0.18) spawnEnemy(ctx, ShipRole.CRUISER, x - 40, y - 120);
         if (ctx.rng.nextDouble() < 0.35) spawnEnemy(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
         if (ctx.rng.nextDouble() < 0.08) spawnEnemy(ctx, ShipRole.SUPERSHIP, x + 180, y - 40);
     }
@@ -248,6 +250,7 @@ public final class SpawnSystem {
         spawnAlly(ctx, ShipRole.PATROL, x + 0, y + 0);
         spawnAlly(ctx, ShipRole.PICKET, x + 70, y + 50);
         spawnAlly(ctx, ShipRole.FRIGATE, x - 90, y + 70);
+        if (ctx.rng.nextDouble() < 0.18) spawnAlly(ctx, ShipRole.CRUISER, x + 40, y + 120);
         if (ctx.rng.nextDouble() < 0.35) spawnAlly(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
         if (ctx.rng.nextDouble() < 0.08) spawnAlly(ctx, ShipRole.SUPERSHIP, x - 180, y + 40);
     }
@@ -371,6 +374,12 @@ public final class SpawnSystem {
         ox = (ctx.rng.nextDouble() - 0.5) * 220.0;
         oy = (ctx.rng.nextDouble() - 0.5) * 220.0;
         spawnTeamShip(ctx, ShipRole.FRIGATE, team, base.x + ox, base.y + oy);
+
+        if (ctx.rng.nextDouble() < 0.22) {
+            ox = (ctx.rng.nextDouble() - 0.5) * 240.0;
+            oy = (ctx.rng.nextDouble() - 0.5) * 240.0;
+            spawnTeamShip(ctx, ShipRole.CRUISER, team, base.x + ox, base.y + oy);
+        }
 
         if (ctx.rng.nextDouble() < 0.20) {
             ox = (ctx.rng.nextDouble() - 0.5) * 260.0;

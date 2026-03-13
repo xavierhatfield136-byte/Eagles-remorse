@@ -132,14 +132,15 @@ public class Turret {
 
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
         if (!canFire()) return null;
+        if (host == null) return null;
 
-        double cycleMul = (host == null) ? 1.0 : host.weaponCycleRateMultiplier();
-        double damageMul = (host == null) ? 1.0 : host.weaponDamageMultiplier();
+        double cycleMul = host.weaponCycleRateMultiplier();
+        double damageMul = host.weaponDamageMultiplier();
         cycleMul = Math.max(0.20, cycleMul);
         damageMul = Math.max(0.20, damageMul);
         coolLeft = cooldown / cycleMul;
 
-        if (host != null) host.onFire();
+        host.onFire();
 
         // Spawn at turret muzzle
         double mx = worldX(host) + Math.cos(angle) * (radius + 4);

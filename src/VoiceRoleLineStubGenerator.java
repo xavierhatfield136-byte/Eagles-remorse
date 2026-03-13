@@ -113,8 +113,8 @@ public final class VoiceRoleLineStubGenerator {
             case "science" -> 335.0;
             default -> 250.0;
         };
-        int h = Math.abs((role + ":" + eventId + ":" + variant).hashCode());
-        double tone = base + (h % 84) + variant * 7.0;
+        int toneBucket = Math.floorMod((role + ":" + eventId + ":" + variant).hashCode(), 84);
+        double tone = base + toneBucket + variant * 7.0;
 
         byte[] data = new byte[frames * 2];
         for (int i = 0; i < frames; i++) {

@@ -8,9 +8,10 @@ public final class TargetingSystem {
     private static final double CLOAK_CARRIER_SENSOR_BONUS = 70.0;
 
     public static void lockClosestToMouse(GameContext ctx, PlayerControl controls) {
+        if (ctx == null || controls == null) return;
         double mx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
         double my = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
-        Ship observer = (ctx == null ? null : ctx.player);
+        Ship observer = ctx.player;
         Ship s = findClosestEnemyToPoint(ctx, observer, mx, my, 280);
         if (s == null) {
             ctx.eventBanner = "NO ENEMY NEAR CURSOR";
@@ -79,11 +80,13 @@ public final class TargetingSystem {
     }
 
     public static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
-        Ship observer = (ctx == null ? null : ctx.player);
+        if (ctx == null) return null;
+        Ship observer = ctx.player;
         return findClosestEnemyToPoint(ctx, observer, x, y, maxDist);
     }
 
     public static Ship findClosestEnemyToPoint(GameContext ctx, Ship observer, double x, double y, double maxDist) {
+        if (ctx == null) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
         for (Ship s : ctx.ships) {

@@ -3,6 +3,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * Carrier wing control:
@@ -14,6 +15,7 @@ public final class CarrierSystem {
     private CarrierSystem() {}
 
     private static final int MAX_GLOBAL_LAUNCHED_CRAFT = 140;
+    private static final int MAX_GLOBAL_PD_ESCORTS = 40;
     private static final double ORPHAN_DESPAWN_SECONDS = 18.0;
     private static final double RTB_HP_FRAC = 0.35;
     private static final double RECOVERY_PAD = 10.0;
@@ -22,6 +24,9 @@ public final class CarrierSystem {
     private static final double ATTACK_SEARCH_RANGE = 1450.0;
     private static final double ATTACK_LEASH_RANGE = 980.0;
     private static final int BOMBER_SLOT_INTERVAL = 4;
+    private static final double PD_ESCORT_RESPAWN_SECONDS = 9.0;
+    private static final double PD_ESCORT_ANCHOR_RANGE = 360.0;
+    private static final WeakHashMap<GameContext, Map<Integer, Double>> PD_ESCORT_COOLDOWNS = new WeakHashMap<>();
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null || ctx.gameOver) return;
@@ -32,8 +37,10 @@ public final class CarrierSystem {
         updateOrphanedCraft(ctx, dt, carriersById.keySet());
         updateWingBehavior(ctx, dt, carriersById);
 
-        int globalCraft = countGlobalLaunchedCraft(ctx);
         List<Ship> carriers = new ArrayList<>(carriersById.values());
+        updateCarrierPdEscorts(ctx, dt, carriers);
+
+        int globalCraft = countGlobalLaunchedCraft(ctx);
 
         for (Ship carrier : carriers) {
             if (globalCraft >= MAX_GLOBAL_LAUNCHED_CRAFT) break;
@@ -278,12 +285,107 @@ public final class CarrierSystem {
     private static ShipRole chooseLaunchRole(Ship carrier, int activeWing) {
         if (carrier == null) return ShipRole.FIGHTER;
         if (!carrier.isCarrier) return ShipRole.FIGHTER;
+        if (carrier.role == ShipRole.DRONE_CARRIER) return ShipRole.DRONE;
 
         // Every Nth launched craft from a carrier is a bomber to add strike capability.
         int ordinal = Math.max(0, activeWing) + 1;
         if (ordinal % BOMBER_SLOT_INTERVAL == 0) return ShipRole.BOMBER;
 
         return ShipRole.FIGHTER;
+    }
+
+    private static void updateCarrierPdEscorts(GameContext ctx, double dt, List<Ship> carriers) {
+        if (ctx == null || carriers == null || carriers.isEmpty() || dt <= 0.0) return;
+        Map<Integer, Double> cooldowns = pdEscortCooldowns(ctx);
+        if (!cooldowns.isEmpty()) {
+            List<Integer> expired = new ArrayList<>();
+            for (Map.Entry<Integer, Double> e : cooldowns.entrySet()) {
+                if (e == null || e.getKey() == null) continue;
+                double t = Math.max(0.0, e.getValue() - dt);
+                if (t <= 0.0) expired.add(e.getKey());
+                else e.setValue(t);
+            }
+            for (Integer id : expired) cooldowns.remove(id);
+        }
+
+        int globalEscorts = countGlobalPdEscorts(ctx);
+        for (Ship carrier : carriers) {
+            if (carrier == null || !carrier.alive || carrier.dying || carrier.hp <= 0) continue;
+            if (!carrier.isCarrier || carrier.faction == null) continue;
+
+            int desired = (carrier.role == ShipRole.DRONE_CARRIER) ? 2 : 1;
+            int active = countPdEscortsForCarrier(ctx, carrier);
+            if (active >= desired) continue;
+            if (globalEscorts >= MAX_GLOBAL_PD_ESCORTS) break;
+
+            double cd = cooldowns.getOrDefault(carrier.id, 0.0);
+            if (cd > 0.0) continue;
+
+            Ship escort = spawnPdEscortForCarrier(ctx, carrier);
+            double jitter = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
+            cooldowns.put(carrier.id, PD_ESCORT_RESPAWN_SECONDS * (0.85 + jitter * 0.35));
+            if (escort != null) globalEscorts++;
+        }
+    }
+
+    private static int countGlobalPdEscorts(GameContext ctx) {
+        if (ctx == null || ctx.ships == null) return 0;
+        int count = 0;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.PD_CRAFT) continue;
+            if (s.carrierOwnerId >= 0) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static int countPdEscortsForCarrier(GameContext ctx, Ship carrier) {
+        if (ctx == null || carrier == null || carrier.faction == null) return 0;
+        int count = 0;
+        double near2 = PD_ESCORT_ANCHOR_RANGE * PD_ESCORT_ANCHOR_RANGE;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.PD_CRAFT) continue;
+            if (s.carrierOwnerId >= 0) continue;
+            if (s.faction == null || s.faction.teamId() != carrier.faction.teamId()) continue;
+
+            if (s.minerHomeBase == carrier || dist2(s.x, s.y, carrier.x, carrier.y) <= near2) count++;
+        }
+        return count;
+    }
+
+    private static Ship spawnPdEscortForCarrier(GameContext ctx, Ship carrier) {
+        if (ctx == null || carrier == null || carrier.faction == null) return null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            double side = ((attempt & 1) == 0) ? -1.0 : 1.0;
+            double rollL = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
+            double rollF = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
+            double lateral = side * (carrier.radius + 28.0 + rollL * 16.0);
+            double forward = carrier.radius + 28.0 + rollF * 12.0;
+
+            double ca = Math.cos(carrier.angle);
+            double sa = Math.sin(carrier.angle);
+            double sx = carrier.x + ca * forward - sa * lateral;
+            double sy = carrier.y + sa * forward + ca * lateral;
+
+            Ship escort = SpawnSystem.spawnTeamShip(ctx, ShipRole.PD_CRAFT, carrier.faction, sx, sy);
+            if (escort == null) continue;
+
+            escort.carrierOwnerId = -1;
+            escort.minerHomeBase = carrier;
+            escort.angle = carrier.angle;
+            escort.vx = carrier.vx * 0.9;
+            escort.vy = carrier.vy * 0.9;
+            return escort;
+        }
+        return null;
+    }
+
+    private static Map<Integer, Double> pdEscortCooldowns(GameContext ctx) {
+        return PD_ESCORT_COOLDOWNS.computeIfAbsent(ctx, k -> new HashMap<>());
     }
 
     private static void retireCraft(Ship s) {

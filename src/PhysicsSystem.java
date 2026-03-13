@@ -1,5 +1,4 @@
 import java.util.Iterator;
-import java.util.List;
 
 /**
  * Physics step: movement, weapons, projectiles, CIWS, and collisions.

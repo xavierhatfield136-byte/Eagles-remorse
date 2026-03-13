@@ -3,7 +3,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +33,7 @@ public final class AudioSystem {
     private static final List<Clip> ACTIVE_CLIPS = Collections.synchronizedList(new ArrayList<>());
     private static volatile boolean TELEMETRY_ONLY = false;
 
-    private static Clip ambientClip;
+    private static volatile Clip ambientClip;
 
     private AudioSystem() {}
 
@@ -378,15 +377,18 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION, sourceX, sourceY);
     }
 
-    public static void setTelemetryOnly(boolean telemetryOnly) {
+    public static synchronized void setTelemetryOnly(boolean telemetryOnly) {
         TELEMETRY_ONLY = telemetryOnly;
-        if (telemetryOnly && ambientClip != null) {
+        Clip clip = ambientClip;
+        if (telemetryOnly && clip != null) {
             try {
-                ambientClip.stop();
-                ambientClip.close();
+                clip.stop();
+                clip.close();
             } catch (Throwable ignored) {
             }
-            ambientClip = null;
+            if (ambientClip == clip) {
+                ambientClip = null;
+            }
         }
     }
 
@@ -713,11 +715,12 @@ public final class AudioSystem {
         ));
     }
 
-    private static void ensureAmbientLoop(GameContext ctx, RuntimeState st, double now) {
+    private static synchronized void ensureAmbientLoop(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || st == null) return;
         if (TELEMETRY_ONLY) return;
-        if (ambientClip != null && ambientClip.isOpen()) {
-            if (!ambientClip.isRunning()) ambientClip.loop(Clip.LOOP_CONTINUOUSLY);
+        Clip clip = ambientClip;
+        if (clip != null && clip.isOpen()) {
+            if (!clip.isRunning()) clip.loop(Clip.LOOP_CONTINUOUSLY);
             return;
         }
 
@@ -741,12 +744,13 @@ public final class AudioSystem {
         }
     }
 
-    private static void applyAmbientMix(GameContext ctx) {
-        if (ambientClip == null || !ambientClip.isOpen()) return;
+    private static synchronized void applyAmbientMix(GameContext ctx) {
+        Clip clip = ambientClip;
+        if (clip == null || !clip.isOpen()) return;
         double target = -26.0;
         if (countHostiles(ctx) > 0) target = -23.5;
         if (ctx.voiceCaptionT > 0.0) target -= 4.5;
-        applyGain(ambientClip, target);
+        applyGain(clip, target);
     }
 
     private static void playFileAsync(File wav, boolean loop, double gainDb) {

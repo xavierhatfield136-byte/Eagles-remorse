@@ -220,60 +220,98 @@ public class FleetShip extends Ship {
             }
 
             case PD_CRAFT -> {
-                name = (faction == Faction.ENEMY ? "Enemy PD Craft" : "PD Craft");
-                radius = 13;
-                hpMax = 7;
+                name = (faction == Faction.ENEMY ? "Enemy PD Escort Frigate" : "PD Escort Frigate");
+                // Frigate-sized carrier escort with exceptional anti-missile coverage.
+                radius = 18;
+                hpMax = 18;
                 hp = hpMax;
 
-                shieldMax = 5;
+                shieldMax = 16;
                 shield = shieldMax;
-                shieldRegen = 0.9;
+                shieldRegen = 2.0;
                 shieldActive = true;
 
-                desiredSpeed = 245;
-                bountyValue = 50;
+                desiredSpeed = 170;
+                bountyValue = 105;
 
-                Turret gun = new Turret(Turret.Kind.GUN, 9, 0);
-                gun.cooldown = 0.13;
-                gun.damage = 1;
-                gun.bulletSpeed = 840;
-                gun.bulletLife = 90;
-                gun.primary = true;
-                addTurret(gun);
+                Turret fore = new Turret(Turret.Kind.GUN, 13, 0);
+                fore.cooldown = 0.14;
+                fore.damage = 1;
+                fore.bulletSpeed = 820;
+                fore.bulletLife = 120;
+                fore.primary = true;
+                addTurret(fore);
 
-                // Good CIWS (but still slightly worse than dedicated corvette)
+                Turret aft = new Turret(Turret.Kind.GUN, -10, 0);
+                aft.cooldown = 0.20;
+                aft.damage = 1;
+                aft.bulletSpeed = 760;
+                aft.bulletLife = 110;
+                aft.primary = true;
+                addTurret(aft);
+
+                // Near-corvette CIWS quality tuned for escort duty.
                 hasCIWS = true;
-                ciwsQuality = 0.92;
-                ciwsRange = 300;
-                ciwsCooldown = 0.055;
-                ciwsPelletsPerBurst = 5;
-                ciwsPelletSpeed = 980;
-                ciwsPelletLife = 18;
+                ciwsQuality = 0.96;
+                ciwsRange = 330;
+                ciwsCooldown = 0.050;
+                ciwsPelletsPerBurst = 6;
+                ciwsPelletSpeed = 1010;
+                ciwsPelletLife = 20;
                 ciwsPelletRadius = 1.8;
             }
 
             case DRONE -> {
-                name = (faction == Faction.ENEMY ? "Enemy Drone" : "Drone");
-                radius = 10;
-                hpMax = 4;
+                name = (faction == Faction.ENEMY ? "Enemy Missile Drone" : "Missile Drone");
+                radius = 11;
+                hpMax = 6;
                 hp = hpMax;
 
-                shieldMax = 0;
-                shield = 0;
-                shieldActive = false;
+                shieldMax = 4;
+                shield = shieldMax;
+                shieldRegen = 0.7;
+                shieldActive = true;
 
-                desiredSpeed = 290;
-                bountyValue = 18;
+                desiredSpeed = 285;
+                bountyValue = 38;
 
-                Turret gun = new Turret(Turret.Kind.GUN, 8, 0);
-                gun.cooldown = 0.10;
-                gun.damage = 1;
-                gun.bulletSpeed = 860;
-                gun.bulletLife = 80;
-                gun.primary = true;
-                gun.radius = 4.6;
-                gun.barrelLen = 12;
-                addTurret(gun);
+                Turret noseGun = new Turret(Turret.Kind.GUN, 8, 0);
+                noseGun.cooldown = 0.18;
+                noseGun.damage = 1;
+                noseGun.bulletSpeed = 840;
+                noseGun.bulletLife = 85;
+                noseGun.primary = true;
+                noseGun.radius = 4.8;
+                noseGun.barrelLen = 11;
+                addTurret(noseGun);
+
+                Turret rackL = new Turret(Turret.Kind.MISSILE, 4, -3);
+                rackL.cooldown = 0.72;
+                rackL.damage = 4;
+                rackL.missileSpeed = 305;
+                rackL.missileTurnRate = Math.toRadians(310);
+                rackL.missileLife = 260;
+                rackL.primary = false;
+                rackL.radius = 7;
+                rackL.barrelLen = 11;
+                addTurret(rackL);
+
+                Turret rackR = new Turret(Turret.Kind.MISSILE, 4, 3);
+                rackR.cooldown = 0.72;
+                rackR.damage = 4;
+                rackR.missileSpeed = 305;
+                rackR.missileTurnRate = Math.toRadians(310);
+                rackR.missileLife = 260;
+                rackR.primary = false;
+                rackR.radius = 7;
+                rackR.barrelLen = 11;
+                addTurret(rackR);
+
+                hasCIWS = true;
+                ciwsQuality = 0.18;
+                ciwsRange = 180;
+                ciwsCooldown = 0.17;
+                ciwsPelletsPerBurst = 1;
             }
 
             // -----------------------
@@ -485,7 +523,7 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 1;
             }
 
-            case CRUISER, MEDIUM_CRUISER -> {
+            case MEDIUM_CRUISER -> {
                 name = (faction == Faction.ENEMY ? "Enemy Medium Cruiser" : "Medium Cruiser");
                 radius = 27;
                 hpMax = 38;
@@ -543,6 +581,87 @@ public class FleetShip extends Ship {
                 hasCIWS = true;
                 ciwsQuality = 0.24;
                 ciwsRange = 250;
+                ciwsCooldown = 0.13;
+                ciwsPelletsPerBurst = 1;
+            }
+
+            case CRUISER -> {
+                name = (faction == Faction.ENEMY ? "Enemy Guided Missile Cruiser" : "Guided Missile Cruiser");
+                radius = 27;
+                hpMax = 36;
+                hp = hpMax;
+
+                shieldMax = 30;
+                shield = shieldMax;
+                shieldRegen = 2.7;
+                shieldActive = true;
+
+                desiredSpeed = 104;
+                bountyValue = 230;
+
+                Turret g1 = new Turret(Turret.Kind.GUN, 17, -10);
+                g1.cooldown = 0.19;
+                g1.damage = 2;
+                g1.bulletSpeed = 900;
+                g1.bulletLife = 185;
+                g1.primary = true;
+                g1.radius = 7;
+                g1.barrelLen = 17;
+                addTurret(g1);
+
+                Turret g2 = new Turret(Turret.Kind.GUN, 17, 10);
+                g2.cooldown = 0.19;
+                g2.damage = 2;
+                g2.bulletSpeed = 900;
+                g2.bulletLife = 185;
+                g2.primary = true;
+                g2.radius = 7;
+                g2.barrelLen = 17;
+                addTurret(g2);
+
+                Turret m1 = new Turret(Turret.Kind.MISSILE, 7, -8);
+                m1.cooldown = 0.74;
+                m1.damage = 5;
+                m1.primary = false;
+                m1.missileSpeed = 300;
+                m1.missileTurnRate = Math.toRadians(235);
+                m1.missileLife = 320;
+                m1.radius = 8;
+                addTurret(m1);
+
+                Turret m2 = new Turret(Turret.Kind.MISSILE, 7, 8);
+                m2.cooldown = 0.74;
+                m2.damage = 5;
+                m2.primary = false;
+                m2.missileSpeed = 300;
+                m2.missileTurnRate = Math.toRadians(235);
+                m2.missileLife = 320;
+                m2.radius = 8;
+                addTurret(m2);
+
+                Turret m3 = new Turret(Turret.Kind.MISSILE, -2, -5);
+                m3.cooldown = 0.98;
+                m3.damage = 6;
+                m3.primary = false;
+                m3.missileSpeed = 290;
+                m3.missileTurnRate = Math.toRadians(220);
+                m3.missileLife = 340;
+                m3.radius = 8;
+                addTurret(m3);
+
+                Turret m4 = new Turret(Turret.Kind.MISSILE, -2, 5);
+                m4.cooldown = 0.98;
+                m4.damage = 6;
+                m4.primary = false;
+                m4.missileSpeed = 290;
+                m4.missileTurnRate = Math.toRadians(220);
+                m4.missileLife = 340;
+                m4.radius = 8;
+                addTurret(m4);
+
+                hasCIWS = true;
+                ciwsQuality = 0.26;
+                ciwsRange = 255;
                 ciwsCooldown = 0.13;
                 ciwsPelletsPerBurst = 1;
             }
@@ -964,7 +1083,7 @@ public class FleetShip extends Ship {
             }
 
             case TRANSPORT -> {
-                name = (faction == Faction.ENEMY ? "Enemy Transport" : "Transport");
+                name = (faction == Faction.ENEMY ? "Enemy Combat Support Transport" : "Combat Support Transport");
                 radius = 24;
                 hpMax = 26;
                 hp = hpMax;
@@ -992,9 +1111,9 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 1;
 
                 // Support aura (used by Main AI)
-                repairRange = 260;
-                repairHullPerSec = 1.4;
-                repairShieldPerSec = 6.0;
+                repairRange = 300;
+                repairHullPerSec = 1.8;
+                repairShieldPerSec = 6.8;
             }
 
             // -----------------------
@@ -1219,7 +1338,8 @@ public class FleetShip extends Ship {
         double turnMul = 0.93;
         double lifeMul = 0.95;
 
-        if (role == ShipRole.MISSILE_BOAT || role == ShipRole.BOMBER || role == ShipRole.STEALTH_SHIP) {
+        if (role == ShipRole.MISSILE_BOAT || role == ShipRole.BOMBER
+                || role == ShipRole.STEALTH_SHIP || role == ShipRole.CRUISER) {
             cooldownMul = 1.04;
             damageMul = 0.96;
             speedMul = 0.97;

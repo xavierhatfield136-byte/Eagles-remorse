@@ -30,6 +30,7 @@ public final class GameRenderSystem {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids);
         }
         Renderer.drawSalvage(worldG, ctx.salvage);
+        drawTransportSupportAuras(ctx, worldG);
         Renderer.drawShips(worldG, ctx.ships);
         Renderer.drawProjectiles(worldG, ctx.projectiles);
         Renderer.drawWaveMotionAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
@@ -296,6 +297,43 @@ if (DevTools.isDebugOverlay()) {
         g2.drawOval(ix - ir, iy - ir, ir * 2, ir * 2);
         g2.drawLine(ix - 12, iy, ix + 12, iy);
         g2.drawLine(ix, iy - 12, ix, iy + 12);
+    }
+
+    private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2) {
+        if (ctx == null || g2 == null || ctx.ships == null) return;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.TRANSPORT) continue;
+
+            int r = (int) Math.round(Math.max(220.0, s.repairRange));
+            int x = (int) Math.round(s.x);
+            int y = (int) Math.round(s.y);
+
+            Color ring = transportAuraColor(s.faction);
+            Color fill = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 26);
+            Color mid = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 62);
+            Color edge = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 130);
+
+            g2.setColor(fill);
+            g2.fillOval(x - r, y - r, r * 2, r * 2);
+            g2.setColor(mid);
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
+            int r2 = (int) Math.round(r * 0.66);
+            g2.setColor(edge);
+            g2.drawOval(x - r2, y - r2, r2 * 2, r2 * 2);
+        }
+    }
+
+    private static Color transportAuraColor(Faction faction) {
+        if (faction == null) return new Color(170, 210, 255);
+        return switch (faction) {
+            case ALLY -> new Color(120, 210, 255);
+            case ENEMY -> new Color(255, 130, 130);
+            case TEAM_C -> new Color(130, 255, 165);
+            case TEAM_D -> new Color(255, 205, 130);
+            default -> new Color(170, 210, 255);
+        };
     }
 
     private static void drawCampaignTransitionOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {

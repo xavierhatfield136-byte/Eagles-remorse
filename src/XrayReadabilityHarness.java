@@ -1,7 +1,6 @@
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -76,7 +75,8 @@ public final class XrayReadabilityHarness {
     public static void main(String[] argv) throws Exception {
         Args args = Args.parse(argv);
         Files.createDirectories(args.snapshotDir);
-        if (args.output.getParent() != null) Files.createDirectories(args.output.getParent());
+        Path outputParent = args.output.getParent();
+        if (outputParent != null) Files.createDirectories(outputParent);
 
         Method drawHud = Renderer.class.getDeclaredMethod(
                 "drawLockedTargetXrayHud",

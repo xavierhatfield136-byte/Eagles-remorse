@@ -141,6 +141,30 @@ public final class AISystem {
                 s.tryCIWS(dt, ctx.projectiles);
                 continue;
             }
+            if (s.role == ShipRole.PD_CRAFT && s.carrierOwnerId < 0 && s.minerHomeBase != null) {
+                Ship escortCarrier = s.minerHomeBase;
+                boolean validCarrierAnchor = isAlive(escortCarrier)
+                        && escortCarrier.isCarrier
+                        && escortCarrier.faction != null
+                        && s.faction != null
+                        && escortCarrier.faction.teamId() == s.faction.teamId();
+                if (!validCarrierAnchor) {
+                    s.minerHomeBase = null;
+                } else {
+                    Ship target = findEscortThreatNearCarrier(ctx, s, escortCarrier);
+                    if (isAlive(target)) {
+                        fight(ctx, s, target, dt);
+                    } else {
+                        double orbitRange = Math.max(130.0, escortCarrier.radius + 95.0);
+                        double speed = Math.max(95.0, MovementModel.speedCeiling(s) * 0.92);
+                        orbit(s, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
+                    }
+                    s.tryCIWS(dt, ctx.projectiles);
+                    applyAsteroidAvoidance(ctx, s, dt);
+                    applyProjectileLaneAvoidance(ctx, s, dt);
+                    continue;
+                }
+            }
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
                 Ship target = periodicClosestRetargetTarget(ctx, s);
@@ -1058,7 +1082,7 @@ public final class AISystem {
             double fhp = hullFrac(flagship);
             double fsh = shieldFrac(flagship);
             if (fhp < 0.34 || fsh < 0.20) return GameContext.FleetCommand.RETREAT;
-            Ship threat = (ctx == null || ctx.fleetSharedTargets == null || flagship.faction == null)
+            Ship threat = (ctx.fleetSharedTargets == null || flagship.faction == null)
                     ? null
                     : ctx.fleetSharedTargets.get(flagship.faction);
             if (!isAlive(threat)) threat = TargetingSystem.getPreferredEnemyTarget(ctx, flagship);
@@ -1145,7 +1169,7 @@ public final class AISystem {
         double jitter = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
         double baseCadence = isAlive(immediate)
                 ? 0.08
-                : idleImmediateThreatCadence((seeker == null) ? null : seeker.role);
+                : idleImmediateThreatCadence(seeker.role);
         IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, baseCadence * (0.88 + jitter * 0.42));
         return immediate;
     }
@@ -1182,8 +1206,7 @@ public final class AISystem {
     private static void armEngagementScanBackoff(GameContext ctx, Ship seeker, boolean hardMiss) {
         if (seeker == null) return;
         double jitter = (ctx == null || ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
-        double base = hardMiss ? hardMissScanBackoff((seeker == null) ? null : seeker.role)
-                : softMissScanBackoff((seeker == null) ? null : seeker.role);
+        double base = hardMiss ? hardMissScanBackoff(seeker.role) : softMissScanBackoff(seeker.role);
         ENGAGEMENT_SCAN_BACKOFF_TIMERS.put(seeker.id, base * (0.85 + jitter * 0.45));
     }
 
@@ -1227,6 +1250,37 @@ public final class AISystem {
             best = enemy;
         }
         return best;
+    }
+
+    private static Ship findEscortThreatNearCarrier(GameContext ctx, Ship escort, Ship carrier) {
+        if (ctx == null || escort == null || carrier == null || escort.faction == null) return null;
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double maxDist = 920.0;
+        double maxDist2 = maxDist * maxDist;
+
+        for (Ship enemy : ctx.ships) {
+            if (!isAlive(enemy) || enemy.faction == null) continue;
+            if (escort.faction.isFriendlyTo(enemy.faction)) continue;
+            if (!TargetingSystem.isDetectableToObserver(escort, enemy)) continue;
+
+            double dCarrier2 = dist2(enemy.x, enemy.y, carrier.x, carrier.y);
+            if (dCarrier2 > maxDist2) continue;
+            double dEscort = Math.hypot(enemy.x - escort.x, enemy.y - escort.y);
+            double dCarrier = Math.sqrt(Math.max(0.0, dCarrier2));
+
+            double score = Math.max(0.0, 1000.0 - dCarrier) * 0.9;
+            score += Math.max(0.0, 900.0 - dEscort) * 0.5;
+            score += threatPriority(escort.role, enemy.role) * 120.0;
+            if (isMissileThreatRole(enemy.role)) score += 190.0;
+            if (enemy.role == ShipRole.CARRIER || enemy.role == ShipRole.DRONE_CARRIER) score += 80.0;
+            if (score > bestScore) {
+                bestScore = score;
+                best = enemy;
+            }
+        }
+        if (isAlive(best)) return best;
+        return findImmediateThreat(ctx, escort, Math.max(280.0, preferredRange(escort) * 1.2));
     }
 
     private static Ship findBestReachableEnemyTarget(GameContext ctx, Ship seeker, Ship sharedHint, Ship preferredHint) {
@@ -1397,6 +1451,15 @@ public final class AISystem {
         if (role == null) return false;
         return switch (role) {
             case MINER, HAULER, TRANSPORT, CARRIER, DRONE_CARRIER -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isMissileThreatRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case MISSILE_BOAT, BOMBER, STEALTH_SHIP, CRUISER,
+                    BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> true;
             default -> false;
         };
     }
@@ -1593,7 +1656,8 @@ public final class AISystem {
             }
             case SCREEN -> {
                 double ang = (n % 8) * (Math.PI * 2.0 / 8.0);
-                double ring = spacing * (1.2 + (n / 8) * 0.75);
+                int ringIndex = n / 8;
+                double ring = spacing * (1.2 + ringIndex * 0.75);
                 offX = Math.cos(ang) * ring;
                 offY = Math.sin(ang) * ring;
             }
@@ -1615,12 +1679,14 @@ public final class AISystem {
     }
 
     private static void fight(GameContext ctx, Ship s, Ship target, double dt, double teamConfidence, SquadObjective objective) {
+        if (ctx == null || s == null || target == null) return;
+        if (objective == null) objective = SquadObjective.HOLD;
         // Determine preferred range by role
         double range = preferredRange(s);
-        double aggression = roleAggressionBias((s == null) ? null : s.role);
-        double standoff = roleStandoffBias((s == null) ? null : s.role);
-        double approachMul = roleApproachSpeedMul((s == null) ? null : s.role);
-        double orbitMul = roleOrbitSpeedMul((s == null) ? null : s.role);
+        double aggression = roleAggressionBias(s.role);
+        double standoff = roleStandoffBias(s.role);
+        double approachMul = roleApproachSpeedMul(s.role);
+        double orbitMul = roleOrbitSpeedMul(s.role);
         range *= (1.0 + standoff * 0.18);
         double selfHull = hullFrac(s);
         double selfShield = shieldFrac(s);
@@ -1701,7 +1767,8 @@ public final class AISystem {
 
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist,
                                    double teamConfidence, SquadObjective objective) {
-        if (ctx.projectiles == null) return 0;
+        if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
+        if (objective == null) objective = SquadObjective.HOLD;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
         double sensorConfidence = observerEWConfidence(ctx, s, target, dist);
         double confidence = Math.max(0.0, Math.min(1.0, sensorConfidence * Math.max(0.20, teamConfidence)));
@@ -1745,8 +1812,8 @@ public final class AISystem {
                 gunRange = 520.0;
                 missileRange = 900.0;
             }
-            gunRange *= gunRangeRoleMul((s == null) ? null : s.role);
-            missileRange *= missileRangeRoleMul((s == null) ? null : s.role);
+            gunRange *= gunRangeRoleMul(s.role);
+            missileRange *= missileRangeRoleMul(s.role);
             double maxRange = (t.kind == Turret.Kind.MISSILE) ? missileRange : gunRange;
             maxRange *= rangeMul;
             if (dist > maxRange) continue;

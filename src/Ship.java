@@ -1318,6 +1318,49 @@ public abstract class Ship {
         return applyFireSuppression(roomId, effort, true) > 1e-4;
     }
 
+    /**
+     * Area-support effect used by support transports.
+     * - Heals every room by a fraction of that room's max HP per second.
+     * - Reduces active fire lifetime by applying proportional fire intensity decay.
+     */
+    public void applySupportField(double roomHealFracPerSec, double fireReductionFracPerSec, double dt) {
+        if (!alive || dying || dt <= 0.0) return;
+        ensureRoomSystemsInitialized();
+
+        double roomHealFrac = Math.max(0.0, roomHealFracPerSec) * dt;
+        if (roomHealFrac > 0.0) {
+            for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+                if (def == null || def.id == null) continue;
+                double maxv = roomHpMax.getOrDefault(def.id, 0.0);
+                if (maxv <= 1e-9) continue;
+                double cur = roomHp.getOrDefault(def.id, maxv);
+                if (cur >= maxv - 1e-9) continue;
+                double add = maxv * roomHealFrac;
+                if (add <= 1e-9) continue;
+                roomHp.put(def.id, Math.min(maxv, cur + add));
+            }
+        }
+
+        double fireDecayFrac = MathUtil.clamp(Math.max(0.0, fireReductionFracPerSec) * dt, 0.0, 0.95);
+        if (fireDecayFrac > 0.0) {
+            for (RoomHazardState hz : roomHazards.values()) {
+                if (hz == null || hz.fireIntensity <= 1e-4) continue;
+                hz.fireIntensity = hz.fireIntensity * (1.0 - fireDecayFrac);
+                hz.suppressionBoost = Math.min(2.2, hz.suppressionBoost + fireDecayFrac * 0.45);
+                if (hz.fireIntensity <= 0.02) {
+                    hz.fireIntensity = 0.0;
+                    hz.damageTickTimer = 0.0;
+                    hz.spreadTimer = 0.0;
+                    hz.instabilityTimer = 0.0;
+                    hz.vfxTimer = 0.0;
+                }
+            }
+        }
+
+        enforceRoomSystemAvailability();
+        syncHullFromRoomIntegrity();
+    }
+
     private static double[] flattenPolygon(double[] xs, double[] ys) {
         if (xs == null || ys == null) return new double[0];
         int n = Math.min(xs.length, ys.length);

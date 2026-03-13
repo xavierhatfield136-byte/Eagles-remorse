@@ -21,6 +21,13 @@ public final class EconomySystem {
     private static final double BASE_SHIP_DEPLOY_MIN_SPACING = 96.0;
     private static final double BASE_SHIP_SUPPORT_RANGE = 1020.0;
     private static final double BASE_REPAIR_MIN_RANGE = 180.0;
+    private static final double TRANSPORT_SUPPORT_MIN_RANGE = 220.0;
+    private static final double TRANSPORT_ROOM_HEAL_FRAC_PER_SEC = 0.05;
+    private static final double TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC = 0.3333333333333333;
+    private static final double HAULER_TRANSFER_RANGE = 120.0;
+    private static final double HAULER_TRANSFER_PER_SEC = 120.0;
+    private static final double HAULER_SEARCH_RANGE = 1600.0;
+    private static final double HAULER_FULL_FRAC = 0.92;
     private static final double NPC_REFIT_CHECK_INTERVAL = 1.25;
     private static final int NPC_REFITS_PER_TEAM_PASS = 2;
     private static final double NPC_REFIT_COOLDOWN_SEC = 14.0;
@@ -73,8 +80,10 @@ public final class EconomySystem {
 
         // NPC mining & deposits
         handleNpcMiningAndDeposits(ctx, dt);
+        updateNpcHaulerLogistics(ctx, dt);
         updateStationTurretStructures(ctx);
         applyFriendlyBaseRepairAuras(ctx, dt);
+        applyTransportSupportAuras(ctx, dt);
         updateNpcBaseUpgradePrograms(ctx, dt);
         updateNpcRefitPrograms(ctx, dt);
 
@@ -148,6 +157,92 @@ public final class EconomySystem {
         }
     }
 
+    private static void updateNpcHaulerLogistics(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (s.role != ShipRole.HAULER) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            updateHaulerState(ctx, s, dt);
+        }
+    }
+
+    private static void updateHaulerState(GameContext ctx, Ship hauler, double dt) {
+        if (ctx == null || hauler == null || dt <= 0.0) return;
+
+        if (hauler.minerHomeBase == null || !hauler.minerHomeBase.alive || hauler.minerHomeBase.hp <= 0) {
+            hauler.minerHomeBase = findHomeBaseFor(ctx, hauler);
+        }
+        Ship base = hauler.minerHomeBase;
+
+        boolean fullEnough = hauler.cargo >= Math.max(1, (int) Math.round(hauler.cargoMax * HAULER_FULL_FRAC));
+        Ship targetMiner = fullEnough ? null : findBestMinerForHauler(ctx, hauler, HAULER_SEARCH_RANGE);
+
+        if (fullEnough || targetMiner == null) {
+            if (base != null && base.alive && base.hp > 0) {
+                steerTo(hauler, base.x, base.y, dt);
+                if (inDepositRange(hauler, base)) {
+                    hauler.depositCargoTo(base);
+                }
+            } else {
+                aiWander(hauler, dt, ctx.WORLD_W, ctx.WORLD_H);
+            }
+            return;
+        }
+
+        double range = HAULER_TRANSFER_RANGE + hauler.radius + targetMiner.radius;
+        double range2 = range * range;
+        if (GameMath.dist2(hauler.x, hauler.y, targetMiner.x, targetMiner.y) > range2) {
+            steerTo(hauler, targetMiner.x, targetMiner.y, dt);
+            return;
+        }
+
+        int haulerRoom = Math.max(0, hauler.cargoMax - hauler.cargo);
+        if (haulerRoom <= 0) return;
+        int desired = Math.max(1, (int) Math.round(HAULER_TRANSFER_PER_SEC * dt));
+        int moved = Math.min(haulerRoom, Math.min(targetMiner.cargo, desired));
+        if (moved <= 0) return;
+
+        targetMiner.cargo = Math.max(0, targetMiner.cargo - moved);
+        hauler.cargo = Math.min(hauler.cargoMax, hauler.cargo + moved);
+
+        if (targetMiner.role == ShipRole.MINER
+                && (targetMiner.minerState == Ship.MinerState.RETURN_TO_BASE || targetMiner.minerState == Ship.MinerState.DEPOSIT)
+                && targetMiner.cargo < Math.max(1, (int) Math.round(targetMiner.cargoMax * 0.55))) {
+            targetMiner.minerState = Ship.MinerState.SEEK_ASTEROID;
+            targetMiner.minerTarget = null;
+        }
+    }
+
+    private static Ship findBestMinerForHauler(GameContext ctx, Ship hauler, double maxDist) {
+        if (ctx == null || hauler == null || hauler.faction == null || maxDist <= 0.0) return null;
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double maxDist2 = maxDist * maxDist;
+
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (s.role != ShipRole.MINER) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.teamId() != hauler.faction.teamId()) continue;
+            if (s.cargo <= 0) continue;
+
+            double d2 = GameMath.dist2(hauler.x, hauler.y, s.x, s.y);
+            if (d2 > maxDist2) continue;
+
+            double dist = Math.sqrt(Math.max(0.0, d2));
+            double score = s.cargo * 2.6 - dist * 0.22;
+            if (s.minerState == Ship.MinerState.RETURN_TO_BASE || s.minerState == Ship.MinerState.DEPOSIT) {
+                score += 45.0;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = s;
+            }
+        }
+        return best;
+    }
+
     private static void updatePeriodicMinerReinforcements(GameContext ctx, double dt) {
         if (ctx == null) return;
         ctx.minerReinforcementTimer -= Math.max(0.0, dt);
@@ -172,6 +267,7 @@ public final class EconomySystem {
             if (!base.alive || base.dying || base.hp <= 0) continue;
 
             spawnMinersAtBase(ctx, team, base, PERIODIC_MINERS_PER_TEAM);
+            spawnLogisticsSupportAtBase(ctx, team, base);
         }
     }
 
@@ -188,6 +284,76 @@ public final class EconomySystem {
             miner.minerHomeBase = base;
             miner.minerState = Ship.MinerState.SEEK_ASTEROID;
         }
+    }
+
+    private static void spawnLogisticsSupportAtBase(GameContext ctx, Faction team, Ship base) {
+        if (ctx == null || team == null || base == null) return;
+
+        int miners = TeamSystem.countAliveMiners(ctx, team);
+        int haulers = countAliveRoleForTeam(ctx, team, ShipRole.HAULER);
+        int desiredHaulers = 0;
+        if (miners >= 2) desiredHaulers = 1;
+        if (miners >= 4) desiredHaulers = 2;
+        desiredHaulers = Math.max(0, Math.min(2, desiredHaulers));
+
+        while (haulers < desiredHaulers) {
+            Ship hauler = spawnSupportRoleAtBase(ctx, base, team, ShipRole.HAULER);
+            if (hauler == null) break;
+            hauler.minerHomeBase = base;
+            haulers++;
+        }
+
+        int transports = countAliveRoleForTeam(ctx, team, ShipRole.TRANSPORT);
+        int combatShips = countTeamCombatShips(ctx, team);
+        int desiredTransports = (combatShips >= 4) ? 1 : 0;
+        desiredTransports = Math.max(0, Math.min(1, desiredTransports));
+
+        while (transports < desiredTransports) {
+            Ship transport = spawnSupportRoleAtBase(ctx, base, team, ShipRole.TRANSPORT);
+            if (transport == null) break;
+            transports++;
+        }
+    }
+
+    private static Ship spawnSupportRoleAtBase(GameContext ctx, Ship base, Faction team, ShipRole role) {
+        if (ctx == null || base == null || team == null || role == null) return null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            double a = ctx.rng.nextDouble() * Math.PI * 2.0;
+            double r = base.radius + 95.0 + ctx.rng.nextDouble() * 90.0;
+            double sx = base.x + Math.cos(a) * r;
+            double sy = base.y + Math.sin(a) * r;
+            Ship ship = SpawnSystem.spawnTeamShip(ctx, role, team, sx, sy);
+            if (ship != null) return ship;
+        }
+        return null;
+    }
+
+    private static int countAliveRoleForTeam(GameContext ctx, Faction team, ShipRole role) {
+        if (ctx == null || team == null || role == null) return 0;
+        int count = 0;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != role) continue;
+            if (s.faction == null || s.faction.teamId() != team.teamId()) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static int countTeamCombatShips(GameContext ctx, Faction team) {
+        if (ctx == null || team == null) return 0;
+        int count = 0;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.teamId() != team.teamId()) continue;
+            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
+            if (s.role == ShipRole.MINER || s.role == ShipRole.HAULER || s.role == ShipRole.TRANSPORT) continue;
+            if (s.carrierOwnerId >= 0) continue;
+            count++;
+        }
+        return count;
     }
 
     private static void updateStationTurretStructures(GameContext ctx) {
@@ -357,6 +523,32 @@ public final class EconomySystem {
 
                 if (hullPerSec > 0.0) ally.healHull(hullPerSec * dt);
                 if (shieldPerSec > 0.0) ally.healShield(shieldPerSec * dt);
+            }
+        }
+    }
+
+    private static void applyTransportSupportAuras(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        for (Ship transport : ctx.ships) {
+            if (transport == null) continue;
+            if (!transport.alive || transport.dying || transport.hp <= 0) continue;
+            if (transport.role != ShipRole.TRANSPORT) continue;
+            if (transport.faction == null) continue;
+
+            double range = Math.max(TRANSPORT_SUPPORT_MIN_RANGE, transport.repairRange);
+            double range2 = range * range;
+            for (Ship ally : ctx.ships) {
+                if (ally == null) continue;
+                if (!ally.alive || ally.dying || ally.hp <= 0) continue;
+                if (ally.faction == null || ally.faction.teamId() != transport.faction.teamId()) continue;
+                if (ally.role == ShipRole.BASE || ally.role == ShipRole.STATIC_TURRET) continue;
+                if (GameMath.dist2(ally.x, ally.y, transport.x, transport.y) > range2) continue;
+
+                ally.applySupportField(
+                        TRANSPORT_ROOM_HEAL_FRAC_PER_SEC,
+                        TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC,
+                        dt
+                );
             }
         }
     }
@@ -939,9 +1131,10 @@ public final class EconomySystem {
             }
             case ARTILLERY -> {
                 if (base != null && base.maxDefenders >= 10 && pressure < 0.78 && roll < 0.16) yield ShipRole.BATTLECRUISER;
-                if (roll < 0.45) yield ShipRole.MISSILE_BOAT;
-                if (roll < 0.75) yield ShipRole.LIGHT_CRUISER;
-                yield ShipRole.MEDIUM_CRUISER;
+                if (roll < 0.40) yield ShipRole.MISSILE_BOAT;
+                if (roll < 0.68) yield ShipRole.LIGHT_CRUISER;
+                if (roll < 0.86) yield ShipRole.MEDIUM_CRUISER;
+                yield ShipRole.CRUISER;
             }
             case STEALTH -> {
                 if (roll < 0.78) yield ShipRole.STEALTH_SHIP;
@@ -955,8 +1148,9 @@ public final class EconomySystem {
             case LINE -> {
                 if (base != null && base.maxDefenders >= 10 && pressure < 0.74 && roll < 0.14) yield ShipRole.BATTLECRUISER;
                 if (roll < 0.46) yield ShipRole.FRIGATE;
-                if (roll < 0.78) yield ShipRole.LIGHT_CRUISER;
-                yield ShipRole.MEDIUM_CRUISER;
+                if (roll < 0.76) yield ShipRole.LIGHT_CRUISER;
+                if (roll < 0.92) yield ShipRole.MEDIUM_CRUISER;
+                yield ShipRole.CRUISER;
             }
         };
     }
@@ -971,10 +1165,10 @@ public final class EconomySystem {
                 yield new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
             }
             case ESCORT -> new ShipRole[]{ShipRole.CIWS_CORVETTE, ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
-            case ARTILLERY -> new ShipRole[]{ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
+            case ARTILLERY -> new ShipRole[]{ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case STEALTH -> new ShipRole[]{ShipRole.STEALTH_SHIP, ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
             case CARRIER -> new ShipRole[]{ShipRole.DRONE_CARRIER, ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.DREADNOUGHT};
-            case LINE -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
+            case LINE -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
         };
     }
 
@@ -987,8 +1181,9 @@ public final class EconomySystem {
             case CIWS_CORVETTE -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case MISSILE_BOAT -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case STEALTH_SHIP -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
-            case LIGHT_CRUISER -> new ShipRole[]{ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT};
-            case MEDIUM_CRUISER, CRUISER -> new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
+            case LIGHT_CRUISER -> new ShipRole[]{ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT};
+            case MEDIUM_CRUISER -> new ShipRole[]{ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
+            case CRUISER -> new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
             case BATTLECRUISER -> new ShipRole[]{ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
             case BATTLESHIP -> new ShipRole[]{ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
             case DREADNOUGHT -> new ShipRole[]{ShipRole.SUPERSHIP};
@@ -1188,7 +1383,8 @@ public final class EconomySystem {
             case CIWS_CORVETTE -> 250;
             case MISSILE_BOAT -> 300;
             case LIGHT_CRUISER -> 700;
-            case MEDIUM_CRUISER, CRUISER -> 950;
+            case MEDIUM_CRUISER -> 950;
+            case CRUISER -> 1100;
             case BATTLECRUISER -> 1600;
             case BATTLESHIP -> 2200;
             case STEALTH_SHIP -> 1200;
@@ -1329,7 +1525,10 @@ public final class EconomySystem {
         double cargoMax = Math.max(1, s.cargoMax);
         boolean cargoFullEnough = cargo >= cargoMax * MINER_FULL_FRAC;
 
-        if (cargoFullEnough && s.minerState != Ship.MinerState.RETURN_TO_BASE && s.minerState != Ship.MinerState.DEPOSIT) {
+        if (cargoFullEnough
+                && s.minerState != Ship.MinerState.RETURN_TO_BASE
+                && s.minerState != Ship.MinerState.DEPOSIT
+                && !hasNearbyHaulerWithCapacity(ctx, s, 260.0)) {
             s.minerState = Ship.MinerState.RETURN_TO_BASE;
         }
 
@@ -1382,7 +1581,7 @@ public final class EconomySystem {
                     try { VFX.spawnEngineWisp(s.x, s.y, s.vx, s.vy); } catch (Throwable ignored) {}
                 }
                 double newCargo = getShipOre(s);
-                if (newCargo >= cargoMax * MINER_FULL_FRAC) {
+                if (newCargo >= cargoMax * MINER_FULL_FRAC && !hasNearbyHaulerWithCapacity(ctx, s, 260.0)) {
                     s.minerState = Ship.MinerState.RETURN_TO_BASE;
                 }
             }
@@ -1481,6 +1680,20 @@ public final class EconomySystem {
         return (dx * dx + dy * dy) <= (reach * reach);
     }
 
+    private static boolean hasNearbyHaulerWithCapacity(GameContext ctx, Ship miner, double range) {
+        if (ctx == null || miner == null || miner.faction == null || range <= 0.0) return false;
+        double range2 = range * range;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.role != ShipRole.HAULER) continue;
+            if (s.faction == null || s.faction.teamId() != miner.faction.teamId()) continue;
+            if (s.cargo >= s.cargoMax) continue;
+            if (GameMath.dist2(s.x, s.y, miner.x, miner.y) <= range2) return true;
+        }
+        return false;
+    }
+
     private static void steerTo(Ship s, double tx, double ty, double dt) {
         double dx = tx - s.x;
         double dy = ty - s.y;
@@ -1525,8 +1738,9 @@ public final class EconomySystem {
     }
 
     private static Ship getBaseForFaction(GameContext ctx, Faction faction) {
+        if (ctx == null || faction == null) return null;
         Ship direct = ctx.teamBases.get(faction);
-        if (direct == null && faction != null) {
+        if (direct == null) {
             if (faction == Faction.ALLY) direct = ctx.allyBase;
             else if (faction == Faction.ENEMY) direct = ctx.enemyBase;
         }

@@ -685,6 +685,7 @@ public final class UISystem {
     public static void tryUpgradeBase(GameContext ctx, int which) {
         if (ctx == null) return;
         if (!ctx.baseMenuOpen) return;
+        if (which < 1 || which > 5) return;
         Ship base = EconomySystem.getDockedFriendlyBase(ctx);
         if (base == null) {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE", 1.4);
@@ -766,6 +767,9 @@ public final class UISystem {
             case 5 -> {
                 up.hangarLv++;
                 EventSystem.showBanner(ctx, "HANGAR EXPANDED", 1.2);
+            }
+            default -> {
+                return;
             }
         }
     }

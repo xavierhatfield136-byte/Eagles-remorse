@@ -23,9 +23,12 @@ public final class MathUtil {
     }
 
     public static double normalizeAngle(double a) {
-        while (a <= -Math.PI) a += Math.PI * 2;
-        while (a > Math.PI) a -= Math.PI * 2;
-        return a;
+        if (!Double.isFinite(a)) return 0.0;
+        double twoPi = Math.PI * 2.0;
+        double wrapped = Math.IEEEremainder(a, twoPi);
+        if (wrapped <= -Math.PI) wrapped += twoPi;
+        if (wrapped > Math.PI) wrapped -= twoPi;
+        return wrapped;
     }
 
     /**
@@ -76,7 +79,7 @@ public final class MathUtil {
             if (t1 > 0 && t1 < t) t = t1;
             if (t2 > 0 && t2 < t) t = t2;
 
-            if (!Double.isFinite(t) || t == Double.POSITIVE_INFINITY) {
+            if (!Double.isFinite(t)) {
                 return new double[]{targetX, targetY, 0.0};
             }
         }

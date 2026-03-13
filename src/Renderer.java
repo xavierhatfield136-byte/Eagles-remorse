@@ -2002,7 +2002,7 @@ public class Renderer {
         g2.drawRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
 
         CrewPortraitSystem.PortraitAsset activePortrait = CrewPortraitSystem.getPortrait(ctx.activeCrewStation);
-        BufferedImage portraitImage = (activePortrait == null) ? null : activePortrait.image();
+        BufferedImage portraitImage = activePortrait.image();
 
         int portraitX = portraitPaneX + 10;
         int portraitY = portraitPaneY + 24;
@@ -2031,8 +2031,8 @@ public class Renderer {
         g2.drawString(ctx.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
-        String source = (activePortrait == null) ? "portrait: unavailable" : ("portrait: " + activePortrait.sourceLabel());
-        g2.setColor((activePortrait != null && activePortrait.fromDisk())
+        String source = "portrait: " + activePortrait.sourceLabel();
+        g2.setColor(activePortrait.fromDisk()
                 ? new Color(180, 255, 205, 220)
                 : new Color(255, 220, 170, 220));
         g2.drawString(source, portraitPaneX + 12, portraitPaneY + portraitPaneH - 10);
@@ -2056,7 +2056,7 @@ public class Renderer {
             g2.drawRoundRect(tabX, tabY, tw, 24, 10, 10);
 
             CrewPortraitSystem.PortraitAsset iconAsset = CrewPortraitSystem.getPortrait(station);
-            BufferedImage icon = (iconAsset == null) ? null : iconAsset.image();
+            BufferedImage icon = iconAsset.image();
             if (icon != null) {
                 g2.drawImage(icon, tabX + 6, tabY + 4, 16, 16, null);
             }
@@ -4210,7 +4210,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     BufferedImage img = ImageIO.read(f);
                     if (img == null) continue;
                     (ore ? AST_ORE : AST_NORMAL).get(size).add(img);
-                } catch (IOException ignored) {}
+                } catch (IOException ex) {
+                    System.err.println("[renderer] asteroid_skin_read_failed "
+                            + f.getAbsolutePath() + " :: " + ex.getMessage());
+                }
             }
         }
 

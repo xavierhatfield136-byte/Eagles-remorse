@@ -63,6 +63,8 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
             case KeyEvent.VK_A -> left = true;
             case KeyEvent.VK_D -> right = true;
             case KeyEvent.VK_SHIFT -> boost = true;
+            default -> {
+            }
         }
     }
 
@@ -74,6 +76,8 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
             case KeyEvent.VK_A -> left = false;
             case KeyEvent.VK_D -> right = false;
             case KeyEvent.VK_SHIFT -> boost = false;
+            default -> {
+            }
         }
     }
 
