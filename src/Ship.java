@@ -173,14 +173,23 @@ public abstract class Ship {
     public final List<Turret> turrets = new ArrayList<>();
 
     // Superweapon (wave-motion gun)
+    public enum SuperweaponPattern {
+        PULSE_BARRAGE,   // Player default: current rapid-fire wave pulses
+        KINETIC_SLUG,    // Red team: single heavy kinetic shell
+        DIRECT_BEAM,     // Green team: strong direct-energy beam
+        MISSILE_BARRAGE  // Missile team: repeated heavy missile salvos
+    }
+
     public boolean hasWaveMotionGun = false;
+    public SuperweaponPattern superweaponPattern = SuperweaponPattern.PULSE_BARRAGE;
     public double waveMotionChargeTime = 0.0;
     public double waveMotionCooldown = 24.0;
     private double waveMotionTimer = 0.0;
     private double waveMotionChargeTimer = 0.0;
     private boolean waveMotionCharging = false;
-    private WaveMotionShot pendingWaveMotionShot = null;
+    private final List<Projectile> pendingWaveMotionShots = new ArrayList<>();
     private double queuedWaveMotionAim = Double.NaN;
+    private Ship queuedWaveMotionTarget = null;
     public int waveMotionDamage = 68;
     public double waveMotionSpeed = 1500.0;
     public int waveMotionLife = 140;
@@ -193,6 +202,7 @@ public abstract class Ship {
     private double waveMotionBeamTimer = 0.0;
     private double waveMotionBeamTickTimer = 0.0;
     private double waveMotionBeamAim = Double.NaN;
+    private Ship waveMotionBeamTarget = null;
 
     // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
@@ -656,8 +666,10 @@ public abstract class Ship {
                 waveMotionChargeTimer = 0.0;
                 waveMotionCharging = false;
                 double aim = Double.isFinite(queuedWaveMotionAim) ? queuedWaveMotionAim : angle;
-                pendingWaveMotionShot = fireWaveMotionShot(dt, aim);
+                Projectile fired = fireWaveMotionShot(dt, aim, queuedWaveMotionTarget);
+                enqueuePendingWaveMotionShot(fired);
                 queuedWaveMotionAim = Double.NaN;
+                queuedWaveMotionTarget = null;
             }
         }
         if (waveMotionBeamTimer > 0.0) {
@@ -667,15 +679,14 @@ public abstract class Ship {
 
             if (waveMotionBeamTimer > 0.0 && waveMotionBeamTickTimer <= 0.0) {
                 double aim = Double.isFinite(waveMotionBeamAim) ? waveMotionBeamAim : angle;
-                if (pendingWaveMotionShot == null || !pendingWaveMotionShot.alive) {
-                    pendingWaveMotionShot = createWaveMotionPulse(dt, aim, true);
-                }
+                enqueuePendingWaveMotionShots(createSuperweaponVolley(dt, aim, waveMotionBeamTarget, true));
                 waveMotionBeamTickTimer = waveMotionTickSpacing();
             }
 
             if (waveMotionBeamTimer <= 0.0) {
                 waveMotionBeamTickTimer = 0.0;
                 waveMotionBeamAim = Double.NaN;
+                waveMotionBeamTarget = null;
             }
         }
 
@@ -915,11 +926,13 @@ public abstract class Ship {
         dying = true;
         waveMotionCharging = false;
         waveMotionChargeTimer = 0.0;
-        pendingWaveMotionShot = null;
+        pendingWaveMotionShots.clear();
         queuedWaveMotionAim = Double.NaN;
+        queuedWaveMotionTarget = null;
         waveMotionBeamTimer = 0.0;
         waveMotionBeamTickTimer = 0.0;
         waveMotionBeamAim = Double.NaN;
+        waveMotionBeamTarget = null;
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
@@ -3386,9 +3399,10 @@ public abstract class Ship {
         return angle;
     }
 
-    public WaveMotionShot pollWaveMotionShot() {
-        WaveMotionShot shot = pendingWaveMotionShot;
-        pendingWaveMotionShot = null;
+    public Projectile pollWaveMotionShot() {
+        if (pendingWaveMotionShots.isEmpty()) return null;
+        Projectile shot = pendingWaveMotionShots.get(0);
+        pendingWaveMotionShots.remove(0);
         return shot;
     }
 
@@ -3396,11 +3410,13 @@ public abstract class Ship {
         waveMotionTimer = 0.0;
         waveMotionChargeTimer = 0.0;
         waveMotionCharging = false;
-        pendingWaveMotionShot = null;
+        pendingWaveMotionShots.clear();
         queuedWaveMotionAim = Double.NaN;
+        queuedWaveMotionTarget = null;
         waveMotionBeamTimer = 0.0;
         waveMotionBeamTickTimer = 0.0;
         waveMotionBeamAim = Double.NaN;
+        waveMotionBeamTarget = null;
     }
 
     public boolean canFireWaveMotionGun() {
@@ -3416,25 +3432,19 @@ public abstract class Ship {
         if (waveMotionBeamTimer > 0.0) waveMotionBeamAim = aim;
     }
 
-    public WaveMotionShot tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
+    public Projectile tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
         if (!canFireWaveMotionGun()) return null;
         if (dt <= 0.0) return null;
         double aim = resolveWaveMotionAim(targetX, targetY);
-        queuedWaveMotionAim = aim;
-
-        if (waveMotionChargeTime > 0.0) {
-            waveMotionCharging = true;
-            waveMotionChargeTimer = waveMotionChargeTime;
-            return null;
-        }
-
-        queuedWaveMotionAim = Double.NaN;
-        return fireWaveMotionShot(dt, aim);
+        return tryFireWaveMotionGunResolved(aim, null, dt);
     }
 
-    public WaveMotionShot tryFireWaveMotionGun(Ship target, double dt) {
+    public Projectile tryFireWaveMotionGun(Ship target, double dt) {
         if (target == null) return tryFireWaveMotionGunAt(Double.NaN, Double.NaN, dt);
-        return tryFireWaveMotionGunAt(target.x, target.y, dt);
+        if (!canFireWaveMotionGun()) return null;
+        if (dt <= 0.0) return null;
+        double aim = resolveWaveMotionAim(target.x, target.y);
+        return tryFireWaveMotionGunResolved(aim, target, dt);
     }
 
     public boolean isShieldOnline() {
@@ -3470,19 +3480,162 @@ public abstract class Ship {
         return Math.atan2(dy, dx);
     }
 
-    private WaveMotionShot fireWaveMotionShot(double dt, double aim) {
+    private Projectile tryFireWaveMotionGunResolved(double aim, Ship target, double dt) {
+        queuedWaveMotionAim = aim;
+        queuedWaveMotionTarget = isValidWaveMotionTarget(target) ? target : null;
+
+        if (waveMotionChargeTime > 0.0) {
+            waveMotionCharging = true;
+            waveMotionChargeTimer = waveMotionChargeTime;
+            return null;
+        }
+
+        queuedWaveMotionAim = Double.NaN;
+        Ship immediateTarget = queuedWaveMotionTarget;
+        queuedWaveMotionTarget = null;
+        return fireWaveMotionShot(dt, aim, immediateTarget);
+    }
+
+    private Projectile fireWaveMotionShot(double dt, double aim, Ship target) {
         angle = aim;
         waveMotionTimer = Math.max(1.0, waveMotionCooldown);
-        waveMotionBeamTimer = Math.max(0.0, waveMotionBeamDuration);
-        waveMotionBeamTickTimer = waveMotionTickSpacing();
-        waveMotionBeamAim = aim;
         onFiredWeapon();
 
-        return createWaveMotionPulse(dt, aim, false);
+        waveMotionBeamAim = aim;
+        waveMotionBeamTarget = isValidWaveMotionTarget(target) ? target : null;
+        switch (superweaponPattern) {
+            case PULSE_BARRAGE -> {
+                waveMotionBeamTimer = Math.max(0.0, waveMotionBeamDuration);
+                waveMotionBeamTickTimer = waveMotionTickSpacing();
+            }
+            case MISSILE_BARRAGE -> {
+                waveMotionBeamTimer = Math.max(0.45, waveMotionBeamDuration * 1.7);
+                waveMotionBeamTickTimer = waveMotionTickSpacing();
+            }
+            default -> {
+                waveMotionBeamTimer = 0.0;
+                waveMotionBeamTickTimer = 0.0;
+                waveMotionBeamTarget = null;
+            }
+        }
+
+        List<Projectile> volley = createSuperweaponVolley(dt, aim, target, false);
+        if (volley.isEmpty()) return null;
+        Projectile first = volley.get(0);
+        if (volley.size() > 1) {
+            for (int i = 1; i < volley.size(); i++) enqueuePendingWaveMotionShot(volley.get(i));
+        }
+        return first;
     }
 
     private double waveMotionTickSpacing() {
-        return Math.max(0.03, waveMotionBeamTickInterval / WAVE_MOTION_PROJECTILE_RATE_MULT);
+        return switch (superweaponPattern) {
+            case MISSILE_BARRAGE -> Math.max(0.14, waveMotionBeamTickInterval * 1.8);
+            case PULSE_BARRAGE -> Math.max(0.03, waveMotionBeamTickInterval / WAVE_MOTION_PROJECTILE_RATE_MULT);
+            default -> Math.max(0.06, waveMotionBeamTickInterval);
+        };
+    }
+
+    private List<Projectile> createSuperweaponVolley(double dt, double aim, Ship target, boolean beamTick) {
+        List<Projectile> out = new ArrayList<>();
+        switch (superweaponPattern) {
+            case KINETIC_SLUG -> addSuperweaponProjectile(out, createKineticSuperSlug(dt, aim));
+            case DIRECT_BEAM -> addSuperweaponProjectile(out, createDirectBeamSuperweapon(aim));
+            case MISSILE_BARRAGE -> out.addAll(createMissileBarrageVolley(dt, aim, target, beamTick));
+            case PULSE_BARRAGE -> addSuperweaponProjectile(out, createWaveMotionPulse(dt, aim, beamTick));
+        }
+        return out;
+    }
+
+    private void addSuperweaponProjectile(List<Projectile> out, Projectile p) {
+        if (out == null || p == null) return;
+        out.add(p);
+    }
+
+    private void enqueuePendingWaveMotionShot(Projectile p) {
+        if (p == null) return;
+        pendingWaveMotionShots.add(p);
+    }
+
+    private void enqueuePendingWaveMotionShots(List<Projectile> shots) {
+        if (shots == null || shots.isEmpty()) return;
+        for (Projectile p : shots) {
+            if (p != null) pendingWaveMotionShots.add(p);
+        }
+    }
+
+    private Projectile createKineticSuperSlug(double dt, double aim) {
+        double sx = x + Math.cos(aim) * (radius + 12.0);
+        double sy = y + Math.sin(aim) * (radius + 12.0);
+        int damage = Math.max(1, (int) Math.round(waveMotionDamage * 3.8));
+        double speed = Math.max(420.0, waveMotionSpeed * 0.74);
+        int life = Math.max(36, (int) Math.round(waveMotionLife * 1.35));
+        double slugRadius = Math.max(18.0, waveMotionRadius * 2.35);
+        Projectile slug = new Bullet(sx, sy, aim, dt, speed, damage, life, slugRadius, faction);
+        slug.sourceShipId = id;
+        return slug;
+    }
+
+    private Projectile createDirectBeamSuperweapon(double aim) {
+        Turret emitter = selectSuperweaponBeamEmitter(aim);
+        if (emitter == null) {
+            return createWaveMotionPulse(GameContext.DT, aim, false);
+        }
+        double beamDurationSec = Math.max(0.65, waveMotionBeamDuration * 2.0);
+        int beamLife = Math.max(8, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
+        double totalDamage = Math.max(1.0, waveMotionDamage * 3.6);
+        double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
+        double beamLength = MathUtil.clamp(waveMotionSpeed * 0.96, 760.0, 1760.0);
+        double beamWidth = Math.max(10.0, waveMotionRadius * 1.9);
+        Projectile beam = new PhaserBeam(this, emitter, aim, beamLength, beamWidth, beamDps, beamLife, faction);
+        beam.sourceShipId = id;
+        return beam;
+    }
+
+    private Turret selectSuperweaponBeamEmitter(double aim) {
+        Turret best = null;
+        double bestScore = -Double.MAX_VALUE;
+        for (Turret t : turrets) {
+            if (t == null || t.kind != Turret.Kind.GUN) continue;
+            double score = t.localX;
+            if (t.primary) score += 1000.0;
+            if (score > bestScore) {
+                bestScore = score;
+                best = t;
+            }
+        }
+        if (best != null) best.angle = aim;
+        return best;
+    }
+
+    private List<Projectile> createMissileBarrageVolley(double dt, double aim, Ship target, boolean beamTick) {
+        int missileCount = beamTick ? 4 : 9;
+        double spread = beamTick ? Math.toRadians(28.0) : Math.toRadians(46.0);
+        int damage = Math.max(6, (int) Math.round(waveMotionDamage * (beamTick ? 0.42 : 0.56)));
+        double speed = Math.max(260.0, waveMotionSpeed * (beamTick ? 0.34 : 0.39));
+        double turnRate = Math.toRadians(beamTick ? 218.0 : 246.0);
+        int life = Math.max(120, (int) Math.round(waveMotionLife * (beamTick ? 1.35 : 1.75)));
+        double missileRadius = Math.max(9.0, waveMotionRadius * (beamTick ? 0.95 : 1.10));
+        double muzzle = radius + 12.0;
+        List<Projectile> out = new ArrayList<>(missileCount);
+
+        Ship lock = isValidWaveMotionTarget(target) ? target : null;
+        for (int i = 0; i < missileCount; i++) {
+            double t = (missileCount <= 1) ? 0.0 : (i / (double) (missileCount - 1) - 0.5);
+            double shotAim = MathUtil.normalizeAngle(aim + t * spread);
+            double lateral = t * Math.max(8.0, radius * 0.8);
+            double sx = x + Math.cos(aim) * muzzle + (-Math.sin(aim)) * lateral;
+            double sy = y + Math.sin(aim) * muzzle + (Math.cos(aim)) * lateral;
+            Missile missile = new Missile(sx, sy, shotAim, lock, dt, speed, turnRate, damage, life, missileRadius, faction);
+            missile.sourceShipId = id;
+            out.add(missile);
+        }
+        return out;
+    }
+
+    private boolean isValidWaveMotionTarget(Ship target) {
+        if (target == null) return false;
+        return target.alive && !target.dying && target.hp > 0 && (target.faction == null || !target.faction.isFriendlyTo(faction));
     }
 
     private WaveMotionShot createWaveMotionPulse(double dt, double aim, boolean beamTick) {

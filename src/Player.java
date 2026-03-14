@@ -267,6 +267,7 @@ public class Player extends Ship {
         this.ciwsPelletRadius = t.ciwsPelletRadius;
 
         this.hasWaveMotionGun = t.hasWaveMotionGun;
+        this.superweaponPattern = t.superweaponPattern;
         this.waveMotionChargeTime = t.waveMotionChargeTime;
         this.waveMotionCooldown = t.waveMotionCooldown;
         this.waveMotionDamage = t.waveMotionDamage;

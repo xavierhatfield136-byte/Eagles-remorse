@@ -34,6 +34,7 @@ public final class GameRenderSystem {
         Renderer.drawShips(worldG, ctx.ships);
         Renderer.drawProjectiles(worldG, ctx.projectiles);
         Renderer.drawWaveMotionAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
+        Renderer.drawNpcWaveMotionAimCues(worldG, ctx.ships, ctx.player);
 
         try { VFX.drawAll(worldG); } catch (Throwable ignored) {}
 
@@ -330,8 +331,8 @@ if (DevTools.isDebugOverlay()) {
         return switch (faction) {
             case ALLY -> new Color(120, 210, 255);
             case ENEMY -> new Color(255, 130, 130);
-            case TEAM_C -> new Color(130, 255, 165);
-            case TEAM_D -> new Color(255, 205, 130);
+            case TEAM_C -> new Color(138, 252, 154);
+            case TEAM_D -> new Color(255, 198, 126);
             default -> new Color(170, 210, 255);
         };
     }

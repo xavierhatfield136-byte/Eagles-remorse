@@ -1777,13 +1777,39 @@ public final class AISystem {
         double targetHull = hullFrac(target);
         int firedCount = 0;
 
+        if (s.hasWaveMotionGun && (s.isWaveMotionCharging() || s.isWaveMotionBeamActive())) {
+            s.trackWaveMotionAim(target.x, target.y);
+            if (s.role == ShipRole.SUPERSHIP && s.isWaveMotionCharging()) {
+                rotateShipTowardAssist(s, s.getWaveMotionAimAngle(), dt, Math.toRadians(260.0));
+            }
+        }
+
         if (s.hasWaveMotionGun) {
-            double waveRange = 2200.0 * rangeMul;
+            double waveRangeBase = 2200.0;
+            if (s.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
+                // Match fire gating to actual beam reach so Team C supers don't waste casts at extreme standoff.
+                double beamReach = MathUtil.clamp(s.waveMotionSpeed * 0.96, 760.0, 1760.0);
+                waveRangeBase = Math.max(640.0, beamReach * 0.92);
+            }
+            double waveRange = waveRangeBase * rangeMul;
             if (dist <= waveRange) {
-                boolean allowWave = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
-                if (objective == SquadObjective.RESERVE) allowWave = allowWave && confidence >= 0.78 && dist <= waveRange * 0.70;
-                if (objective == SquadObjective.INTERCEPT) allowWave = allowWave && confidence >= 0.56;
-                WaveMotionShot shot = allowWave ? s.tryFireWaveMotionGun(target, dt) : null;
+                boolean superShip = (s.role == ShipRole.SUPERSHIP);
+                boolean allowWave;
+                if (superShip) {
+                    // Supership ultimates should be visible threats; do not over-throttle them.
+                    double confGate = isCapitalRole(target.role) ? 0.38 : 0.46;
+                    double hullGate = isCapitalRole(target.role) ? 0.12 : 0.18;
+                    allowWave = confidence >= confGate && targetHull > hullGate && !killConfirm;
+                } else {
+                    allowWave = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
+                }
+                if (objective == SquadObjective.RESERVE) {
+                    allowWave = allowWave && confidence >= (superShip ? 0.58 : 0.78) && dist <= waveRange * (superShip ? 0.82 : 0.70);
+                }
+                if (objective == SquadObjective.INTERCEPT) {
+                    allowWave = allowWave && confidence >= (superShip ? 0.44 : 0.56);
+                }
+                Projectile shot = allowWave ? s.tryFireWaveMotionGun(target, dt) : null;
                 if (shot != null) {
                     ctx.projectiles.add(shot);
                     ScreenShake.kick(3.5);
@@ -2082,6 +2108,14 @@ public final class AISystem {
         if (s == null || dt <= 0.0) return;
         double delta = MathUtil.normalizeAngle(desiredAngle - s.angle);
         double maxDelta = maxTurnRateRadPerSec(s) * dt;
+        delta = MathUtil.clamp(delta, -maxDelta, maxDelta);
+        s.angle = MathUtil.normalizeAngle(s.angle + delta);
+    }
+
+    private static void rotateShipTowardAssist(Ship s, double desiredAngle, double dt, double rateRadPerSec) {
+        if (s == null || dt <= 0.0) return;
+        double delta = MathUtil.normalizeAngle(desiredAngle - s.angle);
+        double maxDelta = Math.max(0.0, rateRadPerSec) * dt;
         delta = MathUtil.clamp(delta, -maxDelta, maxDelta);
         s.angle = MathUtil.normalizeAngle(s.angle + delta);
     }

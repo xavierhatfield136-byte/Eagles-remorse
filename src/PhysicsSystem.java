@@ -20,9 +20,14 @@ public final class PhysicsSystem {
         }
         for (Ship s : ctx.ships) {
             if (s == null) continue;
-            WaveMotionShot shot = s.pollWaveMotionShot();
-            if (shot == null) continue;
-            ctx.projectiles.add(shot);
+            boolean superFired = false;
+            while (true) {
+                Projectile shot = s.pollWaveMotionShot();
+                if (shot == null) break;
+                ctx.projectiles.add(shot);
+                superFired = true;
+            }
+            if (!superFired) continue;
             if (s == ctx.player) {
                 EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
                 AudioSystem.onWeaponWave(ctx, s);

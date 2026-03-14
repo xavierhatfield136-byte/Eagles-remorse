@@ -63,6 +63,8 @@ public final class EconomySystem {
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
 
+        SpawnSystem.updateShootingRangeRespawns(ctx, dt);
+
         // Salvage drift
         for (int i = ctx.salvage.size() - 1; i >= 0; i--) {
             Salvage s = ctx.salvage.get(i);
@@ -487,10 +489,16 @@ public final class EconomySystem {
         CommanderPersonality personality = commanderPersonality(ctx, base.faction);
         EnumMap<CombatBucket, Integer> counts = countCombatBucketsForTeam(ctx, base.faction);
         int teamCombat = totalBucketCount(counts);
+        int hangarTier = (base.faction == null) ? 0 : SpawnSystem.maxHangarTierForFaction(ctx, base.faction);
+        int liveSuperships = (base.faction == null) ? 0 : countAliveRoleForTeam(ctx, base.faction, ShipRole.SUPERSHIP);
         EnumMap<CombatBucket, Integer> desired = desiredBucketsForTeam(teamCombat, personality);
         CombatBucket neededBucket = chooseNeededBucket(personality, counts, desired);
 
         double pressure = (shipCapFromBase <= 0) ? 1.0 : (combatNear / (double) shipCapFromBase);
+        // Tier-3 teams should field flagship supers in a timely way instead of waiting for rare refit windows.
+        if (hangarTier >= 3 && liveSuperships <= 0 && teamCombat >= Math.max(5, shipCapFromBase / 2) && pressure < 0.95) {
+            if (ctx.rng.nextDouble() < 0.50) return ShipRole.SUPERSHIP;
+        }
         if (pressure >= 0.82 && ctx.rng.nextDouble() < 0.72) {
             return chooseEscortPressureRole(ctx);
         }
@@ -1050,6 +1058,7 @@ public final class EconomySystem {
         dst.ciwsPelletRadius = src.ciwsPelletRadius;
 
         dst.hasWaveMotionGun = src.hasWaveMotionGun;
+        dst.superweaponPattern = src.superweaponPattern;
         dst.waveMotionChargeTime = src.waveMotionChargeTime;
         dst.waveMotionCooldown = src.waveMotionCooldown;
         dst.waveMotionDamage = src.waveMotionDamage;
@@ -1114,6 +1123,7 @@ public final class EconomySystem {
     private static ShipRole chooseRoleForBucket(GameContext ctx, Ship base, CommanderPersonality personality,
                                                 CombatBucket bucket, double pressure) {
         if (ctx == null || bucket == null) return ShipRole.FRIGATE;
+        int hangarTier = (base == null || base.faction == null) ? 0 : SpawnSystem.maxHangarTierForFaction(ctx, base.faction);
         double roll = ctx.rng.nextDouble();
         return switch (bucket) {
             case FLAGSHIP -> {
@@ -1121,8 +1131,9 @@ public final class EconomySystem {
                     if (base != null && base.maxDefenders >= 10) yield ShipRole.CARRIER;
                     yield ShipRole.DRONE_CARRIER;
                 }
-                if (base != null && base.maxDefenders >= 12 && pressure < 0.72 && roll < 0.12) yield ShipRole.DREADNOUGHT;
-                if (base != null && base.maxDefenders >= 10 && pressure < 0.80 && roll < 0.32) yield ShipRole.BATTLESHIP;
+                if (hangarTier >= 3 && base != null && base.maxDefenders >= 10 && pressure < 0.68 && roll < 0.14) yield ShipRole.SUPERSHIP;
+                if (hangarTier >= 3 && base != null && base.maxDefenders >= 10 && pressure < 0.74 && roll < 0.28) yield ShipRole.DREADNOUGHT;
+                if (base != null && base.maxDefenders >= 10 && pressure < 0.82 && roll < 0.48) yield ShipRole.BATTLESHIP;
                 if (roll < 0.80) yield ShipRole.BATTLECRUISER;
                 yield ShipRole.LIGHT_CRUISER;
             }

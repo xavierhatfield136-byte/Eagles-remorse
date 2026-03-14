@@ -968,6 +968,30 @@ public class FleetShip extends Ship {
                 waveMotionBeamDuration = 1.15;
                 waveMotionBeamTickInterval = 0.11;
                 waveMotionBeamDamageScale = 0.36;
+                superweaponPattern = switch (faction) {
+                    case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
+                    case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
+                    case TEAM_D -> SuperweaponPattern.MISSILE_BARRAGE;
+                    default -> SuperweaponPattern.PULSE_BARRAGE;
+                };
+
+                if (superweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
+                    waveMotionChargeTime = 3.0;
+                    waveMotionCooldown = 24.0;
+                    waveMotionDamage = 110;
+                    waveMotionBeamDuration = 1.45;
+                } else if (superweaponPattern == SuperweaponPattern.KINETIC_SLUG) {
+                    waveMotionChargeTime = 3.3;
+                    waveMotionCooldown = 23.0;
+                    waveMotionDamage = 130;
+                    waveMotionBeamDuration = 0.0;
+                } else if (superweaponPattern == SuperweaponPattern.MISSILE_BARRAGE) {
+                    waveMotionChargeTime = 2.8;
+                    waveMotionCooldown = 25.0;
+                    waveMotionDamage = 84;
+                    waveMotionBeamDuration = 1.20;
+                    waveMotionBeamTickInterval = 0.15;
+                }
 
                 hasCIWS = true;
                 ciwsQuality = 0.45;

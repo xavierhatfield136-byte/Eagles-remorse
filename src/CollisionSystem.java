@@ -20,6 +20,10 @@ public class CollisionSystem {
             if (!p.alive) continue;
             // CIWS is point-defense only: pellets should only interact with missiles.
             if (p instanceof CIWSPellet) continue;
+            if (p instanceof PhaserBeam beam) {
+                handlePhaserBeamVsShips(ctx, beam, ships);
+                continue;
+            }
             boolean waveShot = p instanceof WaveMotionShot;
             VFX.ImpactStyle impactStyle = impactStyleFor(p);
             for (Ship s : ships) {
@@ -217,6 +221,7 @@ public class CollisionSystem {
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             if (p instanceof CIWSPellet) continue;
+            if (p instanceof PhaserBeam) continue;
             WaveMotionShot ws = (p instanceof WaveMotionShot) ? (WaveMotionShot) p : null;
             for (int ai = asteroids.size() - 1; ai >= 0; ai--) {
                 Asteroid a = asteroids.get(ai);
@@ -297,11 +302,89 @@ public class CollisionSystem {
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {
         if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
         if (p instanceof WaveMotionShot) return VFX.ImpactStyle.BEAM;
+        if (p instanceof PhaserBeam) return VFX.ImpactStyle.BEAM;
         if (p instanceof EnergyBolt bolt) {
             return bolt.isBeamBolt() ? VFX.ImpactStyle.BEAM : VFX.ImpactStyle.ENERGY;
         }
         if (p instanceof CIWSPellet) return VFX.ImpactStyle.KINETIC;
         return VFX.ImpactStyle.KINETIC;
+    }
+
+    private static void handlePhaserBeamVsShips(GameContext ctx, PhaserBeam beam, List<Ship> ships) {
+        if (beam == null || !beam.alive || ships == null || ships.isEmpty()) return;
+
+        double sx = beam.startX();
+        double sy = beam.startY();
+        double ex = beam.endX();
+        double ey = beam.endY();
+        double halfWidth = Math.max(1.0, beam.width * 0.5);
+
+        Ship best = null;
+        double bestT = Double.POSITIVE_INFINITY;
+
+        for (Ship s : ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.isFriendlyTo(beam.faction)) continue;
+
+            double shipBroad = HullGeometry.broadPhaseRadius(s) + halfWidth;
+            if (segmentPointDistanceSq(sx, sy, ex, ey, s.x, s.y) > shipBroad * shipBroad) continue;
+            if (!HullGeometry.segmentIntersectsShip(sx, sy, ex, ey, halfWidth, s)) continue;
+
+            double t = segmentParamForPoint(sx, sy, ex, ey, s.x, s.y);
+            if (t < bestT) {
+                bestT = t;
+                best = s;
+            }
+        }
+
+        if (best == null) return;
+
+        int damage = beam.rollFrameDamage(ctx == null ? null : ctx.rng, GameContext.DT);
+        if (damage <= 0) return;
+
+        double dx = ex - sx;
+        double dy = ey - sy;
+        double hitX = sx + dx * bestT;
+        double hitY = sy + dy * bestT;
+        double len = Math.hypot(dx, dy);
+        double dirX = (len > 1e-9) ? (dx / len) : Math.cos(beam.angle);
+        double dirY = (len > 1e-9) ? (dy / len) : Math.sin(beam.angle);
+
+        markPlayerHitContribution(ctx, beam, best);
+        double shieldBefore = best.shield;
+        int hpBefore = best.hp;
+        best.takeDamage(damage, hitX, hitY, dirX, dirY);
+        logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, best, hitX, hitY);
+
+        boolean shieldHit = best.shield < shieldBefore - 1e-6;
+        boolean hullHit = best.hp < hpBefore;
+        boolean showImpactVfx = shouldRenderDamageVfx(ctx, best, hitX, hitY);
+        if (shieldHit) {
+            if (showImpactVfx) VFX.spawnShieldImpact(hitX, hitY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
+            AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.BEAM, hitX, hitY);
+        }
+        if (hullHit) {
+            if (showImpactVfx) VFX.spawnHullImpact(hitX, hitY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
+            AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.BEAM, hitX, hitY);
+        }
+    }
+
+    private static double segmentParamForPoint(double ax, double ay, double bx, double by, double px, double py) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double denom = dx * dx + dy * dy;
+        if (denom <= 1e-9) return 0.0;
+        double t = ((px - ax) * dx + (py - ay) * dy) / denom;
+        return Math.max(0.0, Math.min(1.0, t));
+    }
+
+    private static double segmentPointDistanceSq(double ax, double ay, double bx, double by, double px, double py) {
+        double t = segmentParamForPoint(ax, ay, bx, by, px, py);
+        double cx = ax + (bx - ax) * t;
+        double cy = ay + (by - ay) * t;
+        double dx = px - cx;
+        double dy = py - cy;
+        return dx * dx + dy * dy;
     }
 
     private static boolean shouldRenderDamageVfx(GameContext ctx, Ship victim, double x, double y) {

@@ -1,9 +1,11 @@
 /**
  * Maps factions to doctrine profiles.
  *
- * Default mapping:
+ * Resource Rush / four-team mapping:
  *  - PLAYER + ALLY => ENERGY_NAVY
- *  - ENEMY        => KINETIC_CONSORTIUM
+ *  - ENEMY         => KINETIC_CONSORTIUM
+ *  - TEAM_C        => AEGIS_LATTICE (directed energy)
+ *  - TEAM_D        => VIPER_BARRAGE (missile-forward)
  */
 public final class DoctrineRegistry {
 
@@ -19,8 +21,8 @@ public final class DoctrineRegistry {
             750.0,   // medium speed, visible
             75,      // heavy hit (frigate baseline)
             2.0,     // shots/sec
-            1.30,    // stronger missile pressure (future)
-            1.00     // medium PD (future)
+            1.05,    // light missile support
+            1.05     // medium PD
     );
 
     public static final DoctrineProfile KINETIC_CONSORTIUM = new DoctrineProfile(
@@ -28,14 +30,36 @@ public final class DoctrineRegistry {
             1400.0,  // fast rounds
             25,      // light hit
             6.0,     // shots/sec
-            1.00,    // medium missiles (future)
-            1.30     // strong PD (future)
+            1.00,    // neutral missile pressure
+            1.30     // strong PD
+    );
+
+    public static final DoctrineProfile AEGIS_LATTICE = new DoctrineProfile(
+            Doctrine.ENERGY_NAVY,
+            840.0,   // precision energy emphasis
+            72,
+            2.3,
+            0.82,    // limited missile pressure
+            1.08     // moderate PD
+    );
+
+    public static final DoctrineProfile VIPER_BARRAGE = new DoctrineProfile(
+            Doctrine.MISSILE_BARRAGE,
+            980.0,   // backup gun pressure only
+            20,
+            4.8,
+            1.65,    // heavy missile pressure
+            0.90     // light-to-moderate PD
     );
 
     public static DoctrineProfile forFaction(Faction faction) {
         if (faction == null) return KINETIC_CONSORTIUM;
-        if (faction.teamId() == Faction.ALLY.teamId()) return ENERGY_NAVY;
-        return KINETIC_CONSORTIUM;
+        return switch (faction) {
+            case PLAYER, ALLY -> ENERGY_NAVY;
+            case ENEMY -> KINETIC_CONSORTIUM;
+            case TEAM_C -> AEGIS_LATTICE;
+            case TEAM_D -> VIPER_BARRAGE;
+        };
     }
 
     /**
@@ -48,6 +72,7 @@ public final class DoctrineRegistry {
      * 5C:
      *  - Energy Navy: slightly more shields, slightly less hull.
      *  - Kinetic Consortium: slightly more hull, slightly less shields.
+     *  - Missile Barrage: moderate hull with reduced shields.
      */
     public static void applyToShip(Ship s) {
         if (s == null) return;
@@ -62,6 +87,9 @@ public final class DoctrineRegistry {
         if (p.doctrine == Doctrine.ENERGY_NAVY) {
             hullMult = 0.95;
             shieldMult = 1.10;
+        } else if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
+            hullMult = 1.06;
+            shieldMult = 0.90;
         } else {
             hullMult = 1.10;
             shieldMult = 0.95;
@@ -74,6 +102,11 @@ public final class DoctrineRegistry {
         s.hp = s.hpMax;
         s.shield = s.shieldMax;
         if (s.shieldMax > 0) s.shieldActive = true;
+
+        // TEAM_D doctrine: bias mixed hulls toward missile pressure.
+        if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
+            convertGunHardpointToMissileRack(s);
+        }
 
         // --- 5B: CIWS/PD scaling ---
         double pd = p.pdStrength;
@@ -95,8 +128,49 @@ public final class DoctrineRegistry {
                     // Subtle: make stronger missiles a touch more capable.
                     t.missileSpeed = t.missileSpeed * (0.92 + 0.08 * ms);
                     t.missileTurnRate = t.missileTurnRate * (0.92 + 0.08 * ms);
+                    if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
+                        t.cooldown = Math.max(0.35, t.cooldown * 0.76);
+                        t.missileLife = Math.max(1, (int) Math.round(t.missileLife * 1.10));
+                    }
+                } else if (t.kind == Turret.Kind.GUN && p.doctrine == Doctrine.MISSILE_BARRAGE) {
+                    // TEAM_D keeps backup guns, but missiles should be the main pressure source.
+                    t.cooldown = t.cooldown * 1.16;
+                    t.damage = Math.max(1, (int) Math.round(t.damage * 0.84));
+                    t.bulletSpeed = t.bulletSpeed * 0.92;
                 }
             }
+        }
+    }
+
+    private static void convertGunHardpointToMissileRack(Ship s) {
+        if (s == null || s.turrets == null || s.turrets.isEmpty()) return;
+
+        int missiles = 0;
+        int guns = 0;
+        for (Turret t : s.turrets) {
+            if (t == null) continue;
+            if (t.kind == Turret.Kind.MISSILE) missiles++;
+            else if (t.kind == Turret.Kind.GUN) guns++;
+        }
+        if (guns <= 0) return;
+        if (missiles >= Math.max(2, guns / 2)) return;
+
+        for (int i = 0; i < s.turrets.size(); i++) {
+            Turret gun = s.turrets.get(i);
+            if (gun == null || gun.kind != Turret.Kind.GUN || !gun.primary) continue;
+
+            Turret rack = new Turret(Turret.Kind.MISSILE, gun.localX, gun.localY);
+            rack.primary = false;
+            rack.cooldown = Math.max(0.55, gun.cooldown * 2.35);
+            rack.damage = Math.max(3, (int) Math.round(gun.damage * 3.4));
+            rack.missileSpeed = Math.max(255.0, gun.bulletSpeed * 0.34);
+            rack.missileTurnRate = Math.toRadians(230.0);
+            rack.missileLife = Math.max(220, (int) Math.round(gun.bulletLife * 2.2));
+            rack.radius = Math.max(7.0, gun.radius + 1.2);
+            rack.barrelLen = Math.max(10.0, gun.barrelLen * 0.86);
+
+            s.turrets.set(i, rack);
+            return;
         }
     }
 

@@ -20,6 +20,35 @@ public final class HullGeometry {
         return profile.intersectsCircle(local.x, local.y, pr);
     }
 
+    /**
+     * Segment-vs-hull capsule test in world space.
+     * The segment is sampled in ship-local space and checked as a sequence of
+     * small circles (capsule approximation).
+     */
+    public static boolean segmentIntersectsShip(double ax, double ay, double bx, double by, double halfWidth, Ship ship) {
+        if (ship == null) return false;
+        if (!Double.isFinite(ax) || !Double.isFinite(ay) || !Double.isFinite(bx) || !Double.isFinite(by)) return false;
+
+        HullProfile profile = profileFor(ship);
+        LocalPoint a = worldToLocal(ship, ax, ay);
+        LocalPoint b = worldToLocal(ship, bx, by);
+        double hw = Math.max(0.0, halfWidth);
+
+        double dx = b.x - a.x;
+        double dy = b.y - a.y;
+        double len = Math.hypot(dx, dy);
+        int steps = (int) Math.ceil(len / Math.max(3.0, hw * 1.2 + 1.0));
+        steps = Math.max(6, Math.min(96, steps));
+
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            double px = a.x + dx * t;
+            double py = a.y + dy * t;
+            if (profile.intersectsCircle(px, py, hw)) return true;
+        }
+        return false;
+    }
+
     public static double broadPhaseRadius(Ship ship) {
         if (ship == null) return 0.0;
         return profileFor(ship).maxRadius;

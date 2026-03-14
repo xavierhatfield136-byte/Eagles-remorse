@@ -116,7 +116,7 @@ public final class GameplayActions {
         if (!canIssueCombatAction(ctx)) return;
         if (!ctx.player.hasWaveMotionGun) return;
 
-        WaveMotionShot shot = ctx.player.tryFireWaveMotionGunAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
+        Projectile shot = ctx.player.tryFireWaveMotionGunAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
         if (shot != null) {
             ctx.projectiles.add(shot);
             EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
@@ -213,6 +213,7 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_F5 -> UISystem.trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
             case java.awt.event.KeyEvent.VK_F6 -> UISystem.trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
             case java.awt.event.KeyEvent.VK_F7 -> UISystem.trySwapHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
+            case java.awt.event.KeyEvent.VK_BACK_SLASH -> UISystem.trySwapHull(ctx, ShipRole.CRUISER, 1100, 1);
             case java.awt.event.KeyEvent.VK_F8 -> UISystem.trySwapHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
             case java.awt.event.KeyEvent.VK_F9 -> UISystem.trySwapHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
             case java.awt.event.KeyEvent.VK_F11 -> UISystem.trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);

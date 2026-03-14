@@ -3,6 +3,27 @@ import java.util.Random;
 public final class SpawnSystem {
     private SpawnSystem(){}
     public static final int MAX_MINERS_PER_FACTION = 4;
+    private static final double SHOOTING_RANGE_RESPAWN_DELAY = 10.0;
+    private static final java.util.WeakHashMap<GameContext, java.util.Map<String, ShootingRangeTargetSlot>> SHOOTING_RANGE_TARGET_SLOTS =
+            new java.util.WeakHashMap<>();
+
+    private static final class ShootingRangeTargetSlot {
+        final ShipRole role;
+        final String label;
+        final double x;
+        final double y;
+        final boolean keepShields;
+        double respawnTimer = 0.0;
+
+        ShootingRangeTargetSlot(ShipRole role, String label, double x, double y, boolean keepShields) {
+            this.role = role;
+            this.label = label;
+            this.x = x;
+            this.y = y;
+            this.keepShields = keepShields;
+        }
+    }
+
     // Performance + economy rebalance: fewer rocks, much richer yields per asteroid.
     private static final double ASTEROID_DENSITY_SCALE = 0.22;
     private static final double ASTEROID_ORE_MULTIPLIER = 10.0;
@@ -180,14 +201,47 @@ public final class SpawnSystem {
 
     private static ShipRole resolveSpawnRoleForFaction(GameContext ctx, Faction faction, ShipRole requested) {
         if (requested == null) return null;
+        ShipRole doctrinal = applyFactionRoleBias(ctx, faction, requested);
         int availableTier = maxHangarTierForFaction(ctx, faction);
-        if (requiredHangarTierForRole(requested) <= availableTier) return requested;
+        if (requiredHangarTierForRole(doctrinal) <= availableTier) return doctrinal;
 
-        for (ShipRole fallback : fallbackRolesFor(requested)) {
+        for (ShipRole fallback : fallbackRolesFor(doctrinal)) {
             if (fallback == null) continue;
             if (requiredHangarTierForRole(fallback) <= availableTier) return fallback;
         }
         return null;
+    }
+
+    private static ShipRole applyFactionRoleBias(GameContext ctx, Faction faction, ShipRole requested) {
+        if (faction == null || requested == null) return requested;
+        Random rng = (ctx == null || ctx.rng == null) ? new Random() : ctx.rng;
+
+        if (faction == Faction.TEAM_C) {
+            // Aegis Lattice: directed-energy line ships with limited missile reliance.
+            return switch (requested) {
+                case MISSILE_BOAT -> ShipRole.FRIGATE;
+                case CRUISER -> ShipRole.MEDIUM_CRUISER;
+                case BOMBER -> ShipRole.FIGHTER;
+                case STEALTH_SHIP -> (rng.nextDouble() < 0.60) ? ShipRole.PICKET : requested;
+                case FRIGATE -> (rng.nextDouble() < 0.22) ? ShipRole.PICKET : requested;
+                default -> requested;
+            };
+        }
+
+        if (faction == Faction.TEAM_D) {
+            // Viper Barrage: salvo-heavy fleet composition with frequent missile boats/cruisers.
+            return switch (requested) {
+                case PATROL, PICKET, FRIGATE, CIWS_CORVETTE ->
+                        (rng.nextDouble() < 0.52) ? ShipRole.MISSILE_BOAT : requested;
+                case LIGHT_CRUISER, MEDIUM_CRUISER ->
+                        (rng.nextDouble() < 0.48) ? ShipRole.CRUISER : requested;
+                case STEALTH_SHIP -> ShipRole.MISSILE_BOAT;
+                case FIGHTER -> (rng.nextDouble() < 0.40) ? ShipRole.BOMBER : requested;
+                default -> requested;
+            };
+        }
+
+        return requested;
     }
 
     private static ShipRole[] fallbackRolesFor(ShipRole role) {
@@ -497,6 +551,7 @@ public final class SpawnSystem {
         ctx.baseUpgrades.clear();
         ctx.allyBase = null;
         ctx.enemyBase = null;
+        clearShootingRangeTargetSlots(ctx);
 
         double px = GameMath.clamp(Math.max(240.0, ctx.WORLD_W * 0.16), 90.0, ctx.WORLD_W - 90.0);
         double py = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
@@ -519,6 +574,54 @@ public final class SpawnSystem {
         ctx.minerReinforcementTimer = Double.POSITIVE_INFINITY;
         ctx.eventBanner = "SHOOTING RANGE  -  STATIONARY TARGETS";
         ctx.eventBannerT = 6.0;
+    }
+
+    public static void updateShootingRangeRespawns(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        if (ctx.config == null || ctx.config.mode != GameMode.SHOOTING_RANGE) return;
+        java.util.Map<String, ShootingRangeTargetSlot> slots = shootingRangeTargetSlotsFor(ctx);
+        if (slots.isEmpty()) return;
+
+        for (ShootingRangeTargetSlot slot : slots.values()) {
+            if (slot == null) continue;
+
+            boolean active = false;
+            for (Ship s : ctx.ships) {
+                if (s == null) continue;
+                if (s.role != slot.role) continue;
+                if (!slot.label.equals(s.name)) continue;
+                if (s.faction != Faction.ENEMY) continue;
+                if (s.alive && !s.dying && s.hp > 0) {
+                    active = true;
+                    break;
+                }
+            }
+
+            if (active) {
+                slot.respawnTimer = 0.0;
+                continue;
+            }
+
+            slot.respawnTimer += dt;
+            if (slot.respawnTimer < SHOOTING_RANGE_RESPAWN_DELAY) continue;
+
+            slot.respawnTimer = 0.0;
+            spawnRangeTarget(ctx, slot.role, slot.x, slot.y, slot.label, slot.keepShields);
+        }
+    }
+
+    private static java.util.Map<String, ShootingRangeTargetSlot> shootingRangeTargetSlotsFor(GameContext ctx) {
+        return SHOOTING_RANGE_TARGET_SLOTS.computeIfAbsent(ctx, k -> new java.util.LinkedHashMap<>());
+    }
+
+    private static void clearShootingRangeTargetSlots(GameContext ctx) {
+        if (ctx == null) return;
+        shootingRangeTargetSlotsFor(ctx).clear();
+    }
+
+    private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, double x, double y, String label, boolean keepShields) {
+        if (ctx == null || role == null || label == null || label.isBlank()) return;
+        shootingRangeTargetSlotsFor(ctx).put(label, new ShootingRangeTargetSlot(role, label, x, y, keepShields));
     }
 
     private static Ship spawnRangeTarget(GameContext ctx, ShipRole role, double x, double y, String label, boolean keepShields) {
@@ -550,6 +653,7 @@ public final class SpawnSystem {
         }
 
         ctx.ships.add(s);
+        registerShootingRangeTarget(ctx, role, sx, sy, label, keepShields);
         return s;
     }
 }

@@ -2,8 +2,8 @@ public enum Faction {
     PLAYER(0, "Team A"),
     ALLY(0, "Team A"),
     ENEMY(1, "Team B"),
-    TEAM_C(2, "Team C"),
-    TEAM_D(3, "Team D");
+    TEAM_C(2, "Aegis Lattice"),
+    TEAM_D(3, "Viper Barrage Syndicate");
 
     private final int teamId;
     private final String teamName;

@@ -180,8 +180,8 @@ public class Renderer {
         Faction faction = (ship == null || ship.faction == null) ? Faction.ALLY : ship.faction;
         return switch (faction.teamId()) {
             case 1 -> new Color(255, 132, 132); // Team B / Enemy
-            case 2 -> new Color(126, 246, 170); // Team C
-            case 3 -> new Color(255, 214, 138); // Team D
+            case 2 -> new Color(130, 255, 132); // Team C (Aegis Lattice)
+            case 3 -> new Color(255, 212, 132); // Team D (Viper Barrage)
             default -> new Color(128, 206, 255); // Team A / Player / Ally
         };
     }
@@ -268,7 +268,7 @@ public class Renderer {
         if (g == null || ship == null) return;
         if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
 
-        double radius = ship.radius + 5.8;
+        double radius = shieldEnvelopeRadius(ship);
         double span = Math.toRadians(78.0);
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 5.5);
         Stroke prevStroke = g.getStroke();
@@ -319,6 +319,19 @@ public class Renderer {
         }
 
         g.setStroke(prevStroke);
+    }
+
+    private static double shieldEnvelopeRadius(Ship ship) {
+        if (ship == null) return 21.8;
+        double base = ship.radius + 5.8;
+        ShipRole role = ship.role;
+        if (role == null) return base;
+        return switch (role) {
+            case TRANSPORT, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> base + 2.0;
+            case BATTLECRUISER, BATTLESHIP -> base + 3.6;
+            case CARRIER, DRONE_CARRIER, DREADNOUGHT, SUPERSHIP, BASE -> base + 5.4;
+            default -> base;
+        };
     }
 
     private static Color layerColorForFace(Color base) {
@@ -655,6 +668,11 @@ public class Renderer {
                 continue;
             }
 
+            if (p instanceof PhaserBeam beam) {
+                drawPhaserBeam(g2, beam);
+                continue;
+            }
+
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
             } else if (p instanceof WaveMotionShot ws) {
@@ -797,6 +815,41 @@ public class Renderer {
         }
     }
 
+    private static void drawPhaserBeam(Graphics2D g2, PhaserBeam beam) {
+        if (g2 == null || beam == null || !beam.alive) return;
+
+        double sx = beam.startX();
+        double sy = beam.startY();
+        double ex = beam.endX();
+        double ey = beam.endY();
+        Color base = beamColorForFaction(beam.faction);
+        Color hot = mixColor(base, Color.WHITE, 0.72);
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 10.0);
+        float width = (float) Math.max(2.2, beam.width * (0.90 + 0.16 * pulse));
+
+        Stroke old = g2.getStroke();
+
+        g2.setStroke(new BasicStroke(width * 2.15f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, (int) Math.round(56 + pulse * 28)));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        g2.setStroke(new BasicStroke(width * 1.05f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, 210));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        g2.setStroke(new BasicStroke(Math.max(1.1f, width * 0.40f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(Color.WHITE, 165));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        int glowR = (int) Math.round(Math.max(5.0, beam.width * 1.3));
+        g2.setColor(withAlpha(base, 150));
+        g2.fillOval((int) Math.round(sx) - glowR, (int) Math.round(sy) - glowR, glowR * 2, glowR * 2);
+        g2.setColor(withAlpha(hot, 126));
+        g2.fillOval((int) Math.round(ex) - glowR, (int) Math.round(ey) - glowR, glowR * 2, glowR * 2);
+
+        g2.setStroke(old);
+    }
+
     public static void drawWaveMotionAimCue(Graphics2D g2, Player player, double cursorWorldX, double cursorWorldY) {
         if (g2 == null || player == null) return;
         if (!player.alive || player.dying || player.hp <= 0) return;
@@ -842,6 +895,66 @@ public class Renderer {
         }
 
         g2.setStroke(oldStroke);
+    }
+
+    public static void drawNpcWaveMotionAimCues(Graphics2D g2, List<Ship> ships, Ship player) {
+        if (g2 == null || ships == null || ships.isEmpty()) return;
+        for (Ship ship : ships) {
+            if (ship == null || ship == player) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.role != ShipRole.SUPERSHIP) continue;
+            if (!ship.hasWaveMotionGun || !ship.isWaveMotionCharging()) continue;
+            drawNpcWaveMotionAimCue(g2, ship);
+        }
+    }
+
+    private static void drawNpcWaveMotionAimCue(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null) return;
+        double aim = ship.getWaveMotionAimAngle();
+        double len = npcWaveCueLength(ship);
+        double sx = ship.x + Math.cos(aim) * (ship.radius + 10.0);
+        double sy = ship.y + Math.sin(aim) * (ship.radius + 10.0);
+        double ex = sx + Math.cos(aim) * len;
+        double ey = sy + Math.sin(aim) * len;
+
+        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, ship.getWaveMotionChargeProgress()));
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.6 + ship.id * 0.17);
+
+        Color base = npcWaveCueColor(ship.faction);
+        Color hot = mixColor(base, Color.WHITE, 0.58);
+
+        Stroke oldStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(6.2f + chargeFrac * 3.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, (int) Math.round(88 + 78 * Math.max(chargeFrac, pulse))));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        g2.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, 196));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        int r = (int) Math.round(12 + 10 * Math.max(chargeFrac, pulse));
+        g2.setColor(withAlpha(base, 148));
+        g2.drawOval((int) Math.round(ex) - r, (int) Math.round(ey) - r, r * 2, r * 2);
+
+        g2.setStroke(oldStroke);
+    }
+
+    private static double npcWaveCueLength(Ship ship) {
+        if (ship == null) return 2200.0;
+        if (ship.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
+            return MathUtil.clamp(ship.waveMotionSpeed * 0.96, 760.0, 1760.0);
+        }
+        return 2200.0;
+    }
+
+    private static Color npcWaveCueColor(Faction faction) {
+        if (faction == null) return new Color(255, 120, 120);
+        return switch (faction) {
+            case ALLY, PLAYER -> new Color(130, 220, 255);
+            case ENEMY -> new Color(255, 96, 96);
+            case TEAM_C -> new Color(154, 255, 138);
+            case TEAM_D -> new Color(255, 198, 126);
+        };
     }
 
     private static void drawMissile(Graphics2D g2, Missile m) {
@@ -932,8 +1045,8 @@ public class Renderer {
         return switch (faction) {
             case PLAYER, ALLY -> new Color(110, 220, 255);
             case ENEMY -> new Color(255, 122, 94);
-            case TEAM_C -> new Color(150, 255, 120);
-            case TEAM_D -> new Color(238, 186, 78);
+            case TEAM_C -> new Color(146, 255, 118);
+            case TEAM_D -> new Color(255, 186, 92);
         };
     }
 
@@ -942,8 +1055,8 @@ public class Renderer {
         return switch (faction) {
             case PLAYER, ALLY -> new Color(130, 226, 255);
             case ENEMY -> new Color(255, 170, 112);
-            case TEAM_C -> new Color(160, 255, 148);
-            case TEAM_D -> new Color(255, 220, 138);
+            case TEAM_C -> new Color(164, 255, 140);
+            case TEAM_D -> new Color(255, 210, 128);
         };
     }
 
@@ -952,8 +1065,8 @@ public class Renderer {
         return switch (faction) {
             case PLAYER, ALLY -> new Color(180, 232, 255);
             case ENEMY -> new Color(255, 188, 142);
-            case TEAM_C -> new Color(186, 255, 182);
-            case TEAM_D -> new Color(255, 228, 150);
+            case TEAM_C -> new Color(190, 255, 172);
+            case TEAM_D -> new Color(255, 220, 146);
         };
     }
 
@@ -962,8 +1075,8 @@ public class Renderer {
         return switch (faction) {
             case PLAYER, ALLY -> new Color(132, 214, 255);
             case ENEMY -> new Color(255, 150, 110);
-            case TEAM_C -> new Color(150, 238, 126);
-            case TEAM_D -> new Color(255, 204, 124);
+            case TEAM_C -> new Color(136, 240, 112);
+            case TEAM_D -> new Color(255, 194, 116);
         };
     }
 
@@ -972,8 +1085,8 @@ public class Renderer {
         return switch (faction) {
             case PLAYER, ALLY -> new Color(110, 225, 255);
             case ENEMY -> new Color(255, 122, 96);
-            case TEAM_C -> new Color(144, 255, 154);
-            case TEAM_D -> new Color(255, 214, 122);
+            case TEAM_C -> new Color(154, 255, 138);
+            case TEAM_D -> new Color(255, 206, 118);
         };
     }
 
@@ -1585,7 +1698,7 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 150));
-        g2.drawString("TAB/ESC close   1-9 buy   F-keys/0/-/= swap hull", x + 14, y + 44);
+        g2.drawString("TAB/ESC close   1-9 buy   F-keys + \\ + 0/-/= swap hull", x + 14, y + 44);
 
         // Readouts
         int ty = y + 70;
@@ -1593,7 +1706,7 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 210));
         g2.drawString("Credits: " + credits, x + 14, ty);
         g2.drawString("Hangar Tier: " + hangarTier, x + 190, ty);
-        g2.drawString("Hull: " + (player.role == null ? "UNKNOWN" : player.role.name()), x + 350, ty);
+        g2.drawString("Hull: " + shopRoleTitle(player.role), x + 350, ty);
 
         // Divider
         ty += 14;
@@ -1739,6 +1852,7 @@ public class Renderer {
         ty = drawHullLine(g2, x + 14, ty, "F5", ShipRole.CIWS_CORVETTE, 250, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F6", ShipRole.LIGHT_CRUISER, 700, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F7", ShipRole.MEDIUM_CRUISER, 950, credits, hangarTier, player, reqTier);
+        ty = drawHullLine(g2, x + 14, ty, "\\", ShipRole.CRUISER, 1100, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F8", ShipRole.BATTLECRUISER, 1600, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F9", ShipRole.BATTLESHIP, 2200, credits, hangarTier, player, reqTier);
         ty = drawHullLine(g2, x + 14, ty, "F11", ShipRole.STEALTH_SHIP, 1200, credits, hangarTier, player, reqTier);
@@ -1805,7 +1919,7 @@ public class Renderer {
         boolean canAfford = credits >= cost;
         boolean current = player.role == role;
 
-        String title = role == null ? "UNKNOWN" : role.name();
+        String title = shopRoleTitle(role);
         String detail = "Requires Tier " + req + (req == 0 ? "" : "  (upgrade base)");
         String tag = current ? "CURRENT" : ("T" + req);
 
@@ -1824,6 +1938,14 @@ public class Renderer {
         }
 
         return y + 22;
+    }
+
+    private static String shopRoleTitle(ShipRole role) {
+        if (role == null) return "UNKNOWN";
+        return switch (role) {
+            case CRUISER -> "GUIDED MISSILE CRUISER";
+            default -> role.name().replace('_', ' ');
+        };
     }
 
 
@@ -5382,16 +5504,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color factionHullColor(Faction f) {
         if (f == Faction.ENEMY) return new Color(220, 80, 80);
         if (f == Faction.PLAYER) return new Color(70, 220, 120);
-        if (f == Faction.TEAM_C) return new Color(220, 170, 70);
-        if (f == Faction.TEAM_D) return new Color(165, 120, 220);
+        if (f == Faction.TEAM_C) return new Color(86, 196, 102);
+        if (f == Faction.TEAM_D) return new Color(230, 166, 88);
         return new Color(120, 160, 245);
     }
 
     private static Color factionTrimColor(Faction f) {
         if (f == Faction.ENEMY) return new Color(255, 170, 170);
         if (f == Faction.PLAYER) return new Color(200, 255, 220);
-        if (f == Faction.TEAM_C) return new Color(255, 220, 160);
-        if (f == Faction.TEAM_D) return new Color(220, 190, 255);
+        if (f == Faction.TEAM_C) return new Color(188, 255, 186);
+        if (f == Faction.TEAM_D) return new Color(255, 218, 160);
         return new Color(220, 230, 255);
     }
 
@@ -5399,8 +5521,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Color base;
         if (f == Faction.ENEMY) base = new Color(255, 170, 170);
         else if (f == Faction.PLAYER) base = new Color(180, 255, 220);
-        else if (f == Faction.TEAM_C) base = new Color(255, 220, 160);
-        else if (f == Faction.TEAM_D) base = new Color(220, 190, 255);
+        else if (f == Faction.TEAM_C) base = new Color(188, 255, 186);
+        else if (f == Faction.TEAM_D) base = new Color(255, 218, 160);
         else base = new Color(170, 220, 255);
         return withAlpha(base, alpha);
     }
@@ -5409,8 +5531,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Color base;
         if (isPlayer || f == Faction.PLAYER) base = new Color(90, 255, 140);
         else if (f == Faction.ENEMY) base = new Color(255, 90, 90);
-        else if (f == Faction.TEAM_C) base = new Color(255, 200, 90);
-        else if (f == Faction.TEAM_D) base = new Color(200, 140, 255);
+        else if (f == Faction.TEAM_C) base = new Color(114, 230, 116);
+        else if (f == Faction.TEAM_D) base = new Color(255, 188, 108);
         else base = new Color(140, 180, 255);
         return withAlpha(base, alpha);
     }

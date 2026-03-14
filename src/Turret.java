@@ -156,6 +156,27 @@ public class Turret {
             double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
             int gunDamage = Math.max(1, (int) Math.round(damage * damageMul));
             DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
+            if (host.faction == Faction.TEAM_C) {
+                // Team C uses a persistent, tracking cutting beam.
+                double shotInterval = Math.max(GameContext.DT, cooldown / cycleMul);
+                int beamLife = Math.max(2, (int) Math.round(shotInterval / GameContext.DT));
+                double baseDps = gunDamage / shotInterval;
+                double beamDps = baseDps * 1.08;
+                double beamLength = MathUtil.clamp(projectileSpeed * 0.78, 420.0, 980.0);
+                double beamWidth = Math.max(4.0, radius * 0.85);
+                PhaserBeam p = new PhaserBeam(
+                        host,
+                        this,
+                        angle,
+                        beamLength,
+                        beamWidth,
+                        beamDps,
+                        beamLife,
+                        host.faction
+                );
+                p.sourceShipId = host.id;
+                return p;
+            }
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
                 Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5, host.faction);
                 p.sourceShipId = host.id;
