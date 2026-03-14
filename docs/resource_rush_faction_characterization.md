@@ -117,3 +117,16 @@ Gameplay/UI reminders:
 - Add **Guided Missile Cruiser** as a **player-selectable/playable hull** in the ship selection flow.
 - On larger ships, increase **shield visual radius** so bow/stern are fully enclosed by the shield graphic.
 - Keep credit economy tuned to **1.5x earnings** versus previous baseline.
+
+## 7. Pending Change Requests (2026-03-14)
+
+Requested gameplay/UI updates:
+- Add a **cloak meter** for stealth ships under the shield/HP bars so cloak remaining is always visible to the player.
+- When a ship cloaks, force-break all active target locks on it, and block re-locking until it fully decloaks.
+- Let the player choose their team when loading into:
+  - `RESOURCE_RUSH`
+  - `SHOOTING_RANGE`
+  - `FOUR_TEAM_DOMINATION`
+- Increase stealth ship cloak duration to **2x** current duration.
+- Buff stealth ship main battery to **battleship-class primary weapon strength**.
+- Fix TEAM_C (green, directed-energy) gunnery behavior so directed-energy shots do **not over-lead moving targets**; aiming should prioritize direct-hit behavior suitable for beam/energy weapons.

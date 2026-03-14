@@ -114,7 +114,7 @@ public class FleetShip extends Ship {
                 revealTimer = 0;
                 cloakEnabled = true;
                 cloakActive = true;
-                cloakEnergyMax = 10.0;
+                cloakEnergyMax = 20.0;
                 cloakEnergy = cloakEnergyMax;
                 cloakDrainPerSec = 1.05;
                 cloakRechargePerSec = 1.20;
@@ -122,13 +122,14 @@ public class FleetShip extends Ship {
                 cloakSignature = 0.07;
 
                 Turret burstGun = new Turret(Turret.Kind.GUN, 11, 0);
-                burstGun.cooldown = 0.085;
-                burstGun.damage = 1;
-                burstGun.bulletSpeed = 880;
-                burstGun.bulletLife = 120;
+                // Battleship-class main battery punch on stealth hull.
+                burstGun.cooldown = 0.34;
+                burstGun.damage = 4;
+                burstGun.bulletSpeed = 980;
+                burstGun.bulletLife = 270;
                 burstGun.primary = true;
-                burstGun.radius = 5.5;
-                burstGun.barrelLen = 16;
+                burstGun.radius = 7.0;
+                burstGun.barrelLen = 20;
                 addTurret(burstGun);
 
                 // small missile rack for surprise strikes

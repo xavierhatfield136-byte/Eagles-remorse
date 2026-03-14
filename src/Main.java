@@ -175,14 +175,20 @@ class GameConfig {
     public final boolean randomEvents;
     public final long seed;
     public final boolean fullscreen;
+    public final int playerTeamId;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0);
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
         this.randomEvents = randomEvents;
         this.seed = seed;
         this.fullscreen = fullscreen;
+        this.playerTeamId = Math.max(0, Math.min(3, playerTeamId));
     }
 }
 
@@ -209,6 +215,37 @@ enum GameMode {
     }
 }
 
+enum PlayerTeamChoice {
+    TEAM_A("Team A (Blue)", 0),
+    TEAM_B("Team B (Red)", 1),
+    TEAM_C("Team C (Green)", 2),
+    TEAM_D("Team D (Missile)", 3);
+
+    private final String label;
+    private final int teamId;
+
+    PlayerTeamChoice(String label, int teamId) {
+        this.label = label;
+        this.teamId = teamId;
+    }
+
+    public int teamId() {
+        return teamId;
+    }
+
+    @Override
+    public String toString() {
+        return label;
+    }
+
+    public static PlayerTeamChoice forTeamId(int teamId) {
+        for (PlayerTeamChoice c : values()) {
+            if (c.teamId == teamId) return c;
+        }
+        return TEAM_A;
+    }
+}
+
 /**
  * Simple main menu. Package-private to keep file count down.
  */
@@ -230,6 +267,7 @@ class MainMenuPanel extends JPanel {
                 "Medium (10000 x 10000)",
                 "Large (20000 x 20000)"
         });
+        JComboBox<PlayerTeamChoice> teamBox = new JComboBox<>();
 
         JCheckBox events = new JCheckBox("Enable Random Events");
         events.setOpaque(false);
@@ -253,6 +291,7 @@ class MainMenuPanel extends JPanel {
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
         modeBox.setSelectedItem(MenuSettingsStore.resolveMode(persisted.modeName));
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
+        syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, persisted.playerTeamId);
         events.setSelected(persisted.randomEvents);
         fullscreen.setSelected(persisted.fullscreen);
         seedField.setText(persisted.seedText);
@@ -265,6 +304,8 @@ class MainMenuPanel extends JPanel {
             save.randomEvents = events.isSelected();
             save.fullscreen = fullscreen.isSelected();
             save.seedText = seedField.getText();
+            PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
+            save.playerTeamId = (choice == null) ? 0 : choice.teamId();
             MenuSettingsStore.save(save);
         };
 
@@ -284,8 +325,10 @@ class MainMenuPanel extends JPanel {
             }
             if (seed == 0) seed = System.nanoTime();
 
+            PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
+            int playerTeamId = (choice == null) ? 0 : choice.teamId();
             persistSettings.run();
-            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected()));
+            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected(), playerTeamId));
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
@@ -300,7 +343,12 @@ class MainMenuPanel extends JPanel {
             onQuit.run();
         });
 
-        modeBox.addActionListener(e -> persistSettings.run());
+        modeBox.addActionListener(e -> {
+            PlayerTeamChoice selected = (PlayerTeamChoice) teamBox.getSelectedItem();
+            int preferredTeamId = (selected == null) ? 0 : selected.teamId();
+            syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, preferredTeamId);
+            persistSettings.run();
+        });
         mapBox.addActionListener(e -> persistSettings.run());
         events.addActionListener(e -> persistSettings.run());
         fullscreen.addActionListener(e -> persistSettings.run());
@@ -334,6 +382,12 @@ class MainMenuPanel extends JPanel {
         card.add(label("Map Size:"), c);
         c.gridx = 1;
         card.add(mapBox, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        card.add(label("Player Team:"), c);
+        c.gridx = 1;
+        card.add(teamBox, c);
 
         c.gridy++;
         c.gridx = 0;
@@ -385,5 +439,42 @@ class MainMenuPanel extends JPanel {
         l.setForeground(new Color(255, 255, 255, 210));
         l.setFont(new Font("Consolas", Font.PLAIN, 18));
         return l;
+    }
+
+    private static void syncTeamOptionsForMode(GameMode mode, JComboBox<PlayerTeamChoice> teamBox, int preferredTeamId) {
+        if (teamBox == null) return;
+        PlayerTeamChoice[] allowed = allowedTeamsForMode(mode);
+        teamBox.removeAllItems();
+        for (PlayerTeamChoice t : allowed) teamBox.addItem(t);
+
+        PlayerTeamChoice preferred = PlayerTeamChoice.forTeamId(preferredTeamId);
+        boolean found = false;
+        for (PlayerTeamChoice t : allowed) {
+            if (t.teamId() == preferred.teamId()) {
+                found = true;
+                break;
+            }
+        }
+        teamBox.setSelectedItem(found ? preferred : allowed[0]);
+        teamBox.setEnabled(allowed.length > 1);
+    }
+
+    private static PlayerTeamChoice[] allowedTeamsForMode(GameMode mode) {
+        if (mode == null) return new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
+        return switch (mode) {
+            case RESOURCE_RUSH, SHOOTING_RANGE -> new PlayerTeamChoice[]{
+                    PlayerTeamChoice.TEAM_A,
+                    PlayerTeamChoice.TEAM_B,
+                    PlayerTeamChoice.TEAM_C,
+                    PlayerTeamChoice.TEAM_D
+            };
+            case FOUR_TEAM_DOMINATION -> new PlayerTeamChoice[]{
+                    PlayerTeamChoice.TEAM_A,
+                    PlayerTeamChoice.TEAM_B,
+                    PlayerTeamChoice.TEAM_C,
+                    PlayerTeamChoice.TEAM_D
+            };
+            default -> new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
+        };
     }
 }

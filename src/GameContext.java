@@ -160,7 +160,7 @@ public class GameContext {
     public final List<Renderer.MapPing> mapPings = new ArrayList<>();
 
     // Economy
-    public int credits = 100;
+    public int credits = 10000;
     public static final int ORE_PRICE = 4;
     public static final double CREDIT_EARNINGS_MUL = 1.5;
     public int resourceGoal = 600;

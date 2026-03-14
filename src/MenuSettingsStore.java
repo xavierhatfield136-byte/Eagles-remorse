@@ -28,6 +28,7 @@ public final class MenuSettingsStore {
         public boolean randomEvents = true;
         public boolean fullscreen = false;
         public String seedText = "0";
+        public int playerTeamId = 0;
         public boolean voiceCaptionsEnabled = true;
         public double voiceVolumeCaptain = 1.0;
         public double voiceVolumeHelm = 1.0;
@@ -41,6 +42,7 @@ public final class MenuSettingsStore {
                 modeName = GameMode.CAMPAIGN_OPS.name();
             }
             mapIndex = MathUtil.clamp(mapIndex, 0, 2);
+            playerTeamId = MathUtil.clamp(playerTeamId, 0, 3);
             if (seedText == null) seedText = "0";
             seedText = seedText.trim();
             if (seedText.isBlank()) seedText = "0";
@@ -68,6 +70,7 @@ public final class MenuSettingsStore {
                 s.randomEvents = parseBoolean(props, "randomEvents", s.randomEvents);
                 s.fullscreen = parseBoolean(props, "fullscreen", s.fullscreen);
                 s.seedText = props.getProperty("seedText", s.seedText);
+                s.playerTeamId = parseInt(props, "playerTeamId", s.playerTeamId);
                 s.voiceCaptionsEnabled = parseBoolean(props, "voiceCaptionsEnabled", s.voiceCaptionsEnabled);
                 s.voiceVolumeCaptain = parseDouble(props, "voiceVolumeCaptain", s.voiceVolumeCaptain);
                 s.voiceVolumeHelm = parseDouble(props, "voiceVolumeHelm", s.voiceVolumeHelm);
@@ -102,6 +105,7 @@ public final class MenuSettingsStore {
             props.setProperty("randomEvents", String.valueOf(s.randomEvents));
             props.setProperty("fullscreen", String.valueOf(s.fullscreen));
             props.setProperty("seedText", s.seedText);
+            props.setProperty("playerTeamId", String.valueOf(s.playerTeamId));
             props.setProperty("voiceCaptionsEnabled", String.valueOf(s.voiceCaptionsEnabled));
             props.setProperty("voiceVolumeCaptain", String.valueOf(s.voiceVolumeCaptain));
             props.setProperty("voiceVolumeHelm", String.valueOf(s.voiceVolumeHelm));

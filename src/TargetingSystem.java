@@ -3,9 +3,6 @@ import java.util.List;
 
 public final class TargetingSystem {
     private TargetingSystem(){}
-    private static final double CLOAK_PROX_REVEAL_RANGE = 220.0;
-    private static final double CLOAK_BASE_SENSOR_BONUS = 130.0;
-    private static final double CLOAK_CARRIER_SENSOR_BONUS = 70.0;
 
     public static void lockClosestToMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
@@ -109,16 +106,32 @@ public final class TargetingSystem {
         if (!target.isStealth) return true;
         if (!target.isCloaked()) return true;
         if (target.revealTimer > 0.0) return true;
-        if (observer == null) return false;
+        return false;
+    }
 
-        double revealRange = CLOAK_PROX_REVEAL_RANGE + target.radius + observer.radius * 0.25;
-        if (observer.role == ShipRole.BASE || observer.role == ShipRole.STATIC_TURRET) {
-            revealRange += CLOAK_BASE_SENSOR_BONUS;
-        } else if (observer.isCarrier) {
-            revealRange += CLOAK_CARRIER_SENSOR_BONUS;
+    public static void enforceCloakLockRules(GameContext ctx) {
+        if (ctx == null) return;
+        if (ctx.lockedTarget != null && isHardCloaked(ctx.lockedTarget)) {
+            ctx.lockedTarget = null;
+            ctx.eventBanner = "TARGET LOCK BROKEN: CLOAKED";
+            ctx.eventBannerT = Math.max(ctx.eventBannerT, 0.9);
         }
-        revealRange *= Math.max(0.20, observer.sensorRangeMultiplier());
-        return GameMath.dist2(observer.x, observer.y, target.x, target.y) <= revealRange * revealRange;
+        if (ctx.fleetSharedTargets != null && !ctx.fleetSharedTargets.isEmpty()) {
+            java.util.Iterator<java.util.Map.Entry<Faction, Ship>> it = ctx.fleetSharedTargets.entrySet().iterator();
+            while (it.hasNext()) {
+                java.util.Map.Entry<Faction, Ship> e = it.next();
+                Ship target = (e == null) ? null : e.getValue();
+                if (isHardCloaked(target)) it.remove();
+            }
+        }
+    }
+
+    private static boolean isHardCloaked(Ship target) {
+        if (target == null) return false;
+        return target.alive && !target.dying && target.hp > 0
+                && target.isStealth
+                && target.isCloaked()
+                && target.revealTimer <= 0.0;
     }
 
     private static boolean isAlive(Ship s) {

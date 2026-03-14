@@ -29,13 +29,14 @@ public class Player extends Ship {
 
     /** Rebuild the player stats/turrets from a role template (used by loadouts). */
     public void applyHull(ShipRole role, double x, double y) {
-        this.faction = Faction.PLAYER;
+        Faction preservedFaction = (this.faction == null) ? Faction.PLAYER : this.faction;
         this.x = x;
         this.y = y;
         this.role = role;
 
-        // Use an ALLY template so the numbers match other friendly ships.
-        FleetShip template = new FleetShip(role, Faction.ALLY, x, y);
+        // Build from the active team doctrine so hull-swaps keep team identity.
+        Faction templateFaction = (preservedFaction == Faction.PLAYER) ? Faction.ALLY : preservedFaction;
+        FleetShip template = new FleetShip(role, templateFaction, x, y);
         copyFrom(template);
 
         // Give the player a baseline mining module on any combat hull.
@@ -47,8 +48,8 @@ public class Player extends Ship {
         // New hull means old impact/breach marks are no longer valid.
         clearHullImpactMarks();
 
-        // Ensure player faction
-        this.faction = Faction.PLAYER;
+        // Keep whichever team the player is currently assigned to.
+        this.faction = preservedFaction;
     }
 
     @Override
@@ -380,7 +381,11 @@ public class Player extends Ship {
         for (Turret t : turrets) {
             if (t == null) continue;
             if (t.kind != Turret.Kind.GUN) continue;
-            t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+            if (faction == Faction.TEAM_C) {
+                t.aimAt(dt, this, target);
+            } else {
+                t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+            }
         }
     }
 

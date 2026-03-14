@@ -9,14 +9,16 @@ public final class SpawnSystem {
 
     private static final class ShootingRangeTargetSlot {
         final ShipRole role;
+        final Faction faction;
         final String label;
         final double x;
         final double y;
         final boolean keepShields;
         double respawnTimer = 0.0;
 
-        ShootingRangeTargetSlot(ShipRole role, String label, double x, double y, boolean keepShields) {
+        ShootingRangeTargetSlot(ShipRole role, Faction faction, String label, double x, double y, boolean keepShields) {
             this.role = role;
+            this.faction = faction;
             this.label = label;
             this.x = x;
             this.y = y;
@@ -61,10 +63,14 @@ public final class SpawnSystem {
         ctx.baseUpgrades.put(ctx.allyBase, new BaseUpgrades());
         ctx.baseUpgrades.put(ctx.enemyBase, new BaseUpgrades());
 
-        // Player spawns near ally base with an inward offset.
-        double px = GameMath.clamp(ctx.allyBase.x + Math.max(220.0, ctx.WORLD_W * 0.08), 40.0, ctx.WORLD_W - 40.0);
-        double py = GameMath.clamp(ctx.allyBase.y - Math.max(120.0, ctx.WORLD_H * 0.04), 40.0, ctx.WORLD_H - 40.0);
+        // Player spawns near selected team base for team-select modes.
+        Faction playerFaction = configuredPlayerFaction(ctx);
+        Ship playerAnchor = (playerFaction != null && playerFaction.teamId() == Faction.ENEMY.teamId()) ? ctx.enemyBase : ctx.allyBase;
+        double[] spawn = inwardSpawnNearBase(ctx, playerAnchor);
+        double px = spawn[0];
+        double py = spawn[1];
         ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ctx.player.faction = playerFaction;
         ctx.ships.add(ctx.player);
 
         // Resource field
@@ -80,8 +86,8 @@ public final class SpawnSystem {
         }
 
         // Starting escort + enemies
-        spawnAlly(ctx, ShipRole.FRIGATE, ctx.player.x - 120, ctx.player.y + 90);
-        spawnAlly(ctx, ShipRole.CIWS_CORVETTE, ctx.player.x - 170, ctx.player.y - 40);
+        spawnTeamShip(ctx, ShipRole.FRIGATE, playerFaction, ctx.player.x - 120, ctx.player.y + 90);
+        spawnTeamShip(ctx, ShipRole.CIWS_CORVETTE, playerFaction, ctx.player.x - 170, ctx.player.y - 40);
 
         if (ctx.config.mode == GameMode.LAST_STAND) {
             // Last Stand starts with stronger allied defense and staged incoming waves.
@@ -371,13 +377,16 @@ public final class SpawnSystem {
         ctx.allyBase = ctx.teamBases.get(Faction.ALLY);
         ctx.enemyBase = ctx.teamBases.get(Faction.ENEMY);
 
-        // Player spawns near Team A base (slight offset toward center).
-        Ship aBase = ctx.teamBases.get(Faction.ALLY);
-        double px = aBase.x + (ctx.WORLD_W * 0.05);
-        double py = aBase.y + (ctx.WORLD_H * 0.05);
-        px = GameMath.clamp(px, 40, ctx.WORLD_W - 40);
-        py = GameMath.clamp(py, 40, ctx.WORLD_H - 40);
+        // Player spawns near selected team base.
+        Faction playerFaction = configuredPlayerFaction(ctx);
+        Faction teamKey = Faction.forTeamId(playerFaction.teamId());
+        Ship pBase = ctx.teamBases.get(teamKey);
+        if (pBase == null) pBase = ctx.teamBases.get(Faction.ALLY);
+        double[] spawn = inwardSpawnNearBase(ctx, pBase);
+        double px = spawn[0];
+        double py = spawn[1];
         ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ctx.player.faction = playerFaction;
         ctx.ships.add(ctx.player);
 
         // Resource field
@@ -414,6 +423,40 @@ public final class SpawnSystem {
         // Diagonal lanes reduce immediate straight-line base pressure.
         double y = ally ? (ctx.WORLD_H - laneInset) : laneInset;
         return new double[]{x, y};
+    }
+
+    private static Faction configuredPlayerFaction(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return Faction.PLAYER;
+        if (ctx.config.mode != GameMode.RESOURCE_RUSH
+                && ctx.config.mode != GameMode.SHOOTING_RANGE
+                && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION) {
+            return Faction.PLAYER;
+        }
+        return playerFactionForTeamId(ctx.config.playerTeamId);
+    }
+
+    private static Faction playerFactionForTeamId(int teamId) {
+        if (teamId == 0) return Faction.PLAYER;
+        return Faction.forTeamId(teamId);
+    }
+
+    private static double[] inwardSpawnNearBase(GameContext ctx, Ship base) {
+        if (ctx == null || base == null) return new double[]{0.0, 0.0};
+        double cx = ctx.WORLD_W * 0.5;
+        double cy = ctx.WORLD_H * 0.5;
+        double dx = cx - base.x;
+        double dy = cy - base.y;
+        double len = Math.hypot(dx, dy);
+        if (len <= 1e-9) len = 1.0;
+        double ux = dx / len;
+        double uy = dy / len;
+        double forward = Math.max(220.0, ctx.WORLD_W * 0.08);
+        double lateral = Math.max(120.0, ctx.WORLD_H * 0.04);
+        double px = base.x + ux * forward - uy * lateral * 0.35;
+        double py = base.y + uy * forward + ux * lateral * 0.35;
+        px = GameMath.clamp(px, 40.0, ctx.WORLD_W - 40.0);
+        py = GameMath.clamp(py, 40.0, ctx.WORLD_H - 40.0);
+        return new double[]{px, py};
     }
 
     private static void spawnTeamStart(GameContext ctx, Faction team, Ship base) {
@@ -556,17 +599,19 @@ public final class SpawnSystem {
         double px = GameMath.clamp(Math.max(240.0, ctx.WORLD_W * 0.16), 90.0, ctx.WORLD_W - 90.0);
         double py = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
         ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ctx.player.faction = configuredPlayerFaction(ctx);
         ctx.player.name = "Player";
         ctx.player.vx = 0.0;
         ctx.player.vy = 0.0;
         ctx.player.angle = 0.0;
         ctx.ships.add(ctx.player);
 
-        spawnRangeTarget(ctx, ShipRole.PATROL, px + 420, py - 180, "RANGE TARGET LIGHT (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.FRIGATE, px + 620, py - 60, "RANGE TARGET MEDIUM (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, px + 760, py + 120, "RANGE TARGET CIWS (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, px + 980, py - 140, "RANGE TARGET CRUISER (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, px + 1220, py + 40, "RANGE TARGET HEAVY (SHIELD)", true);
+        Faction targetFaction = ctx.player.faction.isFriendlyTo(Faction.ENEMY) ? Faction.ALLY : Faction.ENEMY;
+        spawnRangeTarget(ctx, ShipRole.PATROL, targetFaction, px + 420, py - 180, "RANGE TARGET LIGHT (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.FRIGATE, targetFaction, px + 620, py - 60, "RANGE TARGET MEDIUM (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, targetFaction, px + 760, py + 120, "RANGE TARGET CIWS (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, targetFaction, px + 980, py - 140, "RANGE TARGET CRUISER (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, targetFaction, px + 1220, py + 40, "RANGE TARGET HEAVY (SHIELD)", true);
 
         ctx.credits = 10000;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
@@ -590,7 +635,7 @@ public final class SpawnSystem {
                 if (s == null) continue;
                 if (s.role != slot.role) continue;
                 if (!slot.label.equals(s.name)) continue;
-                if (s.faction != Faction.ENEMY) continue;
+                if (s.faction != slot.faction) continue;
                 if (s.alive && !s.dying && s.hp > 0) {
                     active = true;
                     break;
@@ -606,7 +651,7 @@ public final class SpawnSystem {
             if (slot.respawnTimer < SHOOTING_RANGE_RESPAWN_DELAY) continue;
 
             slot.respawnTimer = 0.0;
-            spawnRangeTarget(ctx, slot.role, slot.x, slot.y, slot.label, slot.keepShields);
+            spawnRangeTarget(ctx, slot.role, slot.faction, slot.x, slot.y, slot.label, slot.keepShields);
         }
     }
 
@@ -619,15 +664,15 @@ public final class SpawnSystem {
         shootingRangeTargetSlotsFor(ctx).clear();
     }
 
-    private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, double x, double y, String label, boolean keepShields) {
-        if (ctx == null || role == null || label == null || label.isBlank()) return;
-        shootingRangeTargetSlotsFor(ctx).put(label, new ShootingRangeTargetSlot(role, label, x, y, keepShields));
+    private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, Faction faction, double x, double y, String label, boolean keepShields) {
+        if (ctx == null || role == null || faction == null || label == null || label.isBlank()) return;
+        shootingRangeTargetSlotsFor(ctx).put(label, new ShootingRangeTargetSlot(role, faction, label, x, y, keepShields));
     }
 
-    private static Ship spawnRangeTarget(GameContext ctx, ShipRole role, double x, double y, String label, boolean keepShields) {
+    private static Ship spawnRangeTarget(GameContext ctx, ShipRole role, Faction faction, double x, double y, String label, boolean keepShields) {
         double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
         double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
-        Ship s = new FleetShip(role, Faction.ENEMY, sx, sy);
+        Ship s = new FleetShip(role, faction, sx, sy);
 
         s.name = label;
         s.angle = Math.PI;
@@ -653,7 +698,7 @@ public final class SpawnSystem {
         }
 
         ctx.ships.add(s);
-        registerShootingRangeTarget(ctx, role, sx, sy, label, keepShields);
+        registerShootingRangeTarget(ctx, role, faction, sx, sy, label, keepShields);
         return s;
     }
 }

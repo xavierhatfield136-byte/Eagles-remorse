@@ -1404,6 +1404,7 @@ public final class AISystem {
         if (!isAlive(target)) return null;
         if (target.faction == null || seeker.faction == null) return null;
         if (seeker.faction.isFriendlyTo(target.faction)) return null;
+        if (!TargetingSystem.isDetectableToObserver(seeker, target)) return null;
         return target;
     }
 
@@ -1768,6 +1769,7 @@ public final class AISystem {
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist,
                                    double teamConfidence, SquadObjective objective) {
         if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
+        if (!TargetingSystem.isDetectableToObserver(s, target)) return 0;
         if (objective == null) objective = SquadObjective.HOLD;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
         double sensorConfidence = observerEWConfidence(ctx, s, target, dist);
@@ -1823,7 +1825,12 @@ public final class AISystem {
 
             // Always track assigned target, even when weapon is cooling down or out of range.
             if (t.kind == Turret.Kind.GUN) {
-                t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
+                if (s.faction == Faction.TEAM_C) {
+                    // Directed-energy guns should bias direct tracking, not projectile lead.
+                    t.aimAt(dt, s, target);
+                } else {
+                    t.aimAtLead(dt, s, target, Turret.effectiveGunProjectileSpeed(t));
+                }
             } else {
                 t.aimAt(dt, s, target);
             }

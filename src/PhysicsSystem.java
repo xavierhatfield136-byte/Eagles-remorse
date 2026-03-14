@@ -12,6 +12,7 @@ public final class PhysicsSystem {
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
+        TargetingSystem.enforceCloakLockRules(ctx);
 
         // --- Ship movement / regen / turret cooldowns ---
         for (Ship s : ctx.ships) {

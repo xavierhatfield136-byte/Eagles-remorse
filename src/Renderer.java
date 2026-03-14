@@ -1419,7 +1419,7 @@ public class Renderer {
         if (g2 == null || player == null) return;
 
         int cardW = 220;
-        int cardH = 100;
+        int cardH = 116;
         int margin = 12;
         int sideGap = 12;
 
@@ -1483,6 +1483,7 @@ public class Renderer {
         int meterX = x;
         int hullY = y + 34;
         int shieldY = y + 62;
+        int cloakY = y + 90;
 
         double hullFrac = (ship.hpMax <= 0) ? 0.0 : Math.max(0.0, Math.min(1.0, ship.hp / (double) ship.hpMax));
         drawVitalsMeter(g2, meterX, hullY, meterW, meterH, "HULL " + ship.hp + "/" + ship.hpMax, hullFrac,
@@ -1503,6 +1504,21 @@ public class Renderer {
             }
         } else {
             drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD N/A", 0.0, new Color(135, 160, 190, 160));
+        }
+
+        if (ship.isStealth) {
+            int pct = (int) Math.round(ship.cloakEnergyFrac() * 100.0);
+            String state = ship.isCloaked() ? "ACTIVE" : "RECHARGE";
+            drawVitalsMeter(
+                    g2,
+                    meterX,
+                    cloakY,
+                    meterW,
+                    meterH,
+                    "CLOAK " + MathUtil.clamp(pct, 0, 100) + "% " + state,
+                    ship.cloakEnergyFrac(),
+                    new Color(168, 130, 255, 210)
+            );
         }
 
         g2.setFont(oldFont);
