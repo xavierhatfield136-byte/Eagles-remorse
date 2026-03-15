@@ -20,6 +20,7 @@ public class CollisionSystem {
             if (!p.alive) continue;
             // CIWS is point-defense only: pellets should only interact with missiles.
             if (p instanceof CIWSPellet) continue;
+            if (p instanceof PointDefenseLaser) continue;
             if (p instanceof PhaserBeam beam) {
                 handlePhaserBeamVsShips(ctx, beam, ships);
                 continue;
@@ -148,15 +149,42 @@ public class CollisionSystem {
     }
 
     /**
-     * Projectiles can also hit other projectiles (currently: CIWS pellets can hit missiles).
-     *
-     * This is kept lightweight by only checking pellet-vs-missile pairs.
+     * Point-defense projectiles can hit missiles:
+     * - CIWS pellets (kinetic)
+     * - Team C point-defense laser pulses (beam)
      */
     public static void handleProjectilesVsProjectiles(GameContext ctx, List<Projectile> projectiles) {
         if (projectiles == null || projectiles.isEmpty()) return;
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            if (p instanceof PointDefenseLaser laser) {
+                Missile m = laser.target();
+                if (m == null || !m.alive || laser.faction.isFriendlyTo(m.faction)) {
+                    laser.alive = false;
+                    continue;
+                }
+
+                double halfWidth = Math.max(0.8, laser.width * 0.5);
+                double hitR = m.radius + halfWidth;
+                if (segmentPointDistanceSq(laser.startX(), laser.startY(), laser.endX, laser.endY, m.x, m.y) <= hitR * hitR) {
+                    laser.alive = false;
+                    boolean killed = m.applyInterceptHit(Math.max(1, laser.damage));
+                    if (killed) {
+                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
+                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.BEAM);
+                            Explosion.spawnShieldHit(m.x, m.y);
+                        }
+                        AudioSystem.onExplosion(ctx, m.x, m.y);
+                    } else {
+                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
+                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.BEAM);
+                        }
+                        AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.BEAM, m.x, m.y);
+                    }
+                }
+                continue;
+            }
             if (!(p instanceof CIWSPellet pellet)) continue;
 
             for (Projectile q : projectiles) {
@@ -221,6 +249,7 @@ public class CollisionSystem {
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             if (p instanceof CIWSPellet) continue;
+            if (p instanceof PointDefenseLaser) continue;
             if (p instanceof PhaserBeam) continue;
             WaveMotionShot ws = (p instanceof WaveMotionShot) ? (WaveMotionShot) p : null;
             for (int ai = asteroids.size() - 1; ai >= 0; ai--) {
@@ -303,6 +332,7 @@ public class CollisionSystem {
         if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
         if (p instanceof WaveMotionShot) return VFX.ImpactStyle.BEAM;
         if (p instanceof PhaserBeam) return VFX.ImpactStyle.BEAM;
+        if (p instanceof PointDefenseLaser) return VFX.ImpactStyle.BEAM;
         if (p instanceof EnergyBolt bolt) {
             return bolt.isBeamBolt() ? VFX.ImpactStyle.BEAM : VFX.ImpactStyle.ENERGY;
         }

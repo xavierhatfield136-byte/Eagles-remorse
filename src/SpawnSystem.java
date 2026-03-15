@@ -605,6 +605,7 @@ public final class SpawnSystem {
         ctx.player.vy = 0.0;
         ctx.player.angle = 0.0;
         ctx.ships.add(ctx.player);
+        try { DoctrineRegistry.applyToShip(ctx.player); } catch (Throwable ignored) {}
 
         Faction targetFaction = ctx.player.faction.isFriendlyTo(Faction.ENEMY) ? Faction.ALLY : Faction.ENEMY;
         spawnRangeTarget(ctx, ShipRole.PATROL, targetFaction, px + 420, py - 180, "RANGE TARGET LIGHT (HULL)", false);

@@ -3299,8 +3299,8 @@ public abstract class Ship {
      * CIWS point-defense.
      *
      * - Finds the closest incoming enemy missile in range.
-     * - Fires a burst of visible pellets toward it.
-     * - Pellets are handled by CollisionSystem (pellets can kill missiles).
+     * - Team C fires low-damage point-defense laser pulses.
+     * - Other factions fire visible CIWS pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles) {
         if (!alive || !hasCIWS) return;
@@ -3331,6 +3331,11 @@ public abstract class Ship {
 
         double aim = Math.atan2(closest.y - y, closest.x - x);
 
+        if (faction == Faction.TEAM_C) {
+            firePointDefenseLaser(dt, projectiles, closest, aim);
+            return;
+        }
+
         // Spread gets tighter as quality increases.
         double spread = Math.toRadians(22) * (1.15 - ciwsQuality);
         int pellets = Math.max(1, ciwsPelletsPerBurst);
@@ -3355,6 +3360,36 @@ public abstract class Ship {
             );
             pellet.sourceShipId = id;
             projectiles.add(pellet);
+        }
+    }
+
+    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim) {
+        if (projectiles == null || target == null || !target.alive) return;
+
+        // Team C uses low-damage laser PD so dedicated CIWS hulls still matter.
+        int pulses = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletsPerBurst * 0.30)));
+        int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletDamage * 0.75)));
+        int pulseLife = 2;
+        double spread = Math.toRadians(6.0) * (1.12 - MathUtil.clamp(ciwsQuality, 0.0, 1.0));
+        double beamWidth = Math.max(1.0, ciwsPelletRadius * 0.85);
+
+        for (int i = 0; i < pulses; i++) {
+            double jitter = (randomUnit() - 0.5) * 2.0 * spread;
+            double a = MathUtil.normalizeAngle(aim + jitter);
+            double sx = x + Math.cos(a) * (radius + 8);
+            double sy = y + Math.sin(a) * (radius + 8);
+
+            PointDefenseLaser laser = new PointDefenseLaser(
+                    sx,
+                    sy,
+                    target,
+                    pulseDamage,
+                    pulseLife,
+                    beamWidth,
+                    faction
+            );
+            laser.sourceShipId = id;
+            projectiles.add(laser);
         }
     }
 

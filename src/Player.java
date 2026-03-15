@@ -37,6 +37,7 @@ public class Player extends Ship {
         // Build from the active team doctrine so hull-swaps keep team identity.
         Faction templateFaction = (preservedFaction == Faction.PLAYER) ? Faction.ALLY : preservedFaction;
         FleetShip template = new FleetShip(role, templateFaction, x, y);
+        try { DoctrineRegistry.applyToShip(template); } catch (Throwable ignored) {}
         copyFrom(template);
 
         // Give the player a baseline mining module on any combat hull.
@@ -316,8 +317,15 @@ public class Player extends Ship {
         aimPrimaryTurretsAt(targetX, targetY, dt);
         for (Turret t : turrets) {
             if (!t.primary) continue;
-            if (t.kind != Turret.Kind.GUN) continue;
-            Projectile p = t.fire(this, null, dt);
+            Projectile p;
+            if (t.kind == Turret.Kind.GUN) {
+                p = t.fire(this, null, dt);
+            } else if (t.kind == Turret.Kind.MISSILE) {
+                // Manual primary missile fire uses turret/cursor aim and launches unguided when no lock is provided.
+                p = t.fire(this, null, dt);
+            } else {
+                continue;
+            }
             if (p != null) {
                 out.add(p);
                 fired = true;
@@ -335,11 +343,17 @@ public class Player extends Ship {
         if (target == null) return new ArrayList<>();
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
-        aimGunTurretsAtTarget(target, dt);
+        aimPrimaryTurretsAtTarget(target, dt);
         for (Turret t : turrets) {
             if (!t.primary) continue;
-            if (t.kind != Turret.Kind.GUN) continue;
-            Projectile p = t.fire(this, null, dt);
+            Projectile p;
+            if (t.kind == Turret.Kind.GUN) {
+                p = t.fire(this, null, dt);
+            } else if (t.kind == Turret.Kind.MISSILE) {
+                p = t.fire(this, target, dt);
+            } else {
+                continue;
+            }
             if (p != null) {
                 out.add(p);
                 fired = true;
@@ -371,8 +385,9 @@ public class Player extends Ship {
         for (Turret t : turrets) {
             if (t == null) continue;
             if (!t.primary) continue;
-            if (t.kind != Turret.Kind.GUN) continue;
-            t.aimAt(dt, this, targetX, targetY);
+            if (t.kind == Turret.Kind.GUN || t.kind == Turret.Kind.MISSILE) {
+                t.aimAt(dt, this, targetX, targetY);
+            }
         }
     }
 
@@ -400,7 +415,23 @@ public class Player extends Ship {
 
     public void aimAllTurretsAtTarget(Ship target, double dt) {
         if (target == null) return;
-        aimGunTurretsAtTarget(target, dt);
+        aimPrimaryTurretsAtTarget(target, dt);
         aimMissileTurretsAtTarget(target, dt);
+    }
+
+    private void aimPrimaryTurretsAtTarget(Ship target, double dt) {
+        if (target == null) return;
+        for (Turret t : turrets) {
+            if (t == null || !t.primary) continue;
+            if (t.kind == Turret.Kind.GUN) {
+                if (faction == Faction.TEAM_C) {
+                    t.aimAt(dt, this, target);
+                } else {
+                    t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
+                }
+            } else if (t.kind == Turret.Kind.MISSILE) {
+                t.aimAt(dt, this, target);
+            }
+        }
     }
 }

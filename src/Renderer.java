@@ -672,6 +672,10 @@ public class Renderer {
                 drawPhaserBeam(g2, beam);
                 continue;
             }
+            if (p instanceof PointDefenseLaser laser) {
+                drawPointDefenseLaser(g2, laser);
+                continue;
+            }
 
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
@@ -846,6 +850,35 @@ public class Renderer {
         g2.fillOval((int) Math.round(sx) - glowR, (int) Math.round(sy) - glowR, glowR * 2, glowR * 2);
         g2.setColor(withAlpha(hot, 126));
         g2.fillOval((int) Math.round(ex) - glowR, (int) Math.round(ey) - glowR, glowR * 2, glowR * 2);
+
+        g2.setStroke(old);
+    }
+
+    private static void drawPointDefenseLaser(Graphics2D g2, PointDefenseLaser laser) {
+        if (g2 == null || laser == null || !laser.alive) return;
+
+        double sx = laser.startX();
+        double sy = laser.startY();
+        double ex = laser.endX;
+        double ey = laser.endY;
+
+        Color base = mixColor(beamColorForFaction(laser.faction), new Color(130, 245, 210), 0.34);
+        Color hot = mixColor(base, Color.WHITE, 0.78);
+        float width = (float) Math.max(1.1, laser.width);
+
+        Stroke old = g2.getStroke();
+
+        g2.setStroke(new BasicStroke(width * 2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, 102));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        g2.setStroke(new BasicStroke(Math.max(1.0f, width * 0.85f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, 212));
+        g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+
+        int r = (int) Math.round(Math.max(2.0, laser.width * 1.5));
+        g2.setColor(withAlpha(hot, 178));
+        g2.fillOval((int) Math.round(ex) - r, (int) Math.round(ey) - r, r * 2, r * 2);
 
         g2.setStroke(old);
     }
