@@ -658,7 +658,78 @@ public final class ShipRoomLayout {
                 }
             }
         }
+        appendArmorShellCells(raw, hull);
         return assignVisualLabels(raw, rooms);
+    }
+
+    private static void appendArmorShellCells(List<VisualCell> raw, HullProfile hull) {
+        if (raw == null || hull == null) return;
+
+        double[] shellCuts = new double[]{-1.00, -0.78, -0.54, -0.28, 0.00, 0.28, 0.54, 0.78, 1.00};
+        for (int i = 0; i < shellCuts.length - 1; i++) {
+            double x0 = shellCuts[i];
+            double x1 = shellCuts[i + 1];
+            RoomId topRoom = armorRoomForSpan((x0 + x1) * 0.5, true);
+            RoomId bottomRoom = armorRoomForSpan((x0 + x1) * 0.5, false);
+            VisualCell top = shellStripCell(hull, topRoom, x0, x1, 0.00, 0.12);
+            VisualCell bottom = shellStripCell(hull, bottomRoom, x0, x1, 0.88, 1.00);
+            if (top != null) raw.add(top);
+            if (bottom != null) raw.add(bottom);
+        }
+
+        VisualCell aftCap = endCapCell(hull, RoomId.AFT_ARMOR, -1.00, -0.82, 0.18, 0.82);
+        VisualCell bowCap = endCapCell(hull, RoomId.BOW_ARMOR, 0.82, 1.00, 0.18, 0.82);
+        if (aftCap != null) raw.add(aftCap);
+        if (bowCap != null) raw.add(bowCap);
+    }
+
+    private static RoomId armorRoomForSpan(double centerX, boolean top) {
+        if (centerX >= 0.72) return RoomId.BOW_ARMOR;
+        if (centerX <= -0.72) return RoomId.AFT_ARMOR;
+        return top ? RoomId.DORSAL_ARMOR : RoomId.VENTRAL_ARMOR;
+    }
+
+    private static VisualCell shellStripCell(HullProfile hull, RoomId roomId,
+                                             double x0, double x1,
+                                             double outerFrac, double innerFrac) {
+        double xa = Math.max(-1.0, Math.min(1.0, Math.min(x0, x1)));
+        double xb = Math.max(-1.0, Math.min(1.0, Math.max(x0, x1)));
+        int samples = 5;
+        double[] xs = new double[samples * 2];
+        double[] ys = new double[samples * 2];
+
+        double totalArea = 0.0;
+        for (int i = 0; i < samples; i++) {
+            double t = i / (double) (samples - 1);
+            double x = xa + (xb - xa) * t;
+            xs[i] = x;
+            ys[i] = hull.innerY(x, outerFrac) + ((outerFrac < 0.5) ? 0.0010 : -0.0010);
+        }
+        for (int i = 0; i < samples; i++) {
+            double t = (samples - 1 - i) / (double) (samples - 1);
+            double x = xa + (xb - xa) * t;
+            xs[samples + i] = x;
+            ys[samples + i] = hull.innerY(x, innerFrac) + ((outerFrac < 0.5) ? -0.0016 : 0.0016);
+        }
+        totalArea = polygonArea(xs, ys);
+        if (totalArea <= 0.0008) return null;
+        return new VisualCell(roomId, xs, ys, false);
+    }
+
+    private static VisualCell endCapCell(HullProfile hull, RoomId roomId,
+                                         double x0, double x1,
+                                         double topFrac, double bottomFrac) {
+        double xa = Math.max(-1.0, Math.min(1.0, Math.min(x0, x1)));
+        double xb = Math.max(-1.0, Math.min(1.0, Math.max(x0, x1)));
+        double[] xs = new double[]{xa, xb, xb, xa};
+        double[] ys = new double[]{
+                hull.innerY(xa, topFrac),
+                hull.innerY(xb, topFrac),
+                hull.innerY(xb, bottomFrac),
+                hull.innerY(xa, bottomFrac)
+        };
+        if (polygonArea(xs, ys) <= 0.0010) return null;
+        return new VisualCell(roomId, xs, ys, false);
     }
 
     private static VisualCell visualCell(HullProfile hull, RoomId roomId,
