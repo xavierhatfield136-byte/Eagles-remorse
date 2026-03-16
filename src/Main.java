@@ -250,24 +250,37 @@ enum PlayerTeamChoice {
  * Simple main menu. Package-private to keep file count down.
  */
 class MainMenuPanel extends JPanel {
+    private static final long MENU_BG_SEED = 0x5A17C0DEL;
+    private final long backgroundStartNs = System.nanoTime();
+    private final Timer backgroundTimer;
 
     public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onCredits, Runnable onQuit) {
         setPreferredSize(new Dimension(1280, 720));
         setBackground(Color.BLACK);
         setFocusable(true);
+        backgroundTimer = new Timer(33, e -> repaint());
+        backgroundTimer.setCoalesce(true);
+        backgroundTimer.start();
 
         JLabel title = new JLabel(AppInfo.APP_NAME.toUpperCase());
         title.setForeground(Color.WHITE);
         title.setFont(new Font("Consolas", Font.BOLD, 48));
 
+        JLabel subtitle = new JLabel("Bridge command. Fleet pressure. Tactical survival.");
+        subtitle.setForeground(new Color(196, 220, 242, 210));
+        subtitle.setFont(new Font("Consolas", Font.PLAIN, 16));
+
         JComboBox<GameMode> modeBox = new JComboBox<>(GameMode.values());
+        styleCombo(modeBox);
 
         JComboBox<String> mapBox = new JComboBox<>(new String[]{
                 "Small (5000 x 5000)",
                 "Medium (10000 x 10000)",
                 "Large (20000 x 20000)"
         });
+        styleCombo(mapBox);
         JComboBox<PlayerTeamChoice> teamBox = new JComboBox<>();
+        styleCombo(teamBox);
 
         JCheckBox events = new JCheckBox("Enable Random Events");
         events.setOpaque(false);
@@ -280,10 +293,14 @@ class MainMenuPanel extends JPanel {
         fullscreen.setSelected(false);
 
         JTextField seedField = new JTextField("0", 12);
+        styleField(seedField);
 
         JButton start = new JButton("Start");
         JButton credits = new JButton("Credits");
         JButton quit = new JButton("Quit");
+        styleButton(start, new Color(70, 122, 170));
+        styleButton(credits, new Color(58, 72, 95));
+        styleButton(quit, new Color(82, 54, 62));
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(180, 180, 180));
         versionLabel.setFont(new Font("Consolas", Font.PLAIN, 14));
@@ -360,8 +377,25 @@ class MainMenuPanel extends JPanel {
             }
         });
 
-        JPanel card = new JPanel(new GridBagLayout());
+        JPanel card = new JPanel(new GridBagLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                g2.setColor(new Color(7, 16, 28, 190));
+                g2.fillRoundRect(0, 0, w, h, 30, 30);
+                g2.setColor(new Color(130, 190, 235, 70));
+                g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
+                g2.setColor(new Color(255, 255, 255, 18));
+                g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
         card.setOpaque(false);
+        card.setBorder(BorderFactory.createEmptyBorder(28, 34, 26, 34));
 
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(10, 10, 10, 10);
@@ -369,6 +403,9 @@ class MainMenuPanel extends JPanel {
         c.gridy = 0;
         c.gridwidth = 2;
         card.add(title, c);
+
+        c.gridy++;
+        card.add(subtitle, c);
 
         c.gridwidth = 1;
         c.gridy++;
@@ -434,11 +471,91 @@ class MainMenuPanel extends JPanel {
         });
     }
 
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+        int w = getWidth();
+        int h = getHeight();
+        double t = (System.nanoTime() - backgroundStartNs) / 1_000_000_000.0;
+        double camX = 900.0 + t * 16.0;
+        double camY = 520.0 + Math.sin(t * 0.16) * 180.0;
+        Renderer.drawSpaceBackground(g2, camX, camY, w, h, MENU_BG_SEED);
+        drawMenuAtmosphere(g2, w, h, t);
+        g2.dispose();
+    }
+
     private JLabel label(String text) {
         JLabel l = new JLabel(text);
         l.setForeground(new Color(255, 255, 255, 210));
         l.setFont(new Font("Consolas", Font.PLAIN, 18));
         return l;
+    }
+
+    private static void styleCombo(JComboBox<?> combo) {
+        combo.setBackground(new Color(20, 28, 43));
+        combo.setForeground(new Color(236, 242, 248));
+        combo.setFont(new Font("Consolas", Font.PLAIN, 15));
+    }
+
+    private static void styleField(JTextField field) {
+        field.setBackground(new Color(20, 28, 43));
+        field.setForeground(new Color(236, 242, 248));
+        field.setCaretColor(Color.WHITE);
+        field.setSelectionColor(new Color(90, 150, 205));
+        field.setFont(new Font("Consolas", Font.PLAIN, 15));
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(116, 154, 190)),
+                BorderFactory.createEmptyBorder(5, 8, 5, 8)
+        ));
+    }
+
+    private static void styleButton(JButton button, Color fill) {
+        button.setBackground(fill);
+        button.setForeground(Color.WHITE);
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(fill.brighter()),
+                BorderFactory.createEmptyBorder(7, 16, 7, 16)
+        ));
+        button.setFont(new Font("Consolas", Font.BOLD, 16));
+    }
+
+    private static void drawMenuAtmosphere(Graphics2D g2, int w, int h, double t) {
+        g2.setColor(new Color(10, 18, 30, 92));
+        g2.fillRect(0, 0, w, h);
+
+        int glowW = (int) Math.round(Math.max(320.0, w * 0.28));
+        int glowH = (int) Math.round(Math.max(240.0, h * 0.24));
+        int leftGlowX = (int) Math.round(w * 0.10 + Math.sin(t * 0.22) * 16.0);
+        int leftGlowY = (int) Math.round(h * 0.18 + Math.cos(t * 0.18) * 12.0);
+        g2.setPaint(new GradientPaint(leftGlowX, leftGlowY, new Color(70, 150, 210, 96),
+                leftGlowX + glowW, leftGlowY + glowH, new Color(70, 150, 210, 0)));
+        g2.fillOval(leftGlowX - glowW / 2, leftGlowY - glowH / 2, glowW, glowH);
+
+        int rightGlowX = (int) Math.round(w * 0.84 + Math.cos(t * 0.19) * 18.0);
+        int rightGlowY = (int) Math.round(h * 0.74 + Math.sin(t * 0.21) * 10.0);
+        g2.setPaint(new GradientPaint(rightGlowX, rightGlowY, new Color(255, 122, 82, 72),
+                rightGlowX - glowW, rightGlowY - glowH, new Color(255, 122, 82, 0)));
+        g2.fillOval(rightGlowX - glowW / 2, rightGlowY - glowH / 2, glowW, glowH);
+
+        g2.setColor(new Color(255, 255, 255, 16));
+        int lineY = (int) Math.round(h * 0.86);
+        g2.drawLine((int) Math.round(w * 0.12), lineY, (int) Math.round(w * 0.88), lineY);
+
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(new GradientPaint(0, 0, new Color(4, 8, 16, 180), 0, h / 2f, new Color(4, 8, 16, 28)));
+        g2.fillRect(0, 0, w, h / 2);
+        g2.setPaint(new GradientPaint(0, h, new Color(3, 6, 12, 220), 0, h / 2f, new Color(3, 6, 12, 0)));
+        g2.fillRect(0, h / 2, w, h / 2);
+        g2.setPaint(new GradientPaint(0, 0, new Color(3, 8, 18, 150), w / 4f, 0, new Color(3, 8, 18, 0)));
+        g2.fillRect(0, 0, w / 3, h);
+        g2.setPaint(new GradientPaint(w, 0, new Color(18, 6, 7, 138), w * 0.72f, 0, new Color(18, 6, 7, 0)));
+        g2.fillRect((int) Math.round(w * 0.67), 0, (int) Math.round(w * 0.33), h);
+        g2.setPaint(oldPaint);
     }
 
     private static void syncTeamOptionsForMode(GameMode mode, JComboBox<PlayerTeamChoice> teamBox, int preferredTeamId) {

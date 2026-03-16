@@ -913,9 +913,29 @@ public abstract class Ship {
             }
         }
 
-        registerHullImpact(hullDamage, impact, primaryRoom);
+        ShipRoomLayout.RoomDef armorRoom = resolveArmorRoomForImpact(impact, primaryRoom);
+        ShipRoomLayout.RoomDef interiorRoom = resolveInteriorRoomForImpact(impact, primaryRoom);
+        if (armorRoom != null && hullDamage > 0) {
+            double armorBefore = roomHp.getOrDefault(armorRoom.id, roomHpMax.getOrDefault(armorRoom.id, 0.0));
+            double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+            double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+            damageRoom(armorRoom, hullDamage, nx, ny, false, false);
+            double armorAfter = roomHp.getOrDefault(armorRoom.id, armorBefore);
+            double absorbed = Math.max(0.0, armorBefore - armorAfter);
+            hullDamage = Math.max(0, (int) Math.round(Math.max(0.0, hullDamage - absorbed)));
+            if (hullDamage <= 0) {
+                registerHullImpact(Math.max(1, (int) Math.round(dmg * 0.22)), impact, armorRoom);
+                syncHullFromRoomIntegrity();
+                evaluateCondemnedStateFromRooms();
+                return;
+            }
+        } else {
+            interiorRoom = primaryRoom;
+        }
+
+        registerHullImpact(hullDamage, impact, (armorRoom != null) ? armorRoom : interiorRoom);
         int hullBefore = hp;
-        RoomDamageResult split = applySystemDamageFromHullHit(hullDamage, impact, primaryRoom, hullBefore);
+        RoomDamageResult split = applySystemDamageFromHullHit(hullDamage, impact, interiorRoom, hullBefore);
         if (split != null) lastRoomDamageResult = split;
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
@@ -1277,6 +1297,20 @@ public abstract class Ship {
         return Math.max(0.0, Math.min(1.0, hpv / maxv));
     }
 
+    private double roomClusterAverageFraction(ShipRoomLayout.RoomId... roomIds) {
+        ensureRoomSystemsInitialized();
+        if (roomIds == null || roomIds.length <= 0) return 1.0;
+        double total = 0.0;
+        int count = 0;
+        for (ShipRoomLayout.RoomId roomId : roomIds) {
+            if (roomId == null || !roomHpMax.containsKey(roomId)) continue;
+            total += roomHealthFraction(roomId);
+            count++;
+        }
+        if (count <= 0) return 1.0;
+        return total / count;
+    }
+
     public double roomFireIntensity(ShipRoomLayout.RoomId roomId) {
         if (roomId == null) return 0.0;
         RoomHazardState hz = roomHazards.get(roomId);
@@ -1576,9 +1610,13 @@ public abstract class Ship {
 
     public double propulsionRoomIntegrity() {
         ensureRoomSystemsInitialized();
-        double engine = roomHealthFraction(ShipRoomLayout.RoomId.ENGINES);
+        double engine = roomClusterAverageFraction(
+                ShipRoomLayout.RoomId.ENGINES,
+                ShipRoomLayout.RoomId.PORT_ENGINES,
+                ShipRoomLayout.RoomId.STARBOARD_ENGINES
+        );
         double warp = roomHealthFraction(ShipRoomLayout.RoomId.WARP_DRIVE);
-        return MathUtil.clamp(engine * 0.65 + warp * 0.35, 0.0, 1.0);
+        return MathUtil.clamp(engine * 0.72 + warp * 0.28, 0.0, 1.0);
     }
 
     public double propulsionMobilityMultiplier() {
@@ -1725,6 +1763,8 @@ public abstract class Ship {
         localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.SENSORS) * 0.36;
         localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.BRIDGE) * 0.28;
         localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.POWER_CONDUITS) * 0.18;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.PORT_POWER) * 0.10;
+        localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.STARBOARD_POWER) * 0.10;
         localFirePenalty += roomFireIntensity(ShipRoomLayout.RoomId.INTEGRITY_FIELD) * 0.12;
         localFirePenalty += totalFireIntensity() * 0.05;
         out *= (1.0 - MathUtil.clamp(localFirePenalty, 0.0, 0.72));
@@ -1792,6 +1832,7 @@ public abstract class Ship {
         double total = 0.0;
         double maxTotal = 0.0;
         for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+            if (def == null || ShipRoomLayout.isArmorRoom(def.id)) continue;
             double max = roomHpMax.getOrDefault(def.id, 0.0);
             if (max <= 0.0) continue;
             maxTotal += max;
@@ -1919,6 +1960,47 @@ public abstract class Ship {
         return null;
     }
 
+    private ShipRoomLayout.RoomDef resolveArmorRoomForImpact(HullGeometry.ImpactSample impact,
+                                                             ShipRoomLayout.RoomDef primaryRoom) {
+        ensureRoomSystemsInitialized();
+        if (primaryRoom != null
+                && ShipRoomLayout.isArmorRoom(primaryRoom.id)
+                && roomHp.getOrDefault(primaryRoom.id, 0.0) > 1e-6) {
+            return primaryRoom;
+        }
+        if (impact == null || !impact.onHull) return null;
+        for (double scale : new double[]{1.00, 0.96, 0.92}) {
+            ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role,
+                    impact.normalizedX * scale,
+                    impact.normalizedY * scale);
+            if (candidate != null
+                    && ShipRoomLayout.isArmorRoom(candidate.id)
+                    && roomHp.getOrDefault(candidate.id, 0.0) > 1e-6) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private ShipRoomLayout.RoomDef resolveInteriorRoomForImpact(HullGeometry.ImpactSample impact,
+                                                                ShipRoomLayout.RoomDef primaryRoom) {
+        if (primaryRoom != null && !ShipRoomLayout.isArmorRoom(primaryRoom.id)) return primaryRoom;
+        if (impact != null && impact.onHull) {
+            for (double scale : new double[]{0.92, 0.84, 0.76, 0.68, 0.58}) {
+                ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role,
+                        impact.normalizedX * scale,
+                        impact.normalizedY * scale);
+                if (candidate != null && !ShipRoomLayout.isArmorRoom(candidate.id)) {
+                    return candidate;
+                }
+            }
+        }
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+            if (def != null && !ShipRoomLayout.isArmorRoom(def.id)) return def;
+        }
+        return primaryRoom;
+    }
+
     private void logRoomDamage(ShipRoomLayout.RoomId roomId, double normalizedX, double normalizedY,
                                double damage, boolean fromHazard) {
         if (roomId == null || damage <= 0.0) return;
@@ -1961,6 +2043,7 @@ public abstract class Ship {
         List<String> subsystemTransitions = new ArrayList<>(4);
         noDamageTimerSeconds = 0.0;
         instantRepairConsumed = false;
+        boolean armorRoom = ShipRoomLayout.isArmorRoom(room.id);
 
         // Damage saturation: if this room is already destroyed, spread hit damage
         // evenly across nearby operational rooms.
@@ -2011,7 +2094,7 @@ public abstract class Ship {
         roomHp.put(room.id, after);
         logRoomDamage(room.id, normalizedX, normalizedY, damage, fromHazard);
 
-        if (room.primarySystem != null) {
+        if (!armorRoom && room.primarySystem != null) {
             double sysBefore = systemHealthFraction(room.primarySystem);
             double sysScale = fromHazard ? 0.68 : 0.70;
             damageSystem(room.primarySystem, damage * sysScale);
@@ -2021,7 +2104,10 @@ public abstract class Ship {
             }
         }
 
-        if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS && !fromHazard) {
+        if ((room.id == ShipRoomLayout.RoomId.POWER_CONDUITS
+                || room.id == ShipRoomLayout.RoomId.PORT_POWER
+                || room.id == ShipRoomLayout.RoomId.STARBOARD_POWER)
+                && !fromHazard) {
             hazardRolls++;
             if (randomUnit() < 0.20) {
                 InternalSystem redirected = pickSystem(InternalSystem.SHIELDS, InternalSystem.WEAPONS, InternalSystem.SENSORS);
@@ -2044,7 +2130,7 @@ public abstract class Ship {
             }
         }
 
-        if (!fromHazard) {
+        if (!armorRoom && !fromHazard) {
             hazardRolls++;
             double fracLost = (before - after) / Math.max(1e-6, max);
             double ignitionChance = 0.10 + fracLost * 0.50;
@@ -2546,12 +2632,15 @@ public abstract class Ship {
             }
         }
 
-        if (room.id == ShipRoomLayout.RoomId.POWER_CONDUITS
+        if ((room.id == ShipRoomLayout.RoomId.POWER_CONDUITS
+                || room.id == ShipRoomLayout.RoomId.PORT_POWER
+                || room.id == ShipRoomLayout.RoomId.STARBOARD_POWER)
                 && hz.fireIntensity > 1.35
                 && randomUnit() < 0.16) {
             forceShieldOffline(Math.max(0.5, shieldRebootDelay * 0.35));
         }
-        if (room.id == ShipRoomLayout.RoomId.MAGAZINES
+        if ((room.id == ShipRoomLayout.RoomId.MAGAZINES
+                || room.id == ShipRoomLayout.RoomId.MISSILE_LAUNCHERS)
                 && hz.fireIntensity > 1.10
                 && randomUnit() < 0.12) {
             double weaponMax = systemHpMax.getOrDefault(InternalSystem.WEAPONS, 0.0);
@@ -2564,11 +2653,14 @@ public abstract class Ship {
     private InternalSystem secondaryInstabilitySystem(ShipRoomLayout.RoomId roomId) {
         if (roomId == null) return null;
         return switch (roomId) {
-            case REACTOR, POWER_CONDUITS -> InternalSystem.SHIELDS;
+            case REACTOR, POWER_CONDUITS, PORT_POWER, STARBOARD_POWER -> InternalSystem.SHIELDS;
             case INTEGRITY_FIELD -> InternalSystem.REACTOR_CORE;
-            case SENSORS, BRIDGE -> InternalSystem.BRIDGE;
-            case MAIN_WEAPON, MISSILE_LAUNCHERS, MAGAZINES -> InternalSystem.WEAPONS;
-            case ENGINES, WARP_DRIVE -> InternalSystem.WARP_ENGINES;
+            case SENSORS, BRIDGE, BOW, CREW_QUARTERS -> InternalSystem.BRIDGE;
+            case PORT_BATTERY, STARBOARD_BATTERY, MAIN_WEAPON, MISSILE_LAUNCHERS, MAGAZINES -> InternalSystem.WEAPONS;
+            case SERVICE_BAY -> InternalSystem.REACTOR_CORE;
+            case CARGO_BAY -> InternalSystem.MAGAZINES;
+            case ENGINES, PORT_ENGINES, STARBOARD_ENGINES, WARP_DRIVE, AFT_SPINE -> InternalSystem.WARP_ENGINES;
+            case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR -> null;
         };
     }
 
@@ -2975,8 +3067,7 @@ public abstract class Ship {
         double severity = MathUtil.clamp(hullDamage / (double) hpMax, 0.02, 1.0);
         boolean triggered = false;
 
-        if (primaryRoom.id == ShipRoomLayout.RoomId.REACTOR
-                || primaryRoom.id == ShipRoomLayout.RoomId.POWER_CONDUITS) {
+        if (ShipRoomLayout.isPowerRoom(primaryRoom.id)) {
             double reactorFrac = roomHealthFraction(ShipRoomLayout.RoomId.REACTOR);
             double chance = (0.08 + (1.0 - reactorFrac) * 0.45 + severity * 0.18) * graceScale;
             if (randomUnit() < MathUtil.clamp(chance, 0.0, 0.78)) {

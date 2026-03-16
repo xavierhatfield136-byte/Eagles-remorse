@@ -1,5 +1,6 @@
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.geom.Area;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
@@ -2520,6 +2521,7 @@ public class Renderer {
                                                    String title, String subtitle, boolean interactive) {
         if (g2 == null || ship == null) return;
         if (w < 80 || h < 80) return;
+        long nowNanos = System.nanoTime();
 
         g2.setColor(new Color(16, 20, 28, 206));
         g2.fillRoundRect(x, y, w, h, 12, 12);
@@ -2545,12 +2547,13 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 60));
         g2.drawRoundRect(mapX, mapY, mapW, mapH, 10, 10);
 
+        drawXrayShipUnderlay(g2, ship, mapRect, nowNanos);
+
         g2.setColor(new Color(255, 255, 255, 20));
         g2.drawLine(mapX + mapW / 2, mapY + 6, mapX + mapW / 2, mapY + mapH - 6);
         g2.drawLine(mapX + 6, mapY + mapH / 2, mapX + mapW - 6, mapY + mapH / 2);
 
         double[] hitFlash = new double[ShipRoomLayout.RoomId.values().length];
-        long nowNanos = System.nanoTime();
         List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(ship.role);
         refreshXrayPercentCache(ship, rooms, nowNanos);
         EnumMap<ShipRoomLayout.RoomId, Integer> pctCache = xrayPercentCacheFor(ship);
@@ -2586,36 +2589,40 @@ public class Renderer {
         g2.setFont(XRAY_HP_FONT);
         FontMetrics hpFm = g2.getFontMetrics();
 
-        EnumMap<ShipRoomLayout.RoomId, Polygon> polygons = new EnumMap<>(ShipRoomLayout.RoomId.class);
-        for (ShipRoomLayout.RoomDef room : rooms) {
-            if (room == null || room.id == null) continue;
-            Polygon p = xrayRoomPolygon(mapX, mapY, mapW, mapH, room.xs, room.ys);
+        List<ShipRoomLayout.VisualCell> visualCells = ShipRoomLayout.visualCellsFor(ship.role);
+        List<ShipRoomLayout.VisualCell> drawCells = new ArrayList<>();
+        List<Polygon> cellPolygons = new ArrayList<>();
+        for (ShipRoomLayout.VisualCell cell : visualCells) {
+            if (cell == null || cell.roomId == null) continue;
+            Polygon p = xrayRoomPolygon(mapX, mapY, mapW, mapH, cell.xs, cell.ys);
             if (p == null || p.npoints < 3) continue;
-            polygons.put(room.id, p);
-            if (interactive && p.contains(cursorX, cursorY)) hoveredRoom = room.id;
+            drawCells.add(cell);
+            cellPolygons.add(p);
+            if (interactive && p.contains(cursorX, cursorY)) hoveredRoom = cell.roomId;
         }
         if (interactive && ctx != null) ctx.xrayHoveredRoom = hoveredRoom;
 
         Stroke oldStroke = g2.getStroke();
-        for (ShipRoomLayout.RoomDef room : rooms) {
-            if (room == null || room.id == null) continue;
-            Polygon p = polygons.get(room.id);
-            if (p == null || p.npoints < 3) continue;
+        for (int cellIdx = 0; cellIdx < drawCells.size(); cellIdx++) {
+            ShipRoomLayout.VisualCell cell = drawCells.get(cellIdx);
+            Polygon p = cellPolygons.get(cellIdx);
+            ShipRoomLayout.RoomDef room = ShipRoomLayout.roomForId(ship.role, cell.roomId);
+            if (room == null || cell.roomId == null || p == null || p.npoints < 3) continue;
 
-            int pctVal = pctCache.getOrDefault(room.id, -1);
+            int pctVal = pctCache.getOrDefault(cell.roomId, -1);
             if (pctVal < 0) {
-                pctVal = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(room.id) * 100.0), 0, 100);
+                pctVal = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(cell.roomId) * 100.0), 0, 100);
             }
             double frac = pctVal * 0.01;
-            double fireIntensity = ship.roomFireIntensity(room.id);
-            int roomIdx = room.id.ordinal();
+            double fireIntensity = ship.roomFireIntensity(cell.roomId);
+            int roomIdx = cell.roomId.ordinal();
             double hitStrength = (roomIdx >= 0 && roomIdx < hitFlash.length) ? hitFlash[roomIdx] : 0.0;
             boolean disabled = pctVal <= 0 || (room.primarySystem != null && ship.isSystemDestroyed(room.primarySystem));
             double powerIntensity = xrayPowerRoutingIntensity(ship, room);
             boolean powerOutOfBand = Math.abs(powerIntensity - xrayNominalPowerTarget(room)) >= 0.035;
             boolean filteredIn = xrayRoomMatchesFilter(filterMode, frac, fireIntensity, disabled, powerOutOfBand);
-            boolean focused = interactive && focusedRoom == room.id;
-            boolean hovered = interactive && hoveredRoom == room.id;
+            boolean focused = interactive && focusedRoom == cell.roomId;
+            boolean hovered = interactive && hoveredRoom == cell.roomId;
 
             Color fill;
             if (!filteredIn) fill = new Color(70, 78, 96, 66);
@@ -2638,7 +2645,7 @@ public class Renderer {
                 g2.setStroke(oldStroke);
                 if (hitStrength > hottestHit) {
                     hottestHit = hitStrength;
-                    hottestRoomLabel = xrayRoomDisplayLabel(room.id);
+                    hottestRoomLabel = xrayRoomDisplayLabel(cell.roomId);
                 }
             }
 
@@ -2655,31 +2662,37 @@ public class Renderer {
             int cx = (int) Math.round(b.getCenterX());
             int cy = (int) Math.round(b.getCenterY());
 
-            String symbol = xrayRoomSymbol(room.id);
-            g2.setFont(XRAY_SYMBOL_FONT);
-            int sw = symFm.stringWidth(symbol);
-            int sh = symFm.getAscent();
-            int sx = cx - sw / 2 - 4;
-            int sy = cy - 14 - sh;
-            Color symBg = focused
-                    ? new Color(120, 210, 255, 200)
-                    : (hovered ? new Color(80, 190, 255, 185)
-                    : (hitStrength > 0.01)
-                    ? new Color(255, 96, 72, MathUtil.clamp((int) Math.round(140 + 85 * hitStrength), 0, 255))
-                    : new Color(18, 28, 44, filteredIn ? 156 : 96));
-            g2.setColor(symBg);
-            g2.fillRoundRect(sx, sy, sw + 8, sh + 5, 8, 8);
-            g2.setColor(new Color(220, 245, 255, 190));
-            g2.drawRoundRect(sx, sy, sw + 8, sh + 5, 8, 8);
-            g2.setColor(new Color(250, 252, 255, 230));
-            g2.drawString(symbol, sx + 4, sy + sh);
+            if (b.width >= 10 && b.height >= 8) {
+                String symbol = xrayRoomSymbol(cell.roomId);
+                Font labelFont = (b.width >= 20 && b.height >= 14) ? XRAY_SYMBOL_FONT : XRAY_REPAIR_FONT;
+                g2.setFont(labelFont);
+                FontMetrics labelFm = g2.getFontMetrics();
+                int sw = labelFm.stringWidth(symbol);
+                int sh = labelFm.getAscent();
+                int sx = cx - sw / 2 - 4;
+                int sy = cy - (sh + 5) / 2 - 1;
+                Color symBg = focused
+                        ? new Color(120, 210, 255, 200)
+                        : (hovered ? new Color(80, 190, 255, 185)
+                        : (hitStrength > 0.01)
+                        ? new Color(255, 96, 72, MathUtil.clamp((int) Math.round(140 + 85 * hitStrength), 0, 255))
+                        : new Color(18, 28, 44, filteredIn ? 156 : 96));
+                g2.setColor(symBg);
+                g2.fillRoundRect(sx, sy, sw + 8, sh + 5, 8, 8);
+                g2.setColor(new Color(220, 245, 255, 190));
+                g2.drawRoundRect(sx, sy, sw + 8, sh + 5, 8, 8);
+                g2.setColor(new Color(250, 252, 255, 230));
+                g2.drawString(symbol, sx + 4, sy + sh);
+            }
 
-            String pct = XRAY_PCT_LABELS[MathUtil.clamp(pctVal, 0, 100)];
-            g2.setFont(XRAY_HP_FONT);
-            int px = cx - hpFm.stringWidth(pct) / 2;
-            int py = cy + 12;
-            g2.setColor(new Color(245, 250, 255, filteredIn ? 220 : 120));
-            g2.drawString(pct, px, py);
+            if (cell.labelAnchor && b.width >= 28 && b.height >= 20) {
+                String pct = XRAY_PCT_LABELS[MathUtil.clamp(pctVal, 0, 100)];
+                g2.setFont(XRAY_HP_FONT);
+                int px = cx - hpFm.stringWidth(pct) / 2;
+                int py = Math.min(b.y + b.height - 4, cy + Math.max(8, b.height / 4));
+                g2.setColor(new Color(245, 250, 255, filteredIn ? 220 : 120));
+                g2.drawString(pct, px, py);
+            }
 
             // Overlay: active fires
             if (fireIntensity > 0.06) {
@@ -2687,7 +2700,7 @@ public class Renderer {
                 g2.drawString("F", cx - 3, cy - 4);
             }
             // Overlay: repair team/task marker
-            if (repairRoom == room.id) {
+            if (repairRoom == cell.roomId) {
                 g2.setColor(new Color(145, 255, 170, 200));
                 g2.fillOval(cx - 4, cy + 14, 8, 8);
                 g2.setColor(new Color(10, 35, 16, 220));
@@ -2719,7 +2732,16 @@ public class Renderer {
         g2.setStroke(oldStroke);
 
         ShipRoomLayout.RoomId detailRoom = (interactive && hoveredRoom != null) ? hoveredRoom : focusedRoom;
-        if (detailRoom != null && !polygons.containsKey(detailRoom)) detailRoom = null;
+        if (detailRoom != null) {
+            boolean present = false;
+            for (ShipRoomLayout.VisualCell cell : drawCells) {
+                if (cell != null && detailRoom == cell.roomId) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) detailRoom = null;
+        }
         if (interactive && detailRoom != null) {
             ShipRoomLayout.RoomDef roomDef = ShipRoomLayout.roomForId(ship.role, detailRoom);
             int pct = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(detailRoom) * 100.0), 0, 100);
@@ -2752,9 +2774,9 @@ public class Renderer {
     private static Rectangle xrayMapRect(int panelX, int panelY, int panelW, int panelH) {
         return new Rectangle(
                 panelX + 10,
-                panelY + 40,
+                panelY + 38,
                 Math.max(20, panelW - 20),
-                Math.max(20, panelH - 96)
+                Math.max(20, panelH - 76)
         );
     }
 
@@ -2792,6 +2814,87 @@ public class Renderer {
         };
     }
 
+    private static void drawXrayShipUnderlay(Graphics2D g2, Ship ship, Rectangle mapRect, long nowNanos) {
+        if (g2 == null || ship == null || mapRect == null) return;
+
+        Graphics2D ug = (Graphics2D) g2.create();
+        try {
+            RoundRectangle2D.Float clipShape = new RoundRectangle2D.Float(
+                    mapRect.x, mapRect.y, mapRect.width, mapRect.height, 10, 10
+            );
+            ug.clip(clipShape);
+
+            Polygon hull = xrayHullPolygon(ship.role, mapRect);
+            if (hull != null && hull.npoints >= 3) {
+                Rectangle hb = hull.getBounds();
+                if (hb.width > 0 && hb.height > 0) {
+                    BufferedImage skin = ShipSkinLibrary.getSkin(ship.role, ship.faction);
+                    if (skin != null) {
+                        double scale = Math.min(hb.width / (double) Math.max(1, skin.getWidth()),
+                                hb.height / (double) Math.max(1, skin.getHeight()));
+                        int drawW = Math.max(1, (int) Math.round(skin.getWidth() * scale));
+                        int drawH = Math.max(1, (int) Math.round(skin.getHeight() * scale));
+                        int dx = (int) Math.round(hb.getCenterX() - drawW / 2.0);
+                        int dy = (int) Math.round(hb.getCenterY() - drawH / 2.0);
+                        ug.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.17f));
+                        ug.drawImage(skin, dx, dy, drawW, drawH, null);
+                        ug.setComposite(AlphaComposite.SrcOver);
+                    }
+
+                    Shape oldClip = ug.getClip();
+                    ug.clip(hull);
+                    float pulse = (float) (0.5 + 0.5 * Math.sin(nowNanos / 220_000_000.0));
+                    ug.setPaint(new GradientPaint(
+                            hb.x, hb.y, new Color(78, 134, 180, 34 + (int) Math.round(10 * pulse)),
+                            hb.x, hb.y + hb.height, new Color(18, 34, 56, 10)
+                    ));
+                    ug.fillRect(hb.x, hb.y, hb.width, hb.height);
+                    ug.setClip(oldClip);
+
+                    ug.setStroke(new BasicStroke(1.1f));
+                    ug.setColor(new Color(165, 218, 255, 72));
+                    ug.drawPolygon(hull);
+                    ug.setColor(new Color(160, 222, 255, 28));
+                    ug.drawLine(hb.x + 6, (int) Math.round(hb.getCenterY()), hb.x + hb.width - 6, (int) Math.round(hb.getCenterY()));
+
+                    for (int i = 1; i <= 4; i++) {
+                        int sx = hb.x + (int) Math.round(hb.width * (i / 5.0));
+                        ug.drawLine(sx, hb.y + 6, sx, hb.y + hb.height - 6);
+                    }
+                }
+            }
+
+            int scanAlpha = 10 + (int) Math.round(4 * (0.5 + 0.5 * Math.sin(nowNanos / 180_000_000.0)));
+            ug.setColor(new Color(170, 228, 255, scanAlpha));
+            for (int yy = mapRect.y + 3; yy < mapRect.y + mapRect.height; yy += 6) {
+                ug.drawLine(mapRect.x + 4, yy, mapRect.x + mapRect.width - 4, yy);
+            }
+        } finally {
+            ug.dispose();
+        }
+    }
+
+    private static Polygon xrayHullPolygon(ShipRole role, Rectangle mapRect) {
+        if (mapRect == null) return null;
+        Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0);
+        if (hull == null || hull.npoints < 3) return null;
+
+        Rectangle b = hull.getBounds();
+        if (b.width <= 0 || b.height <= 0) return null;
+
+        double cx = b.getCenterX();
+        double cy = b.getCenterY();
+        double halfW = Math.max(1.0, b.width * 0.5);
+        double halfH = Math.max(1.0, b.height * 0.5);
+        double[] normalizedXs = new double[hull.npoints];
+        double[] normalizedYs = new double[hull.npoints];
+        for (int i = 0; i < hull.npoints; i++) {
+            normalizedXs[i] = MathUtil.clamp(((hull.xpoints[i] - cx) / halfW) * 0.98, -1.0, 1.0);
+            normalizedYs[i] = MathUtil.clamp(((hull.ypoints[i] - cy) / halfH) * 0.98, -1.0, 1.0);
+        }
+        return xrayRoomPolygon(mapRect.x, mapRect.y, mapRect.width, mapRect.height, normalizedXs, normalizedYs);
+    }
+
     private static ShipRoomLayout.RoomId xrayRepairTargetRoom(Ship ship) {
         if (ship == null) return null;
         if (ship.crewOrder != Ship.CrewOrder.DAMAGE_CONTROL) return null;
@@ -2812,19 +2915,7 @@ public class Renderer {
     }
 
     private static String xrayRoomDisplayLabel(ShipRoomLayout.RoomId roomId) {
-        if (roomId == null) return "UNKNOWN";
-        return switch (roomId) {
-            case BRIDGE -> "BRIDGE";
-            case REACTOR -> "REACTOR";
-            case ENGINES -> "ENGINES";
-            case MAIN_WEAPON -> "PRIMARY WEAPON";
-            case MISSILE_LAUNCHERS -> "MISSILE LAUNCHER BANKS";
-            case MAGAZINES -> "MAGAZINES / AMMO";
-            case INTEGRITY_FIELD -> "INTEGRITY FIELD GENERATOR";
-            case SENSORS -> "SENSORS";
-            case POWER_CONDUITS -> "POWER CONDUITS / AUX";
-            case WARP_DRIVE -> "WARP DRIVE";
-        };
+        return ShipRoomLayout.displayLabel(roomId);
     }
 
     private static void drawXrayTooltip(Graphics2D g2, Rectangle mapRect, int cursorX, int cursorY,
@@ -2917,7 +3008,7 @@ public class Renderer {
         if (!player.alive || player.dying || player.hp <= 0) return null;
 
         Rectangle menu = getCoreMenuBarRect(viewW, viewH);
-        int panelW = Math.max(250, Math.min(360, menu.width - 190));
+        int panelW = Math.max(270, Math.min(396, menu.width - 170));
         int availableH = menu.y - 54;
         if (availableH < 130) return null;
         int px = menu.x + (menu.width - panelW) / 2;
@@ -2930,13 +3021,15 @@ public class Renderer {
                 && lockedTarget.faction.isFriendlyTo(player.faction));
 
         int gap = 8;
-        int playerH = Math.max(132, Math.min(188, (int) Math.round(availableH * 0.44)));
-        int targetH = targetVisible ? Math.max(152, Math.min(236, (int) Math.round(availableH * 0.52))) : 0;
+        int playerH = targetVisible
+                ? Math.max(156, Math.min(214, (int) Math.round(availableH * 0.46)))
+                : Math.max(170, Math.min(228, (int) Math.round(availableH * 0.58)));
+        int targetH = targetVisible ? Math.max(166, Math.min(236, (int) Math.round(availableH * 0.50))) : 0;
         int stackH = playerH + ((targetH > 0) ? (gap + targetH) : 0);
         if (stackH > availableH) {
             double scale = Math.max(0.55, availableH / (double) Math.max(1, stackH));
-            playerH = Math.max(110, (int) Math.round(playerH * scale));
-            if (targetH > 0) targetH = Math.max(120, (int) Math.round(targetH * scale));
+            playerH = Math.max(136, (int) Math.round(playerH * scale));
+            if (targetH > 0) targetH = Math.max(142, (int) Math.round(targetH * scale));
         }
 
         int menuTop = menu.y;
@@ -2965,19 +3058,7 @@ public class Renderer {
     }
 
     private static String xrayRoomSymbol(ShipRoomLayout.RoomId roomId) {
-        if (roomId == null) return "SYS";
-        return switch (roomId) {
-            case BRIDGE -> "CMD";
-            case SENSORS -> "SNS";
-            case MAIN_WEAPON -> "WPN";
-            case MISSILE_LAUNCHERS -> "MSL";
-            case REACTOR -> "RCT";
-            case POWER_CONDUITS -> "PWR";
-            case INTEGRITY_FIELD -> "INT";
-            case ENGINES -> "ENG";
-            case WARP_DRIVE -> "WRP";
-            case MAGAZINES -> "MAG";
-        };
+        return ShipRoomLayout.symbol(roomId);
     }
 
     public static void drawBaseUpgradeOverlay(Graphics2D g2, String baseName, int credits, int baseOre,
@@ -5274,17 +5355,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color roomTraceTint(ShipRoomLayout.RoomId roomId, int alpha) {
         int a = MathUtil.clamp(alpha, 0, 255);
         if (roomId == null) return new Color(255, 178, 105, a);
-        return switch (roomId) {
-            case BRIDGE -> new Color(255, 214, 138, a);
-            case REACTOR -> new Color(255, 118, 86, a);
-            case ENGINES -> new Color(130, 208, 255, a);
-            case MAIN_WEAPON, MISSILE_LAUNCHERS -> new Color(255, 164, 94, a);
-            case MAGAZINES -> new Color(255, 96, 86, a);
-            case INTEGRITY_FIELD -> new Color(178, 166, 255, a);
-            case SENSORS -> new Color(132, 238, 226, a);
-            case POWER_CONDUITS -> new Color(255, 198, 112, a);
-            case WARP_DRIVE -> new Color(144, 186, 255, a);
-        };
+        if (ShipRoomLayout.isArmorRoom(roomId)) return new Color(210, 224, 236, a);
+        if (ShipRoomLayout.isPowerRoom(roomId)) return new Color(255, 198, 112, a);
+        if (ShipRoomLayout.isWeaponRoom(roomId)) return new Color(255, 164, 94, a);
+        if (ShipRoomLayout.isMagazineRoom(roomId)) return new Color(255, 96, 86, a);
+        if (ShipRoomLayout.isShieldRoom(roomId)) return new Color(178, 166, 255, a);
+        if (ShipRoomLayout.isEngineRoom(roomId) || ShipRoomLayout.isWarpRoom(roomId) || roomId == ShipRoomLayout.RoomId.AFT_SPINE) {
+            return new Color((roomId == ShipRoomLayout.RoomId.WARP_DRIVE) ? 144 : 130,
+                    (roomId == ShipRoomLayout.RoomId.WARP_DRIVE) ? 186 : 208,
+                    255,
+                    a);
+        }
+        if (roomId == ShipRoomLayout.RoomId.SENSORS) return new Color(132, 238, 226, a);
+        if (roomId == ShipRoomLayout.RoomId.BRIDGE || roomId == ShipRoomLayout.RoomId.BOW) return new Color(255, 214, 138, a);
+        return new Color(200, 214, 230, a);
     }
 
     private static Point randomPointInShape(Random rng, Rectangle bounds, Shape shape, int tries) {

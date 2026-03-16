@@ -298,21 +298,21 @@ public final class SpawnSystem {
     }
 
     public static void spawnEnemyGroup(GameContext ctx, double x, double y) {
-        spawnEnemy(ctx, ShipRole.PATROL, x + 0, y + 0);
-        spawnEnemy(ctx, ShipRole.PICKET, x + 70, y + 50);
-        spawnEnemy(ctx, ShipRole.FRIGATE, x - 90, y + 70);
-        if (ctx.rng.nextDouble() < 0.18) spawnEnemy(ctx, ShipRole.CRUISER, x - 40, y - 120);
-        if (ctx.rng.nextDouble() < 0.35) spawnEnemy(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
-        if (ctx.rng.nextDouble() < 0.08) spawnEnemy(ctx, ShipRole.SUPERSHIP, x + 180, y - 40);
+        spawnTeamGroup(ctx, Faction.ENEMY, x, y);
     }
 
     public static void spawnAllyGroup(GameContext ctx, double x, double y) {
-        spawnAlly(ctx, ShipRole.PATROL, x + 0, y + 0);
-        spawnAlly(ctx, ShipRole.PICKET, x + 70, y + 50);
-        spawnAlly(ctx, ShipRole.FRIGATE, x - 90, y + 70);
-        if (ctx.rng.nextDouble() < 0.18) spawnAlly(ctx, ShipRole.CRUISER, x + 40, y + 120);
-        if (ctx.rng.nextDouble() < 0.35) spawnAlly(ctx, ShipRole.MISSILE_BOAT, x + 110, y - 80);
-        if (ctx.rng.nextDouble() < 0.08) spawnAlly(ctx, ShipRole.SUPERSHIP, x - 180, y + 40);
+        spawnTeamGroup(ctx, Faction.ALLY, x, y);
+    }
+
+    public static void spawnTeamGroup(GameContext ctx, Faction faction, double x, double y) {
+        if (ctx == null || faction == null) return;
+        spawnTeamShip(ctx, ShipRole.PATROL, faction, x + 0, y + 0);
+        spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 70, y + 50);
+        spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x - 90, y + 70);
+        if (ctx.rng.nextDouble() < 0.18) spawnTeamShip(ctx, ShipRole.CRUISER, faction, x - 40, y - 120);
+        if (ctx.rng.nextDouble() < 0.35) spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 110, y - 80);
+        if (ctx.rng.nextDouble() < 0.08) spawnTeamShip(ctx, ShipRole.SUPERSHIP, faction, x + 180, y - 40);
     }
 
     public static void spawnAsteroidField(GameContext ctx) {

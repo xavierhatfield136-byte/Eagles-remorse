@@ -408,19 +408,7 @@ public final class XrayReadabilityHarness {
     }
 
     private static String symbolFor(ShipRoomLayout.RoomId roomId) {
-        if (roomId == null) return "SYS";
-        return switch (roomId) {
-            case BRIDGE -> "CMD";
-            case SENSORS -> "SNS";
-            case MAIN_WEAPON -> "WPN";
-            case MISSILE_LAUNCHERS -> "MSL";
-            case REACTOR -> "RCT";
-            case POWER_CONDUITS -> "PWR";
-            case INTEGRITY_FIELD -> "INT";
-            case ENGINES -> "ENG";
-            case WARP_DRIVE -> "WRP";
-            case MAGAZINES -> "MAG";
-        };
+        return ShipRoomLayout.symbol(roomId);
     }
 
     private record LabelRect(int roomIndex, Rectangle rect) {}

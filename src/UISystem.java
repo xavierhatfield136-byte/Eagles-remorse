@@ -991,19 +991,7 @@ public final class UISystem {
     }
 
     private static String xrayRoomLabel(ShipRoomLayout.RoomId roomId) {
-        if (roomId == null) return "UNKNOWN";
-        return switch (roomId) {
-            case BRIDGE -> "BRIDGE";
-            case REACTOR -> "REACTOR";
-            case ENGINES -> "ENGINES";
-            case MAIN_WEAPON -> "PRIMARY WEAPON";
-            case MISSILE_LAUNCHERS -> "MISSILE LAUNCHER BANKS";
-            case MAGAZINES -> "MAGAZINES / AMMO";
-            case INTEGRITY_FIELD -> "INTEGRITY FIELD GENERATOR";
-            case SENSORS -> "SENSORS";
-            case POWER_CONDUITS -> "POWER CONDUITS / AUX";
-            case WARP_DRIVE -> "WARP DRIVE";
-        };
+        return ShipRoomLayout.displayLabel(roomId);
     }
 
     private static void clearManualCombatInputs(GameContext ctx) {

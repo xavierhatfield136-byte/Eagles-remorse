@@ -65,9 +65,78 @@ public final class EventSystem {
     }
 
     private static void triggerRaiders(GameContext ctx) {
-        SpawnSystem.spawnEnemyGroup(ctx, ctx.player.x + 900 + ctx.rng.nextDouble() * 400, ctx.player.y + 600 + ctx.rng.nextDouble() * 400);
-        SpawnSystem.spawnAllyGroup(ctx, ctx.player.x - 900 - ctx.rng.nextDouble() * 400, ctx.player.y - 600 - ctx.rng.nextDouble() * 400);
-        showBanner(ctx, "RAIDERS INBOUND", 2.5);
+        java.util.List<Faction> teams = activeRaidTeams(ctx);
+        if (teams.isEmpty()) {
+            SpawnSystem.spawnEnemyGroup(ctx, ctx.player.x + 900 + ctx.rng.nextDouble() * 400, ctx.player.y + 600 + ctx.rng.nextDouble() * 400);
+            SpawnSystem.spawnAllyGroup(ctx, ctx.player.x - 900 - ctx.rng.nextDouble() * 400, ctx.player.y - 600 - ctx.rng.nextDouble() * 400);
+            showBanner(ctx, "RAIDERS INBOUND", 2.5);
+            return;
+        }
+
+        for (int i = 0; i < teams.size(); i++) {
+            Faction targetTeam = teams.get(i);
+            Faction raiderFaction = raidSourceForTeam(teams, i);
+            if (raiderFaction == null) continue;
+            double[] spawn = raidSpawnPoint(ctx, targetTeam);
+            SpawnSystem.spawnTeamGroup(ctx, raiderFaction, spawn[0], spawn[1]);
+        }
+        showBanner(ctx, teams.size() > 1 ? "RAIDERS STRIKE EVERY FRONT" : "RAIDERS INBOUND", 2.5);
+    }
+
+    private static java.util.List<Faction> activeRaidTeams(GameContext ctx) {
+        java.util.ArrayList<Faction> teams = new java.util.ArrayList<>();
+        for (Faction team : Faction.fourTeamFactions()) {
+            if (TeamSystem.isTeamAlive(ctx, team)) teams.add(team);
+        }
+        return teams;
+    }
+
+    private static Faction raidSourceForTeam(java.util.List<Faction> teams, int targetIndex) {
+        if (teams == null || teams.isEmpty() || targetIndex < 0 || targetIndex >= teams.size()) return null;
+        Faction targetTeam = teams.get(targetIndex);
+        for (int offset = 1; offset < teams.size(); offset++) {
+            Faction candidate = teams.get((targetIndex + offset) % teams.size());
+            if (candidate != null && targetTeam != null && candidate.teamId() != targetTeam.teamId()) {
+                return candidate;
+            }
+        }
+        if (targetTeam == null) return null;
+        return (targetTeam.teamId() == Faction.ALLY.teamId()) ? Faction.ENEMY : Faction.ALLY;
+    }
+
+    private static double[] raidSpawnPoint(GameContext ctx, Faction targetTeam) {
+        Ship anchor = TeamSystem.getBaseForTeam(ctx, targetTeam);
+        if (anchor == null) anchor = firstLiveShipForTeam(ctx, targetTeam);
+        if (anchor == null) {
+            return new double[]{ctx.WORLD_W * 0.5, ctx.WORLD_H * 0.5};
+        }
+
+        double cx = ctx.WORLD_W * 0.5;
+        double cy = ctx.WORLD_H * 0.5;
+        double dx = cx - anchor.x;
+        double dy = cy - anchor.y;
+        double len = Math.hypot(dx, dy);
+        if (len <= 1e-6) len = 1.0;
+        double ux = dx / len;
+        double uy = dy / len;
+        double forward = 420.0 + ctx.rng.nextDouble() * 180.0;
+        double lateral = (ctx.rng.nextDouble() - 0.5) * 220.0;
+        double x = anchor.x + ux * forward - uy * lateral;
+        double y = anchor.y + uy * forward + ux * lateral;
+        x = GameMath.clamp(x, 40.0, ctx.WORLD_W - 40.0);
+        y = GameMath.clamp(y, 40.0, ctx.WORLD_H - 40.0);
+        return new double[]{x, y};
+    }
+
+    private static Ship firstLiveShipForTeam(GameContext ctx, Faction team) {
+        if (ctx == null || team == null) return null;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.teamId() != team.teamId()) continue;
+            return s;
+        }
+        return null;
     }
 
     private static void updateHazardWarnings(GameContext ctx) {
