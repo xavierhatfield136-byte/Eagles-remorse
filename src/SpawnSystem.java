@@ -26,6 +26,22 @@ public final class SpawnSystem {
         }
     }
 
+    private static final class ShootingRangeTargetSpec {
+        final ShipRole role;
+        final double dx;
+        final double dy;
+        final String label;
+        final boolean keepShields;
+
+        ShootingRangeTargetSpec(ShipRole role, double dx, double dy, String label, boolean keepShields) {
+            this.role = role;
+            this.dx = dx;
+            this.dy = dy;
+            this.label = label;
+            this.keepShields = keepShields;
+        }
+    }
+
     // Performance + economy rebalance: fewer rocks, much richer yields per asteroid.
     private static final double ASTEROID_DENSITY_SCALE = 0.22;
     private static final double ASTEROID_ORE_MULTIPLIER = 10.0;
@@ -624,24 +640,27 @@ public final class SpawnSystem {
         try { DoctrineRegistry.applyToShip(ctx.player); } catch (Throwable ignored) {}
 
         Faction targetFaction = ctx.player.faction.isFriendlyTo(Faction.ENEMY) ? Faction.ALLY : Faction.ENEMY;
-        spawnRangeTarget(ctx, ShipRole.PATROL, targetFaction, px + 360, py - 220, "RANGE TARGET LIGHT (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.PICKET, targetFaction, px + 470, py + 170, "RANGE TARGET PICKET (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.FRIGATE, targetFaction, px + 580, py - 70, "RANGE TARGET MEDIUM (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.MISSILE_BOAT, targetFaction, px + 700, py - 240, "RANGE TARGET MISSILE BOAT (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, targetFaction, px + 800, py + 110, "RANGE TARGET CIWS (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.TRANSPORT, targetFaction, px + 940, py + 260, "RANGE TARGET TRANSPORT (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, targetFaction, px + 980, py - 130, "RANGE TARGET LIGHT CRUISER (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.CRUISER, targetFaction, px + 1160, py + 170, "RANGE TARGET CRUISER HEAVY (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, targetFaction, px + 1280, py + 20, "RANGE TARGET HEAVY (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.BATTLESHIP, targetFaction, px + 1500, py - 170, "RANGE TARGET BATTLESHIP (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.HAULER, targetFaction, px + 1640, py + 250, "RANGE TARGET HAULER (HULL)", false);
+        populateShootingRangeTargets(ctx, px, py, targetFaction);
 
         ctx.credits = 10000;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
         ctx.minerReinforcementTimer = Double.POSITIVE_INFINITY;
-        ctx.eventBanner = "SHOOTING RANGE  -  STATIONARY TARGETS";
+        ctx.eventBanner = "SHOOTING RANGE  -  ALL HULL EXHIBITION";
         ctx.eventBannerT = 6.0;
+    }
+
+    static void populateShootingRangeTargets(GameContext ctx, double originX, double originY, Faction faction) {
+        if (ctx == null || faction == null) return;
+        for (ShootingRangeTargetSpec spec : shootingRangeLayout()) {
+            spawnRangeTarget(ctx,
+                    spec.role,
+                    faction,
+                    originX + spec.dx,
+                    originY + spec.dy,
+                    spec.label,
+                    spec.keepShields);
+        }
     }
 
     public static void updateShootingRangeRespawns(GameContext ctx, double dt) {
@@ -723,5 +742,49 @@ public final class SpawnSystem {
         ctx.ships.add(s);
         registerShootingRangeTarget(ctx, role, faction, sx, sy, label, keepShields);
         return s;
+    }
+
+    private static java.util.List<ShootingRangeTargetSpec> shootingRangeLayout() {
+        java.util.List<ShootingRangeTargetSpec> out = new java.util.ArrayList<>();
+
+        // Forward screen: tiny craft and raiders.
+        out.add(spec(ShipRole.FIGHTER, 300, -320, "STRIKE SCREEN FIGHTER", false));
+        out.add(spec(ShipRole.DRONE, 380, -250, "STRIKE SCREEN DRONE", false));
+        out.add(spec(ShipRole.PD_CRAFT, 455, -340, "POINT-DEFENSE CRAFT", false));
+        out.add(spec(ShipRole.BOMBER, 540, -275, "BOMBER INTERCEPT LANE", false));
+        out.add(spec(ShipRole.PATROL, 640, -320, "PATROL PICKET MARK", false));
+        out.add(spec(ShipRole.PICKET, 735, -248, "PICKET OUTRIDER", false));
+        out.add(spec(ShipRole.STEALTH_SHIP, 845, -330, "STEALTH RAIDER GHOST", false));
+
+        // Escort and skirmish line.
+        out.add(spec(ShipRole.FRIGATE, 460, -90, "FRIGATE DUEL HULL", true));
+        out.add(spec(ShipRole.MISSILE_BOAT, 635, -130, "MISSILE BOAT SALVO", false));
+        out.add(spec(ShipRole.CIWS_CORVETTE, 785, -52, "CIWS CORVETTE SCREEN", false));
+        out.add(spec(ShipRole.LIGHT_CRUISER, 980, -120, "LIGHT CRUISER SHIELD", true));
+        out.add(spec(ShipRole.MEDIUM_CRUISER, 1160, -48, "MEDIUM CRUISER LINE", true));
+
+        // Centerline bruisers.
+        out.add(spec(ShipRole.CRUISER, 1260, 78, "CRUISER GUNLINE", true));
+        out.add(spec(ShipRole.BATTLECRUISER, 1485, 8, "BATTLECRUISER BREAKER", true));
+        out.add(spec(ShipRole.BATTLESHIP, 1715, -96, "BATTLESHIP ANCHOR", true));
+        out.add(spec(ShipRole.DREADNOUGHT, 1980, 12, "DREADNOUGHT TEST WALL", true));
+        out.add(spec(ShipRole.SUPERSHIP, 2315, -24, "SUPERSHIP FINAL EXAM", true));
+
+        // Logistics and carriers.
+        out.add(spec(ShipRole.MINER, 690, 250, "MINER WORK BARGE", false));
+        out.add(spec(ShipRole.HAULER, 860, 305, "HAULER FREIGHT HULL", false));
+        out.add(spec(ShipRole.TRANSPORT, 1040, 246, "TRANSPORT SUPPORT FRAME", false));
+        out.add(spec(ShipRole.CARRIER, 1315, 292, "CARRIER FLIGHT DECK", true));
+        out.add(spec(ShipRole.DRONE_CARRIER, 1560, 352, "DRONE CARRIER NEST", true));
+
+        // Fortress corner: structures at the far end.
+        out.add(spec(ShipRole.STATIC_TURRET, 2140, 250, "DEFENSE NODE PORT", false));
+        out.add(spec(ShipRole.STATIC_TURRET, 2140, 392, "DEFENSE NODE STARBOARD", false));
+        out.add(spec(ShipRole.BASE, 2420, 320, "RANGE FORTRESS CORE", true));
+        return out;
+    }
+
+    private static ShootingRangeTargetSpec spec(ShipRole role, double dx, double dy, String label, boolean keepShields) {
+        return new ShootingRangeTargetSpec(role, dx, dy, label, keepShields);
     }
 }

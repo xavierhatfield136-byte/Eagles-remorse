@@ -136,6 +136,10 @@ public final class CarrierSystem {
             Ship carrier = carriersById.get(s.carrierOwnerId);
             if (carrier == null) continue;
 
+            if (s.needsStrikeCraftRearm()) {
+                s.wingState = Ship.WingState.RTB;
+            }
+
             double hpFrac = (s.hpMax <= 0) ? 0.0 : ((double) s.hp / (double) s.hpMax);
             if (hpFrac <= RTB_HP_FRAC) {
                 s.wingState = Ship.WingState.RTB;

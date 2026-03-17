@@ -160,12 +160,13 @@ public class FleetShip extends Ship {
             case FIGHTER -> {
                 name = (faction == Faction.ENEMY ? "Enemy Fighter" : "Fighter");
                 radius = 12;
-                hpMax = 6;
+                hpMax = 1;
                 hp = hpMax;
 
-                shieldMax = 0;
-                shield = 0;
-                shieldActive = false;
+                shieldMax = 1;
+                shield = shieldMax;
+                shieldRegen = 0.0;
+                shieldActive = true;
 
                 desiredSpeed = 255;
                 bountyValue = 35;
@@ -184,12 +185,12 @@ public class FleetShip extends Ship {
             case BOMBER -> {
                 name = (faction == Faction.ENEMY ? "Enemy Bomber" : "Bomber");
                 radius = 14;
-                hpMax = 8;
+                hpMax = 1;
                 hp = hpMax;
 
-                shieldMax = 6;
+                shieldMax = 1;
                 shield = shieldMax;
-                shieldRegen = 0.8;
+                shieldRegen = 0.0;
                 shieldActive = true;
 
                 desiredSpeed = 215;
@@ -205,7 +206,7 @@ public class FleetShip extends Ship {
 
                 Turret rack = new Turret(Turret.Kind.MISSILE, 4, 0);
                 rack.cooldown = 0.90;
-                rack.damage = 5;
+                rack.damage = 1;
                 rack.missileSpeed = 280;
                 rack.missileTurnRate = Math.toRadians(250);
                 rack.missileLife = 260;
@@ -267,12 +268,12 @@ public class FleetShip extends Ship {
             case DRONE -> {
                 name = (faction == Faction.ENEMY ? "Enemy Missile Drone" : "Missile Drone");
                 radius = 11;
-                hpMax = 6;
+                hpMax = 1;
                 hp = hpMax;
 
-                shieldMax = 4;
+                shieldMax = 1;
                 shield = shieldMax;
-                shieldRegen = 0.7;
+                shieldRegen = 0.0;
                 shieldActive = true;
 
                 desiredSpeed = 285;
@@ -1355,6 +1356,7 @@ public class FleetShip extends Ship {
         RoleStats.applyCore(this, role);
         rebalanceEnemyMissileLoadout();
         desiredSpeedBase = Math.max(0.0, desiredSpeed);
+        configureStrikeCraftMunitions();
         resetInternalSystems();
     }
 

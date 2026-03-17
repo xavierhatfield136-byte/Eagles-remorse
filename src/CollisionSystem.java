@@ -303,22 +303,25 @@ public class CollisionSystem {
     private static void applyMissileBlast(GameContext ctx, Missile m, Ship directHit, List<Ship> ships) {
         if (m == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(20.0, m.blastRadius);
-        double baseSplash = Math.max(1.0, m.damage * m.splashDamageMul);
+        double baseSplash = Math.max(0.0, m.damage * m.splashDamageMul);
 
-        for (Ship s : ships) {
-            if (s == null || !s.alive) continue;
-            if (s == directHit) continue;
-            if (s.faction.isFriendlyTo(m.faction)) continue;
+        if (baseSplash > 1e-6) {
+            for (Ship s : ships) {
+                if (s == null || !s.alive) continue;
+                if (s == directHit) continue;
+                if (s.faction.isFriendlyTo(m.faction)) continue;
 
-            double d = Math.hypot(s.x - m.x, s.y - m.y);
-            double maxD = rr + HullGeometry.broadPhaseRadius(s);
-            if (d > maxD) continue;
+                double d = Math.hypot(s.x - m.x, s.y - m.y);
+                double maxD = rr + HullGeometry.broadPhaseRadius(s);
+                if (d > maxD) continue;
 
-            double falloff = 1.0 - (d / Math.max(1.0, maxD));
-            int splash = Math.max(1, (int) Math.round(baseSplash * (0.35 + 0.65 * falloff)));
-            markPlayerHitContribution(ctx, m, s);
-            s.takeDamage(splash, m.x, m.y);
-            logDamageEvent(ctx, "missile_splash:" + System.identityHashCode(m), splash, VFX.ImpactStyle.EXPLOSIVE, s, m.x, m.y);
+                double falloff = 1.0 - (d / Math.max(1.0, maxD));
+                int splash = (int) Math.round(baseSplash * (0.35 + 0.65 * falloff));
+                if (splash <= 0) continue;
+                markPlayerHitContribution(ctx, m, s);
+                s.takeDamage(splash, m.x, m.y);
+                logDamageEvent(ctx, "missile_splash:" + System.identityHashCode(m), splash, VFX.ImpactStyle.EXPLOSIVE, s, m.x, m.y);
+            }
         }
 
         if (shouldRenderDamageVfx(ctx, directHit, m.x, m.y)) {

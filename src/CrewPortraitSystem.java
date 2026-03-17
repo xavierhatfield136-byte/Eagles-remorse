@@ -1,9 +1,11 @@
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Polygon;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -177,20 +179,9 @@ public final class CrewPortraitSystem {
     }
 
     private static PortraitAsset loadPortrait(String role, int expressionLevel) {
-        if (role == null || role.isBlank()) role = "captain";
-        for (String name : fallbackChainForRole(role, expressionLevel)) {
-            File file = new File(ROOT, name);
-            if (!file.isFile()) continue;
-            try {
-                BufferedImage img = ImageIO.read(file);
-                if (img != null) {
-                    return new PortraitAsset(normalizePortrait(img), true, name);
-                }
-            } catch (Throwable ignored) {
-                // Fall through to placeholder.
-            }
-        }
-        return new PortraitAsset(buildPlaceholder(role), false, role + " (placeholder)");
+        String normalizedRole = normalizeRole(role);
+        int expression = MathUtil.clamp(expressionLevel, 0, MAX_EXPRESSION_LEVEL);
+        return new PortraitAsset(buildProceduralPortrait(normalizedRole, expression), false, "procedural");
     }
 
     private static List<String> fallbackChainForRole(String role, int expressionLevel) {
@@ -330,42 +321,82 @@ public final class CrewPortraitSystem {
         return String.format(Locale.US, "%.3f", v);
     }
 
-    private static BufferedImage buildPlaceholder(String role) {
+    private static BufferedImage buildProceduralPortrait(String role, int expressionLevel) {
         int w = 512;
         int h = 512;
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
 
         Color accent = accentForRole(role);
-        Color dark = new Color(Math.max(0, accent.getRed() - 70), Math.max(0, accent.getGreen() - 70), Math.max(0, accent.getBlue() - 70), 255);
-        g.setPaint(new GradientPaint(0, 0, dark, w, h, new Color(12, 16, 22, 255)));
+        Color dark = new Color(Math.max(0, accent.getRed() - 82), Math.max(0, accent.getGreen() - 82), Math.max(0, accent.getBlue() - 82), 255);
+        g.setPaint(new GradientPaint(0, 0, dark, w, h, new Color(10, 14, 20, 255)));
         g.fillRect(0, 0, w, h);
 
-        // Bridge-like haze layers.
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
-        g.setColor(new Color(190, 230, 255, 140));
-        g.fillOval(-120, -80, 360, 240);
-        g.fillOval(260, 300, 320, 220);
+        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.16f));
+        g.setColor(new Color(185, 220, 255, 120));
+        g.fillOval(-100, -60, 320, 220);
+        g.fillOval(250, 284, 310, 220);
 
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
-        g.setColor(new Color(255, 255, 255, 30));
-        for (int i = 0; i < 10; i++) {
-            int y = 44 + i * 40;
-            g.drawLine(28, y, w - 28, y);
+        g.setColor(new Color(255, 255, 255, 22));
+        for (int i = 0; i < 11; i++) {
+            int y = 34 + i * 42;
+            g.drawLine(26, y, w - 26, y);
         }
 
-        // Simple officer silhouette.
-        g.setColor(new Color(22, 24, 30, 230));
-        g.fillRoundRect(124, 220, 264, 250, 70, 70);
-        g.setColor(new Color(40, 44, 56, 230));
-        g.fillOval(176, 104, 160, 170);
-        g.setColor(new Color(66, 74, 92, 225));
-        g.fillOval(194, 128, 124, 124);
+        int cardX = 86;
+        int cardY = 70;
+        int cardW = 340;
+        int cardH = 340;
+        g.setColor(new Color(0, 0, 0, 112));
+        g.fillRoundRect(cardX, cardY, cardW, cardH, 28, 28);
+        g.setColor(new Color(255, 255, 255, 72));
+        g.setStroke(new BasicStroke(2.0f));
+        g.drawRoundRect(cardX, cardY, cardW, cardH, 28, 28);
 
-        g.setColor(accent);
-        g.fillRoundRect(216, 274, 80, 14, 8, 8);
-        g.fillRoundRect(216, 302, 80, 10, 6, 6);
+        int cx = w / 2;
+        int cy = 216;
+        int haloR = 118;
+        g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 42));
+        g.fillOval(cx - haloR, cy - haloR, haloR * 2, haloR * 2);
+        g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 118));
+        g.setStroke(new BasicStroke(4.0f));
+        g.drawOval(cx - 94, cy - 94, 188, 188);
+
+        Polygon head = new Polygon(
+                new int[]{cx - 72, cx - 38, cx + 38, cx + 72, cx + 52, cx - 52},
+                new int[]{cy - 16, cy - 72, cy - 72, cy - 16, cy + 62, cy + 62},
+                6
+        );
+        g.setColor(new Color(18, 22, 30, 235));
+        g.fillPolygon(head);
+        g.setColor(new Color(255, 255, 255, 58));
+        g.drawPolygon(head);
+
+        Polygon visor = new Polygon(
+                new int[]{cx - 54, cx - 20, cx + 20, cx + 54, cx + 36, cx - 36},
+                new int[]{cy - 6, cy - 34, cy - 34, cy - 6, cy + 18, cy + 18},
+                6
+        );
+        int expressionBias = MathUtil.clamp(expressionLevel, 0, MAX_EXPRESSION_LEVEL);
+        Color visorColor = switch (expressionBias) {
+            case 1 -> new Color(255, 239, 160, 220);
+            case 2 -> new Color(255, 170, 132, 228);
+            case 3 -> new Color(255, 116, 116, 232);
+            default -> new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 220);
+        };
+        g.setColor(visorColor);
+        g.fillPolygon(visor);
+
+        g.setStroke(new BasicStroke(3.0f));
+        g.setColor(new Color(255, 255, 255, 85));
+        g.drawLine(cx - 76, cy + 86, cx + 76, cy + 86);
+        g.drawLine(cx - 58, cy + 104, cx + 58, cy + 104);
+
+        drawRoleGlyph(g, role, accent, cx, cy + 6, expressionBias);
+        drawFrameBrackets(g, accent, cardX, cardY, cardW, cardH);
 
         g.setColor(new Color(255, 255, 255, 210));
         g.setFont(new Font("Consolas", Font.BOLD, 28));
@@ -375,6 +406,60 @@ public final class CrewPortraitSystem {
 
         g.dispose();
         return img;
+    }
+
+    private static void drawRoleGlyph(Graphics2D g, String role, Color accent, int cx, int cy, int expressionBias) {
+        g.setStroke(new BasicStroke(4.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(255, 255, 255, 190));
+        switch (normalizeRole(role)) {
+            case "captain" -> {
+                g.drawOval(cx - 22, cy - 22, 44, 44);
+                g.drawLine(cx, cy - 42, cx, cy + 42);
+                g.drawLine(cx - 42, cy, cx + 42, cy);
+            }
+            case "helm" -> {
+                g.drawArc(cx - 42, cy - 42, 84, 84, 200, 140);
+                g.drawArc(cx - 42, cy - 42, 84, 84, 20, 140);
+                g.drawLine(cx, cy - 52, cx, cy + 28);
+            }
+            case "tactical" -> {
+                g.drawLine(cx - 44, cy, cx + 44, cy);
+                g.drawLine(cx, cy - 44, cx, cy + 44);
+                g.drawOval(cx - 16, cy - 16, 32, 32);
+            }
+            case "engineering" -> {
+                g.drawRoundRect(cx - 34, cy - 24, 68, 48, 12, 12);
+                g.drawLine(cx - 12, cy - 44, cx + 12, cy + 44);
+                g.drawLine(cx + 12, cy - 44, cx - 12, cy + 44);
+            }
+            case "science" -> {
+                g.drawOval(cx - 18, cy - 38, 36, 76);
+                g.drawLine(cx - 30, cy - 10, cx + 30, cy - 10);
+                g.drawLine(cx - 26, cy + 16, cx + 26, cy + 16);
+            }
+            default -> g.drawOval(cx - 18, cy - 18, 36, 36);
+        }
+        if (expressionBias > 0) {
+            g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 150));
+            g.setStroke(new BasicStroke(2.0f));
+            int spread = 22 + expressionBias * 8;
+            g.drawArc(cx - spread, cy - spread, spread * 2, spread * 2, 20, 50);
+            g.drawArc(cx - spread, cy - spread, spread * 2, spread * 2, 110, 50);
+        }
+    }
+
+    private static void drawFrameBrackets(Graphics2D g, Color accent, int x, int y, int w, int h) {
+        g.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 180));
+        g.setStroke(new BasicStroke(3.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        int arm = 28;
+        g.drawLine(x + 16, y + 16, x + 16 + arm, y + 16);
+        g.drawLine(x + 16, y + 16, x + 16, y + 16 + arm);
+        g.drawLine(x + w - 16, y + 16, x + w - 16 - arm, y + 16);
+        g.drawLine(x + w - 16, y + 16, x + w - 16, y + 16 + arm);
+        g.drawLine(x + 16, y + h - 16, x + 16 + arm, y + h - 16);
+        g.drawLine(x + 16, y + h - 16, x + 16, y + h - 16 - arm);
+        g.drawLine(x + w - 16, y + h - 16, x + w - 16 - arm, y + h - 16);
+        g.drawLine(x + w - 16, y + h - 16, x + w - 16, y + h - 16 - arm);
     }
 
     private static Color accentForRole(String role) {

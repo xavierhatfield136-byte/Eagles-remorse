@@ -282,6 +282,14 @@ public abstract class Ship {
     public final ShipRole[] flightDeckLoadout = new ShipRole[5];
     /** Next slot to launch from the configured flight deck pattern. */
     public int flightDeckLaunchCursor = 0;
+    /** Limited sortie ammo pool for fighter/bomber primaries. */
+    public int strikePrimaryMunitionsMax = 0;
+    public int strikePrimaryMunitions = 0;
+    /** Limited sortie ammo pool for fighter/bomber secondary ordnance. */
+    public int strikeSecondaryMunitionsMax = 0;
+    public int strikeSecondaryMunitions = 0;
+    private double strikePrimaryDamageCarry = 0.0;
+    private double strikeSecondaryDamageCarry = 0.0;
 
     // Base / capture
     public boolean isBase = false;
@@ -1138,6 +1146,93 @@ public abstract class Ship {
         crewCombatStress = Math.max(crewCombatStress, 1.0);
     }
 
+    public boolean usesLimitedStrikeCraftMunitions() {
+        return role == ShipRole.FIGHTER || role == ShipRole.BOMBER;
+    }
+
+    public void configureStrikeCraftMunitions() {
+        if (!usesLimitedStrikeCraftMunitions()) {
+            strikePrimaryMunitionsMax = 0;
+            strikePrimaryMunitions = 0;
+            strikeSecondaryMunitionsMax = 0;
+            strikeSecondaryMunitions = 0;
+            strikePrimaryDamageCarry = 0.0;
+            strikeSecondaryDamageCarry = 0.0;
+            return;
+        }
+
+        switch (role) {
+            case FIGHTER -> {
+                strikePrimaryMunitionsMax = 36;
+                strikeSecondaryMunitionsMax = 0;
+            }
+            case BOMBER -> {
+                strikePrimaryMunitionsMax = 14;
+                strikeSecondaryMunitionsMax = 6;
+            }
+            default -> {
+                strikePrimaryMunitionsMax = 0;
+                strikeSecondaryMunitionsMax = 0;
+            }
+        }
+        reloadStrikeCraftMunitions();
+    }
+
+    public void reloadStrikeCraftMunitions() {
+        strikePrimaryMunitions = Math.max(0, strikePrimaryMunitionsMax);
+        strikeSecondaryMunitions = Math.max(0, strikeSecondaryMunitionsMax);
+        strikePrimaryDamageCarry = 0.0;
+        strikeSecondaryDamageCarry = 0.0;
+    }
+
+    public boolean hasStrikeCraftMunitionsFor(Turret turret) {
+        if (!usesLimitedStrikeCraftMunitions() || turret == null) return true;
+        return turret.primary ? strikePrimaryMunitions > 0 : strikeSecondaryMunitions > 0;
+    }
+
+    public boolean consumeStrikeCraftMunition(Turret turret) {
+        if (!usesLimitedStrikeCraftMunitions() || turret == null) return true;
+        if (turret.primary) {
+            if (strikePrimaryMunitions <= 0) return false;
+            strikePrimaryMunitions--;
+            return true;
+        }
+        if (strikeSecondaryMunitions <= 0) return false;
+        strikeSecondaryMunitions--;
+        return true;
+    }
+
+    public boolean needsStrikeCraftRearm() {
+        if (!usesLimitedStrikeCraftMunitions()) return false;
+        boolean hasPrimary = false;
+        boolean hasSecondary = false;
+        for (Turret turret : turrets) {
+            if (turret == null) continue;
+            if (turret.primary) hasPrimary = true;
+            else hasSecondary = true;
+        }
+        boolean primaryDry = !hasPrimary || strikePrimaryMunitions <= 0;
+        boolean secondaryDry = !hasSecondary || strikeSecondaryMunitions <= 0;
+        return primaryDry && secondaryDry;
+    }
+
+    public int resolveStrikeCraftWeaponDamage(Turret turret, double baseDamage) {
+        if (!usesLimitedStrikeCraftMunitions() || turret == null) {
+            return (int) Math.round(Math.max(0.0, baseDamage));
+        }
+        double exact = Math.max(0.0, baseDamage) * 0.5;
+        if (turret.primary) {
+            exact += strikePrimaryDamageCarry;
+            int out = (int) Math.floor(exact + 1e-9);
+            strikePrimaryDamageCarry = Math.max(0.0, exact - out);
+            return out;
+        }
+        exact += strikeSecondaryDamageCarry;
+        int out = (int) Math.floor(exact + 1e-9);
+        strikeSecondaryDamageCarry = Math.max(0.0, exact - out);
+        return out;
+    }
+
     /** Effective signature (used by targeting). */
     public double effectiveSignature() {
         if (!isStealth) return 1.0;
@@ -1837,6 +1932,9 @@ public abstract class Ship {
         double base = Math.max(24.0, hpMax + shieldMax * 0.35 + radius * 0.90);
         for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
             double max = Math.max(8.0, base * Math.max(0.25, def.hpWeight));
+            if (ShipRoomLayout.isArmorRoom(def.id) && !hasArmorLayer()) {
+                max = 0.0;
+            }
             roomHpMax.put(def.id, max);
             roomHp.put(def.id, max);
             roomHazards.put(def.id, new RoomHazardState(def.id));
@@ -1846,6 +1944,13 @@ public abstract class Ship {
         roomSystemsInitialized = true;
         enforceRoomSystemAvailability();
         syncHullFromRoomIntegrity();
+    }
+
+    private boolean hasArmorLayer() {
+        return switch (role) {
+            case FIGHTER, BOMBER, DRONE -> false;
+            default -> true;
+        };
     }
 
     private double totalRoomIntegrityFraction() {
@@ -2321,6 +2426,20 @@ public abstract class Ship {
             );
             hz.suppressionBoost = Math.max(0.0, hz.suppressionBoost - dt * (0.42 + hz.fireIntensity * 0.12));
 
+            if (def != null && def.neighbors.length > 0) {
+                for (ShipRoomLayout.RoomId nid : def.neighbors) {
+                    if (nid == null) continue;
+                    if (ShipRoomLayout.isArmorRoom(nid)) continue;
+                    ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, nid);
+                    if (neighbor == null) continue;
+                    double nMax = roomHpMax.getOrDefault(nid, 0.0);
+                    if (nMax <= 1e-9) continue;
+                    double nCur = roomHp.getOrDefault(nid, nMax);
+                    if (nCur <= 1e-6) continue;
+                    damageRoom(neighbor, nMax * 0.01 * dt, Double.NaN, Double.NaN, true);
+                }
+            }
+
             hz.damageTickTimer -= dt;
             if (hz.damageTickTimer <= 0.0) {
                 if (def != null) {
@@ -2357,7 +2476,7 @@ public abstract class Ship {
                         double frac = nCur / nMax;
                         RoomHazardState nHz = roomHazards.get(nid);
                         if (nHz != null && nHz.fireIntensity > 1.10) continue;
-                        if (frac <= 0.80) {
+                        if (frac <= 0.85) {
                             eligible.add(nid);
                         }
                     }
@@ -3467,14 +3586,17 @@ public abstract class Ship {
 
         double breachChance = 0.08 + severity * 0.36 + Math.max(0.0, 0.58 - hpFrac) * 0.78;
         if (hullDamage >= 9) breachChance += 0.14;
+        if (hullDamage >= 18) breachChance += 0.10;
+        if (hullDamage >= 30) breachChance += 0.12;
         if (Math.abs(impact.normalizedX) < 0.24 && Math.abs(impact.normalizedY) < 0.24) breachChance += 0.08;
         breachChance = MathUtil.clamp(breachChance, 0.0, 0.95);
 
         double breachRadius = 0.0;
         if (randomUnit() < breachChance) {
-            double base = Math.max(2.8, radius * 0.06);
-            double bonus = radius * (0.06 + severity * 0.17);
-            breachRadius = MathUtil.clamp(base + bonus, 2.8, Math.max(4.0, radius * 0.42));
+            double impactClass = MathUtil.clamp(Math.sqrt(Math.max(0.0, hullDamage) / 6.0), 0.0, 2.8);
+            double base = Math.max(2.8, radius * (0.05 + impactClass * 0.015));
+            double bonus = radius * (0.07 + severity * 0.24 + impactClass * 0.08 + severity * severity * 0.12);
+            breachRadius = MathUtil.clamp(base + bonus, 2.8, Math.max(5.0, radius * 0.68));
         }
 
         if (hullImpactMarks.size() >= MAX_HULL_IMPACT_MARKS) {
@@ -3491,10 +3613,8 @@ public abstract class Ship {
             hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
             return;
         }
-        hullImpactNoDamageTimer += dt;
-        if (hullImpactNoDamageTimer >= HULL_IMPACT_DECAY_IDLE_SECONDS) {
-            clearHullImpactMarks();
-        }
+        // Persistent hull impact marks are now culled by renderer detail distance rather than a timer.
+        hullImpactNoDamageTimer = 0.0;
     }
 
     private void damageSystem(InternalSystem system, double damage) {

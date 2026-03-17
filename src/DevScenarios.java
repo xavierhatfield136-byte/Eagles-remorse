@@ -93,65 +93,8 @@ public final class DevScenarios {
         double x = ctx.player.x;
         double y = ctx.player.y;
 
-        Ship t1 = spawn(ctx, ShipRole.PATROL, Faction.ENEMY, x + 360, y - 220);
-        setupRangeTarget(t1, "RANGE TARGET LIGHT (HULL)", false);
-
-        Ship t2 = spawn(ctx, ShipRole.PICKET, Faction.ENEMY, x + 470, y + 170);
-        setupRangeTarget(t2, "RANGE TARGET PICKET (HULL)", false);
-
-        Ship t3 = spawn(ctx, ShipRole.FRIGATE, Faction.ENEMY, x + 580, y - 70);
-        setupRangeTarget(t3, "RANGE TARGET MEDIUM (SHIELD)", true);
-
-        Ship t4 = spawn(ctx, ShipRole.MISSILE_BOAT, Faction.ENEMY, x + 700, y - 240);
-        setupRangeTarget(t4, "RANGE TARGET MISSILE BOAT (HULL)", false);
-
-        Ship t5 = spawn(ctx, ShipRole.CIWS_CORVETTE, Faction.ENEMY, x + 800, y + 110);
-        setupRangeTarget(t5, "RANGE TARGET CIWS (HULL)", false);
-
-        Ship t6 = spawn(ctx, ShipRole.TRANSPORT, Faction.ENEMY, x + 940, y + 260);
-        setupRangeTarget(t6, "RANGE TARGET TRANSPORT (HULL)", false);
-
-        Ship t7 = spawn(ctx, ShipRole.LIGHT_CRUISER, Faction.ENEMY, x + 980, y - 130);
-        setupRangeTarget(t7, "RANGE TARGET LIGHT CRUISER (SHIELD)", true);
-
-        Ship t8 = spawn(ctx, ShipRole.CRUISER, Faction.ENEMY, x + 1160, y + 170);
-        setupRangeTarget(t8, "RANGE TARGET CRUISER HEAVY (SHIELD)", true);
-
-        Ship t9 = spawn(ctx, ShipRole.BATTLECRUISER, Faction.ENEMY, x + 1280, y + 20);
-        setupRangeTarget(t9, "RANGE TARGET HEAVY (SHIELD)", true);
-
-        Ship t10 = spawn(ctx, ShipRole.BATTLESHIP, Faction.ENEMY, x + 1500, y - 170);
-        setupRangeTarget(t10, "RANGE TARGET BATTLESHIP (SHIELD)", true);
-
-        Ship t11 = spawn(ctx, ShipRole.HAULER, Faction.ENEMY, x + 1640, y + 250);
-        setupRangeTarget(t11, "RANGE TARGET HAULER (HULL)", false);
-
-        EventSystem.showBanner(ctx, "DEV SCENARIO: SHOOTING RANGE", 2.2);
-    }
-
-    private static void setupRangeTarget(Ship s, String label, boolean keepShields) {
-        if (s == null) return;
-        s.name = label;
-        s.desiredSpeed = 0;
-        s.desiredSpeedBase = 0;
-        s.vx = 0;
-        s.vy = 0;
-        s.bountyValue = 0;
-        s.turrets.clear();
-        s.hasCIWS = false;
-        s.isCarrier = false;
-        s.carrierAutoLaunch = false;
-        s.hasWaveMotionGun = false;
-
-        if (!keepShields) {
-            s.shieldMax = 0;
-            s.shield = 0;
-            s.shieldRegen = 0;
-            s.shieldActive = false;
-        } else {
-            s.shieldActive = s.shieldMax > 0;
-            s.shield = Math.min(s.shieldMax, Math.max(0.0, s.shield));
-        }
+        SpawnSystem.populateShootingRangeTargets(ctx, x, y, Faction.ENEMY);
+        EventSystem.showBanner(ctx, "DEV SCENARIO: ALL-HULL SHOOTING EXHIBITION", 2.2);
     }
 
     private static Ship spawn(GameContext ctx, ShipRole role, Faction faction, double x, double y) {

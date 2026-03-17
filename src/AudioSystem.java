@@ -171,6 +171,7 @@ public final class AudioSystem {
         boolean lastScienceJamming;
         boolean lastRepairsActive;
         int hostileContactCount;
+        double scienceContactMemoryUntilSec = 0.0;
         double lastShieldFrac;
         double lastReactorFrac;
         double lastHp;
@@ -183,6 +184,7 @@ public final class AudioSystem {
         final Map<String, Double> sfxCooldownUntil = new HashMap<>();
         final Map<String, Double> voiceDedupeUntil = new HashMap<>();
         final Map<String, Double> roleThrottleUntil = new HashMap<>();
+        final Map<Integer, Double> scienceKnownContactsUntil = new HashMap<>();
         final Map<String, Integer> lastVariantByKey = new HashMap<>();
         final Map<String, Integer> lastSfxVariantByEvent = new HashMap<>();
         final Map<String, Integer> voiceDispatchByEvent = new HashMap<>();
@@ -201,11 +203,12 @@ public final class AudioSystem {
             RuntimeState s = new RuntimeState();
             if (ctx != null && ctx.player != null) {
                 s.lastLockedTarget = ctx.lockedTarget;
-                s.hadCombatContact = countHostiles(ctx) > 0;
+                List<Ship> visibleHostiles = visibleHostiles(ctx);
+                s.hadCombatContact = !visibleHostiles.isEmpty();
                 s.missilesInbound = hasMissilesInbound(ctx);
                 s.lastScienceJamming = ctx.scienceJamming;
                 s.lastRepairsActive = repairsActive(ctx);
-                s.hostileContactCount = countHostiles(ctx);
+                s.hostileContactCount = visibleHostiles.size();
                 s.lastShieldFrac = shieldFrac(ctx.player);
                 s.lastReactorFrac = reactorFrac(ctx.player);
                 s.lastHp = ctx.player.hp;
@@ -213,6 +216,12 @@ public final class AudioSystem {
                 s.lastExplosionCount = explosionCountNearPlayer(ctx);
                 s.lastHelmMode = ctx.helmMode;
                 s.lastCaptainDirective = ctx.captainDirective;
+                double seededUntil = nowSec() + 12.0;
+                for (Ship hostile : visibleHostiles) {
+                    if (hostile == null) continue;
+                    s.scienceKnownContactsUntil.put(hostile.id, seededUntil);
+                }
+                s.scienceContactMemoryUntilSec = seededUntil;
                 for (Ship.InternalSystem system : Ship.InternalSystem.values()) {
                     s.lastSystemFractions.put(system, ctx.player.systemHealthFraction(system));
                 }
@@ -451,7 +460,8 @@ public final class AudioSystem {
     }
 
     private static void processVoiceSignals(GameContext ctx, RuntimeState st, double now) {
-        int hostiles = countHostiles(ctx);
+        List<Ship> visibleHostiles = visibleHostiles(ctx);
+        int hostiles = visibleHostiles.size();
         if (!st.hadCombatContact && hostiles > 0) {
             emitVoice(ctx, st, VoiceCue.CAPTAIN_COMBAT_START, now);
         } else if (st.hadCombatContact && hostiles <= 0) {
@@ -494,7 +504,19 @@ public final class AudioSystem {
             emitVoice(ctx, st, VoiceCue.SCIENCE_JAMMED, now);
         }
 
-        if (hostiles > st.hostileContactCount) {
+        pruneScienceContactMemory(st, now);
+        int newlyDetectedContacts = 0;
+        double memoryUntil = now + 12.0;
+        for (Ship hostile : visibleHostiles) {
+            if (hostile == null) continue;
+            Double knownUntil = st.scienceKnownContactsUntil.get(hostile.id);
+            if (knownUntil == null || knownUntil < now) {
+                newlyDetectedContacts++;
+            }
+            st.scienceKnownContactsUntil.put(hostile.id, memoryUntil);
+        }
+        st.scienceContactMemoryUntilSec = memoryUntil;
+        if (newlyDetectedContacts > 0) {
             emitVoice(ctx, st, VoiceCue.SCIENCE_NEW_CONTACT, now);
         }
 
@@ -532,6 +554,15 @@ public final class AudioSystem {
         st.lastReactorFrac = reactorNow;
         st.lastHelmMode = ctx.helmMode;
         st.lastCaptainDirective = ctx.captainDirective;
+    }
+
+    private static void pruneScienceContactMemory(RuntimeState st, double now) {
+        if (st == null) return;
+        if (st.scienceKnownContactsUntil.isEmpty()) return;
+        st.scienceKnownContactsUntil.entrySet().removeIf(e -> e == null || e.getValue() == null || e.getValue() < now);
+        if (st.scienceKnownContactsUntil.isEmpty()) {
+            st.scienceContactMemoryUntilSec = 0.0;
+        }
     }
 
     private static void processImpactSignals(GameContext ctx, RuntimeState st, double now) {
@@ -856,19 +887,23 @@ public final class AudioSystem {
     }
 
     private static int countHostiles(GameContext ctx) {
-        if (ctx == null || ctx.player == null || ctx.ships == null) return 0;
+        return visibleHostiles(ctx).size();
+    }
+
+    private static List<Ship> visibleHostiles(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.ships == null) return List.of();
         double maxRange = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
         double maxRange2 = maxRange * maxRange;
-        int count = 0;
+        List<Ship> out = new ArrayList<>();
         for (Ship s : ctx.ships) {
             if (s == null || s == ctx.player) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.isFriendlyTo(ctx.player.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(ctx.player, s)) continue;
             double d2 = GameMath.dist2(s.x, s.y, ctx.player.x, ctx.player.y);
-            if (d2 <= maxRange2) count++;
+            if (d2 <= maxRange2) out.add(s);
         }
-        return count;
+        return out;
     }
 
     private static boolean hasMissilesInbound(GameContext ctx) {

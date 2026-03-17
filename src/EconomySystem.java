@@ -377,7 +377,8 @@ public final class EconomySystem {
 
     private static void updateCarrierRespawnPrograms(GameContext ctx, double dt) {
         if (ctx == null || dt <= 0.0) return;
-        for (Ship carrier : ctx.ships) {
+        List<Ship> carrierSnapshot = new ArrayList<>(ctx.ships);
+        for (Ship carrier : carrierSnapshot) {
             if (carrier == null) continue;
             if (!carrier.isCarrier) continue;
             if (!carrier.alive || carrier.dying || carrier.hp <= 0) continue;
@@ -1224,6 +1225,10 @@ public final class EconomySystem {
         for (int i = 0; i < dst.flightDeckLoadout.length; i++) {
             dst.flightDeckLoadout[i] = src.flightDeckRoleAt(i);
         }
+        dst.strikePrimaryMunitionsMax = src.strikePrimaryMunitionsMax;
+        dst.strikePrimaryMunitions = src.strikePrimaryMunitions;
+        dst.strikeSecondaryMunitionsMax = src.strikeSecondaryMunitionsMax;
+        dst.strikeSecondaryMunitions = src.strikeSecondaryMunitions;
 
         dst.isBase = src.isBase;
         dst.baseOwner = src.baseOwner;

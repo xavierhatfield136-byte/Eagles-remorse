@@ -133,12 +133,14 @@ public class Turret {
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
         if (!canFire()) return null;
         if (host == null) return null;
+        if (!host.hasStrikeCraftMunitionsFor(this)) return null;
 
         double cycleMul = host.weaponCycleRateMultiplier();
         double damageMul = host.weaponDamageMultiplier();
         cycleMul = Math.max(0.20, cycleMul);
         damageMul = Math.max(0.20, damageMul);
         coolLeft = cooldown / cycleMul;
+        host.consumeStrikeCraftMunition(this);
 
         host.onFire();
 
@@ -154,7 +156,7 @@ public class Turret {
             // ENERGY_NAVY uses a Yamato 2199-style heavy energy bolt (visible, medium speed).
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.
             double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
-            int gunDamage = Math.max(1, (int) Math.round(damage * damageMul));
+            int gunDamage = host.resolveStrikeCraftWeaponDamage(this, damage * damageMul);
             DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
             if (host.faction == Faction.TEAM_C) {
                 // Team C uses a persistent, tracking cutting beam.
@@ -186,7 +188,11 @@ public class Turret {
             p.sourceShipId = host.id;
             return p;
         } else {
-            int missileDamage = Math.max(1, (int) Math.round(damage * MISSILE_DAMAGE_MULT * damageMul));
+            double missileBaseDamage = damage * damageMul;
+            if (!host.usesLimitedStrikeCraftMunitions()) {
+                missileBaseDamage *= MISSILE_DAMAGE_MULT;
+            }
+            int missileDamage = host.resolveStrikeCraftWeaponDamage(this, missileBaseDamage);
             double missileSpd = missileSpeed * MISSILE_SPEED_MULT;
             double missileTurn = missileTurnRate * MISSILE_TURN_MULT;
             int missileLifetime = Math.max(1, (int) Math.round(missileLife * MISSILE_LIFE_MULT));

@@ -169,6 +169,12 @@ public final class AISystem {
             }
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
+                if (s.needsStrikeCraftRearm()) {
+                    s.tryCIWS(dt, ctx.projectiles);
+                    applyAsteroidAvoidance(ctx, s, dt);
+                    applyProjectileLaneAvoidance(ctx, s, dt);
+                    continue;
+                }
                 Ship target = periodicClosestRetargetTarget(ctx, s);
                 if (!isAlive(target)) target = CarrierSystem.preferredTargetForCraft(ctx, s, null);
                 if (!isAlive(target)) target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
@@ -178,6 +184,12 @@ public final class AISystem {
                     fireIfAble(ctx, s, target, dt, d);
                 }
                 s.tryCIWS(dt, ctx.projectiles);
+                applyAsteroidAvoidance(ctx, s, dt);
+                applyProjectileLaneAvoidance(ctx, s, dt);
+                continue;
+            }
+
+            if (handleStandaloneStrikeCraftRearm(ctx, s, dt)) {
                 applyAsteroidAvoidance(ctx, s, dt);
                 applyProjectileLaneAvoidance(ctx, s, dt);
                 continue;
@@ -2425,6 +2437,48 @@ public final class AISystem {
             case HAULER, TRANSPORT -> 0.8;
             default -> 1.0;
         };
+    }
+
+    private static boolean handleStandaloneStrikeCraftRearm(GameContext ctx, Ship s, double dt) {
+        if (ctx == null || s == null || dt <= 0.0) return false;
+        if (!s.usesLimitedStrikeCraftMunitions()) return false;
+        if (s.carrierOwnerId >= 0) return false;
+        if (!s.needsStrikeCraftRearm()) return false;
+
+        Ship tender = nearestFriendlyStrikeCraftTender(ctx, s);
+        if (!isAlive(tender)) {
+            setVelPerSec(s, 0.0, 0.0, dt);
+            return true;
+        }
+
+        double recoverRange = tender.radius + s.radius + 18.0;
+        double d2 = dist2(s.x, s.y, tender.x, tender.y);
+        if (d2 <= recoverRange * recoverRange) {
+            s.reloadStrikeCraftMunitions();
+            double orbitRange = Math.max(recoverRange + 24.0, tender.radius + 56.0);
+            orbit(s, tender.x, tender.y, orbitRange, Math.max(80.0, MovementModel.speedCeiling(s) * 0.72), dt,
+                    ((s.id & 1) == 0) ? 1.0 : -1.0);
+            return true;
+        }
+
+        moveToward(s, tender.x, tender.y, Math.max(110.0, MovementModel.speedCeiling(s) * 0.96), dt);
+        return true;
+    }
+
+    private static Ship nearestFriendlyStrikeCraftTender(GameContext ctx, Ship craft) {
+        if (ctx == null || craft == null || craft.faction == null) return null;
+        Ship best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (Ship candidate : ctx.ships) {
+            if (!isAlive(candidate) || candidate.faction == null) continue;
+            if (!craft.faction.isFriendlyTo(candidate.faction)) continue;
+            if (!candidate.isBase && !candidate.isCarrier) continue;
+            double d2 = dist2(craft.x, craft.y, candidate.x, candidate.y);
+            if (d2 >= bestD2) continue;
+            bestD2 = d2;
+            best = candidate;
+        }
+        return best;
     }
 
     private static boolean isAlive(Ship s) {

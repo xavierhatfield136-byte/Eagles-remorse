@@ -20,6 +20,8 @@ import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 public class Renderer {
+    private static final double IMPACT_DECAL_SCALE = 0.25;
+    private static final double HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN = 72.0;
 
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW"};
     private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H"};
@@ -2527,13 +2529,6 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 245, 210, 225));
         g2.drawString(ctx.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
-
-        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
-        String source = "portrait: " + activePortrait.sourceLabel();
-        g2.setColor(activePortrait.fromDisk()
-                ? new Color(180, 255, 205, 220)
-                : new Color(255, 220, 170, 220));
-        g2.drawString(source, portraitPaneX + 12, portraitPaneY + portraitPaneH - 10);
 
         int panelX = portraitPaneX + portraitPaneW + 14;
         int panelW = x + w - panelX - 14;
@@ -5664,6 +5659,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Rectangle bounds = hullShape.getBounds();
         if (bounds.width <= 0 || bounds.height <= 0) return;
         int span = Math.max(bounds.width, bounds.height);
+        double screenScale = hullDamageDetailScale(g);
+        if (span * screenScale < HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN) return;
         List<Ship.HullImpactMark> marks = ship.hullImpactMarks();
 
         Shape oldClip = g.getClip();
@@ -5680,7 +5677,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     int py = (int) Math.round(mark.localY);
                     double sev = MathUtil.clamp(mark.severity, 0.04, 1.0);
 
-                    int scorchSz = (int) Math.round(Math.max(3.0, 2.0 + sev * 10.0 + dmg * 5.0));
+                    int scorchSz = (int) Math.round(Math.max(1.0, (2.0 + sev * 10.0 + dmg * 5.0) * IMPACT_DECAL_SCALE));
                     int scorchA = (int) MathUtil.clamp(54 + sev * 108 + dmg * 42, 0, 200);
                     g.setColor(new Color(0, 0, 0, scorchA));
                     g.fillOval(px - scorchSz, py - scorchSz, scorchSz * 2, scorchSz * 2);
@@ -5688,7 +5685,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                             (int) MathUtil.clamp(14 + sev * 60 + dmg * 24, 0, 132));
 
                     // Deformation: a displaced dent shadow + warm rim at the impact point.
-                    int dent = Math.max(2, (int) Math.round(2 + sev * 6));
+                    int dent = Math.max(1, (int) Math.round((2 + sev * 6) * IMPACT_DECAL_SCALE));
                     g.setColor(new Color(5, 5, 6, (int) MathUtil.clamp(26 + sev * 80, 0, 145)));
                     g.fillOval(px - dent + 1, py - dent + 1, dent * 2, dent * 2);
                     g.setColor(traceTint);
@@ -5696,24 +5693,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
                     double seedA = Math.abs(mark.localX * 0.027 + mark.localY * 0.019 + i * 0.171);
                     double dir = (seedA - Math.floor(seedA)) * Math.PI * 2.0;
-                    int len = (int) Math.round(4 + sev * 18 + dmg * span * 0.10);
+                    int len = (int) Math.round(Math.max(1.0, (4 + sev * 18 + dmg * span * 0.10) * IMPACT_DECAL_SCALE));
                     int x2 = px + (int) Math.round(Math.cos(dir) * len);
                     int y2 = py + (int) Math.round(Math.sin(dir) * len);
-                    float width = (float) Math.max(1.0, 0.9 + sev * 2.2);
+                    float width = (float) Math.max(0.45, (0.9 + sev * 2.2) * IMPACT_DECAL_SCALE);
                     g.setStroke(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g.setColor(new Color(12, 12, 14, (int) MathUtil.clamp(52 + sev * 95, 0, 180)));
                     g.drawLine(px, py, x2, y2);
-                    g.setStroke(new BasicStroke(Math.max(1f, width * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.setStroke(new BasicStroke(Math.max(0.35f, width * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g.setColor(roomTraceTint(mark.roomId, (int) MathUtil.clamp(12 + sev * 52, 0, 116)));
                     g.drawLine(px, py, x2, y2);
 
-                    if (mark.breachRadius > 0.01) {
-                        int br = (int) Math.round(Math.max(2.0, mark.breachRadius));
-                        g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(95 + sev * 110, 0, 220)));
-                        g.fillOval(px - br, py - br, br * 2, br * 2);
-                        g.setColor(roomTraceTint(mark.roomId, (int) MathUtil.clamp(26 + sev * 58, 0, 140)));
-                        g.drawOval(px - br, py - br, br * 2, br * 2);
-                    }
                 }
 
                 if (dmg > 0.55) {
@@ -5722,7 +5712,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                         Ship.HullImpactMark mark = marks.get(Math.max(0, mCount - 1 - i % Math.max(1, mCount)));
                         int px = (int) Math.round(mark.localX);
                         int py = (int) Math.round(mark.localY);
-                        int sz = (int) Math.max(6, Math.round(6 + (0.4 + mark.severity) * 8));
+                        int sz = (int) Math.max(2, Math.round((6 + (0.4 + mark.severity) * 8) * IMPACT_DECAL_SCALE));
                         int a = (int) MathUtil.clamp(20 + (dmg - 0.55) * 140, 0, 110);
                         g.setColor(new Color(30, 30, 30, a));
                         g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
@@ -5737,16 +5727,36 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     Point hit = randomPointInShape(rng, bounds, hullShape, 18);
                     int px = hit.x;
                     int py = hit.y;
-                    int sz = (int) Math.max(3, Math.round(2 + rng.nextDouble() * (4 + dmg * 10)));
+                    int sz = (int) Math.max(1, Math.round((2 + rng.nextDouble() * (4 + dmg * 10)) * IMPACT_DECAL_SCALE));
                     int a = (int) MathUtil.clamp(48 + dmg * 140, 0, 175);
                     g.setColor(new Color(0, 0, 0, a));
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
                 }
             }
             drawDestroyedHullBreaches(g, ship, hullShape, marks, span);
+            drawImpactHoleOverlays(g, marks);
         } finally {
             g.setStroke(oldStroke);
             g.setClip(oldClip);
+        }
+    }
+
+    private static void drawImpactHoleOverlays(Graphics2D g, List<Ship.HullImpactMark> marks) {
+        if (g == null || marks == null || marks.isEmpty()) return;
+        int start = Math.max(0, marks.size() - 18);
+        for (int i = start; i < marks.size(); i++) {
+            Ship.HullImpactMark mark = marks.get(i);
+            if (mark == null || mark.breachRadius <= 0.01) continue;
+
+            int px = (int) Math.round(mark.localX);
+            int py = (int) Math.round(mark.localY);
+            double sev = MathUtil.clamp(mark.severity, 0.04, 1.0);
+            int br = (int) Math.round(Math.max(1.0, mark.breachRadius * IMPACT_DECAL_SCALE));
+
+            g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(95 + sev * 110, 0, 220)));
+            g.fillOval(px - br, py - br, br * 2, br * 2);
+            g.setColor(roomTraceTint(mark.roomId, (int) MathUtil.clamp(26 + sev * 58, 0, 140)));
+            g.drawOval(px - br, py - br, br * 2, br * 2);
         }
     }
 
@@ -5765,6 +5775,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             ShipRoomLayout.RoomId roomId = entry.getKey();
             Area shellArea = entry.getValue();
             if (shellArea == null || shellArea.isEmpty()) continue;
+            ShipRoomLayout.RoomId facingRoom = breachFacingRoomId(roomId, shellArea.getBounds(), ship.radius);
 
             Area breachArea = buildDestroyedRoomBreachArea(ship, roomId, shellArea, marks, span);
             if (breachArea == null || breachArea.isEmpty()) continue;
@@ -5777,7 +5788,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.setColor(new Color(198, 208, 220, 82));
             g.draw(breachArea);
 
-            drawHullBreachInterior(g, breachArea, roomId, span, ship);
+            drawHullBreachInterior(g, breachArea, roomId, facingRoom, span, ship);
         }
         g.setStroke(oldStroke);
     }
@@ -5787,9 +5798,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (ship == null || hullShape == null) return out;
 
         Area hullArea = new Area(hullShape);
+        Shape hullEdgeShape = new BasicStroke((float) Math.max(6.0, ship.radius * 0.22),
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(hullShape);
+        Area hullEdgeBand = new Area(hullEdgeShape);
         for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role)) {
             if (cell == null || cell.roomId == null) continue;
-            if (!ShipRoomLayout.isArmorRoom(cell.roomId)) continue;
             if (ship.roomHealthFraction(cell.roomId) > 1e-3) continue;
 
             Polygon poly = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
@@ -5798,10 +5811,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Area cellArea = new Area(poly);
             cellArea.intersect(new Area(hullArea));
             if (cellArea.isEmpty()) continue;
+            boolean hullFacing = isHullFacingCell(cellArea, hullEdgeBand);
+            if (!ShipRoomLayout.isArmorRoom(cell.roomId) && !hullFacing) {
+                cellArea = new Area(poly);
+                cellArea.intersect(new Area(hullArea));
+                if (cellArea.isEmpty()) continue;
+            }
 
             out.computeIfAbsent(cell.roomId, key -> new Area()).add(cellArea);
         }
         return out;
+    }
+
+    private static boolean isHullFacingCell(Area cellArea, Area hullEdgeBand) {
+        if (cellArea == null || hullEdgeBand == null || cellArea.isEmpty() || hullEdgeBand.isEmpty()) return false;
+        Area overlap = new Area(cellArea);
+        overlap.intersect(new Area(hullEdgeBand));
+        return !overlap.isEmpty() && overlap.getBounds().width > 0 && overlap.getBounds().height > 0;
+    }
+
+    private static ShipRoomLayout.RoomId breachFacingRoomId(ShipRoomLayout.RoomId roomId, Rectangle bounds, double radius) {
+        if (ShipRoomLayout.isArmorRoom(roomId)) return roomId;
+        if (bounds == null || radius <= 1e-6) return ShipRoomLayout.RoomId.DORSAL_ARMOR;
+
+        double nx = bounds.getCenterX() / Math.max(1.0, radius);
+        double ny = bounds.getCenterY() / Math.max(1.0, radius);
+        if (Math.abs(nx) > Math.abs(ny) * 1.15) {
+            return (nx >= 0.0) ? ShipRoomLayout.RoomId.BOW_ARMOR : ShipRoomLayout.RoomId.AFT_ARMOR;
+        }
+        return (ny <= 0.0) ? ShipRoomLayout.RoomId.DORSAL_ARMOR : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
     }
 
     private static Area buildDestroyedRoomBreachArea(Ship ship,
@@ -5821,10 +5859,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 Ship.HullImpactMark mark = marks.get(i);
                 if (mark == null || mark.roomId != roomId) continue;
 
-                double base = Math.max(5.0, Math.min(bounds.width, bounds.height) * 0.20);
-                double radius = Math.max(base, mark.breachRadius * 1.6 + mark.severity * span * 0.025);
+                double base = Math.max(5.0, Math.min(bounds.width, bounds.height) * 0.22);
+                double radius = Math.max(base, mark.breachRadius * 2.8 + mark.severity * span * 0.050);
                 Area shard = new Area(createBreachBlob(mark.localX, mark.localY, radius,
-                        radius * (0.85 + mark.severity * 0.35),
+                        radius * (0.90 + mark.severity * 0.45),
                         breachSeed(ship, roomId, i)));
                 shard.intersect(new Area(shellArea));
                 if (!shard.isEmpty()) {
@@ -5837,7 +5875,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (placed == 0) {
             double cx = bounds.getCenterX();
             double cy = bounds.getCenterY();
-            double radius = Math.max(6.0, Math.min(bounds.width, bounds.height) * 0.28);
+            double radius = Math.max(7.0, Math.min(bounds.width, bounds.height) * 0.34);
             Area fallback = new Area(createBreachBlob(cx, cy, radius, radius * 0.92,
                     breachSeed(ship, roomId, 0)));
             fallback.intersect(new Area(shellArea));
@@ -5859,6 +5897,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return breach;
     }
 
+    private static double hullDamageDetailScale(Graphics2D g) {
+        if (g == null) return 1.0;
+        java.awt.geom.AffineTransform tx = g.getTransform();
+        double sx = Math.hypot(tx.getScaleX(), tx.getShearX());
+        double sy = Math.hypot(tx.getScaleY(), tx.getShearY());
+        double scale = Math.max(Math.abs(sx), Math.abs(sy));
+        if (!Double.isFinite(scale) || scale <= 1e-6) return 1.0;
+        return scale;
+    }
+
     private static Shape createBreachBlob(double cx, double cy, double rx, double ry, long seed) {
         Random rng = new Random(seed);
         int points = 10;
@@ -5878,6 +5926,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawHullBreachInterior(Graphics2D g,
                                                Shape breachShape,
                                                ShipRoomLayout.RoomId roomId,
+                                               ShipRoomLayout.RoomId facingRoom,
                                                int span,
                                                Ship ship) {
         if (g == null || breachShape == null) return;
@@ -5887,8 +5936,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Graphics2D gi = (Graphics2D) g.create();
         gi.setClip(breachShape);
 
-        drawClassSpecificBreachBackdrop(gi, ship, b, roomId);
-        drawExposedInteriorRooms(gi, ship, breachShape, roomId);
+        drawClassSpecificBreachBackdrop(gi, ship, b, facingRoom);
+        drawExposedInteriorRooms(gi, ship, breachShape, roomId, facingRoom);
 
         GradientPaint depth = new GradientPaint(
                 b.x, b.y,
@@ -6077,17 +6126,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawExposedInteriorRooms(Graphics2D g,
                                                  Ship ship,
                                                  Shape breachShape,
-                                                 ShipRoomLayout.RoomId breachedRoom) {
-        if (g == null || ship == null || breachShape == null || breachedRoom == null) return;
+                                                 ShipRoomLayout.RoomId breachedRoom,
+                                                 ShipRoomLayout.RoomId facingRoom) {
+        if (g == null || ship == null || breachShape == null || breachedRoom == null || facingRoom == null) return;
 
         LinkedHashSet<ShipRoomLayout.RoomId> exposedRooms = exposedInteriorRoomIds(ship.role, breachedRoom);
         if (exposedRooms.isEmpty()) return;
 
         Rectangle breachBounds = breachShape.getBounds();
-        double offset = Math.max(4.0, Math.min(breachBounds.width, breachBounds.height) * 0.24);
+        double offsetStrength = breachOffsetStrength(breachBounds, ship.radius);
+        double offset = Math.max(0.0, Math.min(breachBounds.width, breachBounds.height) * 0.24 * offsetStrength);
         int shiftX = 0;
         int shiftY = 0;
-        switch (breachedRoom) {
+        switch (facingRoom) {
             case DORSAL_ARMOR -> shiftY = (int) Math.round(-offset);
             case VENTRAL_ARMOR -> shiftY = (int) Math.round(offset);
             case BOW_ARMOR -> shiftX = (int) Math.round(offset);
@@ -6117,6 +6168,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.fillPolygon(poly);
             g.setColor(roomTraceTint(cell.roomId, 112));
             g.drawPolygon(poly);
+            drawSpecialRoomInteriorGraphic(g, poly, cell.roomId, frac);
 
             if (cell.labelAnchor) {
                 Rectangle pb = poly.getBounds();
@@ -6135,6 +6187,109 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g.translate(-shiftX, -shiftY);
     }
 
+    private static double breachOffsetStrength(Rectangle breachBounds, double radius) {
+        if (breachBounds == null || radius <= 1e-6) return 1.0;
+        double nx = Math.abs(breachBounds.getCenterX()) / Math.max(1.0, radius);
+        double ny = Math.abs(breachBounds.getCenterY()) / Math.max(1.0, radius);
+        double edge = Math.max(nx, ny);
+        return MathUtil.clamp((edge - 0.38) / 0.40, 0.0, 1.0);
+    }
+
+    private static void drawSpecialRoomInteriorGraphic(Graphics2D g,
+                                                       Polygon poly,
+                                                       ShipRoomLayout.RoomId roomId,
+                                                       double hpFrac) {
+        if (g == null || poly == null || roomId == null) return;
+        Rectangle b = poly.getBounds();
+        if (b.width < 10 || b.height < 8) return;
+
+        Graphics2D gi = (Graphics2D) g.create();
+        gi.clip(poly);
+
+        Color accent = roomTraceTint(roomId, MathUtil.clamp((int) Math.round(98 + (1.0 - hpFrac) * 42), 0, 150));
+        Color fill = new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 40);
+        int cx = b.x + b.width / 2;
+        int cy = b.y + b.height / 2;
+
+        if (roomId == ShipRoomLayout.RoomId.REACTOR) {
+            int r = Math.max(3, Math.min(b.width, b.height) / 4);
+            gi.setColor(fill);
+            gi.fillOval(cx - r, cy - r, r * 2, r * 2);
+            gi.setColor(accent);
+            gi.drawOval(cx - r - 2, cy - r - 2, (r + 2) * 2, (r + 2) * 2);
+            gi.drawLine(cx, b.y + 2, cx, b.y + b.height - 2);
+            gi.drawLine(b.x + 2, cy, b.x + b.width - 2, cy);
+        } else if (roomId == ShipRoomLayout.RoomId.BRIDGE || roomId == ShipRoomLayout.RoomId.BOW) {
+            gi.setColor(accent);
+            gi.drawArc(b.x + 2, b.y + 2, Math.max(6, b.width - 4), Math.max(6, b.height - 4), 200, 140);
+            gi.drawLine(b.x + 3, b.y + b.height - 4, b.x + b.width - 3, b.y + b.height - 4);
+            gi.drawLine(cx, b.y + b.height / 2, cx, b.y + b.height - 4);
+        } else if (ShipRoomLayout.isMagazineRoom(roomId)) {
+            int cols = Math.max(2, Math.min(4, b.width / 10));
+            int shellW = Math.max(3, b.width / Math.max(3, cols + 1));
+            int shellH = Math.max(4, b.height / 3);
+            gi.setColor(fill);
+            for (int i = 0; i < cols; i++) {
+                int x = b.x + 2 + i * (shellW + 2);
+                int y = cy - shellH / 2;
+                gi.fillRoundRect(x, y, shellW, shellH, 3, 3);
+            }
+            gi.setColor(accent);
+            gi.drawLine(b.x + 2, b.y + b.height - 3, b.x + b.width - 2, b.y + b.height - 3);
+        } else if (ShipRoomLayout.isShieldRoom(roomId)) {
+            int r = Math.max(4, Math.min(b.width, b.height) / 3);
+            gi.setColor(accent);
+            gi.drawOval(cx - r, cy - r, r * 2, r * 2);
+            gi.drawOval(cx - r / 2, cy - r / 2, r, r);
+            gi.drawLine(b.x + 2, cy, b.x + b.width - 2, cy);
+        } else if (ShipRoomLayout.isWarpRoom(roomId)) {
+            int r = Math.max(4, Math.min(b.width, b.height) / 3);
+            gi.setColor(accent);
+            gi.drawOval(cx - r, cy - r / 2, r * 2, r);
+            gi.drawOval(cx - r + 3, cy - r / 2 + 2, Math.max(4, r * 2 - 6), Math.max(4, r - 4));
+            gi.drawLine(b.x + 3, cy, b.x + b.width - 3, cy);
+        } else if (ShipRoomLayout.isPowerRoom(roomId)) {
+            gi.setColor(accent);
+            gi.drawLine(b.x + 2, cy, b.x + b.width - 2, cy);
+            gi.drawLine(cx, b.y + 2, cx, b.y + b.height - 2);
+            gi.fillOval(cx - 2, cy - 2, 4, 4);
+        } else if (ShipRoomLayout.isEngineRoom(roomId) || roomId == ShipRoomLayout.RoomId.AFT_SPINE) {
+            gi.setColor(accent);
+            int lanes = Math.max(2, Math.min(4, b.height / 5));
+            for (int i = 0; i < lanes; i++) {
+                int y = b.y + 2 + i * Math.max(3, (b.height - 4) / Math.max(1, lanes));
+                gi.drawLine(b.x + 2, y, b.x + b.width - 2, y);
+            }
+            gi.drawLine(b.x + b.width - 4, b.y + 2, b.x + b.width - 4, b.y + b.height - 2);
+        } else if (roomId == ShipRoomLayout.RoomId.SENSORS) {
+            gi.setColor(accent);
+            gi.drawArc(b.x + 2, b.y + 2, Math.max(6, b.width - 4), Math.max(6, b.height - 4), 220, 100);
+            gi.drawArc(b.x + 4, b.y + 4, Math.max(4, b.width - 8), Math.max(4, b.height - 8), 220, 100);
+            gi.drawLine(cx, cy, b.x + b.width - 3, b.y + 3);
+        } else if (ShipRoomLayout.isWeaponRoom(roomId)) {
+            gi.setColor(accent);
+            gi.drawLine(b.x + 2, cy - 2, b.x + b.width - 4, cy - 2);
+            gi.drawLine(b.x + 2, cy + 2, b.x + b.width - 4, cy + 2);
+            gi.drawLine(b.x + b.width - 5, cy - 4, b.x + b.width - 2, cy);
+            gi.drawLine(b.x + b.width - 5, cy + 4, b.x + b.width - 2, cy);
+        } else if (roomId == ShipRoomLayout.RoomId.CARGO_BAY) {
+            gi.setColor(fill);
+            int crate = Math.max(4, Math.min(b.width, b.height) / 4);
+            gi.fillRect(b.x + 2, b.y + 2, crate, crate);
+            gi.fillRect(cx - crate / 2, cy - crate / 2, crate, crate);
+            gi.fillRect(b.x + b.width - crate - 2, b.y + b.height - crate - 2, crate, crate);
+            gi.setColor(accent);
+            gi.drawLine(b.x + 2, b.y + 2, b.x + b.width - 2, b.y + b.height - 2);
+        } else if (roomId == ShipRoomLayout.RoomId.CREW_QUARTERS || roomId == ShipRoomLayout.RoomId.SERVICE_BAY) {
+            gi.setColor(accent);
+            gi.drawLine(b.x + 2, cy, b.x + b.width - 2, cy);
+            gi.drawLine(b.x + 2, b.y + 3, b.x + b.width - 2, b.y + 3);
+            gi.drawLine(b.x + 2, b.y + b.height - 3, b.x + b.width - 2, b.y + b.height - 3);
+        }
+
+        gi.dispose();
+    }
+
     private static LinkedHashSet<ShipRoomLayout.RoomId> exposedInteriorRoomIds(ShipRole role,
                                                                                 ShipRoomLayout.RoomId breachedRoom) {
         LinkedHashSet<ShipRoomLayout.RoomId> out = new LinkedHashSet<>();
@@ -6142,6 +6297,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         ShipRoomLayout.RoomDef root = ShipRoomLayout.roomForId(role, breachedRoom);
         if (root == null) return out;
 
+        if (!ShipRoomLayout.isArmorRoom(breachedRoom)) {
+            out.add(breachedRoom);
+        }
         for (ShipRoomLayout.RoomId neighbor : root.neighbors) {
             collectExposedInteriorRoomIds(role, neighbor, 0, 2, visited, out);
         }

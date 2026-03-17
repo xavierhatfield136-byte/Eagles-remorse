@@ -294,6 +294,10 @@ public class Player extends Ship {
         for (int i = 0; i < this.flightDeckLoadout.length; i++) {
             this.flightDeckLoadout[i] = t.flightDeckRoleAt(i);
         }
+        this.strikePrimaryMunitionsMax = t.strikePrimaryMunitionsMax;
+        this.strikePrimaryMunitions = t.strikePrimaryMunitions;
+        this.strikeSecondaryMunitionsMax = t.strikeSecondaryMunitionsMax;
+        this.strikeSecondaryMunitions = t.strikeSecondaryMunitions;
 
         this.isBase = false;
 
