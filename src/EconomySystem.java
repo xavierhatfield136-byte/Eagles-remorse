@@ -20,7 +20,12 @@ public final class EconomySystem {
     private static final double BASE_SHIP_DEPLOY_JITTER = 64.0;
     private static final double BASE_SHIP_DEPLOY_MIN_SPACING = 96.0;
     private static final double BASE_SHIP_SUPPORT_RANGE = 1020.0;
+    private static final double CARRIER_RESPAWN_RADIUS = 220.0;
+    private static final double CARRIER_RESPAWN_JITTER = 54.0;
+    private static final double CARRIER_RESPAWN_MIN_SPACING = 92.0;
+    private static final double CARRIER_RESPAWN_SUPPORT_RANGE = 900.0;
     private static final double BASE_REPAIR_MIN_RANGE = 180.0;
+    private static final double PLAYER_HAULER_SALE_RANGE = 120.0;
     private static final double TRANSPORT_SUPPORT_MIN_RANGE = 220.0;
     private static final double TRANSPORT_ROOM_HEAL_FRAC_PER_SEC = 0.05;
     private static final double TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC = 0.3333333333333333;
@@ -79,11 +84,13 @@ public final class EconomySystem {
 
         // Player deposits mined ore when docked at a friendly base.
         handlePlayerDeposit(ctx);
+        handlePlayerHaulerSales(ctx);
 
         // NPC mining & deposits
         handleNpcMiningAndDeposits(ctx, dt);
         updateNpcHaulerLogistics(ctx, dt);
         updateStationTurretStructures(ctx);
+        updateCarrierRespawnPrograms(ctx, dt);
         applyFriendlyBaseRepairAuras(ctx, dt);
         applyTransportSupportAuras(ctx, dt);
         updateNpcBaseUpgradePrograms(ctx, dt);
@@ -149,6 +156,43 @@ public final class EconomySystem {
         priceMul *= CampaignSystem.oreCreditMul(ctx);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
         ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+    }
+
+    private static void handlePlayerHaulerSales(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
+        if (ctx.player.cargo <= 0) return;
+
+        Ship hauler = findNearbyFriendlyHauler(ctx, ctx.player, PLAYER_HAULER_SALE_RANGE);
+        if (hauler == null) return;
+
+        int moved = ctx.player.cargo;
+        if (moved <= 0) return;
+        ctx.player.cargo = 0;
+
+        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
+        priceMul *= CampaignSystem.oreCreditMul(ctx);
+        int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+        EventSystem.showBanner(ctx, "HAULER PURCHASED " + moved + " ORE", 0.9);
+    }
+
+    private static Ship findNearbyFriendlyHauler(GameContext ctx, Ship seller, double range) {
+        if (ctx == null || seller == null || seller.faction == null || range <= 0.0) return null;
+        Ship best = null;
+        double bestD2 = range * range;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (s.role != ShipRole.HAULER) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || !s.faction.isFriendlyTo(seller.faction)) continue;
+            double d2 = GameMath.dist2(seller.x, seller.y, s.x, s.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = s;
+            }
+        }
+        return best;
     }
 
     private static void handleNpcMiningAndDeposits(GameContext ctx, double dt) {
@@ -329,6 +373,103 @@ public final class EconomySystem {
             if (ship != null) return ship;
         }
         return null;
+    }
+
+    private static void updateCarrierRespawnPrograms(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        for (Ship carrier : ctx.ships) {
+            if (carrier == null) continue;
+            if (!carrier.isCarrier) continue;
+            if (!carrier.alive || carrier.dying || carrier.hp <= 0) continue;
+            if (!carrier.canSpawnMobileReinforcement()) continue;
+
+            int supported = countCarrierReinforcements(ctx, carrier);
+            int cap = Math.max(2, Math.min(5, carrier.maxDefenders));
+            if (supported >= cap) continue;
+
+            Ship respawned = spawnCarrierReinforcement(ctx, carrier);
+            if (respawned == null) continue;
+            carrier.resetBaseSpawnTimer();
+        }
+    }
+
+    private static int countCarrierReinforcements(GameContext ctx, Ship carrier) {
+        if (ctx == null || carrier == null || carrier.faction == null) return 0;
+        int count = 0;
+        double maxD2 = CARRIER_RESPAWN_SUPPORT_RANGE * CARRIER_RESPAWN_SUPPORT_RANGE;
+        for (Ship s : ctx.ships) {
+            if (s == null || s == carrier) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.carrierOwnerId >= 0) continue;
+            if (s.faction == null || s.faction.teamId() != carrier.faction.teamId()) continue;
+            if (!isCarrierRespawnRole(s.role)) continue;
+            if (s.minerHomeBase == carrier || GameMath.dist2(s.x, s.y, carrier.x, carrier.y) <= maxD2) count++;
+        }
+        return count;
+    }
+
+    private static Ship spawnCarrierReinforcement(GameContext ctx, Ship carrier) {
+        if (ctx == null || carrier == null || carrier.faction == null) return null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            double a = ctx.rng.nextDouble() * Math.PI * 2.0;
+            double r = CARRIER_RESPAWN_RADIUS + (ctx.rng.nextDouble() - 0.5) * CARRIER_RESPAWN_JITTER;
+            double sx = GameMath.clamp(carrier.x + Math.cos(a) * r, 30, ctx.WORLD_W - 30);
+            double sy = GameMath.clamp(carrier.y + Math.sin(a) * r, 30, ctx.WORLD_H - 30);
+            if (!isCarrierRespawnClear(ctx, carrier, sx, sy)) continue;
+
+            ShipRole role = chooseCarrierRespawnRole(ctx, carrier);
+            Ship ship = SpawnSystem.spawnTeamShip(ctx, role, carrier.faction, sx, sy);
+            if (ship == null) continue;
+
+            ship.minerHomeBase = carrier;
+            ship.vx = carrier.vx * 0.75;
+            ship.vy = carrier.vy * 0.75;
+            ship.angle = carrier.angle;
+            return ship;
+        }
+        return null;
+    }
+
+    private static boolean isCarrierRespawnClear(GameContext ctx, Ship carrier, double x, double y) {
+        if (ctx == null || carrier == null) return false;
+        double minSpacing2 = CARRIER_RESPAWN_MIN_SPACING * CARRIER_RESPAWN_MIN_SPACING;
+        for (Ship s : ctx.ships) {
+            if (s == null || s == carrier) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (GameMath.dist2(s.x, s.y, x, y) < minSpacing2) return false;
+        }
+        for (Asteroid a : ctx.asteroids) {
+            if (a == null) continue;
+            double min = a.collisionRadius() + 26.0;
+            if (GameMath.dist2(a.x, a.y, x, y) < min * min) return false;
+        }
+        return true;
+    }
+
+    private static ShipRole chooseCarrierRespawnRole(GameContext ctx, Ship carrier) {
+        if (ctx == null || carrier == null) return ShipRole.FRIGATE;
+        ShipRole[] pool = {
+                ShipRole.PATROL,
+                ShipRole.PICKET,
+                ShipRole.FRIGATE,
+                ShipRole.MISSILE_BOAT,
+                ShipRole.CIWS_CORVETTE,
+                ShipRole.LIGHT_CRUISER,
+                ShipRole.MEDIUM_CRUISER,
+                ShipRole.CRUISER,
+                ShipRole.TRANSPORT
+        };
+        int pick = ctx.rng.nextInt(pool.length);
+        return pool[pick];
+    }
+
+    private static boolean isCarrierRespawnRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case PATROL, PICKET, FRIGATE, MISSILE_BOAT, CIWS_CORVETTE,
+                    LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, TRANSPORT -> true;
+            default -> false;
+        };
     }
 
     private static int countAliveRoleForTeam(GameContext ctx, Faction team, ShipRole role) {

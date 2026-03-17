@@ -1057,8 +1057,10 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 1;
 
                 isCarrier = true;
-                fighterLaunchCooldown = 4.0;
-                maxFighters = 50;
+                fighterLaunchCooldown = 4.2;
+                maxFighters = 10;
+                baseSpawnCooldown = 18.0;
+                maxDefenders = 5;
             }
 
             case DRONE_CARRIER -> {
@@ -1105,8 +1107,10 @@ public class FleetShip extends Ship {
                 ciwsPelletsPerBurst = 1;
 
                 isCarrier = true;
-                fighterLaunchCooldown = 3.0;
-                maxFighters = 80;
+                fighterLaunchCooldown = 3.6;
+                maxFighters = 10;
+                baseSpawnCooldown = 16.0;
+                maxDefenders = 4;
             }
 
             case TRANSPORT -> {

@@ -14,7 +14,7 @@ import java.util.WeakHashMap;
 public final class CarrierSystem {
     private CarrierSystem() {}
 
-    private static final int MAX_GLOBAL_LAUNCHED_CRAFT = 700;
+    private static final int MAX_GLOBAL_LAUNCHED_CRAFT = 220;
     private static final int MAX_GLOBAL_PD_ESCORTS = 40;
     private static final double ORPHAN_DESPAWN_SECONDS = 18.0;
     private static final double RTB_HP_FRAC = 0.35;
@@ -23,10 +23,10 @@ public final class CarrierSystem {
     private static final double DEFEND_ORBIT = 170.0;
     private static final double ATTACK_SEARCH_RANGE = 1450.0;
     private static final double ATTACK_LEASH_RANGE = 980.0;
-    private static final int BOMBER_SLOT_INTERVAL = 5;
     private static final double PD_ESCORT_RESPAWN_SECONDS = 9.0;
     private static final double PD_ESCORT_ANCHOR_RANGE = 360.0;
-    private static final int STRIKE_WING_SIZE = 5;
+    private static final int STRIKE_WING_SIZE = 2;
+    private static final int STRIKE_SQUAD_SIZE = 2;
     private static final double STRIKE_FORMATION_SPACING = 54.0;
     private static final double STRIKE_COHESION_RANGE = 240.0;
     private static final double BOMBER_ESCORT_RANGE = 220.0;
@@ -275,17 +275,20 @@ public final class CarrierSystem {
         int activeWing = countActiveWingByCarrier(ctx, carrier.id);
         int deckRoom = Math.max(0, carrier.maxFighters - activeWing);
         int globalRoom = Math.max(0, MAX_GLOBAL_LAUNCHED_CRAFT - countGlobalLaunchedCraft(ctx));
-        int toLaunch = Math.min(5, Math.min(deckRoom, globalRoom));
+        int toLaunch = Math.min(STRIKE_SQUAD_SIZE, Math.min(deckRoom, globalRoom));
         if (toLaunch <= 0) return 0;
+        ShipRole squadRole = chooseLaunchRole(carrier);
         int launched = 0;
         for (int i = 0; i < toLaunch; i++) {
             int slotIndex = activeWing + launched;
-            ShipRole launchRole = chooseLaunchRole(carrier, slotIndex);
-            Ship craft = launchCraft(ctx, carrier, launchRole, dt, slotIndex);
+            Ship craft = launchCraft(ctx, carrier, squadRole, dt, slotIndex);
             if (craft == null) continue;
             launched++;
         }
-        if (launched > 0) carrier.resetFighterTimer();
+        if (launched > 0) {
+            carrier.flightDeckLaunchCursor = Math.floorMod(carrier.flightDeckLaunchCursor + 1, Math.max(1, carrier.flightDeckLoadout.length));
+            carrier.resetFighterTimer();
+        }
         return launched;
     }
 
@@ -316,12 +319,11 @@ public final class CarrierSystem {
         return craft;
     }
 
-    private static ShipRole chooseLaunchRole(Ship carrier, int activeWing) {
+    private static ShipRole chooseLaunchRole(Ship carrier) {
         if (carrier == null) return ShipRole.FIGHTER;
         if (!carrier.isCarrier) return ShipRole.FIGHTER;
         int slot = Math.floorMod(carrier.flightDeckLaunchCursor, Math.max(1, carrier.flightDeckLoadout.length));
         ShipRole role = carrier.flightDeckRoleAt(slot);
-        carrier.flightDeckLaunchCursor = (slot + 1) % Math.max(1, carrier.flightDeckLoadout.length);
         if (role == null) return (carrier.role == ShipRole.DRONE_CARRIER) ? ShipRole.DRONE : ShipRole.FIGHTER;
         return role;
     }

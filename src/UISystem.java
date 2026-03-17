@@ -645,7 +645,7 @@ public final class UISystem {
         int launched = CarrierSystem.tryLaunchFlight(ctx, p);
         if (launched > 0) {
             int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
-            EventSystem.showBanner(ctx, "FLIGHT LAUNCHED  " + launched + " CRAFT  " + active + "/" + p.maxFighters, 1.1);
+            EventSystem.showBanner(ctx, "SQUADRON LAUNCHED  " + launched + " CRAFT  " + active + "/" + p.maxFighters, 1.1);
             return;
         }
 
@@ -710,14 +710,14 @@ public final class UISystem {
     public static void cycleFocusedFlightDeckRole(GameContext ctx, int dir) {
         if (!ensurePlayerCarrier(ctx)) return;
         ctx.player.cycleFlightDeckRole(ctx.flightDeckFocus, dir);
-        EventSystem.showBanner(ctx, "FLIGHT SLOT " + (ctx.flightDeckFocus + 1) + ": "
+        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.flightDeckFocus + 1) + ": "
                 + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
     }
 
     public static void setFocusedFlightDeckRole(GameContext ctx, ShipRole role) {
         if (!ensurePlayerCarrier(ctx) || role == null) return;
         ctx.player.setFlightDeckRole(ctx.flightDeckFocus, role);
-        EventSystem.showBanner(ctx, "FLIGHT SLOT " + (ctx.flightDeckFocus + 1) + ": "
+        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.flightDeckFocus + 1) + ": "
                 + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
     }
 
@@ -726,13 +726,13 @@ public final class UISystem {
         for (int i = 0; i < ctx.player.flightDeckLoadout.length; i++) {
             ctx.player.setFlightDeckRole(i, role);
         }
-        EventSystem.showBanner(ctx, "FLIGHT LOADOUT: " + role.name() + " x5", 1.0);
+        EventSystem.showBanner(ctx, "SQUAD LOADOUT: " + role.name() + " x10", 1.0);
     }
 
     public static void resetFlightDeckLoadout(GameContext ctx) {
         if (!ensurePlayerCarrier(ctx)) return;
         ctx.player.resetFlightDeckLoadout();
-        EventSystem.showBanner(ctx, "FLIGHT LOADOUT RESET", 1.0);
+        EventSystem.showBanner(ctx, "SQUAD LOADOUT RESET", 1.0);
     }
 
     public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {

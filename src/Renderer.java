@@ -269,14 +269,18 @@ public class Renderer {
         if (g == null || ship == null) return;
         if (isTinyStrikeCraft(ship.role)) return;
         if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
+        if (!ship.hasRecentShieldImpactTelemetry()) return;
 
         double radius = shieldEnvelopeRadius(ship);
         double span = Math.toRadians(78.0);
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 5.5);
+        double fade = ship.recentShieldImpactTelemetryFraction();
         Stroke prevStroke = g.getStroke();
         g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
+        int impactedFace = ship.recentShieldImpactFace();
         for (int i = 0; i < ship.shieldFaceCount(); i++) {
+            if (i != impactedFace) continue;
             // drawShip() already rotated the graphics context by ship.angle,
             // so convert world-space shield-facing angles into ship-local angles.
             double center = MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, i) - ship.angle);
@@ -285,23 +289,21 @@ public class Renderer {
             Color base = shieldFaceColor(ship, i, 255);
 
             // Depleted face still shows a dim scaffold.
-            g.setColor(withAlpha(base, 22));
+            g.setColor(withAlpha(base, (int) Math.round(18 + 38 * fade)));
             drawShieldArcBand(g, radius - 0.2, radius + 1.2, center, span + Math.toRadians(2.0));
-
-            if (energy <= 0.0) continue;
 
             // Layered bands produce a faceted energy-field look.
             for (int layer = 0; layer < 3; layer++) {
                 double t = layer / 2.0;
                 double inner = radius + layer * 1.35;
                 double outer = inner + 1.35 + (1.05 - t * 0.32) * (0.8 + energy * 1.6);
-                int alpha = (int) Math.round((28 + energy * 92 + pulse * 20) * (1.0 - layer * 0.24));
+                int alpha = (int) Math.round((28 + energy * 92 + pulse * 20) * (1.0 - layer * 0.24) * fade);
                 Color layerColor = mixColor(base, new Color(220, 246, 255), 0.15 + 0.20 * (1.0 - t));
                 g.setColor(withAlpha(layerColor, alpha));
                 drawShieldArcBand(g, inner, outer, center, span * (1.0 - layer * 0.05));
             }
 
-            int edgeAlpha = (int) Math.round(52 + energy * 132 + pulse * 18);
+            int edgeAlpha = (int) Math.round((52 + energy * 132 + pulse * 18) * fade);
             g.setColor(withAlpha(mixColor(base, Color.WHITE, 0.38), edgeAlpha));
             drawShieldArcSegment(g, radius + 3.8, center, span * 0.96);
 
@@ -315,12 +317,43 @@ public class Renderer {
                 int sy = (int) Math.round(Math.sin(a) * r1);
                 int ex = (int) Math.round(Math.cos(a) * r2);
                 int ey = (int) Math.round(Math.sin(a) * r2);
-                g.setColor(withAlpha(layerColorForFace(base), (int) Math.round(36 + energy * 82)));
+                g.setColor(withAlpha(layerColorForFace(base), (int) Math.round((36 + energy * 82) * fade)));
                 g.drawLine(sx, sy, ex, ey);
             }
+
+            drawShieldFaceTelemetry(g, ship, i, center, radius + 10.0, fade, base);
         }
 
         g.setStroke(prevStroke);
+    }
+
+    private static void drawShieldFaceTelemetry(Graphics2D g, Ship ship, int face, double centerAngle,
+                                                double radius, double fade, Color accent) {
+        if (g == null || ship == null || face < 0) return;
+        String text = ship.shieldFaceName(face) + " "
+                + (int) Math.round(ship.shieldFaceValue(face)) + "/"
+                + (int) Math.round(ship.shieldFaceMax(face));
+        Font oldFont = g.getFont();
+        g.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics fm = g.getFontMetrics();
+        int textW = fm.stringWidth(text);
+        int tx = (int) Math.round(Math.cos(centerAngle) * radius) - textW / 2;
+        int ty = (int) Math.round(Math.sin(centerAngle) * radius);
+        int padX = 4;
+        int padY = 2;
+        int boxX = tx - padX;
+        int boxY = ty - fm.getAscent() + 1 - padY;
+        int boxW = textW + padX * 2;
+        int boxH = fm.getAscent() + fm.getDescent() + padY * 2;
+        int fillAlpha = MathUtil.clamp((int) Math.round(118 * fade), 0, 255);
+        int edgeAlpha = MathUtil.clamp((int) Math.round(182 * fade), 0, 255);
+        g.setColor(new Color(8, 14, 24, fillAlpha));
+        g.fillRoundRect(boxX, boxY, boxW, boxH, 8, 8);
+        g.setColor(withAlpha(accent, edgeAlpha));
+        g.drawRoundRect(boxX, boxY, boxW, boxH, 8, 8);
+        g.setColor(new Color(240, 248, 255, MathUtil.clamp((int) Math.round(228 * fade), 0, 255)));
+        g.drawString(text, tx, ty);
+        g.setFont(oldFont);
     }
 
     private static double shieldEnvelopeRadius(Ship ship) {
@@ -2334,22 +2367,23 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(225, 236, 250, 188));
         g2.drawString("/ or ESC close   F1-F5 select slot   [ ] move focus   -/+ cycle role", x + 18, y + 46);
-        g2.drawString("6 fighter   7 drone   8 bomber   9 all fighters   0 all bombers   Backspace default mix", x + 18, y + 62);
+        g2.drawString("Each slot is a 2-ship squad pair. 6 fighter   7 drone   8 bomber   9 all fighters   0 all bombers", x + 18, y + 62);
+        g2.drawString("Backspace default mix   Total deck: 5 squads / 10 craft", x + 18, y + 78);
 
         int focus = Math.max(0, Math.min(4, focusSlot));
         int slotGap = 12;
         int slotW = (w - 36 - slotGap * 4) / 5;
         int slotH = 132;
-        int slotY = y + 92;
+        int slotY = y + 108;
         int fighters = 0;
         int bombers = 0;
         int drones = 0;
 
         for (int i = 0; i < 5; i++) {
             ShipRole role = carrier.flightDeckRoleAt(i);
-            if (role == ShipRole.BOMBER) bombers++;
-            else if (role == ShipRole.DRONE) drones++;
-            else fighters++;
+            if (role == ShipRole.BOMBER) bombers += 2;
+            else if (role == ShipRole.DRONE) drones += 2;
+            else fighters += 2;
 
             int slotX = x + 18 + i * (slotW + slotGap);
             boolean selected = (i == focus);
@@ -2364,7 +2398,7 @@ public class Renderer {
 
             g2.setFont(new Font("Consolas", Font.BOLD, 13));
             g2.setColor(new Color(246, 250, 255, 228));
-            g2.drawString("SLOT " + (i + 1), slotX + 12, slotY + 20);
+            g2.drawString("SQUAD " + (i + 1), slotX + 12, slotY + 20);
 
             int chipW = Math.max(70, Math.min(slotW - 24, g2.getFontMetrics(new Font("Consolas", Font.BOLD, 12)).stringWidth(flightDeckRoleLabel(role)) + 18));
             drawHudStatusChip(g2, flightDeckRoleLabel(role), slotX + 12, slotY + 30, chipW, 20, accent, true);
@@ -2376,11 +2410,11 @@ public class Renderer {
             g2.setFont(new Font("Consolas", Font.PLAIN, 11));
             g2.setColor(new Color(216, 228, 242, 178));
             g2.drawString(flightDeckRoleDescription(role), slotX + 12, slotY + 98);
-            g2.drawString(selected ? "ACTIVE TEMPLATE SLOT" : "READY", slotX + 12, slotY + 116);
+            g2.drawString(selected ? "ACTIVE 2-SHIP PAIR" : "READY", slotX + 12, slotY + 116);
         }
 
         int summaryY = slotY + slotH + 34;
-        drawHudStatusChip(g2, "FLIGHT SIZE 5", x + 18, summaryY, 104, 18, new Color(140, 210, 255, 214), true);
+        drawHudStatusChip(g2, "PAIR SIZE 2", x + 18, summaryY, 104, 18, new Color(140, 210, 255, 214), true);
         drawHudStatusChip(g2, "FIGHTER " + fighters, x + 132, summaryY, 102, 18, flightDeckRoleColor(ShipRole.FIGHTER), fighters > 0);
         drawHudStatusChip(g2, "DRONE " + drones, x + 244, summaryY, 94, 18, flightDeckRoleColor(ShipRole.DRONE), drones > 0);
         drawHudStatusChip(g2, "BOMBER " + bombers, x + 348, summaryY, 104, 18, flightDeckRoleColor(ShipRole.BOMBER), bombers > 0);
@@ -2391,8 +2425,8 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(216, 228, 240, 190));
-        g2.drawString("Launch rhythm: the deck cycles these 5 slots in order whenever a new flight is launched.", x + 18, y + h - 38);
-        g2.drawString("Defend mode recalls bombers and their escorts before the next wave leaves the deck.", x + 18, y + h - 20);
+        g2.drawString("Launch rhythm: each launch call emits one 2-ship squad from the next squad slot in sequence.", x + 18, y + h - 38);
+        g2.drawString("Defend mode recalls bomber squads and fighter escorts before the next pair leaves the deck.", x + 18, y + h - 20);
     }
 
     private static String shortSystemName(Ship.InternalSystem system) {
@@ -2919,7 +2953,6 @@ public class Renderer {
             Color fill;
             if (!filteredIn) fill = new Color(70, 78, 96, 66);
             else if (disabled) fill = new Color(120, 120, 132, 132);
-            else if (fireIntensity > 0.06) fill = new Color(255, 110, 45, 170);
             else if (frac > 0.70) fill = new Color(95, 210, 255, 88);
             else if (frac > 0.35) fill = new Color(255, 195, 90, 120);
             else fill = new Color(255, 82, 82, 155);
@@ -2986,11 +3019,6 @@ public class Renderer {
                 g2.drawString(pct, px, py);
             }
 
-            // Overlay: active fires
-            if (fireIntensity > 0.06) {
-                g2.setColor(new Color(255, 196, 120, 215));
-                g2.drawString("F", cx - 3, cy - 4);
-            }
             // Overlay: repair team/task marker
             if (repairRoom == cell.roomId) {
                 g2.setColor(new Color(145, 255, 170, 200));
@@ -3057,7 +3085,7 @@ public class Renderer {
 
         g2.setFont(XRAY_META_FONT);
         g2.setColor(new Color(190, 230, 255, 180));
-        g2.drawString("RED<35%  AMBER<70%  BLUE>=70%  ORANGE=FIRE", x + 10, y + h - 34);
+        g2.drawString("RED<35%  AMBER<70%  BLUE>=70%", x + 10, y + h - 34);
         String filterLabel = (filterMode == null) ? "ALL" : filterMode.name();
         String focusLabel = (focusedRoom == null) ? "NONE" : xrayRoomDisplayLabel(focusedRoom);
         g2.drawString("FILTER[" + filterLabel + "] ` cycle   ' clear focus   FOCUS: " + focusLabel, x + 10, y + h - 22);
@@ -4159,29 +4187,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static void drawEngines(Graphics2D g, Ship ship, ShipVisual v) {
-            if (v.station) {
-                int ro = (int) Math.round(v.stationOuter + 6);
-                g.setColor(new Color(120, 220, 255, 95));
-                g.drawOval(-ro, -ro, ro * 2, ro * 2);
-                return;
-            }
-
-            for (EnginePoint p : v.engines) {
-                int ex = p.x;
-                int ey = p.y;
-
-                // cone bloom behind engine
-                Polygon cone = new Polygon(
-                        new int[]{ex - 1, ex - (int) (ship.radius * 0.42), ex - (int) (ship.radius * 0.42)},
-                        new int[]{ey, ey - 5, ey + 5}, 3);
-                g.setColor(new Color(120, 220, 255, 60));
-                g.fillPolygon(cone);
-
-                g.setColor(new Color(120, 220, 255, 120));
-                g.fillOval(ex - 5, ey - 3, 7, 7);
-                g.setColor(new Color(120, 220, 255, 70));
-                g.fillOval(ex - 9, ey - 7, 13, 13);
-            }
+            if (ship == null || v == null || v.station || v.engines.isEmpty()) return;
+            drawEngineNozzlePass(g, ship, v.engines, ship.radius);
         }
 
         private static void drawHardpoints(Graphics2D g, Ship ship, ShipVisual v) {
@@ -5227,33 +5234,115 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return Math.max(0, Math.min(255, v));
     }
 
+    private static void drawEngineNozzlePass(Graphics2D g, Ship ship, List<EnginePoint> engines, double radius) {
+        if (g == null || ship == null || engines == null || engines.isEmpty()) return;
+
+        Graphics2D g2 = (Graphics2D) g.create();
+        double shimmer = engineShimmerIntensity(ship);
+        double nozzleLen = Math.max(5.0, radius * 0.20);
+        double nozzleDia = Math.max(4.0, radius * (engines.size() >= 4 ? 0.11 : 0.15));
+        double shimmerLen = Math.max(3.5, radius * (0.18 + 0.28 * shimmer));
+
+        for (EnginePoint p : engines) {
+            if (p == null) continue;
+
+            double x = p.x - nozzleLen * 0.35;
+            double y = p.y - nozzleDia * 0.5;
+            int rx = (int) Math.round(x);
+            int ry = (int) Math.round(y);
+            int rw = Math.max(3, (int) Math.round(nozzleLen));
+            int rh = Math.max(3, (int) Math.round(nozzleDia));
+
+            g2.setColor(new Color(18, 22, 28, 220));
+            g2.fillRoundRect(rx, ry, rw, rh, rh, rh);
+
+            g2.setColor(new Color(66, 78, 92, 176));
+            g2.drawRoundRect(rx, ry, rw, rh, rh, rh);
+
+            int throatW = Math.max(2, (int) Math.round(rw * 0.42));
+            int throatH = Math.max(2, (int) Math.round(rh * 0.55));
+            int throatX = rx - Math.max(1, (int) Math.round(rw * 0.12));
+            int throatY = ry + (rh - throatH) / 2;
+            g2.setColor(new Color(5, 7, 10, 230));
+            g2.fillRoundRect(throatX, throatY, throatW, throatH, throatH, throatH);
+
+            g2.setColor(new Color(118, 134, 148, 120));
+            g2.drawLine(rx + Math.max(1, rw / 3), ry + 1, rx + rw - 2, ry + 1);
+
+            if (shimmer > 0.01) {
+                int aftX = throatX;
+                int aftY0 = throatY;
+                int aftY1 = throatY + throatH;
+                int tailX = (int) Math.round(aftX - shimmerLen);
+                int flare = Math.max(1, (int) Math.round(throatH * (0.18 + 0.30 * shimmer)));
+
+                Polygon wake = new Polygon(
+                        new int[]{aftX, tailX, aftX},
+                        new int[]{aftY0, p.y, aftY1},
+                        3
+                );
+                g2.setColor(new Color(158, 196, 210, MathUtil.clamp((int) Math.round(26 + 48 * shimmer), 0, 96)));
+                g2.fillPolygon(wake);
+
+                g2.setStroke(new BasicStroke(Math.max(1.1f, (float) (0.9 + shimmer * 0.9)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(232, 245, 250, MathUtil.clamp((int) Math.round(18 + 34 * shimmer), 0, 88)));
+                g2.drawLine(aftX, p.y, tailX, p.y);
+                g2.setColor(new Color(112, 150, 168, MathUtil.clamp((int) Math.round(18 + 28 * shimmer), 0, 70)));
+                g2.drawLine(aftX, aftY0 - flare, tailX + Math.max(1, flare), p.y);
+                g2.drawLine(aftX, aftY1 + flare, tailX + Math.max(1, flare), p.y);
+            }
+        }
+
+        g2.dispose();
+    }
+
+    private static double engineShimmerIntensity(Ship ship) {
+        if (ship == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) return 0.0;
+        double dt = Math.max(1e-6, GameContext.DT);
+        double speedPerSec = Math.hypot(ship.vx, ship.vy) / dt;
+        double ceiling = Math.max(1.0, MovementModel.speedCeiling(ship));
+        double speedFrac = MathUtil.clamp(speedPerSec / ceiling, 0.0, 1.0);
+        double drive = speedFrac * (0.58 + 0.42 * ship.powerEnginesFrac());
+        if (ship.isEmergencyThrustActive()) {
+            drive = Math.max(drive, 0.88 + 0.12 * (1.0 - ship.emergencyThrustHeat()));
+        }
+        return MathUtil.clamp((drive - 0.52) / 0.40, 0.0, 1.0);
+    }
+
+    private static List<EnginePoint> enginePointsForLegacy(Ship ship) {
+        if (ship == null || ship.role == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) {
+            return java.util.Collections.emptyList();
+        }
+
+        int count = switch (ship.role) {
+            case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 1;
+            case PATROL, FRIGATE, PICKET, LIGHT_CRUISER, MISSILE_BOAT, MINER, TRANSPORT, HAULER, DRONE_CARRIER, CARRIER -> 2;
+            case MEDIUM_CRUISER, CRUISER -> 3;
+            case BATTLECRUISER, SUPERSHIP -> 4;
+            case BATTLESHIP -> 5;
+            case DREADNOUGHT -> 6;
+            default -> 2;
+        };
+
+        int r = Math.max(6, (int) Math.round(ship.radius));
+        int x = -r + 1;
+        if (count == 1) {
+            return java.util.Collections.singletonList(new EnginePoint(x, 0));
+        }
+
+        List<EnginePoint> points = new ArrayList<>();
+        double span = Math.max(3.0, r * 0.48);
+        for (int i = 0; i < count; i++) {
+            double t = (count == 1) ? 0.5 : (double) i / (double) (count - 1);
+            int y = (int) Math.round(-span + t * span * 2.0);
+            points.add(new EnginePoint(x, y));
+        }
+        return points;
+    }
+
     private static void drawEngines(Graphics2D g, Ship ship) {
-        int r = (int) Math.round(ship.radius);
-        if (ship.role == ShipRole.BASE) return;
-
-        int ex = -r;
-        int ey = 0;
-
-        g.setColor(new Color(120, 220, 255, 120));
-        g.fillOval(ex - 6, ey - 4, 8, 8);
-
-        g.setColor(new Color(120, 220, 255, 70));
-        g.fillOval(ex - 10, ey - 8, 14, 14);
-
-        if (ship.role == ShipRole.CARRIER || ship.role == ShipRole.MISSILE_BOAT
-                || ship.role == ShipRole.LIGHT_CRUISER || ship.role == ShipRole.MEDIUM_CRUISER || ship.role == ShipRole.CRUISER
-                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP
-                || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
-            g.setColor(new Color(120, 220, 255, 120));
-            g.fillOval(ex - 6, -r / 3 - 4, 8, 8);
-            g.fillOval(ex - 6, r / 3 - 4, 8, 8);
-        }
-
-        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
-            g.setColor(new Color(120, 220, 255, 105));
-            g.fillOval(ex - 8, -r / 2 - 4, 10, 10);
-            g.fillOval(ex - 8, r / 2 - 4, 10, 10);
-        }
+        if (ship == null) return;
+        drawEngineNozzlePass(g, ship, enginePointsForLegacy(ship), ship.radius);
     }
 
     private static void drawTurrets(Graphics2D g2, Ship ship) {
@@ -5654,10 +5743,436 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
                 }
             }
+            drawDestroyedHullBreaches(g, ship, hullShape, marks, span);
         } finally {
             g.setStroke(oldStroke);
             g.setClip(oldClip);
         }
+    }
+
+    private static void drawDestroyedHullBreaches(Graphics2D g,
+                                                  Ship ship,
+                                                  Shape hullShape,
+                                                  List<Ship.HullImpactMark> marks,
+                                                  int span) {
+        if (g == null || ship == null || hullShape == null) return;
+
+        EnumMap<ShipRoomLayout.RoomId, Area> shellAreas = destroyedHullShellAreas(ship, hullShape);
+        if (shellAreas.isEmpty()) return;
+
+        Stroke oldStroke = g.getStroke();
+        for (Map.Entry<ShipRoomLayout.RoomId, Area> entry : shellAreas.entrySet()) {
+            ShipRoomLayout.RoomId roomId = entry.getKey();
+            Area shellArea = entry.getValue();
+            if (shellArea == null || shellArea.isEmpty()) continue;
+
+            Area breachArea = buildDestroyedRoomBreachArea(ship, roomId, shellArea, marks, span);
+            if (breachArea == null || breachArea.isEmpty()) continue;
+
+            g.setColor(new Color(5, 6, 9, 232));
+            g.fill(breachArea);
+
+            float rim = Math.max(1.1f, (float) (1.0 + span * 0.0035));
+            g.setStroke(new BasicStroke(rim, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(198, 208, 220, 82));
+            g.draw(breachArea);
+
+            drawHullBreachInterior(g, breachArea, roomId, span, ship);
+        }
+        g.setStroke(oldStroke);
+    }
+
+    private static EnumMap<ShipRoomLayout.RoomId, Area> destroyedHullShellAreas(Ship ship, Shape hullShape) {
+        EnumMap<ShipRoomLayout.RoomId, Area> out = new EnumMap<>(ShipRoomLayout.RoomId.class);
+        if (ship == null || hullShape == null) return out;
+
+        Area hullArea = new Area(hullShape);
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role)) {
+            if (cell == null || cell.roomId == null) continue;
+            if (!ShipRoomLayout.isArmorRoom(cell.roomId)) continue;
+            if (ship.roomHealthFraction(cell.roomId) > 1e-3) continue;
+
+            Polygon poly = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+            if (poly == null || poly.npoints < 3) continue;
+
+            Area cellArea = new Area(poly);
+            cellArea.intersect(new Area(hullArea));
+            if (cellArea.isEmpty()) continue;
+
+            out.computeIfAbsent(cell.roomId, key -> new Area()).add(cellArea);
+        }
+        return out;
+    }
+
+    private static Area buildDestroyedRoomBreachArea(Ship ship,
+                                                     ShipRoomLayout.RoomId roomId,
+                                                     Area shellArea,
+                                                     List<Ship.HullImpactMark> marks,
+                                                     int span) {
+        if (ship == null || roomId == null || shellArea == null || shellArea.isEmpty()) return null;
+
+        Rectangle bounds = shellArea.getBounds();
+        if (bounds.width <= 0 || bounds.height <= 0) return null;
+
+        Area breach = new Area();
+        int placed = 0;
+        if (marks != null && !marks.isEmpty()) {
+            for (int i = Math.max(0, marks.size() - 8); i < marks.size(); i++) {
+                Ship.HullImpactMark mark = marks.get(i);
+                if (mark == null || mark.roomId != roomId) continue;
+
+                double base = Math.max(5.0, Math.min(bounds.width, bounds.height) * 0.20);
+                double radius = Math.max(base, mark.breachRadius * 1.6 + mark.severity * span * 0.025);
+                Area shard = new Area(createBreachBlob(mark.localX, mark.localY, radius,
+                        radius * (0.85 + mark.severity * 0.35),
+                        breachSeed(ship, roomId, i)));
+                shard.intersect(new Area(shellArea));
+                if (!shard.isEmpty()) {
+                    breach.add(shard);
+                    placed++;
+                }
+            }
+        }
+
+        if (placed == 0) {
+            double cx = bounds.getCenterX();
+            double cy = bounds.getCenterY();
+            double radius = Math.max(6.0, Math.min(bounds.width, bounds.height) * 0.28);
+            Area fallback = new Area(createBreachBlob(cx, cy, radius, radius * 0.92,
+                    breachSeed(ship, roomId, 0)));
+            fallback.intersect(new Area(shellArea));
+            breach.add(fallback);
+        }
+
+        Rectangle breachBounds = breach.getBounds();
+        double shellScale = Math.max(8.0, Math.min(bounds.width, bounds.height));
+        if (breachBounds.width < shellScale * 0.22 && breachBounds.height < shellScale * 0.22) {
+            double cx = bounds.getCenterX();
+            double cy = bounds.getCenterY();
+            double radius = Math.max(5.0, Math.min(bounds.width, bounds.height) * 0.18);
+            Area supplement = new Area(createBreachBlob(cx, cy, radius, radius * 0.78,
+                    breachSeed(ship, roomId, 17)));
+            supplement.intersect(new Area(shellArea));
+            breach.add(supplement);
+        }
+
+        return breach;
+    }
+
+    private static Shape createBreachBlob(double cx, double cy, double rx, double ry, long seed) {
+        Random rng = new Random(seed);
+        int points = 10;
+        Path2D.Double path = new Path2D.Double();
+        for (int i = 0; i < points; i++) {
+            double t = (Math.PI * 2.0 * i) / points;
+            double jitter = 0.68 + rng.nextDouble() * 0.52;
+            double px = cx + Math.cos(t) * rx * jitter;
+            double py = cy + Math.sin(t) * ry * jitter;
+            if (i == 0) path.moveTo(px, py);
+            else path.lineTo(px, py);
+        }
+        path.closePath();
+        return path;
+    }
+
+    private static void drawHullBreachInterior(Graphics2D g,
+                                               Shape breachShape,
+                                               ShipRoomLayout.RoomId roomId,
+                                               int span,
+                                               Ship ship) {
+        if (g == null || breachShape == null) return;
+        Rectangle b = breachShape.getBounds();
+        if (b.width <= 0 || b.height <= 0) return;
+
+        Graphics2D gi = (Graphics2D) g.create();
+        gi.setClip(breachShape);
+
+        drawClassSpecificBreachBackdrop(gi, ship, b, roomId);
+        drawExposedInteriorRooms(gi, ship, breachShape, roomId);
+
+        GradientPaint depth = new GradientPaint(
+                b.x, b.y,
+                new Color(18, 20, 24, 120),
+                b.x + b.width, b.y + b.height,
+                new Color(2, 3, 5, 0)
+        );
+        gi.setPaint(depth);
+        gi.fillRect(b.x, b.y, b.width, b.height);
+
+        long seed = breachSeed(ship, roomId, 91);
+        Random rng = new Random(seed);
+        gi.setStroke(new BasicStroke(Math.max(1.0f, (float) (span * 0.0018)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gi.setColor(new Color(76, 82, 92, 92));
+
+        int verticals = Math.max(2, Math.min(6, b.width / 8));
+        for (int i = 0; i < verticals; i++) {
+            int x = b.x + (int) Math.round((i + 1.0) * b.width / (verticals + 1.0)) + rng.nextInt(3) - 1;
+            gi.drawLine(x, b.y, x, b.y + b.height);
+        }
+
+        int horizontals = Math.max(1, Math.min(4, b.height / 10));
+        for (int i = 0; i < horizontals; i++) {
+            int y = b.y + (int) Math.round((i + 1.0) * b.height / (horizontals + 1.0)) + rng.nextInt(3) - 1;
+            gi.drawLine(b.x, y, b.x + b.width, y);
+        }
+
+        gi.dispose();
+    }
+
+    private static void drawClassSpecificBreachBackdrop(Graphics2D g,
+                                                        Ship ship,
+                                                        Rectangle breachBounds,
+                                                        ShipRoomLayout.RoomId breachedRoom) {
+        if (g == null || ship == null || breachBounds == null) return;
+        if (breachBounds.width <= 0 || breachBounds.height <= 0) return;
+
+        String profile = ShipRoomLayout.profileIdForRole(ship.role);
+        if (ship.role == ShipRole.CARRIER || ship.role == ShipRole.DRONE_CARRIER
+                || "carrier".equals(profile)) {
+            drawCarrierBreachBackdrop(g, breachBounds, breachedRoom, ship);
+            return;
+        }
+        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
+            drawHeavyCapitalBreachBackdrop(g, breachBounds, breachedRoom, ship);
+            return;
+        }
+        if (ship.role == ShipRole.LIGHT_CRUISER || ship.role == ShipRole.MEDIUM_CRUISER
+                || ship.role == ShipRole.CRUISER || ship.role == ShipRole.BATTLECRUISER) {
+            drawCruiserBreachBackdrop(g, breachBounds, breachedRoom, ship);
+            return;
+        }
+        if (ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET || "station".equals(profile)) {
+            drawStationBreachBackdrop(g, breachBounds, ship);
+            return;
+        }
+        drawLightHullBreachBackdrop(g, breachBounds, breachedRoom, ship);
+    }
+
+    private static void drawCarrierBreachBackdrop(Graphics2D g,
+                                                  Rectangle b,
+                                                  ShipRoomLayout.RoomId breachedRoom,
+                                                  Ship ship) {
+        g.setColor(new Color(20, 24, 30, 160));
+        g.fillRect(b.x, b.y, b.width, b.height);
+
+        int laneCount = Math.max(2, Math.min(5, b.height / 9));
+        for (int i = 0; i < laneCount; i++) {
+            int y = b.y + (int) Math.round((i + 1.0) * b.height / (laneCount + 1.0));
+            g.setColor(new Color(62, 72, 84, 110));
+            g.drawLine(b.x, y, b.x + b.width, y);
+        }
+
+        int bayCount = Math.max(2, Math.min(6, b.width / 11));
+        int bayW = Math.max(4, b.width / Math.max(3, bayCount + 1));
+        int bayH = Math.max(4, b.height / Math.max(3, laneCount + 1));
+        for (int i = 0; i < bayCount; i++) {
+            int x = b.x + 2 + i * Math.max(5, bayW - 1);
+            int y = b.y + ((i % 2 == 0) ? 2 : Math.max(2, b.height - bayH - 2));
+            g.setColor(new Color(38, 46, 56, 132));
+            g.fillRoundRect(x, y, bayW, bayH, 4, 4);
+            g.setColor(new Color(108, 128, 146, 92));
+            g.drawRoundRect(x, y, bayW, bayH, 4, 4);
+        }
+
+        if (breachedRoom == ShipRoomLayout.RoomId.BOW_ARMOR || breachedRoom == ShipRoomLayout.RoomId.AFT_ARMOR) {
+            int catwalkY = b.y + b.height / 2;
+            g.setColor(new Color(146, 164, 180, 86));
+            g.drawLine(b.x, catwalkY, b.x + b.width, catwalkY);
+        }
+    }
+
+    private static void drawCruiserBreachBackdrop(Graphics2D g,
+                                                  Rectangle b,
+                                                  ShipRoomLayout.RoomId breachedRoom,
+                                                  Ship ship) {
+        g.setColor(new Color(18, 22, 28, 152));
+        g.fillRect(b.x, b.y, b.width, b.height);
+
+        int ribs = Math.max(3, Math.min(8, b.width / 9));
+        for (int i = 0; i < ribs; i++) {
+            int x = b.x + (int) Math.round((i + 1.0) * b.width / (ribs + 1.0));
+            g.setColor(new Color(74, 86, 98, 118));
+            g.drawLine(x, b.y, x, b.y + b.height);
+        }
+
+        int decks = Math.max(1, Math.min(4, b.height / 12));
+        for (int i = 0; i < decks; i++) {
+            int y = b.y + (int) Math.round((i + 1.0) * b.height / (decks + 1.0));
+            g.setColor(new Color(52, 60, 70, 92));
+            g.drawLine(b.x, y, b.x + b.width, y);
+        }
+
+        if (breachedRoom == ShipRoomLayout.RoomId.DORSAL_ARMOR || breachedRoom == ShipRoomLayout.RoomId.VENTRAL_ARMOR) {
+            int conduitX = b.x + b.width / 2;
+            g.setColor(new Color(128, 142, 158, 84));
+            g.drawLine(conduitX, b.y, conduitX, b.y + b.height);
+        }
+    }
+
+    private static void drawHeavyCapitalBreachBackdrop(Graphics2D g,
+                                                       Rectangle b,
+                                                       ShipRoomLayout.RoomId breachedRoom,
+                                                       Ship ship) {
+        g.setColor(new Color(16, 18, 24, 168));
+        g.fillRect(b.x, b.y, b.width, b.height);
+
+        int bulkheads = Math.max(2, Math.min(5, b.width / 15));
+        int bandW = Math.max(3, b.width / Math.max(3, bulkheads * 2));
+        for (int i = 0; i < bulkheads; i++) {
+            int x = b.x + 2 + i * Math.max(6, bandW + 3);
+            g.setColor(new Color(44, 50, 58, 150));
+            g.fillRect(x, b.y, Math.max(2, bandW / 2), b.height);
+            g.setColor(new Color(118, 128, 138, 96));
+            g.drawLine(x + Math.max(1, bandW / 4), b.y, x + Math.max(1, bandW / 4), b.y + b.height);
+        }
+
+        int armorBelts = Math.max(2, Math.min(4, b.height / 10));
+        for (int i = 0; i < armorBelts; i++) {
+            int y = b.y + (int) Math.round((i + 1.0) * b.height / (armorBelts + 1.0));
+            g.setColor(new Color(70, 78, 88, 108));
+            g.fillRect(b.x, y - 1, b.width, 2);
+        }
+
+        int spineX = (breachedRoom == ShipRoomLayout.RoomId.AFT_ARMOR) ? b.x + b.width / 3 : b.x + (b.width * 2) / 3;
+        g.setColor(new Color(154, 166, 176, 74));
+        g.drawLine(spineX, b.y, spineX, b.y + b.height);
+    }
+
+    private static void drawStationBreachBackdrop(Graphics2D g, Rectangle b, Ship ship) {
+        g.setColor(new Color(18, 22, 30, 158));
+        g.fillRect(b.x, b.y, b.width, b.height);
+
+        int cx = b.x + b.width / 2;
+        int cy = b.y + b.height / 2;
+        int spokes = Math.max(4, Math.min(8, Math.max(b.width, b.height) / 8));
+        g.setColor(new Color(88, 102, 120, 112));
+        for (int i = 0; i < spokes; i++) {
+            double a = (Math.PI * 2.0 * i) / spokes;
+            int x2 = cx + (int) Math.round(Math.cos(a) * b.width * 0.55);
+            int y2 = cy + (int) Math.round(Math.sin(a) * b.height * 0.55);
+            g.drawLine(cx, cy, x2, y2);
+        }
+        g.setColor(new Color(62, 72, 86, 104));
+        g.drawOval(b.x + b.width / 5, b.y + b.height / 5, Math.max(6, b.width * 3 / 5), Math.max(6, b.height * 3 / 5));
+    }
+
+    private static void drawLightHullBreachBackdrop(Graphics2D g,
+                                                    Rectangle b,
+                                                    ShipRoomLayout.RoomId breachedRoom,
+                                                    Ship ship) {
+        g.setColor(new Color(18, 22, 28, 144));
+        g.fillRect(b.x, b.y, b.width, b.height);
+
+        int frames = Math.max(2, Math.min(4, Math.max(b.width, b.height) / 10));
+        for (int i = 0; i < frames; i++) {
+            int inset = 1 + i * 3;
+            int w = Math.max(4, b.width - inset * 2);
+            int h = Math.max(4, b.height - inset * 2);
+            if (w <= 4 || h <= 4) break;
+            g.setColor(new Color(80, 94, 108, Math.max(38, 104 - i * 20)));
+            g.drawRoundRect(b.x + inset, b.y + inset, w, h, 4, 4);
+        }
+    }
+
+    private static void drawExposedInteriorRooms(Graphics2D g,
+                                                 Ship ship,
+                                                 Shape breachShape,
+                                                 ShipRoomLayout.RoomId breachedRoom) {
+        if (g == null || ship == null || breachShape == null || breachedRoom == null) return;
+
+        LinkedHashSet<ShipRoomLayout.RoomId> exposedRooms = exposedInteriorRoomIds(ship.role, breachedRoom);
+        if (exposedRooms.isEmpty()) return;
+
+        Rectangle breachBounds = breachShape.getBounds();
+        double offset = Math.max(4.0, Math.min(breachBounds.width, breachBounds.height) * 0.24);
+        int shiftX = 0;
+        int shiftY = 0;
+        switch (breachedRoom) {
+            case DORSAL_ARMOR -> shiftY = (int) Math.round(-offset);
+            case VENTRAL_ARMOR -> shiftY = (int) Math.round(offset);
+            case BOW_ARMOR -> shiftX = (int) Math.round(offset);
+            case AFT_ARMOR -> shiftX = (int) Math.round(-offset);
+            default -> {
+                return;
+            }
+        }
+
+        g.translate(shiftX, shiftY);
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role)) {
+            if (cell == null || cell.roomId == null) continue;
+            if (!exposedRooms.contains(cell.roomId) || ShipRoomLayout.isArmorRoom(cell.roomId)) continue;
+
+            Polygon poly = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+            if (poly == null || poly.npoints < 3) continue;
+
+            double frac = ship.roomHealthFraction(cell.roomId);
+            Color tint = roomTraceTint(cell.roomId, 150);
+            Color fill = new Color(
+                    MathUtil.clamp((tint.getRed() + 16) / 2, 0, 255),
+                    MathUtil.clamp((tint.getGreen() + 18) / 2, 0, 255),
+                    MathUtil.clamp((tint.getBlue() + 22) / 2, 0, 255),
+                    MathUtil.clamp((int) Math.round(96 + (1.0 - frac) * 54), 0, 170)
+            );
+            g.setColor(fill);
+            g.fillPolygon(poly);
+            g.setColor(roomTraceTint(cell.roomId, 112));
+            g.drawPolygon(poly);
+
+            if (cell.labelAnchor) {
+                Rectangle pb = poly.getBounds();
+                if (pb.width >= 16 && pb.height >= 11) {
+                    String symbol = xrayRoomSymbol(cell.roomId);
+                    Font font = (pb.width >= 24 && pb.height >= 14) ? XRAY_REPAIR_FONT : new Font("Consolas", Font.BOLD, 7);
+                    g.setFont(font);
+                    FontMetrics fm = g.getFontMetrics();
+                    int tx = (int) Math.round(pb.getCenterX()) - fm.stringWidth(symbol) / 2;
+                    int ty = (int) Math.round(pb.getCenterY()) + Math.max(4, fm.getAscent() / 2 - 1);
+                    g.setColor(new Color(238, 244, 248, 210));
+                    g.drawString(symbol, tx, ty);
+                }
+            }
+        }
+        g.translate(-shiftX, -shiftY);
+    }
+
+    private static LinkedHashSet<ShipRoomLayout.RoomId> exposedInteriorRoomIds(ShipRole role,
+                                                                                ShipRoomLayout.RoomId breachedRoom) {
+        LinkedHashSet<ShipRoomLayout.RoomId> out = new LinkedHashSet<>();
+        HashSet<ShipRoomLayout.RoomId> visited = new HashSet<>();
+        ShipRoomLayout.RoomDef root = ShipRoomLayout.roomForId(role, breachedRoom);
+        if (root == null) return out;
+
+        for (ShipRoomLayout.RoomId neighbor : root.neighbors) {
+            collectExposedInteriorRoomIds(role, neighbor, 0, 2, visited, out);
+        }
+        return out;
+    }
+
+    private static void collectExposedInteriorRoomIds(ShipRole role,
+                                                      ShipRoomLayout.RoomId roomId,
+                                                      int depth,
+                                                      int maxDepth,
+                                                      Set<ShipRoomLayout.RoomId> visited,
+                                                      LinkedHashSet<ShipRoomLayout.RoomId> out) {
+        if (roomId == null || depth > maxDepth || visited.contains(roomId)) return;
+        visited.add(roomId);
+
+        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, roomId);
+        if (def == null) return;
+        if (!ShipRoomLayout.isArmorRoom(roomId)) {
+            out.add(roomId);
+        }
+        if (depth == maxDepth) return;
+        for (ShipRoomLayout.RoomId next : def.neighbors) {
+            if (next == null || ShipRoomLayout.isArmorRoom(next)) continue;
+            collectExposedInteriorRoomIds(role, next, depth + 1, maxDepth, visited, out);
+        }
+    }
+
+    private static long breachSeed(Ship ship, ShipRoomLayout.RoomId roomId, int salt) {
+        long base = (ship == null) ? 0L : (long) System.identityHashCode(ship);
+        long room = (roomId == null) ? 0L : (roomId.ordinal() + 1L) * 0x9E3779B97F4A7C15L;
+        return base * 1103515245L + room + salt * 2654435761L;
     }
 
     private static Color roomTraceTint(ShipRoomLayout.RoomId roomId, int alpha) {

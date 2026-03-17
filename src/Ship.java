@@ -168,6 +168,7 @@ public abstract class Ship {
     public double shieldDirectionalArc = Math.toRadians(120.0);
     private double recentShieldImpactAngle = Double.NaN;
     private double recentShieldImpactTimer = 0.0;
+    private int recentShieldImpactFace = -1;
 
     // Turrets
     public final List<Turret> turrets = new ArrayList<>();
@@ -631,7 +632,10 @@ public abstract class Ship {
         }
         if (recentShieldImpactTimer > 0.0) {
             recentShieldImpactTimer -= dt;
-            if (recentShieldImpactTimer < 0.0) recentShieldImpactTimer = 0.0;
+            if (recentShieldImpactTimer < 0.0) {
+                recentShieldImpactTimer = 0.0;
+                recentShieldImpactFace = -1;
+            }
         }
         updateHullImpactDecay(dt);
         ensureInternalSystemsInitialized();
@@ -699,7 +703,7 @@ public abstract class Ship {
             if (fighterTimer < 0) fighterTimer = 0;
         }
 
-        if (isBase) {
+        if (isBase || isCarrier) {
             baseSpawnTimer -= dt;
             if (baseSpawnTimer < 0) baseSpawnTimer = 0;
         }
@@ -895,6 +899,7 @@ public abstract class Ship {
             if (Double.isFinite(threatFacingAngle)) {
                 recentShieldImpactAngle = threatFacingAngle;
                 recentShieldImpactTimer = 1.2;
+                recentShieldImpactFace = face;
             }
             if (faceHpBefore > 1e-6) {
                 double shieldScale = directionalShieldDamageScaleFromAngle(impactAngle, shieldFacingForHit);
@@ -1733,6 +1738,18 @@ public abstract class Ship {
         double max = shieldFaceMax(face);
         if (max <= 1e-9) return 0.0;
         return Math.max(0.0, Math.min(1.0, shieldFaceValue(face) / max));
+    }
+
+    public boolean hasRecentShieldImpactTelemetry() {
+        return recentShieldImpactTimer > 1e-6 && recentShieldImpactFace >= 0 && recentShieldImpactFace < SHIELD_FACE_COUNT;
+    }
+
+    public int recentShieldImpactFace() {
+        return hasRecentShieldImpactTelemetry() ? recentShieldImpactFace : -1;
+    }
+
+    public double recentShieldImpactTelemetryFraction() {
+        return Math.max(0.0, Math.min(1.0, recentShieldImpactTimer / 1.2));
     }
 
     public double shieldArcDegrees() {
@@ -3651,6 +3668,10 @@ public abstract class Ship {
         return alive && isBase && baseSpawnTimer <= 0;
     }
 
+    public boolean canSpawnMobileReinforcement() {
+        return alive && isCarrier && baseSpawnTimer <= 0;
+    }
+
     public void resetBaseSpawnTimer() {
         baseSpawnTimer = baseSpawnCooldown;
     }
@@ -3746,6 +3767,7 @@ public abstract class Ship {
         shieldOfflineTimer = 0.0;
         recentShieldImpactTimer = 0.0;
         recentShieldImpactAngle = Double.NaN;
+        recentShieldImpactFace = -1;
         for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaceRegenLock[i] = 0.0;
         if (shieldFacingMode == ShieldFacingMode.FORWARD) {
             shieldFacingAngle = angle;

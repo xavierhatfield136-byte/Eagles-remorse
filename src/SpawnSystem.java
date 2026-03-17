@@ -206,7 +206,18 @@ public final class SpawnSystem {
                 && ctx.enemyBase.hp > 0 && ctx.enemyBase.faction != null
                 && ctx.enemyBase.faction.teamId() == faction.teamId()) hasAliveBase = true;
 
-        if (!hasAliveBase) return 0;
+        boolean hasCarrierHangar = false;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (!s.isCarrier) continue;
+            if (s.faction == null || s.faction.teamId() != faction.teamId()) continue;
+            hasCarrierHangar = true;
+            break;
+        }
+        if (hasCarrierHangar) best = Math.max(best, 1);
+
+        if (!hasAliveBase && !hasCarrierHangar) return 0;
         return Math.max(0, Math.min(3, best));
     }
 

@@ -175,26 +175,7 @@ public final class VFX {
 
     /** Small flame puffs for burning wrecks. Purely cosmetic. */
     public static void spawnShipFire(double x, double y, double intensity) {
-        Particle p = new Particle();
-        p.type = Type.FIRE;
-        p.x = x;
-        p.y = y;
-        p.angle = RNG.nextDouble() * Math.PI * 2.0;
-        p.angleVel = (RNG.nextDouble() - 0.5) * 0.12;
-        p.size = 3.5 + intensity * (2.5 + RNG.nextDouble() * 3.0);
-        p.maxLife = p.life = 16 + RNG.nextInt(16);
-        p.baseAlpha = 190;
-
-        // gentle drift
-        double a = RNG.nextDouble() * Math.PI * 2.0;
-        double sp = 10 + RNG.nextDouble() * 35;
-        p.vx = Math.cos(a) * sp * DEFAULT_DT;
-        p.vy = Math.sin(a) * sp * DEFAULT_DT;
-
-        // warm oranges
-        int g = 90 + RNG.nextInt(80);
-        p.color = new Color(255, g, 70);
-        addCapped(p);
+        // Ship fire visuals retired so hull deformation remains readable under damage.
     }
 
     /** Debris burst when a ship finally explodes. baseVx/baseVy are per-tick deltas to inherit. */

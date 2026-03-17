@@ -252,7 +252,7 @@ if (DevTools.isDebugOverlay()) {
         if (p.isCarrier) {
             int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
             if (active <= 0) {
-                return "Carrier wing idle: press / to set a 5-craft loadout, C to launch, V to set wing behavior.";
+                return "Carrier wing idle: press / to set 5 squad pairs, C to launch a 2-ship squad, V to set wing behavior.";
             }
         }
         return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL).";
