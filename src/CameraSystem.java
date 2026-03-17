@@ -1,17 +1,14 @@
 public final class CameraSystem {
+    private static final double CAMERA_PAN_SPEED_SCREEN_UNITS = 900.0;
+
     private CameraSystem(){}
 
     public static void update(GameContext ctx, int viewportW, int viewportH) {
         if (ctx.player == null) return;
         double viewW = worldViewWidth(ctx, viewportW);
         double viewH = worldViewHeight(ctx, viewportH);
-        ctx.camX = ctx.player.x - viewW / 2.0;
-        ctx.camY = ctx.player.y - viewH / 2.0;
-
-        double maxCamX = Math.max(0.0, ctx.WORLD_W - viewW);
-        double maxCamY = Math.max(0.0, ctx.WORLD_H - viewH);
-        ctx.camX = GameMath.clamp(ctx.camX, 0.0, maxCamX);
-        ctx.camY = GameMath.clamp(ctx.camY, 0.0, maxCamY);
+        ctx.camX = ctx.player.x + ctx.cameraOffsetX - viewW / 2.0;
+        ctx.camY = ctx.player.y + ctx.cameraOffsetY - viewH / 2.0;
     }
 
     public static double normalizedZoom(GameContext ctx) {
@@ -37,6 +34,34 @@ public final class CameraSystem {
         double current = normalizedZoom(ctx);
         double next = current * Math.pow(1.15, step);
         setZoom(ctx, next);
+    }
+
+    public static void updateManualPan(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        double panX = 0.0;
+        double panY = 0.0;
+        if (ctx.cameraPanLeft) panX -= 1.0;
+        if (ctx.cameraPanRight) panX += 1.0;
+        if (ctx.cameraPanUp) panY -= 1.0;
+        if (ctx.cameraPanDown) panY += 1.0;
+        if (Math.abs(panX) <= 1e-9 && Math.abs(panY) <= 1e-9) return;
+
+        double len = Math.hypot(panX, panY);
+        if (len > 1e-9) {
+            panX /= len;
+            panY /= len;
+        }
+
+        double zoom = normalizedZoom(ctx);
+        double panSpeed = CAMERA_PAN_SPEED_SCREEN_UNITS / Math.max(zoom, 1e-6);
+        ctx.cameraOffsetX += panX * panSpeed * dt;
+        ctx.cameraOffsetY += panY * panSpeed * dt;
+    }
+
+    public static void resetManualOffset(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.cameraOffsetX = 0.0;
+        ctx.cameraOffsetY = 0.0;
     }
 
     public static double worldViewWidth(GameContext ctx, int viewportW) {

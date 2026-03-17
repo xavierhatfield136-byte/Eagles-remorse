@@ -13,6 +13,7 @@ public class PhaserBeam extends Projectile {
     public double length;
     public double width;
     public double damagePerSecond;
+    private double impactFraction = 1.0;
 
     public PhaserBeam(
             Ship emitter,
@@ -44,10 +45,40 @@ public class PhaserBeam extends Projectile {
         syncFromEmitter();
     }
 
+    public PhaserBeam(
+            Ship emitter,
+            double angle,
+            double length,
+            double width,
+            double damagePerSecond,
+            int life,
+            double muzzleOffset,
+            Faction faction
+    ) {
+        super(
+                emitter != null ? emitter.x : 0.0,
+                emitter != null ? emitter.y : 0.0,
+                0.0,
+                0.0,
+                Math.max(1.0, width),
+                1,
+                Math.max(1, life),
+                faction
+        );
+        this.emitter = emitter;
+        this.emitterTurret = null;
+        this.muzzleOffset = Math.max(0.0, muzzleOffset);
+        this.angle = angle;
+        this.length = Math.max(80.0, length);
+        this.width = Math.max(1.0, width);
+        this.damagePerSecond = Math.max(0.0, damagePerSecond);
+        syncFromEmitter();
+    }
+
     @Override
     public void update(double dt) {
         if (!alive) return;
-        if (emitter == null || emitterTurret == null) {
+        if (emitter == null) {
             alive = false;
             return;
         }
@@ -57,6 +88,7 @@ public class PhaserBeam extends Projectile {
         }
 
         syncFromEmitter();
+        impactFraction = 1.0;
         life--;
         if (life <= 0) alive = false;
     }
@@ -70,11 +102,15 @@ public class PhaserBeam extends Projectile {
     }
 
     public double endX() {
-        return x + Math.cos(angle) * length;
+        return x + Math.cos(angle) * (length * impactFraction);
     }
 
     public double endY() {
-        return y + Math.sin(angle) * length;
+        return y + Math.sin(angle) * (length * impactFraction);
+    }
+
+    public void clampImpactFraction(double fraction) {
+        impactFraction = MathUtil.clamp(fraction, 0.0, 1.0);
     }
 
     public int rollFrameDamage(java.util.Random rng, double dt) {
@@ -90,10 +126,15 @@ public class PhaserBeam extends Projectile {
     }
 
     private void syncFromEmitter() {
-        if (emitter == null || emitterTurret == null) return;
-        angle = emitterTurret.angle;
-        x = emitterTurret.worldX(emitter) + Math.cos(angle) * muzzleOffset;
-        y = emitterTurret.worldY(emitter) + Math.sin(angle) * muzzleOffset;
+        if (emitter == null) return;
+        if (emitterTurret != null) {
+            angle = emitterTurret.angle;
+            x = emitterTurret.worldX(emitter) + Math.cos(angle) * muzzleOffset;
+            y = emitterTurret.worldY(emitter) + Math.sin(angle) * muzzleOffset;
+            return;
+        }
+        angle = emitter.angle;
+        x = emitter.x + Math.cos(angle) * muzzleOffset;
+        y = emitter.y + Math.sin(angle) * muzzleOffset;
     }
 }
-

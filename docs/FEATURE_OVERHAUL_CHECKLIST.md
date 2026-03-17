@@ -1,4 +1,4 @@
-﻿# Feature Overhaul Checklist
+# Feature Overhaul Checklist
 
 ## Phase 1 - Non-Graphics First
 
@@ -10,7 +10,7 @@
 - [x] Buff missile speed.
 - [x] Buff missile durability/HP.
 - [x] Buff projectile speed for non-missile weapons where needed.
-- [x] Buff Wave Motion Gun: increase damage and convert it to a continuous beam.
+- [x] Buff Superweapon: increase damage and convert it to a continuous beam.
 
 ## Advanced Damage Model
 - [x] Implement subsystem-based damage model inspired by bridge-combat sims.
@@ -32,8 +32,8 @@
 - [x] Temporarily disable shields after shield HP is reduced to 0 (with recharge/reboot delay).
 - [x] Make it so that the shield is split up into 4 faces, foreward, left, right, and rear, and are visually separated.
 ## Weapon Usability and AI
-- [x] Make wave-motion-gun-capable ships easier to aim (player usability pass).
-- [x] Fix NPC wave-motion ships so they aim special weapon correctly before firing.
+- [x] Make superships easier to aim (player usability pass).
+- [x] Fix NPC superships so they aim the superweapon correctly before firing.
 - [x] Add a cloak/stealth feature for stealth ships.
 
 ## Crew Gameplay
@@ -61,7 +61,7 @@
 - [x] If a breached location overlaps a system zone, mark that system damaged/destroyed.
 ## other stuff i found
 - [x] when all enemy units are eliminated in resource rush, immediately declare victory for the correct side and faction
-- [x] add aiming redicle for wave motion gun ship, make it a large red aiming laser that warns all that the weapon is about to be fired. make it so that the wave motion gun of the player ship and the whole player ship try to point where the player mouse is at, allowing for reliable aim
+- [x] add aiming redicle for the supership, make it a large red aiming laser that warns all that the superweapon is about to be fired. make it so that the superweapon and the whole player ship try to point where the player mouse is at, allowing for reliable aim
 - [x] make fighters and bombers smaller visually
 - [x] Implement a new in-game overlay called Power Management (like Bridge Commander). It is a tab/panel the player can open with a key (e.g., O). The panel lets the player redistribute a fixed 100% power budget across Engines, Shields, Weapons, Systems using sliders/stepper controls and preset buttons (BALANCED/ATTACK/DEFENSE/PURSUIT). When the player adjusts allocations, the values must always be normalized to sum to 1.0 (100%). Hook the UI into the existing Ship power system using player.setPowerAllocation(engines, shields, weapons, systems) and the powerXFrac() getters. Display a live readout of the current percentages and a small effects preview showing how the current power split changes ship performance (speed/mobility via engines, weapon damage + fire rate via weapons, sensor range via systems, shield effectiveness via shields). The overlay should behave like existing shop/map/base overlays: opening it closes other overlays and blocks combat inputs until closed.
 - [x] check that all upgrades are working properly, both base upgrades such as the mining upgrades and all ship upgrades

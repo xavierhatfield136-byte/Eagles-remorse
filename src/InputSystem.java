@@ -2,6 +2,8 @@ import javax.swing.*;
 import java.awt.event.*;
 
 public final class InputSystem {
+    private static final long CAMERA_RESET_DOUBLE_TAP_NS = 300_000_000L;
+
     private InputSystem(){}
 
     public static PlayerControl install(GamePanel panel, GameContext ctx, Runnable exitToMenu, Runnable toggleFullscreen) {
@@ -49,9 +51,15 @@ public final class InputSystem {
         });
 
         panel.addKeyListener(new KeyAdapter() {
+            private long leftTapNs = Long.MIN_VALUE;
+            private long rightTapNs = Long.MIN_VALUE;
+            private long upTapNs = Long.MIN_VALUE;
+            private long downTapNs = Long.MIN_VALUE;
+
             @Override
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
+                handleCameraPanKeyPressed(ctx, keyCode);
                 if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) return;
@@ -59,6 +67,50 @@ public final class InputSystem {
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;
                 DevTools.handleKeyPressed(e);
+            }
+
+            @Override
+            public void keyReleased(KeyEvent e) {
+                switch (e.getKeyCode()) {
+                    case KeyEvent.VK_LEFT -> ctx.cameraPanLeft = false;
+                    case KeyEvent.VK_RIGHT -> ctx.cameraPanRight = false;
+                    case KeyEvent.VK_UP -> ctx.cameraPanUp = false;
+                    case KeyEvent.VK_DOWN -> ctx.cameraPanDown = false;
+                    default -> {
+                    }
+                }
+            }
+
+            private void handleCameraPanKeyPressed(GameContext ctx, int keyCode) {
+                long now = System.nanoTime();
+                switch (keyCode) {
+                    case KeyEvent.VK_LEFT -> {
+                        if (ctx.cameraPanLeft) return;
+                        ctx.cameraPanLeft = true;
+                        if (now - leftTapNs <= CAMERA_RESET_DOUBLE_TAP_NS) CameraSystem.resetManualOffset(ctx);
+                        leftTapNs = now;
+                    }
+                    case KeyEvent.VK_RIGHT -> {
+                        if (ctx.cameraPanRight) return;
+                        ctx.cameraPanRight = true;
+                        if (now - rightTapNs <= CAMERA_RESET_DOUBLE_TAP_NS) CameraSystem.resetManualOffset(ctx);
+                        rightTapNs = now;
+                    }
+                    case KeyEvent.VK_UP -> {
+                        if (ctx.cameraPanUp) return;
+                        ctx.cameraPanUp = true;
+                        if (now - upTapNs <= CAMERA_RESET_DOUBLE_TAP_NS) CameraSystem.resetManualOffset(ctx);
+                        upTapNs = now;
+                    }
+                    case KeyEvent.VK_DOWN -> {
+                        if (ctx.cameraPanDown) return;
+                        ctx.cameraPanDown = true;
+                        if (now - downTapNs <= CAMERA_RESET_DOUBLE_TAP_NS) CameraSystem.resetManualOffset(ctx);
+                        downTapNs = now;
+                    }
+                    default -> {
+                    }
+                }
             }
         });
 

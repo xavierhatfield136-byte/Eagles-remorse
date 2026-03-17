@@ -40,9 +40,15 @@ public class GameContext {
     public double camX = 0;
     public double camY = 0;
     public static final double DEFAULT_ZOOM = 1.0;
-    public static final double MIN_ZOOM = 0.50;
-    public static final double MAX_ZOOM = 3.00;
+    public static final double MIN_ZOOM = 0.02;
+    public static final double MAX_ZOOM = 50.0;
     public double zoom = DEFAULT_ZOOM;
+    public double cameraOffsetX = 0.0;
+    public double cameraOffsetY = 0.0;
+    public boolean cameraPanUp = false;
+    public boolean cameraPanDown = false;
+    public boolean cameraPanLeft = false;
+    public boolean cameraPanRight = false;
 
         // Cursor world position (updated each tick)
     public double cursorWorldX = 0;

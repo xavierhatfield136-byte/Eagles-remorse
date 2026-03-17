@@ -23,14 +23,14 @@ public final class PhysicsSystem {
             if (s == null) continue;
             boolean superFired = false;
             while (true) {
-                Projectile shot = s.pollWaveMotionShot();
+                Projectile shot = s.pollSuperweaponShot();
                 if (shot == null) break;
                 ctx.projectiles.add(shot);
                 superFired = true;
             }
             if (!superFired) continue;
             if (s == ctx.player) {
-                EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
+                EventSystem.showBanner(ctx, "SUPERWEAPON FIRED", 1.0);
                 AudioSystem.onWeaponWave(ctx, s);
                 ScreenShake.kick(8.0);
             } else {
@@ -114,7 +114,7 @@ public final class PhysicsSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive) continue;
-            s.tryCIWS(dt, ctx.projectiles);
+            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
         }
 
         // --- Projectiles update / cull ---

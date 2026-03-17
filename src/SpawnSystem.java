@@ -800,7 +800,7 @@ public final class SpawnSystem {
         s.hasCIWS = false;
         s.isCarrier = false;
         s.carrierAutoLaunch = false;
-        s.hasWaveMotionGun = false;
+        s.hasSuperweapon = false;
 
         if (!keepShields) {
             s.shieldMax = 0.0;

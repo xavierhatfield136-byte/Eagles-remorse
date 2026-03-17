@@ -1292,19 +1292,19 @@ public final class EconomySystem {
         dst.ciwsPelletLife = src.ciwsPelletLife;
         dst.ciwsPelletRadius = src.ciwsPelletRadius;
 
-        dst.hasWaveMotionGun = src.hasWaveMotionGun;
+        dst.hasSuperweapon = src.hasSuperweapon;
         dst.superweaponPattern = src.superweaponPattern;
-        dst.waveMotionChargeTime = src.waveMotionChargeTime;
-        dst.waveMotionCooldown = src.waveMotionCooldown;
-        dst.waveMotionDamage = src.waveMotionDamage;
-        dst.waveMotionSpeed = src.waveMotionSpeed;
-        dst.waveMotionLife = src.waveMotionLife;
-        dst.waveMotionRadius = src.waveMotionRadius;
-        dst.waveMotionMaxHits = src.waveMotionMaxHits;
-        dst.waveMotionBeamDuration = src.waveMotionBeamDuration;
-        dst.waveMotionBeamTickInterval = src.waveMotionBeamTickInterval;
-        dst.waveMotionBeamDamageScale = src.waveMotionBeamDamageScale;
-        dst.resetWaveMotionCooldown();
+        dst.superweaponChargeTime = src.superweaponChargeTime;
+        dst.superweaponCooldown = src.superweaponCooldown;
+        dst.superweaponDamage = src.superweaponDamage;
+        dst.superweaponSpeed = src.superweaponSpeed;
+        dst.superweaponLife = src.superweaponLife;
+        dst.superweaponRadius = src.superweaponRadius;
+        dst.superweaponMaxHits = src.superweaponMaxHits;
+        dst.superweaponBeamDuration = src.superweaponBeamDuration;
+        dst.superweaponBeamTickInterval = src.superweaponBeamTickInterval;
+        dst.superweaponBeamDamageScale = src.superweaponBeamDamageScale;
+        dst.resetSuperweaponCooldown();
 
         dst.isCarrier = src.isCarrier;
         dst.fighterLaunchCooldown = src.fighterLaunchCooldown;

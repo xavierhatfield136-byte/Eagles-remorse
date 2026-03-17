@@ -118,7 +118,7 @@ public final class AISystem {
             if (s.isWarpCharging()) {
                 s.vx = 0.0;
                 s.vy = 0.0;
-                s.tryCIWS(dt, ctx.projectiles);
+                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                 continue;
             }
             tickClosestWeaponRetarget(ctx, s, dt);
@@ -138,7 +138,7 @@ public final class AISystem {
                 if (target != null && target.alive && !target.dying) {
                     fireIfAble(ctx, s, target, dt, Math.hypot(target.x - s.x, target.y - s.y));
                 }
-                s.tryCIWS(dt, ctx.projectiles);
+                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                 continue;
             }
             if (s.role == ShipRole.MINER) {
@@ -151,7 +151,7 @@ public final class AISystem {
                         fireIfAble(ctx, s, target, dt, d);
                     }
                 }
-                s.tryCIWS(dt, ctx.projectiles);
+                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                 continue;
             }
             if (s.role == ShipRole.PD_CRAFT && s.carrierOwnerId < 0 && s.minerHomeBase != null) {
@@ -172,7 +172,7 @@ public final class AISystem {
                         double speed = Math.max(95.0, MovementModel.speedCeiling(s) * 0.92);
                         orbit(s, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
                     }
-                    s.tryCIWS(dt, ctx.projectiles);
+                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                     applyAsteroidAvoidance(ctx, s, dt);
                     applyProjectileLaneAvoidance(ctx, s, dt);
                     continue;
@@ -186,7 +186,7 @@ public final class AISystem {
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
                 if (s.needsStrikeCraftRearm()) {
-                    s.tryCIWS(dt, ctx.projectiles);
+                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                     applyAsteroidAvoidance(ctx, s, dt);
                     applyProjectileLaneAvoidance(ctx, s, dt);
                     continue;
@@ -199,7 +199,7 @@ public final class AISystem {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
                     fireIfAble(ctx, s, target, dt, d);
                 }
-                s.tryCIWS(dt, ctx.projectiles);
+                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                 applyAsteroidAvoidance(ctx, s, dt);
                 applyProjectileLaneAvoidance(ctx, s, dt);
                 continue;
@@ -866,7 +866,7 @@ public final class AISystem {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
                         if (d <= 380.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
-                    s.tryCIWS(dt, ctx.projectiles);
+                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                     return true;
                 }
                 case DEFEND, FORM_UP, ESCORT -> {
@@ -890,7 +890,7 @@ public final class AISystem {
                     } else {
                         wander(ctx, s, dt);
                     }
-                    s.tryCIWS(dt, ctx.projectiles);
+                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                     return true;
                 }
                 case MINE -> {
@@ -901,7 +901,7 @@ public final class AISystem {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
                         if (d <= 360.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
-                    s.tryCIWS(dt, ctx.projectiles);
+                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
                     return true;
                 }
                 default -> {
@@ -1037,7 +1037,7 @@ public final class AISystem {
             }
         }
 
-        s.tryCIWS(dt, ctx.projectiles);
+        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
         return true;
     }
 
@@ -1346,7 +1346,7 @@ public final class AISystem {
             }
             moveToward(s, tx, ty, speed, dt);
         }
-        s.tryCIWS(dt, ctx.projectiles);
+        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
         return true;
     }
 
@@ -1421,7 +1421,7 @@ public final class AISystem {
         double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
         if (d <= 240.0) return true;
 
-        if (seeker.hasWaveMotionGun && d <= 2200.0 * rangeMul) return true;
+        if (seeker.hasSuperweapon && d <= 2200.0 * rangeMul) return true;
         for (Turret t : seeker.turrets) {
             if (t == null) continue;
             double maxRange;
@@ -1784,7 +1784,7 @@ public final class AISystem {
         if (objective == null) objective = SquadObjective.HOLD;
         if (maybeStartBattlefieldWarp(ctx, s, target,
                 Math.max(preferredRange(s) * 1.18, s.radius + target.radius + 160.0))) {
-            s.tryCIWS(dt, ctx.projectiles);
+            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
             return;
         }
         // Determine preferred range by role
@@ -1855,7 +1855,7 @@ public final class AISystem {
         int shotsFired = fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
         updateEngagementMemory(s, target, dt, d, range, shotsFired > 0, objective);
         // CIWS always tries to protect itself
-        s.tryCIWS(dt, ctx.projectiles);
+        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
     }
 
     private static void wander(GameContext ctx, Ship s, double dt) {
@@ -1863,12 +1863,12 @@ public final class AISystem {
         double tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
         double ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
         if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
-            s.tryCIWS(dt, ctx.projectiles);
+            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
             return;
         }
         moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
-        s.tryCIWS(dt, ctx.projectiles);
+        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
     }
 
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist) {
@@ -1888,39 +1888,39 @@ public final class AISystem {
         double targetHull = hullFrac(target);
         int firedCount = 0;
 
-        if (s.hasWaveMotionGun && (s.isWaveMotionCharging() || s.isWaveMotionBeamActive())) {
-            s.trackWaveMotionAim(target.x, target.y);
-            if (s.role == ShipRole.SUPERSHIP && s.isWaveMotionCharging()) {
-                rotateShipTowardAssist(s, s.getWaveMotionAimAngle(), dt, Math.toRadians(260.0));
+        if (s.hasSuperweapon && (s.isSuperweaponCharging() || s.isSuperweaponBeamActive())) {
+            s.trackSuperweaponAim(target.x, target.y);
+            if (s.role == ShipRole.SUPERSHIP && s.isSuperweaponCharging()) {
+                rotateShipTowardAssist(s, s.getSuperweaponAimAngle(), dt, Math.toRadians(260.0));
             }
         }
 
-        if (s.hasWaveMotionGun) {
-            double waveRangeBase = 2200.0;
+        if (s.hasSuperweapon) {
+            double superweaponRangeBase = 2200.0;
             if (s.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
                 // Match fire gating to actual beam reach so Team C supers don't waste casts at extreme standoff.
-                double beamReach = MathUtil.clamp(s.waveMotionSpeed * 0.96, 760.0, 1760.0);
-                waveRangeBase = Math.max(640.0, beamReach * 0.92);
+                double beamReach = MathUtil.clamp(s.superweaponSpeed * 0.96, 760.0, 1760.0);
+                superweaponRangeBase = Math.max(640.0, beamReach * 0.92);
             }
-            double waveRange = waveRangeBase * rangeMul;
-            if (dist <= waveRange) {
+            double superweaponRange = superweaponRangeBase * rangeMul;
+            if (dist <= superweaponRange) {
                 boolean superShip = (s.role == ShipRole.SUPERSHIP);
-                boolean allowWave;
+                boolean allowSuperweapon;
                 if (superShip) {
                     // Supership ultimates should be visible threats; do not over-throttle them.
                     double confGate = isCapitalRole(target.role) ? 0.38 : 0.46;
                     double hullGate = isCapitalRole(target.role) ? 0.12 : 0.18;
-                    allowWave = confidence >= confGate && targetHull > hullGate && !killConfirm;
+                    allowSuperweapon = confidence >= confGate && targetHull > hullGate && !killConfirm;
                 } else {
-                    allowWave = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
+                    allowSuperweapon = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
                 }
                 if (objective == SquadObjective.RESERVE) {
-                    allowWave = allowWave && confidence >= (superShip ? 0.58 : 0.78) && dist <= waveRange * (superShip ? 0.82 : 0.70);
+                    allowSuperweapon = allowSuperweapon && confidence >= (superShip ? 0.58 : 0.78) && dist <= superweaponRange * (superShip ? 0.82 : 0.70);
                 }
                 if (objective == SquadObjective.INTERCEPT) {
-                    allowWave = allowWave && confidence >= (superShip ? 0.44 : 0.56);
+                    allowSuperweapon = allowSuperweapon && confidence >= (superShip ? 0.44 : 0.56);
                 }
-                Projectile shot = allowWave ? s.tryFireWaveMotionGun(target, dt) : null;
+                Projectile shot = allowSuperweapon ? s.tryFireSuperweapon(target, dt) : null;
                 if (shot != null) {
                     ctx.projectiles.add(shot);
                     ScreenShake.kick(3.5);

@@ -18,19 +18,19 @@ public class CollisionSystem {
         if (projectiles == null || ships == null) return;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
-            // CIWS is point-defense only: pellets should only interact with missiles.
-            if (p instanceof CIWSPellet) continue;
+            // Team C point-defense lasers remain projectile-only; CIWS pellets can also hit small craft.
             if (p instanceof PointDefenseLaser) continue;
             if (p instanceof PhaserBeam beam) {
                 handlePhaserBeamVsShips(ctx, beam, ships);
                 continue;
             }
-            boolean waveShot = p instanceof WaveMotionShot;
+            boolean superweaponShot = p instanceof SuperweaponShot;
             boolean disruptorSlug = p instanceof DisruptorSlug;
             VFX.ImpactStyle impactStyle = impactStyleFor(p);
             for (Ship s : ships) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
+                if (!canProjectileDamageShip(ships, p, s)) continue;
 
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
@@ -39,8 +39,8 @@ public class CollisionSystem {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     if (!slug.canAffect(s)) continue;
                 }
-                if (waveShot) {
-                    WaveMotionShot ws = (WaveMotionShot) p;
+                if (superweaponShot) {
+                    SuperweaponShot ws = (SuperweaponShot) p;
                     if (!ws.canDamage(s)) continue;
                     ws.markDamaged(s);
                     markPlayerHitContribution(ctx, p, s);
@@ -269,7 +269,7 @@ public class CollisionSystem {
             if (p instanceof CIWSPellet) continue;
             if (p instanceof PointDefenseLaser) continue;
             if (p instanceof PhaserBeam) continue;
-            WaveMotionShot ws = (p instanceof WaveMotionShot) ? (WaveMotionShot) p : null;
+            SuperweaponShot ws = (p instanceof SuperweaponShot) ? (SuperweaponShot) p : null;
             for (int ai = asteroids.size() - 1; ai >= 0; ai--) {
                 Asteroid a = asteroids.get(ai);
                 if (a == null) {
@@ -332,6 +332,7 @@ public class CollisionSystem {
                 if (s == null || !s.alive) continue;
                 if (s == directHit) continue;
                 if (s.faction.isFriendlyTo(m.faction)) continue;
+                if (!canProjectileDamageShip(ships, m, s)) continue;
 
                 double d = Math.hypot(s.x - m.x, s.y - m.y);
                 double maxD = rr + HullGeometry.broadPhaseRadius(s);
@@ -361,6 +362,7 @@ public class CollisionSystem {
         for (Ship s : ships) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.id == slug.sourceShipId) continue;
+            if (!canProjectileDamageShip(ships, slug, s)) continue;
 
             double maxD = rr + HullGeometry.broadPhaseRadius(s);
             if (GameMath.dist2(s.x, s.y, x, y) > maxD * maxD) continue;
@@ -395,7 +397,7 @@ public class CollisionSystem {
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {
         if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
         if (p instanceof DisruptorSlug) return VFX.ImpactStyle.EXPLOSIVE;
-        if (p instanceof WaveMotionShot) return VFX.ImpactStyle.BEAM;
+        if (p instanceof SuperweaponShot) return VFX.ImpactStyle.BEAM;
         if (p instanceof PhaserBeam) return VFX.ImpactStyle.BEAM;
         if (p instanceof PointDefenseLaser) return VFX.ImpactStyle.BEAM;
         if (p instanceof EnergyBolt bolt) {
@@ -420,6 +422,7 @@ public class CollisionSystem {
         for (Ship s : ships) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.isFriendlyTo(beam.faction)) continue;
+            if (!canProjectileDamageShip(ships, beam, s)) continue;
 
             double shipBroad = HullGeometry.broadPhaseRadius(s) + halfWidth;
             if (segmentPointDistanceSq(sx, sy, ex, ey, s.x, s.y) > shipBroad * shipBroad) continue;
@@ -432,7 +435,12 @@ public class CollisionSystem {
             }
         }
 
-        if (best == null) return;
+        if (best == null) {
+            beam.clampImpactFraction(1.0);
+            return;
+        }
+
+        beam.clampImpactFraction(bestT);
 
         int damage = beam.rollFrameDamage(ctx == null ? null : ctx.rng, GameContext.DT);
         if (damage <= 0) return;
@@ -505,6 +513,35 @@ public class CollisionSystem {
     private static boolean isProjectileFromPlayer(GameContext ctx, Projectile projectile) {
         if (ctx == null || ctx.player == null || projectile == null) return false;
         return projectile.sourceShipId == ctx.player.id;
+    }
+
+    private static boolean canProjectileDamageShip(List<Ship> ships, Projectile projectile, Ship target) {
+        if (projectile == null || target == null) return false;
+        if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
+            return target.isSmallCraft();
+        }
+
+        Ship shooter = findShipById(ships, projectile.sourceShipId);
+        if (shooter == null || shooter.role == null) return true;
+        if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
+        return true;
+    }
+
+    private static Ship findShipById(List<Ship> ships, int id) {
+        if (ships == null || id <= 0) return null;
+        for (Ship s : ships) {
+            if (s == null) continue;
+            if (s.id == id) return s;
+        }
+        return null;
+    }
+
+    private static boolean isCapitalShip(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER, TRANSPORT -> true;
+            default -> false;
+        };
     }
 
     private static void logDamageEvent(GameContext ctx,

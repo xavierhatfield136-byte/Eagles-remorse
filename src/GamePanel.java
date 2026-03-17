@@ -158,8 +158,8 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0, false), "missileSalvo", () -> {
             GameplayActions.tryMissileSalvo(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_X, 0, false), "waveMotionGun", () -> {
-            GameplayActions.tryWaveMotionGun(ctx);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_X, 0, false), "superweapon", () -> {
+            GameplayActions.trySuperweapon(ctx);
         });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_C, 0, false), "carrierLaunch", () -> {
             GameplayActions.tryCarrierLaunch(ctx);

@@ -24,7 +24,7 @@ public final class EnemyArchetypeIntel {
             case BATTLECRUISER -> "Battlecruiser";
             case BATTLESHIP -> "Battleship";
             case DREADNOUGHT -> "Dreadnought";
-            case SUPERSHIP -> "Wave-Motion Supership";
+            case SUPERSHIP -> "Supership";
             case CARRIER, DRONE_CARRIER -> "Carrier";
             case TRANSPORT -> "Support Transport";
             case MINER -> "Logistics Miner";
@@ -53,7 +53,7 @@ public final class EnemyArchetypeIntel {
             case BATTLECRUISER -> "Stay off the bow and dodge broadside arcs.";
             case BATTLESHIP -> "Flank and sustain pressure; avoid frontal duel.";
             case DREADNOUGHT -> "Phase fight: clear adds, then burst windows.";
-            case SUPERSHIP -> "Break line-of-sight on charge and spread before wave fire.";
+            case SUPERSHIP -> "Break line-of-sight on charge and spread before superweapon fire.";
             case CARRIER, DRONE_CARRIER -> "Kill carrier hull to collapse wing pressure.";
             case TRANSPORT -> "Snipe early to remove repair aura.";
             case MINER, HAULER -> "Pick off to starve enemy economy.";

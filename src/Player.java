@@ -268,19 +268,19 @@ public class Player extends Ship {
         this.ciwsPelletLife = t.ciwsPelletLife;
         this.ciwsPelletRadius = t.ciwsPelletRadius;
 
-        this.hasWaveMotionGun = t.hasWaveMotionGun;
+        this.hasSuperweapon = t.hasSuperweapon;
         this.superweaponPattern = t.superweaponPattern;
-        this.waveMotionChargeTime = t.waveMotionChargeTime;
-        this.waveMotionCooldown = t.waveMotionCooldown;
-        this.waveMotionDamage = t.waveMotionDamage;
-        this.waveMotionSpeed = t.waveMotionSpeed;
-        this.waveMotionLife = t.waveMotionLife;
-        this.waveMotionRadius = t.waveMotionRadius;
-        this.waveMotionMaxHits = t.waveMotionMaxHits;
-        this.waveMotionBeamDuration = t.waveMotionBeamDuration;
-        this.waveMotionBeamTickInterval = t.waveMotionBeamTickInterval;
-        this.waveMotionBeamDamageScale = t.waveMotionBeamDamageScale;
-        this.resetWaveMotionCooldown();
+        this.superweaponChargeTime = t.superweaponChargeTime;
+        this.superweaponCooldown = t.superweaponCooldown;
+        this.superweaponDamage = t.superweaponDamage;
+        this.superweaponSpeed = t.superweaponSpeed;
+        this.superweaponLife = t.superweaponLife;
+        this.superweaponRadius = t.superweaponRadius;
+        this.superweaponMaxHits = t.superweaponMaxHits;
+        this.superweaponBeamDuration = t.superweaponBeamDuration;
+        this.superweaponBeamTickInterval = t.superweaponBeamTickInterval;
+        this.superweaponBeamDamageScale = t.superweaponBeamDamageScale;
+        this.resetSuperweaponCooldown();
 
         this.isCarrier = t.isCarrier;
         this.fighterLaunchCooldown = t.fighterLaunchCooldown;

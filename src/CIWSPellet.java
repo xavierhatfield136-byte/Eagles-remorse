@@ -1,7 +1,7 @@
 /**
  * A tiny fast projectile used by CIWS point-defense.
  *
- * CIWS pellets are visible and can shoot down missiles.
+ * CIWS pellets are visible and can intercept missiles or shred small craft.
  */
 public class CIWSPellet extends Projectile {
 

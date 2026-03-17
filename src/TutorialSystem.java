@@ -411,7 +411,7 @@ public final class TutorialSystem {
         s.hasCIWS = false;
         s.isCarrier = false;
         s.carrierAutoLaunch = false;
-        s.hasWaveMotionGun = false;
+        s.hasSuperweapon = false;
         s.shieldMax = 0.0;
         s.shield = 0.0;
         s.shieldRegen = 0.0;

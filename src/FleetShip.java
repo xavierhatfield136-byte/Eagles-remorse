@@ -8,8 +8,7 @@
  * - Structures: BASE / STATIC_TURRET
  *
  * Notes:
- * - CIWS quality is intentionally strong only on CIWS_CORVETTE (and PD_CRAFT).
- * - Most other ships have weak CIWS (or none) to keep the corvette valuable.
+ * - CIWS mount counts are standardized by hangar tier when a hull has CIWS.
  */
 public class FleetShip extends Ship {
 
@@ -21,7 +20,20 @@ public class FleetShip extends Ship {
         resetFlightDeckLoadout();
 
         setup(role);
+        standardizeCiwsLoadout();
         resetFlightDeckLoadout();
+    }
+
+    private void standardizeCiwsLoadout() {
+        if (!hasCIWS) return;
+        if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return;
+        ciwsQuality = 1.0;
+        ciwsPelletsPerBurst = switch (SpawnSystem.requiredHangarTierForRole(role)) {
+            case 0 -> 2;
+            case 1 -> 3;
+            case 2 -> 5;
+            default -> 8;
+        };
     }
 
     private void setup(ShipRole role) {
@@ -893,10 +905,10 @@ public class FleetShip extends Ship {
             }
 
             case SUPERSHIP -> {
-                if (faction == Faction.ENEMY) name = "Enemy Wave-Motion Battleship";
-                else if (faction == Faction.TEAM_C) name = "Team C Wave-Motion Battleship";
-                else if (faction == Faction.TEAM_D) name = "Team D Wave-Motion Battleship";
-                else name = "Wave-Motion Battleship";
+                if (faction == Faction.ENEMY) name = "Enemy Supership";
+                else if (faction == Faction.TEAM_C) name = "Team C Supership";
+                else if (faction == Faction.TEAM_D) name = "Team D Supership";
+                else name = "Supership";
 
                 radius = 52;
                 hpMax = 170;
@@ -961,17 +973,17 @@ public class FleetShip extends Ship {
                 mb.barrelLen = 20;
                 addTurret(mb);
 
-                hasWaveMotionGun = true;
-                waveMotionChargeTime = 3.4;
-                waveMotionCooldown = 26.0;
-                waveMotionDamage = 96;
-                waveMotionSpeed = 1700.0;
-                waveMotionLife = 190;
-                waveMotionRadius = 14.0;
-                waveMotionMaxHits = 26;
-                waveMotionBeamDuration = 1.15;
-                waveMotionBeamTickInterval = 0.11;
-                waveMotionBeamDamageScale = 0.36;
+                hasSuperweapon = true;
+                superweaponChargeTime = 3.4;
+                superweaponCooldown = 26.0;
+                superweaponDamage = 96;
+                superweaponSpeed = 1700.0;
+                superweaponLife = 190;
+                superweaponRadius = 14.0;
+                superweaponMaxHits = 26;
+                superweaponBeamDuration = 1.15;
+                superweaponBeamTickInterval = 0.11;
+                superweaponBeamDamageScale = 0.36;
                 superweaponPattern = switch (faction) {
                     case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
                     case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
@@ -980,21 +992,21 @@ public class FleetShip extends Ship {
                 };
 
                 if (superweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
-                    waveMotionChargeTime = 3.0;
-                    waveMotionCooldown = 24.0;
-                    waveMotionDamage = 110;
-                    waveMotionBeamDuration = 1.45;
+                    superweaponChargeTime = 3.0;
+                    superweaponCooldown = 24.0;
+                    superweaponDamage = 110;
+                    superweaponBeamDuration = 1.45;
                 } else if (superweaponPattern == SuperweaponPattern.KINETIC_SLUG) {
-                    waveMotionChargeTime = 3.3;
-                    waveMotionCooldown = 23.0;
-                    waveMotionDamage = 130;
-                    waveMotionBeamDuration = 0.0;
+                    superweaponChargeTime = 3.3;
+                    superweaponCooldown = 23.0;
+                    superweaponDamage = 130;
+                    superweaponBeamDuration = 0.0;
                 } else if (superweaponPattern == SuperweaponPattern.MISSILE_BARRAGE) {
-                    waveMotionChargeTime = 2.8;
-                    waveMotionCooldown = 25.0;
-                    waveMotionDamage = 84;
-                    waveMotionBeamDuration = 1.20;
-                    waveMotionBeamTickInterval = 0.15;
+                    superweaponChargeTime = 2.8;
+                    superweaponCooldown = 25.0;
+                    superweaponDamage = 84;
+                    superweaponBeamDuration = 1.20;
+                    superweaponBeamTickInterval = 0.15;
                 }
 
                 hasCIWS = true;

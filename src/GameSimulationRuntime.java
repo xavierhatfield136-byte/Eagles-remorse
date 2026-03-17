@@ -256,12 +256,15 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
+        if (!ctx.powerManagementOpen && !ctx.crewStationsOpen && !ctx.flightDeckOpen) {
+            CameraSystem.updateManualPan(ctx, dt);
+        }
         if (!p.alive || p.dying || p.hp <= 0 || ctx.playerRespawnPending) {
             p.vx = 0.0;
             p.vy = 0.0;
             return;
         }
-        if (p.hasWaveMotionGun) p.trackWaveMotionAim(mouseWorldX, mouseWorldY);
+        if (p.hasSuperweapon) p.trackSuperweaponAim(mouseWorldX, mouseWorldY);
 
         boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);
 
@@ -284,7 +287,7 @@ public final class GameSimulationRuntime {
         double turnRate = MovementModel.turnRateRadPerSec(p);
         p.angle = MathUtil.normalizeAngle(p.angle + turnInput * turnRate * dt);
 
-        if (p.hasWaveMotionGun && p.isWaveMotionCharging()) {
+        if (p.hasSuperweapon && p.isSuperweaponCharging()) {
             double desired = Math.atan2(mouseWorldY - p.y, mouseWorldX - p.x);
             double assistRate = Math.toRadians(260.0);
             p.angle = rotateToward(p.angle, desired, assistRate * dt);

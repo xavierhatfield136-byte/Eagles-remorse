@@ -173,7 +173,7 @@ public abstract class Ship {
     // Turrets
     public final List<Turret> turrets = new ArrayList<>();
 
-    // Superweapon (wave-motion gun)
+    // Superweapon (superweapon)
     public enum SuperweaponPattern {
         PULSE_BARRAGE,   // Player default: current rapid-fire wave pulses
         KINETIC_SLUG,    // Red team: single heavy kinetic shell
@@ -181,29 +181,29 @@ public abstract class Ship {
         MISSILE_BARRAGE  // Missile team: repeated heavy missile salvos
     }
 
-    public boolean hasWaveMotionGun = false;
+    public boolean hasSuperweapon = false;
     public SuperweaponPattern superweaponPattern = SuperweaponPattern.PULSE_BARRAGE;
-    public double waveMotionChargeTime = 0.0;
-    public double waveMotionCooldown = 24.0;
-    private double waveMotionTimer = 0.0;
-    private double waveMotionChargeTimer = 0.0;
-    private boolean waveMotionCharging = false;
-    private final List<Projectile> pendingWaveMotionShots = new ArrayList<>();
-    private double queuedWaveMotionAim = Double.NaN;
-    private Ship queuedWaveMotionTarget = null;
-    public int waveMotionDamage = 68;
-    public double waveMotionSpeed = 1500.0;
-    public int waveMotionLife = 140;
-    public double waveMotionRadius = 12.0;
-    public int waveMotionMaxHits = 18;
-    public double waveMotionBeamDuration = 0.95;
-    public double waveMotionBeamTickInterval = 0.12;
-    public double waveMotionBeamDamageScale = 0.34;
-    private static final double WAVE_MOTION_PROJECTILE_RATE_MULT = 3.0;
-    private double waveMotionBeamTimer = 0.0;
-    private double waveMotionBeamTickTimer = 0.0;
-    private double waveMotionBeamAim = Double.NaN;
-    private Ship waveMotionBeamTarget = null;
+    public double superweaponChargeTime = 0.0;
+    public double superweaponCooldown = 24.0;
+    private double superweaponTimer = 0.0;
+    private double superweaponChargeTimer = 0.0;
+    private boolean superweaponCharging = false;
+    private final List<Projectile> pendingSuperweaponShots = new ArrayList<>();
+    private double queuedSuperweaponAim = Double.NaN;
+    private Ship queuedSuperweaponTarget = null;
+    public int superweaponDamage = 68;
+    public double superweaponSpeed = 1500.0;
+    public int superweaponLife = 140;
+    public double superweaponRadius = 12.0;
+    public int superweaponMaxHits = 18;
+    public double superweaponBeamDuration = 0.95;
+    public double superweaponBeamTickInterval = 0.12;
+    public double superweaponBeamDamageScale = 0.34;
+    private static final double SUPERWEAPON_PROJECTILE_RATE_MULT = 3.0;
+    private double superweaponBeamTimer = 0.0;
+    private double superweaponBeamTickTimer = 0.0;
+    private double superweaponBeamAim = Double.NaN;
+    private Ship superweaponBeamTarget = null;
     private double temporaryDisableTimer = 0.0;
 
     // Primary weapon family (Energy Navy only for now)
@@ -244,8 +244,7 @@ public abstract class Ship {
     private double ciwsTimer = 0;
 
     /**
-     * 0..1 quality: affects spread and pellet count.
-     * The CIWS_CORVETTE role will have high quality; most other ships are weak.
+     * 0..1 quality: 1.0 means perfect lead with no spread.
      */
     public double ciwsQuality = 0.35;
     public int ciwsPelletsPerBurst = 2;
@@ -691,37 +690,37 @@ public abstract class Ship {
         ciwsTimer -= dt;
         if (ciwsTimer < 0) ciwsTimer = 0;
 
-        if (waveMotionTimer > 0) {
-            waveMotionTimer -= dt;
-            if (waveMotionTimer < 0) waveMotionTimer = 0;
+        if (superweaponTimer > 0) {
+            superweaponTimer -= dt;
+            if (superweaponTimer < 0) superweaponTimer = 0;
         }
-        if (waveMotionCharging) {
-            waveMotionChargeTimer -= dt;
-            if (waveMotionChargeTimer <= 0.0) {
-                waveMotionChargeTimer = 0.0;
-                waveMotionCharging = false;
-                double aim = Double.isFinite(queuedWaveMotionAim) ? queuedWaveMotionAim : angle;
-                Projectile fired = fireWaveMotionShot(dt, aim, queuedWaveMotionTarget);
-                enqueuePendingWaveMotionShot(fired);
-                queuedWaveMotionAim = Double.NaN;
-                queuedWaveMotionTarget = null;
+        if (superweaponCharging) {
+            superweaponChargeTimer -= dt;
+            if (superweaponChargeTimer <= 0.0) {
+                superweaponChargeTimer = 0.0;
+                superweaponCharging = false;
+                double aim = Double.isFinite(queuedSuperweaponAim) ? queuedSuperweaponAim : angle;
+                Projectile fired = fireSuperweaponShot(dt, aim, queuedSuperweaponTarget);
+                enqueuePendingSuperweaponShot(fired);
+                queuedSuperweaponAim = Double.NaN;
+                queuedSuperweaponTarget = null;
             }
         }
-        if (waveMotionBeamTimer > 0.0) {
-            waveMotionBeamTimer -= dt;
-            waveMotionBeamTickTimer -= dt;
-            if (waveMotionBeamTimer < 0.0) waveMotionBeamTimer = 0.0;
+        if (superweaponBeamTimer > 0.0) {
+            superweaponBeamTimer -= dt;
+            superweaponBeamTickTimer -= dt;
+            if (superweaponBeamTimer < 0.0) superweaponBeamTimer = 0.0;
 
-            if (waveMotionBeamTimer > 0.0 && waveMotionBeamTickTimer <= 0.0) {
-                double aim = Double.isFinite(waveMotionBeamAim) ? waveMotionBeamAim : angle;
-                enqueuePendingWaveMotionShots(createSuperweaponVolley(dt, aim, waveMotionBeamTarget, true));
-                waveMotionBeamTickTimer = waveMotionTickSpacing();
+            if (superweaponBeamTimer > 0.0 && superweaponBeamTickTimer <= 0.0) {
+                double aim = Double.isFinite(superweaponBeamAim) ? superweaponBeamAim : angle;
+                enqueuePendingSuperweaponShots(createSuperweaponVolley(dt, aim, superweaponBeamTarget, true));
+                superweaponBeamTickTimer = superweaponTickSpacing();
             }
 
-            if (waveMotionBeamTimer <= 0.0) {
-                waveMotionBeamTickTimer = 0.0;
-                waveMotionBeamAim = Double.NaN;
-                waveMotionBeamTarget = null;
+            if (superweaponBeamTimer <= 0.0) {
+                superweaponBeamTickTimer = 0.0;
+                superweaponBeamAim = Double.NaN;
+                superweaponBeamTarget = null;
             }
         }
 
@@ -929,7 +928,7 @@ public abstract class Ship {
             shield = 0.0;
         }
         clearHullImpactMarks();
-        resetWaveMotionCooldown();
+        resetSuperweaponCooldown();
     }
 
     public void healShield(double amount) {
@@ -1036,7 +1035,7 @@ public abstract class Ship {
     private void startDeathSequence() {
         if (dying) return;
         dying = true;
-        cancelWaveMotionSequence();
+        cancelSuperweaponSequence();
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
@@ -3817,62 +3816,117 @@ public abstract class Ship {
         }
     }
 
+    public void tryCIWS(double dt, List<Projectile> projectiles) {
+        tryCIWS(dt, projectiles, null);
+    }
+
     /**
      * CIWS point-defense.
      *
-     * - Finds the closest incoming enemy missile in range.
-     * - Team C fires low-damage point-defense laser pulses.
-     * - Other factions fire visible CIWS pellets.
+     * - Intercepts nearby hostile missiles.
+     * - Engages nearby hostile small craft when present.
+     * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
      */
-    public void tryCIWS(double dt, List<Projectile> projectiles) {
+    public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
         if (!alive || !hasCIWS || isTemporarilyDisabled()) return;
         if (ciwsTimer > 0) return;
-        if (projectiles == null || projectiles.isEmpty()) return;
+        if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
 
+        Missile closestMissile = findClosestCiwsMissile(projectiles);
+        Ship closestSmallCraft = findClosestCiwsSmallCraft(ships);
+        if (closestMissile == null && closestSmallCraft == null) return;
+
+        boolean targetMissile = closestMissile != null;
+        if (closestMissile != null && closestSmallCraft != null) {
+            double missileD2 = GameMath.dist2(x, y, closestMissile.x, closestMissile.y);
+            double craftD2 = GameMath.dist2(x, y, closestSmallCraft.x, closestSmallCraft.y);
+            targetMissile = missileD2 * 0.92 <= craftD2;
+        }
+
+        // Fire!
+        ciwsTimer = ciwsCooldown;
+
+        if (targetMissile) {
+            double aim = computeCiwsLeadAim(dt, closestMissile.x, closestMissile.y, closestMissile.vx, closestMissile.vy);
+            if (faction == Faction.TEAM_C) {
+                firePointDefenseLaser(dt, projectiles, closestMissile, aim);
+            } else {
+                fireCiwsPellets(dt, projectiles, aim);
+            }
+            return;
+        }
+
+        double aim = computeCiwsLeadAim(dt, closestSmallCraft.x, closestSmallCraft.y, closestSmallCraft.vx, closestSmallCraft.vy);
+        fireCiwsPellets(dt, projectiles, aim);
+    }
+
+    private Missile findClosestCiwsMissile(List<Projectile> projectiles) {
+        if (projectiles == null || projectiles.isEmpty()) return null;
         Missile closest = null;
         double bestD2 = Double.POSITIVE_INFINITY;
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             if (!(p instanceof Missile m)) continue;
-            if (faction.isFriendlyTo(m.faction)) continue;
+            if (faction != null && faction.isFriendlyTo(m.faction)) continue;
 
-            double dx = m.x - x;
-            double dy = m.y - y;
-            double d2 = dx * dx + dy * dy;
+            double d2 = GameMath.dist2(x, y, m.x, m.y);
             if (d2 <= ciwsRange * ciwsRange && d2 < bestD2) {
                 bestD2 = d2;
                 closest = m;
             }
         }
+        return closest;
+    }
 
-        if (closest == null) return;
+    private Ship findClosestCiwsSmallCraft(List<Ship> ships) {
+        if (ships == null || ships.isEmpty()) return null;
+        Ship closest = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
 
-        // Fire!
-        ciwsTimer = ciwsCooldown;
+        for (Ship s : ships) {
+            if (s == null || s == this) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (!s.isSmallCraft()) continue;
+            if (faction != null && faction.isFriendlyTo(s.faction)) continue;
 
-        double aim = Math.atan2(closest.y - y, closest.x - x);
-
-        if (faction == Faction.TEAM_C) {
-            firePointDefenseLaser(dt, projectiles, closest, aim);
-            return;
+            double d2 = GameMath.dist2(x, y, s.x, s.y);
+            if (d2 <= ciwsRange * ciwsRange && d2 < bestD2) {
+                bestD2 = d2;
+                closest = s;
+            }
         }
+        return closest;
+    }
 
-        // Spread gets tighter as quality increases.
-        double spread = Math.toRadians(22) * (1.15 - ciwsQuality);
+    private double computeCiwsLeadAim(double dt, double targetX, double targetY, double targetVx, double targetVy) {
+        if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return angle;
+        if (dt <= 1e-9 || ciwsPelletSpeed <= 1e-9) return Math.atan2(targetY - y, targetX - x);
+
+        double targetVelX = targetVx / dt;
+        double targetVelY = targetVy / dt;
+        double[] intercept = MathUtil.interceptPoint(x, y, targetX, targetY, targetVelX, targetVelY, ciwsPelletSpeed);
+        return Math.atan2(intercept[1] - y, intercept[0] - x);
+    }
+
+    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim) {
+        if (projectiles == null) return;
         int pellets = Math.max(1, ciwsPelletsPerBurst);
+        double muzzleForward = radius + 8.0;
+        double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));
+        double lateralStep = (pellets <= 1) ? 0.0 : (maxLateral * 2.0) / (pellets - 1);
+        double rightX = -Math.sin(aim);
+        double rightY = Math.cos(aim);
 
         for (int i = 0; i < pellets; i++) {
-            double jitter = (randomUnit() - 0.5) * 2.0 * spread;
-            double a = MathUtil.normalizeAngle(aim + jitter);
-
-            double sx = x + Math.cos(a) * (radius + 8);
-            double sy = y + Math.sin(a) * (radius + 8);
+            double lateral = (i - (pellets - 1) * 0.5) * lateralStep;
+            double sx = x + Math.cos(aim) * muzzleForward + rightX * lateral;
+            double sy = y + Math.sin(aim) * muzzleForward + rightY * lateral;
 
             Projectile pellet = new CIWSPellet(
                     sx,
                     sy,
-                    a,
+                    aim,
                     dt,
                     ciwsPelletSpeed,
                     ciwsPelletDamage,
@@ -3888,18 +3942,20 @@ public abstract class Ship {
     private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim) {
         if (projectiles == null || target == null || !target.alive) return;
 
-        // Team C uses low-damage laser PD so dedicated CIWS hulls still matter.
-        int pulses = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletsPerBurst * 0.30)));
+        int pulses = Math.max(1, ciwsPelletsPerBurst);
         int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletDamage * 0.75)));
         int pulseLife = 2;
-        double spread = Math.toRadians(6.0) * (1.12 - MathUtil.clamp(ciwsQuality, 0.0, 1.0));
         double beamWidth = Math.max(1.0, ciwsPelletRadius * 0.85);
+        double muzzleForward = radius + 8.0;
+        double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));
+        double lateralStep = (pulses <= 1) ? 0.0 : (maxLateral * 2.0) / (pulses - 1);
+        double rightX = -Math.sin(aim);
+        double rightY = Math.cos(aim);
 
         for (int i = 0; i < pulses; i++) {
-            double jitter = (randomUnit() - 0.5) * 2.0 * spread;
-            double a = MathUtil.normalizeAngle(aim + jitter);
-            double sx = x + Math.cos(a) * (radius + 8);
-            double sy = y + Math.sin(a) * (radius + 8);
+            double lateral = (i - (pulses - 1) * 0.5) * lateralStep;
+            double sx = x + Math.cos(aim) * muzzleForward + rightX * lateral;
+            double sy = y + Math.sin(aim) * muzzleForward + rightY * lateral;
 
             PointDefenseLaser laser = new PointDefenseLaser(
                     sx,
@@ -3975,78 +4031,78 @@ public abstract class Ship {
         baseSpawnTimer = baseSpawnCooldown;
     }
 
-    public double getWaveMotionRemaining() {
-        return Math.max(waveMotionTimer, waveMotionCharging ? waveMotionChargeTimer : 0.0);
+    public double getSuperweaponRemaining() {
+        return Math.max(superweaponTimer, superweaponCharging ? superweaponChargeTimer : 0.0);
     }
 
-    public boolean isWaveMotionCharging() {
-        return waveMotionCharging;
+    public boolean isSuperweaponCharging() {
+        return superweaponCharging;
     }
 
-    public double getWaveMotionChargeProgress() {
-        if (!waveMotionCharging) return 0.0;
-        if (waveMotionChargeTime <= 1e-9) return 1.0;
-        double t = 1.0 - (waveMotionChargeTimer / waveMotionChargeTime);
+    public double getSuperweaponChargeProgress() {
+        if (!superweaponCharging) return 0.0;
+        if (superweaponChargeTime <= 1e-9) return 1.0;
+        double t = 1.0 - (superweaponChargeTimer / superweaponChargeTime);
         return Math.max(0.0, Math.min(1.0, t));
     }
 
-    public boolean isWaveMotionBeamActive() {
-        return waveMotionBeamTimer > 0.0;
+    public boolean isSuperweaponBeamActive() {
+        return superweaponBeamTimer > 0.0;
     }
 
-    public double getWaveMotionAimAngle() {
-        if (waveMotionCharging && Double.isFinite(queuedWaveMotionAim)) return queuedWaveMotionAim;
-        if (waveMotionBeamTimer > 0.0 && Double.isFinite(waveMotionBeamAim)) return waveMotionBeamAim;
+    public double getSuperweaponAimAngle() {
+        if (superweaponCharging && Double.isFinite(queuedSuperweaponAim)) return queuedSuperweaponAim;
+        if (superweaponBeamTimer > 0.0 && Double.isFinite(superweaponBeamAim)) return superweaponBeamAim;
         return angle;
     }
 
-    public Projectile pollWaveMotionShot() {
-        if (pendingWaveMotionShots.isEmpty()) return null;
-        Projectile shot = pendingWaveMotionShots.get(0);
-        pendingWaveMotionShots.remove(0);
+    public Projectile pollSuperweaponShot() {
+        if (pendingSuperweaponShots.isEmpty()) return null;
+        Projectile shot = pendingSuperweaponShots.get(0);
+        pendingSuperweaponShots.remove(0);
         return shot;
     }
 
-    public void resetWaveMotionCooldown() {
-        waveMotionTimer = 0.0;
-        waveMotionChargeTimer = 0.0;
-        waveMotionCharging = false;
-        pendingWaveMotionShots.clear();
-        queuedWaveMotionAim = Double.NaN;
-        queuedWaveMotionTarget = null;
-        waveMotionBeamTimer = 0.0;
-        waveMotionBeamTickTimer = 0.0;
-        waveMotionBeamAim = Double.NaN;
-        waveMotionBeamTarget = null;
+    public void resetSuperweaponCooldown() {
+        superweaponTimer = 0.0;
+        superweaponChargeTimer = 0.0;
+        superweaponCharging = false;
+        pendingSuperweaponShots.clear();
+        queuedSuperweaponAim = Double.NaN;
+        queuedSuperweaponTarget = null;
+        superweaponBeamTimer = 0.0;
+        superweaponBeamTickTimer = 0.0;
+        superweaponBeamAim = Double.NaN;
+        superweaponBeamTarget = null;
     }
 
-    public boolean canFireWaveMotionGun() {
+    public boolean canFireSuperweapon() {
         if (!alive || dying) return false;
         if (isTemporarilyDisabled()) return false;
-        if (!hasWaveMotionGun) return false;
-        return waveMotionTimer <= 0.0 && !waveMotionCharging;
+        if (!hasSuperweapon) return false;
+        return superweaponTimer <= 0.0 && !superweaponCharging;
     }
 
-    public void trackWaveMotionAim(double targetX, double targetY) {
-        if (!hasWaveMotionGun) return;
-        double aim = resolveWaveMotionAim(targetX, targetY);
-        if (waveMotionCharging) queuedWaveMotionAim = aim;
-        if (waveMotionBeamTimer > 0.0) waveMotionBeamAim = aim;
+    public void trackSuperweaponAim(double targetX, double targetY) {
+        if (!hasSuperweapon) return;
+        double aim = resolveSuperweaponAim(targetX, targetY);
+        if (superweaponCharging) queuedSuperweaponAim = aim;
+        if (superweaponBeamTimer > 0.0) superweaponBeamAim = aim;
     }
 
-    public Projectile tryFireWaveMotionGunAt(double targetX, double targetY, double dt) {
-        if (!canFireWaveMotionGun()) return null;
+    public Projectile tryFireSuperweaponAt(double targetX, double targetY, double dt) {
+        if (!canFireSuperweapon()) return null;
         if (dt <= 0.0) return null;
-        double aim = resolveWaveMotionAim(targetX, targetY);
-        return tryFireWaveMotionGunResolved(aim, null, dt);
+        double aim = resolveSuperweaponAim(targetX, targetY);
+        return tryFireSuperweaponResolved(aim, null, dt);
     }
 
-    public Projectile tryFireWaveMotionGun(Ship target, double dt) {
-        if (target == null) return tryFireWaveMotionGunAt(Double.NaN, Double.NaN, dt);
-        if (!canFireWaveMotionGun()) return null;
+    public Projectile tryFireSuperweapon(Ship target, double dt) {
+        if (target == null) return tryFireSuperweaponAt(Double.NaN, Double.NaN, dt);
+        if (!canFireSuperweapon()) return null;
         if (dt <= 0.0) return null;
-        double aim = resolveWaveMotionAim(target.x, target.y);
-        return tryFireWaveMotionGunResolved(aim, target, dt);
+        double aim = resolveSuperweaponAim(target.x, target.y);
+        return tryFireSuperweaponResolved(aim, target, dt);
     }
 
     public boolean isShieldOnline() {
@@ -4074,7 +4130,7 @@ public abstract class Ship {
         }
     }
 
-    private double resolveWaveMotionAim(double targetX, double targetY) {
+    private double resolveSuperweaponAim(double targetX, double targetY) {
         if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return angle;
         double dx = targetX - x;
         double dy = targetY - y;
@@ -4083,42 +4139,42 @@ public abstract class Ship {
         return Math.atan2(dy, dx);
     }
 
-    private Projectile tryFireWaveMotionGunResolved(double aim, Ship target, double dt) {
-        queuedWaveMotionAim = aim;
-        queuedWaveMotionTarget = isValidWaveMotionTarget(target) ? target : null;
+    private Projectile tryFireSuperweaponResolved(double aim, Ship target, double dt) {
+        queuedSuperweaponAim = aim;
+        queuedSuperweaponTarget = isValidSuperweaponTarget(target) ? target : null;
 
-        if (waveMotionChargeTime > 0.0) {
-            waveMotionCharging = true;
-            waveMotionChargeTimer = waveMotionChargeTime;
+        if (superweaponChargeTime > 0.0) {
+            superweaponCharging = true;
+            superweaponChargeTimer = superweaponChargeTime;
             return null;
         }
 
-        queuedWaveMotionAim = Double.NaN;
-        Ship immediateTarget = queuedWaveMotionTarget;
-        queuedWaveMotionTarget = null;
-        return fireWaveMotionShot(dt, aim, immediateTarget);
+        queuedSuperweaponAim = Double.NaN;
+        Ship immediateTarget = queuedSuperweaponTarget;
+        queuedSuperweaponTarget = null;
+        return fireSuperweaponShot(dt, aim, immediateTarget);
     }
 
-    private Projectile fireWaveMotionShot(double dt, double aim, Ship target) {
+    private Projectile fireSuperweaponShot(double dt, double aim, Ship target) {
         angle = aim;
-        waveMotionTimer = Math.max(1.0, waveMotionCooldown);
+        superweaponTimer = Math.max(1.0, superweaponCooldown);
         onFiredWeapon();
 
-        waveMotionBeamAim = aim;
-        waveMotionBeamTarget = isValidWaveMotionTarget(target) ? target : null;
+        superweaponBeamAim = aim;
+        superweaponBeamTarget = isValidSuperweaponTarget(target) ? target : null;
         switch (superweaponPattern) {
             case PULSE_BARRAGE -> {
-                waveMotionBeamTimer = Math.max(0.0, waveMotionBeamDuration);
-                waveMotionBeamTickTimer = waveMotionTickSpacing();
+                superweaponBeamTimer = Math.max(0.0, superweaponBeamDuration);
+                superweaponBeamTickTimer = superweaponTickSpacing();
             }
             case MISSILE_BARRAGE -> {
-                waveMotionBeamTimer = Math.max(0.45, waveMotionBeamDuration * 1.7);
-                waveMotionBeamTickTimer = waveMotionTickSpacing();
+                superweaponBeamTimer = Math.max(0.45, superweaponBeamDuration * 1.7);
+                superweaponBeamTickTimer = superweaponTickSpacing();
             }
             default -> {
-                waveMotionBeamTimer = 0.0;
-                waveMotionBeamTickTimer = 0.0;
-                waveMotionBeamTarget = null;
+                superweaponBeamTimer = 0.0;
+                superweaponBeamTickTimer = 0.0;
+                superweaponBeamTarget = null;
             }
         }
 
@@ -4126,16 +4182,16 @@ public abstract class Ship {
         if (volley.isEmpty()) return null;
         Projectile first = volley.get(0);
         if (volley.size() > 1) {
-            for (int i = 1; i < volley.size(); i++) enqueuePendingWaveMotionShot(volley.get(i));
+            for (int i = 1; i < volley.size(); i++) enqueuePendingSuperweaponShot(volley.get(i));
         }
         return first;
     }
 
-    private double waveMotionTickSpacing() {
+    private double superweaponTickSpacing() {
         return switch (superweaponPattern) {
-            case MISSILE_BARRAGE -> Math.max(0.14, waveMotionBeamTickInterval * 1.8);
-            case PULSE_BARRAGE -> Math.max(0.03, waveMotionBeamTickInterval / WAVE_MOTION_PROJECTILE_RATE_MULT);
-            default -> Math.max(0.06, waveMotionBeamTickInterval);
+            case MISSILE_BARRAGE -> Math.max(0.14, superweaponBeamTickInterval * 1.8);
+            case PULSE_BARRAGE -> Math.max(0.03, superweaponBeamTickInterval / SUPERWEAPON_PROJECTILE_RATE_MULT);
+            default -> Math.max(0.06, superweaponBeamTickInterval);
         };
     }
 
@@ -4145,7 +4201,7 @@ public abstract class Ship {
             case KINETIC_SLUG -> addSuperweaponProjectile(out, createKineticSuperSlug(dt, aim));
             case DIRECT_BEAM -> addSuperweaponProjectile(out, createDirectBeamSuperweapon(aim));
             case MISSILE_BARRAGE -> out.addAll(createMissileBarrageVolley(dt, aim, target, beamTick));
-            case PULSE_BARRAGE -> addSuperweaponProjectile(out, createWaveMotionPulse(dt, aim, beamTick));
+            case PULSE_BARRAGE -> addSuperweaponProjectile(out, createSuperweaponPulse(dt, aim, beamTick));
         }
         return out;
     }
@@ -4155,25 +4211,25 @@ public abstract class Ship {
         out.add(p);
     }
 
-    private void enqueuePendingWaveMotionShot(Projectile p) {
+    private void enqueuePendingSuperweaponShot(Projectile p) {
         if (p == null) return;
-        pendingWaveMotionShots.add(p);
+        pendingSuperweaponShots.add(p);
     }
 
-    private void enqueuePendingWaveMotionShots(List<Projectile> shots) {
+    private void enqueuePendingSuperweaponShots(List<Projectile> shots) {
         if (shots == null || shots.isEmpty()) return;
         for (Projectile p : shots) {
-            if (p != null) pendingWaveMotionShots.add(p);
+            if (p != null) pendingSuperweaponShots.add(p);
         }
     }
 
     private Projectile createKineticSuperSlug(double dt, double aim) {
         double sx = x + Math.cos(aim) * (radius + 12.0);
         double sy = y + Math.sin(aim) * (radius + 12.0);
-        int damage = Math.max(1, (int) Math.round(waveMotionDamage * 3.8));
-        double speed = Math.max(420.0, waveMotionSpeed * 0.74);
-        int life = Math.max(36, (int) Math.round(waveMotionLife * 1.35));
-        double slugRadius = Math.max(18.0, waveMotionRadius * 2.35);
+        int damage = Math.max(1, (int) Math.round(superweaponDamage * 3.8));
+        double speed = Math.max(420.0, superweaponSpeed * 0.74);
+        int life = Math.max(36, (int) Math.round(superweaponLife * 1.35));
+        double slugRadius = Math.max(18.0, superweaponRadius * 2.35);
         double blastRadius = Math.max(120.0, slugRadius * 5.0);
         Projectile slug = new DisruptorSlug(sx, sy, aim, dt, speed, damage, life, slugRadius, blastRadius, faction);
         slug.sourceShipId = id;
@@ -4195,65 +4251,47 @@ public abstract class Ship {
         vx = 0.0;
         vy = 0.0;
         cancelBattlefieldWarp();
-        cancelWaveMotionSequence();
+        cancelSuperweaponSequence();
     }
 
-    private void cancelWaveMotionSequence() {
-        waveMotionCharging = false;
-        waveMotionChargeTimer = 0.0;
-        pendingWaveMotionShots.clear();
-        queuedWaveMotionAim = Double.NaN;
-        queuedWaveMotionTarget = null;
-        waveMotionBeamTimer = 0.0;
-        waveMotionBeamTickTimer = 0.0;
-        waveMotionBeamAim = Double.NaN;
-        waveMotionBeamTarget = null;
+    private void cancelSuperweaponSequence() {
+        superweaponCharging = false;
+        superweaponChargeTimer = 0.0;
+        pendingSuperweaponShots.clear();
+        queuedSuperweaponAim = Double.NaN;
+        queuedSuperweaponTarget = null;
+        superweaponBeamTimer = 0.0;
+        superweaponBeamTickTimer = 0.0;
+        superweaponBeamAim = Double.NaN;
+        superweaponBeamTarget = null;
     }
 
     private Projectile createDirectBeamSuperweapon(double aim) {
-        Turret emitter = selectSuperweaponBeamEmitter(aim);
-        if (emitter == null) {
-            return createWaveMotionPulse(GameContext.DT, aim, false);
-        }
-        double beamDurationSec = Math.max(0.65, waveMotionBeamDuration * 2.0);
+        angle = aim;
+        double beamDurationSec = Math.max(0.65, superweaponBeamDuration * 2.0);
         int beamLife = Math.max(8, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
-        double totalDamage = Math.max(1.0, waveMotionDamage * 3.6);
+        double totalDamage = Math.max(1.0, superweaponDamage * 3.6);
         double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
-        double beamLength = MathUtil.clamp(waveMotionSpeed * 0.96, 760.0, 1760.0);
-        double beamWidth = Math.max(10.0, waveMotionRadius * 1.9);
-        Projectile beam = new PhaserBeam(this, emitter, aim, beamLength, beamWidth, beamDps, beamLife, faction);
+        double beamLength = MathUtil.clamp(superweaponSpeed * 0.96, 760.0, 1760.0);
+        double beamWidth = Math.max(10.0, superweaponRadius * 1.9);
+        double muzzleOffset = radius + 12.0;
+        Projectile beam = new PhaserBeam(this, aim, beamLength, beamWidth, beamDps, beamLife, muzzleOffset, faction);
         beam.sourceShipId = id;
         return beam;
-    }
-
-    private Turret selectSuperweaponBeamEmitter(double aim) {
-        Turret best = null;
-        double bestScore = -Double.MAX_VALUE;
-        for (Turret t : turrets) {
-            if (t == null || t.kind != Turret.Kind.GUN) continue;
-            double score = t.localX;
-            if (t.primary) score += 1000.0;
-            if (score > bestScore) {
-                bestScore = score;
-                best = t;
-            }
-        }
-        if (best != null) best.angle = aim;
-        return best;
     }
 
     private List<Projectile> createMissileBarrageVolley(double dt, double aim, Ship target, boolean beamTick) {
         int missileCount = beamTick ? 4 : 9;
         double spread = beamTick ? Math.toRadians(28.0) : Math.toRadians(46.0);
-        int damage = Math.max(6, (int) Math.round(waveMotionDamage * (beamTick ? 0.42 : 0.56)));
-        double speed = Math.max(260.0, waveMotionSpeed * (beamTick ? 0.34 : 0.39));
+        int damage = Math.max(6, (int) Math.round(superweaponDamage * (beamTick ? 0.42 : 0.56)));
+        double speed = Math.max(260.0, superweaponSpeed * (beamTick ? 0.34 : 0.39));
         double turnRate = Math.toRadians(beamTick ? 218.0 : 246.0);
-        int life = Math.max(120, (int) Math.round(waveMotionLife * (beamTick ? 1.35 : 1.75)));
-        double missileRadius = Math.max(9.0, waveMotionRadius * (beamTick ? 0.95 : 1.10));
+        int life = Math.max(120, (int) Math.round(superweaponLife * (beamTick ? 1.35 : 1.75)));
+        double missileRadius = Math.max(9.0, superweaponRadius * (beamTick ? 0.95 : 1.10));
         double muzzle = radius + 12.0;
         List<Projectile> out = new ArrayList<>(missileCount);
 
-        Ship lock = isValidWaveMotionTarget(target) ? target : null;
+        Ship lock = isValidSuperweaponTarget(target) ? target : null;
         for (int i = 0; i < missileCount; i++) {
             double t = (missileCount <= 1) ? 0.0 : (i / (double) (missileCount - 1) - 0.5);
             double shotAim = MathUtil.normalizeAngle(aim + t * spread);
@@ -4267,30 +4305,30 @@ public abstract class Ship {
         return out;
     }
 
-    private boolean isValidWaveMotionTarget(Ship target) {
+    private boolean isValidSuperweaponTarget(Ship target) {
         if (target == null) return false;
         return target.alive && !target.dying && target.hp > 0 && (target.faction == null || !target.faction.isFriendlyTo(faction));
     }
 
-    private WaveMotionShot createWaveMotionPulse(double dt, double aim, boolean beamTick) {
+    private SuperweaponShot createSuperweaponPulse(double dt, double aim, boolean beamTick) {
         double sx = x + Math.cos(aim) * (radius + 10.0);
         double sy = y + Math.sin(aim) * (radius + 10.0);
 
-        int damage = waveMotionDamage;
-        double speed = waveMotionSpeed;
-        int life = waveMotionLife;
-        double radius = waveMotionRadius;
-        int maxHits = waveMotionMaxHits;
+        int damage = superweaponDamage;
+        double speed = superweaponSpeed;
+        int life = superweaponLife;
+        double radius = superweaponRadius;
+        int maxHits = superweaponMaxHits;
 
         if (beamTick) {
-            damage = Math.max(1, (int) Math.round(waveMotionDamage * waveMotionBeamDamageScale));
-            speed = waveMotionSpeed * 1.12;
-            life = Math.max(18, (int) Math.round(waveMotionLife * 0.42));
-            radius = waveMotionRadius * 0.92;
-            maxHits = Math.max(6, (int) Math.round(waveMotionMaxHits * 0.45));
+            damage = Math.max(1, (int) Math.round(superweaponDamage * superweaponBeamDamageScale));
+            speed = superweaponSpeed * 1.12;
+            life = Math.max(18, (int) Math.round(superweaponLife * 0.42));
+            radius = superweaponRadius * 0.92;
+            maxHits = Math.max(6, (int) Math.round(superweaponMaxHits * 0.45));
         }
 
-        WaveMotionShot shot = new WaveMotionShot(
+        SuperweaponShot shot = new SuperweaponShot(
                 sx,
                 sy,
                 aim,

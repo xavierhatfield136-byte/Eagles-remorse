@@ -119,17 +119,17 @@ public final class GameplayActions {
         ctx.projectiles.addAll(ctx.player.tryMissileSalvo(target, GameContext.DT));
     }
 
-    public static void tryWaveMotionGun(GameContext ctx) {
+    public static void trySuperweapon(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
-        if (!ctx.player.hasWaveMotionGun) return;
+        if (!ctx.player.hasSuperweapon) return;
 
-        Projectile shot = ctx.player.tryFireWaveMotionGunAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
+        Projectile shot = ctx.player.tryFireSuperweaponAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
         if (shot != null) {
             ctx.projectiles.add(shot);
-            EventSystem.showBanner(ctx, "WAVE-MOTION GUN FIRED", 1.0);
+            EventSystem.showBanner(ctx, "SUPERWEAPON FIRED", 1.0);
             ScreenShake.kick(8.0);
-        } else if (ctx.player.isWaveMotionCharging()) {
-            EventSystem.showBanner(ctx, "WAVE-MOTION GUN CHARGING", 0.8);
+        } else if (ctx.player.isSuperweaponCharging()) {
+            EventSystem.showBanner(ctx, "SUPERWEAPON CHARGING", 0.8);
         }
     }
 

@@ -33,8 +33,8 @@ public final class GameRenderSystem {
         drawTransportSupportAuras(ctx, worldG);
         Renderer.drawShips(worldG, ctx.ships);
         Renderer.drawProjectiles(worldG, ctx.projectiles);
-        Renderer.drawWaveMotionAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-        Renderer.drawNpcWaveMotionAimCues(worldG, ctx.ships, ctx.player);
+        Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
+        Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player);
 
         try { VFX.drawAll(worldG); } catch (Throwable ignored) {}
 
@@ -246,8 +246,8 @@ if (DevTools.isDebugOverlay()) {
             if (hasHostileNearPlayer(ctx, 920.0)) {
                 return "No target lock while hostiles are nearby. Press L (or middle click) to lock quickly.";
             }
-        } else if (p.hasWaveMotionGun && p.isWaveMotionCharging()) {
-            return "Wave gun charging: hold heading steady until charge completes.";
+        } else if (p.hasSuperweapon && p.isSuperweaponCharging()) {
+            return "Superweapon charging: hold heading steady until charge completes.";
         }
         if (p.isCarrier) {
             int active = CarrierSystem.countActiveWingByCarrier(ctx, p);

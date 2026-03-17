@@ -2,16 +2,16 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Heavy superweapon projectile used by the wave-motion gun.
+ * Heavy projectile used by the superweapon.
  * It pierces multiple targets and is intended to feel like a line-breaker shot.
  */
-public class WaveMotionShot extends Projectile {
+public class SuperweaponShot extends Projectile {
     public final double angle;
     private int remainingHits;
     private final Set<Integer> hitShipIds = new HashSet<>();
     private final Set<Integer> hitAsteroidIds = new HashSet<>();
 
-    public WaveMotionShot(
+    public SuperweaponShot(
             double x,
             double y,
             double angle,

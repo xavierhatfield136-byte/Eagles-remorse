@@ -716,7 +716,7 @@ public class Renderer {
 
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
-            } else if (p instanceof WaveMotionShot ws) {
+            } else if (p instanceof SuperweaponShot ws) {
                 int x = (int) Math.round(ws.x);
                 int y = (int) Math.round(ws.y);
                 double nx = Math.cos(ws.angle);
@@ -920,21 +920,21 @@ public class Renderer {
         g2.setStroke(old);
     }
 
-    public static void drawWaveMotionAimCue(Graphics2D g2, Player player, double cursorWorldX, double cursorWorldY) {
+    public static void drawSuperweaponAimCue(Graphics2D g2, Player player, double cursorWorldX, double cursorWorldY) {
         if (g2 == null || player == null) return;
         if (!player.alive || player.dying || player.hp <= 0) return;
-        if (!player.hasWaveMotionGun) return;
-        if (!player.isWaveMotionCharging()) return;
+        if (!player.hasSuperweapon) return;
+        if (!player.isSuperweaponCharging()) return;
 
-        double aim = player.getWaveMotionAimAngle();
+        double aim = player.getSuperweaponAimAngle();
         double len = 2200.0;
         double sx = player.x + Math.cos(aim) * (player.radius + 10.0);
         double sy = player.y + Math.sin(aim) * (player.radius + 10.0);
         double ex = sx + Math.cos(aim) * len;
         double ey = sy + Math.sin(aim) * len;
 
-        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, player.getWaveMotionChargeProgress()));
-        boolean charging = player.isWaveMotionCharging();
+        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, player.getSuperweaponChargeProgress()));
+        boolean charging = player.isSuperweaponCharging();
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.0);
 
         Stroke oldStroke = g2.getStroke();
@@ -967,30 +967,30 @@ public class Renderer {
         g2.setStroke(oldStroke);
     }
 
-    public static void drawNpcWaveMotionAimCues(Graphics2D g2, List<Ship> ships, Ship player) {
+    public static void drawNpcSuperweaponAimCues(Graphics2D g2, List<Ship> ships, Ship player) {
         if (g2 == null || ships == null || ships.isEmpty()) return;
         for (Ship ship : ships) {
             if (ship == null || ship == player) continue;
             if (!ship.alive || ship.dying || ship.hp <= 0) continue;
             if (ship.role != ShipRole.SUPERSHIP) continue;
-            if (!ship.hasWaveMotionGun || !ship.isWaveMotionCharging()) continue;
-            drawNpcWaveMotionAimCue(g2, ship);
+            if (!ship.hasSuperweapon || !ship.isSuperweaponCharging()) continue;
+            drawNpcSuperweaponAimCue(g2, ship);
         }
     }
 
-    private static void drawNpcWaveMotionAimCue(Graphics2D g2, Ship ship) {
+    private static void drawNpcSuperweaponAimCue(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null) return;
-        double aim = ship.getWaveMotionAimAngle();
-        double len = npcWaveCueLength(ship);
+        double aim = ship.getSuperweaponAimAngle();
+        double len = npcSuperweaponCueLength(ship);
         double sx = ship.x + Math.cos(aim) * (ship.radius + 10.0);
         double sy = ship.y + Math.sin(aim) * (ship.radius + 10.0);
         double ex = sx + Math.cos(aim) * len;
         double ey = sy + Math.sin(aim) * len;
 
-        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, ship.getWaveMotionChargeProgress()));
+        float chargeFrac = (float) Math.max(0.0, Math.min(1.0, ship.getSuperweaponChargeProgress()));
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.6 + ship.id * 0.17);
 
-        Color base = npcWaveCueColor(ship.faction);
+        Color base = npcSuperweaponCueColor(ship.faction);
         Color hot = mixColor(base, Color.WHITE, 0.58);
 
         Stroke oldStroke = g2.getStroke();
@@ -1009,15 +1009,15 @@ public class Renderer {
         g2.setStroke(oldStroke);
     }
 
-    private static double npcWaveCueLength(Ship ship) {
+    private static double npcSuperweaponCueLength(Ship ship) {
         if (ship == null) return 2200.0;
         if (ship.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
-            return MathUtil.clamp(ship.waveMotionSpeed * 0.96, 760.0, 1760.0);
+            return MathUtil.clamp(ship.superweaponSpeed * 0.96, 760.0, 1760.0);
         }
         return 2200.0;
     }
 
-    private static Color npcWaveCueColor(Faction faction) {
+    private static Color npcSuperweaponCueColor(Faction faction) {
         if (faction == null) return new Color(255, 120, 120);
         return switch (faction) {
             case ALLY, PLAYER -> new Color(130, 220, 255);
@@ -1484,7 +1484,7 @@ public class Renderer {
             out.add("I SHIELD");
             out.add("Y PRESET");
         }
-        if (player.hasWaveMotionGun) out.add("X WAVE");
+        if (player.hasSuperweapon) out.add("X SUPERWEAPON");
         if (player.isCarrier) {
             out.add("/ FLIGHT");
             out.add("C LAUNCH");
@@ -1634,7 +1634,7 @@ public class Renderer {
         }
 
         if (detail == GameContext.HudDetail.COMPACT) {
-            rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasWaveMotionGun ? " | X superweapon" : ""));
+            rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasSuperweapon ? " | X superweapon" : ""));
             rows.add("TARGETING: L lock | [ ] cycle | T auto-lock");
             rows.add("SYSTEM: Y preset | U crew | I shield mode | J/K shield face");
             rows.add("OVERLAYS: TAB shop | B base | M map | O power | H crew | bottom bar");
@@ -1643,7 +1643,7 @@ public class Renderer {
             return rows;
         }
 
-        rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasWaveMotionGun ? " | X superweapon" : ""));
+        rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasSuperweapon ? " | X superweapon" : ""));
         rows.add("UTILITY: F mine | ; emergency thrust | E shield overcharge");
         rows.add("TARGETING: L lock under mouse | [ ] cycle targets | T auto-lock");
         rows.add("SYSTEMS: O power mgmt | H crew stations | Y power preset | U crew order");
@@ -1825,7 +1825,7 @@ public class Renderer {
         drawHudHintChip(g2, "LMB guns", mx - horizontalGap, my, -1);
         drawHudHintChip(g2, "RMB missiles", mx + horizontalGap, my, +1);
         drawHudHintChip(g2, "Q missile salvo", mx, my + verticalGap, 0);
-        if (player.role == ShipRole.SUPERSHIP || player.hasWaveMotionGun) {
+        if (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon) {
             drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
         }
     }
