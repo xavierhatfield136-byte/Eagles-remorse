@@ -103,9 +103,10 @@ public final class DoctrineRegistry {
         s.shield = s.shieldMax;
         if (s.shieldMax > 0) s.shieldActive = true;
 
-        // TEAM_D doctrine: make primary batteries torpedo-centric.
+        // TEAM_D doctrine: convert the M1/primary battery into lighter guided missiles,
+        // while keeping native missile racks as the heavier salvo threat.
         if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
-            convertPrimaryGunsToTorpedoes(s);
+            convertPrimaryGunsToLightMissiles(s);
         }
 
         // --- 5B: CIWS/PD scaling ---
@@ -129,7 +130,9 @@ public final class DoctrineRegistry {
                     t.missileSpeed = t.missileSpeed * (0.92 + 0.08 * ms);
                     t.missileTurnRate = t.missileTurnRate * (0.92 + 0.08 * ms);
                     if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
-                        t.cooldown = Math.max(0.35, t.cooldown * 0.76);
+                        double cooldownScale = t.primary ? 0.92 : 0.76;
+                        double cooldownFloor = t.primary ? 0.60 : 0.35;
+                        t.cooldown = Math.max(cooldownFloor, t.cooldown * cooldownScale);
                         t.missileLife = Math.max(1, (int) Math.round(t.missileLife * 1.10));
                     }
                 } else if (t.kind == Turret.Kind.GUN && p.doctrine == Doctrine.MISSILE_BARRAGE) {
@@ -142,7 +145,7 @@ public final class DoctrineRegistry {
         }
     }
 
-    private static void convertPrimaryGunsToTorpedoes(Ship s) {
+    private static void convertPrimaryGunsToLightMissiles(Ship s) {
         if (s == null || s.turrets == null || s.turrets.isEmpty()) return;
 
         int converted = 0;
@@ -150,7 +153,7 @@ public final class DoctrineRegistry {
             Turret gun = s.turrets.get(i);
             if (gun == null || gun.kind != Turret.Kind.GUN || !gun.primary) continue;
 
-            Turret rack = convertGunToTorpedoRack(gun);
+            Turret rack = convertGunToLightMissileRack(gun);
             rack.primary = true;
 
             s.turrets.set(i, rack);
@@ -162,24 +165,24 @@ public final class DoctrineRegistry {
         for (int i = 0; i < s.turrets.size(); i++) {
             Turret gun = s.turrets.get(i);
             if (gun == null || gun.kind != Turret.Kind.GUN) continue;
-            Turret rack = convertGunToTorpedoRack(gun);
+            Turret rack = convertGunToLightMissileRack(gun);
             rack.primary = true;
             s.turrets.set(i, rack);
             return;
         }
     }
 
-    private static Turret convertGunToTorpedoRack(Turret gun) {
+    private static Turret convertGunToLightMissileRack(Turret gun) {
         Turret rack = new Turret(Turret.Kind.MISSILE, gun.localX, gun.localY);
         rack.primary = gun.primary;
         rack.turnRate = gun.turnRate;
-        rack.cooldown = Math.max(0.46, gun.cooldown * 1.95);
-        rack.damage = Math.max(6, (int) Math.round(gun.damage * 4.2));
-        rack.missileSpeed = MathUtil.clamp(gun.bulletSpeed * 0.60, 340.0, 660.0); // fast torpedo profile
-        rack.missileTurnRate = 0.0; // unguided torpedoes for all TEAM_D primaries
-        rack.missileLife = Math.max(200, (int) Math.round(gun.bulletLife * 2.2));
-        rack.radius = Math.max(8.5, gun.radius + 2.2);
-        rack.barrelLen = Math.max(9.0, gun.barrelLen * 0.82);
+        rack.cooldown = Math.max(0.68, gun.cooldown * 1.65);
+        rack.damage = Math.max(1, (int) Math.round(Math.max(1.0, gun.damage * 1.95) * 0.25));
+        rack.missileSpeed = MathUtil.clamp(gun.bulletSpeed * 0.92, 520.0, 960.0);
+        rack.missileTurnRate = Math.toRadians(260);
+        rack.missileLife = Math.max(170, (int) Math.round(gun.bulletLife * 1.55));
+        rack.radius = Math.max(6.8, gun.radius + 0.8);
+        rack.barrelLen = Math.max(10.0, gun.barrelLen * 0.92);
         return rack;
     }
 

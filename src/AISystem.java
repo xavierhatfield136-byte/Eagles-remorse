@@ -57,7 +57,9 @@ public final class AISystem {
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
         if (ctx.config != null
-                && (ctx.config.mode == GameMode.SHOWCASE || ctx.config.mode == GameMode.SHOOTING_RANGE)) return;
+                && (ctx.config.mode == GameMode.SHOWCASE
+                || ctx.config.mode == GameMode.SHOOTING_RANGE
+                || ctx.config.mode == GameMode.TUTORIAL)) return;
         if (!DevTools.isAIEnabled()) return;
         decayKillConfirmTimers(Math.max(0.0, dt));
         pruneClosestRetargetState(ctx.ships);

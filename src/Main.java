@@ -196,6 +196,7 @@ class GameConfig {
  * High-level game modes.
  */
 enum GameMode {
+    TUTORIAL("Tutorial"),
     CAMPAIGN_OPS("Campaign Ops"),
     LAST_STAND("Last Stand"),
     RESOURCE_RUSH("Resource Rush"),

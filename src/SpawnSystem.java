@@ -36,6 +36,11 @@ public final class SpawnSystem {
             return;
         }
 
+        if (ctx.config.mode == GameMode.TUTORIAL) {
+            TutorialSystem.init(ctx, configuredPlayerFaction(ctx));
+            return;
+        }
+
         if (ctx.config.mode == GameMode.SHOOTING_RANGE) {
             initShootingRange(ctx);
             return;
@@ -608,11 +613,17 @@ public final class SpawnSystem {
         try { DoctrineRegistry.applyToShip(ctx.player); } catch (Throwable ignored) {}
 
         Faction targetFaction = ctx.player.faction.isFriendlyTo(Faction.ENEMY) ? Faction.ALLY : Faction.ENEMY;
-        spawnRangeTarget(ctx, ShipRole.PATROL, targetFaction, px + 420, py - 180, "RANGE TARGET LIGHT (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.FRIGATE, targetFaction, px + 620, py - 60, "RANGE TARGET MEDIUM (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, targetFaction, px + 760, py + 120, "RANGE TARGET CIWS (HULL)", false);
-        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, targetFaction, px + 980, py - 140, "RANGE TARGET CRUISER (SHIELD)", true);
-        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, targetFaction, px + 1220, py + 40, "RANGE TARGET HEAVY (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.PATROL, targetFaction, px + 360, py - 220, "RANGE TARGET LIGHT (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.PICKET, targetFaction, px + 470, py + 170, "RANGE TARGET PICKET (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.FRIGATE, targetFaction, px + 580, py - 70, "RANGE TARGET MEDIUM (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.MISSILE_BOAT, targetFaction, px + 700, py - 240, "RANGE TARGET MISSILE BOAT (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.CIWS_CORVETTE, targetFaction, px + 800, py + 110, "RANGE TARGET CIWS (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.TRANSPORT, targetFaction, px + 940, py + 260, "RANGE TARGET TRANSPORT (HULL)", false);
+        spawnRangeTarget(ctx, ShipRole.LIGHT_CRUISER, targetFaction, px + 980, py - 130, "RANGE TARGET LIGHT CRUISER (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.CRUISER, targetFaction, px + 1160, py + 170, "RANGE TARGET CRUISER HEAVY (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.BATTLECRUISER, targetFaction, px + 1280, py + 20, "RANGE TARGET HEAVY (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.BATTLESHIP, targetFaction, px + 1500, py - 170, "RANGE TARGET BATTLESHIP (SHIELD)", true);
+        spawnRangeTarget(ctx, ShipRole.HAULER, targetFaction, px + 1640, py + 250, "RANGE TARGET HAULER (HULL)", false);
 
         ctx.credits = 10000;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;

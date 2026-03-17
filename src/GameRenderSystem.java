@@ -51,6 +51,7 @@ public final class GameRenderSystem {
 
         Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets);
         drawCampaignMarkers(ctx, worldG);
+        TutorialSystem.drawWorldMarkers(ctx, worldG);
         worldG.dispose();
 
         int allyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ALLY);
@@ -66,6 +67,10 @@ public final class GameRenderSystem {
         int lockedWingCap = (ctx.lockedTarget != null && ctx.lockedTarget.isCarrier) ? Math.max(0, ctx.lockedTarget.maxFighters) : 0;
         String objectiveTitle = CampaignSystem.hudObjectiveTitle(ctx);
         String objectiveDetail = CampaignSystem.hudObjectiveDetail(ctx);
+        if ((objectiveTitle == null || objectiveTitle.isBlank()) && TutorialSystem.isActive(ctx)) {
+            objectiveTitle = TutorialSystem.hudTitle(ctx);
+            objectiveDetail = TutorialSystem.hudDetail(ctx);
+        }
         if ((objectiveTitle == null || objectiveTitle.isBlank()) && LastStandSystem.isActive(ctx)) {
             objectiveTitle = LastStandSystem.hudTitle(ctx);
             objectiveDetail = LastStandSystem.hudDetail(ctx);
@@ -191,6 +196,8 @@ if (DevTools.isDebugOverlay()) {
 
     private static String buildContextHint(GameContext ctx, Ship dockedBase) {
         if (ctx == null || ctx.player == null) return "";
+        String tutorialHint = TutorialSystem.contextHint(ctx);
+        if (tutorialHint != null && !tutorialHint.isBlank()) return tutorialHint;
         Ship p = ctx.player;
 
         if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) {

@@ -98,6 +98,7 @@ public final class GameSimulationRuntime {
         AISystem.update(ctx, dt);
         CarrierSystem.update(ctx, dt);
         EconomySystem.update(ctx, dt);
+        TutorialSystem.update(ctx, dt);
         CampaignSystem.update(ctx, dt);
         LastStandSystem.update(ctx, dt);
         UISystem.updatePings(ctx, dt);
