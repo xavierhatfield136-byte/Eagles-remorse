@@ -5,8 +5,8 @@ public final class GameSimulationRuntime {
     private static final long MAX_ELAPSED_NS = 250_000_000L;
     private static final int MAX_UPDATE_STEPS = 6;
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
-    private static final double TELEPORT_CHARGE_SECONDS = 5.0;
-    private static final double TELEPORT_DISRUPT_TOLERANCE_SECONDS = 0.05;
+    private static final double BATTLEFIELD_WARP_CHARGE_SECONDS = 10.0;
+    private static final double BATTLEFIELD_WARP_DISRUPT_TOLERANCE_SECONDS = 0.05;
 
     private final GameContext ctx;
 
@@ -80,21 +80,23 @@ public final class GameSimulationRuntime {
 
         applyPlayerInput(dt, input);
         applyPlayerRepairOrderInstantHeal();
+        holdWarpChargingShips();
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
-            updatePlayerTeleportCharge(dt);
+            updateBattlefieldWarpCharges(dt);
             if (ctx.player != null) {
                 ctx.player.x = GameMath.clamp(ctx.player.x, 0, ctx.WORLD_W);
                 ctx.player.y = GameMath.clamp(ctx.player.y, 0, ctx.WORLD_H);
             }
             UISystem.updatePings(ctx, dt);
             CameraSystem.update(ctx, viewportW, viewportH);
+            syncPlayerWarpHudState();
             return;
         }
 
         PhysicsSystem.update(ctx, dt);
-        updatePlayerTeleportCharge(dt);
+        updateBattlefieldWarpCharges(dt);
         AISystem.update(ctx, dt);
         CarrierSystem.update(ctx, dt);
         EconomySystem.update(ctx, dt);
@@ -105,6 +107,7 @@ public final class GameSimulationRuntime {
         EventSystem.update(ctx, dt);
         AudioSystem.update(ctx, dt);
         CameraSystem.update(ctx, viewportW, viewportH);
+        syncPlayerWarpHudState();
     }
 
     private void applyPlayerRepairOrderInstantHeal() {
@@ -116,55 +119,68 @@ public final class GameSimulationRuntime {
         }
     }
 
-    private void updatePlayerTeleportCharge(double dt) {
-        if (ctx == null || ctx.player == null) return;
-        if (!ctx.playerTeleportCharging) return;
-        if (dt <= 0.0) return;
-
-        Player p = ctx.player;
-        if (!p.alive || p.dying || p.hp <= 0) {
-            cancelPlayerTeleport("RTB TELEPORT ABORTED", 1.0);
-            return;
+    private void holdWarpChargingShips() {
+        if (ctx == null || ctx.ships == null) return;
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.isWarpCharging()) continue;
+            s.vx = 0.0;
+            s.vy = 0.0;
         }
-
-        Ship base = TeamSystem.getBaseForTeam(ctx, p.faction);
-        if (base == null || !base.alive || base.dying || base.hp <= 0) {
-            cancelPlayerTeleport("RTB TELEPORT ABORTED", 1.0);
-            return;
-        }
-
-        double elapsed = TELEPORT_CHARGE_SECONDS - Math.max(0.0, ctx.playerTeleportChargeRemaining);
-        if (p.secondsSinceDamage() + TELEPORT_DISRUPT_TOLERANCE_SECONDS < elapsed) {
-            cancelPlayerTeleport("RTB TELEPORT DISRUPTED", 1.2);
-            return;
-        }
-
-        ctx.playerTeleportChargeRemaining = Math.max(0.0, ctx.playerTeleportChargeRemaining - dt);
-        if (ctx.playerTeleportChargeRemaining > 1e-6) return;
-
-        double ang = ((ctx.rng != null) ? ctx.rng.nextDouble() : Math.random()) * Math.PI * 2.0;
-        double dockDist = Math.max(90.0, base.radius + p.radius + 40.0);
-        double tx = base.x + Math.cos(ang) * dockDist;
-        double ty = base.y + Math.sin(ang) * dockDist;
-        p.x = GameMath.clamp(tx, 0, ctx.WORLD_W);
-        p.y = GameMath.clamp(ty, 0, ctx.WORLD_H);
-        p.vx = 0.0;
-        p.vy = 0.0;
-        ctx.waypointX = base.x;
-        ctx.waypointY = base.y;
-        ctx.playerTeleportCharging = false;
-        ctx.playerTeleportChargeRemaining = 0.0;
-        EventSystem.showBanner(ctx, "RTB TELEPORT COMPLETE", 1.2);
     }
 
-    private void cancelPlayerTeleport(String banner, double seconds) {
-        if (ctx == null) return;
-        if (!ctx.playerTeleportCharging) return;
-        ctx.playerTeleportCharging = false;
-        ctx.playerTeleportChargeRemaining = 0.0;
-        if (banner != null && !banner.isBlank()) {
+    private void updateBattlefieldWarpCharges(double dt) {
+        if (ctx == null || ctx.ships == null || dt <= 0.0) return;
+        for (Ship s : new java.util.ArrayList<>(ctx.ships)) {
+            if (s == null || !s.isWarpCharging()) continue;
+            updateSingleBattlefieldWarp(s, dt);
+        }
+    }
+
+    private void updateSingleBattlefieldWarp(Ship ship, double dt) {
+        if (ship == null) return;
+        boolean isPlayer = (ship == ctx.player);
+        if (!ship.alive || ship.dying || ship.hp <= 0 || !ship.canUseBattlefieldWarp()) {
+            cancelBattlefieldWarp(ship, isPlayer ? "BATTLEFIELD WARP ABORTED" : null, 1.0);
+            return;
+        }
+
+        double chargeDuration = ship.warpChargeDuration();
+        double elapsed = Math.max(0.0, chargeDuration - ship.warpChargeRemaining());
+        if (ship.secondsSinceDamage() + BATTLEFIELD_WARP_DISRUPT_TOLERANCE_SECONDS < elapsed) {
+            cancelBattlefieldWarp(ship, isPlayer ? "BATTLEFIELD WARP DISRUPTED" : null, 1.2);
+            return;
+        }
+
+        ship.tickBattlefieldWarp(dt);
+        if (!ship.isBattlefieldWarpReady()) return;
+
+        double tx = GameMath.clamp(ship.warpExitX(), 0, ctx.WORLD_W);
+        double ty = GameMath.clamp(ship.warpExitY(), 0, ctx.WORLD_H);
+        ship.x = tx;
+        ship.y = ty;
+        ship.vx = 0.0;
+        ship.vy = 0.0;
+        ship.cancelBattlefieldWarp();
+        if (isPlayer) {
+            ctx.waypointX = tx;
+            ctx.waypointY = ty;
+            EventSystem.showBanner(ctx, "BATTLEFIELD WARP COMPLETE", 1.1);
+        }
+    }
+
+    private void cancelBattlefieldWarp(Ship ship, String banner, double seconds) {
+        if (ship == null || !ship.isWarpCharging()) return;
+        boolean isPlayer = (ship == ctx.player);
+        ship.cancelBattlefieldWarp();
+        if (isPlayer && banner != null && !banner.isBlank()) {
             EventSystem.showBanner(ctx, banner, Math.max(0.1, seconds));
         }
+    }
+
+    private void syncPlayerWarpHudState() {
+        if (ctx == null || ctx.player == null) return;
+        ctx.playerTeleportCharging = ctx.player.isWarpCharging();
+        ctx.playerTeleportChargeRemaining = ctx.player.warpChargeRemaining();
     }
 
     private boolean isPlayerRepairOrderActive() {

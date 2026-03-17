@@ -180,20 +180,45 @@ public final class GameplayActions {
 
     public static void tryTeleportToBase(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
-        Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
-        if (base == null || !base.alive || base.dying || base.hp <= 0) {
-            EventSystem.showBanner(ctx, "TELEPORT UNAVAILABLE: NO FRIENDLY BASE", 1.4);
+        Player player = ctx.player;
+        if (player == null) return;
+        if (!player.canUseBattlefieldWarp()) {
+            EventSystem.showBanner(ctx, "WARP UNAVAILABLE", 1.2);
             return;
         }
-        if (ctx.playerTeleportCharging) {
+        Ship base = TeamSystem.getBaseForTeam(ctx, player.faction);
+        boolean hasWaypoint = Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY);
+        double targetX;
+        double targetY;
+        String destinationLabel;
+        if (hasWaypoint) {
+            targetX = ctx.waypointX;
+            targetY = ctx.waypointY;
+            destinationLabel = "WAYPOINT";
+        } else if (base != null && base.alive && !base.dying && base.hp > 0) {
+            targetX = base.x;
+            targetY = base.y;
+            destinationLabel = "BASE";
+        } else {
+            EventSystem.showBanner(ctx, "WARP UNAVAILABLE: SET WAYPOINT OR FIND BASE", 1.4);
+            return;
+        }
+
+        if (player.isWarpCharging()) {
+            player.cancelBattlefieldWarp();
             ctx.playerTeleportCharging = false;
             ctx.playerTeleportChargeRemaining = 0.0;
-            EventSystem.showBanner(ctx, "RTB TELEPORT CANCELLED", 1.0);
+            EventSystem.showBanner(ctx, "BATTLEFIELD WARP CANCELLED", 1.0);
+            return;
+        }
+
+        if (!player.beginBattlefieldWarp(targetX, targetY, 10.0)) {
+            EventSystem.showBanner(ctx, "WARP UNAVAILABLE", 1.2);
             return;
         }
         ctx.playerTeleportCharging = true;
-        ctx.playerTeleportChargeRemaining = 5.0;
-        EventSystem.showBanner(ctx, "RTB TELEPORT CHARGING (5.0S)", 1.2);
+        ctx.playerTeleportChargeRemaining = player.warpChargeRemaining();
+        EventSystem.showBanner(ctx, "BATTLEFIELD WARP TO " + destinationLabel + " (10.0S)", 1.2);
     }
 
     public static void rotateShieldFacing(GameContext ctx, int dir) {

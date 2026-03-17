@@ -214,7 +214,7 @@ if (DevTools.isDebugOverlay()) {
         }
         if (ctx.playerTeleportCharging) {
             double t = Math.max(0.0, ctx.playerTeleportChargeRemaining);
-            return String.format("RTB teleport charging: %.1fs remaining (taking damage disrupts).", t);
+            return String.format("Battlefield warp charging: %.1fs remaining (- or Backspace, damage disrupts).", t);
         }
 
         int fireRooms = p.activeFireRoomCount();

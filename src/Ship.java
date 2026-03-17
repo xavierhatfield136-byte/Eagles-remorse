@@ -278,6 +278,10 @@ public abstract class Ship {
     public double carrierOrphanTimer = -1.0;
     /** Active strike-craft behavior state. */
     public WingState wingState = WingState.ATTACK;
+    /** If this is a non-carrier escort fighter, the protected ship id; otherwise -1. */
+    public int escortAnchorId = -1;
+    /** Stable escort side/slot preference around the protected ship. */
+    public int escortSlotIndex = 0;
     /** 5-slot launch pattern used when a carrier launches a full flight. */
     public final ShipRole[] flightDeckLoadout = new ShipRole[5];
     /** Next slot to launch from the configured flight deck pattern. */
@@ -305,6 +309,13 @@ public abstract class Ship {
     public double repairRange = 320;
     public double repairHullPerSec = 1.6;
     public double repairShieldPerSec = 8.0;
+
+    // Battlefield warp
+    private boolean warpCharging = false;
+    private double warpChargeRemaining = 0.0;
+    private double warpChargeDuration = 0.0;
+    private double warpExitX = Double.NaN;
+    private double warpExitY = Double.NaN;
 
     // Movement
     public double desiredSpeed = 110;
@@ -714,6 +725,11 @@ public abstract class Ship {
         if (isBase || isCarrier) {
             baseSpawnTimer -= dt;
             if (baseSpawnTimer < 0) baseSpawnTimer = 0;
+        }
+
+        if (warpCharging) {
+            vx = 0.0;
+            vy = 0.0;
         }
 
         syncHullFromRoomIntegrity();
@@ -1148,6 +1164,78 @@ public abstract class Ship {
 
     public boolean usesLimitedStrikeCraftMunitions() {
         return role == ShipRole.FIGHTER || role == ShipRole.BOMBER;
+    }
+
+    public boolean isSmallCraft() {
+        return switch (role) {
+            case FIGHTER, BOMBER, PD_CRAFT, DRONE -> true;
+            default -> false;
+        };
+    }
+
+    public boolean canUseBattlefieldWarp() {
+        if (!alive || dying || hp <= 0) return false;
+        if (isSmallCraft()) return false;
+        if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return false;
+        return propulsionRoomIntegrity() > 0.20
+                && systemHealthFraction(InternalSystem.WARP_ENGINES) > 0.20
+                && systemHealthFraction(InternalSystem.BRIDGE) > 0.15;
+    }
+
+    public boolean isWarpCharging() {
+        return warpCharging;
+    }
+
+    public double warpChargeRemaining() {
+        return Math.max(0.0, warpChargeRemaining);
+    }
+
+    public double warpChargeDuration() {
+        return Math.max(0.0, warpChargeDuration);
+    }
+
+    public double warpChargeProgress() {
+        if (!warpCharging || warpChargeDuration <= 1e-6) return 0.0;
+        return MathUtil.clamp(1.0 - (warpChargeRemaining / warpChargeDuration), 0.0, 1.0);
+    }
+
+    public double warpExitX() {
+        return warpExitX;
+    }
+
+    public double warpExitY() {
+        return warpExitY;
+    }
+
+    public boolean beginBattlefieldWarp(double targetX, double targetY, double spoolSeconds) {
+        if (!canUseBattlefieldWarp()) return false;
+        if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return false;
+        warpCharging = true;
+        warpChargeDuration = Math.max(0.1, spoolSeconds);
+        warpChargeRemaining = warpChargeDuration;
+        warpExitX = targetX;
+        warpExitY = targetY;
+        vx = 0.0;
+        vy = 0.0;
+        return true;
+    }
+
+    public void cancelBattlefieldWarp() {
+        warpCharging = false;
+        warpChargeRemaining = 0.0;
+        warpChargeDuration = 0.0;
+        warpExitX = Double.NaN;
+        warpExitY = Double.NaN;
+    }
+
+    public void tickBattlefieldWarp(double dt) {
+        if (!warpCharging || dt <= 0.0) return;
+        warpChargeRemaining = Math.max(0.0, warpChargeRemaining - dt);
+    }
+
+    public boolean isBattlefieldWarpReady() {
+        return warpCharging && warpChargeRemaining <= 1e-6
+                && Double.isFinite(warpExitX) && Double.isFinite(warpExitY);
     }
 
     public void configureStrikeCraftMunitions() {

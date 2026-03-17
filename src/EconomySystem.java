@@ -46,6 +46,7 @@ public final class EconomySystem {
     private static final WeakHashMap<GameContext, EnumMap<Faction, Double>> TEAM_REFIT_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, EnumMap<Faction, Double>> TEAM_BASE_UPGRADE_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
+    private static final WeakHashMap<GameContext, Map<Integer, Double>> ESCORT_RESPAWN_TIMERS = new WeakHashMap<>();
 
     private enum CommanderPersonality {
         BALANCED,
@@ -90,6 +91,7 @@ public final class EconomySystem {
         handleNpcMiningAndDeposits(ctx, dt);
         updateNpcHaulerLogistics(ctx, dt);
         updateStationTurretStructures(ctx);
+        updateShipEscortPrograms(ctx, dt);
         updateCarrierRespawnPrograms(ctx, dt);
         applyFriendlyBaseRepairAuras(ctx, dt);
         applyTransportSupportAuras(ctx, dt);
@@ -394,6 +396,88 @@ public final class EconomySystem {
         }
     }
 
+    private static void updateShipEscortPrograms(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        Map<Integer, Double> timers = ESCORT_RESPAWN_TIMERS.computeIfAbsent(ctx, k -> new java.util.HashMap<>());
+        timers.replaceAll((id, time) -> Math.max(0.0, time - dt));
+
+        List<Ship> anchors = new ArrayList<>(ctx.ships);
+        for (Ship anchor : anchors) {
+            if (!isEscortAnchor(anchor)) continue;
+            int active = countActiveEscortFighters(ctx, anchor);
+            if (active >= 2) continue;
+
+            double cooldown = timers.getOrDefault(anchor.id, 0.0);
+            if (cooldown > 1e-6) continue;
+
+            Ship escort = spawnEscortFighter(ctx, anchor, active);
+            timers.put(anchor.id, (escort == null) ? 1.0 : 6.0);
+        }
+
+        timers.entrySet().removeIf(e -> e == null || e.getKey() == null || findLiveShipById(ctx.ships, e.getKey()) == null);
+    }
+
+    private static boolean isEscortAnchor(Ship s) {
+        if (s == null || !s.alive || s.dying || s.hp <= 0) return false;
+        if (s.faction == null) return false;
+        if (s.carrierOwnerId >= 0) return false;
+        if (s.isSmallCraft()) return false;
+        return s.role != ShipRole.BASE && s.role != ShipRole.STATIC_TURRET;
+    }
+
+    private static int countActiveEscortFighters(GameContext ctx, Ship anchor) {
+        if (ctx == null || anchor == null || anchor.faction == null) return 0;
+        int count = 0;
+        for (Ship s : ctx.ships) {
+            if (s == null || s.role != ShipRole.FIGHTER) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (s.carrierOwnerId >= 0) continue;
+            if (s.faction == null || s.faction.teamId() != anchor.faction.teamId()) continue;
+            if (s.escortAnchorId == anchor.id) count++;
+        }
+        return count;
+    }
+
+    private static Ship spawnEscortFighter(GameContext ctx, Ship anchor, int existingEscorts) {
+        if (ctx == null || anchor == null || anchor.faction == null) return null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            double side = (((existingEscorts + attempt) & 1) == 0) ? -1.0 : 1.0;
+            double fore = 34.0 + attempt * 6.0;
+            double lateral = anchor.radius + 30.0 + attempt * 8.0;
+            double sx = anchor.x + Math.cos(anchor.angle) * fore - Math.sin(anchor.angle) * side * lateral;
+            double sy = anchor.y + Math.sin(anchor.angle) * fore + Math.cos(anchor.angle) * side * lateral;
+            sx = GameMath.clamp(sx, 30.0, ctx.WORLD_W - 30.0);
+            sy = GameMath.clamp(sy, 30.0, ctx.WORLD_H - 30.0);
+            if (!isEscortSpawnClear(ctx, anchor, sx, sy)) continue;
+
+            Ship escort = SpawnSystem.spawnTeamShip(ctx, ShipRole.FIGHTER, anchor.faction, sx, sy);
+            if (escort == null) continue;
+            escort.escortAnchorId = anchor.id;
+            escort.escortSlotIndex = existingEscorts;
+            escort.angle = anchor.angle;
+            escort.vx = anchor.vx;
+            escort.vy = anchor.vy;
+            return escort;
+        }
+        return null;
+    }
+
+    private static boolean isEscortSpawnClear(GameContext ctx, Ship anchor, double x, double y) {
+        if (ctx == null || anchor == null) return false;
+        double minSpacing2 = 34.0 * 34.0;
+        for (Ship s : ctx.ships) {
+            if (s == null || s == anchor) continue;
+            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (GameMath.dist2(s.x, s.y, x, y) < minSpacing2) return false;
+        }
+        for (Asteroid a : ctx.asteroids) {
+            if (a == null) continue;
+            double min = a.collisionRadius() + 18.0;
+            if (GameMath.dist2(a.x, a.y, x, y) < min * min) return false;
+        }
+        return true;
+    }
+
     private static int countCarrierReinforcements(GameContext ctx, Ship carrier) {
         if (ctx == null || carrier == null || carrier.faction == null) return 0;
         int count = 0;
@@ -484,6 +568,14 @@ public final class EconomySystem {
             count++;
         }
         return count;
+    }
+
+    private static Ship findLiveShipById(List<Ship> ships, int id) {
+        if (ships == null || id <= 0) return null;
+        for (Ship s : ships) {
+            if (s != null && s.id == id && s.alive && !s.dying && s.hp > 0) return s;
+        }
+        return null;
     }
 
     private static int countTeamCombatShips(GameContext ctx, Faction team) {

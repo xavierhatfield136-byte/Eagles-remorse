@@ -1650,6 +1650,7 @@ public class Renderer {
         rows.add("SHIELDS: I shield mode | J/K shield facing");
         rows.add("X-RAY: ` cycle filter | ' clear focus | click room to focus | RMB clears focus");
         rows.add("OVERLAYS: TAB shop/loadout | B base upgrades | bottom bar quick access");
+        rows.add("WARP: - or BACKSPACE charge 10s warp to waypoint or friendly base");
         if (player.isStealth) rows.add("STEALTH: cloak auto-engages while not firing or taking hits");
         if (player.isCarrier) rows.add("CARRIER: C launch wing | R recall | V attack/defend | Z auto-launch");
         rows.add("META: ESC pause/resume | Alt+Enter fullscreen");
@@ -1888,6 +1889,12 @@ public class Renderer {
 
         if (ships == null) return;
         for (Ship s : ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (!s.isWarpCharging()) continue;
+            if (!Double.isFinite(s.warpExitX()) || !Double.isFinite(s.warpExitY())) continue;
+            drawWarpArrivalTell(g2, s);
+        }
+        for (Ship s : ships) {
             if (!s.alive) continue;
             if (s.role != ShipRole.BASE) continue;
 
@@ -1911,6 +1918,36 @@ public class Renderer {
             int rem = (x + w / 2 - 1) - start;
             if (rem > 0) g2.fillRoundRect(start, y + 1, rem, h - 2, 7, 7);
         }
+    }
+
+    private static void drawWarpArrivalTell(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null) return;
+        double pulse = 0.45 + 0.55 * Math.sin(System.nanoTime() * 1e-9 * 4.4 + ship.id * 0.19);
+        double progress = ship.warpChargeProgress();
+        int x = (int) Math.round(ship.warpExitX());
+        int y = (int) Math.round(ship.warpExitY());
+        int baseR = (int) Math.round(Math.max(34.0, ship.radius * 1.4));
+        int outerR = (int) Math.round(baseR + 18 + pulse * 18 + progress * 12);
+        Color base = factionHudColor(ship.faction, 220);
+
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 32 + (int) Math.round(progress * 42.0)));
+        g2.fillOval(x - outerR, y - outerR, outerR * 2, outerR * 2);
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(1.5f));
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 170));
+        g2.drawOval(x - outerR, y - outerR, outerR * 2, outerR * 2);
+        g2.setColor(new Color(235, 245, 255, 215));
+        g2.drawOval(x - baseR, y - baseR, baseR * 2, baseR * 2);
+        g2.drawLine(x - outerR - 8, y, x - baseR + 2, y);
+        g2.drawLine(x + baseR - 2, y, x + outerR + 8, y);
+        g2.drawLine(x, y - outerR - 8, x, y - baseR + 2);
+        g2.drawLine(x, y + baseR - 2, x, y + outerR + 8);
+        g2.setStroke(old);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(240, 247, 255, 220));
+        g2.drawString("WARP IN", x - 19, y - outerR - 8);
     }
 
     private static void drawCommandShipBeacon(Graphics2D g2, Ship cmd, Faction faction, Ship sharedTarget) {
@@ -2647,7 +2684,7 @@ public class Renderer {
                 ly += 16;
                 g2.drawString("Q/W/E/R assign nearest friendly ATTACK/DEFEND/REPAIR/RTB, T clears override.", readoutX, ly);
                 ly += 16;
-                g2.drawString("- or BACKSPACE: charge 5s teleport to base (damage disrupts).", readoutX, ly);
+                g2.drawString("- or BACKSPACE: charge 10s battlefield warp to waypoint/base (damage disrupts).", readoutX, ly);
                 ly += 16;
                 g2.drawString("Captain directives set ship posture and allied fleet command behavior.", readoutX, ly);
             }

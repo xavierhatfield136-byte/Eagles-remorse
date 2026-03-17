@@ -53,6 +53,9 @@ public final class AISystem {
     private static final Map<Integer, Double> IMMEDIATE_THREAT_SCAN_TIMERS = new HashMap<>();
     private static final Map<Integer, Double> ENGAGEMENT_SCAN_BACKOFF_TIMERS = new HashMap<>();
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
+    private static final double BATTLEFIELD_WARP_TRIGGER_RANGE = 1700.0;
+    private static final double BATTLEFIELD_WARP_SAFE_RADIUS = 640.0;
+    private static final double ESCORT_WARP_SUPPORT_RANGE = 320.0;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -86,18 +89,20 @@ public final class AISystem {
                     }
                 }
                 for (int i = 0; i < enemyGroups; i++) {
+                    double[] spawn = teamWaveStagingPoint(ctx, Faction.ENEMY);
                     SpawnSystem.spawnEnemyGroup(
                             ctx,
-                            ctx.player.x + 900 + ctx.rng.nextDouble() * 500,
-                            ctx.player.y - 600 + ctx.rng.nextDouble() * 400
+                            spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
+                            spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
                     );
                 }
 
                 for (int i = 0; i < allyGroups; i++) {
+                    double[] spawn = teamWaveStagingPoint(ctx, Faction.ALLY);
                     SpawnSystem.spawnAllyGroup(
                             ctx,
-                            ctx.player.x - 900 - ctx.rng.nextDouble() * 500,
-                            ctx.player.y + 600 + ctx.rng.nextDouble() * 400
+                            spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
+                            spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
                     );
                 }
             }
@@ -110,6 +115,12 @@ public final class AISystem {
             if (s == null) continue;
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
+            if (s.isWarpCharging()) {
+                s.vx = 0.0;
+                s.vy = 0.0;
+                s.tryCIWS(dt, ctx.projectiles);
+                continue;
+            }
             tickClosestWeaponRetarget(ctx, s, dt);
             if (s.aiBadApproachTimer > 0.0) {
                 s.aiBadApproachTimer = Math.max(0.0, s.aiBadApproachTimer - Math.max(0.0, dt));
@@ -166,6 +177,11 @@ public final class AISystem {
                     applyProjectileLaneAvoidance(ctx, s, dt);
                     continue;
                 }
+            }
+            if (handleEscortFighterBehavior(ctx, s, dt)) {
+                applyAsteroidAvoidance(ctx, s, dt);
+                applyProjectileLaneAvoidance(ctx, s, dt);
+                continue;
             }
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
@@ -1298,6 +1314,75 @@ public final class AISystem {
         return findImmediateThreat(ctx, escort, Math.max(280.0, preferredRange(escort) * 1.2));
     }
 
+    private static boolean handleEscortFighterBehavior(GameContext ctx, Ship s, double dt) {
+        if (ctx == null || s == null || dt <= 0.0) return false;
+        if (s.role != ShipRole.FIGHTER) return false;
+        if (s.carrierOwnerId >= 0) return false;
+        if (s.escortAnchorId <= 0) return false;
+
+        Ship anchor = findLiveShipById(ctx.ships, s.escortAnchorId);
+        if (!isAlive(anchor) || anchor.isSmallCraft()) {
+            s.escortAnchorId = -1;
+            return false;
+        }
+
+        Ship threat = findEscortThreatNearAnchor(ctx, s, anchor);
+        if (isAlive(threat)) {
+            fight(ctx, s, threat, dt, 1.0, SquadObjective.INTERCEPT);
+        } else {
+            double speed = Math.max(130.0, MovementModel.speedCeiling(s) * 0.96);
+            double side = ((s.escortSlotIndex & 1) == 0) ? -1.0 : 1.0;
+            double back = 0.55 + 0.18 * Math.max(0, s.escortSlotIndex);
+            double ahead = 0.22 + 0.08 * Math.max(0, s.escortSlotIndex);
+            double tx = anchor.x - Math.cos(anchor.angle) * (anchor.radius * (0.65 + back))
+                    - Math.sin(anchor.angle) * side * (anchor.radius + 40.0);
+            double ty = anchor.y - Math.sin(anchor.angle) * (anchor.radius * (0.65 + back))
+                    + Math.cos(anchor.angle) * side * (anchor.radius + 40.0);
+            if (dist2(s.x, s.y, anchor.x, anchor.y) > ESCORT_WARP_SUPPORT_RANGE * ESCORT_WARP_SUPPORT_RANGE) {
+                tx = anchor.x + Math.cos(anchor.angle) * anchor.radius * ahead
+                        - Math.sin(anchor.angle) * side * (anchor.radius + 52.0);
+                ty = anchor.y + Math.sin(anchor.angle) * anchor.radius * ahead
+                        + Math.cos(anchor.angle) * side * (anchor.radius + 52.0);
+            }
+            moveToward(s, tx, ty, speed, dt);
+        }
+        s.tryCIWS(dt, ctx.projectiles);
+        return true;
+    }
+
+    private static Ship findEscortThreatNearAnchor(GameContext ctx, Ship escort, Ship anchor) {
+        if (ctx == null || escort == null || anchor == null || escort.faction == null) return null;
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double maxDist = Math.max(900.0, anchor.radius + 520.0);
+        double maxDist2 = maxDist * maxDist;
+
+        for (Ship enemy : ctx.ships) {
+            if (!isAlive(enemy) || enemy.faction == null) continue;
+            if (escort.faction.isFriendlyTo(enemy.faction)) continue;
+            if (!TargetingSystem.isDetectableToObserver(escort, enemy)) continue;
+
+            double dAnchor2 = dist2(enemy.x, enemy.y, anchor.x, anchor.y);
+            if (dAnchor2 > maxDist2) continue;
+
+            double dEscort = Math.hypot(enemy.x - escort.x, enemy.y - escort.y);
+            double dAnchor = Math.sqrt(Math.max(0.0, dAnchor2));
+            double score = Math.max(0.0, 1100.0 - dAnchor) * 0.88;
+            score += Math.max(0.0, 800.0 - dEscort) * 0.44;
+            score += threatPriority(escort.role, enemy.role) * 120.0;
+            if (enemy.role == ShipRole.BOMBER) score += 260.0;
+            if (enemy.role == ShipRole.DRONE || enemy.role == ShipRole.FIGHTER) score += 170.0;
+            if (enemy.role == ShipRole.CARRIER || enemy.role == ShipRole.DRONE_CARRIER) score += 220.0;
+            if (enemy.carrierOwnerId >= 0) score += 90.0;
+            if (score > bestScore) {
+                bestScore = score;
+                best = enemy;
+            }
+        }
+        if (isAlive(best)) return best;
+        return findImmediateThreat(ctx, escort, Math.max(260.0, preferredRange(escort) * 1.2));
+    }
+
     private static Ship findBestReachableEnemyTarget(GameContext ctx, Ship seeker, Ship sharedHint, Ship preferredHint) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
         Ship best = null;
@@ -1697,6 +1782,11 @@ public final class AISystem {
     private static void fight(GameContext ctx, Ship s, Ship target, double dt, double teamConfidence, SquadObjective objective) {
         if (ctx == null || s == null || target == null) return;
         if (objective == null) objective = SquadObjective.HOLD;
+        if (maybeStartBattlefieldWarp(ctx, s, target,
+                Math.max(preferredRange(s) * 1.18, s.radius + target.radius + 160.0))) {
+            s.tryCIWS(dt, ctx.projectiles);
+            return;
+        }
         // Determine preferred range by role
         double range = preferredRange(s);
         double aggression = roleAggressionBias(s.role);
@@ -1772,6 +1862,10 @@ public final class AISystem {
         // Simple wander: drift toward the player's general area, but loosely.
         double tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
         double ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
+        if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
+            s.tryCIWS(dt, ctx.projectiles);
+            return;
+        }
         moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
         s.tryCIWS(dt, ctx.projectiles);
@@ -2465,6 +2559,39 @@ public final class AISystem {
         return true;
     }
 
+    private static boolean maybeStartBattlefieldWarp(GameContext ctx, Ship s, Ship target, double desiredOffset) {
+        if (!isAlive(target)) return false;
+        double dx = target.x - s.x;
+        double dy = target.y - s.y;
+        double len = Math.hypot(dx, dy);
+        if (len <= 1e-6) return false;
+        double ux = dx / len;
+        double uy = dy / len;
+        double exitX = target.x - ux * desiredOffset;
+        double exitY = target.y - uy * desiredOffset;
+        return maybeStartBattlefieldWarp(ctx, s, exitX, exitY, desiredOffset);
+    }
+
+    private static boolean maybeStartBattlefieldWarp(GameContext ctx, Ship s, double targetX, double targetY, double desiredOffset) {
+        if (ctx == null || s == null) return false;
+        if (!s.canUseBattlefieldWarp()) return false;
+        if (s.isWarpCharging()) return true;
+        if (s.secondsSinceDamage() < 10.0) return false;
+        if (findImmediateThreat(ctx, s, BATTLEFIELD_WARP_SAFE_RADIUS) != null) return false;
+
+        double dx = targetX - s.x;
+        double dy = targetY - s.y;
+        double dist = Math.hypot(dx, dy);
+        if (dist < BATTLEFIELD_WARP_TRIGGER_RANGE) return false;
+
+        double exitX = GameMath.clamp(targetX, 36.0, ctx.WORLD_W - 36.0);
+        double exitY = GameMath.clamp(targetY, 36.0, ctx.WORLD_H - 36.0);
+        double exitDist = Math.hypot(exitX - s.x, exitY - s.y);
+        if (exitDist < BATTLEFIELD_WARP_TRIGGER_RANGE * 0.48) return false;
+
+        return s.beginBattlefieldWarp(exitX, exitY, 10.0);
+    }
+
     private static Ship nearestFriendlyStrikeCraftTender(GameContext ctx, Ship craft) {
         if (ctx == null || craft == null || craft.faction == null) return null;
         Ship best = null;
@@ -2517,6 +2644,19 @@ public final class AISystem {
 
         setVelPerSec(s, vx, vy, dt);
         rotateShipToward(s, Math.atan2(vy, vx), dt);
+    }
+
+    private static double[] teamWaveStagingPoint(GameContext ctx, Faction faction) {
+        Ship base = TeamSystem.getBaseForTeam(ctx, faction);
+        if (isAlive(base)) {
+            double side = (base.x <= ctx.WORLD_W * 0.5) ? 1.0 : -1.0;
+            double sx = GameMath.clamp(base.x + side * 340.0, 60.0, ctx.WORLD_W - 60.0);
+            double sy = GameMath.clamp(base.y + (((faction.teamId() & 1) == 0) ? -220.0 : 220.0), 60.0, ctx.WORLD_H - 60.0);
+            return new double[]{sx, sy};
+        }
+        double fallbackX = (faction == Faction.ENEMY) ? ctx.WORLD_W - 220.0 : 220.0;
+        double fallbackY = (faction == Faction.ENEMY) ? ctx.WORLD_H * 0.35 : ctx.WORLD_H * 0.65;
+        return new double[]{fallbackX, fallbackY};
     }
 
     private static double dist2(double ax, double ay, double bx, double by) {
