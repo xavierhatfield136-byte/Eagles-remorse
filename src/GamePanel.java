@@ -114,6 +114,7 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_B, 0, false), "toggleBaseMenu", () -> GameplayActions.toggleBaseMenu(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_O, 0, false), "togglePowerManagement", () -> GameplayActions.togglePowerManagement(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_H, 0, false), "toggleCrewStations", () -> GameplayActions.toggleCrewStations(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SLASH, 0, false), "toggleFlightDeck", () -> GameplayActions.toggleFlightDeck(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_L, 0, false), "lockUnderMouse", () -> GameplayActions.lockUnderMouse(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_OPEN_BRACKET, 0, false), "cycleLeft", () -> GameplayActions.cycleLockedTarget(ctx, -1));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_CLOSE_BRACKET, 0, false), "cycleRight", () -> GameplayActions.cycleLockedTarget(ctx, +1));

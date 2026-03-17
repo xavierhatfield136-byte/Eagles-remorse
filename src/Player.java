@@ -290,6 +290,10 @@ public class Player extends Ship {
         this.wingState = Ship.WingState.ATTACK;
         this.carrierOwnerId = -1;
         this.carrierOrphanTimer = -1.0;
+        this.flightDeckLaunchCursor = t.flightDeckLaunchCursor;
+        for (int i = 0; i < this.flightDeckLoadout.length; i++) {
+            this.flightDeckLoadout[i] = t.flightDeckRoleAt(i);
+        }
 
         this.isBase = false;
 

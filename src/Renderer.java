@@ -267,6 +267,7 @@ public class Renderer {
 
     private static void drawShipShieldFaces(Graphics2D g, Ship ship) {
         if (g == null || ship == null) return;
+        if (isTinyStrikeCraft(ship.role)) return;
         if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
 
         double radius = shieldEnvelopeRadius(ship);
@@ -1147,68 +1148,27 @@ public class Renderer {
                                String eventBanner, double eventBannerT, double orePriceMul, double orePriceT, double miningMul, double miningT,
                                double camX, double camY, int viewW, int viewH, double zoom, String stationStatus,
                                GameContext ctx, GameContext.HudDetail hudDetail, String contextHint, String overlayStatus) {
-        int x = 14;
-        int y = 18;
         XrayStackLayout xrayLayout = computeXrayStackLayout(player, lockedTarget, shopOpen, viewW, viewH);
+        GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.FULL : hudDetail;
 
-        g2.setFont(new Font("Consolas", Font.PLAIN, 14));
-        g2.setColor(new Color(255, 255, 255, 220));
+        int leftX = 14;
+        int topY = 16;
+        int leftW = (xrayLayout != null)
+                ? Math.max(296, Math.min(416, xrayLayout.panelX - leftX - 18))
+                : Math.max(320, Math.min(430, viewW / 3));
+        leftW = Math.max(280, Math.min(leftW, viewW - 28));
 
-        g2.drawString("SHIP: " + (player.role == null ? "" : player.role.name()), x, y);
-        y += 15;
+        int cardY = topY;
+        cardY += drawCommandOverviewCard(g2, player, credits, hangarTier, dockedAtBase,
+                resourceRush, allyOre, enemyOre, goal, objectiveTitle, objectiveDetail,
+                orePriceMul, orePriceT, miningMul, miningT, gameOverText,
+                leftX, cardY, leftW, detail, ctx);
+        cardY += 10;
+        cardY += drawActionStripCard(g2, player, detail, leftX, cardY, leftW);
+        cardY += 10;
+        drawShipSystemsCard(g2, player, lockedTarget, autoLock, playerWingActive, playerWingCap,
+                stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail);
 
-        g2.drawString("CREDITS: " + credits, x, y);
-        y += 30;
-
-        if (objectiveTitle != null && !objectiveTitle.isBlank()) {
-            g2.setColor(new Color(255, 230, 150, 230));
-            g2.drawString(objectiveTitle, x, y);
-            y += 18;
-            g2.setColor(new Color(255, 255, 255, 220));
-        }
-        if (objectiveDetail != null && !objectiveDetail.isBlank()) {
-            g2.drawString("OBJ: " + objectiveDetail, x, y);
-            y += 20;
-        }
-
-        g2.drawString("HANGAR TIER: " + hangarTier + "  (dock + B to upgrade)", x, y);
-        y += 18;
-
-        // Cargo / mining
-        if (player.cargoMax > 0) {
-            g2.drawString("CARGO: " + player.cargo + " / " + player.cargoMax, x, y);
-            y += 18;
-            if (dockedAtBase) {
-                g2.setColor(new Color(160, 220, 255, 220));
-                g2.drawString("DOCKED: Ore auto-deposits   Press B for Base Upgrades (1-5)", x, y);
-                g2.setColor(new Color(255, 255, 255, 220));
-            }
-            y += 18;
-        }
-
-
-        // Event modifiers
-        if (Math.abs(orePriceMul - 1.0) > 0.01 && orePriceT > 0) {
-            g2.drawString("ORE PRICE: x" + fmt1(orePriceMul) + "  (" + (int) Math.ceil(orePriceT) + "s)", x, y);
-            y += 18;
-        }
-        if (Math.abs(miningMul - 1.0) > 0.01 && miningT > 0) {
-            g2.drawString("MINING RATE: x" + fmt1(miningMul) + "  (" + (int) Math.ceil(miningT) + "s)", x, y);
-            y += 18;
-        }
-
-        if (resourceRush) {
-            g2.drawString("RESOURCE RUSH: ALLY " + allyOre + "  ENEMY " + enemyOre + "  GOAL " + goal, x, y);
-            y += 18;
-            if (gameOverText != null && !gameOverText.isBlank()) {
-                g2.setFont(new Font("Consolas", Font.BOLD, 18));
-                g2.setColor(new Color(255, 255, 255, 220));
-                g2.drawString(gameOverText, x, y + 6);
-                g2.setFont(new Font("Consolas", Font.PLAIN, 14));
-                g2.setColor(new Color(255, 255, 255, 220));
-                y += 24;
-            }
-        }
         if (!resourceRush && gameOverText != null && !gameOverText.isBlank()) {
             String msg = gameOverText;
             g2.setFont(new Font("Consolas", Font.BOLD, 22));
@@ -1220,113 +1180,10 @@ public class Renderer {
             g2.setColor(new Color(255, 255, 255, 220));
         }
 
-        y = 200;
-        GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.FULL : hudDetail;
-        y = drawHudControlsCard(g2, player, detail, x, y, viewW);
-
-        if (contextHint != null && !contextHint.isBlank()) {
-            g2.setColor(new Color(255, 225, 150, 225));
-            g2.drawString("HINT: " + contextHint, x, y);
-            y += 20;
-            g2.setColor(new Color(255, 255, 255, 170));
-        }
-
-        g2.setColor(new Color(255, 255, 255, 170));
-        g2.drawString("AUTO-LOCK: " + (autoLock ? "ON" : "OFF"), x, y);
-        y += 18;
-        if (stationStatus != null && !stationStatus.isBlank()) {
-            g2.drawString(stationStatus, x, y);
-            y += 18;
-        }
-        if (overlayStatus != null && !overlayStatus.isBlank()) {
-            g2.setColor(new Color(180, 220, 255, 220));
-            g2.drawString(overlayStatus, x, y);
-            y += 18;
-            g2.setColor(new Color(255, 255, 255, 170));
-        }
-
-        int pProp = (int) Math.round(player.powerEnginesFrac() * 100.0);
-        int pShd = (int) Math.round(player.powerShieldsFrac() * 100.0);
-        int pTac = (int) Math.round(player.powerWeaponsFrac() * 100.0);
-        int pSen = (int) Math.round(player.powerSensorsFrac() * 100.0);
-        int pEng = (int) Math.round(player.powerEngineeringFrac() * 100.0);
-        int pAux = Math.max(0, 100 - pProp - pShd - pTac - pSen - pEng);
-        g2.drawString("POWER[" + player.powerPreset.name() + "] P:" + pProp + "% SH:" + pShd + "% T:" + pTac
-                + "% SN:" + pSen + "% EN:" + pEng + "% AX:" + pAux + "%", x, y);
-        y += 18;
-        String overload = player.isOverloadActive()
-                ? ("OVERLOAD " + player.overloadBus().name() + " HEAT " + (int) Math.round(player.overloadHeat() * 100.0) + "%")
-                : ("OVERLOAD STANDBY CD " + (int) Math.ceil(player.overloadCooldownRemaining()) + "s");
-        g2.drawString(overload + "  DEBT " + (int) Math.round(player.overloadStressDebt() * 100.0) + "%", x, y);
-        y += 18;
-        String emergency = player.isEmergencyThrustActive()
-                ? ("E-THRUST ACTIVE HEAT " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%")
-                : ("E-THRUST STANDBY CD " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s");
-        g2.drawString(emergency + "  PROP " + (int) Math.round(player.propulsionRoomIntegrity() * 100.0) + "%", x, y);
-        y += 18;
-
-        int readinessPct = (int) Math.round(player.crewReadiness() * 100.0);
-        g2.drawString("CREW[" + player.crewOrder.name() + "] READINESS " + readinessPct + "%", x, y);
-        y += 18;
-
-        if (player.shieldActive && player.shieldMax > 0) {
-            int facingDeg = (int) Math.round(Math.toDegrees(MathUtil.normalizeAngle(player.getShieldFacingAngle())));
-            g2.drawString("SHIELD[" + player.shieldFacingMode.name() + "] FACING " + facingDeg + " DEG  ARC " + (int) Math.round(player.shieldArcDegrees()) + " DEG", x, y);
-            y += 18;
-            g2.drawString(shieldFaceReadout(player), x, y);
-            y += 18;
-        }
-
-        if (player.hasWaveMotionGun) {
-            double rem = player.getWaveMotionRemaining();
-            String wave = player.isWaveMotionCharging()
-                    ? ("CHARGING " + Math.max(1, (int) Math.ceil(rem)) + "s")
-                    : ((rem <= 0.0) ? "READY" : (Math.max(1, (int) Math.ceil(rem)) + "s"));
-            g2.drawString("WAVE GUN: " + wave, x, y);
-            y += 18;
-        }
-
-        if (playerWingCap > 0) {
-            g2.drawString("WING: " + playerWingActive + " / " + playerWingCap
-                    + "  MODE: " + player.carrierCommandMode.name()
-                    + "  AUTO: " + (player.carrierAutoLaunch ? "ON" : "OFF"), x, y);
-            y += 18;
-        }
-
-        if (lockedTarget == null || !lockedTarget.alive) {
-            g2.drawString("LOCK: None", x, y);
-        } else {
-            double dx = lockedTarget.x - player.x;
-            double dy = lockedTarget.y - player.y;
-            int dist = (int) Math.round(Math.hypot(dx, dy));
-
-            String role = (lockedTarget.role == null ? "" : lockedTarget.role.name());
-            String fac  = (lockedTarget.faction == null ? "" : lockedTarget.faction.name());
-            String wing = (lockedWingCap > 0) ? ("  WING " + lockedWingActive + "/" + lockedWingCap) : "";
-
-            // Color the lock line slightly by faction for readability.
-            g2.setColor(factionHudColor(lockedTarget.faction, 220));
-
-            g2.drawString("LOCK: " + lockedTarget.name + "  " + role + "  " + fac + "  D " + dist + wing, x, y);
-            g2.setColor(new Color(255, 255, 255, 170));
-
-            String archetype = EnemyArchetypeIntel.archetypeLabel(lockedTarget.role);
-            String counter = EnemyArchetypeIntel.counterHint(lockedTarget.role);
-            if (!archetype.isBlank()) {
-                y += 18;
-                g2.setColor(new Color(220, 235, 255, 215));
-                g2.drawString("ARCHETYPE: " + archetype, x, y);
-            }
-            if (!counter.isBlank()) {
-                y += 18;
-                g2.setColor(new Color(255, 225, 160, 220));
-                g2.drawString("COUNTER: " + counter, x, y);
-                g2.setColor(new Color(255, 255, 255, 170));
-            }
-
+        if (lockedTarget != null && lockedTarget.alive) {
             drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH, zoom);
         }
-        y += 18;// Top-center event banner
+        // Top-center event banner
         if (eventBanner != null && !eventBanner.isBlank() && eventBannerT > 0) {
             int bw = 720;
             int bh = 34;
@@ -1356,6 +1213,341 @@ public class Renderer {
 
         if (shopOpen) {
             drawShopOverlay(g2, player, credits, hangarTier);
+        }
+    }
+
+    private static int drawCommandOverviewCard(Graphics2D g2, Player player, int credits, int hangarTier, boolean dockedAtBase,
+                                               boolean resourceRush, int allyOre, int enemyOre, int goal,
+                                               String objectiveTitle, String objectiveDetail,
+                                               double orePriceMul, double orePriceT, double miningMul, double miningT,
+                                               String gameOverText, int x, int y, int w,
+                                               GameContext.HudDetail detail, GameContext ctx) {
+        if (g2 == null || player == null) return 0;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 13);
+        FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
+        int contentW = Math.max(220, w - 24);
+
+        List<String> objectiveLines = wrapHudText(bodyFm,
+                (objectiveDetail == null || objectiveDetail.isBlank()) ? "Free navigation." : objectiveDetail,
+                contentW);
+
+        ArrayList<String> statusLines = new ArrayList<>();
+        statusLines.add("Mode: " + ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString())
+                + "   Hangar Tier: " + hangarTier);
+        if (player.cargoMax > 0) {
+            statusLines.add("Cargo: " + player.cargo + " / " + player.cargoMax
+                    + (dockedAtBase ? "   Docked: yes" : "   Docked: no"));
+        }
+        if (resourceRush) {
+            statusLines.add("Race: ally " + allyOre + "   enemy " + enemyOre + "   goal " + goal);
+        }
+        if (Math.abs(orePriceMul - 1.0) > 0.01 && orePriceT > 0.0) {
+            statusLines.add("Ore price x" + fmt1(orePriceMul) + "   " + (int) Math.ceil(orePriceT) + "s remaining");
+        }
+        if (Math.abs(miningMul - 1.0) > 0.01 && miningT > 0.0) {
+            statusLines.add("Mining x" + fmt1(miningMul) + "   " + (int) Math.ceil(miningT) + "s remaining");
+        }
+        if (gameOverText != null && !gameOverText.isBlank() && resourceRush) {
+            statusLines.add("Status: " + gameOverText);
+        }
+
+        int h = 72 + objectiveLines.size() * 15 + statusLines.size() * 15;
+        if (detail == GameContext.HudDetail.MINIMAL) {
+            h -= Math.max(0, (statusLines.size() - 2) * 15);
+        }
+
+        drawHudPanelFrame(g2, x, y, w, h, "COMMAND", factionHudColor(player.faction, 210));
+
+        int titleY = y + 34;
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setColor(new Color(244, 248, 255, 235));
+        String shipLabel = (player.role == null) ? "COMMAND SHIP" : player.role.name().replace('_', ' ');
+        g2.drawString(shipLabel, x + 12, titleY);
+
+        String creditLabel = "CREDITS " + credits;
+        FontMetrics headerFm = g2.getFontMetrics();
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        FontMetrics creditFm = g2.getFontMetrics();
+        g2.setColor(new Color(150, 214, 255, 225));
+        g2.drawString(creditLabel, x + w - 12 - creditFm.stringWidth(creditLabel), titleY);
+
+        int rowY = y + 56;
+        if (objectiveTitle != null && !objectiveTitle.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.BOLD, 13));
+            g2.setColor(new Color(255, 226, 154, 230));
+            g2.drawString(objectiveTitle, x + 12, rowY);
+            rowY += 17;
+        }
+
+        g2.setFont(bodyFont);
+        g2.setColor(new Color(222, 234, 246, 208));
+        for (String line : objectiveLines) {
+            g2.drawString(line, x + 12, rowY);
+            rowY += 15;
+        }
+
+        g2.setColor(new Color(255, 255, 255, 58));
+        g2.drawLine(x + 12, rowY + 2, x + w - 12, rowY + 2);
+        rowY += 18;
+
+        int maxStatusLines = (detail == GameContext.HudDetail.MINIMAL) ? Math.min(2, statusLines.size()) : statusLines.size();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        for (int i = 0; i < maxStatusLines; i++) {
+            String line = statusLines.get(i);
+            g2.setColor(line.startsWith("Status:")
+                    ? new Color(255, 196, 148, 226)
+                    : new Color(190, 214, 236, 198));
+            g2.drawString(line, x + 12, rowY);
+            rowY += 15;
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+        return h;
+    }
+
+    private static int drawActionStripCard(Graphics2D g2, Player player, GameContext.HudDetail detail, int x, int y, int w) {
+        if (g2 == null || player == null) return 0;
+        List<String> chips = buildActionStripLabels(player, detail);
+        if (chips.isEmpty()) return 0;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        Font chipFont = new Font("Consolas", Font.BOLD, 11);
+        g2.setFont(chipFont);
+        FontMetrics fm = g2.getFontMetrics();
+
+        int chipX = x + 12;
+        int chipY = y + 34;
+        int lineHeight = 28;
+        int chipH = 18;
+        int maxX = x + w - 12;
+        int rows = 1;
+
+        int panelH = 60;
+        drawHudPanelFrame(g2, x, y, w, panelH, "ACTION STRIP", new Color(132, 196, 255, 210));
+        for (String chip : chips) {
+            int chipW = fm.stringWidth(chip) + 14;
+            if (chipX + chipW > maxX) {
+                chipX = x + 12;
+                chipY += lineHeight;
+                rows++;
+            }
+            drawHudStatusChip(g2, chip, chipX, chipY - 12, chipW, chipH, new Color(125, 190, 255, 210), false);
+            chipX += chipW + 8;
+        }
+        if (rows > 1) {
+            panelH = 60 + (rows - 1) * 28;
+            drawHudPanelFrame(g2, x, y, w, panelH, "ACTION STRIP", new Color(132, 196, 255, 210));
+            chipX = x + 12;
+            chipY = y + 34;
+            for (String chip : chips) {
+                int chipW = fm.stringWidth(chip) + 14;
+                if (chipX + chipW > maxX) {
+                    chipX = x + 12;
+                    chipY += lineHeight;
+                }
+                drawHudStatusChip(g2, chip, chipX, chipY - 12, chipW, chipH, new Color(125, 190, 255, 210), false);
+                chipX += chipW + 8;
+            }
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+        return panelH;
+    }
+
+    private static void drawShipSystemsCard(Graphics2D g2, Player player, Ship lockedTarget, boolean autoLock,
+                                            int playerWingActive, int playerWingCap, String stationStatus,
+                                            String overlayStatus, String contextHint,
+                                            int x, int y, int w, GameContext.HudDetail detail) {
+        if (g2 == null || player == null) return;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
+        int contentW = Math.max(220, w - 24);
+
+        ArrayList<String> noteLines = new ArrayList<>();
+        String overload = player.isOverloadActive()
+                ? "Overload " + player.overloadBus().name() + " heat " + (int) Math.round(player.overloadHeat() * 100.0) + "%"
+                : "Overload standby   cd " + (int) Math.ceil(player.overloadCooldownRemaining()) + "s";
+        String thrust = player.isEmergencyThrustActive()
+                ? "Emergency thrust active   heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%"
+                : "Emergency thrust standby   cd " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s";
+        noteLines.add(overload);
+        noteLines.add(thrust);
+        if (stationStatus != null && !stationStatus.isBlank()) noteLines.add(stationStatus);
+        if (overlayStatus != null && !overlayStatus.isBlank()) noteLines.add(overlayStatus);
+        if (playerWingCap > 0) {
+            noteLines.add("Wing " + playerWingActive + "/" + playerWingCap
+                    + "   " + player.carrierCommandMode.name()
+                    + "   auto " + (player.carrierAutoLaunch ? "ON" : "OFF"));
+        }
+        if (lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0) {
+            int dist = (int) Math.round(Math.hypot(lockedTarget.x - player.x, lockedTarget.y - player.y));
+            noteLines.add("Lock: " + lockedTarget.name + "   D " + dist);
+            String counter = EnemyArchetypeIntel.counterHint(lockedTarget.role);
+            if (detail == GameContext.HudDetail.FULL && counter != null && !counter.isBlank()) {
+                noteLines.addAll(wrapHudText(bodyFm, "Counter: " + counter, contentW));
+            }
+        }
+        if (contextHint != null && !contextHint.isBlank()) {
+            noteLines.addAll(wrapHudText(bodyFm, "Hint: " + contextHint, contentW));
+        }
+
+        int h = 134 + noteLines.size() * 15;
+        drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
+
+        int chipY = y + 32;
+        int chipX = x + 12;
+        chipX = drawHudChipAuto(g2, "AUTO-LOCK " + (autoLock ? "ON" : "OFF"), chipX, chipY, new Color(124, 208, 255, 210), autoLock);
+        chipX = drawHudChipAuto(g2, "POWER " + player.powerPreset.name(), chipX, chipY, new Color(114, 226, 166, 208), true);
+        chipX = drawHudChipAuto(g2, "CREW " + player.crewOrder.name(), chipX, chipY, new Color(244, 198, 116, 208), true);
+        if (player.shieldActive && player.shieldMax > 0.0) {
+            drawHudChipAuto(g2, "SHIELD " + player.shieldFacingMode.name(), chipX, chipY, new Color(154, 186, 255, 208), true);
+        }
+
+        int barY = chipY + 34;
+        drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(198, 218, 238, 195));
+        int textY = barY + 32;
+        for (String line : noteLines) {
+            if (line == null || line.isBlank()) continue;
+            boolean emphasis = line.startsWith("Hint:") || line.startsWith("Counter:") || line.startsWith("OVERLAY:");
+            g2.setColor(emphasis ? new Color(255, 226, 154, 224) : new Color(198, 218, 238, 195));
+            g2.drawString(line, x + 12, textY);
+            textY += 15;
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
+        ArrayList<String> out = new ArrayList<>();
+        out.add("SPACE FIRE");
+        out.add("SHIFT MISSILES");
+        out.add("L LOCK");
+        out.add("Q SALVO");
+        out.add("TAB SHOP");
+        if (detail != GameContext.HudDetail.MINIMAL) {
+            out.add("M MAP");
+            out.add("H CREW");
+            out.add("O POWER");
+            out.add("B BASE");
+        }
+        if (detail == GameContext.HudDetail.FULL) {
+            out.add("F MINE");
+            out.add("E OVERCHARGE");
+            out.add("I SHIELD");
+            out.add("Y PRESET");
+        }
+        if (player.hasWaveMotionGun) out.add("X WAVE");
+        if (player.isCarrier) {
+            out.add("/ FLIGHT");
+            out.add("C LAUNCH");
+        }
+        out.add("N DETAIL");
+        return out;
+    }
+
+    private static void drawHudPanelFrame(Graphics2D g2, int x, int y, int w, int h, String title, Color accent) {
+        if (g2 == null) return;
+        Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
+        g2.setColor(new Color(7, 14, 24, 188));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        g2.setColor(withAlpha(base, 110));
+        g2.drawRoundRect(x, y, w - 1, h - 1, 18, 18);
+        g2.setColor(new Color(255, 255, 255, 22));
+        g2.drawRoundRect(x + 1, y + 1, w - 3, h - 3, 16, 16);
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(withAlpha(base, 220));
+        g2.drawString(title, x + 12, y + 16);
+        g2.setColor(withAlpha(base, 72));
+        g2.drawLine(x + 12, y + 22, x + w - 12, y + 22);
+    }
+
+    private static int drawHudChipAuto(Graphics2D g2, String text, int x, int y, Color accent, boolean strong) {
+        if (g2 == null || text == null || text.isBlank()) return x;
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        int chipW = fm.stringWidth(text) + 14;
+        drawHudStatusChip(g2, text, x, y - 12, chipW, 18, accent, strong);
+        g2.setFont(oldFont);
+        return x + chipW + 8;
+    }
+
+    private static void drawHudStatusChip(Graphics2D g2, String text, int x, int y, int w, int h, Color accent, boolean strong) {
+        if (g2 == null || text == null) return;
+        Color base = (accent == null) ? new Color(180, 205, 235, 220) : accent;
+        int fillAlpha = strong ? 82 : 54;
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), fillAlpha));
+        g2.fillRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(withAlpha(base, strong ? 210 : 170));
+        g2.drawRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(new Color(245, 250, 255, strong ? 228 : 210));
+        g2.drawString(text, x + 7, y + 12);
+    }
+
+    private static void drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h) {
+        if (g2 == null || player == null) return;
+        double[] fracs = new double[]{
+                player.powerEnginesFrac(),
+                player.powerShieldsFrac(),
+                player.powerWeaponsFrac(),
+                player.powerSensorsFrac(),
+                player.powerEngineeringFrac()
+        };
+        String[] labels = new String[]{"P", "SH", "T", "SN", "EN", "AX"};
+        Color[] colors = new Color[]{
+                new Color(110, 212, 255),
+                new Color(138, 168, 255),
+                new Color(255, 132, 132),
+                new Color(128, 240, 190),
+                new Color(255, 206, 118),
+                new Color(188, 188, 205)
+        };
+
+        int[] values = new int[6];
+        int total = 0;
+        for (int i = 0; i < fracs.length; i++) {
+            values[i] = MathUtil.clamp((int) Math.round(fracs[i] * 100.0), 0, 100);
+            total += values[i];
+        }
+        values[5] = Math.max(0, 100 - total);
+
+        g2.setColor(new Color(255, 255, 255, 48));
+        g2.drawRoundRect(x, y, w, h, 10, 10);
+        int innerX = x + 1;
+        int innerW = Math.max(1, w - 1);
+        for (int i = 0; i < values.length; i++) {
+            int segW = (int) Math.round(innerW * (values[i] / 100.0));
+            if (i == values.length - 1) {
+                segW = Math.max(0, x + w - innerX);
+            }
+            if (segW <= 0) continue;
+            g2.setColor(withAlpha(colors[i], 150));
+            g2.fillRect(innerX, y + 1, segW, h - 1);
+            innerX += segW;
+        }
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics fm = g2.getFontMetrics();
+        int labelX = x;
+        int labelY = y + h + 12;
+        for (int i = 0; i < labels.length; i++) {
+            String text = labels[i] + " " + values[i] + "%";
+            g2.setColor(withAlpha(colors[i], 216));
+            g2.drawString(text, labelX, labelY);
+            labelX += fm.stringWidth(text) + 12;
         }
     }
 
@@ -1602,6 +1794,7 @@ public class Renderer {
                 || ctx.mapOpen
                 || ctx.powerManagementOpen
                 || ctx.crewStationsOpen
+                || ctx.flightDeckOpen
                 || ctx.state == GameState.PAUSED
                 || ctx.state == GameState.GAME_OVER;
     }
@@ -2127,6 +2320,81 @@ public class Renderer {
         g2.drawString("Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT", x + 20, y + h - 18);
     }
 
+    public static void drawFlightDeckOverlay(Graphics2D g2, Ship carrier, int focusSlot) {
+        if (g2 == null || carrier == null || !carrier.isCarrier) return;
+
+        Rectangle clip = g2.getClipBounds();
+        int w = Math.min(820, clip.width - 100);
+        int h = 356;
+        int x = (clip.width - w) / 2;
+        int y = Math.max(48, (clip.height - h) / 2);
+
+        drawHudPanelFrame(g2, x, y, w, h, "FLIGHT DECK CONTROL", new Color(146, 210, 255, 225));
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(225, 236, 250, 188));
+        g2.drawString("/ or ESC close   F1-F5 select slot   [ ] move focus   -/+ cycle role", x + 18, y + 46);
+        g2.drawString("6 fighter   7 drone   8 bomber   9 all fighters   0 all bombers   Backspace default mix", x + 18, y + 62);
+
+        int focus = Math.max(0, Math.min(4, focusSlot));
+        int slotGap = 12;
+        int slotW = (w - 36 - slotGap * 4) / 5;
+        int slotH = 132;
+        int slotY = y + 92;
+        int fighters = 0;
+        int bombers = 0;
+        int drones = 0;
+
+        for (int i = 0; i < 5; i++) {
+            ShipRole role = carrier.flightDeckRoleAt(i);
+            if (role == ShipRole.BOMBER) bombers++;
+            else if (role == ShipRole.DRONE) drones++;
+            else fighters++;
+
+            int slotX = x + 18 + i * (slotW + slotGap);
+            boolean selected = (i == focus);
+            Color accent = flightDeckRoleColor(role);
+
+            g2.setColor(selected ? new Color(26, 42, 64, 224) : new Color(12, 20, 32, 196));
+            g2.fillRoundRect(slotX, slotY, slotW, slotH, 16, 16);
+            g2.setColor(withAlpha(accent, selected ? 220 : 140));
+            g2.drawRoundRect(slotX, slotY, slotW, slotH, 16, 16);
+            g2.setColor(new Color(255, 255, 255, 22));
+            g2.drawRoundRect(slotX + 1, slotY + 1, slotW - 2, slotH - 2, 14, 14);
+
+            g2.setFont(new Font("Consolas", Font.BOLD, 13));
+            g2.setColor(new Color(246, 250, 255, 228));
+            g2.drawString("SLOT " + (i + 1), slotX + 12, slotY + 20);
+
+            int chipW = Math.max(70, Math.min(slotW - 24, g2.getFontMetrics(new Font("Consolas", Font.BOLD, 12)).stringWidth(flightDeckRoleLabel(role)) + 18));
+            drawHudStatusChip(g2, flightDeckRoleLabel(role), slotX + 12, slotY + 30, chipW, 20, accent, true);
+
+            g2.setFont(new Font("Consolas", Font.BOLD, 24));
+            g2.setColor(withAlpha(accent, 228));
+            g2.drawString(flightDeckRoleAbbrev(role), slotX + 12, slotY + 76);
+
+            g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+            g2.setColor(new Color(216, 228, 242, 178));
+            g2.drawString(flightDeckRoleDescription(role), slotX + 12, slotY + 98);
+            g2.drawString(selected ? "ACTIVE TEMPLATE SLOT" : "READY", slotX + 12, slotY + 116);
+        }
+
+        int summaryY = slotY + slotH + 34;
+        drawHudStatusChip(g2, "FLIGHT SIZE 5", x + 18, summaryY, 104, 18, new Color(140, 210, 255, 214), true);
+        drawHudStatusChip(g2, "FIGHTER " + fighters, x + 132, summaryY, 102, 18, flightDeckRoleColor(ShipRole.FIGHTER), fighters > 0);
+        drawHudStatusChip(g2, "DRONE " + drones, x + 244, summaryY, 94, 18, flightDeckRoleColor(ShipRole.DRONE), drones > 0);
+        drawHudStatusChip(g2, "BOMBER " + bombers, x + 348, summaryY, 104, 18, flightDeckRoleColor(ShipRole.BOMBER), bombers > 0);
+        drawHudStatusChip(g2, "MODE " + carrier.carrierCommandMode.name(), x + 462, summaryY, 122, 18,
+                new Color(236, 196, 132, 214), carrier.carrierCommandMode == Ship.CarrierCommandMode.DEFEND);
+        drawHudStatusChip(g2, "AUTO " + (carrier.carrierAutoLaunch ? "ON" : "OFF"), x + 594, summaryY, 96, 18,
+                new Color(148, 228, 182, 214), carrier.carrierAutoLaunch);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(216, 228, 240, 190));
+        g2.drawString("Launch rhythm: the deck cycles these 5 slots in order whenever a new flight is launched.", x + 18, y + h - 38);
+        g2.drawString("Defend mode recalls bombers and their escorts before the next wave leaves the deck.", x + 18, y + h - 20);
+    }
+
     private static String shortSystemName(Ship.InternalSystem system) {
         if (system == null) return "?";
         return switch (system) {
@@ -2139,6 +2407,30 @@ public class Renderer {
             case WARP_ENGINES -> "WRP";
             case MAGAZINES -> "MAG";
         };
+    }
+
+    private static Color flightDeckRoleColor(ShipRole role) {
+        if (role == ShipRole.BOMBER) return new Color(255, 168, 124);
+        if (role == ShipRole.DRONE) return new Color(150, 226, 204);
+        return new Color(132, 190, 255);
+    }
+
+    private static String flightDeckRoleLabel(ShipRole role) {
+        if (role == ShipRole.BOMBER) return "HEAVY BOMBER";
+        if (role == ShipRole.DRONE) return "MULTIROLE DRONE";
+        return "ESCORT FIGHTER";
+    }
+
+    private static String flightDeckRoleAbbrev(ShipRole role) {
+        if (role == ShipRole.BOMBER) return "BMB";
+        if (role == ShipRole.DRONE) return "DRN";
+        return "FGT";
+    }
+
+    private static String flightDeckRoleDescription(ShipRole role) {
+        if (role == ShipRole.BOMBER) return "ANTI-SHIP STRIKE";
+        if (role == ShipRole.DRONE) return "FLEX SUPPORT";
+        return "BOMBER ESCORT";
     }
 
     public static void drawCrewStationsOverlay(Graphics2D g2, GameContext ctx) {
@@ -3516,13 +3808,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             g.dispose();
 
-            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-            g2.setColor(new Color(255, 255, 255, 130));
-            g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+            if (!isTinyStrikeCraft(ship.role)) {
+                g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+                g2.setColor(new Color(255, 255, 255, 130));
+                g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+            }
         }
 
         private static double roleVisualScale(ShipRole role) {
-            return HullGeometry.roleVisualScale(role);
+            if (role == null) return 1.0;
+            return switch (role) {
+                case FIGHTER -> 0.16;
+                case BOMBER -> 0.17;
+                case DRONE -> 0.20;
+                default -> HullGeometry.roleVisualScale(role);
+            };
         }
 
         private static ShipVisual getVisual(Ship ship) {
@@ -4707,9 +5007,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g.dispose();
 
         // Name tag
-        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(255, 255, 255, 130));
-        g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+        if (!isTinyStrikeCraft(ship.role)) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+            g2.setColor(new Color(255, 255, 255, 130));
+            g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+        }
+    }
+
+    private static boolean isTinyStrikeCraft(ShipRole role) {
+        if (role == null) return false;
+        return role == ShipRole.FIGHTER || role == ShipRole.BOMBER || role == ShipRole.DRONE;
     }
 
     private static void drawPlating(Graphics2D g, Ship ship, Color hull, Color trim) {
@@ -4951,6 +5258,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawTurrets(Graphics2D g2, Ship ship) {
         if (ship == null || ship.turrets == null) return;
+        if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.BOMBER || ship.role == ShipRole.DRONE) return;
 
         Color accent = factionTrimColor(ship.faction);
         final double GLOBAL_TURRET_SCALE = 0.5;

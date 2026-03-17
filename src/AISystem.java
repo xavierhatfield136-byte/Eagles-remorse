@@ -170,6 +170,7 @@ public final class AISystem {
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
                 Ship target = periodicClosestRetargetTarget(ctx, s);
+                if (!isAlive(target)) target = CarrierSystem.preferredTargetForCraft(ctx, s, null);
                 if (!isAlive(target)) target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
                 if (!isAlive(target)) target = findImmediateThreat(ctx, s, Math.max(180.0, preferredRange(s) * 0.78));
                 if (target != null && target.alive && !target.dying) {

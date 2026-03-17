@@ -277,6 +277,10 @@ public abstract class Ship {
     public double carrierOrphanTimer = -1.0;
     /** Active strike-craft behavior state. */
     public WingState wingState = WingState.ATTACK;
+    /** 5-slot launch pattern used when a carrier launches a full flight. */
+    public final ShipRole[] flightDeckLoadout = new ShipRole[5];
+    /** Next slot to launch from the configured flight deck pattern. */
+    public int flightDeckLaunchCursor = 0;
 
     // Base / capture
     public boolean isBase = false;
@@ -3601,6 +3605,46 @@ public abstract class Ship {
 
     public void resetFighterTimer() {
         fighterTimer = fighterLaunchCooldown;
+    }
+
+    public void resetFlightDeckLoadout() {
+        ShipRole[] defaults;
+        if (role == ShipRole.DRONE_CARRIER) {
+            defaults = new ShipRole[]{ShipRole.DRONE, ShipRole.DRONE, ShipRole.DRONE, ShipRole.FIGHTER, ShipRole.BOMBER};
+        } else {
+            defaults = new ShipRole[]{ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.BOMBER};
+        }
+        for (int i = 0; i < flightDeckLoadout.length; i++) {
+            flightDeckLoadout[i] = defaults[Math.min(i, defaults.length - 1)];
+        }
+        flightDeckLaunchCursor = 0;
+    }
+
+    public ShipRole flightDeckRoleAt(int slot) {
+        if (slot < 0 || slot >= flightDeckLoadout.length) return ShipRole.FIGHTER;
+        ShipRole role = flightDeckLoadout[slot];
+        return (role == null) ? ShipRole.FIGHTER : role;
+    }
+
+    public void setFlightDeckRole(int slot, ShipRole craftRole) {
+        if (slot < 0 || slot >= flightDeckLoadout.length) return;
+        if (craftRole != ShipRole.FIGHTER && craftRole != ShipRole.BOMBER && craftRole != ShipRole.DRONE) return;
+        flightDeckLoadout[slot] = craftRole;
+    }
+
+    public ShipRole cycleFlightDeckRole(int slot, int dir) {
+        ShipRole[] options = new ShipRole[]{ShipRole.FIGHTER, ShipRole.DRONE, ShipRole.BOMBER};
+        int idx = 0;
+        ShipRole current = flightDeckRoleAt(slot);
+        for (int i = 0; i < options.length; i++) {
+            if (options[i] == current) {
+                idx = i;
+                break;
+            }
+        }
+        idx = Math.floorMod(idx + ((dir < 0) ? -1 : 1), options.length);
+        setFlightDeckRole(slot, options[idx]);
+        return options[idx];
     }
 
     public boolean canSpawnDefender() {

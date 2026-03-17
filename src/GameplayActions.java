@@ -7,7 +7,8 @@ public final class GameplayActions {
             if (exitToMenu != null) exitToMenu.run();
             return;
         }
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) {
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
+                || ctx.crewStationsOpen || ctx.flightDeckOpen) {
             UISystem.closeAllOverlays(ctx);
             return;
         }
@@ -18,7 +19,8 @@ public final class GameplayActions {
         if (ctx == null || ctx.player == null) return false;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
         if (ctx.state != GameState.RUNNING) return false;
-        return !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen && !ctx.powerManagementOpen && !ctx.crewStationsOpen;
+        return !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen
+                && !ctx.powerManagementOpen && !ctx.crewStationsOpen && !ctx.flightDeckOpen;
     }
 
     public static void toggleShop(GameContext ctx) {
@@ -44,6 +46,11 @@ public final class GameplayActions {
     public static void toggleCrewStations(GameContext ctx) {
         if (ctx == null) return;
         UISystem.toggleCrewStations(ctx);
+    }
+
+    public static void toggleFlightDeck(GameContext ctx) {
+        if (ctx == null) return;
+        UISystem.toggleFlightDeck(ctx);
     }
 
     public static void lockUnderMouse(GameContext ctx, PlayerControl controls) {
@@ -396,6 +403,31 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_3 -> UISystem.tryUpgradeBase(ctx, 3);
             case java.awt.event.KeyEvent.VK_4 -> UISystem.tryUpgradeBase(ctx, 4);
             case java.awt.event.KeyEvent.VK_5 -> UISystem.tryUpgradeBase(ctx, 5);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean tryHandleFlightDeckHotkey(GameContext ctx, int keyCode) {
+        if (ctx == null || !ctx.flightDeckOpen) return false;
+        switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_F1 -> UISystem.selectFlightDeckSlot(ctx, 0);
+            case java.awt.event.KeyEvent.VK_F2 -> UISystem.selectFlightDeckSlot(ctx, 1);
+            case java.awt.event.KeyEvent.VK_F3 -> UISystem.selectFlightDeckSlot(ctx, 2);
+            case java.awt.event.KeyEvent.VK_F4 -> UISystem.selectFlightDeckSlot(ctx, 3);
+            case java.awt.event.KeyEvent.VK_F5 -> UISystem.selectFlightDeckSlot(ctx, 4);
+            case java.awt.event.KeyEvent.VK_LEFT, java.awt.event.KeyEvent.VK_OPEN_BRACKET -> UISystem.cycleFlightDeckSlot(ctx, -1);
+            case java.awt.event.KeyEvent.VK_RIGHT, java.awt.event.KeyEvent.VK_CLOSE_BRACKET -> UISystem.cycleFlightDeckSlot(ctx, +1);
+            case java.awt.event.KeyEvent.VK_MINUS, java.awt.event.KeyEvent.VK_SUBTRACT -> UISystem.cycleFocusedFlightDeckRole(ctx, -1);
+            case java.awt.event.KeyEvent.VK_EQUALS, java.awt.event.KeyEvent.VK_ADD -> UISystem.cycleFocusedFlightDeckRole(ctx, +1);
+            case java.awt.event.KeyEvent.VK_6 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.FIGHTER);
+            case java.awt.event.KeyEvent.VK_7 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.DRONE);
+            case java.awt.event.KeyEvent.VK_8 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.BOMBER);
+            case java.awt.event.KeyEvent.VK_9 -> UISystem.fillFlightDeck(ctx, ShipRole.FIGHTER);
+            case java.awt.event.KeyEvent.VK_0 -> UISystem.fillFlightDeck(ctx, ShipRole.BOMBER);
+            case java.awt.event.KeyEvent.VK_BACK_SPACE -> UISystem.resetFlightDeckLoadout(ctx);
             default -> {
                 return false;
             }

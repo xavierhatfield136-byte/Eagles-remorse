@@ -151,6 +151,10 @@ public final class GameRenderSystem {
             Renderer.drawCrewStationsOverlay(g2, ctx);
         }
 
+        if (ctx.flightDeckOpen && ctx.player != null) {
+            Renderer.drawFlightDeckOverlay(g2, ctx.player, ctx.flightDeckFocus);
+        }
+
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
 
         if (ctx.state == GameState.PAUSED) {
@@ -189,6 +193,7 @@ if (DevTools.isDebugOverlay()) {
         if (ctx.baseMenuOpen) return "OVERLAY: BASE UPGRADES";
         if (ctx.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
         if (ctx.crewStationsOpen) return "OVERLAY: CREW STATIONS";
+        if (ctx.flightDeckOpen) return "OVERLAY: FLIGHT DECK";
         if (ctx.mapOpen) return "OVERLAY: STRATEGIC MAP";
         if (ctx.state == GameState.PAUSED) return "OVERLAY: PAUSED";
         return "";
@@ -200,7 +205,8 @@ if (DevTools.isDebugOverlay()) {
         if (tutorialHint != null && !tutorialHint.isBlank()) return tutorialHint;
         Ship p = ctx.player;
 
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) {
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
+                || ctx.crewStationsOpen || ctx.flightDeckOpen) {
             return "Overlay active: combat input blocked, station AI continues running. Press ESC to close.";
         }
         if (!p.alive || p.dying || p.hp <= 0) {
@@ -246,7 +252,7 @@ if (DevTools.isDebugOverlay()) {
         if (p.isCarrier) {
             int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
             if (active <= 0) {
-                return "Carrier wing idle: press C to launch, V to set wing behavior.";
+                return "Carrier wing idle: press / to set a 5-craft loadout, C to launch, V to set wing behavior.";
             }
         }
         return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL).";

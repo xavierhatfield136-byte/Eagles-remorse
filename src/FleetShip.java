@@ -18,8 +18,10 @@ public class FleetShip extends Ship {
         this.faction = faction;
         this.x = x;
         this.y = y;
+        resetFlightDeckLoadout();
 
         setup(role);
+        resetFlightDeckLoadout();
     }
 
     private void setup(ShipRole role) {
@@ -1056,7 +1058,7 @@ public class FleetShip extends Ship {
 
                 isCarrier = true;
                 fighterLaunchCooldown = 4.0;
-                maxFighters = 10;
+                maxFighters = 50;
             }
 
             case DRONE_CARRIER -> {
@@ -1104,7 +1106,7 @@ public class FleetShip extends Ship {
 
                 isCarrier = true;
                 fighterLaunchCooldown = 3.0;
-                maxFighters = 16;
+                maxFighters = 80;
             }
 
             case TRANSPORT -> {

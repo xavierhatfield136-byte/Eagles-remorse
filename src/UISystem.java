@@ -7,12 +7,14 @@ public final class UISystem {
 
     public static void closeAllOverlays(GameContext ctx) {
         if (ctx == null) return;
-        boolean hadOverlay = ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen;
+        boolean hadOverlay = ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen
+                || ctx.powerManagementOpen || ctx.crewStationsOpen || ctx.flightDeckOpen;
         ctx.shopOpen = false;
         ctx.baseMenuOpen = false;
         ctx.mapOpen = false;
         ctx.powerManagementOpen = false;
         ctx.crewStationsOpen = false;
+        ctx.flightDeckOpen = false;
         clearManualCombatInputs(ctx);
         if (!ctx.gameOver) ctx.state = GameState.RUNNING;
         if (hadOverlay) AudioSystem.onUiClose(ctx);
@@ -27,6 +29,7 @@ public final class UISystem {
             ctx.mapOpen = false;
             ctx.powerManagementOpen = false;
             ctx.crewStationsOpen = false;
+            ctx.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.SHOP;
             AudioSystem.onUiOpen(ctx);
@@ -45,6 +48,7 @@ public final class UISystem {
             ctx.baseMenuOpen = false;
             ctx.powerManagementOpen = false;
             ctx.crewStationsOpen = false;
+            ctx.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
@@ -68,6 +72,7 @@ public final class UISystem {
             ctx.mapOpen = false;
             ctx.powerManagementOpen = false;
             ctx.crewStationsOpen = false;
+            ctx.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.BASE_MENU;
             AudioSystem.onUiOpen(ctx);
@@ -88,6 +93,7 @@ public final class UISystem {
             ctx.baseMenuOpen = false;
             ctx.mapOpen = false;
             ctx.crewStationsOpen = false;
+            ctx.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.POWER_MANAGEMENT;
             AudioSystem.onUiOpen(ctx);
@@ -108,8 +114,30 @@ public final class UISystem {
             ctx.baseMenuOpen = false;
             ctx.mapOpen = false;
             ctx.powerManagementOpen = false;
+            ctx.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.CREW_STATIONS;
+            AudioSystem.onUiOpen(ctx);
+        } else {
+            ctx.state = GameState.RUNNING;
+            AudioSystem.onUiClose(ctx);
+        }
+    }
+
+    public static void toggleFlightDeck(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+
+        ctx.flightDeckOpen = !ctx.flightDeckOpen;
+        if (ctx.flightDeckOpen) {
+            ctx.shopOpen = false;
+            ctx.baseMenuOpen = false;
+            ctx.mapOpen = false;
+            ctx.powerManagementOpen = false;
+            ctx.crewStationsOpen = false;
+            ctx.flightDeckFocus = Math.max(0, Math.min(4, ctx.flightDeckFocus));
+            clearManualCombatInputs(ctx);
+            ctx.state = GameState.FLIGHT_DECK;
             AudioSystem.onUiOpen(ctx);
         } else {
             ctx.state = GameState.RUNNING;
@@ -418,7 +446,8 @@ public final class UISystem {
 
     public static boolean handleXrayClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.player == null || e == null) return false;
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return false;
+        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
+                || ctx.crewStationsOpen || ctx.flightDeckOpen) return false;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return false;
 
         ShipRoomLayout.RoomId roomId = Renderer.playerXrayRoomAt(ctx, viewportW, viewportH, e.getX(), e.getY());
@@ -613,10 +642,10 @@ public final class UISystem {
         if (!ensurePlayerCarrier(ctx)) return;
         Player p = ctx.player;
 
-        boolean launched = CarrierSystem.tryLaunchOne(ctx, p);
-        if (launched) {
+        int launched = CarrierSystem.tryLaunchFlight(ctx, p);
+        if (launched > 0) {
             int active = CarrierSystem.countActiveWingByCarrier(ctx, p);
-            EventSystem.showBanner(ctx, "WING LAUNCHED  " + active + "/" + p.maxFighters, 1.1);
+            EventSystem.showBanner(ctx, "FLIGHT LAUNCHED  " + launched + " CRAFT  " + active + "/" + p.maxFighters, 1.1);
             return;
         }
 
@@ -648,7 +677,13 @@ public final class UISystem {
         p.carrierCommandMode = (p.carrierCommandMode == Ship.CarrierCommandMode.ATTACK)
                 ? Ship.CarrierCommandMode.DEFEND
                 : Ship.CarrierCommandMode.ATTACK;
-        EventSystem.showBanner(ctx, "WING MODE: " + p.carrierCommandMode.name(), 1.2);
+        int recalled = 0;
+        if (p.carrierCommandMode == Ship.CarrierCommandMode.DEFEND) {
+            recalled = CarrierSystem.recallDefensiveStrikeCraft(ctx, p);
+        }
+        String banner = "WING MODE: " + p.carrierCommandMode.name();
+        if (recalled > 0) banner += "  RTB " + recalled;
+        EventSystem.showBanner(ctx, banner, 1.2);
     }
 
     public static void tryCarrierToggleAutoLaunch(GameContext ctx) {
@@ -656,6 +691,48 @@ public final class UISystem {
         Player p = ctx.player;
         p.carrierAutoLaunch = !p.carrierAutoLaunch;
         EventSystem.showBanner(ctx, "AUTO-LAUNCH: " + (p.carrierAutoLaunch ? "ON" : "OFF"), 1.2);
+    }
+
+    public static void selectFlightDeckSlot(GameContext ctx, int idx) {
+        if (ctx == null) return;
+        ctx.flightDeckFocus = Math.max(0, Math.min(4, idx));
+    }
+
+    public static void cycleFlightDeckSlot(GameContext ctx, int dir) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        int step = (dir < 0) ? -1 : 1;
+        int next = ctx.flightDeckFocus + step;
+        if (next < 0) next = 4;
+        if (next > 4) next = 0;
+        ctx.flightDeckFocus = next;
+    }
+
+    public static void cycleFocusedFlightDeckRole(GameContext ctx, int dir) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        ctx.player.cycleFlightDeckRole(ctx.flightDeckFocus, dir);
+        EventSystem.showBanner(ctx, "FLIGHT SLOT " + (ctx.flightDeckFocus + 1) + ": "
+                + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
+    }
+
+    public static void setFocusedFlightDeckRole(GameContext ctx, ShipRole role) {
+        if (!ensurePlayerCarrier(ctx) || role == null) return;
+        ctx.player.setFlightDeckRole(ctx.flightDeckFocus, role);
+        EventSystem.showBanner(ctx, "FLIGHT SLOT " + (ctx.flightDeckFocus + 1) + ": "
+                + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
+    }
+
+    public static void fillFlightDeck(GameContext ctx, ShipRole role) {
+        if (!ensurePlayerCarrier(ctx) || role == null) return;
+        for (int i = 0; i < ctx.player.flightDeckLoadout.length; i++) {
+            ctx.player.setFlightDeckRole(i, role);
+        }
+        EventSystem.showBanner(ctx, "FLIGHT LOADOUT: " + role.name() + " x5", 1.0);
+    }
+
+    public static void resetFlightDeckLoadout(GameContext ctx) {
+        if (!ensurePlayerCarrier(ctx)) return;
+        ctx.player.resetFlightDeckLoadout();
+        EventSystem.showBanner(ctx, "FLIGHT LOADOUT RESET", 1.0);
     }
 
     public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {

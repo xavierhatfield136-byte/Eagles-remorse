@@ -34,7 +34,8 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.state == GameState.PAUSED) return;
-                if (ctx.shopOpen || ctx.baseMenuOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return;
+                if (ctx.shopOpen || ctx.baseMenuOpen || ctx.powerManagementOpen
+                        || ctx.crewStationsOpen || ctx.flightDeckOpen) return;
 
                 if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
                 if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;
@@ -53,6 +54,7 @@ public final class InputSystem {
                 int keyCode = e.getKeyCode();
                 if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
+                if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;

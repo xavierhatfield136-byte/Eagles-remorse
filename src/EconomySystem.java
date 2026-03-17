@@ -1079,6 +1079,10 @@ public final class EconomySystem {
         dst.wingState = Ship.WingState.ATTACK;
         dst.carrierOwnerId = -1;
         dst.carrierOrphanTimer = -1.0;
+        dst.flightDeckLaunchCursor = src.flightDeckLaunchCursor;
+        for (int i = 0; i < dst.flightDeckLoadout.length; i++) {
+            dst.flightDeckLoadout[i] = src.flightDeckRoleAt(i);
+        }
 
         dst.isBase = src.isBase;
         dst.baseOwner = src.baseOwner;
