@@ -84,6 +84,7 @@ public final class GameSimulationRuntime {
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
+            updatePlayerRespawn(dt);
             updateBattlefieldWarpCharges(dt);
             if (ctx.player != null) {
                 ctx.player.x = GameMath.clamp(ctx.player.x, 0, ctx.WORLD_W);
@@ -96,6 +97,7 @@ public final class GameSimulationRuntime {
         }
 
         PhysicsSystem.update(ctx, dt);
+        updatePlayerRespawn(dt);
         updateBattlefieldWarpCharges(dt);
         AISystem.update(ctx, dt);
         CarrierSystem.update(ctx, dt);
@@ -117,6 +119,57 @@ public final class GameSimulationRuntime {
         if (ctx.player.tryInstantRepairFromOrder(REPAIR_ORDER_SAFE_SECONDS)) {
             EventSystem.showBanner(ctx, "DAMAGE CONTROL COMPLETE", 1.4);
         }
+    }
+
+    private void updatePlayerRespawn(double dt) {
+        if (ctx == null) return;
+        if (ctx.gameOver || !supportsPlayerRespawn()) {
+            ctx.playerRespawnPending = false;
+            ctx.playerRespawnTimer = 0.0;
+            return;
+        }
+
+        Player player = ctx.player;
+        if (player == null) return;
+
+        boolean fullyDestroyed = !player.alive && !player.dying;
+        if (!fullyDestroyed) {
+            if (ctx.playerRespawnPending) {
+                ctx.playerRespawnPending = false;
+                ctx.playerRespawnTimer = 0.0;
+            }
+            return;
+        }
+
+        if (!ctx.playerRespawnPending) {
+            ctx.playerRespawnPending = true;
+            ctx.playerRespawnTimer = Math.max(0.1, ctx.playerRespawnDelaySeconds);
+            EventSystem.showBanner(ctx, "FLAGSHIP LOST - REDEPLOYING", 1.4);
+        }
+
+        ctx.playerRespawnTimer -= Math.max(0.0, dt);
+        if (ctx.playerRespawnTimer > 1e-6) return;
+
+        double[] pose = SpawnSystem.playerRespawnPose(ctx);
+        player.respawnAt(pose[0], pose[1], pose[2]);
+        ctx.playerRespawnPending = false;
+        ctx.playerRespawnTimer = 0.0;
+        ctx.lockedTarget = null;
+        ctx.playerTeleportCharging = false;
+        ctx.playerTeleportChargeRemaining = 0.0;
+        ctx.firingPrimaryAuto = false;
+        ctx.firingSecondaryAuto = false;
+        ctx.miningKeyDown = false;
+        UISystem.closeAllOverlays(ctx);
+        EventSystem.showBanner(ctx, "FLAGSHIP REDEPLOYED", 1.5);
+    }
+
+    private boolean supportsPlayerRespawn() {
+        if (ctx == null || ctx.config == null) return false;
+        return switch (ctx.config.mode) {
+            case CAMPAIGN_OPS, LAST_STAND -> false;
+            default -> true;
+        };
     }
 
     private void holdWarpChargingShips() {
@@ -203,6 +256,11 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
+        if (!p.alive || p.dying || p.hp <= 0 || ctx.playerRespawnPending) {
+            p.vx = 0.0;
+            p.vy = 0.0;
+            return;
+        }
         if (p.hasWaveMotionGun) p.trackWaveMotionAim(mouseWorldX, mouseWorldY);
 
         boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);

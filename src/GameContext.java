@@ -17,6 +17,10 @@ public class GameContext {
     public GameState state = GameState.RUNNING;
     public boolean gameOver = false;
     public String gameOverText = "";
+    public static final double DEFAULT_PLAYER_RESPAWN_DELAY_SECONDS = 4.0;
+    public boolean playerRespawnPending = false;
+    public double playerRespawnTimer = 0.0;
+    public double playerRespawnDelaySeconds = DEFAULT_PLAYER_RESPAWN_DELAY_SECONDS;
 
     // Entities
     public Player player;

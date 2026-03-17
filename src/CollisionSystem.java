@@ -26,6 +26,7 @@ public class CollisionSystem {
                 continue;
             }
             boolean waveShot = p instanceof WaveMotionShot;
+            boolean disruptorSlug = p instanceof DisruptorSlug;
             VFX.ImpactStyle impactStyle = impactStyleFor(p);
             for (Ship s : ships) {
                 if (!s.alive) continue;
@@ -34,6 +35,10 @@ public class CollisionSystem {
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
                 if (!HullGeometry.projectileIntersectsShip(p, s)) continue;
+                if (disruptorSlug) {
+                    DisruptorSlug slug = (DisruptorSlug) p;
+                    if (!slug.canAffect(s)) continue;
+                }
                 if (waveShot) {
                     WaveMotionShot ws = (WaveMotionShot) p;
                     if (!ws.canDamage(s)) continue;
@@ -116,6 +121,15 @@ public class CollisionSystem {
 
                 s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
                 logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
+                if (disruptorSlug) {
+                    DisruptorSlug slug = (DisruptorSlug) p;
+                    slug.markAffected(s);
+                    if (disruptorSlugDetonatesOn(s)) {
+                        applyDisruptorBlast(ctx, slug, p.x, p.y, ships);
+                    } else {
+                        s.applyTemporaryDisable(disruptorDisableSeconds(s));
+                    }
+                }
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
                 }
@@ -140,6 +154,10 @@ public class CollisionSystem {
                     }
                     // Preserve audible feedback for glancing/mitigated hull contacts.
                     AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
+                }
+
+                if (disruptorSlug && !disruptorSlugDetonatesOn(s)) {
+                    continue;
                 }
 
                 p.alive = false;
@@ -288,6 +306,10 @@ public class CollisionSystem {
                     asteroids.remove(ai);
                 }
 
+                if (p instanceof DisruptorSlug slug) {
+                    applyDisruptorBlast(ctx, slug, p.x, p.y, ctx == null ? null : ctx.ships);
+                }
+
                 if (ws != null) ws.consumeHit();
                 else p.alive = false;
                 break;
@@ -331,8 +353,48 @@ public class CollisionSystem {
         AudioSystem.onExplosion(ctx, m.x, m.y);
     }
 
+    private static void applyDisruptorBlast(GameContext ctx, DisruptorSlug slug, double x, double y, List<Ship> ships) {
+        if (slug == null || ships == null || ships.isEmpty()) return;
+        double rr = Math.max(64.0, slug.blastRadius);
+        boolean affected = false;
+
+        for (Ship s : ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.id == slug.sourceShipId) continue;
+
+            double maxD = rr + HullGeometry.broadPhaseRadius(s);
+            if (GameMath.dist2(s.x, s.y, x, y) > maxD * maxD) continue;
+
+            s.applyTemporaryDisable(disruptorDisableSeconds(s));
+            affected = true;
+        }
+
+        boolean showImpactVfx = shouldRenderDamageVfx(ctx, null, x, y);
+        if (showImpactVfx) {
+            VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(2, slug.damage), VFX.ImpactStyle.EXPLOSIVE);
+            Explosion.spawnShieldHit(x, y);
+            ScreenShake.kick(Math.min(7.0, 3.6 + rr * 0.012));
+        }
+        if (affected) {
+            AudioSystem.onExplosion(ctx, x, y);
+        }
+    }
+
+    private static double disruptorDisableSeconds(Ship ship) {
+        if (ship == null) return 10.0;
+        double size = HullGeometry.broadPhaseRadius(ship);
+        double t = MathUtil.clamp((size - 12.0) / 42.0, 0.0, 1.0);
+        return 10.0 + t * 10.0;
+    }
+
+    private static boolean disruptorSlugDetonatesOn(Ship ship) {
+        if (ship == null || ship.role == null) return true;
+        return SpawnSystem.requiredHangarTierForRole(ship.role) > 1;
+    }
+
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {
         if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
+        if (p instanceof DisruptorSlug) return VFX.ImpactStyle.EXPLOSIVE;
         if (p instanceof WaveMotionShot) return VFX.ImpactStyle.BEAM;
         if (p instanceof PhaserBeam) return VFX.ImpactStyle.BEAM;
         if (p instanceof PointDefenseLaser) return VFX.ImpactStyle.BEAM;

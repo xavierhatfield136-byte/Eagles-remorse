@@ -300,6 +300,7 @@ public final class XrayReadabilityHarness {
         Class<?> c = layoutObj.getClass();
         Field fx = c.getDeclaredField("panelX");
         Field fw = c.getDeclaredField("panelW");
+        Field ftx = c.getDeclaredField("targetX");
         Field fpy = c.getDeclaredField("playerY");
         Field fph = c.getDeclaredField("playerH");
         Field fty = c.getDeclaredField("targetY");
@@ -307,6 +308,7 @@ public final class XrayReadabilityHarness {
         Field ftv = c.getDeclaredField("targetVisible");
         fx.setAccessible(true);
         fw.setAccessible(true);
+        ftx.setAccessible(true);
         fpy.setAccessible(true);
         fph.setAccessible(true);
         fty.setAccessible(true);
@@ -315,19 +317,24 @@ public final class XrayReadabilityHarness {
 
         int x = fx.getInt(layoutObj);
         int w = fw.getInt(layoutObj);
+        int tx = ftx.getInt(layoutObj);
         int py = fpy.getInt(layoutObj);
         int ph = fph.getInt(layoutObj);
         int ty = fty.getInt(layoutObj);
         int th = fth.getInt(layoutObj);
         boolean tv = ftv.getBoolean(layoutObj);
 
+        int x0 = x;
+        int x1 = x + w;
         int y0 = py;
         int y1 = py + ph;
         if (tv && th > 0) {
+            x0 = Math.min(x0, tx);
+            x1 = Math.max(x1, tx + w);
             y0 = Math.min(y0, ty);
             y1 = Math.max(y1, ty + th);
         }
-        return new Rectangle(x, y0, w, Math.max(1, y1 - y0));
+        return new Rectangle(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
     }
 
     private static int alphaPixels(BufferedImage image, Rectangle rect) {

@@ -55,6 +55,7 @@ public final class MovementModel {
 
     public static double speedCeiling(Ship ship) {
         if (ship == null) return 55.0;
+        if (ship.isTemporarilyDisabled()) return 0.0;
         Profile p = profile(ship.role);
         if (p.maxSpeedMul <= 1e-6) return 0.0;
         double base = Math.max(0.0, ship.desiredSpeed);
@@ -63,6 +64,7 @@ public final class MovementModel {
 
     public static double turnRateRadPerSec(Ship ship) {
         if (ship == null) return Math.toRadians(136.0);
+        if (ship.isTemporarilyDisabled()) return 0.0;
         Profile p = profile(ship.role);
         return Math.max(0.0, p.turnRateRadPerSec * ship.propulsionHandlingMultiplier());
     }
@@ -91,6 +93,11 @@ public final class MovementModel {
 
     public static void applyDesiredVelocity(Ship ship, double desiredVxPerSec, double desiredVyPerSec, double dt, boolean thrusting) {
         if (ship == null) return;
+        if (ship.isTemporarilyDisabled()) {
+            ship.vx = 0.0;
+            ship.vy = 0.0;
+            return;
+        }
         double cap = speedCeiling(ship);
         if (cap <= 1e-6) {
             desiredVxPerSec = 0.0;

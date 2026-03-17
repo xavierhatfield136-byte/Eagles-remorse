@@ -34,6 +34,7 @@ public final class EconomySystem {
     private static final double HAULER_SEARCH_RANGE = 1600.0;
     private static final double HAULER_FULL_FRAC = 0.92;
     private static final double NPC_REFIT_CHECK_INTERVAL = 1.25;
+    private static final double ESCORT_FIGHTER_RESPAWN_SECONDS = 20.0;
     private static final int NPC_REFITS_PER_TEAM_PASS = 2;
     private static final double NPC_REFIT_COOLDOWN_SEC = 14.0;
     private static final double NPC_REFIT_DOCK_RANGE = 220.0;
@@ -411,7 +412,7 @@ public final class EconomySystem {
             if (cooldown > 1e-6) continue;
 
             Ship escort = spawnEscortFighter(ctx, anchor, active);
-            timers.put(anchor.id, (escort == null) ? 1.0 : 6.0);
+            timers.put(anchor.id, (escort == null) ? 1.0 : ESCORT_FIGHTER_RESPAWN_SECONDS);
         }
 
         timers.entrySet().removeIf(e -> e == null || e.getKey() == null || findLiveShipById(ctx.ships, e.getKey()) == null);

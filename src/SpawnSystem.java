@@ -237,6 +237,48 @@ public final class SpawnSystem {
         return Math.max(0, Math.min(3, best));
     }
 
+    public static double[] playerRespawnPose(GameContext ctx) {
+        if (ctx == null) return new double[]{0.0, 0.0, 0.0};
+        GameMode mode = (ctx.config == null) ? GameMode.CAMPAIGN_OPS : ctx.config.mode;
+
+        if (mode == GameMode.SHOWCASE) {
+            ShipRole[] roles = ShipRole.values();
+            int roleCount = 0;
+            for (ShipRole r : roles) {
+                if (r == ShipRole.FRIGATE) continue;
+                roleCount++;
+            }
+            int totalShips = roleCount + 1;
+            int perSide = Math.max(3, (int) Math.ceil(Math.sqrt(totalShips)));
+            double spacing = 230.0;
+            double gridW = (perSide - 1) * spacing;
+            double gridH = (perSide - 1) * spacing;
+            double startX = GameMath.clamp((ctx.WORLD_W - gridW) * 0.5, 90.0, ctx.WORLD_W - 90.0 - gridW);
+            double startY = GameMath.clamp((ctx.WORLD_H - gridH - 260.0) * 0.5, 90.0, ctx.WORLD_H - 90.0 - gridH);
+            return new double[]{startX, startY, 0.0};
+        }
+
+        if (mode == GameMode.SHOOTING_RANGE) {
+            double px = GameMath.clamp(Math.max(240.0, ctx.WORLD_W * 0.16), 90.0, ctx.WORLD_W - 90.0);
+            double py = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
+            return new double[]{px, py, 0.0};
+        }
+
+        Faction playerFaction = (ctx.player != null && ctx.player.faction != null)
+                ? ctx.player.faction
+                : configuredPlayerFaction(ctx);
+        Ship anchor = preferredRespawnAnchor(ctx, playerFaction);
+        if (anchor != null) {
+            double[] spawn = inwardSpawnNearBase(ctx, anchor);
+            double angle = Math.atan2(ctx.WORLD_H * 0.5 - spawn[1], ctx.WORLD_W * 0.5 - spawn[0]);
+            return new double[]{spawn[0], spawn[1], angle};
+        }
+
+        double fallbackX = GameMath.clamp(Math.max(220.0, ctx.WORLD_W * 0.18), 90.0, ctx.WORLD_W - 90.0);
+        double fallbackY = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
+        return new double[]{fallbackX, fallbackY, 0.0};
+    }
+
     private static ShipRole resolveSpawnRoleForFaction(GameContext ctx, Faction faction, ShipRole requested) {
         if (requested == null) return null;
         ShipRole doctrinal = applyFactionRoleBias(ctx, faction, requested);
@@ -280,6 +322,37 @@ public final class SpawnSystem {
         }
 
         return requested;
+    }
+
+    private static Ship preferredRespawnAnchor(GameContext ctx, Faction playerFaction) {
+        if (ctx == null) return null;
+        Faction teamKey = (playerFaction == null) ? Faction.ALLY : Faction.forTeamId(playerFaction.teamId());
+
+        Ship base = TeamSystem.getBaseForTeam(ctx, teamKey);
+        if (isUsableRespawnAnchor(base)) return base;
+        if (playerFaction != null) {
+            Ship exactBase = TeamSystem.getBaseForTeam(ctx, playerFaction);
+            if (isUsableRespawnAnchor(exactBase)) return exactBase;
+        }
+
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (Ship s : ctx.ships) {
+            if (!isUsableRespawnAnchor(s)) continue;
+            if (s == ctx.player) continue;
+            if (playerFaction != null && (s.faction == null || s.faction.teamId() != playerFaction.teamId())) continue;
+            double score = s.hpMax + s.shieldMax + s.radius * 2.0;
+            if (s.role == ShipRole.BASE) score += 5000.0;
+            if (score > bestScore) {
+                bestScore = score;
+                best = s;
+            }
+        }
+        return best;
+    }
+
+    private static boolean isUsableRespawnAnchor(Ship ship) {
+        return ship != null && ship.alive && !ship.dying && ship.hp > 0;
     }
 
     private static ShipRole[] fallbackRolesFor(ShipRole role) {

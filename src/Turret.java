@@ -133,6 +133,7 @@ public class Turret {
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
         if (!canFire()) return null;
         if (host == null) return null;
+        if (host.isTemporarilyDisabled()) return null;
         if (!host.hasStrikeCraftMunitionsFor(this)) return null;
 
         double cycleMul = host.weaponCycleRateMultiplier();

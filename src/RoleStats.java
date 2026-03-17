@@ -50,10 +50,10 @@ public final class RoleStats {
             case PICKET -> new Stats(16, 13, 16, 1.8, 160, 88, -1, -1, -1);
             case PATROL -> new Stats(13, 9, 7, 1.0, 225, 62, -1, -1, -1);
             case STEALTH_SHIP -> new Stats(15, 10, 9, 1.2, 245, 145, -1, -1, -1);
-            case FIGHTER -> new Stats(12, 6, 0, 0.0, 270, 35, -1, -1, -1);
-            case BOMBER -> new Stats(14, 9, 6, 0.8, 205, 58, -1, -1, -1);
-            case PD_CRAFT -> new Stats(18, 18, 16, 2.0, 170, 105, -1, -1, -1);
-            case DRONE -> new Stats(11, 6, 4, 0.7, 285, 38, -1, -1, -1);
+            case FIGHTER -> new Stats(12, 1, 1, 0.0, 270, 35, -1, -1, -1);
+            case BOMBER -> new Stats(14, 1, 1, 0.0, 205, 58, -1, -1, -1);
+            case PD_CRAFT -> new Stats(18, 1, 1, 0.0, 170, 105, -1, -1, -1);
+            case DRONE -> new Stats(11, 1, 1, 0.0, 285, 38, -1, -1, -1);
             case FRIGATE -> new Stats(18, 19, 18, 2.0, 152, 96, -1, -1, -1);
             case MISSILE_BOAT -> new Stats(20, 11, 8, 1.2, 108, 112, -1, -1, -1);
             case CIWS_CORVETTE -> new Stats(16, 12, 8, 1.4, 205, 98, -1, -1, -1);

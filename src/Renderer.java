@@ -1189,9 +1189,9 @@ public class Renderer {
         int leftX = 14;
         int topY = 16;
         int leftW = (xrayLayout != null)
-                ? Math.max(296, Math.min(416, xrayLayout.panelX - leftX - 18))
+                ? Math.max(240, Math.min(416, xrayLayout.panelX - leftX - 18))
                 : Math.max(320, Math.min(430, viewW / 3));
-        leftW = Math.max(280, Math.min(leftW, viewW - 28));
+        leftW = Math.max(240, Math.min(leftW, viewW - 28));
 
         int cardY = topY;
         cardY += drawCommandOverviewCard(g2, player, credits, hangarTier, dockedAtBase,
@@ -1693,7 +1693,7 @@ public class Renderer {
         if (layout != null) {
             playerX = Math.max(margin, layout.panelX - cardW - sideGap);
             playerY = layout.playerY + Math.max(0, (layout.playerH - cardH) / 2);
-            targetX = Math.min(viewW - cardW - margin, layout.panelX + layout.panelW + sideGap);
+            targetX = Math.min(viewW - cardW - margin, layout.targetX + layout.panelW + sideGap);
             targetY = (layout.targetVisible && layout.targetH > 0)
                     ? layout.targetY + Math.max(0, (layout.targetH - cardH) / 2)
                     : playerY;
@@ -1766,6 +1766,13 @@ public class Renderer {
             }
         } else {
             drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD N/A", 0.0, new Color(135, 160, 190, 160));
+        }
+
+        if (ship.isTemporarilyDisabled()) {
+            String disabled = "DISABLED " + fmt1(ship.getTemporaryDisableRemaining()) + "s";
+            FontMetrics statusFm = g2.getFontMetrics();
+            g2.setColor(new Color(255, 134, 118, 220));
+            g2.drawString(disabled, x + w - statusFm.stringWidth(disabled), y + h - 16);
         }
 
         if (ship.isStealth) {
@@ -2731,15 +2738,17 @@ public class Renderer {
     private static final class XrayStackLayout {
         final int panelX;
         final int panelW;
+        final int targetX;
         final int playerY;
         final int playerH;
         final int targetY;
         final int targetH;
         final boolean targetVisible;
 
-        XrayStackLayout(int panelX, int panelW, int playerY, int playerH, int targetY, int targetH, boolean targetVisible) {
+        XrayStackLayout(int panelX, int panelW, int targetX, int playerY, int playerH, int targetY, int targetH, boolean targetVisible) {
             this.panelX = panelX;
             this.panelW = panelW;
+            this.targetX = targetX;
             this.playerY = playerY;
             this.playerH = playerH;
             this.targetY = targetY;
@@ -3360,10 +3369,8 @@ public class Renderer {
         if (!player.alive || player.dying || player.hp <= 0) return null;
 
         Rectangle menu = getCoreMenuBarRect(viewW, viewH);
-        int panelW = Math.max(270, Math.min(396, menu.width - 170));
         int availableH = menu.y - 54;
         if (availableH < 130) return null;
-        int px = menu.x + (menu.width - panelW) / 2;
 
         boolean sensorsOnline = !player.isSystemDestroyed(Ship.InternalSystem.SENSORS);
         boolean targetVisible = lockedTarget != null
@@ -3372,24 +3379,36 @@ public class Renderer {
                 && !(lockedTarget.faction != null && player.faction != null
                 && lockedTarget.faction.isFriendlyTo(player.faction));
 
-        int gap = 8;
-        int playerH = targetVisible
-                ? Math.max(156, Math.min(214, (int) Math.round(availableH * 0.46)))
+        int gap = 12;
+        int panelH = targetVisible
+                ? Math.max(156, Math.min(214, (int) Math.round(availableH * 0.44)))
                 : Math.max(170, Math.min(228, (int) Math.round(availableH * 0.58)));
-        int targetH = targetVisible ? Math.max(166, Math.min(236, (int) Math.round(availableH * 0.50))) : 0;
-        int stackH = playerH + ((targetH > 0) ? (gap + targetH) : 0);
-        if (stackH > availableH) {
-            double scale = Math.max(0.55, availableH / (double) Math.max(1, stackH));
-            playerH = Math.max(136, (int) Math.round(playerH * scale));
-            if (targetH > 0) targetH = Math.max(142, (int) Math.round(targetH * scale));
+        if (panelH > availableH - 8) {
+            panelH = Math.max(136, availableH - 8);
         }
 
-        int menuTop = menu.y;
-        int targetY = menuTop - targetH - 8;
-        int playerY = (targetH > 0) ? (targetY - gap - playerH) : (menuTop - playerH - 8);
+        int panelW;
+        int playerX;
+        int targetX;
+        if (targetVisible) {
+            int totalAvailW = Math.max(540, viewW - 40);
+            panelW = Math.max(250, Math.min(344, (totalAvailW - gap) / 2));
+            int totalW = panelW * 2 + gap;
+            playerX = (viewW - totalW) / 2;
+            targetX = playerX + panelW + gap;
+        } else {
+            panelW = Math.max(270, Math.min(396, menu.width - 170));
+            playerX = menu.x + (menu.width - panelW) / 2;
+            targetX = playerX;
+        }
+
+        int playerH = panelH;
+        int targetH = targetVisible ? panelH : 0;
+        int playerY = menu.y - playerH - 8;
+        int targetY = playerY;
         if (playerY < 48) return null;
 
-        return new XrayStackLayout(px, panelW, playerY, playerH, targetY, targetH, targetVisible);
+        return new XrayStackLayout(playerX, panelW, targetX, playerY, playerH, targetY, targetH, targetVisible);
     }
 
     private static void drawLockedTargetXrayHud(Graphics2D g2, GameContext ctx, Player player, Ship lockedTarget,
@@ -3404,7 +3423,7 @@ public class Renderer {
         if (layout.targetH > 0 && layout.targetVisible) {
             String role = (lockedTarget.role == null) ? "UNKNOWN" : lockedTarget.role.name();
             String subtitle = lockedTarget.name + " / " + role;
-            drawShipXrayPanel(g2, ctx, lockedTarget, layout.panelX, layout.targetY, layout.panelW, layout.targetH,
+            drawShipXrayPanel(g2, ctx, lockedTarget, layout.targetX, layout.targetY, layout.panelW, layout.targetH,
                     "TARGET X-RAY", subtitle, false);
         }
     }

@@ -204,6 +204,7 @@ public abstract class Ship {
     private double waveMotionBeamTickTimer = 0.0;
     private double waveMotionBeamAim = Double.NaN;
     private Ship waveMotionBeamTarget = null;
+    private double temporaryDisableTimer = 0.0;
 
     // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
@@ -637,6 +638,13 @@ public abstract class Ship {
             return;
         }
 
+        if (temporaryDisableTimer > 0.0) {
+            temporaryDisableTimer -= dt;
+            if (temporaryDisableTimer < 0.0) temporaryDisableTimer = 0.0;
+            vx = 0.0;
+            vy = 0.0;
+        }
+
         x += vx;
         y += vy;
         if (dt > 0.0) noDamageTimerSeconds += dt;
@@ -873,6 +881,57 @@ public abstract class Ship {
         return true;
     }
 
+    public void respawnAt(double spawnX, double spawnY, double heading) {
+        x = spawnX;
+        y = spawnY;
+        if (Double.isFinite(heading)) angle = heading;
+        vx = 0.0;
+        vy = 0.0;
+        alive = true;
+        dying = false;
+        dyingTimer = 0.0;
+        burnDuration = 0.0;
+        wreckVx = 0.0;
+        wreckVy = 0.0;
+        wreckSpin = 0.0;
+        deathExploded = false;
+        fireSpawnTimer = 0.0;
+        hp = Math.max(1, hpMax);
+        temporaryDisableTimer = 0.0;
+        ciwsTimer = 0.0;
+        fighterTimer = 0.0;
+        baseSpawnTimer = 0.0;
+        miningTarget = null;
+        minerTarget = null;
+        cargo = Math.max(0, cargo);
+        revealTimer = 0.0;
+        cloakActive = false;
+        cloakEnergy = cloakEnergyMax;
+        bountyClaimed = false;
+        playerTaggedForKillCredit = false;
+        playerKillCreditPaid = false;
+        carrierOwnerId = -1;
+        carrierOrphanTimer = -1.0;
+        wingState = WingState.ATTACK;
+        strikePrimaryMunitions = strikePrimaryMunitionsMax;
+        strikeSecondaryMunitions = strikeSecondaryMunitionsMax;
+        strikePrimaryDamageCarry = 0.0;
+        strikeSecondaryDamageCarry = 0.0;
+        crewCombatStress = 0.0;
+        cancelBattlefieldWarp();
+        setOverloadMode(false);
+        resetInternalSystems();
+        fullyRepairHull();
+        resetShieldState();
+        if (shieldActive && shieldMax > 0.0) {
+            shield = shieldMax;
+        } else {
+            shield = 0.0;
+        }
+        clearHullImpactMarks();
+        resetWaveMotionCooldown();
+    }
+
     public void healShield(double amount) {
         if (!alive || !isShieldOnline()) return;
         if (amount <= 0) return;
@@ -977,15 +1036,7 @@ public abstract class Ship {
     private void startDeathSequence() {
         if (dying) return;
         dying = true;
-        waveMotionCharging = false;
-        waveMotionChargeTimer = 0.0;
-        pendingWaveMotionShots.clear();
-        queuedWaveMotionAim = Double.NaN;
-        queuedWaveMotionTarget = null;
-        waveMotionBeamTimer = 0.0;
-        waveMotionBeamTickTimer = 0.0;
-        waveMotionBeamAim = Double.NaN;
-        waveMotionBeamTarget = null;
+        cancelWaveMotionSequence();
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
@@ -1163,7 +1214,10 @@ public abstract class Ship {
     }
 
     public boolean usesLimitedStrikeCraftMunitions() {
-        return role == ShipRole.FIGHTER || role == ShipRole.BOMBER;
+        return switch (role) {
+            case FIGHTER, BOMBER, PD_CRAFT, DRONE -> true;
+            default -> false;
+        };
     }
 
     public boolean isSmallCraft() {
@@ -1175,6 +1229,7 @@ public abstract class Ship {
 
     public boolean canUseBattlefieldWarp() {
         if (!alive || dying || hp <= 0) return false;
+        if (isTemporarilyDisabled()) return false;
         if (isSmallCraft()) return false;
         if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return false;
         return propulsionRoomIntegrity() > 0.20
@@ -1257,6 +1312,14 @@ public abstract class Ship {
             case BOMBER -> {
                 strikePrimaryMunitionsMax = 14;
                 strikeSecondaryMunitionsMax = 6;
+            }
+            case PD_CRAFT -> {
+                strikePrimaryMunitionsMax = 28;
+                strikeSecondaryMunitionsMax = 0;
+            }
+            case DRONE -> {
+                strikePrimaryMunitionsMax = 10;
+                strikeSecondaryMunitionsMax = 4;
             }
             default -> {
                 strikePrimaryMunitionsMax = 0;
@@ -3351,6 +3414,10 @@ public abstract class Ship {
             primaryRoom = resolvePrimaryRoomForHullHit(impact, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
         }
 
+        if (isSmallCraft()) {
+            return applySmallCraftDistributedHullDamage(hullDamage, impact, primaryRoom, hullBefore);
+        }
+
         double primaryBefore = 0.0;
         if (primaryRoom != null) {
             double max = roomHpMax.getOrDefault(primaryRoom.id, 0.0);
@@ -3388,6 +3455,30 @@ public abstract class Ship {
         previous = lastRoomDamageResult;
         applyCatastrophicFailureRules(primaryRoom, impact, hullDamage);
         if (lastRoomDamageResult != previous) {
+            split.absorb(lastRoomDamageResult);
+        }
+
+        double casualtySpike = (hpMax <= 0) ? 0.0 : (hullDamage / (double) hpMax) * 0.36;
+        crewCasualtyRate = MathUtil.clamp(crewCasualtyRate + casualtySpike, 0.0, 0.75);
+        return split.finish(this, hullBefore);
+    }
+
+    private RoomDamageResult applySmallCraftDistributedHullDamage(int hullDamage,
+                                                                  HullGeometry.ImpactSample impact,
+                                                                  ShipRoomLayout.RoomDef primaryRoom,
+                                                                  int hullBefore) {
+        double primaryBefore = 0.0;
+        if (primaryRoom != null) {
+            double max = roomHpMax.getOrDefault(primaryRoom.id, 0.0);
+            primaryBefore = roomHp.getOrDefault(primaryRoom.id, max);
+        }
+        HullDamageSplit split = new HullDamageSplit(primaryRoom, primaryBefore);
+        double nx = (impact == null) ? Double.NaN : impact.normalizedX;
+        double ny = (impact == null) ? Double.NaN : impact.normalizedY;
+
+        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role)) {
+            if (room == null || room.id == null) continue;
+            damageRoom(room, hullDamage, nx, ny, false, false);
             split.absorb(lastRoomDamageResult);
         }
 
@@ -3734,7 +3825,7 @@ public abstract class Ship {
      * - Other factions fire visible CIWS pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles) {
-        if (!alive || !hasCIWS) return;
+        if (!alive || !hasCIWS || isTemporarilyDisabled()) return;
         if (ciwsTimer > 0) return;
         if (projectiles == null || projectiles.isEmpty()) return;
 
@@ -3931,6 +4022,7 @@ public abstract class Ship {
 
     public boolean canFireWaveMotionGun() {
         if (!alive || dying) return false;
+        if (isTemporarilyDisabled()) return false;
         if (!hasWaveMotionGun) return false;
         return waveMotionTimer <= 0.0 && !waveMotionCharging;
     }
@@ -4082,9 +4174,40 @@ public abstract class Ship {
         double speed = Math.max(420.0, waveMotionSpeed * 0.74);
         int life = Math.max(36, (int) Math.round(waveMotionLife * 1.35));
         double slugRadius = Math.max(18.0, waveMotionRadius * 2.35);
-        Projectile slug = new Bullet(sx, sy, aim, dt, speed, damage, life, slugRadius, faction);
+        double blastRadius = Math.max(120.0, slugRadius * 5.0);
+        Projectile slug = new DisruptorSlug(sx, sy, aim, dt, speed, damage, life, slugRadius, blastRadius, faction);
         slug.sourceShipId = id;
         return slug;
+    }
+
+    public boolean isTemporarilyDisabled() {
+        return temporaryDisableTimer > 1e-6;
+    }
+
+    public double getTemporaryDisableRemaining() {
+        return Math.max(0.0, temporaryDisableTimer);
+    }
+
+    public void applyTemporaryDisable(double seconds) {
+        if (!alive || dying || hp <= 0) return;
+        if (seconds <= 0.0) return;
+        temporaryDisableTimer = Math.max(temporaryDisableTimer, seconds);
+        vx = 0.0;
+        vy = 0.0;
+        cancelBattlefieldWarp();
+        cancelWaveMotionSequence();
+    }
+
+    private void cancelWaveMotionSequence() {
+        waveMotionCharging = false;
+        waveMotionChargeTimer = 0.0;
+        pendingWaveMotionShots.clear();
+        queuedWaveMotionAim = Double.NaN;
+        queuedWaveMotionTarget = null;
+        waveMotionBeamTimer = 0.0;
+        waveMotionBeamTickTimer = 0.0;
+        waveMotionBeamAim = Double.NaN;
+        waveMotionBeamTarget = null;
     }
 
     private Projectile createDirectBeamSuperweapon(double aim) {
