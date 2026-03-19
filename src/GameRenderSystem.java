@@ -223,7 +223,7 @@ if (DevTools.isDebugOverlay()) {
             ShipRoomLayout.RoomId hotspot = p.hottestFireRoom();
             String hotspotLabel = (hotspot == null) ? "UNKNOWN" : hotspot.name();
             if (hotspot != null) {
-                ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, hotspot);
+                ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, p.faction, hotspot);
                 if (def != null && def.label != null && !def.label.isBlank()) {
                     hotspotLabel = def.label;
                 }

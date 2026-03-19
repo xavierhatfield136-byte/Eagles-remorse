@@ -1417,6 +1417,7 @@ public final class AISystem {
     private static boolean canShipThreatenTarget(GameContext ctx, Ship seeker, Ship target) {
         if (!isAlive(seeker) || !isAlive(target)) return false;
         if (!TargetingSystem.isDetectableToObserver(seeker, target)) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
         double rangeMul = (ctx == null) ? 1.0 : CampaignSystem.targetingRangeMul(ctx);
         double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
         if (d <= 240.0) return true;
@@ -1879,6 +1880,7 @@ public final class AISystem {
                                    double teamConfidence, SquadObjective objective) {
         if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
         if (!TargetingSystem.isDetectableToObserver(s, target)) return 0;
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return 0;
         if (objective == null) objective = SquadObjective.HOLD;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
         double sensorConfidence = observerEWConfidence(ctx, s, target, dist);

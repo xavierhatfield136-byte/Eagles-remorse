@@ -440,18 +440,26 @@ public class CollisionSystem {
             return;
         }
 
-        beam.clampImpactFraction(bestT);
-
-        int damage = beam.rollFrameDamage(ctx == null ? null : ctx.rng, GameContext.DT);
-        if (damage <= 0) return;
-
         double dx = ex - sx;
         double dy = ey - sy;
-        double hitX = sx + dx * bestT;
-        double hitY = sy + dy * bestT;
         double len = Math.hypot(dx, dy);
         double dirX = (len > 1e-9) ? (dx / len) : Math.cos(beam.angle);
         double dirY = (len > 1e-9) ? (dy / len) : Math.sin(beam.angle);
+        HullGeometry.ImpactSample impact = firstBeamHullImpact(best, sx, sy, ex, ey, bestT);
+        double hitX = sx + dx * bestT;
+        double hitY = sy + dy * bestT;
+        double impactFraction = bestT;
+        if (impact != null && impact.onHull) {
+            double c = Math.cos(best.angle);
+            double s = Math.sin(best.angle);
+            hitX = best.x + impact.localX * c - impact.localY * s;
+            hitY = best.y + impact.localX * s + impact.localY * c;
+            impactFraction = segmentParamForPoint(sx, sy, ex, ey, hitX, hitY);
+        }
+        beam.clampImpactFraction(impactFraction);
+
+        int damage = beam.rollFrameDamage(ctx == null ? null : ctx.rng, GameContext.DT);
+        if (damage <= 0) return;
 
         markPlayerHitContribution(ctx, beam, best);
         double shieldBefore = best.shield;
@@ -520,11 +528,56 @@ public class CollisionSystem {
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
             return target.isSmallCraft();
         }
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
 
         Ship shooter = findShipById(ships, projectile.sourceShipId);
         if (shooter == null || shooter.role == null) return true;
         if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
         return true;
+    }
+
+    private static HullGeometry.ImpactSample firstBeamHullImpact(Ship ship,
+                                                                 double sx,
+                                                                 double sy,
+                                                                 double ex,
+                                                                 double ey,
+                                                                 double fallbackT) {
+        if (ship == null) return null;
+
+        double prevT = 0.0;
+        boolean prevInside = false;
+        int steps = 72;
+        for (int i = 1; i <= steps; i++) {
+            double t = i / (double) steps;
+            double wx = sx + (ex - sx) * t;
+            double wy = sy + (ey - sy) * t;
+            HullGeometry.ImpactSample sample = HullGeometry.sampleImpact(ship, wx, wy, false);
+            boolean inside = sample != null && sample.onHull;
+            if (inside && !prevInside) {
+                double lo = prevT;
+                double hi = t;
+                for (int j = 0; j < 18; j++) {
+                    double mid = 0.5 * (lo + hi);
+                    double mx = sx + (ex - sx) * mid;
+                    double my = sy + (ey - sy) * mid;
+                    HullGeometry.ImpactSample midSample = HullGeometry.sampleImpact(ship, mx, my, false);
+                    if (midSample != null && midSample.onHull) {
+                        hi = mid;
+                    } else {
+                        lo = mid;
+                    }
+                }
+                double fx = sx + (ex - sx) * hi;
+                double fy = sy + (ey - sy) * hi;
+                return HullGeometry.sampleImpact(ship, fx, fy, true);
+            }
+            prevInside = inside;
+            prevT = t;
+        }
+
+        double wx = sx + (ex - sx) * MathUtil.clamp(fallbackT, 0.0, 1.0);
+        double wy = sy + (ey - sy) * MathUtil.clamp(fallbackT, 0.0, 1.0);
+        return HullGeometry.sampleImpact(ship, wx, wy, true);
     }
 
     private static Ship findShipById(List<Ship> ships, int id) {

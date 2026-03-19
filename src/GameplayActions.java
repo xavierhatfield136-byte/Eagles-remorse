@@ -109,6 +109,7 @@ public final class GameplayActions {
         Ship target;
         if (isAlive(ctx.lockedTarget)
                 && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                 && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
             target = ctx.lockedTarget;
         } else {

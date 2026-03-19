@@ -2650,7 +2650,7 @@ public class Renderer {
         ShipRoomLayout.RoomId hotspot = ctx.player.hottestFireRoom();
         String hotspotLabel = "NONE";
         if (hotspot != null) {
-            ShipRoomLayout.RoomDef hotspotDef = ShipRoomLayout.roomForId(ctx.player.role, hotspot);
+            ShipRoomLayout.RoomDef hotspotDef = ShipRoomLayout.roomForId(ctx.player.role, ctx.player.faction, hotspot);
             if (hotspotDef != null && hotspotDef.label != null && !hotspotDef.label.isBlank()) {
                 hotspotLabel = hotspotDef.label;
             } else {
@@ -2830,7 +2830,7 @@ public class Renderer {
         if (layout == null) return null;
         Rectangle mapRect = xrayMapRect(layout.panelX, layout.playerY, layout.panelW, layout.playerH);
         if (!mapRect.contains(mouseX, mouseY)) return null;
-        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(ctx.player.role)) {
+        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(ctx.player.role, ctx.player.faction)) {
             if (room == null || room.id == null) continue;
             Polygon p = xrayRoomPolygon(mapRect.x, mapRect.y, mapRect.width, mapRect.height, room.xs, room.ys);
             if (p != null && p.contains(mouseX, mouseY)) return room.id;
@@ -2921,7 +2921,7 @@ public class Renderer {
         g2.drawLine(mapX + 6, mapY + mapH / 2, mapX + mapW - 6, mapY + mapH / 2);
 
         double[] hitFlash = new double[ShipRoomLayout.RoomId.values().length];
-        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(ship.role);
+        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(ship.role, ship.faction);
         refreshXrayPercentCache(ship, rooms, nowNanos);
         EnumMap<ShipRoomLayout.RoomId, Integer> pctCache = xrayPercentCacheFor(ship);
 
@@ -2956,7 +2956,7 @@ public class Renderer {
         g2.setFont(XRAY_HP_FONT);
         FontMetrics hpFm = g2.getFontMetrics();
 
-        List<ShipRoomLayout.VisualCell> visualCells = ShipRoomLayout.visualCellsFor(ship.role);
+        List<ShipRoomLayout.VisualCell> visualCells = ShipRoomLayout.visualCellsFor(ship.role, ship.faction);
         List<ShipRoomLayout.VisualCell> drawCells = new ArrayList<>();
         List<Polygon> cellPolygons = new ArrayList<>();
         for (ShipRoomLayout.VisualCell cell : visualCells) {
@@ -2973,7 +2973,7 @@ public class Renderer {
         for (int cellIdx = 0; cellIdx < drawCells.size(); cellIdx++) {
             ShipRoomLayout.VisualCell cell = drawCells.get(cellIdx);
             Polygon p = cellPolygons.get(cellIdx);
-            ShipRoomLayout.RoomDef room = ShipRoomLayout.roomForId(ship.role, cell.roomId);
+            ShipRoomLayout.RoomDef room = ShipRoomLayout.roomForId(ship.role, ship.faction, cell.roomId);
             if (room == null || cell.roomId == null || p == null || p.npoints < 3) continue;
 
             int pctVal = pctCache.getOrDefault(cell.roomId, -1);
@@ -3104,7 +3104,7 @@ public class Renderer {
             if (!present) detailRoom = null;
         }
         if (interactive && detailRoom != null) {
-            ShipRoomLayout.RoomDef roomDef = ShipRoomLayout.roomForId(ship.role, detailRoom);
+            ShipRoomLayout.RoomDef roomDef = ShipRoomLayout.roomForId(ship.role, ship.faction, detailRoom);
             int pct = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(detailRoom) * 100.0), 0, 100);
             double fire = ship.roomFireIntensity(detailRoom);
             String roomLabel = xrayRoomDisplayLabel(detailRoom);
@@ -3185,7 +3185,7 @@ public class Renderer {
             );
             ug.clip(clipShape);
 
-            Polygon hull = xrayHullPolygon(ship.role, mapRect);
+            Polygon hull = xrayHullPolygon(ship.role, ship.faction, mapRect);
             if (hull != null && hull.npoints >= 3) {
                 Rectangle hb = hull.getBounds();
                 if (hb.width > 0 && hb.height > 0) {
@@ -3236,8 +3236,12 @@ public class Renderer {
     }
 
     private static Polygon xrayHullPolygon(ShipRole role, Rectangle mapRect) {
+        return xrayHullPolygon(role, null, mapRect);
+    }
+
+    private static Polygon xrayHullPolygon(ShipRole role, Faction faction, Rectangle mapRect) {
         if (mapRect == null) return null;
-        Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0);
+        Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0, faction);
         if (hull == null || hull.npoints < 3) return null;
 
         Rectangle b = hull.getBounds();
@@ -3906,16 +3910,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static ShipVisual getVisual(Ship ship) {
             int r = (int) Math.round(Math.max(8.0, ship.radius));
-            String key = ship.role + ":" + r;
+            String key = ship.role + ":" + ship.faction + ":" + r;
             ShipVisual cached = CACHE.get(key);
             if (cached != null) return cached;
 
-            ShipVisual v = buildVisual(ship.role, r);
+            ShipVisual v = buildVisual(ship.role, ship.faction, r);
             CACHE.put(key, v);
             return v;
         }
 
         private static ShipVisual buildVisual(ShipRole role, int r) {
+            return buildVisual(role, null, r);
+        }
+
+        private static ShipVisual buildVisual(ShipRole role, Faction faction, int r) {
             ShipVisual v = new ShipVisual();
             if (role == null) role = ShipRole.FRIGATE;
 
@@ -4036,7 +4044,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
 
             if (!v.station) {
-                Polygon canonicalHull = ShipHullSilhouette.hullPolygon(role, r);
+                Polygon canonicalHull = ShipHullSilhouette.hullPolygon(role, r, faction);
                 if (canonicalHull != null && canonicalHull.npoints >= 3) {
                     v.hullPolys.clear();
                     v.hullPolys.add(canonicalHull);
@@ -5857,7 +5865,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Shape hullEdgeShape = new BasicStroke((float) Math.max(6.0, ship.radius * 0.22),
                 BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(hullShape);
         Area hullEdgeBand = new Area(hullEdgeShape);
-        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role)) {
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role, ship.faction)) {
             if (cell == null || cell.roomId == null) continue;
             if (ship.roomHealthFraction(cell.roomId) > 1e-3) continue;
 
@@ -6205,7 +6213,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         g.translate(shiftX, shiftY);
-        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role)) {
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role, ship.faction)) {
             if (cell == null || cell.roomId == null) continue;
             if (!exposedRooms.contains(cell.roomId) || ShipRoomLayout.isArmorRoom(cell.roomId)) continue;
 

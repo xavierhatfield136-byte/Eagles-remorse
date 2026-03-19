@@ -297,7 +297,7 @@ public final class UISystem {
         }
 
         String label = target.name();
-        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, target);
+        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(p.role, p.faction, target);
         if (def != null && def.label != null && !def.label.isBlank()) {
             label = def.label;
         }

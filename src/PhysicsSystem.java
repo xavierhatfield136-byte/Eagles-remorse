@@ -44,7 +44,9 @@ public final class PhysicsSystem {
 
         // --- Player weapons ---
         if (ctx.player != null && ctx.player.alive) {
-            if (ctx.lockedTarget != null && !TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
+            if (ctx.lockedTarget != null
+                    && (!TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)
+                    || TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget))) {
                 ctx.lockedTarget = null;
             }
             Ship autoTarget = null;
@@ -59,6 +61,7 @@ public final class PhysicsSystem {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
                 if (isAlive(ctx.lockedTarget)
                         && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                        && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                         && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
@@ -73,6 +76,7 @@ public final class PhysicsSystem {
                 aimTarget = autoTarget;
             } else if (isAlive(ctx.lockedTarget)
                     && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
+                    && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                     && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                 aimTarget = ctx.lockedTarget;
             }
@@ -97,7 +101,9 @@ public final class PhysicsSystem {
             }
 
             if (fireSecondary) {
-                Ship target = (isAlive(ctx.lockedTarget) && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
+                Ship target = (isAlive(ctx.lockedTarget)
+                        && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
+                        && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
                         ? ctx.lockedTarget
                         : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {

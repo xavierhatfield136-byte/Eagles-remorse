@@ -4,6 +4,11 @@ import java.util.List;
 public final class TargetingSystem {
     private TargetingSystem(){}
 
+    public static boolean isCiwsOnlyTarget(Ship target) {
+        if (target == null || target.role == null) return false;
+        return target.role == ShipRole.FIGHTER || target.role == ShipRole.BOMBER;
+    }
+
     public static void lockClosestToMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
         double mx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
@@ -26,6 +31,7 @@ public final class TargetingSystem {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (s.role == ShipRole.BASE) continue;
+            if (isCiwsOnlyTarget(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (!isDetectableToObserver(ctx.player, s)) continue;
             enemies.add(s);
@@ -56,6 +62,7 @@ public final class TargetingSystem {
                 && ctx.player != null
                 && seeker.faction.isFriendlyTo(ctx.player.faction)
                 && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)
+                && !isCiwsOnlyTarget(ctx.lockedTarget)
                 && isDetectableToObserver(seeker, ctx.lockedTarget)) {
             return ctx.lockedTarget;
         }
@@ -66,6 +73,7 @@ public final class TargetingSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
+            if (isCiwsOnlyTarget(s)) continue;
 
             if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
                 if (!isDetectableToObserver(seeker, s)) continue;
@@ -91,6 +99,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (s.role == ShipRole.BASE) continue;
+            if (isCiwsOnlyTarget(s)) continue;
             if (!isDetectableToObserver(observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
@@ -111,9 +120,9 @@ public final class TargetingSystem {
 
     public static void enforceCloakLockRules(GameContext ctx) {
         if (ctx == null) return;
-        if (ctx.lockedTarget != null && isHardCloaked(ctx.lockedTarget)) {
+        if (ctx.lockedTarget != null && (isHardCloaked(ctx.lockedTarget) || isCiwsOnlyTarget(ctx.lockedTarget))) {
             ctx.lockedTarget = null;
-            ctx.eventBanner = "TARGET LOCK BROKEN: CLOAKED";
+            ctx.eventBanner = "TARGET LOCK BROKEN";
             ctx.eventBannerT = Math.max(ctx.eventBannerT, 0.9);
         }
         if (ctx.fleetSharedTargets != null && !ctx.fleetSharedTargets.isEmpty()) {
@@ -121,7 +130,7 @@ public final class TargetingSystem {
             while (it.hasNext()) {
                 java.util.Map.Entry<Faction, Ship> e = it.next();
                 Ship target = (e == null) ? null : e.getValue();
-                if (isHardCloaked(target)) it.remove();
+                if (isHardCloaked(target) || isCiwsOnlyTarget(target)) it.remove();
             }
         }
     }

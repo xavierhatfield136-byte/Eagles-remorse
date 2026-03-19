@@ -56,7 +56,7 @@ public class Main {
             gamePanel = null;
         }
 
-        // Apply fullscreen choice before showing the game card.
+        // Apply any requested display mode before showing the game card.
         setFullscreen(config.fullscreen);
 
         gamePanel = new GamePanel(config, this::showMenu, this::toggleFullscreen);
@@ -288,11 +288,6 @@ class MainMenuPanel extends JPanel {
         events.setForeground(Color.WHITE);
         events.setSelected(true);
 
-        JCheckBox fullscreen = new JCheckBox("Start Fullscreen");
-        fullscreen.setOpaque(false);
-        fullscreen.setForeground(Color.WHITE);
-        fullscreen.setSelected(false);
-
         JTextField seedField = new JTextField("0", 12);
         styleField(seedField);
 
@@ -311,7 +306,6 @@ class MainMenuPanel extends JPanel {
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
         syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, persisted.playerTeamId);
         events.setSelected(persisted.randomEvents);
-        fullscreen.setSelected(persisted.fullscreen);
         seedField.setText(persisted.seedText);
 
         Runnable persistSettings = () -> {
@@ -320,7 +314,6 @@ class MainMenuPanel extends JPanel {
             save.modeName = (currentMode == null) ? GameMode.CAMPAIGN_OPS.name() : currentMode.name();
             save.mapIndex = mapBox.getSelectedIndex();
             save.randomEvents = events.isSelected();
-            save.fullscreen = fullscreen.isSelected();
             save.seedText = seedField.getText();
             PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
             save.playerTeamId = (choice == null) ? 0 : choice.teamId();
@@ -346,7 +339,7 @@ class MainMenuPanel extends JPanel {
             PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
             int playerTeamId = (choice == null) ? 0 : choice.teamId();
             persistSettings.run();
-            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, fullscreen.isSelected(), playerTeamId));
+            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, false, playerTeamId));
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
@@ -369,7 +362,6 @@ class MainMenuPanel extends JPanel {
         });
         mapBox.addActionListener(e -> persistSettings.run());
         events.addActionListener(e -> persistSettings.run());
-        fullscreen.addActionListener(e -> persistSettings.run());
         seedField.addActionListener(e -> persistSettings.run());
         seedField.addFocusListener(new FocusAdapter() {
             @Override
@@ -437,9 +429,6 @@ class MainMenuPanel extends JPanel {
         c.gridx = 0;
         c.gridwidth = 2;
         card.add(events, c);
-
-        c.gridy++;
-        card.add(fullscreen, c);
 
         c.gridy++;
         c.gridwidth = 1;

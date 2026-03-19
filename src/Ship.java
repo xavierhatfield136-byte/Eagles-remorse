@@ -780,7 +780,7 @@ public abstract class Ship {
         ensureRoomSystemsInitialized();
 
         double roomMaxTotal = 0.0;
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             roomMaxTotal += Math.max(0.0, roomHpMax.getOrDefault(def.id, 0.0));
         }
         if (roomMaxTotal <= 1e-9) return;
@@ -795,7 +795,7 @@ public abstract class Ship {
         while (hullRegenBuffer > 1e-6 && guard++ < 32) {
             ShipRoomLayout.RoomId target = null;
             double lowestFrac = 1.0;
-            for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+            for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
                 double maxv = roomHpMax.getOrDefault(def.id, 0.0);
                 if (maxv <= 1e-9) continue;
                 double cur = roomHp.getOrDefault(def.id, maxv);
@@ -841,7 +841,7 @@ public abstract class Ship {
     public void fullyRepairHull() {
         if (!alive || dying) return;
         ensureRoomSystemsInitialized();
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             double maxv = roomHpMax.getOrDefault(def.id, 0.0);
             roomHp.put(def.id, maxv);
             RoomHazardState hz = roomHazards.get(def.id);
@@ -1467,7 +1467,7 @@ public abstract class Ship {
 
     public List<RoomStatus> roomStatusSnapshot() {
         ensureRoomSystemsInitialized();
-        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role, faction);
         List<RoomStatus> out = new ArrayList<>(defs.size());
         for (ShipRoomLayout.RoomDef d : defs) {
             double hpv = roomHp.getOrDefault(d.id, 0.0);
@@ -1490,7 +1490,7 @@ public abstract class Ship {
 
     public List<ShipRoom> shipRoomSnapshot() {
         ensureRoomSystemsInitialized();
-        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role, faction);
         List<ShipRoom> out = new ArrayList<>(defs.size());
         String profileId = ShipRoomLayout.profileIdForRole(role);
         for (ShipRoomLayout.RoomDef d : defs) {
@@ -1634,7 +1634,7 @@ public abstract class Ship {
 
         double roomHealFrac = Math.max(0.0, roomHealFracPerSec) * dt;
         if (roomHealFrac > 0.0) {
-            for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+            for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
                 if (def == null || def.id == null) continue;
                 double maxv = roomHpMax.getOrDefault(def.id, 0.0);
                 if (maxv <= 1e-9) continue;
@@ -2080,7 +2080,7 @@ public abstract class Ship {
         roomHazards.clear();
 
         double base = Math.max(24.0, hpMax + shieldMax * 0.35 + radius * 0.90);
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             double max = Math.max(8.0, base * Math.max(0.25, def.hpWeight));
             if (ShipRoomLayout.isArmorRoom(def.id) && !hasArmorLayer()) {
                 max = 0.0;
@@ -2107,7 +2107,7 @@ public abstract class Ship {
         ensureRoomSystemsInitialized();
         double total = 0.0;
         double maxTotal = 0.0;
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             if (def == null || ShipRoomLayout.isArmorRoom(def.id)) continue;
             double max = roomHpMax.getOrDefault(def.id, 0.0);
             if (max <= 0.0) continue;
@@ -2136,7 +2136,7 @@ public abstract class Ship {
     private void enforceRoomSystemAvailability() {
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
-        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role, faction);
         for (InternalSystem system : InternalSystem.values()) {
             boolean hasMappedRoom = false;
             boolean anyOperationalRoom = false;
@@ -2172,12 +2172,12 @@ public abstract class Ship {
 
     private ShipRoomLayout.RoomDef resolveRoomForImpact(HullGeometry.ImpactSample impact, double hitX, double hitY) {
         if (impact != null && impact.onHull) {
-            return ShipRoomLayout.roomForHit(role, impact.normalizedX, impact.normalizedY);
+            return ShipRoomLayout.roomForHit(role, faction, impact.normalizedX, impact.normalizedY);
         }
         if (Double.isFinite(hitX) && Double.isFinite(hitY)) {
             HullGeometry.ImpactSample snap = HullGeometry.sampleImpact(this, hitX, hitY, true);
             if (snap != null && snap.onHull) {
-                return ShipRoomLayout.roomForHit(role, snap.normalizedX, snap.normalizedY);
+                return ShipRoomLayout.roomForHit(role, faction, snap.normalizedX, snap.normalizedY);
             }
         }
         return null;
@@ -2216,7 +2216,7 @@ public abstract class Ship {
         if (room != null) return room;
 
         if (impact != null && Double.isFinite(impact.normalizedX) && Double.isFinite(impact.normalizedY)) {
-            room = RoomHitResolver.resolve(role, impact.normalizedX, impact.normalizedY);
+            room = RoomHitResolver.resolve(role, faction, impact.normalizedX, impact.normalizedY);
             if (room != null) return room;
         }
 
@@ -2229,12 +2229,12 @@ public abstract class Ship {
                 double s = Math.sin(angle);
                 double lx = wx * c + wy * s;
                 double ly = -wx * s + wy * c;
-                room = RoomHitResolver.resolve(role, lx, ly);
+                room = RoomHitResolver.resolve(role, faction, lx, ly);
                 if (room != null) return room;
             }
         }
 
-        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role);
+        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role, faction);
         if (defs != null && !defs.isEmpty()) return defs.get(0);
         return null;
     }
@@ -2251,7 +2251,7 @@ public abstract class Ship {
 
         ShipRoomLayout.RoomDef best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
-        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role, faction)) {
             if (room == null || room.id == null) continue;
             if (!includeArmor && ShipRoomLayout.isArmorRoom(room.id)) continue;
 
@@ -2299,7 +2299,7 @@ public abstract class Ship {
         }
         if (impact == null || !impact.onHull) return null;
         for (double scale : new double[]{1.00, 0.96, 0.92}) {
-            ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role,
+            ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role, faction,
                     impact.normalizedX * scale,
                     impact.normalizedY * scale);
             if (candidate != null
@@ -2325,7 +2325,7 @@ public abstract class Ship {
                     ? ShipRoomLayout.RoomId.DORSAL_ARMOR
                     : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
         }
-        return ShipRoomLayout.roomForId(role, armorId);
+        return ShipRoomLayout.roomForId(role, faction, armorId);
     }
 
     private ShipRoomLayout.RoomDef resolveInteriorRoomForImpact(HullGeometry.ImpactSample impact,
@@ -2335,7 +2335,7 @@ public abstract class Ship {
         if (directional != null && !ShipRoomLayout.isArmorRoom(directional.id)) return directional;
         if (impact != null && impact.onHull) {
             for (double scale : new double[]{0.92, 0.84, 0.76, 0.68, 0.58}) {
-                ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role,
+                ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role, faction,
                         impact.normalizedX * scale,
                         impact.normalizedY * scale);
                 if (candidate != null && !ShipRoomLayout.isArmorRoom(candidate.id)) {
@@ -2343,7 +2343,7 @@ public abstract class Ship {
                 }
             }
         }
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             if (def != null && !ShipRoomLayout.isArmorRoom(def.id)) return def;
         }
         return primaryRoom;
@@ -2519,12 +2519,12 @@ public abstract class Ship {
             List<ShipRoomLayout.RoomDef> levelRecipients = new ArrayList<>();
             for (int i = 0; i < levelCount; i++) {
                 ShipRoomLayout.RoomId currentId = queue.removeFirst();
-                ShipRoomLayout.RoomDef current = ShipRoomLayout.roomForId(role, currentId);
+                ShipRoomLayout.RoomDef current = ShipRoomLayout.roomForId(role, faction, currentId);
                 if (current == null || current.neighbors == null) continue;
                 for (ShipRoomLayout.RoomId neighborId : current.neighbors) {
                     if (neighborId == null || visited.contains(neighborId)) continue;
                     visited.add(neighborId);
-                    ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, neighborId);
+                    ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, faction, neighborId);
                     if (neighbor == null) continue;
                     if (roomHp.getOrDefault(neighbor.id, 0.0) > 1e-6) {
                         levelRecipients.add(neighbor);
@@ -2558,7 +2558,7 @@ public abstract class Ship {
                 continue;
             }
 
-            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, hz.roomId);
+            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, faction, hz.roomId);
             double roomFrac = roomHealthFraction(hz.roomId);
             double fuel = 0.20 + (1.0 - roomFrac) * 0.95 + ((def != null && def.critical) ? 0.18 : 0.0);
             double growthRate = (hz.fireIntensity < 1.25)
@@ -2580,7 +2580,7 @@ public abstract class Ship {
                 for (ShipRoomLayout.RoomId nid : def.neighbors) {
                     if (nid == null) continue;
                     if (ShipRoomLayout.isArmorRoom(nid)) continue;
-                    ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, nid);
+                    ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, faction, nid);
                     if (neighbor == null) continue;
                     double nMax = roomHpMax.getOrDefault(nid, 0.0);
                     if (nMax <= 1e-9) continue;
@@ -3431,7 +3431,7 @@ public abstract class Ship {
             if (room != null && i > 0 && room.neighbors.length > 0 && randomUnit() < 0.38) {
                 int idx = (int) Math.floor(randomUnit() * room.neighbors.length);
                 if (idx < 0 || idx >= room.neighbors.length) idx = 0;
-                ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, room.neighbors[idx]);
+                ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, faction, room.neighbors[idx]);
                 if (neighbor != null) room = neighbor;
             }
             if (room != null) {
@@ -3475,7 +3475,7 @@ public abstract class Ship {
         double nx = (impact == null) ? Double.NaN : impact.normalizedX;
         double ny = (impact == null) ? Double.NaN : impact.normalizedY;
 
-        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role)) {
+        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(role, faction)) {
             if (room == null || room.id == null) continue;
             damageRoom(room, hullDamage, nx, ny, false, false);
             split.absorb(lastRoomDamageResult);
@@ -3531,8 +3531,8 @@ public abstract class Ship {
     private boolean triggerReactorCriticalChain(HullGeometry.ImpactSample impact,
                                                 int hullDamage,
                                                 double severity) {
-        ShipRoomLayout.RoomDef reactor = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.REACTOR);
-        ShipRoomLayout.RoomDef conduits = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.POWER_CONDUITS);
+        ShipRoomLayout.RoomDef reactor = ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.REACTOR);
+        ShipRoomLayout.RoomDef conduits = ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.POWER_CONDUITS);
         if (reactor == null) return false;
 
         double reactorBefore = roomHp.getOrDefault(reactor.id, roomHpMax.getOrDefault(reactor.id, 0.0));
@@ -3577,7 +3577,7 @@ public abstract class Ship {
     private boolean triggerMagazineDetonationRisk(HullGeometry.ImpactSample impact,
                                                   int hullDamage,
                                                   double severity) {
-        ShipRoomLayout.RoomDef mags = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.MAGAZINES);
+        ShipRoomLayout.RoomDef mags = ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.MAGAZINES);
         if (mags == null) return false;
 
         double magsBefore = roomHp.getOrDefault(mags.id, roomHpMax.getOrDefault(mags.id, 0.0));
@@ -3609,7 +3609,7 @@ public abstract class Ship {
     private boolean triggerIntegrityFieldCollapse(HullGeometry.ImpactSample impact,
                                                   int hullDamage,
                                                   double severity) {
-        ShipRoomLayout.RoomDef integrity = ShipRoomLayout.roomForId(role, ShipRoomLayout.RoomId.INTEGRITY_FIELD);
+        ShipRoomLayout.RoomDef integrity = ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.INTEGRITY_FIELD);
         if (integrity == null) return false;
 
         double integrityBefore = roomHp.getOrDefault(integrity.id, roomHpMax.getOrDefault(integrity.id, 0.0));
@@ -4307,7 +4307,11 @@ public abstract class Ship {
 
     private boolean isValidSuperweaponTarget(Ship target) {
         if (target == null) return false;
-        return target.alive && !target.dying && target.hp > 0 && (target.faction == null || !target.faction.isFriendlyTo(faction));
+        return target.alive
+                && !target.dying
+                && target.hp > 0
+                && !TargetingSystem.isCiwsOnlyTarget(target)
+                && (target.faction == null || !target.faction.isFriendlyTo(faction));
     }
 
     private SuperweaponShot createSuperweaponPulse(double dt, double aim, boolean beamTick) {

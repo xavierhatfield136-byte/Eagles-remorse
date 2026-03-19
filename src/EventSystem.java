@@ -151,7 +151,7 @@ public final class EventSystem {
         ShipRoomLayout.RoomId hotspot = ctx.player.hottestFireRoom();
         String hotspotLabel = (hotspot == null) ? "UNKNOWN" : hotspot.name();
         if (hotspot != null) {
-            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(ctx.player.role, hotspot);
+            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(ctx.player.role, ctx.player.faction, hotspot);
             if (def != null && def.label != null && !def.label.isBlank()) {
                 hotspotLabel = def.label;
             }

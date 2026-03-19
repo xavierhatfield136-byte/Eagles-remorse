@@ -26,7 +26,6 @@ public final class MenuSettingsStore {
         public String modeName = GameMode.CAMPAIGN_OPS.name();
         public int mapIndex = 0;
         public boolean randomEvents = true;
-        public boolean fullscreen = false;
         public String seedText = "0";
         public int playerTeamId = 0;
         public boolean voiceCaptionsEnabled = true;
@@ -68,7 +67,6 @@ public final class MenuSettingsStore {
                 s.modeName = props.getProperty("modeName", s.modeName);
                 s.mapIndex = parseInt(props, "mapIndex", s.mapIndex);
                 s.randomEvents = parseBoolean(props, "randomEvents", s.randomEvents);
-                s.fullscreen = parseBoolean(props, "fullscreen", s.fullscreen);
                 s.seedText = props.getProperty("seedText", s.seedText);
                 s.playerTeamId = parseInt(props, "playerTeamId", s.playerTeamId);
                 s.voiceCaptionsEnabled = parseBoolean(props, "voiceCaptionsEnabled", s.voiceCaptionsEnabled);
@@ -103,7 +101,6 @@ public final class MenuSettingsStore {
             props.setProperty("modeName", s.modeName);
             props.setProperty("mapIndex", String.valueOf(s.mapIndex));
             props.setProperty("randomEvents", String.valueOf(s.randomEvents));
-            props.setProperty("fullscreen", String.valueOf(s.fullscreen));
             props.setProperty("seedText", s.seedText);
             props.setProperty("playerTeamId", String.valueOf(s.playerTeamId));
             props.setProperty("voiceCaptionsEnabled", String.valueOf(s.voiceCaptionsEnabled));

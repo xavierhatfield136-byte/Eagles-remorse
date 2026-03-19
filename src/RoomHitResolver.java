@@ -9,8 +9,12 @@ public final class RoomHitResolver {
     private RoomHitResolver() {}
 
     public static ShipRoomLayout.RoomDef resolve(ShipRole role, double normalizedX, double normalizedY) {
+        return resolve(role, null, normalizedX, normalizedY);
+    }
+
+    public static ShipRoomLayout.RoomDef resolve(ShipRole role, Faction faction, double normalizedX, double normalizedY) {
         if (!Double.isFinite(normalizedX) || !Double.isFinite(normalizedY)) return null;
-        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(role);
+        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(role, faction);
         if (rooms == null || rooms.isEmpty()) return null;
 
         ShipRoomLayout.RoomDef containing = null;

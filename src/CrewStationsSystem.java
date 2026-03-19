@@ -435,6 +435,7 @@ public final class CrewStationsSystem {
         if (ctx == null || target == null) return false;
         if (!target.alive || target.dying || target.hp <= 0) return false;
         if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
         return TargetingSystem.isDetectableToObserver(ctx.player, target);
     }
 

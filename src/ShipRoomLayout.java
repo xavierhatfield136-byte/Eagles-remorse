@@ -110,7 +110,11 @@ public final class ShipRoomLayout {
     private static final Map<String, List<VisualCell>> VISUAL_CACHE = new HashMap<>();
 
     public static List<RoomDef> profileFor(ShipRole role) {
-        return profile(role).rooms;
+        return profileFor(role, null);
+    }
+
+    public static List<RoomDef> profileFor(ShipRole role, Faction faction) {
+        return profile(role, faction).rooms;
     }
 
     public static String profileIdForRole(ShipRole role) {
@@ -118,23 +122,35 @@ public final class ShipRoomLayout {
     }
 
     public static List<VisualCell> visualCellsFor(ShipRole role) {
-        String key = (role == null) ? "capital" : role.name();
+        return visualCellsFor(role, null);
+    }
+
+    public static List<VisualCell> visualCellsFor(ShipRole role, Faction faction) {
+        String key = layoutKey(role, faction);
         List<VisualCell> cached = VISUAL_CACHE.get(key);
         if (cached != null) return cached;
 
-        Profile profile = profile(role);
-        List<VisualCell> built = buildVisualCells(role, profile.rooms);
+        Profile profile = profile(role, faction);
+        List<VisualCell> built = buildVisualCells(role, faction, profile.rooms);
         VISUAL_CACHE.put(key, built);
         return built;
     }
 
     public static RoomDef roomForHit(ShipRole role, double normalizedX, double normalizedY) {
-        return RoomHitResolver.resolve(role, normalizedX, normalizedY);
+        return roomForHit(role, null, normalizedX, normalizedY);
+    }
+
+    public static RoomDef roomForHit(ShipRole role, Faction faction, double normalizedX, double normalizedY) {
+        return RoomHitResolver.resolve(role, faction, normalizedX, normalizedY);
     }
 
     public static RoomDef roomForId(ShipRole role, RoomId id) {
+        return roomForId(role, null, id);
+    }
+
+    public static RoomDef roomForId(ShipRole role, Faction faction, RoomId id) {
         if (id == null) return null;
-        return profile(role).byId.get(id);
+        return profile(role, faction).byId.get(id);
     }
 
     public static String displayLabel(RoomId roomId) {
@@ -248,19 +264,24 @@ public final class ShipRoomLayout {
         return roomId == RoomId.WARP_DRIVE;
     }
 
-    private static Profile profile(ShipRole role) {
-        String key = profileKey(role);
+    private static Profile profile(ShipRole role, Faction faction) {
+        String key = layoutKey(role, faction);
         Profile cached = PROFILES.get(key);
         if (cached != null) return cached;
 
-        Profile built = switch (key) {
-            case "small" -> buildSmallProfile();
-            case "carrier" -> buildCarrierProfile();
-            case "station" -> buildStationProfile();
-            default -> buildCapitalProfile();
+        Profile built = switch (profileKey(role)) {
+            case "small" -> buildSmallProfile(role, faction);
+            case "carrier" -> buildCarrierProfile(role, faction);
+            case "station" -> buildStationProfile(role, faction);
+            default -> buildCapitalProfile(role, faction);
         };
         PROFILES.put(key, built);
         return built;
+    }
+
+    private static String layoutKey(ShipRole role, Faction faction) {
+        String rolePart = (role == null) ? "capital" : role.name();
+        return rolePart + "|" + keyForFaction(faction);
     }
 
     private static String profileKey(ShipRole role) {
@@ -274,12 +295,8 @@ public final class ShipRoomLayout {
         };
     }
 
-    private static Profile buildSmallProfile() {
-        HullProfile hull = new HullProfile(
-                new double[]{-1.00, -0.90, -0.74, -0.54, -0.28, 0.00, 0.28, 0.54, 0.78, 0.92, 1.00},
-                new double[]{-0.06, -0.12, -0.22, -0.30, -0.35, -0.37, -0.34, -0.28, -0.18, -0.08, 0.00},
-                new double[]{ 0.06,  0.12,  0.22,  0.30,  0.35,  0.37,  0.34,  0.28,  0.18,  0.08, 0.00}
-        );
+    private static Profile buildSmallProfile(ShipRole role, Faction faction) {
+        HullProfile hull = resolveProfileHull(role, faction, "small");
         List<RoomDef> rooms = new ArrayList<>();
         rooms.add(cell(hull, RoomId.BOW, displayLabel(RoomId.BOW), 0.76, 0.99, 0.26, 0.74, null, 0.26, false,
                 RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY));
@@ -327,12 +344,8 @@ public final class ShipRoomLayout {
         return new Profile(rooms, Collections.emptyList());
     }
 
-    private static Profile buildCapitalProfile() {
-        HullProfile hull = new HullProfile(
-                new double[]{-1.00, -0.92, -0.78, -0.58, -0.30, 0.00, 0.30, 0.58, 0.80, 0.94, 1.00},
-                new double[]{-0.08, -0.14, -0.24, -0.34, -0.42, -0.44, -0.40, -0.32, -0.22, -0.10, 0.00},
-                new double[]{ 0.08,  0.14,  0.24,  0.34,  0.42,  0.44,  0.40,  0.32,  0.22,  0.10, 0.00}
-        );
+    private static Profile buildCapitalProfile(ShipRole role, Faction faction) {
+        HullProfile hull = resolveProfileHull(role, faction, "capital");
         List<RoomDef> rooms = new ArrayList<>();
         rooms.add(cell(hull, RoomId.BOW, displayLabel(RoomId.BOW), 0.78, 0.99, 0.24, 0.76, null, 0.28, false,
                 RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY));
@@ -380,12 +393,8 @@ public final class ShipRoomLayout {
         return new Profile(rooms, Collections.emptyList());
     }
 
-    private static Profile buildCarrierProfile() {
-        HullProfile hull = new HullProfile(
-                new double[]{-1.00, -0.92, -0.80, -0.62, -0.34, -0.02, 0.28, 0.56, 0.78, 0.94, 1.00},
-                new double[]{-0.09, -0.14, -0.18, -0.24, -0.28, -0.30, -0.28, -0.24, -0.18, -0.10, 0.00},
-                new double[]{ 0.09,  0.14,  0.22,  0.32,  0.40,  0.42,  0.42,  0.38,  0.28,  0.14, 0.00}
-        );
+    private static Profile buildCarrierProfile(ShipRole role, Faction faction) {
+        HullProfile hull = resolveProfileHull(role, faction, "carrier");
         List<RoomDef> rooms = new ArrayList<>();
         rooms.add(cell(hull, RoomId.BOW, displayLabel(RoomId.BOW), 0.78, 0.99, 0.24, 0.76, null, 0.28, false,
                 RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY));
@@ -433,12 +442,8 @@ public final class ShipRoomLayout {
         return new Profile(rooms, Collections.emptyList());
     }
 
-    private static Profile buildStationProfile() {
-        HullProfile hull = new HullProfile(
-                new double[]{-1.00, -0.88, -0.70, -0.44, -0.14, 0.16, 0.44, 0.68, 0.86, 1.00},
-                new double[]{-0.12, -0.22, -0.34, -0.44, -0.50, -0.48, -0.40, -0.30, -0.18, 0.00},
-                new double[]{ 0.12,  0.22,  0.34,  0.44,  0.50,  0.48,  0.40,  0.30,  0.18, 0.00}
-        );
+    private static Profile buildStationProfile(ShipRole role, Faction faction) {
+        HullProfile hull = resolveProfileHull(role, faction, "station");
         List<RoomDef> rooms = new ArrayList<>();
         rooms.add(cell(hull, RoomId.BOW, displayLabel(RoomId.BOW), 0.72, 0.99, 0.24, 0.76, null, 0.26, false,
                 RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY));
@@ -497,8 +502,8 @@ public final class ShipRoomLayout {
                 RoomId.AFT_SPINE, RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.ENGINES));
     }
 
-    private static List<VisualCell> buildVisualCells(ShipRole role, List<RoomDef> rooms) {
-        HullProfile hull = HullProfile.fromSilhouette(role);
+    private static List<VisualCell> buildVisualCells(ShipRole role, Faction faction, List<RoomDef> rooms) {
+        HullProfile hull = HullProfile.fromSilhouette(role, faction);
         if (hull == null) {
             hull = switch (profileKey(role)) {
                 case "small" -> defaultSmallHull();
@@ -513,6 +518,27 @@ public final class ShipRoomLayout {
             case "carrier" -> buildCarrierVisualCells(hull, rooms);
             case "station" -> buildStationVisualCells(hull, rooms);
             default -> buildCapitalVisualCells(hull, rooms);
+        };
+    }
+
+    private static HullProfile resolveProfileHull(ShipRole role, Faction faction, String profileKey) {
+        HullProfile hull = HullProfile.fromSilhouette(role, faction);
+        if (hull != null) return hull;
+        return switch (profileKey) {
+            case "small" -> defaultSmallHull();
+            case "carrier" -> defaultCarrierHull();
+            case "station" -> defaultStationHull();
+            default -> defaultCapitalHull();
+        };
+    }
+
+    private static String keyForFaction(Faction faction) {
+        if (faction == null) return "generic";
+        return switch (faction) {
+            case PLAYER, ALLY -> "ally";
+            case ENEMY -> "enemy";
+            case TEAM_C -> "team_c";
+            case TEAM_D -> "team_d";
         };
     }
 
@@ -856,7 +882,11 @@ public final class ShipRoomLayout {
         final double globalInnerBottom;
 
         static HullProfile fromSilhouette(ShipRole role) {
-            Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0);
+            return fromSilhouette(role, null);
+        }
+
+        static HullProfile fromSilhouette(ShipRole role, Faction faction) {
+            Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0, faction);
             if (hull == null || hull.npoints < 3) return null;
 
             java.awt.Rectangle bounds = hull.getBounds();

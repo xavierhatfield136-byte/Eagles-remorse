@@ -37,21 +37,25 @@ public final class ShipHullSilhouette {
     }
 
     public static Polygon hullPolygon(ShipRole role, double radius) {
+        return hullPolygon(role, radius, null);
+    }
+
+    public static Polygon hullPolygon(ShipRole role, double radius, Faction faction) {
         ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
         int r = (int) Math.round(Math.max(8.0, radius));
-        String key = resolved.name() + ":" + r;
+        String key = resolved.name() + ":" + keyForFaction(faction) + ":" + r;
         Polygon cached = HULL_CACHE.get(key);
         if (cached != null) return cached;
 
         Polygon fallback = fallbackPolygon(resolved, r);
-        Polygon fromSkin = buildFromSkin(resolved, r);
+        Polygon fromSkin = buildFromSkin(resolved, r, faction);
         Polygon out = (fromSkin != null && fromSkin.npoints >= 3) ? fromSkin : fallback;
         HULL_CACHE.put(key, out);
         return out;
     }
 
-    private static Polygon buildFromSkin(ShipRole role, int r) {
-        BufferedImage skin = loadSkin(role);
+    private static Polygon buildFromSkin(ShipRole role, int r, Faction faction) {
+        BufferedImage skin = loadSkin(role, faction);
         if (skin == null) return null;
 
         double sw = Math.max(4.0, r * 2.0 * SKIN_SCALE);
@@ -164,33 +168,40 @@ public final class ShipHullSilhouette {
         ys.add(y);
     }
 
-    private static BufferedImage loadSkin(ShipRole role) {
+    private static BufferedImage loadSkin(ShipRole role, Faction faction) {
         String roleKey = keyForRole(role);
         if (roleKey == null || roleKey.isEmpty()) roleKey = "frigate";
-        if (SKIN_CACHE.containsKey(roleKey)) return SKIN_CACHE.get(roleKey);
-        if (SKIN_MISS.contains(roleKey)) return null;
+        String factionKey = keyForFaction(faction);
+        String cacheKey = roleKey + "|" + factionKey;
+        if (SKIN_CACHE.containsKey(cacheKey)) return SKIN_CACHE.get(cacheKey);
+        if (SKIN_MISS.contains(cacheKey)) return null;
 
         BufferedImage img = null;
-        String[] attempts = new String[]{
-                roleKey + "_ally_albedo",
-                roleKey + "_ally",
-                roleKey + "_albedo",
-                roleKey,
-                "default_ally_albedo",
-                "default_ally",
-                "default_albedo",
-                "default"
-        };
+        List<String> attempts = new ArrayList<>();
+        if (faction != null) {
+            attempts.add(roleKey + "_" + factionKey + "_albedo");
+            attempts.add(roleKey + "_" + factionKey);
+            attempts.add("default_" + factionKey + "_albedo");
+            attempts.add("default_" + factionKey);
+        }
+        attempts.add(roleKey + "_ally_albedo");
+        attempts.add(roleKey + "_ally");
+        attempts.add(roleKey + "_albedo");
+        attempts.add(roleKey);
+        attempts.add("default_ally_albedo");
+        attempts.add("default_ally");
+        attempts.add("default_albedo");
+        attempts.add("default");
         for (String key : attempts) {
             img = loadRoleSkin(key);
             if (img != null) break;
         }
 
         if (img != null) {
-            SKIN_CACHE.put(roleKey, img);
+            SKIN_CACHE.put(cacheKey, img);
             return img;
         }
-        SKIN_MISS.add(roleKey);
+        SKIN_MISS.add(cacheKey);
         return null;
     }
 
@@ -207,6 +218,16 @@ public final class ShipHullSilhouette {
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
         return role.name().toLowerCase(Locale.ROOT);
+    }
+
+    private static String keyForFaction(Faction faction) {
+        if (faction == null) return "generic";
+        return switch (faction) {
+            case PLAYER, ALLY -> "ally";
+            case ENEMY -> "enemy";
+            case TEAM_C -> "team_c";
+            case TEAM_D -> "team_d";
+        };
     }
 
     private static List<File> resolveSkinRoots(String relativeDir) {

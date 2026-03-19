@@ -117,16 +117,16 @@ public final class HullGeometry {
     private static HullProfile profileFor(Ship ship) {
         ShipRole role = (ship.role == null) ? ShipRole.FRIGATE : ship.role;
         long r = Math.round(Math.max(8.0, ship.radius) * 1000.0);
-        String key = role.name() + ":" + r;
+        String key = role.name() + ":" + ship.faction + ":" + r;
         HullProfile cached = PROFILE_CACHE.get(key);
         if (cached != null) return cached;
 
-        HullProfile created = buildProfile(role, Math.max(8.0, ship.radius));
+        HullProfile created = buildProfile(role, ship.faction, Math.max(8.0, ship.radius));
         PROFILE_CACHE.put(key, created);
         return created;
     }
 
-    private static HullProfile buildProfile(ShipRole role, double radius) {
+    private static HullProfile buildProfile(ShipRole role, Faction faction, double radius) {
         double scale = roleVisualScale(role);
         int r = (int) Math.round(radius);
 
@@ -134,7 +134,7 @@ public final class HullGeometry {
             return HullProfile.circular(r * scale);
         }
 
-        Polygon p = ShipHullSilhouette.hullPolygon(role, r);
+        Polygon p = ShipHullSilhouette.hullPolygon(role, r, faction);
         if (p == null || p.npoints < 3) {
             return HullProfile.circular(Math.max(1.0, r * scale));
         }
