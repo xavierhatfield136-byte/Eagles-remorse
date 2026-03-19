@@ -2,6 +2,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ public final class EconomySystem {
     private static final double HAULER_TRANSFER_PER_SEC = 120.0;
     private static final double HAULER_SEARCH_RANGE = 1600.0;
     private static final double HAULER_FULL_FRAC = 0.92;
+    private static final double HAULER_TASK_LOCK_SECONDS = 0.85;
     private static final double NPC_REFIT_CHECK_INTERVAL = 1.25;
     private static final double ESCORT_FIGHTER_RESPAWN_SECONDS = 20.0;
     private static final int NPC_REFITS_PER_TEAM_PASS = 2;
@@ -48,6 +50,7 @@ public final class EconomySystem {
     private static final WeakHashMap<GameContext, EnumMap<Faction, Double>> TEAM_BASE_UPGRADE_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> ESCORT_RESPAWN_TIMERS = new WeakHashMap<>();
+    private static final WeakHashMap<GameContext, Map<Integer, HaulerLogisticsState>> HAULER_LOGISTICS = new WeakHashMap<>();
 
     private enum CommanderPersonality {
         BALANCED,
@@ -65,6 +68,17 @@ public final class EconomySystem {
         STEALTH,
         CARRIER,
         LINE
+    }
+
+    private enum HaulerTask {
+        COLLECT,
+        DELIVER
+    }
+
+    private static final class HaulerLogisticsState {
+        HaulerTask task = HaulerTask.COLLECT;
+        int targetMinerId = -1;
+        double taskLock = 0.0;
     }
 
     public static void update(GameContext ctx, double dt) {
@@ -209,16 +223,20 @@ public final class EconomySystem {
 
     private static void updateNpcHaulerLogistics(GameContext ctx, double dt) {
         if (ctx == null || dt <= 0.0) return;
+        Map<Integer, HaulerLogisticsState> haulerStates = HAULER_LOGISTICS.computeIfAbsent(ctx, k -> new HashMap<>());
+        haulerStates.entrySet().removeIf(e -> !isLiveHaulerById(ctx, e.getKey()));
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (s.role != ShipRole.HAULER) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
-            updateHaulerState(ctx, s, dt);
+            HaulerLogisticsState state = haulerStates.computeIfAbsent(s.id, k -> new HaulerLogisticsState());
+            updateHaulerState(ctx, s, state, dt);
         }
     }
 
-    private static void updateHaulerState(GameContext ctx, Ship hauler, double dt) {
-        if (ctx == null || hauler == null || dt <= 0.0) return;
+    private static void updateHaulerState(GameContext ctx, Ship hauler, HaulerLogisticsState state, double dt) {
+        if (ctx == null || hauler == null || state == null || dt <= 0.0) return;
+        state.taskLock = Math.max(0.0, state.taskLock - dt);
 
         if (hauler.minerHomeBase == null || !hauler.minerHomeBase.alive || hauler.minerHomeBase.hp <= 0) {
             hauler.minerHomeBase = findHomeBaseFor(ctx, hauler);
@@ -226,16 +244,59 @@ public final class EconomySystem {
         Ship base = hauler.minerHomeBase;
 
         boolean fullEnough = hauler.cargo >= Math.max(1, (int) Math.round(hauler.cargoMax * HAULER_FULL_FRAC));
-        Ship targetMiner = fullEnough ? null : findBestMinerForHauler(ctx, hauler, HAULER_SEARCH_RANGE);
+        if (fullEnough) {
+            state.task = HaulerTask.DELIVER;
+            state.targetMinerId = -1;
+            state.taskLock = Math.max(state.taskLock, HAULER_TASK_LOCK_SECONDS);
+        } else if (state.task == HaulerTask.DELIVER && hauler.cargo <= 0) {
+            state.task = HaulerTask.COLLECT;
+            state.targetMinerId = -1;
+        }
 
-        if (fullEnough || targetMiner == null) {
+        if (state.task == HaulerTask.DELIVER) {
             if (base != null && base.alive && base.hp > 0) {
                 steerTo(hauler, base.x, base.y, dt);
                 if (inDepositRange(hauler, base)) {
                     hauler.depositCargoTo(base);
+                    if (hauler.cargo <= 0) {
+                        state.task = HaulerTask.COLLECT;
+                    }
                 }
             } else {
                 aiWander(hauler, dt, ctx.WORLD_W, ctx.WORLD_H);
+            }
+            return;
+        }
+
+        Ship targetMiner = resolveHaulerMinerTarget(ctx, hauler, state.targetMinerId, HAULER_SEARCH_RANGE);
+        if (targetMiner == null) {
+            targetMiner = findBestMinerForHauler(ctx, hauler, HAULER_SEARCH_RANGE);
+            state.targetMinerId = (targetMiner == null) ? -1 : targetMiner.id;
+        }
+
+        if (targetMiner == null) {
+            if (hauler.cargo > 0 && state.taskLock <= 0.0) {
+                state.task = HaulerTask.DELIVER;
+                state.targetMinerId = -1;
+                state.taskLock = Math.max(state.taskLock, HAULER_TASK_LOCK_SECONDS);
+                if (base != null && base.alive && base.hp > 0) {
+                    steerTo(hauler, base.x, base.y, dt);
+                    if (inDepositRange(hauler, base)) {
+                        hauler.depositCargoTo(base);
+                        if (hauler.cargo <= 0) {
+                            state.task = HaulerTask.COLLECT;
+                        }
+                    }
+                } else {
+                    aiWander(hauler, dt, ctx.WORLD_W, ctx.WORLD_H);
+                }
+            } else if (hauler.cargo > 0 && base != null && base.alive && base.hp > 0 && inDepositRange(hauler, base)) {
+                hauler.depositCargoTo(base);
+                if (hauler.cargo <= 0) {
+                    state.task = HaulerTask.COLLECT;
+                }
+            } else {
+                holdPosition(hauler);
             }
             return;
         }
@@ -255,6 +316,7 @@ public final class EconomySystem {
 
         targetMiner.cargo = Math.max(0, targetMiner.cargo - moved);
         hauler.cargo = Math.min(hauler.cargoMax, hauler.cargo + moved);
+        state.taskLock = Math.max(state.taskLock, HAULER_TASK_LOCK_SECONDS);
 
         if (targetMiner.role == ShipRole.MINER
                 && (targetMiner.minerState == Ship.MinerState.RETURN_TO_BASE || targetMiner.minerState == Ship.MinerState.DEPOSIT)
@@ -262,6 +324,38 @@ public final class EconomySystem {
             targetMiner.minerState = Ship.MinerState.SEEK_ASTEROID;
             targetMiner.minerTarget = null;
         }
+
+        if (hauler.cargo >= Math.max(1, (int) Math.round(hauler.cargoMax * HAULER_FULL_FRAC))) {
+            state.task = HaulerTask.DELIVER;
+            state.targetMinerId = -1;
+        } else if (targetMiner.cargo <= 0) {
+            state.targetMinerId = -1;
+        }
+    }
+
+    private static Ship resolveHaulerMinerTarget(GameContext ctx, Ship hauler, int targetMinerId, double maxDist) {
+        if (ctx == null || hauler == null || targetMinerId <= 0) return null;
+        Ship target = findShipById(ctx.ships, targetMinerId);
+        if (target == null) return null;
+        if (target.role != ShipRole.MINER) return null;
+        if (!target.alive || target.dying || target.hp <= 0) return null;
+        if (target.faction == null || hauler.faction == null || target.faction.teamId() != hauler.faction.teamId()) return null;
+        if (target.cargo <= 0) return null;
+        if (maxDist > 0.0 && GameMath.dist2(hauler.x, hauler.y, target.x, target.y) > maxDist * maxDist) return null;
+        return target;
+    }
+
+    private static Ship findShipById(List<Ship> ships, int shipId) {
+        if (ships == null || shipId <= 0) return null;
+        for (Ship s : ships) {
+            if (s != null && s.id == shipId) return s;
+        }
+        return null;
+    }
+
+    private static boolean isLiveHaulerById(GameContext ctx, int shipId) {
+        Ship s = findShipById((ctx == null) ? null : ctx.ships, shipId);
+        return s != null && s.role == ShipRole.HAULER && s.alive && !s.dying && s.hp > 0;
     }
 
     private static Ship findBestMinerForHauler(GameContext ctx, Ship hauler, double maxDist) {
@@ -1955,6 +2049,12 @@ public final class EconomySystem {
             if (GameMath.dist2(s.x, s.y, miner.x, miner.y) <= range2) return true;
         }
         return false;
+    }
+
+    private static void holdPosition(Ship s) {
+        if (s == null) return;
+        s.vx = 0.0;
+        s.vy = 0.0;
     }
 
     private static void steerTo(Ship s, double tx, double ty, double dt) {

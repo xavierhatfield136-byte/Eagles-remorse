@@ -226,7 +226,7 @@ public final class TutorialSystem {
             case TRAVEL_TO_BETA ->
                     "Fly to NAV BETA. The waypoint ring will guide you across the map.";
             case LOCK_AND_FIRE ->
-                    "At the weapons range, lock the tutorial drone with L and hit it with SPACE. Q launches missiles if you want extra punch."
+                    "At the weapons range, lock the tutorial drone with L and hit it with SPACE. SHIFT fires your missile secondary if you want extra punch."
                             + combatStatus(target);
             case MINE_ORE ->
                     "Move to the mining pocket and hold F near an asteroid until you collect ore. Cargo fills automatically when close enough.";

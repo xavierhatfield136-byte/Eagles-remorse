@@ -153,7 +153,6 @@ final class Sandbox3DPanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_T, 0, false), "toggleTurretAuto", () -> GameplayActions.toggleTurretAutoLock(ctx));
 
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_E, 0, false), "shieldOvercharge", () -> GameplayActions.tryShieldOvercharge(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Q, 0, false), "missileSalvo", () -> GameplayActions.tryMissileSalvo(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_C, 0, false), "carrierLaunch", () -> GameplayActions.tryCarrierLaunch(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_R, 0, false), "carrierRecall", () -> GameplayActions.tryCarrierRecall(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_V, 0, false), "carrierMode", () -> GameplayActions.tryCarrierToggleMode(ctx));

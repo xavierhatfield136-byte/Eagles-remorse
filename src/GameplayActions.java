@@ -103,23 +103,6 @@ public final class GameplayActions {
         ctx.player.tryShieldOvercharge();
     }
 
-    public static void tryMissileSalvo(GameContext ctx) {
-        if (!canIssueCombatAction(ctx)) return;
-
-        Ship target;
-        if (isAlive(ctx.lockedTarget)
-                && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
-                && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
-                && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
-            target = ctx.lockedTarget;
-        } else {
-            target = TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, ctx.player.x, ctx.player.y, 1100);
-        }
-        if (target == null) return;
-        if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return;
-        ctx.projectiles.addAll(ctx.player.tryMissileSalvo(target, GameContext.DT));
-    }
-
     public static void trySuperweapon(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         if (!ctx.player.hasSuperweapon) return;

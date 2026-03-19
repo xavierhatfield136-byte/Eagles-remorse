@@ -1493,7 +1493,6 @@ public class Renderer {
         out.add("SPACE FIRE");
         out.add("SHIFT MISSILES");
         out.add("L LOCK");
-        out.add("Q SALVO");
         out.add("TAB SHOP");
         if (detail != GameContext.HudDetail.MINIMAL) {
             out.add("M MAP");
@@ -1657,7 +1656,7 @@ public class Renderer {
         }
 
         if (detail == GameContext.HudDetail.COMPACT) {
-            rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasSuperweapon ? " | X superweapon" : ""));
+            rows.add("CURSOR COMBAT: LMB guns | RMB missiles" + (player.hasSuperweapon ? " | X superweapon" : ""));
             rows.add("TARGETING: L lock | [ ] cycle | T auto-lock");
             rows.add("SYSTEM: Y preset | U crew | I shield mode | J/K shield face");
             rows.add("OVERLAYS: TAB shop | B base | M map | O power | H crew | bottom bar");
@@ -1666,7 +1665,7 @@ public class Renderer {
             return rows;
         }
 
-        rows.add("CURSOR COMBAT: LMB guns | RMB missiles | Q salvo" + (player.hasSuperweapon ? " | X superweapon" : ""));
+        rows.add("CURSOR COMBAT: LMB guns | RMB missiles" + (player.hasSuperweapon ? " | X superweapon" : ""));
         rows.add("UTILITY: F mine | ; emergency thrust | E shield overcharge");
         rows.add("TARGETING: L lock under mouse | [ ] cycle targets | T auto-lock");
         rows.add("SYSTEMS: O power mgmt | H crew stations | Y power preset | U crew order");
@@ -1847,7 +1846,6 @@ public class Renderer {
         int verticalGap = 24;
         drawHudHintChip(g2, "LMB guns", mx - horizontalGap, my, -1);
         drawHudHintChip(g2, "RMB missiles", mx + horizontalGap, my, +1);
-        drawHudHintChip(g2, "Q missile salvo", mx, my + verticalGap, 0);
         if (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon) {
             drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
         }
@@ -5459,9 +5457,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawEngineNozzlePass(Graphics2D g, Ship ship, List<EnginePoint> engines, double radius) {
         if (g == null || ship == null || engines == null || engines.isEmpty()) return;
+        double output = engineOutputIntensity(ship);
+        if (output <= 1e-3) return;
 
         Graphics2D g2 = (Graphics2D) g.create();
-        double output = engineOutputIntensity(ship);
         double shimmer = engineShimmerIntensity(ship);
         double nozzleDia = Math.max(4.0, radius * (engines.size() >= 4 ? 0.095 : 0.13));
         double plumeLen = Math.max(7.0, radius * (0.24 + 0.54 * output));
@@ -5532,11 +5531,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         double speedPerSec = Math.hypot(ship.vx, ship.vy) / dt;
         double ceiling = Math.max(1.0, MovementModel.speedCeiling(ship));
         double speedFrac = MathUtil.clamp(speedPerSec / ceiling, 0.0, 1.0);
-        double output = 0.18 + ship.powerEnginesFrac() * 0.34 + speedFrac * 0.48;
         if (ship.isEmergencyThrustActive()) {
-            output = Math.max(output, 0.92 + 0.08 * (1.0 - ship.emergencyThrustHeat()));
+            return MathUtil.clamp(0.92 + 0.08 * (1.0 - ship.emergencyThrustHeat()), 0.0, 1.0);
         }
-        return MathUtil.clamp(output, 0.12, 1.0);
+        double motionThreshold = Math.max(6.0, ceiling * 0.035);
+        if (speedPerSec <= motionThreshold) return 0.0;
+        double motionFrac = MathUtil.clamp((speedPerSec - motionThreshold) / Math.max(10.0, ceiling * 0.22), 0.0, 1.0);
+        double output = motionFrac * (0.22 + ship.powerEnginesFrac() * 0.30 + speedFrac * 0.48);
+        return MathUtil.clamp(output, 0.0, 1.0);
     }
 
     private static double engineShimmerIntensity(Ship ship) {
