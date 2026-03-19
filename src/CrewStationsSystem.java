@@ -246,7 +246,7 @@ public final class CrewStationsSystem {
         double scanRange = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
         if (ctx.scienceJamming) scanRange *= 0.85;
         // Science station continuously refreshes lock to the nearest viable contact.
-        ctx.lockedTarget = TargetingSystem.findClosestEnemyToPoint(
+        ctx.lockedTarget = TargetingSystem.findClosestEngagementTarget(
                 ctx, ctx.player, ctx.player.x, ctx.player.y, scanRange
         );
     }
@@ -428,7 +428,7 @@ public final class CrewStationsSystem {
     private static Ship preferredTarget(GameContext ctx, double range) {
         if (ctx == null || ctx.player == null) return null;
         if (isValidTarget(ctx, ctx.lockedTarget)) return ctx.lockedTarget;
-        return TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, ctx.player.x, ctx.player.y, range);
+        return TargetingSystem.findClosestEngagementTarget(ctx, ctx.player, ctx.player.x, ctx.player.y, range);
     }
 
     private static boolean isValidTarget(GameContext ctx, Ship target) {
@@ -436,6 +436,7 @@ public final class CrewStationsSystem {
         if (!target.alive || target.dying || target.hp <= 0) return false;
         if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return false;
         if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        if (TargetingSystem.isMainBatteryScreenTarget(ctx.player, target)) return false;
         return TargetingSystem.isDetectableToObserver(ctx.player, target);
     }
 

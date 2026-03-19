@@ -3,7 +3,7 @@
 This project supports top-down PNG skins for ships.
 
 For the current renderer upgrade details (layered hull passes, clipping, lighting, damage overlays), see:
-- `docs/HULL_VISUAL_PHASE1.md`
+- `docs/archive/legacy/HULL_VISUAL_PHASE1.md`
 - `docs/TURRET_SKINS.md` (turret/onboard-system sprite workflow)
 
 ## Folder And Naming

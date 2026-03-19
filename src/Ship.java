@@ -1993,6 +1993,10 @@ public abstract class Ship {
         return hasRecentShieldImpactTelemetry() ? recentShieldImpactFace : -1;
     }
 
+    public double recentShieldImpactAngle() {
+        return hasRecentShieldImpactTelemetry() ? recentShieldImpactAngle : Double.NaN;
+    }
+
     public double recentShieldImpactTelemetryFraction() {
         return Math.max(0.0, Math.min(1.0, recentShieldImpactTimer / 1.2));
     }
@@ -2042,6 +2046,7 @@ public abstract class Ship {
     }
 
     public double shieldRegenMultiplier() {
+        if (reactorBlackoutActive()) return 0.0;
         double regen = shieldSystemMultiplier();
         regen *= shieldsPowerMultiplier();
         regen *= crewShieldMul;
@@ -2131,6 +2136,36 @@ public abstract class Ship {
         if (totalRoomIntegrityFraction() > ROOM_CONDEMNED_THRESHOLD) return;
         hp = 0;
         startDeathSequence();
+    }
+
+    private boolean allPowerRoomsDestroyed() {
+        ensureRoomSystemsInitialized();
+        boolean hasOperationalPowerRoom = false;
+        for (ShipRoomLayout.RoomId roomId : new ShipRoomLayout.RoomId[]{
+                ShipRoomLayout.RoomId.REACTOR,
+                ShipRoomLayout.RoomId.POWER_CONDUITS,
+                ShipRoomLayout.RoomId.PORT_POWER,
+                ShipRoomLayout.RoomId.STARBOARD_POWER
+        }) {
+            double max = roomHpMax.getOrDefault(roomId, 0.0);
+            if (max <= 1e-6) continue;
+            hasOperationalPowerRoom = true;
+            if (roomHp.getOrDefault(roomId, max) > 1e-6) {
+                return false;
+            }
+        }
+        return hasOperationalPowerRoom;
+    }
+
+    public boolean reactorBlackoutActive() {
+        if (!alive || dying || hp <= 0) return false;
+        return allPowerRoomsDestroyed();
+    }
+
+    public boolean canUseCombatSystems() {
+        if (!alive || dying || hp <= 0) return false;
+        if (isTemporarilyDisabled()) return false;
+        return !reactorBlackoutActive();
     }
 
     private void enforceRoomSystemAvailability() {
@@ -2491,6 +2526,10 @@ public abstract class Ship {
             }
         }
 
+        if (before > 1e-6 && after <= 1e-6) {
+            handleDestroyedRoom(room, normalizedX, normalizedY, fromHazard, subsystemTransitions);
+        }
+
         enforceRoomSystemAvailability();
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
@@ -2503,6 +2542,163 @@ public abstract class Ship {
                 hp - hullBefore,
                 Math.max(0.0, before - after)
         );
+    }
+
+    private void handleDestroyedRoom(ShipRoomLayout.RoomDef room,
+                                     double normalizedX,
+                                     double normalizedY,
+                                     boolean fromHazard,
+                                     List<String> subsystemTransitions) {
+        if (room == null || room.id == null) return;
+        if (!ShipRoomLayout.isArmorRoom(room.id)) {
+            spawnDestroyedRoomExplosion(room, normalizedX, normalizedY,
+                    room.critical ? 5 : 4);
+        }
+
+        if (ShipRoomLayout.isShieldRoom(room.id) || room.primarySystem == InternalSystem.SHIELDS) {
+            forceShieldOffline(Math.max(1.5, shieldRebootDelay * 1.65));
+            addSubsystemTransition(subsystemTransitions, InternalSystem.SHIELDS.name() + ":offline");
+        }
+
+        if (ShipRoomLayout.isPowerRoom(room.id) && allPowerRoomsDestroyed()) {
+            applyReactorBlackoutConsequences(subsystemTransitions);
+        }
+
+        if (room.id == ShipRoomLayout.RoomId.MAGAZINES
+                || room.id == ShipRoomLayout.RoomId.MISSILE_LAUNCHERS) {
+            detonateDestroyedMagazineRoom(room, normalizedX, normalizedY, fromHazard, subsystemTransitions);
+        }
+    }
+
+    private void applyReactorBlackoutConsequences(List<String> subsystemTransitions) {
+        forceShieldOffline(Math.max(2.6, shieldRebootDelay * 2.2));
+        emergencyThrustActive = false;
+        vx = 0.0;
+        vy = 0.0;
+        cancelBattlefieldWarp();
+        cancelSuperweaponSequence();
+        addSubsystemTransition(subsystemTransitions, "reactor:blackout");
+        addSubsystemTransition(subsystemTransitions, InternalSystem.SHIELDS.name() + ":offline");
+    }
+
+    private void detonateDestroyedMagazineRoom(ShipRoomLayout.RoomDef room,
+                                               double normalizedX,
+                                               double normalizedY,
+                                               boolean fromHazard,
+                                               List<String> subsystemTransitions) {
+        if (room == null) return;
+        addSubsystemTransition(subsystemTransitions, "magazines:detonated");
+        spawnDestroyedRoomExplosion(room, normalizedX, normalizedY, 6);
+
+        if (room.neighbors == null || room.neighbors.length == 0) return;
+        for (ShipRoomLayout.RoomId neighborId : room.neighbors) {
+            if (neighborId == null) continue;
+            ShipRoomLayout.RoomDef neighbor = ShipRoomLayout.roomForId(role, faction, neighborId);
+            if (neighbor == null || neighbor.id == null) continue;
+            double nMax = roomHpMax.getOrDefault(neighbor.id, 0.0);
+            if (nMax <= 1e-6) continue;
+            double nBefore = roomHp.getOrDefault(neighbor.id, nMax);
+            if (nBefore <= 1e-6) continue;
+
+            double blastDamage = Math.max(nMax * 1.35, hpMax * 0.12);
+            damageRoom(neighbor, blastDamage, normalizedX, normalizedY, fromHazard, false);
+            absorbRoomDamageTransitions(lastRoomDamageResult, subsystemTransitions);
+            igniteRoomFire(neighbor.id, 0.85 + randomUnit() * 0.70);
+        }
+    }
+
+    private void absorbRoomDamageTransitions(RoomDamageResult result, List<String> subsystemTransitions) {
+        if (result == null || result == RoomDamageResult.NONE || subsystemTransitions == null) return;
+        for (String transition : result.subsystemTransitions) {
+            addSubsystemTransition(subsystemTransitions, transition);
+        }
+    }
+
+    private void addSubsystemTransition(List<String> subsystemTransitions, String transition) {
+        if (subsystemTransitions == null || transition == null || transition.isBlank()) return;
+        if (!subsystemTransitions.contains(transition)) {
+            subsystemTransitions.add(transition);
+        }
+    }
+
+    private void spawnDestroyedRoomExplosion(ShipRoomLayout.RoomDef room,
+                                             double normalizedX,
+                                             double normalizedY,
+                                             int strength) {
+        if (room == null) return;
+        double[] localPoint = destroyedRoomExplosionLocalPoint(room, normalizedX, normalizedY);
+        double ca = Math.cos(angle);
+        double sa = Math.sin(angle);
+        double wx = x + localPoint[0] * ca - localPoint[1] * sa;
+        double wy = y + localPoint[0] * sa + localPoint[1] * ca;
+
+        double dirLocalX = localPoint[0];
+        double dirLocalY = localPoint[1];
+        double dirLen = Math.hypot(dirLocalX, dirLocalY);
+        double dirWorldX;
+        double dirWorldY;
+        if (dirLen <= 1e-6) {
+            dirWorldX = Math.cos(angle);
+            dirWorldY = Math.sin(angle);
+        } else {
+            dirLocalX /= dirLen;
+            dirLocalY /= dirLen;
+            dirWorldX = dirLocalX * ca - dirLocalY * sa;
+            dirWorldY = dirLocalX * sa + dirLocalY * ca;
+        }
+
+        VFX.spawnHullImpact(wx, wy, dirWorldX, dirWorldY,
+                Math.max(2, strength), VFX.ImpactStyle.EXPLOSIVE);
+    }
+
+    private double[] destroyedRoomExplosionLocalPoint(ShipRoomLayout.RoomDef room,
+                                                      double normalizedX,
+                                                      double normalizedY) {
+        if (room == null || room.xs == null || room.ys == null
+                || room.xs.length == 0 || room.ys.length == 0) {
+            double fallbackX = Double.isFinite(normalizedX) ? normalizedX : 0.55;
+            double fallbackY = Double.isFinite(normalizedY) ? normalizedY : 0.0;
+            return new double[]{fallbackX * radius * 0.78, fallbackY * radius * 0.78};
+        }
+
+        double cx = polygonCentroid(room.xs);
+        double cy = polygonCentroid(room.ys);
+        double dirX = Double.isFinite(normalizedX) ? normalizedX : cx;
+        double dirY = Double.isFinite(normalizedY) ? normalizedY : cy;
+        double dirLen = Math.hypot(dirX, dirY);
+        if (dirLen <= 1e-6) {
+            dirX = 1.0;
+            dirY = 0.0;
+        } else {
+            dirX /= dirLen;
+            dirY /= dirLen;
+        }
+
+        double edgeX = cx;
+        double edgeY = cy;
+        double bestDot = Double.NEGATIVE_INFINITY;
+        int points = Math.min(room.xs.length, room.ys.length);
+        for (int i = 0; i < points; i++) {
+            double px = room.xs[i];
+            double py = room.ys[i];
+            double dot = px * dirX + py * dirY;
+            if (dot > bestDot) {
+                bestDot = dot;
+                edgeX = px;
+                edgeY = py;
+            }
+        }
+
+        double blend = ShipRoomLayout.isArmorRoom(room.id) ? 0.82 : 0.66;
+        double localNormX = cx * (1.0 - blend) + edgeX * blend;
+        double localNormY = cy * (1.0 - blend) + edgeY * blend;
+        if (!ShipRoomLayout.isArmorRoom(room.id)) {
+            localNormX = localNormX * 0.62 + dirX * 0.38;
+            localNormY = localNormY * 0.62 + dirY * 0.38;
+        }
+        localNormX = MathUtil.clamp(localNormX, -1.0, 1.0);
+        localNormY = MathUtil.clamp(localNormY, -1.0, 1.0);
+        return new double[]{localNormX * radius, localNormY * radius};
     }
 
     private List<ShipRoomLayout.RoomDef> nearestOperationalRooms(ShipRoomLayout.RoomDef origin) {
@@ -3389,6 +3585,11 @@ public abstract class Ship {
 
     private void updateDerivedSystemEffects() {
         if (desiredSpeedBase <= 0.0) desiredSpeedBase = Math.max(0.0, desiredSpeed);
+        if (reactorBlackoutActive()) {
+            desiredSpeed = 0.0;
+            emergencyThrustActive = false;
+            return;
+        }
 
         double engine = systemHealthFraction(InternalSystem.ENGINES);
         double warp = systemHealthFraction(InternalSystem.WARP_ENGINES);
@@ -3591,7 +3792,7 @@ public abstract class Ship {
         List<String> transitions = new ArrayList<>();
         if (base != null && base != RoomDamageResult.NONE) transitions.addAll(base.subsystemTransitions);
         transitions.add("magazines:detonation_risk");
-        Explosion.spawnShieldHit(x, y);
+        spawnDestroyedRoomExplosion(mags, nx, ny, 5);
         lastRoomDamageResult = new RoomDamageResult(
                 mags.id.name(),
                 (base == null || base == RoomDamageResult.NONE) ? magsBefore : base.hpBefore,
@@ -3783,6 +3984,14 @@ public abstract class Ship {
         ShipRoomLayout.RoomId roomId = (room == null) ? null : room.id;
         hullImpactMarks.add(new HullImpactMark(impact.localX, impact.localY, severity, breachRadius, roomId));
         hullImpactNoDamageTimer = 0.0;
+        if (breachRadius > 1e-3
+                && room != null
+                && room.id != null
+                && !ShipRoomLayout.isArmorRoom(room.id)
+                && roomHealthFraction(room.id) <= 1e-3) {
+            spawnDestroyedRoomExplosion(room, impact.normalizedX, impact.normalizedY,
+                    Math.max(2, (int) Math.round(2.0 + severity * 4.0)));
+        }
     }
 
     private void updateHullImpactDecay(double dt) {
@@ -3828,7 +4037,7 @@ public abstract class Ship {
      * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
-        if (!alive || !hasCIWS || isTemporarilyDisabled()) return;
+        if (!alive || !hasCIWS || !canUseCombatSystems()) return;
         if (ciwsTimer > 0) return;
         if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
 
@@ -3972,7 +4181,7 @@ public abstract class Ship {
     }
 
     public boolean canLaunchFighter() {
-        return alive && isCarrier && fighterTimer <= 0;
+        return alive && isCarrier && fighterTimer <= 0 && !reactorBlackoutActive();
     }
 
     public void resetFighterTimer() {
@@ -4020,11 +4229,11 @@ public abstract class Ship {
     }
 
     public boolean canSpawnDefender() {
-        return alive && isBase && baseSpawnTimer <= 0;
+        return alive && isBase && baseSpawnTimer <= 0 && !reactorBlackoutActive();
     }
 
     public boolean canSpawnMobileReinforcement() {
-        return alive && isCarrier && baseSpawnTimer <= 0;
+        return alive && isCarrier && baseSpawnTimer <= 0 && !reactorBlackoutActive();
     }
 
     public void resetBaseSpawnTimer() {
@@ -4078,7 +4287,7 @@ public abstract class Ship {
 
     public boolean canFireSuperweapon() {
         if (!alive || dying) return false;
-        if (isTemporarilyDisabled()) return false;
+        if (!canUseCombatSystems()) return false;
         if (!hasSuperweapon) return false;
         return superweaponTimer <= 0.0 && !superweaponCharging;
     }
@@ -4109,6 +4318,7 @@ public abstract class Ship {
         ensureShieldFacesSynced();
         return shieldActive
                 && shieldMax > 0
+                && !reactorBlackoutActive()
                 && shieldSystemMultiplier() > 0.05
                 && powerShields > 0.04
                 && shieldOfflineTimer <= 0.0;
@@ -4270,7 +4480,7 @@ public abstract class Ship {
         angle = aim;
         double beamDurationSec = Math.max(0.65, superweaponBeamDuration * 2.0);
         int beamLife = Math.max(8, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
-        double totalDamage = Math.max(1.0, superweaponDamage * 3.6);
+        double totalDamage = resolveDirectBeamSuperweaponTotalDamage();
         double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
         double beamLength = MathUtil.clamp(superweaponSpeed * 0.96, 760.0, 1760.0);
         double beamWidth = Math.max(10.0, superweaponRadius * 1.9);
@@ -4346,5 +4556,39 @@ public abstract class Ship {
         );
         shot.sourceShipId = id;
         return shot;
+    }
+
+    private double resolveDirectBeamSuperweaponTotalDamage() {
+        if (faction == Faction.TEAM_C) {
+            return referencePulseBarrageFullHitDamage();
+        }
+        return Math.max(1.0, superweaponDamage * 3.6);
+    }
+
+    private static double referencePulseBarrageFullHitDamage() {
+        final double pulseDamage = 96.0;
+        final double pulseDuration = 1.15;
+        final double pulseBeamScale = 0.36;
+        final double pulseTickSpacing = Math.max(0.03, 0.11 / SUPERWEAPON_PROJECTILE_RATE_MULT);
+        int followUpShots = estimateSuperweaponFollowUpShots(pulseDuration, pulseTickSpacing);
+        int followUpDamage = Math.max(1, (int) Math.round(pulseDamage * pulseBeamScale));
+        return pulseDamage + followUpShots * followUpDamage;
+    }
+
+    private static int estimateSuperweaponFollowUpShots(double durationSeconds, double tickSpacingSeconds) {
+        double beamTimer = Math.max(0.0, durationSeconds);
+        double tickTimer = Math.max(GameContext.DT, tickSpacingSeconds);
+        int shots = 0;
+        int guard = 0;
+        while (beamTimer > 0.0 && guard++ < 10000) {
+            beamTimer -= GameContext.DT;
+            tickTimer -= GameContext.DT;
+            if (beamTimer < 0.0) beamTimer = 0.0;
+            if (beamTimer > 0.0 && tickTimer <= 0.0) {
+                shots++;
+                tickTimer = Math.max(GameContext.DT, tickSpacingSeconds);
+            }
+        }
+        return shots;
     }
 }

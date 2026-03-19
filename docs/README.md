@@ -10,22 +10,22 @@
 - `CREW_PORTRAIT_AI_GENERATOR_GUIDE.md`
 - `SHIP_SKINS.md`
 - `TURRET_SKINS.md`
+- `resource_rush_faction_characterization.md`
+- `sfx_ai_generation_guide.md`
 
-## Validation and Parity
-- `M1_PARITY_WORKFLOW.md`
-- `M1_VERTICAL_SLICE_PLAYTEST.md`
-- `M2_3D_SANDBOX_VALIDATION.md`
-- `M3_CONTENT_MATRIX.md`
-- `M3_INPUT_ACTION_MODEL.md`
-- `RC_SIGNOFF_CHECKLIST.md`
-- `parity/campaign_m1_baseline.json`
+## Asset Workflow And Dropzones
+- `../assets/audio/README.md`
+- `../assets/audio/dropoff/README.md`
+- `../assets/crew_portraits/README.md`
+- `../assets/projectile_skins/README.md`
+- `../assets/ship_skins/dropbox/README.md`
+- `../assets/ship_skins/dropbox/HULL_PROMPTS.md`
+- `../assets/turret_skins/README.md`
+- `../assets/voice/README.md`
 
-## Migration and Historical Notes
-- `THREE_D_MIGRATION_TASK_BOARD.md`
-- `IMPLEMENTATION_TASK_BOARD.md`
-- `FEATURE_OVERHAUL_CHECKLIST.md`
-- `HULL_VISUAL_PHASE1.md`
-- `OLD_CAMPAIGN_CHECK.md`
+## Archived Legacy Notes
+- `archive/README.md`
+- `archive/legacy/`
 
 ## Utility
 - `HOW_TO_OPEN_CODEX_VIA_COMMAND_PROMPT.md`

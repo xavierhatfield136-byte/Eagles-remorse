@@ -9,6 +9,17 @@ public final class TargetingSystem {
         return target.role == ShipRole.FIGHTER || target.role == ShipRole.BOMBER;
     }
 
+    public static boolean isMainBatteryScreenTarget(Ship observer, Ship target) {
+        if (observer == null || target == null) return false;
+        if (!target.isSmallCraft()) return false;
+        if (observer.isSmallCraft()) return false;
+        if (observer.role == null) return true;
+        return switch (observer.role) {
+            case PD_CRAFT, CIWS_CORVETTE, STATIC_TURRET -> false;
+            default -> true;
+        };
+    }
+
     public static void lockClosestToMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
         double mx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
@@ -100,6 +111,27 @@ public final class TargetingSystem {
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (s.role == ShipRole.BASE) continue;
             if (isCiwsOnlyTarget(s)) continue;
+            if (!isDetectableToObserver(observer, s)) continue;
+            double d2 = GameMath.dist2(x, y, s.x, s.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = s;
+            }
+        }
+        return best;
+    }
+
+    public static Ship findClosestEngagementTarget(GameContext ctx, Ship observer, double x, double y, double maxDist) {
+        if (ctx == null) return null;
+        Ship best = null;
+        double bestD2 = maxDist * maxDist;
+        for (Ship s : ctx.ships) {
+            if (s == null) continue;
+            if (!isAlive(s)) continue;
+            if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+            if (s.role == ShipRole.BASE) continue;
+            if (isCiwsOnlyTarget(s)) continue;
+            if (isMainBatteryScreenTarget(observer, s)) continue;
             if (!isDetectableToObserver(observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {

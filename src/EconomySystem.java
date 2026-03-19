@@ -583,15 +583,23 @@ public final class EconomySystem {
         if (ctx == null || team == null) return 0;
         int count = 0;
         for (Ship s : ctx.ships) {
-            if (s == null) continue;
-            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (!countsTowardFleetCombatTotals(s)) continue;
             if (s.faction == null || s.faction.teamId() != team.teamId()) continue;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
-            if (s.role == ShipRole.MINER || s.role == ShipRole.HAULER || s.role == ShipRole.TRANSPORT) continue;
-            if (s.carrierOwnerId >= 0) continue;
             count++;
         }
         return count;
+    }
+
+    private static boolean countsTowardFleetCombatTotals(Ship s) {
+        if (s == null) return false;
+        if (!s.alive || s.dying || s.hp <= 0) return false;
+        if (s.faction == null) return false;
+        if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) return false;
+        if (s.role == ShipRole.MINER || s.role == ShipRole.HAULER || s.role == ShipRole.TRANSPORT) return false;
+        // Base support caps should track actual warships, not local utility craft or carrier-launched screens.
+        if (s.isSmallCraft()) return false;
+        if (s.carrierOwnerId >= 0) return false;
+        return true;
     }
 
     private static void updateStationTurretStructures(GameContext ctx) {
@@ -666,12 +674,9 @@ public final class EconomySystem {
         double maxD2 = BASE_SHIP_SUPPORT_RANGE * BASE_SHIP_SUPPORT_RANGE;
         int count = 0;
         for (Ship s : ctx.ships) {
-            if (s == null) continue;
-            if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (!countsTowardFleetCombatTotals(s)) continue;
             if (s == base) continue;
             if (s.faction == null || s.faction.teamId() != base.faction.teamId()) continue;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
-            if (s.role == ShipRole.MINER || s.role == ShipRole.HAULER || s.role == ShipRole.TRANSPORT) continue;
             if (GameMath.dist2(s.x, s.y, base.x, base.y) > maxD2) continue;
             count++;
         }

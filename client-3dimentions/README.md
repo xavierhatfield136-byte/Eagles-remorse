@@ -14,7 +14,7 @@ Current status:
 
 Run (from terminal):
 - `powershell -ExecutionPolicy Bypass -File scripts\run-3d-sandbox.ps1`
-- Validation checklist: `docs/M2_3D_SANDBOX_VALIDATION.md`
+- Validation checklist: `docs/archive/legacy/M2_3D_SANDBOX_VALIDATION.md`
 
 Notes:
 - This is a migration bootstrap renderer (pseudo-3D projection), not final art/runtime.

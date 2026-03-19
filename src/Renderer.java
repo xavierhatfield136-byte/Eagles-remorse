@@ -267,66 +267,75 @@ public class Renderer {
         };
     }
 
-    private static void drawShipShieldFaces(Graphics2D g, Ship ship) {
-        if (g == null || ship == null) return;
+    private static void drawShipShieldFaces(Graphics2D g, Ship ship, Area hullArea) {
+        if (g == null || ship == null || hullArea == null) return;
         if (isTinyStrikeCraft(ship.role)) return;
         if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
         if (!ship.hasRecentShieldImpactTelemetry()) return;
 
-        double radius = shieldEnvelopeRadius(ship);
-        double span = Math.toRadians(78.0);
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 5.5);
-        double fade = ship.recentShieldImpactTelemetryFraction();
-        Stroke prevStroke = g.getStroke();
-        g.setStroke(new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-
         int impactedFace = ship.recentShieldImpactFace();
-        for (int i = 0; i < ship.shieldFaceCount(); i++) {
-            if (i != impactedFace) continue;
-            // drawShip() already rotated the graphics context by ship.angle,
-            // so convert world-space shield-facing angles into ship-local angles.
-            double center = MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, i) - ship.angle);
-            double frac = ship.shieldFaceFraction(i);
-            double energy = Math.max(0.0, Math.min(1.0, frac));
-            Color base = shieldFaceColor(ship, i, 255);
+        if (impactedFace < 0) return;
 
-            // Depleted face still shows a dim scaffold.
-            g.setColor(withAlpha(base, (int) Math.round(18 + 38 * fade)));
-            drawShieldArcBand(g, radius - 0.2, radius + 1.2, center, span + Math.toRadians(2.0));
+        Area hullMask = new Area(hullArea);
+        Rectangle hullBounds = hullMask.getBounds();
+        if (hullBounds.width <= 0 || hullBounds.height <= 0) return;
 
-            // Layered bands produce a faceted energy-field look.
-            for (int layer = 0; layer < 3; layer++) {
-                double t = layer / 2.0;
-                double inner = radius + layer * 1.35;
-                double outer = inner + 1.35 + (1.05 - t * 0.32) * (0.8 + energy * 1.6);
-                int alpha = (int) Math.round((28 + energy * 92 + pulse * 20) * (1.0 - layer * 0.24) * fade);
-                Color layerColor = mixColor(base, new Color(220, 246, 255), 0.15 + 0.20 * (1.0 - t));
-                g.setColor(withAlpha(layerColor, alpha));
-                drawShieldArcBand(g, inner, outer, center, span * (1.0 - layer * 0.05));
-            }
+        double centerWorld = ship.recentShieldImpactAngle();
+        double center = Double.isFinite(centerWorld)
+                ? MathUtil.normalizeAngle(centerWorld - ship.angle)
+                : MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, impactedFace) - ship.angle);
+        double frac = ship.shieldFaceFraction(impactedFace);
+        double energy = Math.max(0.0, Math.min(1.0, frac));
+        double fade = ship.recentShieldImpactTelemetryFraction();
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 6.2);
+        Color base = shieldFaceColor(ship, impactedFace, 255);
 
-            int edgeAlpha = (int) Math.round((52 + energy * 132 + pulse * 18) * fade);
-            g.setColor(withAlpha(mixColor(base, Color.WHITE, 0.38), edgeAlpha));
-            drawShieldArcSegment(g, radius + 3.8, center, span * 0.96);
+        double extent = Math.max(ship.radius * 2.4, Math.max(hullBounds.width, hullBounds.height) * 0.92);
+        Area faceSlice = new Area(createShieldFaceWedge(center, extent, Math.toRadians(108.0)));
+        faceSlice.intersect(hullMask);
+        Rectangle sliceBounds = faceSlice.getBounds();
+        if (sliceBounds.width <= 0 || sliceBounds.height <= 0) return;
 
-            // Angled field struts for directional readability.
-            double edgeA = span * 0.43;
-            double r1 = radius + 0.4;
-            double r2 = radius + 4.5;
-            for (int side = -1; side <= 1; side += 2) {
-                double a = center + edgeA * side;
-                int sx = (int) Math.round(Math.cos(a) * r1);
-                int sy = (int) Math.round(Math.sin(a) * r1);
-                int ex = (int) Math.round(Math.cos(a) * r2);
-                int ey = (int) Math.round(Math.sin(a) * r2);
-                g.setColor(withAlpha(layerColorForFace(base), (int) Math.round((36 + energy * 82) * fade)));
-                g.drawLine(sx, sy, ex, ey);
-            }
+        Graphics2D gx = (Graphics2D) g.create();
+        Paint oldPaint = gx.getPaint();
+        Stroke oldStroke = gx.getStroke();
 
-            drawShieldFaceTelemetry(g, ship, i, center, radius + 10.0, fade, base);
-        }
+        double nx = Math.cos(center);
+        double ny = Math.sin(center);
+        float x1 = (float) (-nx * extent * 0.35);
+        float y1 = (float) (-ny * extent * 0.35);
+        float x2 = (float) (nx * extent * 0.95);
+        float y2 = (float) (ny * extent * 0.95);
 
-        g.setStroke(prevStroke);
+        gx.setPaint(new GradientPaint(
+                x1, y1, withAlpha(base, 0),
+                x2, y2, withAlpha(mixColor(base, Color.WHITE, 0.22), (int) Math.round(42 + fade * (58 + pulse * 24)))));
+        gx.fill(faceSlice);
+
+        Area coreSlice = new Area(createShieldFaceWedge(center, extent * 0.78, Math.toRadians(72.0)));
+        coreSlice.intersect(hullMask);
+        gx.setPaint(new GradientPaint(
+                x1, y1, withAlpha(mixColor(base, Color.WHITE, 0.36), 0),
+                x2, y2, withAlpha(mixColor(base, Color.WHITE, 0.64), (int) Math.round(72 + energy * 84 + fade * 68))));
+        gx.fill(coreSlice);
+
+        gx.setClip(faceSlice);
+        gx.setStroke(new BasicStroke((float) Math.max(1.6, ship.radius * 0.07), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.58), (int) Math.round(90 + fade * 110)));
+        gx.draw(hullMask);
+
+        int hx = (int) Math.round(nx * ship.radius * 0.78);
+        int hy = (int) Math.round(ny * ship.radius * 0.78);
+        int haloR = (int) Math.round(Math.max(6.0, ship.radius * (0.18 + 0.08 * pulse)));
+        gx.setColor(withAlpha(base, (int) Math.round(76 + fade * 96)));
+        gx.fillOval(hx - haloR, hy - haloR, haloR * 2, haloR * 2);
+        int coreR = Math.max(3, (int) Math.round(haloR * 0.46));
+        gx.setColor(withAlpha(Color.WHITE, (int) Math.round(96 + fade * 92)));
+        gx.fillOval(hx - coreR, hy - coreR, coreR * 2, coreR * 2);
+
+        gx.setPaint(oldPaint);
+        gx.setStroke(oldStroke);
+        gx.dispose();
     }
 
     private static void drawShieldFaceTelemetry(Graphics2D g, Ship ship, int face, double centerAngle,
@@ -356,6 +365,20 @@ public class Renderer {
         g.setColor(new Color(240, 248, 255, MathUtil.clamp((int) Math.round(228 * fade), 0, 255)));
         g.drawString(text, tx, ty);
         g.setFont(oldFont);
+    }
+
+    private static Shape createShieldFaceWedge(double centerAngle, double radius, double span) {
+        int steps = 24;
+        double start = centerAngle - span * 0.5;
+        Path2D.Double path = new Path2D.Double();
+        path.moveTo(0.0, 0.0);
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            double a = start + span * t;
+            path.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+        }
+        path.closePath();
+        return path;
     }
 
     private static double shieldEnvelopeRadius(Ship ship) {
@@ -2930,6 +2953,7 @@ public class Renderer {
             for (int i = events.size() - 1; i >= 0; i--) {
                 Ship.RoomDamageEvent ev = events.get(i);
                 if (ev == null || ev.roomId == null) continue;
+                if (ev.fromHazard) continue;
                 double ageSec = (nowNanos - ev.timestampNanos) / 1_000_000_000.0;
                 if (ageSec < 0.0 || ageSec > 2.4) continue;
                 double strength = Math.max(0.0, 1.0 - ageSec / 2.4);
@@ -3027,8 +3051,10 @@ public class Renderer {
             Rectangle b = p.getBounds();
             int cx = (int) Math.round(b.getCenterX());
             int cy = (int) Math.round(b.getCenterY());
+            boolean showFireSymbol = fireIntensity > 0.06;
+            boolean showRoomSymbol = frac >= 0.999 && !showFireSymbol;
 
-            if (b.width >= 10 && b.height >= 8) {
+            if (showRoomSymbol && b.width >= 10 && b.height >= 8) {
                 String symbol = xrayRoomSymbol(cell.roomId);
                 Font labelFont = (b.width >= 20 && b.height >= 14) ? XRAY_SYMBOL_FONT : XRAY_REPAIR_FONT;
                 g2.setFont(labelFont);
@@ -3049,6 +3075,23 @@ public class Renderer {
                 g2.drawRoundRect(sx, sy, sw + 8, sh + 5, 8, 8);
                 g2.setColor(new Color(250, 252, 255, 230));
                 g2.drawString(symbol, sx + 4, sy + sh);
+            }
+
+            if (showFireSymbol && b.width >= 10 && b.height >= 8) {
+                g2.setFont(XRAY_REPAIR_FONT);
+                FontMetrics fireFm = g2.getFontMetrics();
+                String fireSymbol = "F";
+                int fw = fireFm.stringWidth(fireSymbol);
+                int fh = fireFm.getAscent();
+                int fx = cx - fw / 2 - 3;
+                int fy = cy - (fh + 4) / 2;
+                int fa = MathUtil.clamp((int) Math.round(170 + Math.min(1.0, fireIntensity) * 60), 0, 255);
+                g2.setColor(new Color(255, 118, 54, fa));
+                g2.fillRoundRect(fx, fy, fw + 6, fh + 4, 8, 8);
+                g2.setColor(new Color(255, 220, 170, Math.min(255, fa + 20)));
+                g2.drawRoundRect(fx, fy, fw + 6, fh + 4, 8, 8);
+                g2.setColor(new Color(255, 248, 232, 235));
+                g2.drawString(fireSymbol, fx + 3, fy + fh + 1);
             }
 
             if (cell.labelAnchor && b.width >= 28 && b.height >= 20) {
@@ -3873,7 +3916,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawEngines(g, ship, visual);
             drawHardpoints(g, ship, visual);
 
-            drawShipShieldFaces(g, ship);
+            drawShipShieldFaces(g, ship, hullArea);
 
             if (hullArea != null) {
                 drawDamageDecals(g, ship, hullArea);
@@ -4048,6 +4091,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 if (canonicalHull != null && canonicalHull.npoints >= 3) {
                     v.hullPolys.clear();
                     v.hullPolys.add(canonicalHull);
+                    List<EnginePoint> derivedEngines = enginePointsForHull(canonicalHull, role, r);
+                    if (!derivedEngines.isEmpty()) {
+                        v.engines.clear();
+                        v.engines.addAll(derivedEngines);
+                    }
                 }
             }
 
@@ -4406,6 +4454,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         EnginePoint(int x, int y) {
             this.x = x;
             this.y = y;
+        }
+    }
+
+    private static final class EngineBand {
+        final int y;
+        final int left;
+        final int right;
+
+        EngineBand(int y, int left, int right) {
+            this.y = y;
+            this.left = left;
+            this.right = right;
+        }
+
+        int width() {
+            return right - left + 1;
         }
     }
 
@@ -5055,7 +5119,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawBridge(g, ship);
 
         // Shield ring/faces
-        drawShipShieldFaces(g, ship);
+        drawShipShieldFaces(g, ship, new Area(hullPoly));
 
         // Turrets
         drawTurrets(g, ship);
@@ -5293,87 +5357,83 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return Math.max(0, Math.min(255, v));
     }
 
-    private static void drawEngineNozzlePass(Graphics2D g, Ship ship, List<EnginePoint> engines, double radius) {
-        if (g == null || ship == null || engines == null || engines.isEmpty()) return;
+    private static List<EnginePoint> enginePointsForHull(Polygon hull, ShipRole role, double radius) {
+        if (hull == null || role == null || hull.npoints < 3) return java.util.Collections.emptyList();
+        if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return java.util.Collections.emptyList();
 
-        Graphics2D g2 = (Graphics2D) g.create();
-        double shimmer = engineShimmerIntensity(ship);
-        double nozzleLen = Math.max(5.0, radius * 0.20);
-        double nozzleDia = Math.max(4.0, radius * (engines.size() >= 4 ? 0.11 : 0.15));
-        double shimmerLen = Math.max(3.5, radius * (0.18 + 0.28 * shimmer));
+        int count = engineCountForRole(role);
+        if (count <= 0) return java.util.Collections.emptyList();
 
-        for (EnginePoint p : engines) {
-            if (p == null) continue;
+        int minX = hull.xpoints[0];
+        int maxX = hull.xpoints[0];
+        int minY = hull.ypoints[0];
+        int maxY = hull.ypoints[0];
+        for (int i = 1; i < hull.npoints; i++) {
+            minX = Math.min(minX, hull.xpoints[i]);
+            maxX = Math.max(maxX, hull.xpoints[i]);
+            minY = Math.min(minY, hull.ypoints[i]);
+            maxY = Math.max(maxY, hull.ypoints[i]);
+        }
 
-            double x = p.x - nozzleLen * 0.35;
-            double y = p.y - nozzleDia * 0.5;
-            int rx = (int) Math.round(x);
-            int ry = (int) Math.round(y);
-            int rw = Math.max(3, (int) Math.round(nozzleLen));
-            int rh = Math.max(3, (int) Math.round(nozzleDia));
+        double halfSpan = Math.max(3.0, Math.max(Math.abs(minY), Math.abs(maxY)) * engineSpanFraction(role));
+        double minWidth = Math.max(3.0, radius * (count >= 5 ? 0.14 : count >= 3 ? 0.11 : 0.09));
 
-            g2.setColor(new Color(18, 22, 28, 220));
-            g2.fillRoundRect(rx, ry, rw, rh, rh, rh);
+        List<EngineBand> rows = collectEngineBands(hull, minX, maxX, minY, maxY, halfSpan, minWidth);
+        if (rows.isEmpty()) {
+            rows = collectEngineBands(hull, minX, maxX, minY, maxY, Math.max(Math.abs(minY), Math.abs(maxY)), 2.0);
+        }
+        if (rows.isEmpty()) return java.util.Collections.emptyList();
 
-            g2.setColor(new Color(66, 78, 92, 176));
-            g2.drawRoundRect(rx, ry, rw, rh, rh, rh);
+        boolean[] used = new boolean[rows.size()];
+        List<EnginePoint> points = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            double t = (count == 1) ? 0.5 : (double) i / (double) (count - 1);
+            double targetY = rows.get(0).y + (rows.get(rows.size() - 1).y - rows.get(0).y) * t;
+            int best = -1;
+            double bestScore = Double.POSITIVE_INFINITY;
+            for (int j = 0; j < rows.size(); j++) {
+                EngineBand row = rows.get(j);
+                double score = Math.abs(row.y - targetY) + Math.abs(row.y) * 0.04 + (used[j] ? 4.0 : 0.0);
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = j;
+                }
+            }
+            if (best < 0) continue;
+            used[best] = true;
+            EngineBand band = rows.get(best);
+            double inset = Math.max(2.0, Math.min(radius * 0.18, band.width() * 0.26));
+            int x = (int) Math.round(Math.min(band.right - 1.0, band.left + inset));
+            points.add(new EnginePoint(x, band.y));
+        }
 
-            int throatW = Math.max(2, (int) Math.round(rw * 0.42));
-            int throatH = Math.max(2, (int) Math.round(rh * 0.55));
-            int throatX = rx - Math.max(1, (int) Math.round(rw * 0.12));
-            int throatY = ry + (rh - throatH) / 2;
-            g2.setColor(new Color(5, 7, 10, 230));
-            g2.fillRoundRect(throatX, throatY, throatW, throatH, throatH, throatH);
+        points.sort(java.util.Comparator.comparingInt(p -> p.y));
+        return points;
+    }
 
-            g2.setColor(new Color(118, 134, 148, 120));
-            g2.drawLine(rx + Math.max(1, rw / 3), ry + 1, rx + rw - 2, ry + 1);
-
-            if (shimmer > 0.01) {
-                int aftX = throatX;
-                int aftY0 = throatY;
-                int aftY1 = throatY + throatH;
-                int tailX = (int) Math.round(aftX - shimmerLen);
-                int flare = Math.max(1, (int) Math.round(throatH * (0.18 + 0.30 * shimmer)));
-
-                Polygon wake = new Polygon(
-                        new int[]{aftX, tailX, aftX},
-                        new int[]{aftY0, p.y, aftY1},
-                        3
-                );
-                g2.setColor(new Color(158, 196, 210, MathUtil.clamp((int) Math.round(26 + 48 * shimmer), 0, 96)));
-                g2.fillPolygon(wake);
-
-                g2.setStroke(new BasicStroke(Math.max(1.1f, (float) (0.9 + shimmer * 0.9)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(new Color(232, 245, 250, MathUtil.clamp((int) Math.round(18 + 34 * shimmer), 0, 88)));
-                g2.drawLine(aftX, p.y, tailX, p.y);
-                g2.setColor(new Color(112, 150, 168, MathUtil.clamp((int) Math.round(18 + 28 * shimmer), 0, 70)));
-                g2.drawLine(aftX, aftY0 - flare, tailX + Math.max(1, flare), p.y);
-                g2.drawLine(aftX, aftY1 + flare, tailX + Math.max(1, flare), p.y);
+    private static List<EngineBand> collectEngineBands(Polygon hull, int minX, int maxX, int minY, int maxY,
+                                                       double halfSpan, double minWidth) {
+        int y0 = (int) Math.round(Math.max(minY, -halfSpan));
+        int y1 = (int) Math.round(Math.min(maxY, halfSpan));
+        List<EngineBand> rows = new ArrayList<>();
+        for (int y = y0; y <= y1; y++) {
+            int left = Integer.MAX_VALUE;
+            int right = Integer.MIN_VALUE;
+            for (int x = minX - 1; x <= maxX + 1; x++) {
+                if (!hull.contains(x + 0.5, y + 0.5) && !hull.contains(x, y)) continue;
+                left = Math.min(left, x);
+                right = Math.max(right, x);
+            }
+            if (right >= left && (right - left + 1) >= minWidth) {
+                rows.add(new EngineBand(y, left, right));
             }
         }
-
-        g2.dispose();
+        return rows;
     }
 
-    private static double engineShimmerIntensity(Ship ship) {
-        if (ship == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) return 0.0;
-        double dt = Math.max(1e-6, GameContext.DT);
-        double speedPerSec = Math.hypot(ship.vx, ship.vy) / dt;
-        double ceiling = Math.max(1.0, MovementModel.speedCeiling(ship));
-        double speedFrac = MathUtil.clamp(speedPerSec / ceiling, 0.0, 1.0);
-        double drive = speedFrac * (0.58 + 0.42 * ship.powerEnginesFrac());
-        if (ship.isEmergencyThrustActive()) {
-            drive = Math.max(drive, 0.88 + 0.12 * (1.0 - ship.emergencyThrustHeat()));
-        }
-        return MathUtil.clamp((drive - 0.52) / 0.40, 0.0, 1.0);
-    }
-
-    private static List<EnginePoint> enginePointsForLegacy(Ship ship) {
-        if (ship == null || ship.role == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) {
-            return java.util.Collections.emptyList();
-        }
-
-        int count = switch (ship.role) {
+    private static int engineCountForRole(ShipRole role) {
+        if (role == null) return 0;
+        return switch (role) {
             case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 1;
             case PATROL, FRIGATE, PICKET, LIGHT_CRUISER, MISSILE_BOAT, MINER, TRANSPORT, HAULER, DRONE_CARRIER, CARRIER -> 2;
             case MEDIUM_CRUISER, CRUISER -> 3;
@@ -5382,8 +5442,119 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case DREADNOUGHT -> 6;
             default -> 2;
         };
+    }
+
+    private static double engineSpanFraction(ShipRole role) {
+        if (role == null) return 0.40;
+        return switch (role) {
+            case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 0.18;
+            case PATROL, PICKET, FRIGATE, MISSILE_BOAT, MINER -> 0.28;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, TRANSPORT, HAULER -> 0.38;
+            case CARRIER, DRONE_CARRIER -> 0.34;
+            case BATTLECRUISER, BATTLESHIP -> 0.48;
+            case DREADNOUGHT, SUPERSHIP -> 0.56;
+            default -> 0.40;
+        };
+    }
+
+    private static void drawEngineNozzlePass(Graphics2D g, Ship ship, List<EnginePoint> engines, double radius) {
+        if (g == null || ship == null || engines == null || engines.isEmpty()) return;
+
+        Graphics2D g2 = (Graphics2D) g.create();
+        double output = engineOutputIntensity(ship);
+        double shimmer = engineShimmerIntensity(ship);
+        double nozzleDia = Math.max(4.0, radius * (engines.size() >= 4 ? 0.095 : 0.13));
+        double plumeLen = Math.max(7.0, radius * (0.24 + 0.54 * output));
+        double plumeHalf = Math.max(2.5, nozzleDia * (0.55 + 0.55 * output));
+        Color plumeBase = engineExhaustColor(ship.faction);
+        Color plumeHot = engineExhaustCoreColor(ship.faction);
+
+        for (EnginePoint p : engines) {
+            if (p == null) continue;
+
+            int aftX = p.x - 1;
+            int tailX = (int) Math.round(aftX - plumeLen);
+            int nozzleR = Math.max(2, (int) Math.round(nozzleDia * 0.52));
+            int haloR = Math.max(nozzleR + 2, (int) Math.round(nozzleDia * (0.95 + output * 0.32)));
+            int flare = Math.max(2, (int) Math.round(plumeHalf));
+
+            Paint oldPaint = g2.getPaint();
+
+            Polygon plume = new Polygon(
+                    new int[]{aftX, tailX, aftX},
+                    new int[]{(int) Math.round(p.y - flare), p.y, (int) Math.round(p.y + flare)},
+                    3
+            );
+            g2.setPaint(new GradientPaint(
+                    aftX, (float) p.y, withAlpha(plumeBase, (int) Math.round(92 + 92 * output)),
+                    tailX, (float) p.y, withAlpha(plumeBase, 0)));
+            g2.fillPolygon(plume);
+
+            int coreHalf = Math.max(1, (int) Math.round(flare * (0.34 + 0.18 * shimmer)));
+            Polygon corePlume = new Polygon(
+                    new int[]{aftX, tailX + Math.max(1, nozzleR), aftX},
+                    new int[]{(int) Math.round(p.y - coreHalf), p.y, (int) Math.round(p.y + coreHalf)},
+                    3
+            );
+            g2.setPaint(new GradientPaint(
+                    aftX, (float) p.y, withAlpha(plumeHot, (int) Math.round(126 + 88 * output)),
+                    tailX, (float) p.y, withAlpha(plumeHot, 0)));
+            g2.fillPolygon(corePlume);
+
+            g2.setColor(withAlpha(plumeBase, (int) Math.round(88 + 74 * output)));
+            g2.fillOval(aftX - haloR, p.y - haloR, haloR * 2, haloR * 2);
+
+            g2.setColor(withAlpha(plumeHot, (int) Math.round(148 + 72 * output)));
+            g2.fillOval(aftX - nozzleR, p.y - nozzleR, nozzleR * 2, nozzleR * 2);
+
+            int hotW = Math.max(2, (int) Math.round(nozzleR * 1.1));
+            int hotH = Math.max(2, (int) Math.round(nozzleR * 0.82));
+            g2.setColor(withAlpha(Color.WHITE, (int) Math.round(110 + 70 * output)));
+            g2.fillOval(aftX - hotW / 2, p.y - hotH / 2, hotW, hotH);
+
+            if (shimmer > 0.02) {
+                Stroke oldStroke = g2.getStroke();
+                g2.setStroke(new BasicStroke(Math.max(1.1f, (float) (0.9 + shimmer * 1.1)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(mixColor(plumeHot, Color.WHITE, 0.28), (int) Math.round(54 + shimmer * 80)));
+                g2.drawLine(aftX, p.y, tailX, p.y);
+                g2.setStroke(oldStroke);
+            }
+
+            g2.setPaint(oldPaint);
+        }
+
+        g2.dispose();
+    }
+
+    private static double engineOutputIntensity(Ship ship) {
+        if (ship == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) return 0.0;
+        double dt = Math.max(1e-6, GameContext.DT);
+        double speedPerSec = Math.hypot(ship.vx, ship.vy) / dt;
+        double ceiling = Math.max(1.0, MovementModel.speedCeiling(ship));
+        double speedFrac = MathUtil.clamp(speedPerSec / ceiling, 0.0, 1.0);
+        double output = 0.18 + ship.powerEnginesFrac() * 0.34 + speedFrac * 0.48;
+        if (ship.isEmergencyThrustActive()) {
+            output = Math.max(output, 0.92 + 0.08 * (1.0 - ship.emergencyThrustHeat()));
+        }
+        return MathUtil.clamp(output, 0.12, 1.0);
+    }
+
+    private static double engineShimmerIntensity(Ship ship) {
+        double output = engineOutputIntensity(ship);
+        return MathUtil.clamp((output - 0.44) / 0.48, 0.0, 1.0);
+    }
+
+    private static List<EnginePoint> enginePointsForLegacy(Ship ship) {
+        if (ship == null || ship.role == null || ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) {
+            return java.util.Collections.emptyList();
+        }
 
         int r = Math.max(6, (int) Math.round(ship.radius));
+        Polygon hull = ShipHullSilhouette.hullPolygon(ship.role, r, ship.faction);
+        List<EnginePoint> derived = enginePointsForHull(hull, ship.role, ship.radius);
+        if (!derived.isEmpty()) return derived;
+
+        int count = engineCountForRole(ship.role);
         int x = -r + 1;
         if (count == 1) {
             return java.util.Collections.singletonList(new EnginePoint(x, 0));
@@ -5404,12 +5575,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawEngineNozzlePass(g, ship, enginePointsForLegacy(ship), ship.radius);
     }
 
+    private static Color engineExhaustColor(Faction faction) {
+        Color hull = factionHullColor(faction);
+        Color trim = factionTrimColor(faction);
+        return mixColor(hull, trim, 0.58);
+    }
+
+    private static Color engineExhaustCoreColor(Faction faction) {
+        return mixColor(engineExhaustColor(faction), Color.WHITE, 0.58);
+    }
+
     private static void drawTurrets(Graphics2D g2, Ship ship) {
         if (ship == null || ship.turrets == null) return;
         if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.BOMBER || ship.role == ShipRole.DRONE) return;
 
         Color accent = factionTrimColor(ship.faction);
-        final double GLOBAL_TURRET_SCALE = 0.5;
+        final double GLOBAL_TURRET_SCALE = 0.44;
         for (Turret t : ship.turrets) {
             if (t == null) continue;
 
@@ -5521,16 +5702,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return switch (role) {
             case PATROL, PICKET, FIGHTER -> new TurretVisualScale(0.84, 0.86, 0.88);
             case FRIGATE, MISSILE_BOAT, CIWS_CORVETTE, MINER -> new TurretVisualScale(0.95, 0.96, 0.95);
-            case LIGHT_CRUISER, CRUISER, MEDIUM_CRUISER, STEALTH_SHIP -> new TurretVisualScale(1.08, 1.07, 1.02);
-            case BATTLECRUISER -> new TurretVisualScale(1.25, 1.15, 1.10);
-            case BATTLESHIP -> new TurretVisualScale(1.35, 1.20, 1.18);
-            case DREADNOUGHT -> new TurretVisualScale(1.48, 1.26, 1.26);
-            case SUPERSHIP -> new TurretVisualScale(1.64, 1.34, 1.34);
+            case LIGHT_CRUISER, CRUISER, MEDIUM_CRUISER, STEALTH_SHIP -> new TurretVisualScale(1.02, 1.01, 0.98);
+            case BATTLECRUISER -> new TurretVisualScale(1.14, 1.08, 1.02);
+            case BATTLESHIP -> new TurretVisualScale(1.22, 1.12, 1.08);
+            case DREADNOUGHT -> new TurretVisualScale(1.30, 1.16, 1.14);
+            case SUPERSHIP -> new TurretVisualScale(1.40, 1.22, 1.20);
             case CARRIER -> {
-                if (kind == Turret.Kind.MISSILE) yield new TurretVisualScale(1.12, 1.06, 1.10);
-                yield new TurretVisualScale(0.96, 0.94, 1.05);
+                if (kind == Turret.Kind.MISSILE) yield new TurretVisualScale(1.02, 0.98, 1.00);
+                yield new TurretVisualScale(0.90, 0.88, 0.98);
             }
-            case BASE -> new TurretVisualScale(1.30, 1.18, 1.30);
+            case BASE -> new TurretVisualScale(1.18, 1.10, 1.18);
             default -> new TurretVisualScale(1.0, 1.0, 1.0);
         };
     }

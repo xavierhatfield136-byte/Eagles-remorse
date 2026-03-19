@@ -106,6 +106,7 @@ public class Player extends Ship {
     public List<Projectile> tryMissileSalvo(Ship target, double dt) {
         List<Projectile> out = new ArrayList<>();
         if (!alive || target == null || !target.alive) return out;
+        if (!canUseCombatSystems()) return out;
         if (missileSalvoTimer > 0) return out;
 
         Turret launcher = null;

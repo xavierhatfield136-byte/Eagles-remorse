@@ -62,10 +62,13 @@ public final class PhysicsSystem {
                 if (isAlive(ctx.lockedTarget)
                         && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
                         && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
+                        && !TargetingSystem.isMainBatteryScreenTarget(ctx.player, ctx.lockedTarget)
                         && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
-                    autoTarget = findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1600 * rangeMul);
+                    autoTarget = TargetingSystem.findClosestEngagementTarget(
+                            ctx, ctx.player, ctx.player.x, ctx.player.y, 1600 * rangeMul
+                    );
                 }
             }
 
@@ -77,6 +80,7 @@ public final class PhysicsSystem {
             } else if (isAlive(ctx.lockedTarget)
                     && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
                     && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
+                    && !TargetingSystem.isMainBatteryScreenTarget(ctx.player, ctx.lockedTarget)
                     && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
                 aimTarget = ctx.lockedTarget;
             }
