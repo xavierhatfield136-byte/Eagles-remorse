@@ -1,0 +1,90 @@
+{
+  "picket_team_c_albedo.png": {
+    "reference": "green_team_c/picket.png",
+    "denoise": 0.42
+  },
+  "patrol_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.40
+  },
+  "stealth_ship_team_c_albedo.png": {
+    "reference": "green_team_c/stealth.png",
+    "denoise": 0.44
+  },
+  "fighter_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.48
+  },
+  "bomber_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.52
+  },
+  "pd_craft_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.50
+  },
+  "drone_team_c_albedo.png": {
+    "reference": "green_team_c/stealth.png",
+    "denoise": 0.50
+  },
+  "frigate_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.54
+  },
+  "missile_boat_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.55
+  },
+  "ciws_corvette_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.53
+  },
+  "light_cruiser_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.56
+  },
+  "medium_cruiser_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.54
+  },
+  "cruiser_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.56
+  },
+  "battlecruiser_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.58
+  },
+  "battleship_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.56
+  },
+  "dreadnought_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.54
+  },
+  "supership_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.46
+  },
+  "carrier_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.52
+  },
+  "drone_carrier_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.50
+  },
+  "transport_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.52
+  },
+  "miner_team_c_albedo.png": {
+    "reference": "green_team_c/fighter.png",
+    "denoise": 0.58
+  },
+  "hauler_team_c_albedo.png": {
+    "reference": "green_team_c/patrol.png",
+    "denoise": 0.54
+  }
+}

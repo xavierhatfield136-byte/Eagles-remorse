@@ -1,0 +1,684 @@
+﻿[
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "picket_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910017,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\picket_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_picket_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_picket.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\picket.png",
+        "reference_denoise":  0.42,
+        "coverage":  0.1572,
+        "width_height_ratio":  3.537,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.029965753424657533,
+                        "right":  0.028253424657534245,
+                        "bottom":  0.29209183673469385,
+                        "top":  0.31122448979591838
+                    },
+        "center_offset":  {
+                              "y":  0.0095663265306122451,
+                              "x":  0.00085616438356164379
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "patrol_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910154,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_patrol_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.2583,
+        "width_height_ratio":  2.0243,
+        "largest_component_share":  1,
+        "components":  2,
+        "padding":  {
+                        "left":  0.029965753424657533,
+                        "right":  0.042808219178082189,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16198979591836735
+                    },
+        "center_offset":  {
+                              "y":  0.0031887755102040817,
+                              "x":  0.0064212328767123284
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "stealth_ship_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910291,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\stealth_ship_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_stealth_ship_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_stealth.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\stealth.png",
+        "reference_denoise":  0.44,
+        "coverage":  0.35,
+        "width_height_ratio":  1.936,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.047089041095890412,
+                        "right":  0.046232876712328765,
+                        "bottom":  0.14540816326530612,
+                        "top":  0.15688775510204081
+                    },
+        "center_offset":  {
+                              "y":  0.0057397959183673472,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "fighter_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910428,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\fighter_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_fighter_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.48,
+        "coverage":  0.2684,
+        "width_height_ratio":  2.6658,
+        "largest_component_share":  0.9775,
+        "components":  410,
+        "padding":  {
+                        "left":  0.041952054794520549,
+                        "right":  0.029109589041095889,
+                        "bottom":  0.22704081632653061,
+                        "top":  0.25382653061224492
+                    },
+        "center_offset":  {
+                              "y":  0.013392857142857142,
+                              "x":  0.0064212328767123284
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "bomber_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910565,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\bomber_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_bomber_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.2717,
+        "width_height_ratio":  2.6062,
+        "largest_component_share":  0.993,
+        "components":  262,
+        "padding":  {
+                        "left":  0.034246575342465752,
+                        "right":  0.030821917808219176,
+                        "bottom":  0.22193877551020408,
+                        "top":  0.24362244897959184
+                    },
+        "center_offset":  {
+                              "y":  0.010841836734693877,
+                              "x":  0.0017123287671232876
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "pd_craft_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910702,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\pd_craft_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_pd_craft_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.2691,
+        "width_height_ratio":  2.7125,
+        "largest_component_share":  0.9633,
+        "components":  270,
+        "padding":  {
+                        "left":  0.036815068493150686,
+                        "right":  0.01797945205479452,
+                        "bottom":  0.22704081632653061,
+                        "top":  0.25382653061224492
+                    },
+        "center_offset":  {
+                              "y":  0.013392857142857142,
+                              "x":  0.0094178082191780817
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "drone_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910839,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\drone_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_drone_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_stealth.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\stealth.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.3497,
+        "width_height_ratio":  1.9307,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.047945205479452052,
+                        "right":  0.046232876712328765,
+                        "bottom":  0.14540816326530612,
+                        "top":  0.15561224489795919
+                    },
+        "center_offset":  {
+                              "y":  0.00510204081632653,
+                              "x":  0.00085616438356164379
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "frigate_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910976,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\frigate_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_frigate_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.2752,
+        "width_height_ratio":  2.5374,
+        "largest_component_share":  0.9929,
+        "components":  145,
+        "padding":  {
+                        "left":  0.039383561643835614,
+                        "right":  0.030821917808219176,
+                        "bottom":  0.21301020408163265,
+                        "top":  0.24107142857142858
+                    },
+        "center_offset":  {
+                              "y":  0.014030612244897959,
+                              "x":  0.0042808219178082189
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "missile_boat_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  911113,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\missile_boat_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_missile_boat_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.55,
+        "coverage":  0.2718,
+        "width_height_ratio":  2.3124,
+        "largest_component_share":  0.9938,
+        "components":  132,
+        "padding":  {
+                        "left":  0.031678082191780824,
+                        "right":  0.023972602739726026,
+                        "bottom":  0.23214285714285715,
+                        "top":  0.15943877551020408
+                    },
+        "center_offset":  {
+                              "y":  0.036352040816326529,
+                              "x":  0.003852739726027397
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "ciws_corvette_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  911250,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\ciws_corvette_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_ciws_corvette_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.53,
+        "coverage":  0.2576,
+        "width_height_ratio":  2.7017,
+        "largest_component_share":  0.9848,
+        "components":  640,
+        "padding":  {
+                        "left":  0.029109589041095889,
+                        "right":  0.02482876712328767,
+                        "bottom":  0.22576530612244897,
+                        "top":  0.25255102040816324
+                    },
+        "center_offset":  {
+                              "y":  0.013392857142857142,
+                              "x":  0.0021404109589041095
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "light_cruiser_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  911387,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\light_cruiser_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_light_cruiser_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.2662,
+        "width_height_ratio":  2.6789,
+        "largest_component_share":  0.9897,
+        "components":  492,
+        "padding":  {
+                        "left":  0.040239726027397262,
+                        "right":  0.023972602739726026,
+                        "bottom":  0.22576530612244897,
+                        "top":  0.25382653061224492
+                    },
+        "center_offset":  {
+                              "y":  0.014030612244897959,
+                              "x":  0.008133561643835616
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "medium_cruiser_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911524,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\medium_cruiser_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_medium_cruiser_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.2577,
+        "width_height_ratio":  2.0354,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.032534246575342464,
+                        "right":  0.033390410958904111,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16071428571428573
+                    },
+        "center_offset":  {
+                              "y":  0.0025510204081632651,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "cruiser_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911661,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\cruiser_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_cruiser_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.2585,
+        "width_height_ratio":  2.0319,
+        "largest_component_share":  1,
+        "components":  2,
+        "padding":  {
+                        "left":  0.037671232876712327,
+                        "right":  0.0351027397260274,
+                        "bottom":  0.15688775510204081,
+                        "top":  0.16326530612244897
+                    },
+        "center_offset":  {
+                              "y":  0.0031887755102040817,
+                              "x":  0.0012842465753424657
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "battlecruiser_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911798,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\battlecruiser_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_battlecruiser_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.2571,
+        "width_height_ratio":  2.0206,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.036815068493150686,
+                        "right":  0.037671232876712327,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16198979591836735
+                    },
+        "center_offset":  {
+                              "y":  0.0031887755102040817,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "battleship_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911935,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\battleship_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_battleship_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.2569,
+        "width_height_ratio":  1.9907,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.044520547945205477,
+                        "right":  0.041952054794520549,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16071428571428573
+                    },
+        "center_offset":  {
+                              "y":  0.0025510204081632651,
+                              "x":  0.0012842465753424657
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "dreadnought_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912072,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\dreadnought_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_dreadnought_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.2578,
+        "width_height_ratio":  2.0412,
+        "largest_component_share":  1,
+        "components":  2,
+        "padding":  {
+                        "left":  0.029965753424657533,
+                        "right":  0.036815068493150686,
+                        "bottom":  0.15688775510204081,
+                        "top":  0.16198979591836735
+                    },
+        "center_offset":  {
+                              "y":  0.0025510204081632651,
+                              "x":  0.0034246575342465752
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "supership_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912209,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\supership_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_supership_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.46,
+        "coverage":  0.2584,
+        "width_height_ratio":  2.0187,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.033390410958904111,
+                        "right":  0.040239726027397262,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16071428571428573
+                    },
+        "center_offset":  {
+                              "y":  0.0025510204081632651,
+                              "x":  0.0034246575342465752
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "carrier_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912346,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\carrier_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_carrier_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.2578,
+        "width_height_ratio":  2.043,
+        "largest_component_share":  1,
+        "components":  3,
+        "padding":  {
+                        "left":  0.026541095890410957,
+                        "right":  0.037671232876712327,
+                        "bottom":  0.15561224489795919,
+                        "top":  0.16198979591836735
+                    },
+        "center_offset":  {
+                              "y":  0.0031887755102040817,
+                              "x":  0.0055650684931506846
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "drone_carrier_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912483,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\drone_carrier_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_drone_carrier_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.258,
+        "width_height_ratio":  2.0132,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.041952054794520549,
+                        "right":  0.0410958904109589,
+                        "bottom":  0.15688775510204081,
+                        "top":  0.16454081632653061
+                    },
+        "center_offset":  {
+                              "y":  0.0038265306122448979,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "transport_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912620,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\transport_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_transport_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.258,
+        "width_height_ratio":  2.0037,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0410958904109589,
+                        "right":  0.042808219178082189,
+                        "bottom":  0.15688775510204081,
+                        "top":  0.16198979591836735
+                    },
+        "center_offset":  {
+                              "y":  0.0025510204081632651,
+                              "x":  0.00085616438356164379
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "miner_team_c_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  912757,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\review\\miner_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_miner_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_fighter.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\fighter.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.2718,
+        "width_height_ratio":  1.9268,
+        "largest_component_share":  0.9941,
+        "components":  187,
+        "padding":  {
+                        "left":  0.034246575342465752,
+                        "right":  0.018835616438356163,
+                        "bottom":  0.014030612244897959,
+                        "top":  0.25382653061224492
+                    },
+        "center_offset":  {
+                              "y":  0.11989795918367346,
+                              "x":  0.0077054794520547941
+                          }
+    },
+    {
+        "faction":  "team_c",
+        "staged_folder":  "green_team_c",
+        "filename":  "hauler_team_c_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912894,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\hauler_team_c_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260319_213049_hauler_team_c_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_patrol.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\patrol.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.2582,
+        "width_height_ratio":  1.5888,
+        "largest_component_share":  0.9994,
+        "components":  6,
+        "padding":  {
+                        "left":  0.043664383561643837,
+                        "right":  0.036815068493150686,
+                        "bottom":  0.016581632653061226,
+                        "top":  0.1211734693877551
+                    },
+        "center_offset":  {
+                              "y":  0.052295918367346941,
+                              "x":  0.0034246575342465752
+                          }
+    }
+]
