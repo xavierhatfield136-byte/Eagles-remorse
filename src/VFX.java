@@ -50,11 +50,22 @@ public final class VFX {
         }
     }
 
+    public static int activeCount() {
+        return active.size();
+    }
+
     /** Draw all particles in world space. */
-    public static void drawAll(Graphics2D g2) {
-        if (active.isEmpty()) return;
+    public static int drawAll(Graphics2D g2) {
+        return drawAll(g2, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY) {
+        if (active.isEmpty()) return 0;
+        int drawn = 0;
 
         for (Particle p : active) {
+            if (!isVisible(p, minX, minY, maxX, maxY)) continue;
+            drawn++;
             double f = (p.maxLife <= 0) ? 0 : Math.max(0.0, Math.min(1.0, p.life / (double) p.maxLife));
             int alpha = (int) MathUtil.clamp(p.baseAlpha * f, 0, 255);
 
@@ -171,6 +182,13 @@ public final class VFX {
                 }
             }
         }
+        return drawn;
+    }
+
+    private static boolean isVisible(Particle p, double minX, double minY, double maxX, double maxY) {
+        if (p == null) return false;
+        double radius = Math.max(4.0, p.size * 2.4);
+        return p.x + radius >= minX && p.x - radius <= maxX && p.y + radius >= minY && p.y - radius <= maxY;
     }
 
     /** Small flame puffs for burning wrecks. Purely cosmetic. */

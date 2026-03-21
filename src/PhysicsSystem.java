@@ -124,7 +124,7 @@ public final class PhysicsSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive) continue;
-            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+            s.tryCIWS(dt, ctx);
         }
 
         // --- Projectiles update / cull ---
@@ -138,12 +138,15 @@ public final class PhysicsSystem {
             if (!p.alive) it.remove();
         }
 
+        ctx.entityQuery.rebuild(ctx);
+
         // --- Collisions ---
         CollisionSystem.handleProjectilesVsProjectiles(ctx, ctx.projectiles);
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
         CollisionSystem.handleProjectilesVsAsteroids(ctx, ctx.projectiles, ctx.asteroids);
         CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
         awardPlayerKillAssistCredits(ctx);
+        CollisionSystem.cleanupProjectiles(ctx.projectiles);
 
         // --- Cleanup destroyed ships (keep player object even if dead) ---
         ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));
@@ -157,6 +160,8 @@ public final class PhysicsSystem {
             VFX.updateAll(dt);
         } catch (Throwable ignored) {
         }
+
+        ctx.entityQuery.rebuild(ctx);
     }
 
     private static boolean isAlive(Ship s) {

@@ -254,6 +254,8 @@ public abstract class Ship {
     public int ciwsPelletDamage = 1;
     public int ciwsPelletLife = 18;
     public double ciwsPelletRadius = 1.8;
+    private final List<Missile> ciwsMissileScratch = new ArrayList<>();
+    private final List<Ship> ciwsShipScratch = new ArrayList<>();
 
     // Carrier
     public enum WingState {
@@ -4178,6 +4180,14 @@ public abstract class Ship {
         tryCIWS(dt, projectiles, null);
     }
 
+    public void tryCIWS(double dt, GameContext ctx) {
+        if (ctx == null) {
+            tryCIWS(dt, null, null, null);
+            return;
+        }
+        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery);
+    }
+
     /**
      * CIWS point-defense.
      *
@@ -4186,12 +4196,16 @@ public abstract class Ship {
      * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
+        tryCIWS(dt, projectiles, ships, null);
+    }
+
+    private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query) {
         if (!alive || !hasCIWS || !canUseCombatSystems()) return;
         if (ciwsTimer > 0) return;
         if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
 
-        Missile closestMissile = findClosestCiwsMissile(projectiles);
-        Ship closestSmallCraft = findClosestCiwsSmallCraft(ships);
+        Missile closestMissile = findClosestCiwsMissile(projectiles, query);
+        Ship closestSmallCraft = findClosestCiwsSmallCraft(ships, query);
         if (closestMissile == null && closestSmallCraft == null) return;
 
         boolean targetMissile = closestMissile != null;
@@ -4218,12 +4232,18 @@ public abstract class Ship {
         fireCiwsPellets(dt, projectiles, aim);
     }
 
-    private Missile findClosestCiwsMissile(List<Projectile> projectiles) {
-        if (projectiles == null || projectiles.isEmpty()) return null;
+    private Missile findClosestCiwsMissile(List<Projectile> projectiles, EntityQueryIndex query) {
+        if ((projectiles == null || projectiles.isEmpty()) && query == null) return null;
         Missile closest = null;
         double bestD2 = Double.POSITIVE_INFINITY;
+        Iterable<? extends Projectile> source = projectiles;
 
-        for (Projectile p : projectiles) {
+        if (query != null) {
+            query.collectMissilesNear(x, y, ciwsRange, ciwsMissileScratch);
+            source = ciwsMissileScratch;
+        }
+
+        for (Projectile p : source) {
             if (!p.alive) continue;
             if (!(p instanceof Missile m)) continue;
             if (faction != null && faction.isFriendlyTo(m.faction)) continue;
@@ -4237,12 +4257,18 @@ public abstract class Ship {
         return closest;
     }
 
-    private Ship findClosestCiwsSmallCraft(List<Ship> ships) {
-        if (ships == null || ships.isEmpty()) return null;
+    private Ship findClosestCiwsSmallCraft(List<Ship> ships, EntityQueryIndex query) {
+        if ((ships == null || ships.isEmpty()) && query == null) return null;
         Ship closest = null;
         double bestD2 = Double.POSITIVE_INFINITY;
+        Iterable<Ship> source = ships;
 
-        for (Ship s : ships) {
+        if (query != null && faction != null) {
+            query.collectHostileShipsNear(faction, x, y, ciwsRange, ciwsShipScratch);
+            source = ciwsShipScratch;
+        }
+
+        for (Ship s : source) {
             if (s == null || s == this) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             if (!s.isSmallCraft()) continue;

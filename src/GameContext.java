@@ -30,6 +30,7 @@ public class GameContext {
     public final List<Salvage> salvage = new ArrayList<>();
     public final List<DamageEvent> damageEvents = new ArrayList<>();
     public final List<AudioEvent> audioEvents = new ArrayList<>();
+    public final EntityQueryIndex entityQuery = new EntityQueryIndex();
 
     // Bases
     public Ship allyBase;
@@ -234,6 +235,14 @@ public class GameContext {
     public double perfRenderMs = 0.0;
     public int perfUpdateSteps = 0;
     public int perfDroppedUpdates = 0;
+    public int perfDrawnShips = 0;
+    public int perfDrawnProjectiles = 0;
+    public int perfDrawnAsteroids = 0;
+    public int perfDrawnSalvage = 0;
+    public int perfDrawnVfx = 0;
+    public int perfDrawnExplosions = 0;
+    public int perfTotalVfx = 0;
+    public int perfTotalExplosions = 0;
 
     public GameContext(GameConfig config) {
         this.config = (config == null)

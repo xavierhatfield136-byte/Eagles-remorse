@@ -1,4 +1,7 @@
 import java.awt.Polygon;
+import java.awt.geom.Area;
+import java.awt.geom.Path2D;
+import java.awt.geom.PathIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -54,6 +57,8 @@ public final class ShipRoomLayout {
         public final String label;
         public final double[] xs;
         public final double[] ys;
+        private final double[][] coverageXs;
+        private final double[][] coverageYs;
         public final Ship.InternalSystem primarySystem;
         public final double hpWeight;
         public final boolean critical;
@@ -64,10 +69,19 @@ public final class ShipRoomLayout {
         private RoomDef(RoomId id, String label, double[] xs, double[] ys,
                         Ship.InternalSystem primarySystem, double hpWeight, boolean critical,
                         RoomId... neighbors) {
+            this(id, label, xs, ys, null, null, primarySystem, hpWeight, critical, neighbors);
+        }
+
+        private RoomDef(RoomId id, String label, double[] xs, double[] ys,
+                        double[][] coverageXs, double[][] coverageYs,
+                        Ship.InternalSystem primarySystem, double hpWeight, boolean critical,
+                        RoomId... neighbors) {
             this.id = id;
             this.label = label;
             this.xs = xs;
             this.ys = ys;
+            this.coverageXs = normalizeCoverage(coverageXs, xs);
+            this.coverageYs = normalizeCoverage(coverageYs, ys);
             this.primarySystem = primarySystem;
             this.hpWeight = hpWeight;
             this.critical = critical;
@@ -75,10 +89,16 @@ public final class ShipRoomLayout {
 
             double sx = 0.0;
             double sy = 0.0;
-            int n = Math.min(xs.length, ys.length);
-            for (int i = 0; i < n; i++) {
-                sx += xs[i];
-                sy += ys[i];
+            int n = 0;
+            for (int poly = 0; poly < this.coverageXs.length; poly++) {
+                double[] polyXs = this.coverageXs[poly];
+                double[] polyYs = this.coverageYs[poly];
+                int pn = Math.min(polyXs.length, polyYs.length);
+                for (int i = 0; i < pn; i++) {
+                    sx += polyXs[i];
+                    sy += polyYs[i];
+                }
+                n += pn;
             }
             if (n <= 0) {
                 this.centroidX = 0.0;
@@ -90,13 +110,73 @@ public final class ShipRoomLayout {
         }
 
         public boolean contains(double x, double y) {
-            return pointInPolygon(xs, ys, x, y);
+            for (int i = 0; i < coverageXs.length; i++) {
+                if (pointInPolygon(coverageXs[i], coverageYs[i], x, y)) return true;
+            }
+            return false;
         }
 
         public double distanceSqToCentroid(double x, double y) {
             double dx = x - centroidX;
             double dy = y - centroidY;
             return dx * dx + dy * dy;
+        }
+
+        public double distanceSqToBoundary(double x, double y) {
+            double best = Double.POSITIVE_INFINITY;
+            for (int poly = 0; poly < coverageXs.length; poly++) {
+                double[] polyXs = coverageXs[poly];
+                double[] polyYs = coverageYs[poly];
+                int n = Math.min(polyXs.length, polyYs.length);
+                if (n < 2) continue;
+                for (int i = 0, j = n - 1; i < n; j = i++) {
+                    double dsq = pointSegmentDistanceSq(x, y, polyXs[j], polyYs[j], polyXs[i], polyYs[i]);
+                    if (dsq < best) best = dsq;
+                }
+            }
+            return best;
+        }
+
+        public boolean overlapsAabb(double minX, double minY, double maxX, double maxY) {
+            if (minX > maxX || minY > maxY) return false;
+            for (int poly = 0; poly < coverageXs.length; poly++) {
+                double[] polyXs = coverageXs[poly];
+                double[] polyYs = coverageYs[poly];
+                int n = Math.min(polyXs.length, polyYs.length);
+                if (n < 3) continue;
+
+                for (int i = 0; i < n; i++) {
+                    double px = polyXs[i];
+                    double py = polyYs[i];
+                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) return true;
+                }
+                if (pointInPolygon(polyXs, polyYs, minX, minY)) return true;
+                if (pointInPolygon(polyXs, polyYs, minX, maxY)) return true;
+                if (pointInPolygon(polyXs, polyYs, maxX, minY)) return true;
+                if (pointInPolygon(polyXs, polyYs, maxX, maxY)) return true;
+                for (int i = 0, j = n - 1; i < n; j = i++) {
+                    double ax = polyXs[j];
+                    double ay = polyYs[j];
+                    double bx = polyXs[i];
+                    double by = polyYs[i];
+                    if (segmentIntersectsAabb(ax, ay, bx, by, minX, minY, maxX, maxY)) return true;
+                }
+            }
+            return false;
+        }
+
+        private static double[][] normalizeCoverage(double[][] coverage, double[] fallback) {
+            if (coverage != null && coverage.length > 0) return cloneNested(coverage);
+            if (fallback == null) return new double[0][];
+            return new double[][]{fallback.clone()};
+        }
+
+        private static double[][] cloneNested(double[][] src) {
+            double[][] out = new double[src.length][];
+            for (int i = 0; i < src.length; i++) {
+                out[i] = (src[i] == null) ? new double[0] : src[i].clone();
+            }
+            return out;
         }
     }
 
@@ -139,7 +219,9 @@ public final class ShipRoomLayout {
         if (cached != null) return cached;
 
         Profile profile = profile(role, faction);
-        List<VisualCell> built = buildVisualCells(role, faction, profile.rooms);
+        List<VisualCell> built = profile.visualCells.isEmpty()
+                ? buildVisualCells(role, faction, profile.rooms)
+                : profile.visualCells;
         VISUAL_CACHE.put(key, built);
         return built;
     }
@@ -149,7 +231,20 @@ public final class ShipRoomLayout {
     }
 
     public static RoomDef roomForHit(ShipRole role, Faction faction, double normalizedX, double normalizedY) {
-        return RoomHitResolver.resolve(role, faction, normalizedX, normalizedY);
+        RoomDef resolved = RoomHitResolver.resolve(role, faction, normalizedX, normalizedY);
+        if (resolved != null) {
+            double boundarySq = RoomHitResolver.distanceToBoundarySq(resolved, normalizedX, normalizedY);
+            if (resolved.contains(normalizedX, normalizedY) || boundarySq <= 1e-10) {
+                return resolved;
+            }
+        }
+
+        RoomId visualRoomId = visualRoomIdForHit(role, faction, normalizedX, normalizedY);
+        if (visualRoomId != null) {
+            RoomDef visualRoom = roomForId(role, faction, visualRoomId);
+            if (visualRoom != null) return visualRoom;
+        }
+        return resolved;
     }
 
     public static RoomDef roomForId(ShipRole role, RoomId id) {
@@ -159,6 +254,53 @@ public final class ShipRoomLayout {
     public static RoomDef roomForId(ShipRole role, Faction faction, RoomId id) {
         if (id == null) return null;
         return profile(role, faction).byId.get(id);
+    }
+
+    public static RoomId visualRoomIdForHit(ShipRole role, Faction faction, double normalizedX, double normalizedY) {
+        if (!Double.isFinite(normalizedX) || !Double.isFinite(normalizedY)) return null;
+        List<VisualCell> cells = visualCellsFor(role, faction);
+        if (cells == null || cells.isEmpty()) return null;
+
+        VisualCell containing = null;
+        double containingBoundary = Double.POSITIVE_INFINITY;
+        double containingCentroid = Double.POSITIVE_INFINITY;
+
+        VisualCell nearest = null;
+        double nearestBoundary = Double.POSITIVE_INFINITY;
+        double nearestCentroid = Double.POSITIVE_INFINITY;
+
+        for (VisualCell cell : cells) {
+            if (cell == null || cell.roomId == null) continue;
+            double boundarySq = distanceToBoundarySq(cell.xs, cell.ys, normalizedX, normalizedY);
+            double centroidSq = distanceSqToCentroid(cell.xs, cell.ys, normalizedX, normalizedY);
+            boolean inside = pointInPolygon(cell.xs, cell.ys, normalizedX, normalizedY);
+            boolean onBoundary = boundarySq <= 1e-10;
+
+            if (inside || onBoundary) {
+                if (boundarySq < containingBoundary
+                        || (Math.abs(boundarySq - containingBoundary) <= 1e-12 && centroidSq < containingCentroid)
+                        || (Math.abs(boundarySq - containingBoundary) <= 1e-12
+                        && Math.abs(centroidSq - containingCentroid) <= 1e-12
+                        && compareRoomId(cell.roomId, containing == null ? null : containing.roomId) < 0)) {
+                    containing = cell;
+                    containingBoundary = boundarySq;
+                    containingCentroid = centroidSq;
+                }
+            }
+
+            if (boundarySq < nearestBoundary
+                    || (Math.abs(boundarySq - nearestBoundary) <= 1e-12 && centroidSq < nearestCentroid)
+                    || (Math.abs(boundarySq - nearestBoundary) <= 1e-12
+                    && Math.abs(centroidSq - nearestCentroid) <= 1e-12
+                    && compareRoomId(cell.roomId, nearest == null ? null : nearest.roomId) < 0)) {
+                nearest = cell;
+                nearestBoundary = boundarySq;
+                nearestCentroid = centroidSq;
+            }
+        }
+
+        if (containing != null) return containing.roomId;
+        return (nearest == null) ? null : nearest.roomId;
     }
 
     public static String displayLabel(RoomId roomId) {
@@ -338,12 +480,14 @@ public final class ShipRoomLayout {
         Profile cached = PROFILES.get(key);
         if (cached != null) return cached;
 
-        Profile built = switch (profileKey(role)) {
+        Profile template = switch (profileKey(role)) {
             case "small" -> buildSmallProfile(role, faction);
             case "carrier" -> buildCarrierProfile(role, faction);
             case "station" -> buildStationProfile(role, faction);
             default -> buildCapitalProfile(role, faction);
         };
+        Profile built = buildGeneratedProfile(role, faction, template);
+        if (built == null) built = template;
         PROFILES.put(key, built);
         return built;
     }
@@ -615,6 +759,9 @@ public final class ShipRoomLayout {
             };
         }
 
+        List<VisualCell> hullConforming = buildHullConformingVisualCells(role, faction, hull, rooms);
+        if (!hullConforming.isEmpty()) return hullConforming;
+
         return switch (profileKey(role)) {
             case "small" -> buildSmallVisualCells(hull, faction, rooms);
             case "carrier" -> buildCarrierVisualCells(hull, faction, rooms);
@@ -698,6 +845,323 @@ public final class ShipRoomLayout {
                 hull.innerY(xa, bf)
         };
         return new RoomDef(id, label, xs, ys, system, hpWeight, critical, neighbors);
+    }
+
+    private static Profile buildGeneratedProfile(ShipRole role, Faction faction, Profile template) {
+        if (template == null || template.rooms.isEmpty()) return null;
+        HullProfile hull = HullProfile.fromSilhouette(role, faction);
+        if (hull == null) return null;
+
+        List<VisualCell> visualCells = buildHullConformingVisualCells(role, faction, hull, template.rooms);
+        if (visualCells == null || visualCells.isEmpty()) return null;
+
+        EnumMap<RoomId, Area> coverageAreas = new EnumMap<>(RoomId.class);
+        for (VisualCell cell : visualCells) {
+            if (cell == null || cell.roomId == null) continue;
+            Area cellArea = polygonAreaShape(cell.xs, cell.ys);
+            if (cellArea == null || cellArea.isEmpty()) continue;
+            coverageAreas.computeIfAbsent(cell.roomId, key -> new Area()).add(cellArea);
+        }
+
+        List<RoomDef> rooms = new ArrayList<>(template.rooms.size());
+        for (RoomDef base : template.rooms) {
+            if (base == null || base.id == null) continue;
+            RoomDef generated = roomFromCoverage(base, coverageAreas.get(base.id));
+            rooms.add((generated != null) ? generated : base);
+        }
+
+        return new Profile(rooms, visualCells);
+    }
+
+    private static List<VisualCell> buildHullConformingVisualCells(ShipRole role,
+                                                                   Faction faction,
+                                                                   HullProfile hull,
+                                                                   List<RoomDef> rooms) {
+        if (hull == null) return Collections.emptyList();
+
+        int cols = switch (profileKey(role)) {
+            case "small" -> 18;
+            case "station" -> 18;
+            case "carrier" -> 24;
+            default -> 26;
+        };
+        int rows = switch (profileKey(role)) {
+            case "small" -> 12;
+            case "station" -> 18;
+            case "carrier" -> 14;
+            default -> 16;
+        };
+
+        List<VisualCell> raw = new ArrayList<>();
+        for (int row = 0; row < rows; row++) {
+            double y0 = -1.0 + 2.0 * row / (double) rows;
+            double y1 = -1.0 + 2.0 * (row + 1) / (double) rows;
+            RoomId activeRoom = null;
+            int spanStart = -1;
+
+            for (int col = 0; col <= cols; col++) {
+                RoomId roomId = null;
+                if (col < cols) {
+                    double x0 = -1.0 + 2.0 * col / (double) cols;
+                    double x1 = -1.0 + 2.0 * (col + 1) / (double) cols;
+                    double cx = (x0 + x1) * 0.5;
+                    double cy = (y0 + y1) * 0.5;
+                    if (pointInsideHull(hull, cx, cy)) {
+                        roomId = visualRoomForPoint(rooms, faction, hull, cx, cy);
+                    }
+                }
+
+                if (col == 0) {
+                    activeRoom = roomId;
+                    spanStart = (roomId == null) ? -1 : 0;
+                    continue;
+                }
+
+                if (roomId == activeRoom) continue;
+
+                if (activeRoom != null && spanStart >= 0) {
+                    double spanX0 = -1.0 + 2.0 * spanStart / (double) cols;
+                    double spanX1 = -1.0 + 2.0 * col / (double) cols;
+                    VisualCell cell = hullGridCell(hull, activeRoom, spanX0, spanX1, y0, y1);
+                    if (cell != null) raw.add(cell);
+                }
+
+                activeRoom = roomId;
+                spanStart = (roomId == null) ? -1 : col;
+            }
+        }
+
+        if (raw.isEmpty()) return Collections.emptyList();
+        return assignVisualLabels(raw, rooms);
+    }
+
+    private static boolean pointInsideHull(HullProfile hull, double x, double y) {
+        if (hull == null) return false;
+        double top = hull.innerY(x, 0.0);
+        double bottom = hull.innerY(x, 1.0);
+        return y >= top && y <= bottom;
+    }
+
+    private static RoomId visualRoomForPoint(List<RoomDef> templateRooms,
+                                             Faction faction,
+                                             HullProfile hull,
+                                             double x,
+                                             double y) {
+        double top = hull.innerY(x, 0.0);
+        double bottom = hull.innerY(x, 1.0);
+        double thickness = Math.max(1e-4, bottom - top);
+        double distTop = Math.max(0.0, y - top);
+        double distBottom = Math.max(0.0, bottom - y);
+        double edgeFrac = Math.min(distTop, distBottom) / thickness;
+        boolean topSide = distTop <= distBottom;
+
+        if (faction == Faction.TEAM_D && edgeFrac <= 0.22) {
+            if (edgeFrac <= 0.10) {
+                RoomId outer = outerDefenseRoomForSpan(x, topSide, faction);
+                if (outer != null) return outer;
+            }
+            RoomId inner = innerArmorRoomFor(outerArmorRoomForSpan(x, topSide));
+            if (inner != null) return inner;
+        } else if (edgeFrac <= 0.10) {
+            RoomId perimeter = outerDefenseRoomForSpan(x, topSide, faction);
+            if (perimeter != null) return perimeter;
+        }
+
+        RoomDef resolved = resolveFromTemplate(templateRooms, x, y);
+        if (resolved != null && resolved.id != null) return resolved.id;
+        return outerDefenseRoomForSpan(x, topSide, faction);
+    }
+
+    private static VisualCell hullGridCell(HullProfile hull,
+                                           RoomId roomId,
+                                           double x0,
+                                           double x1,
+                                           double y0,
+                                           double y1) {
+        if (hull == null || roomId == null) return null;
+        double xa = Math.max(-1.0, Math.min(1.0, Math.min(x0, x1) + 0.0015));
+        double xb = Math.max(-1.0, Math.min(1.0, Math.max(x0, x1) - 0.0015));
+        if (xb - xa <= 0.01) return null;
+
+        int samples = Math.max(4, Math.min(10, (int) Math.round((xb - xa) * 18.0)));
+        List<Double> topXs = new ArrayList<>(samples);
+        List<Double> topYs = new ArrayList<>(samples);
+        List<Double> bottomXs = new ArrayList<>(samples);
+        List<Double> bottomYs = new ArrayList<>(samples);
+
+        for (int i = 0; i < samples; i++) {
+            double t = (samples == 1) ? 0.0 : i / (double) (samples - 1);
+            double x = xa + (xb - xa) * t;
+            double top = Math.max(y0 + 0.0015, hull.innerY(x, 0.0));
+            double bottom = Math.min(y1 - 0.0015, hull.innerY(x, 1.0));
+            if (bottom <= top + 0.0015) continue;
+            topXs.add(x);
+            topYs.add(top);
+            bottomXs.add(x);
+            bottomYs.add(bottom);
+        }
+
+        int n = topXs.size();
+        if (n < 2) return null;
+
+        double[] xs = new double[n * 2];
+        double[] ys = new double[n * 2];
+        for (int i = 0; i < n; i++) {
+            xs[i] = topXs.get(i);
+            ys[i] = topYs.get(i);
+        }
+        for (int i = 0; i < n; i++) {
+            int src = n - 1 - i;
+            xs[n + i] = bottomXs.get(src);
+            ys[n + i] = bottomYs.get(src);
+        }
+
+        if (polygonArea(xs, ys) <= 0.0004) return null;
+        return new VisualCell(roomId, xs, ys, false);
+    }
+
+    private static RoomDef resolveFromTemplate(List<RoomDef> rooms, double normalizedX, double normalizedY) {
+        if (rooms == null || rooms.isEmpty()) return null;
+        RoomDef containing = null;
+        int containingCount = 0;
+        double containingBestScore = Double.POSITIVE_INFINITY;
+        double containingBestCentroid = Double.POSITIVE_INFINITY;
+
+        RoomDef nearest = null;
+        double nearestBoundary = Double.POSITIVE_INFINITY;
+        double nearestCentroid = Double.POSITIVE_INFINITY;
+
+        for (RoomDef room : rooms) {
+            if (room == null) continue;
+
+            double boundarySq = room.distanceSqToBoundary(normalizedX, normalizedY);
+            double centroidSq = room.distanceSqToCentroid(normalizedX, normalizedY);
+            boolean inside = room.contains(normalizedX, normalizedY);
+            boolean onBoundary = boundarySq <= 1e-10;
+
+            if (inside || onBoundary) {
+                containingCount++;
+                double score = inside ? 0.0 : boundarySq;
+                if (score < containingBestScore
+                        || (Math.abs(score - containingBestScore) <= 1e-12 && centroidSq < containingBestCentroid)
+                        || (Math.abs(score - containingBestScore) <= 1e-12
+                        && Math.abs(centroidSq - containingBestCentroid) <= 1e-12
+                        && compareRoomId(room.id, containing == null ? null : containing.id) < 0)) {
+                    containing = room;
+                    containingBestScore = score;
+                    containingBestCentroid = centroidSq;
+                }
+            }
+
+            if (boundarySq < nearestBoundary
+                    || (Math.abs(boundarySq - nearestBoundary) <= 1e-12 && centroidSq < nearestCentroid)
+                    || (Math.abs(boundarySq - nearestBoundary) <= 1e-12
+                    && Math.abs(centroidSq - nearestCentroid) <= 1e-12
+                    && compareRoomId(room.id, nearest == null ? null : nearest.id) < 0)) {
+                nearest = room;
+                nearestBoundary = boundarySq;
+                nearestCentroid = centroidSq;
+            }
+        }
+
+        if (containingCount > 0 && containing != null) return containing;
+        return nearest;
+    }
+
+    private static RoomDef roomFromCoverage(RoomDef base, Area area) {
+        if (base == null || area == null || area.isEmpty()) return null;
+        List<PolygonData> polygons = extractPolygons(area);
+        if (polygons.isEmpty()) return null;
+
+        PolygonData primary = polygons.get(0);
+        for (PolygonData candidate : polygons) {
+            if (candidate.area > primary.area) primary = candidate;
+        }
+
+        double[][] coverageXs = new double[polygons.size()][];
+        double[][] coverageYs = new double[polygons.size()][];
+        for (int i = 0; i < polygons.size(); i++) {
+            coverageXs[i] = polygons.get(i).xs;
+            coverageYs[i] = polygons.get(i).ys;
+        }
+
+        return new RoomDef(
+                base.id,
+                base.label,
+                primary.xs,
+                primary.ys,
+                coverageXs,
+                coverageYs,
+                base.primarySystem,
+                base.hpWeight,
+                base.critical,
+                base.neighbors
+        );
+    }
+
+    private static Area polygonAreaShape(double[] xs, double[] ys) {
+        int n = Math.min(xs.length, ys.length);
+        if (n < 3) return null;
+        Path2D.Double path = new Path2D.Double();
+        path.moveTo(xs[0], ys[0]);
+        for (int i = 1; i < n; i++) path.lineTo(xs[i], ys[i]);
+        path.closePath();
+        return new Area(path);
+    }
+
+    private static List<PolygonData> extractPolygons(Area area) {
+        if (area == null || area.isEmpty()) return Collections.emptyList();
+        List<PolygonData> out = new ArrayList<>();
+        PathIterator it = area.getPathIterator(null, 0.0015);
+        List<Double> xs = new ArrayList<>();
+        List<Double> ys = new ArrayList<>();
+        double[] coords = new double[6];
+        while (!it.isDone()) {
+            int type = it.currentSegment(coords);
+            switch (type) {
+                case PathIterator.SEG_MOVETO -> {
+                    if (!xs.isEmpty()) {
+                        PolygonData poly = polygonData(xs, ys);
+                        if (poly != null) out.add(poly);
+                        xs.clear();
+                        ys.clear();
+                    }
+                    xs.add(coords[0]);
+                    ys.add(coords[1]);
+                }
+                case PathIterator.SEG_LINETO -> {
+                    xs.add(coords[0]);
+                    ys.add(coords[1]);
+                }
+                case PathIterator.SEG_CLOSE -> {
+                    PolygonData poly = polygonData(xs, ys);
+                    if (poly != null) out.add(poly);
+                    xs = new ArrayList<>();
+                    ys = new ArrayList<>();
+                }
+                default -> {}
+            }
+            it.next();
+        }
+        if (!xs.isEmpty()) {
+            PolygonData poly = polygonData(xs, ys);
+            if (poly != null) out.add(poly);
+        }
+        return out;
+    }
+
+    private static PolygonData polygonData(List<Double> xs, List<Double> ys) {
+        int n = Math.min(xs.size(), ys.size());
+        if (n < 3) return null;
+        double[] xa = new double[n];
+        double[] ya = new double[n];
+        for (int i = 0; i < n; i++) {
+            xa[i] = xs.get(i);
+            ya[i] = ys.get(i);
+        }
+        double area = polygonArea(xa, ya);
+        if (area <= 0.0002) return null;
+        return new PolygonData(xa, ya, area);
     }
 
     private static List<VisualCell> buildSmallVisualCells(HullProfile hull, Faction faction, List<RoomDef> rooms) {
@@ -1026,6 +1490,114 @@ public final class ShipRoomLayout {
             if (intersect) inside = !inside;
         }
         return inside;
+    }
+
+    private static int compareRoomId(RoomId a, RoomId b) {
+        if (a == b) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return Integer.compare(a.ordinal(), b.ordinal());
+    }
+
+    private static double distanceSqToCentroid(double[] xs, double[] ys, double px, double py) {
+        int n = Math.min(xs.length, ys.length);
+        if (n <= 0) return Double.POSITIVE_INFINITY;
+        double cx = 0.0;
+        double cy = 0.0;
+        for (int i = 0; i < n; i++) {
+            cx += xs[i];
+            cy += ys[i];
+        }
+        cx /= n;
+        cy /= n;
+        double dx = px - cx;
+        double dy = py - cy;
+        return dx * dx + dy * dy;
+    }
+
+    private static double distanceToBoundarySq(double[] xs, double[] ys, double px, double py) {
+        int n = Math.min(xs.length, ys.length);
+        if (n < 2) return Double.POSITIVE_INFINITY;
+        double best = Double.POSITIVE_INFINITY;
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            double dsq = pointSegmentDistanceSq(px, py, xs[j], ys[j], xs[i], ys[i]);
+            if (dsq < best) best = dsq;
+        }
+        return best;
+    }
+
+    private static double pointSegmentDistanceSq(double px, double py,
+                                                 double ax, double ay,
+                                                 double bx, double by) {
+        double abx = bx - ax;
+        double aby = by - ay;
+        double apx = px - ax;
+        double apy = py - ay;
+        double ab2 = abx * abx + aby * aby;
+        if (ab2 <= 1e-12) {
+            double dx = px - ax;
+            double dy = py - ay;
+            return dx * dx + dy * dy;
+        }
+        double t = (apx * abx + apy * aby) / ab2;
+        t = Math.max(0.0, Math.min(1.0, t));
+        double cx = ax + abx * t;
+        double cy = ay + aby * t;
+        double dx = px - cx;
+        double dy = py - cy;
+        return dx * dx + dy * dy;
+    }
+
+    private static boolean segmentIntersectsAabb(double ax, double ay, double bx, double by,
+                                                 double minX, double minY, double maxX, double maxY) {
+        if (pointInsideAabb(ax, ay, minX, minY, maxX, maxY)) return true;
+        if (pointInsideAabb(bx, by, minX, minY, maxX, maxY)) return true;
+        return segmentsIntersect(ax, ay, bx, by, minX, minY, maxX, minY)
+                || segmentsIntersect(ax, ay, bx, by, maxX, minY, maxX, maxY)
+                || segmentsIntersect(ax, ay, bx, by, maxX, maxY, minX, maxY)
+                || segmentsIntersect(ax, ay, bx, by, minX, maxY, minX, minY);
+    }
+
+    private static boolean pointInsideAabb(double x, double y,
+                                           double minX, double minY,
+                                           double maxX, double maxY) {
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+
+    private static boolean segmentsIntersect(double ax, double ay, double bx, double by,
+                                             double cx, double cy, double dx, double dy) {
+        double o1 = orientation(ax, ay, bx, by, cx, cy);
+        double o2 = orientation(ax, ay, bx, by, dx, dy);
+        double o3 = orientation(cx, cy, dx, dy, ax, ay);
+        double o4 = orientation(cx, cy, dx, dy, bx, by);
+
+        if (o1 * o2 < 0.0 && o3 * o4 < 0.0) return true;
+
+        return (Math.abs(o1) <= 1e-12 && onSegment(ax, ay, bx, by, cx, cy))
+                || (Math.abs(o2) <= 1e-12 && onSegment(ax, ay, bx, by, dx, dy))
+                || (Math.abs(o3) <= 1e-12 && onSegment(cx, cy, dx, dy, ax, ay))
+                || (Math.abs(o4) <= 1e-12 && onSegment(cx, cy, dx, dy, bx, by));
+    }
+
+    private static double orientation(double ax, double ay, double bx, double by, double px, double py) {
+        return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+    }
+
+    private static boolean onSegment(double ax, double ay, double bx, double by, double px, double py) {
+        return px >= Math.min(ax, bx) - 1e-12 && px <= Math.max(ax, bx) + 1e-12
+                && py >= Math.min(ay, by) - 1e-12 && py <= Math.max(ay, by) + 1e-12;
+    }
+
+    private static final class PolygonData {
+        final double[] xs;
+        final double[] ys;
+        final double area;
+
+        PolygonData(double[] xs, double[] ys, double area) {
+            this.xs = xs;
+            this.ys = ys;
+            this.area = area;
+        }
     }
 
     private static final class HullProfile {

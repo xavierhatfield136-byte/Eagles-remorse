@@ -113,7 +113,7 @@ public final class RoomHitReplayHarness {
         for (ShipRoomLayout.RoomDef room : rooms) {
             if (room == null || room.id == null) continue;
             for (int sample = 0; sample < 2 && out.size() < impacts; sample++) {
-                double[] pt = sampleInteriorPoint(room, seed + sample * 131L);
+                double[] pt = sampleInteriorPoint(role, room, seed + sample * 131L);
                 if (pt == null) continue;
                 out.add(new ImpactPoint(pt[0], pt[1], room.id, false));
             }
@@ -157,7 +157,7 @@ public final class RoomHitReplayHarness {
     private static List<ShipRoomLayout.RoomId> replay(ShipRole role, List<ImpactPoint> script) {
         List<ShipRoomLayout.RoomId> out = new ArrayList<>(script.size());
         for (ImpactPoint p : script) {
-            ShipRoomLayout.RoomDef resolved = RoomHitResolver.resolve(role, p.x, p.y);
+            ShipRoomLayout.RoomDef resolved = ShipRoomLayout.roomForHit(role, p.x, p.y);
             out.add((resolved == null) ? null : resolved.id);
         }
         return out;
@@ -166,10 +166,10 @@ public final class RoomHitReplayHarness {
     private static boolean verifyBoundaryDeterminism(ShipRole role, List<ImpactPoint> script) {
         for (ImpactPoint p : script) {
             if (!p.boundary) continue;
-            ShipRoomLayout.RoomDef baseline = RoomHitResolver.resolve(role, p.x, p.y);
+            ShipRoomLayout.RoomDef baseline = ShipRoomLayout.roomForHit(role, p.x, p.y);
             ShipRoomLayout.RoomId expected = (baseline == null) ? null : baseline.id;
             for (int i = 0; i < 12; i++) {
-                ShipRoomLayout.RoomDef rerun = RoomHitResolver.resolve(role, p.x, p.y);
+                ShipRoomLayout.RoomDef rerun = ShipRoomLayout.roomForHit(role, p.x, p.y);
                 ShipRoomLayout.RoomId actual = (rerun == null) ? null : rerun.id;
                 if (actual != expected) return false;
             }
@@ -177,9 +177,12 @@ public final class RoomHitReplayHarness {
         return true;
     }
 
-    private static double[] sampleInteriorPoint(ShipRoomLayout.RoomDef room, long seed) {
-        if (room == null || room.xs == null || room.ys == null) return null;
-        int n = Math.min(room.xs.length, room.ys.length);
+    private static double[] sampleInteriorPoint(ShipRole role, ShipRoomLayout.RoomDef room, long seed) {
+        if (room == null) return null;
+        double[] xs = room.xs;
+        double[] ys = room.ys;
+        if (xs == null || ys == null) return null;
+        int n = Math.min(xs.length, ys.length);
         if (n < 3) return null;
 
         double minX = Double.POSITIVE_INFINITY;
@@ -189,8 +192,8 @@ public final class RoomHitReplayHarness {
         double cx = 0.0;
         double cy = 0.0;
         for (int i = 0; i < n; i++) {
-            double x = room.xs[i];
-            double y = room.ys[i];
+            double x = xs[i];
+            double y = ys[i];
             cx += x;
             cy += y;
             minX = Math.min(minX, x);
@@ -200,15 +203,36 @@ public final class RoomHitReplayHarness {
         }
         cx /= n;
         cy /= n;
-        if (room.contains(cx, cy)) return new double[]{cx, cy};
+        if (contains(xs, ys, cx, cy) && resolvesTo(role, room.id, cx, cy)) return new double[]{cx, cy};
 
         Random rng = new Random(seed + room.id.ordinal() * 67_541L);
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 160; i++) {
             double x = minX + rng.nextDouble() * Math.max(1e-9, maxX - minX);
             double y = minY + rng.nextDouble() * Math.max(1e-9, maxY - minY);
-            if (room.contains(x, y)) return new double[]{x, y};
+            if (contains(xs, ys, x, y) && resolvesTo(role, room.id, x, y)) return new double[]{x, y};
         }
         return null;
+    }
+
+    private static boolean resolvesTo(ShipRole role, ShipRoomLayout.RoomId expectedRoom, double x, double y) {
+        ShipRoomLayout.RoomDef resolved = ShipRoomLayout.roomForHit(role, x, y);
+        return resolved != null && resolved.id == expectedRoom;
+    }
+
+    private static boolean contains(double[] xs, double[] ys, double px, double py) {
+        int n = Math.min(xs.length, ys.length);
+        if (n < 3) return false;
+        boolean inside = false;
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            double xi = xs[i];
+            double yi = ys[i];
+            double xj = xs[j];
+            double yj = ys[j];
+            boolean intersect = ((yi > py) != (yj > py))
+                    && (px < (xj - xi) * (py - yi) / ((yj - yi) + 1e-12) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
     }
 
     private static String passFail(boolean ok) {

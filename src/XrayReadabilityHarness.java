@@ -364,36 +364,35 @@ public final class XrayReadabilityHarness {
         g2.dispose();
 
         List<LabelRect> labelRects = new ArrayList<>();
-        List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(player.role);
+        List<ShipRoomLayout.VisualCell> cells = ShipRoomLayout.visualCellsFor(player.role, player.faction);
         int minArea = Integer.MAX_VALUE;
         int maxArea = 0;
-        int roomIndex = 0;
 
-        for (ShipRoomLayout.RoomDef room : defs) {
-            if (room == null || room.id == null) continue;
-            Polygon p = (Polygon) roomPoly.invoke(null, mapRect.x, mapRect.y, mapRect.width, mapRect.height, room.xs, room.ys);
+        for (ShipRoomLayout.VisualCell cell : cells) {
+            if (cell == null || cell.roomId == null || !cell.labelAnchor) continue;
+            Polygon p = (Polygon) roomPoly.invoke(null, mapRect.x, mapRect.y, mapRect.width, mapRect.height, cell.xs, cell.ys);
             if (p == null || p.npoints < 3) continue;
             Rectangle b = p.getBounds();
             minArea = Math.min(minArea, Math.max(0, b.width * b.height));
             maxArea = Math.max(maxArea, Math.max(0, b.width * b.height));
             int cx = (int) Math.round(b.getCenterX());
             int cy = (int) Math.round(b.getCenterY());
+            int roomIndex = cell.roomId.ordinal();
 
-            String sym = symbolFor(room.id);
+            String sym = symbolFor(cell.roomId);
             int sw = symFm.stringWidth(sym);
             int sh = symFm.getAscent();
             int sx = cx - sw / 2 - 4;
             int sy = cy - 14 - sh;
             labelRects.add(new LabelRect(roomIndex, new Rectangle(sx, sy, sw + 8, sh + 5)));
 
-            int pctVal = MathUtil.clamp((int) Math.round(player.roomHealthFraction(room.id) * 100.0), 0, 100);
+            int pctVal = MathUtil.clamp((int) Math.round(player.roomHealthFraction(cell.roomId) * 100.0), 0, 100);
             String pct = pctVal + "%";
             int pw = pctFm.stringWidth(pct);
             int ph = pctFm.getAscent();
             int px = cx - pw / 2;
             int py = cy + 12 - ph;
             labelRects.add(new LabelRect(roomIndex, new Rectangle(px, py, pw, ph + 2)));
-            roomIndex++;
         }
 
         int overlapPairs = 0;

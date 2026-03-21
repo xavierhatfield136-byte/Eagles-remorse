@@ -84,6 +84,7 @@ public final class GameSimulationRuntime {
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
+            ctx.entityQuery.rebuild(ctx);
             updatePlayerRespawn(dt);
             updateBattlefieldWarpCharges(dt);
             if (ctx.player != null) {
@@ -97,6 +98,7 @@ public final class GameSimulationRuntime {
         }
 
         PhysicsSystem.update(ctx, dt);
+        ctx.entityQuery.rebuild(ctx);
         updatePlayerRespawn(dt);
         updateBattlefieldWarpCharges(dt);
         AISystem.update(ctx, dt);

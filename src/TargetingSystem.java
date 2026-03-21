@@ -79,8 +79,10 @@ public final class TargetingSystem {
 
         Ship best = null;
         double bestD2 = Double.MAX_VALUE;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, 2200.0, nearby);
 
-        for (Ship s : ctx.ships) {
+        for (Ship s : nearby) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (isCiwsOnlyTarget(s)) continue;
@@ -104,7 +106,10 @@ public final class TargetingSystem {
         if (ctx == null) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
-        for (Ship s : ctx.ships) {
+        Faction perspective = (observer == null) ? ((ctx.player == null) ? null : ctx.player.faction) : observer.faction;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(perspective, x, y, maxDist, nearby);
+        for (Ship s : nearby) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
@@ -123,7 +128,10 @@ public final class TargetingSystem {
         if (ctx == null) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
-        for (Ship s : ctx.ships) {
+        Faction perspective = (observer == null) ? ((ctx.player == null) ? null : ctx.player.faction) : observer.faction;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(perspective, x, y, maxDist, nearby);
+        for (Ship s : nearby) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;

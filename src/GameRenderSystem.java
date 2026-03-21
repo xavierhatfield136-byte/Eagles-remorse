@@ -12,6 +12,11 @@ public final class GameRenderSystem {
         Renderer.drawSpaceBackground(g2, ctx.camX, ctx.camY, viewportW, viewportH, seed);
         drawModifierWorldTint(ctx, g2, viewportW, viewportH);
         double zoom = CameraSystem.normalizedZoom(ctx);
+        double cullPad = 220.0;
+        double viewMinX = ctx.camX - cullPad;
+        double viewMinY = ctx.camY - cullPad;
+        double viewMaxX = ctx.camX + CameraSystem.worldViewWidth(ctx, viewportW) + cullPad;
+        double viewMaxY = ctx.camY + CameraSystem.worldViewHeight(ctx, viewportH) + cullPad;
 
         // World space
         Graphics2D worldG = (Graphics2D) g2.create();
@@ -25,22 +30,27 @@ public final class GameRenderSystem {
             updateDamageVfx(ctx);
         }
 
-        Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player);
+        ctx.perfDrawnAsteroids = Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
-            Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids);
+            Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
-        Renderer.drawSalvage(worldG, ctx.salvage);
-        drawTransportSupportAuras(ctx, worldG);
-        Renderer.drawShips(worldG, ctx.ships);
-        Renderer.drawProjectiles(worldG, ctx.projectiles);
+        ctx.perfDrawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perfDrawnShips = Renderer.drawShips(worldG, ctx.ships, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perfDrawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
         Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-        Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player);
+        Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
 
-        try { VFX.drawAll(worldG); } catch (Throwable ignored) {}
+        ctx.perfTotalVfx = VFX.activeCount();
+        try { ctx.perfDrawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perfDrawnVfx = 0; }
 
+        ctx.perfTotalExplosions = Explosion.active.size();
+        ctx.perfDrawnExplosions = 0;
         try {
             for (Explosion e : Explosion.active) {
                 if (e == null) continue;
+                if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
+                ctx.perfDrawnExplosions++;
                 if (e.kind == Explosion.Kind.SHIELD_HIT) {
                     drawShieldImpactExplosion(worldG, e);
                 } else {
@@ -49,8 +59,9 @@ public final class GameRenderSystem {
             }
         } catch (Throwable ignored) {}
 
-        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets);
-        drawCampaignMarkers(ctx, worldG);
+        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets,
+                viewMinX, viewMinY, viewMaxX, viewMaxY);
+        drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         TutorialSystem.drawWorldMarkers(ctx, worldG);
         worldG.dispose();
 
@@ -296,11 +307,13 @@ if (DevTools.isDebugOverlay()) {
         int ty = y + (h + fm.getAscent() - fm.getDescent()) / 2;
         g2.drawString(text, tx, ty);
     }
-    private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2) {
+    private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2,
+                                            double minX, double minY, double maxX, double maxY) {
         if (!CampaignSystem.hasCapturePoint(ctx)) return;
         double x = CampaignSystem.captureX(ctx);
         double y = CampaignSystem.captureY(ctx);
         double r = CampaignSystem.captureRadius(ctx);
+        if (!isCircleVisible(x, y, r + 18.0, minX, minY, maxX, maxY)) return;
 
         int ix = (int) Math.round(x);
         int iy = (int) Math.round(y);
@@ -314,7 +327,8 @@ if (DevTools.isDebugOverlay()) {
         g2.drawLine(ix, iy - 12, ix, iy + 12);
     }
 
-    private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2) {
+    private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2,
+                                                  double minX, double minY, double maxX, double maxY) {
         if (ctx == null || g2 == null || ctx.ships == null) return;
         for (Ship s : ctx.ships) {
             if (s == null) continue;
@@ -322,6 +336,7 @@ if (DevTools.isDebugOverlay()) {
             if (s.role != ShipRole.TRANSPORT) continue;
 
             int r = (int) Math.round(Math.max(220.0, s.repairRange));
+            if (!isCircleVisible(s.x, s.y, r + 6.0, minX, minY, maxX, maxY)) continue;
             int x = (int) Math.round(s.x);
             int y = (int) Math.round(s.y);
 
@@ -469,6 +484,18 @@ if (DevTools.isDebugOverlay()) {
             g2.setColor(new Color(78, 78, 82, smokeA));
             g2.drawOval((int) Math.round(e.x - smokeR), (int) Math.round(e.y - smokeR), smokeR * 2, smokeR * 2);
         }
+    }
+
+    private static boolean isExplosionVisible(Explosion e, double minX, double minY, double maxX, double maxY) {
+        if (e == null) return false;
+        double radius = (e.kind == Explosion.Kind.SHIELD_HIT) ? 24.0 : 72.0;
+        return isCircleVisible(e.x, e.y, radius, minX, minY, maxX, maxY);
+    }
+
+    private static boolean isCircleVisible(double x, double y, double radius,
+                                           double minX, double minY, double maxX, double maxY) {
+        double r = Math.max(0.0, radius);
+        return x + r >= minX && x - r <= maxX && y + r >= minY && y - r <= maxY;
     }
 
     private static void updateDamageVfx(GameContext ctx) {

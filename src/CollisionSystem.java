@@ -16,6 +16,7 @@ public class CollisionSystem {
     /** Projectiles hit ships of the opposing faction. */
     public static void handleProjectilesVsShips(GameContext ctx, List<Projectile> projectiles, List<Ship> ships) {
         if (projectiles == null || ships == null) return;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             // Team C point-defense lasers remain projectile-only; CIWS pellets can also hit small craft.
@@ -27,10 +28,17 @@ public class CollisionSystem {
             boolean superweaponShot = p instanceof SuperweaponShot;
             boolean disruptorSlug = p instanceof DisruptorSlug;
             VFX.ImpactStyle impactStyle = impactStyleFor(p);
-            for (Ship s : ships) {
+            Ship shooter = resolveSourceShip(ctx, ships, p);
+            Iterable<Ship> candidates = ships;
+            if (ctx != null) {
+                double queryRadius = p.radius + ctx.entityQuery.maxShipBroadPhaseRadius();
+                ctx.entityQuery.collectAliveShipsNear(p.x, p.y, queryRadius, nearbyShips);
+                candidates = nearbyShips;
+            }
+            for (Ship s : candidates) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
-                if (!canProjectileDamageShip(ships, p, s)) continue;
+                if (!canProjectileDamageShip(shooter, p, s)) continue;
 
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
@@ -173,6 +181,7 @@ public class CollisionSystem {
      */
     public static void handleProjectilesVsProjectiles(GameContext ctx, List<Projectile> projectiles) {
         if (projectiles == null || projectiles.isEmpty()) return;
+        List<Missile> nearbyMissiles = new java.util.ArrayList<>();
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
@@ -205,7 +214,12 @@ public class CollisionSystem {
             }
             if (!(p instanceof CIWSPellet pellet)) continue;
 
-            for (Projectile q : projectiles) {
+            Iterable<? extends Projectile> candidates = projectiles;
+            if (ctx != null) {
+                ctx.entityQuery.collectMissilesNear(pellet.x, pellet.y, 28.0, nearbyMissiles);
+                candidates = nearbyMissiles;
+            }
+            for (Projectile q : candidates) {
                 if (!q.alive) continue;
                 if (!(q instanceof Missile m)) continue;
                 if (pellet.faction.isFriendlyTo(m.faction)) continue;
@@ -326,13 +340,20 @@ public class CollisionSystem {
         if (m == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(20.0, m.blastRadius);
         double baseSplash = Math.max(0.0, m.damage * m.splashDamageMul);
+        Ship shooter = resolveSourceShip(ctx, ships, m);
 
         if (baseSplash > 1e-6) {
-            for (Ship s : ships) {
+            Iterable<Ship> candidates = ships;
+            List<Ship> nearbyShips = new java.util.ArrayList<>();
+            if (ctx != null) {
+                ctx.entityQuery.collectAliveShipsNear(m.x, m.y, rr + ctx.entityQuery.maxShipBroadPhaseRadius(), nearbyShips);
+                candidates = nearbyShips;
+            }
+            for (Ship s : candidates) {
                 if (s == null || !s.alive) continue;
                 if (s == directHit) continue;
                 if (s.faction.isFriendlyTo(m.faction)) continue;
-                if (!canProjectileDamageShip(ships, m, s)) continue;
+                if (!canProjectileDamageShip(shooter, m, s)) continue;
 
                 double d = Math.hypot(s.x - m.x, s.y - m.y);
                 double maxD = rr + HullGeometry.broadPhaseRadius(s);
@@ -358,11 +379,18 @@ public class CollisionSystem {
         if (slug == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(64.0, slug.blastRadius);
         boolean affected = false;
+        Ship shooter = resolveSourceShip(ctx, ships, slug);
 
-        for (Ship s : ships) {
+        Iterable<Ship> candidates = ships;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        if (ctx != null) {
+            ctx.entityQuery.collectAliveShipsNear(x, y, rr + ctx.entityQuery.maxShipBroadPhaseRadius(), nearbyShips);
+            candidates = nearbyShips;
+        }
+        for (Ship s : candidates) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.id == slug.sourceShipId) continue;
-            if (!canProjectileDamageShip(ships, slug, s)) continue;
+            if (!canProjectileDamageShip(shooter, slug, s)) continue;
 
             double maxD = rr + HullGeometry.broadPhaseRadius(s);
             if (GameMath.dist2(s.x, s.y, x, y) > maxD * maxD) continue;
@@ -415,14 +443,24 @@ public class CollisionSystem {
         double ex = beam.endX();
         double ey = beam.endY();
         double halfWidth = Math.max(1.0, beam.width * 0.5);
+        Ship shooter = resolveSourceShip(ctx, ships, beam);
 
         Ship best = null;
         double bestT = Double.POSITIVE_INFINITY;
+        Iterable<Ship> candidates = ships;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        if (ctx != null) {
+            double mx = (sx + ex) * 0.5;
+            double my = (sy + ey) * 0.5;
+            double queryRadius = Math.hypot(ex - sx, ey - sy) * 0.5 + halfWidth + ctx.entityQuery.maxShipBroadPhaseRadius();
+            ctx.entityQuery.collectAliveShipsNear(mx, my, queryRadius, nearbyShips);
+            candidates = nearbyShips;
+        }
 
-        for (Ship s : ships) {
+        for (Ship s : candidates) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.isFriendlyTo(beam.faction)) continue;
-            if (!canProjectileDamageShip(ships, beam, s)) continue;
+            if (!canProjectileDamageShip(shooter, beam, s)) continue;
 
             double shipBroad = HullGeometry.broadPhaseRadius(s) + halfWidth;
             if (segmentPointDistanceSq(sx, sy, ex, ey, s.x, s.y) > shipBroad * shipBroad) continue;
@@ -523,14 +561,13 @@ public class CollisionSystem {
         return projectile.sourceShipId == ctx.player.id;
     }
 
-    private static boolean canProjectileDamageShip(List<Ship> ships, Projectile projectile, Ship target) {
+    private static boolean canProjectileDamageShip(Ship shooter, Projectile projectile, Ship target) {
         if (projectile == null || target == null) return false;
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
             return target.isSmallCraft();
         }
         if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
 
-        Ship shooter = findShipById(ships, projectile.sourceShipId);
         if (shooter == null || shooter.role == null) return true;
         if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
         return true;
@@ -580,11 +617,15 @@ public class CollisionSystem {
         return HullGeometry.sampleImpact(ship, wx, wy, true);
     }
 
-    private static Ship findShipById(List<Ship> ships, int id) {
-        if (ships == null || id <= 0) return null;
+    private static Ship resolveSourceShip(GameContext ctx, List<Ship> ships, Projectile projectile) {
+        if (projectile == null) return null;
+        if (ctx != null) {
+            Ship shooter = ctx.entityQuery.findShipById(projectile.sourceShipId);
+            if (shooter != null) return shooter;
+        }
+        if (ships == null || projectile.sourceShipId <= 0) return null;
         for (Ship s : ships) {
-            if (s == null) continue;
-            if (s.id == id) return s;
+            if (s != null && s.id == projectile.sourceShipId) return s;
         }
         return null;
     }

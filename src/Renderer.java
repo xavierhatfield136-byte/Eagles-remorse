@@ -416,29 +416,48 @@ public class Renderer {
         drawTiledParallaxLayer(g2, bgDust, camX, camY, viewW, viewH, 0.24, 0.62f);
     }
 
-    public static void drawShips(Graphics2D g2, List<Ship> ships) {
+    public static int drawShips(Graphics2D g2, List<Ship> ships) {
+        return drawShips(g2, ships, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static int drawShips(Graphics2D g2, List<Ship> ships,
+                                double minX, double minY, double maxX, double maxY) {
+        if (ships == null) return 0;
+        int drawn = 0;
         for (Ship s : ships) {
-            if (s.alive) drawShip(g2, s);
+            if (s.alive && isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) {
+                drawShip(g2, s);
+                drawn++;
+            }
         }
+        return drawn;
     }
 
     // ------------------------------
     // Asteroids (obstacles/resources)
     // ------------------------------
 
-    public static void drawAsteroids(Graphics2D g2, List<Asteroid> asteroids) {
-        drawAsteroids(g2, asteroids, null);
+    public static int drawAsteroids(Graphics2D g2, List<Asteroid> asteroids) {
+        return drawAsteroids(g2, asteroids, null);
     }
 
-    public static void drawAsteroids(Graphics2D g2, List<Asteroid> asteroids, Player player) {
-        if (asteroids == null) return;
+    public static int drawAsteroids(Graphics2D g2, List<Asteroid> asteroids, Player player) {
+        return drawAsteroids(g2, asteroids, player, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static int drawAsteroids(Graphics2D g2, List<Asteroid> asteroids, Player player,
+                                    double minX, double minY, double maxX, double maxY) {
+        if (asteroids == null) return 0;
         Asteroid promptAsteroid = findNearbyAsteroidPromptTarget(asteroids, player);
+        int drawn = 0;
         for (Asteroid a : asteroids) {
             if (a == null) continue;
+            if (!isWorldCircleVisible(a.x, a.y, a.collisionRadius() + 24.0, minX, minY, maxX, maxY)) continue;
 
             BufferedImage skin = EnvironmentSkinLibrary.pickAsteroidSprite(a);
             if (skin != null) {
                 drawAsteroidSprite(g2, a, skin);
+                drawn++;
                 continue;
             }
 
@@ -482,17 +501,28 @@ public class Renderer {
                 g2.setColor(new Color(255, 255, 255, 18));
                 g2.drawOval(x - rr2, y - rr2, rr2 * 2, rr2 * 2);
             }
+            drawn++;
         }
         drawAsteroidMinePrompt(g2, promptAsteroid);
+        return drawn;
     }
 
     public static void drawAsteroidDangerHeatmap(Graphics2D g2, List<Asteroid> asteroids) {
+        drawAsteroidDangerHeatmap(g2, asteroids,
+                Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static void drawAsteroidDangerHeatmap(Graphics2D g2, List<Asteroid> asteroids,
+                                                 double minX, double minY, double maxX, double maxY) {
         if (g2 == null || asteroids == null || asteroids.isEmpty()) return;
 
         Stroke old = g2.getStroke();
         g2.setStroke(new BasicStroke(1.1f));
         for (Asteroid a : asteroids) {
             if (a == null) continue;
+            double maxDangerRadius = a.collisionRadius()
+                    + BalanceConfig.ASTEROID_AVOID_CLEARANCE_BASE * BalanceConfig.asteroidAvoidanceClearanceScale(ShipRole.BATTLESHIP);
+            if (!isWorldCircleVisible(a.x, a.y, maxDangerRadius + 8.0, minX, minY, maxX, maxY)) continue;
             int x = (int) Math.round(a.x);
             int y = (int) Math.round(a.y);
 
@@ -652,10 +682,17 @@ public class Renderer {
     // Salvage pickups (random events)
     // ------------------------------
 
-    public static void drawSalvage(Graphics2D g2, List<Salvage> salvage) {
-        if (salvage == null) return;
+    public static int drawSalvage(Graphics2D g2, List<Salvage> salvage) {
+        return drawSalvage(g2, salvage, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static int drawSalvage(Graphics2D g2, List<Salvage> salvage,
+                                  double minX, double minY, double maxX, double maxY) {
+        if (salvage == null) return 0;
+        int drawn = 0;
         for (Salvage s : salvage) {
             if (s == null || !s.alive()) continue;
+            if (!isWorldCircleVisible(s.x, s.y, s.radius + 18.0, minX, minY, maxX, maxY)) continue;
 
             int x = (int) Math.round(s.x);
             int y = (int) Math.round(s.y);
@@ -684,13 +721,23 @@ public class Renderer {
                 g2.setColor(new Color(255, 220, 120, 60));
                 g2.drawOval(x - r - 6, y - r - 6, (r + 6) * 2, (r + 6) * 2);
             }
+            drawn++;
         }
+        return drawn;
     }
 
 
-    public static void drawProjectiles(Graphics2D g2, List<Projectile> projectiles) {
+    public static int drawProjectiles(Graphics2D g2, List<Projectile> projectiles) {
+        return drawProjectiles(g2, projectiles, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static int drawProjectiles(Graphics2D g2, List<Projectile> projectiles,
+                                      double minX, double minY, double maxX, double maxY) {
+        if (projectiles == null) return 0;
+        int drawn = 0;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
+            if (!isProjectileVisible(p, minX, minY, maxX, maxY)) continue;
 
             if (p instanceof CIWSPellet pellet) {
                 int r = (int) Math.round(Math.max(1.0, pellet.radius));
@@ -725,20 +772,24 @@ public class Renderer {
 
                 g2.setColor(withAlpha(core, 228));
                 g2.fillOval(x - r, y - r, r * 2, r * 2);
+                drawn++;
                 continue;
             }
 
             if (p instanceof PhaserBeam beam) {
                 drawPhaserBeam(g2, beam);
+                drawn++;
                 continue;
             }
             if (p instanceof PointDefenseLaser laser) {
                 drawPointDefenseLaser(g2, laser);
+                drawn++;
                 continue;
             }
 
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
+                drawn++;
             } else if (p instanceof SuperweaponShot ws) {
                 int x = (int) Math.round(ws.x);
                 int y = (int) Math.round(ws.y);
@@ -780,6 +831,7 @@ public class Renderer {
                 g2.setColor(withAlpha(mixColor(beam, Color.WHITE, 0.26), (int) Math.round(150 + pulse * 30)));
                 g2.fillOval(x - glow, y - glow, glow * 2, glow * 2);
                 g2.setStroke(old);
+                drawn++;
             } else if (p instanceof EnergyBolt eb) {
                 // Yamato 2199-style energy bolts (standard + BEAM_BOLT variant)
                 int x = (int) Math.round(eb.x);
@@ -840,6 +892,7 @@ public class Renderer {
                 }
 
                 g2.setStroke(old);
+                drawn++;
             } else {
                 // Bullet / generic projectile with a small motion trail
                 int r = (int) Math.round(Math.max(1.0, p.radius));
@@ -875,8 +928,10 @@ public class Renderer {
 
                 g2.setColor(withAlpha(core, 224));
                 g2.fillOval(x - r, y - r, r * 2, r * 2);
+                drawn++;
             }
         }
+        return drawn;
     }
 
     private static void drawPhaserBeam(Graphics2D g2, PhaserBeam beam) {
@@ -991,12 +1046,25 @@ public class Renderer {
     }
 
     public static void drawNpcSuperweaponAimCues(Graphics2D g2, List<Ship> ships, Ship player) {
+        drawNpcSuperweaponAimCues(g2, ships, player,
+                Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static void drawNpcSuperweaponAimCues(Graphics2D g2, List<Ship> ships, Ship player,
+                                                 double minX, double minY, double maxX, double maxY) {
         if (g2 == null || ships == null || ships.isEmpty()) return;
         for (Ship ship : ships) {
             if (ship == null || ship == player) continue;
             if (!ship.alive || ship.dying || ship.hp <= 0) continue;
             if (ship.role != ShipRole.SUPERSHIP) continue;
             if (!ship.hasSuperweapon || !ship.isSuperweaponCharging()) continue;
+            double aim = ship.getSuperweaponAimAngle();
+            double len = npcSuperweaponCueLength(ship);
+            double sx = ship.x + Math.cos(aim) * (ship.radius + 10.0);
+            double sy = ship.y + Math.sin(aim) * (ship.radius + 10.0);
+            double ex = sx + Math.cos(aim) * len;
+            double ey = sy + Math.sin(aim) * len;
+            if (!isWorldSegmentVisible(sx, sy, ex, ey, 24.0, minX, minY, maxX, maxY)) continue;
             drawNpcSuperweaponAimCue(g2, ship);
         }
     }
@@ -1896,7 +1964,16 @@ public class Renderer {
     public static void drawWorldMarkers(Graphics2D g2, List<Ship> ships, Ship lockedTarget,
                                         java.util.Map<Faction, Ship> commandShips,
                                         java.util.Map<Faction, Ship> sharedTargets) {
-        if (lockedTarget != null && lockedTarget.alive) {
+        drawWorldMarkers(g2, ships, lockedTarget, commandShips, sharedTargets,
+                Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    public static void drawWorldMarkers(Graphics2D g2, List<Ship> ships, Ship lockedTarget,
+                                        java.util.Map<Faction, Ship> commandShips,
+                                        java.util.Map<Faction, Ship> sharedTargets,
+                                        double minX, double minY, double maxX, double maxY) {
+        if (lockedTarget != null && lockedTarget.alive
+                && isWorldCircleVisible(lockedTarget.x, lockedTarget.y, lockedTarget.radius + 22.0, minX, minY, maxX, maxY)) {
             int x = (int) Math.round(lockedTarget.x);
             int y = (int) Math.round(lockedTarget.y);
             int rr = (int) Math.round(lockedTarget.radius + 18);
@@ -1912,6 +1989,7 @@ public class Renderer {
             for (java.util.Map.Entry<Faction, Ship> e : commandShips.entrySet()) {
                 Ship cmd = (e == null) ? null : e.getValue();
                 if (cmd == null || !cmd.alive || cmd.dying || cmd.hp <= 0) continue;
+                if (!isWorldCircleVisible(cmd.x, cmd.y, cmd.radius + 46.0, minX, minY, maxX, maxY)) continue;
                 drawCommandShipBeacon(g2, cmd, e.getKey(), (sharedTargets == null) ? null : sharedTargets.get(e.getKey()));
             }
         }
@@ -1921,11 +1999,13 @@ public class Renderer {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (!s.isWarpCharging()) continue;
             if (!Double.isFinite(s.warpExitX()) || !Double.isFinite(s.warpExitY())) continue;
+            if (!isWorldCircleVisible(s.warpExitX(), s.warpExitY(), Math.max(56.0, s.radius * 1.8), minX, minY, maxX, maxY)) continue;
             drawWarpArrivalTell(g2, s);
         }
         for (Ship s : ships) {
             if (!s.alive) continue;
             if (s.role != ShipRole.BASE) continue;
+            if (!isWorldCircleVisible(s.x, s.y, s.radius + 36.0, minX, minY, maxX, maxY)) continue;
 
             int x = (int) Math.round(s.x);
             int y = (int) Math.round(s.y - s.radius - 26);
@@ -2852,10 +2932,10 @@ public class Renderer {
         if (layout == null) return null;
         Rectangle mapRect = xrayMapRect(layout.panelX, layout.playerY, layout.panelW, layout.playerH);
         if (!mapRect.contains(mouseX, mouseY)) return null;
-        for (ShipRoomLayout.RoomDef room : ShipRoomLayout.profileFor(ctx.player.role, ctx.player.faction)) {
-            if (room == null || room.id == null) continue;
-            Polygon p = xrayRoomPolygon(mapRect.x, mapRect.y, mapRect.width, mapRect.height, room.xs, room.ys);
-            if (p != null && p.contains(mouseX, mouseY)) return room.id;
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ctx.player.role, ctx.player.faction)) {
+            if (cell == null || cell.roomId == null) continue;
+            Polygon p = xrayRoomPolygon(mapRect.x, mapRect.y, mapRect.width, mapRect.height, cell.xs, cell.ys);
+            if (p != null && p.contains(mouseX, mouseY)) return cell.roomId;
         }
         return null;
     }
@@ -4318,7 +4398,58 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Font oldFont = g.getFont();
             g.setFont(new Font("Consolas", Font.PLAIN, 9));
 
-            if (showPolygons || showHazards) {
+        if (showPolygons || showHazards) {
+            EnumMap<ShipRoomLayout.RoomId, Ship.RoomStatus> statusById = new EnumMap<>(ShipRoomLayout.RoomId.class);
+            for (Ship.RoomStatus rs : rooms) {
+                if (rs != null && rs.roomId != null) statusById.put(rs.roomId, rs);
+            }
+
+            boolean drewVisualCells = false;
+            for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ship.role, ship.faction)) {
+                if (cell == null || cell.roomId == null) continue;
+                Ship.RoomStatus rs = statusById.get(cell.roomId);
+                if (rs == null) continue;
+
+                Polygon p = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+                if (p == null || p.npoints < 3) continue;
+                drewVisualCells = true;
+
+                double frac = (rs.hpMax <= 1e-9) ? 1.0 : Math.max(0.0, Math.min(1.0, rs.hp / rs.hpMax));
+                int alpha = 28 + (int) Math.round((1.0 - frac) * 135.0);
+                boolean fire = rs.fireIntensity > 0.06;
+
+                if (showPolygons) {
+                    Color fill = (showHazards && fire)
+                            ? new Color(255, 120, 50, Math.min(180, alpha + 35))
+                            : new Color(255, 70, 70, Math.min(170, alpha));
+                    g.setColor(fill);
+                    g.fillPolygon(p);
+                    g.setColor(stroke);
+                    g.drawPolygon(p);
+
+                    if (cell.labelAnchor) {
+                        Rectangle b = p.getBounds();
+                        if (b.width >= 18 && b.height >= 12) {
+                            int tx = (int) Math.round(b.getCenterX()) - 14;
+                            int ty = (int) Math.round(b.getCenterY());
+                            g.setColor(new Color(255, 255, 255, 210));
+                            g.drawString((int) Math.round(frac * 100.0) + "%", tx, ty);
+                        }
+                    }
+                }
+
+                if (showHazards && fire && cell.labelAnchor) {
+                    Point c = roomDebugCentroid(p);
+                    int hzR = Math.max(3, (int) Math.round(2.5 + rs.fireIntensity * 2.3));
+                    g.setColor(new Color(255, 165, 70, 205));
+                    g.drawOval(c.x - hzR, c.y - hzR, hzR * 2, hzR * 2);
+                    g.setColor(new Color(255, 220, 150, 225));
+                    g.drawLine(c.x - hzR, c.y, c.x + hzR, c.y);
+                    g.drawLine(c.x, c.y - hzR, c.x, c.y + hzR);
+                }
+            }
+
+            if (!drewVisualCells) {
                 for (Ship.RoomStatus rs : rooms) {
                     Polygon p = roomPolygonShipLocal(ship.radius, rs.normalizedXs, rs.normalizedYs);
                     if (p == null || p.npoints < 3) continue;
@@ -4354,6 +4485,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     }
                 }
             }
+        }
 
             if (showHpBars) {
                 drawRoomDebugHpBars(g, ship, rooms, showHazards);
@@ -6922,6 +7054,49 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color withAlpha(Color c, int alpha) {
         if (c == null) c = Color.WHITE;
         return new Color(c.getRed(), c.getGreen(), c.getBlue(), MathUtil.clamp(alpha, 0, 255));
+    }
+
+    private static boolean isProjectileVisible(Projectile projectile, double minX, double minY, double maxX, double maxY) {
+        if (projectile == null) return false;
+        if (projectile instanceof PhaserBeam beam) {
+            return isWorldSegmentVisible(beam.startX(), beam.startY(), beam.endX(), beam.endY(),
+                    Math.max(beam.width, 16.0), minX, minY, maxX, maxY);
+        }
+        if (projectile instanceof PointDefenseLaser laser) {
+            return isWorldSegmentVisible(laser.startX(), laser.startY(), laser.endX, laser.endY,
+                    Math.max(laser.width, 10.0), minX, minY, maxX, maxY);
+        }
+        double radius = Math.max(8.0, projectile.radius + 12.0);
+        if (projectile instanceof CIWSPellet) radius = Math.max(radius, 24.0);
+        else if (projectile instanceof Missile) radius = Math.max(radius, 18.0);
+        return isWorldCircleVisible(projectile.x, projectile.y, radius, minX, minY, maxX, maxY);
+    }
+
+    private static double shipDrawCullRadius(Ship ship) {
+        if (ship == null) return 24.0;
+        double scale = switch (ship.role) {
+            case FIGHTER -> 0.16;
+            case BOMBER -> 0.17;
+            case DRONE -> 0.20;
+            default -> HullGeometry.roleVisualScale(ship.role);
+        };
+        return Math.max(ship.radius + 28.0, ship.radius * Math.max(0.1, scale) + 28.0);
+    }
+
+    private static boolean isWorldCircleVisible(double x, double y, double radius,
+                                                double minX, double minY, double maxX, double maxY) {
+        double r = Math.max(0.0, radius);
+        return x + r >= minX && x - r <= maxX && y + r >= minY && y - r <= maxY;
+    }
+
+    private static boolean isWorldSegmentVisible(double x1, double y1, double x2, double y2, double pad,
+                                                 double minX, double minY, double maxX, double maxY) {
+        double p = Math.max(0.0, pad);
+        double segMinX = Math.min(x1, x2) - p;
+        double segMaxX = Math.max(x1, x2) + p;
+        double segMinY = Math.min(y1, y2) - p;
+        double segMaxY = Math.max(y1, y2) + p;
+        return segMaxX >= minX && segMinX <= maxX && segMaxY >= minY && segMinY <= maxY;
     }
 
 }

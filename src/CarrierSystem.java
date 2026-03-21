@@ -237,7 +237,9 @@ public final class CarrierSystem {
         if (carrier == null || carrier.faction == null) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
-        for (Ship s : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(carrier.faction, x, y, maxDist, nearby);
+        for (Ship s : nearby) {
             if (s == null) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             if (s.role == ShipRole.BASE) continue;
@@ -341,7 +343,9 @@ public final class CarrierSystem {
         Ship protectedBomber = (craft.role == ShipRole.FIGHTER) ? findEscortBomber(ctx, craft) : null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(craft.faction, craft.x, craft.y, ATTACK_SEARCH_RANGE, nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (craft.faction.isFriendlyTo(enemy.faction)) continue;
 
@@ -609,7 +613,9 @@ public final class CarrierSystem {
         if (fighter.role != ShipRole.FIGHTER) return null;
         Ship best = null;
         double bestD2 = Double.POSITIVE_INFINITY;
-        for (Ship s : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(fighter.x, fighter.y, BOMBER_GUARD_REACTION_RANGE, nearby);
+        for (Ship s : nearby) {
             if (!isAlive(s)) continue;
             if (s.role != ShipRole.BOMBER) continue;
             if (s.carrierOwnerId != fighter.carrierOwnerId) continue;
@@ -627,7 +633,9 @@ public final class CarrierSystem {
         Ship best = craft;
         int bestId = craft.id;
         int count = 0;
-        for (Ship s : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(craft.x, craft.y, STRIKE_COHESION_RANGE, nearby);
+        for (Ship s : nearby) {
             if (!isAlive(s)) continue;
             if (s.carrierOwnerId != craft.carrierOwnerId) continue;
             if (s.role != craft.role) continue;
@@ -645,7 +653,11 @@ public final class CarrierSystem {
     private static int wingSlotIndex(GameContext ctx, Ship craft, Ship leader) {
         if (ctx == null || craft == null) return 0;
         ArrayList<Ship> peers = new ArrayList<>();
-        for (Ship s : ctx.ships) {
+        double queryX = (leader != null) ? leader.x : craft.x;
+        double queryY = (leader != null) ? leader.y : craft.y;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(queryX, queryY, STRIKE_COHESION_RANGE, nearby);
+        for (Ship s : nearby) {
             if (!isAlive(s)) continue;
             if (s.carrierOwnerId != craft.carrierOwnerId) continue;
             if (s.role != craft.role) continue;

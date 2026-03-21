@@ -118,7 +118,7 @@ public final class AISystem {
             if (s.isWarpCharging()) {
                 s.vx = 0.0;
                 s.vy = 0.0;
-                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                s.tryCIWS(dt, ctx);
                 continue;
             }
             tickClosestWeaponRetarget(ctx, s, dt);
@@ -144,7 +144,7 @@ public final class AISystem {
                 if (target != null && target.alive && !target.dying) {
                     fireIfAble(ctx, s, target, dt, Math.hypot(target.x - s.x, target.y - s.y));
                 }
-                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                s.tryCIWS(dt, ctx);
                 continue;
             }
             if (s.role == ShipRole.MINER) {
@@ -157,7 +157,7 @@ public final class AISystem {
                         fireIfAble(ctx, s, target, dt, d);
                     }
                 }
-                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                s.tryCIWS(dt, ctx);
                 continue;
             }
             if (s.role == ShipRole.PD_CRAFT && s.carrierOwnerId < 0 && s.minerHomeBase != null) {
@@ -178,7 +178,7 @@ public final class AISystem {
                         double speed = Math.max(95.0, MovementModel.speedCeiling(s) * 0.92);
                         orbit(s, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
                     }
-                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                    s.tryCIWS(dt, ctx);
                     applyAsteroidAvoidance(ctx, s, dt);
                     applyProjectileLaneAvoidance(ctx, s, dt);
                     continue;
@@ -192,7 +192,7 @@ public final class AISystem {
             if (s.carrierOwnerId >= 0) {
                 // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
                 if (s.needsStrikeCraftRearm()) {
-                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                    s.tryCIWS(dt, ctx);
                     applyAsteroidAvoidance(ctx, s, dt);
                     applyProjectileLaneAvoidance(ctx, s, dt);
                     continue;
@@ -205,7 +205,7 @@ public final class AISystem {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
                     fireIfAble(ctx, s, target, dt, d);
                 }
-                s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                s.tryCIWS(dt, ctx);
                 applyAsteroidAvoidance(ctx, s, dt);
                 applyProjectileLaneAvoidance(ctx, s, dt);
                 continue;
@@ -393,8 +393,9 @@ public final class AISystem {
         }
         if (shipById.isEmpty()) return null;
 
-        for (Projectile p : ctx.projectiles) {
-            if (!(p instanceof Missile m)) continue;
+        List<Missile> missiles = new ArrayList<>();
+        ctx.entityQuery.collectMissilesNear(anchor.x, anchor.y, 1800.0, missiles);
+        for (Missile m : missiles) {
             if (!m.alive || !isAlive(m.target)) continue;
             Ship t = m.target;
             if (t.faction == null || m.faction == null || anchor.faction.isFriendlyTo(m.faction)) continue;
@@ -872,7 +873,7 @@ public final class AISystem {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
                         if (d <= 380.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
-                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                    s.tryCIWS(dt, ctx);
                     return true;
                 }
                 case DEFEND, FORM_UP, ESCORT -> {
@@ -896,7 +897,7 @@ public final class AISystem {
                     } else {
                         wander(ctx, s, dt);
                     }
-                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                    s.tryCIWS(dt, ctx);
                     return true;
                 }
                 case MINE -> {
@@ -907,7 +908,7 @@ public final class AISystem {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
                         if (d <= 360.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
-                    s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+                    s.tryCIWS(dt, ctx);
                     return true;
                 }
                 default -> {
@@ -1043,7 +1044,7 @@ public final class AISystem {
             }
         }
 
-        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+        s.tryCIWS(dt, ctx);
         return true;
     }
 
@@ -1291,7 +1292,9 @@ public final class AISystem {
         if (ctx == null || seeker == null || seeker.faction == null || radius <= 0.0) return null;
         Ship best = null;
         double bestD2 = radius * radius;
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, radius, nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (seeker.faction.isFriendlyTo(enemy.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
@@ -1309,8 +1312,9 @@ public final class AISystem {
         double bestScore = Double.NEGATIVE_INFINITY;
         double maxDist = 920.0;
         double maxDist2 = maxDist * maxDist;
-
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(escort.faction, carrier.x, carrier.y, maxDist, nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (escort.faction.isFriendlyTo(enemy.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(escort, enemy)) continue;
@@ -1366,7 +1370,7 @@ public final class AISystem {
             }
             moveToward(s, tx, ty, speed, dt);
         }
-        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+        s.tryCIWS(dt, ctx);
         return true;
     }
 
@@ -1376,8 +1380,9 @@ public final class AISystem {
         double bestScore = Double.NEGATIVE_INFINITY;
         double maxDist = Math.max(900.0, anchor.radius + 520.0);
         double maxDist2 = maxDist * maxDist;
-
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(escort.faction, anchor.x, anchor.y, maxDist, nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (escort.faction.isFriendlyTo(enemy.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(escort, enemy)) continue;
@@ -1411,7 +1416,9 @@ public final class AISystem {
         double aggressionBias = factionAggressionBias(seeker.faction);
         double standoffBias = factionStandoffBias(seeker.faction);
         Ship committed = committedTarget(ctx, seeker);
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, maxThreatSearchRadius(ctx, seeker), nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (seeker.faction.isFriendlyTo(enemy.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
@@ -1616,7 +1623,9 @@ public final class AISystem {
         if (ctx == null || seeker == null || seeker.faction == null || maxDist <= 0.0) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
-        for (Ship enemy : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, maxDist, nearby);
+        for (Ship enemy : nearby) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (seeker.faction.isFriendlyTo(enemy.faction)) continue;
             if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
@@ -1983,7 +1992,7 @@ public final class AISystem {
         commitToTarget(s, target, targetCommitDuration(s, target, objective));
         if (maybeStartBattlefieldWarp(ctx, s, target,
                 Math.max(preferredRange(s) * 1.18, s.radius + target.radius + 160.0))) {
-            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+            s.tryCIWS(dt, ctx);
             return;
         }
         // Determine preferred range by role
@@ -2080,7 +2089,7 @@ public final class AISystem {
         int shotsFired = fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
         updateEngagementMemory(s, target, dt, d, range, shotsFired > 0, objective);
         // CIWS always tries to protect itself
-        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+        s.tryCIWS(dt, ctx);
     }
 
     private static void wander(GameContext ctx, Ship s, double dt) {
@@ -2088,12 +2097,12 @@ public final class AISystem {
         double tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
         double ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
         if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
-            s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+            s.tryCIWS(dt, ctx);
             return;
         }
         moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
-        s.tryCIWS(dt, ctx.projectiles, ctx.ships);
+        s.tryCIWS(dt, ctx);
     }
 
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist) {
@@ -2951,7 +2960,9 @@ public final class AISystem {
         double r2 = radius * radius;
         double friendly = 0.0;
         double hostile = 0.0;
-        for (Ship s : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
+        for (Ship s : nearby) {
             if (!isAlive(s) || s.faction == null) continue;
             if (!isSupportRelevantCombatant(s.role)) continue;
             double d2 = dist2(s.x, s.y, x, y);
@@ -2969,7 +2980,9 @@ public final class AISystem {
         if (ctx == null || perspective == null || radius <= 0.0) return 0;
         int count = 0;
         double r2 = radius * radius;
-        for (Ship s : ctx.ships) {
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
+        for (Ship s : nearby) {
             if (!isAlive(s) || s.faction == null) continue;
             if (!isSupportRelevantCombatant(s.role)) continue;
             boolean isFriendly = perspective.isFriendlyTo(s.faction);
@@ -2977,6 +2990,24 @@ public final class AISystem {
             if (dist2(s.x, s.y, x, y) <= r2) count++;
         }
         return count;
+    }
+
+    private static double maxThreatSearchRadius(GameContext ctx, Ship seeker) {
+        double rangeMul = (ctx == null) ? 1.0 : CampaignSystem.targetingRangeMul(ctx);
+        double maxRange = 240.0;
+        if (seeker != null && seeker.hasSuperweapon) {
+            maxRange = Math.max(maxRange, 2200.0 * rangeMul);
+        }
+        if (seeker != null && seeker.turrets != null) {
+            for (Turret turret : seeker.turrets) {
+                if (turret == null) continue;
+                double turretRange = (seeker.role == ShipRole.BASE || seeker.role == ShipRole.STATIC_TURRET)
+                        ? ((turret.kind == Turret.Kind.MISSILE) ? 1400.0 : 900.0)
+                        : ((turret.kind == Turret.Kind.MISSILE) ? 900.0 : 520.0);
+                maxRange = Math.max(maxRange, turretRange * rangeMul * 1.12);
+            }
+        }
+        return Math.max(520.0, maxRange + 260.0);
     }
 
     private static boolean isSupportRelevantCombatant(ShipRole role) {

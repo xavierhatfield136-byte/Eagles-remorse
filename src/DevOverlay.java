@@ -23,7 +23,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 16 + minerLines;
+        int lineCount = 18 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -78,6 +78,16 @@ public final class DevOverlay {
                 + "  Render: " + fmt2(safeD(ctx, "perfRenderMs")) + "ms"
                 + "  Steps: " + safe(ctx, "perfUpdateSteps")
                 + "  Drop: " + safe(ctx, "perfDroppedUpdates"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Drawn: Ships " + safe(ctx, "perfDrawnShips") + "/" + sizeOf(ctx, "ships")
+                + "  Proj " + safe(ctx, "perfDrawnProjectiles") + "/" + sizeOf(ctx, "projectiles")
+                + "  Ast " + safe(ctx, "perfDrawnAsteroids") + "/" + sizeOf(ctx, "asteroids"));
+
+        y += lineH;
+        drawLine(g2, x, y, "FX: Salv " + safe(ctx, "perfDrawnSalvage") + "/" + sizeOf(ctx, "salvage")
+                + "  VFX " + safe(ctx, "perfDrawnVfx") + "/" + safe(ctx, "perfTotalVfx")
+                + "  Expl " + safe(ctx, "perfDrawnExplosions") + "/" + safe(ctx, "perfTotalExplosions"));
 
         y += lineH;
         drawLine(g2, x, y, "Cam: (" + (int) safeD(ctx, "camX") + ", " + (int) safeD(ctx, "camY") + ")  View: " + w + "x" + h);
