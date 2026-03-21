@@ -1,0 +1,31 @@
+﻿{
+    "faction":  "team_c",
+    "staged_folder":  "green_team_c",
+    "filename":  "medium_cruiser_team_c_albedo.png",
+    "status":  "passed",
+    "attempts":  1,
+    "seed":  910017,
+    "score":  100,
+    "issues":  [
+
+               ],
+    "output_path":  "assets\\ship_skins\\dropbox\\green_team_c\\medium_cruiser_team_c_albedo.png",
+    "raw_path":  "build\\ship_skin_generation\\20260320_173531_medium_cruiser_team_c_albedo_1.raw.png",
+    "reference_image":  "codex_shipref_cruiser_team_c_albedo.png",
+    "reference_source":  "assets\\ship_skins\\dropbox\\green_team_c\\cruiser_team_c_albedo.png",
+    "reference_denoise":  0.3,
+    "coverage":  0.2571,
+    "width_height_ratio":  2.0431,
+    "largest_component_share":  1,
+    "components":  2,
+    "padding":  {
+                    "left":  0.028253424657534245,
+                    "right":  0.037671232876712327,
+                    "bottom":  0.15816326530612246,
+                    "top":  0.16071428571428573
+                },
+    "center_offset":  {
+                          "y":  0.0012755102040816326,
+                          "x":  0.0047089041095890408
+                      }
+}

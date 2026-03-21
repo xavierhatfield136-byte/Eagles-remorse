@@ -1,0 +1,157 @@
+﻿[
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "cruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910017,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\cruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_202634_cruiser_team_d_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_cruiser_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\..\\cruiser_team_d_albedo.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.164,
+        "width_height_ratio":  2.3854,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.076171875,
+                        "right":  0.0595703125,
+                        "bottom":  0.3193359375,
+                        "top":  0.318359375
+                    },
+        "center_offset":  {
+                              "y":  0.00048828125,
+                              "x":  0.00830078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "battlecruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910154,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\battlecruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_202634_battlecruiser_team_d_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_battlecruiser_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\..\\battlecruiser_team_d_albedo.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.163,
+        "width_height_ratio":  2.3415,
+        "largest_component_share":  0.9999,
+        "components":  3,
+        "padding":  {
+                        "left":  0.0771484375,
+                        "right":  0.0791015625,
+                        "bottom":  0.3203125,
+                        "top":  0.3193359375
+                    },
+        "center_offset":  {
+                              "y":  0.00048828125,
+                              "x":  0.0009765625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "battleship_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  4,
+        "seed":  910342,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\battleship_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_202634_battleship_team_d_albedo_4.raw.png",
+        "reference_image":  "codex_shipref_battleship_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\..\\battleship_team_d_albedo.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.1225,
+        "width_height_ratio":  3.7467,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0859375,
+                        "right":  0.076171875,
+                        "bottom":  0.388671875,
+                        "top":  0.3876953125
+                    },
+        "center_offset":  {
+                              "y":  0.00048828125,
+                              "x":  0.0048828125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "dreadnought_team_d_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910428,
+        "score":  85,
+        "issues":  [
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\review\\dreadnought_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_202634_dreadnought_team_d_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_dreadnought_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\..\\dreadnought_team_d_albedo.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.1186,
+        "width_height_ratio":  3.7974,
+        "largest_component_share":  0.9884,
+        "components":  14,
+        "padding":  {
+                        "left":  0.0791015625,
+                        "right":  0.0791015625,
+                        "bottom":  0.3896484375,
+                        "top":  0.388671875
+                    },
+        "center_offset":  {
+                              "y":  0.00048828125,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "supership_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910565,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\supership_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_202634_supership_team_d_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_supership_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\..\\supership_team_d_albedo.png",
+        "reference_denoise":  0.48,
+        "coverage":  0.1437,
+        "width_height_ratio":  3.2313,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0771484375,
+                        "right":  0.0771484375,
+                        "bottom":  0.3681640625,
+                        "top":  0.3701171875
+                    },
+        "center_offset":  {
+                              "y":  0.0009765625,
+                              "x":  0
+                          }
+    }
+]

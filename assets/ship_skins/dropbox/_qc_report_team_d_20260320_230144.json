@@ -1,0 +1,706 @@
+﻿[
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "picket_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910017,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\picket_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_picket_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.42,
+        "coverage":  0.4852,
+        "width_height_ratio":  2.1388,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.02421875,
+                        "right":  0.025,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "patrol_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910154,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\patrol_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_patrol_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.55,
+        "coverage":  0.4847,
+        "width_height_ratio":  2.1371,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.025,
+                        "right":  0.025,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "stealth_ship_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910291,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\stealth_ship_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_stealth_ship_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.62,
+        "coverage":  0.4861,
+        "width_height_ratio":  2.1318,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.02578125,
+                        "right":  0.0265625,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "fighter_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910428,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\fighter_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_fighter_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.4851,
+        "width_height_ratio":  2.1213,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0296875,
+                        "right":  0.02734375,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0.001171875
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "bomber_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910565,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\bomber_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_bomber_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.4854,
+        "width_height_ratio":  2.1564,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0234375,
+                        "right":  0.01796875,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0.002734375
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "pd_craft_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910702,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\pd_craft_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_pd_craft_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.4843,
+        "width_height_ratio":  2.1391,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.025,
+                        "right":  0.02578125,
+                        "bottom":  0.0875,
+                        "top":  0.12361111111111112
+                    },
+        "center_offset":  {
+                              "y":  0.018055555555555554,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "drone_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910839,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\drone_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_drone_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_picket_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\picket_team_d_anchor.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.4858,
+        "width_height_ratio":  2.1547,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0203125,
+                        "right":  0.021875,
+                        "bottom":  0.0875,
+                        "top":  0.12222222222222222
+                    },
+        "center_offset":  {
+                              "y":  0.017361111111111112,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "frigate_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910976,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\frigate_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_frigate_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_frigate_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\frigate_team_d_anchor.png",
+        "reference_denoise":  0.42,
+        "coverage":  0.3559,
+        "width_height_ratio":  2.6298,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0453125,
+                        "right":  0.04453125,
+                        "bottom":  0.23194444444444445,
+                        "top":  0.15277777777777779
+                    },
+        "center_offset":  {
+                              "y":  0.039583333333333331,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "missile_boat_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911113,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\missile_boat_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_missile_boat_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_frigate_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\frigate_team_d_anchor.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.3559,
+        "width_height_ratio":  2.6261,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.04453125,
+                        "right":  0.04453125,
+                        "bottom":  0.23055555555555557,
+                        "top":  0.15277777777777779
+                    },
+        "center_offset":  {
+                              "y":  0.03888888888888889,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "ciws_corvette_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911250,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\ciws_corvette_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_ciws_corvette_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_frigate_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\frigate_team_d_anchor.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.3558,
+        "width_height_ratio":  2.6682,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0390625,
+                        "right":  0.0375,
+                        "bottom":  0.23194444444444445,
+                        "top":  0.15277777777777779
+                    },
+        "center_offset":  {
+                              "y":  0.039583333333333331,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "light_cruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911387,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\light_cruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_light_cruiser_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.3574,
+        "width_height_ratio":  2.5459,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06640625,
+                        "right":  0.06640625,
+                        "bottom":  0.16944444444444445,
+                        "top":  0.225
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "medium_cruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911524,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\medium_cruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_medium_cruiser_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.357,
+        "width_height_ratio":  2.5507,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.06796875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "cruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911661,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\cruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_cruiser_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.48,
+        "coverage":  0.3577,
+        "width_height_ratio":  2.5553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06640625,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "battlecruiser_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911798,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\battlecruiser_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_battlecruiser_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.46,
+        "coverage":  0.3572,
+        "width_height_ratio":  2.5507,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06875,
+                        "right":  0.06640625,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.001171875
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "battleship_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911935,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\battleship_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_battleship_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.44,
+        "coverage":  0.3575,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "dreadnought_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912072,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\dreadnought_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_dreadnought_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.3572,
+        "width_height_ratio":  2.5553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06640625,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "supership_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912209,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\supership_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_supership_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.42,
+        "coverage":  0.357,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.065625,
+                        "right":  0.06875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.0015625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "carrier_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912346,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\carrier_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_carrier_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.3575,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "drone_carrier_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912483,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\drone_carrier_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_drone_carrier_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_frigate_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\frigate_team_d_anchor.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3563,
+        "width_height_ratio":  2.6149,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.04609375,
+                        "right":  0.046875,
+                        "bottom":  0.23194444444444445,
+                        "top":  0.15138888888888888
+                    },
+        "center_offset":  {
+                              "y":  0.04027777777777778,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "transport_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912620,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\transport_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_transport_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3569,
+        "width_height_ratio":  2.5694,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.065625,
+                        "right":  0.0671875,
+                        "bottom":  0.17222222222222222,
+                        "top":  0.22777777777777777
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "miner_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912757,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\miner_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_miner_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_frigate_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\frigate_team_d_anchor.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.3554,
+        "width_height_ratio":  2.5499,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.046875,
+                        "right":  0.0546875,
+                        "bottom":  0.225,
+                        "top":  0.14861111111111111
+                    },
+        "center_offset":  {
+                              "y":  0.038194444444444448,
+                              "x":  0.00390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "hauler_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  912894,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_autogen_full\\missile_team_d\\hauler_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation_autogen_full\\20260320_230144_hauler_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_anchor.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dropbox\\missile_team_d_anchors\\medium_cruiser_team_d_anchor.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3565,
+        "width_height_ratio":  2.5494,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.06640625,
+                        "bottom":  0.16944444444444445,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.028472222222222222,
+                              "x":  0.000390625
+                          }
+    }
+]

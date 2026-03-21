@@ -1,0 +1,95 @@
+﻿[
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "dreadnought_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  3,
+        "seed":  910051,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\dreadnought_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_203819_dreadnought_team_d_albedo_3.raw.png",
+        "reference_image":  "codex_shipref_battleship_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\missile_team_d\\battleship_team_d_albedo.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.1229,
+        "width_height_ratio":  3.6581,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0859375,
+                        "right":  0.078125,
+                        "bottom":  0.3857421875,
+                        "top":  0.3857421875
+                    },
+        "center_offset":  {
+                              "y":  0,
+                              "x":  0.00390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "carrier_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  2,
+        "seed":  910171,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\carrier_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_203819_carrier_team_d_albedo_2.raw.png",
+        "reference_image":  "codex_shipref_drone_carrier_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\missile_team_d\\drone_carrier_team_d_albedo.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.1294,
+        "width_height_ratio":  2.6358,
+        "largest_component_share":  0.9998,
+        "components":  2,
+        "padding":  {
+                        "left":  0.0859375,
+                        "right":  0.080078125,
+                        "bottom":  0.341796875,
+                        "top":  0.341796875
+                    },
+        "center_offset":  {
+                              "y":  0,
+                              "x":  0.0029296875
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "transport_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910291,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "assets\\ship_skins\\dropbox\\missile_team_d\\transport_team_d_albedo.png",
+        "raw_path":  "build\\ship_skin_generation\\20260320_203819_transport_team_d_albedo_1.raw.png",
+        "reference_image":  "codex_shipref_hauler_team_d_albedo.png",
+        "reference_source":  "assets\\ship_skins\\dropbox\\missile_team_d\\hauler_team_d_albedo.png",
+        "reference_denoise":  0.36,
+        "coverage":  0.1099,
+        "width_height_ratio":  4.2767,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0732421875,
+                        "right":  0.06640625,
+                        "bottom":  0.3994140625,
+                        "top":  0.3994140625
+                    },
+        "center_offset":  {
+                              "y":  0,
+                              "x":  0.00341796875
+                          }
+    }
+]
