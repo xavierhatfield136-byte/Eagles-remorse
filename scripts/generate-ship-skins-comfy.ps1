@@ -28,6 +28,7 @@ param(
     [int]$BackgroundThreshold = 42,
     [string]$ReviewFolderName = "review",
     [string]$PromptSuffix = "",
+    [string]$NegativePrompt = "",
     [switch]$Overwrite,
     [switch]$DryRun
 )
@@ -468,6 +469,7 @@ function Get-Workflow {
         [Parameter(Mandatory = $true)][string]$Prompt,
         [Parameter(Mandatory = $true)][string]$FilenamePrefix,
         [Parameter(Mandatory = $true)][int]$Seed,
+        [string]$NegativePrompt = "",
         [string]$ReferenceImageName = "",
         [double]$Denoise = 1.0
     )
@@ -508,18 +510,11 @@ function Get-Workflow {
                 text = $Prompt
             }
         }
-        "7" = @{
-            class_type = "ConditioningZeroOut"
-            inputs = @{
-                conditioning = @("6", 0)
-            }
-        }
         "8" = @{
             class_type = "KSampler"
             inputs = @{
                 model = @("5", 0)
                 positive = @("6", 0)
-                negative = @("7", 0)
                 seed = $Seed
                 steps = $Steps
                 cfg = $CfgScale
@@ -543,6 +538,24 @@ function Get-Workflow {
             }
         }
     }
+
+    if ([string]::IsNullOrWhiteSpace($NegativePrompt)) {
+        $workflow["7"] = @{
+            class_type = "ConditioningZeroOut"
+            inputs = @{
+                conditioning = @("6", 0)
+            }
+        }
+    } else {
+        $workflow["7"] = @{
+            class_type = "CLIPTextEncode"
+            inputs = @{
+                clip = @("2", 0)
+                text = $NegativePrompt
+            }
+        }
+    }
+    $workflow["8"].inputs.negative = @("7", 0)
 
     if ([string]::IsNullOrWhiteSpace($ReferenceImageName)) {
         $workflow["4"] = @{
@@ -580,12 +593,13 @@ function Invoke-ComfyGeneration {
         [Parameter(Mandatory = $true)][string]$Prompt,
         [Parameter(Mandatory = $true)][string]$FilenamePrefix,
         [Parameter(Mandatory = $true)][int]$Seed,
+        [string]$NegativePrompt = "",
         [string]$ReferenceImageName = "",
         [double]$Denoise = 1.0,
         [Parameter(Mandatory = $true)][string]$RawOutputPath
     )
 
-    $workflow = Get-Workflow -Prompt $Prompt -FilenamePrefix $FilenamePrefix -Seed $Seed -ReferenceImageName $ReferenceImageName -Denoise $Denoise
+    $workflow = Get-Workflow -Prompt $Prompt -FilenamePrefix $FilenamePrefix -Seed $Seed -NegativePrompt $NegativePrompt -ReferenceImageName $ReferenceImageName -Denoise $Denoise
     $requestBody = @{
         prompt = $workflow
         client_id = [Guid]::NewGuid().ToString("N")
@@ -837,7 +851,7 @@ for ($entryIndex = 0; $entryIndex -lt $allEntries.Count; $entryIndex++) {
         $keyedPath = "$scratchBase.keyed.png"
         $filenamePrefix = "shipskin_{0}_{1}_{2}" -f $entry.Faction, [IO.Path]::GetFileNameWithoutExtension($entry.Filename), $attempt
 
-        Invoke-ComfyGeneration -ApiBase $apiBase -Prompt $prompt -FilenamePrefix $filenamePrefix -Seed $seed -ReferenceImageName $referenceImageName -Denoise $referenceDenoise -RawOutputPath $rawPath
+        Invoke-ComfyGeneration -ApiBase $apiBase -Prompt $prompt -FilenamePrefix $filenamePrefix -Seed $seed -NegativePrompt $NegativePrompt -ReferenceImageName $referenceImageName -Denoise $referenceDenoise -RawOutputPath $rawPath
         $imageResult = [ShipImageOps]::KeyBackgroundAndMeasure($rawPath, $keyedPath, $BackgroundThreshold)
         $qc = Measure-ShipQuality -ImageResult $imageResult
         $candidate = [pscustomobject]@{
@@ -885,6 +899,7 @@ for ($entryIndex = 0; $entryIndex -lt $allEntries.Count; $entryIndex++) {
         issues = $bestCandidate.Qc.Issues
         output_path = $destination
         raw_path = $bestCandidate.RawPath
+        negative_prompt = $NegativePrompt
         reference_image = $referenceImageName
         reference_source = $referenceSourcePath
         reference_denoise = $referenceDenoise

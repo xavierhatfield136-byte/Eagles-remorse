@@ -927,8 +927,10 @@ public final class AudioSystem {
     }
 
     private static double shieldFrac(Ship ship) {
-        if (ship == null || ship.shieldMax <= 0.0) return 1.0;
-        return Math.max(0.0, Math.min(1.0, ship.shield / Math.max(1e-9, ship.shieldMax)));
+        if (ship == null) return 1.0;
+        double effectiveMax = ship.effectiveShieldCapacityMax();
+        if (effectiveMax <= 0.0) return 1.0;
+        return Math.max(0.0, Math.min(1.0, ship.shield / Math.max(1e-9, effectiveMax)));
     }
 
     private static double reactorFrac(Ship ship) {

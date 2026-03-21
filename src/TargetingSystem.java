@@ -41,7 +41,6 @@ public final class TargetingSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!isAlive(s)) continue;
-            if (s.role == ShipRole.BASE) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (!isDetectableToObserver(ctx.player, s)) continue;
@@ -109,7 +108,6 @@ public final class TargetingSystem {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
-            if (s.role == ShipRole.BASE) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (!isDetectableToObserver(observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
@@ -129,7 +127,6 @@ public final class TargetingSystem {
             if (s == null) continue;
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
-            if (s.role == ShipRole.BASE) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (isMainBatteryScreenTarget(observer, s)) continue;
             if (!isDetectableToObserver(observer, s)) continue;

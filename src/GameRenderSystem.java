@@ -235,7 +235,8 @@ if (DevTools.isDebugOverlay()) {
         }
 
         double hpFrac = (p.hpMax <= 0) ? 1.0 : (p.hp / (double) p.hpMax);
-        double shieldFrac = (p.shieldMax <= 0.0) ? 1.0 : (p.shield / Math.max(1e-9, p.shieldMax));
+        double effectiveShieldMax = p.effectiveShieldCapacityMax();
+        double shieldFrac = (effectiveShieldMax <= 0.0) ? 1.0 : (p.shield / Math.max(1e-9, effectiveShieldMax));
         if (hpFrac < 0.35 || shieldFrac < 0.20) {
             return "Critical survivability: fall back to friendly support and cycle DEFENSE power preset.";
         }

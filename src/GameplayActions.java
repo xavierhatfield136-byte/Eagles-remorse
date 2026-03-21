@@ -466,6 +466,26 @@ public final class GameplayActions {
         return true;
     }
 
+    public static boolean tryHandleShootingRangeHotkey(GameContext ctx, int keyCode) {
+        if (!canIssueCombatAction(ctx)) return false;
+        if (!SpawnSystem.hasShootingRangeTargets(ctx)) return false;
+
+        Faction targetFaction = switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_1 -> Faction.ALLY;
+            case java.awt.event.KeyEvent.VK_2 -> Faction.ENEMY;
+            case java.awt.event.KeyEvent.VK_3 -> Faction.TEAM_C;
+            case java.awt.event.KeyEvent.VK_4 -> Faction.TEAM_D;
+            default -> null;
+        };
+
+        if (targetFaction == null) return false;
+        if (ctx.player != null && ctx.player.faction != null && ctx.player.faction.isFriendlyTo(targetFaction)) {
+            EventSystem.showBanner(ctx, "SHOOTING RANGE TARGETS MUST BE HOSTILE", 1.2);
+            return true;
+        }
+        return SpawnSystem.setShootingRangeTargetFaction(ctx, targetFaction);
+    }
+
     private static boolean isAlive(Ship s) {
         if (s == null) return false;
         return s.alive && !s.dying && s.hp > 0;

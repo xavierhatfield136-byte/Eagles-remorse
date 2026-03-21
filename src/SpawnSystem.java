@@ -712,15 +712,14 @@ public final class SpawnSystem {
         ctx.ships.add(ctx.player);
         try { DoctrineRegistry.applyToShip(ctx.player); } catch (Throwable ignored) {}
 
-        Faction targetFaction = ctx.player.faction.isFriendlyTo(Faction.ENEMY) ? Faction.ALLY : Faction.ENEMY;
-        populateShootingRangeTargets(ctx, px, py, targetFaction);
+        Faction targetFaction = defaultShootingRangeTargetFaction(ctx.player.faction);
+        activateShootingRange(ctx, px, py, targetFaction);
 
         ctx.credits = 10000;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
         ctx.minerReinforcementTimer = Double.POSITIVE_INFINITY;
-        ctx.eventBanner = "SHOOTING RANGE  -  ALL HULL EXHIBITION";
-        ctx.eventBannerT = 6.0;
+        ctx.eventBannerT = Math.max(ctx.eventBannerT, 6.0);
     }
 
     static void populateShootingRangeTargets(GameContext ctx, double originX, double originY, Faction faction) {
@@ -770,6 +769,26 @@ public final class SpawnSystem {
         }
     }
 
+    public static void activateShootingRange(GameContext ctx, double originX, double originY, Faction faction) {
+        if (ctx == null || faction == null) return;
+        ctx.shootingRangeOriginX = originX;
+        ctx.shootingRangeOriginY = originY;
+        replaceShootingRangeTargets(ctx, faction);
+    }
+
+    public static boolean hasShootingRangeTargets(GameContext ctx) {
+        if (ctx == null) return false;
+        return !shootingRangeTargetSlotsFor(ctx).isEmpty();
+    }
+
+    public static boolean setShootingRangeTargetFaction(GameContext ctx, Faction faction) {
+        if (ctx == null || faction == null || ctx.player == null) return false;
+        if (ctx.player.faction != null && ctx.player.faction.isFriendlyTo(faction)) return false;
+        if (!Double.isFinite(ctx.shootingRangeOriginX) || !Double.isFinite(ctx.shootingRangeOriginY)) return false;
+        replaceShootingRangeTargets(ctx, faction);
+        return true;
+    }
+
     private static java.util.Map<String, ShootingRangeTargetSlot> shootingRangeTargetSlotsFor(GameContext ctx) {
         return SHOOTING_RANGE_TARGET_SLOTS.computeIfAbsent(ctx, k -> new java.util.LinkedHashMap<>());
     }
@@ -777,6 +796,33 @@ public final class SpawnSystem {
     private static void clearShootingRangeTargetSlots(GameContext ctx) {
         if (ctx == null) return;
         shootingRangeTargetSlotsFor(ctx).clear();
+    }
+
+    private static void replaceShootingRangeTargets(GameContext ctx, Faction faction) {
+        if (ctx == null || faction == null) return;
+        removeShootingRangeTargets(ctx);
+        clearShootingRangeTargetSlots(ctx);
+        ctx.shootingRangeTargetFaction = faction;
+        populateShootingRangeTargets(ctx, ctx.shootingRangeOriginX, ctx.shootingRangeOriginY, faction);
+        ctx.eventBanner = shootingRangeBanner(faction);
+        ctx.eventBannerT = 2.4;
+    }
+
+    private static void removeShootingRangeTargets(GameContext ctx) {
+        if (ctx == null || ctx.ships == null) return;
+        java.util.Set<String> labels = new java.util.HashSet<>(shootingRangeTargetSlotsFor(ctx).keySet());
+        if (labels.isEmpty()) return;
+        ctx.ships.removeIf(s -> s != null && s != ctx.player && labels.contains(s.name));
+    }
+
+    private static Faction defaultShootingRangeTargetFaction(Faction playerFaction) {
+        if (playerFaction != null && playerFaction.isFriendlyTo(Faction.ENEMY)) return Faction.ALLY;
+        return Faction.ENEMY;
+    }
+
+    private static String shootingRangeBanner(Faction faction) {
+        String label = (faction == null) ? "UNKNOWN" : faction.teamName().toUpperCase();
+        return "SHOOTING RANGE  -  TARGETS: " + label + "  (KEYS 1-4)";
     }
 
     private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, Faction faction, double x, double y, String label, boolean keepShields) {
@@ -788,6 +834,7 @@ public final class SpawnSystem {
         double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
         double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
         Ship s = new FleetShip(role, faction, sx, sy);
+        try { DoctrineRegistry.applyToShip(s); } catch (Throwable ignored) {}
 
         s.name = label;
         s.angle = Math.PI;
@@ -801,16 +848,8 @@ public final class SpawnSystem {
         s.isCarrier = false;
         s.carrierAutoLaunch = false;
         s.hasSuperweapon = false;
-
-        if (!keepShields) {
-            s.shieldMax = 0.0;
-            s.shield = 0.0;
-            s.shieldRegen = 0.0;
-            s.shieldActive = false;
-        } else {
-            s.shieldActive = s.shieldMax > 0.0;
-            s.shield = Math.min(s.shieldMax, Math.max(0.0, s.shield));
-        }
+        s.shieldActive = s.shieldMax > 0.0;
+        s.shield = s.shieldActive ? s.shieldMax : 0.0;
 
         ctx.ships.add(s);
         registerShootingRangeTarget(ctx, role, faction, sx, sy, label, keepShields);

@@ -93,8 +93,10 @@ public final class DevScenarios {
         double x = ctx.player.x;
         double y = ctx.player.y;
 
-        SpawnSystem.populateShootingRangeTargets(ctx, x, y, Faction.ENEMY);
-        EventSystem.showBanner(ctx, "DEV SCENARIO: ALL-HULL SHOOTING EXHIBITION", 2.2);
+        Faction targetFaction = (ctx.player.faction != null && ctx.player.faction.isFriendlyTo(Faction.ENEMY))
+                ? Faction.ALLY : Faction.ENEMY;
+        SpawnSystem.activateShootingRange(ctx, x, y, targetFaction);
+        EventSystem.showBanner(ctx, "DEV SCENARIO: ALL-HULL SHOOTING EXHIBITION  (KEYS 1-4 TARGET TEAM)", 2.4);
     }
 
     private static Ship spawn(GameContext ctx, ShipRole role, Faction faction, double x, double y) {

@@ -71,6 +71,8 @@ public abstract class Ship {
     public int hpMax = 10;
     public int hp = hpMax;
     public boolean alive = true;
+    public double armorRoomHpMultiplier = 1.0;
+    public double shieldStripRoomHpMultiplier = 1.0;
 
     // ------------------------------
     // Death sequence (wreck -> fire -> explosion -> loot)
@@ -327,6 +329,8 @@ public abstract class Ship {
     public double aiNoFireTimer = 0.0;
     public double aiLastEngagementX = Double.NaN;
     public double aiLastEngagementY = Double.NaN;
+    public int aiCommittedTargetId = -1;
+    public double aiTargetCommitTimer = 0.0;
 
     // Power management
     public enum PowerPreset {
@@ -681,7 +685,7 @@ public abstract class Ship {
             if (shieldOfflineTimer < 0.0) shieldOfflineTimer = 0.0;
         }
         updateShieldFaceRegenLocks(dt);
-        if (isShieldOnline() && shield < shieldMax) {
+        if (isShieldOnline() && shield < effectiveShieldCapacityMax()) {
             distributeShieldRegen(shieldRegen * shieldRegenMultiplier() * dt);
         }
 
@@ -1976,7 +1980,12 @@ public abstract class Ship {
 
     public double shieldFaceMax(int face) {
         if (face < 0 || face >= SHIELD_FACE_COUNT) return 0.0;
-        return perFaceShieldMax();
+        return shieldFaceCapacity(face);
+    }
+
+    public double effectiveShieldCapacityMax() {
+        ensureShieldFacesSynced();
+        return Math.max(0.0, Math.min(Math.max(0.0, shieldMax), totalShieldFaceCapacity()));
     }
 
     public double shieldFaceFraction(int face) {
@@ -2050,6 +2059,7 @@ public abstract class Ship {
         double regen = shieldSystemMultiplier();
         regen *= shieldsPowerMultiplier();
         regen *= crewShieldMul;
+        regen *= teamCShieldStripRegenMultiplier();
         return Math.max(0.0, Math.min(1.65, regen));
     }
 
@@ -2076,6 +2086,19 @@ public abstract class Ship {
         systemHp.put(system, max);
     }
 
+    public void rebuildDefenseStateForCurrentStats() {
+        internalSystemsInitialized = false;
+        roomSystemsInitialized = false;
+        systemHp.clear();
+        systemHpMax.clear();
+        roomHp.clear();
+        roomHpMax.clear();
+        roomHazards.clear();
+        roomDisabledSystems.clear();
+        shieldFacesInitialized = false;
+        shieldFacesSyncedMax = Double.NaN;
+    }
+
     private void ensureRoomSystemsInitialized() {
         if (roomSystemsInitialized) return;
         ensureInternalSystemsInitialized();
@@ -2087,8 +2110,12 @@ public abstract class Ship {
         double base = Math.max(24.0, hpMax + shieldMax * 0.35 + radius * 0.90);
         for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             double max = Math.max(8.0, base * Math.max(0.25, def.hpWeight));
-            if (ShipRoomLayout.isArmorRoom(def.id) && !hasArmorLayer()) {
+            if (ShipRoomLayout.isShieldStripRoom(def.id)) {
+                max *= Math.max(0.10, shieldStripRoomHpMultiplier);
+            } else if (ShipRoomLayout.isArmorRoom(def.id) && !hasArmorLayer()) {
                 max = 0.0;
+            } else if (ShipRoomLayout.isArmorRoom(def.id)) {
+                max *= Math.max(0.25, armorRoomHpMultiplier);
             }
             roomHpMax.put(def.id, max);
             roomHp.put(def.id, max);
@@ -2102,6 +2129,7 @@ public abstract class Ship {
     }
 
     private boolean hasArmorLayer() {
+        if (faction == Faction.TEAM_D) return true;
         return switch (role) {
             case FIGHTER, BOMBER, DRONE -> false;
             default -> true;
@@ -2318,49 +2346,68 @@ public abstract class Ship {
                                                              ShipRoomLayout.RoomDef primaryRoom) {
         ensureRoomSystemsInitialized();
         ShipRoomLayout.RoomDef sideArmor = preferredArmorRoomForImpact(impact);
-        if (sideArmor != null && roomHp.getOrDefault(sideArmor.id, 0.0) > 1e-6) {
+        if (sideArmor != null) {
             return sideArmor;
         }
-        if (primaryRoom != null
-                && ShipRoomLayout.isArmorRoom(primaryRoom.id)
-                && roomHp.getOrDefault(primaryRoom.id, 0.0) > 1e-6) {
-            return primaryRoom;
+        if (primaryRoom != null && ShipRoomLayout.isArmorRoom(primaryRoom.id)) {
+            ShipRoomLayout.RoomDef primaryDefense = resolveDamageableDefenseRoom(primaryRoom.id);
+            if (primaryDefense != null) return primaryDefense;
         }
         ShipRoomLayout.RoomDef directional = resolveDirectionalRoomForImpact(impact, true);
-        if (directional != null
-                && ShipRoomLayout.isArmorRoom(directional.id)
-                && roomHp.getOrDefault(directional.id, 0.0) > 1e-6) {
-            return directional;
+        if (directional != null && ShipRoomLayout.isArmorRoom(directional.id)) {
+            ShipRoomLayout.RoomDef directionalDefense = resolveDamageableDefenseRoom(directional.id);
+            if (directionalDefense != null) return directionalDefense;
         }
         if (impact == null || !impact.onHull) return null;
         for (double scale : new double[]{1.00, 0.96, 0.92}) {
             ShipRoomLayout.RoomDef candidate = RoomHitResolver.resolve(role, faction,
                     impact.normalizedX * scale,
                     impact.normalizedY * scale);
-            if (candidate != null
-                    && ShipRoomLayout.isArmorRoom(candidate.id)
-                    && roomHp.getOrDefault(candidate.id, 0.0) > 1e-6) {
-                return candidate;
+            if (candidate != null && ShipRoomLayout.isArmorRoom(candidate.id)) {
+                ShipRoomLayout.RoomDef candidateDefense = resolveDamageableDefenseRoom(candidate.id);
+                if (candidateDefense != null) return candidateDefense;
             }
+        }
+        return null;
+    }
+
+    private ShipRoomLayout.RoomDef resolveDamageableDefenseRoom(ShipRoomLayout.RoomId requestedId) {
+        if (requestedId == null) return null;
+
+        if (faction == Faction.TEAM_C) {
+            ShipRoomLayout.RoomId stripId = ShipRoomLayout.shieldStripRoomFor(requestedId);
+            ShipRoomLayout.RoomDef strip = ShipRoomLayout.roomForId(role, faction, stripId);
+            if (strip != null && roomHp.getOrDefault(strip.id, 0.0) > 1e-6) return strip;
+            return null;
+        }
+
+        ShipRoomLayout.RoomId outerId = ShipRoomLayout.outerArmorRoomFor(requestedId);
+        ShipRoomLayout.RoomDef outer = ShipRoomLayout.roomForId(role, faction, outerId);
+        if (outer != null && roomHp.getOrDefault(outer.id, 0.0) > 1e-6) return outer;
+
+        if (faction == Faction.TEAM_D) {
+            ShipRoomLayout.RoomId innerId = ShipRoomLayout.innerArmorRoomFor(requestedId);
+            ShipRoomLayout.RoomDef inner = ShipRoomLayout.roomForId(role, faction, innerId);
+            if (inner != null && roomHp.getOrDefault(inner.id, 0.0) > 1e-6) return inner;
         }
         return null;
     }
 
     private ShipRoomLayout.RoomDef preferredArmorRoomForImpact(HullGeometry.ImpactSample impact) {
         if (impact == null || !impact.onHull) return null;
-        ShipRoomLayout.RoomId armorId;
+        ShipRoomLayout.RoomId defenseId;
         double ax = Math.abs(impact.normalizedX);
         double ay = Math.abs(impact.normalizedY);
         if (ax >= ay) {
-            armorId = (impact.normalizedX >= 0.0)
+            defenseId = (impact.normalizedX >= 0.0)
                     ? ShipRoomLayout.RoomId.BOW_ARMOR
                     : ShipRoomLayout.RoomId.AFT_ARMOR;
         } else {
-            armorId = (impact.normalizedY <= 0.0)
+            defenseId = (impact.normalizedY <= 0.0)
                     ? ShipRoomLayout.RoomId.DORSAL_ARMOR
                     : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
         }
-        return ShipRoomLayout.roomForId(role, faction, armorId);
+        return resolveDamageableDefenseRoom(defenseId);
     }
 
     private ShipRoomLayout.RoomDef resolveInteriorRoomForImpact(HullGeometry.ImpactSample impact,
@@ -2478,6 +2525,13 @@ public abstract class Ship {
         double after = Math.max(0.0, before - damage);
         roomHp.put(room.id, after);
         logRoomDamage(room.id, normalizedX, normalizedY, damage, fromHazard);
+        if (ShipRoomLayout.isShieldStripRoom(room.id)) {
+            int face = shieldFaceForShieldStrip(room.id);
+            if (face >= 0 && before > 1e-6 && after <= 1e-6) {
+                shieldFaceRegenLock[face] = Math.max(shieldFaceRegenLock[face], SHIELD_FACE_REGEN_LOCK_SECONDS);
+            }
+            clampShieldFacesToStructuralCapacity();
+        }
 
         if (!armorRoom && room.primarySystem != null) {
             double sysBefore = systemHealthFraction(room.primarySystem);
@@ -3257,7 +3311,9 @@ public abstract class Ship {
             case SERVICE_BAY -> InternalSystem.REACTOR_CORE;
             case CARGO_BAY -> InternalSystem.MAGAZINES;
             case ENGINES, PORT_ENGINES, STARBOARD_ENGINES, WARP_DRIVE, AFT_SPINE -> InternalSystem.WARP_ENGINES;
-            case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR -> null;
+            case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR,
+                 BOW_ARMOR_INNER, DORSAL_ARMOR_INNER, VENTRAL_ARMOR_INNER, AFT_ARMOR_INNER,
+                 BOW_SHIELD_STRIP, DORSAL_SHIELD_STRIP, VENTRAL_SHIELD_STRIP, AFT_SHIELD_STRIP -> null;
         };
     }
 
@@ -3424,6 +3480,83 @@ public abstract class Ship {
         return (shieldMax <= 0.0) ? 0.0 : (shieldMax / SHIELD_FACE_COUNT);
     }
 
+    private ShipRoomLayout.RoomId shieldStripRoomForFace(int face) {
+        return switch (face) {
+            case SHIELD_FACE_FORE -> ShipRoomLayout.RoomId.BOW_SHIELD_STRIP;
+            case SHIELD_FACE_REAR -> ShipRoomLayout.RoomId.AFT_SHIELD_STRIP;
+            case SHIELD_FACE_LEFT -> ShipRoomLayout.RoomId.DORSAL_SHIELD_STRIP;
+            case SHIELD_FACE_RIGHT -> ShipRoomLayout.RoomId.VENTRAL_SHIELD_STRIP;
+            default -> null;
+        };
+    }
+
+    private int shieldFaceForShieldStrip(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return -1;
+        return switch (roomId) {
+            case BOW_SHIELD_STRIP -> SHIELD_FACE_FORE;
+            case AFT_SHIELD_STRIP -> SHIELD_FACE_REAR;
+            case DORSAL_SHIELD_STRIP -> SHIELD_FACE_LEFT;
+            case VENTRAL_SHIELD_STRIP -> SHIELD_FACE_RIGHT;
+            default -> -1;
+        };
+    }
+
+    private double shieldFaceCapacity(int face) {
+        double baseCapacity = perFaceShieldMax();
+        if (baseCapacity <= 1e-9) return 0.0;
+        if (faction != Faction.TEAM_C) return baseCapacity;
+        ensureRoomSystemsInitialized();
+        ShipRoomLayout.RoomId stripRoom = shieldStripRoomForFace(face);
+        if (stripRoom == null) return baseCapacity;
+        double max = roomHpMax.getOrDefault(stripRoom, 0.0);
+        if (max <= 1e-9) return 0.0;
+        double hpv = roomHp.getOrDefault(stripRoom, max);
+        double frac = MathUtil.clamp(hpv / max, 0.0, 1.0);
+        return baseCapacity * frac;
+    }
+
+    private double totalShieldFaceCapacity() {
+        double total = 0.0;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) total += shieldFaceCapacity(i);
+        return total;
+    }
+
+    private int activeTeamCShieldStripCount() {
+        if (faction != Faction.TEAM_C) return SHIELD_FACE_COUNT;
+        ensureRoomSystemsInitialized();
+        int active = 0;
+        for (ShipRoomLayout.RoomId roomId : new ShipRoomLayout.RoomId[]{
+                ShipRoomLayout.RoomId.BOW_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.DORSAL_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.VENTRAL_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.AFT_SHIELD_STRIP
+        }) {
+            double max = roomHpMax.getOrDefault(roomId, 0.0);
+            if (max <= 1e-9) continue;
+            if (roomHp.getOrDefault(roomId, max) > 1e-6) active++;
+        }
+        return active;
+    }
+
+    private double teamCShieldStripRegenMultiplier() {
+        if (faction != Faction.TEAM_C) return 1.0;
+        return MathUtil.clamp(activeTeamCShieldStripCount() / (double) SHIELD_FACE_COUNT, 0.0, 1.0);
+    }
+
+    private void clampShieldFacesToStructuralCapacity() {
+        if (!shieldFacesInitialized) return;
+        boolean changed = false;
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+            double cap = shieldFaceCapacity(i);
+            double clamped = MathUtil.clamp(shieldFaces[i], 0.0, cap);
+            if (Math.abs(clamped - shieldFaces[i]) > 1e-6) {
+                shieldFaces[i] = clamped;
+                changed = true;
+            }
+        }
+        if (changed) syncAggregateShieldFromFaces();
+    }
+
     private void ensureShieldFacesSynced() {
         if (!shieldFacesInitialized) {
             syncShieldFacesFromAggregate();
@@ -3455,11 +3588,28 @@ public abstract class Ship {
             return;
         }
 
-        shield = MathUtil.clamp(shield, 0.0, max);
-        double perFace = max / SHIELD_FACE_COUNT;
-        double each = shield / SHIELD_FACE_COUNT;
-        for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
-            shieldFaces[i] = Math.min(perFace, each);
+        double effectiveCap = Math.min(max, totalShieldFaceCapacity());
+        shield = MathUtil.clamp(shield, 0.0, effectiveCap);
+        for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaces[i] = 0.0;
+        double rem = shield;
+        for (int pass = 0; pass < 4 && rem > 1e-6; pass++) {
+            int open = 0;
+            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+                if (shieldFaceCapacity(i) > shieldFaces[i] + 1e-9) open++;
+            }
+            if (open <= 0) break;
+            double share = rem / open;
+            double consumed = 0.0;
+            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
+                double cap = shieldFaceCapacity(i);
+                double room = cap - shieldFaces[i];
+                if (room <= 1e-9) continue;
+                double add = Math.min(room, share);
+                shieldFaces[i] += add;
+                consumed += add;
+            }
+            rem -= consumed;
+            if (consumed <= 1e-9) break;
         }
         shieldFacesSyncedMax = max;
         shieldFacesInitialized = true;
@@ -3467,14 +3617,14 @@ public abstract class Ship {
 
     private void syncAggregateShieldFromFaces() {
         double max = Math.max(0.0, shieldMax);
-        double perFace = perFaceShieldMax();
+        double effectiveCap = Math.min(max, totalShieldFaceCapacity());
         double total = 0.0;
         for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
             shieldFaceRegenLock[i] = Math.max(0.0, shieldFaceRegenLock[i]);
-            shieldFaces[i] = MathUtil.clamp(shieldFaces[i], 0.0, perFace);
+            shieldFaces[i] = MathUtil.clamp(shieldFaces[i], 0.0, shieldFaceCapacity(i));
             total += shieldFaces[i];
         }
-        shield = MathUtil.clamp(total, 0.0, max);
+        shield = MathUtil.clamp(total, 0.0, effectiveCap);
         shieldFacesSyncedMax = max;
         shieldFacesInitialized = true;
     }
@@ -3493,12 +3643,11 @@ public abstract class Ship {
         ensureShieldFacesSynced();
 
         double rem = amount;
-        double perFace = perFaceShieldMax();
         for (int pass = 0; pass < 4 && rem > 1e-6; pass++) {
             int open = 0;
             for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
                 if (shieldFaceRegenLock[i] > 0.0) continue;
-                if (shieldFaces[i] + 1e-9 < perFace) open++;
+                if (shieldFaces[i] + 1e-9 < shieldFaceCapacity(i)) open++;
             }
             if (open <= 0) break;
 
@@ -3506,7 +3655,7 @@ public abstract class Ship {
             double consumed = 0.0;
             for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
                 if (shieldFaceRegenLock[i] > 0.0) continue;
-                double room = perFace - shieldFaces[i];
+                double room = shieldFaceCapacity(i) - shieldFaces[i];
                 if (room <= 1e-9) continue;
                 double add = Math.min(room, share);
                 shieldFaces[i] += add;
@@ -4317,7 +4466,7 @@ public abstract class Ship {
     public boolean isShieldOnline() {
         ensureShieldFacesSynced();
         return shieldActive
-                && shieldMax > 0
+                && effectiveShieldCapacityMax() > 0.0
                 && !reactorBlackoutActive()
                 && shieldSystemMultiplier() > 0.05
                 && powerShields > 0.04

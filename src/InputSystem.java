@@ -65,6 +65,7 @@ public final class InputSystem {
                 if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
+                if (GameplayActions.tryHandleShootingRangeHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;
                 DevTools.handleKeyPressed(e);
             }

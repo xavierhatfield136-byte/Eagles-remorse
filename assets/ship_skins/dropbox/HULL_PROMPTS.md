@@ -146,67 +146,67 @@ green faction hauler hull, broad advanced cargo silhouette, elegant logistics sh
 Missile Faction / Team D / *_team_d_albedo.png
 
 1. picket_team_d_albedo.png
-missile faction Viper Barrage Syndicate picket hull, predatory escort silhouette, sharp viper-like bow, compact aggressive body, segmented armor, dangerous and fast, all launch systems hidden internally, dark metallic hull with orange and amber accents.
+missile faction picket hull, compact armored escort silhouette, very short and dense, broad integrated shoulder blocks, blunt prow, inset trench machinery, squat bunker-ship feel at small scale, no gunship fuselage, dark soot-black hull with worn brown armor and dim amber utility lights.
 
 2. patrol_team_d_albedo.png
-missile faction patrol hull, lean strike silhouette, sharp forward profile, coiled predator energy, internal magazine space hinted through body segmentation, dark steel with orange warning accents and heat-stained plating.
+missile faction patrol hull, small industrial warship silhouette, slab-sided armor, recessed service channels, practical blocky body, no sleek interceptor lines, blackened steel with oxidized brown plating and sparse amber warning lights.
 
 3. stealth_ship_team_d_albedo.png
-missile faction stealth hull, knife-like assassin silhouette, long pointed nose, faceted dark armor, predatory and secretive, built for ambush salvos, internalized launch systems, blackened metal with dim orange seam lights.
+missile faction stealth hull, low contiguous armored silhouette, short coffin-like stealth wedge, direct-overhead plan view, hidden magazine geometry, smooth buried armor plates with minimal protrusions, no aircraft read, matte black armor with muted bronze-brown plating and buried amber slits.
 
 4. fighter_team_d_albedo.png
-missile faction fighter hull, tiny venomous dart silhouette, sharp and aggressive, compact strike-craft body, dangerous and predatory, dark hull with orange-amber accents, no visible weapon mounts.
+missile faction fighter hull, tiny armored coffin craft, compact heavy micro-hull, thick shoulder plating, industrial trench details, no jet fuselage or wings, dark steel with scorched brown plates and tiny amber utility lights.
 
 5. bomber_team_d_albedo.png
-missile faction bomber hull, compact but heavier strike silhouette, broad attack body, predatory geometry, internal payload emphasis, rugged dark plating with orange warning markings and scorched surfaces.
+missile faction bomber hull, compact strike bunker silhouette, heavy central body, armored payload mass implied by thick casing, broad plated shoulders, rugged blackened hull with rust-brown armor and restrained amber warning marks.
 
 6. pd_craft_team_d_albedo.png
-missile faction point-defense craft hull, compact escort silhouette, aggressive and angular, built by a salvo fleet that still needs screening craft, dark metallic hull with orange accents and hidden systems.
+missile faction point-defense craft hull, compact defensive escort silhouette, armored shell built from slab plates and recessed vents, broad body, practical bunker-escort character, dark industrial metal with brown armor fields and small amber lights.
 
 7. drone_team_d_albedo.png
-missile faction drone hull, tiny predatory autonomous silhouette, angular and menacing, compact viper-like body, dark metal with amber seam lighting, readable small-shape design.
+missile faction drone hull, tiny autonomous arsenal block, compact armored machine silhouette, squat body, recessed panel channels, readable as a miniature bunker-ship, blackened metal with dirty bronze plating and amber slit lights.
 
 8. frigate_team_d_albedo.png
-missile faction frigate hull, aggressive escort warship silhouette, sharp spearhead bow, segmented armor, internal magazine-heavy body, dangerous and fast, Viper Barrage styling, dark steel with orange strike markings.
+missile faction frigate hull, armored escort warship silhouette, broad upper shoulders, thick central body, short blunt prow, integrated side armor, recessed machinery trenches, slow brutal missile-fleet identity, no turret-like topside forms, dark steel with worn brown armor and restrained amber hazard marks.
 
 9. missile_boat_team_d_albedo.png
-missile faction missile boat hull, dedicated salvo craft silhouette, venomous forward profile, compact broad-body center for hidden ordnance, segmented magazine armor, intimidating strike-warship shape, blackened metallic hull with amber-orange accents.
+missile faction missile boat hull, dedicated arsenal block silhouette, compact but thick central magazine mass, armored casket body, hidden salvo capacity implied by deep recesses and shell thickness, soot-dark hull with oxidized brown plating and amber warning lights.
 
 10. ciws_corvette_team_d_albedo.png
-missile faction CIWS corvette hull, short hard-edged escort silhouette, angular flanks, protective but aggressive, built to survive among missile volleys, dark heat-stained hull with orange identifiers.
+missile faction CIWS corvette hull, short armored corvette silhouette, heavy flanks, blunt defensive shell, inset vent farms, dense plated structure, dark heat-stained hull with brown armor panels and faint amber identifiers.
 
 11. light_cruiser_team_d_albedo.png
-missile faction light cruiser hull, long lean predator silhouette, sharp bow, segmented armor belts, internal arsenal feel, dangerous but mobile, dark steel plating with orange hazard markings and scorched panel edges.
+missile faction light cruiser hull, long armored line-ship silhouette, broad shoulder deck, recessed central spine, slab armor layering, industrial missile-barge character, blackened steel with oxidized brown plating and dim amber utility lights.
 
 12. medium_cruiser_team_d_albedo.png
-missile faction medium cruiser hull, coiled-snake warship silhouette, elongated body, strong central mass for hidden magazines, layered armor segmentation, brutal and threatening, blackened hull with amber-orange accents.
+missile faction medium cruiser hull, heavy armored line cruiser silhouette, fortress-like forward mass, thick upper body, reduced nose taper, deep inset machinery trenches, layered shell plating over hidden magazine coffers, broad bunker-warship proportions, dark soot-black hull with worn brown armor and sparse amber lights.
 
 13. cruiser_team_d_albedo.png
-missile faction cruiser hull, dedicated arsenal warship silhouette, broad central mass, predatory bow, segmented hull architecture, built for overwhelming salvos, internalized launch decks implied by hull shape, dark metal with orange and amber warning panels.
+missile faction cruiser hull, major arsenal warship silhouette, fortress-like upper body, broad armor shoulders, long plated lower keel, recessed launch architecture implied by depth and casing, matte black hull with oxidized brown armor and muted amber warnings.
 
 14. battlecruiser_team_d_albedo.png
-missile faction battlecruiser hull, long intimidating command raider silhouette, aggressive spearhead profile, heavy segmented armor, internal arsenal geometry, dangerous fleet-killer presence, dark scorched metal with bright orange strike accents.
+missile faction battlecruiser hull, command warship silhouette with extreme armor mass, broad industrial shoulders, reinforced center spine, long wedge-keel under heavy plating, intimidating bunker-fleet presence, scorched metal with dark brown armor and restrained amber command lights.
 
 15. battleship_team_d_albedo.png
-missile faction battleship hull, hulking predator flagship silhouette, broad armored body, threatening forward mass, layered magazine-protection geometry, built for barrage warfare, dark metal hull with orange warning bands and heat-stained surfaces.
+missile faction battleship hull, colossal armored battleship silhouette, immense slab shoulders, deep recessed central works, massive layered shell protection, mobile missile bastion identity, blackened steel with burnt brown armor slabs and sparse amber warning bands.
 
 16. dreadnought_team_d_albedo.png
-missile faction dreadnought hull, colossal arsenal fortress silhouette, immense segmented hull, powerful predatory bow, internal salvo architecture, reduced shield aesthetic and strong armored magazine feel, blackened steel with amber-orange warning markings.
+missile faction dreadnought hull, colossal fortress dreadnought silhouette, monumental armored superstructure, bunker-like hull depth, huge recessed machinery blocks, one contiguous citadel of shell and magazine mass, blackened steel with weathered brown armor and dim amber warnings.
 
 17. supership_team_d_albedo.png
-missile faction supership hull, apex barrage flagship, overwhelming viper-like silhouette at giant scale, layered internal arsenal form, segmented armor mass, terrifying and oppressive, dark scorched plating with vivid orange strike bands and glowing seam accents.
+missile faction supership hull, apex armored flagship silhouette, overwhelming industrial citadel form, giant slab-built shoulders, vast keel body, layered shell architecture, oppressive bunker-fleet character, dark scorched plating with brown armor fields and a few buried amber command lights.
 
 18. carrier_team_d_albedo.png
-missile faction carrier hull, arsenal-carrier silhouette, broad central body, predatory bow, layered internal bay and magazine architecture expressed through hull shape, dangerous and oppressive, dark metallic plating with orange hazard accents.
+missile faction carrier hull, armored carrier silhouette, huge bunker-like hangar body, direct-overhead plan view, thick integrated shoulder casings, shortened prow, internal bay depth hidden behind slab armor, fortress logistics flagship identity, no gunship centerline, no sticker outline, dark metal with worn brown plating and restrained amber hazard lights.
 
 19. drone_carrier_team_d_albedo.png
-missile faction drone carrier hull, lean strike-carrier silhouette, angular and predatory, compact carrier body with hidden internal bay structure, dark steel with amber-orange highlights and heat-scored plating.
+missile faction drone carrier hull, compact armored support-carrier silhouette, direct-overhead plan view, dense body, recessed bay seams, practical slab-built structure, no sleek escort-carrier arrowhead, no shuttle read, dark steel with oxidized brown armor and small amber service lights.
 
 20. transport_team_d_albedo.png
-missile faction transport hull, dangerous militarized convoy silhouette, thick armored cargo body, aggressive prow, internalized systems, built by a ruthless barrage fleet, dark hull with orange logistics and warning markings.
+missile faction transport hull, militarized convoy barge silhouette, direct-overhead plan view, one contiguous armored cargo mass, thick shell plating, blunt prow, recessed utility trenches, brutal logistics craft built like a mobile bunker, dark hull with brown armor and muted amber logistics lights.
 
 21. miner_team_d_albedo.png
-missile faction miner hull, rugged extraction ship converted for a hostile war economy, angular utility silhouette, segmented armor, dangerous industrial look, dark metallic hull with orange hazard accents and scorched work plating.
+missile faction miner hull, hostile industrial workship silhouette, direct-overhead plan view, heavy utility body, slab armor plates, deep inset vents, dangerous extraction-barge character, not a shuttle, dark metallic hull with worn brown plating and sparse amber hazard lights.
 
 22. hauler_team_d_albedo.png
-missile faction hauler hull, broad militarized cargo silhouette, heavy segmented body, convoy-raider logistics feel, predatory utility ship, dark steel plating with orange warning bands and heat-stained panel seams.
+missile faction hauler hull, broad armored hauler silhouette, direct-overhead plan view, thick cargo coffers, layered shell sections, blunt industrial body, convoy bunker-ship identity, dark steel plating with oxidized brown armor and restrained amber warning bands.

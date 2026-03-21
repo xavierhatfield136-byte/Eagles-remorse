@@ -18,9 +18,17 @@ public final class ShipRoomLayout {
         SENSORS,
         BOW,
         BOW_ARMOR,
+        BOW_ARMOR_INNER,
+        BOW_SHIELD_STRIP,
         DORSAL_ARMOR,
+        DORSAL_ARMOR_INNER,
+        DORSAL_SHIELD_STRIP,
         VENTRAL_ARMOR,
+        VENTRAL_ARMOR_INNER,
+        VENTRAL_SHIELD_STRIP,
         AFT_ARMOR,
+        AFT_ARMOR_INNER,
+        AFT_SHIELD_STRIP,
         CREW_QUARTERS,
         PORT_BATTERY,
         STARBOARD_BATTERY,
@@ -160,9 +168,17 @@ public final class ShipRoomLayout {
             case SENSORS -> "SENSORS";
             case BOW -> "BOW SECTION";
             case BOW_ARMOR -> "BOW ARMOR";
+            case BOW_ARMOR_INNER -> "INNER BOW ARMOR";
+            case BOW_SHIELD_STRIP -> "BOW SHIELD STRIP";
             case DORSAL_ARMOR -> "DORSAL ARMOR";
+            case DORSAL_ARMOR_INNER -> "INNER DORSAL ARMOR";
+            case DORSAL_SHIELD_STRIP -> "DORSAL SHIELD STRIP";
             case VENTRAL_ARMOR -> "VENTRAL ARMOR";
+            case VENTRAL_ARMOR_INNER -> "INNER VENTRAL ARMOR";
+            case VENTRAL_SHIELD_STRIP -> "VENTRAL SHIELD STRIP";
             case AFT_ARMOR -> "AFT ARMOR";
+            case AFT_ARMOR_INNER -> "INNER AFT ARMOR";
+            case AFT_SHIELD_STRIP -> "AFT SHIELD STRIP";
             case CREW_QUARTERS -> "CREW QUARTERS";
             case PORT_BATTERY -> "PORT BATTERY";
             case STARBOARD_BATTERY -> "STARBOARD BATTERY";
@@ -191,6 +207,8 @@ public final class ShipRoomLayout {
             case SENSORS -> "SNS";
             case BOW -> "BOW";
             case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR -> "ARM";
+            case BOW_ARMOR_INNER, DORSAL_ARMOR_INNER, VENTRAL_ARMOR_INNER, AFT_ARMOR_INNER -> "INR";
+            case BOW_SHIELD_STRIP, DORSAL_SHIELD_STRIP, VENTRAL_SHIELD_STRIP, AFT_SHIELD_STRIP -> "STR";
             case CREW_QUARTERS -> "CRW";
             case PORT_BATTERY -> "PBT";
             case STARBOARD_BATTERY -> "SBT";
@@ -223,8 +241,59 @@ public final class ShipRoomLayout {
     public static boolean isArmorRoom(RoomId roomId) {
         if (roomId == null) return false;
         return switch (roomId) {
-            case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR -> true;
+            case BOW_ARMOR, DORSAL_ARMOR, VENTRAL_ARMOR, AFT_ARMOR,
+                 BOW_ARMOR_INNER, DORSAL_ARMOR_INNER, VENTRAL_ARMOR_INNER, AFT_ARMOR_INNER,
+                 BOW_SHIELD_STRIP, DORSAL_SHIELD_STRIP, VENTRAL_SHIELD_STRIP, AFT_SHIELD_STRIP -> true;
             default -> false;
+        };
+    }
+
+    public static boolean isShieldStripRoom(RoomId roomId) {
+        if (roomId == null) return false;
+        return switch (roomId) {
+            case BOW_SHIELD_STRIP, DORSAL_SHIELD_STRIP, VENTRAL_SHIELD_STRIP, AFT_SHIELD_STRIP -> true;
+            default -> false;
+        };
+    }
+
+    public static boolean isInnerArmorRoom(RoomId roomId) {
+        if (roomId == null) return false;
+        return switch (roomId) {
+            case BOW_ARMOR_INNER, DORSAL_ARMOR_INNER, VENTRAL_ARMOR_INNER, AFT_ARMOR_INNER -> true;
+            default -> false;
+        };
+    }
+
+    public static RoomId outerArmorRoomFor(RoomId roomId) {
+        if (roomId == null) return null;
+        return switch (roomId) {
+            case BOW_ARMOR, BOW_ARMOR_INNER, BOW_SHIELD_STRIP -> RoomId.BOW_ARMOR;
+            case DORSAL_ARMOR, DORSAL_ARMOR_INNER, DORSAL_SHIELD_STRIP -> RoomId.DORSAL_ARMOR;
+            case VENTRAL_ARMOR, VENTRAL_ARMOR_INNER, VENTRAL_SHIELD_STRIP -> RoomId.VENTRAL_ARMOR;
+            case AFT_ARMOR, AFT_ARMOR_INNER, AFT_SHIELD_STRIP -> RoomId.AFT_ARMOR;
+            default -> null;
+        };
+    }
+
+    public static RoomId innerArmorRoomFor(RoomId roomId) {
+        if (roomId == null) return null;
+        return switch (roomId) {
+            case BOW_ARMOR, BOW_ARMOR_INNER, BOW_SHIELD_STRIP -> RoomId.BOW_ARMOR_INNER;
+            case DORSAL_ARMOR, DORSAL_ARMOR_INNER, DORSAL_SHIELD_STRIP -> RoomId.DORSAL_ARMOR_INNER;
+            case VENTRAL_ARMOR, VENTRAL_ARMOR_INNER, VENTRAL_SHIELD_STRIP -> RoomId.VENTRAL_ARMOR_INNER;
+            case AFT_ARMOR, AFT_ARMOR_INNER, AFT_SHIELD_STRIP -> RoomId.AFT_ARMOR_INNER;
+            default -> null;
+        };
+    }
+
+    public static RoomId shieldStripRoomFor(RoomId roomId) {
+        if (roomId == null) return null;
+        return switch (roomId) {
+            case BOW_ARMOR, BOW_ARMOR_INNER, BOW_SHIELD_STRIP -> RoomId.BOW_SHIELD_STRIP;
+            case DORSAL_ARMOR, DORSAL_ARMOR_INNER, DORSAL_SHIELD_STRIP -> RoomId.DORSAL_SHIELD_STRIP;
+            case VENTRAL_ARMOR, VENTRAL_ARMOR_INNER, VENTRAL_SHIELD_STRIP -> RoomId.VENTRAL_SHIELD_STRIP;
+            case AFT_ARMOR, AFT_ARMOR_INNER, AFT_SHIELD_STRIP -> RoomId.AFT_SHIELD_STRIP;
+            default -> null;
         };
     }
 
@@ -340,7 +409,7 @@ public final class ShipRoomLayout {
                 RoomId.ENGINES, RoomId.CARGO_BAY, RoomId.WARP_DRIVE, RoomId.AFT_SPINE));
         rooms.add(cell(hull, RoomId.AFT_SPINE, displayLabel(RoomId.AFT_SPINE), -0.99, -0.86, 0.34, 0.66, null, 0.24, false,
                 RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES));
-        addArmorRooms(hull, rooms);
+        addPerimeterDefenseRooms(hull, rooms, faction);
         return new Profile(rooms, Collections.emptyList());
     }
 
@@ -389,7 +458,7 @@ public final class ShipRoomLayout {
                 RoomId.ENGINES, RoomId.CARGO_BAY, RoomId.WARP_DRIVE, RoomId.AFT_SPINE));
         rooms.add(cell(hull, RoomId.AFT_SPINE, displayLabel(RoomId.AFT_SPINE), -0.99, -0.88, 0.34, 0.66, null, 0.24, false,
                 RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES));
-        addArmorRooms(hull, rooms);
+        addPerimeterDefenseRooms(hull, rooms, faction);
         return new Profile(rooms, Collections.emptyList());
     }
 
@@ -438,7 +507,7 @@ public final class ShipRoomLayout {
                 RoomId.ENGINES, RoomId.CARGO_BAY, RoomId.WARP_DRIVE, RoomId.AFT_SPINE));
         rooms.add(cell(hull, RoomId.AFT_SPINE, displayLabel(RoomId.AFT_SPINE), -1.00, -0.88, 0.36, 0.66, null, 0.24, false,
                 RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES));
-        addArmorRooms(hull, rooms);
+        addPerimeterDefenseRooms(hull, rooms, faction);
         return new Profile(rooms, Collections.emptyList());
     }
 
@@ -487,8 +556,19 @@ public final class ShipRoomLayout {
                 RoomId.ENGINES, RoomId.CARGO_BAY, RoomId.WARP_DRIVE, RoomId.AFT_SPINE));
         rooms.add(cell(hull, RoomId.AFT_SPINE, displayLabel(RoomId.AFT_SPINE), -1.00, -0.88, 0.34, 0.66, null, 0.24, false,
                 RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES));
-        addArmorRooms(hull, rooms);
+        addPerimeterDefenseRooms(hull, rooms, faction);
         return new Profile(rooms, Collections.emptyList());
+    }
+
+    private static void addPerimeterDefenseRooms(HullProfile hull, List<RoomDef> rooms, Faction faction) {
+        if (faction == Faction.TEAM_C) {
+            addShieldStripRooms(hull, rooms);
+            return;
+        }
+        addArmorRooms(hull, rooms);
+        if (faction == Faction.TEAM_D) {
+            addInnerArmorRooms(hull, rooms);
+        }
     }
 
     private static void addArmorRooms(HullProfile hull, List<RoomDef> rooms) {
@@ -499,6 +579,28 @@ public final class ShipRoomLayout {
         rooms.add(cell(hull, RoomId.BOW_ARMOR, displayLabel(RoomId.BOW_ARMOR), 0.78, 1.00, 0.18, 0.82, null, 0.34, false,
                 RoomId.BOW, RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY, RoomId.MISSILE_LAUNCHERS));
         rooms.add(cell(hull, RoomId.AFT_ARMOR, displayLabel(RoomId.AFT_ARMOR), -1.00, -0.82, 0.18, 0.82, null, 0.34, false,
+                RoomId.AFT_SPINE, RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.ENGINES));
+    }
+
+    private static void addInnerArmorRooms(HullProfile hull, List<RoomDef> rooms) {
+        rooms.add(cell(hull, RoomId.DORSAL_ARMOR_INNER, displayLabel(RoomId.DORSAL_ARMOR_INNER), -0.74, 0.72, 0.08, 0.20, null, 0.28, false,
+                RoomId.SENSORS, RoomId.BRIDGE, RoomId.CREW_QUARTERS, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY, RoomId.BOW));
+        rooms.add(cell(hull, RoomId.VENTRAL_ARMOR_INNER, displayLabel(RoomId.VENTRAL_ARMOR_INNER), -0.74, 0.70, 0.80, 0.92, null, 0.30, false,
+                RoomId.CARGO_BAY, RoomId.MAGAZINES, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.AFT_SPINE));
+        rooms.add(cell(hull, RoomId.BOW_ARMOR_INNER, displayLabel(RoomId.BOW_ARMOR_INNER), 0.66, 0.90, 0.28, 0.72, null, 0.24, false,
+                RoomId.BOW, RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY, RoomId.MISSILE_LAUNCHERS));
+        rooms.add(cell(hull, RoomId.AFT_ARMOR_INNER, displayLabel(RoomId.AFT_ARMOR_INNER), -0.90, -0.68, 0.28, 0.72, null, 0.24, false,
+                RoomId.AFT_SPINE, RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.ENGINES));
+    }
+
+    private static void addShieldStripRooms(HullProfile hull, List<RoomDef> rooms) {
+        rooms.add(cell(hull, RoomId.DORSAL_SHIELD_STRIP, displayLabel(RoomId.DORSAL_SHIELD_STRIP), -0.88, 0.88, 0.00, 0.11, null, 0.18, false,
+                RoomId.SENSORS, RoomId.BRIDGE, RoomId.CREW_QUARTERS, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY, RoomId.BOW));
+        rooms.add(cell(hull, RoomId.VENTRAL_SHIELD_STRIP, displayLabel(RoomId.VENTRAL_SHIELD_STRIP), -0.88, 0.84, 0.89, 1.00, null, 0.18, false,
+                RoomId.CARGO_BAY, RoomId.MAGAZINES, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.AFT_SPINE));
+        rooms.add(cell(hull, RoomId.BOW_SHIELD_STRIP, displayLabel(RoomId.BOW_SHIELD_STRIP), 0.80, 1.00, 0.18, 0.82, null, 0.16, false,
+                RoomId.BOW, RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.STARBOARD_BATTERY, RoomId.MISSILE_LAUNCHERS));
+        rooms.add(cell(hull, RoomId.AFT_SHIELD_STRIP, displayLabel(RoomId.AFT_SHIELD_STRIP), -1.00, -0.82, 0.18, 0.82, null, 0.16, false,
                 RoomId.AFT_SPINE, RoomId.WARP_DRIVE, RoomId.PORT_ENGINES, RoomId.STARBOARD_ENGINES, RoomId.ENGINES));
     }
 
@@ -514,10 +616,10 @@ public final class ShipRoomLayout {
         }
 
         return switch (profileKey(role)) {
-            case "small" -> buildSmallVisualCells(hull, rooms);
-            case "carrier" -> buildCarrierVisualCells(hull, rooms);
-            case "station" -> buildStationVisualCells(hull, rooms);
-            default -> buildCapitalVisualCells(hull, rooms);
+            case "small" -> buildSmallVisualCells(hull, faction, rooms);
+            case "carrier" -> buildCarrierVisualCells(hull, faction, rooms);
+            case "station" -> buildStationVisualCells(hull, faction, rooms);
+            default -> buildCapitalVisualCells(hull, faction, rooms);
         };
     }
 
@@ -598,8 +700,8 @@ public final class ShipRoomLayout {
         return new RoomDef(id, label, xs, ys, system, hpWeight, critical, neighbors);
     }
 
-    private static List<VisualCell> buildSmallVisualCells(HullProfile hull, List<RoomDef> rooms) {
-        return buildDeckGrid(hull, rooms, new RowTemplate[]{
+    private static List<VisualCell> buildSmallVisualCells(HullProfile hull, Faction faction, List<RoomDef> rooms) {
+        return buildDeckGrid(hull, faction, rooms, new RowTemplate[]{
                 microRow(0.00, 0.08, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.DORSAL_ARMOR, RoomId.SENSORS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 microRow(0.08, 0.16, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 row(0.16, 0.25, RoomId.SERVICE_BAY, RoomId.PORT_ENGINES, RoomId.ENGINES, RoomId.PORT_POWER, RoomId.INTEGRITY_FIELD, RoomId.SENSORS, RoomId.BRIDGE, RoomId.PORT_BATTERY, RoomId.BOW),
@@ -614,8 +716,8 @@ public final class ShipRoomLayout {
         });
     }
 
-    private static List<VisualCell> buildCapitalVisualCells(HullProfile hull, List<RoomDef> rooms) {
-        return buildDeckGrid(hull, rooms, new RowTemplate[]{
+    private static List<VisualCell> buildCapitalVisualCells(HullProfile hull, Faction faction, List<RoomDef> rooms) {
+        return buildDeckGrid(hull, faction, rooms, new RowTemplate[]{
                 microRow(0.00, 0.07, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 microRow(0.07, 0.15, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 row(0.15, 0.24, RoomId.SERVICE_BAY, RoomId.PORT_ENGINES, RoomId.ENGINES, RoomId.PORT_POWER, RoomId.INTEGRITY_FIELD, RoomId.CREW_QUARTERS, RoomId.PORT_BATTERY, RoomId.BRIDGE, RoomId.BOW),
@@ -631,8 +733,8 @@ public final class ShipRoomLayout {
         });
     }
 
-    private static List<VisualCell> buildCarrierVisualCells(HullProfile hull, List<RoomDef> rooms) {
-        return buildDeckGrid(hull, rooms, new RowTemplate[]{
+    private static List<VisualCell> buildCarrierVisualCells(HullProfile hull, Faction faction, List<RoomDef> rooms) {
+        return buildDeckGrid(hull, faction, rooms, new RowTemplate[]{
                 microRow(0.00, 0.07, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 microRow(0.07, 0.14, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR),
                 microRow(0.14, 0.23, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.PORT_POWER, RoomId.INTEGRITY_FIELD, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BOW_ARMOR),
@@ -648,8 +750,8 @@ public final class ShipRoomLayout {
         });
     }
 
-    private static List<VisualCell> buildStationVisualCells(HullProfile hull, List<RoomDef> rooms) {
-        return buildDeckGrid(hull, rooms, new RowTemplate[]{
+    private static List<VisualCell> buildStationVisualCells(HullProfile hull, Faction faction, List<RoomDef> rooms) {
+        return buildDeckGrid(hull, faction, rooms, new RowTemplate[]{
                 microRow(0.00, 0.07, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BRIDGE, RoomId.BOW_ARMOR, RoomId.BOW_ARMOR),
                 microRow(0.07, 0.14, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.DORSAL_ARMOR, RoomId.CREW_QUARTERS, RoomId.SENSORS, RoomId.SENSORS, RoomId.DORSAL_ARMOR, RoomId.BOW_ARMOR),
                 microRow(0.14, 0.23, RoomId.AFT_ARMOR, RoomId.DORSAL_ARMOR, RoomId.PORT_POWER, RoomId.PORT_POWER, RoomId.INTEGRITY_FIELD, RoomId.CREW_QUARTERS, RoomId.PORT_BATTERY, RoomId.DORSAL_ARMOR, RoomId.BOW_ARMOR),
@@ -665,10 +767,11 @@ public final class ShipRoomLayout {
         });
     }
 
-    private static List<VisualCell> buildDeckGrid(HullProfile hull, List<RoomDef> rooms, RowTemplate[] rows) {
+    private static List<VisualCell> buildDeckGrid(HullProfile hull, Faction faction, List<RoomDef> rooms, RowTemplate[] rows) {
         List<VisualCell> raw = new ArrayList<>();
-        if (rows != null) {
-            for (RowTemplate row : rows) {
+        RowTemplate[] mappedRows = remapDefenseRows(faction, rows);
+        if (mappedRows != null) {
+            for (RowTemplate row : mappedRows) {
                 if (row == null || row.rooms == null || row.rooms.length == 0) continue;
                 Interval interval = hull.usableInterval(row.topFrac, row.bottomFrac);
                 if (interval == null || interval.length() <= 0.04) continue;
@@ -684,35 +787,86 @@ public final class ShipRoomLayout {
                 }
             }
         }
-        appendArmorShellCells(raw, hull);
+        appendPerimeterShellCells(raw, hull, faction);
         return assignVisualLabels(raw, rooms);
     }
 
-    private static void appendArmorShellCells(List<VisualCell> raw, HullProfile hull) {
+    private static void appendPerimeterShellCells(List<VisualCell> raw, HullProfile hull, Faction faction) {
         if (raw == null || hull == null) return;
 
         double[] shellCuts = new double[]{-1.00, -0.78, -0.54, -0.28, 0.00, 0.28, 0.54, 0.78, 1.00};
         for (int i = 0; i < shellCuts.length - 1; i++) {
             double x0 = shellCuts[i];
             double x1 = shellCuts[i + 1];
-            RoomId topRoom = armorRoomForSpan((x0 + x1) * 0.5, true);
-            RoomId bottomRoom = armorRoomForSpan((x0 + x1) * 0.5, false);
+            RoomId topRoom = outerDefenseRoomForSpan((x0 + x1) * 0.5, true, faction);
+            RoomId bottomRoom = outerDefenseRoomForSpan((x0 + x1) * 0.5, false, faction);
             VisualCell top = shellStripCell(hull, topRoom, x0, x1, 0.00, 0.12);
             VisualCell bottom = shellStripCell(hull, bottomRoom, x0, x1, 0.88, 1.00);
             if (top != null) raw.add(top);
             if (bottom != null) raw.add(bottom);
         }
 
-        VisualCell aftCap = endCapCell(hull, RoomId.AFT_ARMOR, -1.00, -0.82, 0.18, 0.82);
-        VisualCell bowCap = endCapCell(hull, RoomId.BOW_ARMOR, 0.82, 1.00, 0.18, 0.82);
+        VisualCell aftCap = endCapCell(hull, remapOuterDefenseRoom(RoomId.AFT_ARMOR, faction), -1.00, -0.82, 0.18, 0.82);
+        VisualCell bowCap = endCapCell(hull, remapOuterDefenseRoom(RoomId.BOW_ARMOR, faction), 0.82, 1.00, 0.18, 0.82);
+        if (aftCap != null) raw.add(aftCap);
+        if (bowCap != null) raw.add(bowCap);
+
+        if (faction == Faction.TEAM_D) {
+            appendInnerArmorShellCells(raw, hull);
+        }
+    }
+
+    private static void appendInnerArmorShellCells(List<VisualCell> raw, HullProfile hull) {
+        double[] shellCuts = new double[]{-0.92, -0.70, -0.44, -0.18, 0.10, 0.36, 0.62, 0.86};
+        for (int i = 0; i < shellCuts.length - 1; i++) {
+            double x0 = shellCuts[i];
+            double x1 = shellCuts[i + 1];
+            RoomId topRoom = innerArmorRoomFor(outerArmorRoomForSpan((x0 + x1) * 0.5, true));
+            RoomId bottomRoom = innerArmorRoomFor(outerArmorRoomForSpan((x0 + x1) * 0.5, false));
+            VisualCell top = shellStripCell(hull, topRoom, x0, x1, 0.10, 0.20);
+            VisualCell bottom = shellStripCell(hull, bottomRoom, x0, x1, 0.80, 0.90);
+            if (top != null) raw.add(top);
+            if (bottom != null) raw.add(bottom);
+        }
+
+        VisualCell aftCap = endCapCell(hull, RoomId.AFT_ARMOR_INNER, -0.90, -0.68, 0.28, 0.72);
+        VisualCell bowCap = endCapCell(hull, RoomId.BOW_ARMOR_INNER, 0.66, 0.90, 0.28, 0.72);
         if (aftCap != null) raw.add(aftCap);
         if (bowCap != null) raw.add(bowCap);
     }
 
-    private static RoomId armorRoomForSpan(double centerX, boolean top) {
+    private static RoomId outerArmorRoomForSpan(double centerX, boolean top) {
         if (centerX >= 0.72) return RoomId.BOW_ARMOR;
         if (centerX <= -0.72) return RoomId.AFT_ARMOR;
         return top ? RoomId.DORSAL_ARMOR : RoomId.VENTRAL_ARMOR;
+    }
+
+    private static RoomId outerDefenseRoomForSpan(double centerX, boolean top, Faction faction) {
+        return remapOuterDefenseRoom(outerArmorRoomForSpan(centerX, top), faction);
+    }
+
+    private static RoomId remapOuterDefenseRoom(RoomId roomId, Faction faction) {
+        if (faction != Faction.TEAM_C) return roomId;
+        RoomId remapped = shieldStripRoomFor(roomId);
+        return (remapped != null) ? remapped : roomId;
+    }
+
+    private static RowTemplate[] remapDefenseRows(Faction faction, RowTemplate[] rows) {
+        if (rows == null || rows.length == 0) return rows;
+        RowTemplate[] mapped = new RowTemplate[rows.length];
+        for (int i = 0; i < rows.length; i++) {
+            RowTemplate row = rows[i];
+            if (row == null) {
+                mapped[i] = null;
+                continue;
+            }
+            RoomId[] roomIds = new RoomId[row.rooms.length];
+            for (int j = 0; j < row.rooms.length; j++) {
+                roomIds[j] = remapOuterDefenseRoom(row.rooms[j], faction);
+            }
+            mapped[i] = new RowTemplate(row.topFrac, row.bottomFrac, row.micro, roomIds);
+        }
+        return mapped;
     }
 
     private static VisualCell shellStripCell(HullProfile hull, RoomId roomId,

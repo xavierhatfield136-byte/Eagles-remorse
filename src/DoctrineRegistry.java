@@ -69,10 +69,11 @@ public final class DoctrineRegistry {
      *  - missileStrength scales missile turrets (damage + a touch of speed/turn).
      *  - pdStrength scales CIWS (cooldown, pellets/burst, range, quality).
      *
-     * 5C:
-     *  - Energy Navy: slightly more shields, slightly less hull.
-     *  - Kinetic Consortium: slightly more hull, slightly less shields.
-     *  - Missile Barrage: moderate hull with reduced shields.
+ * 5C:
+ *  - Team A (PLAYER/ALLY): 50% hull, 50% shields.
+ *  - Team B (ENEMY): 75% hull, 25% shields.
+ *  - Team C: 25% hull, 75% shields.
+ *  - Team D: 100% hull, no shields, tougher armor, slower brick-like handling.
      */
     public static void applyToShip(Ship s) {
         if (s == null) return;
@@ -80,28 +81,59 @@ public final class DoctrineRegistry {
         APPLIED.put(s, Boolean.TRUE);
 
         DoctrineProfile p = forFaction(s.faction);
+        Faction durabilityFaction = (s.faction == null) ? Faction.ENEMY : s.faction;
 
-        // --- 5C: Hull/Shield emphasis (small but noticeable) ---
-        double hullMult;
-        double shieldMult;
-        if (p.doctrine == Doctrine.ENERGY_NAVY) {
-            hullMult = 0.95;
-            shieldMult = 1.10;
-        } else if (p.doctrine == Doctrine.MISSILE_BARRAGE) {
-            hullMult = 1.06;
-            shieldMult = 0.90;
-        } else {
-            hullMult = 1.10;
-            shieldMult = 0.95;
+        // --- 5C: Faction durability split ---
+        double totalDurability = Math.max(1.0, s.hpMax + Math.max(0.0, s.shieldMax));
+        double hullShare;
+        double armorRoomMult = 1.0;
+        double shieldStripMult = 1.0;
+        switch (durabilityFaction) {
+            case PLAYER, ALLY -> hullShare = 0.50;
+            case ENEMY -> hullShare = 0.75;
+            case TEAM_C -> {
+                hullShare = 0.25;
+                shieldStripMult = 0.42;
+            }
+            case TEAM_D -> {
+                hullShare = 1.0;
+                armorRoomMult = 1.35;
+            }
+            default -> hullShare = 0.75;
         }
 
-        s.hpMax = Math.max(1, (int) Math.round(s.hpMax * hullMult));
-        s.shieldMax = Math.max(0.0, s.shieldMax * shieldMult);
+        int newHull = Math.max(1, (int) Math.round(totalDurability * hullShare));
+        if (hullShare < 1.0 && totalDurability >= 2.0) {
+            newHull = Math.max(1, Math.min(newHull, (int) Math.floor(totalDurability - 1.0)));
+        }
+        double newShield = Math.max(0.0, totalDurability - newHull);
+
+        s.hpMax = newHull;
+        s.shieldMax = newShield;
+        s.armorRoomHpMultiplier = armorRoomMult;
+        s.shieldStripRoomHpMultiplier = shieldStripMult;
+        s.rebuildDefenseStateForCurrentStats();
+
+        if (durabilityFaction == Faction.TEAM_D) {
+            s.shieldRegen = 0.0;
+            s.shieldActive = false;
+            s.shield = 0.0;
+
+            double speedMul = missileDoctrineSpeedMultiplier(s);
+            s.desiredSpeed = Math.max(0.0, s.desiredSpeed * speedMul);
+            s.desiredSpeedBase = Math.max(0.0, s.desiredSpeed);
+            s.repairShieldPerSec = 0.0;
+        }
 
         // Spawn ships "fresh" at their new max values.
         s.hp = s.hpMax;
         s.shield = s.shieldMax;
-        if (s.shieldMax > 0) s.shieldActive = true;
+        if (durabilityFaction == Faction.TEAM_D) {
+            s.shield = 0.0;
+            s.shieldActive = false;
+        } else if (s.shieldMax > 0) {
+            s.shieldActive = true;
+        }
 
         // TEAM_D doctrine: convert the M1/primary battery into lighter guided missiles,
         // while keeping native missile racks as the heavier salvo threat.
@@ -184,6 +216,17 @@ public final class DoctrineRegistry {
         rack.radius = Math.max(6.8, gun.radius + 0.8);
         rack.barrelLen = Math.max(10.0, gun.barrelLen * 0.92);
         return rack;
+    }
+
+    private static double missileDoctrineSpeedMultiplier(Ship s) {
+        if (s == null || s.role == null) return 0.78;
+        return switch (s.role) {
+            case FIGHTER, DRONE -> 0.84;
+            case BOMBER, STEALTH_SHIP, PATROL, PICKET, PD_CRAFT, FRIGATE, CIWS_CORVETTE -> 0.80;
+            case MISSILE_BOAT, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, MINER, HAULER, TRANSPORT -> 0.76;
+            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 0.72;
+            case BASE, STATIC_TURRET -> 1.0;
+        };
     }
 
     private static double clamp01(double v) {

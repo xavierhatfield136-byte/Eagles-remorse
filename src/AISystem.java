@@ -129,6 +129,12 @@ public final class AISystem {
             if (s.aiNoFireTimer > 0.0) {
                 s.aiNoFireTimer = Math.max(0.0, s.aiNoFireTimer - Math.max(0.0, dt) * 0.35);
             }
+            if (s.aiTargetCommitTimer > 0.0) {
+                s.aiTargetCommitTimer = Math.max(0.0, s.aiTargetCommitTimer - Math.max(0.0, dt));
+                if (s.aiTargetCommitTimer <= 0.0) {
+                    s.aiCommittedTargetId = -1;
+                }
+            }
             if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
                 // Bases and static defense turrets stay put but can still defend themselves.
                 s.vx = 0;
@@ -1141,40 +1147,53 @@ public final class AISystem {
 
     private static Ship selectEngagementTarget(GameContext ctx, FleetState state, Ship seeker, double dt) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
+        Ship shared = sharedTargetForTeam(state, seeker);
+        Ship preferred = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
 
         Ship immediate = scanImmediateThreatWithBackoff(
                 ctx, seeker, Math.max(0.0, dt), Math.max(210.0, preferredRange(seeker) * 0.62));
         if (isAlive(immediate)) {
             clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, immediate, targetCommitDuration(seeker, immediate, SquadObjective.INTERCEPT));
             return immediate;
+        }
+
+        Ship committed = committedTarget(ctx, seeker);
+        if (shouldMaintainCommittedTarget(ctx, state, seeker, committed, shared, preferred)) {
+            clearEngagementScanBackoff(seeker);
+            return committed;
         }
 
         Ship periodic = periodicClosestRetargetTarget(ctx, seeker);
         if (isAlive(periodic) && canShipThreatenTarget(ctx, seeker, periodic)) {
             clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, periodic, targetCommitDuration(seeker, periodic, SquadObjective.HOLD));
             return periodic;
         }
 
-        Ship shared = sharedTargetForTeam(state, seeker);
         if (shouldCommitToSharedTarget(state, seeker, shared) && canShipThreatenTarget(ctx, seeker, shared)) {
             clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, shared, targetCommitDuration(seeker, shared, SquadObjective.HOLD));
             return shared;
         }
 
         if (shouldDeferEngagementScan(seeker, Math.max(0.0, dt))) {
+            if (isAlive(committed)) return committed;
             if (isAlive(shared)) return shared;
+            if (isAlive(preferred)) return preferred;
             return null;
         }
 
-        Ship preferred = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
         if (isAlive(preferred) && canShipThreatenTarget(ctx, seeker, preferred)) {
             clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, preferred, targetCommitDuration(seeker, preferred, SquadObjective.HOLD));
             return preferred;
         }
 
-        Ship reachable = findBestReachableEnemyTarget(ctx, seeker, shared, preferred);
+        Ship reachable = findBestReachableEnemyTarget(ctx, state, seeker, shared, preferred);
         if (isAlive(reachable)) {
             clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, reachable, targetCommitDuration(seeker, reachable, SquadObjective.HOLD));
             return reachable;
         }
 
@@ -1186,6 +1205,7 @@ public final class AISystem {
 
         if (isAlive(preferred)) return preferred;
         if (isAlive(shared)) return shared;
+        if (isAlive(committed)) return committed;
         return null;
     }
 
@@ -1383,10 +1403,14 @@ public final class AISystem {
         return findImmediateThreat(ctx, escort, Math.max(260.0, preferredRange(escort) * 1.2));
     }
 
-    private static Ship findBestReachableEnemyTarget(GameContext ctx, Ship seeker, Ship sharedHint, Ship preferredHint) {
+    private static Ship findBestReachableEnemyTarget(GameContext ctx, FleetState state, Ship seeker, Ship sharedHint, Ship preferredHint) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
+        double focusBias = factionSharedFocusBias(seeker.faction);
+        double aggressionBias = factionAggressionBias(seeker.faction);
+        double standoffBias = factionStandoffBias(seeker.faction);
+        Ship committed = committedTarget(ctx, seeker);
         for (Ship enemy : ctx.ships) {
             if (!isAlive(enemy) || enemy.faction == null) continue;
             if (seeker.faction.isFriendlyTo(enemy.faction)) continue;
@@ -1395,17 +1419,31 @@ public final class AISystem {
             double d = Math.hypot(enemy.x - seeker.x, enemy.y - seeker.y);
             double score = Math.max(0.0, 1500.0 - d) * 0.92;
             score += roleWeightForFlagship(enemy.role) * 18.0;
-            if (enemy == sharedHint) score += 180.0;
+            if (enemy == sharedHint) score += 180.0 + focusBias * 95.0;
             if (enemy == preferredHint) score += 140.0;
+            if (enemy == committed) score += 170.0 + Math.max(0.0, seeker.aiTargetCommitTimer) * 32.0;
             if (d < 240.0) score += 360.0;
+            score += threatPriority(seeker.role, enemy.role) * 72.0;
+            score += targetVulnerabilityScore(seeker, enemy);
+            score += targetAngleAdvantageScore(seeker, enemy);
+            score -= hostileBasePressurePenalty(ctx, seeker, enemy);
             double localSupport = localSupportBiasAtPoint(ctx, seeker.faction, enemy.x, enemy.y, 680.0);
             score += localSupport * 82.0;
-            if (!isCapitalRole(seeker.role) && localSupport < -1.25) score -= 220.0;
+            if (!isCapitalRole(seeker.role) && localSupport < -1.25 + aggressionBias * 0.20 - standoffBias * 0.22) {
+                score -= 220.0 + Math.max(0.0, -localSupport - 1.25) * 34.0;
+            }
             int friendlyNear = countCombatantsNearPoint(ctx, seeker.faction, enemy.x, enemy.y, 420.0, true);
             int hostileNear = countCombatantsNearPoint(ctx, seeker.faction, enemy.x, enemy.y, 420.0, false);
             int overCommit = friendlyNear - hostileNear - 2;
-            if (overCommit > 0) score -= overCommit * 44.0;
-            score -= killConfirmTargetPenalty(enemy, hullFrac(enemy));
+            double targetValue = roleWeightForFlagship(enemy.role) + threatPriority(seeker.role, enemy.role) * 0.35;
+            double overCommitPenalty = Math.max(0.0, overCommit) * 44.0;
+            if (enemy == sharedHint) overCommitPenalty *= Math.max(0.42, 1.0 - focusBias * 0.28);
+            if (targetValue > 4.4 || combinedDurabilityFrac(enemy) < 0.34) overCommitPenalty *= 0.62;
+            score -= overCommitPenalty;
+            score -= killConfirmTargetPenalty(enemy, hullFrac(enemy)) * Math.max(0.40, 1.0 - focusBias * 0.18);
+            if (state != null && shouldCommitToSharedTarget(state, seeker, enemy)) {
+                score += 36.0 + sharedTargetConfidence(state, seeker) * 42.0;
+            }
             if (score > bestScore) {
                 bestScore = score;
                 best = enemy;
@@ -1443,6 +1481,8 @@ public final class AISystem {
         Double conf = state.sharedTargetConfidence.get(s.faction.teamId());
         if (conf == null) return true;
         double c = Math.max(0.0, Math.min(1.0, conf));
+        c += factionSharedFocusBias(s.faction) * 0.10;
+        c += sharedTargetUrgencyBonus(s, target);
         if (isKillConfirmActive(target)) {
             if (hullFrac(target) < 0.11) return false;
             c *= 0.60;
@@ -1451,6 +1491,69 @@ public final class AISystem {
         if (isSkirmishRole(s.role)) return c >= 0.24;
         if (isSupportRole(s.role)) return c >= 0.42;
         return c >= 0.34;
+    }
+
+    private static Ship committedTarget(GameContext ctx, Ship seeker) {
+        if (ctx == null || seeker == null) return null;
+        if (seeker.aiCommittedTargetId <= 0 || seeker.aiTargetCommitTimer <= 0.0) return null;
+        Ship target = findLiveShipById(ctx.ships, seeker.aiCommittedTargetId);
+        if (!isAlive(target)) return null;
+        if (target.faction == null || seeker.faction == null) return null;
+        if (seeker.faction.isFriendlyTo(target.faction)) return null;
+        if (!TargetingSystem.isDetectableToObserver(seeker, target)) return null;
+        return target;
+    }
+
+    private static void commitToTarget(Ship seeker, Ship target, double duration) {
+        if (seeker == null || !isAlive(target)) return;
+        seeker.aiCommittedTargetId = target.id;
+        seeker.aiTargetCommitTimer = Math.max(seeker.aiTargetCommitTimer, Math.max(0.3, duration));
+    }
+
+    private static void clearTargetCommitment(Ship seeker) {
+        if (seeker == null) return;
+        seeker.aiCommittedTargetId = -1;
+        seeker.aiTargetCommitTimer = 0.0;
+    }
+
+    private static double targetCommitDuration(Ship seeker, Ship target, SquadObjective objective) {
+        if (seeker == null || target == null) return 2.0;
+        double duration = 2.6 + factionCommitmentBias(seeker.faction);
+        if (isCapitalRole(target.role) || target.role == ShipRole.CARRIER || target.role == ShipRole.DRONE_CARRIER) duration += 0.9;
+        if (isSupportRole(target.role) || isMissileThreatRole(target.role)) duration += 0.5;
+        if (isSkirmishRole(seeker.role)) duration -= 0.25;
+        if (isSupportRole(seeker.role)) duration += 0.30;
+        if (objective == SquadObjective.INTERCEPT) duration += 0.35;
+        if (objective == SquadObjective.RESERVE) duration -= 0.55;
+        return Math.max(1.1, duration);
+    }
+
+    private static boolean shouldMaintainCommittedTarget(GameContext ctx, FleetState state, Ship seeker, Ship target,
+                                                         Ship sharedHint, Ship preferredHint) {
+        if (!isAlive(target) || seeker == null) return false;
+        if (!canShipThreatenTarget(ctx, seeker, target)) return false;
+        if (target == sharedHint && shouldCommitToSharedTarget(state, seeker, target)) return true;
+        double support = localSupportBalance(ctx, seeker, target, Math.max(620.0, preferredRange(seeker) * 1.55));
+        double selfDur = combinedDurabilityFrac(seeker);
+        if (!isCapitalRole(seeker.role) && support < -1.35 && selfDur < 0.44 + factionRetreatBias(seeker.faction) * 0.04) {
+            return false;
+        }
+        if (target == preferredHint && seeker.aiTargetCommitTimer > 0.18) return true;
+        if (combinedDurabilityFrac(target) < 0.38) return true;
+        double keepRange = Math.max(420.0, preferredRange(seeker) * (1.55 + factionCommitmentBias(seeker.faction) * 0.08));
+        double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
+        return seeker.aiTargetCommitTimer > 0.0 && d <= keepRange;
+    }
+
+    private static double sharedTargetUrgencyBonus(Ship seeker, Ship target) {
+        if (seeker == null || target == null) return 0.0;
+        double bonus = 0.0;
+        if (isMissileThreatRole(target.role)) bonus += 0.08;
+        if (isSupportRole(target.role)) bonus += 0.06;
+        if (isCapitalRole(target.role) || target.role == ShipRole.CARRIER || target.role == ShipRole.DRONE_CARRIER) bonus += 0.10;
+        if (combinedDurabilityFrac(target) < 0.40) bonus += 0.06;
+        if (seeker.role == ShipRole.BOMBER && isCapitalRole(target.role)) bonus += 0.06;
+        return bonus;
     }
 
     private static void pruneClosestRetargetState(List<Ship> ships) {
@@ -1690,6 +1793,100 @@ public final class AISystem {
         };
     }
 
+    private static double factionAggressionBias(Faction faction) {
+        if (faction == null) return 0.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> 0.0;
+            case ENEMY -> 0.28;
+            case TEAM_C -> -0.10;
+            case TEAM_D -> 0.16;
+        };
+    }
+
+    private static double factionStandoffBias(Faction faction) {
+        if (faction == null) return 0.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> 0.02;
+            case ENEMY -> -0.10;
+            case TEAM_C -> 0.34;
+            case TEAM_D -> -0.06;
+        };
+    }
+
+    private static double factionCommitmentBias(Faction faction) {
+        if (faction == null) return 0.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> 0.35;
+            case ENEMY -> 0.60;
+            case TEAM_C -> 0.22;
+            case TEAM_D -> 0.95;
+        };
+    }
+
+    private static double factionSharedFocusBias(Faction faction) {
+        if (faction == null) return 0.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> 0.28;
+            case ENEMY -> 0.55;
+            case TEAM_C -> 0.20;
+            case TEAM_D -> 0.42;
+        };
+    }
+
+    private static double factionRetreatBias(Faction faction) {
+        if (faction == null) return 0.0;
+        return switch (faction) {
+            case PLAYER, ALLY -> 0.0;
+            case ENEMY -> -0.08;
+            case TEAM_C -> 0.26;
+            case TEAM_D -> -0.24;
+        };
+    }
+
+    private static double combinedDurabilityFrac(Ship s) {
+        if (s == null) return 0.0;
+        double hullWeight = 0.65;
+        double shieldWeight = 0.35;
+        if (s.faction == Faction.TEAM_C) {
+            hullWeight = 0.40;
+            shieldWeight = 0.60;
+        } else if (s.faction == Faction.TEAM_D) {
+            hullWeight = 0.92;
+            shieldWeight = 0.08;
+        }
+        return hullFrac(s) * hullWeight + shieldFrac(s) * shieldWeight;
+    }
+
+    private static double targetVulnerabilityScore(Ship seeker, Ship target) {
+        if (target == null) return 0.0;
+        double durability = combinedDurabilityFrac(target);
+        double score = (1.0 - durability) * 310.0;
+        if (isSupportRole(target.role)) score += 55.0;
+        if (isMissileThreatRole(target.role)) score += 44.0;
+        if (isCapitalRole(target.role) && durability < 0.58) score += 62.0;
+        if (seeker != null && seeker.role == ShipRole.BOMBER && isCapitalRole(target.role)) score += 90.0;
+        if (seeker != null && isPointDefenseRole(seeker) && isMissileThreatRole(target.role)) score += 80.0;
+        return score;
+    }
+
+    private static double targetAngleAdvantageScore(Ship seeker, Ship target) {
+        if (!isAlive(seeker) || !isAlive(target)) return 0.0;
+        double toSeeker = Math.atan2(seeker.y - target.y, seeker.x - target.x);
+        double facingDelta = Math.abs(MathUtil.normalizeAngle(toSeeker - target.angle));
+        double flankFrac = Math.max(0.0, Math.min(1.0, facingDelta / Math.PI));
+        return flankFrac * 72.0;
+    }
+
+    private static double hostileBasePressurePenalty(GameContext ctx, Ship seeker, Ship target) {
+        if (ctx == null || seeker == null || target == null) return 0.0;
+        Ship hostileBase = findClosestHostileBase(ctx, seeker);
+        if (!isAlive(hostileBase)) return 0.0;
+        double d = Math.hypot(target.x - hostileBase.x, target.y - hostileBase.y);
+        double safe = hostileBase.radius + Math.max(300.0, preferredRange(hostileBase) * 0.80);
+        if (d >= safe) return 0.0;
+        return (safe - d) / Math.max(1.0, safe) * 240.0;
+    }
+
     private static double sharedTargetConfidence(FleetState state, Ship ship) {
         if (state == null || ship == null || ship.faction == null) return 1.0;
         Double c = state.sharedTargetConfidence.get(ship.faction.teamId());
@@ -1783,6 +1980,7 @@ public final class AISystem {
     private static void fight(GameContext ctx, Ship s, Ship target, double dt, double teamConfidence, SquadObjective objective) {
         if (ctx == null || s == null || target == null) return;
         if (objective == null) objective = SquadObjective.HOLD;
+        commitToTarget(s, target, targetCommitDuration(s, target, objective));
         if (maybeStartBattlefieldWarp(ctx, s, target,
                 Math.max(preferredRange(s) * 1.18, s.radius + target.radius + 160.0))) {
             s.tryCIWS(dt, ctx.projectiles, ctx.ships);
@@ -1790,8 +1988,8 @@ public final class AISystem {
         }
         // Determine preferred range by role
         double range = preferredRange(s);
-        double aggression = roleAggressionBias(s.role);
-        double standoff = roleStandoffBias(s.role);
+        double aggression = roleAggressionBias(s.role) + factionAggressionBias(s.faction);
+        double standoff = roleStandoffBias(s.role) + factionStandoffBias(s.faction);
         double approachMul = roleApproachSpeedMul(s.role);
         double orbitMul = roleOrbitSpeedMul(s.role);
         range *= (1.0 + standoff * 0.18);
@@ -1801,10 +1999,22 @@ public final class AISystem {
         double pushHullReq = 0.62 - aggression * 0.10;
         double pushShieldReq = 0.36 - aggression * 0.09;
         double targetVulnReq = 0.45 + aggression * 0.08;
-        double fallbackHullReq = 0.46 + standoff * 0.08 - aggression * 0.05;
-        double fallbackShieldReq = 0.26 + standoff * 0.07 - aggression * 0.04;
+        double fallbackHullReq = 0.46 + standoff * 0.08 - aggression * 0.05 + factionRetreatBias(s.faction) * 0.10;
+        double fallbackShieldReq = 0.26 + standoff * 0.07 - aggression * 0.04 + factionRetreatBias(s.faction) * 0.08;
+        boolean forceFallback = false;
+        if (s.faction == Faction.TEAM_C) {
+            pushShieldReq += 0.08;
+            fallbackShieldReq += 0.10;
+            if (selfShield < 0.24) forceFallback = true;
+        }
+        if (s.faction == Faction.TEAM_D) {
+            pushHullReq -= 0.05;
+            fallbackHullReq -= 0.10;
+            targetVulnReq += 0.04;
+        }
         boolean push = (selfHull > pushHullReq && selfShield > pushShieldReq && targetHull < targetVulnReq);
         boolean fallBack = (selfHull < fallbackHullReq || selfShield < fallbackShieldReq);
+        if (forceFallback) fallBack = true;
         double supportBalance = localSupportBalance(ctx, s, target, Math.max(560.0, range * 1.55));
         if (!isCapitalRole(s.role) && supportBalance < -0.95) fallBack = true;
         if (supportBalance > 1.15 && selfHull > 0.52 && selfShield > 0.30) push = true;
@@ -1815,6 +2025,7 @@ public final class AISystem {
         if (fallBack) range *= 1.32 + Math.max(0.0, standoff) * 0.10;
         double d2 = dist2(s.x, s.y, target.x, target.y);
         double d = Math.sqrt(d2);
+        boolean dogfightRole = isDogfightRole(s.role);
 
         // Movement:
         // - If far: close in
@@ -1831,25 +2042,38 @@ public final class AISystem {
             }
         }
 
-        if (d > range * 1.22) {
-            if (s.aiBadApproachTimer > 0.0 && Double.isFinite(s.aiBadApproachAngle)) {
-                double tx = target.x - s.x;
-                double ty = target.y - s.y;
-                double tl = Math.hypot(tx, ty) + 1e-9;
-                tx /= tl;
-                ty /= tl;
-                double side = ((s.id & 1) == 0) ? -1.0 : 1.0;
-                double sx = -ty * side;
-                double sy = tx * side;
-                moveToward(s, target.x + sx * 140.0, target.y + sy * 140.0, speed * (push ? 1.08 : 1.0) * approachMul, dt);
+        boolean handledMovement = applyRoleSpecificAttackMovement(
+                ctx, s, target, dt, range, d, speed, push, fallBack,
+                approachMul, orbitMul, aggression, standoff, orbitDir
+        );
+        if (!handledMovement) {
+            if (d > range * 1.22) {
+                if (s.aiBadApproachTimer > 0.0 && Double.isFinite(s.aiBadApproachAngle)) {
+                    double tx = target.x - s.x;
+                    double ty = target.y - s.y;
+                    double tl = Math.hypot(tx, ty) + 1e-9;
+                    tx /= tl;
+                    ty /= tl;
+                    double side = ((s.id & 1) == 0) ? -1.0 : 1.0;
+                    double sx = -ty * side;
+                    double sy = tx * side;
+                    moveToward(s, target.x + sx * 140.0, target.y + sy * 140.0, speed * (push ? 1.08 : 1.0) * approachMul, dt);
+                } else {
+                    moveToward(s, target.x, target.y, speed * (push ? 1.08 : 1.0) * approachMul, dt);
+                }
+            } else if (fallBack && d < range * (0.95 + Math.max(0.0, standoff) * 0.12 - Math.max(0.0, aggression) * 0.10)) {
+                retreatFromTarget(ctx, s, target, speed * (1.0 + Math.max(0.0, standoff) * 0.10), dt);
             } else {
-                moveToward(s, target.x, target.y, speed * (push ? 1.08 : 1.0) * approachMul, dt);
+                // orbit at preferred range
+                double orbitSpeed = speed * (fallBack ? 0.98 : 0.95) * orbitMul;
+                if (dogfightRole) orbitSpeed *= 0.88;
+                orbit(s, target.x, target.y, range, orbitSpeed, dt, orbitDir);
             }
-        } else if (fallBack && d < range * (0.95 + Math.max(0.0, standoff) * 0.12 - Math.max(0.0, aggression) * 0.10)) {
-            retreatFromTarget(ctx, s, target, speed * (1.0 + Math.max(0.0, standoff) * 0.10), dt);
-        } else {
-            // orbit at preferred range
-            orbit(s, target.x, target.y, range, speed * (fallBack ? 0.98 : 0.95) * orbitMul, dt, orbitDir);
+        }
+
+        if (dogfightRole) {
+            double noseAngle = Math.atan2(target.y - s.y, target.x - s.x);
+            rotateShipTowardAssist(s, noseAngle, dt, maxTurnRateRadPerSec(s) * 1.35);
         }
 
         // Fire control
@@ -1972,6 +2196,9 @@ public final class AISystem {
 
             // Allow looser alignment for missiles
             double tol = (t.kind == Turret.Kind.MISSILE) ? Math.toRadians(28) : Math.toRadians(14);
+            if (t.kind == Turret.Kind.GUN && isDogfightRole(s.role)) {
+                tol = Math.toRadians(24);
+            }
             if (delta > tol) continue;
 
             if (t.kind == Turret.Kind.MISSILE) {
@@ -1997,12 +2224,17 @@ public final class AISystem {
         if (s == null) return;
         if (!isAlive(target)) {
             s.aiNoFireTimer = 0.0;
+            clearTargetCommitment(s);
             return;
         }
         s.aiLastEngagementX = target.x;
         s.aiLastEngagementY = target.y;
+        if (dist <= Math.max(320.0, range * 1.35)) {
+            commitToTarget(s, target, targetCommitDuration(s, target, objective));
+        }
         if (firedNow) {
             s.aiNoFireTimer = Math.max(0.0, s.aiNoFireTimer - dt * 2.2);
+            commitToTarget(s, target, targetCommitDuration(s, target, objective) + 1.4);
             return;
         }
         if (objective == SquadObjective.RESERVE) {
@@ -2036,6 +2268,93 @@ public final class AISystem {
         if (killConfirm && targetHull < 0.22) return false;
         if (overkillLikely && targetHull < 0.32 && objective != SquadObjective.INTERCEPT) return false;
         return true;
+    }
+
+    private static boolean applyRoleSpecificAttackMovement(GameContext ctx, Ship s, Ship target, double dt,
+                                                           double range, double dist, double speed,
+                                                           boolean push, boolean fallBack,
+                                                           double approachMul, double orbitMul,
+                                                           double aggression, double standoff,
+                                                           double orbitDir) {
+        if (s == null || target == null) return false;
+
+        if (isAttackRunRole(s.role)) {
+            double runRange = range * 0.88;
+            double closeBreak = range * 0.68;
+            if (fallBack && dist < range * 0.96) {
+                retreatFromTarget(ctx, s, target, speed * 1.06, dt);
+                return true;
+            }
+            if (dist > runRange * 1.12) {
+                moveTowardAttackVector(s, target, speed * 1.08 * approachMul, dt, orbitDir, 110.0);
+                return true;
+            }
+            if (dist < closeBreak || s.aiNoFireTimer > 0.55) {
+                executeAttackPass(s, target, speed * 1.02, dt, orbitDir, 155.0, 84.0);
+                return true;
+            }
+            moveTowardFacingTarget(s, target, speed * 1.00, dt, 1.28);
+            return true;
+        }
+
+        if (isBomberStrikeRole(s.role)) {
+            double releaseRange = range * 0.96;
+            if (dist > releaseRange * 1.10) {
+                moveTowardAttackVector(s, target, speed * 0.98 * approachMul, dt, orbitDir, 150.0);
+                return true;
+            }
+            if (fallBack || dist < releaseRange * 0.74 || s.aiNoFireTimer > 0.85) {
+                retreatFromTarget(ctx, s, target, speed * 1.04, dt);
+                return true;
+            }
+            holdOrbitFacingTarget(s, target, releaseRange, speed * 0.76 * orbitMul, dt, orbitDir, 1.18);
+            return true;
+        }
+
+        if (isKitingRole(s.role)) {
+            double kiteRange = range * (1.04 + Math.max(0.0, standoff) * 0.08);
+            if (dist < kiteRange * 0.92 || (fallBack && dist < kiteRange * 1.08)) {
+                retreatFromTarget(ctx, s, target, speed * (1.02 + Math.max(0.0, standoff) * 0.06), dt);
+                return true;
+            }
+            if (dist > kiteRange * 1.20) {
+                moveTowardFacingTarget(s, target, speed * 0.94 * approachMul, dt, 1.10);
+                return true;
+            }
+            holdOrbitFacingTarget(s, target, kiteRange, speed * 0.72 * orbitMul, dt, orbitDir, 1.12);
+            return true;
+        }
+
+        if (isBrawlerRole(s.role)) {
+            double commitRange = range * (push ? 0.80 : 0.92);
+            double brawlSpeed = speed * (1.00 + Math.max(0.0, aggression) * 0.06);
+            if (dist > commitRange * 1.06) {
+                moveTowardFacingTarget(s, target, brawlSpeed * approachMul, dt, 1.20);
+                return true;
+            }
+            if (fallBack && dist < commitRange * 0.86) {
+                retreatFromTarget(ctx, s, target, speed * 0.96, dt);
+                return true;
+            }
+            holdOrbitFacingTarget(s, target, commitRange, speed * 0.74 * orbitMul, dt, orbitDir, 1.16);
+            return true;
+        }
+
+        if (isLineShipRole(s.role)) {
+            double lineRange = range * 0.98;
+            if (dist > lineRange * 1.14) {
+                moveTowardFacingTarget(s, target, speed * 0.92 * approachMul, dt, 1.06);
+                return true;
+            }
+            if (fallBack && dist < lineRange * 0.88) {
+                retreatFromTarget(ctx, s, target, speed * 0.92, dt);
+                return true;
+            }
+            holdOrbitFacingTarget(s, target, lineRange, speed * 0.66 * orbitMul, dt, orbitDir, 1.06);
+            return true;
+        }
+
+        return false;
     }
 
     private static double preferredRange(Ship s) {
@@ -2209,6 +2528,97 @@ public final class AISystem {
         };
     }
 
+    private static boolean isDogfightRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case FIGHTER, DRONE, BOMBER, PD_CRAFT, PATROL, STEALTH_SHIP -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAttackRunRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case FIGHTER, DRONE, PATROL, STEALTH_SHIP -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isBomberStrikeRole(ShipRole role) {
+        return role == ShipRole.BOMBER;
+    }
+
+    private static boolean isKitingRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case MISSILE_BOAT, CARRIER, DRONE_CARRIER, TRANSPORT, HAULER, MINER -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isBrawlerRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case FRIGATE, CIWS_CORVETTE, PD_CRAFT, PICKET -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isLineShipRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> true;
+            default -> false;
+        };
+    }
+
+    private static void moveTowardFacingTarget(Ship s, Ship target, double speedPerSec, double dt, double faceRateMul) {
+        if (s == null || target == null) return;
+        moveToward(s, target.x, target.y, speedPerSec, dt);
+        double aim = Math.atan2(target.y - s.y, target.x - s.x);
+        rotateShipTowardAssist(s, aim, dt, maxTurnRateRadPerSec(s) * Math.max(0.2, faceRateMul));
+    }
+
+    private static void moveTowardAttackVector(Ship s, Ship target, double speedPerSec, double dt,
+                                               double orbitDir, double lateralOffset) {
+        if (s == null || target == null) return;
+        double dx = target.x - s.x;
+        double dy = target.y - s.y;
+        double len = Math.hypot(dx, dy) + 1e-9;
+        double ux = dx / len;
+        double uy = dy / len;
+        double sideX = -uy * orbitDir;
+        double sideY = ux * orbitDir;
+        double tx = target.x + sideX * lateralOffset;
+        double ty = target.y + sideY * lateralOffset;
+        moveToward(s, tx, ty, speedPerSec, dt);
+        rotateShipTowardAssist(s, Math.atan2(target.y - s.y, target.x - s.x), dt, maxTurnRateRadPerSec(s) * 1.18);
+    }
+
+    private static void executeAttackPass(Ship s, Ship target, double speedPerSec, double dt,
+                                          double orbitDir, double forwardLead, double lateralOffset) {
+        if (s == null || target == null) return;
+        double dx = target.x - s.x;
+        double dy = target.y - s.y;
+        double len = Math.hypot(dx, dy) + 1e-9;
+        double ux = dx / len;
+        double uy = dy / len;
+        double sideX = -uy * orbitDir;
+        double sideY = ux * orbitDir;
+        double tx = target.x + ux * forwardLead + sideX * lateralOffset;
+        double ty = target.y + uy * forwardLead + sideY * lateralOffset;
+        moveToward(s, tx, ty, speedPerSec, dt);
+        rotateShipTowardAssist(s, Math.atan2(target.y - s.y, target.x - s.x), dt, maxTurnRateRadPerSec(s) * 1.24);
+    }
+
+    private static void holdOrbitFacingTarget(Ship s, Ship target, double desiredRange, double speedPerSec,
+                                              double dt, double dir, double faceRateMul) {
+        if (s == null || target == null) return;
+        orbit(s, target.x, target.y, desiredRange, speedPerSec, dt, dir);
+        rotateShipTowardAssist(s, Math.atan2(target.y - s.y, target.x - s.x), dt,
+                maxTurnRateRadPerSec(s) * Math.max(0.2, faceRateMul));
+    }
+
     // --- helpers (dt-safe) ---
 
     private static void setVelPerSec(Ship s, double vxPerSec, double vyPerSec, double dt) {
@@ -2278,6 +2688,17 @@ public final class AISystem {
         double vx = (dirX * 0.90 + tangX * 0.18 * weave) * speedPerSec;
         double vy = (dirY * 0.90 + tangY * 0.18 * weave) * speedPerSec;
 
+        // Bias retreat back toward friendly cover instead of just running blind.
+        Ship base = (ctx == null || s.faction == null) ? null : TeamSystem.getBaseForTeam(ctx, s.faction);
+        if (isAlive(base) && base != s) {
+            double bdx = base.x - s.x;
+            double bdy = base.y - s.y;
+            double bl = Math.hypot(bdx, bdy) + 1e-9;
+            double pull = (s.faction == Faction.TEAM_C) ? 0.34 : 0.24;
+            vx += (bdx / bl) * speedPerSec * pull;
+            vy += (bdy / bl) * speedPerSec * pull;
+        }
+
         // If we have a nearby flagship, bias retreat back into fleet cohesion.
         Ship flagship = (ctx == null || ctx.fleetCommandShips == null || s.faction == null)
                 ? null
@@ -2288,6 +2709,16 @@ public final class AISystem {
             double fl = Math.hypot(fdx, fdy) + 1e-9;
             vx += (fdx / fl) * speedPerSec * 0.26;
             vy += (fdy / fl) * speedPerSec * 0.26;
+        }
+        if (ctx != null && ctx.asteroids != null) {
+            Asteroid cover = bestRetreatCoverAsteroid(ctx, s, target);
+            if (cover != null) {
+                double cdx = cover.x - s.x;
+                double cdy = cover.y - s.y;
+                double cl = Math.hypot(cdx, cdy) + 1e-9;
+                vx += (cdx / cl) * speedPerSec * 0.22;
+                vy += (cdy / cl) * speedPerSec * 0.22;
+            }
         }
         setVelPerSec(s, vx, vy, dt);
         rotateShipToward(s, Math.atan2(vy, vx), dt);
@@ -2301,6 +2732,14 @@ public final class AISystem {
         double risk = 0.0;
         if (isAlive(primaryThreat)) {
             risk += singleThreatArcRisk(primaryThreat, px, py) * 1.25;
+        }
+        Ship hostileBase = findClosestHostileBase(ctx, self);
+        if (isAlive(hostileBase)) {
+            double dBase = Math.hypot(px - hostileBase.x, py - hostileBase.y);
+            double safe = hostileBase.radius + Math.max(320.0, preferredRange(hostileBase) * 0.78);
+            if (dBase < safe) {
+                risk += (safe - dBase) / Math.max(1.0, safe) * 2.0;
+            }
         }
         for (Ship enemy : ctx.ships) {
             if (!isAlive(enemy) || enemy == primaryThreat) continue;
@@ -2320,6 +2759,38 @@ public final class AISystem {
             }
         }
         return risk;
+    }
+
+    private static Asteroid bestRetreatCoverAsteroid(GameContext ctx, Ship self, Ship threat) {
+        if (ctx == null || self == null || threat == null || ctx.asteroids == null) return null;
+        Asteroid best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (Asteroid a : ctx.asteroids) {
+            if (a == null) continue;
+            double dSelf = Math.hypot(a.x - self.x, a.y - self.y);
+            if (dSelf > 420.0) continue;
+            double dThreat = Math.hypot(a.x - threat.x, a.y - threat.y);
+            if (dThreat >= Math.hypot(self.x - threat.x, self.y - threat.y)) continue;
+            double lineDist = pointToSegmentDistance(a.x, a.y, self.x, self.y, threat.x, threat.y);
+            double score = Math.max(0.0, 260.0 - lineDist) * 1.2 + Math.max(0.0, 420.0 - dSelf) * 0.35 + a.collisionRadius() * 0.2;
+            if (score > bestScore) {
+                bestScore = score;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    private static double pointToSegmentDistance(double px, double py, double ax, double ay, double bx, double by) {
+        double abx = bx - ax;
+        double aby = by - ay;
+        double denom = abx * abx + aby * aby;
+        if (denom <= 1e-9) return Math.hypot(px - ax, py - ay);
+        double t = ((px - ax) * abx + (py - ay) * aby) / denom;
+        t = Math.max(0.0, Math.min(1.0, t));
+        double qx = ax + abx * t;
+        double qy = ay + aby * t;
+        return Math.hypot(px - qx, py - qy);
     }
 
     private static double singleThreatArcRisk(Ship enemy, double px, double py) {
@@ -2620,8 +3091,10 @@ public final class AISystem {
     }
 
     private static double shieldFrac(Ship s) {
-        if (s == null || s.shieldMax <= 0.0 || !s.shieldActive) return 1.0;
-        return Math.max(0.0, Math.min(1.0, s.shield / Math.max(1e-9, s.shieldMax)));
+        if (s == null || !s.shieldActive) return 1.0;
+        double effectiveMax = s.effectiveShieldCapacityMax();
+        if (effectiveMax <= 0.0) return 1.0;
+        return Math.max(0.0, Math.min(1.0, s.shield / Math.max(1e-9, effectiveMax)));
     }
 
     private static void orbit(Ship s, double cx, double cy, double desiredRange, double speedPerSec, double dt, double dir) {

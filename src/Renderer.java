@@ -1773,10 +1773,11 @@ public class Renderer {
         drawVitalsMeter(g2, meterX, hullY, meterW, meterH, "HULL " + ship.hp + "/" + ship.hpMax, hullFrac,
                 new Color(92, 246, 124, 218));
 
-        if (ship.shieldActive && ship.shieldMax > 0.0) {
-            double shieldFrac = Math.max(0.0, Math.min(1.0, ship.shield / Math.max(1e-9, ship.shieldMax)));
+        double effectiveShieldMax = ship.effectiveShieldCapacityMax();
+        if (ship.shieldActive && effectiveShieldMax > 0.0) {
+            double shieldFrac = Math.max(0.0, Math.min(1.0, ship.shield / Math.max(1e-9, effectiveShieldMax)));
             int shieldNow = (int) Math.round(Math.max(0.0, ship.shield));
-            int shieldMax = (int) Math.round(Math.max(0.0, ship.shieldMax));
+            int shieldMax = (int) Math.round(Math.max(0.0, effectiveShieldMax));
             drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD " + shieldNow + "/" + shieldMax, shieldFrac,
                     shieldFaceColor(ship, Ship.SHIELD_FACE_FORE, 216));
             if (showOverchargeHint) {
@@ -4074,6 +4075,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     v.stationOuter = r;
                     v.stationInner = Math.max(8, r - 14);
                     v.stationSpokes = 6;
+                    Polygon stationHull = ShipHullSilhouette.hullPolygon(role, r, faction);
+                    if (stationHull != null && stationHull.npoints >= 3) {
+                        v.hullPolys.add(stationHull);
+                    }
                 }
                 default -> {
                     // Generic frigate line
@@ -6022,7 +6027,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             ShipRoomLayout.RoomId roomId = entry.getKey();
             Area shellArea = entry.getValue();
             if (shellArea == null || shellArea.isEmpty()) continue;
-            ShipRoomLayout.RoomId facingRoom = breachFacingRoomId(roomId, shellArea.getBounds(), ship.radius);
+            ShipRoomLayout.RoomId facingRoom = breachFacingRoomId(ship, roomId, shellArea.getBounds(), ship.radius);
 
             Area breachArea = buildDestroyedRoomBreachArea(ship, roomId, shellArea, marks, span);
             if (breachArea == null || breachArea.isEmpty()) continue;
@@ -6077,16 +6082,23 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return !overlap.isEmpty() && overlap.getBounds().width > 0 && overlap.getBounds().height > 0;
     }
 
-    private static ShipRoomLayout.RoomId breachFacingRoomId(ShipRoomLayout.RoomId roomId, Rectangle bounds, double radius) {
+    private static ShipRoomLayout.RoomId breachFacingRoomId(Ship ship, ShipRoomLayout.RoomId roomId, Rectangle bounds, double radius) {
         if (ShipRoomLayout.isArmorRoom(roomId)) return roomId;
-        if (bounds == null || radius <= 1e-6) return ShipRoomLayout.RoomId.DORSAL_ARMOR;
+        Faction faction = (ship == null) ? null : ship.faction;
+        if (bounds == null || radius <= 1e-6) {
+            ShipRoomLayout.RoomId fallback = ShipRoomLayout.RoomId.DORSAL_ARMOR;
+            return (faction == Faction.TEAM_C) ? ShipRoomLayout.shieldStripRoomFor(fallback) : fallback;
+        }
 
         double nx = bounds.getCenterX() / Math.max(1.0, radius);
         double ny = bounds.getCenterY() / Math.max(1.0, radius);
+        ShipRoomLayout.RoomId facing;
         if (Math.abs(nx) > Math.abs(ny) * 1.15) {
-            return (nx >= 0.0) ? ShipRoomLayout.RoomId.BOW_ARMOR : ShipRoomLayout.RoomId.AFT_ARMOR;
+            facing = (nx >= 0.0) ? ShipRoomLayout.RoomId.BOW_ARMOR : ShipRoomLayout.RoomId.AFT_ARMOR;
+        } else {
+            facing = (ny <= 0.0) ? ShipRoomLayout.RoomId.DORSAL_ARMOR : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
         }
-        return (ny <= 0.0) ? ShipRoomLayout.RoomId.DORSAL_ARMOR : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
+        return (faction == Faction.TEAM_C) ? ShipRoomLayout.shieldStripRoomFor(facing) : facing;
     }
 
     private static Area buildDestroyedRoomBreachArea(Ship ship,
@@ -6377,7 +6389,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                  ShipRoomLayout.RoomId facingRoom) {
         if (g == null || ship == null || breachShape == null || breachedRoom == null || facingRoom == null) return;
 
-        LinkedHashSet<ShipRoomLayout.RoomId> exposedRooms = exposedInteriorRoomIds(ship.role, breachedRoom);
+        LinkedHashSet<ShipRoomLayout.RoomId> exposedRooms = exposedInteriorRoomIds(ship.role, ship.faction, breachedRoom);
         if (exposedRooms.isEmpty()) return;
 
         Rectangle breachBounds = breachShape.getBounds();
@@ -6483,6 +6495,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
             gi.setColor(accent);
             gi.drawLine(b.x + 2, b.y + b.height - 3, b.x + b.width - 2, b.y + b.height - 3);
+        } else if (ShipRoomLayout.isShieldStripRoom(roomId)) {
+            int r = Math.max(4, Math.min(b.width, b.height) / 3);
+            gi.setColor(accent);
+            gi.drawOval(cx - r, cy - r, r * 2, r * 2);
+            gi.drawLine(b.x + 2, cy, b.x + b.width - 2, cy);
+            gi.drawLine(cx, b.y + 2, cx, b.y + b.height - 2);
         } else if (ShipRoomLayout.isShieldRoom(roomId)) {
             int r = Math.max(4, Math.min(b.width, b.height) / 3);
             gi.setColor(accent);
@@ -6538,22 +6556,24 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static LinkedHashSet<ShipRoomLayout.RoomId> exposedInteriorRoomIds(ShipRole role,
+                                                                                Faction faction,
                                                                                 ShipRoomLayout.RoomId breachedRoom) {
         LinkedHashSet<ShipRoomLayout.RoomId> out = new LinkedHashSet<>();
         HashSet<ShipRoomLayout.RoomId> visited = new HashSet<>();
-        ShipRoomLayout.RoomDef root = ShipRoomLayout.roomForId(role, breachedRoom);
+        ShipRoomLayout.RoomDef root = ShipRoomLayout.roomForId(role, faction, breachedRoom);
         if (root == null) return out;
 
         if (!ShipRoomLayout.isArmorRoom(breachedRoom)) {
             out.add(breachedRoom);
         }
         for (ShipRoomLayout.RoomId neighbor : root.neighbors) {
-            collectExposedInteriorRoomIds(role, neighbor, 0, 2, visited, out);
+            collectExposedInteriorRoomIds(role, faction, neighbor, 0, 2, visited, out);
         }
         return out;
     }
 
     private static void collectExposedInteriorRoomIds(ShipRole role,
+                                                      Faction faction,
                                                       ShipRoomLayout.RoomId roomId,
                                                       int depth,
                                                       int maxDepth,
@@ -6562,7 +6582,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (roomId == null || depth > maxDepth || visited.contains(roomId)) return;
         visited.add(roomId);
 
-        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, roomId);
+        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, faction, roomId);
         if (def == null) return;
         if (!ShipRoomLayout.isArmorRoom(roomId)) {
             out.add(roomId);
@@ -6570,7 +6590,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (depth == maxDepth) return;
         for (ShipRoomLayout.RoomId next : def.neighbors) {
             if (next == null || ShipRoomLayout.isArmorRoom(next)) continue;
-            collectExposedInteriorRoomIds(role, next, depth + 1, maxDepth, visited, out);
+            collectExposedInteriorRoomIds(role, faction, next, depth + 1, maxDepth, visited, out);
         }
     }
 
@@ -6583,6 +6603,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color roomTraceTint(ShipRoomLayout.RoomId roomId, int alpha) {
         int a = MathUtil.clamp(alpha, 0, 255);
         if (roomId == null) return new Color(255, 178, 105, a);
+        if (ShipRoomLayout.isShieldStripRoom(roomId)) return new Color(124, 214, 255, a);
         if (ShipRoomLayout.isArmorRoom(roomId)) return new Color(210, 224, 236, a);
         if (ShipRoomLayout.isPowerRoom(roomId)) return new Color(255, 198, 112, a);
         if (ShipRoomLayout.isWeaponRoom(roomId)) return new Color(255, 164, 94, a);
