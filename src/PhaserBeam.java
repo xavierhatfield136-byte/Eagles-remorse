@@ -8,6 +8,7 @@ public class PhaserBeam extends Projectile {
     private final Ship emitter;
     private final Turret emitterTurret;
     private final double muzzleOffset;
+    private final boolean penetratesTargets;
 
     public double angle;
     public double length;
@@ -42,6 +43,7 @@ public class PhaserBeam extends Projectile {
         this.length = Math.max(80.0, length);
         this.width = Math.max(1.0, width);
         this.damagePerSecond = Math.max(0.0, damagePerSecond);
+        this.penetratesTargets = false;
         syncFromEmitter();
     }
 
@@ -72,6 +74,7 @@ public class PhaserBeam extends Projectile {
         this.length = Math.max(80.0, length);
         this.width = Math.max(1.0, width);
         this.damagePerSecond = Math.max(0.0, damagePerSecond);
+        this.penetratesTargets = true;
         syncFromEmitter();
     }
 
@@ -111,6 +114,10 @@ public class PhaserBeam extends Projectile {
 
     public void clampImpactFraction(double fraction) {
         impactFraction = MathUtil.clamp(fraction, 0.0, 1.0);
+    }
+
+    public boolean penetratesTargets() {
+        return penetratesTargets;
     }
 
     public int rollFrameDamage(java.util.Random rng, double dt) {

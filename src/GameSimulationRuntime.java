@@ -198,6 +198,13 @@ public final class GameSimulationRuntime {
             cancelBattlefieldWarp(ship, isPlayer ? "BATTLEFIELD WARP ABORTED" : null, 1.0);
             return;
         }
+        if (ship.warpFormationLeaderId() > 0) {
+            Ship leader = ctx.entityQuery.findShipById(ship.warpFormationLeaderId());
+            if (leader == null || !leader.alive || leader.dying || leader.hp <= 0) {
+                cancelBattlefieldWarp(ship, isPlayer ? "BATTLEFIELD WARP ABORTED" : null, 1.0);
+                return;
+            }
+        }
 
         double chargeDuration = ship.warpChargeDuration();
         double elapsed = Math.max(0.0, chargeDuration - ship.warpChargeRemaining());

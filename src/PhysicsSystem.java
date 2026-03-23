@@ -157,6 +157,10 @@ public final class PhysicsSystem {
         } catch (Throwable ignored) {
         }
         try {
+            CollisionSystem.handleSuperweaponBlastRings(ctx);
+        } catch (Throwable ignored) {
+        }
+        try {
             VFX.updateAll(dt);
         } catch (Throwable ignored) {
         }

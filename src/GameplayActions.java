@@ -82,10 +82,8 @@ public final class GameplayActions {
 
     public static void cycleHudDetail(GameContext ctx) {
         if (ctx == null) return;
-        GameContext.HudDetail[] modes = GameContext.HudDetail.values();
-        int next = (ctx.hudDetail.ordinal() + 1) % modes.length;
-        ctx.hudDetail = modes[next];
-        EventSystem.showBanner(ctx, "HUD: " + ctx.hudDetail.name(), 0.8);
+        ctx.hudDetail = GameContext.HudDetail.FULL;
+        EventSystem.showBanner(ctx, "HUD: FULL", 0.8);
     }
 
     public static void cycleXrayFilter(GameContext ctx, int dir) {
@@ -214,34 +212,7 @@ public final class GameplayActions {
 
     public static boolean tryHandleShopHotkey(GameContext ctx, int keyCode) {
         if (ctx == null || !ctx.shopOpen) return false;
-        switch (keyCode) {
-            case java.awt.event.KeyEvent.VK_3 -> UISystem.tryEquipEnergyBolt(ctx);
-            case java.awt.event.KeyEvent.VK_4 -> UISystem.tryBuyBeamBolt(ctx);
-            case java.awt.event.KeyEvent.VK_5 -> UISystem.tryBuyHullPlating(ctx);
-            case java.awt.event.KeyEvent.VK_6 -> UISystem.tryBuyShieldArray(ctx);
-            case java.awt.event.KeyEvent.VK_7 -> UISystem.tryAddGunTurret(ctx);
-            case java.awt.event.KeyEvent.VK_8 -> UISystem.tryAddMissileRack(ctx);
-            case java.awt.event.KeyEvent.VK_9 -> UISystem.tryUpgradeCIWS(ctx);
-            case java.awt.event.KeyEvent.VK_F1 -> UISystem.trySwapHull(ctx, ShipRole.PATROL, 0, 0);
-            case java.awt.event.KeyEvent.VK_F2 -> UISystem.trySwapHull(ctx, ShipRole.PICKET, 180, 0);
-            case java.awt.event.KeyEvent.VK_F3 -> UISystem.trySwapHull(ctx, ShipRole.FRIGATE, 0, 0);
-            case java.awt.event.KeyEvent.VK_F4 -> UISystem.trySwapHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
-            case java.awt.event.KeyEvent.VK_F5 -> UISystem.trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
-            case java.awt.event.KeyEvent.VK_F6 -> UISystem.trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
-            case java.awt.event.KeyEvent.VK_F7 -> UISystem.trySwapHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
-            case java.awt.event.KeyEvent.VK_BACK_SLASH -> UISystem.trySwapHull(ctx, ShipRole.CRUISER, 1100, 1);
-            case java.awt.event.KeyEvent.VK_F8 -> UISystem.trySwapHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
-            case java.awt.event.KeyEvent.VK_F9 -> UISystem.trySwapHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
-            case java.awt.event.KeyEvent.VK_F11 -> UISystem.trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
-            case java.awt.event.KeyEvent.VK_F12 -> UISystem.trySwapHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
-            case java.awt.event.KeyEvent.VK_0 -> UISystem.trySwapHull(ctx, ShipRole.CARRIER, 2800, 3);
-            case java.awt.event.KeyEvent.VK_MINUS -> UISystem.trySwapHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
-            case java.awt.event.KeyEvent.VK_EQUALS -> UISystem.trySwapHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
-            default -> {
-                return false;
-            }
-        }
-        return true;
+        return false;
     }
 
     public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {

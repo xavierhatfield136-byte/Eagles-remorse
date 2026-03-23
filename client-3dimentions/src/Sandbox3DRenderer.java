@@ -9,6 +9,9 @@ import java.util.List;
  * Uses isometric-style projection with depth-scaled sprites.
  */
 final class Sandbox3DRenderer {
+    private static final int SHIELD_RING_MIN_SCREEN_SIZE = 14;
+    private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
+
     private Sandbox3DRenderer() {}
 
     private static final class Proj {
@@ -171,16 +174,82 @@ final class Sandbox3DRenderer {
         g2.setColor(hpFrac > 0.5 ? new Color(70, 215, 120) : (hpFrac > 0.25 ? new Color(235, 186, 70) : new Color(220, 80, 80)));
         g2.fillRect(barX, barY, (int) Math.round(barW * hpFrac), 4);
 
-        if (s.shieldActive && s.shieldMax > 0 && s.shield > 0) {
-            double sf = GameMath.clamp(s.shield / s.shieldMax, 0.0, 1.0);
-            g2.setColor(new Color(70, 180, 255, (int) Math.round(60 + 120 * sf)));
-            g2.drawOval(sx - size - 3, sy - size - 3, size * 2 + 6, size * 2 + 6);
+        double effectiveShieldMax = s.effectiveShieldCapacityMax();
+        if (s.shieldActive && effectiveShieldMax > 0.0 && s.shield > 0.0 && shouldRenderShieldRing(s, size)) {
+            drawShieldRing(g2, s, sx, sy, size, effectiveShieldMax);
         }
 
         if (s == ctx.player) {
             g2.setColor(new Color(255, 255, 255, 120));
             g2.drawOval(sx - size - 6, sy - size - 6, size * 2 + 12, size * 2 + 12);
         }
+    }
+
+    private static void drawShieldRing(Graphics2D g2, Ship ship, int sx, int sy, int size, double effectiveShieldMax) {
+        if (g2 == null || ship == null || effectiveShieldMax <= 0.0) return;
+        double shieldFrac = GameMath.clamp(ship.shield / Math.max(1e-9, effectiveShieldMax), 0.0, 1.0);
+        double wear = 1.0 - shieldFrac;
+        int ring = size + 3;
+        int diameter = ring * 2;
+        int segments = 18;
+        int segmentSpan = Math.max(8, (int) Math.round(360.0 / segments - 4.0));
+        int startBase = Math.floorMod(ship.id * 37, 360);
+
+        Graphics2D gx = (Graphics2D) g2.create();
+        Stroke oldStroke = gx.getStroke();
+        gx.setStroke(new BasicStroke(Math.max(1.2f, size * 0.18f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int i = 0; i < segments; i++) {
+            if (!shieldSegmentVisible(ship, i, wear)) continue;
+            int start = startBase + (int) Math.round(i * (360.0 / segments));
+            int alpha = (int) Math.round(42 + shieldFrac * 118);
+            gx.setColor(new Color(70, 180, 255, Math.max(0, Math.min(255, alpha))));
+            gx.drawArc(sx - ring, sy - ring, diameter, diameter, start, segmentSpan);
+        }
+
+        if (wear > 0.08) {
+            int innerRing = Math.max(2, ring - 2);
+            int innerDiameter = innerRing * 2;
+            gx.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            for (int i = 0; i < segments; i++) {
+                if (!shieldSegmentVisible(ship, i + segments, wear * 1.2)) continue;
+                int start = startBase + 8 + (int) Math.round(i * (360.0 / segments));
+                int alpha = (int) Math.round(26 + shieldFrac * 74);
+                gx.setColor(new Color(160, 225, 255, Math.max(0, Math.min(255, alpha))));
+                gx.drawArc(sx - innerRing, sy - innerRing, innerDiameter, innerDiameter, start, Math.max(6, segmentSpan - 8));
+            }
+        }
+
+        if (ship.hasRecentShieldImpactTelemetry() && Double.isFinite(ship.recentShieldImpactAngle())) {
+            double local = MathUtil.normalizeAngle(ship.recentShieldImpactAngle() - ship.angle);
+            int hx = sx + (int) Math.round(Math.cos(local) * ring);
+            int hy = sy + (int) Math.round(Math.sin(local) * ring);
+            int haloR = Math.max(3, (int) Math.round(size * 0.28));
+            gx.setColor(new Color(255, 255, 255, 120));
+            gx.fillOval(hx - haloR, hy - haloR, haloR * 2, haloR * 2);
+        }
+
+        gx.setStroke(oldStroke);
+        gx.dispose();
+    }
+
+    private static boolean shieldSegmentVisible(Ship ship, int segment, double wear) {
+        double holeChance = GameMath.clamp(Math.max(0.0, wear - 0.04) * 1.08, 0.0, 0.92);
+        long hash = ((long) ship.id * 1103515245L) ^ ((long) (segment + 1) * 12345L);
+        hash ^= (hash >>> 16);
+        double unit = (hash & 0xFFFFL) / 65535.0;
+        return unit >= holeChance;
+    }
+
+    private static boolean shouldRenderShieldRing(Ship ship, int size) {
+        if (ship == null || size < SHIELD_RING_MIN_SCREEN_SIZE) return false;
+        if (ship.hasRecentShieldImpactTelemetry()) return true;
+        List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
+        if (marks == null || marks.isEmpty()) return false;
+        for (int i = marks.size() - 1; i >= 0; i--) {
+            Ship.ShieldImpactMark mark = marks.get(i);
+            if (mark != null && mark.freshness() >= SHIELD_FX_MIN_MARK_FRESHNESS) return true;
+        }
+        return false;
     }
 
     private static void collectProjectileOps(GameContext ctx, Graphics2D g2, int w, int h, double cameraTilt, double cameraZoom, List<DrawOp> out) {

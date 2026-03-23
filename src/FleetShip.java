@@ -1089,10 +1089,18 @@ public class FleetShip extends Ship {
                     case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
                     case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
                     case TEAM_D -> SuperweaponPattern.MISSILE_BARRAGE;
-                    default -> SuperweaponPattern.PULSE_BARRAGE;
+                    default -> SuperweaponPattern.DESTABILIZER_PULSE;
                 };
 
-                if (superweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
+                if (superweaponPattern == SuperweaponPattern.DESTABILIZER_PULSE) {
+                    superweaponChargeTime = 3.1;
+                    superweaponCooldown = 22.0;
+                    superweaponDamage = 90;
+                    superweaponSpeed = 1380.0;
+                    superweaponLife = 170;
+                    superweaponRadius = 15.0;
+                    superweaponBeamDuration = 0.0;
+                } else if (superweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
                     superweaponChargeTime = 3.0;
                     superweaponCooldown = 24.0;
                     superweaponDamage = 110;

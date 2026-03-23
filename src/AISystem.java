@@ -233,6 +233,8 @@ public final class AISystem {
             applyProjectileLaneAvoidance(ctx, s, dt);
         }
 
+        synchronizeFlagshipWarpFormations(ctx, fleetState);
+
         // keep bounds
         for (Ship s : ctx.ships) {
             if (s == null) continue;
@@ -1112,14 +1114,27 @@ public final class AISystem {
         double shFrac = shieldFrac(ship);
         double fireLoad = ship.totalFireIntensity();
         int fireRooms = ship.activeFireRoomCount();
-        if (fireRooms >= 3 || fireLoad >= 3.4) return GameContext.FleetCommand.RETREAT;
-        if (fireRooms >= 2 || fireLoad >= 2.1) return GameContext.FleetCommand.REPAIR;
-        if (hpFrac < 0.38 || shFrac < 0.22) return GameContext.FleetCommand.RETREAT;
-        if (ship.role == ShipRole.MINER) return GameContext.FleetCommand.MINE;
+        GameContext.FleetCommand personal = null;
+        if (fireRooms >= 3 || fireLoad >= 3.4) personal = GameContext.FleetCommand.RETREAT;
+        else if (fireRooms >= 2 || fireLoad >= 2.1) personal = GameContext.FleetCommand.REPAIR;
+        else if (hpFrac < 0.38 || shFrac < 0.22) personal = GameContext.FleetCommand.RETREAT;
+        else if (ship.role == ShipRole.MINER) personal = GameContext.FleetCommand.MINE;
+
+        if (personal != null) {
+            if (ship != flagship && shouldHoldWithFlagship(ctx, ship, flagship, personal)) {
+                return GameContext.FleetCommand.FORM_UP;
+            }
+            return personal;
+        }
         if (flagship != null) {
             double fhp = hullFrac(flagship);
             double fsh = shieldFrac(flagship);
-            if (fhp < 0.34 || fsh < 0.20) return GameContext.FleetCommand.RETREAT;
+            if (fhp < 0.34 || fsh < 0.20) {
+                if (ship != flagship && !flagshipHasExplicitRtbOrder(ctx, flagship)) {
+                    return GameContext.FleetCommand.FORM_UP;
+                }
+                return GameContext.FleetCommand.RETREAT;
+            }
             Ship threat = (ctx.fleetSharedTargets == null || flagship.faction == null)
                     ? null
                     : ctx.fleetSharedTargets.get(flagship.faction);
@@ -1139,6 +1154,24 @@ public final class AISystem {
         }
         if (!isSupportRole(ship.role) && hpFrac > 0.64 && shFrac > 0.34) return GameContext.FleetCommand.ATTACK;
         return GameContext.FleetCommand.DEFEND;
+    }
+
+    private static boolean shouldHoldWithFlagship(GameContext ctx,
+                                                  Ship ship,
+                                                  Ship flagship,
+                                                  GameContext.FleetCommand personal) {
+        if (ctx == null || ship == null || flagship == null) return false;
+        if (ship == flagship) return false;
+        if (!isAlive(flagship)) return false;
+        if (personal != GameContext.FleetCommand.REPAIR && personal != GameContext.FleetCommand.RETREAT) return false;
+        return !flagshipHasExplicitRtbOrder(ctx, flagship);
+    }
+
+    private static boolean flagshipHasExplicitRtbOrder(GameContext ctx, Ship flagship) {
+        if (ctx == null || flagship == null) return false;
+        GameContext.FleetCommand override = ctx.shipFleetCommandOverrides.get(flagship.id);
+        if (override == GameContext.FleetCommand.RTB) return true;
+        return flagship == ctx.player && ctx.alliedFleetCommand == GameContext.FleetCommand.RTB;
     }
 
     private static Ship sharedTargetForTeam(FleetState state, Ship s) {
@@ -1940,9 +1973,15 @@ public final class AISystem {
     private static double[] formationAnchor(Ship flagship, int slot, int wingCount, double radius, double baseSpacing,
                                             GameContext.FleetFormation formation, GameContext.FleetCommand command) {
         if (flagship == null) return new double[]{0.0, 0.0};
+        return formationAnchorAt(flagship.x, flagship.y, flagship.angle, slot, wingCount, radius, baseSpacing, formation, command);
+    }
+
+    private static double[] formationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
+                                              int slot, int wingCount, double radius, double baseSpacing,
+                                              GameContext.FleetFormation formation, GameContext.FleetCommand command) {
         double spacing = Math.max(70.0, baseSpacing + radius * 1.2);
-        double fx = Math.cos(flagship.angle);
-        double fy = Math.sin(flagship.angle);
+        double fx = Math.cos(flagshipAngle);
+        double fy = Math.sin(flagshipAngle);
         double rx = -fy;
         double ry = fx;
 
@@ -1979,7 +2018,46 @@ public final class AISystem {
         double lead = commandFormationLeadBias(command) * spacing;
         offX += fx * lead;
         offY += fy * lead;
-        return new double[]{flagship.x + offX, flagship.y + offY};
+        return new double[]{flagshipX + offX, flagshipY + offY};
+    }
+
+    private static void synchronizeFlagshipWarpFormations(GameContext ctx, FleetState state) {
+        if (ctx == null || state == null) return;
+        for (Map.Entry<Integer, Ship> entry : state.flagships.entrySet()) {
+            Ship flagship = (entry == null) ? null : entry.getValue();
+            if (!isAlive(flagship) || !flagship.isWarpCharging()) continue;
+
+            List<Ship> members = state.members.get(entry.getKey());
+            if (members == null || members.isEmpty()) continue;
+
+            int wingCount = formationWingCount(members, flagship);
+            double remaining = Math.max(0.1, flagship.warpChargeRemaining());
+            for (Ship member : members) {
+                if (!isAlive(member) || member == flagship) continue;
+                if (member.role == ShipRole.MINER) continue;
+                if (!member.canUseBattlefieldWarp()) continue;
+
+                boolean playerDirected = playerCanDirectTeamFleet(ctx, member, flagship);
+                GameContext.FleetFormation desiredFormation = playerDirected
+                        ? ctx.alliedFleetFormation
+                        : state.autoFormation.getOrDefault(entry.getKey(), GameContext.FleetFormation.WEDGE);
+                double spacingMul = state.autoFormationSpacing.getOrDefault(entry.getKey(), 1.0);
+                GameContext.FleetCommand cmd = resolveFleetCommand(ctx, member, flagship);
+                if (cmd == null || cmd == GameContext.FleetCommand.AUTO) cmd = GameContext.FleetCommand.FORM_UP;
+                int slot = formationSlotIndex(members, flagship, member);
+                double[] exit = formationAnchorAt(
+                        flagship.warpExitX(),
+                        flagship.warpExitY(),
+                        flagship.angle,
+                        slot,
+                        wingCount,
+                        member.radius,
+                        preferredRange(member) * 0.35 * spacingMul,
+                        desiredFormation,
+                        cmd);
+                member.beginBattlefieldWarpFollowing(exit[0], exit[1], remaining, flagship.id);
+            }
+        }
     }
 
     private static void fight(GameContext ctx, Ship s, Ship target, double dt) {

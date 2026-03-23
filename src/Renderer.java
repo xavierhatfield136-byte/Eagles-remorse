@@ -1,8 +1,11 @@
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.geom.RoundRectangle2D;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Area;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +25,8 @@ import javax.imageio.ImageIO;
 public class Renderer {
     private static final double IMPACT_DECAL_SCALE = 0.25;
     private static final double HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN = 72.0;
+    private static final double SHIELD_FX_MIN_SCREEN_SPAN = 56.0;
+    private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
 
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW"};
     private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H"};
@@ -61,6 +66,61 @@ public class Renderer {
         }
     }
 
+    public static final class ShopClickTarget {
+        public enum Kind {
+            UPGRADE,
+            HULL
+        }
+
+        public final Kind kind;
+        public final int upgradeId;
+        public final ShipRole role;
+
+        public ShopClickTarget(Kind kind, int upgradeId, ShipRole role) {
+            this.kind = kind;
+            this.upgradeId = upgradeId;
+            this.role = role;
+        }
+    }
+
+    private static final class ShopHullOffer {
+        final ShipRole role;
+        final int cost;
+        final int requiredTier;
+
+        ShopHullOffer(ShipRole role, int cost, int requiredTier) {
+            this.role = role;
+            this.cost = cost;
+            this.requiredTier = requiredTier;
+        }
+    }
+
+    private static final int SHOP_UPGRADE_ENERGY_BOLT = 1;
+    private static final int SHOP_UPGRADE_BEAM_BOLT = 2;
+    private static final int SHOP_UPGRADE_HULL = 3;
+    private static final int SHOP_UPGRADE_SHIELD = 4;
+    private static final int SHOP_UPGRADE_GUN = 5;
+    private static final int SHOP_UPGRADE_MISSILE = 6;
+    private static final int SHOP_UPGRADE_CIWS = 7;
+
+    private static final ShopHullOffer[] SHOP_HULL_OFFERS = new ShopHullOffer[]{
+            new ShopHullOffer(ShipRole.PATROL, 0, 0),
+            new ShopHullOffer(ShipRole.PICKET, 180, 0),
+            new ShopHullOffer(ShipRole.FRIGATE, 0, 0),
+            new ShopHullOffer(ShipRole.MISSILE_BOAT, 300, 0),
+            new ShopHullOffer(ShipRole.CIWS_CORVETTE, 250, 0),
+            new ShopHullOffer(ShipRole.LIGHT_CRUISER, 700, 1),
+            new ShopHullOffer(ShipRole.MEDIUM_CRUISER, 950, 1),
+            new ShopHullOffer(ShipRole.CRUISER, 1100, 1),
+            new ShopHullOffer(ShipRole.BATTLECRUISER, 1600, 2),
+            new ShopHullOffer(ShipRole.BATTLESHIP, 2200, 2),
+            new ShopHullOffer(ShipRole.STEALTH_SHIP, 1200, 2),
+            new ShopHullOffer(ShipRole.DREADNOUGHT, 3200, 3),
+            new ShopHullOffer(ShipRole.CARRIER, 2800, 3),
+            new ShopHullOffer(ShipRole.DRONE_CARRIER, 3000, 3),
+            new ShopHullOffer(ShipRole.SUPERSHIP, 5200, 3)
+    };
+
     public static Rectangle getStrategicMapRect(int viewW, int viewH) {
         int pad = 52;
         int w = Math.min(860, viewW - pad * 2);
@@ -68,6 +128,37 @@ public class Renderer {
         int x = (viewW - w) / 2;
         int y = (viewH - h) / 2;
         return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle getShopOverlayRect(int viewW, int viewH) {
+        int padX = 36;
+        int padY = 44;
+        int w = Math.min(1180, Math.max(820, viewW - padX * 2));
+        int h = Math.min(640, Math.max(560, viewH - padY * 2));
+        int x = (viewW - w) / 2;
+        int y = Math.max(28, (viewH - h) / 2);
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static ShopClickTarget shopClickTargetAt(Player player, int credits, int hangarTier,
+                                                    int viewW, int viewH, int mouseX, int mouseY) {
+        if (player == null) return null;
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        if (!panel.contains(mouseX, mouseY)) return null;
+
+        for (int i = 0; i < 7; i++) {
+            Rectangle button = getShopCardButtonRect(getShopUpgradeCardRect(panel, i));
+            if (button.contains(mouseX, mouseY)) {
+                return new ShopClickTarget(ShopClickTarget.Kind.UPGRADE, i + 1, null);
+            }
+        }
+        for (int i = 0; i < SHOP_HULL_OFFERS.length; i++) {
+            Rectangle button = getShopCardButtonRect(getShopHullCardRect(panel, i));
+            if (button.contains(mouseX, mouseY)) {
+                return new ShopClickTarget(ShopClickTarget.Kind.HULL, 0, SHOP_HULL_OFFERS[i].role);
+            }
+        }
+        return null;
     }
 
     public static Rectangle getCoreMenuBarRect(int viewW, int viewH) {
@@ -202,16 +293,71 @@ public class Renderer {
         return new Color(faceTint.getRed(), faceTint.getGreen(), faceTint.getBlue(), a);
     }
 
-    private static String shieldFaceReadout(Ship ship) {
-        if (ship == null || ship.shieldFaceCount() <= 0) return "N/A";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < ship.shieldFaceCount(); i++) {
-            if (i > 0) sb.append("  ");
-            int cur = (int) Math.round(ship.shieldFaceValue(i));
-            int max = (int) Math.round(ship.shieldFaceMax(i));
-            sb.append(ship.shieldFaceName(i)).append(" ").append(cur).append("/").append(max);
+    private static String shieldLeakReadout(Ship ship) {
+        if (ship == null || !ship.shieldActive || ship.effectiveShieldCapacityMax() <= 0.0) return "N/A";
+        return String.format(Locale.US, "%.0f%%", ship.shieldPassthroughChance() * 100.0);
+    }
+
+    private static String superweaponStatusReadout(Player player) {
+        if (player == null || !player.hasSuperweapon) return "N/A";
+        if (player.isSuperweaponBeamActive()) return "FIRING";
+        if (player.isSuperweaponCharging()) {
+            return "CHARGE " + (int) Math.round(player.getSuperweaponChargeProgress() * 100.0) + "%";
         }
-        return sb.toString();
+        double remaining = player.getSuperweaponRemaining();
+        if (remaining <= 1e-6) return "READY";
+        return "CD " + (int) Math.ceil(remaining) + "s";
+    }
+
+    private static Rectangle getShopUpgradeArea(Rectangle panel) {
+        int x = panel.x + 24;
+        int y = panel.y + 136;
+        int w = Math.min(430, Math.max(360, (int) Math.round(panel.width * 0.37)));
+        int h = panel.height - 168;
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle getShopHullArea(Rectangle panel) {
+        Rectangle upgrades = getShopUpgradeArea(panel);
+        int x = upgrades.x + upgrades.width + 26;
+        int y = upgrades.y;
+        int w = panel.x + panel.width - x - 24;
+        int h = upgrades.height;
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle getShopUpgradeCardRect(Rectangle panel, int index) {
+        Rectangle area = getShopUpgradeArea(panel);
+        int cols = 2;
+        int gap = 12;
+        int cardW = (area.width - gap) / cols;
+        int cardH = 96;
+        int col = Math.max(0, index % cols);
+        int row = Math.max(0, index / cols);
+        int x = area.x + col * (cardW + gap);
+        int y = area.y + 28 + row * (cardH + gap);
+        return new Rectangle(x, y, cardW, cardH);
+    }
+
+    private static Rectangle getShopHullCardRect(Rectangle panel, int index) {
+        Rectangle area = getShopHullArea(panel);
+        int cols = 3;
+        int gap = 12;
+        int cardW = (area.width - gap * (cols - 1)) / cols;
+        int cardH = 82;
+        int col = Math.max(0, index % cols);
+        int row = Math.max(0, index / cols);
+        int x = area.x + col * (cardW + gap);
+        int y = area.y + 28 + row * (cardH + gap);
+        return new Rectangle(x, y, cardW, cardH);
+    }
+
+    private static Rectangle getShopCardButtonRect(Rectangle cardRect) {
+        int w = Math.min(94, Math.max(74, cardRect.width - 24));
+        int h = 24;
+        int x = cardRect.x + cardRect.width - w - 12;
+        int y = cardRect.y + cardRect.height - h - 10;
+        return new Rectangle(x, y, w, h);
     }
 
     private static void drawShieldArcSegment(Graphics2D g, double radius, double centerAngle, double span) {
@@ -270,72 +416,239 @@ public class Renderer {
     private static void drawShipShieldFaces(Graphics2D g, Ship ship, Area hullArea) {
         if (g == null || ship == null || hullArea == null) return;
         if (isTinyStrikeCraft(ship.role)) return;
-        if (!ship.shieldActive || ship.shieldMax <= 0.0 || ship.shield <= 0.0) return;
-        if (!ship.hasRecentShieldImpactTelemetry()) return;
+        double effectiveShieldMax = ship.effectiveShieldCapacityMax();
+        if (!ship.shieldActive || effectiveShieldMax <= 0.0 || ship.shield <= 0.0) return;
 
-        int impactedFace = ship.recentShieldImpactFace();
-        if (impactedFace < 0) return;
+        Rectangle2D hullBounds = hullArea.getBounds2D();
+        if (hullBounds.getWidth() <= 0.0 || hullBounds.getHeight() <= 0.0) return;
+        if (!shouldRenderShieldFx(ship, hullBounds, g)) return;
 
-        Area hullMask = new Area(hullArea);
-        Rectangle hullBounds = hullMask.getBounds();
-        if (hullBounds.width <= 0 || hullBounds.height <= 0) return;
+        double shieldFrac = MathUtil.clamp(ship.shield / Math.max(1e-9, effectiveShieldMax), 0.0, 1.0);
+        double wear = 1.0 - shieldFrac;
+        float shellWidth = (float) Math.max(5.0, ship.radius * 0.24);
+        float auraWidth = shellWidth * 1.9f;
+        Area shellBase = createShieldShell(hullArea, shellWidth);
+        Area auraBase = createShieldShell(hullArea, auraWidth);
+        Area shell = new Area(shellBase);
+        Area aura = new Area(auraBase);
+        Area wearMask = createShieldWearMask(ship, shellBase, shellWidth, wear);
+        Rectangle2D wearBounds = (wearMask == null) ? null : wearMask.getBounds2D();
+        if (wearMask != null && wearBounds != null && wearBounds.getWidth() > 0.0 && wearBounds.getHeight() > 0.0) {
+            shell.subtract(new Area(wearMask));
+            aura.subtract(new Area(wearMask));
+        }
 
-        double centerWorld = ship.recentShieldImpactAngle();
-        double center = Double.isFinite(centerWorld)
-                ? MathUtil.normalizeAngle(centerWorld - ship.angle)
-                : MathUtil.normalizeAngle(shieldFaceCenterAngle(ship, impactedFace) - ship.angle);
-        double frac = ship.shieldFaceFraction(impactedFace);
-        double energy = Math.max(0.0, Math.min(1.0, frac));
-        double fade = ship.recentShieldImpactTelemetryFraction();
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 6.2);
-        Color base = shieldFaceColor(ship, impactedFace, 255);
+        Rectangle2D auraBounds = aura.getBounds2D();
+        if (auraBounds.getWidth() <= 0.0 || auraBounds.getHeight() <= 0.0) return;
+        double gradientRadius = Math.max(auraBounds.getWidth(), auraBounds.getHeight()) * 0.72;
 
-        double extent = Math.max(ship.radius * 2.4, Math.max(hullBounds.width, hullBounds.height) * 0.92);
-        Area faceSlice = new Area(createShieldFaceWedge(center, extent, Math.toRadians(108.0)));
-        faceSlice.intersect(hullMask);
-        Rectangle sliceBounds = faceSlice.getBounds();
-        if (sliceBounds.width <= 0 || sliceBounds.height <= 0) return;
+        double flicker = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * (4.6 + shieldFrac * 2.2));
+        Color base = shieldTeamColor(ship);
 
         Graphics2D gx = (Graphics2D) g.create();
         Paint oldPaint = gx.getPaint();
         Stroke oldStroke = gx.getStroke();
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(0.0, 0.0),
+                (float) gradientRadius,
+                new float[]{0.0f, 0.56f, 1.0f},
+                new Color[]{
+                        withAlpha(base, 0),
+                        withAlpha(mixColor(base, Color.WHITE, 0.14), (int) Math.round(26 + shieldFrac * 36)),
+                        withAlpha(mixColor(base, Color.WHITE, 0.36), (int) Math.round(18 + shieldFrac * 34))
+                }));
+        gx.fill(aura);
+        drawShieldScarPatches(gx, ship, auraBase, shellWidth, base, shieldFrac);
 
-        double nx = Math.cos(center);
-        double ny = Math.sin(center);
-        float x1 = (float) (-nx * extent * 0.35);
-        float y1 = (float) (-ny * extent * 0.35);
-        float x2 = (float) (nx * extent * 0.95);
-        float y2 = (float) (ny * extent * 0.95);
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(0.0, 0.0),
+                (float) Math.max(10.0, gradientRadius * 0.86),
+                new float[]{0.0f, 0.50f, 1.0f},
+                new Color[]{
+                        withAlpha(base, 0),
+                        withAlpha(mixColor(base, Color.WHITE, 0.24), (int) Math.round(52 + shieldFrac * 64 + flicker * 18)),
+                        withAlpha(mixColor(base, Color.WHITE, 0.62), (int) Math.round(96 + shieldFrac * 92))
+                }));
+        gx.fill(shell);
 
-        gx.setPaint(new GradientPaint(
-                x1, y1, withAlpha(base, 0),
-                x2, y2, withAlpha(mixColor(base, Color.WHITE, 0.22), (int) Math.round(42 + fade * (58 + pulse * 24)))));
-        gx.fill(faceSlice);
+        gx.setStroke(new BasicStroke(Math.max(1.1f, shellWidth * 0.18f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.52), (int) Math.round(92 + shieldFrac * 104)));
+        gx.draw(shell);
 
-        Area coreSlice = new Area(createShieldFaceWedge(center, extent * 0.78, Math.toRadians(72.0)));
-        coreSlice.intersect(hullMask);
-        gx.setPaint(new GradientPaint(
-                x1, y1, withAlpha(mixColor(base, Color.WHITE, 0.36), 0),
-                x2, y2, withAlpha(mixColor(base, Color.WHITE, 0.64), (int) Math.round(72 + energy * 84 + fade * 68))));
-        gx.fill(coreSlice);
+        if (wearMask != null && wearBounds != null && wearBounds.getWidth() > 0.0 && wearBounds.getHeight() > 0.0) {
+            gx.setStroke(new BasicStroke(Math.max(0.9f, shellWidth * 0.12f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.18), (int) Math.round(42 + wear * 126)));
+            gx.draw(wearMask);
+        }
 
-        gx.setClip(faceSlice);
-        gx.setStroke(new BasicStroke((float) Math.max(1.6, ship.radius * 0.07), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.58), (int) Math.round(90 + fade * 110)));
-        gx.draw(hullMask);
-
-        int hx = (int) Math.round(nx * ship.radius * 0.78);
-        int hy = (int) Math.round(ny * ship.radius * 0.78);
-        int haloR = (int) Math.round(Math.max(6.0, ship.radius * (0.18 + 0.08 * pulse)));
-        gx.setColor(withAlpha(base, (int) Math.round(76 + fade * 96)));
-        gx.fillOval(hx - haloR, hy - haloR, haloR * 2, haloR * 2);
-        int coreR = Math.max(3, (int) Math.round(haloR * 0.46));
-        gx.setColor(withAlpha(Color.WHITE, (int) Math.round(96 + fade * 92)));
-        gx.fillOval(hx - coreR, hy - coreR, coreR * 2, coreR * 2);
+        if (ship.hasRecentShieldImpactTelemetry() && Double.isFinite(ship.recentShieldImpactAngle())) {
+            double localImpactAngle = MathUtil.normalizeAngle(ship.recentShieldImpactAngle() - ship.angle);
+            Point2D impactPoint = shieldImpactPoint(hullBounds, shellWidth * 0.85, localImpactAngle);
+            double fade = ship.recentShieldImpactTelemetryFraction();
+            double flareRadius = Math.max(8.0, ship.radius * (0.16 + 0.20 * fade));
+            gx.setPaint(new RadialGradientPaint(
+                    new Point2D.Double(impactPoint.getX(), impactPoint.getY()),
+                    (float) flareRadius,
+                    new float[]{0.0f, 0.42f, 1.0f},
+                    new Color[]{
+                            withAlpha(Color.WHITE, (int) Math.round(128 + fade * 96)),
+                            withAlpha(mixColor(base, Color.WHITE, 0.34), (int) Math.round(86 + fade * 104)),
+                            withAlpha(base, 0)
+                    }));
+            gx.fill(new Ellipse2D.Double(
+                    impactPoint.getX() - flareRadius,
+                    impactPoint.getY() - flareRadius,
+                    flareRadius * 2.0,
+                    flareRadius * 2.0));
+        }
 
         gx.setPaint(oldPaint);
         gx.setStroke(oldStroke);
         gx.dispose();
+    }
+
+    private static boolean shouldRenderShieldFx(Ship ship, Rectangle2D hullBounds, Graphics2D g) {
+        if (ship == null || hullBounds == null) return false;
+        if (ship.hasRecentShieldImpactTelemetry()) return shieldFxVisibleOnScreen(hullBounds, g);
+        List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
+        if (marks == null || marks.isEmpty()) return false;
+        for (int i = marks.size() - 1; i >= 0; i--) {
+            Ship.ShieldImpactMark mark = marks.get(i);
+            if (mark != null && mark.freshness() >= SHIELD_FX_MIN_MARK_FRESHNESS) {
+                return shieldFxVisibleOnScreen(hullBounds, g);
+            }
+        }
+        return false;
+    }
+
+    private static boolean shieldFxVisibleOnScreen(Rectangle2D hullBounds, Graphics2D g) {
+        if (hullBounds == null) return false;
+        double screenScale = hullDamageDetailScale(g);
+        double span = Math.max(hullBounds.getWidth(), hullBounds.getHeight());
+        return span * screenScale >= SHIELD_FX_MIN_SCREEN_SPAN;
+    }
+
+    private static Area createShieldShell(Area hullArea, float width) {
+        if (hullArea == null || width <= 0.0f) return new Area();
+        Area shell = new Area(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(hullArea));
+        shell.subtract(new Area(hullArea));
+        return shell;
+    }
+
+    private static void drawShieldScarPatches(Graphics2D g,
+                                              Ship ship,
+                                              Area shellArea,
+                                              float shellWidth,
+                                              Color base,
+                                              double shieldFrac) {
+        if (g == null || ship == null || shellArea == null || base == null) return;
+        List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
+        if (marks.isEmpty()) return;
+        Paint oldPaint = g.getPaint();
+        try {
+            int start = Math.max(0, marks.size() - 8);
+            for (int i = start; i < marks.size(); i++) {
+                Ship.ShieldImpactMark mark = marks.get(i);
+                if (mark == null) continue;
+                Area patch = createShieldScarPatch(mark, shellWidth);
+                patch.intersect(new Area(shellArea));
+                Rectangle2D bounds = patch.getBounds2D();
+                if (bounds.getWidth() <= 0.0 || bounds.getHeight() <= 0.0) continue;
+                Point2D center = shieldScarCenter(mark, shellWidth);
+                double patchRadius = Math.max(mark.patchRadius(), shellWidth * 1.4);
+                int midAlpha = (int) Math.round(30 + mark.severity() * 48 + mark.freshness() * 56 + shieldFrac * 22);
+                int edgeAlpha = (int) Math.round(18 + mark.severity() * 32 + shieldFrac * 18);
+                g.setPaint(new RadialGradientPaint(
+                        new Point2D.Double(center.getX(), center.getY()),
+                        (float) Math.max(shellWidth * 1.3, patchRadius * 1.15),
+                        new float[]{0.0f, 0.46f, 1.0f},
+                        new Color[]{
+                                withAlpha(Color.WHITE, MathUtil.clamp(midAlpha + 34, 0, 210)),
+                                withAlpha(mixColor(base, Color.WHITE, 0.48), MathUtil.clamp(midAlpha, 0, 190)),
+                                withAlpha(base, MathUtil.clamp(edgeAlpha, 0, 140))
+                        }));
+                g.fill(patch);
+            }
+        } finally {
+            g.setPaint(oldPaint);
+        }
+    }
+
+    private static Area createShieldWearMask(Ship ship, Area shellArea, float shellWidth, double wear) {
+        if (ship == null || shellArea == null || wear <= 0.10) return null;
+        List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
+        if (marks.isEmpty()) return null;
+        Area out = new Area();
+        for (int i = 0; i < marks.size(); i++) {
+            Ship.ShieldImpactMark mark = marks.get(i);
+            if (mark == null) continue;
+            double clusterWeight = Math.max(0.0, mark.severity() * (0.58 + wear * 1.85) + mark.freshness() * 0.18 - 0.08);
+            if (clusterWeight <= 0.10) continue;
+            int holeCount = Math.max(1, (int) Math.round(clusterWeight * 4.2));
+            Random rng = new Random(shieldWearSeed(ship, i));
+            Point2D center = shieldScarCenter(mark, shellWidth);
+            double nx = mark.normalX();
+            double ny = mark.normalY();
+            double tx = -ny;
+            double ty = nx;
+            double spreadAlong = Math.max(shellWidth * 0.55, mark.patchRadius() * 0.34);
+            double spreadOut = Math.max(shellWidth * 0.22, shellWidth * wear * 1.1);
+            for (int j = 0; j < holeCount; j++) {
+                double tangentOffset = (rng.nextDouble() - 0.5) * 2.0 * spreadAlong;
+                double normalOffset = (rng.nextDouble() - 0.35) * spreadOut;
+                double cx = center.getX() + tx * tangentOffset + nx * normalOffset;
+                double cy = center.getY() + ty * tangentOffset + ny * normalOffset;
+                double baseSize = Math.max(shellWidth * 0.22, ship.radius * (0.026 + clusterWeight * 0.085));
+                double holeW = baseSize * (0.70 + rng.nextDouble() * (0.55 + clusterWeight * 0.70));
+                double holeH = baseSize * (0.48 + rng.nextDouble() * (0.42 + clusterWeight * 0.55));
+                double rotation = Math.atan2(ty, tx) + (rng.nextDouble() - 0.5) * 0.48;
+                out.add(createShieldHole(cx, cy, holeW, holeH, rotation));
+            }
+        }
+        out.intersect(new Area(shellArea));
+        return out;
+    }
+
+    private static long shieldWearSeed(Ship ship, int index) {
+        long seed = ship.id * 0x9E3779B97F4A7C15L ^ ((long) (index + 1) * 0xBF58476D1CE4E5B9L);
+        if (ship.role != null) seed ^= ((long) ship.role.ordinal() + 1L) * 0x94D049BB133111EBL;
+        if (ship.faction != null) seed ^= ((long) ship.faction.ordinal() + 1L) * 0x369DEA0F31A53F85L;
+        return seed;
+    }
+
+    private static Area createShieldScarPatch(Ship.ShieldImpactMark mark, float shellWidth) {
+        Point2D center = shieldScarCenter(mark, shellWidth);
+        double radius = Math.max(mark.patchRadius(), shellWidth * 1.3);
+        double width = Math.max(shellWidth * 2.0, radius * 1.55);
+        double height = Math.max(shellWidth * 1.3, radius * 0.64);
+        Ellipse2D.Double ellipse = new Ellipse2D.Double(-width, -height, width * 2.0, height * 2.0);
+        double rotation = Math.atan2(mark.normalY(), mark.normalX()) + Math.PI * 0.5;
+        AffineTransform tx = new AffineTransform();
+        tx.translate(center.getX(), center.getY());
+        tx.rotate(rotation);
+        return new Area(tx.createTransformedShape(ellipse));
+    }
+
+    private static Area createShieldHole(double cx, double cy, double radiusX, double radiusY, double rotation) {
+        Ellipse2D.Double ellipse = new Ellipse2D.Double(-radiusX, -radiusY, radiusX * 2.0, radiusY * 2.0);
+        AffineTransform tx = new AffineTransform();
+        tx.translate(cx, cy);
+        tx.rotate(rotation);
+        return new Area(tx.createTransformedShape(ellipse));
+    }
+
+    private static Point2D shieldScarCenter(Ship.ShieldImpactMark mark, float shellWidth) {
+        double offset = shellWidth * 0.62;
+        return new Point2D.Double(
+                mark.localX() + mark.normalX() * offset,
+                mark.localY() + mark.normalY() * offset
+        );
+    }
+
+    private static Point2D shieldImpactPoint(Rectangle2D hullBounds, double shellInset, double angle) {
+        double rx = hullBounds.getWidth() * 0.5 + shellInset + 1.5;
+        double ry = hullBounds.getHeight() * 0.5 + shellInset + 1.5;
+        return new Point2D.Double(Math.cos(angle) * rx, Math.sin(angle) * ry);
     }
 
     private static void drawShieldFaceTelemetry(Graphics2D g, Ship ship, int face, double centerAngle,
@@ -786,6 +1099,16 @@ public class Renderer {
                 drawn++;
                 continue;
             }
+            if (p instanceof DisruptorSlug slug) {
+                drawDisruptorSlug(g2, slug);
+                drawn++;
+                continue;
+            }
+            if (p instanceof DestabilizerPulse pulse) {
+                drawDestabilizerPulse(g2, pulse);
+                drawn++;
+                continue;
+            }
 
             if (p instanceof Missile m) {
                 drawMissile(g2, m);
@@ -996,6 +1319,169 @@ public class Renderer {
         g2.fillOval((int) Math.round(ex) - r, (int) Math.round(ey) - r, r * 2, r * 2);
 
         g2.setStroke(old);
+    }
+
+    private static void drawDisruptorSlug(Graphics2D g2, DisruptorSlug slug) {
+        if (g2 == null || slug == null || !slug.alive) return;
+
+        double time = System.nanoTime() * 1e-9;
+        double motionAngle = Math.atan2(slug.vy, slug.vx);
+        if (!Double.isFinite(motionAngle)) motionAngle = slug.angle;
+        double nx = Math.cos(motionAngle);
+        double ny = Math.sin(motionAngle);
+        double pulse = 0.5 + 0.5 * Math.sin(time * 11.0 + slug.sourceShipId * 0.21);
+        double shellRadius = Math.max(12.0, slug.radius * (0.94 + 0.10 * pulse));
+        double auraRadius = shellRadius * 1.58;
+        double coreRadius = shellRadius * 0.56;
+
+        Color base = new Color(255, 46, 58);
+        Color hot = mixColor(base, Color.WHITE, 0.58);
+        Color corona = new Color(255, 98, 118);
+
+        Graphics2D gx = (Graphics2D) g2.create();
+        Paint oldPaint = gx.getPaint();
+        Stroke oldStroke = gx.getStroke();
+
+        double trailLen = Math.max(16.0, shellRadius * 1.8);
+        gx.setStroke(new BasicStroke((float) Math.max(3.4, shellRadius * 0.32), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(corona, (int) Math.round(92 + pulse * 38)));
+        gx.drawLine((int) Math.round(slug.x - nx * trailLen),
+                (int) Math.round(slug.y - ny * trailLen),
+                (int) Math.round(slug.x + nx * (shellRadius * 0.20)),
+                (int) Math.round(slug.y + ny * (shellRadius * 0.20)));
+
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(slug.x, slug.y),
+                (float) auraRadius,
+                new float[]{0.0f, 0.48f, 1.0f},
+                new Color[]{
+                        withAlpha(base, 0),
+                        withAlpha(corona, (int) Math.round(96 + pulse * 34)),
+                        withAlpha(base, 0)
+                }));
+        gx.fill(new Ellipse2D.Double(slug.x - auraRadius, slug.y - auraRadius, auraRadius * 2.0, auraRadius * 2.0));
+
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(slug.x, slug.y),
+                (float) shellRadius,
+                new float[]{0.0f, 0.45f, 0.82f, 1.0f},
+                new Color[]{
+                        withAlpha(Color.WHITE, (int) Math.round(188 + pulse * 42)),
+                        withAlpha(hot, 236),
+                        withAlpha(base, 220),
+                        withAlpha(new Color(140, 18, 26), 110)
+                }));
+        gx.fill(new Ellipse2D.Double(slug.x - shellRadius, slug.y - shellRadius, shellRadius * 2.0, shellRadius * 2.0));
+
+        gx.setColor(withAlpha(Color.WHITE, (int) Math.round(140 + pulse * 48)));
+        gx.fill(new Ellipse2D.Double(slug.x - coreRadius, slug.y - coreRadius, coreRadius * 2.0, coreRadius * 2.0));
+
+        gx.setStroke(new BasicStroke((float) Math.max(1.8, shellRadius * 0.16), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(hot, 218));
+        gx.draw(new Ellipse2D.Double(slug.x - shellRadius, slug.y - shellRadius, shellRadius * 2.0, shellRadius * 2.0));
+
+        int arcCount = 7;
+        for (int i = 0; i < arcCount; i++) {
+            double arcAngle = time * (1.8 + i * 0.12) + i * (Math.PI * 2.0 / arcCount) + slug.sourceShipId * 0.07;
+            double startRadius = shellRadius * (0.78 + 0.10 * Math.sin(time * 6.5 + i));
+            double endRadius = shellRadius + 8.0 + shellRadius * (0.22 + 0.14 * Math.sin(time * 8.8 + i * 1.6));
+            Path2D.Double bolt = new Path2D.Double();
+            for (int step = 0; step < 5; step++) {
+                double t = step / 4.0;
+                double rr = startRadius + (endRadius - startRadius) * t;
+                double tangent = (step == 0 || step == 4) ? 0.0
+                        : Math.sin(time * 18.0 + i * 1.9 + step * 0.8) * shellRadius * 0.24;
+                double px = slug.x + Math.cos(arcAngle) * rr - Math.sin(arcAngle) * tangent;
+                double py = slug.y + Math.sin(arcAngle) * rr + Math.cos(arcAngle) * tangent;
+                if (step == 0) bolt.moveTo(px, py);
+                else bolt.lineTo(px, py);
+            }
+
+            gx.setStroke(new BasicStroke((float) Math.max(1.6, shellRadius * 0.12), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gx.setColor(withAlpha(base, 190));
+            gx.draw(bolt);
+            gx.setStroke(new BasicStroke((float) Math.max(0.9, shellRadius * 0.06), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gx.setColor(withAlpha(Color.WHITE, 196));
+            gx.draw(bolt);
+        }
+
+        gx.setPaint(oldPaint);
+        gx.setStroke(oldStroke);
+        gx.dispose();
+    }
+
+    private static void drawDestabilizerPulse(Graphics2D g2, DestabilizerPulse pulse) {
+        if (g2 == null || pulse == null || !pulse.alive) return;
+
+        double time = System.nanoTime() * 1e-9;
+        double motionAngle = Math.atan2(pulse.vy, pulse.vx);
+        if (!Double.isFinite(motionAngle)) motionAngle = pulse.angle;
+        double nx = Math.cos(motionAngle);
+        double ny = Math.sin(motionAngle);
+        double shimmer = 0.5 + 0.5 * Math.sin(time * 8.8 + pulse.sourceShipId * 0.19);
+
+        double auraRadius = Math.max(20.0, pulse.radius * (1.55 + 0.12 * shimmer));
+        double shellRadius = auraRadius * 0.68;
+        double coreRadius = shellRadius * 0.44;
+        Color base = new Color(90, 190, 255);
+        Color rim = new Color(188, 236, 255);
+        Color hot = mixColor(base, Color.WHITE, 0.78);
+
+        Graphics2D gx = (Graphics2D) g2.create();
+        Paint oldPaint = gx.getPaint();
+        Stroke oldStroke = gx.getStroke();
+
+        double trailLen = Math.max(16.0, auraRadius * 1.35);
+        gx.setStroke(new BasicStroke((float) Math.max(3.0, pulse.radius * 0.34), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(base, (int) Math.round(88 + shimmer * 42)));
+        gx.drawLine((int) Math.round(pulse.x - nx * trailLen),
+                (int) Math.round(pulse.y - ny * trailLen),
+                (int) Math.round(pulse.x + nx * (shellRadius * 0.12)),
+                (int) Math.round(pulse.y + ny * (shellRadius * 0.12)));
+
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(pulse.x, pulse.y),
+                (float) auraRadius,
+                new float[]{0.0f, 0.42f, 1.0f},
+                new Color[]{
+                        withAlpha(base, 0),
+                        withAlpha(base, (int) Math.round(102 + shimmer * 40)),
+                        withAlpha(base, 0)
+                }));
+        gx.fill(new Ellipse2D.Double(pulse.x - auraRadius, pulse.y - auraRadius, auraRadius * 2.0, auraRadius * 2.0));
+
+        gx.setPaint(new RadialGradientPaint(
+                new Point2D.Double(pulse.x, pulse.y),
+                (float) shellRadius,
+                new float[]{0.0f, 0.52f, 0.86f, 1.0f},
+                new Color[]{
+                        withAlpha(Color.WHITE, (int) Math.round(204 + shimmer * 28)),
+                        withAlpha(hot, 238),
+                        withAlpha(rim, 172),
+                        withAlpha(base, 0)
+                }));
+        gx.fill(new Ellipse2D.Double(pulse.x - shellRadius, pulse.y - shellRadius, shellRadius * 2.0, shellRadius * 2.0));
+
+        gx.setColor(withAlpha(Color.WHITE, (int) Math.round(188 + shimmer * 32)));
+        gx.fill(new Ellipse2D.Double(pulse.x - coreRadius, pulse.y - coreRadius, coreRadius * 2.0, coreRadius * 2.0));
+
+        gx.setStroke(new BasicStroke((float) Math.max(1.6, pulse.radius * 0.18), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        int arcCount = 5;
+        for (int i = 0; i < arcCount; i++) {
+            double theta = time * 1.5 + i * (Math.PI * 2.0 / arcCount);
+            double inner = shellRadius * 0.85;
+            double outer = auraRadius * 1.08;
+            int x1 = (int) Math.round(pulse.x + Math.cos(theta) * inner);
+            int y1 = (int) Math.round(pulse.y + Math.sin(theta) * inner);
+            int x2 = (int) Math.round(pulse.x + Math.cos(theta + 0.30) * outer);
+            int y2 = (int) Math.round(pulse.y + Math.sin(theta + 0.30) * outer);
+            gx.setColor(withAlpha(rim, (int) Math.round(118 + shimmer * 48)));
+            gx.drawLine(x1, y1, x2, y2);
+        }
+
+        gx.setPaint(oldPaint);
+        gx.setStroke(oldStroke);
+        gx.dispose();
     }
 
     public static void drawSuperweaponAimCue(Graphics2D g2, Player player, double cursorWorldX, double cursorWorldY) {
@@ -1505,10 +1991,10 @@ public class Renderer {
         String thrust = player.isEmergencyThrustActive()
                 ? "Emergency thrust active   heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%"
                 : "Emergency thrust standby   cd " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s";
-        noteLines.add(overload);
-        noteLines.add(thrust);
-        if (stationStatus != null && !stationStatus.isBlank()) noteLines.add(stationStatus);
-        if (overlayStatus != null && !overlayStatus.isBlank()) noteLines.add(overlayStatus);
+        noteLines.addAll(wrapHudText(bodyFm, overload, contentW));
+        noteLines.addAll(wrapHudText(bodyFm, thrust, contentW));
+        if (stationStatus != null && !stationStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, stationStatus, contentW));
+        if (overlayStatus != null && !overlayStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, overlayStatus, contentW));
         if (playerWingCap > 0) {
             noteLines.add("Wing " + playerWingActive + "/" + playerWingCap
                     + "   " + player.carrierCommandMode.name()
@@ -1526,24 +2012,67 @@ public class Renderer {
             noteLines.addAll(wrapHudText(bodyFm, "Hint: " + contextHint, contentW));
         }
 
-        int h = 134 + noteLines.size() * 15;
-        drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
-
-        int chipY = y + 32;
-        int chipX = x + 12;
-        chipX = drawHudChipAuto(g2, "AUTO-LOCK " + (autoLock ? "ON" : "OFF"), chipX, chipY, new Color(124, 208, 255, 210), autoLock);
-        chipX = drawHudChipAuto(g2, "POWER " + player.powerPreset.name(), chipX, chipY, new Color(114, 226, 166, 208), true);
-        chipX = drawHudChipAuto(g2, "CREW " + player.crewOrder.name(), chipX, chipY, new Color(244, 198, 116, 208), true);
+        ArrayList<String> chipTexts = new ArrayList<>();
+        ArrayList<Color> chipColors = new ArrayList<>();
+        ArrayList<Boolean> chipStrong = new ArrayList<>();
+        chipTexts.add("AUTO-LOCK " + (autoLock ? "ON" : "OFF"));
+        chipColors.add(new Color(124, 208, 255, 210));
+        chipStrong.add(autoLock);
+        chipTexts.add("POWER " + player.powerPreset.name());
+        chipColors.add(new Color(114, 226, 166, 208));
+        chipStrong.add(true);
+        chipTexts.add("CREW " + player.crewOrder.name());
+        chipColors.add(new Color(244, 198, 116, 208));
+        chipStrong.add(true);
         if (player.shieldActive && player.shieldMax > 0.0) {
-            drawHudChipAuto(g2, "SHIELD " + player.shieldFacingMode.name(), chipX, chipY, new Color(154, 186, 255, 208), true);
+            chipTexts.add("LEAK " + shieldLeakReadout(player));
+            chipColors.add(new Color(154, 186, 255, 208));
+            chipStrong.add(true);
+        }
+        if (player.hasSuperweapon) {
+            chipTexts.add("SUPER " + superweaponStatusReadout(player));
+            chipColors.add(new Color(156, 214, 255, 214));
+            chipStrong.add(player.getSuperweaponRemaining() <= 1e-6 && !player.isSuperweaponCharging());
         }
 
-        int barY = chipY + 34;
-        drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16);
+        Font chipFont = new Font("Consolas", Font.BOLD, 11);
+        g2.setFont(chipFont);
+        FontMetrics chipFm = g2.getFontMetrics();
+        int chipRows = 1;
+        int chipCursorX = x + 12;
+        int chipMaxX = x + w - 12;
+        for (String chip : chipTexts) {
+            int chipW = chipFm.stringWidth(chip) + 14;
+            if (chipCursorX + chipW > chipMaxX) {
+                chipRows++;
+                chipCursorX = x + 12 + chipW + 8;
+            } else {
+                chipCursorX += chipW + 8;
+            }
+        }
+
+        int powerBlockH = 68;
+        int h = 112 + chipRows * 24 + powerBlockH + noteLines.size() * 15;
+        drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
+
+        int chipY = y + 34;
+        int chipX = x + 12;
+        for (int i = 0; i < chipTexts.size(); i++) {
+            int chipW = chipFm.stringWidth(chipTexts.get(i)) + 14;
+            if (chipX + chipW > chipMaxX) {
+                chipX = x + 12;
+                chipY += 24;
+            }
+            drawHudStatusChip(g2, chipTexts.get(i), chipX, chipY - 12, chipW, 18, chipColors.get(i), chipStrong.get(i));
+            chipX += chipW + 8;
+        }
+
+        int barY = chipY + 30;
+        int powerBlockUsed = drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(198, 218, 238, 195));
-        int textY = barY + 32;
+        int textY = barY + powerBlockUsed + 10;
         for (String line : noteLines) {
             if (line == null || line.isBlank()) continue;
             boolean emphasis = line.startsWith("Hint:") || line.startsWith("Counter:") || line.startsWith("OVERLAY:");
@@ -1558,8 +2087,8 @@ public class Renderer {
 
     private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
         ArrayList<String> out = new ArrayList<>();
-        out.add("SPACE FIRE");
-        out.add("SHIFT MISSILES");
+        out.add("LMB PRIMARY");
+        out.add("RMB SECONDARY");
         out.add("L LOCK");
         out.add("TAB SHOP");
         if (detail != GameContext.HudDetail.MINIMAL) {
@@ -1571,15 +2100,14 @@ public class Renderer {
         if (detail == GameContext.HudDetail.FULL) {
             out.add("F MINE");
             out.add("E OVERCHARGE");
-            out.add("I SHIELD");
             out.add("Y PRESET");
+            out.add("; THRUST");
         }
         if (player.hasSuperweapon) out.add("X SUPERWEAPON");
         if (player.isCarrier) {
             out.add("/ FLIGHT");
             out.add("C LAUNCH");
         }
-        out.add("N DETAIL");
         return out;
     }
 
@@ -1622,8 +2150,8 @@ public class Renderer {
         g2.drawString(text, x + 7, y + 12);
     }
 
-    private static void drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h) {
-        if (g2 == null || player == null) return;
+    private static int drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h) {
+        if (g2 == null || player == null) return 0;
         double[] fracs = new double[]{
                 player.powerEnginesFrac(),
                 player.powerShieldsFrac(),
@@ -1664,16 +2192,19 @@ public class Renderer {
             innerX += segW;
         }
 
+        int legendY = y + h + 10;
+        int legendW = (w - 16) / 3;
         g2.setFont(new Font("Consolas", Font.BOLD, 10));
-        FontMetrics fm = g2.getFontMetrics();
-        int labelX = x;
-        int labelY = y + h + 12;
         for (int i = 0; i < labels.length; i++) {
+            int col = i % 3;
+            int row = i / 3;
+            int lx = x + col * (legendW + 8);
+            int ly = legendY + row * 18;
             String text = labels[i] + " " + values[i] + "%";
-            g2.setColor(withAlpha(colors[i], 216));
-            g2.drawString(text, labelX, labelY);
-            labelX += fm.stringWidth(text) + 12;
+            int chipW = Math.min(legendW, g2.getFontMetrics().stringWidth(text) + 12);
+            drawHudStatusChip(g2, text, lx, ly - 10, chipW, 16, colors[i], false);
         }
+        return h + 46;
     }
 
     private static int drawHudControlsCard(Graphics2D g2, Player player, GameContext.HudDetail detail, int x, int y, int viewW) {
@@ -1719,14 +2250,14 @@ public class Renderer {
         java.util.List<String> rows = new ArrayList<>();
         if (detail == GameContext.HudDetail.MINIMAL) {
             rows.add("QUICK: L lock target | TAB/B/M/O/H overlays | bottom bar access");
-            rows.add("META: ESC pause/resume | N HUD detail");
+            rows.add("META: ESC pause/resume");
             return rows;
         }
 
         if (detail == GameContext.HudDetail.COMPACT) {
             rows.add("CURSOR COMBAT: LMB guns | RMB missiles" + (player.hasSuperweapon ? " | X superweapon" : ""));
             rows.add("TARGETING: L lock | [ ] cycle | T auto-lock");
-            rows.add("SYSTEM: Y preset | U crew | I shield mode | J/K shield face");
+            rows.add("SYSTEM: Y preset | U crew | watch LEAK chip as shields wear down");
             rows.add("OVERLAYS: TAB shop | B base | M map | O power | H crew | bottom bar");
             rows.add("X-RAY: ` filter | ' clear focus | click room focus");
             rows.add("META: ESC pause/resume");
@@ -1737,7 +2268,7 @@ public class Renderer {
         rows.add("UTILITY: F mine | ; emergency thrust | E shield overcharge");
         rows.add("TARGETING: L lock under mouse | [ ] cycle targets | T auto-lock");
         rows.add("SYSTEMS: O power mgmt | H crew stations | Y power preset | U crew order");
-        rows.add("SHIELDS: I shield mode | J/K shield facing");
+        rows.add("SHIELDS: the bubble covers the whole ship; lower HP means higher leak chance");
         rows.add("X-RAY: ` cycle filter | ' clear focus | click room to focus | RMB clears focus");
         rows.add("OVERLAYS: TAB shop/loadout | B base upgrades | bottom bar quick access");
         rows.add("WARP: - or BACKSPACE charge 10s warp to waypoint or friendly base");
@@ -1859,11 +2390,19 @@ public class Renderer {
             drawVitalsMeter(g2, meterX, shieldY, meterW, meterH, "SHIELD N/A", 0.0, new Color(135, 160, 190, 160));
         }
 
+        int statusLineY = y + h - 16;
         if (ship.isTemporarilyDisabled()) {
             String disabled = "DISABLED " + fmt1(ship.getTemporaryDisableRemaining()) + "s";
             FontMetrics statusFm = g2.getFontMetrics();
             g2.setColor(new Color(255, 134, 118, 220));
-            g2.drawString(disabled, x + w - statusFm.stringWidth(disabled), y + h - 16);
+            g2.drawString(disabled, x + w - statusFm.stringWidth(disabled), statusLineY);
+            statusLineY -= 14;
+        }
+        if (ship.isDestabilized()) {
+            String destabilized = "DESTABILIZED " + fmt1(ship.getDestabilizedRemaining()) + "s";
+            FontMetrics statusFm = g2.getFontMetrics();
+            g2.setColor(new Color(150, 220, 255, 220));
+            g2.drawString(destabilized, x + w - statusFm.stringWidth(destabilized), statusLineY);
         }
 
         if (ship.isStealth) {
@@ -2095,56 +2634,38 @@ public class Renderer {
 
 
     private static void drawShopOverlay(Graphics2D g2, Player player, int credits, int hangarTier) {
-        // Step 4B: "Shop clarity"
-        // - Show what upgrades do (with current -> next deltas)
-        // - Highlight affordability / requirements
-        // - Keep layout readable in fullscreen by anchoring to bottom-left.
-
         Rectangle clip = g2.getClipBounds();
         int viewW = clip.width;
         int viewH = clip.height;
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        Graphics2D gx = (Graphics2D) g2.create();
 
-        int w = 700;
-        int h = 700;
-        int x = 10;
-        int y = Math.max(40, viewH - h - 150);
+        GradientPaint panelFill = new GradientPaint(
+                panel.x, panel.y, new Color(7, 10, 16, 236),
+                panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
+        gx.setPaint(panelFill);
+        gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+        gx.setColor(new Color(255, 255, 255, 78));
+        gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+        gx.setColor(new Color(118, 180, 255, 42));
+        gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
 
-        // Panel
-        g2.setColor(new Color(0, 0, 0, 190));
-        g2.fillRoundRect(x, y, w, h, 18, 18);
-        g2.setColor(new Color(255, 255, 255, 95));
-        g2.drawRoundRect(x, y, w, h, 18, 18);
+        gx.setFont(new Font("Consolas", Font.BOLD, 18));
+        gx.setColor(new Color(245, 248, 255, 230));
+        gx.drawString("SHOP / LOADOUT", panel.x + 22, panel.y + 28);
+        gx.setFont(new Font("Consolas", Font.PLAIN, 12));
+        gx.setColor(new Color(192, 210, 232, 180));
+        gx.drawString("Click a button to buy upgrades or swap hulls. TAB/ESC closes.", panel.x + 22, panel.y + 48);
 
-        // Header
-        g2.setFont(new Font("Consolas", Font.BOLD, 15));
-        g2.setColor(new Color(255, 255, 255, 230));
-        g2.drawString("SHOP / LOADOUT", x + 14, y + 26);
+        drawShopMetricPill(gx, panel.x + 22, panel.y + 64, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
+        drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150, "HANGAR", "TIER " + hangarTier, new Color(158, 196, 255));
+        drawShopMetricPill(gx, panel.x + 362, panel.y + 64, 250, "CURRENT HULL", shopRoleTitle(player.role), new Color(255, 206, 122));
+        drawShopMetricPill(gx, panel.x + 622, panel.y + 64, 170, "SUPERWEAPON", superweaponStatusReadout(player), new Color(156, 224, 255));
 
-        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(255, 255, 255, 150));
-        g2.drawString("TAB/ESC close   1-9 buy   F-keys + \\ + 0/-/= swap hull", x + 14, y + 44);
-
-        // Readouts
-        int ty = y + 70;
-        g2.setFont(new Font("Consolas", Font.PLAIN, 13));
-        g2.setColor(new Color(255, 255, 255, 210));
-        g2.drawString("Credits: " + credits, x + 14, ty);
-        g2.drawString("Hangar Tier: " + hangarTier, x + 190, ty);
-        g2.drawString("Hull: " + shopRoleTitle(player.role), x + 350, ty);
-
-        // Divider
-        ty += 14;
-        g2.setColor(new Color(255, 255, 255, 60));
-        g2.drawLine(x + 14, ty, x + w - 14, ty);
-        ty += 20;
-
-        // ------------------------------
-        // Upgrades 5-9
-        // ------------------------------
-        g2.setFont(new Font("Consolas", Font.BOLD, 13));
-        g2.setColor(new Color(255, 255, 255, 220));
-        g2.drawString("UPGRADES", x + 14, ty);
-        ty += 18;
+        Rectangle upgradesArea = getShopUpgradeArea(panel);
+        Rectangle hullArea = getShopHullArea(panel);
+        drawShopSectionLabel(gx, upgradesArea.x, upgradesArea.y, "UPGRADES", "Weapons, defenses, and system tuning");
+        drawShopSectionLabel(gx, hullArea.x, hullArea.y, "HULL BAY", "Swap frames with dedicated action buttons");
 
         int gunCount = 0;
         int missileCount = 0;
@@ -2156,212 +2677,221 @@ public class Renderer {
             }
         }
 
-        // 3: Energy bolt primary
-        {
-            boolean isEnergy = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT;
-            int cost = 0;
-            boolean can = true;
-            String detail = isEnergy
-                    ? "Primary: ENERGY_BOLT (standard)"
-                    : "Primary: Beam Bolt \u2192 Energy Bolt";
-            drawShopLine(g2, x + 14, ty, "3", "Energy Bolt Primary", detail, cost, can, true, isEnergy ? "ACTIVE" : null);
-            ty += 22;
+        for (int i = 0; i < 7; i++) {
+            Rectangle card = getShopUpgradeCardRect(panel, i);
+            drawShopUpgradeCard(gx, card, player, credits, gunCount, missileCount, i + 1);
+        }
+        for (int i = 0; i < SHOP_HULL_OFFERS.length; i++) {
+            Rectangle card = getShopHullCardRect(panel, i);
+            drawShopHullCard(gx, card, SHOP_HULL_OFFERS[i], credits, hangarTier, player);
         }
 
-        // 4: Beam bolt primary
-        {
-            boolean isBeam = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
-            int cost = isBeam ? 0 : 220;
-            boolean can = credits >= cost;
-            String detail = isBeam
-                    ? "Primary: BEAM_BOLT (heavy energy bolt)"
-                    : "Primary: Energy Bolt \u2192 Beam Bolt";
-            drawShopLine(g2, x + 14, ty, "4", "Beam Bolt Primary", detail, cost, can, true, isBeam ? "ACTIVE" : null);
-            ty += 22;
-        }
-
-        // 5: Hull +10
-        {
-            int cost = 60;
-            boolean can = credits >= cost;
-            String detail = "HP " + player.hpMax + " \u2192 " + (player.hpMax + 10);
-            drawShopLine(g2, x + 14, ty, "5", "Hull Plating", detail, cost, can, true, null);
-            ty += 22;
-        }
-
-        // 6: Shield +12 / regen +0.3
-        {
-            int cost = 70;
-            boolean available = player.shieldActive && player.shieldMax > 0;
-            boolean can = available && credits >= cost;
-            String detail = available
-                    ? ("Shield " + (int) Math.round(player.shieldMax) + " \u2192 " + (int) Math.round(player.shieldMax + 12)
-                    + "   Regen " + fmt1(player.shieldRegen) + " \u2192 " + fmt1(player.shieldRegen + 0.3))
-                    : "Unavailable (this hull has no shields)";
-            drawShopLine(g2, x + 14, ty, "6", "Shield Array", detail, cost, can, available, null);
-            ty += 22;
-        }
-
-        // 7: Add gun turret
-        {
-            int cost = 100;
-            boolean can = credits >= cost;
-            String detail = "Gun turrets " + gunCount + " \u2192 " + (gunCount + 1);
-            drawShopLine(g2, x + 14, ty, "7", "Add Gun Turret", detail, cost, can, true, null);
-            ty += 22;
-        }
-
-        // 8: Add missile rack
-        {
-            int cost = 140;
-            boolean can = credits >= cost;
-            String detail = "Missile racks " + missileCount + " \u2192 " + (missileCount + 1);
-            drawShopLine(g2, x + 14, ty, "8", "Add Missile Rack", detail, cost, can, true, null);
-            ty += 22;
-        }
-
-        // 9: CIWS upgrade
-        {
-            boolean hasCiws = player.hasCIWS;
-            boolean maxed = hasCiws && player.isCIWSUpgradeMaxed();
-            int cost = maxed ? 0 : 120;
-            boolean available = hasCiws;
-            boolean can = available && (maxed || credits >= cost);
-
-            double nextQ = Math.min(1.0, player.ciwsQuality + 0.20);
-            double nextRange = Math.min(380.0, player.ciwsRange + 25.0);
-            int nextPellets = Math.min(8, player.ciwsPelletsPerBurst + 1);
-            double nextCd = Math.max(0.04, player.ciwsCooldown - 0.01);
-
-            String detail = available
-                    ? (maxed
-                    ? ("Quality " + fmt1(player.ciwsQuality)
-                    + "   Range " + (int) Math.round(player.ciwsRange)
-                    + "   Burst " + player.ciwsPelletsPerBurst
-                    + "   CD " + fmt1(player.ciwsCooldown))
-                    : ("Quality " + fmt1(player.ciwsQuality) + " \u2192 " + fmt1(nextQ)
-                    + "   Range " + (int) Math.round(player.ciwsRange) + " \u2192 " + (int) Math.round(nextRange)
-                    + "   Burst " + player.ciwsPelletsPerBurst + " \u2192 " + nextPellets
-                    + "   CD " + fmt1(player.ciwsCooldown) + " \u2192 " + fmt1(nextCd)))
-                    : "Unavailable (this hull has no CIWS)";
-            drawShopLine(g2, x + 14, ty, "9", "Upgrade CIWS", detail, cost, can, available, maxed ? "MAX" : null);
-            ty += 26;
-        }
-
-        // Divider
-        g2.setColor(new Color(255, 255, 255, 60));
-        g2.drawLine(x + 14, ty - 10, x + w - 14, ty - 10);
-
-        // ------------------------------
-        // Hull swaps
-        // ------------------------------
-        g2.setFont(new Font("Consolas", Font.BOLD, 13));
-        g2.setColor(new Color(255, 255, 255, 220));
-        g2.drawString("HULL SWAP", x + 14, ty + 6);
-        ty += 24;
-
-        // Helper to draw hull option
-        java.util.function.BiFunction<ShipRole, Integer, Integer> reqTier = (role, unused) -> switch (role) {
-            case PATROL, PICKET, FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> 0;
-            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
-            case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP -> 2;
-            case DREADNOUGHT, CARRIER, DRONE_CARRIER, TRANSPORT, SUPERSHIP -> 3;
-            default -> 0;
-        };
-
-        ty = drawHullLine(g2, x + 14, ty, "F1", ShipRole.PATROL, 0, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F2", ShipRole.PICKET, 180, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F3", ShipRole.FRIGATE, 0, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F4", ShipRole.MISSILE_BOAT, 300, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F5", ShipRole.CIWS_CORVETTE, 250, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F6", ShipRole.LIGHT_CRUISER, 700, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F7", ShipRole.MEDIUM_CRUISER, 950, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "\\", ShipRole.CRUISER, 1100, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F8", ShipRole.BATTLECRUISER, 1600, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F9", ShipRole.BATTLESHIP, 2200, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F11", ShipRole.STEALTH_SHIP, 1200, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "F12", ShipRole.DREADNOUGHT, 3200, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "0", ShipRole.CARRIER, 2800, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "-", ShipRole.DRONE_CARRIER, 3000, credits, hangarTier, player, reqTier);
-        ty = drawHullLine(g2, x + 14, ty, "=", ShipRole.SUPERSHIP, 5200, credits, hangarTier, player, reqTier);
-
-        // Footer hint
-        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(255, 255, 255, 130));
-        g2.drawString("Tip: If a hull is locked, upgrade a friendly base (B) to raise hangar tier.", x + 14, y + h - 16);
+        gx.setFont(new Font("Consolas", Font.PLAIN, 12));
+        gx.setColor(new Color(196, 208, 224, 164));
+        gx.drawString("Tier-locked hulls need a stronger friendly base hangar. Upgrade one from the base menu if you want bigger frames.",
+                panel.x + 22, panel.y + panel.height - 18);
+        gx.dispose();
     }
 
-    private static void drawShopLine(Graphics2D g2, int x, int y,
-                                     String key, String title, String detail,
-                                     int cost, boolean canAfford, boolean available, String rightTag) {
+    private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
+        Color base = (accent == null) ? new Color(150, 205, 255) : accent;
+        g2.setColor(new Color(16, 22, 34, 188));
+        g2.fillRoundRect(x, y, w, 46, 16, 16);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 84));
+        g2.drawRoundRect(x, y, w, 46, 16, 16);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(210, 228, 246, 172));
+        g2.drawString(label, x + 12, y + 15);
+        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        g2.setColor(new Color(245, 249, 255, 228));
+        g2.drawString(value, x + 12, y + 33);
+    }
 
-        // Key capsule
+    private static void drawShopSectionLabel(Graphics2D g2, int x, int y, String title, String subtitle) {
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        g2.setColor(new Color(245, 247, 255, 226));
+        g2.drawString(title, x, y + 2);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(186, 206, 226, 162));
+        g2.drawString(subtitle, x + 102, y + 2);
+    }
+
+    private static void drawShopUpgradeCard(Graphics2D g2, Rectangle card, Player player, int credits,
+                                            int gunCount, int missileCount, int upgradeId) {
+        String title;
+        String line1;
+        String line2;
+        String buttonLabel;
+        boolean enabled = true;
+        boolean accentStrong = false;
+        Color accent = new Color(122, 194, 255);
+
+        switch (upgradeId) {
+            case SHOP_UPGRADE_ENERGY_BOLT -> {
+                boolean active = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT;
+                title = "Energy Bolt Primary";
+                line1 = active ? "Current mount: ENERGY_BOLT" : "Swap the primary weapon back to the standard bolt";
+                line2 = active ? "Balanced fire profile with no credit cost" : "Click to equip instantly";
+                buttonLabel = active ? "ACTIVE" : "EQUIP";
+                enabled = !active;
+                accentStrong = active;
+                accent = new Color(118, 214, 255);
+            }
+            case SHOP_UPGRADE_BEAM_BOLT -> {
+                boolean active = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
+                title = "Beam Bolt Primary";
+                line1 = active ? "Current mount: BEAM_BOLT" : "Heavy direct-energy bolt with slower cadence";
+                line2 = active ? "Already installed" : "Install package for $220";
+                buttonLabel = active ? "ACTIVE" : (credits >= 220 ? "BUY $220" : "NEED $220");
+                enabled = !active && credits >= 220;
+                accentStrong = active;
+                accent = new Color(144, 230, 255);
+            }
+            case SHOP_UPGRADE_HULL -> {
+                title = "Hull Plating";
+                line1 = "Hull integrity " + player.hpMax + " -> " + (player.hpMax + 10);
+                line2 = "Instant repair on purchase";
+                buttonLabel = credits >= 60 ? "BUY $60" : "NEED $60";
+                enabled = credits >= 60;
+                accent = new Color(255, 194, 126);
+            }
+            case SHOP_UPGRADE_SHIELD -> {
+                boolean available = player.shieldActive && player.shieldMax > 0.0;
+                title = "Shield Array";
+                line1 = available
+                        ? "Shield " + (int) Math.round(player.shieldMax) + " -> " + (int) Math.round(player.shieldMax + 12.0)
+                        : "This hull does not mount shield hardware";
+                line2 = available
+                        ? "Regen " + fmt1(player.shieldRegen) + " -> " + fmt1(player.shieldRegen + 0.3)
+                        : "Switch to a shield-capable hull to use this";
+                buttonLabel = !available ? "NO SHIELD" : (credits >= 70 ? "BUY $70" : "NEED $70");
+                enabled = available && credits >= 70;
+                accent = new Color(144, 176, 255);
+            }
+            case SHOP_UPGRADE_GUN -> {
+                title = "Add Gun Turret";
+                line1 = "Gun mounts " + gunCount + " -> " + (gunCount + 1);
+                line2 = "Adds another primary hardpoint";
+                buttonLabel = credits >= 100 ? "BUY $100" : "NEED $100";
+                enabled = credits >= 100;
+                accent = new Color(255, 180, 124);
+            }
+            case SHOP_UPGRADE_MISSILE -> {
+                title = "Add Missile Rack";
+                line1 = "Missile racks " + missileCount + " -> " + (missileCount + 1);
+                line2 = "Adds another secondary launcher";
+                buttonLabel = credits >= 140 ? "BUY $140" : "NEED $140";
+                enabled = credits >= 140;
+                accent = new Color(255, 148, 126);
+            }
+            case SHOP_UPGRADE_CIWS -> {
+                boolean hasCiws = player.hasCIWS;
+                boolean maxed = hasCiws && player.isCIWSUpgradeMaxed();
+                title = "Upgrade CIWS";
+                if (!hasCiws) {
+                    line1 = "Current hull has no CIWS package";
+                    line2 = "Pick a CIWS-capable frame first";
+                    buttonLabel = "NO CIWS";
+                    enabled = false;
+                } else if (maxed) {
+                    line1 = "Quality " + fmt1(player.ciwsQuality) + "  Range " + (int) Math.round(player.ciwsRange);
+                    line2 = "Burst " + player.ciwsPelletsPerBurst + "  CD " + fmt1(player.ciwsCooldown);
+                    buttonLabel = "MAX";
+                    enabled = false;
+                    accentStrong = true;
+                } else {
+                    double nextQ = Math.min(1.0, player.ciwsQuality + 0.20);
+                    double nextRange = Math.min(380.0, player.ciwsRange + 25.0);
+                    line1 = "Quality " + fmt1(player.ciwsQuality) + " -> " + fmt1(nextQ);
+                    line2 = "Range " + (int) Math.round(player.ciwsRange) + " -> " + (int) Math.round(nextRange);
+                    buttonLabel = credits >= 120 ? "BUY $120" : "NEED $120";
+                    enabled = credits >= 120;
+                }
+                accent = new Color(142, 234, 190);
+            }
+            default -> {
+                title = "Unknown Upgrade";
+                line1 = "";
+                line2 = "";
+                buttonLabel = "N/A";
+                enabled = false;
+            }
+        }
+
+        drawShopCardFrame(g2, card, accent, accentStrong);
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
-        g2.setColor(new Color(0, 0, 0, 150));
-        g2.fillRoundRect(x, y - 12, 30, 18, 10, 10);
-        g2.setColor(new Color(255, 255, 255, 70));
-        g2.drawRoundRect(x, y - 12, 30, 18, 10, 10);
-        g2.setColor(new Color(255, 255, 255, 220));
-        g2.drawString(key, x + 8, y + 2);
+        g2.setColor(new Color(245, 248, 255, 222));
+        g2.drawString(title, card.x + 12, card.y + 18);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(204, 216, 230, 182));
+        g2.drawString(line1, card.x + 12, card.y + 39);
+        g2.drawString(line2, card.x + 12, card.y + 54);
+        drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, accentStrong);
+    }
 
-        int tx = x + 38;
+    private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
+                                         int credits, int hangarTier, Player player) {
+        boolean current = player.role == offer.role;
+        boolean tierOk = hangarTier >= offer.requiredTier;
+        boolean affordable = credits >= offer.cost;
+        boolean enabled = !current && tierOk && affordable;
+        Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
-        // Title
-        g2.setFont(new Font("Consolas", Font.BOLD, 13));
-        g2.setColor(available ? new Color(255, 255, 255, 220) : new Color(255, 255, 255, 110));
-        g2.drawString(title, tx, y + 2);
+        drawShopCardFrame(g2, card, accent, current);
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(244, 248, 255, 220));
+        g2.drawString(shopRoleTitle(offer.role), card.x + 10, card.y + 18);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(196, 210, 226, 180));
+        g2.drawString("Tier " + offer.requiredTier + "   Cost $" + offer.cost, card.x + 10, card.y + 36);
 
-        // Detail
-        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(available ? new Color(255, 255, 255, 170) : new Color(255, 255, 255, 95));
-        g2.drawString(detail, tx, y + 18);
+        String line2 = current
+                ? "Currently equipped"
+                : (tierOk ? "Ready for swap" : "Needs hangar tier " + offer.requiredTier);
+        g2.drawString(line2, card.x + 10, card.y + 51);
 
-        // Cost + tag (right aligned)
-        String costStr = "$" + cost;
-        if (rightTag != null && !rightTag.isBlank()) costStr = rightTag + "  " + costStr;
+        String buttonLabel;
+        if (current) buttonLabel = "CURRENT";
+        else if (!tierOk) buttonLabel = "LOCK T" + offer.requiredTier;
+        else if (!affordable) buttonLabel = "NEED $" + offer.cost;
+        else if (offer.cost <= 0) buttonLabel = "SWAP FREE";
+        else buttonLabel = "SWAP $" + offer.cost;
+        drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, current);
+    }
 
+    private static void drawShopCardFrame(Graphics2D g2, Rectangle card, Color accent, boolean strong) {
+        Color base = (accent == null) ? new Color(150, 205, 255) : accent;
+        int fillAlpha = strong ? 60 : 38;
+        g2.setColor(new Color(18, 24, 38, 214));
+        g2.fillRoundRect(card.x, card.y, card.width, card.height, 18, 18);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), fillAlpha));
+        g2.fillRoundRect(card.x, card.y, card.width, card.height, 18, 18);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), strong ? 124 : 80));
+        g2.drawRoundRect(card.x, card.y, card.width, card.height, 18, 18);
+    }
+
+    private static void drawShopActionButton(Graphics2D g2, Rectangle button, String label,
+                                             boolean enabled, Color accent, boolean strong) {
+        Color base = (accent == null) ? new Color(150, 205, 255) : accent;
+        Color fill = enabled
+                ? new Color(base.getRed(), base.getGreen(), base.getBlue(), strong ? 138 : 112)
+                : new Color(56, 62, 72, 180);
+        Color border = enabled
+                ? new Color(245, 248, 255, 198)
+                : new Color(160, 170, 184, 118);
+        Color text = enabled
+                ? new Color(248, 250, 255, 235)
+                : new Color(186, 194, 206, 178);
+        g2.setColor(fill);
+        g2.fillRoundRect(button.x, button.y, button.width, button.height, 12, 12);
+        g2.setColor(border);
+        g2.drawRoundRect(button.x, button.y, button.width, button.height, 12, 12);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
         FontMetrics fm = g2.getFontMetrics();
-        int rightX = x + 540;
-        int costW = fm.stringWidth(costStr);
-
-        if (!available) {
-            g2.setColor(new Color(255, 255, 255, 90));
-        } else if (canAfford) {
-            g2.setColor(new Color(120, 255, 170, 210));
-        } else {
-            g2.setColor(new Color(255, 120, 120, 210));
-        }
-        g2.drawString(costStr, rightX - costW, y + 2);
-    }
-
-    private static int drawHullLine(Graphics2D g2, int x, int y, String key, ShipRole role, int cost,
-                                    int credits, int hangarTier, Player player,
-                                    java.util.function.BiFunction<ShipRole, Integer, Integer> reqTier) {
-
-        int req = reqTier.apply(role, 0);
-        boolean meets = hangarTier >= req;
-        boolean canAfford = credits >= cost;
-        boolean current = player.role == role;
-
-        String title = shopRoleTitle(role);
-        String detail = "Requires Tier " + req + (req == 0 ? "" : "  (upgrade base)");
-        String tag = current ? "CURRENT" : ("T" + req);
-
-        // Color for requirement fail vs afford fail
-        boolean available = meets;
-        boolean canBuy = meets && canAfford;
-
-        drawShopLine(g2, x, y, key, title, detail, cost, canBuy, available, tag);
-
-        // Extra hint if locked by hangar tier
-        if (!meets) {
-            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-            g2.setColor(new Color(255, 200, 120, 200));
-            g2.drawString("Locked: need hangar tier " + req, x + 38, y + 34);
-            return y + 40;
-        }
-
-        return y + 22;
+        int tx = button.x + (button.width - fm.stringWidth(label)) / 2;
+        int ty = button.y + (button.height + fm.getAscent() - fm.getDescent()) / 2 - 1;
+        g2.setColor(text);
+        g2.drawString(label, tx, ty);
     }
 
     private static String shopRoleTitle(ShipRole role) {
@@ -2460,7 +2990,7 @@ public class Renderer {
         g2.setColor(new Color(180, 225, 255, 220));
         g2.drawString("Shield Effectiveness: " + signedPct(shield), x + 20, py);
         py += 16;
-        g2.drawString("Shield Faces: " + shieldFaceReadout(player), x + 20, py);
+        g2.drawString("Shield Leak Chance: " + shieldLeakReadout(player), x + 20, py);
         py += 20;
 
         String overload = player.isOverloadActive()

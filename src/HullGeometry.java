@@ -105,6 +105,16 @@ public final class HullGeometry {
         return new LocalPoint(lx, ly);
     }
 
+    public static double[] localToWorld(Ship ship, double localX, double localY) {
+        if (ship == null) return new double[]{localX, localY};
+        double c = Math.cos(ship.angle);
+        double s = Math.sin(ship.angle);
+        return new double[]{
+                ship.x + localX * c - localY * s,
+                ship.y + localX * s + localY * c
+        };
+    }
+
     public static double roleVisualScale(ShipRole role) {
         if (role == null) return 1.0;
         return switch (role) {

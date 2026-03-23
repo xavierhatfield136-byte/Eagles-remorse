@@ -182,15 +182,6 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_U, 0, false), "cycleCrewOrder", () -> {
             GameplayActions.cycleCrewOrder(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_I, 0, false), "cycleShieldFacingMode", () -> {
-            GameplayActions.cycleShieldFacingMode(ctx);
-        });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_J, 0, false), "shieldFaceLeft", () -> {
-            GameplayActions.rotateShieldFacing(ctx, -1);
-        });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_K, 0, false), "shieldFaceRight", () -> {
-            GameplayActions.rotateShieldFacing(ctx, +1);
-        });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SEMICOLON, 0, false), "toggleEmergencyThrust", () -> {
             GameplayActions.toggleEmergencyThrust(ctx);
         });

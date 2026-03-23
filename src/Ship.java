@@ -146,6 +146,10 @@ public abstract class Ship {
     public boolean shieldActive = false;
     public double shieldRebootDelay = 2.2;
     private double shieldOfflineTimer = 0.0;
+    private static final double SHIELD_PASSTHROUGH_MIN_CHANCE = 0.01;
+    private static final double SHIELD_PASSTHROUGH_MAX_CHANCE = 0.50;
+    private static final double SHIELD_PASSTHROUGH_FULL_FRAC = 1.0;
+    private static final double SHIELD_PASSTHROUGH_CRITICAL_FRAC = 0.01;
     public static final int SHIELD_FACE_COUNT = 4;
     public static final int SHIELD_FACE_FORE = 0;
     public static final int SHIELD_FACE_LEFT = 1;
@@ -177,14 +181,15 @@ public abstract class Ship {
 
     // Superweapon (superweapon)
     public enum SuperweaponPattern {
-        PULSE_BARRAGE,   // Player default: current rapid-fire wave pulses
+        DESTABILIZER_PULSE, // Team A: balanced pulse blast with mixed damage and disruption
+        PULSE_BARRAGE,   // Legacy rapid-fire wave pulses
         KINETIC_SLUG,    // Red team: single heavy kinetic shell
         DIRECT_BEAM,     // Green team: strong direct-energy beam
         MISSILE_BARRAGE  // Missile team: repeated heavy missile salvos
     }
 
     public boolean hasSuperweapon = false;
-    public SuperweaponPattern superweaponPattern = SuperweaponPattern.PULSE_BARRAGE;
+    public SuperweaponPattern superweaponPattern = SuperweaponPattern.DESTABILIZER_PULSE;
     public double superweaponChargeTime = 0.0;
     public double superweaponCooldown = 24.0;
     private double superweaponTimer = 0.0;
@@ -207,6 +212,8 @@ public abstract class Ship {
     private double superweaponBeamAim = Double.NaN;
     private Ship superweaponBeamTarget = null;
     private double temporaryDisableTimer = 0.0;
+    private double destabilizedTimer = 0.0;
+    private static final double DESTABILIZED_SYSTEM_MULTIPLIER = 0.80;
 
     // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
@@ -320,6 +327,7 @@ public abstract class Ship {
     private double warpChargeDuration = 0.0;
     private double warpExitX = Double.NaN;
     private double warpExitY = Double.NaN;
+    private int warpFormationLeaderId = -1;
 
     // Movement
     public double desiredSpeed = 110;
@@ -451,11 +459,43 @@ public abstract class Ship {
         }
     }
 
+    public static final class ShieldImpactMark {
+        private double localX;
+        private double localY;
+        private double normalX;
+        private double normalY;
+        private double severity;
+        private double freshness;
+        private double patchRadius;
+
+        private ShieldImpactMark(double localX, double localY, double normalX, double normalY,
+                                 double severity, double freshness, double patchRadius) {
+            this.localX = localX;
+            this.localY = localY;
+            this.normalX = normalX;
+            this.normalY = normalY;
+            this.severity = severity;
+            this.freshness = freshness;
+            this.patchRadius = patchRadius;
+        }
+
+        public double localX() { return localX; }
+        public double localY() { return localY; }
+        public double normalX() { return normalX; }
+        public double normalY() { return normalY; }
+        public double severity() { return severity; }
+        public double freshness() { return freshness; }
+        public double patchRadius() { return patchRadius; }
+    }
+
     private static final int MAX_HULL_IMPACT_MARKS = 64;
     private static final double HULL_IMPACT_DECAY_IDLE_SECONDS = 10.0;
     private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
     private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
     private double hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
+    private static final int MAX_SHIELD_IMPACT_MARKS = 18;
+    private final List<ShieldImpactMark> shieldImpactMarks = new ArrayList<>();
+    private final List<ShieldImpactMark> shieldImpactMarksView = Collections.unmodifiableList(shieldImpactMarks);
     private static final double CATASTROPHIC_CHAIN_GRACE_SECONDS = 4.0;
     private static final double CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC = 0.22;
     private double catastrophicChainGraceTimer = 0.0;
@@ -649,6 +689,10 @@ public abstract class Ship {
             vx = 0.0;
             vy = 0.0;
         }
+        if (destabilizedTimer > 0.0) {
+            destabilizedTimer -= dt;
+            if (destabilizedTimer < 0.0) destabilizedTimer = 0.0;
+        }
 
         x += vx;
         y += vy;
@@ -669,6 +713,7 @@ public abstract class Ship {
                 recentShieldImpactFace = -1;
             }
         }
+        updateShieldImpactDecay(dt);
         updateHullImpactDecay(dt);
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
@@ -881,6 +926,7 @@ public abstract class Ship {
         resetShieldState();
         if (shieldActive && shieldMax > 0.0) shield = shieldMax;
         clearHullImpactMarks();
+        clearShieldImpactMarks();
 
         instantRepairConsumed = true;
         return true;
@@ -903,6 +949,7 @@ public abstract class Ship {
         fireSpawnTimer = 0.0;
         hp = Math.max(1, hpMax);
         temporaryDisableTimer = 0.0;
+        destabilizedTimer = 0.0;
         ciwsTimer = 0.0;
         fighterTimer = 0.0;
         baseSpawnTimer = 0.0;
@@ -934,13 +981,13 @@ public abstract class Ship {
             shield = 0.0;
         }
         clearHullImpactMarks();
+        clearShieldImpactMarks();
         resetSuperweaponCooldown();
     }
 
     public void healShield(double amount) {
         if (!alive || !isShieldOnline()) return;
         if (amount <= 0) return;
-        ensureShieldFacesSynced();
         distributeShieldRegen(amount);
     }
 
@@ -970,44 +1017,36 @@ public abstract class Ship {
         ShipRoomLayout.RoomDef primaryRoom = resolvePrimaryRoomForHullHit(impact, hitX, hitY, impactVx, impactVy);
         int hullDamage = dmg;
 
-        double impactAngle = resolveShieldImpactAngle(hitX, hitY, impactVx, impactVy);
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
-        double shieldFacingForHit = getShieldFacingAngle();
-        if (shieldFacingMode == ShieldFacingMode.AUTO_TRACK && Double.isFinite(threatFacingAngle)) {
-            shieldFacingForHit = autoFacingTargetForThreat(threatFacingAngle);
-            if (Double.isFinite(shieldFacingForHit)) {
-                // Keep visual facing and damage-facing in sync during incoming fire.
-                shieldFacingAngle = shieldFacingForHit;
-            }
-        }
-
         if (isShieldOnline() && shield > 0) {
-            int face = shieldFaceForImpactAngle(impactAngle, shieldFacingForHit);
-            double faceHpBefore = shieldFaceValue(face);
+            double shieldBefore = shield;
+            double effectiveShieldMax = Math.max(1e-9, effectiveShieldCapacityMax());
+            double passThroughChance = computeShieldPassthroughChance(shieldBefore / effectiveShieldMax);
             if (Double.isFinite(threatFacingAngle)) {
                 recentShieldImpactAngle = threatFacingAngle;
                 recentShieldImpactTimer = 1.2;
-                recentShieldImpactFace = face;
+                recentShieldImpactFace = SHIELD_FACE_FORE;
             }
-            if (faceHpBefore > 1e-6) {
-                double shieldScale = directionalShieldDamageScaleFromAngle(impactAngle, shieldFacingForHit);
-                double scaledDamage = dmg * shieldScale;
-                double overflow = Math.max(0.0, scaledDamage - faceHpBefore);
-                applyShieldDamageToFace(face, scaledDamage);
-                if (shield <= 0) {
-                    forceShieldOffline(shieldRebootDelay);
-                }
-                double fx = Double.isFinite(hitX) ? hitX : x;
-                double fy = Double.isFinite(hitY) ? hitY : y;
-                Explosion.spawnShieldHit(fx, fy);
-                if (overflow <= 1e-6) {
-                    return;
-                }
+            double absorbedDamage = Math.min(shieldBefore, Math.max(0.0, dmg));
+            if (absorbedDamage > 1e-6) {
+                registerShieldImpact(absorbedDamage, impact);
+            }
+            applyShieldDamage(dmg);
+            if (shield <= 0) {
+                forceShieldOffline(shieldRebootDelay);
+            }
+            double fx = Double.isFinite(hitX) ? hitX : x;
+            double fy = Double.isFinite(hitY) ? hitY : y;
+            Explosion.spawnShieldHit(fx, fy);
 
-                // Residual bleed-through still gets attenuated by shield geometry.
-                double bleedThroughScale = MathUtil.clamp(0.42 + 0.36 * shieldScale, 0.24, 0.88);
-                hullDamage = Math.max(1, (int) Math.round(overflow * bleedThroughScale));
+            double overflow = Math.max(0.0, dmg - shieldBefore);
+            boolean randomPassThrough = randomUnit() < passThroughChance;
+            if (overflow <= 1e-6 && !randomPassThrough) {
+                return;
             }
+            hullDamage = randomPassThrough
+                    ? Math.max(1, dmg)
+                    : Math.max(1, (int) Math.round(overflow));
         }
 
         ShipRoomLayout.RoomDef armorRoom = resolveArmorRoomForImpact(impact, primaryRoom);
@@ -1267,7 +1306,21 @@ public abstract class Ship {
         return warpExitY;
     }
 
+    public int warpFormationLeaderId() {
+        return warpFormationLeaderId;
+    }
+
     public boolean beginBattlefieldWarp(double targetX, double targetY, double spoolSeconds) {
+        warpFormationLeaderId = -1;
+        return beginBattlefieldWarpInternal(targetX, targetY, spoolSeconds);
+    }
+
+    public boolean beginBattlefieldWarpFollowing(double targetX, double targetY, double spoolSeconds, int leaderShipId) {
+        warpFormationLeaderId = Math.max(0, leaderShipId);
+        return beginBattlefieldWarpInternal(targetX, targetY, spoolSeconds);
+    }
+
+    private boolean beginBattlefieldWarpInternal(double targetX, double targetY, double spoolSeconds) {
         if (!canUseBattlefieldWarp()) return false;
         if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return false;
         warpCharging = true;
@@ -1286,6 +1339,7 @@ public abstract class Ship {
         warpChargeDuration = 0.0;
         warpExitX = Double.NaN;
         warpExitY = Double.NaN;
+        warpFormationLeaderId = -1;
     }
 
     public void tickBattlefieldWarp(double dt) {
@@ -1466,9 +1520,17 @@ public abstract class Ship {
         return hullImpactMarksView;
     }
 
+    public List<ShieldImpactMark> shieldImpactMarks() {
+        return shieldImpactMarksView;
+    }
+
     public void clearHullImpactMarks() {
         hullImpactMarks.clear();
         hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
+    }
+
+    public void clearShieldImpactMarks() {
+        shieldImpactMarks.clear();
     }
 
     public List<RoomStatus> roomStatusSnapshot() {
@@ -1990,6 +2052,93 @@ public abstract class Ship {
         return Math.max(0.0, Math.min(Math.max(0.0, shieldMax), totalShieldFaceCapacity()));
     }
 
+    public double shieldPassthroughChance() {
+        if (!shieldActive) return 1.0;
+        double effectiveMax = effectiveShieldCapacityMax();
+        if (effectiveMax <= 1e-9) return 1.0;
+        return computeShieldPassthroughChance(shield / effectiveMax);
+    }
+
+    public double collapseShield(double offlineSeconds, double hitX, double hitY, double impactVx, double impactVy) {
+        ensureShieldFacesSynced();
+        if (!shieldActive) return 0.0;
+        double effectiveMax = effectiveShieldCapacityMax();
+        if (effectiveMax <= 1e-9) return 0.0;
+
+        double stripped = Math.max(0.0, shield);
+        HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
+        double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        if (Double.isFinite(threatFacingAngle)) {
+            recentShieldImpactAngle = threatFacingAngle;
+            recentShieldImpactTimer = 1.2;
+            recentShieldImpactFace = SHIELD_FACE_FORE;
+        }
+        if (stripped > 1e-6) {
+            registerShieldImpact(stripped, impact);
+        }
+        forceShieldOffline(Math.max(0.1, offlineSeconds));
+        return stripped;
+    }
+
+    public double drainShieldByMaxFraction(double fraction,
+                                           double hitX,
+                                           double hitY,
+                                           double impactVx,
+                                           double impactVy) {
+        ensureShieldFacesSynced();
+        if (!shieldActive) return 0.0;
+        double effectiveMax = effectiveShieldCapacityMax();
+        if (effectiveMax <= 1e-9 || shield <= 1e-9) return 0.0;
+
+        double frac = MathUtil.clamp(fraction, 0.0, 1.0);
+        if (frac <= 1e-9) return 0.0;
+
+        double drained = Math.min(shield, effectiveMax * frac);
+        if (drained <= 1e-9) return 0.0;
+
+        HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
+        double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        if (Double.isFinite(threatFacingAngle)) {
+            recentShieldImpactAngle = threatFacingAngle;
+            recentShieldImpactTimer = 1.2;
+            recentShieldImpactFace = SHIELD_FACE_FORE;
+        }
+        registerShieldImpact(drained, impact);
+        applyShieldDamage(drained);
+        if (shield <= 1e-6) {
+            forceShieldOffline(Math.max(0.5, shieldRebootDelay * 0.75));
+        }
+        return drained;
+    }
+
+    public double drainShieldByAmount(double amount,
+                                      double hitX,
+                                      double hitY,
+                                      double impactVx,
+                                      double impactVy) {
+        ensureShieldFacesSynced();
+        if (!shieldActive) return 0.0;
+        double effectiveMax = effectiveShieldCapacityMax();
+        if (effectiveMax <= 1e-9 || shield <= 1e-9) return 0.0;
+
+        double drained = Math.min(shield, Math.max(0.0, amount));
+        if (drained <= 1e-9) return 0.0;
+
+        HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
+        double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        if (Double.isFinite(threatFacingAngle)) {
+            recentShieldImpactAngle = threatFacingAngle;
+            recentShieldImpactTimer = 1.2;
+            recentShieldImpactFace = SHIELD_FACE_FORE;
+        }
+        registerShieldImpact(drained, impact);
+        applyShieldDamage(drained);
+        if (shield <= 1e-6) {
+            forceShieldOffline(Math.max(0.35, shieldRebootDelay * 0.55));
+        }
+        return drained;
+    }
+
     public double shieldFaceFraction(int face) {
         double max = shieldFaceMax(face);
         if (max <= 1e-9) return 0.0;
@@ -2031,6 +2180,7 @@ public abstract class Ship {
         double out = 0.32 + 0.48 * weapons + 0.20 * reactor;
         out *= weaponsPowerMultiplier();
         out *= crewWeaponMul;
+        out *= destabilizedSystemMultiplier();
         return Math.max(0.12, Math.min(1.45, out));
     }
 
@@ -2062,6 +2212,7 @@ public abstract class Ship {
         regen *= shieldsPowerMultiplier();
         regen *= crewShieldMul;
         regen *= teamCShieldStripRegenMultiplier();
+        regen *= destabilizedSystemMultiplier();
         return Math.max(0.0, Math.min(1.65, regen));
     }
 
@@ -3380,31 +3531,9 @@ public abstract class Ship {
     }
 
     private void updateShieldFacing(double dt) {
-        if (!shieldActive || shieldMax <= 0.0) return;
         if (!Double.isFinite(shieldFacingAngle)) shieldFacingAngle = angle;
-        ensureShieldFacesSynced();
-
-        if (shieldFacingMode == ShieldFacingMode.FORWARD) {
-            shieldFacingAngle = angle;
-            return;
-        }
-        if (shieldFacingMode == ShieldFacingMode.MANUAL) {
-            return;
-        }
-
-        double target = angle;
-        double v2 = vx * vx + vy * vy;
-        if (v2 > 1e-8) {
-            target = Math.atan2(vy, vx);
-        }
-        if (recentShieldImpactTimer > 0.0 && Double.isFinite(recentShieldImpactAngle)) {
-            target = autoFacingTargetForThreat(recentShieldImpactAngle);
-        }
-
-        double delta = MathUtil.normalizeAngle(target - shieldFacingAngle);
-        double maxStep = Math.max(0.0, shieldAutoTrackRate * dt);
-        delta = MathUtil.clamp(delta, -maxStep, maxStep);
-        shieldFacingAngle = MathUtil.normalizeAngle(shieldFacingAngle + delta);
+        if (!shieldActive || shieldMax <= 0.0) return;
+        shieldFacingAngle = angle;
     }
 
     private int bestShieldFaceForSwap(int activeFace) {
@@ -3642,32 +3771,121 @@ public abstract class Ship {
 
     private void distributeShieldRegen(double amount) {
         if (amount <= 0.0 || shieldMax <= 0.0 || !shieldActive) return;
-        ensureShieldFacesSynced();
+        double effectiveCap = effectiveShieldCapacityMax();
+        if (effectiveCap <= 1e-9) {
+            shield = 0.0;
+            syncShieldFacesFromAggregate();
+            return;
+        }
+        shield = MathUtil.clamp(shield + amount, 0.0, effectiveCap);
+        syncShieldFacesFromAggregate();
+        healShieldImpactMarks(amount);
+    }
 
-        double rem = amount;
-        for (int pass = 0; pass < 4 && rem > 1e-6; pass++) {
-            int open = 0;
-            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
-                if (shieldFaceRegenLock[i] > 0.0) continue;
-                if (shieldFaces[i] + 1e-9 < shieldFaceCapacity(i)) open++;
-            }
-            if (open <= 0) break;
+    private void applyShieldDamage(double amount) {
+        if (amount <= 0.0) return;
+        double effectiveCap = effectiveShieldCapacityMax();
+        shield = MathUtil.clamp(shield - amount, 0.0, Math.max(0.0, effectiveCap));
+        syncShieldFacesFromAggregate();
+    }
 
-            double share = rem / open;
-            double consumed = 0.0;
-            for (int i = 0; i < SHIELD_FACE_COUNT; i++) {
-                if (shieldFaceRegenLock[i] > 0.0) continue;
-                double room = shieldFaceCapacity(i) - shieldFaces[i];
-                if (room <= 1e-9) continue;
-                double add = Math.min(room, share);
-                shieldFaces[i] += add;
-                consumed += add;
-            }
-            rem -= consumed;
-            if (consumed <= 1e-9) break;
+    private double computeShieldPassthroughChance(double shieldFraction) {
+        double frac = MathUtil.clamp(shieldFraction, 0.0, 1.0);
+        double denom = Math.max(1e-9, SHIELD_PASSTHROUGH_FULL_FRAC - SHIELD_PASSTHROUGH_CRITICAL_FRAC);
+        double normalized = MathUtil.clamp((frac - SHIELD_PASSTHROUGH_CRITICAL_FRAC) / denom, 0.0, 1.0);
+        double wear = 1.0 - normalized;
+        return SHIELD_PASSTHROUGH_MIN_CHANCE
+                + (SHIELD_PASSTHROUGH_MAX_CHANCE - SHIELD_PASSTHROUGH_MIN_CHANCE) * wear;
+    }
+
+    private void registerShieldImpact(double absorbedDamage, HullGeometry.ImpactSample impact) {
+        if (absorbedDamage <= 1e-6 || impact == null || !impact.onHull) return;
+        double effectiveCap = Math.max(1e-9, effectiveShieldCapacityMax());
+        double severity = MathUtil.clamp(absorbedDamage / effectiveCap * 3.8, 0.10, 0.70);
+        double patchRadius = Math.max(radius * (0.18 + severity * 0.34), 8.0);
+        double nx = impact.normalizedX;
+        double ny = impact.normalizedY;
+        double nLen = Math.hypot(nx, ny);
+        if (nLen <= 1e-6) {
+            nx = 1.0;
+            ny = 0.0;
+        } else {
+            nx /= nLen;
+            ny /= nLen;
         }
 
-        syncAggregateShieldFromFaces();
+        ShieldImpactMark best = null;
+        double bestDist2 = Double.POSITIVE_INFINITY;
+        double mergeRadius = Math.max(10.0, patchRadius * 0.75);
+        double mergeRadius2 = mergeRadius * mergeRadius;
+        for (ShieldImpactMark mark : shieldImpactMarks) {
+            double dx = mark.localX - impact.localX;
+            double dy = mark.localY - impact.localY;
+            double d2 = dx * dx + dy * dy;
+            if (d2 <= mergeRadius2 && d2 < bestDist2) {
+                best = mark;
+                bestDist2 = d2;
+            }
+        }
+
+        if (best != null) {
+            double blend = MathUtil.clamp(0.28 + severity * 0.42, 0.20, 0.72);
+            best.localX = best.localX * (1.0 - blend) + impact.localX * blend;
+            best.localY = best.localY * (1.0 - blend) + impact.localY * blend;
+            best.normalX = best.normalX * (1.0 - blend) + nx * blend;
+            best.normalY = best.normalY * (1.0 - blend) + ny * blend;
+            double len = Math.hypot(best.normalX, best.normalY);
+            if (len > 1e-6) {
+                best.normalX /= len;
+                best.normalY /= len;
+            }
+            best.severity = MathUtil.clamp(best.severity + severity * 0.72, 0.08, 1.8);
+            best.patchRadius = Math.max(best.patchRadius, patchRadius);
+            best.freshness = 1.0;
+            return;
+        }
+
+        if (shieldImpactMarks.size() >= MAX_SHIELD_IMPACT_MARKS) {
+            int weakest = 0;
+            double weakestScore = Double.POSITIVE_INFINITY;
+            for (int i = 0; i < shieldImpactMarks.size(); i++) {
+                ShieldImpactMark mark = shieldImpactMarks.get(i);
+                double score = mark.severity * 0.7 + mark.freshness * 0.3;
+                if (score < weakestScore) {
+                    weakestScore = score;
+                    weakest = i;
+                }
+            }
+            shieldImpactMarks.remove(weakest);
+        }
+        shieldImpactMarks.add(new ShieldImpactMark(impact.localX, impact.localY, nx, ny, severity, 1.0, patchRadius));
+    }
+
+    private void healShieldImpactMarks(double amount) {
+        if (amount <= 1e-6 || shieldImpactMarks.isEmpty()) return;
+        double effectiveCap = Math.max(1e-9, effectiveShieldCapacityMax());
+        double recover = amount / effectiveCap;
+        if (recover <= 1e-6) return;
+        for (int i = shieldImpactMarks.size() - 1; i >= 0; i--) {
+            ShieldImpactMark mark = shieldImpactMarks.get(i);
+            mark.severity = Math.max(0.0, mark.severity - recover * 1.05);
+            mark.patchRadius = Math.max(radius * 0.12, mark.patchRadius - radius * recover * 0.45);
+            mark.freshness = Math.max(0.0, mark.freshness - recover * 1.6);
+            if (mark.severity <= 0.035 && mark.freshness <= 0.04) {
+                shieldImpactMarks.remove(i);
+            }
+        }
+    }
+
+    private void updateShieldImpactDecay(double dt) {
+        if (dt <= 0.0 || shieldImpactMarks.isEmpty()) return;
+        for (int i = shieldImpactMarks.size() - 1; i >= 0; i--) {
+            ShieldImpactMark mark = shieldImpactMarks.get(i);
+            mark.freshness = Math.max(0.0, mark.freshness - dt * 0.34);
+            if (mark.severity <= 0.035 && mark.freshness <= 0.04) {
+                shieldImpactMarks.remove(i);
+            }
+        }
     }
 
     private double resolveShieldImpactAngle(double hitX, double hitY, double impactVx, double impactVy) {
@@ -3750,6 +3968,7 @@ public abstract class Ship {
         mobility *= propulsionMobilityMultiplier();
         mobility *= emergencyThrustSpeedMultiplier();
         mobility *= crewEngineMul;
+        mobility *= destabilizedSystemMultiplier();
         mobility = Math.max(0.18, Math.min(1.38, mobility));
         desiredSpeed = desiredSpeedBase * mobility;
     }
@@ -4509,6 +4728,7 @@ public abstract class Ship {
         recentShieldImpactTimer = 0.0;
         recentShieldImpactAngle = Double.NaN;
         recentShieldImpactFace = -1;
+        clearShieldImpactMarks();
         for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaceRegenLock[i] = 0.0;
         if (shieldFacingMode == ShieldFacingMode.FORWARD) {
             shieldFacingAngle = angle;
@@ -4548,6 +4768,11 @@ public abstract class Ship {
         superweaponBeamAim = aim;
         superweaponBeamTarget = isValidSuperweaponTarget(target) ? target : null;
         switch (superweaponPattern) {
+            case DESTABILIZER_PULSE -> {
+                superweaponBeamTimer = 0.0;
+                superweaponBeamTickTimer = 0.0;
+                superweaponBeamTarget = null;
+            }
             case PULSE_BARRAGE -> {
                 superweaponBeamTimer = Math.max(0.0, superweaponBeamDuration);
                 superweaponBeamTickTimer = superweaponTickSpacing();
@@ -4583,6 +4808,7 @@ public abstract class Ship {
     private List<Projectile> createSuperweaponVolley(double dt, double aim, Ship target, boolean beamTick) {
         List<Projectile> out = new ArrayList<>();
         switch (superweaponPattern) {
+            case DESTABILIZER_PULSE -> addSuperweaponProjectile(out, createDestabilizerPulse(dt, aim));
             case KINETIC_SLUG -> addSuperweaponProjectile(out, createKineticSuperSlug(dt, aim));
             case DIRECT_BEAM -> addSuperweaponProjectile(out, createDirectBeamSuperweapon(aim));
             case MISSILE_BARRAGE -> out.addAll(createMissileBarrageVolley(dt, aim, target, beamTick));
@@ -4611,11 +4837,11 @@ public abstract class Ship {
     private Projectile createKineticSuperSlug(double dt, double aim) {
         double sx = x + Math.cos(aim) * (radius + 12.0);
         double sy = y + Math.sin(aim) * (radius + 12.0);
-        int damage = Math.max(1, (int) Math.round(superweaponDamage * 3.8));
+        int damage = Math.max(4, (int) Math.round(superweaponDamage * 0.10));
         double speed = Math.max(420.0, superweaponSpeed * 0.74);
         int life = Math.max(36, (int) Math.round(superweaponLife * 1.35));
         double slugRadius = Math.max(18.0, superweaponRadius * 2.35);
-        double blastRadius = Math.max(120.0, slugRadius * 5.0);
+        double blastRadius = Math.max(320.0, slugRadius * 11.6);
         Projectile slug = new DisruptorSlug(sx, sy, aim, dt, speed, damage, life, slugRadius, blastRadius, faction);
         slug.sourceShipId = id;
         return slug;
@@ -4629,14 +4855,57 @@ public abstract class Ship {
         return Math.max(0.0, temporaryDisableTimer);
     }
 
+    public boolean isDestabilized() {
+        return destabilizedTimer > 1e-6;
+    }
+
+    public double getDestabilizedRemaining() {
+        return Math.max(0.0, destabilizedTimer);
+    }
+
+    public void applyDestabilized(double seconds) {
+        if (!alive || dying || hp <= 0) return;
+        double duration = Math.max(0.0, seconds);
+        if (duration <= 0.0) return;
+        destabilizedTimer = Math.max(destabilizedTimer, duration);
+    }
+
     public void applyTemporaryDisable(double seconds) {
         if (!alive || dying || hp <= 0) return;
-        if (seconds <= 0.0) return;
-        temporaryDisableTimer = Math.max(temporaryDisableTimer, seconds);
+        double adjusted = adjustedDisableDuration(seconds);
+        if (adjusted <= 0.0) return;
+        temporaryDisableTimer = Math.min(disableDurationCap(), Math.max(temporaryDisableTimer, adjusted));
         vx = 0.0;
         vy = 0.0;
         cancelBattlefieldWarp();
         cancelSuperweaponSequence();
+    }
+
+    public void addTemporaryDisable(double seconds) {
+        if (!alive || dying || hp <= 0) return;
+        double adjusted = adjustedDisableDuration(seconds);
+        if (adjusted <= 0.0) return;
+        temporaryDisableTimer = Math.min(disableDurationCap(), temporaryDisableTimer + adjusted);
+        vx = 0.0;
+        vy = 0.0;
+        cancelBattlefieldWarp();
+        cancelSuperweaponSequence();
+    }
+
+    private double adjustedDisableDuration(double seconds) {
+        if (seconds <= 0.0) return 0.0;
+        double mul = (faction == Faction.TEAM_D) ? 0.5 : 1.0;
+        return seconds * mul;
+    }
+
+    private double disableDurationCap() {
+        if (faction == Faction.TEAM_D) return 10.0;
+        if (faction == Faction.TEAM_C) return 20.0;
+        return 15.0;
+    }
+
+    private double destabilizedSystemMultiplier() {
+        return isDestabilized() ? DESTABILIZED_SYSTEM_MULTIPLIER : 1.0;
     }
 
     private void cancelSuperweaponSequence() {
@@ -4663,6 +4932,34 @@ public abstract class Ship {
         Projectile beam = new PhaserBeam(this, aim, beamLength, beamWidth, beamDps, beamLife, muzzleOffset, faction);
         beam.sourceShipId = id;
         return beam;
+    }
+
+    private Projectile createDestabilizerPulse(double dt, double aim) {
+        double sx = x + Math.cos(aim) * (radius + 12.0);
+        double sy = y + Math.sin(aim) * (radius + 12.0);
+        int hullDamage = Math.max(10, (int) Math.round(superweaponDamage * 0.20));
+        double shieldDamage = Math.max(12.0, superweaponDamage * 0.24);
+        double pulseSpeed = Math.max(560.0, superweaponSpeed * 0.78);
+        int pulseLife = Math.max(42, (int) Math.round(superweaponLife * 1.05));
+        double pulseRadius = Math.max(16.0, superweaponRadius * 1.55);
+        double blastRadius = Math.max(220.0, pulseRadius * 11.5);
+        double destabilizeSeconds = 7.0;
+        Projectile pulse = new DestabilizerPulse(
+                sx,
+                sy,
+                aim,
+                dt,
+                pulseSpeed,
+                hullDamage,
+                pulseLife,
+                pulseRadius,
+                blastRadius,
+                shieldDamage,
+                destabilizeSeconds,
+                faction
+        );
+        pulse.sourceShipId = id;
+        return pulse;
     }
 
     private List<Projectile> createMissileBarrageVolley(double dt, double aim, Ship target, boolean beamTick) {

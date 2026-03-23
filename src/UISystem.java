@@ -164,6 +164,27 @@ public final class UISystem {
         return true;
     }
 
+    public static boolean handleShopClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.player == null || e == null) return false;
+        if (!ctx.shopOpen) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+
+        Renderer.ShopClickTarget target = Renderer.shopClickTargetAt(
+                ctx.player, ctx.credits, getMaxHangarTierForPlayer(ctx),
+                viewportW, viewportH, e.getX(), e.getY());
+        if (target == null) return false;
+
+        if (target.kind == Renderer.ShopClickTarget.Kind.UPGRADE) {
+            performShopUpgradeById(ctx, target.upgradeId);
+            return true;
+        }
+        if (target.kind == Renderer.ShopClickTarget.Kind.HULL && target.role != null) {
+            performHullSwapByRole(ctx, target.role);
+            return true;
+        }
+        return false;
+    }
+
     public static void selectPowerManagementSlot(GameContext ctx, int idx) {
         if (ctx == null) return;
         ctx.powerManagementFocus = Math.max(0, Math.min(5, idx));
@@ -512,6 +533,44 @@ public final class UISystem {
             Renderer.MapPing p = ctx.mapPings.get(i);
             p.t -= dt;
             if (p.t <= 0) ctx.mapPings.remove(i);
+        }
+    }
+
+    public static void performShopUpgradeById(GameContext ctx, int upgradeId) {
+        if (ctx == null || !ctx.shopOpen) return;
+        switch (upgradeId) {
+            case 1 -> tryEquipEnergyBolt(ctx);
+            case 2 -> tryBuyBeamBolt(ctx);
+            case 3 -> tryBuyHullPlating(ctx);
+            case 4 -> tryBuyShieldArray(ctx);
+            case 5 -> tryAddGunTurret(ctx);
+            case 6 -> tryAddMissileRack(ctx);
+            case 7 -> tryUpgradeCIWS(ctx);
+            default -> {
+            }
+        }
+    }
+
+    public static void performHullSwapByRole(GameContext ctx, ShipRole role) {
+        if (ctx == null || role == null || !ctx.shopOpen) return;
+        switch (role) {
+            case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 0, 0);
+            case PICKET -> trySwapHull(ctx, ShipRole.PICKET, 180, 0);
+            case FRIGATE -> trySwapHull(ctx, ShipRole.FRIGATE, 0, 0);
+            case MISSILE_BOAT -> trySwapHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
+            case CIWS_CORVETTE -> trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
+            case LIGHT_CRUISER -> trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
+            case MEDIUM_CRUISER -> trySwapHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
+            case CRUISER -> trySwapHull(ctx, ShipRole.CRUISER, 1100, 1);
+            case BATTLECRUISER -> trySwapHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
+            case BATTLESHIP -> trySwapHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
+            case STEALTH_SHIP -> trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
+            case DREADNOUGHT -> trySwapHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
+            case CARRIER -> trySwapHull(ctx, ShipRole.CARRIER, 2800, 3);
+            case DRONE_CARRIER -> trySwapHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
+            case SUPERSHIP -> trySwapHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
+            default -> {
+            }
         }
     }
 

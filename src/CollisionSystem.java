@@ -3,6 +3,10 @@ import java.util.List;
 public class CollisionSystem {
     private static final double DAMAGE_VFX_MAX_DIST_FROM_PLAYER = 1150.0;
     private static final int MAX_DAMAGE_EVENT_LOG = 2048;
+    private static final double SHIELD_SHELL_OFFSET_SCALE = 0.62;
+    private static final double DESTABILIZER_PULSE_EDGE_FALLOFF = 0.42;
+    private static final double SUPERWEAPON_RING_DISABLE_SECONDS = 5.0;
+    private static final double SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION = 0.25;
 
     private CollisionSystem() {}
 
@@ -27,6 +31,7 @@ public class CollisionSystem {
             }
             boolean superweaponShot = p instanceof SuperweaponShot;
             boolean disruptorSlug = p instanceof DisruptorSlug;
+            boolean destabilizerPulse = p instanceof DestabilizerPulse;
             VFX.ImpactStyle impactStyle = impactStyleFor(p);
             Ship shooter = resolveSourceShip(ctx, ships, p);
             Iterable<Ship> candidates = ships;
@@ -47,6 +52,11 @@ public class CollisionSystem {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     if (!slug.canAffect(s)) continue;
                 }
+                if (destabilizerPulse) {
+                    applyDestabilizerBlast(ctx, (DestabilizerPulse) p, p.x, p.y, ships);
+                    p.alive = false;
+                    break;
+                }
                 if (superweaponShot) {
                     SuperweaponShot ws = (SuperweaponShot) p;
                     if (!ws.canDamage(s)) continue;
@@ -64,31 +74,38 @@ public class CollisionSystem {
                         dirY = Math.sin(ws.angle);
                     }
 
+                    ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, p.x, p.y, p.vx, p.vy);
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
                     s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
                     logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
-                    boolean showImpactVfx = shouldRenderDamageVfx(ctx, s, p.x, p.y);
+                    double shieldX = impactPoints.shieldX();
+                    double shieldY = impactPoints.shieldY();
+                    double hullX = impactPoints.hullX();
+                    double hullY = impactPoints.hullY();
+                    boolean showImpactVfx = shouldRenderDamageVfx(ctx, s,
+                            shieldHit && !hullHit ? shieldX : hullX,
+                            shieldHit && !hullHit ? shieldY : hullY);
                     if (shieldHit) {
                         if (showImpactVfx) {
-                            VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
+                            VFX.spawnShieldImpact(shieldX, shieldY, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
-                        AudioSystem.onShieldImpact(ctx, impactStyle, p.x, p.y);
+                        AudioSystem.onShieldImpact(ctx, impactStyle, shieldX, shieldY);
                     }
                     if (hullHit) {
                         if (showImpactVfx) {
-                            VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(2, p.damage), impactStyle);
+                            VFX.spawnHullImpact(hullX, hullY, dirX, dirY, Math.max(2, p.damage), impactStyle);
                         }
-                        AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
+                        AudioSystem.onHullImpact(ctx, impactStyle, hullX, hullY);
                     }
                     if (!shieldHit && !hullHit) {
                         if (showImpactVfx) {
-                            VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(2, p.damage));
+                            VFX.spawnImpactSparks(hullX, hullY, dirX, dirY, Math.max(2, p.damage));
                         }
                         // Preserve audible feedback for glancing/mitigated hull contacts.
-                        AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
+                        AudioSystem.onHullImpact(ctx, impactStyle, hullX, hullY);
                     }
 
                     if (showImpactVfx) ScreenShake.kick(2.2);
@@ -117,9 +134,27 @@ public class CollisionSystem {
                     }
                 }
 
+                ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, p.x, p.y, p.vx, p.vy);
                 double shieldBefore = s.shield;
                 int hpBefore = s.hp;
-                boolean showImpactVfx = shouldRenderDamageVfx(ctx, s, p.x, p.y);
+                double shieldX = impactPoints.shieldX();
+                double shieldY = impactPoints.shieldY();
+                double hullX = impactPoints.hullX();
+                double hullY = impactPoints.hullY();
+                boolean showImpactVfx = shouldRenderDamageVfx(ctx, s,
+                        shieldBefore > 0.0 ? shieldX : hullX,
+                        shieldBefore > 0.0 ? shieldY : hullY);
+
+                if (disruptorSlug) {
+                    DisruptorSlug slug = (DisruptorSlug) p;
+                    slug.markAffected(s);
+                    applyDisruptorBlast(ctx, slug, p.x, p.y, ships);
+                    if (disruptorSlugDetonatesOn(s)) {
+                        p.alive = false;
+                        break;
+                    }
+                    continue;
+                }
 
                 // Small screen shake for heavier hits
                 if (showImpactVfx) {
@@ -129,15 +164,6 @@ public class CollisionSystem {
 
                 s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
                 logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
-                if (disruptorSlug) {
-                    DisruptorSlug slug = (DisruptorSlug) p;
-                    slug.markAffected(s);
-                    if (disruptorSlugDetonatesOn(s)) {
-                        applyDisruptorBlast(ctx, slug, p.x, p.y, ships);
-                    } else {
-                        s.applyTemporaryDisable(disruptorDisableSeconds(s));
-                    }
-                }
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
                 }
@@ -146,26 +172,22 @@ public class CollisionSystem {
                 boolean hullHit = s.hp < hpBefore;
                 if (shieldHit) {
                     if (showImpactVfx) {
-                        VFX.spawnShieldImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
+                        VFX.spawnShieldImpact(shieldX, shieldY, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
-                    AudioSystem.onShieldImpact(ctx, impactStyle, p.x, p.y);
+                    AudioSystem.onShieldImpact(ctx, impactStyle, shieldX, shieldY);
                 }
                 if (hullHit) {
                     if (showImpactVfx) {
-                        VFX.spawnHullImpact(p.x, p.y, dirX, dirY, Math.max(1, p.damage), impactStyle);
+                        VFX.spawnHullImpact(hullX, hullY, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
-                    AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
+                    AudioSystem.onHullImpact(ctx, impactStyle, hullX, hullY);
                 }
                 if (!shieldHit && !hullHit) {
                     if (showImpactVfx) {
-                        VFX.spawnImpactSparks(p.x, p.y, dirX, dirY, Math.max(1, p.damage));
+                        VFX.spawnImpactSparks(hullX, hullY, dirX, dirY, Math.max(1, p.damage));
                     }
                     // Preserve audible feedback for glancing/mitigated hull contacts.
-                    AudioSystem.onHullImpact(ctx, impactStyle, p.x, p.y);
-                }
-
-                if (disruptorSlug && !disruptorSlugDetonatesOn(s)) {
-                    continue;
+                    AudioSystem.onHullImpact(ctx, impactStyle, hullX, hullY);
                 }
 
                 p.alive = false;
@@ -323,6 +345,9 @@ public class CollisionSystem {
                 if (p instanceof DisruptorSlug slug) {
                     applyDisruptorBlast(ctx, slug, p.x, p.y, ctx == null ? null : ctx.ships);
                 }
+                if (p instanceof DestabilizerPulse pulse) {
+                    applyDestabilizerBlast(ctx, pulse, p.x, p.y, ctx == null ? null : ctx.ships);
+                }
 
                 if (ws != null) ws.consumeHit();
                 else p.alive = false;
@@ -334,6 +359,71 @@ public class CollisionSystem {
     public static void cleanupProjectiles(List<Projectile> projectiles) {
         if (projectiles == null) return;
         projectiles.removeIf(p -> !p.alive);
+    }
+
+    public static void handleSuperweaponBlastRings(GameContext ctx) {
+        if (ctx == null || ctx.ships == null || ctx.ships.isEmpty() || Explosion.active.isEmpty()) return;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        for (Explosion explosion : Explosion.active) {
+            if (explosion == null || explosion.kind != Explosion.Kind.SUPERWEAPON_BLAST) continue;
+            Ship shooter = resolveSourceShip(ctx, ctx.ships, explosion.sourceShipId);
+            for (int ringIndex = 0; ringIndex < explosion.superweaponRingCount(); ringIndex++) {
+                double ringRadius = explosion.superweaponRingRadius(ringIndex);
+                double ringHalfWidth = explosion.superweaponRingHalfWidth(ringIndex);
+                if (ringRadius <= 1e-6 || ringHalfWidth <= 1e-6) continue;
+
+                nearbyShips.clear();
+                ctx.entityQuery.collectAliveShipsNear(
+                        explosion.x,
+                        explosion.y,
+                        ringRadius + ringHalfWidth + ctx.entityQuery.maxShipBroadPhaseRadius(),
+                        nearbyShips);
+
+                for (Ship ship : nearbyShips) {
+                    if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+                    if (ship.id == explosion.sourceShipId) continue;
+                    if (!canDisruptorFieldAffectShip(shooter, explosion.sourceFaction, ship)) continue;
+
+                    double dx = ship.x - explosion.x;
+                    double dy = ship.y - explosion.y;
+                    double dist = Math.hypot(dx, dy);
+                    double shipRadius = HullGeometry.broadPhaseRadius(ship);
+                    if (Math.abs(dist - ringRadius) > shipRadius + ringHalfWidth) continue;
+                    if (!explosion.markSuperweaponRingHit(ringIndex, ship.id)) continue;
+
+                    double dirX;
+                    double dirY;
+                    if (dist > 1e-6) {
+                        dirX = dx / dist;
+                        dirY = dy / dist;
+                    } else {
+                        dirX = 1.0;
+                        dirY = 0.0;
+                    }
+                    double contactX = explosion.x + dirX * ringRadius;
+                    double contactY = explosion.y + dirY * ringRadius;
+                    ImpactVisualPoints impactPoints = resolveImpactVisualPoints(ship, contactX, contactY, dx, dy);
+                    double shieldBefore = ship.shield;
+                    double stripped = ship.drainShieldByMaxFraction(
+                            SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION,
+                            contactX,
+                            contactY,
+                            dx,
+                            dy);
+                    ship.addTemporaryDisable(SUPERWEAPON_RING_DISABLE_SECONDS);
+
+                    boolean showImpactVfx = shouldRenderDamageVfx(ctx, ship, impactPoints.shieldX(), impactPoints.shieldY());
+                    if (showImpactVfx) {
+                        int strength = Math.max(2, (int) Math.round(3.0 + stripped * 0.06));
+                        VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY, strength, VFX.ImpactStyle.BEAM);
+                        Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                    }
+                    if (shieldBefore > 1e-6) {
+                        AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.BEAM, impactPoints.shieldX(), impactPoints.shieldY());
+                    }
+                }
+            }
+        }
     }
 
     private static void applyMissileBlast(GameContext ctx, Missile m, Ship directHit, List<Ship> ships) {
@@ -375,6 +465,83 @@ public class CollisionSystem {
         AudioSystem.onExplosion(ctx, m.x, m.y);
     }
 
+    private static void applyDestabilizerBlast(GameContext ctx, DestabilizerPulse pulse, double x, double y, List<Ship> ships) {
+        if (pulse == null) return;
+        double rr = Math.max(120.0, pulse.blastRadius);
+        Ship shooter = resolveSourceShip(ctx, ships, pulse);
+        boolean affected = false;
+
+        Iterable<Ship> candidates = ships;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        if (ctx != null && ships != null && !ships.isEmpty()) {
+            ctx.entityQuery.collectAliveShipsNear(x, y, rr + ctx.entityQuery.maxShipBroadPhaseRadius(), nearbyShips);
+            candidates = nearbyShips;
+        }
+
+        if (candidates != null) {
+            for (Ship s : candidates) {
+                if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+                if (s.id == pulse.sourceShipId) continue;
+                if (!canProjectileDamageShip(shooter, pulse, s)) continue;
+
+                double dx = s.x - x;
+                double dy = s.y - y;
+                double centerDist = Math.hypot(dx, dy);
+                double maxD = rr + HullGeometry.broadPhaseRadius(s);
+                if (centerDist > maxD) continue;
+
+                double falloff = 1.0 - MathUtil.clamp(centerDist / Math.max(1.0, maxD), 0.0, 1.0);
+                double intensity = DESTABILIZER_PULSE_EDGE_FALLOFF + (1.0 - DESTABILIZER_PULSE_EDGE_FALLOFF) * falloff;
+                double impactVx = (centerDist > 1e-6) ? dx : pulse.vx;
+                double impactVy = (centerDist > 1e-6) ? dy : pulse.vy;
+                ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, x, y, impactVx, impactVy);
+                double shieldBefore = s.shield;
+                int hpBefore = s.hp;
+
+                double stripped = s.collapseShield(pulse.destabilizeSeconds, x, y, impactVx, impactVy);
+                int hullDamage = Math.max(1, (int) Math.round(pulse.damage * intensity));
+                markPlayerHitContribution(ctx, pulse, s);
+                s.takeDamage(hullDamage, x, y, impactVx, impactVy);
+                logDamageEvent(ctx, "destabilizer:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
+                s.applyDestabilized(pulse.destabilizeSeconds);
+
+                boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
+                boolean hullHit = s.hp < hpBefore;
+                boolean showShipVfx = shouldRenderDamageVfx(ctx, s,
+                        shieldHit && !hullHit ? impactPoints.shieldX() : impactPoints.hullX(),
+                        shieldHit && !hullHit ? impactPoints.shieldY() : impactPoints.hullY());
+                if (showShipVfx) {
+                    double dirLen = Math.hypot(impactVx, impactVy);
+                    double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
+                    double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
+                    int shieldStrength = Math.max(2, (int) Math.round(2.0 + stripped * 0.08));
+                    if (shieldHit) {
+                        VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY, shieldStrength, VFX.ImpactStyle.ENERGY);
+                        Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                    }
+                    if (hullHit) {
+                        VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY, Math.max(1, hullDamage), VFX.ImpactStyle.ENERGY);
+                    }
+                }
+                if (shieldHit) AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.shieldX(), impactPoints.shieldY());
+                if (hullHit || !shieldHit) AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                affected = true;
+            }
+        }
+
+        boolean showImpactVfx = shouldRenderDamageVfx(ctx, null, x, y);
+        if (showImpactVfx) {
+            VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(3, pulse.damage), VFX.ImpactStyle.ENERGY);
+            Explosion.spawnDestabilizerPulse(x, y, rr);
+            ScreenShake.kick(3.8);
+        }
+        if (affected) {
+            AudioSystem.onExplosion(ctx, x, y);
+        } else {
+            AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, x, y);
+        }
+    }
+
     private static void applyDisruptorBlast(GameContext ctx, DisruptorSlug slug, double x, double y, List<Ship> ships) {
         if (slug == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(64.0, slug.blastRadius);
@@ -395,14 +562,53 @@ public class CollisionSystem {
             double maxD = rr + HullGeometry.broadPhaseRadius(s);
             if (GameMath.dist2(s.x, s.y, x, y) > maxD * maxD) continue;
 
+            double dx = s.x - x;
+            double dy = s.y - y;
+            double centerDist = Math.hypot(dx, dy);
+            double falloff = 1.0 - MathUtil.clamp(centerDist / Math.max(1.0, maxD), 0.0, 1.0);
+            double impactVx = (centerDist > 1e-6) ? dx : slug.vx;
+            double impactVy = (centerDist > 1e-6) ? dy : slug.vy;
+            ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, x, y, impactVx, impactVy);
+            double shieldBefore = s.shield;
+            int hpBefore = s.hp;
+            double shieldOfflineSeconds = resolveDisruptorShieldOfflineSeconds(s);
+            double stripped = s.collapseShield(shieldOfflineSeconds, x, y, impactVx, impactVy);
+            int hullDamage = resolveDisruptorHullDamage(slug, s, falloff, centerDist <= Math.max(24.0, s.radius * 0.85));
+            if (hullDamage > 0) {
+                markPlayerHitContribution(ctx, slug, s);
+                s.takeDamage(hullDamage, x, y, impactVx, impactVy);
+                logDamageEvent(ctx, "disruptor_blast:" + System.identityHashCode(slug), hullDamage, VFX.ImpactStyle.BEAM, s, x, y);
+            }
             s.applyTemporaryDisable(disruptorDisableSeconds(s));
+            slug.markAffected(s);
+
+            boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
+            boolean hullHit = s.hp < hpBefore;
+            boolean showShipVfx = shouldRenderDamageVfx(ctx, s,
+                    shieldHit && !hullHit ? impactPoints.shieldX() : impactPoints.hullX(),
+                    shieldHit && !hullHit ? impactPoints.shieldY() : impactPoints.hullY());
+            if (showShipVfx) {
+                double dirLen = Math.hypot(impactVx, impactVy);
+                double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
+                double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
+                if (shieldHit) {
+                    VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY,
+                            Math.max(2, (int) Math.round(2.0 + stripped * 0.05)), VFX.ImpactStyle.BEAM);
+                    Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                }
+                if (hullHit) {
+                    VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY,
+                            Math.max(1, hullDamage), VFX.ImpactStyle.BEAM);
+                }
+            }
             affected = true;
         }
 
         boolean showImpactVfx = shouldRenderDamageVfx(ctx, null, x, y);
         if (showImpactVfx) {
-            VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(2, slug.damage), VFX.ImpactStyle.EXPLOSIVE);
+            VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(3, slug.damage), VFX.ImpactStyle.EXPLOSIVE);
             Explosion.spawnShieldHit(x, y);
+            Explosion.spawnSuperweaponBlast(x, y, slug.sourceShipId, slug.faction);
             ScreenShake.kick(Math.min(7.0, 3.6 + rr * 0.012));
         }
         if (affected) {
@@ -417,14 +623,40 @@ public class CollisionSystem {
         return 10.0 + t * 10.0;
     }
 
+    private static double resolveDisruptorShieldOfflineSeconds(Ship ship) {
+        if (ship == null) return 3.0;
+        return Math.max(3.0, ship.shieldRebootDelay * 1.2);
+    }
+
+    private static int resolveDisruptorHullDamage(DisruptorSlug slug,
+                                                  Ship ship,
+                                                  double falloff,
+                                                  boolean directImpact) {
+        if (slug == null || ship == null) return 0;
+        double base = Math.max(1.0, slug.damage);
+        double scaled = base * (directImpact ? 0.65 : 0.34);
+        double damage = scaled * (0.60 + 0.40 * MathUtil.clamp(falloff, 0.0, 1.0));
+        return Math.max(1, (int) Math.round(damage));
+    }
+
     private static boolean disruptorSlugDetonatesOn(Ship ship) {
         if (ship == null || ship.role == null) return true;
-        return SpawnSystem.requiredHangarTierForRole(ship.role) > 1;
+        return SpawnSystem.requiredHangarTierForRole(ship.role) > 2;
+    }
+
+    private static boolean canDisruptorFieldAffectShip(Ship shooter, Faction sourceFaction, Ship target) {
+        if (target == null) return false;
+        if (sourceFaction != null && target.faction != null && sourceFaction.isFriendlyTo(target.faction)) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        if (shooter == null || shooter.role == null) return true;
+        if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
+        return true;
     }
 
     private static VFX.ImpactStyle impactStyleFor(Projectile p) {
         if (p instanceof Missile) return VFX.ImpactStyle.EXPLOSIVE;
         if (p instanceof DisruptorSlug) return VFX.ImpactStyle.EXPLOSIVE;
+        if (p instanceof DestabilizerPulse) return VFX.ImpactStyle.ENERGY;
         if (p instanceof SuperweaponShot) return VFX.ImpactStyle.BEAM;
         if (p instanceof PhaserBeam) return VFX.ImpactStyle.BEAM;
         if (p instanceof PointDefenseLaser) return VFX.ImpactStyle.BEAM;
@@ -445,8 +677,7 @@ public class CollisionSystem {
         double halfWidth = Math.max(1.0, beam.width * 0.5);
         Ship shooter = resolveSourceShip(ctx, ships, beam);
 
-        Ship best = null;
-        double bestT = Double.POSITIVE_INFINITY;
+        List<BeamHitCandidate> hits = new java.util.ArrayList<>();
         Iterable<Ship> candidates = ships;
         List<Ship> nearbyShips = new java.util.ArrayList<>();
         if (ctx != null) {
@@ -467,56 +698,174 @@ public class CollisionSystem {
             if (!HullGeometry.segmentIntersectsShip(sx, sy, ex, ey, halfWidth, s)) continue;
 
             double t = segmentParamForPoint(sx, sy, ex, ey, s.x, s.y);
-            if (t < bestT) {
-                bestT = t;
-                best = s;
-            }
+            hits.add(new BeamHitCandidate(s, t));
         }
 
-        if (best == null) {
+        if (hits.isEmpty()) {
             beam.clampImpactFraction(1.0);
             return;
         }
+        hits.sort(java.util.Comparator.comparingDouble(BeamHitCandidate::t));
 
         double dx = ex - sx;
         double dy = ey - sy;
         double len = Math.hypot(dx, dy);
         double dirX = (len > 1e-9) ? (dx / len) : Math.cos(beam.angle);
         double dirY = (len > 1e-9) ? (dy / len) : Math.sin(beam.angle);
-        HullGeometry.ImpactSample impact = firstBeamHullImpact(best, sx, sy, ex, ey, bestT);
-        double hitX = sx + dx * bestT;
-        double hitY = sy + dy * bestT;
-        double impactFraction = bestT;
-        if (impact != null && impact.onHull) {
-            double c = Math.cos(best.angle);
-            double s = Math.sin(best.angle);
-            hitX = best.x + impact.localX * c - impact.localY * s;
-            hitY = best.y + impact.localX * s + impact.localY * c;
-            impactFraction = segmentParamForPoint(sx, sy, ex, ey, hitX, hitY);
-        }
-        beam.clampImpactFraction(impactFraction);
-
         int damage = beam.rollFrameDamage(ctx == null ? null : ctx.rng, GameContext.DT);
-        if (damage <= 0) return;
-
-        markPlayerHitContribution(ctx, beam, best);
-        double shieldBefore = best.shield;
-        int hpBefore = best.hp;
-        best.takeDamage(damage, hitX, hitY, dirX, dirY);
-        logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, best, hitX, hitY);
-
-        boolean shieldHit = best.shield < shieldBefore - 1e-6;
-        boolean hullHit = best.hp < hpBefore;
-        boolean showImpactVfx = shouldRenderDamageVfx(ctx, best, hitX, hitY);
-        if (shieldHit) {
-            if (showImpactVfx) VFX.spawnShieldImpact(hitX, hitY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
-            AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.BEAM, hitX, hitY);
+        if (!beam.penetratesTargets()) {
+            BeamHitCandidate first = hits.get(0);
+            BeamImpactResult impact = resolveBeamImpactResult(first.ship(), sx, sy, ex, ey, first.t(), dirX, dirY);
+            beam.clampImpactFraction(impact.impactFraction());
+            if (damage <= 0) return;
+            applyBeamHit(ctx, beam, first.ship(), damage, dirX, dirY, impact.hitX(), impact.hitY());
+            return;
         }
-        if (hullHit) {
-            if (showImpactVfx) VFX.spawnHullImpact(hitX, hitY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
-            AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.BEAM, hitX, hitY);
+
+        beam.clampImpactFraction(1.0);
+        if (damage <= 0) return;
+        for (BeamHitCandidate hit : hits) {
+            BeamImpactResult impact = resolveBeamImpactResult(hit.ship(), sx, sy, ex, ey, hit.t(), dirX, dirY);
+            applyBeamHit(ctx, beam, hit.ship(), damage, dirX, dirY, impact.hitX(), impact.hitY());
         }
     }
+
+    private static void applyBeamHit(GameContext ctx,
+                                     PhaserBeam beam,
+                                     Ship target,
+                                     int damage,
+                                     double dirX,
+                                     double dirY,
+                                     double hitX,
+                                     double hitY) {
+        if (beam == null || target == null || damage <= 0) return;
+        ImpactVisualPoints impactPoints = resolveImpactVisualPoints(target, hitX, hitY, dirX, dirY);
+        markPlayerHitContribution(ctx, beam, target);
+        double shieldBefore = target.shield;
+        int hpBefore = target.hp;
+        target.takeDamage(damage, hitX, hitY, dirX, dirY);
+        logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, target, hitX, hitY);
+
+        boolean shieldHit = target.shield < shieldBefore - 1e-6;
+        boolean hullHit = target.hp < hpBefore;
+        double shieldX = impactPoints.shieldX();
+        double shieldY = impactPoints.shieldY();
+        double hullX = impactPoints.hullX();
+        double hullY = impactPoints.hullY();
+        boolean showImpactVfx = shouldRenderDamageVfx(ctx, target,
+                shieldHit && !hullHit ? shieldX : hullX,
+                shieldHit && !hullHit ? shieldY : hullY);
+        if (shieldHit) {
+            if (showImpactVfx) VFX.spawnShieldImpact(shieldX, shieldY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
+            AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.BEAM, shieldX, shieldY);
+        }
+        if (hullHit) {
+            if (showImpactVfx) VFX.spawnHullImpact(hullX, hullY, dirX, dirY, Math.max(1, damage), VFX.ImpactStyle.BEAM);
+            AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.BEAM, hullX, hullY);
+        }
+    }
+
+    private static BeamImpactResult resolveBeamImpactResult(Ship ship,
+                                                            double sx,
+                                                            double sy,
+                                                            double ex,
+                                                            double ey,
+                                                            double fallbackT,
+                                                            double dirX,
+                                                            double dirY) {
+        if (ship == null) {
+            double hitX = sx + (ex - sx) * fallbackT;
+            double hitY = sy + (ey - sy) * fallbackT;
+            return new BeamImpactResult(hitX, hitY, fallbackT);
+        }
+        HullGeometry.ImpactSample impact = firstBeamHullImpact(ship, sx, sy, ex, ey, fallbackT);
+        double hitX = sx + (ex - sx) * fallbackT;
+        double hitY = sy + (ey - sy) * fallbackT;
+        double impactFraction = fallbackT;
+        if (impact != null && impact.onHull) {
+            double c = Math.cos(ship.angle);
+            double s = Math.sin(ship.angle);
+            hitX = ship.x + impact.localX * c - impact.localY * s;
+            hitY = ship.y + impact.localX * s + impact.localY * c;
+            impactFraction = segmentParamForPoint(sx, sy, ex, ey, hitX, hitY);
+        }
+        return new BeamImpactResult(hitX, hitY, impactFraction);
+    }
+
+    private static ImpactVisualPoints resolveImpactVisualPoints(Ship ship,
+                                                                double hitX,
+                                                                double hitY,
+                                                                double impactVx,
+                                                                double impactVy) {
+        if (ship == null) return new ImpactVisualPoints(hitX, hitY, hitX, hitY);
+        HullGeometry.ImpactSample impact = resolveHullImpactSample(ship, hitX, hitY, impactVx, impactVy);
+        if (impact == null || !impact.onHull) {
+            return new ImpactVisualPoints(hitX, hitY, hitX, hitY);
+        }
+        double[] hullWorld = HullGeometry.localToWorld(ship, impact.localX, impact.localY);
+        double nx = impact.normalizedX;
+        double ny = impact.normalizedY;
+        double len = Math.hypot(nx, ny);
+        if (len <= 1e-6) {
+            double[] fallback = fallbackImpactNormal(ship, impactVx, impactVy, hitX, hitY);
+            nx = fallback[0];
+            ny = fallback[1];
+        } else {
+            nx /= len;
+            ny /= len;
+        }
+        double c = Math.cos(ship.angle);
+        double s = Math.sin(ship.angle);
+        double worldNx = nx * c - ny * s;
+        double worldNy = nx * s + ny * c;
+        double shieldOffset = Math.max(5.0, ship.radius * 0.24) * SHIELD_SHELL_OFFSET_SCALE;
+        double shieldX = hullWorld[0] + worldNx * shieldOffset;
+        double shieldY = hullWorld[1] + worldNy * shieldOffset;
+        return new ImpactVisualPoints(hullWorld[0], hullWorld[1], shieldX, shieldY);
+    }
+
+    private static HullGeometry.ImpactSample resolveHullImpactSample(Ship ship,
+                                                                     double hitX,
+                                                                     double hitY,
+                                                                     double impactVx,
+                                                                     double impactVy) {
+        HullGeometry.ImpactSample impact = HullGeometry.sampleImpact(ship, hitX, hitY, true);
+        if (impact != null && impact.onHull) return impact;
+        if (Double.isFinite(impactVx) && Double.isFinite(impactVy)) {
+            double vLen = Math.hypot(impactVx, impactVy);
+            if (vLen > 1e-9) {
+                double nx = -impactVx / vLen;
+                double ny = -impactVy / vLen;
+                double probe = Math.max(8.0, ship.radius + 8.0);
+                return HullGeometry.sampleImpact(ship, ship.x + nx * probe, ship.y + ny * probe, true);
+            }
+        }
+        return impact;
+    }
+
+    private static double[] fallbackImpactNormal(Ship ship,
+                                                 double impactVx,
+                                                 double impactVy,
+                                                 double hitX,
+                                                 double hitY) {
+        if (Double.isFinite(impactVx) && Double.isFinite(impactVy)) {
+            double len = Math.hypot(impactVx, impactVy);
+            if (len > 1e-9) {
+                return new double[]{-impactVx / len, -impactVy / len};
+            }
+        }
+        double dx = hitX - ship.x;
+        double dy = hitY - ship.y;
+        double len = Math.hypot(dx, dy);
+        if (len > 1e-9) return new double[]{dx / len, dy / len};
+        return new double[]{1.0, 0.0};
+    }
+
+    private record BeamHitCandidate(Ship ship, double t) {}
+
+    private record BeamImpactResult(double hitX, double hitY, double impactFraction) {}
+
+    private record ImpactVisualPoints(double hullX, double hullY, double shieldX, double shieldY) {}
 
     private static double segmentParamForPoint(double ax, double ay, double bx, double by, double px, double py) {
         double dx = bx - ax;
@@ -619,13 +968,17 @@ public class CollisionSystem {
 
     private static Ship resolveSourceShip(GameContext ctx, List<Ship> ships, Projectile projectile) {
         if (projectile == null) return null;
+        return resolveSourceShip(ctx, ships, projectile.sourceShipId);
+    }
+
+    private static Ship resolveSourceShip(GameContext ctx, List<Ship> ships, int sourceShipId) {
         if (ctx != null) {
-            Ship shooter = ctx.entityQuery.findShipById(projectile.sourceShipId);
+            Ship shooter = ctx.entityQuery.findShipById(sourceShipId);
             if (shooter != null) return shooter;
         }
-        if (ships == null || projectile.sourceShipId <= 0) return null;
+        if (ships == null || sourceShipId <= 0) return null;
         for (Ship s : ships) {
-            if (s != null && s.id == projectile.sourceShipId) return s;
+            if (s != null && s.id == sourceShipId) return s;
         }
         return null;
     }

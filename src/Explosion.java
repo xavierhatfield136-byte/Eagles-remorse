@@ -1,8 +1,11 @@
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 public class Explosion {
+    private static final int SUPERWEAPON_RING_COUNT = 3;
 
     // Hard cap so even if something goes wrong, the game never floods effects.
     private static final int MAX_EFFECTS = 900;
@@ -11,24 +14,51 @@ public class Explosion {
 
     public enum Kind {
         SHIELD_HIT,
-        DEATH
+        DEATH,
+        DESTABILIZER_PULSE,
+        SUPERWEAPON_BLAST
     }
 
     public final double x, y;
     public final Kind kind;
+    public final int sourceShipId;
+    public final Faction sourceFaction;
+    public final double effectRadius;
 
     // seconds remaining
     private double t;
 
     // for drawing convenience (optional)
     public final double maxT;
+    private final Set<Integer>[] superweaponRingHits;
 
     private Explosion(double x, double y, double seconds, Kind kind) {
+        this(x, y, seconds, kind, -1, null, 0.0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Explosion(double x, double y, double seconds, Kind kind, int sourceShipId, Faction sourceFaction) {
+        this(x, y, seconds, kind, sourceShipId, sourceFaction, 0.0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Explosion(double x, double y, double seconds, Kind kind, int sourceShipId, Faction sourceFaction, double effectRadius) {
         this.x = x;
         this.y = y;
         this.kind = (kind == null) ? Kind.DEATH : kind;
         this.t = seconds;
         this.maxT = seconds;
+        this.sourceShipId = sourceShipId;
+        this.sourceFaction = sourceFaction;
+        this.effectRadius = Math.max(0.0, effectRadius);
+        if (this.kind == Kind.SUPERWEAPON_BLAST) {
+            this.superweaponRingHits = (Set<Integer>[]) new Set<?>[SUPERWEAPON_RING_COUNT];
+            for (int i = 0; i < SUPERWEAPON_RING_COUNT; i++) {
+                this.superweaponRingHits[i] = new HashSet<>();
+            }
+        } else {
+            this.superweaponRingHits = null;
+        }
     }
 
     public static void spawnShieldHit(double x, double y) {
@@ -37,6 +67,14 @@ public class Explosion {
 
     public static void spawnDeath(double x, double y) {
         addCapped(new Explosion(x, y, 0.64, Kind.DEATH)); // staged blast
+    }
+
+    public static void spawnDestabilizerPulse(double x, double y, double effectRadius) {
+        addCapped(new Explosion(x, y, 0.72, Kind.DESTABILIZER_PULSE, -1, null, effectRadius));
+    }
+
+    public static void spawnSuperweaponBlast(double x, double y, int sourceShipId, Faction sourceFaction) {
+        addCapped(new Explosion(x, y, 0.92, Kind.SUPERWEAPON_BLAST, sourceShipId, sourceFaction));
     }
 
     private static void addCapped(Explosion e) {
@@ -72,5 +110,96 @@ public class Explosion {
     /** 0..1 fraction elapsed. */
     public double ageFrac() {
         return 1.0 - frac();
+    }
+
+    public int superweaponRingCount() {
+        return (kind == Kind.SUPERWEAPON_BLAST) ? SUPERWEAPON_RING_COUNT : 0;
+    }
+
+    public double superweaponPlasmaRadius() {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        double age = ageFrac();
+        return 56.0 + age * 236.0;
+    }
+
+    public double superweaponCoreRadius() {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        double age = ageFrac();
+        return 20.0 + Math.min(1.0, age * 1.8) * 68.0;
+    }
+
+    public double superweaponRingRadius(int ringIndex) {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        double age = ageFrac();
+        return switch (ringIndex) {
+            case 0 -> 92.0 + age * 352.0;
+            case 1 -> 144.0 + Math.max(0.0, age - 0.06) * 440.0;
+            case 2 -> 196.0 + Math.max(0.0, age - 0.12) * 496.0;
+            default -> 0.0;
+        };
+    }
+
+    public double superweaponRingStrokeWidth(int ringIndex) {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        return switch (ringIndex) {
+            case 0 -> 6.2;
+            case 1 -> 4.4;
+            case 2 -> 3.0;
+            default -> 0.0;
+        };
+    }
+
+    public double superweaponRingHalfWidth(int ringIndex) {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        return Math.max(12.0, superweaponRingStrokeWidth(ringIndex) * 0.5 + 12.0);
+    }
+
+    public double superweaponHazeRadius() {
+        if (kind != Kind.SUPERWEAPON_BLAST) return 0.0;
+        double age = ageFrac();
+        return 240.0 + Math.max(0.0, age - 0.08) * 572.0;
+    }
+
+    public double destabilizerWaveRadius() {
+        if (kind != Kind.DESTABILIZER_PULSE) return 0.0;
+        double age = ageFrac();
+        double span = Math.max(160.0, effectRadius * 1.06);
+        return 28.0 + age * span;
+    }
+
+    public double destabilizerInnerRingRadius() {
+        if (kind != Kind.DESTABILIZER_PULSE) return 0.0;
+        double age = ageFrac();
+        double span = Math.max(100.0, effectRadius * 0.68);
+        return 14.0 + age * span;
+    }
+
+    public double destabilizerOuterRingRadius() {
+        if (kind != Kind.DESTABILIZER_PULSE) return 0.0;
+        double age = ageFrac();
+        double span = Math.max(220.0, effectRadius * 1.28);
+        return 44.0 + age * span;
+    }
+
+    public double destabilizerCoronaRadius() {
+        if (kind != Kind.DESTABILIZER_PULSE) return 0.0;
+        double age = ageFrac();
+        return 18.0 + Math.min(1.0, age * 1.8) * Math.max(54.0, effectRadius * 0.34);
+    }
+
+    public double visualRadius() {
+        return switch (kind) {
+            case SHIELD_HIT -> 24.0;
+            case DESTABILIZER_PULSE -> Math.max(220.0, effectRadius * 1.35);
+            case SUPERWEAPON_BLAST -> 840.0;
+            default -> 72.0;
+        };
+    }
+
+    public boolean markSuperweaponRingHit(int ringIndex, int shipId) {
+        if (kind != Kind.SUPERWEAPON_BLAST) return false;
+        if (ringIndex < 0 || ringIndex >= superweaponRingCount()) return false;
+        if (shipId <= 0) return false;
+        return superweaponRingHits[ringIndex].add(shipId);
     }
 }

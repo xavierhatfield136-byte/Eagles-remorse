@@ -53,6 +53,10 @@ public final class GameRenderSystem {
                 ctx.perfDrawnExplosions++;
                 if (e.kind == Explosion.Kind.SHIELD_HIT) {
                     drawShieldImpactExplosion(worldG, e);
+                } else if (e.kind == Explosion.Kind.DESTABILIZER_PULSE) {
+                    drawDestabilizerPulseExplosion(worldG, e);
+                } else if (e.kind == Explosion.Kind.SUPERWEAPON_BLAST) {
+                    drawSuperweaponBlastExplosion(worldG, e);
                 } else {
                     drawDeathExplosion(worldG, e);
                 }
@@ -486,9 +490,97 @@ if (DevTools.isDebugOverlay()) {
         }
     }
 
+    private static void drawSuperweaponBlastExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        double age = e.ageFrac();
+
+        int plasmaR = (int) Math.round(e.superweaponPlasmaRadius());
+        int coreR = (int) Math.round(e.superweaponCoreRadius());
+        int ring1R = (int) Math.round(e.superweaponRingRadius(0));
+        int ring2R = (int) Math.round(e.superweaponRingRadius(1));
+        int ring3R = (int) Math.round(e.superweaponRingRadius(2));
+        int hazeR = (int) Math.round(e.superweaponHazeRadius());
+
+        int plasmaA = (int) MathUtil.clamp(210 * rem, 0, 220);
+        int coreA = (int) MathUtil.clamp((age < 0.55 ? 250 : 186) * rem, 0, 250);
+        int ring1A = (int) MathUtil.clamp(235 * Math.max(0.0, 1.0 - age * 0.55) * rem, 0, 235);
+        int ring2A = (int) MathUtil.clamp(205 * Math.max(0.0, 1.0 - age * 0.75) * rem, 0, 210);
+        int ring3A = (int) MathUtil.clamp(168 * Math.max(0.0, 1.0 - age * 0.92) * rem, 0, 180);
+        int hazeA = (int) MathUtil.clamp(118 * Math.max(0.0, 1.0 - age * 0.85) * rem, 0, 130);
+
+        g2.setColor(new Color(255, 54, 54, plasmaA));
+        g2.fillOval((int) Math.round(e.x - plasmaR), (int) Math.round(e.y - plasmaR), plasmaR * 2, plasmaR * 2);
+
+        g2.setColor(new Color(255, 214, 190, coreA));
+        g2.fillOval((int) Math.round(e.x - coreR), (int) Math.round(e.y - coreR), coreR * 2, coreR * 2);
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke((float) e.superweaponRingStrokeWidth(0), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 126, 126, ring1A));
+        g2.drawOval((int) Math.round(e.x - ring1R), (int) Math.round(e.y - ring1R), ring1R * 2, ring1R * 2);
+
+        g2.setStroke(new BasicStroke((float) e.superweaponRingStrokeWidth(1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 186, 146, ring2A));
+        g2.drawOval((int) Math.round(e.x - ring2R), (int) Math.round(e.y - ring2R), ring2R * 2, ring2R * 2);
+
+        g2.setStroke(new BasicStroke((float) e.superweaponRingStrokeWidth(2), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 236, 210, ring3A));
+        g2.drawOval((int) Math.round(e.x - ring3R), (int) Math.round(e.y - ring3R), ring3R * 2, ring3R * 2);
+        g2.setStroke(old);
+
+        if (hazeA > 4) {
+            g2.setColor(new Color(120, 26, 26, hazeA));
+            g2.drawOval((int) Math.round(e.x - hazeR), (int) Math.round(e.y - hazeR), hazeR * 2, hazeR * 2);
+        }
+    }
+
+    private static void drawDestabilizerPulseExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        double age = e.ageFrac();
+
+        int waveR = (int) Math.round(e.destabilizerWaveRadius());
+        int innerRingR = (int) Math.round(e.destabilizerInnerRingRadius());
+        int outerRingR = (int) Math.round(e.destabilizerOuterRingRadius());
+        int coronaR = (int) Math.round(e.destabilizerCoronaRadius());
+
+        int waveA = (int) MathUtil.clamp(188 * Math.max(0.0, 1.0 - age * 0.55) * rem, 0, 200);
+        int innerA = (int) MathUtil.clamp(230 * rem, 0, 235);
+        int outerA = (int) MathUtil.clamp(168 * Math.max(0.0, 1.0 - age * 0.82) * rem, 0, 176);
+        int coronaA = (int) MathUtil.clamp(220 * Math.max(0.0, 1.0 - age * 0.68) * rem, 0, 228);
+
+        g2.setColor(new Color(96, 188, 255, waveA));
+        g2.fillOval((int) Math.round(e.x - waveR), (int) Math.round(e.y - waveR), waveR * 2, waveR * 2);
+
+        g2.setColor(new Color(232, 248, 255, coronaA));
+        g2.fillOval((int) Math.round(e.x - coronaR), (int) Math.round(e.y - coronaR), coronaR * 2, coronaR * 2);
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(4.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(156, 224, 255, innerA));
+        g2.drawOval((int) Math.round(e.x - innerRingR), (int) Math.round(e.y - innerRingR), innerRingR * 2, innerRingR * 2);
+
+        g2.setStroke(new BasicStroke(2.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(214, 245, 255, outerA));
+        g2.drawOval((int) Math.round(e.x - outerRingR), (int) Math.round(e.y - outerRingR), outerRingR * 2, outerRingR * 2);
+        g2.setStroke(old);
+
+        int spokeCount = 6;
+        for (int i = 0; i < spokeCount; i++) {
+            double theta = age * 1.3 + i * (Math.PI * 2.0 / spokeCount);
+            double inner = Math.max(10.0, e.destabilizerCoronaRadius() * 0.72);
+            double outer = Math.max(inner + 8.0, e.destabilizerWaveRadius() * 0.92);
+            int x1 = (int) Math.round(e.x + Math.cos(theta) * inner);
+            int y1 = (int) Math.round(e.y + Math.sin(theta) * inner);
+            int x2 = (int) Math.round(e.x + Math.cos(theta) * outer);
+            int y2 = (int) Math.round(e.y + Math.sin(theta) * outer);
+            g2.setColor(new Color(228, 248, 255, (int) MathUtil.clamp(innerA * 0.72, 0, 190)));
+            g2.drawLine(x1, y1, x2, y2);
+        }
+    }
+
     private static boolean isExplosionVisible(Explosion e, double minX, double minY, double maxX, double maxY) {
         if (e == null) return false;
-        double radius = (e.kind == Explosion.Kind.SHIELD_HIT) ? 24.0 : 72.0;
+        double radius = e.visualRadius();
         return isCircleVisible(e.x, e.y, radius, minX, minY, maxX, maxY);
     }
 
