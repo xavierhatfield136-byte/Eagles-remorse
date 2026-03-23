@@ -3,6 +3,7 @@ import java.awt.Polygon;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,6 +25,7 @@ public final class ShipHullSilhouette {
     private static final int ALPHA_THRESHOLD = 40;
     private static final int MIN_OPAQUE_PER_COLUMN = 2;
     private static final String SKIN_DIR = "assets/ship_skins";
+    private static final String SKIN_RESOURCE_DIR = "ship_skins";
 
     private static final Map<String, Polygon> HULL_CACHE = new HashMap<>();
     private static final Map<String, BufferedImage> SKIN_CACHE = new HashMap<>();
@@ -206,10 +208,28 @@ public final class ShipHullSilhouette {
     }
 
     private static BufferedImage loadRoleSkin(String key) {
+        BufferedImage resource = loadBundledSkin(key);
+        if (resource != null) return resource;
         for (File root : SKIN_ROOTS) {
             File f = new File(root, key + ".png");
             try {
                 if (f.isFile()) return ImageIO.read(f);
+            } catch (IOException ignored) {}
+        }
+        return null;
+    }
+
+    private static BufferedImage loadBundledSkin(String key) {
+        if (key == null || key.isBlank()) return null;
+        String[] paths = {
+                "/" + SKIN_RESOURCE_DIR + "/" + key + ".png",
+                "/" + SKIN_DIR + "/" + key + ".png"
+        };
+        for (String path : paths) {
+            try (InputStream in = ShipHullSilhouette.class.getResourceAsStream(path)) {
+                if (in == null) continue;
+                BufferedImage img = ImageIO.read(in);
+                if (img != null) return img;
             } catch (IOException ignored) {}
         }
         return null;

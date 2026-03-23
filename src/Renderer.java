@@ -9,6 +9,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -5265,6 +5266,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static final class ShipSkinLibrary {
         private static final String SKIN_DIR = "assets/ship_skins";
+        private static final String SKIN_RESOURCE_DIR = "ship_skins";
         private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
         private static final Map<String, ShipSkinSet> CACHE = new HashMap<>();
         private static final Set<String> MISS = new HashSet<>();
@@ -5338,6 +5340,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static BufferedImage loadRoleSkin(String key) {
+            BufferedImage resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key);
+            if (resource != null) return resource;
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
@@ -5402,6 +5406,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static final class TurretSkinLibrary {
         private static final String SKIN_DIR = "assets/turret_skins";
+        private static final String SKIN_RESOURCE_DIR = "turret_skins";
         private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
         private static final Map<String, BufferedImage> CACHE = new HashMap<>();
         private static final Set<String> MISS = new HashSet<>();
@@ -5435,6 +5440,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static BufferedImage loadSkin(String key) {
+            BufferedImage resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key);
+            if (resource != null) return resource;
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
@@ -5496,6 +5503,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static final class EnvironmentSkinLibrary {
         private static final String BG_DIR = "assets/environment_overhaul_dropzone/background";
         private static final String AST_DIR = "assets/environment_overhaul_dropzone/asteroids";
+        private static final String BG_RESOURCE_DIR = "environment_overhaul_dropzone/background";
+        private static final String AST_RESOURCE_DIR = "environment_overhaul_dropzone/asteroids";
         private static final List<File> BG_ROOTS = resolveRoots(BG_DIR);
         private static final List<File> AST_ROOTS = resolveRoots(AST_DIR);
 
@@ -5654,6 +5663,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static BufferedImage loadFirst(List<File> roots, String[] keys) {
+            String resourceDir = (roots == BG_ROOTS) ? BG_RESOURCE_DIR : AST_RESOURCE_DIR;
+            String legacyDir = (roots == BG_ROOTS) ? BG_DIR : AST_DIR;
+            for (String key : keys) {
+                BufferedImage resource = loadBundledImage(Renderer.class, resourceDir, legacyDir, key);
+                if (resource != null) return resource;
+            }
             for (File root : roots) {
                 for (String key : keys) {
                     File f = new File(root, key + ".png");
@@ -5701,6 +5716,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static final class ProjectileSkinLibrary {
         private static final String SKIN_DIR = "assets/projectile_skins";
+        private static final String SKIN_RESOURCE_DIR = "projectile_skins";
         private static BufferedImage missileSkin;
         private static BufferedImage energyBoltSkin;
         private static BufferedImage beamBoltSkin;
@@ -5756,6 +5772,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         private static BufferedImage loadSkin(String key) {
+            BufferedImage resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key);
+            if (resource != null) return resource;
             String path = SKIN_DIR + "/" + key + ".png";
             try {
                 File f = new File(path);
@@ -5763,6 +5781,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             } catch (IOException ignored) {}
             return null;
         }
+    }
+
+    private static BufferedImage loadBundledImage(Class<?> anchor, String resourceDir, String legacyDir, String key) {
+        if (anchor == null || key == null || key.isBlank()) return null;
+        String[] paths = {
+                "/" + resourceDir + "/" + key + ".png",
+                "/" + legacyDir + "/" + key + ".png"
+        };
+        for (String path : paths) {
+            try (InputStream in = anchor.getResourceAsStream(path)) {
+                if (in == null) continue;
+                BufferedImage img = ImageIO.read(in);
+                if (img != null) return img;
+            } catch (IOException ignored) {}
+        }
+        return null;
     }
 
     private static void drawShipLegacy(Graphics2D g2, Ship ship) {
