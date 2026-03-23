@@ -12,6 +12,7 @@ import java.util.Map;
  */
 public final class SfxManifest {
     private static final File ROOT_AUDIO = new File("assets/audio");
+    private static final int MAX_RESOURCE_VARIANTS = 16;
 
     public enum Category {
         WEAPON,
@@ -91,15 +92,32 @@ public final class SfxManifest {
     public static int variantCount(EventSpec spec) {
         if (spec == null) return 0;
         File dir = new File(ROOT_AUDIO, spec.folder());
-        if (!dir.isDirectory()) return 0;
         String prefix = spec.filePrefix().toLowerCase(Locale.US);
-        File[] matches = dir.listFiles(f -> {
-            if (f == null || !f.isFile()) return false;
-            String n = f.getName().toLowerCase(Locale.US);
-            if (!n.endsWith(".wav")) return false;
-            return n.equals(prefix + ".wav") || n.startsWith(prefix + "_");
-        });
-        return (matches == null) ? 0 : matches.length;
+        if (dir.isDirectory()) {
+            File[] matches = dir.listFiles(f -> {
+                if (f == null || !f.isFile()) return false;
+                String n = f.getName().toLowerCase(Locale.US);
+                if (!n.endsWith(".wav")) return false;
+                return n.equals(prefix + ".wav") || n.startsWith(prefix + "_");
+            });
+            if (matches != null && matches.length > 0) return matches.length;
+        }
+        return bundledVariantCount(spec.folder(), prefix);
+    }
+
+    private static int bundledVariantCount(String folder, String prefix) {
+        if (folder == null || prefix == null || prefix.isBlank()) return 0;
+        int count = 0;
+        if (resourceExists("/audio/" + folder + "/" + prefix + ".wav")) count++;
+        for (int i = 1; i <= MAX_RESOURCE_VARIANTS; i++) {
+            String candidate = String.format(Locale.US, "/audio/%s/%s_%02d.wav", folder, prefix, i);
+            if (resourceExists(candidate)) count++;
+        }
+        return count;
+    }
+
+    private static boolean resourceExists(String path) {
+        return path != null && SfxManifest.class.getResource(path) != null;
     }
 
     public static CoverageReport coverage() {

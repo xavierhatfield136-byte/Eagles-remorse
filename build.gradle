@@ -138,8 +138,16 @@ def hasWixTools = {
     commandExists("candle.exe") && commandExists("light.exe")
 }
 
+def windowsJpackageInputDir = layout.buildDirectory.dir("jpackage/windows-input")
+
+tasks.register("stageWindowsPackageInput", Sync) {
+    dependsOn(tasks.named("jar"))
+    from(tasks.named("jar"))
+    into(windowsJpackageInputDir)
+}
+
 def configureWindowsJpackageTask = { Exec task, String type ->
-    task.dependsOn(tasks.named("jar"))
+    task.dependsOn(tasks.named("stageWindowsPackageInput"))
     task.group = "distribution"
     task.workingDir = rootDir
     task.doFirst {
@@ -151,6 +159,11 @@ def configureWindowsJpackageTask = { Exec task, String type ->
         }
         def packageDir = layout.buildDirectory.dir("package/windows").get().asFile
         packageDir.mkdirs()
+        delete(windowsJpackageInputDir)
+        copy {
+            from(tasks.named("jar"))
+            into(windowsJpackageInputDir)
+        }
         if (type == "app-image") {
             delete(new File(packageDir, appBundleName))
         } else if (type == "exe") {
@@ -164,7 +177,7 @@ def configureWindowsJpackageTask = { Exec task, String type ->
     def jarTask = tasks.named("jar").get()
     def argsList = [
             "--type", type,
-            "--input", jarTask.destinationDirectory.get().asFile.absolutePath,
+            "--input", windowsJpackageInputDir.get().asFile.absolutePath,
             "--dest", layout.buildDirectory.dir("package/windows").get().asFile.absolutePath,
             "--name", appBundleName,
             "--main-jar", jarTask.archiveFileName.get(),

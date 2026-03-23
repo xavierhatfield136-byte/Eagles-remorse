@@ -5441,11 +5441,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static BufferedImage loadSkin(String key) {
             BufferedImage resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key);
+            if (resource == null) {
+                resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key.toUpperCase(Locale.ROOT));
+            }
             if (resource != null) return resource;
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
                     if (f.isFile()) return ImageIO.read(f);
+                } catch (IOException ignored) {}
+                File upper = new File(root, key.toUpperCase(Locale.ROOT) + ".png");
+                try {
+                    if (upper.isFile()) return ImageIO.read(upper);
                 } catch (IOException ignored) {}
             }
             return null;

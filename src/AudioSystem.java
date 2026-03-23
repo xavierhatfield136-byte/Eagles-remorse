@@ -1,5 +1,7 @@
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -238,6 +240,7 @@ public final class AudioSystem {
         private static final File ROOT_AUDIO = new File("assets/audio");
         private static final File ROOT_VOICE = new File("assets/voice");
         private static final Map<String, List<File>> CACHE = new HashMap<>();
+        private static final int MAX_RESOURCE_VARIANTS = 16;
 
         private AssetLibrary() {}
 
@@ -245,16 +248,22 @@ public final class AudioSystem {
             if (role == null || eventId == null) return null;
             String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
             List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
-            if (files.isEmpty()) return null;
-            int idx = Math.floorMod(preferredVariantIndex, files.size());
-            return new VoicePick(files.get(idx), idx, files.size());
+            if (!files.isEmpty()) {
+                int idx = Math.floorMod(preferredVariantIndex, files.size());
+                return new VoicePick(files.get(idx), bundledVariantPath("voice", role, eventId, idx), idx, files.size());
+            }
+            List<String> bundled = scanBundled("voice", role, eventId);
+            if (bundled.isEmpty()) return null;
+            int idx = Math.floorMod(preferredVariantIndex, bundled.size());
+            return new VoicePick(null, bundled.get(idx), idx, bundled.size());
         }
 
         static int voiceVariantCount(String role, String eventId) {
             if (role == null || eventId == null) return 0;
             String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
             List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
-            return files.size();
+            if (!files.isEmpty()) return files.size();
+            return scanBundled("voice", role, eventId).size();
         }
 
         static SfxPick pickSfx(SfxManifest.EventSpec spec, int preferredVariantIndex) {
@@ -263,9 +272,14 @@ public final class AudioSystem {
             String eventPrefix = spec.filePrefix();
             String key = "audio/" + folder.toLowerCase(Locale.US) + "/" + eventPrefix.toLowerCase(Locale.US);
             List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_AUDIO, folder), eventPrefix));
-            if (files.isEmpty()) return null;
-            int idx = Math.floorMod(preferredVariantIndex, files.size());
-            return new SfxPick(files.get(idx), idx, files.size());
+            if (!files.isEmpty()) {
+                int idx = Math.floorMod(preferredVariantIndex, files.size());
+                return new SfxPick(files.get(idx), bundledVariantPath("audio", folder, eventPrefix, idx), idx, files.size());
+            }
+            List<String> bundled = scanBundled("audio", folder, eventPrefix);
+            if (bundled.isEmpty()) return null;
+            int idx = Math.floorMod(preferredVariantIndex, bundled.size());
+            return new SfxPick(null, bundled.get(idx), idx, bundled.size());
         }
 
         private static List<File> scan(File dir, String eventId) {
@@ -284,8 +298,31 @@ public final class AudioSystem {
             return out;
         }
 
-        record VoicePick(File file, int variantIndex, int variantCount) {}
-        record SfxPick(File file, int variantIndex, int variantCount) {}
+        private static List<String> scanBundled(String root, String folder, String eventId) {
+            List<String> out = new ArrayList<>();
+            String exact = "/" + root + "/" + folder + "/" + eventId.toLowerCase(Locale.US) + ".wav";
+            if (resourceExists(exact)) out.add(exact);
+            for (int i = 1; i <= MAX_RESOURCE_VARIANTS; i++) {
+                String variant = String.format(Locale.US, "/%s/%s/%s_%02d.wav",
+                        root, folder, eventId.toLowerCase(Locale.US), i);
+                if (resourceExists(variant)) out.add(variant);
+            }
+            return out;
+        }
+
+        private static String bundledVariantPath(String root, String folder, String eventId, int variantIndex) {
+            List<String> bundled = scanBundled(root, folder, eventId);
+            if (bundled.isEmpty()) return null;
+            int idx = Math.floorMod(variantIndex, bundled.size());
+            return bundled.get(idx);
+        }
+
+        private static boolean resourceExists(String path) {
+            return path != null && AudioSystem.class.getResource(path) != null;
+        }
+
+        record VoicePick(File file, String resourcePath, int variantIndex, int variantCount) {}
+        record SfxPick(File file, String resourcePath, int variantIndex, int variantCount) {}
     }
 
     public static void update(GameContext ctx, double dt) {
@@ -644,9 +681,9 @@ public final class AudioSystem {
         double roleVol = voiceRoleVolume(ctx, cue.role);
         double roleVolGainDb = volumeToGainOffsetDb(roleVol);
         AssetLibrary.VoicePick voicePick = AssetLibrary.pickVoice(cue.role, cue.eventId, variantIndex);
-        if (voicePick != null && voicePick.file() != null) {
+        if (voicePick != null && (voicePick.file() != null || voicePick.resourcePath() != null)) {
             variantIndex = voicePick.variantIndex();
-            playFileAsync(voicePick.file(), false, -12.0 + roleVolGainDb);
+            playAssetAsync(voicePick.file(), voicePick.resourcePath(), false, -12.0 + roleVolGainDb);
         } else {
             double roleTone = switch (cue.role) {
                 case "captain" -> 230.0;
@@ -728,11 +765,11 @@ public final class AudioSystem {
         int variants = Math.max(1, SfxManifest.variantCount(spec));
         int variant = chooseSfxVariantIndex(st, spec.eventId(), variants);
         AssetLibrary.SfxPick pick = AssetLibrary.pickSfx(spec, variant);
-        boolean hasAsset = (pick != null && pick.file() != null);
-        if (pick != null && pick.file() != null) {
+        boolean hasAsset = (pick != null && (pick.file() != null || pick.resourcePath() != null));
+        if (hasAsset) {
             variant = pick.variantIndex();
             double gain = spec.gainDb() + sfxVoiceDuckingDb(ctx, spec.priority());
-            playFileAsync(pick.file(), false, gain);
+            playAssetAsync(pick.file(), pick.resourcePath(), false, gain);
         }
         st.lastSfxVariantByEvent.put(spec.eventId(), variant);
 
@@ -762,8 +799,9 @@ public final class AudioSystem {
         };
         SfxManifest.EventSpec ambientSpec = ambienceChoices[RNG.nextInt(ambienceChoices.length)];
         AssetLibrary.SfxPick ambientPick = AssetLibrary.pickSfx(ambientSpec, RNG.nextInt(4));
-        if (ambientPick != null && ambientPick.file() != null) {
-            ambientClip = createClipFromFile(ambientPick.file(), ambientSpec == null ? -26.0 : ambientSpec.gainDb());
+        if (ambientPick != null && (ambientPick.file() != null || ambientPick.resourcePath() != null)) {
+            ambientClip = createClipFromAsset(ambientPick.file(), ambientPick.resourcePath(),
+                    ambientSpec == null ? -26.0 : ambientSpec.gainDb());
         } else {
             // No tone fallback for SFX/ambience; silence is preferred over placeholder beeps.
             ambientClip = null;
@@ -784,11 +822,11 @@ public final class AudioSystem {
         applyGain(clip, target);
     }
 
-    private static void playFileAsync(File wav, boolean loop, double gainDb) {
+    private static void playAssetAsync(File wav, String resourcePath, boolean loop, double gainDb) {
         if (TELEMETRY_ONLY) return;
-        if (wav == null || !wav.isFile()) return;
+        if ((wav == null || !wav.isFile()) && (resourcePath == null || resourcePath.isBlank())) return;
         PLAYBACK_EXEC.execute(() -> {
-            Clip clip = createClipFromFile(wav, gainDb);
+            Clip clip = createClipFromAsset(wav, resourcePath, gainDb);
             if (clip == null) return;
             if (loop) {
                 clip.loop(Clip.LOOP_CONTINUOUSLY);
@@ -809,6 +847,13 @@ public final class AudioSystem {
         });
     }
 
+    private static Clip createClipFromAsset(File wav, String resourcePath, double gainDb) {
+        if (wav != null && wav.isFile()) {
+            return createClipFromFile(wav, gainDb);
+        }
+        return createClipFromResource(resourcePath, gainDb);
+    }
+
     private static Clip createClipFromFile(File wav, double gainDb) {
         try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(wav)) {
             Clip clip = javax.sound.sampled.AudioSystem.getClip();
@@ -817,6 +862,23 @@ public final class AudioSystem {
             applyGain(clip, gainDb);
             ACTIVE_CLIPS.add(clip);
             return clip;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Clip createClipFromResource(String resourcePath, double gainDb) {
+        if (resourcePath == null || resourcePath.isBlank()) return null;
+        try (InputStream raw = AudioSystem.class.getResourceAsStream(resourcePath)) {
+            if (raw == null) return null;
+            try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(new BufferedInputStream(raw))) {
+                Clip clip = javax.sound.sampled.AudioSystem.getClip();
+                installClipLifecycle(clip);
+                clip.open(stream);
+                applyGain(clip, gainDb);
+                ACTIVE_CLIPS.add(clip);
+                return clip;
+            }
         } catch (Throwable ignored) {
             return null;
         }
