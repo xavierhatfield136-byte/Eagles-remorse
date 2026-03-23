@@ -76,7 +76,7 @@ public class GameContext {
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
-    public int powerManagementFocus = 0; // 0=propulsion 1=shield 2=tactical 3=sensor 4=engineering 5=auxiliary
+    public int powerManagementFocus = 0; // 0=propulsion 1=shield 2=tactical 3=sensor 4=engineering 5=supercharge
     public int flightDeckFocus = 0;
 
     public enum CrewStation {

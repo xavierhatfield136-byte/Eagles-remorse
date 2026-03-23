@@ -304,9 +304,9 @@ public class Renderer {
         if (player.isSuperweaponCharging()) {
             return "CHARGE " + (int) Math.round(player.getSuperweaponChargeProgress() * 100.0) + "%";
         }
-        double remaining = player.getSuperweaponRemaining();
-        if (remaining <= 1e-6) return "READY";
-        return "CD " + (int) Math.ceil(remaining) + "s";
+        int pct = (int) Math.round(player.getSuperweaponRechargeProgress() * 100.0);
+        if (player.canFireSuperweapon()) return "READY 100%";
+        return "RECHARGE " + pct + "%";
     }
 
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
@@ -1993,6 +1993,11 @@ public class Renderer {
                 : "Emergency thrust standby   cd " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s";
         noteLines.addAll(wrapHudText(bodyFm, overload, contentW));
         noteLines.addAll(wrapHudText(bodyFm, thrust, contentW));
+        if (player.hasSuperweapon) {
+            String superCharge = "Superweapon recharge " + signedPct(player.superweaponRechargeRateMultiplier())
+                    + "   charge bus " + (int) Math.round(player.powerAuxiliaryFrac() * 100.0) + "%";
+            noteLines.addAll(wrapHudText(bodyFm, superCharge, contentW));
+        }
         if (stationStatus != null && !stationStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, stationStatus, contentW));
         if (overlayStatus != null && !overlayStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, overlayStatus, contentW));
         if (playerWingCap > 0) {
@@ -2159,14 +2164,14 @@ public class Renderer {
                 player.powerSensorsFrac(),
                 player.powerEngineeringFrac()
         };
-        String[] labels = new String[]{"P", "SH", "T", "SN", "EN", "AX"};
+        String[] labels = new String[]{"P", "SH", "T", "SN", "EN", "SW"};
         Color[] colors = new Color[]{
                 new Color(110, 212, 255),
                 new Color(138, 168, 255),
                 new Color(255, 132, 132),
                 new Color(128, 240, 190),
                 new Color(255, 206, 118),
-                new Color(188, 188, 205)
+                new Color(188, 160, 255)
         };
 
         int[] values = new int[6];
@@ -2398,11 +2403,19 @@ public class Renderer {
             g2.drawString(disabled, x + w - statusFm.stringWidth(disabled), statusLineY);
             statusLineY -= 14;
         }
-        if (ship.isDestabilized()) {
-            String destabilized = "DESTABILIZED " + fmt1(ship.getDestabilizedRemaining()) + "s";
+        if (ship.activeRoomDisruptionCount() > 0) {
+            String destabilized = "ROOM DISRUPTION " + ship.activeRoomDisruptionCount();
             FontMetrics statusFm = g2.getFontMetrics();
             g2.setColor(new Color(150, 220, 255, 220));
             g2.drawString(destabilized, x + w - statusFm.stringWidth(destabilized), statusLineY);
+            statusLineY -= 14;
+            if (ship.crewOrder == Ship.CrewOrder.DAMAGE_CONTROL && ship.disruptionRepairTargetRoom() != null) {
+                String repair = "REPAIR " + xrayRoomDisplayLabel(ship.disruptionRepairTargetRoom())
+                        + " " + (int) Math.round(ship.disruptionRepairTargetProgress() * 100.0) + "%";
+                statusFm = g2.getFontMetrics();
+                g2.setColor(new Color(170, 255, 198, 210));
+                g2.drawString(repair, x + w - statusFm.stringWidth(repair), statusLineY);
+            }
         }
 
         if (ship.isStealth) {
@@ -2910,7 +2923,7 @@ public class Renderer {
 
         Rectangle clip = g2.getClipBounds();
         int w = Math.min(700, clip.width - 110);
-        int h = 430;
+        int h = 462;
         int x = (clip.width - w) / 2;
         int y = Math.max(54, (clip.height - h) / 2);
 
@@ -2927,18 +2940,24 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString("O/ESC close   1-6 select bus   <-/-> or [/] adjust   F1-F4 presets", x + 18, y + 48);
         g2.drawString("7 overload on/off   8 cycle overload bus   9 cycle repair priority   0 emergency thrust", x + 18, y + 64);
+        g2.drawString("Bars fill to useful cap. Gold tick = nominal power, red tick = saturation point.", x + 18, y + 80);
 
-        String[] labels = {"PROPULSION", "SHIELD", "TACTICAL", "SENSOR", "ENGINEERING", "AUXILIARY"};
+        String[] labels = {"PROPULSION", "SHIELD", "TACTICAL", "SENSOR", "ENGINEERING", "SUPERCHARGE"};
         double[] values = player.powerBusFractions();
 
-        int rowY = y + 96;
+        int rowY = y + 110;
         int barW = 330;
         int barH = 16;
         for (int i = 0; i < labels.length; i++) {
+            Ship.PowerBus bus = Ship.PowerBus.values()[i];
             int ry = rowY + i * 28;
             boolean focus = (i == Math.max(0, Math.min(5, focusSlot)));
             int pct = (int) Math.round(values[i] * 100.0);
-            double eff = player.powerBusEffect(Ship.PowerBus.values()[i]);
+            double eff = player.powerBusEffect(bus);
+            double usefulCap = player.powerBusUsefulCapFraction(bus);
+            double usefulFill = player.powerBusUsefulFillFraction(bus);
+            double nominal = player.powerBusNominalFraction(bus);
+            boolean saturated = values[i] >= usefulCap - 1e-6;
 
             g2.setColor(focus ? new Color(255, 230, 170, 220) : new Color(255, 255, 255, 200));
             g2.setFont(new Font("Consolas", focus ? Font.BOLD : Font.PLAIN, 14));
@@ -2946,9 +2965,11 @@ public class Renderer {
 
             int bx = x + 150;
             int by = ry;
+            g2.setColor(new Color(255, 255, 255, 50));
+            g2.fillRoundRect(bx, by, barW, barH, 8, 8);
             g2.setColor(new Color(255, 255, 255, 70));
             g2.drawRoundRect(bx, by, barW, barH, 8, 8);
-            int fill = (int) Math.round((barW - 2) * Math.max(0.0, Math.min(1.0, values[i])));
+            int fill = (int) Math.round((barW - 2) * usefulFill);
             Color c = switch (i) {
                 case 0 -> new Color(120, 255, 150, 210);
                 case 1 -> new Color(120, 210, 255, 210);
@@ -2960,12 +2981,21 @@ public class Renderer {
             g2.setColor(c);
             g2.fillRoundRect(bx + 1, by + 1, Math.max(0, fill), barH - 2, 7, 7);
 
+            int nominalX = bx + 1 + (int) Math.round((barW - 2) * MathUtil.clamp(nominal / usefulCap, 0.0, 1.0));
+            int capX = bx + 1 + (barW - 2);
+            g2.setColor(new Color(255, 244, 180, 180));
+            g2.drawLine(nominalX, by - 2, nominalX, by + barH + 2);
+            g2.setColor(new Color(255, 180, 180, saturated ? 225 : 130));
+            g2.drawLine(capX, by - 1, capX, by + barH + 1);
+
             g2.setColor(new Color(255, 255, 255, 220));
             g2.setFont(new Font("Consolas", Font.BOLD, 13));
             g2.drawString(String.format(Locale.US, "%3d%%", pct), bx + barW + 14, ry + 13);
             g2.setFont(new Font("Consolas", Font.PLAIN, 11));
             g2.setColor(new Color(230, 240, 255, 185));
             g2.drawString("eff " + signedPct(eff), bx + barW + 72, ry + 13);
+            g2.setColor(saturated ? new Color(255, 196, 164, 210) : new Color(196, 214, 236, 170));
+            g2.drawString((saturated ? "SAT" : "CAP") + " " + (int) Math.round(usefulCap * 100.0) + "%", bx + barW + 140, ry + 13);
         }
 
         double speedMul = (player.desiredSpeedBase > 0.01) ? (player.desiredSpeed / player.desiredSpeedBase) : 1.0;
@@ -2973,8 +3003,9 @@ public class Renderer {
         double weaponCycle = player.weaponCycleRateMultiplier();
         double sensor = player.sensorRangeMultiplier();
         double shield = player.shieldRegenMultiplier();
+        double superCharge = player.superweaponRechargeRateMultiplier();
 
-        int py = y + 278;
+        int py = y + 292;
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 255, 255, 210));
         g2.drawString("Effects Preview", x + 20, py);
@@ -2988,9 +3019,10 @@ public class Renderer {
         g2.drawString("Fire Rate: " + signedPct(weaponCycle) + "   Sensor Range: " + signedPct(sensor), x + 20, py);
         py += 16;
         g2.setColor(new Color(180, 225, 255, 220));
-        g2.drawString("Shield Effectiveness: " + signedPct(shield), x + 20, py);
+        g2.drawString("Shield Effectiveness: " + signedPct(shield) + "   Super Recharge: " + signedPct(superCharge), x + 20, py);
         py += 16;
-        g2.drawString("Shield Leak Chance: " + shieldLeakReadout(player), x + 20, py);
+        g2.drawString("Shield Leak Chance: " + shieldLeakReadout(player) + "   Super Charge: "
+                + (int) Math.round(player.getSuperweaponRechargeProgress() * 100.0) + "%", x + 20, py);
         py += 20;
 
         String overload = player.isOverloadActive()
@@ -3615,6 +3647,8 @@ public class Renderer {
             }
             double frac = pctVal * 0.01;
             double fireIntensity = ship.roomFireIntensity(cell.roomId);
+            boolean disrupted = ship.isRoomDisrupted(cell.roomId);
+            double disruptRepair = ship.roomDisruptionRepairProgress(cell.roomId);
             int roomIdx = cell.roomId.ordinal();
             double hitStrength = (roomIdx >= 0 && roomIdx < hitFlash.length) ? hitFlash[roomIdx] : 0.0;
             boolean disabled = pctVal <= 0 || (room.primarySystem != null && ship.isSystemDestroyed(room.primarySystem));
@@ -3627,13 +3661,16 @@ public class Renderer {
             Color fill;
             if (!filteredIn) fill = new Color(70, 78, 96, 66);
             else if (disabled) fill = new Color(120, 120, 132, 132);
+            else if (disrupted) fill = new Color(118, 132, 255, 126);
             else if (frac > 0.70) fill = new Color(95, 210, 255, 88);
             else if (frac > 0.35) fill = new Color(255, 195, 90, 120);
             else fill = new Color(255, 82, 82, 155);
 
             g2.setColor(fill);
             g2.fillPolygon(p);
-            g2.setColor(new Color(220, 245, 255, filteredIn ? 130 : 65));
+            g2.setColor(disrupted
+                    ? new Color(188, 214, 255, filteredIn ? 185 : 90)
+                    : new Color(220, 245, 255, filteredIn ? 130 : 65));
             g2.drawPolygon(p);
 
             if (hitStrength > 0.01) {
@@ -3703,6 +3740,22 @@ public class Renderer {
                 g2.drawString(fireSymbol, fx + 3, fy + fh + 1);
             }
 
+            if (disrupted && b.width >= 12 && b.height >= 10) {
+                g2.setFont(XRAY_REPAIR_FONT);
+                FontMetrics disruptFm = g2.getFontMetrics();
+                String disruptSymbol = "D";
+                int dw = disruptFm.stringWidth(disruptSymbol);
+                int dh = disruptFm.getAscent();
+                int dx = cx - dw / 2 - 3;
+                int dy = cy - (dh + 4) / 2 + (showFireSymbol ? 12 : 0);
+                int da = 180 + (int) Math.round((1.0 - disruptRepair) * 55.0);
+                g2.setColor(new Color(126, 146, 255, MathUtil.clamp(da, 120, 255)));
+                g2.fillRoundRect(dx, dy, dw + 6, dh + 4, 8, 8);
+                g2.setColor(new Color(220, 232, 255, 235));
+                g2.drawRoundRect(dx, dy, dw + 6, dh + 4, 8, 8);
+                g2.drawString(disruptSymbol, dx + 3, dy + dh + 1);
+            }
+
             if (cell.labelAnchor && b.width >= 28 && b.height >= 20) {
                 String pct = XRAY_PCT_LABELS[MathUtil.clamp(pctVal, 0, 100)];
                 g2.setFont(XRAY_HP_FONT);
@@ -3759,9 +3812,14 @@ public class Renderer {
             ShipRoomLayout.RoomDef roomDef = ShipRoomLayout.roomForId(ship.role, ship.faction, detailRoom);
             int pct = MathUtil.clamp((int) Math.round(ship.roomHealthFraction(detailRoom) * 100.0), 0, 100);
             double fire = ship.roomFireIntensity(detailRoom);
+            boolean disrupted = ship.isRoomDisrupted(detailRoom);
             String roomLabel = xrayRoomDisplayLabel(detailRoom);
             double power = xrayPowerRoutingIntensity(ship, roomDef);
-            String line = roomLabel + "  HP " + pct + "%  FIRE " + String.format("%.2f", fire) + "  POWER " + (int) Math.round(power * 100.0) + "%";
+            String disruptText = disrupted
+                    ? "  DISRUPTED  REPAIR " + (int) Math.round(ship.roomDisruptionRepairProgress(detailRoom) * 100.0) + "%"
+                    : "";
+            String line = roomLabel + "  HP " + pct + "%  FIRE " + String.format("%.2f", fire)
+                    + "  POWER " + (int) Math.round(power * 100.0) + "%" + disruptText;
             g2.setFont(XRAY_META_FONT);
             g2.setColor(new Color(220, 244, 255, 220));
             g2.drawString(line, x + 10, y + h - 10);
@@ -3915,6 +3973,8 @@ public class Renderer {
     private static ShipRoomLayout.RoomId xrayRepairTargetRoom(Ship ship) {
         if (ship == null) return null;
         if (ship.crewOrder != Ship.CrewOrder.DAMAGE_CONTROL) return null;
+        ShipRoomLayout.RoomId disruption = ship.disruptionRepairTargetRoom();
+        if (disruption != null) return disruption;
         ShipRoomLayout.RoomId hotspot = ship.hottestFireRoom();
         if (hotspot != null) return hotspot;
         ShipRoomLayout.RoomId best = null;
@@ -3941,7 +4001,7 @@ public class Renderer {
         if (g2 == null || mapRect == null) return;
         if (!mapRect.contains(cursorX, cursorY)) return;
         String system = (roomDef == null || roomDef.primarySystem == null)
-                ? "AUX"
+                ? "SUPER"
                 : roomDef.primarySystem.name();
         String line1 = roomLabel;
         String line2 = "HP " + hpPct + "%  FIRE " + String.format("%.2f", fireIntensity)

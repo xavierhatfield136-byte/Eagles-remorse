@@ -5,6 +5,8 @@ public class CollisionSystem {
     private static final int MAX_DAMAGE_EVENT_LOG = 2048;
     private static final double SHIELD_SHELL_OFFSET_SCALE = 0.62;
     private static final double DESTABILIZER_PULSE_EDGE_FALLOFF = 0.42;
+    private static final double DESTABILIZER_PULSE_CORE_RADIUS_MIN = 84.0;
+    private static final double DESTABILIZER_PULSE_DIRECT_HIT_BONUS = 0.55;
     private static final double SUPERWEAPON_RING_DISABLE_SECONDS = 5.0;
     private static final double SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION = 0.25;
 
@@ -492,39 +494,32 @@ public class CollisionSystem {
 
                 double falloff = 1.0 - MathUtil.clamp(centerDist / Math.max(1.0, maxD), 0.0, 1.0);
                 double intensity = DESTABILIZER_PULSE_EDGE_FALLOFF + (1.0 - DESTABILIZER_PULSE_EDGE_FALLOFF) * falloff;
+                double coreRadius = Math.max(DESTABILIZER_PULSE_CORE_RADIUS_MIN,
+                        HullGeometry.broadPhaseRadius(s) + pulse.radius * 3.2);
+                double coreFrac = 1.0 - MathUtil.clamp(centerDist / Math.max(1.0, coreRadius), 0.0, 1.0);
+                double hullBurst = 1.0 + DESTABILIZER_PULSE_DIRECT_HIT_BONUS * coreFrac;
                 double impactVx = (centerDist > 1e-6) ? dx : pulse.vx;
                 double impactVy = (centerDist > 1e-6) ? dy : pulse.vy;
                 ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, x, y, impactVx, impactVy);
-                double shieldBefore = s.shield;
                 int hpBefore = s.hp;
 
-                double stripped = s.collapseShield(pulse.destabilizeSeconds, x, y, impactVx, impactVy);
-                int hullDamage = Math.max(1, (int) Math.round(pulse.damage * intensity));
+                int hullDamage = Math.max(8, (int) Math.round(pulse.damage * intensity * hullBurst));
                 markPlayerHitContribution(ctx, pulse, s);
-                s.takeDamage(hullDamage, x, y, impactVx, impactVy);
+                s.takePenetratingInternalDamage(hullDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
                 logDamageEvent(ctx, "destabilizer:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
-                s.applyDestabilized(pulse.destabilizeSeconds);
+                s.applyShipwideRoomDisruption();
 
-                boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
                 boolean hullHit = s.hp < hpBefore;
-                boolean showShipVfx = shouldRenderDamageVfx(ctx, s,
-                        shieldHit && !hullHit ? impactPoints.shieldX() : impactPoints.hullX(),
-                        shieldHit && !hullHit ? impactPoints.shieldY() : impactPoints.hullY());
+                boolean showShipVfx = shouldRenderDamageVfx(ctx, s, impactPoints.hullX(), impactPoints.hullY());
                 if (showShipVfx) {
                     double dirLen = Math.hypot(impactVx, impactVy);
                     double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
                     double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
-                    int shieldStrength = Math.max(2, (int) Math.round(2.0 + stripped * 0.08));
-                    if (shieldHit) {
-                        VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY, shieldStrength, VFX.ImpactStyle.ENERGY);
-                        Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
-                    }
                     if (hullHit) {
                         VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY, Math.max(1, hullDamage), VFX.ImpactStyle.ENERGY);
                     }
                 }
-                if (shieldHit) AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.shieldX(), impactPoints.shieldY());
-                if (hullHit || !shieldHit) AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
                 affected = true;
             }
         }

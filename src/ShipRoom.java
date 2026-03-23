@@ -8,6 +8,7 @@ public final class ShipRoom {
     public static final int STATUS_DESTROYED = 1 << 0;
     public static final int STATUS_FIRE_ACTIVE = 1 << 1;
     public static final int STATUS_CRITICAL = 1 << 2;
+    public static final int STATUS_DISRUPTED = 1 << 3;
 
     public final String id;
     public final String roleProfileId;
