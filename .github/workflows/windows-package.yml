@@ -1,0 +1,44 @@
+name: Windows Package
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install WiX
+        shell: pwsh
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Build Windows packages
+        shell: pwsh
+        run: ./gradlew packageWindows
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EaglesRemorse-windows-package
+          path: |
+            build/package/windows/*.exe
+            build/package/windows/*.zip
+
+      - name: Attach release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/package/windows/*.exe
+            build/package/windows/*.zip

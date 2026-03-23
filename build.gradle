@@ -1,9 +1,20 @@
 plugins {
     id "java"
+    id "application"
     id "checkstyle"
     id "pmd"
     id "com.github.spotbugs" version "6.4.4"
 }
+
+def appDisplayName = "Eagles Remorse"
+def appBundleName = "EaglesRemorse"
+def rawVersion = file("VERSION").exists() ? file("VERSION").text.trim() : "dev"
+def versionMatcher = (rawVersion =~ /(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
+def packageVersion = versionMatcher.find()
+        ? [versionMatcher.group(1), versionMatcher.group(2) ?: "0", versionMatcher.group(3) ?: "0"].join(".")
+        : "0.0.0"
+
+version = rawVersion
 
 repositories {
     mavenCentral()
@@ -36,8 +47,28 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
+application {
+    mainClass = "Main"
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
+}
+
+tasks.named("processResources") {
+    from(rootDir) {
+        include "VERSION"
+    }
+}
+
+tasks.named("jar") {
+    manifest {
+        attributes(
+                "Main-Class": application.mainClass.get(),
+                "Implementation-Title": appDisplayName,
+                "Implementation-Version": project.version.toString()
+        )
+    }
 }
 
 test {
@@ -87,4 +118,100 @@ tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
 
 tasks.named("check") {
     dependsOn("spotbugsMain")
+}
+
+def isWindowsHost = {
+    System.getProperty("os.name").toLowerCase(Locale.US).contains("win")
+}
+
+def commandExists = { String command ->
+    if (!isWindowsHost()) {
+        return false
+    }
+    def process = new ProcessBuilder("where.exe", command)
+            .redirectErrorStream(true)
+            .start()
+    process.waitFor() == 0
+}
+
+def hasWixTools = {
+    commandExists("candle.exe") && commandExists("light.exe")
+}
+
+def configureWindowsJpackageTask = { Exec task, String type ->
+    task.dependsOn(tasks.named("jar"))
+    task.group = "distribution"
+    task.workingDir = rootDir
+    task.doFirst {
+        if (!isWindowsHost()) {
+            throw new GradleException("Windows packaging tasks can only run on Windows hosts.")
+        }
+        if (type == "exe" && !hasWixTools()) {
+            throw new GradleException("Windows EXE packaging requires WiX on PATH (candle.exe and light.exe).")
+        }
+        def packageDir = layout.buildDirectory.dir("package/windows").get().asFile
+        packageDir.mkdirs()
+        if (type == "app-image") {
+            delete(new File(packageDir, appBundleName))
+        } else if (type == "exe") {
+            delete(fileTree(packageDir) {
+                include "${appBundleName}*.exe"
+                include "${appBundleName}*.msi"
+            })
+        }
+    }
+
+    def jarTask = tasks.named("jar").get()
+    def argsList = [
+            "--type", type,
+            "--input", jarTask.destinationDirectory.get().asFile.absolutePath,
+            "--dest", layout.buildDirectory.dir("package/windows").get().asFile.absolutePath,
+            "--name", appBundleName,
+            "--main-jar", jarTask.archiveFileName.get(),
+            "--main-class", application.mainClass.get(),
+            "--app-version", packageVersion,
+            "--vendor", "xhatf",
+            "--description", appDisplayName,
+            "--java-options", "-Dfile.encoding=UTF-8"
+    ]
+    if (type == "exe") {
+        argsList.addAll(["--win-dir-chooser", "--win-menu", "--win-shortcut"])
+    }
+    task.commandLine("jpackage", *argsList)
+}
+
+tasks.register("packageWindowsAppImage", Exec) {
+    description = "Build a Windows app-image with a bundled runtime."
+    configureWindowsJpackageTask(delegate as Exec, "app-image")
+}
+
+tasks.register("packageWindowsExe", Exec) {
+    description = "Build a Windows EXE installer with a bundled runtime."
+    configureWindowsJpackageTask(delegate as Exec, "exe")
+}
+
+tasks.register("packageWindowsZip", Zip) {
+    group = "distribution"
+    description = "Zip the portable Windows app-image for sharing."
+    dependsOn("packageWindowsAppImage")
+    archiveFileName = "${appBundleName}.zip"
+    destinationDirectory = layout.buildDirectory.dir("package/windows")
+    from(layout.buildDirectory.dir("package/windows/${appBundleName}"))
+}
+
+tasks.register("packageWindows") {
+    group = "distribution"
+    description = "Build the Windows app-image, a shareable ZIP, and, when WiX is available, the EXE installer."
+    dependsOn("packageWindowsZip")
+    if (isWindowsHost() && hasWixTools()) {
+        dependsOn("packageWindowsExe")
+    }
+    doLast {
+        if (!isWindowsHost()) {
+            return
+        }
+        if (!hasWixTools()) {
+            logger.lifecycle("WiX was not found on PATH, so the EXE installer was skipped. Install WiX and run packageWindowsExe to build it.")
+        }
+    }
 }

@@ -41,6 +41,43 @@ From PowerShell after compiling:
 java -cp "build/classes/java/main;build/resources/main" Main
 ```
 
+## Package For Windows
+
+Create a portable Windows app bundle with a bundled Java runtime:
+
+```powershell
+./gradlew packageWindowsAppImage
+```
+
+Zip that portable bundle for sharing:
+
+```powershell
+./gradlew packageWindowsZip
+```
+
+Create a Windows `.exe` installer with a bundled Java runtime:
+
+```powershell
+./gradlew packageWindowsExe
+```
+
+This installer step requires WiX on your `PATH` (`candle.exe` and `light.exe`).
+
+Build both package types at once:
+
+```powershell
+./gradlew packageWindows
+```
+
+Generated packages are written to `build/package/windows/`. If WiX is not installed, `packageWindows` still builds the portable app bundle plus ZIP and skips the `.exe` installer.
+
+## GitHub Packaging
+
+The repo includes a GitHub Actions workflow at `.github/workflows/windows-package.yml`.
+
+- Run it manually from the Actions tab with `workflow_dispatch`
+- Or publish a GitHub Release to have it build Windows packages and attach them as release assets
+
 ## Notes
 
 - Local saves and machine-specific IDE files are intentionally ignored and are not required to build the project.
