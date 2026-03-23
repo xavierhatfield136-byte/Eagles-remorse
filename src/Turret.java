@@ -119,6 +119,20 @@ public class Turret {
         return t.bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
     }
 
+    public static boolean usesCiwsPelletsAgainst(Ship host, Turret turret, Ship target) {
+        if (host == null || turret == null || target == null) return false;
+        if (turret.kind != Kind.GUN) return false;
+        if (host.role != ShipRole.FIGHTER && host.role != ShipRole.DRONE) return false;
+        return target.isSmallCraft();
+    }
+
+    public static double effectiveInterceptorProjectileSpeed(Ship host, Turret turret) {
+        if (host == null || turret == null) return 0.0;
+        double gunSpeed = effectiveGunProjectileSpeed(turret);
+        double ciwsSpeed = Math.max(1.0, host.ciwsPelletSpeed);
+        return Math.max(ciwsSpeed, gunSpeed * 0.92);
+    }
+
     private void rotateToward(double dt, double desired) {
         double delta = MathUtil.normalizeAngle(desired - angle);
         double max = turnRate * dt;
@@ -153,6 +167,15 @@ public class Turret {
         VFX.spawnMuzzleFlash(mx, my, angle, kind == Kind.MISSILE);
 
         if (kind == Kind.GUN) {
+            if (usesCiwsPelletsAgainst(host, this, missileTarget)) {
+                double pelletSpeed = effectiveInterceptorProjectileSpeed(host, this);
+                int pelletDamage = Math.max(1, host.resolveStrikeCraftWeaponDamage(this, damage * damageMul));
+                int pelletLife = Math.max(8, Math.min(bulletLife, host.ciwsPelletLife > 0 ? host.ciwsPelletLife : bulletLife));
+                double pelletRadius = Math.max(1.8, Math.min(2.6, radius * 0.42));
+                Projectile pellet = new CIWSPellet(mx, my, angle, dt, pelletSpeed, pelletDamage, pelletLife, pelletRadius, host.faction);
+                pellet.sourceShipId = host.id;
+                return pellet;
+            }
             // Doctrine-based main projectile style.
             // ENERGY_NAVY uses a Yamato 2199-style heavy energy bolt (visible, medium speed).
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.

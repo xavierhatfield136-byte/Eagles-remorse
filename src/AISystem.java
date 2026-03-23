@@ -1495,7 +1495,8 @@ public final class AISystem {
     private static boolean canShipThreatenTarget(GameContext ctx, Ship seeker, Ship target) {
         if (!isAlive(seeker) || !isAlive(target)) return false;
         if (!TargetingSystem.isDetectableToObserver(seeker, target)) return false;
-        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        boolean ciwsIntercept = Turret.usesCiwsPelletsAgainst(seeker, firstGunTurret(seeker), target);
+        if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return false;
         double rangeMul = (ctx == null) ? 1.0 : CampaignSystem.targetingRangeMul(ctx);
         double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
         if (d <= 240.0) return true;
@@ -2191,7 +2192,8 @@ public final class AISystem {
                                    double teamConfidence, SquadObjective objective) {
         if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
         if (!TargetingSystem.isDetectableToObserver(s, target)) return 0;
-        if (TargetingSystem.isCiwsOnlyTarget(target)) return 0;
+        boolean ciwsIntercept = Turret.usesCiwsPelletsAgainst(s, firstGunTurret(s), target);
+        if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return 0;
         if (objective == null) objective = SquadObjective.HOLD;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
         double sensorConfidence = observerEWConfidence(ctx, s, target, dist);
@@ -2247,7 +2249,9 @@ public final class AISystem {
 
             // Always track assigned target, even when weapon is cooling down or out of range.
             if (t.kind == Turret.Kind.GUN) {
-                if (s.faction == Faction.TEAM_C) {
+                if (Turret.usesCiwsPelletsAgainst(s, t, target)) {
+                    t.aimAtLead(dt, s, target, Turret.effectiveInterceptorProjectileSpeed(s, t));
+                } else if (s.faction == Faction.TEAM_C) {
                     // Directed-energy guns should bias direct tracking, not projectile lead.
                     t.aimAt(dt, s, target);
                 } else {
@@ -2297,13 +2301,21 @@ public final class AISystem {
                 if (dist > 280.0 && targetHull < 0.18) continue;
             }
 
-            Projectile p = t.fire(s, (t.kind == Turret.Kind.MISSILE ? target : null), dt);
+            Projectile p = t.fire(s, target, dt);
             if (p != null) {
                 ctx.projectiles.add(p);
                 firedCount++;
             }
         }
         return firedCount;
+    }
+
+    private static Turret firstGunTurret(Ship ship) {
+        if (ship == null || ship.turrets == null) return null;
+        for (Turret turret : ship.turrets) {
+            if (turret != null && turret.kind == Turret.Kind.GUN) return turret;
+        }
+        return null;
     }
 
     private static void updateEngagementMemory(Ship s, Ship target, double dt, double dist, double range,

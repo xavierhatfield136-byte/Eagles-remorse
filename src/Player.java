@@ -299,7 +299,7 @@ public class Player extends Ship {
             if (!t.primary) continue;
             Projectile p;
             if (t.kind == Turret.Kind.GUN) {
-                p = t.fire(this, null, dt);
+                p = t.fire(this, target, dt);
             } else if (t.kind == Turret.Kind.MISSILE) {
                 p = t.fire(this, target, dt);
             } else {
@@ -350,7 +350,9 @@ public class Player extends Ship {
         for (Turret t : turrets) {
             if (t == null) continue;
             if (t.kind != Turret.Kind.GUN) continue;
-            if (faction == Faction.TEAM_C) {
+            if (Turret.usesCiwsPelletsAgainst(this, t, target)) {
+                t.aimAtLead(dt, this, target, Turret.effectiveInterceptorProjectileSpeed(this, t));
+            } else if (faction == Faction.TEAM_C) {
                 t.aimAt(dt, this, target);
             } else {
                 t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
@@ -378,7 +380,9 @@ public class Player extends Ship {
         for (Turret t : turrets) {
             if (t == null || !t.primary) continue;
             if (t.kind == Turret.Kind.GUN) {
-                if (faction == Faction.TEAM_C) {
+                if (Turret.usesCiwsPelletsAgainst(this, t, target)) {
+                    t.aimAtLead(dt, this, target, Turret.effectiveInterceptorProjectileSpeed(this, t));
+                } else if (faction == Faction.TEAM_C) {
                     t.aimAt(dt, this, target);
                 } else {
                     t.aimAtLead(dt, this, target, Turret.effectiveGunProjectileSpeed(t));
