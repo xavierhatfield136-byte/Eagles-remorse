@@ -1771,6 +1771,13 @@ public abstract class Ship {
     }
 
     /**
+     * Scripted scenario hook used by tutorials and future authored missions.
+     */
+    public void seedRoomFire(ShipRoomLayout.RoomId roomId, double intensity) {
+        igniteRoomFire(roomId, intensity);
+    }
+
+    /**
      * Area-support effect used by support transports.
      * - Heals every room by a fraction of that room's max HP per second.
      * - Reduces active fire lifetime by applying proportional fire intensity decay.

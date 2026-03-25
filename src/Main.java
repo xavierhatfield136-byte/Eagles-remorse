@@ -71,6 +71,7 @@ public class Main {
             root.remove(gamePanel);
             gamePanel = null;
         }
+        menuPanel.refreshCampaignCheckpointState();
         showCard(CARD_MENU);
     }
 
@@ -159,6 +160,7 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        SourceTreeHygiene.purgeDefaultSourceTreeArtifacts();
         ErrorLog.installGlobalHandler();
         SwingUtilities.invokeLater(() -> new Main().showWindow());
     }
@@ -176,12 +178,17 @@ class GameConfig {
     public final long seed;
     public final boolean fullscreen;
     public final int playerTeamId;
+    public final boolean resumeCampaign;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
-        this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0);
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false);
     }
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, false);
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId, boolean resumeCampaign) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
@@ -189,6 +196,7 @@ class GameConfig {
         this.seed = seed;
         this.fullscreen = fullscreen;
         this.playerTeamId = Math.max(0, Math.min(3, playerTeamId));
+        this.resumeCampaign = resumeCampaign;
     }
 }
 
@@ -252,11 +260,21 @@ enum PlayerTeamChoice {
  */
 class MainMenuPanel extends JPanel {
     private static final long MENU_BG_SEED = 0x5A17C0DEL;
+    private static final String CARD_ROOT = "root";
+    private static final String CARD_TUTORIAL = "tutorial";
+    private static final String CARD_SINGLE_PLAYER = "singlePlayer";
+    private static final String CARD_MISSION_SETUP = "missionSetup";
     private final long backgroundStartNs = System.nanoTime();
     private final Timer backgroundTimer;
+    private final JButton continueCampaignButton;
+    private final JLabel continueCampaignLabel;
+    private String activeMenuCard = CARD_ROOT;
 
     public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onCredits, Runnable onQuit) {
-        setPreferredSize(new Dimension(1280, 720));
+        Dimension preferredSize = MenuDisplay.preferredWindowSize();
+        double uiScale = MenuDisplay.scaleFor(preferredSize);
+
+        setPreferredSize(preferredSize);
         setBackground(Color.BLACK);
         setFocusable(true);
         backgroundTimer = new Timer(33, e -> repaint());
@@ -265,14 +283,22 @@ class MainMenuPanel extends JPanel {
 
         JLabel title = new JLabel(AppInfo.APP_NAME.toUpperCase());
         title.setForeground(Color.WHITE);
-        title.setFont(new Font("Consolas", Font.BOLD, 48));
+        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 48, uiScale));
 
         JLabel subtitle = new JLabel("Bridge command. Fleet pressure. Tactical survival.");
         subtitle.setForeground(new Color(196, 220, 242, 210));
-        subtitle.setFont(new Font("Consolas", Font.PLAIN, 16));
+        subtitle.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 16, uiScale));
 
-        JComboBox<GameMode> modeBox = new JComboBox<>(GameMode.values());
+        GameMode[] missionModes = new GameMode[]{
+                GameMode.LAST_STAND,
+                GameMode.RESOURCE_RUSH,
+                GameMode.FOUR_TEAM_DOMINATION,
+                GameMode.SHOOTING_RANGE,
+                GameMode.SHOWCASE
+        };
+        JComboBox<GameMode> modeBox = new JComboBox<>(missionModes);
         styleCombo(modeBox);
+        scaleCombo(modeBox, uiScale);
 
         JComboBox<String> mapBox = new JComboBox<>(new String[]{
                 "Small (5000 x 5000)",
@@ -280,8 +306,10 @@ class MainMenuPanel extends JPanel {
                 "Large (20000 x 20000)"
         });
         styleCombo(mapBox);
+        scaleCombo(mapBox, uiScale);
         JComboBox<PlayerTeamChoice> teamBox = new JComboBox<>();
         styleCombo(teamBox);
+        scaleCombo(teamBox, uiScale);
 
         JCheckBox events = new JCheckBox("Enable Random Events");
         events.setOpaque(false);
@@ -290,6 +318,7 @@ class MainMenuPanel extends JPanel {
 
         JTextField seedField = new JTextField("0", 12);
         styleField(seedField);
+        scaleField(seedField, uiScale);
 
         JButton start = new JButton("Start");
         JButton credits = new JButton("Credits");
@@ -297,20 +326,34 @@ class MainMenuPanel extends JPanel {
         styleButton(start, new Color(70, 122, 170));
         styleButton(credits, new Color(58, 72, 95));
         styleButton(quit, new Color(82, 54, 62));
+        scaleButton(start, uiScale);
+        scaleButton(credits, uiScale);
+        scaleButton(quit, uiScale);
+        JButton tutorialMenu = createMenuButton("Tutorial", new Color(70, 122, 170), uiScale);
+        JButton singlePlayerMenu = createMenuButton("Single Player", new Color(58, 72, 95), uiScale);
+        continueCampaignButton = createMenuButton("Continue Campaign", new Color(96, 132, 84), uiScale);
+        JButton campaignOps = createMenuButton("Campaign Ops", new Color(70, 122, 170), uiScale);
+        JButton missionSetup = createMenuButton("Mission Setup", new Color(58, 72, 95), uiScale);
+        JButton tutorialStart = createMenuButton("Start Command School", new Color(70, 122, 170), uiScale);
+        JButton backToRoot = createMenuButton("Back", new Color(82, 54, 62), uiScale);
+        JButton backToSinglePlayer = createMenuButton("Back", new Color(82, 54, 62), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(180, 180, 180));
-        versionLabel.setFont(new Font("Consolas", Font.PLAIN, 14));
+        versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
+        continueCampaignLabel = sectionBody("", uiScale);
+        continueCampaignLabel.setForeground(new Color(188, 214, 184, 220));
 
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
-        modeBox.setSelectedItem(MenuSettingsStore.resolveMode(persisted.modeName));
+        GameMode persistedMode = MenuSettingsStore.resolveMode(persisted.modeName);
+        modeBox.setSelectedItem(isMissionSetupMode(persistedMode) ? persistedMode : GameMode.LAST_STAND);
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
         syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, persisted.playerTeamId);
         events.setSelected(persisted.randomEvents);
         seedField.setText(persisted.seedText);
 
-        Runnable persistSettings = () -> {
+        java.util.function.Consumer<GameMode> persistSettings = (selectedMode) -> {
             MenuSettingsStore.MenuSettings save = new MenuSettingsStore.MenuSettings();
-            GameMode currentMode = (GameMode) modeBox.getSelectedItem();
+            GameMode currentMode = (selectedMode != null) ? selectedMode : (GameMode) modeBox.getSelectedItem();
             save.modeName = (currentMode == null) ? GameMode.CAMPAIGN_OPS.name() : currentMode.name();
             save.mapIndex = mapBox.getSelectedIndex();
             save.randomEvents = events.isSelected();
@@ -338,19 +381,19 @@ class MainMenuPanel extends JPanel {
 
             PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
             int playerTeamId = (choice == null) ? 0 : choice.teamId();
-            persistSettings.run();
+            persistSettings.accept(mode);
             onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, false, playerTeamId));
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
 
         credits.addActionListener(e -> {
-            persistSettings.run();
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
             onCredits.run();
         });
 
         quit.addActionListener(e -> {
-            persistSettings.run();
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
             onQuit.run();
         });
 
@@ -358,99 +401,182 @@ class MainMenuPanel extends JPanel {
             PlayerTeamChoice selected = (PlayerTeamChoice) teamBox.getSelectedItem();
             int preferredTeamId = (selected == null) ? 0 : selected.teamId();
             syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, preferredTeamId);
-            persistSettings.run();
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
         });
-        mapBox.addActionListener(e -> persistSettings.run());
-        events.addActionListener(e -> persistSettings.run());
-        seedField.addActionListener(e -> persistSettings.run());
+        mapBox.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
+        events.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
+        seedField.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
         seedField.addFocusListener(new FocusAdapter() {
             @Override
             public void focusLost(FocusEvent e) {
-                persistSettings.run();
+                persistSettings.accept((GameMode) modeBox.getSelectedItem());
             }
         });
 
-        JPanel card = new JPanel(new GridBagLayout()) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                int w = getWidth();
-                int h = getHeight();
-                g2.setColor(new Color(7, 16, 28, 190));
-                g2.fillRoundRect(0, 0, w, h, 30, 30);
-                g2.setColor(new Color(130, 190, 235, 70));
-                g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
-                g2.setColor(new Color(255, 255, 255, 18));
-                g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        card.setOpaque(false);
-        card.setBorder(BorderFactory.createEmptyBorder(28, 34, 26, 34));
+        CardLayout menuCards = new CardLayout();
+        JPanel cardHost = new JPanel(menuCards);
+        cardHost.setOpaque(false);
 
+        Runnable showRoot = () -> {
+            menuCards.show(cardHost, CARD_ROOT);
+            activeMenuCard = CARD_ROOT;
+            requestFocusInWindow();
+        };
+        java.util.function.Consumer<String> showMenuCard = (cardName) -> {
+            menuCards.show(cardHost, cardName);
+            activeMenuCard = cardName;
+            requestFocusInWindow();
+        };
+
+        tutorialMenu.addActionListener(e -> showMenuCard.accept(CARD_TUTORIAL));
+        singlePlayerMenu.addActionListener(e -> showMenuCard.accept(CARD_SINGLE_PLAYER));
+        tutorialStart.addActionListener(e -> startWithMode.accept(GameMode.TUTORIAL));
+        continueCampaignButton.addActionListener(e -> {
+            CampaignCheckpointStore.Checkpoint cp = CampaignCheckpointStore.load();
+            if (cp == null) {
+                refreshCampaignCheckpointState();
+                return;
+            }
+            persistSettings.accept(GameMode.CAMPAIGN_OPS);
+            onStart.accept(cp.toGameConfig());
+        });
+        campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
+        missionSetup.addActionListener(e -> showMenuCard.accept(CARD_MISSION_SETUP));
+        backToRoot.addActionListener(e -> showRoot.run());
+        backToSinglePlayer.addActionListener(e -> showMenuCard.accept(CARD_SINGLE_PLAYER));
+
+        JPanel rootContent = createMenuContent(uiScale);
+        rootContent.add(title);
+        rootContent.add(subtitle);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
+        rootContent.add(tutorialMenu);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        rootContent.add(singlePlayerMenu);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        rootContent.add(credits);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        rootContent.add(quit);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        rootContent.add(versionLabel);
+
+        JPanel tutorialContent = createMenuContent(uiScale);
+        tutorialContent.add(sectionTitle("Tutorial", uiScale));
+        tutorialContent.add(sectionBody(
+                "<html><div style='text-align:center;'>"
+                        + "The new command school is a guided bridge-operations run.<br>"
+                        + "It teaches navigation, pings, combat, x-ray, mining, docking,<br>"
+                        + "upgrades, carrier loadouts, bridge stations, hazards, and warp."
+                        + "</div></html>", uiScale));
+        tutorialContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
+        tutorialContent.add(tutorialStart);
+        tutorialContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        tutorialContent.add(backToRoot);
+
+        JPanel singlePlayerContent = createMenuContent(uiScale);
+        singlePlayerContent.add(sectionTitle("Single Player", uiScale));
+        singlePlayerContent.add(sectionBody(
+                "<html><div style='text-align:center;'>"
+                        + "Campaign Ops now supports sector checkpoints and resume.<br>"
+                        + "Other modes still live behind a separate setup screen."
+                        + "</div></html>", uiScale));
+        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
+        singlePlayerContent.add(continueCampaignButton);
+        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        singlePlayerContent.add(continueCampaignLabel);
+        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerContent.add(campaignOps);
+        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerContent.add(missionSetup);
+        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerContent.add(backToRoot);
+
+        JPanel missionContent = createMenuContent(uiScale);
+        missionContent.add(sectionTitle("Mission Setup", uiScale));
+        missionContent.add(sectionBody(
+                "<html><div style='text-align:center;'>"
+                        + "Configure the non-campaign modes here.<br>"
+                        + "This is the first step toward deeper per-mode menus."
+                        + "</div></html>", uiScale));
+        missionContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+
+        JPanel missionForm = new JPanel(new GridBagLayout());
+        missionForm.setOpaque(false);
         GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(10, 10, 10, 10);
+        c.insets = new Insets(
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(8, uiScale));
         c.gridx = 0;
         c.gridy = 0;
-        c.gridwidth = 2;
-        card.add(title, c);
+        c.anchor = GridBagConstraints.LINE_END;
+        missionForm.add(label("Mode:"), c);
+        c.gridx = 1;
+        c.anchor = GridBagConstraints.LINE_START;
+        missionForm.add(modeBox, c);
 
         c.gridy++;
-        card.add(subtitle, c);
+        c.gridx = 0;
+        c.anchor = GridBagConstraints.LINE_END;
+        missionForm.add(label("Map Size:"), c);
+        c.gridx = 1;
+        c.anchor = GridBagConstraints.LINE_START;
+        missionForm.add(mapBox, c);
 
+        c.gridy++;
+        c.gridx = 0;
+        c.anchor = GridBagConstraints.LINE_END;
+        missionForm.add(label("Player Team:"), c);
+        c.gridx = 1;
+        c.anchor = GridBagConstraints.LINE_START;
+        missionForm.add(teamBox, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        c.anchor = GridBagConstraints.LINE_END;
+        missionForm.add(label("Seed:"), c);
+        c.gridx = 1;
+        c.anchor = GridBagConstraints.LINE_START;
+        missionForm.add(seedField, c);
+
+        c.gridy++;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        c.anchor = GridBagConstraints.CENTER;
+        missionForm.add(events, c);
+
+        c.gridy++;
         c.gridwidth = 1;
-        c.gridy++;
         c.gridx = 0;
-        card.add(label("Mode:"), c);
+        missionForm.add(start, c);
         c.gridx = 1;
-        card.add(modeBox, c);
+        missionForm.add(backToSinglePlayer, c);
 
-        c.gridy++;
-        c.gridx = 0;
-        card.add(label("Map Size:"), c);
-        c.gridx = 1;
-        card.add(mapBox, c);
+        missionContent.add(missionForm);
 
-        c.gridy++;
-        c.gridx = 0;
-        card.add(label("Player Team:"), c);
-        c.gridx = 1;
-        card.add(teamBox, c);
-
-        c.gridy++;
-        c.gridx = 0;
-        card.add(label("Seed:"), c);
-        c.gridx = 1;
-        card.add(seedField, c);
-
-        c.gridy++;
-        c.gridx = 0;
-        c.gridwidth = 2;
-        card.add(events, c);
-
-        c.gridy++;
-        c.gridwidth = 1;
-        c.gridx = 0;
-        card.add(start, c);
-        c.gridx = 1;
-        card.add(credits, c);
-
-        c.gridy++;
-        c.gridx = 0;
-        c.gridwidth = 2;
-        card.add(quit, c);
-
-        c.gridy++;
-        card.add(versionLabel, c);
+        cardHost.add(wrapMenuCard(rootContent, uiScale), CARD_ROOT);
+        cardHost.add(wrapMenuCard(tutorialContent, uiScale), CARD_TUTORIAL);
+        cardHost.add(wrapMenuCard(singlePlayerContent, uiScale), CARD_SINGLE_PLAYER);
+        cardHost.add(wrapMenuCard(missionContent, uiScale), CARD_MISSION_SETUP);
 
         setLayout(new GridBagLayout());
-        add(card);
+        add(cardHost);
 
         // Convenience: Alt+Enter toggles fullscreen in-game, but in menu we can at least
         // show that this is the toggle key later (Step 3+).
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.ALT_DOWN_MASK), "noop");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "menu_back");
+        getActionMap().put("menu_back", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (CARD_MISSION_SETUP.equals(activeMenuCard)) {
+                    showMenuCard.accept(CARD_SINGLE_PLAYER);
+                    return;
+                }
+                if (!CARD_ROOT.equals(activeMenuCard)) {
+                    showRoot.run();
+                }
+            }
+        });
 
         // Dev hotkey: quick-start Four Team Domination (uses current map size/seed settings).
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "dev_four_team");
@@ -459,6 +585,8 @@ class MainMenuPanel extends JPanel {
                 startWithMode.accept(GameMode.FOUR_TEAM_DOMINATION);
             }
         });
+
+        refreshCampaignCheckpointState();
     }
 
     @Override
@@ -481,14 +609,13 @@ class MainMenuPanel extends JPanel {
     private JLabel label(String text) {
         JLabel l = new JLabel(text);
         l.setForeground(new Color(255, 255, 255, 210));
-        l.setFont(new Font("Consolas", Font.PLAIN, 18));
+        l.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 18, MenuDisplay.scaleFor(getPreferredSize())));
         return l;
     }
 
     private static void styleCombo(JComboBox<?> combo) {
         combo.setBackground(new Color(20, 28, 43));
         combo.setForeground(new Color(236, 242, 248));
-        combo.setFont(new Font("Consolas", Font.PLAIN, 15));
     }
 
     private static void styleField(JTextField field) {
@@ -496,22 +623,123 @@ class MainMenuPanel extends JPanel {
         field.setForeground(new Color(236, 242, 248));
         field.setCaretColor(Color.WHITE);
         field.setSelectionColor(new Color(90, 150, 205));
-        field.setFont(new Font("Consolas", Font.PLAIN, 15));
-        field.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(116, 154, 190)),
-                BorderFactory.createEmptyBorder(5, 8, 5, 8)
-        ));
     }
 
     private static void styleButton(JButton button, Color fill) {
         button.setBackground(fill);
         button.setForeground(Color.WHITE);
         button.setFocusPainted(false);
+    }
+
+    private static JButton createMenuButton(String text, Color fill, double scale) {
+        JButton button = new JButton(text);
+        styleButton(button, fill);
+        scaleButton(button, scale);
+        button.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return button;
+    }
+
+    private static JPanel createMenuContent(double scale) {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(6, scale),
+                MenuDisplay.scaled(6, scale),
+                MenuDisplay.scaled(6, scale),
+                MenuDisplay.scaled(6, scale)));
+        return panel;
+    }
+
+    private static JPanel wrapMenuCard(JPanel content, double scale) {
+        JPanel card = new JPanel(new GridBagLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                g2.setColor(new Color(7, 16, 28, 190));
+                g2.fillRoundRect(0, 0, w, h, 30, 30);
+                g2.setColor(new Color(130, 190, 235, 70));
+                g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
+                g2.setColor(new Color(255, 255, 255, 18));
+                g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(28, scale),
+                MenuDisplay.scaled(34, scale),
+                MenuDisplay.scaled(26, scale),
+                MenuDisplay.scaled(34, scale)));
+        card.add(content);
+        return card;
+    }
+
+    private static JLabel sectionTitle(String text, double scale) {
+        JLabel label = new JLabel(text);
+        label.setForeground(Color.WHITE);
+        label.setFont(MenuDisplay.font("Consolas", Font.BOLD, 32, scale));
+        label.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return label;
+    }
+
+    private static JLabel sectionBody(String html, double scale) {
+        JLabel label = new JLabel(html);
+        label.setForeground(new Color(214, 228, 242, 210));
+        label.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
+        label.setAlignmentX(Component.CENTER_ALIGNMENT);
+        return label;
+    }
+
+    private static boolean isMissionSetupMode(GameMode mode) {
+        return mode == GameMode.LAST_STAND
+                || mode == GameMode.RESOURCE_RUSH
+                || mode == GameMode.FOUR_TEAM_DOMINATION
+                || mode == GameMode.SHOOTING_RANGE
+                || mode == GameMode.SHOWCASE;
+    }
+
+    public void refreshCampaignCheckpointState() {
+        CampaignCheckpointStore.Checkpoint cp = CampaignCheckpointStore.load();
+        boolean hasCheckpoint = cp != null;
+        continueCampaignButton.setEnabled(hasCheckpoint);
+        continueCampaignLabel.setText(hasCheckpoint
+                ? "<html><div style='text-align:center;'>" + cp.menuSummary() + "</div></html>"
+                : "<html><div style='text-align:center;'>No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.</div></html>");
+    }
+
+    private static void scaleCombo(JComboBox<?> combo, double scale) {
+        combo.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
+    }
+
+    private static void scaleField(JTextField field, double scale) {
+        field.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(116, 154, 190)),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(5, scale),
+                        MenuDisplay.scaled(8, scale),
+                        MenuDisplay.scaled(5, scale),
+                        MenuDisplay.scaled(8, scale))
+        ));
+        field.setColumns(Math.max(8, MenuDisplay.scaled(12, scale)));
+    }
+
+    private static void scaleButton(JButton button, double scale) {
+        Color fill = button.getBackground();
         button.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(fill.brighter()),
-                BorderFactory.createEmptyBorder(7, 16, 7, 16)
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(7, scale),
+                        MenuDisplay.scaled(16, scale),
+                        MenuDisplay.scaled(7, scale),
+                        MenuDisplay.scaled(16, scale))
         ));
-        button.setFont(new Font("Consolas", Font.BOLD, 16));
+        button.setFont(MenuDisplay.font("Consolas", Font.BOLD, 16, scale));
     }
 
     private static void drawMenuAtmosphere(Graphics2D g2, int w, int h, double t) {

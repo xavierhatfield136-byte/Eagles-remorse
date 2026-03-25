@@ -45,6 +45,7 @@ sourceSets {
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 application {
@@ -53,6 +54,30 @@ application {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
+}
+
+def straySourceClassTree = {
+    fileTree("${rootDir}/src") {
+        include "**/*.class"
+    }
+}
+
+tasks.register("purgeStraySourceClasses", Delete) {
+    group = "build setup"
+    description = "Remove compiled .class artifacts that were written into src."
+    delete(straySourceClassTree())
+}
+
+tasks.register("verifySourceTreeHygiene") {
+    group = "verification"
+    description = "Fail if compiled .class artifacts are present inside src."
+    dependsOn("purgeStraySourceClasses")
+    doLast {
+        def leftovers = straySourceClassTree().files
+        if (!leftovers.isEmpty()) {
+            throw new GradleException("Compiled .class artifacts are still present in src:\n - " + leftovers.join("\n - "))
+        }
+    }
 }
 
 tasks.named("processResources") {
@@ -73,6 +98,46 @@ tasks.named("jar") {
 
 test {
     useJUnitPlatform()
+}
+
+tasks.named("compileJava") {
+    dependsOn("purgeStraySourceClasses")
+}
+
+tasks.named("test") {
+    dependsOn("purgeStraySourceClasses")
+}
+
+tasks.named("run") {
+    dependsOn("purgeStraySourceClasses")
+}
+
+tasks.named("check") {
+    dependsOn("verifySourceTreeHygiene")
+}
+
+tasks.register("phase4Smoke", JavaExec) {
+    group = "verification"
+    description = "Run the fast Phase 4 systems smoke harness."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase4SystemsHarness"
+    args("--strict")
+}
+
+tasks.register("phase9Smoke", JavaExec) {
+    group = "verification"
+    description = "Run the deterministic Phase 9 smoke harness."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase9DeterminismHarness"
+    args("--strict", "--seconds=60")
+}
+
+tasks.register("stabilitySmoke") {
+    group = "verification"
+    description = "Run the lightweight regression smoke suite."
+    dependsOn("phase4Smoke", "phase9Smoke", "test")
 }
 
 checkstyle {

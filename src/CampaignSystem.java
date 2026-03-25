@@ -1,6 +1,7 @@
 import java.awt.Color;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -223,6 +224,14 @@ public final class CampaignSystem {
         CampaignState st = new CampaignState();
         st.enabled = true;
         ctx.campaign = st;
+        CampaignCheckpointStore.Checkpoint checkpoint = ctx.config.resumeCampaign ? CampaignCheckpointStore.load() : null;
+        if (checkpoint != null && checkpoint.isUsable() && applyCheckpoint(ctx, st, checkpoint)) {
+            EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: SECTOR " + checkpoint.nextSector + "/12", 2.2);
+            startSector(ctx, checkpoint.nextSector);
+            return;
+        }
+
+        CampaignCheckpointStore.clear();
         applyPersistedUnlockProfile(ctx, st);
         persistRunStart(ctx);
 
@@ -246,6 +255,7 @@ public final class CampaignSystem {
                 if (next > st.totalSectors) {
                     ctx.gameOver = true;
                     ctx.state = GameState.GAME_OVER;
+                    CampaignCheckpointStore.clear();
                     finalizeCampaignOutcome(ctx, st);
                     persistRunResult(ctx, true);
                     return;
@@ -1108,6 +1118,11 @@ public final class CampaignSystem {
         persistSectorProgress(ctx, st.sector);
         String unlock = grantSectorUnlock(ctx);
         String bossDrop = grantBossDrop(ctx);
+        int nextSector = st.sector + 1;
+        boolean checkpointSaved = nextSector <= st.totalSectors && saveCheckpoint(ctx, st, nextSector);
+        if (!checkpointSaved && nextSector > st.totalSectors) {
+            CampaignCheckpointStore.clear();
+        }
 
         boolean actBreak = isActBreakAfter(st.sector);
         st.transitionTimer = actBreak ? 7.0 : 3.5;
@@ -1119,12 +1134,14 @@ public final class CampaignSystem {
                 + sideRewardSummary(st, sideBonus)
                 + "   |   ROUTE: " + st.branchRoute
                 + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
-                + (unlock.isBlank() ? "" : "   |   " + unlock);
+                + (unlock.isBlank() ? "" : "   |   " + unlock)
+                + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "");
         EventSystem.showBanner(ctx,
                 "SECTOR CLEARED +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
                         + (bossDrop.isBlank() ? "" : "  DROP ACQUIRED")
                         + "  ROUTE " + st.branchRoute
+                        + (checkpointSaved ? "  CHECKPOINT SAVED" : "")
                         + (actBreak ? "  ACT BREAK" : ""),
                 actBreak ? 4.0 : 2.4);
         logTelemetry("sector_clear",
@@ -1134,6 +1151,7 @@ public final class CampaignSystem {
                         " bonus=" + bonus +
                         " sideBonus=" + sideBonus +
                         " drop=" + (bossDrop.isBlank() ? "none" : bossDrop) +
+                        " checkpoint=" + checkpointSaved +
                         " route=" + st.branchRoute +
                         " branchScore=" + st.branchScore);
     }
@@ -1600,6 +1618,7 @@ public final class CampaignSystem {
         ctx.state = GameState.GAME_OVER;
         ctx.gameOverText = text;
         EventSystem.showBanner(ctx, text, 3.0);
+        CampaignCheckpointStore.clear();
         persistRunResult(ctx, false);
         if (st != null) {
             logTelemetry("sector_fail",
@@ -1625,6 +1644,7 @@ public final class CampaignSystem {
     private static void persistRunStart(GameContext ctx) {
         CampaignUnlockProfile profile = (ctx == null) ? null : ctx.campaignUnlockProfile;
         if (profile == null) return;
+        CampaignCheckpointStore.clear();
         profile.markRunStarted();
         CampaignUnlockProfile.save(profile);
     }
@@ -1645,6 +1665,322 @@ public final class CampaignSystem {
                     "bestSector=" + profile.bestSectorCleared +
                             " unlocks=" + profile.summary());
         }
+    }
+
+    private static boolean saveCheckpoint(GameContext ctx, CampaignState st, int nextSector) {
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, st, nextSector);
+        if (checkpoint == null) return false;
+        CampaignCheckpointStore.save(checkpoint);
+        return true;
+    }
+
+    private static CampaignCheckpointStore.Checkpoint captureCheckpoint(GameContext ctx, CampaignState st, int nextSector) {
+        if (ctx == null || st == null || ctx.player == null) return null;
+
+        CampaignCheckpointStore.Checkpoint cp = new CampaignCheckpointStore.Checkpoint();
+        cp.worldW = ctx.WORLD_W;
+        cp.worldH = ctx.WORLD_H;
+        cp.randomEvents = (ctx.config == null) || ctx.config.randomEvents;
+        cp.seed = checkpointSeed(ctx, nextSector);
+        cp.nextSector = nextSector;
+        cp.credits = ctx.credits;
+        cp.sectorsCleared = st.sectorsCleared;
+        cp.campaignKills = st.campaignKills;
+        cp.branchScore = st.branchScore;
+        cp.branchRoute = st.branchRoute;
+        cp.sideObjectivesCompletedTotal = st.sideObjectivesCompletedTotal;
+        cp.sideObjectivesFailedTotal = st.sideObjectivesFailedTotal;
+        cp.unlockAuxGunGranted = st.unlockAuxGunGranted;
+        cp.unlockMissileTierGranted = st.unlockMissileTierGranted;
+        cp.unlockCiwsGranted = st.unlockCiwsGranted;
+        cp.unlockHullGranted = st.unlockHullGranted;
+        cp.bossDropAegisArray = st.bossDropAegisArray;
+        cp.bossDropMissileCore = st.bossDropMissileCore;
+        cp.bossDropFlagCore = st.bossDropFlagCore;
+        cp.bossDropsCollected = st.bossDropsCollected;
+
+        Player player = ctx.player;
+        cp.playerFactionName = (player.faction == null) ? Faction.PLAYER.name() : player.faction.name();
+        cp.playerRoleName = (player.role == null) ? ShipRole.FRIGATE.name() : player.role.name();
+        cp.primaryWeaponFamilyName = (player.primaryWeaponFamily == null)
+                ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
+                : player.primaryWeaponFamily.name();
+        cp.hpMax = player.hpMax;
+        cp.shieldMax = player.shieldMax;
+        cp.shieldRegen = player.shieldRegen;
+        cp.shieldActive = player.shieldActive;
+        cp.cargo = player.cargo;
+        cp.cargoMax = player.cargoMax;
+        cp.miningRate = player.miningRate;
+        cp.miningRange = player.miningRange;
+        cp.hasCIWS = player.hasCIWS;
+        cp.ciwsRange = player.ciwsRange;
+        cp.ciwsCooldown = player.ciwsCooldown;
+        cp.ciwsQuality = player.ciwsQuality;
+        cp.ciwsPelletsPerBurst = player.ciwsPelletsPerBurst;
+        cp.ciwsPelletSpeed = player.ciwsPelletSpeed;
+        cp.ciwsPelletDamage = player.ciwsPelletDamage;
+        cp.ciwsPelletLife = player.ciwsPelletLife;
+        cp.ciwsPelletRadius = player.ciwsPelletRadius;
+        cp.powerPresetName = (player.powerPreset == null) ? Ship.PowerPreset.BALANCED.name() : player.powerPreset.name();
+        cp.crewOrderName = (player.crewOrder == null) ? Ship.CrewOrder.BALANCED.name() : player.crewOrder.name();
+        cp.engineeringPriorityName = player.engineeringPriority().name();
+        cp.overloadBusName = player.overloadBus().name();
+        cp.powerBuses = serializePowerBuses(player.powerBusFractions());
+        cp.turretData = serializeTurrets(player);
+        cp.isCarrier = player.isCarrier;
+        cp.maxFighters = player.maxFighters;
+        cp.carrierCommandModeName = (player.carrierCommandMode == null)
+                ? Ship.CarrierCommandMode.ATTACK.name()
+                : player.carrierCommandMode.name();
+        cp.carrierAutoLaunch = player.carrierAutoLaunch;
+        cp.flightDeckLoadout = serializeFlightDeck(player);
+
+        copyBaseCheckpoint(ctx.allyBase, ctx.baseUpgrades.get(ctx.allyBase), true, cp);
+        copyBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase), false, cp);
+        cp.normalize();
+        return cp;
+    }
+
+    private static boolean applyCheckpoint(GameContext ctx, CampaignState st, CampaignCheckpointStore.Checkpoint cp) {
+        if (ctx == null || st == null || cp == null || ctx.player == null) return false;
+        cp.normalize();
+
+        ctx.credits = cp.credits;
+        st.sector = cp.nextSector;
+        st.act = actForSector(cp.nextSector);
+        st.sectorsCleared = cp.sectorsCleared;
+        st.campaignKills = cp.campaignKills;
+        st.branchScore = cp.branchScore;
+        st.branchRoute = cp.branchRoute;
+        st.sideObjectivesCompletedTotal = cp.sideObjectivesCompletedTotal;
+        st.sideObjectivesFailedTotal = cp.sideObjectivesFailedTotal;
+        st.unlockAuxGunGranted = cp.unlockAuxGunGranted;
+        st.unlockMissileTierGranted = cp.unlockMissileTierGranted;
+        st.unlockCiwsGranted = cp.unlockCiwsGranted;
+        st.unlockHullGranted = cp.unlockHullGranted;
+        st.bossDropAegisArray = cp.bossDropAegisArray;
+        st.bossDropMissileCore = cp.bossDropMissileCore;
+        st.bossDropFlagCore = cp.bossDropFlagCore;
+        st.bossDropsCollected = cp.bossDropsCollected;
+
+        restorePlayerFromCheckpoint(ctx.player, cp);
+        restoreBaseCheckpoint(ctx.allyBase, ctx.baseUpgrades.get(ctx.allyBase),
+                cp.allyOreStockpile, cp.allyHullLv, cp.allyShieldLv, cp.allyTurretLv, cp.allyMiningLv, cp.allyHangarLv);
+        restoreBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase),
+                cp.enemyOreStockpile, cp.enemyHullLv, cp.enemyShieldLv, cp.enemyTurretLv, cp.enemyMiningLv, cp.enemyHangarLv);
+        return true;
+    }
+
+    private static void restorePlayerFromCheckpoint(Player player, CampaignCheckpointStore.Checkpoint cp) {
+        if (player == null || cp == null) return;
+
+        double px = player.x;
+        double py = player.y;
+        player.applyHull(parseEnum(cp.playerRoleName, ShipRole.FRIGATE), px, py);
+        player.faction = parseEnum(cp.playerFactionName, Faction.PLAYER);
+        player.name = "Player";
+        player.hpMax = Math.max(1, cp.hpMax);
+        player.hp = player.hpMax;
+        player.shieldMax = Math.max(0.0, cp.shieldMax);
+        player.shieldRegen = Math.max(0.0, cp.shieldRegen);
+        player.shieldActive = cp.shieldActive;
+        player.shield = player.shieldActive ? player.shieldMax : 0.0;
+        player.resetShieldState();
+        player.cargo = Math.max(0, cp.cargo);
+        player.cargoMax = Math.max(0, cp.cargoMax);
+        player.miningRate = Math.max(0.0, cp.miningRate);
+        player.miningRange = Math.max(0.0, cp.miningRange);
+        player.hasCIWS = cp.hasCIWS;
+        player.ciwsRange = Math.max(0.0, cp.ciwsRange);
+        player.ciwsCooldown = Math.max(0.02, cp.ciwsCooldown);
+        player.ciwsQuality = MathUtil.clamp(cp.ciwsQuality, 0.0, 1.0);
+        player.ciwsPelletsPerBurst = Math.max(1, cp.ciwsPelletsPerBurst);
+        player.ciwsPelletSpeed = Math.max(0.0, cp.ciwsPelletSpeed);
+        player.ciwsPelletDamage = Math.max(1, cp.ciwsPelletDamage);
+        player.ciwsPelletLife = Math.max(1, cp.ciwsPelletLife);
+        player.ciwsPelletRadius = Math.max(0.1, cp.ciwsPelletRadius);
+        player.powerPreset = parseEnum(cp.powerPresetName, Ship.PowerPreset.BALANCED);
+        double[] buses = parsePowerBuses(cp.powerBuses);
+        player.setPowerBusAllocation(buses[0], buses[1], buses[2], buses[3], buses[4], buses[5]);
+        player.crewOrder = parseEnum(cp.crewOrderName, Ship.CrewOrder.BALANCED);
+        player.setEngineeringPriority(parseEnum(cp.engineeringPriorityName, Ship.EngineeringPriority.BALANCED));
+        player.setOverloadBus(parseEnum(cp.overloadBusName, Ship.PowerBus.TACTICAL));
+        player.setOverloadMode(false);
+        restoreTurrets(player, cp.turretData);
+        player.primaryWeaponFamily = parseEnum(cp.primaryWeaponFamilyName, Ship.PrimaryWeaponFamily.ENERGY_BOLT);
+        player.applyPrimaryWeaponFamily();
+        player.isCarrier = cp.isCarrier;
+        player.maxFighters = Math.max(0, cp.maxFighters);
+        player.carrierCommandMode = parseEnum(cp.carrierCommandModeName, Ship.CarrierCommandMode.ATTACK);
+        player.carrierAutoLaunch = cp.carrierAutoLaunch;
+        restoreFlightDeck(player, cp.flightDeckLoadout);
+        player.vx = 0.0;
+        player.vy = 0.0;
+    }
+
+    private static void copyBaseCheckpoint(Ship base, BaseUpgrades upgrades, boolean ally, CampaignCheckpointStore.Checkpoint cp) {
+        if (cp == null) return;
+        int ore = (base == null) ? 0 : Math.max(0, base.oreStockpile);
+        int hullLv = (upgrades == null) ? 0 : upgrades.hullLv;
+        int shieldLv = (upgrades == null) ? 0 : upgrades.shieldLv;
+        int turretLv = (upgrades == null) ? 0 : upgrades.turretLv;
+        int miningLv = (upgrades == null) ? 0 : upgrades.miningLv;
+        int hangarLv = (upgrades == null) ? 0 : upgrades.hangarLv;
+        if (ally) {
+            cp.allyOreStockpile = ore;
+            cp.allyHullLv = hullLv;
+            cp.allyShieldLv = shieldLv;
+            cp.allyTurretLv = turretLv;
+            cp.allyMiningLv = miningLv;
+            cp.allyHangarLv = hangarLv;
+        } else {
+            cp.enemyOreStockpile = ore;
+            cp.enemyHullLv = hullLv;
+            cp.enemyShieldLv = shieldLv;
+            cp.enemyTurretLv = turretLv;
+            cp.enemyMiningLv = miningLv;
+            cp.enemyHangarLv = hangarLv;
+        }
+    }
+
+    private static void restoreBaseCheckpoint(Ship base, BaseUpgrades upgrades, int oreStockpile,
+                                              int hullLv, int shieldLv, int turretLv, int miningLv, int hangarLv) {
+        if (base != null) {
+            base.oreStockpile = Math.max(0, oreStockpile);
+        }
+        if (upgrades != null) {
+            upgrades.hullLv = MathUtil.clamp(hullLv, 0, 3);
+            upgrades.shieldLv = MathUtil.clamp(shieldLv, 0, 3);
+            upgrades.turretLv = MathUtil.clamp(turretLv, 0, 3);
+            upgrades.miningLv = MathUtil.clamp(miningLv, 0, 3);
+            upgrades.hangarLv = MathUtil.clamp(hangarLv, 0, 3);
+        }
+    }
+
+    private static String serializePowerBuses(double[] buses) {
+        double[] values = (buses == null || buses.length < 6)
+                ? new double[]{0.18, 0.18, 0.19, 0.15, 0.18, 0.12}
+                : buses;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 6; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(String.format(Locale.US, "%.6f", values[i]));
+        }
+        return sb.toString();
+    }
+
+    private static double[] parsePowerBuses(String raw) {
+        double[] out = new double[]{0.18, 0.18, 0.19, 0.15, 0.18, 0.12};
+        if (raw == null || raw.isBlank()) return out;
+        String[] parts = raw.split(",");
+        for (int i = 0; i < out.length && i < parts.length; i++) {
+            try {
+                out[i] = Math.max(0.0, Double.parseDouble(parts[i].trim()));
+            } catch (Exception ignored) {
+                // Keep fallback value.
+            }
+        }
+        return out;
+    }
+
+    private static String serializeTurrets(Player player) {
+        if (player == null || player.turrets.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Turret turret : player.turrets) {
+            if (turret == null) continue;
+            if (sb.length() > 0) sb.append(';');
+            sb.append(turret.kind.name()).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.localX)).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.localY)).append('|')
+                    .append(String.format(Locale.US, "%.6f", turret.turnRate)).append('|')
+                    .append(String.format(Locale.US, "%.6f", turret.cooldown)).append('|')
+                    .append(turret.damage).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.bulletSpeed)).append('|')
+                    .append(turret.bulletLife).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.missileSpeed)).append('|')
+                    .append(String.format(Locale.US, "%.6f", turret.missileTurnRate)).append('|')
+                    .append(turret.missileLife).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.radius)).append('|')
+                    .append(String.format(Locale.US, "%.4f", turret.barrelLen)).append('|')
+                    .append(turret.primary);
+        }
+        return sb.toString();
+    }
+
+    private static void restoreTurrets(Player player, String raw) {
+        if (player == null || raw == null || raw.isBlank()) return;
+        player.turrets.clear();
+        String[] entries = raw.split(";");
+        for (String entry : entries) {
+            if (entry == null || entry.isBlank()) continue;
+            String[] parts = entry.split("\\|");
+            if (parts.length < 14) continue;
+            try {
+                Turret turret = new Turret(
+                        parseEnum(parts[0], Turret.Kind.GUN),
+                        Double.parseDouble(parts[1]),
+                        Double.parseDouble(parts[2]));
+                turret.turnRate = Double.parseDouble(parts[3]);
+                turret.cooldown = Double.parseDouble(parts[4]);
+                turret.damage = Integer.parseInt(parts[5]);
+                turret.bulletSpeed = Double.parseDouble(parts[6]);
+                turret.bulletLife = Integer.parseInt(parts[7]);
+                turret.missileSpeed = Double.parseDouble(parts[8]);
+                turret.missileTurnRate = Double.parseDouble(parts[9]);
+                turret.missileLife = Integer.parseInt(parts[10]);
+                turret.radius = Double.parseDouble(parts[11]);
+                turret.barrelLen = Double.parseDouble(parts[12]);
+                turret.primary = Boolean.parseBoolean(parts[13]);
+                player.addTurret(turret);
+            } catch (Exception ignored) {
+                // Skip malformed turret entries and keep the rest.
+            }
+        }
+    }
+
+    private static String serializeFlightDeck(Player player) {
+        if (player == null || player.flightDeckLoadout == null || player.flightDeckLoadout.length == 0) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < player.flightDeckLoadout.length; i++) {
+            if (i > 0) sb.append(',');
+            ShipRole role = player.flightDeckLoadout[i];
+            sb.append(role == null ? "" : role.name());
+        }
+        return sb.toString();
+    }
+
+    private static void restoreFlightDeck(Player player, String raw) {
+        if (player == null || player.flightDeckLoadout == null) return;
+        for (int i = 0; i < player.flightDeckLoadout.length; i++) {
+            player.flightDeckLoadout[i] = null;
+        }
+        if (raw == null || raw.isBlank()) return;
+        String[] parts = raw.split(",");
+        for (int i = 0; i < player.flightDeckLoadout.length && i < parts.length; i++) {
+            String name = parts[i].trim();
+            if (name.isEmpty()) continue;
+            player.flightDeckLoadout[i] = parseEnum(name, ShipRole.FIGHTER);
+        }
+    }
+
+    private static long checkpointSeed(GameContext ctx, int nextSector) {
+        long baseSeed = (ctx != null && ctx.config != null) ? ctx.config.seed : 0L;
+        long sectorMix = 0x9E3779B97F4A7C15L * Math.max(1L, nextSector);
+        long branchMix = 0xC2B2AE3D27D4EB4FL * Math.max(0L, (ctx != null && ctx.campaign != null) ? ctx.campaign.branchScore + 7L : 7L);
+        return baseSeed ^ sectorMix ^ branchMix;
+    }
+
+    private static <E extends Enum<E>> E parseEnum(String name, E fallback) {
+        if (fallback == null) return null;
+        if (name != null) {
+            try {
+                return Enum.valueOf(fallback.getDeclaringClass(), name.trim());
+            } catch (Exception ignored) {
+                // Fall back below.
+            }
+        }
+        return fallback;
     }
 
 }

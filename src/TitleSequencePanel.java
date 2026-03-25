@@ -21,7 +21,7 @@ final class TitleSequencePanel extends JPanel implements ActionListener {
 
     TitleSequencePanel(Runnable onComplete) {
         this.onComplete = onComplete;
-        setPreferredSize(new Dimension(1280, 720));
+        setPreferredSize(MenuDisplay.preferredWindowSize());
         setBackground(Color.BLACK);
         setFocusable(true);
 
@@ -76,22 +76,23 @@ final class TitleSequencePanel extends JPanel implements ActionListener {
         int w = getWidth();
         int h = getHeight();
         float alpha = alphaForTime(elapsedSec);
+        double scale = MenuDisplay.scaleFor(w, h);
 
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 
         g2.setColor(new Color(215, 215, 215));
-        g2.setFont(new Font("Consolas", Font.PLAIN, 28));
-        drawCentered(g2, "Xavier H. presents:", w / 2, h / 2 - 40);
+        g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 28, scale));
+        drawCentered(g2, "Xavier H. presents:", w / 2, h / 2 - MenuDisplay.scaled(40, scale));
 
         g2.setColor(Color.WHITE);
-        g2.setFont(new Font("Consolas", Font.BOLD, 66));
-        drawCentered(g2, AppInfo.APP_NAME.toUpperCase(), w / 2, h / 2 + 24);
+        g2.setFont(MenuDisplay.font("Consolas", Font.BOLD, 66, scale));
+        drawCentered(g2, AppInfo.APP_NAME.toUpperCase(), w / 2, h / 2 + MenuDisplay.scaled(24, scale));
 
         float hintAlpha = Math.min(0.80f, alpha + 0.15f);
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hintAlpha));
         g2.setColor(new Color(180, 180, 180));
-        g2.setFont(new Font("Consolas", Font.PLAIN, 16));
-        drawCentered(g2, "Press Enter/Space/Esc (or click) to skip", w / 2, h - 42);
+        g2.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 16, scale));
+        drawCentered(g2, "Press Enter/Space/Esc (or click) to skip", w / 2, h - MenuDisplay.scaled(42, scale));
 
         g2.dispose();
     }

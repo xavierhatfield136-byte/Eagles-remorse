@@ -5,21 +5,24 @@ import java.awt.event.KeyEvent;
 
 final class CreditsPanel extends JPanel {
     CreditsPanel(Runnable onBack) {
-        setPreferredSize(new Dimension(1280, 720));
+        Dimension preferredSize = MenuDisplay.preferredWindowSize();
+        double scale = MenuDisplay.scaleFor(preferredSize);
+
+        setPreferredSize(preferredSize);
         setBackground(new Color(8, 12, 20));
         setFocusable(true);
 
         JLabel title = new JLabel("Credits");
         title.setForeground(Color.WHITE);
-        title.setFont(new Font("Consolas", Font.BOLD, 52));
+        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 52, scale));
 
         JTextArea body = new JTextArea();
         body.setEditable(false);
         body.setOpaque(false);
         body.setFocusable(false);
         body.setForeground(new Color(218, 218, 218));
-        body.setFont(new Font("Consolas", Font.PLAIN, 20));
-        body.setMargin(new Insets(10, 0, 10, 0));
+        body.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 20, scale));
+        body.setMargin(new Insets(MenuDisplay.scaled(10, scale), 0, MenuDisplay.scaled(10, scale), 0));
         StringBuilder sb = new StringBuilder();
         for (String line : AppInfo.creditsLines()) {
             sb.append(line).append('\n');
@@ -27,6 +30,16 @@ final class CreditsPanel extends JPanel {
         body.setText(sb.toString().trim());
 
         JButton back = new JButton("Back");
+        back.setFont(MenuDisplay.font("Consolas", Font.BOLD, 16, scale));
+        back.setFocusPainted(false);
+        back.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(120, 156, 190)),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(6, scale),
+                        MenuDisplay.scaled(18, scale),
+                        MenuDisplay.scaled(6, scale),
+                        MenuDisplay.scaled(18, scale))
+        ));
         back.addActionListener(e -> onBack.run());
 
         JPanel card = new JPanel(new GridBagLayout());
@@ -34,7 +47,11 @@ final class CreditsPanel extends JPanel {
         GridBagConstraints c = new GridBagConstraints();
         c.gridx = 0;
         c.gridy = 0;
-        c.insets = new Insets(8, 8, 8, 8);
+        c.insets = new Insets(
+                MenuDisplay.scaled(8, scale),
+                MenuDisplay.scaled(8, scale),
+                MenuDisplay.scaled(8, scale),
+                MenuDisplay.scaled(8, scale));
         c.anchor = GridBagConstraints.CENTER;
         card.add(title, c);
 
