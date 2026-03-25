@@ -297,7 +297,7 @@ public final class SpawnSystem {
         Random rng = (ctx == null || ctx.rng == null) ? new Random() : ctx.rng;
 
         if (faction == Faction.TEAM_C) {
-            // Aegis Lattice: directed-energy line ships with limited missile reliance.
+            // Green team: directed-energy line ships with limited missile reliance.
             return switch (requested) {
                 case MISSILE_BOAT -> ShipRole.FRIGATE;
                 case CRUISER -> ShipRole.MEDIUM_CRUISER;
@@ -309,7 +309,7 @@ public final class SpawnSystem {
         }
 
         if (faction == Faction.TEAM_D) {
-            // Viper Barrage: salvo-heavy fleet composition with frequent missile boats/cruisers.
+            // Yellow team: salvo-heavy fleet composition with frequent missile boats/cruisers.
             return switch (requested) {
                 case PATROL, PICKET, FRIGATE, CIWS_CORVETTE ->
                         (rng.nextDouble() < 0.52) ? ShipRole.MISSILE_BOAT : requested;

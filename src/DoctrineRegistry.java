@@ -2,10 +2,10 @@
  * Maps factions to doctrine profiles.
  *
  * Resource Rush / four-team mapping:
- *  - PLAYER + ALLY => ENERGY_NAVY
- *  - ENEMY         => KINETIC_CONSORTIUM
- *  - TEAM_C        => AEGIS_LATTICE (directed energy)
- *  - TEAM_D        => VIPER_BARRAGE (missile-forward)
+ *  - BLUE   => ENERGY_NAVY
+ *  - RED    => KINETIC_CONSORTIUM
+ *  - GREEN  => AEGIS_LATTICE (directed energy)
+ *  - YELLOW => VIPER_BARRAGE (missile-forward)
  */
 public final class DoctrineRegistry {
 
@@ -70,10 +70,10 @@ public final class DoctrineRegistry {
      *  - pdStrength scales CIWS (cooldown, pellets/burst, range, quality).
      *
  * 5C:
- *  - Team A (PLAYER/ALLY): 50% hull, 50% shields.
- *  - Team B (ENEMY): 75% hull, 25% shields.
- *  - Team C: 25% hull, 75% shields.
- *  - Team D: 100% hull, no shields, tougher armor, slower brick-like handling.
+ *  - Blue (PLAYER/ALLY): 50% hull, 50% shields.
+ *  - Red (ENEMY): 75% hull, 25% shields.
+ *  - Green: 25% hull, 75% shields.
+ *  - Yellow: 100% hull, no shields, tougher armor, slower brick-like handling.
      */
     public static void applyToShip(Ship s) {
         if (s == null) return;

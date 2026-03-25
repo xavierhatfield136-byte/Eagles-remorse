@@ -217,10 +217,10 @@ enum GameMode {
 }
 
 enum PlayerTeamChoice {
-    TEAM_A("Team A (Blue)", 0),
-    TEAM_B("Team B (Red)", 1),
-    TEAM_C("Team C (Green)", 2),
-    TEAM_D("Team D (Missile)", 3);
+    TEAM_A("Blue Team", 0),
+    TEAM_B("Red Team", 1),
+    TEAM_C("Green Team", 2),
+    TEAM_D("Yellow Team", 3);
 
     private final String label;
     private final int teamId;

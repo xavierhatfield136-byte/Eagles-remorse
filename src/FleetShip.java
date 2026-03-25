@@ -1,3 +1,5 @@
+import java.util.Locale;
+
 /**
  * A configurable ship used for allies and enemies.
  *
@@ -986,10 +988,10 @@ public class FleetShip extends Ship {
             }
 
             case SUPERSHIP -> {
-                if (faction == Faction.ENEMY) name = "Enemy Supership";
-                else if (faction == Faction.TEAM_C) name = "Team C Supership";
-                else if (faction == Faction.TEAM_D) name = "Team D Supership";
-                else name = "Supership";
+                if (faction == Faction.ENEMY) name = "Red Supership";
+                else if (faction == Faction.TEAM_C) name = "Green Supership";
+                else if (faction == Faction.TEAM_D) name = "Yellow Supership";
+                else name = "Blue Supership";
 
                 radius = 52;
                 hpMax = 170;
@@ -1380,10 +1382,8 @@ public class FleetShip extends Ship {
             // Structures
             // -----------------------
             case BASE -> {
-                if (faction == Faction.ENEMY) name = "Base (ENEMY)";
-                else if (faction == Faction.TEAM_C) name = "Base (TEAM C)";
-                else if (faction == Faction.TEAM_D) name = "Base (TEAM D)";
-                else name = "Base (ALLY)";
+                String teamLabel = (faction == null) ? "UNKNOWN" : faction.teamName().toUpperCase(Locale.US);
+                name = "Base (" + teamLabel + ")";
                 radius = 60;
                 hpMax = 240;
                 hp = hpMax;
