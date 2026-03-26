@@ -1767,7 +1767,7 @@ public class Renderer {
         int leftX = 14;
         int topY = 16;
         int leftW = (xrayLayout != null)
-                ? Math.max(240, Math.min(416, xrayLayout.panelX - leftX - 18))
+                ? Math.max(240, Math.min(416, xrayLayout.playerX - leftX - 18))
                 : Math.max(320, Math.min(430, viewW / 3));
         leftW = Math.max(240, Math.min(leftW, viewW - 28));
 
@@ -2318,7 +2318,7 @@ public class Renderer {
         int targetY;
 
         if (layout != null) {
-            playerX = Math.max(margin, layout.panelX - cardW - sideGap);
+            playerX = Math.max(margin, layout.playerX - cardW - sideGap);
             playerY = layout.playerY + Math.max(0, (layout.playerH - cardH) / 2);
             targetX = Math.min(viewW - cardW - margin, layout.targetX + layout.panelW + sideGap);
             targetY = (layout.targetVisible && layout.targetH > 0)
@@ -3401,7 +3401,7 @@ public class Renderer {
     }
 
     private static final class XrayStackLayout {
-        final int panelX;
+        final int playerX;
         final int panelW;
         final int targetX;
         final int playerY;
@@ -3410,10 +3410,10 @@ public class Renderer {
         final int targetH;
         final boolean targetVisible;
 
-        XrayStackLayout(int panelX, int panelW, int targetX, int playerY, int playerH, int targetY, int targetH, boolean targetVisible) {
-            this.panelX = panelX;
-            this.panelW = panelW;
+        XrayStackLayout(int playerX, int targetX, int panelW, int playerY, int playerH, int targetY, int targetH, boolean targetVisible) {
+            this.playerX = playerX;
             this.targetX = targetX;
+            this.panelW = panelW;
             this.playerY = playerY;
             this.playerH = playerH;
             this.targetY = targetY;
@@ -3493,7 +3493,7 @@ public class Renderer {
         if (ctx == null || ctx.player == null) return null;
         XrayStackLayout layout = computeXrayStackLayout(ctx.player, ctx.lockedTarget, ctx.shopOpen, viewW, viewH);
         if (layout == null) return null;
-        Rectangle mapRect = xrayMapRect(layout.panelX, layout.playerY, layout.panelW, layout.playerH);
+        Rectangle mapRect = xrayMapRect(layout.playerX, layout.playerY, layout.panelW, layout.playerH);
         if (!mapRect.contains(mouseX, mouseY)) return null;
         for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(ctx.player.role, ctx.player.faction)) {
             if (cell == null || cell.roomId == null) continue;
@@ -4096,36 +4096,44 @@ public class Renderer {
                 && !(lockedTarget.faction != null && player.faction != null
                 && lockedTarget.faction.isFriendlyTo(player.faction));
 
-        int gap = 12;
-        int panelH = targetVisible
-                ? Math.max(156, Math.min(214, (int) Math.round(availableH * 0.44)))
-                : Math.max(170, Math.min(228, (int) Math.round(availableH * 0.58)));
-        if (panelH > availableH - 8) {
-            panelH = Math.max(136, availableH - 8);
-        }
+        int menuTop = menu.y;
+        int panelY;
+        int playerH;
+        int targetH;
+        int playerY;
+        int targetY;
 
-        int panelW;
-        int playerX;
-        int targetX;
         if (targetVisible) {
-            int totalAvailW = Math.max(540, viewW - 40);
-            panelW = Math.max(250, Math.min(344, (totalAvailW - gap) / 2));
-            int totalW = panelW * 2 + gap;
-            playerX = (viewW - totalW) / 2;
-            targetX = playerX + panelW + gap;
-        } else {
-            panelW = Math.max(270, Math.min(396, menu.width - 170));
-            playerX = menu.x + (menu.width - panelW) / 2;
-            targetX = playerX;
+            int reservedVitalsW = 220;
+            int outerMargin = 12;
+            int sideGap = 12;
+            int centerGap = 18;
+            int usableX = outerMargin + reservedVitalsW + sideGap;
+            int usableW = viewW - (outerMargin + reservedVitalsW + sideGap) * 2;
+            if (usableW < 560) return null;
+
+            int panelW = Math.max(270, Math.min(396, (usableW - centerGap) / 2));
+            int totalW = panelW * 2 + centerGap;
+            int playerX = usableX + Math.max(0, (usableW - totalW) / 2);
+            int targetX = playerX + panelW + centerGap;
+
+            playerH = Math.max(166, Math.min(236, availableH - 12));
+            targetH = playerH;
+            panelY = menuTop - playerH - 8;
+            playerY = panelY;
+            targetY = panelY;
+            if (playerY < 48) return null;
+
+            return new XrayStackLayout(playerX, targetX, panelW, playerY, playerH, targetY, targetH, true);
         }
 
-        int playerH = panelH;
-        int targetH = targetVisible ? panelH : 0;
-        int playerY = menu.y - playerH - 8;
-        int targetY = playerY;
+        int panelW = Math.max(270, Math.min(396, menu.width - 170));
+        int playerX = menu.x + (menu.width - panelW) / 2;
+        playerH = Math.max(170, Math.min(228, (int) Math.round(availableH * 0.58)));
+        playerY = menuTop - playerH - 8;
         if (playerY < 48) return null;
 
-        return new XrayStackLayout(playerX, panelW, targetX, playerY, playerH, targetY, targetH, targetVisible);
+        return new XrayStackLayout(playerX, playerX, panelW, playerY, playerH, playerY, 0, false);
     }
 
     private static void drawLockedTargetXrayHud(Graphics2D g2, GameContext ctx, Player player, Ship lockedTarget,
@@ -4134,7 +4142,7 @@ public class Renderer {
         XrayStackLayout layout = computeXrayStackLayout(player, lockedTarget, shopOpen, viewW, viewH);
         if (layout == null) return;
 
-        drawShipXrayPanel(g2, ctx, player, layout.panelX, layout.playerY, layout.panelW, layout.playerH,
+        drawShipXrayPanel(g2, ctx, player, layout.playerX, layout.playerY, layout.panelW, layout.playerH,
                 "SHIP X-RAY", "OWN HULL TELEMETRY", true);
 
         if (layout.targetH > 0 && layout.targetVisible) {
