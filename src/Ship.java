@@ -27,7 +27,7 @@ public abstract class Ship {
         }
     }
 
-    private static double randomUnit() {
+    static double randomUnit() {
         synchronized (SHIP_RNG_LOCK) {
             if (deterministicRandom != null) return deterministicRandom.nextDouble();
         }
@@ -1008,6 +1008,10 @@ public abstract class Ship {
         takeDamage(dmg, Double.NaN, Double.NaN);
     }
 
+    double dyingTimerSeconds() {
+        return dyingTimer;
+    }
+
     public void takeDamage(int dmg, double hitX, double hitY) {
         takeDamage(dmg, hitX, hitY, Double.NaN, Double.NaN);
     }
@@ -1132,6 +1136,8 @@ public abstract class Ship {
         // Random tumble while drifting out of control.
         wreckSpin = (randomUnit() - 0.5) * 2.4;
 
+        WreckChunk.spawnForShip(this, burnDuration);
+
         // Initial sparks on kill impact.
         VFX.spawnImpactSparks(x, y, 0.0, 0.0, 3);
     }
@@ -1139,6 +1145,7 @@ public abstract class Ship {
     private void explodeIntoFireball(double baseVx, double baseVy) {
         if (deathExploded) return;
         deathExploded = true;
+        WreckChunk.releaseForShip(this, baseVx, baseVy);
         Explosion.spawnDeath(x, y);
         ScreenShake.kick(8.0);
         spawnExplosionSalvage(baseVx, baseVy);

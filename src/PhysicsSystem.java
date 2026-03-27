@@ -164,6 +164,10 @@ public final class PhysicsSystem {
             VFX.updateAll(dt);
         } catch (Throwable ignored) {
         }
+        try {
+            WreckChunk.updateAll(dt);
+        } catch (Throwable ignored) {
+        }
 
         ctx.entityQuery.rebuild(ctx);
     }

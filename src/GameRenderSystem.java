@@ -37,6 +37,7 @@ public final class GameRenderSystem {
         ctx.perfDrawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         ctx.perfDrawnShips = Renderer.drawShips(worldG, ctx.ships, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         ctx.perfDrawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
         Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
         Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
