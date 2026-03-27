@@ -4557,6 +4557,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         static void drawShip(Graphics2D g2, Ship ship) {
             if (!ship.alive) return;
+            boolean multipartDying = ship.dying && ShipPartLibrary.hasParts(ship.role, ship.faction);
+            if (multipartDying) {
+                int wx = (int) Math.round(ship.x);
+                int wy = (int) Math.round(ship.y);
+                if (!isTinyStrikeCraft(ship.role)) {
+                    g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+                    g2.setColor(new Color(255, 255, 255, 120));
+                    g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+                }
+                return;
+            }
 
             Color hull;
             Color trim;
@@ -4894,7 +4905,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int sx = -sw / 2;
             int sy = -sh / 2;
 
-            drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
+            ShipPartLibrary.PartSet partSet = ShipPartLibrary.getSet(ship.role, ship.faction);
+            if (partSet.hasParts()) {
+                drawSkinParts(g, partSet.parts, sw, sh, 1.0f);
+            } else {
+                drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
+            }
             boolean hasAuxLayers = skinSet.panel != null || skinSet.ao != null
                     || skinSet.emissive != null || skinSet.damage != null;
             if (!hasAuxLayers) return;
@@ -4939,6 +4955,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
             g.drawImage(layer, x, y, w, h, null);
             g.setComposite(old);
+        }
+
+        private static void drawSkinParts(Graphics2D g, List<ShipPartLibrary.PartSprite> parts,
+                                          int w, int h, float alpha) {
+            if (parts == null || parts.isEmpty() || alpha <= 0f) return;
+            for (ShipPartLibrary.PartSprite part : parts) {
+                if (part == null || part.image == null) continue;
+                int drawW = Math.max(1, (int) Math.round(w * part.widthNorm));
+                int drawH = Math.max(1, (int) Math.round(h * part.heightNorm));
+                int cx = (int) Math.round(part.offsetXNorm * w);
+                int cy = (int) Math.round(part.offsetYNorm * h);
+                int dx = cx - drawW / 2;
+                int dy = cy - drawH / 2;
+                drawSkinLayer(g, part.image, dx, dy, drawW, drawH, alpha);
+            }
         }
 
         private static void applyFactionSkinLighting(Graphics2D g, Rectangle2D bounds, Faction faction, Color hull, Color trim) {

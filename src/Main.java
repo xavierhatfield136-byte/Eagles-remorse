@@ -260,15 +260,10 @@ enum PlayerTeamChoice {
  */
 class MainMenuPanel extends JPanel {
     private static final long MENU_BG_SEED = 0x5A17C0DEL;
-    private static final String CARD_ROOT = "root";
-    private static final String CARD_TUTORIAL = "tutorial";
-    private static final String CARD_SINGLE_PLAYER = "singlePlayer";
-    private static final String CARD_MISSION_SETUP = "missionSetup";
     private final long backgroundStartNs = System.nanoTime();
     private final Timer backgroundTimer;
     private final JButton continueCampaignButton;
     private final JLabel continueCampaignLabel;
-    private String activeMenuCard = CARD_ROOT;
 
     public MainMenuPanel(Consumer<GameConfig> onStart, Runnable onCredits, Runnable onQuit) {
         Dimension preferredSize = MenuDisplay.preferredWindowSize();
@@ -320,7 +315,7 @@ class MainMenuPanel extends JPanel {
         styleField(seedField);
         scaleField(seedField, uiScale);
 
-        JButton start = new JButton("Start");
+        JButton start = new JButton("Launch Mission");
         JButton credits = new JButton("Credits");
         JButton quit = new JButton("Quit");
         styleButton(start, new Color(70, 122, 170));
@@ -329,14 +324,9 @@ class MainMenuPanel extends JPanel {
         scaleButton(start, uiScale);
         scaleButton(credits, uiScale);
         scaleButton(quit, uiScale);
-        JButton tutorialMenu = createMenuButton("Tutorial", new Color(70, 122, 170), uiScale);
-        JButton singlePlayerMenu = createMenuButton("Single Player", new Color(58, 72, 95), uiScale);
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(96, 132, 84), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(70, 122, 170), uiScale);
-        JButton missionSetup = createMenuButton("Mission Setup", new Color(58, 72, 95), uiScale);
         JButton tutorialStart = createMenuButton("Start Command School", new Color(70, 122, 170), uiScale);
-        JButton backToRoot = createMenuButton("Back", new Color(82, 54, 62), uiScale);
-        JButton backToSinglePlayer = createMenuButton("Back", new Color(82, 54, 62), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(180, 180, 180));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
@@ -413,23 +403,6 @@ class MainMenuPanel extends JPanel {
             }
         });
 
-        CardLayout menuCards = new CardLayout();
-        JPanel cardHost = new JPanel(menuCards);
-        cardHost.setOpaque(false);
-
-        Runnable showRoot = () -> {
-            menuCards.show(cardHost, CARD_ROOT);
-            activeMenuCard = CARD_ROOT;
-            requestFocusInWindow();
-        };
-        java.util.function.Consumer<String> showMenuCard = (cardName) -> {
-            menuCards.show(cardHost, cardName);
-            activeMenuCard = cardName;
-            requestFocusInWindow();
-        };
-
-        tutorialMenu.addActionListener(e -> showMenuCard.accept(CARD_TUTORIAL));
-        singlePlayerMenu.addActionListener(e -> showMenuCard.accept(CARD_SINGLE_PLAYER));
         tutorialStart.addActionListener(e -> startWithMode.accept(GameMode.TUTORIAL));
         continueCampaignButton.addActionListener(e -> {
             CampaignCheckpointStore.Checkpoint cp = CampaignCheckpointStore.load();
@@ -441,63 +414,35 @@ class MainMenuPanel extends JPanel {
             onStart.accept(cp.toGameConfig());
         });
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
-        missionSetup.addActionListener(e -> showMenuCard.accept(CARD_MISSION_SETUP));
-        backToRoot.addActionListener(e -> showRoot.run());
-        backToSinglePlayer.addActionListener(e -> showMenuCard.accept(CARD_SINGLE_PLAYER));
 
         JPanel rootContent = createMenuContent(uiScale);
         rootContent.add(title);
         rootContent.add(subtitle);
         rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
-        rootContent.add(tutorialMenu);
+        rootContent.add(sectionTitle("Single Player", uiScale));
         rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(singlePlayerMenu);
+        rootContent.add(sectionBody(
+                "<html><div style='text-align:center;'>"
+                        + "Everything is back on one screen: tutorial, campaign resume,<br>"
+                        + "campaign start, and custom mission setup."
+                        + "</div></html>", uiScale));
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        rootContent.add(tutorialStart);
         rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(credits);
+        rootContent.add(continueCampaignButton);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        rootContent.add(continueCampaignLabel);
         rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(quit);
+        rootContent.add(campaignOps);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        rootContent.add(sectionTitle("Mission Setup", uiScale));
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        rootContent.add(sectionBody(
+                "<html><div style='text-align:center;'>"
+                        + "Launch Last Stand, Resource Rush, Four Team Domination,<br>"
+                        + "Shooting Range, or Showcase without another submenu."
+                        + "</div></html>", uiScale));
         rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
-        rootContent.add(versionLabel);
-
-        JPanel tutorialContent = createMenuContent(uiScale);
-        tutorialContent.add(sectionTitle("Tutorial", uiScale));
-        tutorialContent.add(sectionBody(
-                "<html><div style='text-align:center;'>"
-                        + "The new command school is a guided bridge-operations run.<br>"
-                        + "It teaches navigation, pings, combat, x-ray, mining, docking,<br>"
-                        + "upgrades, carrier loadouts, bridge stations, hazards, and warp."
-                        + "</div></html>", uiScale));
-        tutorialContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
-        tutorialContent.add(tutorialStart);
-        tutorialContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        tutorialContent.add(backToRoot);
-
-        JPanel singlePlayerContent = createMenuContent(uiScale);
-        singlePlayerContent.add(sectionTitle("Single Player", uiScale));
-        singlePlayerContent.add(sectionBody(
-                "<html><div style='text-align:center;'>"
-                        + "Campaign Ops now supports sector checkpoints and resume.<br>"
-                        + "Other modes still live behind a separate setup screen."
-                        + "</div></html>", uiScale));
-        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
-        singlePlayerContent.add(continueCampaignButton);
-        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        singlePlayerContent.add(continueCampaignLabel);
-        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        singlePlayerContent.add(campaignOps);
-        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        singlePlayerContent.add(missionSetup);
-        singlePlayerContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        singlePlayerContent.add(backToRoot);
-
-        JPanel missionContent = createMenuContent(uiScale);
-        missionContent.add(sectionTitle("Mission Setup", uiScale));
-        missionContent.add(sectionBody(
-                "<html><div style='text-align:center;'>"
-                        + "Configure the non-campaign modes here.<br>"
-                        + "This is the first step toward deeper per-mode menus."
-                        + "</div></html>", uiScale));
-        missionContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
 
         JPanel missionForm = new JPanel(new GridBagLayout());
         missionForm.setOpaque(false);
@@ -550,33 +495,20 @@ class MainMenuPanel extends JPanel {
         c.gridx = 0;
         missionForm.add(start, c);
         c.gridx = 1;
-        missionForm.add(backToSinglePlayer, c);
+        missionForm.add(credits, c);
 
-        missionContent.add(missionForm);
-
-        cardHost.add(wrapMenuCard(rootContent, uiScale), CARD_ROOT);
-        cardHost.add(wrapMenuCard(tutorialContent, uiScale), CARD_TUTORIAL);
-        cardHost.add(wrapMenuCard(singlePlayerContent, uiScale), CARD_SINGLE_PLAYER);
-        cardHost.add(wrapMenuCard(missionContent, uiScale), CARD_MISSION_SETUP);
+        rootContent.add(missionForm);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+        rootContent.add(quit);
+        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        rootContent.add(versionLabel);
 
         setLayout(new GridBagLayout());
-        add(cardHost);
+        add(wrapMenuCard(rootContent, uiScale));
 
         // Convenience: Alt+Enter toggles fullscreen in-game, but in menu we can at least
         // show that this is the toggle key later (Step 3+).
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.ALT_DOWN_MASK), "noop");
-        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "menu_back");
-        getActionMap().put("menu_back", new AbstractAction() {
-            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
-                if (CARD_MISSION_SETUP.equals(activeMenuCard)) {
-                    showMenuCard.accept(CARD_SINGLE_PLAYER);
-                    return;
-                }
-                if (!CARD_ROOT.equals(activeMenuCard)) {
-                    showRoot.run();
-                }
-            }
-        });
 
         // Dev hotkey: quick-start Four Team Domination (uses current map size/seed settings).
         getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F12, 0), "dev_four_team");

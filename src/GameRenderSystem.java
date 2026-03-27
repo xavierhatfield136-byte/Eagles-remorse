@@ -58,6 +58,8 @@ public final class GameRenderSystem {
                     drawDestabilizerPulseExplosion(worldG, e);
                 } else if (e.kind == Explosion.Kind.SUPERWEAPON_BLAST) {
                     drawSuperweaponBlastExplosion(worldG, e);
+                } else if (e.kind == Explosion.Kind.FINAL_DETONATION) {
+                    drawFinalDetonationExplosion(worldG, e);
                 } else {
                     drawDeathExplosion(worldG, e);
                 }
@@ -531,6 +533,50 @@ if (DevTools.isDebugOverlay()) {
 
         if (hazeA > 4) {
             g2.setColor(new Color(120, 26, 26, hazeA));
+            g2.drawOval((int) Math.round(e.x - hazeR), (int) Math.round(e.y - hazeR), hazeR * 2, hazeR * 2);
+        }
+    }
+
+    private static void drawFinalDetonationExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        double age = e.ageFrac();
+
+        int plasmaR = (int) Math.round(e.finalDetonationPlasmaRadius());
+        int coreR = (int) Math.round(e.finalDetonationCoreRadius());
+        int ring1R = (int) Math.round(e.finalDetonationRingRadius(0));
+        int ring2R = (int) Math.round(e.finalDetonationRingRadius(1));
+        int ring3R = (int) Math.round(e.finalDetonationRingRadius(2));
+        int hazeR = (int) Math.round(e.finalDetonationHazeRadius());
+
+        int plasmaA = (int) MathUtil.clamp(206 * rem, 0, 220);
+        int coreA = (int) MathUtil.clamp((age < 0.52 ? 245 : 180) * rem, 0, 245);
+        int ring1A = (int) MathUtil.clamp(225 * Math.max(0.0, 1.0 - age * 0.62) * rem, 0, 228);
+        int ring2A = (int) MathUtil.clamp(188 * Math.max(0.0, 1.0 - age * 0.78) * rem, 0, 198);
+        int ring3A = (int) MathUtil.clamp(142 * Math.max(0.0, 1.0 - age * 0.96) * rem, 0, 160);
+        int hazeA = (int) MathUtil.clamp(104 * Math.max(0.0, 1.0 - age * 0.88) * rem, 0, 116);
+
+        g2.setColor(new Color(255, 86, 74, plasmaA));
+        g2.fillOval((int) Math.round(e.x - plasmaR), (int) Math.round(e.y - plasmaR), plasmaR * 2, plasmaR * 2);
+
+        g2.setColor(new Color(255, 226, 192, coreA));
+        g2.fillOval((int) Math.round(e.x - coreR), (int) Math.round(e.y - coreR), coreR * 2, coreR * 2);
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke((float) e.finalDetonationRingStrokeWidth(0), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 148, 120, ring1A));
+        g2.drawOval((int) Math.round(e.x - ring1R), (int) Math.round(e.y - ring1R), ring1R * 2, ring1R * 2);
+
+        g2.setStroke(new BasicStroke((float) e.finalDetonationRingStrokeWidth(1), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 196, 152, ring2A));
+        g2.drawOval((int) Math.round(e.x - ring2R), (int) Math.round(e.y - ring2R), ring2R * 2, ring2R * 2);
+
+        g2.setStroke(new BasicStroke((float) e.finalDetonationRingStrokeWidth(2), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 234, 208, ring3A));
+        g2.drawOval((int) Math.round(e.x - ring3R), (int) Math.round(e.y - ring3R), ring3R * 2, ring3R * 2);
+        g2.setStroke(old);
+
+        if (hazeA > 4) {
+            g2.setColor(new Color(92, 22, 18, hazeA));
             g2.drawOval((int) Math.round(e.x - hazeR), (int) Math.round(e.y - hazeR), hazeR * 2, hazeR * 2);
         }
     }

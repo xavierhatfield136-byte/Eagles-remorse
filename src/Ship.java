@@ -1130,11 +1130,12 @@ public abstract class Ship {
         wreckVx = vx;
         wreckVy = vy;
 
-        // Burn for a short random time before detonation.
-        burnDuration = 1.2 + randomUnit() * 1.1;
+        // Burn duration is role-scaled so small craft split quickly while heavy hulls
+        // spend more time in the breach / breakup phase before the final blast.
+        burnDuration = destructionBurnDurationForRole(role);
 
         // Random tumble while drifting out of control.
-        wreckSpin = (randomUnit() - 0.5) * 2.4;
+        wreckSpin = destructionSpinForRole(role);
 
         WreckChunk.spawnForShip(this, burnDuration);
 
@@ -1155,6 +1156,40 @@ public abstract class Ship {
         vy = 0.0;
         wreckVx = 0.0;
         wreckVy = 0.0;
+    }
+
+    private double destructionBurnDurationForRole(ShipRole shipRole) {
+        double r = randomUnit();
+        if (shipRole == null) return 1.5 + r * 0.8;
+        return switch (shipRole) {
+            case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
+                    PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.45 + r * 0.35;
+            case CARRIER, DRONE_CARRIER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, STEALTH_SHIP -> 1.85 + r * 1.10;
+            case BASE -> 2.25 + r * 1.35;
+            default -> 1.05 + r * 0.65;
+        };
+    }
+
+    private double destructionSpinForRole(ShipRole shipRole) {
+        boolean multipart = ShipPartLibrary.hasParts(shipRole, faction);
+        if (multipart) {
+            double base = switch (shipRole) {
+                case MISSILE_BOAT, FIGHTER, BOMBER, DRONE, PATROL, PICKET, CIWS_CORVETTE,
+                        PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.55;
+                case BATTLECRUISER -> 0.28;
+                case SUPERSHIP, CARRIER, DRONE_CARRIER, BATTLESHIP, DREADNOUGHT, STEALTH_SHIP, BASE -> 0.16;
+                default -> 0.24;
+            };
+            return (randomUnit() - 0.5) * base;
+        }
+        double base = switch (shipRole) {
+            case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
+                    PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 3.1;
+            case CARRIER, DRONE_CARRIER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, STEALTH_SHIP -> 1.5;
+            case BASE -> 0.8;
+            default -> 2.2;
+        };
+        return (randomUnit() - 0.5) * base;
     }
 
     /**

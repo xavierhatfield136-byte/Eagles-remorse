@@ -16,7 +16,8 @@ public class Explosion {
         SHIELD_HIT,
         DEATH,
         DESTABILIZER_PULSE,
-        SUPERWEAPON_BLAST
+        SUPERWEAPON_BLAST,
+        FINAL_DETONATION
     }
 
     public final double x, y;
@@ -75,6 +76,10 @@ public class Explosion {
 
     public static void spawnSuperweaponBlast(double x, double y, int sourceShipId, Faction sourceFaction) {
         addCapped(new Explosion(x, y, 0.92, Kind.SUPERWEAPON_BLAST, sourceShipId, sourceFaction));
+    }
+
+    public static void spawnFinalDetonation(double x, double y, double effectRadius) {
+        addCapped(new Explosion(x, y, 0.72, Kind.FINAL_DETONATION, -1, null, effectRadius));
     }
 
     private static void addCapped(Explosion e) {
@@ -160,6 +165,44 @@ public class Explosion {
         return 240.0 + Math.max(0.0, age - 0.08) * 572.0;
     }
 
+    public double finalDetonationPlasmaRadius() {
+        if (kind != Kind.FINAL_DETONATION) return 0.0;
+        double age = ageFrac();
+        return Math.max(36.0, effectRadius * (0.30 + age * 0.92));
+    }
+
+    public double finalDetonationCoreRadius() {
+        if (kind != Kind.FINAL_DETONATION) return 0.0;
+        double age = ageFrac();
+        return Math.max(14.0, effectRadius * (0.10 + Math.min(1.0, age * 1.6) * 0.24));
+    }
+
+    public double finalDetonationRingRadius(int ringIndex) {
+        if (kind != Kind.FINAL_DETONATION) return 0.0;
+        double age = ageFrac();
+        return switch (ringIndex) {
+            case 0 -> Math.max(44.0, effectRadius * (0.38 + age * 1.08));
+            case 1 -> Math.max(60.0, effectRadius * (0.52 + Math.max(0.0, age - 0.05) * 1.12));
+            default -> Math.max(80.0, effectRadius * (0.68 + Math.max(0.0, age - 0.10) * 1.08));
+        };
+    }
+
+    public double finalDetonationRingStrokeWidth(int ringIndex) {
+        if (kind != Kind.FINAL_DETONATION) return 0.0;
+        double base = Math.max(2.4, effectRadius * 0.016);
+        return switch (ringIndex) {
+            case 0 -> base * 1.55;
+            case 1 -> base * 1.15;
+            default -> base * 0.82;
+        };
+    }
+
+    public double finalDetonationHazeRadius() {
+        if (kind != Kind.FINAL_DETONATION) return 0.0;
+        double age = ageFrac();
+        return Math.max(90.0, effectRadius * (0.90 + Math.max(0.0, age - 0.06) * 1.18));
+    }
+
     public double destabilizerWaveRadius() {
         if (kind != Kind.DESTABILIZER_PULSE) return 0.0;
         double age = ageFrac();
@@ -192,6 +235,7 @@ public class Explosion {
             case SHIELD_HIT -> 24.0;
             case DESTABILIZER_PULSE -> Math.max(220.0, effectRadius * 1.35);
             case SUPERWEAPON_BLAST -> 840.0;
+            case FINAL_DETONATION -> Math.max(120.0, effectRadius * 2.1);
             default -> 72.0;
         };
     }
