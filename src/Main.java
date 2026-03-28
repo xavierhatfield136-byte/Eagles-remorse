@@ -278,11 +278,13 @@ class MainMenuPanel extends JPanel {
 
         JLabel title = new JLabel(AppInfo.APP_NAME.toUpperCase());
         title.setForeground(Color.WHITE);
-        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 48, uiScale));
+        title.setFont(MenuDisplay.font("Consolas", Font.BOLD, 54, uiScale));
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JLabel subtitle = new JLabel("Bridge command. Fleet pressure. Tactical survival.");
         subtitle.setForeground(new Color(196, 220, 242, 210));
         subtitle.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 16, uiScale));
+        subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         GameMode[] missionModes = new GameMode[]{
                 GameMode.LAST_STAND,
@@ -307,31 +309,33 @@ class MainMenuPanel extends JPanel {
         scaleCombo(teamBox, uiScale);
 
         JCheckBox events = new JCheckBox("Enable Random Events");
-        events.setOpaque(false);
-        events.setForeground(Color.WHITE);
-        events.setSelected(true);
+        styleCheckBox(events, uiScale);
 
         JTextField seedField = new JTextField("0", 12);
         styleField(seedField);
         scaleField(seedField, uiScale);
 
-        JButton start = new JButton("Launch Mission");
-        JButton credits = new JButton("Credits");
-        JButton quit = new JButton("Quit");
-        styleButton(start, new Color(70, 122, 170));
-        styleButton(credits, new Color(58, 72, 95));
-        styleButton(quit, new Color(82, 54, 62));
-        scaleButton(start, uiScale);
-        scaleButton(credits, uiScale);
-        scaleButton(quit, uiScale);
-        continueCampaignButton = createMenuButton("Continue Campaign", new Color(96, 132, 84), uiScale);
-        JButton campaignOps = createMenuButton("Campaign Ops", new Color(70, 122, 170), uiScale);
-        JButton tutorialStart = createMenuButton("Start Command School", new Color(70, 122, 170), uiScale);
+        JButton start = createMenuButton("Launch Mission", new Color(60, 123, 189), uiScale);
+        JButton credits = createMenuButton("Credits", new Color(65, 77, 102), uiScale);
+        JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
+        continueCampaignButton = createMenuButton("Continue Campaign", new Color(87, 134, 91), uiScale);
+        JButton campaignOps = createMenuButton("Campaign Ops", new Color(46, 97, 155), uiScale);
+        JButton tutorialStart = createMenuButton("Start Command School", new Color(76, 132, 196), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
-        versionLabel.setForeground(new Color(180, 180, 180));
+        versionLabel.setForeground(new Color(188, 201, 216));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
-        continueCampaignLabel = sectionBody("", uiScale);
-        continueCampaignLabel.setForeground(new Color(188, 214, 184, 220));
+        continueCampaignLabel = bodyLabel("", uiScale);
+        continueCampaignLabel.setForeground(new Color(196, 219, 192, 220));
+
+        JLabel fullscreenHint = metaLabel("Alt+Enter toggles fullscreen during battle", uiScale);
+        JLabel singlePlayerLead = bodyLabel(
+                "<html><div style='width:300px;'>"
+                        + "Jump straight into command school, resume your latest checkpoint, or spin up Campaign Ops."
+                        + "</div></html>", uiScale);
+        JLabel missionLead = bodyLabel(
+                "<html><div style='width:340px;'>"
+                        + "Set the encounter type, map scale, player team, and seed from one clean launch console."
+                        + "</div></html>", uiScale);
 
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
         GameMode persistedMode = MenuSettingsStore.resolveMode(persisted.modeName);
@@ -415,34 +419,21 @@ class MainMenuPanel extends JPanel {
         });
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
 
-        JPanel rootContent = createMenuContent(uiScale);
-        rootContent.add(title);
-        rootContent.add(subtitle);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(16, uiScale)));
-        rootContent.add(sectionTitle("Single Player", uiScale));
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(sectionBody(
-                "<html><div style='text-align:center;'>"
-                        + "Everything is back on one screen: tutorial, campaign resume,<br>"
-                        + "campaign start, and custom mission setup."
-                        + "</div></html>", uiScale));
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
-        rootContent.add(tutorialStart);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(continueCampaignButton);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        rootContent.add(continueCampaignLabel);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        rootContent.add(campaignOps);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
-        rootContent.add(sectionTitle("Mission Setup", uiScale));
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
-        rootContent.add(sectionBody(
-                "<html><div style='text-align:center;'>"
-                        + "Launch Last Stand, Resource Rush, Four Team Domination,<br>"
-                        + "Shooting Range, or Showcase without another submenu."
-                        + "</div></html>", uiScale));
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        JPanel headerPanel = transparentPanel();
+        headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
+        headerPanel.add(eyebrowLabel("Fleet Command Interface", uiScale, new Color(129, 184, 237)));
+        headerPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        headerPanel.add(title);
+        headerPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(6, uiScale)));
+        headerPanel.add(subtitle);
+        headerPanel.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+
+        JPanel headerBadges = new FlowPanel(FlowLayout.LEFT, MenuDisplay.scaled(10, uiScale), 0);
+        headerBadges.add(createBadge("Version " + AppInfo.VERSION, new Color(21, 41, 66, 220),
+                new Color(101, 151, 211, 160), uiScale));
+        headerBadges.add(createBadge("Single-Screen Command Deck", new Color(19, 34, 54, 210),
+                new Color(80, 118, 170, 150), uiScale));
+        headerPanel.add(headerBadges);
 
         JPanel missionForm = new JPanel(new GridBagLayout());
         missionForm.setOpaque(false);
@@ -455,53 +446,116 @@ class MainMenuPanel extends JPanel {
         c.gridx = 0;
         c.gridy = 0;
         c.anchor = GridBagConstraints.LINE_END;
-        missionForm.add(label("Mode:"), c);
+        c.weightx = 0;
+        missionForm.add(label("Mode:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
         missionForm.add(modeBox, c);
 
         c.gridy++;
         c.gridx = 0;
         c.anchor = GridBagConstraints.LINE_END;
-        missionForm.add(label("Map Size:"), c);
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        missionForm.add(label("Map Size:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
         missionForm.add(mapBox, c);
 
         c.gridy++;
         c.gridx = 0;
         c.anchor = GridBagConstraints.LINE_END;
-        missionForm.add(label("Player Team:"), c);
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        missionForm.add(label("Player Team:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
         missionForm.add(teamBox, c);
 
         c.gridy++;
         c.gridx = 0;
         c.anchor = GridBagConstraints.LINE_END;
-        missionForm.add(label("Seed:"), c);
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
+        missionForm.add(label("Seed:", uiScale), c);
         c.gridx = 1;
         c.anchor = GridBagConstraints.LINE_START;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
         missionForm.add(seedField, c);
 
         c.gridy++;
         c.gridx = 0;
         c.gridwidth = 2;
         c.anchor = GridBagConstraints.CENTER;
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
         missionForm.add(events, c);
 
-        c.gridy++;
-        c.gridwidth = 1;
-        c.gridx = 0;
-        missionForm.add(start, c);
-        c.gridx = 1;
-        missionForm.add(credits, c);
+        JPanel missionFormShell = createSectionPanel(new Color(52, 88, 128, 118), uiScale);
+        missionFormShell.add(missionForm);
 
-        rootContent.add(missionForm);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
-        rootContent.add(quit);
-        rootContent.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
-        rootContent.add(versionLabel);
+        JPanel singlePlayerCard = createSectionPanel(new Color(70, 122, 182, 115), uiScale);
+        singlePlayerCard.add(eyebrowLabel("Single Player", uiScale, new Color(129, 184, 237)));
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(6, uiScale)));
+        singlePlayerCard.add(sectionTitle("Command Your Sector", uiScale));
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerCard.add(singlePlayerLead);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        singlePlayerCard.add(tutorialStart);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerCard.add(continueCampaignButton);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        JPanel checkpointPanel = createInsetPanel(new Color(38, 70, 56, 120), new Color(94, 136, 101, 100), uiScale);
+        checkpointPanel.add(continueCampaignLabel);
+        singlePlayerCard.add(checkpointPanel);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+        singlePlayerCard.add(campaignOps);
+
+        JPanel missionCard = createSectionPanel(new Color(136, 92, 60, 118), uiScale);
+        missionCard.add(eyebrowLabel("Mission Setup", uiScale, new Color(233, 173, 126)));
+        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(6, uiScale)));
+        missionCard.add(sectionTitle("Build A Custom Engagement", uiScale));
+        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        missionCard.add(missionLead);
+        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        missionCard.add(missionFormShell);
+        missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+
+        JPanel missionActions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(12, uiScale), 0));
+        missionActions.setOpaque(false);
+        missionActions.setAlignmentX(Component.LEFT_ALIGNMENT);
+        missionActions.add(start);
+        missionActions.add(credits);
+        missionCard.add(missionActions);
+
+        JPanel mainColumns = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(18, uiScale), 0));
+        mainColumns.setOpaque(false);
+        mainColumns.add(singlePlayerCard);
+        mainColumns.add(missionCard);
+
+        JPanel footerPanel = transparentPanel();
+        footerPanel.setLayout(new BorderLayout(MenuDisplay.scaled(12, uiScale), 0));
+        footerPanel.add(quit, BorderLayout.WEST);
+        JPanel footerInfo = transparentPanel();
+        footerInfo.setLayout(new BoxLayout(footerInfo, BoxLayout.Y_AXIS));
+        versionLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        fullscreenHint.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        footerInfo.add(versionLabel);
+        footerInfo.add(Box.createVerticalStrut(MenuDisplay.scaled(4, uiScale)));
+        footerInfo.add(fullscreenHint);
+        footerPanel.add(footerInfo, BorderLayout.EAST);
+
+        JPanel rootContent = createMenuContent(uiScale);
+        rootContent.add(headerPanel, BorderLayout.NORTH);
+        rootContent.add(mainColumns, BorderLayout.CENTER);
+        rootContent.add(footerPanel, BorderLayout.SOUTH);
 
         setLayout(new GridBagLayout());
         add(wrapMenuCard(rootContent, uiScale));
@@ -538,48 +592,61 @@ class MainMenuPanel extends JPanel {
         g2.dispose();
     }
 
-    private JLabel label(String text) {
+    private JLabel label(String text, double scale) {
         JLabel l = new JLabel(text);
         l.setForeground(new Color(255, 255, 255, 210));
-        l.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 18, MenuDisplay.scaleFor(getPreferredSize())));
+        l.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 17, scale));
         return l;
     }
 
     private static void styleCombo(JComboBox<?> combo) {
-        combo.setBackground(new Color(20, 28, 43));
+        combo.setOpaque(true);
+        combo.setFocusable(false);
+        combo.setBackground(new Color(17, 27, 41));
         combo.setForeground(new Color(236, 242, 248));
+        combo.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(88, 124, 159)),
+                BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+        combo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                label.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                label.setBackground(isSelected ? new Color(53, 98, 150) : new Color(17, 27, 41));
+                label.setForeground(new Color(236, 242, 248));
+                return label;
+            }
+        });
     }
 
     private static void styleField(JTextField field) {
-        field.setBackground(new Color(20, 28, 43));
+        field.setBackground(new Color(17, 27, 41));
         field.setForeground(new Color(236, 242, 248));
         field.setCaretColor(Color.WHITE);
         field.setSelectionColor(new Color(90, 150, 205));
     }
 
-    private static void styleButton(JButton button, Color fill) {
-        button.setBackground(fill);
-        button.setForeground(Color.WHITE);
-        button.setFocusPainted(false);
+    private static void styleCheckBox(JCheckBox checkBox, double scale) {
+        checkBox.setOpaque(false);
+        checkBox.setForeground(new Color(223, 232, 243));
+        checkBox.setFont(MenuDisplay.font("Consolas", Font.BOLD, 14, scale));
+        checkBox.setFocusPainted(false);
+        checkBox.setSelected(true);
     }
 
     private static JButton createMenuButton(String text, Color fill, double scale) {
-        JButton button = new JButton(text);
-        styleButton(button, fill);
-        scaleButton(button, scale);
-        button.setAlignmentX(Component.CENTER_ALIGNMENT);
-        return button;
+        return new MenuButton(text, fill, scale);
     }
 
     private static JPanel createMenuContent(double scale) {
-        JPanel panel = new JPanel();
+        JPanel panel = new JPanel(new BorderLayout(0, MenuDisplay.scaled(22, scale)));
         panel.setOpaque(false);
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(6, scale),
-                MenuDisplay.scaled(6, scale),
-                MenuDisplay.scaled(6, scale),
-                MenuDisplay.scaled(6, scale)));
+                0,
+                0,
+                0,
+                0));
         return panel;
     }
 
@@ -591,22 +658,31 @@ class MainMenuPanel extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 int w = getWidth();
                 int h = getHeight();
-                g2.setColor(new Color(7, 16, 28, 190));
+                g2.setPaint(new GradientPaint(0, 0, new Color(8, 18, 32, 226), 0, h,
+                        new Color(5, 12, 24, 214)));
                 g2.fillRoundRect(0, 0, w, h, 30, 30);
-                g2.setColor(new Color(130, 190, 235, 70));
+                g2.setPaint(new GradientPaint(0, 0, new Color(76, 136, 204, 78), w, h,
+                        new Color(230, 129, 86, 42)));
                 g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
-                g2.setColor(new Color(255, 255, 255, 18));
+                g2.setColor(new Color(255, 255, 255, 24));
                 g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
+                g2.setPaint(new GradientPaint((float) (w * 0.08), (float) (h * 0.06), new Color(88, 164, 226, 58),
+                        (float) (w * 0.42), (float) (h * 0.26), new Color(88, 164, 226, 0)));
+                g2.fillRoundRect(MenuDisplay.scaled(24, scale), MenuDisplay.scaled(22, scale),
+                        (int) Math.round(w * 0.36), MenuDisplay.scaled(110, scale), 28, 28);
+                g2.setColor(new Color(255, 255, 255, 18));
+                int separatorY = MenuDisplay.scaled(136, scale);
+                g2.drawLine(MenuDisplay.scaled(34, scale), separatorY, w - MenuDisplay.scaled(34, scale), separatorY);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         card.setOpaque(false);
         card.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(28, scale),
                 MenuDisplay.scaled(34, scale),
-                MenuDisplay.scaled(26, scale),
-                MenuDisplay.scaled(34, scale)));
+                MenuDisplay.scaled(38, scale),
+                MenuDisplay.scaled(28, scale),
+                MenuDisplay.scaled(38, scale)));
         card.add(content);
         return card;
     }
@@ -614,16 +690,16 @@ class MainMenuPanel extends JPanel {
     private static JLabel sectionTitle(String text, double scale) {
         JLabel label = new JLabel(text);
         label.setForeground(Color.WHITE);
-        label.setFont(MenuDisplay.font("Consolas", Font.BOLD, 32, scale));
-        label.setAlignmentX(Component.CENTER_ALIGNMENT);
+        label.setFont(MenuDisplay.font("Consolas", Font.BOLD, 26, scale));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }
 
-    private static JLabel sectionBody(String html, double scale) {
+    private static JLabel bodyLabel(String html, double scale) {
         JLabel label = new JLabel(html);
         label.setForeground(new Color(214, 228, 242, 210));
         label.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
-        label.setAlignmentX(Component.CENTER_ALIGNMENT);
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }
 
@@ -640,38 +716,27 @@ class MainMenuPanel extends JPanel {
         boolean hasCheckpoint = cp != null;
         continueCampaignButton.setEnabled(hasCheckpoint);
         continueCampaignLabel.setText(hasCheckpoint
-                ? "<html><div style='text-align:center;'>" + cp.menuSummary() + "</div></html>"
-                : "<html><div style='text-align:center;'>No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.</div></html>");
+                ? "<html><div style='width:300px;'>" + cp.menuSummary() + "</div></html>"
+                : "<html><div style='width:300px;'>No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.</div></html>");
     }
 
     private static void scaleCombo(JComboBox<?> combo, double scale) {
         combo.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
+        combo.setPreferredSize(new Dimension(MenuDisplay.scaled(240, scale), MenuDisplay.scaled(34, scale)));
     }
 
     private static void scaleField(JTextField field, double scale) {
         field.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 15, scale));
         field.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(116, 154, 190)),
+                BorderFactory.createLineBorder(new Color(88, 124, 159)),
                 BorderFactory.createEmptyBorder(
                         MenuDisplay.scaled(5, scale),
                         MenuDisplay.scaled(8, scale),
                         MenuDisplay.scaled(5, scale),
                         MenuDisplay.scaled(8, scale))
         ));
+        field.setPreferredSize(new Dimension(MenuDisplay.scaled(240, scale), MenuDisplay.scaled(34, scale)));
         field.setColumns(Math.max(8, MenuDisplay.scaled(12, scale)));
-    }
-
-    private static void scaleButton(JButton button, double scale) {
-        Color fill = button.getBackground();
-        button.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(fill.brighter()),
-                BorderFactory.createEmptyBorder(
-                        MenuDisplay.scaled(7, scale),
-                        MenuDisplay.scaled(16, scale),
-                        MenuDisplay.scaled(7, scale),
-                        MenuDisplay.scaled(16, scale))
-        ));
-        button.setFont(MenuDisplay.font("Consolas", Font.BOLD, 16, scale));
     }
 
     private static void drawMenuAtmosphere(Graphics2D g2, int w, int h, double t) {
@@ -705,7 +770,101 @@ class MainMenuPanel extends JPanel {
         g2.fillRect(0, 0, w / 3, h);
         g2.setPaint(new GradientPaint(w, 0, new Color(18, 6, 7, 138), w * 0.72f, 0, new Color(18, 6, 7, 0)));
         g2.fillRect((int) Math.round(w * 0.67), 0, (int) Math.round(w * 0.33), h);
+        g2.setPaint(new GradientPaint((float) (w * 0.12), (float) (h * 0.10), new Color(76, 134, 204, 42),
+                (float) (w * 0.52), (float) (h * 0.26), new Color(76, 134, 204, 0)));
+        g2.fillRoundRect((int) Math.round(w * 0.10), (int) Math.round(h * 0.08),
+                (int) Math.round(w * 0.44), (int) Math.round(h * 0.23), 46, 46);
         g2.setPaint(oldPaint);
+    }
+
+    private static JPanel transparentPanel() {
+        JPanel panel = new JPanel();
+        panel.setOpaque(false);
+        return panel;
+    }
+
+    private static JLabel eyebrowLabel(String text, double scale, Color color) {
+        JLabel label = new JLabel(text.toUpperCase());
+        label.setForeground(color);
+        label.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, scale));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private static JLabel metaLabel(String text, double scale) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(167, 181, 198, 210));
+        label.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 13, scale));
+        return label;
+    }
+
+    private static JLabel createBadge(String text, Color fill, Color border, double scale) {
+        JLabel badge = new JLabel(text);
+        badge.setOpaque(true);
+        badge.setBackground(fill);
+        badge.setForeground(new Color(233, 240, 247));
+        badge.setFont(MenuDisplay.font("Consolas", Font.BOLD, 12, scale));
+        badge.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(border),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(6, scale),
+                        MenuDisplay.scaled(10, scale),
+                        MenuDisplay.scaled(6, scale),
+                        MenuDisplay.scaled(10, scale))));
+        return badge;
+    }
+
+    private static JPanel createSectionPanel(Color accent, double scale) {
+        JPanel panel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth();
+                int h = getHeight();
+                g2.setColor(new Color(8, 18, 31, 196));
+                g2.fillRoundRect(0, 0, w, h, 24, 24);
+                g2.setColor(accent);
+                g2.fillRoundRect(0, 0, MenuDisplay.scaled(6, scale), h, 24, 24);
+                g2.setColor(new Color(255, 255, 255, 20));
+                g2.drawRoundRect(0, 0, w - 1, h - 1, 24, 24);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(20, scale),
+                MenuDisplay.scaled(22, scale),
+                MenuDisplay.scaled(20, scale),
+                MenuDisplay.scaled(22, scale)));
+        return panel;
+    }
+
+    private static JPanel createInsetPanel(Color fill, Color border, double scale) {
+        JPanel panel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(fill);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                g2.setColor(border);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        panel.setOpaque(false);
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(12, scale),
+                MenuDisplay.scaled(14, scale),
+                MenuDisplay.scaled(12, scale),
+                MenuDisplay.scaled(14, scale)));
+        return panel;
     }
 
     private static void syncTeamOptionsForMode(GameMode mode, JComboBox<PlayerTeamChoice> teamBox, int preferredTeamId) {
@@ -743,5 +902,79 @@ class MainMenuPanel extends JPanel {
             };
             default -> new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
         };
+    }
+
+    private static final class FlowPanel extends JPanel {
+        FlowPanel(int align, int hgap, int vgap) {
+            super(new FlowLayout(align, hgap, vgap));
+            setOpaque(false);
+        }
+    }
+
+    private static final class MenuButton extends JButton {
+        private final Color baseFill;
+
+        MenuButton(String text, Color fill, double scale) {
+            super(text);
+            this.baseFill = fill;
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setForeground(Color.WHITE);
+            setFont(MenuDisplay.font("Consolas", Font.BOLD, 16, scale));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setAlignmentX(Component.LEFT_ALIGNMENT);
+            setBorder(BorderFactory.createEmptyBorder(
+                    MenuDisplay.scaled(11, scale),
+                    MenuDisplay.scaled(18, scale),
+                    MenuDisplay.scaled(11, scale),
+                    MenuDisplay.scaled(18, scale)));
+            setMargin(new Insets(0, 0, 0, 0));
+            setRolloverEnabled(true);
+        }
+
+        @Override
+        public Dimension getMaximumSize() {
+            Dimension preferred = getPreferredSize();
+            return new Dimension(Integer.MAX_VALUE, preferred.height);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            ButtonModel model = getModel();
+            Color fill = !isEnabled()
+                    ? blend(baseFill, new Color(30, 38, 47), 0.55)
+                    : model.isPressed()
+                    ? blend(baseFill, Color.BLACK, 0.24)
+                    : model.isRollover()
+                    ? blend(baseFill, Color.WHITE, 0.14)
+                    : baseFill;
+
+            g2.setColor(fill);
+            g2.fillRoundRect(0, 0, w, h, 18, 18);
+            g2.setPaint(new GradientPaint(0, 0, new Color(255, 255, 255, 48), 0, h / 2f, new Color(255, 255, 255, 0)));
+            g2.fillRoundRect(0, 0, w, Math.max(1, h / 2), 18, 18);
+            g2.setColor(new Color(255, 255, 255, isEnabled() ? 70 : 24));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, 18, 18);
+            g2.dispose();
+
+            super.paintComponent(g);
+        }
+    }
+
+    private static Color blend(Color base, Color mix, double mixAmount) {
+        double clamped = Math.max(0.0, Math.min(1.0, mixAmount));
+        double keep = 1.0 - clamped;
+        int red = (int) Math.round(base.getRed() * keep + mix.getRed() * clamped);
+        int green = (int) Math.round(base.getGreen() * keep + mix.getGreen() * clamped);
+        int blue = (int) Math.round(base.getBlue() * keep + mix.getBlue() * clamped);
+        int alpha = (int) Math.round(base.getAlpha() * keep + mix.getAlpha() * clamped);
+        return new Color(red, green, blue, alpha);
     }
 }

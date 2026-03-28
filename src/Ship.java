@@ -91,6 +91,8 @@ public abstract class Ship {
     private boolean deathExploded = false;
     /** Fire particle spawn timer. */
     private double fireSpawnTimer = 0.0;
+    /** Tracks which pre-detonation failure cue has already fired. */
+    private int deathCriticalCueStage = 0;
 
     // Economy
     public int bountyValue = 0;
@@ -444,7 +446,7 @@ public abstract class Ship {
             java.util.EnumSet.noneOf(InternalSystem.class);
     private boolean roomSystemsInitialized = false;
     private static final int MAX_ROOM_DAMAGE_EVENTS = 64;
-    private static final double ROOM_CONDEMNED_THRESHOLD = 0.30;
+    private static final double BASE_ROOM_CONDEMNED_THRESHOLD = 0.30;
     private final List<RoomDamageEvent> roomDamageEvents = new ArrayList<>();
     private final List<RoomDamageEvent> roomDamageEventsView = Collections.unmodifiableList(roomDamageEvents);
     private RoomDamageResult lastRoomDamageResult = RoomDamageResult.NONE;
@@ -505,7 +507,7 @@ public abstract class Ship {
     private final List<ShieldImpactMark> shieldImpactMarks = new ArrayList<>();
     private final List<ShieldImpactMark> shieldImpactMarksView = Collections.unmodifiableList(shieldImpactMarks);
     private static final double CATASTROPHIC_CHAIN_GRACE_SECONDS = 4.0;
-    private static final double CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC = 0.22;
+    private static final double BASE_CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC = 0.22;
     private double catastrophicChainGraceTimer = 0.0;
     private double noDamageTimerSeconds = 0.0;
     private boolean instantRepairConsumed = false;
@@ -679,15 +681,19 @@ public abstract class Ship {
             // Slow tumble
             angle += wreckSpin * dt;
 
-            // Spawn intermittent fire + smoke while spiraling out.
+            // Escalating pre-detonation failures: venting bursts, hull flashes, then breakup.
             dyingTimer += dt;
             fireSpawnTimer += dt;
-            if (fireSpawnTimer >= 0.06) {
+            double deathProgress = (burnDuration <= 1e-6) ? 1.0 : MathUtil.clamp(dyingTimer / burnDuration, 0.0, 1.0);
+            double ventInterval = Math.max(0.08, 0.22 - deathProgress * 0.12);
+            if (fireSpawnTimer >= ventInterval) {
                 fireSpawnTimer = 0.0;
-                double jx = (randomUnit() - 0.5) * radius * 0.9;
-                double jy = (randomUnit() - 0.5) * radius * 0.9;
-                double intensity = 0.6 + randomUnit() * 0.8;
-                VFX.spawnShipFire(x + jx, y + jy, intensity);
+                emitDeathVentingFx(false, deathProgress, deathCriticalCueStage);
+            }
+
+            while (deathCriticalCueStage < 3 && deathProgress >= deathCueThreshold(deathCriticalCueStage)) {
+                triggerDeathCriticalCue(deathCriticalCueStage, deathProgress);
+                deathCriticalCueStage++;
             }
 
             if (!deathExploded && dyingTimer >= burnDuration) {
@@ -960,6 +966,7 @@ public abstract class Ship {
         wreckSpin = 0.0;
         deathExploded = false;
         fireSpawnTimer = 0.0;
+        deathCriticalCueStage = 0;
         hp = Math.max(1, hpMax);
         temporaryDisableTimer = 0.0;
         destabilizedTimer = 0.0;
@@ -1125,6 +1132,7 @@ public abstract class Ship {
         dyingTimer = 0.0;
         fireSpawnTimer = 0.0;
         deathExploded = false;
+        deathCriticalCueStage = 0;
 
         // Preserve final motion for drift.
         wreckVx = vx;
@@ -1190,6 +1198,90 @@ public abstract class Ship {
             default -> 2.2;
         };
         return (randomUnit() - 0.5) * base;
+    }
+
+    private double deathCueThreshold(int stage) {
+        return switch (stage) {
+            case 0 -> 0.26;
+            case 1 -> 0.56;
+            default -> 0.82;
+        };
+    }
+
+    private void triggerDeathCriticalCue(int stage, double deathProgress) {
+        emitDeathVentingFx(true, deathProgress, stage);
+        double shake = switch (stage) {
+            case 0 -> 1.6;
+            case 1 -> 2.6;
+            default -> 3.8;
+        };
+        ScreenShake.kick(shake);
+        wreckSpin += (randomUnit() - 0.5) * (0.03 + stage * 0.015);
+
+        double[] cue = deathCuePoint(stage, deathProgress);
+        double lx = cue[0];
+        double ly = cue[1];
+        double outwardLocalX = cue[2];
+        double outwardLocalY = cue[3];
+        double cos = Math.cos(angle);
+        double sin = Math.sin(angle);
+        double dirX = outwardLocalX * cos - outwardLocalY * sin;
+        double dirY = outwardLocalX * sin + outwardLocalY * cos;
+        double impulse = (0.05 + stage * 0.025) * GameContext.DT;
+        wreckVx -= dirX * impulse;
+        wreckVy -= dirY * impulse;
+        if (stage >= 2) {
+            VFX.spawnHullImpact(x, y, dirX, dirY, 4 + stage, VFX.ImpactStyle.EXPLOSIVE);
+        }
+    }
+
+    private void emitDeathVentingFx(boolean major, double deathProgress, int stageBias) {
+        int bursts = major ? 2 + Math.max(0, stageBias) : 1;
+        for (int i = 0; i < bursts; i++) {
+            double[] cue = deathCuePoint(i + stageBias * 3, deathProgress);
+            double lx = cue[0];
+            double ly = cue[1];
+            double outwardLocalX = cue[2];
+            double outwardLocalY = cue[3];
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double wx = x + lx * cos - ly * sin;
+            double wy = y + lx * sin + ly * cos;
+            double dirX = outwardLocalX * cos - outwardLocalY * sin;
+            double dirY = outwardLocalX * sin + outwardLocalY * cos;
+            int strength = major ? (3 + Math.max(0, stageBias)) : Math.max(1, 1 + (int) Math.round(deathProgress * 2.0));
+            VFX.spawnHullImpact(wx, wy, dirX, dirY, strength, VFX.ImpactStyle.EXPLOSIVE);
+            VFX.spawnImpactSparks(wx, wy, dirX, dirY, strength + (major ? 1 : 0));
+        }
+    }
+
+    private double[] deathCuePoint(int cueIndex, double deathProgress) {
+        int count = hullImpactMarks.size();
+        if (count > 0) {
+            int start = Math.max(0, count - 10);
+            int idx = start + Math.floorMod(cueIndex, Math.max(1, count - start));
+            HullImpactMark mark = hullImpactMarks.get(idx);
+            if (mark != null) {
+                double spread = Math.max(2.0, Math.min(radius * 0.16, 2.0 + mark.breachRadius * (0.16 + deathProgress * 0.20)));
+                double lx = mark.localX + (randomUnit() - 0.5) * spread;
+                double ly = mark.localY + (randomUnit() - 0.5) * spread;
+                double len = Math.hypot(lx, ly);
+                if (len > 1e-6) {
+                    return new double[]{lx, ly, lx / len, ly / len};
+                }
+                return new double[]{lx, ly, Math.cos(angle), Math.sin(angle)};
+            }
+        }
+
+        double theta = randomUnit() * Math.PI * 2.0;
+        double radial = radius * (0.24 + deathProgress * 0.28 + randomUnit() * 0.16);
+        double lx = Math.cos(theta) * radial;
+        double ly = Math.sin(theta) * radial * 0.78;
+        double len = Math.hypot(lx, ly);
+        if (len <= 1e-6) {
+            return new double[]{0.0, 0.0, Math.cos(angle), Math.sin(angle)};
+        }
+        return new double[]{lx, ly, lx / len, ly / len};
     }
 
     /**
@@ -2452,6 +2544,39 @@ public abstract class Ship {
         return Math.max(0.0, Math.min(1.0, total / maxTotal));
     }
 
+    private double roomIntegrityDamageBudgetMultiplier() {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case SUPERSHIP -> 0.72;
+            case DREADNOUGHT -> 0.78;
+            case BATTLESHIP, CARRIER, DRONE_CARRIER -> 0.84;
+            case BATTLECRUISER -> 0.90;
+            default -> 1.0;
+        };
+    }
+
+    private double roomCondemnedThreshold() {
+        if (role == null) return BASE_ROOM_CONDEMNED_THRESHOLD;
+        return switch (role) {
+            case SUPERSHIP -> 0.20;
+            case DREADNOUGHT -> 0.22;
+            case BATTLESHIP, CARRIER, DRONE_CARRIER -> 0.24;
+            case BATTLECRUISER -> 0.27;
+            default -> BASE_ROOM_CONDEMNED_THRESHOLD;
+        };
+    }
+
+    private double catastrophicChainDamageCapFraction() {
+        if (role == null) return BASE_CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC;
+        return switch (role) {
+            case SUPERSHIP -> 0.12;
+            case DREADNOUGHT -> 0.14;
+            case BATTLESHIP, CARRIER, DRONE_CARRIER -> 0.16;
+            case BATTLECRUISER -> 0.18;
+            default -> BASE_CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC;
+        };
+    }
+
     private void syncHullFromRoomIntegrity() {
         if (hpMax <= 0) return;
         double frac = totalRoomIntegrityFraction();
@@ -2462,7 +2587,7 @@ public abstract class Ship {
 
     private void evaluateCondemnedStateFromRooms() {
         if (!alive || dying) return;
-        if (totalRoomIntegrityFraction() > ROOM_CONDEMNED_THRESHOLD) return;
+        if (totalRoomIntegrityFraction() > roomCondemnedThreshold()) return;
         hp = 0;
         startDeathSequence();
     }
@@ -4258,8 +4383,16 @@ public abstract class Ship {
         HullDamageSplit split = new HullDamageSplit(primaryRoom, primaryBefore);
 
         int rolls = (hullDamage >= 9) ? 2 : 1;
+        double roomDamageBudget = Math.max(1.0, hullDamage * roomIntegrityDamageBudgetMultiplier());
+        double[] weights = new double[rolls];
+        double weightTotal = 0.0;
         for (int i = 0; i < rolls; i++) {
-            double dmg = Math.max(1.0, hullDamage * (0.58 + randomUnit() * 0.82));
+            weights[i] = 0.86 + randomUnit() * 0.28;
+            weightTotal += weights[i];
+        }
+        if (weightTotal <= 1e-6) weightTotal = 1.0;
+        for (int i = 0; i < rolls; i++) {
+            double dmg = Math.max(1.0, roomDamageBudget * (weights[i] / weightTotal));
             ShipRoomLayout.RoomDef room = primaryRoom;
             if (room != null && i > 0 && room.neighbors.length > 0 && randomUnit() < 0.38) {
                 int idx = (int) Math.floor(randomUnit() * room.neighbors.length);
@@ -4369,7 +4502,7 @@ public abstract class Ship {
         if (reactor == null) return false;
 
         double reactorBefore = roomHp.getOrDefault(reactor.id, roomHpMax.getOrDefault(reactor.id, 0.0));
-        double chainBudget = Math.max(2.0, hpMax * CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * (0.65 + 0.35 * severity));
+        double chainBudget = Math.max(2.0, hpMax * catastrophicChainDamageCapFraction() * (0.65 + 0.35 * severity));
         double nx = (impact == null) ? Double.NaN : impact.normalizedX;
         double ny = (impact == null) ? Double.NaN : impact.normalizedY;
         double reactorDamage = Math.max(2.0, Math.min(chainBudget * 0.72, hullDamage * (0.55 + 0.85 * severity)));
@@ -4416,7 +4549,7 @@ public abstract class Ship {
         double magsBefore = roomHp.getOrDefault(mags.id, roomHpMax.getOrDefault(mags.id, 0.0));
         double nx = (impact == null) ? Double.NaN : impact.normalizedX;
         double ny = (impact == null) ? Double.NaN : impact.normalizedY;
-        double chainBudget = Math.max(2.0, hpMax * CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * (0.55 + 0.30 * severity));
+        double chainBudget = Math.max(2.0, hpMax * catastrophicChainDamageCapFraction() * (0.55 + 0.30 * severity));
         double magsDamage = Math.max(2.0, Math.min(chainBudget, hullDamage * (0.52 + 0.90 * severity)));
         damageRoom(mags, magsDamage, nx, ny, false);
 
@@ -4448,7 +4581,7 @@ public abstract class Ship {
         double integrityBefore = roomHp.getOrDefault(integrity.id, roomHpMax.getOrDefault(integrity.id, 0.0));
         double nx = (impact == null) ? Double.NaN : impact.normalizedX;
         double ny = (impact == null) ? Double.NaN : impact.normalizedY;
-        double collapseBudget = Math.max(1.0, hpMax * (CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC * 0.80));
+        double collapseBudget = Math.max(1.0, hpMax * (catastrophicChainDamageCapFraction() * 0.80));
         double dmg = Math.max(1.0, Math.min(collapseBudget, hullDamage * (0.42 + 0.62 * severity)));
         damageRoom(integrity, dmg, nx, ny, false);
         RoomDamageResult base = lastRoomDamageResult;

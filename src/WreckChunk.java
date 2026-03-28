@@ -24,6 +24,12 @@ final class WreckChunk {
     private final BufferedImage image;
     private final boolean breach;
     private final boolean multipart;
+    private final boolean bakedDamageVisuals;
+    private final boolean mirrorX;
+    private final boolean mirrorY;
+    private final double directionalDamageBias;
+    private final double directionalLocalHitX;
+    private final double directionalLocalHitY;
     private final double localX;
     private final double localY;
     private final double localAngle;
@@ -84,13 +90,41 @@ final class WreckChunk {
         }
     }
 
+    private static final class DeathVisualSnapshot {
+        final List<Ship.RoomStatus> roomStatuses;
+        final List<Ship.HullImpactMark> hullImpactMarks;
+        final double impactCenterX;
+        final double impactCenterY;
+        final double impactFocus;
+
+        DeathVisualSnapshot(List<Ship.RoomStatus> roomStatuses, List<Ship.HullImpactMark> hullImpactMarks,
+                            double impactCenterX, double impactCenterY, double impactFocus) {
+            this.roomStatuses = (roomStatuses == null) ? List.of() : List.copyOf(roomStatuses);
+            this.hullImpactMarks = (hullImpactMarks == null) ? List.of() : List.copyOf(hullImpactMarks);
+            this.impactCenterX = impactCenterX;
+            this.impactCenterY = impactCenterY;
+            this.impactFocus = impactFocus;
+        }
+    }
+
+    private final DeathVisualSnapshot deathSnapshot;
+
     private WreckChunk(Ship parent, BufferedImage image, boolean breach, boolean multipart, double localX, double localY,
                        double localAngle, double detachAt, double scale, double baseHalfWidth, double baseHalfHeight,
-                       double burstSpeed, double spin, double life) {
+                       double burstSpeed, double spin, double life, DeathVisualSnapshot deathSnapshot,
+                       boolean bakedDamageVisuals, boolean mirrorX, boolean mirrorY, double directionalDamageBias,
+                       double directionalLocalHitX, double directionalLocalHitY) {
         this.parent = parent;
         this.image = image;
         this.breach = breach;
         this.multipart = multipart;
+        this.deathSnapshot = deathSnapshot;
+        this.bakedDamageVisuals = bakedDamageVisuals;
+        this.mirrorX = mirrorX;
+        this.mirrorY = mirrorY;
+        this.directionalDamageBias = Math.max(0.0, Math.min(1.0, directionalDamageBias));
+        this.directionalLocalHitX = directionalLocalHitX;
+        this.directionalLocalHitY = directionalLocalHitY;
         this.localX = localX;
         this.localY = localY;
         this.localAngle = localAngle;
@@ -107,7 +141,7 @@ final class WreckChunk {
     static void spawnForShip(Ship ship, double burnDuration) {
         if (ship == null || !ship.alive) return;
         if (profileFor(ship) == Profile.SMALL) return;
-        ShipPartLibrary.PartSet partSet = ShipPartLibrary.getSet(ship.role, ship.faction);
+        ShipPartLibrary.PartSet partSet = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.DESTROYED);
         if (partSet.hasParts()) {
             spawnMultipartForShip(ship, burnDuration, partSet);
             return;
@@ -142,7 +176,8 @@ final class WreckChunk {
             double spin = (Ship.randomUnit() - 0.5) * chunkSpinMultiplier(profile);
             double burstSpeed = chunkBurst(profile, radius, t);
             WreckChunk chunk = new WreckChunk(ship, img, false, false, localX, localY, localAngle, detachAt,
-                    scale, baseHalfSize, baseHalfSize, burstSpeed, spin, baseLife);
+                    scale, baseHalfSize, baseHalfSize, burstSpeed, spin, baseLife, null, false,
+                    false, false, 0.0, 0.0, 0.0);
             chunk.syncWithParent();
             chunk.vx = ship.vx;
             chunk.vy = ship.vy;
@@ -162,7 +197,8 @@ final class WreckChunk {
             double spin = (Ship.randomUnit() - 0.5) * breachSpinMultiplier(profile);
             double burstSpeed = breachBurst(profile, radius, t);
             WreckChunk breach = new WreckChunk(ship, img, true, false, localX, localY, localAngle, detachAt,
-                    scale, baseHalfSize, baseHalfSize, burstSpeed, spin, baseLife + 0.6);
+                    scale, baseHalfSize, baseHalfSize, burstSpeed, spin, baseLife + 0.6, null, false,
+                    false, false, 0.0, 0.0, 0.0);
             breach.syncWithParent();
             breach.vx = ship.vx;
             breach.vy = ship.vy;
@@ -179,6 +215,8 @@ final class WreckChunk {
         double radius = Math.max(12.0, ship.radius);
         double canvasSpan = ship.radius * 2.0 * ShipHullSilhouette.skinRenderScale() * visualScaleForRole(ship.role);
         double baseLife = Math.max(minLifeFor(profile), burnDuration + extraLifeFor(profile) + 0.8);
+        boolean usesBakedDamageVisuals = partSet.usesBakedDamageVisuals();
+        DeathVisualSnapshot snapshot = captureDeathVisualSnapshot(ship);
 
         for (int i = 0; i < count; i++) {
             ShipPartLibrary.PartSprite sprite = partSet.parts.get(i);
@@ -186,6 +224,8 @@ final class WreckChunk {
             double t = (count <= 1) ? 0.5 : (double) i / (double) (count - 1);
             double localX = sprite.offsetXNorm * canvasSpan;
             double localY = sprite.offsetYNorm * canvasSpan;
+            boolean mirrorX = false;
+            boolean mirrorY = false;
             double localAngle = 0.0;
             double detachAt = burnDuration * chunkDetachPhase(profile, t);
             double scale = 1.0;
@@ -193,12 +233,23 @@ final class WreckChunk {
             double halfH = Math.max(8.0, canvasSpan * sprite.heightNorm * 0.5);
             double spin = 0.0;
             double burstSpeed = chunkBurst(profile, radius, t);
+            double directionalLocalHitX = (snapshot == null) ? 0.0 : (snapshot.impactCenterX - localX);
+            double directionalLocalHitY = (snapshot == null) ? 0.0 : (snapshot.impactCenterY - localY);
+            double impactDistance = Math.hypot(directionalLocalHitX, directionalLocalHitY);
+            double influenceRadius = Math.max(Math.max(halfW, halfH) * 1.35, ship.radius * 0.34);
+            double directionalDamageBias = (snapshot == null)
+                    ? 0.0
+                    : Math.max(0.0, Math.min(1.0, (1.0 - impactDistance / Math.max(1.0, influenceRadius)) * snapshot.impactFocus));
             WreckChunk chunk = new WreckChunk(ship, sprite.image, false, true, localX, localY, localAngle, detachAt,
-                    scale, halfW, halfH, burstSpeed, spin, baseLife);
+                    scale, halfW, halfH, burstSpeed, spin, baseLife, snapshot, usesBakedDamageVisuals,
+                    mirrorX, mirrorY,
+                    directionalDamageBias, directionalLocalHitX, directionalLocalHitY);
             chunk.syncWithParent();
             chunk.vx = ship.vx;
             chunk.vy = ship.vy;
-            chunk.configureSecondaryPops(profile, t);
+            if (!usesBakedDamageVisuals) {
+                chunk.configureSecondaryPops(profile, t);
+            }
             add(chunk);
         }
 
@@ -585,10 +636,19 @@ final class WreckChunk {
             g2.translate(x, y);
             g2.rotate(angle);
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) alpha));
+            if (mirrorX || mirrorY) {
+                g2.scale(mirrorX ? -1.0 : 1.0, mirrorY ? -1.0 : 1.0);
+            }
             g2.drawImage(image, (int) Math.round(-halfW), (int) Math.round(-halfH),
                     (int) Math.round(halfW * 2.0), (int) Math.round(halfH * 2.0), null);
-            if (multipart) {
-                drawMultipartDamageDress(g2, halfW, halfH, alpha);
+            if (multipart && !bakedDamageVisuals) {
+                if (attached) {
+                    drawMultipartDamageDress(g2, halfW, halfH, alpha);
+                } else {
+                    drawMultipartSecondaryScars(g2);
+                }
+            } else if (multipart && bakedDamageVisuals) {
+                drawDirectionalKillDress(g2, halfW, halfH, alpha);
             }
             if (breach) {
                 g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (alpha * 0.32)));
@@ -618,8 +678,7 @@ final class WreckChunk {
     }
 
     private void drawMultipartRoomDamage(Graphics2D g2, double halfW, double halfH, double alpha, double damageFrac) {
-        if (parent == null) return;
-        List<Ship.RoomStatus> rooms = parent.roomStatusSnapshot();
+        List<Ship.RoomStatus> rooms = (deathSnapshot == null) ? List.of() : deathSnapshot.roomStatuses;
         if (rooms == null || rooms.isEmpty()) return;
 
         Stroke oldStroke = g2.getStroke();
@@ -724,8 +783,7 @@ final class WreckChunk {
     }
 
     private void drawMultipartImpactMarks(Graphics2D g2, double halfW, double halfH, double alpha, double damageFrac) {
-        if (parent == null) return;
-        List<Ship.HullImpactMark> marks = parent.hullImpactMarks();
+        List<Ship.HullImpactMark> marks = (deathSnapshot == null) ? List.of() : deathSnapshot.hullImpactMarks;
         if (marks == null || marks.isEmpty()) return;
 
         double minX = localX - halfW;
@@ -805,15 +863,52 @@ final class WreckChunk {
     private void configureSecondaryPops(Profile profile, double t) {
         if (!multipart) return;
         int baseCount = switch (profile) {
-            case SMALL -> 1;
-            case MEDIUM -> 1 + ((t > 0.45) ? 1 : 0);
-            case LARGE -> 2;
-            case STATION -> 3;
+            case SMALL -> 0;
+            case MEDIUM -> 1;
+            case LARGE -> 1 + ((t > 0.55) ? 1 : 0);
+            case STATION -> 2;
         };
-        secondaryPopsRemaining = Math.max(0, baseCount * 3);
+        secondaryPopsRemaining = Math.max(0, baseCount);
         if (secondaryPopsRemaining > 0) {
             nextSecondaryPopAt = maxLife * (0.78 - Math.min(0.22, t * 0.16));
         }
+    }
+
+    private void drawDirectionalKillDress(Graphics2D g2, double halfW, double halfH, double alpha) {
+        if (!multipart || !bakedDamageVisuals || directionalDamageBias <= 0.06) return;
+
+        double hitX = Math.max(-halfW * 0.72, Math.min(halfW * 0.72, visualLocalX(directionalLocalHitX)));
+        double hitY = Math.max(-halfH * 0.72, Math.min(halfH * 0.72, visualLocalY(directionalLocalHitY)));
+        double span = Math.max(6.0, Math.min(halfW, halfH));
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP,
+                (float) Math.min(0.42, 0.14 + directionalDamageBias * 0.24)));
+        g2.setColor(new Color(0, 0, 0, 190));
+        double sootW = span * (1.10 + directionalDamageBias * 0.70);
+        double sootH = span * (0.84 + directionalDamageBias * 0.48);
+        g2.fillOval((int) Math.round(hitX - sootW * 0.5), (int) Math.round(hitY - sootH * 0.5),
+                (int) Math.round(sootW), (int) Math.round(sootH));
+
+        int holes = (directionalDamageBias >= 0.65) ? 3 : (directionalDamageBias >= 0.32 ? 2 : 1);
+        for (int i = 0; i < holes; i++) {
+            double offset = (i - (holes - 1) * 0.5) * span * 0.34;
+            double hx = hitX + offset;
+            double hy = hitY + ((i % 2 == 0) ? -span * 0.16 : span * 0.16);
+            double holeR = span * (0.20 + directionalDamageBias * 0.16 - i * 0.025);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP,
+                    (float) Math.min(0.82, 0.32 + directionalDamageBias * 0.34)));
+            g2.setColor(new Color(0, 0, 0, 228));
+            g2.fillOval((int) Math.round(hx - holeR), (int) Math.round(hy - holeR),
+                    (int) Math.round(holeR * 2.0), (int) Math.round(holeR * 2.0));
+        }
+    }
+
+    private double visualLocalX(double rawX) {
+        return mirrorX ? -rawX : rawX;
+    }
+
+    private double visualLocalY(double rawY) {
+        return mirrorY ? -rawY : rawY;
     }
 
     private void maybeTriggerSecondaryPop() {
@@ -836,8 +931,7 @@ final class WreckChunk {
         double sin = Math.sin(angle);
         double wx = x + localHitX * cos - localHitY * sin;
         double wy = y + localHitX * sin + localHitY * cos;
-        VFX.spawnImpactSparks(wx, wy, Math.cos(angle), Math.sin(angle), 5);
-        Explosion.spawnShieldHit(wx, wy);
+        VFX.spawnImpactSparks(wx, wy, Math.cos(angle), Math.sin(angle), 3);
 
         secondaryPopsRemaining--;
         if (secondaryPopsRemaining > 0) {
@@ -980,5 +1074,35 @@ final class WreckChunk {
         if (roomId == ShipRoomLayout.RoomId.SENSORS) return new Color(132, 238, 226, a);
         if (roomId == ShipRoomLayout.RoomId.BRIDGE || roomId == ShipRoomLayout.RoomId.BOW) return new Color(255, 214, 138, a);
         return new Color(200, 214, 230, a);
+    }
+
+    private static DeathVisualSnapshot captureDeathVisualSnapshot(Ship ship) {
+        if (ship == null) return new DeathVisualSnapshot(List.of(), List.of(), 0.0, 0.0, 0.0);
+        List<Ship.RoomStatus> roomStatuses = ship.roomStatusSnapshot();
+        List<Ship.HullImpactMark> marks = ship.hullImpactMarks();
+        int start = Math.max(0, marks.size() - 18);
+        List<Ship.HullImpactMark> recentMarks = marks.subList(start, marks.size());
+        double weightedX = 0.0;
+        double weightedY = 0.0;
+        double totalWeight = 0.0;
+        for (int i = 0; i < recentMarks.size(); i++) {
+            Ship.HullImpactMark mark = recentMarks.get(i);
+            if (mark == null) continue;
+            double recency = 0.50 + 0.50 * ((i + 1.0) / Math.max(1.0, recentMarks.size()));
+            double weight = recency * (0.35 + mark.severity * 1.15 + mark.breachRadius * 0.028);
+            weightedX += mark.localX * weight;
+            weightedY += mark.localY * weight;
+            totalWeight += weight;
+        }
+        double impactCenterX = 0.0;
+        double impactCenterY = 0.0;
+        double impactFocus = 0.0;
+        if (totalWeight > 1e-6 && ship.radius > 1e-6) {
+            impactCenterX = weightedX / totalWeight;
+            impactCenterY = weightedY / totalWeight;
+            double reach = Math.hypot(impactCenterX, impactCenterY);
+            impactFocus = Math.max(0.18, Math.min(1.0, reach / Math.max(12.0, ship.radius * 0.34)));
+        }
+        return new DeathVisualSnapshot(roomStatuses, recentMarks, impactCenterX, impactCenterY, impactFocus);
     }
 }

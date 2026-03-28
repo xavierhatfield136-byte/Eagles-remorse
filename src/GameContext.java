@@ -147,7 +147,7 @@ public class GameContext {
     public TacticalMode tacticalMode = TacticalMode.DEFENSIVE;
     public EngineeringMode engineeringMode = EngineeringMode.BALANCED;
     public CaptainDirective captainDirective = CaptainDirective.BALANCED;
-    public HudDetail hudDetail = HudDetail.FULL;
+    public HudDetail hudDetail = HudDetail.COMPACT;
     public XrayFilterMode xrayFilterMode = XrayFilterMode.ALL;
     public ShipRoomLayout.RoomId xrayFocusedRoom = null;
     public ShipRoomLayout.RoomId xrayHoveredRoom = null;

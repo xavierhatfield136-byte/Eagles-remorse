@@ -1762,22 +1762,32 @@ public class Renderer {
                                double camX, double camY, int viewW, int viewH, double zoom, String stationStatus,
                                GameContext ctx, GameContext.HudDetail hudDetail, String contextHint, String overlayStatus) {
         XrayStackLayout xrayLayout = computeXrayStackLayout(player, lockedTarget, shopOpen, viewW, viewH);
-        GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.FULL : hudDetail;
+        GameContext.HudDetail detail = (hudDetail == null) ? GameContext.HudDetail.COMPACT : hudDetail;
 
+        Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
         int leftX = 14;
-        int topY = 16;
         int leftW = (xrayLayout != null)
-                ? Math.max(240, Math.min(416, xrayLayout.playerX - leftX - 18))
-                : Math.max(320, Math.min(430, viewW / 3));
-        leftW = Math.max(240, Math.min(leftW, viewW - 28));
+                ? Math.max(250, Math.min(340, xrayLayout.playerX - leftX - 26))
+                : Math.max(270, Math.min(340, viewW / 4));
+        leftW = Math.max(250, Math.min(leftW, viewW - 28));
 
-        int cardY = topY;
+        int commandH = computeCommandOverviewCardHeight(player, hangarTier, dockedAtBase, resourceRush,
+                allyOre, enemyOre, goal, objectiveDetail, orePriceMul, orePriceT, miningMul, miningT,
+                gameOverText, leftW, detail, ctx);
+        int actionH = (detail == GameContext.HudDetail.FULL) ? computeActionStripCardHeight(player, detail, leftW) : 0;
+        int shipH = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
+                stationStatus, overlayStatus, contextHint, leftW, detail);
+
+        int totalH = commandH + 10 + shipH + (actionH > 0 ? actionH + 10 : 0);
+        int cardY = Math.max(16, coreMenu.y - 12 - totalH);
         cardY += drawCommandOverviewCard(g2, player, credits, hangarTier, dockedAtBase,
                 resourceRush, allyOre, enemyOre, goal, objectiveTitle, objectiveDetail,
                 orePriceMul, orePriceT, miningMul, miningT, gameOverText,
                 leftX, cardY, leftW, detail, ctx);
-        cardY += 10;
-        cardY += drawActionStripCard(g2, player, detail, leftX, cardY, leftW);
+        if (actionH > 0) {
+            cardY += 10;
+            cardY += drawActionStripCard(g2, player, detail, leftX, cardY, leftW);
+        }
         cardY += 10;
         drawShipSystemsCard(g2, player, lockedTarget, autoLock, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail);
@@ -1843,45 +1853,22 @@ public class Renderer {
         FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
         int contentW = Math.max(220, w - 24);
 
-        List<String> objectiveLines = wrapHudText(bodyFm,
-                (objectiveDetail == null || objectiveDetail.isBlank()) ? "Free navigation." : objectiveDetail,
-                contentW);
-
-        ArrayList<String> statusLines = new ArrayList<>();
-        statusLines.add("Mode: " + ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString())
-                + "   Hangar Tier: " + hangarTier);
-        if (player.cargoMax > 0) {
-            statusLines.add("Cargo: " + player.cargo + " / " + player.cargoMax
-                    + (dockedAtBase ? "   Docked: yes" : "   Docked: no"));
-        }
-        if (resourceRush) {
-            statusLines.add("Race: ally " + allyOre + "   enemy " + enemyOre + "   goal " + goal);
-        }
-        if (Math.abs(orePriceMul - 1.0) > 0.01 && orePriceT > 0.0) {
-            statusLines.add("Ore price x" + fmt1(orePriceMul) + "   " + (int) Math.ceil(orePriceT) + "s remaining");
-        }
-        if (Math.abs(miningMul - 1.0) > 0.01 && miningT > 0.0) {
-            statusLines.add("Mining x" + fmt1(miningMul) + "   " + (int) Math.ceil(miningT) + "s remaining");
-        }
-        if (gameOverText != null && !gameOverText.isBlank() && resourceRush) {
-            statusLines.add("Status: " + gameOverText);
-        }
-
-        int h = 72 + objectiveLines.size() * 15 + statusLines.size() * 15;
-        if (detail == GameContext.HudDetail.MINIMAL) {
-            h -= Math.max(0, (statusLines.size() - 2) * 15);
-        }
+        List<String> objectiveLines = buildCommandObjectiveLines(bodyFm, objectiveDetail, contentW, detail);
+        List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
+                allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
+        int h = computeCommandOverviewCardHeight(player, hangarTier, dockedAtBase, resourceRush,
+                allyOre, enemyOre, goal, objectiveDetail, orePriceMul, orePriceT, miningMul, miningT,
+                gameOverText, w, detail, ctx);
 
         drawHudPanelFrame(g2, x, y, w, h, "COMMAND", factionHudColor(player.faction, 210));
 
         int titleY = y + 34;
-        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setFont(new Font("Consolas", Font.BOLD, 16));
         g2.setColor(new Color(244, 248, 255, 235));
         String shipLabel = (player.role == null) ? "COMMAND SHIP" : player.role.name().replace('_', ' ');
         g2.drawString(shipLabel, x + 12, titleY);
 
         String creditLabel = "CREDITS " + credits;
-        FontMetrics headerFm = g2.getFontMetrics();
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         FontMetrics creditFm = g2.getFontMetrics();
         g2.setColor(new Color(150, 214, 255, 225));
@@ -1906,10 +1893,8 @@ public class Renderer {
         g2.drawLine(x + 12, rowY + 2, x + w - 12, rowY + 2);
         rowY += 18;
 
-        int maxStatusLines = (detail == GameContext.HudDetail.MINIMAL) ? Math.min(2, statusLines.size()) : statusLines.size();
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        for (int i = 0; i < maxStatusLines; i++) {
-            String line = statusLines.get(i);
+        for (String line : statusLines) {
             g2.setColor(line.startsWith("Status:")
                     ? new Color(255, 196, 148, 226)
                     : new Color(190, 214, 236, 198));
@@ -1920,6 +1905,68 @@ public class Renderer {
         g2.setFont(oldFont);
         g2.setColor(oldColor);
         return h;
+    }
+
+    private static int computeCommandOverviewCardHeight(Player player, int hangarTier, boolean dockedAtBase,
+                                                        boolean resourceRush, int allyOre, int enemyOre, int goal,
+                                                        String objectiveDetail, double orePriceMul, double orePriceT,
+                                                        double miningMul, double miningT, String gameOverText,
+                                                        int w, GameContext.HudDetail detail, GameContext ctx) {
+        if (player == null) return 0;
+        Canvas metricsCanvas = new Canvas();
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 13);
+        FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
+        int contentW = Math.max(220, w - 24);
+        List<String> objectiveLines = buildCommandObjectiveLines(bodyFm, objectiveDetail, contentW, detail);
+        List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
+                allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
+        return 72 + objectiveLines.size() * 15 + statusLines.size() * 15;
+    }
+
+    private static List<String> buildCommandObjectiveLines(FontMetrics bodyFm, String objectiveDetail, int contentW,
+                                                           GameContext.HudDetail detail) {
+        List<String> lines = wrapHudText(bodyFm,
+                (objectiveDetail == null || objectiveDetail.isBlank()) ? "Free navigation." : objectiveDetail,
+                contentW);
+        int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
+            case MINIMAL -> 1;
+            case COMPACT -> 2;
+            case FULL -> 3;
+        };
+        return limitHudLines(lines, maxLines);
+    }
+
+    private static List<String> buildCommandStatusLines(Player player, int hangarTier, boolean dockedAtBase,
+                                                        boolean resourceRush, int allyOre, int enemyOre, int goal,
+                                                        double orePriceMul, double orePriceT, double miningMul, double miningT,
+                                                        String gameOverText, GameContext.HudDetail detail, GameContext ctx) {
+        ArrayList<String> statusLines = new ArrayList<>();
+        String modeName = ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString());
+        statusLines.add("Mode: " + modeName + "   Tier: " + hangarTier);
+        if (player != null && player.cargoMax > 0) {
+            statusLines.add("Cargo: " + player.cargo + "/" + player.cargoMax + (dockedAtBase ? "   Docked" : ""));
+        }
+        if (resourceRush) {
+            statusLines.add("Race: ally " + allyOre + "   enemy " + enemyOre + "   goal " + goal);
+        }
+        if (detail == GameContext.HudDetail.FULL) {
+            if (Math.abs(orePriceMul - 1.0) > 0.01 && orePriceT > 0.0) {
+                statusLines.add("Ore price x" + fmt1(orePriceMul) + "   " + (int) Math.ceil(orePriceT) + "s remaining");
+            }
+            if (Math.abs(miningMul - 1.0) > 0.01 && miningT > 0.0) {
+                statusLines.add("Mining x" + fmt1(miningMul) + "   " + (int) Math.ceil(miningT) + "s remaining");
+            }
+        }
+        if (gameOverText != null && !gameOverText.isBlank() && resourceRush) {
+            statusLines.add("Status: " + gameOverText);
+        }
+
+        int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
+            case MINIMAL -> Math.min(1, statusLines.size());
+            case COMPACT -> Math.min(2, statusLines.size());
+            case FULL -> statusLines.size();
+        };
+        return limitHudLines(statusLines, maxLines);
     }
 
     private static int drawActionStripCard(Graphics2D g2, Player player, GameContext.HudDetail detail, int x, int y, int w) {
@@ -1973,11 +2020,33 @@ public class Renderer {
         return panelH;
     }
 
-    private static void drawShipSystemsCard(Graphics2D g2, Player player, Ship lockedTarget, boolean autoLock,
-                                            int playerWingActive, int playerWingCap, String stationStatus,
-                                            String overlayStatus, String contextHint,
-                                            int x, int y, int w, GameContext.HudDetail detail) {
-        if (g2 == null || player == null) return;
+    private static int computeActionStripCardHeight(Player player, GameContext.HudDetail detail, int w) {
+        if (player == null) return 0;
+        List<String> chips = buildActionStripLabels(player, detail);
+        if (chips.isEmpty()) return 0;
+
+        Canvas metricsCanvas = new Canvas();
+        Font chipFont = new Font("Consolas", Font.BOLD, 11);
+        FontMetrics fm = metricsCanvas.getFontMetrics(chipFont);
+        int chipX = 12;
+        int maxX = Math.max(12, w - 12);
+        int rows = 1;
+        for (String chip : chips) {
+            int chipW = fm.stringWidth(chip) + 14;
+            if (chipX + chipW > maxX) {
+                chipX = 12;
+                rows++;
+            }
+            chipX += chipW + 8;
+        }
+        return 60 + (rows - 1) * 28;
+    }
+
+    private static int drawShipSystemsCard(Graphics2D g2, Player player, Ship lockedTarget, boolean autoLock,
+                                           int playerWingActive, int playerWingCap, String stationStatus,
+                                           String overlayStatus, String contextHint,
+                                           int x, int y, int w, GameContext.HudDetail detail) {
+        if (g2 == null || player == null) return 0;
 
         Font oldFont = g2.getFont();
         Color oldColor = g2.getColor();
@@ -1985,100 +2054,46 @@ public class Renderer {
         FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
         int contentW = Math.max(220, w - 24);
 
-        ArrayList<String> noteLines = new ArrayList<>();
-        String overload = player.isOverloadActive()
-                ? "Overload " + player.overloadBus().name() + " heat " + (int) Math.round(player.overloadHeat() * 100.0) + "%"
-                : "Overload standby   cd " + (int) Math.ceil(player.overloadCooldownRemaining()) + "s";
-        String thrust = player.isEmergencyThrustActive()
-                ? "Emergency thrust active   heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%"
-                : "Emergency thrust standby   cd " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s";
-        noteLines.addAll(wrapHudText(bodyFm, overload, contentW));
-        noteLines.addAll(wrapHudText(bodyFm, thrust, contentW));
-        if (player.hasSuperweapon) {
-            String superCharge = "Superweapon recharge " + signedPct(player.superweaponRechargeRateMultiplier())
-                    + "   charge bus " + (int) Math.round(player.powerAuxiliaryFrac() * 100.0) + "%";
-            noteLines.addAll(wrapHudText(bodyFm, superCharge, contentW));
-        }
-        if (stationStatus != null && !stationStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, stationStatus, contentW));
-        if (overlayStatus != null && !overlayStatus.isBlank()) noteLines.addAll(wrapHudText(bodyFm, overlayStatus, contentW));
-        if (playerWingCap > 0) {
-            noteLines.add("Wing " + playerWingActive + "/" + playerWingCap
-                    + "   " + player.carrierCommandMode.name()
-                    + "   auto " + (player.carrierAutoLaunch ? "ON" : "OFF"));
-        }
-        if (lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0) {
-            int dist = (int) Math.round(Math.hypot(lockedTarget.x - player.x, lockedTarget.y - player.y));
-            noteLines.add("Lock: " + lockedTarget.name + "   D " + dist);
-            String counter = EnemyArchetypeIntel.counterHint(lockedTarget.role);
-            if (detail == GameContext.HudDetail.FULL && counter != null && !counter.isBlank()) {
-                noteLines.addAll(wrapHudText(bodyFm, "Counter: " + counter, contentW));
-            }
-        }
-        if (contextHint != null && !contextHint.isBlank()) {
-            noteLines.addAll(wrapHudText(bodyFm, "Hint: " + contextHint, contentW));
-        }
-
-        ArrayList<String> chipTexts = new ArrayList<>();
-        ArrayList<Color> chipColors = new ArrayList<>();
-        ArrayList<Boolean> chipStrong = new ArrayList<>();
-        chipTexts.add("AUTO-LOCK " + (autoLock ? "ON" : "OFF"));
-        chipColors.add(new Color(124, 208, 255, 210));
-        chipStrong.add(autoLock);
-        chipTexts.add("POWER " + player.powerPreset.name());
-        chipColors.add(new Color(114, 226, 166, 208));
-        chipStrong.add(true);
-        chipTexts.add("CREW " + player.crewOrder.name());
-        chipColors.add(new Color(244, 198, 116, 208));
-        chipStrong.add(true);
-        if (player.shieldActive && player.shieldMax > 0.0) {
-            chipTexts.add("LEAK " + shieldLeakReadout(player));
-            chipColors.add(new Color(154, 186, 255, 208));
-            chipStrong.add(true);
-        }
-        if (player.hasSuperweapon) {
-            chipTexts.add("SUPER " + superweaponStatusReadout(player));
-            chipColors.add(new Color(156, 214, 255, 214));
-            chipStrong.add(player.getSuperweaponRemaining() <= 1e-6 && !player.isSuperweaponCharging());
-        }
+        List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
+                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW);
+        HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
 
         Font chipFont = new Font("Consolas", Font.BOLD, 11);
         g2.setFont(chipFont);
         FontMetrics chipFm = g2.getFontMetrics();
-        int chipRows = 1;
-        int chipCursorX = x + 12;
-        int chipMaxX = x + w - 12;
-        for (String chip : chipTexts) {
-            int chipW = chipFm.stringWidth(chip) + 14;
-            if (chipCursorX + chipW > chipMaxX) {
-                chipRows++;
-                chipCursorX = x + 12 + chipW + 8;
-            } else {
-                chipCursorX += chipW + 8;
-            }
-        }
+        int chipRows = computeHudChipRows(chips.texts, chipFm, w);
+        boolean showPowerStrip = detail != GameContext.HudDetail.MINIMAL;
+        boolean showPowerLegend = detail == GameContext.HudDetail.FULL;
+        int powerBlockH = showPowerStrip ? (showPowerLegend ? 62 : 18) : 0;
+        int h = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
+                stationStatus, overlayStatus, contextHint, w, detail);
 
-        int powerBlockH = 68;
-        int h = 112 + chipRows * 24 + powerBlockH + noteLines.size() * 15;
-        drawHudPanelFrame(g2, x, y, w, h, "SHIP STATUS", factionHudColor(player.faction, 210));
+        drawHudPanelFrame(g2, x, y, w, h, "SHIP", factionHudColor(player.faction, 210));
 
         int chipY = y + 34;
         int chipX = x + 12;
-        for (int i = 0; i < chipTexts.size(); i++) {
-            int chipW = chipFm.stringWidth(chipTexts.get(i)) + 14;
+        int chipMaxX = x + w - 12;
+        for (int i = 0; i < chips.texts.size(); i++) {
+            int chipW = chipFm.stringWidth(chips.texts.get(i)) + 14;
             if (chipX + chipW > chipMaxX) {
                 chipX = x + 12;
                 chipY += 24;
             }
-            drawHudStatusChip(g2, chipTexts.get(i), chipX, chipY - 12, chipW, 18, chipColors.get(i), chipStrong.get(i));
+            drawHudStatusChip(g2, chips.texts.get(i), chipX, chipY - 12, chipW, 18,
+                    chips.colors.get(i), chips.strong.get(i));
             chipX += chipW + 8;
         }
 
-        int barY = chipY + 30;
-        int powerBlockUsed = drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16);
+        int textY;
+        if (showPowerStrip) {
+            int barY = chipY + 30;
+            int powerBlockUsed = drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16, showPowerLegend);
+            textY = barY + powerBlockUsed + 10;
+        } else {
+            textY = chipY + 20;
+        }
 
-        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(198, 218, 238, 195));
-        int textY = barY + powerBlockUsed + 10;
+        g2.setFont(bodyFont);
         for (String line : noteLines) {
             if (line == null || line.isBlank()) continue;
             boolean emphasis = line.startsWith("Hint:") || line.startsWith("Counter:") || line.startsWith("OVERLAY:");
@@ -2089,6 +2104,151 @@ public class Renderer {
 
         g2.setFont(oldFont);
         g2.setColor(oldColor);
+        return h;
+    }
+
+    private static int computeShipSystemsCardHeight(Player player, Ship lockedTarget, boolean autoLock,
+                                                    int playerWingActive, int playerWingCap, String stationStatus,
+                                                    String overlayStatus, String contextHint,
+                                                    int w, GameContext.HudDetail detail) {
+        if (player == null) return 0;
+        Canvas metricsCanvas = new Canvas();
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        Font chipFont = new Font("Consolas", Font.BOLD, 11);
+        FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
+        FontMetrics chipFm = metricsCanvas.getFontMetrics(chipFont);
+        int contentW = Math.max(220, w - 24);
+        List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
+                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW);
+        HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
+        int chipRows = computeHudChipRows(chips.texts, chipFm, w);
+        boolean showPowerStrip = detail != GameContext.HudDetail.MINIMAL;
+        int powerBlockH = showPowerStrip ? ((detail == GameContext.HudDetail.FULL) ? 62 : 18) : 0;
+        return 52 + chipRows * 24 + powerBlockH + noteLines.size() * 15;
+    }
+
+    private static List<String> buildShipSystemNoteLines(Player player, Ship lockedTarget,
+                                                         int playerWingActive, int playerWingCap,
+                                                         String stationStatus, String overlayStatus, String contextHint,
+                                                         GameContext.HudDetail detail, FontMetrics bodyFm, int contentW) {
+        ArrayList<String> noteLines = new ArrayList<>();
+        GameContext.HudDetail mode = (detail == null) ? GameContext.HudDetail.COMPACT : detail;
+
+        if (lockedTarget != null && lockedTarget.alive && !lockedTarget.dying && lockedTarget.hp > 0) {
+            int dist = (int) Math.round(Math.hypot(lockedTarget.x - player.x, lockedTarget.y - player.y));
+            noteLines.add("Lock: " + lockedTarget.name + "   D " + dist);
+            String counter = EnemyArchetypeIntel.counterHint(lockedTarget.role);
+            if (mode == GameContext.HudDetail.FULL && counter != null && !counter.isBlank()) {
+                noteLines.addAll(wrapHudText(bodyFm, "Counter: " + counter, contentW));
+            }
+        }
+
+        String systemsLine = compactSystemsLine(player);
+        if (!systemsLine.isBlank()) {
+            noteLines.addAll(wrapHudText(bodyFm, systemsLine, contentW));
+        }
+
+        if (playerWingCap > 0 && mode != GameContext.HudDetail.MINIMAL) {
+            noteLines.add("Wing " + playerWingActive + "/" + playerWingCap
+                    + "   " + player.carrierCommandMode.name()
+                    + "   auto " + (player.carrierAutoLaunch ? "ON" : "OFF"));
+        }
+
+        if (overlayStatus != null && !overlayStatus.isBlank()) {
+            noteLines.addAll(wrapHudText(bodyFm, overlayStatus, contentW));
+        }
+
+        if (mode == GameContext.HudDetail.FULL) {
+            if (player.hasSuperweapon) {
+                String superCharge = "Superweapon recharge " + signedPct(player.superweaponRechargeRateMultiplier())
+                        + "   charge bus " + (int) Math.round(player.powerAuxiliaryFrac() * 100.0) + "%";
+                noteLines.addAll(wrapHudText(bodyFm, superCharge, contentW));
+            }
+            if (stationStatus != null && !stationStatus.isBlank()) {
+                noteLines.addAll(wrapHudText(bodyFm, stationStatus, contentW));
+            }
+            if (contextHint != null && !contextHint.isBlank()) {
+                noteLines.addAll(wrapHudText(bodyFm, "Hint: " + contextHint, contentW));
+            }
+        }
+
+        int maxLines = switch (mode) {
+            case MINIMAL -> 2;
+            case COMPACT -> 4;
+            case FULL -> noteLines.size();
+        };
+        return limitHudLines(noteLines, maxLines);
+    }
+
+    private static String compactSystemsLine(Player player) {
+        if (player == null) return "";
+        if (player.isOverloadActive()) {
+            return "Overload " + player.overloadBus().name() + " " + (int) Math.round(player.overloadHeat() * 100.0) + "%";
+        }
+        if (player.isEmergencyThrustActive()) {
+            return "Emergency thrust active   heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%";
+        }
+        ArrayList<String> ready = new ArrayList<>();
+        if (player.overloadCooldownRemaining() > 0.05) {
+            ready.add("Overload cd " + (int) Math.ceil(player.overloadCooldownRemaining()) + "s");
+        } else {
+            ready.add("Overload ready");
+        }
+        if (player.emergencyThrustCooldownRemaining() > 0.05) {
+            ready.add("Thrust cd " + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s");
+        } else {
+            ready.add("Thrust ready");
+        }
+        if (player.hasSuperweapon) {
+            ready.add("Super " + superweaponStatusReadout(player));
+        }
+        return String.join("   ", ready);
+    }
+
+    private static HudChipSet buildShipSystemChips(Player player, boolean autoLock, GameContext.HudDetail detail) {
+        HudChipSet chips = new HudChipSet();
+        GameContext.HudDetail mode = (detail == null) ? GameContext.HudDetail.COMPACT : detail;
+        if (mode != GameContext.HudDetail.MINIMAL) {
+            chips.add("AUTO-LOCK " + (autoLock ? "ON" : "OFF"), new Color(124, 208, 255, 210), autoLock);
+        }
+        chips.add("POWER " + player.powerPreset.name(), new Color(114, 226, 166, 208), true);
+        chips.add("CREW " + player.crewOrder.name(), new Color(244, 198, 116, 208), true);
+        if (player.shieldActive && player.shieldMax > 0.0) {
+            chips.add("LEAK " + shieldLeakReadout(player), new Color(154, 186, 255, 208), true);
+        }
+        if (player.hasSuperweapon && mode == GameContext.HudDetail.FULL) {
+            chips.add("SUPER " + superweaponStatusReadout(player), new Color(156, 214, 255, 214),
+                    player.getSuperweaponRemaining() <= 1e-6 && !player.isSuperweaponCharging());
+        }
+        return chips;
+    }
+
+    private static int computeHudChipRows(List<String> chipTexts, FontMetrics chipFm, int w) {
+        if (chipTexts == null || chipTexts.isEmpty() || chipFm == null) return 0;
+        int chipRows = 1;
+        int chipCursorX = 12;
+        int chipMaxX = Math.max(12, w - 12);
+        for (String chip : chipTexts) {
+            int chipW = chipFm.stringWidth(chip) + 14;
+            if (chipCursorX + chipW > chipMaxX) {
+                chipRows++;
+                chipCursorX = 12;
+            }
+            chipCursorX += chipW + 8;
+        }
+        return chipRows;
+    }
+
+    private static final class HudChipSet {
+        private final ArrayList<String> texts = new ArrayList<>();
+        private final ArrayList<Color> colors = new ArrayList<>();
+        private final ArrayList<Boolean> strong = new ArrayList<>();
+
+        private void add(String text, Color color, boolean isStrong) {
+            texts.add(text);
+            colors.add(color);
+            strong.add(isStrong);
+        }
     }
 
     private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
@@ -2156,7 +2316,7 @@ public class Renderer {
         g2.drawString(text, x + 7, y + 12);
     }
 
-    private static int drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h) {
+    private static int drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h, boolean showLegend) {
         if (g2 == null || player == null) return 0;
         double[] fracs = new double[]{
                 player.powerEnginesFrac(),
@@ -2196,6 +2356,10 @@ public class Renderer {
             g2.setColor(withAlpha(colors[i], 150));
             g2.fillRect(innerX, y + 1, segW, h - 1);
             innerX += segW;
+        }
+
+        if (!showLegend) {
+            return h;
         }
 
         int legendY = y + h + 10;
@@ -2282,6 +2446,12 @@ public class Renderer {
         if (player.isCarrier) rows.add("CARRIER: C launch wing | R recall | V attack/defend | Z auto-launch");
         rows.add("META: ESC pause/resume | Alt+Enter fullscreen");
         return rows;
+    }
+
+    private static <T> List<T> limitHudLines(List<T> lines, int maxLines) {
+        if (lines == null || lines.isEmpty() || maxLines <= 0) return java.util.Collections.emptyList();
+        if (lines.size() <= maxLines) return new ArrayList<>(lines);
+        return new ArrayList<>(lines.subList(0, maxLines));
     }
 
     private static java.util.List<String> wrapHudText(FontMetrics fm, String text, int maxWidth) {
@@ -4905,9 +5075,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int sx = -sw / 2;
             int sy = -sh / 2;
 
-            ShipPartLibrary.PartSet partSet = ShipPartLibrary.getSet(ship.role, ship.faction);
-            if (partSet.hasParts()) {
-                drawSkinParts(g, partSet.parts, sw, sh, 1.0f);
+            if (drawMultipartDamageStage(g, ship, sw, sh)) {
+                // Multipart hulls can swap staged baked damage art directly.
             } else {
                 drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
             }
@@ -4945,6 +5114,42 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
             g.setClip(oldClip);
+        }
+
+        private static boolean drawMultipartDamageStage(Graphics2D g, Ship ship, int sw, int sh) {
+            ShipPartLibrary.PartSet normal = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.NORMAL);
+            if (!normal.hasParts()) return false;
+
+            double hpFrac = (ship == null || ship.hpMax <= 0)
+                    ? 1.0
+                    : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
+            ShipPartLibrary.PartSet damaged = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.DAMAGED);
+            ShipPartLibrary.PartSet critical = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.CRITICAL);
+
+            if (hpFrac > 2.0 / 3.0) {
+                drawSkinParts(g, normal.parts, sw, sh, 1.0f);
+                return true;
+            }
+
+            if (hpFrac > 1.0 / 3.0 && damaged.variant == ShipPartLibrary.Variant.DAMAGED) {
+                float t = (float) MathUtil.clamp((2.0 / 3.0 - hpFrac) / (1.0 / 3.0), 0.0, 1.0);
+                drawSkinParts(g, normal.parts, sw, sh, 1.0f - t);
+                drawSkinParts(g, damaged.parts, sw, sh, t);
+                return true;
+            }
+
+            if (hpFrac <= 1.0 / 3.0 && critical.variant == ShipPartLibrary.Variant.CRITICAL) {
+                drawSkinParts(g, critical.parts, sw, sh, 1.0f);
+                return true;
+            }
+
+            if (damaged.variant == ShipPartLibrary.Variant.DAMAGED) {
+                drawSkinParts(g, damaged.parts, sw, sh, 1.0f);
+                return true;
+            }
+
+            drawSkinParts(g, normal.parts, sw, sh, 1.0f);
+            return true;
         }
 
         private static void drawSkinLayer(Graphics2D g, BufferedImage layer,

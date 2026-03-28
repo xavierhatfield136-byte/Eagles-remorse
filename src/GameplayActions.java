@@ -82,8 +82,13 @@ public final class GameplayActions {
 
     public static void cycleHudDetail(GameContext ctx) {
         if (ctx == null) return;
-        ctx.hudDetail = GameContext.HudDetail.FULL;
-        EventSystem.showBanner(ctx, "HUD: FULL", 0.8);
+        GameContext.HudDetail current = (ctx.hudDetail == null) ? GameContext.HudDetail.COMPACT : ctx.hudDetail;
+        ctx.hudDetail = switch (current) {
+            case FULL -> GameContext.HudDetail.COMPACT;
+            case COMPACT -> GameContext.HudDetail.MINIMAL;
+            case MINIMAL -> GameContext.HudDetail.FULL;
+        };
+        EventSystem.showBanner(ctx, "HUD: " + ctx.hudDetail.name(), 0.8);
     }
 
     public static void cycleXrayFilter(GameContext ctx, int dir) {
