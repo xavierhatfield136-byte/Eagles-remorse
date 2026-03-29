@@ -272,7 +272,7 @@ tasks.register("packageWindowsZip", Zip) {
     group = "distribution"
     description = "Zip the portable Windows app-image for sharing."
     dependsOn("packageWindowsAppImage")
-    archiveFileName = "${appBundleName}.zip"
+    archiveFileName = "${appBundleName}-${project.version}.zip"
     destinationDirectory = layout.buildDirectory.dir("package/windows")
     from(layout.buildDirectory.dir("package/windows/${appBundleName}"))
 }
