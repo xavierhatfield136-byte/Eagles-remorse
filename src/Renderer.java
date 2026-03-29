@@ -712,6 +712,51 @@ public class Renderer {
         return mixColor(base, new Color(208, 242, 255), 0.42);
     }
 
+    private static void drawWarpChargeHullFx(Graphics2D g, Ship ship, Area hullArea) {
+        if (g == null || ship == null || hullArea == null || !ship.isWarpCharging()) return;
+        Rectangle2D bounds = hullArea.getBounds2D();
+        if (bounds.getWidth() <= 0.0 || bounds.getHeight() <= 0.0) return;
+
+        double charge = ship.warpChargeProgress();
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 7.2 + ship.id * 0.29);
+        Color base = mixColor(factionTrimColor(ship.faction), new Color(120, 220, 255), 0.38);
+        float shellWidth = (float) Math.max(3.0, ship.radius * (0.12 + charge * 0.05));
+        float auraWidth = shellWidth * 2.4f;
+        Area shell = createShieldShell(hullArea, shellWidth);
+        Area aura = createShieldShell(hullArea, auraWidth);
+        Rectangle2D auraBounds = aura.getBounds2D();
+        if (auraBounds.getWidth() <= 0.0 || auraBounds.getHeight() <= 0.0) return;
+
+        Graphics2D gx = (Graphics2D) g.create();
+        Paint oldPaint = gx.getPaint();
+        Stroke oldStroke = gx.getStroke();
+        try {
+            double gradientRadius = Math.max(auraBounds.getWidth(), auraBounds.getHeight()) * 0.72;
+            gx.setPaint(new RadialGradientPaint(
+                    new Point2D.Double(0.0, 0.0),
+                    (float) Math.max(12.0, gradientRadius),
+                    new float[]{0.0f, 0.52f, 1.0f},
+                    new Color[]{
+                            withAlpha(base, 0),
+                            withAlpha(mixColor(base, Color.WHITE, 0.24), (int) Math.round(26 + charge * 30 + pulse * 16)),
+                            withAlpha(base, 0)
+                    }));
+            gx.fill(aura);
+
+            gx.setStroke(new BasicStroke(Math.max(1.2f, shellWidth * 0.46f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.58), (int) Math.round(96 + charge * 62 + pulse * 26)));
+            gx.draw(shell);
+
+            gx.setStroke(new BasicStroke(Math.max(0.8f, shellWidth * 0.18f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            gx.setColor(withAlpha(Color.WHITE, (int) Math.round(72 + charge * 54 + pulse * 28)));
+            gx.draw(shell);
+        } finally {
+            gx.setPaint(oldPaint);
+            gx.setStroke(oldStroke);
+            gx.dispose();
+        }
+    }
+
     // Layered environment backgrounds with procedural fallback.
     public static void drawSpaceBackground(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
         BufferedImage bgBase = EnvironmentSkinLibrary.backgroundBase();
@@ -4779,6 +4824,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             if (hullArea != null) {
                 drawDamageDecals(g, ship, hullArea);
+                drawWarpChargeHullFx(g, ship, hullArea);
             }
 
             if (DevTools.isDebugOverlay()) {

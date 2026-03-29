@@ -80,7 +80,6 @@ public final class GameSimulationRuntime {
 
         applyPlayerInput(dt, input);
         applyPlayerRepairOrderInstantHeal();
-        holdWarpChargingShips();
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             PhysicsSystem.update(ctx, dt);
@@ -172,15 +171,6 @@ public final class GameSimulationRuntime {
             case CAMPAIGN_OPS, LAST_STAND -> false;
             default -> true;
         };
-    }
-
-    private void holdWarpChargingShips() {
-        if (ctx == null || ctx.ships == null) return;
-        for (Ship s : ctx.ships) {
-            if (s == null || !s.isWarpCharging()) continue;
-            s.vx = 0.0;
-            s.vy = 0.0;
-        }
     }
 
     private void updateBattlefieldWarpCharges(double dt) {

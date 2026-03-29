@@ -804,11 +804,6 @@ public abstract class Ship {
             if (baseSpawnTimer < 0) baseSpawnTimer = 0;
         }
 
-        if (warpCharging) {
-            vx = 0.0;
-            vy = 0.0;
-        }
-
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
     }
@@ -1456,6 +1451,10 @@ public abstract class Ship {
         return warpCharging;
     }
 
+    public double warpChargeSpeedMultiplier() {
+        return warpCharging ? 0.5 : 1.0;
+    }
+
     public double warpChargeRemaining() {
         return Math.max(0.0, warpChargeRemaining);
     }
@@ -1499,8 +1498,6 @@ public abstract class Ship {
         warpChargeRemaining = warpChargeDuration;
         warpExitX = targetX;
         warpExitY = targetY;
-        vx = 0.0;
-        vy = 0.0;
         return true;
     }
 

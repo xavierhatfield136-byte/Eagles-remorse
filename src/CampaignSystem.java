@@ -470,6 +470,7 @@ public final class CampaignSystem {
         st.sectorStartMillis = System.currentTimeMillis();
 
         pruneTransientUnits(ctx);
+        regroupPlayerAtAlliedBase(ctx);
         SpawnSystem.spawnAsteroidField(ctx);
         healAndRefitPlayer(ctx);
 
@@ -1366,6 +1367,13 @@ public final class CampaignSystem {
         ctx.lockedTarget = null;
 
         ctx.ships.removeIf(s -> s != null && s != ctx.player && s.role != ShipRole.BASE);
+    }
+
+    private static void regroupPlayerAtAlliedBase(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        double[] spawn = SpawnSystem.playerRespawnPose(ctx);
+        if (spawn == null || spawn.length < 3) return;
+        ctx.player.respawnAt(spawn[0], spawn[1], spawn[2]);
     }
 
     private static void healAndRefitPlayer(GameContext ctx) {

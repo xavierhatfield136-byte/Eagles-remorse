@@ -56,6 +56,8 @@ public final class AISystem {
     private static final double BATTLEFIELD_WARP_TRIGGER_RANGE = 1700.0;
     private static final double BATTLEFIELD_WARP_SAFE_RADIUS = 640.0;
     private static final double ESCORT_WARP_SUPPORT_RANGE = 320.0;
+    private static final double FLEET_REJOIN_WARP_RANGE = 1500.0;
+    private static final double FLEET_REJOIN_ANCHOR_RANGE = 900.0;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -116,8 +118,7 @@ public final class AISystem {
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
             if (s.isWarpCharging()) {
-                s.vx = 0.0;
-                s.vy = 0.0;
+                steerWarpChargingShip(s, dt);
                 s.tryCIWS(dt, ctx);
                 continue;
             }
@@ -979,6 +980,10 @@ public final class AISystem {
             anchor[1] = anchor[1] * 0.82 + target.y * 0.18;
         }
         double coherenceSpeedMul = (coherence < -0.18) ? 0.86 : (coherence > 0.32 ? 1.04 : 1.0);
+        if (maybeStartFleetRejoinWarp(ctx, s, flagship, anchor[0], anchor[1], cmd, objective, target)) {
+            s.tryCIWS(dt, ctx);
+            return true;
+        }
 
         switch (cmd) {
             case RETREAT, RTB, REPAIR -> {
@@ -2035,8 +2040,7 @@ public final class AISystem {
             double remaining = Math.max(0.1, flagship.warpChargeRemaining());
             for (Ship member : members) {
                 if (!isAlive(member) || member == flagship) continue;
-                if (member.role == ShipRole.MINER) continue;
-                if (!member.canUseBattlefieldWarp()) continue;
+                if (!shouldJoinFlagshipWarp(ctx, member, flagship)) continue;
 
                 boolean playerDirected = playerCanDirectTeamFleet(ctx, member, flagship);
                 GameContext.FleetFormation desiredFormation = playerDirected
@@ -3184,6 +3188,84 @@ public final class AISystem {
         if (exitDist < BATTLEFIELD_WARP_TRIGGER_RANGE * 0.48) return false;
 
         return s.beginBattlefieldWarp(exitX, exitY, 10.0);
+    }
+
+    private static boolean maybeStartFleetRejoinWarp(GameContext ctx, Ship s, Ship flagship,
+                                                     double anchorX, double anchorY,
+                                                     GameContext.FleetCommand cmd,
+                                                     SquadObjective objective,
+                                                     Ship target) {
+        if (ctx == null || s == null || flagship == null) return false;
+        if (s == flagship || s == ctx.player) return false;
+        if (s.isWarpCharging()) return true;
+        if (!shouldJoinFlagshipWarp(ctx, s, flagship) || isHeavilyDamagedForWarp(s)) return false;
+        if (cmd == null) return false;
+        if (cmd == GameContext.FleetCommand.RETREAT
+                || cmd == GameContext.FleetCommand.RTB
+                || cmd == GameContext.FleetCommand.REPAIR
+                || cmd == GameContext.FleetCommand.MINE) {
+            return false;
+        }
+        if (objective == SquadObjective.RESERVE) return false;
+
+        double distToFlagship = Math.hypot(flagship.x - s.x, flagship.y - s.y);
+        double distToAnchor = Math.hypot(anchorX - s.x, anchorY - s.y);
+        if (distToFlagship < FLEET_REJOIN_WARP_RANGE && distToAnchor < FLEET_REJOIN_ANCHOR_RANGE) {
+            return false;
+        }
+        if (isAlive(target)) {
+            double threatDist = Math.hypot(target.x - s.x, target.y - s.y);
+            if (threatDist <= Math.max(520.0, preferredRange(s) * 1.18)) return false;
+        }
+
+        double desiredOffset = Math.max(180.0, Math.min(340.0, s.radius + preferredRange(s) * 0.30));
+        return maybeStartBattlefieldWarp(ctx, s, anchorX, anchorY, desiredOffset);
+    }
+
+    private static boolean shouldJoinFlagshipWarp(GameContext ctx, Ship ship, Ship flagship) {
+        if (!isAlive(ship) || !isAlive(flagship)) return false;
+        if (ship == flagship) return false;
+        if (ctx != null && ship == ctx.player) return false;
+        if (ship.role == ShipRole.MINER) return false;
+        if (!ship.canUseBattlefieldWarp()) return false;
+        if (ship.faction == null || flagship.faction == null) return false;
+        if (ship.faction.teamId() != flagship.faction.teamId()) return false;
+        return !isCriticallyDamagedForWarp(ship);
+    }
+
+    private static boolean isCriticallyDamagedForWarp(Ship ship) {
+        if (ship == null) return true;
+        if (hullFrac(ship) < 0.32) return true;
+        if (combinedDurabilityFrac(ship) < 0.28) return true;
+        return ship.activeFireRoomCount() >= 2 || ship.totalFireIntensity() >= 1.8;
+    }
+
+    private static boolean isHeavilyDamagedForWarp(Ship ship) {
+        if (ship == null) return true;
+        if (hullFrac(ship) < 0.56) return true;
+        if (combinedDurabilityFrac(ship) < 0.50) return true;
+        return ship.activeFireRoomCount() >= 2 || ship.totalFireIntensity() >= 1.6;
+    }
+
+    private static void steerWarpChargingShip(Ship ship, double dt) {
+        if (ship == null || dt <= 0.0) return;
+        double tx = ship.warpExitX();
+        double ty = ship.warpExitY();
+        if (!Double.isFinite(tx) || !Double.isFinite(ty)) {
+            setVelPerSec(ship, 0.0, 0.0, dt);
+            return;
+        }
+
+        double dist = Math.hypot(tx - ship.x, ty - ship.y);
+        if (dist <= Math.max(80.0, ship.radius * 2.4)) {
+            setVelPerSec(ship, 0.0, 0.0, dt);
+            return;
+        }
+
+        double speed = MovementModel.speedCeiling(ship);
+        double slowRadius = Math.max(260.0, ship.radius * 8.0);
+        double speedMul = MathUtil.clamp(dist / slowRadius, 0.42, 1.0);
+        moveToward(ship, tx, ty, speed * speedMul, dt);
     }
 
     private static Ship nearestFriendlyStrikeCraftTender(GameContext ctx, Ship craft) {

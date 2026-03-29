@@ -140,15 +140,18 @@ public final class GameRenderSystem {
                 overlayStatus
 
         );
+        TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
         drawVoiceCaption(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
+        TutorialSystem.drawMinimapOverlay(ctx, g2, viewportW, viewportH);
 
         if (ctx.mapOpen) {
             Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
                     ctx.ships, ctx.asteroids, ctx.salvage, ctx.waypointX, ctx.waypointY, ctx.mapPings, ctx.eventBanner);
+            TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
         }
 
         if (ctx.baseMenuOpen) {

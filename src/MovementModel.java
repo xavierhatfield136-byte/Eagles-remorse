@@ -59,7 +59,8 @@ public final class MovementModel {
         Profile p = profile(ship.role);
         if (p.maxSpeedMul <= 1e-6) return 0.0;
         double base = Math.max(0.0, ship.desiredSpeed);
-        return Math.max(40.0, base * p.maxSpeedMul);
+        double cap = Math.max(40.0, base * p.maxSpeedMul);
+        return cap * ship.warpChargeSpeedMultiplier();
     }
 
     public static double turnRateRadPerSec(Ship ship) {
