@@ -227,7 +227,7 @@ public final class AudioSystem {
                 List<Ship> visibleHostiles = visibleHostiles(ctx);
                 s.hadCombatContact = !visibleHostiles.isEmpty();
                 s.missilesInbound = hasMissilesInbound(ctx);
-                s.lastScienceJamming = ctx.scienceJamming;
+                s.lastScienceJamming = ctx.command.scienceJamming;
                 s.lastRepairsActive = repairsActive(ctx);
                 s.hostileContactCount = visibleHostiles.size();
                 s.lastShieldFrac = shieldFrac(ctx.player);
@@ -235,8 +235,8 @@ public final class AudioSystem {
                 s.lastHp = ctx.player.hp;
                 s.lastShield = ctx.player.shield;
                 s.lastExplosionCount = explosionCountNearPlayer(ctx);
-                s.lastHelmMode = ctx.helmMode;
-                s.lastCaptainDirective = ctx.captainDirective;
+                s.lastHelmMode = ctx.command.helmMode;
+                s.lastCaptainDirective = ctx.command.captainDirective;
                 Ship commandShip = friendlyCommandShip(ctx);
                 if (commandShip != null) {
                     s.lastFriendlyCommandShipId = commandShip.id;
@@ -353,9 +353,9 @@ public final class AudioSystem {
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
 
-        if (ctx.voiceCaptionT > 0.0) {
-            ctx.voiceCaptionT = Math.max(0.0, ctx.voiceCaptionT - Math.max(0.0, dt));
-            if (ctx.voiceCaptionT <= 0.0) ctx.voiceCaption = "";
+        if (ctx.ui.voiceCaptionT > 0.0) {
+            ctx.ui.voiceCaptionT = Math.max(0.0, ctx.ui.voiceCaptionT - Math.max(0.0, dt));
+                if (ctx.ui.voiceCaptionT <= 0.0) ctx.ui.clearVoiceCaption();
         }
         ctx.decayPortraitExpressions(dt);
 
@@ -580,7 +580,7 @@ public final class AudioSystem {
             emitVoice(ctx, st, VoiceCue.ENGINEERING_REPAIRS_COMPLETED, now);
         }
 
-        if (ctx.scienceJamming && !st.lastScienceJamming) {
+        if (ctx.command.scienceJamming && !st.lastScienceJamming) {
             emitVoice(ctx, st, VoiceCue.SCIENCE_JAMMED, now);
         }
 
@@ -600,19 +600,19 @@ public final class AudioSystem {
             emitVoice(ctx, st, VoiceCue.SCIENCE_NEW_CONTACT, now);
         }
 
-        if (ctx.helmMode != st.lastHelmMode) {
-            if (ctx.helmMode == GameContext.HelmMode.INTERCEPT) {
+        if (ctx.command.helmMode != st.lastHelmMode) {
+            if (ctx.command.helmMode == GameContext.HelmMode.INTERCEPT) {
                 emitVoice(ctx, st, VoiceCue.HELM_INTERCEPT, now);
-            } else if (ctx.helmMode == GameContext.HelmMode.EVASIVE) {
+            } else if (ctx.command.helmMode == GameContext.HelmMode.EVASIVE) {
                 emitVoice(ctx, st, VoiceCue.HELM_EVASIVE, now);
             }
         }
 
-        if (ctx.captainDirective != st.lastCaptainDirective) {
-            if (ctx.captainDirective == GameContext.CaptainDirective.RTB) {
+        if (ctx.command.captainDirective != st.lastCaptainDirective) {
+            if (ctx.command.captainDirective == GameContext.CaptainDirective.RTB) {
                 emitVoice(ctx, st, VoiceCue.HELM_RTB, now);
             }
-            emitVoiceForCaptainDirective(ctx, st, ctx.captainDirective, now);
+            emitVoiceForCaptainDirective(ctx, st, ctx.command.captainDirective, now);
         }
         processFriendlyCommandShipBroadcast(ctx, st, now);
 
@@ -620,12 +620,12 @@ public final class AudioSystem {
         st.hostileContactCount = hostiles;
         st.lastLockedTarget = currentLock;
         st.missilesInbound = missilesNow;
-        st.lastScienceJamming = ctx.scienceJamming;
+        st.lastScienceJamming = ctx.command.scienceJamming;
         st.lastRepairsActive = repairsNow;
         st.lastShieldFrac = shieldNow;
         st.lastReactorFrac = reactorNow;
-        st.lastHelmMode = ctx.helmMode;
-        st.lastCaptainDirective = ctx.captainDirective;
+        st.lastHelmMode = ctx.command.helmMode;
+        st.lastCaptainDirective = ctx.command.captainDirective;
         Ship commandShip = friendlyCommandShip(ctx);
         if (commandShip == null) {
             st.lastFriendlyCommandShipId = -1;
@@ -723,12 +723,12 @@ public final class AudioSystem {
     }
 
     private static Ship friendlyCommandShip(GameContext ctx) {
-        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.fleetCommandShips == null) return null;
-        Ship direct = ctx.fleetCommandShips.get(ctx.player.faction);
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.command.fleetCommandShips == null) return null;
+        Ship direct = ctx.command.fleetCommandShips.get(ctx.player.faction);
         if (direct != null) return direct;
         for (Faction faction : Faction.fourTeamFactions()) {
             if (faction == null || !faction.isFriendlyTo(ctx.player.faction)) continue;
-            Ship candidate = ctx.fleetCommandShips.get(faction);
+            Ship candidate = ctx.command.fleetCommandShips.get(faction);
             if (candidate != null) return candidate;
         }
         return null;
@@ -741,11 +741,11 @@ public final class AudioSystem {
 
     private static GameContext.FleetCommand resolvedFleetCommand(GameContext ctx, Ship commander) {
         if (ctx == null || commander == null || commander.faction == null) return null;
-        GameContext.FleetCommand direct = ctx.fleetResolvedCommands.get(commander.faction);
+        GameContext.FleetCommand direct = ctx.command.fleetResolvedCommands.get(commander.faction);
         if (direct != null) return direct;
         for (Faction faction : Faction.fourTeamFactions()) {
             if (faction == null || !faction.isFriendlyTo(commander.faction)) continue;
-            GameContext.FleetCommand fallback = ctx.fleetResolvedCommands.get(faction);
+            GameContext.FleetCommand fallback = ctx.command.fleetResolvedCommands.get(faction);
             if (fallback != null) return fallback;
         }
         return null;
@@ -753,11 +753,11 @@ public final class AudioSystem {
 
     private static GameContext.FleetFormation resolvedFleetFormation(GameContext ctx, Ship commander) {
         if (ctx == null || commander == null || commander.faction == null) return null;
-        GameContext.FleetFormation direct = ctx.fleetResolvedFormations.get(commander.faction);
+        GameContext.FleetFormation direct = ctx.command.fleetResolvedFormations.get(commander.faction);
         if (direct != null) return direct;
         for (Faction faction : Faction.fourTeamFactions()) {
             if (faction == null || !faction.isFriendlyTo(commander.faction)) continue;
-            GameContext.FleetFormation fallback = ctx.fleetResolvedFormations.get(faction);
+            GameContext.FleetFormation fallback = ctx.command.fleetResolvedFormations.get(faction);
             if (fallback != null) return fallback;
         }
         return null;
@@ -885,12 +885,12 @@ public final class AudioSystem {
         st.lastVariantByKey.put(cue.cooldownKey, variantIndex);
         applyPortraitExpression(ctx, cue, variantIndex);
 
-        if (ctx.voiceCaptionsEnabled) {
+        if (ctx.ui.voiceCaptionsEnabled) {
             String speaker = (speakerLabelOverride == null || speakerLabelOverride.isBlank())
                     ? cue.roleLabel()
                     : speakerLabelOverride;
-            ctx.voiceCaption = speaker + ": " + caption;
-            ctx.voiceCaptionT = 1.8;
+            ctx.ui.voiceCaption = speaker + ": " + caption;
+            ctx.ui.voiceCaptionT = 1.8;
         }
         logAudioEvent(ctx, new AudioEvent(
                 "voice." + cue.eventId,
@@ -898,7 +898,7 @@ public final class AudioSystem {
                 cue.cooldownKey,
                 variantIndex,
                 "voice",
-                System.nanoTime()
+                eventTimestampNanos(now)
         ));
         noteVoiceDispatch(st, cue);
     }
@@ -967,7 +967,7 @@ public final class AudioSystem {
                 "sfx." + spec.eventId(),
                 hasAsset ? variant : -1,
                 hasAsset ? "sfx" : "sfx_missing",
-                System.nanoTime()
+                eventTimestampNanos(now)
         ));
     }
 
@@ -1006,7 +1006,7 @@ public final class AudioSystem {
         if (clip == null || !clip.isOpen()) return;
         double target = -26.0;
         if (countHostiles(ctx) > 0) target = -23.5;
-        if (ctx.voiceCaptionT > 0.0) target -= 4.5;
+        if (ctx.ui.voiceCaptionT > 0.0) target -= 4.5;
         applyGain(clip, target);
     }
 
@@ -1172,7 +1172,7 @@ public final class AudioSystem {
 
     private static boolean repairsActive(GameContext ctx) {
         if (ctx == null || ctx.player == null) return false;
-        return ctx.engineeringMode == GameContext.EngineeringMode.DAMAGE_CONTROL
+        return ctx.command.engineeringMode == GameContext.EngineeringMode.DAMAGE_CONTROL
                 || ctx.player.crewOrder == Ship.CrewOrder.DAMAGE_CONTROL;
     }
 
@@ -1239,7 +1239,7 @@ public final class AudioSystem {
 
     private static double sfxVoiceDuckingDb(GameContext ctx, int sfxPriority) {
         if (ctx == null) return 0.0;
-        if (ctx.voiceCaptionT <= 0.0) return 0.0;
+        if (ctx.ui.voiceCaptionT <= 0.0) return 0.0;
         if (sfxPriority >= 3) return -1.0;
         if (sfxPriority == 2) return -2.5;
         return -4.0;
@@ -1315,6 +1315,13 @@ public final class AudioSystem {
 
     private static double nowSec() {
         return System.nanoTime() * 1e-9;
+    }
+
+    private static long eventTimestampNanos(double nowSec) {
+        if (!Double.isFinite(nowSec) || nowSec <= 0.0) {
+            return System.nanoTime();
+        }
+        return Math.max(0L, Math.round(nowSec * 1_000_000_000.0));
     }
 
     private static void logAudioEvent(GameContext ctx, AudioEvent event) {

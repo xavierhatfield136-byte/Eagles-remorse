@@ -140,6 +140,10 @@ tasks.register("stabilitySmoke") {
     dependsOn("phase4Smoke", "phase9Smoke", "test")
 }
 
+tasks.named("check") {
+    dependsOn("stabilitySmoke")
+}
+
 checkstyle {
     toolVersion = "10.26.1"
 }

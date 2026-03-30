@@ -1,3 +1,4 @@
+import app.config.GameMode;
 public final class GameSimulationRuntime {
     private static final int TARGET_FPS = 60;
     private static final double TARGET_FRAME_MS = 1000.0 / TARGET_FPS;
@@ -56,20 +57,20 @@ public final class GameSimulationRuntime {
         double updateMs = updateNsTotal / 1_000_000.0;
         emaUpdateMs = smooth(emaUpdateMs, updateMs, 0.20);
 
-        ctx.perfFrameMs = emaFrameMs;
-        ctx.perfFps = (emaFrameMs <= 1e-6) ? 0.0 : (1000.0 / emaFrameMs);
-        ctx.perfFrameJitterMs = emaJitterMs;
-        ctx.perfUpdateMs = emaUpdateMs;
-        ctx.perfUpdateSteps = steps;
-        ctx.perfDroppedUpdates = droppedUpdateSteps;
-        ctx.perfRenderMs = emaRenderMs;
+        ctx.perf.frameMs = emaFrameMs;
+        ctx.perf.fps = (emaFrameMs <= 1e-6) ? 0.0 : (1000.0 / emaFrameMs);
+        ctx.perf.frameJitterMs = emaJitterMs;
+        ctx.perf.updateMs = emaUpdateMs;
+        ctx.perf.updateSteps = steps;
+        ctx.perf.droppedUpdates = droppedUpdateSteps;
+        ctx.perf.renderMs = emaRenderMs;
 
         return (steps > 0 || ctx.state != GameState.PAUSED || ctx.eventBannerT > 0 || ctx.gameOver);
     }
 
     public void recordRenderMs(double renderMs) {
         emaRenderMs = smooth(emaRenderMs, renderMs, 0.20);
-        ctx.perfRenderMs = emaRenderMs;
+        ctx.perf.renderMs = emaRenderMs;
     }
 
     private void tick(double dt, InputSnapshot input, int viewportW, int viewportH) {
@@ -156,8 +157,8 @@ public final class GameSimulationRuntime {
         ctx.playerRespawnPending = false;
         ctx.playerRespawnTimer = 0.0;
         ctx.lockedTarget = null;
-        ctx.playerTeleportCharging = false;
-        ctx.playerTeleportChargeRemaining = 0.0;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
         ctx.firingPrimaryAuto = false;
         ctx.firingSecondaryAuto = false;
         ctx.miningKeyDown = false;
@@ -214,8 +215,8 @@ public final class GameSimulationRuntime {
         ship.vy = 0.0;
         ship.cancelBattlefieldWarp();
         if (isPlayer) {
-            ctx.waypointX = tx;
-            ctx.waypointY = ty;
+            ctx.ui.waypointX = tx;
+            ctx.ui.waypointY = ty;
             EventSystem.showBanner(ctx, "BATTLEFIELD WARP COMPLETE", 1.1);
         }
     }
@@ -231,14 +232,14 @@ public final class GameSimulationRuntime {
 
     private void syncPlayerWarpHudState() {
         if (ctx == null || ctx.player == null) return;
-        ctx.playerTeleportCharging = ctx.player.isWarpCharging();
-        ctx.playerTeleportChargeRemaining = ctx.player.warpChargeRemaining();
+        ctx.command.playerTeleportCharging = ctx.player.isWarpCharging();
+        ctx.command.playerTeleportChargeRemaining = ctx.player.warpChargeRemaining();
     }
 
     private boolean isPlayerRepairOrderActive() {
         if (ctx == null) return false;
-        if (ctx.captainDirective == GameContext.CaptainDirective.REPAIR) return true;
-        return ctx.alliedFleetCommand == GameContext.FleetCommand.REPAIR;
+        if (ctx.command.captainDirective == GameContext.CaptainDirective.REPAIR) return true;
+        return ctx.command.alliedFleetCommand == GameContext.FleetCommand.REPAIR;
     }
 
     private void applyPlayerInput(double dt, InputSnapshot input) {
@@ -255,7 +256,7 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
-        if (!ctx.powerManagementOpen && !ctx.crewStationsOpen && !ctx.flightDeckOpen) {
+        if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
             CameraSystem.updateManualPan(ctx, dt);
         }
         if (!p.alive || p.dying || p.hp <= 0 || ctx.playerRespawnPending) {

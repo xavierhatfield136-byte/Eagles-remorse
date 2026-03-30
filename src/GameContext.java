@@ -1,3 +1,7 @@
+import app.config.GameConfig;
+import app.config.GameMode;
+import app.persistence.CampaignUnlockProfile;
+import app.state.PerfTelemetry;
 import java.util.*;
 /**
  * Shared mutable game state container.
@@ -84,15 +88,7 @@ public class GameContext {
     public boolean autoLockTurrets = true;
     public int lockedIndexHint = 0;
 
-    // UI overlays
-    public boolean shopOpen = false;
-    public boolean baseMenuOpen = false;
-    public boolean mapOpen = false;
-    public boolean powerManagementOpen = false;
-    public boolean crewStationsOpen = false;
-    public boolean flightDeckOpen = false;
-    public int powerManagementFocus = 0; // 0=propulsion 1=shield 2=tactical 3=sensor 4=engineering 5=supercharge
-    public int flightDeckFocus = 0;
+    public final UiState ui = new UiState();
 
     public enum CrewStation {
         CAPTAIN,
@@ -157,45 +153,7 @@ public class GameContext {
         POWER,
         DISABLED
     }
-    public CrewStation activeCrewStation = CrewStation.CAPTAIN;
-    public HelmMode helmMode = HelmMode.INTERCEPT;
-    public TacticalMode tacticalMode = TacticalMode.DEFENSIVE;
-    public EngineeringMode engineeringMode = EngineeringMode.BALANCED;
-    public CaptainDirective captainDirective = CaptainDirective.BALANCED;
-    public HudDetail hudDetail = HudDetail.COMPACT;
-    public XrayFilterMode xrayFilterMode = XrayFilterMode.ALL;
-    public ShipRoomLayout.RoomId xrayFocusedRoom = null;
-    public ShipRoomLayout.RoomId xrayHoveredRoom = null;
-    public boolean captainAutomation = false;
-    public boolean helmAutomation = false;
-    public boolean tacticalAutomation = false;
-    public boolean engineeringAutomation = false;
-    public boolean scienceAutomation = true;
-    public boolean scienceJamming = false;
-    public double helmDesiredRange = 480.0;
-    public boolean miningAuto = false;
-    public FleetCommand alliedFleetCommand = FleetCommand.AUTO;
-    public FleetFormation alliedFleetFormation = FleetFormation.WEDGE;
-    public final Map<Integer, FleetCommand> shipFleetCommandOverrides = new HashMap<>();
-    public final java.util.EnumMap<Faction, Ship> fleetCommandShips = new java.util.EnumMap<>(Faction.class);
-    public final java.util.EnumMap<Faction, Ship> fleetSharedTargets = new java.util.EnumMap<>(Faction.class);
-    public final java.util.EnumMap<Faction, FleetCommand> fleetResolvedCommands = new java.util.EnumMap<>(Faction.class);
-    public final java.util.EnumMap<Faction, FleetFormation> fleetResolvedFormations = new java.util.EnumMap<>(Faction.class);
-    public final Map<Integer, String> fleetSquadLabelByShip = new HashMap<>();
-    public final Map<Integer, String> fleetSquadRoleByShip = new HashMap<>();
-    public final Map<Integer, Integer> fleetSquadLeaderByShip = new HashMap<>();
-    public final Map<Integer, Integer> fleetSquadIndexByShip = new HashMap<>();
-    public final Map<String, String> fleetSquadStatusMemory = new HashMap<>();
-    public boolean playerTeleportCharging = false;
-    public double playerTeleportChargeRemaining = 0.0;
-    public Faction shootingRangeTargetFaction = Faction.ENEMY;
-    public double shootingRangeOriginX = Double.NaN;
-    public double shootingRangeOriginY = Double.NaN;
-
-    // Waypoint / pings
-    public double waypointX = Double.NaN;
-    public double waypointY = Double.NaN;
-    public final List<Renderer.MapPing> mapPings = new ArrayList<>();
+    public final CommandState command = new CommandState();
 
     // Economy
     public int credits = 10000;
@@ -219,13 +177,6 @@ public class GameContext {
     public double hazardCriticalCooldown = 0.0;
     public double cursorScreenX = 0.0;
     public double cursorScreenY = 0.0;
-    public String voiceCaption = "";
-    public double voiceCaptionT = 0.0;
-    public boolean voiceCaptionsEnabled = true;
-    public CrewStation voiceMixFocus = CrewStation.CAPTAIN;
-    public final java.util.EnumMap<CrewStation, Double> voiceRoleVolumes = new java.util.EnumMap<>(CrewStation.class);
-    public final java.util.EnumMap<CrewStation, Integer> portraitExpressionLevel = new java.util.EnumMap<>(CrewStation.class);
-    public final java.util.EnumMap<CrewStation, Double> portraitExpressionTimerSec = new java.util.EnumMap<>(CrewStation.class);
     public double orePriceMul = 1.0;
     public double orePriceT = 0.0;
     public double miningMul = 1.0;
@@ -250,21 +201,7 @@ public class GameContext {
     public int lastStandWaveIndex = 0;
 
     // Runtime performance telemetry (debug overlay / frame pacing checks).
-    public double perfFps = 0.0;
-    public double perfFrameMs = 0.0;
-    public double perfFrameJitterMs = 0.0;
-    public double perfUpdateMs = 0.0;
-    public double perfRenderMs = 0.0;
-    public int perfUpdateSteps = 0;
-    public int perfDroppedUpdates = 0;
-    public int perfDrawnShips = 0;
-    public int perfDrawnProjectiles = 0;
-    public int perfDrawnAsteroids = 0;
-    public int perfDrawnSalvage = 0;
-    public int perfDrawnVfx = 0;
-    public int perfDrawnExplosions = 0;
-    public int perfTotalVfx = 0;
-    public int perfTotalExplosions = 0;
+    public final PerfTelemetry perf = new PerfTelemetry();
 
     public GameContext(GameConfig config) {
         this.config = (config == null)
@@ -273,63 +210,30 @@ public class GameContext {
         this.WORLD_W = this.config.worldW;
         this.WORLD_H = this.config.worldH;
         this.rng = new Random(this.config.seed);
-        initAudioPreferences();
+        ui.initAudioPreferences();
         if (this.config.mode == GameMode.CAMPAIGN_OPS) {
             this.campaignUnlockProfile = CampaignUnlockProfile.load();
         }
     }
 
-    private void initAudioPreferences() {
-        for (CrewStation station : CrewStation.values()) {
-            voiceRoleVolumes.put(station, 1.0);
-            portraitExpressionLevel.put(station, 0);
-            portraitExpressionTimerSec.put(station, 0.0);
-        }
-        MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
-        voiceCaptionsEnabled = persisted.voiceCaptionsEnabled;
-        voiceRoleVolumes.put(CrewStation.CAPTAIN, clampVoiceVol(persisted.voiceVolumeCaptain));
-        voiceRoleVolumes.put(CrewStation.HELM, clampVoiceVol(persisted.voiceVolumeHelm));
-        voiceRoleVolumes.put(CrewStation.TACTICAL, clampVoiceVol(persisted.voiceVolumeTactical));
-        voiceRoleVolumes.put(CrewStation.ENGINEERING, clampVoiceVol(persisted.voiceVolumeEngineering));
-        voiceRoleVolumes.put(CrewStation.SCIENCE, clampVoiceVol(persisted.voiceVolumeScience));
-    }
-
     public double voiceRoleVolume(CrewStation station) {
-        if (station == null) return 1.0;
-        return clampVoiceVol(voiceRoleVolumes.getOrDefault(station, 1.0));
+        return ui.voiceRoleVolume(station);
     }
 
     public void setVoiceRoleVolume(CrewStation station, double value) {
-        if (station == null) return;
-        voiceRoleVolumes.put(station, clampVoiceVol(value));
+        ui.setVoiceRoleVolume(station, value);
     }
 
     public int portraitExpression(CrewStation station) {
-        if (station == null) return 0;
-        return MathUtil.clamp(portraitExpressionLevel.getOrDefault(station, 0), 0, 3);
+        return ui.portraitExpression(station);
     }
 
     public void setPortraitExpression(CrewStation station, int expression, double holdSec) {
-        if (station == null) return;
-        portraitExpressionLevel.put(station, MathUtil.clamp(expression, 0, 3));
-        portraitExpressionTimerSec.put(station, Math.max(0.0, holdSec));
+        ui.setPortraitExpression(station, expression, holdSec);
     }
 
     public void decayPortraitExpressions(double dt) {
-        double step = Math.max(0.0, dt);
-        if (step <= 0.0) return;
-        for (CrewStation station : CrewStation.values()) {
-            double t = Math.max(0.0, portraitExpressionTimerSec.getOrDefault(station, 0.0) - step);
-            portraitExpressionTimerSec.put(station, t);
-            if (t <= 0.0) {
-                portraitExpressionLevel.put(station, 0);
-            }
-        }
-    }
-
-    private static double clampVoiceVol(double v) {
-        if (!Double.isFinite(v)) return 1.0;
-        return MathUtil.clamp(v, 0.0, 2.0);
+        ui.decayPortraitExpressions(dt);
     }
 }
 

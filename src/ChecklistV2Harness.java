@@ -1,6 +1,8 @@
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.lang.reflect.Method;
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -525,7 +527,7 @@ public final class ChecklistV2Harness {
             };
             UISystem.applyCaptainDirective(ctx, directives[(tick / 520) % directives.length]);
         }
-        if (tick % 360 == 0) ctx.scienceJamming = !ctx.scienceJamming;
+        if (tick % 360 == 0) ctx.command.scienceJamming = !ctx.command.scienceJamming;
         if (tick % 540 == 0) {
             UISystem.setEngineeringMode(ctx, ((tick / 540) & 1) == 0
                     ? GameContext.EngineeringMode.DAMAGE_CONTROL

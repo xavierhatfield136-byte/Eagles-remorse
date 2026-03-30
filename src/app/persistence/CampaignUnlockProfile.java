@@ -1,3 +1,6 @@
+package app.persistence;
+
+import app.support.ErrorLog;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -119,7 +122,7 @@ public final class CampaignUnlockProfile {
 
     public boolean recordSectorClear(int sector) {
         boolean changed = false;
-        int s = MathUtil.clamp(sector, 0, 12);
+        int s = clamp(sector, 0, 12);
         if (s > bestSectorCleared) {
             bestSectorCleared = s;
             changed = true;
@@ -159,14 +162,14 @@ public final class CampaignUnlockProfile {
     }
 
     private boolean setGunTier(int tier) {
-        int t = MathUtil.clamp(tier, 0, 1);
+        int t = clamp(tier, 0, 1);
         if (gunTier >= t) return false;
         gunTier = t;
         return true;
     }
 
     private boolean setMissileTier(int tier) {
-        int t = MathUtil.clamp(tier, 0, 2);
+        int t = clamp(tier, 0, 2);
         if (missileTier >= t) return false;
         missileTier = t;
         return true;
@@ -188,9 +191,9 @@ public final class CampaignUnlockProfile {
         version = CURRENT_VERSION;
         runsStarted = Math.max(0, runsStarted);
         runsWon = Math.max(0, Math.min(runsWon, runsStarted));
-        bestSectorCleared = MathUtil.clamp(bestSectorCleared, 0, 12);
-        gunTier = MathUtil.clamp(gunTier, 0, 1);
-        missileTier = MathUtil.clamp(missileTier, 0, 2);
+        bestSectorCleared = clamp(bestSectorCleared, 0, 12);
+        gunTier = clamp(gunTier, 0, 1);
+        missileTier = clamp(missileTier, 0, 2);
     }
 
     private static int parseInt(Properties props, String key, int fallback) {
@@ -199,6 +202,10 @@ public final class CampaignUnlockProfile {
         } catch (Exception ignored) {
             return fallback;
         }
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static void deleteTempQuietly(Path tmp) {

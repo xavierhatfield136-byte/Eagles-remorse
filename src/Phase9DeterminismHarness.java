@@ -1,3 +1,5 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -324,7 +326,7 @@ public final class Phase9DeterminismHarness {
             UISystem.applyCaptainDirective(ctx, directives[(tick / 520) % directives.length]);
         }
         if (tick % 360 == 0) {
-            ctx.scienceJamming = !ctx.scienceJamming;
+            ctx.command.scienceJamming = !ctx.command.scienceJamming;
         }
         if (tick % 540 == 0) {
             UISystem.setEngineeringMode(ctx, ((tick / 540) & 1) == 0

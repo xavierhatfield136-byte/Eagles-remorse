@@ -1,3 +1,7 @@
+package app.persistence;
+
+import app.config.GameMode;
+import app.support.ErrorLog;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -40,8 +44,8 @@ public final class MenuSettingsStore {
             if (modeName == null || modeName.isBlank() || !isKnownMode(modeName)) {
                 modeName = GameMode.CAMPAIGN_OPS.name();
             }
-            mapIndex = MathUtil.clamp(mapIndex, 0, 2);
-            playerTeamId = MathUtil.clamp(playerTeamId, 0, 3);
+            mapIndex = clamp(mapIndex, 0, 2);
+            playerTeamId = clamp(playerTeamId, 0, 3);
             if (seedText == null) seedText = "0";
             seedText = seedText.trim();
             if (seedText.isBlank()) seedText = "0";
@@ -182,7 +186,15 @@ public final class MenuSettingsStore {
 
     private static double clampVoiceVolume(double value) {
         if (!Double.isFinite(value)) return 1.0;
-        return MathUtil.clamp(value, 0.0, 2.0);
+        return clamp(value, 0.0, 2.0);
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static void deleteTempQuietly(Path tmp) {

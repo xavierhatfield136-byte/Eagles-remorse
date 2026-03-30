@@ -1,3 +1,6 @@
+import app.config.GameMode;
+import app.config.PlayerTeamChoice;
+import app.persistence.MenuSettingsStore;
 import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import javax.swing.SwingUtilities;
@@ -7,14 +10,13 @@ public final class UISystem {
 
     public static void closeAllOverlays(GameContext ctx) {
         if (ctx == null) return;
-        boolean hadOverlay = ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen
-                || ctx.powerManagementOpen || ctx.crewStationsOpen || ctx.flightDeckOpen;
-        ctx.shopOpen = false;
-        ctx.baseMenuOpen = false;
-        ctx.mapOpen = false;
-        ctx.powerManagementOpen = false;
-        ctx.crewStationsOpen = false;
-        ctx.flightDeckOpen = false;
+        boolean hadOverlay = ctx.ui.hasBlockingOverlay();
+        ctx.ui.shopOpen = false;
+        ctx.ui.baseMenuOpen = false;
+        ctx.ui.mapOpen = false;
+        ctx.ui.powerManagementOpen = false;
+        ctx.ui.crewStationsOpen = false;
+        ctx.ui.flightDeckOpen = false;
         clearManualCombatInputs(ctx);
         if (!ctx.gameOver) ctx.state = GameState.RUNNING;
         if (hadOverlay) AudioSystem.onUiClose(ctx);
@@ -23,13 +25,13 @@ public final class UISystem {
     public static void toggleShop(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
-        ctx.shopOpen = !ctx.shopOpen;
-        if (ctx.shopOpen) {
-            ctx.baseMenuOpen = false;
-            ctx.mapOpen = false;
-            ctx.powerManagementOpen = false;
-            ctx.crewStationsOpen = false;
-            ctx.flightDeckOpen = false;
+        ctx.ui.shopOpen = !ctx.ui.shopOpen;
+        if (ctx.ui.shopOpen) {
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.SHOP;
             AudioSystem.onUiOpen(ctx);
@@ -42,13 +44,13 @@ public final class UISystem {
     public static void toggleMap(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
-        ctx.mapOpen = !ctx.mapOpen;
-        if (ctx.mapOpen) {
-            ctx.shopOpen = false;
-            ctx.baseMenuOpen = false;
-            ctx.powerManagementOpen = false;
-            ctx.crewStationsOpen = false;
-            ctx.flightDeckOpen = false;
+        ctx.ui.mapOpen = !ctx.ui.mapOpen;
+        if (ctx.ui.mapOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
@@ -66,13 +68,13 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE TO UPGRADE", 2.0);
             return;
         }
-        ctx.baseMenuOpen = !ctx.baseMenuOpen;
-        if (ctx.baseMenuOpen) {
-            ctx.shopOpen = false;
-            ctx.mapOpen = false;
-            ctx.powerManagementOpen = false;
-            ctx.crewStationsOpen = false;
-            ctx.flightDeckOpen = false;
+        ctx.ui.baseMenuOpen = !ctx.ui.baseMenuOpen;
+        if (ctx.ui.baseMenuOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.BASE_MENU;
             AudioSystem.onUiOpen(ctx);
@@ -87,13 +89,13 @@ public final class UISystem {
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (ctx.player == null || !ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
 
-        ctx.powerManagementOpen = !ctx.powerManagementOpen;
-        if (ctx.powerManagementOpen) {
-            ctx.shopOpen = false;
-            ctx.baseMenuOpen = false;
-            ctx.mapOpen = false;
-            ctx.crewStationsOpen = false;
-            ctx.flightDeckOpen = false;
+        ctx.ui.powerManagementOpen = !ctx.ui.powerManagementOpen;
+        if (ctx.ui.powerManagementOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.POWER_MANAGEMENT;
             AudioSystem.onUiOpen(ctx);
@@ -108,13 +110,13 @@ public final class UISystem {
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (ctx.player == null || !ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
 
-        ctx.crewStationsOpen = !ctx.crewStationsOpen;
-        if (ctx.crewStationsOpen) {
-            ctx.shopOpen = false;
-            ctx.baseMenuOpen = false;
-            ctx.mapOpen = false;
-            ctx.powerManagementOpen = false;
-            ctx.flightDeckOpen = false;
+        ctx.ui.crewStationsOpen = !ctx.ui.crewStationsOpen;
+        if (ctx.ui.crewStationsOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.CREW_STATIONS;
             AudioSystem.onUiOpen(ctx);
@@ -128,14 +130,14 @@ public final class UISystem {
         if (!ensurePlayerCarrier(ctx)) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
 
-        ctx.flightDeckOpen = !ctx.flightDeckOpen;
-        if (ctx.flightDeckOpen) {
-            ctx.shopOpen = false;
-            ctx.baseMenuOpen = false;
-            ctx.mapOpen = false;
-            ctx.powerManagementOpen = false;
-            ctx.crewStationsOpen = false;
-            ctx.flightDeckFocus = Math.max(0, Math.min(4, ctx.flightDeckFocus));
+        ctx.ui.flightDeckOpen = !ctx.ui.flightDeckOpen;
+        if (ctx.ui.flightDeckOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckFocus = Math.max(0, Math.min(4, ctx.ui.flightDeckFocus));
             clearManualCombatInputs(ctx);
             ctx.state = GameState.FLIGHT_DECK;
             AudioSystem.onUiOpen(ctx);
@@ -166,7 +168,7 @@ public final class UISystem {
 
     public static boolean handleShopClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.player == null || e == null) return false;
-        if (!ctx.shopOpen) return false;
+        if (!ctx.ui.shopOpen) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
 
         Renderer.ShopClickTarget target = Renderer.shopClickTargetAt(
@@ -187,21 +189,21 @@ public final class UISystem {
 
     public static void selectPowerManagementSlot(GameContext ctx, int idx) {
         if (ctx == null) return;
-        ctx.powerManagementFocus = Math.max(0, Math.min(5, idx));
+        ctx.ui.powerManagementFocus = Math.max(0, Math.min(5, idx));
     }
 
     public static void cyclePowerManagementSlot(GameContext ctx, int dir) {
         if (ctx == null) return;
         int step = (dir < 0) ? -1 : 1;
-        int next = ctx.powerManagementFocus + step;
+        int next = ctx.ui.powerManagementFocus + step;
         if (next < 0) next = 5;
         if (next > 5) next = 0;
-        ctx.powerManagementFocus = next;
+        ctx.ui.powerManagementFocus = next;
     }
 
     public static void stepPowerAllocation(GameContext ctx, int dir) {
         if (ctx == null || ctx.player == null) return;
-        adjustPowerAllocation(ctx, ctx.powerManagementFocus, (dir < 0) ? -0.05 : 0.05);
+        adjustPowerAllocation(ctx, ctx.ui.powerManagementFocus, (dir < 0) ? -0.05 : 0.05);
     }
 
     public static void adjustPowerAllocation(GameContext ctx, int channel, double delta) {
@@ -254,19 +256,19 @@ public final class UISystem {
         normalizePower(p);
         ctx.player.setPowerBusAllocation(p[0], p[1], p[2], p[3], p[4], p[5]);
         // Manual engineering input immediately overrides automation.
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
     }
 
     public static void applyPowerPreset(GameContext ctx, Ship.PowerPreset preset) {
         if (ctx == null || ctx.player == null) return;
         if (preset == null) preset = Ship.PowerPreset.BALANCED;
         ctx.player.setPowerPreset(preset);
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
     }
 
     public static void toggleOverloadMode(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
         boolean before = ctx.player.isOverloadActive();
         boolean changed = ctx.player.toggleOverloadMode();
         if (!changed && !before && !ctx.player.isOverloadAvailable()) {
@@ -279,7 +281,7 @@ public final class UISystem {
     public static void cycleOverloadBus(GameContext ctx, int dir) {
         if (ctx == null || ctx.player == null) return;
         Ship.PowerBus bus = ctx.player.cycleOverloadBus(dir);
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "OVERLOAD BUS: " + bus.name(), 0.9);
     }
 
@@ -294,7 +296,7 @@ public final class UISystem {
             next = vals[idx];
             ctx.player.setEngineeringPriority(next);
         }
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "ENG PRIORITY: " + next.name(), 0.9);
     }
 
@@ -310,8 +312,8 @@ public final class UISystem {
         }
 
         boolean suppressed = p.suppressHottestFire();
-        ctx.engineeringAutomation = false;
-        ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+        ctx.command.engineeringAutomation = false;
+        ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
         if (!suppressed) {
             EventSystem.showBanner(ctx, "SUPPRESSION BURST INEFFECTIVE", 1.0);
             return;
@@ -353,7 +355,7 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "EMERGENCY THRUST UNAVAILABLE", 1.0);
             return;
         }
-        ctx.helmAutomation = false;
+        ctx.command.helmAutomation = false;
         EventSystem.showBanner(ctx, "EMERGENCY THRUST: ENGAGED", 1.0);
     }
 
@@ -374,44 +376,44 @@ public final class UISystem {
 
     public static void selectCrewStation(GameContext ctx, GameContext.CrewStation station) {
         if (ctx == null || station == null) return;
-        ctx.activeCrewStation = station;
+        ctx.command.activeCrewStation = station;
     }
 
     public static void cycleCrewStation(GameContext ctx, int dir) {
         if (ctx == null) return;
         GameContext.CrewStation[] values = GameContext.CrewStation.values();
         int step = (dir < 0) ? -1 : 1;
-        int idx = ctx.activeCrewStation.ordinal() + step;
+        int idx = ctx.command.activeCrewStation.ordinal() + step;
         if (idx < 0) idx = values.length - 1;
         if (idx >= values.length) idx = 0;
-        ctx.activeCrewStation = values[idx];
+        ctx.command.activeCrewStation = values[idx];
     }
 
     public static boolean stationAutomation(GameContext ctx, GameContext.CrewStation station) {
         if (ctx == null || station == null) return false;
         return switch (station) {
-            case CAPTAIN -> ctx.captainAutomation;
-            case HELM -> ctx.helmAutomation;
-            case TACTICAL -> ctx.tacticalAutomation;
-            case ENGINEERING -> ctx.engineeringAutomation;
-            case SCIENCE -> ctx.scienceAutomation;
+            case CAPTAIN -> ctx.command.captainAutomation;
+            case HELM -> ctx.command.helmAutomation;
+            case TACTICAL -> ctx.command.tacticalAutomation;
+            case ENGINEERING -> ctx.command.engineeringAutomation;
+            case SCIENCE -> ctx.command.scienceAutomation;
         };
     }
 
     public static void setStationAutomation(GameContext ctx, GameContext.CrewStation station, boolean enabled) {
         if (ctx == null || station == null) return;
         switch (station) {
-            case CAPTAIN -> ctx.captainAutomation = enabled;
-            case HELM -> ctx.helmAutomation = enabled;
-            case TACTICAL -> ctx.tacticalAutomation = enabled;
-            case ENGINEERING -> ctx.engineeringAutomation = enabled;
-            case SCIENCE -> ctx.scienceAutomation = enabled;
+            case CAPTAIN -> ctx.command.captainAutomation = enabled;
+            case HELM -> ctx.command.helmAutomation = enabled;
+            case TACTICAL -> ctx.command.tacticalAutomation = enabled;
+            case ENGINEERING -> ctx.command.engineeringAutomation = enabled;
+            case SCIENCE -> ctx.command.scienceAutomation = enabled;
         }
     }
 
     public static void toggleActiveStationAutomation(GameContext ctx) {
         if (ctx == null) return;
-        GameContext.CrewStation s = ctx.activeCrewStation;
+        GameContext.CrewStation s = ctx.command.activeCrewStation;
         setStationAutomation(ctx, s, !stationAutomation(ctx, s));
     }
 
@@ -419,74 +421,72 @@ public final class UISystem {
         if (ctx == null) return;
         GameContext.CrewStation[] values = GameContext.CrewStation.values();
         int step = (dir < 0) ? -1 : 1;
-        int idx = ctx.voiceMixFocus.ordinal() + step;
+        int idx = ctx.ui.voiceMixFocus.ordinal() + step;
         if (idx < 0) idx = values.length - 1;
         if (idx >= values.length) idx = 0;
-        ctx.voiceMixFocus = values[idx];
-        EventSystem.showBanner(ctx, "VOICE MIX FOCUS: " + ctx.voiceMixFocus.name(), 0.9);
+        ctx.ui.voiceMixFocus = values[idx];
+        EventSystem.showBanner(ctx, "VOICE MIX FOCUS: " + ctx.ui.voiceMixFocus.name(), 0.9);
     }
 
     public static void stepVoiceMixVolume(GameContext ctx, int dir) {
         if (ctx == null) return;
-        double current = ctx.voiceRoleVolume(ctx.voiceMixFocus);
+        double current = ctx.voiceRoleVolume(ctx.ui.voiceMixFocus);
         double next = current + ((dir < 0) ? -0.05 : 0.05);
         next = MathUtil.clamp(next, 0.0, 2.0);
-        ctx.setVoiceRoleVolume(ctx.voiceMixFocus, next);
+        ctx.setVoiceRoleVolume(ctx.ui.voiceMixFocus, next);
         persistVoicePreferences(ctx);
         int pct = (int) Math.round(next * 100.0);
-        EventSystem.showBanner(ctx, "VOICE " + ctx.voiceMixFocus.name() + ": " + pct + "%", 0.8);
+        EventSystem.showBanner(ctx, "VOICE " + ctx.ui.voiceMixFocus.name() + ": " + pct + "%", 0.8);
     }
 
     public static void toggleVoiceCaptions(GameContext ctx) {
         if (ctx == null) return;
-        ctx.voiceCaptionsEnabled = !ctx.voiceCaptionsEnabled;
-        if (!ctx.voiceCaptionsEnabled) {
-            ctx.voiceCaption = "";
-            ctx.voiceCaptionT = 0.0;
+        ctx.ui.voiceCaptionsEnabled = !ctx.ui.voiceCaptionsEnabled;
+        if (!ctx.ui.voiceCaptionsEnabled) {
+            ctx.ui.clearVoiceCaption();
         }
         persistVoicePreferences(ctx);
-        EventSystem.showBanner(ctx, "VOICE CAPTIONS: " + (ctx.voiceCaptionsEnabled ? "ON" : "OFF"), 1.0);
+        EventSystem.showBanner(ctx, "VOICE CAPTIONS: " + (ctx.ui.voiceCaptionsEnabled ? "ON" : "OFF"), 1.0);
     }
 
     public static void cycleXrayFilterMode(GameContext ctx, int dir) {
         if (ctx == null) return;
         GameContext.XrayFilterMode[] modes = GameContext.XrayFilterMode.values();
         int step = (dir < 0) ? -1 : 1;
-        int idx = ctx.xrayFilterMode.ordinal() + step;
+        int idx = ctx.ui.xrayFilterMode.ordinal() + step;
         if (idx < 0) idx = modes.length - 1;
         if (idx >= modes.length) idx = 0;
-        ctx.xrayFilterMode = modes[idx];
-        EventSystem.showBanner(ctx, "X-RAY FILTER: " + ctx.xrayFilterMode.name(), 0.9);
+        ctx.ui.xrayFilterMode = modes[idx];
+        EventSystem.showBanner(ctx, "X-RAY FILTER: " + ctx.ui.xrayFilterMode.name(), 0.9);
     }
 
     public static void clearXrayRoomFocus(GameContext ctx) {
         if (ctx == null) return;
-        ctx.xrayFocusedRoom = null;
+        ctx.ui.xrayFocusedRoom = null;
         EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
     }
 
     public static boolean handleXrayClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.player == null || e == null) return false;
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
-                || ctx.crewStationsOpen || ctx.flightDeckOpen) return false;
+        if (ctx.ui.hasBlockingOverlay()) return false;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return false;
 
         ShipRoomLayout.RoomId roomId = Renderer.playerXrayRoomAt(ctx, viewportW, viewportH, e.getX(), e.getY());
         if (roomId == null) return false;
 
         if (SwingUtilities.isRightMouseButton(e)) {
-            ctx.xrayFocusedRoom = null;
+            ctx.ui.xrayFocusedRoom = null;
             EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
             return true;
         }
         if (!SwingUtilities.isLeftMouseButton(e)) return true;
 
-        if (ctx.xrayFocusedRoom == roomId) {
-            ctx.xrayFocusedRoom = null;
+        if (ctx.ui.xrayFocusedRoom == roomId) {
+            ctx.ui.xrayFocusedRoom = null;
             EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
             return true;
         }
-        ctx.xrayFocusedRoom = roomId;
+        ctx.ui.xrayFocusedRoom = roomId;
         EventSystem.showBanner(ctx, "X-RAY FOCUS: " + xrayRoomLabel(roomId), 0.9);
         return true;
     }
@@ -498,19 +498,19 @@ public final class UISystem {
         double nx = (e.getX() - rect.x) / (double) rect.width;
         double ny = (e.getY() - rect.y) / (double) rect.height;
 
-        ctx.waypointX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
-        ctx.waypointY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        ctx.ui.waypointX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
+        ctx.ui.waypointY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
 
-        addPing(ctx, ctx.waypointX, ctx.waypointY, 2.2);
+        addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.2);
     }
 
     public static void setWaypointAtCursor(GameContext ctx, PlayerControl controls) {
         double wx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
         double wy = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
-        ctx.waypointX = GameMath.clamp(wx, 0, ctx.WORLD_W);
-        ctx.waypointY = GameMath.clamp(wy, 0, ctx.WORLD_H);
-        addPing(ctx, ctx.waypointX, ctx.waypointY, 2.2);
+        ctx.ui.waypointX = GameMath.clamp(wx, 0, ctx.WORLD_W);
+        ctx.ui.waypointY = GameMath.clamp(wy, 0, ctx.WORLD_H);
+        addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.0);
     }
 
@@ -525,19 +525,19 @@ public final class UISystem {
         if (ctx.player != null) {
             factionCode = pingCodeForFaction(ctx.player.faction);
         }
-        ctx.mapPings.add(new Renderer.MapPing(x, y, seconds, factionCode));
+        ctx.ui.mapPings.add(new Renderer.MapPing(x, y, seconds, factionCode));
     }
 
     public static void updatePings(GameContext ctx, double dt) {
-        for (int i = ctx.mapPings.size() - 1; i >= 0; i--) {
-            Renderer.MapPing p = ctx.mapPings.get(i);
+        for (int i = ctx.ui.mapPings.size() - 1; i >= 0; i--) {
+            Renderer.MapPing p = ctx.ui.mapPings.get(i);
             p.t -= dt;
-            if (p.t <= 0) ctx.mapPings.remove(i);
+            if (p.t <= 0) ctx.ui.mapPings.remove(i);
         }
     }
 
     public static void performShopUpgradeById(GameContext ctx, int upgradeId) {
-        if (ctx == null || !ctx.shopOpen) return;
+        if (ctx == null || !ctx.ui.shopOpen) return;
         switch (upgradeId) {
             case 1 -> tryEquipEnergyBolt(ctx);
             case 2 -> tryBuyBeamBolt(ctx);
@@ -552,7 +552,7 @@ public final class UISystem {
     }
 
     public static void performHullSwapByRole(GameContext ctx, ShipRole role) {
-        if (ctx == null || role == null || !ctx.shopOpen) return;
+        if (ctx == null || role == null || !ctx.ui.shopOpen) return;
         switch (role) {
             case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 0, 0);
             case PICKET -> trySwapHull(ctx, ShipRole.PICKET, 180, 0);
@@ -576,7 +576,7 @@ public final class UISystem {
 
     public static void tryBuyBeamBolt(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
 
         Player player = ctx.player;
         int cost = 220;
@@ -598,7 +598,7 @@ public final class UISystem {
 
     public static void tryEquipEnergyBolt(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
 
         Player player = ctx.player;
         if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT) {
@@ -613,7 +613,7 @@ public final class UISystem {
 
     public static void tryBuyHullPlating(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         int cost = 60;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
@@ -627,7 +627,7 @@ public final class UISystem {
 
     public static void tryBuyShieldArray(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         Player p = ctx.player;
         if (!p.shieldActive || p.shieldMax <= 0) {
             EventSystem.showBanner(ctx, "NO SHIELD SYSTEM", 1.4);
@@ -647,7 +647,7 @@ public final class UISystem {
 
     public static void tryAddGunTurret(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         int cost = 100;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
@@ -660,7 +660,7 @@ public final class UISystem {
 
     public static void tryAddMissileRack(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         int cost = 140;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
@@ -673,7 +673,7 @@ public final class UISystem {
 
     public static void tryUpgradeCIWS(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         if (!ctx.player.hasCIWS) {
             EventSystem.showBanner(ctx, "NO CIWS SYSTEM", 1.4);
             return;
@@ -754,30 +754,30 @@ public final class UISystem {
 
     public static void selectFlightDeckSlot(GameContext ctx, int idx) {
         if (ctx == null) return;
-        ctx.flightDeckFocus = Math.max(0, Math.min(4, idx));
+        ctx.ui.flightDeckFocus = Math.max(0, Math.min(4, idx));
     }
 
     public static void cycleFlightDeckSlot(GameContext ctx, int dir) {
         if (!ensurePlayerCarrier(ctx)) return;
         int step = (dir < 0) ? -1 : 1;
-        int next = ctx.flightDeckFocus + step;
+        int next = ctx.ui.flightDeckFocus + step;
         if (next < 0) next = 4;
         if (next > 4) next = 0;
-        ctx.flightDeckFocus = next;
+        ctx.ui.flightDeckFocus = next;
     }
 
     public static void cycleFocusedFlightDeckRole(GameContext ctx, int dir) {
         if (!ensurePlayerCarrier(ctx)) return;
-        ctx.player.cycleFlightDeckRole(ctx.flightDeckFocus, dir);
-        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.flightDeckFocus + 1) + ": "
-                + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
+        ctx.player.cycleFlightDeckRole(ctx.ui.flightDeckFocus, dir);
+        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.ui.flightDeckFocus + 1) + ": "
+                + ctx.player.flightDeckRoleAt(ctx.ui.flightDeckFocus).name(), 0.9);
     }
 
     public static void setFocusedFlightDeckRole(GameContext ctx, ShipRole role) {
         if (!ensurePlayerCarrier(ctx) || role == null) return;
-        ctx.player.setFlightDeckRole(ctx.flightDeckFocus, role);
-        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.flightDeckFocus + 1) + ": "
-                + ctx.player.flightDeckRoleAt(ctx.flightDeckFocus).name(), 0.9);
+        ctx.player.setFlightDeckRole(ctx.ui.flightDeckFocus, role);
+        EventSystem.showBanner(ctx, "SQUAD SLOT " + (ctx.ui.flightDeckFocus + 1) + ": "
+                + ctx.player.flightDeckRoleAt(ctx.ui.flightDeckFocus).name(), 0.9);
     }
 
     public static void fillFlightDeck(GameContext ctx, ShipRole role) {
@@ -796,7 +796,7 @@ public final class UISystem {
 
     public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {
         if (ctx == null || ctx.player == null) return;
-        if (!ctx.shopOpen) return;
+        if (!ctx.ui.shopOpen) return;
         if (ctx.player.role == role) {
             EventSystem.showBanner(ctx, "HULL ALREADY EQUIPPED", 1.2);
             return;
@@ -820,7 +820,7 @@ public final class UISystem {
 
     public static void tryUpgradeBase(GameContext ctx, int which) {
         if (ctx == null) return;
-        if (!ctx.baseMenuOpen) return;
+        if (!ctx.ui.baseMenuOpen) return;
         if (which < 1 || which > 5) return;
         Ship base = EconomySystem.getDockedFriendlyBase(ctx);
         if (base == null) {
@@ -940,20 +940,20 @@ public final class UISystem {
 
     public static void setHelmMode(GameContext ctx, GameContext.HelmMode mode) {
         if (ctx == null || mode == null) return;
-        ctx.helmMode = mode;
-        ctx.helmAutomation = true;
+        ctx.command.helmMode = mode;
+        ctx.command.helmAutomation = true;
     }
 
     public static void setTacticalMode(GameContext ctx, GameContext.TacticalMode mode) {
         if (ctx == null || mode == null) return;
-        ctx.tacticalMode = mode;
-        ctx.tacticalAutomation = true;
+        ctx.command.tacticalMode = mode;
+        ctx.command.tacticalAutomation = true;
     }
 
     public static void setEngineeringMode(GameContext ctx, GameContext.EngineeringMode mode) {
         if (ctx == null || mode == null) return;
-        ctx.engineeringMode = mode;
-        ctx.engineeringAutomation = true;
+        ctx.command.engineeringMode = mode;
+        ctx.command.engineeringAutomation = true;
     }
 
     public static void applyCaptainPreset(GameContext ctx, int index) {
@@ -971,89 +971,89 @@ public final class UISystem {
 
     public static void applyCaptainDirective(GameContext ctx, GameContext.CaptainDirective directive) {
         if (ctx == null || ctx.player == null || directive == null) return;
-        ctx.captainDirective = directive;
+        ctx.command.captainDirective = directive;
         switch (directive) {
             case ATTACK -> {
-                ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                ctx.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.ATTACK;
+                ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.ATTACK;
                 ctx.player.setPowerPreset(Ship.PowerPreset.ATTACK);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
             }
             case DEFENSE -> {
-                ctx.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                ctx.command.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
             }
             case EMERGENCY -> {
-                ctx.helmMode = GameContext.HelmMode.EVASIVE;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+                ctx.command.helmMode = GameContext.HelmMode.EVASIVE;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);
                 ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
             }
             case MINE -> {
-                ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.player.setPowerPreset(Ship.PowerPreset.PURSUIT);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.MINE;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.MINE;
             }
             case ESCORT -> {
-                ctx.helmMode = GameContext.HelmMode.ORBIT;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                ctx.command.helmMode = GameContext.HelmMode.ORBIT;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.player.setPowerPreset(Ship.PowerPreset.BALANCED);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.ESCORT;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.ESCORT;
             }
             case DEFEND -> {
-                ctx.helmMode = GameContext.HelmMode.ORBIT;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                ctx.command.helmMode = GameContext.HelmMode.ORBIT;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
             }
             case REPAIR -> {
-                ctx.helmMode = GameContext.HelmMode.EVASIVE;
-                ctx.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
-                ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+                ctx.command.helmMode = GameContext.HelmMode.EVASIVE;
+                ctx.command.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);
                 ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.REPAIR;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.REPAIR;
             }
             case RTB -> {
-                ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                ctx.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
-                ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                ctx.command.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 ctx.player.setPowerPreset(Ship.PowerPreset.DEFENSE);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.RTB;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.RTB;
             }
             default -> {
-                ctx.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
-                ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                ctx.command.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
+                ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.player.setPowerPreset(Ship.PowerPreset.BALANCED);
-                ctx.alliedFleetCommand = GameContext.FleetCommand.AUTO;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.AUTO;
             }
         }
-        ctx.captainAutomation = true;
-        ctx.helmAutomation = true;
-        ctx.tacticalAutomation = true;
-        ctx.engineeringAutomation = true;
-        ctx.scienceAutomation = true;
+        ctx.command.captainAutomation = true;
+        ctx.command.helmAutomation = true;
+        ctx.command.tacticalAutomation = true;
+        ctx.command.engineeringAutomation = true;
+        ctx.command.scienceAutomation = true;
     }
 
     public static void cycleAlliedFleetFormation(GameContext ctx) {
         if (ctx == null) return;
         GameContext.FleetFormation[] values = GameContext.FleetFormation.values();
-        int next = ctx.alliedFleetFormation.ordinal() + 1;
+        int next = ctx.command.alliedFleetFormation.ordinal() + 1;
         if (next >= values.length) next = 0;
-        ctx.alliedFleetFormation = values[next];
-        AudioSystem.onCommandShipFormationOrder(ctx, ctx.player, ctx.alliedFleetFormation);
-        EventSystem.showBanner(ctx, "FLEET FORMATION: " + ctx.alliedFleetFormation.name(), 1.0);
+        ctx.command.alliedFleetFormation = values[next];
+        AudioSystem.onCommandShipFormationOrder(ctx, ctx.player, ctx.command.alliedFleetFormation);
+        EventSystem.showBanner(ctx, "FLEET FORMATION: " + ctx.command.alliedFleetFormation.name(), 1.0);
     }
 
     public static void assignNearestFriendlyShipFleetOverride(GameContext ctx, GameContext.FleetCommand command) {
@@ -1065,12 +1065,12 @@ public final class UISystem {
             return;
         }
         if (command == GameContext.FleetCommand.AUTO) {
-            ctx.shipFleetCommandOverrides.remove(target.id);
+            ctx.command.shipFleetCommandOverrides.remove(target.id);
             AudioSystem.onCommandShipShipOrder(ctx, ctx.player, GameContext.FleetCommand.AUTO, target);
             EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER CLEARED", 1.1);
             return;
         }
-        ctx.shipFleetCommandOverrides.put(target.id, command);
+        ctx.command.shipFleetCommandOverrides.put(target.id, command);
         AudioSystem.onCommandShipShipOrder(ctx, ctx.player, command, target);
         EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER: " + command.name(), 1.1);
     }
@@ -1106,7 +1106,7 @@ public final class UISystem {
 
     public static void toggleScienceJamming(GameContext ctx) {
         if (ctx == null) return;
-        ctx.scienceJamming = !ctx.scienceJamming;
+        ctx.command.scienceJamming = !ctx.command.scienceJamming;
     }
 
     private static int pingCodeForFaction(Faction faction) {
@@ -1142,7 +1142,7 @@ public final class UISystem {
     private static void persistVoicePreferences(GameContext ctx) {
         if (ctx == null) return;
         MenuSettingsStore.MenuSettings settings = MenuSettingsStore.load();
-        settings.voiceCaptionsEnabled = ctx.voiceCaptionsEnabled;
+        settings.voiceCaptionsEnabled = ctx.ui.voiceCaptionsEnabled;
         settings.voiceVolumeCaptain = ctx.voiceRoleVolume(GameContext.CrewStation.CAPTAIN);
         settings.voiceVolumeHelm = ctx.voiceRoleVolume(GameContext.CrewStation.HELM);
         settings.voiceVolumeTactical = ctx.voiceRoleVolume(GameContext.CrewStation.TACTICAL);

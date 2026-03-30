@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -94,7 +95,7 @@ public final class EconomySystem {
         }
 
         // Mining for player (hold F)
-        if ((ctx.miningKeyDown || ctx.miningAuto) && ctx.player != null) {
+        if ((ctx.miningKeyDown || ctx.command.miningAuto) && ctx.player != null) {
             doMining(ctx, ctx.player, dt);
         }
 
@@ -1309,7 +1310,7 @@ public final class EconomySystem {
         double[] preserveBuses = ship.powerBusFractions();
         Ship.EngineeringPriority preservePriority = ship.engineeringPriority();
         Ship.PowerBus preserveOverloadBus = ship.overloadBus();
-        GameContext.FleetCommand override = (ctx.shipFleetCommandOverrides == null) ? null : ctx.shipFleetCommandOverrides.get(ship.id);
+        GameContext.FleetCommand override = (ctx.command.shipFleetCommandOverrides == null) ? null : ctx.command.shipFleetCommandOverrides.get(ship.id);
 
         copyShipFromTemplate(ship, template);
 
@@ -1338,8 +1339,8 @@ public final class EconomySystem {
         ship.resetShieldState();
         ship.resetInternalSystems();
         ship.clearHullImpactMarks();
-        if (override != null && ctx.shipFleetCommandOverrides != null) {
-            ctx.shipFleetCommandOverrides.put(ship.id, override);
+        if (override != null && ctx.command.shipFleetCommandOverrides != null) {
+            ctx.command.shipFleetCommandOverrides.put(ship.id, override);
         }
         return true;
     }

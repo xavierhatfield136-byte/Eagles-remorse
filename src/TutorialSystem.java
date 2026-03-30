@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
@@ -124,9 +125,9 @@ public final class TutorialSystem {
         ctx.lockedTarget = null;
         ctx.allyBase = null;
         ctx.enemyBase = null;
-        ctx.waypointX = Double.NaN;
-        ctx.waypointY = Double.NaN;
-        ctx.mapPings.clear();
+        ctx.ui.waypointX = Double.NaN;
+        ctx.ui.waypointY = Double.NaN;
+        ctx.ui.mapPings.clear();
         ctx.campaign = null;
         ctx.credits = 15000;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
@@ -136,7 +137,7 @@ public final class TutorialSystem {
         ctx.orePriceT = 0.0;
         ctx.miningMul = 1.0;
         ctx.miningT = 0.0;
-        ctx.hudDetail = GameContext.HudDetail.FULL;
+        ctx.ui.hudDetail = GameContext.HudDetail.FULL;
 
         TutorialState st = new TutorialState();
         st.playerFaction = (playerFaction == null) ? Faction.ALLY : playerFaction;
@@ -228,8 +229,8 @@ public final class TutorialSystem {
         for (int i = 0; i < 8; i++) {
             LessonId lesson = currentLesson(st);
             if (lesson == LessonId.COMPLETE) {
-                ctx.waypointX = Double.NaN;
-                ctx.waypointY = Double.NaN;
+                ctx.ui.waypointX = Double.NaN;
+                ctx.ui.waypointY = Double.NaN;
                 return;
             }
             if (!lessonComplete(ctx, st, lesson)) {
@@ -486,15 +487,15 @@ public final class TutorialSystem {
     }
 
     private static void refreshPersistentProgress(GameContext ctx, TutorialState st) {
-        st.betaWaypointSet |= nearPoint(ctx.waypointX, ctx.waypointY, st.betaX, st.betaY, 150.0);
-        st.gammaWaypointSet |= nearPoint(ctx.waypointX, ctx.waypointY, st.gammaX, st.gammaY, 150.0);
+        st.betaWaypointSet |= nearPoint(ctx.ui.waypointX, ctx.ui.waypointY, st.betaX, st.betaY, 150.0);
+        st.gammaWaypointSet |= nearPoint(ctx.ui.waypointX, ctx.ui.waypointY, st.gammaX, st.gammaY, 150.0);
         st.reachedAlpha |= near(ctx.player, st.alphaX, st.alphaY, POINT_REACHED_RADIUS);
         st.reachedBeta |= near(ctx.player, st.betaX, st.betaY, POINT_REACHED_RADIUS);
         st.pingedWeaponsRange |= hasPingNear(ctx, st.weaponsX, st.weaponsY, PING_MATCH_RADIUS);
-        st.xrayFilterUsed |= ctx.xrayFilterMode != GameContext.XrayFilterMode.ALL;
-        st.xrayRoomFocused |= ctx.xrayFocusedRoom != null;
-        st.openedShop |= ctx.shopOpen;
-        st.openedFlightDeck |= ctx.flightDeckOpen;
+        st.xrayFilterUsed |= ctx.ui.xrayFilterMode != GameContext.XrayFilterMode.ALL;
+        st.xrayRoomFocused |= ctx.ui.xrayFocusedRoom != null;
+        st.openedShop |= ctx.ui.shopOpen;
+        st.openedFlightDeck |= ctx.ui.flightDeckOpen;
         st.minedOre |= playerHasMinedOre(ctx, st);
         st.hangarTierThree |= currentHangarLevel(ctx, st.homeBaseId) >= 3;
 
@@ -505,7 +506,7 @@ public final class TutorialSystem {
         st.dockedAtHome |= docked != null && docked.id == st.homeBaseId;
         st.swappedToCarrier |= ctx.player != null && ctx.player.isCarrier;
         st.fireSuppressed |= st.seededDamageControlFire && ctx.player != null && ctx.player.totalFireIntensity() <= 0.05;
-        st.warpChargeStarted |= st.gammaWaypointSet && ctx.playerTeleportCharging;
+        st.warpChargeStarted |= st.gammaWaypointSet && ctx.command.playerTeleportCharging;
 
         if (ctx.player != null && ctx.player.isCarrier) {
             if (!st.flightDeckBaselineCaptured && currentLesson(st) == LessonId.CARRIER_AND_WARP) {
@@ -544,8 +545,8 @@ public final class TutorialSystem {
                 captureCarrierBaseline(ctx, st);
             }
         } else if (lesson == LessonId.COMPLETE) {
-            ctx.waypointX = Double.NaN;
-            ctx.waypointY = Double.NaN;
+            ctx.ui.waypointX = Double.NaN;
+            ctx.ui.waypointY = Double.NaN;
         }
     }
 
@@ -586,23 +587,23 @@ public final class TutorialSystem {
 
         switch (lesson) {
             case FLIGHT_BASICS -> {
-                ctx.waypointX = st.alphaX;
-                ctx.waypointY = st.alphaY;
+                ctx.ui.waypointX = st.alphaX;
+                ctx.ui.waypointY = st.alphaY;
                 if (announce) EventSystem.showBanner(ctx, "LESSON 1: FLIGHT BASICS", 2.4);
             }
             case TARGETING_AND_SENSORS -> {
-                ctx.waypointX = st.weaponsX;
-                ctx.waypointY = st.weaponsY;
+                ctx.ui.waypointX = st.weaponsX;
+                ctx.ui.waypointY = st.weaponsY;
                 if (announce) EventSystem.showBanner(ctx, "LESSON 2: TARGETING + XRAY", 2.4);
             }
             case LOGISTICS_AND_REFIT -> {
-                ctx.waypointX = st.miningX;
-                ctx.waypointY = st.miningY;
+                ctx.ui.waypointX = st.miningX;
+                ctx.ui.waypointY = st.miningY;
                 if (announce) EventSystem.showBanner(ctx, "LESSON 3: LOGISTICS LOOP", 2.4);
             }
             case BRIDGE_SYSTEMS -> {
-                ctx.waypointX = Double.NaN;
-                ctx.waypointY = Double.NaN;
+                ctx.ui.waypointX = Double.NaN;
+                ctx.ui.waypointY = Double.NaN;
                 st.powerCrewBaselineCaptured = false;
                 st.powerAdjusted = false;
                 st.crewAdjusted = false;
@@ -612,8 +613,8 @@ public final class TutorialSystem {
                 if (announce) EventSystem.showBanner(ctx, "LESSON 4: BRIDGE SYSTEMS", 2.4);
             }
             case CARRIER_AND_WARP -> {
-                ctx.waypointX = Double.NaN;
-                ctx.waypointY = Double.NaN;
+                ctx.ui.waypointX = Double.NaN;
+                ctx.ui.waypointY = Double.NaN;
                 st.flightDeckBaselineCaptured = false;
                 st.openedFlightDeck = false;
                 st.launchedWing = false;
@@ -625,8 +626,8 @@ public final class TutorialSystem {
                 if (announce) EventSystem.showBanner(ctx, "LESSON 5: CARRIER + WARP", 2.4);
             }
             case COMPLETE -> {
-                ctx.waypointX = Double.NaN;
-                ctx.waypointY = Double.NaN;
+                ctx.ui.waypointX = Double.NaN;
+                ctx.ui.waypointY = Double.NaN;
                 EventSystem.showBanner(ctx, "COMMAND SCHOOL COMPLETE", 3.0);
             }
         }
@@ -765,8 +766,8 @@ public final class TutorialSystem {
     private static void focusHomeBase(GameContext ctx, TutorialState st) {
         Ship base = shipById(ctx, st.homeBaseId);
         if (base != null) {
-            ctx.waypointX = base.x;
-            ctx.waypointY = base.y;
+            ctx.ui.waypointX = base.x;
+            ctx.ui.waypointY = base.y;
         }
     }
 
@@ -775,11 +776,11 @@ public final class TutorialSystem {
         st.powerCrewBaselineCaptured = true;
         st.baselinePowerPreset = ctx.player.powerPreset;
         st.baselinePowerBuses = ctx.player.powerBusFractions();
-        st.baselineCaptainDirective = ctx.captainDirective;
-        st.baselineHelmMode = ctx.helmMode;
-        st.baselineTacticalMode = ctx.tacticalMode;
-        st.baselineEngineeringMode = ctx.engineeringMode;
-        st.baselineScienceJamming = ctx.scienceJamming;
+        st.baselineCaptainDirective = ctx.command.captainDirective;
+        st.baselineHelmMode = ctx.command.helmMode;
+        st.baselineTacticalMode = ctx.command.tacticalMode;
+        st.baselineEngineeringMode = ctx.command.engineeringMode;
+        st.baselineScienceJamming = ctx.command.scienceJamming;
     }
 
     private static void captureCarrierBaseline(GameContext ctx, TutorialState st) {
@@ -798,12 +799,12 @@ public final class TutorialSystem {
 
     private static boolean crewAdjustedSinceBaseline(GameContext ctx, TutorialState st) {
         if (ctx == null || st == null || !st.powerCrewBaselineCaptured) return false;
-        return ctx.captainDirective != st.baselineCaptainDirective
-                || ctx.helmMode != st.baselineHelmMode
-                || ctx.tacticalMode != st.baselineTacticalMode
-                || ctx.engineeringMode != st.baselineEngineeringMode
-                || ctx.scienceJamming != st.baselineScienceJamming
-                || ctx.activeCrewStation != GameContext.CrewStation.CAPTAIN;
+        return ctx.command.captainDirective != st.baselineCaptainDirective
+                || ctx.command.helmMode != st.baselineHelmMode
+                || ctx.command.tacticalMode != st.baselineTacticalMode
+                || ctx.command.engineeringMode != st.baselineEngineeringMode
+                || ctx.command.scienceJamming != st.baselineScienceJamming
+                || ctx.command.activeCrewStation != GameContext.CrewStation.CAPTAIN;
     }
 
     private static double powerBusDelta(double[] now, double[] before) {
@@ -965,9 +966,9 @@ public final class TutorialSystem {
     }
 
     private static boolean hasPingNear(GameContext ctx, double x, double y, double radius) {
-        if (ctx == null || ctx.mapPings == null) return false;
+        if (ctx == null || ctx.ui.mapPings == null) return false;
         double r2 = radius * radius;
-        for (Renderer.MapPing ping : ctx.mapPings) {
+        for (Renderer.MapPing ping : ctx.ui.mapPings) {
             if (ping == null) continue;
             if (GameMath.dist2(ping.x, ping.y, x, y) <= r2) return true;
         }

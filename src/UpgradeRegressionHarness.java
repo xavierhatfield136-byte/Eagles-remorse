@@ -1,3 +1,5 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,8 +72,8 @@ public final class UpgradeRegressionHarness {
         base.oreStockpile = 1_000_000;
 
         // ---- Ship upgrades ----
-        ctx.shopOpen = true;
-        ctx.baseMenuOpen = false;
+        ctx.ui.shopOpen = true;
+        ctx.ui.baseMenuOpen = false;
 
         UISystem.tryEquipEnergyBolt(ctx);
         checkShip(r, ctx.player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT, "equip_energy_bolt");
@@ -131,8 +133,8 @@ public final class UpgradeRegressionHarness {
         checkShip(r, ctx.credits == creditsBeforeLockedSwap, "hangar_lock_no_cost");
 
         // ---- Base upgrades ----
-        ctx.shopOpen = false;
-        ctx.baseMenuOpen = true;
+        ctx.ui.shopOpen = false;
+        ctx.ui.baseMenuOpen = true;
 
         int baseHpBefore = base.hpMax;
         int creditsBeforeBaseHull = ctx.credits;
@@ -173,16 +175,16 @@ public final class UpgradeRegressionHarness {
         checkBase(r, up.hangarLv == hangarBefore + 1, "base_hangar_level");
 
         // With hangar tier >= 1, LIGHT_CRUISER unlock should succeed.
-        ctx.baseMenuOpen = false;
-        ctx.shopOpen = true;
+        ctx.ui.baseMenuOpen = false;
+        ctx.ui.shopOpen = true;
         int creditsBeforeUnlockedSwap = ctx.credits;
         UISystem.trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
         checkShip(r, ctx.player.role == ShipRole.LIGHT_CRUISER, "hangar_unlock_swap");
         checkShip(r, ctx.credits == creditsBeforeUnlockedSwap - 700, "hangar_unlock_cost");
 
         // Spawned station turret should inherit turret-system upgrade levels.
-        ctx.shopOpen = false;
-        ctx.baseMenuOpen = true;
+        ctx.ui.shopOpen = false;
+        ctx.ui.baseMenuOpen = true;
         if (up.turretLv < 2) {
             UISystem.tryUpgradeBase(ctx, 3);
             r.turretLevel = up.turretLv;

@@ -52,8 +52,7 @@ public final class CarrierSystem {
             if (!carrier.carrierAutoLaunch) continue;
 
             // Don't auto-launch from player while in overlays.
-            if (carrier == ctx.player && (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen
-                    || ctx.powerManagementOpen || ctx.crewStationsOpen || ctx.flightDeckOpen)) continue;
+            if (carrier == ctx.player && ctx.ui.hasBlockingOverlay()) continue;
 
             int launched = launchFlight(ctx, carrier, dt);
             if (launched <= 0) continue;

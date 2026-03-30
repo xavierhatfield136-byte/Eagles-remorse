@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.util.Iterator;
 
 /**
@@ -52,8 +53,8 @@ public final class PhysicsSystem {
             Ship autoTarget = null;
             double rangeMul = CampaignSystem.targetingRangeMul(ctx);
             boolean autoLockSuppressed = CampaignSystem.suppressAutoLock(ctx);
-            boolean manualAllowed = !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen
-                    && !ctx.powerManagementOpen && !ctx.crewStationsOpen;
+            boolean manualAllowed = !ctx.ui.shopOpen && !ctx.ui.baseMenuOpen && !ctx.ui.mapOpen
+                    && !ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen;
             boolean firePrimary = (manualAllowed && ctx.firingPrimaryManual) || ctx.firingPrimaryAuto;
             boolean fireSecondary = (manualAllowed && ctx.firingSecondaryManual) || ctx.firingSecondaryAuto;
 

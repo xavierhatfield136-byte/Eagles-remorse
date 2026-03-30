@@ -205,11 +205,11 @@ public class Renderer {
         g2.drawRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
 
         boolean[] open = {
-                ctx.shopOpen,
-                ctx.baseMenuOpen,
-                ctx.mapOpen,
-                ctx.powerManagementOpen,
-                ctx.crewStationsOpen
+                ctx.ui.shopOpen,
+                ctx.ui.baseMenuOpen,
+                ctx.ui.mapOpen,
+                ctx.ui.powerManagementOpen,
+                ctx.ui.crewStationsOpen
         };
         boolean baseAvailable = EconomySystem.getDockedFriendlyBase(ctx) != null;
         boolean controlsDisabled = ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER;
@@ -2690,12 +2690,12 @@ public class Renderer {
 
     private static boolean hudBlockingMenuOpen(GameContext ctx) {
         if (ctx == null) return false;
-        return ctx.shopOpen
-                || ctx.baseMenuOpen
-                || ctx.mapOpen
-                || ctx.powerManagementOpen
-                || ctx.crewStationsOpen
-                || ctx.flightDeckOpen
+        return ctx.ui.shopOpen
+                || ctx.ui.baseMenuOpen
+                || ctx.ui.mapOpen
+                || ctx.ui.powerManagementOpen
+                || ctx.ui.crewStationsOpen
+                || ctx.ui.flightDeckOpen
                 || ctx.state == GameState.PAUSED
                 || ctx.state == GameState.GAME_OVER;
     }
@@ -3425,7 +3425,7 @@ public class Renderer {
         g2.setColor(new Color(255, 255, 255, 95));
         g2.drawRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
 
-        CrewPortraitSystem.PortraitAsset activePortrait = CrewPortraitSystem.getPortrait(ctx.activeCrewStation);
+        CrewPortraitSystem.PortraitAsset activePortrait = CrewPortraitSystem.getPortrait(ctx.command.activeCrewStation);
         BufferedImage portraitImage = activePortrait.image();
 
         int portraitX = portraitPaneX + 10;
@@ -3452,7 +3452,7 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 245, 210, 225));
-        g2.drawString(ctx.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
+        g2.drawString(ctx.command.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
 
         int panelX = portraitPaneX + portraitPaneW + 14;
         int panelW = x + w - panelX - 14;
@@ -3465,7 +3465,7 @@ public class Renderer {
         int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
 
         for (GameContext.CrewStation station : GameContext.CrewStation.values()) {
-            boolean active = (station == ctx.activeCrewStation);
+            boolean active = (station == ctx.command.activeCrewStation);
             boolean auto = UISystem.stationAutomation(ctx, station);
             g2.setColor(active ? new Color(255, 220, 140, 180) : new Color(255, 255, 255, 45));
             g2.fillRoundRect(tabX, tabY, tw, 24, 10, 10);
@@ -3505,9 +3505,9 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(210, 235, 255, 220));
-        g2.drawString("Captain: " + ctx.captainDirective + "   Helm: " + ctx.helmMode + "   Tactical: " + ctx.tacticalMode, readoutX, ly);
+        g2.drawString("Captain: " + ctx.command.captainDirective + "   Helm: " + ctx.command.helmMode + "   Tactical: " + ctx.command.tacticalMode, readoutX, ly);
         ly += 16;
-        g2.drawString("Engineering: " + ctx.engineeringMode + "   Fleet: " + ctx.alliedFleetCommand + " / " + ctx.alliedFleetFormation, readoutX, ly);
+        g2.drawString("Engineering: " + ctx.command.engineeringMode + "   Fleet: " + ctx.command.alliedFleetCommand + " / " + ctx.command.alliedFleetFormation, readoutX, ly);
         ly += 16;
         g2.drawString("Engineering Priority: " + ctx.player.engineeringPriority()
                 + "   Overload: " + (ctx.player.isOverloadActive() ? ("ACTIVE " + ctx.player.overloadBus().name()) : "STANDBY")
@@ -3519,7 +3519,7 @@ public class Renderer {
                 + "   Propulsion " + (int) Math.round(ctx.player.propulsionRoomIntegrity() * 100.0) + "%", readoutX, ly);
         ly += 16;
         g2.drawString("Lock: " + ((ctx.lockedTarget == null) ? "NONE" : (ctx.lockedTarget.name + " (" + Math.max(0, lockDist) + "m)"))
-                + "   Science EW: " + (ctx.scienceJamming ? "JAMMING" : "PASSIVE"), readoutX, ly);
+                + "   Science EW: " + (ctx.command.scienceJamming ? "JAMMING" : "PASSIVE"), readoutX, ly);
         ly += 16;
         g2.drawString("Sensors: " + (sensorsOnline ? "ONLINE" : "DISABLED"), readoutX, ly);
         ly += 16;
@@ -3541,12 +3541,12 @@ public class Renderer {
                 + "  Load " + String.format("%.1f", fireLoad)
                 + "  Hotspot " + hotspotLabel, readoutX, ly);
         ly += 16;
-        String voice = (ctx.voiceCaptionT > 0.0 && ctx.voiceCaption != null && !ctx.voiceCaption.isBlank()) ? ctx.voiceCaption : "IDLE";
+        String voice = (ctx.ui.voiceCaptionT > 0.0 && ctx.ui.voiceCaption != null && !ctx.ui.voiceCaption.isBlank()) ? ctx.ui.voiceCaption : "IDLE";
         g2.drawString("Voice: " + voice, readoutX, ly);
         ly += 16;
-        g2.drawString("Captions: " + (ctx.voiceCaptionsEnabled ? "ON" : "OFF")
-                + "   Mix Focus: " + ctx.voiceMixFocus.name()
-                + " (" + (int) Math.round(ctx.voiceRoleVolume(ctx.voiceMixFocus) * 100.0) + "%)", readoutX, ly);
+        g2.drawString("Captions: " + (ctx.ui.voiceCaptionsEnabled ? "ON" : "OFF")
+                + "   Mix Focus: " + ctx.ui.voiceMixFocus.name()
+                + " (" + (int) Math.round(ctx.voiceRoleVolume(ctx.ui.voiceMixFocus) * 100.0) + "%)", readoutX, ly);
         ly += 16;
         g2.drawString("Role Volumes C/H/T/E/S: "
                 + (int) Math.round(ctx.voiceRoleVolume(GameContext.CrewStation.CAPTAIN) * 100.0) + "/"
@@ -3562,7 +3562,7 @@ public class Renderer {
         ly += 20;
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
 
-        switch (ctx.activeCrewStation) {
+        switch (ctx.command.activeCrewStation) {
             case CAPTAIN -> {
                 g2.setColor(new Color(255, 230, 175, 220));
                 g2.drawString("1 BALANCED  2 ATTACK  3 DEFENSE  4 EMERGENCY  5 MINE", readoutX, ly);
@@ -3706,7 +3706,7 @@ public class Renderer {
 
     public static ShipRoomLayout.RoomId playerXrayRoomAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        XrayStackLayout layout = computeXrayStackLayout(ctx.player, ctx.lockedTarget, ctx.shopOpen, viewW, viewH);
+        XrayStackLayout layout = computeXrayStackLayout(ctx.player, ctx.lockedTarget, ctx.ui.shopOpen, viewW, viewH);
         if (layout == null) return null;
         Rectangle mapRect = xrayMapRect(layout.playerX, layout.playerY, layout.panelW, layout.playerH);
         if (!mapRect.contains(mouseX, mouseY)) return null;
@@ -3724,16 +3724,16 @@ public class Renderer {
         if (w < 80 || h < 80) return;
 
         long nowNanos = System.nanoTime();
-        GameContext.XrayFilterMode filterMode = (ctx == null || ctx.xrayFilterMode == null)
+        GameContext.XrayFilterMode filterMode = (ctx == null || ctx.ui.xrayFilterMode == null)
                 ? GameContext.XrayFilterMode.ALL
-                : ctx.xrayFilterMode;
-        ShipRoomLayout.RoomId focusedRoom = (ctx == null) ? null : ctx.xrayFocusedRoom;
+                : ctx.ui.xrayFilterMode;
+        ShipRoomLayout.RoomId focusedRoom = (ctx == null) ? null : ctx.ui.xrayFocusedRoom;
         int cursorX = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenX);
         int cursorY = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenY);
 
         XrayPanelFrameCache cache = xrayPanelCacheFor(ship);
         if (canReuseXrayPanelCache(cache, nowNanos, w, h, title, subtitle, interactive, filterMode, focusedRoom, cursorX, cursorY)) {
-            if (interactive && ctx != null) ctx.xrayHoveredRoom = cache.hoveredRoom;
+            if (interactive && ctx != null) ctx.ui.xrayHoveredRoom = cache.hoveredRoom;
             g2.drawImage(cache.image, x, y, null);
             return;
         }
@@ -3750,7 +3750,7 @@ public class Renderer {
             cg.dispose();
         }
 
-        ShipRoomLayout.RoomId hoveredRoom = (interactive && ctx != null) ? ctx.xrayHoveredRoom : null;
+        ShipRoomLayout.RoomId hoveredRoom = (interactive && ctx != null) ? ctx.ui.xrayHoveredRoom : null;
         updateXrayPanelCacheMeta(
                 cache,
                 nowNanos,
@@ -3820,10 +3820,10 @@ public class Renderer {
             }
         }
 
-        GameContext.XrayFilterMode filterMode = (ctx == null || ctx.xrayFilterMode == null)
+        GameContext.XrayFilterMode filterMode = (ctx == null || ctx.ui.xrayFilterMode == null)
                 ? GameContext.XrayFilterMode.ALL
-                : ctx.xrayFilterMode;
-        ShipRoomLayout.RoomId focusedRoom = (ctx == null) ? null : ctx.xrayFocusedRoom;
+                : ctx.ui.xrayFilterMode;
+        ShipRoomLayout.RoomId focusedRoom = (ctx == null) ? null : ctx.ui.xrayFocusedRoom;
         ShipRoomLayout.RoomId hoveredRoom = null;
         int cursorX = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenX);
         int cursorY = (ctx == null) ? Integer.MIN_VALUE : (int) Math.round(ctx.cursorScreenY);
@@ -3848,7 +3848,7 @@ public class Renderer {
             cellPolygons.add(p);
             if (interactive && p.contains(cursorX, cursorY)) hoveredRoom = cell.roomId;
         }
-        if (interactive && ctx != null) ctx.xrayHoveredRoom = hoveredRoom;
+        if (interactive && ctx != null) ctx.ui.xrayHoveredRoom = hoveredRoom;
 
         Stroke oldStroke = g2.getStroke();
         for (int cellIdx = 0; cellIdx < drawCells.size(); cellIdx++) {

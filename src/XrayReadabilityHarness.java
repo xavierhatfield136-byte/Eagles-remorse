@@ -1,3 +1,5 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;

@@ -1,3 +1,8 @@
+package app.persistence;
+
+import app.config.GameConfig;
+import app.config.GameMode;
+import app.support.ErrorLog;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,6 +20,17 @@ import java.util.Properties;
  * Persists resumable campaign checkpoints between sector transitions.
  */
 public final class CampaignCheckpointStore {
+    private static final String DEFAULT_BRANCH_ROUTE = "BALANCED";
+    private static final String DEFAULT_PLAYER_FACTION_NAME = "PLAYER";
+    private static final String DEFAULT_PLAYER_ROLE_NAME = "FRIGATE";
+    private static final String DEFAULT_PRIMARY_WEAPON_FAMILY_NAME = "ENERGY_BOLT";
+    private static final String DEFAULT_POWER_PRESET_NAME = "BALANCED";
+    private static final String DEFAULT_CREW_ORDER_NAME = "BALANCED";
+    private static final String DEFAULT_ENGINEERING_PRIORITY_NAME = "BALANCED";
+    private static final String DEFAULT_OVERLOAD_BUS_NAME = "TACTICAL";
+    private static final String DEFAULT_POWER_BUSES = "0.18,0.18,0.19,0.15,0.18,0.12";
+    private static final String DEFAULT_CARRIER_COMMAND_MODE_NAME = "ATTACK";
+
     private CampaignCheckpointStore() {}
 
     private static final int CURRENT_VERSION = 1;
@@ -35,7 +51,7 @@ public final class CampaignCheckpointStore {
         public int sectorsCleared = 0;
         public int campaignKills = 0;
         public int branchScore = 0;
-        public String branchRoute = "BALANCED";
+        public String branchRoute = DEFAULT_BRANCH_ROUTE;
         public int sideObjectivesCompletedTotal = 0;
         public int sideObjectivesFailedTotal = 0;
 
@@ -48,9 +64,9 @@ public final class CampaignCheckpointStore {
         public boolean bossDropFlagCore = false;
         public int bossDropsCollected = 0;
 
-        public String playerFactionName = Faction.PLAYER.name();
-        public String playerRoleName = ShipRole.FRIGATE.name();
-        public String primaryWeaponFamilyName = Ship.PrimaryWeaponFamily.ENERGY_BOLT.name();
+        public String playerFactionName = DEFAULT_PLAYER_FACTION_NAME;
+        public String playerRoleName = DEFAULT_PLAYER_ROLE_NAME;
+        public String primaryWeaponFamilyName = DEFAULT_PRIMARY_WEAPON_FAMILY_NAME;
         public int hpMax = 10;
         public double shieldMax = 0.0;
         public double shieldRegen = 0.0;
@@ -68,15 +84,15 @@ public final class CampaignCheckpointStore {
         public int ciwsPelletDamage = 1;
         public int ciwsPelletLife = 18;
         public double ciwsPelletRadius = 1.8;
-        public String powerPresetName = Ship.PowerPreset.BALANCED.name();
-        public String crewOrderName = Ship.CrewOrder.BALANCED.name();
-        public String engineeringPriorityName = Ship.EngineeringPriority.BALANCED.name();
-        public String overloadBusName = Ship.PowerBus.TACTICAL.name();
-        public String powerBuses = "0.18,0.18,0.19,0.15,0.18,0.12";
+        public String powerPresetName = DEFAULT_POWER_PRESET_NAME;
+        public String crewOrderName = DEFAULT_CREW_ORDER_NAME;
+        public String engineeringPriorityName = DEFAULT_ENGINEERING_PRIORITY_NAME;
+        public String overloadBusName = DEFAULT_OVERLOAD_BUS_NAME;
+        public String powerBuses = DEFAULT_POWER_BUSES;
         public String turretData = "";
         public boolean isCarrier = false;
         public int maxFighters = 4;
-        public String carrierCommandModeName = Ship.CarrierCommandMode.ATTACK.name();
+        public String carrierCommandModeName = DEFAULT_CARRIER_COMMAND_MODE_NAME;
         public boolean carrierAutoLaunch = true;
         public String flightDeckLoadout = "";
 
@@ -97,24 +113,24 @@ public final class CampaignCheckpointStore {
             version = CURRENT_VERSION;
             worldW = Math.max(2000, worldW);
             worldH = Math.max(2000, worldH);
-            nextSector = MathUtil.clamp(nextSector, 1, 12);
+            nextSector = clamp(nextSector, 1, 12);
             credits = Math.max(0, credits);
-            sectorsCleared = MathUtil.clamp(sectorsCleared, 0, 12);
+            sectorsCleared = clamp(sectorsCleared, 0, 12);
             campaignKills = Math.max(0, campaignKills);
             bossDropsCollected = Math.max(0, bossDropsCollected);
-            unlockMissileTierGranted = MathUtil.clamp(unlockMissileTierGranted, 0, 2);
+            unlockMissileTierGranted = clamp(unlockMissileTierGranted, 0, 2);
             sideObjectivesCompletedTotal = Math.max(0, sideObjectivesCompletedTotal);
             sideObjectivesFailedTotal = Math.max(0, sideObjectivesFailedTotal);
             branchScore = Math.max(-99, Math.min(99, branchScore));
-            branchRoute = safeName(branchRoute, "BALANCED");
-            playerFactionName = safeName(playerFactionName, Faction.PLAYER.name());
-            playerRoleName = safeName(playerRoleName, ShipRole.FRIGATE.name());
-            primaryWeaponFamilyName = safeName(primaryWeaponFamilyName, Ship.PrimaryWeaponFamily.ENERGY_BOLT.name());
-            powerPresetName = safeName(powerPresetName, Ship.PowerPreset.BALANCED.name());
-            crewOrderName = safeName(crewOrderName, Ship.CrewOrder.BALANCED.name());
-            engineeringPriorityName = safeName(engineeringPriorityName, Ship.EngineeringPriority.BALANCED.name());
-            overloadBusName = safeName(overloadBusName, Ship.PowerBus.TACTICAL.name());
-            carrierCommandModeName = safeName(carrierCommandModeName, Ship.CarrierCommandMode.ATTACK.name());
+            branchRoute = safeName(branchRoute, DEFAULT_BRANCH_ROUTE);
+            playerFactionName = safeName(playerFactionName, DEFAULT_PLAYER_FACTION_NAME);
+            playerRoleName = safeName(playerRoleName, DEFAULT_PLAYER_ROLE_NAME);
+            primaryWeaponFamilyName = safeName(primaryWeaponFamilyName, DEFAULT_PRIMARY_WEAPON_FAMILY_NAME);
+            powerPresetName = safeName(powerPresetName, DEFAULT_POWER_PRESET_NAME);
+            crewOrderName = safeName(crewOrderName, DEFAULT_CREW_ORDER_NAME);
+            engineeringPriorityName = safeName(engineeringPriorityName, DEFAULT_ENGINEERING_PRIORITY_NAME);
+            overloadBusName = safeName(overloadBusName, DEFAULT_OVERLOAD_BUS_NAME);
+            carrierCommandModeName = safeName(carrierCommandModeName, DEFAULT_CARRIER_COMMAND_MODE_NAME);
             hpMax = Math.max(1, hpMax);
             shieldMax = finiteOr(shieldMax, 0.0);
             shieldRegen = finiteOr(shieldRegen, 0.0);
@@ -124,28 +140,28 @@ public final class CampaignCheckpointStore {
             miningRange = Math.max(0.0, finiteOr(miningRange, 56.0));
             ciwsRange = Math.max(0.0, finiteOr(ciwsRange, 200.0));
             ciwsCooldown = Math.max(0.02, finiteOr(ciwsCooldown, 0.12));
-            ciwsQuality = MathUtil.clamp(finiteOr(ciwsQuality, 0.35), 0.0, 1.0);
+            ciwsQuality = clamp(finiteOr(ciwsQuality, 0.35), 0.0, 1.0);
             ciwsPelletsPerBurst = Math.max(1, ciwsPelletsPerBurst);
             ciwsPelletSpeed = Math.max(0.0, finiteOr(ciwsPelletSpeed, 920.0));
             ciwsPelletDamage = Math.max(1, ciwsPelletDamage);
             ciwsPelletLife = Math.max(1, ciwsPelletLife);
             ciwsPelletRadius = Math.max(0.1, finiteOr(ciwsPelletRadius, 1.8));
             maxFighters = Math.max(0, maxFighters);
-            powerBuses = safeName(powerBuses, "0.18,0.18,0.19,0.15,0.18,0.12");
+            powerBuses = safeName(powerBuses, DEFAULT_POWER_BUSES);
             turretData = (turretData == null) ? "" : turretData.trim();
             flightDeckLoadout = (flightDeckLoadout == null) ? "" : flightDeckLoadout.trim();
             allyOreStockpile = Math.max(0, allyOreStockpile);
             enemyOreStockpile = Math.max(0, enemyOreStockpile);
-            allyHullLv = MathUtil.clamp(allyHullLv, 0, 3);
-            allyShieldLv = MathUtil.clamp(allyShieldLv, 0, 3);
-            allyTurretLv = MathUtil.clamp(allyTurretLv, 0, 3);
-            allyMiningLv = MathUtil.clamp(allyMiningLv, 0, 3);
-            allyHangarLv = MathUtil.clamp(allyHangarLv, 0, 3);
-            enemyHullLv = MathUtil.clamp(enemyHullLv, 0, 3);
-            enemyShieldLv = MathUtil.clamp(enemyShieldLv, 0, 3);
-            enemyTurretLv = MathUtil.clamp(enemyTurretLv, 0, 3);
-            enemyMiningLv = MathUtil.clamp(enemyMiningLv, 0, 3);
-            enemyHangarLv = MathUtil.clamp(enemyHangarLv, 0, 3);
+            allyHullLv = clamp(allyHullLv, 0, 3);
+            allyShieldLv = clamp(allyShieldLv, 0, 3);
+            allyTurretLv = clamp(allyTurretLv, 0, 3);
+            allyMiningLv = clamp(allyMiningLv, 0, 3);
+            allyHangarLv = clamp(allyHangarLv, 0, 3);
+            enemyHullLv = clamp(enemyHullLv, 0, 3);
+            enemyShieldLv = clamp(enemyShieldLv, 0, 3);
+            enemyTurretLv = clamp(enemyTurretLv, 0, 3);
+            enemyMiningLv = clamp(enemyMiningLv, 0, 3);
+            enemyHangarLv = clamp(enemyHangarLv, 0, 3);
         }
 
         public boolean isUsable() {
@@ -400,6 +416,14 @@ public final class CampaignCheckpointStore {
 
     private static double finiteOr(double value, double fallback) {
         return Double.isFinite(value) ? value : fallback;
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static void deleteTempQuietly(Path tmp) {

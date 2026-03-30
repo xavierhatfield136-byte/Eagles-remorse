@@ -1,3 +1,7 @@
+package app.ui;
+
+import app.support.AppInfo;
+import app.support.MenuDisplay;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -6,7 +10,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-final class TitleSequencePanel extends JPanel implements ActionListener {
+public final class TitleSequencePanel extends JPanel implements ActionListener {
     private static final double FADE_IN_SEC = 0.9;
     private static final double HOLD_SEC = 1.4;
     private static final double FADE_OUT_SEC = 0.9;
@@ -19,7 +23,7 @@ final class TitleSequencePanel extends JPanel implements ActionListener {
     private double elapsedSec = 0.0;
     private boolean completed = false;
 
-    TitleSequencePanel(Runnable onComplete) {
+    public TitleSequencePanel(Runnable onComplete) {
         this.onComplete = onComplete;
         setPreferredSize(MenuDisplay.preferredWindowSize());
         setBackground(Color.BLACK);
@@ -41,7 +45,7 @@ final class TitleSequencePanel extends JPanel implements ActionListener {
         });
     }
 
-    void start() {
+    public void start() {
         elapsedSec = 0.0;
         completed = false;
         lastTickNs = System.nanoTime();

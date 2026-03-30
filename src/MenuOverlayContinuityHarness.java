@@ -1,3 +1,5 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,13 +73,13 @@ public final class MenuOverlayContinuityHarness {
         }
 
         // Keep station automation active for continuity testing.
-        ctx.captainAutomation = true;
-        ctx.helmAutomation = true;
-        ctx.tacticalAutomation = true;
-        ctx.engineeringAutomation = true;
-        ctx.scienceAutomation = true;
-        ctx.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
-        ctx.engineeringMode = GameContext.EngineeringMode.ATTACK;
+        ctx.command.captainAutomation = true;
+        ctx.command.helmAutomation = true;
+        ctx.command.tacticalAutomation = true;
+        ctx.command.engineeringAutomation = true;
+        ctx.command.scienceAutomation = true;
+        ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+        ctx.command.engineeringMode = GameContext.EngineeringMode.ATTACK;
 
         // Make crew readiness responsive to incoming hull damage.
         ctx.player.shieldActive = false;
@@ -113,7 +115,7 @@ public final class MenuOverlayContinuityHarness {
             now += STEP_NS;
             runtime.advanceFrame(now, new InputSnapshot(false, false, false, false, false, 0, 0), VIEW_W, VIEW_H, 1.0);
 
-            boolean overlayOpen = ctx.shopOpen || ctx.mapOpen || ctx.powerManagementOpen || ctx.crewStationsOpen || ctx.baseMenuOpen;
+            boolean overlayOpen = ctx.ui.shopOpen || ctx.ui.mapOpen || ctx.ui.powerManagementOpen || ctx.ui.crewStationsOpen || ctx.ui.baseMenuOpen;
             if (overlayOpen) r.overlayTicks++;
 
             if (overlayOpen) {
@@ -162,19 +164,19 @@ public final class MenuOverlayContinuityHarness {
         int phase = (tick / 150) % 4;
         switch (phase) {
             case 0 -> {
-                ctx.shopOpen = true;
+                ctx.ui.shopOpen = true;
                 ctx.state = GameState.SHOP;
             }
             case 1 -> {
-                ctx.mapOpen = true;
+                ctx.ui.mapOpen = true;
                 ctx.state = GameState.MAP;
             }
             case 2 -> {
-                ctx.powerManagementOpen = true;
+                ctx.ui.powerManagementOpen = true;
                 ctx.state = GameState.POWER_MANAGEMENT;
             }
             default -> {
-                ctx.crewStationsOpen = true;
+                ctx.ui.crewStationsOpen = true;
                 ctx.state = GameState.CREW_STATIONS;
             }
         }

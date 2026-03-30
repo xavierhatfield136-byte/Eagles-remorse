@@ -39,28 +39,28 @@ public final class CrewStationsSystem {
         Player p = ctx.player;
         if (!p.alive || p.dying || p.hp <= 0) return false;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER || ctx.gameOver) return false;
-        ctx.miningAuto = false;
+        ctx.command.miningAuto = false;
 
         InputSnapshot s = (snap == null)
                 ? new InputSnapshot(false, false, false, false, false, 0, 0)
                 : snap;
         boolean manualHelm = s.up || s.down || s.left || s.right;
-        if (manualHelm) ctx.helmAutomation = false;
-        if (ctx.firingPrimaryManual || ctx.firingSecondaryManual) ctx.tacticalAutomation = false;
+        if (manualHelm) ctx.command.helmAutomation = false;
+        if (ctx.firingPrimaryManual || ctx.firingSecondaryManual) ctx.command.tacticalAutomation = false;
 
-        if (ctx.captainAutomation) applyCaptainDirectives(ctx);
-        GameContext.CaptainDirective directive = (ctx.captainDirective == null)
+        if (ctx.command.captainAutomation) applyCaptainDirectives(ctx);
+        GameContext.CaptainDirective directive = (ctx.command.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
-                : ctx.captainDirective;
-        boolean captainNavPriority = isCaptainNavigationDirective(directive) && ctx.captainAutomation;
-        if (ctx.scienceAutomation) applyScienceAutomation(ctx);
-        if (ctx.engineeringAutomation) applyEngineeringAutomation(ctx);
-        if (ctx.tacticalAutomation) applyTacticalAutomation(ctx, captainNavPriority, directive);
+                : ctx.command.captainDirective;
+        boolean captainNavPriority = isCaptainNavigationDirective(directive) && ctx.command.captainAutomation;
+        if (ctx.command.scienceAutomation) applyScienceAutomation(ctx);
+        if (ctx.command.engineeringAutomation) applyEngineeringAutomation(ctx);
+        if (ctx.command.tacticalAutomation) applyTacticalAutomation(ctx, captainNavPriority, directive);
         else {
             ctx.firingPrimaryAuto = false;
             ctx.firingSecondaryAuto = false;
         }
-        if (ctx.helmAutomation) {
+        if (ctx.command.helmAutomation) {
             applyHelmAutomation(ctx, dt);
             return true;
         }
@@ -72,138 +72,138 @@ public final class CrewStationsSystem {
         Ship target = preferredTarget(ctx, 2200.0);
         double hpFrac = (ctx.player.hpMax <= 0) ? 1.0 : (ctx.player.hp / (double) ctx.player.hpMax);
         double shieldFrac = (ctx.player.shieldMax <= 0.0) ? 1.0 : (ctx.player.shield / Math.max(1e-9, ctx.player.shieldMax));
-        GameContext.CaptainDirective directive = (ctx.captainDirective == null)
+        GameContext.CaptainDirective directive = (ctx.command.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
-                : ctx.captainDirective;
+                : ctx.command.captainDirective;
         double fireLoad = ctx.player.totalFireIntensity();
         int fireRooms = ctx.player.activeFireRoomCount();
 
         if (fireRooms >= 2 || fireLoad >= 2.1) {
-            if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.EVASIVE;
-            if (ctx.tacticalAutomation) ctx.tacticalMode = (fireLoad >= 2.8)
+            if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.EVASIVE;
+            if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = (fireLoad >= 2.8)
                     ? GameContext.TacticalMode.HOLD_FIRE
                     : GameContext.TacticalMode.DEFENSIVE;
-            if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+            if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
             if (fireRooms >= 3 || fireLoad >= 3.0) {
-                ctx.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
             }
             return;
         }
 
         // Preservation-first fallback always takes precedence.
         if (hpFrac < 0.35 || (directive != GameContext.CaptainDirective.ATTACK && shieldFrac < 0.16)) {
-            if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.EVASIVE;
-            if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-            if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
-            ctx.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
+            if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.EVASIVE;
+            if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+            if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+            ctx.command.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
             return;
         }
 
         switch (directive) {
             case ATTACK -> {
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.ATTACK;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.ATTACK;
                 if (target != null) ctx.lockedTarget = target;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
             }
             case DEFENSE, DEFEND -> {
                 Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
                 if (base != null) {
-                    ctx.waypointX = base.x;
-                    ctx.waypointY = base.y;
-                    ctx.helmDesiredRange = Math.max(280.0, base.radius + 180.0);
+                    ctx.ui.waypointX = base.x;
+                    ctx.ui.waypointY = base.y;
+                    ctx.command.helmDesiredRange = Math.max(280.0, base.radius + 180.0);
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.ORBIT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 // Defense stays anchored to the base perimeter; tactical auto can still engage nearby threats.
                 ctx.lockedTarget = null;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
             }
             case EMERGENCY -> {
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.EVASIVE;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.EVASIVE;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.RETREAT;
             }
             case MINE -> {
                 Asteroid ast = EconomySystem.findBestAsteroidNear(ctx, ctx.player.x, ctx.player.y, 2600.0);
                 if (ast != null) {
-                    ctx.waypointX = ast.x;
-                    ctx.waypointY = ast.y;
+                    ctx.ui.waypointX = ast.x;
+                    ctx.ui.waypointY = ast.y;
                     double md = Math.hypot(ast.x - ctx.player.x, ast.y - ctx.player.y);
                     double mineReach = Math.max(0.0, ctx.player.miningRange) + ctx.player.radius + ast.radius + 22.0;
-                    ctx.miningAuto = (md <= mineReach);
+                    ctx.command.miningAuto = (md <= mineReach);
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.lockedTarget = null;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.MINE;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.MINE;
             }
             case ESCORT -> {
                 Ship escort = pickEscortAnchor(ctx);
                 if (escort != null) {
-                    ctx.waypointX = escort.x;
-                    ctx.waypointY = escort.y;
-                    ctx.helmDesiredRange = escortFollowRange(ctx.player, escort);
+                    ctx.ui.waypointX = escort.x;
+                    ctx.ui.waypointY = escort.y;
+                    ctx.command.helmDesiredRange = escortFollowRange(ctx.player, escort);
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.ORBIT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
                 ctx.lockedTarget = null;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.ESCORT;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.ESCORT;
             }
             case REPAIR -> {
                 Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
                 if (base != null) {
-                    ctx.waypointX = base.x;
-                    ctx.waypointY = base.y;
+                    ctx.ui.waypointX = base.x;
+                    ctx.ui.waypointY = base.y;
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
                 ctx.lockedTarget = null;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.REPAIR;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.REPAIR;
             }
             case RTB -> {
                 Ship base = TeamSystem.getBaseForTeam(ctx, ctx.player.faction);
                 if (base != null) {
-                    ctx.waypointX = base.x;
-                    ctx.waypointY = base.y;
+                    ctx.ui.waypointX = base.x;
+                    ctx.ui.waypointY = base.y;
                 }
-                if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
-                if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
+                if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
                 ctx.lockedTarget = null;
-                ctx.alliedFleetCommand = GameContext.FleetCommand.RTB;
+                ctx.command.alliedFleetCommand = GameContext.FleetCommand.RTB;
             }
             default -> {
                 if (shieldFrac < 0.25) {
-                    if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
-                    if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
-                    if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.DEFENSE;
-                    ctx.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
+                    if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.MAINTAIN_RANGE;
+                    if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
+                    if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.DEFENSE;
+                    ctx.command.alliedFleetCommand = GameContext.FleetCommand.DEFEND;
                     return;
                 }
 
                 if (target != null) {
                     double d = Math.hypot(target.x - ctx.player.x, target.y - ctx.player.y);
                     if (d > 650.0) {
-                        if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.INTERCEPT;
-                        if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
-                        if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.ATTACK;
-                        ctx.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
+                        if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.INTERCEPT;
+                        if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+                        if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.ATTACK;
+                        ctx.command.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
                     } else {
-                        if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
-                        if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
-                        if (ctx.engineeringAutomation) ctx.engineeringMode = GameContext.EngineeringMode.BALANCED;
-                        ctx.alliedFleetCommand = GameContext.FleetCommand.FORM_UP;
+                        if (ctx.command.helmAutomation) ctx.command.helmMode = GameContext.HelmMode.ORBIT;
+                        if (ctx.command.tacticalAutomation) ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+                        if (ctx.command.engineeringAutomation) ctx.command.engineeringMode = GameContext.EngineeringMode.BALANCED;
+                        ctx.command.alliedFleetCommand = GameContext.FleetCommand.FORM_UP;
                     }
                     ctx.lockedTarget = target;
                 } else {
-                    ctx.alliedFleetCommand = GameContext.FleetCommand.AUTO;
+                    ctx.command.alliedFleetCommand = GameContext.FleetCommand.AUTO;
                 }
             }
         }
@@ -240,12 +240,12 @@ public final class CrewStationsSystem {
     }
 
     private static Ship friendlyCommandShip(GameContext ctx) {
-        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.fleetCommandShips == null) return null;
-        Ship direct = ctx.fleetCommandShips.get(ctx.player.faction);
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.command.fleetCommandShips == null) return null;
+        Ship direct = ctx.command.fleetCommandShips.get(ctx.player.faction);
         if (isLiveEscortAnchor(ctx, direct)) return direct;
         for (Faction faction : Faction.fourTeamFactions()) {
             if (faction == null || !faction.isFriendlyTo(ctx.player.faction)) continue;
-            Ship candidate = ctx.fleetCommandShips.get(faction);
+            Ship candidate = ctx.command.fleetCommandShips.get(faction);
             if (isLiveEscortAnchor(ctx, candidate)) return candidate;
         }
         return null;
@@ -271,7 +271,7 @@ public final class CrewStationsSystem {
     private static void applyScienceAutomation(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         double scanRange = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
-        if (ctx.scienceJamming) scanRange *= 0.85;
+        if (ctx.command.scienceJamming) scanRange *= 0.85;
         // Science station continuously refreshes lock to the nearest viable contact.
         ctx.lockedTarget = TargetingSystem.findClosestEngagementTarget(
                 ctx, ctx.player, ctx.player.x, ctx.player.y, scanRange
@@ -286,16 +286,16 @@ public final class CrewStationsSystem {
         double fireLoad = p.totalFireIntensity();
         int fireRooms = p.activeFireRoomCount();
         if (hpFrac < 0.30 || fireRooms >= 2 || fireLoad >= 1.7) {
-            ctx.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
+            ctx.command.engineeringMode = GameContext.EngineeringMode.DAMAGE_CONTROL;
         }
         EngineeringPolicy policy = ENGINEERING_POLICY.getOrDefault(
-                ctx.engineeringMode,
+                ctx.command.engineeringMode,
                 ENGINEERING_POLICY.get(GameContext.EngineeringMode.BALANCED)
         );
         p.setPowerPreset(policy.preset);
         p.crewOrder = policy.crewOrder;
         p.setEngineeringPriority(policy.priority);
-        p.setOverloadMode(policy.overload && ctx.tacticalMode == GameContext.TacticalMode.AGGRESSIVE);
+        p.setOverloadMode(policy.overload && ctx.command.tacticalMode == GameContext.TacticalMode.AGGRESSIVE);
     }
 
     private static void applyTacticalAutomation(GameContext ctx, boolean captainNavPriority,
@@ -303,7 +303,7 @@ public final class CrewStationsSystem {
         if (ctx == null || ctx.player == null) return;
         Player p = ctx.player;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
-        double searchRange = 1600.0 * rangeMul * (ctx.scienceJamming ? 0.9 : 1.0);
+        double searchRange = 1600.0 * rangeMul * (ctx.command.scienceJamming ? 0.9 : 1.0);
         Ship target = preferredTarget(ctx, searchRange);
         if (target == null) {
             ctx.firingPrimaryAuto = false;
@@ -313,11 +313,11 @@ public final class CrewStationsSystem {
         double d = Math.hypot(target.x - p.x, target.y - p.y);
         boolean lockForHelm = !captainNavPriority || directive == GameContext.CaptainDirective.ATTACK
                 || directive == GameContext.CaptainDirective.EMERGENCY;
-        if (lockForHelm && ctx.tacticalMode != GameContext.TacticalMode.HOLD_FIRE) {
+        if (lockForHelm && ctx.command.tacticalMode != GameContext.TacticalMode.HOLD_FIRE) {
             ctx.lockedTarget = target;
         }
 
-        switch (ctx.tacticalMode) {
+        switch (ctx.command.tacticalMode) {
             case HOLD_FIRE -> {
                 ctx.firingPrimaryAuto = false;
                 ctx.firingSecondaryAuto = false;
@@ -346,11 +346,11 @@ public final class CrewStationsSystem {
             return;
         }
 
-        GameContext.CaptainDirective directive = (ctx.captainDirective == null)
+        GameContext.CaptainDirective directive = (ctx.command.captainDirective == null)
                 ? GameContext.CaptainDirective.BALANCED
-                : ctx.captainDirective;
-        boolean captainNavPriority = ctx.captainAutomation && isCaptainNavigationDirective(directive);
-        boolean hasWaypoint = Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY);
+                : ctx.command.captainDirective;
+        boolean captainNavPriority = ctx.command.captainAutomation && isCaptainNavigationDirective(directive);
+        boolean hasWaypoint = Double.isFinite(ctx.ui.waypointX) && Double.isFinite(ctx.ui.waypointY);
         Ship target = preferredTarget(ctx, 2800.0);
         double speed = MovementModel.speedCeiling(p);
 
@@ -358,14 +358,14 @@ public final class CrewStationsSystem {
             return;
         }
 
-        switch (ctx.helmMode) {
+        switch (ctx.command.helmMode) {
             case INTERCEPT -> {
                 if (captainNavPriority && hasWaypoint) {
-                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    moveToward(p, ctx.ui.waypointX, ctx.ui.waypointY, speed, dt);
                 } else if (target != null) {
                     moveToward(p, target.x, target.y, speed, dt);
                 } else if (hasWaypoint) {
-                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    moveToward(p, ctx.ui.waypointX, ctx.ui.waypointY, speed, dt);
                 }
                 else {
                     p.vx = 0;
@@ -374,29 +374,29 @@ public final class CrewStationsSystem {
             }
             case ORBIT -> {
                 if (captainNavPriority && hasWaypoint) {
-                    orbit(p, ctx.waypointX, ctx.waypointY, Math.max(260.0, ctx.helmDesiredRange), speed * 0.92, dt, 1.0);
+                    orbit(p, ctx.ui.waypointX, ctx.ui.waypointY, Math.max(260.0, ctx.command.helmDesiredRange), speed * 0.92, dt, 1.0);
                 } else if (target != null) {
-                    orbit(p, target.x, target.y, Math.max(260.0, ctx.helmDesiredRange), speed * 0.92, dt, 1.0);
+                    orbit(p, target.x, target.y, Math.max(260.0, ctx.command.helmDesiredRange), speed * 0.92, dt, 1.0);
                 } else if (hasWaypoint) {
-                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    moveToward(p, ctx.ui.waypointX, ctx.ui.waypointY, speed, dt);
                 }
             }
             case MAINTAIN_RANGE -> {
                 double tx;
                 double ty;
                 if (captainNavPriority && hasWaypoint) {
-                    tx = ctx.waypointX;
-                    ty = ctx.waypointY;
+                    tx = ctx.ui.waypointX;
+                    ty = ctx.ui.waypointY;
                 } else if (target != null) {
                     tx = target.x;
                     ty = target.y;
                 } else if (hasWaypoint) {
-                    moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    moveToward(p, ctx.ui.waypointX, ctx.ui.waypointY, speed, dt);
                     break;
                 } else {
                     break;
                 }
-                double desired = Math.max(260.0, ctx.helmDesiredRange);
+                double desired = Math.max(260.0, ctx.command.helmDesiredRange);
                 double dx = tx - p.x;
                 double dy = ty - p.y;
                 double d = Math.hypot(dx, dy) + 1e-9;
@@ -413,12 +413,12 @@ public final class CrewStationsSystem {
             }
             case EVASIVE -> {
                 if (target == null) {
-                    if (hasWaypoint) moveToward(p, ctx.waypointX, ctx.waypointY, speed, dt);
+                    if (hasWaypoint) moveToward(p, ctx.ui.waypointX, ctx.ui.waypointY, speed, dt);
                     break;
                 }
                 if (captainNavPriority && hasWaypoint) {
-                    double tx = ctx.waypointX - p.x;
-                    double ty = ctx.waypointY - p.y;
+                    double tx = ctx.ui.waypointX - p.x;
+                    double ty = ctx.ui.waypointY - p.y;
                     double tl = Math.hypot(tx, ty) + 1e-9;
                     double ux = tx / tl;
                     double uy = ty / tl;
@@ -453,10 +453,10 @@ public final class CrewStationsSystem {
         Ship anchor = pickEscortAnchor(ctx);
         if (!isLiveEscortAnchor(ctx, anchor) || anchor == player) return false;
 
-        ctx.waypointX = anchor.x;
-        ctx.waypointY = anchor.y;
+        ctx.ui.waypointX = anchor.x;
+        ctx.ui.waypointY = anchor.y;
         double desiredRange = escortFollowRange(player, anchor);
-        ctx.helmDesiredRange = desiredRange;
+        ctx.command.helmDesiredRange = desiredRange;
 
         if (anchor.isWarpCharging()) {
             maybeStartEscortWarpFollow(player, anchor, desiredRange);

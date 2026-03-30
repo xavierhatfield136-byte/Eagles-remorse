@@ -1,10 +1,14 @@
+package app.ui;
+
+import app.support.AppInfo;
+import app.support.MenuDisplay;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 
-final class CreditsPanel extends JPanel {
-    CreditsPanel(Runnable onBack) {
+public final class CreditsPanel extends JPanel {
+    public CreditsPanel(Runnable onBack) {
         Dimension preferredSize = MenuDisplay.preferredWindowSize();
         double scale = MenuDisplay.scaleFor(preferredSize);
 

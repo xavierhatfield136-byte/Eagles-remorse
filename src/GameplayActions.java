@@ -7,8 +7,7 @@ public final class GameplayActions {
             if (exitToMenu != null) exitToMenu.run();
             return;
         }
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
-                || ctx.crewStationsOpen || ctx.flightDeckOpen) {
+        if (ctx.ui.hasBlockingOverlay()) {
             UISystem.closeAllOverlays(ctx);
             return;
         }
@@ -19,8 +18,7 @@ public final class GameplayActions {
         if (ctx == null || ctx.player == null) return false;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
         if (ctx.state != GameState.RUNNING) return false;
-        return !ctx.shopOpen && !ctx.baseMenuOpen && !ctx.mapOpen
-                && !ctx.powerManagementOpen && !ctx.crewStationsOpen && !ctx.flightDeckOpen;
+        return !ctx.ui.hasBlockingOverlay();
     }
 
     public static void toggleShop(GameContext ctx) {
@@ -55,13 +53,13 @@ public final class GameplayActions {
 
     public static void lockUnderMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
-        ctx.scienceAutomation = false;
+        ctx.command.scienceAutomation = false;
         TargetingSystem.lockClosestToMouse(ctx, controls);
     }
 
     public static void cycleLockedTarget(GameContext ctx, int dir) {
         if (ctx == null) return;
-        ctx.scienceAutomation = false;
+        ctx.command.scienceAutomation = false;
         TargetingSystem.cycleLockedTarget(ctx, dir);
     }
 
@@ -82,13 +80,13 @@ public final class GameplayActions {
 
     public static void cycleHudDetail(GameContext ctx) {
         if (ctx == null) return;
-        GameContext.HudDetail current = (ctx.hudDetail == null) ? GameContext.HudDetail.COMPACT : ctx.hudDetail;
-        ctx.hudDetail = switch (current) {
+        GameContext.HudDetail current = (ctx.ui.hudDetail == null) ? GameContext.HudDetail.COMPACT : ctx.ui.hudDetail;
+        ctx.ui.hudDetail = switch (current) {
             case FULL -> GameContext.HudDetail.COMPACT;
             case COMPACT -> GameContext.HudDetail.MINIMAL;
             case MINIMAL -> GameContext.HudDetail.FULL;
         };
-        EventSystem.showBanner(ctx, "HUD: " + ctx.hudDetail.name(), 0.8);
+        EventSystem.showBanner(ctx, "HUD: " + ctx.ui.hudDetail.name(), 0.8);
     }
 
     public static void cycleXrayFilter(GameContext ctx, int dir) {
@@ -143,14 +141,14 @@ public final class GameplayActions {
     public static void cyclePowerPreset(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         Ship.PowerPreset preset = ctx.player.cyclePowerPreset();
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "POWER: " + preset.name(), 0.8);
     }
 
     public static void cycleCrewOrder(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
         Ship.CrewOrder order = ctx.player.cycleCrewOrder();
-        ctx.engineeringAutomation = false;
+        ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "CREW ORDER: " + order.name(), 0.8);
     }
 
@@ -174,13 +172,13 @@ public final class GameplayActions {
             return;
         }
         Ship base = TeamSystem.getBaseForTeam(ctx, player.faction);
-        boolean hasWaypoint = Double.isFinite(ctx.waypointX) && Double.isFinite(ctx.waypointY);
+        boolean hasWaypoint = Double.isFinite(ctx.ui.waypointX) && Double.isFinite(ctx.ui.waypointY);
         double targetX;
         double targetY;
         String destinationLabel;
         if (hasWaypoint) {
-            targetX = ctx.waypointX;
-            targetY = ctx.waypointY;
+            targetX = ctx.ui.waypointX;
+            targetY = ctx.ui.waypointY;
             destinationLabel = "WAYPOINT";
         } else if (base != null && base.alive && !base.dying && base.hp > 0) {
             targetX = base.x;
@@ -193,8 +191,8 @@ public final class GameplayActions {
 
         if (player.isWarpCharging()) {
             player.cancelBattlefieldWarp();
-            ctx.playerTeleportCharging = false;
-            ctx.playerTeleportChargeRemaining = 0.0;
+            ctx.command.playerTeleportCharging = false;
+            ctx.command.playerTeleportChargeRemaining = 0.0;
             EventSystem.showBanner(ctx, "BATTLEFIELD WARP CANCELLED", 1.0);
             return;
         }
@@ -203,8 +201,8 @@ public final class GameplayActions {
             EventSystem.showBanner(ctx, "WARP UNAVAILABLE", 1.2);
             return;
         }
-        ctx.playerTeleportCharging = true;
-        ctx.playerTeleportChargeRemaining = player.warpChargeRemaining();
+        ctx.command.playerTeleportCharging = true;
+        ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();
         EventSystem.showBanner(ctx, "BATTLEFIELD WARP TO " + destinationLabel + " (10.0S)", 1.2);
     }
 
@@ -216,12 +214,12 @@ public final class GameplayActions {
     }
 
     public static boolean tryHandleShopHotkey(GameContext ctx, int keyCode) {
-        if (ctx == null || !ctx.shopOpen) return false;
+        if (ctx == null || !ctx.ui.shopOpen) return false;
         return false;
     }
 
     public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {
-        if (ctx == null || !ctx.powerManagementOpen) return false;
+        if (ctx == null || !ctx.ui.powerManagementOpen) return false;
         switch (keyCode) {
             case java.awt.event.KeyEvent.VK_1 -> UISystem.selectPowerManagementSlot(ctx, 0);
             case java.awt.event.KeyEvent.VK_2 -> UISystem.selectPowerManagementSlot(ctx, 1);
@@ -249,7 +247,7 @@ public final class GameplayActions {
     }
 
     public static boolean tryHandleCrewStationsHotkey(GameContext ctx, int keyCode) {
-        if (ctx == null || !ctx.crewStationsOpen) return false;
+        if (ctx == null || !ctx.ui.crewStationsOpen) return false;
         boolean handled = false;
 
         switch (keyCode) {
@@ -311,7 +309,7 @@ public final class GameplayActions {
         }
         if (handled) return true;
 
-        switch (ctx.activeCrewStation) {
+        switch (ctx.command.activeCrewStation) {
             case CAPTAIN -> {
                 if (keyCode == java.awt.event.KeyEvent.VK_1) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.BALANCED);
                 else if (keyCode == java.awt.event.KeyEvent.VK_2) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.ATTACK);
@@ -364,13 +362,13 @@ public final class GameplayActions {
             }
             case SCIENCE -> {
                 if (keyCode == java.awt.event.KeyEvent.VK_1) {
-                    ctx.scienceAutomation = false;
+                    ctx.command.scienceAutomation = false;
                     UISystem.scienceLockNearest(ctx);
                 } else if (keyCode == java.awt.event.KeyEvent.VK_2) {
-                    ctx.scienceAutomation = false;
+                    ctx.command.scienceAutomation = false;
                     UISystem.scienceClearLock(ctx);
                 } else if (keyCode == java.awt.event.KeyEvent.VK_3) {
-                    ctx.scienceAutomation = false;
+                    ctx.command.scienceAutomation = false;
                     UISystem.toggleScienceJamming(ctx);
                 }
                 else return false;
@@ -381,7 +379,7 @@ public final class GameplayActions {
     }
 
     public static boolean tryHandleBaseMenuHotkey(GameContext ctx, int keyCode) {
-        if (ctx == null || !ctx.baseMenuOpen) return false;
+        if (ctx == null || !ctx.ui.baseMenuOpen) return false;
         switch (keyCode) {
             case java.awt.event.KeyEvent.VK_1 -> UISystem.tryUpgradeBase(ctx, 1);
             case java.awt.event.KeyEvent.VK_2 -> UISystem.tryUpgradeBase(ctx, 2);
@@ -396,7 +394,7 @@ public final class GameplayActions {
     }
 
     public static boolean tryHandleFlightDeckHotkey(GameContext ctx, int keyCode) {
-        if (ctx == null || !ctx.flightDeckOpen) return false;
+        if (ctx == null || !ctx.ui.flightDeckOpen) return false;
         switch (keyCode) {
             case java.awt.event.KeyEvent.VK_F1 -> UISystem.selectFlightDeckSlot(ctx, 0);
             case java.awt.event.KeyEvent.VK_F2 -> UISystem.selectFlightDeckSlot(ctx, 1);

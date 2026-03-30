@@ -1,11 +1,13 @@
+package app.support;
+
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 
-final class MenuDisplay {
-    static final int BASE_W = 1280;
-    static final int BASE_H = 720;
+public final class MenuDisplay {
+    public static final int BASE_W = 1280;
+    public static final int BASE_H = 720;
 
     private static final double MAX_SCREEN_W_FRACTION = 0.88;
     private static final double MAX_SCREEN_H_FRACTION = 0.84;
@@ -14,7 +16,7 @@ final class MenuDisplay {
 
     private MenuDisplay() {}
 
-    static Dimension preferredWindowSize() {
+    public static Dimension preferredWindowSize() {
         Rectangle bounds = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
         if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
             return new Dimension(BASE_W, BASE_H);
@@ -25,23 +27,23 @@ final class MenuDisplay {
         return fitToAspect(maxW, maxH);
     }
 
-    static double scaleFor(Dimension size) {
+    public static double scaleFor(Dimension size) {
         if (size == null) return 1.0;
         return scaleFor(size.width, size.height);
     }
 
-    static double scaleFor(int width, int height) {
+    public static double scaleFor(int width, int height) {
         if (width <= 0 || height <= 0) return 1.0;
         double sx = width / (double) BASE_W;
         double sy = height / (double) BASE_H;
         return Math.max(0.50, Math.min(1.0, Math.min(sx, sy)));
     }
 
-    static int scaled(int value, double scale) {
+    public static int scaled(int value, double scale) {
         return Math.max(1, (int) Math.round(value * scale));
     }
 
-    static Font font(String family, int style, int size, double scale) {
+    public static Font font(String family, int style, int size, double scale) {
         return new Font(family, style, scaled(size, scale));
     }
 

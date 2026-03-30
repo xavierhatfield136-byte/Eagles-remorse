@@ -1,3 +1,5 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,17 +69,17 @@ public final class Phase4SystemsHarness {
 
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 12345L, false));
         ctx.player = p;
-        ctx.engineeringAutomation = true;
+        ctx.command.engineeringAutomation = true;
         UISystem.adjustPowerAllocation(ctx, 0, 0.05);
-        if (ctx.engineeringAutomation) failures.add("manual power allocation must disable engineering automation");
+        if (ctx.command.engineeringAutomation) failures.add("manual power allocation must disable engineering automation");
 
-        ctx.engineeringAutomation = true;
+        ctx.command.engineeringAutomation = true;
         UISystem.toggleOverloadMode(ctx);
-        if (ctx.engineeringAutomation) failures.add("manual overload toggle must disable engineering automation");
+        if (ctx.command.engineeringAutomation) failures.add("manual overload toggle must disable engineering automation");
 
-        ctx.engineeringAutomation = true;
+        ctx.command.engineeringAutomation = true;
         UISystem.cycleEngineeringPriority(ctx, +1);
-        if (ctx.engineeringAutomation) failures.add("manual repair-priority change must disable engineering automation");
+        if (ctx.command.engineeringAutomation) failures.add("manual repair-priority change must disable engineering automation");
 
         System.out.println("[phase4] attack bus effects  P=" + fmt(atkProp) + " SH=" + fmt(atkShield) + " T=" + fmt(atkTac));
         System.out.println("[phase4] defense bus effects P=" + fmt(defProp) + " SH=" + fmt(defShield) + " T=" + fmt(defTac));

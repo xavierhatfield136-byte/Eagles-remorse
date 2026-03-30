@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.util.Random;
 
 public final class SpawnSystem {
@@ -771,8 +772,8 @@ public final class SpawnSystem {
 
     public static void activateShootingRange(GameContext ctx, double originX, double originY, Faction faction) {
         if (ctx == null || faction == null) return;
-        ctx.shootingRangeOriginX = originX;
-        ctx.shootingRangeOriginY = originY;
+        ctx.command.shootingRangeOriginX = originX;
+        ctx.command.shootingRangeOriginY = originY;
         replaceShootingRangeTargets(ctx, faction);
     }
 
@@ -784,7 +785,7 @@ public final class SpawnSystem {
     public static boolean setShootingRangeTargetFaction(GameContext ctx, Faction faction) {
         if (ctx == null || faction == null || ctx.player == null) return false;
         if (ctx.player.faction != null && ctx.player.faction.isFriendlyTo(faction)) return false;
-        if (!Double.isFinite(ctx.shootingRangeOriginX) || !Double.isFinite(ctx.shootingRangeOriginY)) return false;
+        if (!Double.isFinite(ctx.command.shootingRangeOriginX) || !Double.isFinite(ctx.command.shootingRangeOriginY)) return false;
         replaceShootingRangeTargets(ctx, faction);
         return true;
     }
@@ -802,8 +803,8 @@ public final class SpawnSystem {
         if (ctx == null || faction == null) return;
         removeShootingRangeTargets(ctx);
         clearShootingRangeTargetSlots(ctx);
-        ctx.shootingRangeTargetFaction = faction;
-        populateShootingRangeTargets(ctx, ctx.shootingRangeOriginX, ctx.shootingRangeOriginY, faction);
+        ctx.command.shootingRangeTargetFaction = faction;
+        populateShootingRangeTargets(ctx, ctx.command.shootingRangeOriginX, ctx.command.shootingRangeOriginY, faction);
         ctx.eventBanner = shootingRangeBanner(faction);
         ctx.eventBannerT = 2.4;
     }

@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.awt.*;
 
 public final class GameRenderSystem {
@@ -30,28 +31,28 @@ public final class GameRenderSystem {
             updateDamageVfx(ctx);
         }
 
-        ctx.perfDrawnAsteroids = Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnAsteroids = Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
-        ctx.perfDrawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        ctx.perfDrawnShips = Renderer.drawShips(worldG, ctx.ships, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnShips = Renderer.drawShips(worldG, ctx.ships, viewMinX, viewMinY, viewMaxX, viewMaxY);
         WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        ctx.perfDrawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
         Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
         Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
 
-        ctx.perfTotalVfx = VFX.activeCount();
-        try { ctx.perfDrawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perfDrawnVfx = 0; }
+        ctx.perf.totalVfx = VFX.activeCount();
+        try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
 
-        ctx.perfTotalExplosions = Explosion.active.size();
-        ctx.perfDrawnExplosions = 0;
+        ctx.perf.totalExplosions = Explosion.active.size();
+        ctx.perf.drawnExplosions = 0;
         try {
             for (Explosion e : Explosion.active) {
                 if (e == null) continue;
                 if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
-                ctx.perfDrawnExplosions++;
+                ctx.perf.drawnExplosions++;
                 if (e.kind == Explosion.Kind.SHIELD_HIT) {
                     drawShieldImpactExplosion(worldG, e);
                 } else if (e.kind == Explosion.Kind.DESTABILIZER_PULSE) {
@@ -66,7 +67,7 @@ public final class GameRenderSystem {
             }
         } catch (Throwable ignored) {}
 
-        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets,
+        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
                 viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
@@ -95,11 +96,11 @@ public final class GameRenderSystem {
             objectiveDetail = LastStandSystem.hudDetail(ctx);
         }
         String stationStatus = "STATIONS "
-                + "C:" + (ctx.captainAutomation ? "AI" : "MAN") + "  "
-                + "H:" + (ctx.helmAutomation ? "AI" : "MAN") + "  "
-                + "T:" + (ctx.tacticalAutomation ? "AI" : "MAN") + "  "
-                + "E:" + (ctx.engineeringAutomation ? "AI" : "MAN") + "  "
-                + "S:" + (ctx.scienceAutomation ? "AI" : "MAN");
+                + "C:" + (ctx.command.captainAutomation ? "AI" : "MAN") + "  "
+                + "H:" + (ctx.command.helmAutomation ? "AI" : "MAN") + "  "
+                + "T:" + (ctx.command.tacticalAutomation ? "AI" : "MAN") + "  "
+                + "E:" + (ctx.command.engineeringAutomation ? "AI" : "MAN") + "  "
+                + "S:" + (ctx.command.scienceAutomation ? "AI" : "MAN");
         String overlayStatus = activeOverlayLabel(ctx);
         String contextHint = buildContextHint(ctx, docked);
 
@@ -109,7 +110,7 @@ public final class GameRenderSystem {
                 ctx.credits,
                 hangarTier,
                 (docked != null),
-                ctx.shopOpen,
+                ctx.ui.shopOpen,
                 ctx.autoLockTurrets,
                 ctx.lockedTarget,
                 playerWingActive,
@@ -136,7 +137,7 @@ public final class GameRenderSystem {
                 zoom,
                 stationStatus,
                 ctx,
-                ctx.hudDetail,
+                ctx.ui.hudDetail,
                 contextHint,
                 overlayStatus
 
@@ -146,17 +147,17 @@ public final class GameRenderSystem {
         drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
-        Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
+        Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings);
         TutorialSystem.drawMinimapOverlay(ctx, g2, viewportW, viewportH);
 
-        if (ctx.mapOpen) {
+        if (ctx.ui.mapOpen) {
             Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
-                    ctx.ships, ctx.asteroids, ctx.salvage, ctx.waypointX, ctx.waypointY, ctx.mapPings, ctx.eventBanner);
+                    ctx.ships, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings, ctx.eventBanner);
             TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
         }
 
-        if (ctx.baseMenuOpen) {
+        if (ctx.ui.baseMenuOpen) {
             Ship base = EconomySystem.getDockedFriendlyBase(ctx);
             if (base != null) {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
@@ -166,16 +167,16 @@ public final class GameRenderSystem {
             }
         }
 
-        if (ctx.powerManagementOpen && ctx.player != null) {
-            Renderer.drawPowerManagementOverlay(g2, ctx.player, ctx.powerManagementFocus);
+        if (ctx.ui.powerManagementOpen && ctx.player != null) {
+            Renderer.drawPowerManagementOverlay(g2, ctx.player, ctx.ui.powerManagementFocus);
         }
 
-        if (ctx.crewStationsOpen && ctx.player != null) {
+        if (ctx.ui.crewStationsOpen && ctx.player != null) {
             Renderer.drawCrewStationsOverlay(g2, ctx);
         }
 
-        if (ctx.flightDeckOpen && ctx.player != null) {
-            Renderer.drawFlightDeckOverlay(g2, ctx.player, ctx.flightDeckFocus);
+        if (ctx.ui.flightDeckOpen && ctx.player != null) {
+            Renderer.drawFlightDeckOverlay(g2, ctx.player, ctx.ui.flightDeckFocus);
         }
 
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
@@ -212,12 +213,12 @@ if (DevTools.isDebugOverlay()) {
 
     private static String activeOverlayLabel(GameContext ctx) {
         if (ctx == null) return "";
-        if (ctx.shopOpen) return "OVERLAY: SHOP/LOADOUT";
-        if (ctx.baseMenuOpen) return "OVERLAY: BASE UPGRADES";
-        if (ctx.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
-        if (ctx.crewStationsOpen) return "OVERLAY: CREW STATIONS";
-        if (ctx.flightDeckOpen) return "OVERLAY: FLIGHT DECK";
-        if (ctx.mapOpen) return "OVERLAY: STRATEGIC MAP";
+        if (ctx.ui.shopOpen) return "OVERLAY: SHOP/LOADOUT";
+        if (ctx.ui.baseMenuOpen) return "OVERLAY: BASE UPGRADES";
+        if (ctx.ui.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
+        if (ctx.ui.crewStationsOpen) return "OVERLAY: CREW STATIONS";
+        if (ctx.ui.flightDeckOpen) return "OVERLAY: FLIGHT DECK";
+        if (ctx.ui.mapOpen) return "OVERLAY: STRATEGIC MAP";
         if (ctx.state == GameState.PAUSED) return "OVERLAY: PAUSED";
         return "";
     }
@@ -228,15 +229,14 @@ if (DevTools.isDebugOverlay()) {
         if (tutorialHint != null && !tutorialHint.isBlank()) return tutorialHint;
         Ship p = ctx.player;
 
-        if (ctx.shopOpen || ctx.baseMenuOpen || ctx.mapOpen || ctx.powerManagementOpen
-                || ctx.crewStationsOpen || ctx.flightDeckOpen) {
+        if (ctx.ui.hasBlockingOverlay()) {
             return "Overlay active: combat input blocked, station AI continues running. Press ESC to close.";
         }
         if (!p.alive || p.dying || p.hp <= 0) {
             return "";
         }
-        if (ctx.playerTeleportCharging) {
-            double t = Math.max(0.0, ctx.playerTeleportChargeRemaining);
+        if (ctx.command.playerTeleportCharging) {
+            double t = Math.max(0.0, ctx.command.playerTeleportChargeRemaining);
             return String.format("Battlefield warp charging: %.1fs remaining (- or Backspace, damage disrupts).", t);
         }
 
@@ -297,10 +297,10 @@ if (DevTools.isDebugOverlay()) {
 
     private static void drawVoiceCaption(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         if (ctx == null || g2 == null) return;
-        if (!ctx.voiceCaptionsEnabled) return;
-        if (ctx.voiceCaptionT <= 0.0 || ctx.voiceCaption == null || ctx.voiceCaption.isBlank()) return;
+        if (!ctx.ui.voiceCaptionsEnabled) return;
+        if (ctx.ui.voiceCaptionT <= 0.0 || ctx.ui.voiceCaption == null || ctx.ui.voiceCaption.isBlank()) return;
 
-        String text = ctx.voiceCaption;
+        String text = ctx.ui.voiceCaption;
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         FontMetrics fm = g2.getFontMetrics();
 
@@ -381,15 +381,15 @@ if (DevTools.isDebugOverlay()) {
         for (Ship s : ctx.ships) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.teamId() != teamId) continue;
-            Integer leaderId = ctx.fleetSquadLeaderByShip.get(s.id);
+            Integer leaderId = ctx.command.fleetSquadLeaderByShip.get(s.id);
             if (leaderId == null || leaderId != s.id) continue;
             leaders.add(s);
         }
-        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
+        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.command.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
         for (Ship leader : leaders) {
-            String label = ctx.fleetSquadLabelByShip.get(leader.id);
+            String label = ctx.command.fleetSquadLabelByShip.get(leader.id);
             if (label == null || label.isBlank()) continue;
-            String role = ctx.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
+            String role = ctx.command.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
             out.add(label + "  " + role.toUpperCase());
             if (out.size() >= 4) break;
         }
@@ -436,17 +436,17 @@ if (DevTools.isDebugOverlay()) {
         for (Ship s : ctx.ships) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.teamId() != playerTeamId) continue;
-            Integer leaderId = ctx.fleetSquadLeaderByShip.get(s.id);
+            Integer leaderId = ctx.command.fleetSquadLeaderByShip.get(s.id);
             if (leaderId == null || leaderId != s.id) continue;
             if (s.x + s.radius + 90.0 < minX || s.x - s.radius - 90.0 > maxX
                     || s.y + s.radius + 90.0 < minY || s.y - s.radius - 90.0 > maxY) continue;
             leaders.add(s);
         }
-        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
+        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.command.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
         for (Ship leader : leaders) {
-            String label = ctx.fleetSquadLabelByShip.get(leader.id);
+            String label = ctx.command.fleetSquadLabelByShip.get(leader.id);
             if (label == null || label.isBlank()) continue;
-            String role = ctx.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
+            String role = ctx.command.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
             int x = (int) Math.round(leader.x);
             int y = (int) Math.round(leader.y - leader.radius - 48);
             Color accent = squadColor(leader.faction, 215);

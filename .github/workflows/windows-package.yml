@@ -26,6 +26,10 @@ jobs:
         shell: pwsh
         run: choco install wixtoolset --no-progress -y
 
+      - name: Verification
+        shell: pwsh
+        run: ./gradlew --no-daemon check
+
       - name: Build Windows packages
         shell: pwsh
         run: ./gradlew packageWindows

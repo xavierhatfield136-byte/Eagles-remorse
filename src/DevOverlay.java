@@ -1,3 +1,5 @@
+import app.config.GameMode;
+import app.state.PerfTelemetry;
 import java.awt.*;
 import java.lang.reflect.Field;
 import java.util.List;
@@ -68,26 +70,28 @@ public final class DevOverlay {
         y += lineH;
         drawLine(g2, x, y, "Credits: " + safe(ctx, "credits") + "  OrePriceMul: " + safe(ctx, "orePriceMul"));
 
-        y += lineH;
-        drawLine(g2, x, y, "Perf: " + fmt2(safeD(ctx, "perfFps")) + " fps"
-                + "  Frame: " + fmt2(safeD(ctx, "perfFrameMs")) + "ms"
-                + "  Jitter: " + fmt2(safeD(ctx, "perfFrameJitterMs")) + "ms");
+        PerfTelemetry perf = (ctx == null) ? null : ctx.perf;
 
         y += lineH;
-        drawLine(g2, x, y, "Update: " + fmt2(safeD(ctx, "perfUpdateMs")) + "ms"
-                + "  Render: " + fmt2(safeD(ctx, "perfRenderMs")) + "ms"
-                + "  Steps: " + safe(ctx, "perfUpdateSteps")
-                + "  Drop: " + safe(ctx, "perfDroppedUpdates"));
+        drawLine(g2, x, y, "Perf: " + fmt2(perfValue(perf, "fps")) + " fps"
+                + "  Frame: " + fmt2(perfValue(perf, "frameMs")) + "ms"
+                + "  Jitter: " + fmt2(perfValue(perf, "frameJitterMs")) + "ms");
 
         y += lineH;
-        drawLine(g2, x, y, "Drawn: Ships " + safe(ctx, "perfDrawnShips") + "/" + sizeOf(ctx, "ships")
-                + "  Proj " + safe(ctx, "perfDrawnProjectiles") + "/" + sizeOf(ctx, "projectiles")
-                + "  Ast " + safe(ctx, "perfDrawnAsteroids") + "/" + sizeOf(ctx, "asteroids"));
+        drawLine(g2, x, y, "Update: " + fmt2(perfValue(perf, "updateMs")) + "ms"
+                + "  Render: " + fmt2(perfValue(perf, "renderMs")) + "ms"
+                + "  Steps: " + perfInt(perf, "updateSteps")
+                + "  Drop: " + perfInt(perf, "droppedUpdates"));
 
         y += lineH;
-        drawLine(g2, x, y, "FX: Salv " + safe(ctx, "perfDrawnSalvage") + "/" + sizeOf(ctx, "salvage")
-                + "  VFX " + safe(ctx, "perfDrawnVfx") + "/" + safe(ctx, "perfTotalVfx")
-                + "  Expl " + safe(ctx, "perfDrawnExplosions") + "/" + safe(ctx, "perfTotalExplosions"));
+        drawLine(g2, x, y, "Drawn: Ships " + perfInt(perf, "drawnShips") + "/" + sizeOf(ctx, "ships")
+                + "  Proj " + perfInt(perf, "drawnProjectiles") + "/" + sizeOf(ctx, "projectiles")
+                + "  Ast " + perfInt(perf, "drawnAsteroids") + "/" + sizeOf(ctx, "asteroids"));
+
+        y += lineH;
+        drawLine(g2, x, y, "FX: Salv " + perfInt(perf, "drawnSalvage") + "/" + sizeOf(ctx, "salvage")
+                + "  VFX " + perfInt(perf, "drawnVfx") + "/" + perfInt(perf, "totalVfx")
+                + "  Expl " + perfInt(perf, "drawnExplosions") + "/" + perfInt(perf, "totalExplosions"));
 
         y += lineH;
         drawLine(g2, x, y, "Cam: (" + (int) safeD(ctx, "camX") + ", " + (int) safeD(ctx, "camY") + ")  View: " + w + "x" + h);
@@ -220,5 +224,15 @@ public final class DevOverlay {
             if (v instanceof List<?> list) return list.size();
         } catch (Throwable ignored) {}
         return -1;
+    }
+
+    private static double perfValue(PerfTelemetry perf, String field) {
+        if (perf == null) return 0.0;
+        return safeD(perf, field);
+    }
+
+    private static String perfInt(PerfTelemetry perf, String field) {
+        if (perf == null) return "?";
+        return safe(perf, field);
     }
 }

@@ -162,8 +162,8 @@ public final class TargetingSystem {
             ctx.eventBanner = "TARGET LOCK BROKEN";
             ctx.eventBannerT = Math.max(ctx.eventBannerT, 0.9);
         }
-        if (ctx.fleetSharedTargets != null && !ctx.fleetSharedTargets.isEmpty()) {
-            java.util.Iterator<java.util.Map.Entry<Faction, Ship>> it = ctx.fleetSharedTargets.entrySet().iterator();
+        if (ctx.command.fleetSharedTargets != null && !ctx.command.fleetSharedTargets.isEmpty()) {
+            java.util.Iterator<java.util.Map.Entry<Faction, Ship>> it = ctx.command.fleetSharedTargets.entrySet().iterator();
             while (it.hasNext()) {
                 java.util.Map.Entry<Faction, Ship> e = it.next();
                 Ship target = (e == null) ? null : e.getValue();
