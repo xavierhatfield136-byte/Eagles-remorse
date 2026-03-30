@@ -1052,6 +1052,7 @@ public final class UISystem {
         int next = ctx.alliedFleetFormation.ordinal() + 1;
         if (next >= values.length) next = 0;
         ctx.alliedFleetFormation = values[next];
+        AudioSystem.onCommandShipFormationOrder(ctx, ctx.player, ctx.alliedFleetFormation);
         EventSystem.showBanner(ctx, "FLEET FORMATION: " + ctx.alliedFleetFormation.name(), 1.0);
     }
 
@@ -1065,10 +1066,12 @@ public final class UISystem {
         }
         if (command == GameContext.FleetCommand.AUTO) {
             ctx.shipFleetCommandOverrides.remove(target.id);
+            AudioSystem.onCommandShipShipOrder(ctx, ctx.player, GameContext.FleetCommand.AUTO, target);
             EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER CLEARED", 1.1);
             return;
         }
         ctx.shipFleetCommandOverrides.put(target.id, command);
+        AudioSystem.onCommandShipShipOrder(ctx, ctx.player, command, target);
         EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER: " + command.name(), 1.1);
     }
 

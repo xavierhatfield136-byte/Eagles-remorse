@@ -7,6 +7,10 @@ public class CollisionSystem {
     private static final double DESTABILIZER_PULSE_EDGE_FALLOFF = 0.42;
     private static final double DESTABILIZER_PULSE_CORE_RADIUS_MIN = 84.0;
     private static final double DESTABILIZER_PULSE_DIRECT_HIT_BONUS = 0.55;
+    private static final double DESTABILIZER_PULSE_SHIELD_EDGE_SCALE = 0.58;
+    private static final double DESTABILIZER_PULSE_SHIELD_CORE_BONUS = 0.75;
+    private static final double DESTABILIZER_PULSE_DISABLE_FLOOR_SECONDS = 0.55;
+    private static final double DESTABILIZER_PULSE_DISABLE_CORE_SECONDS = 2.4;
     private static final double SUPERWEAPON_RING_DISABLE_SECONDS = 5.0;
     private static final double SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION = 0.25;
 
@@ -501,25 +505,51 @@ public class CollisionSystem {
                 double impactVx = (centerDist > 1e-6) ? dx : pulse.vx;
                 double impactVy = (centerDist > 1e-6) ? dy : pulse.vy;
                 ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, x, y, impactVx, impactVy);
+                double shieldBefore = s.shield;
                 int hpBefore = s.hp;
+                double shieldScale = DESTABILIZER_PULSE_SHIELD_EDGE_SCALE
+                        + (1.0 - DESTABILIZER_PULSE_SHIELD_EDGE_SCALE) * falloff;
+                double shieldDamage = Math.max(0.0, pulse.shieldDamage
+                        * shieldScale
+                        * (1.0 + DESTABILIZER_PULSE_SHIELD_CORE_BONUS * coreFrac));
+                double stripped = s.drainShieldByAmount(shieldDamage, x, y, impactVx, impactVy);
 
                 int hullDamage = Math.max(8, (int) Math.round(pulse.damage * intensity * hullBurst));
                 markPlayerHitContribution(ctx, pulse, s);
                 s.takePenetratingInternalDamage(hullDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
                 logDamageEvent(ctx, "destabilizer:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
                 s.applyShipwideRoomDisruption();
+                s.applyDestabilized(pulse.destabilizeSeconds * (0.58 + 0.42 * intensity) * (1.0 + 0.35 * coreFrac));
+                if (coreFrac > 1e-6) {
+                    double disableSeconds = (DESTABILIZER_PULSE_DISABLE_FLOOR_SECONDS
+                            + DESTABILIZER_PULSE_DISABLE_CORE_SECONDS * coreFrac) * intensity;
+                    s.addTemporaryDisable(disableSeconds);
+                }
 
+                boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
                 boolean hullHit = s.hp < hpBefore;
                 boolean showShipVfx = shouldRenderDamageVfx(ctx, s, impactPoints.hullX(), impactPoints.hullY());
                 if (showShipVfx) {
                     double dirLen = Math.hypot(impactVx, impactVy);
                     double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
                     double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
+                    if (shieldHit) {
+                        int shieldStrength = Math.max(2, (int) Math.round(2.0 + stripped * 0.06));
+                        VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY, shieldStrength, VFX.ImpactStyle.ENERGY);
+                        Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                    }
                     if (hullHit) {
                         VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY, Math.max(1, hullDamage), VFX.ImpactStyle.ENERGY);
                     }
                 }
-                AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                if (shieldHit) {
+                    AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.shieldX(), impactPoints.shieldY());
+                }
+                if (hullHit) {
+                    AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                } else if (!shieldHit) {
+                    AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                }
                 affected = true;
             }
         }
@@ -907,6 +937,8 @@ public class CollisionSystem {
 
     private static boolean canProjectileDamageShip(Ship shooter, Projectile projectile, Ship target) {
         if (projectile == null || target == null) return false;
+        Faction sourceFaction = (shooter != null && shooter.faction != null) ? shooter.faction : projectile.faction;
+        if (sourceFaction != null && target.faction != null && sourceFaction.isFriendlyTo(target.faction)) return false;
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
             return target.isSmallCraft();
         }

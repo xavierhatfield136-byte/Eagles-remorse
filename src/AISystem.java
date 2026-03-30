@@ -18,6 +18,10 @@ public final class AISystem {
         final Map<Integer, SquadObjective> squadObjectives = new HashMap<>();
         final Map<Integer, GameContext.FleetFormation> autoFormation = new HashMap<>();
         final Map<Integer, Double> autoFormationSpacing = new HashMap<>();
+        final Map<Integer, String> squadLabels = new HashMap<>();
+        final Map<Integer, String> squadRoles = new HashMap<>();
+        final Map<Integer, Integer> squadLeaders = new HashMap<>();
+        final Map<Integer, Integer> squadIndexes = new HashMap<>();
     }
 
     private static final class SharedTargetChoice {
@@ -58,6 +62,7 @@ public final class AISystem {
     private static final double ESCORT_WARP_SUPPORT_RANGE = 320.0;
     private static final double FLEET_REJOIN_WARP_RANGE = 1500.0;
     private static final double FLEET_REJOIN_ANCHOR_RANGE = 900.0;
+    private static final int MAX_FLEET_COMM_LOG = 8;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -66,6 +71,7 @@ public final class AISystem {
                 || ctx.config.mode == GameMode.SHOOTING_RANGE
                 || ctx.config.mode == GameMode.TUTORIAL)) return;
         if (!DevTools.isAIEnabled()) return;
+        tickFleetCommLog(ctx, Math.max(0.0, dt));
         decayKillConfirmTimers(Math.max(0.0, dt));
         pruneClosestRetargetState(ctx.ships);
 
@@ -253,6 +259,12 @@ public final class AISystem {
         }
         if (ctx.fleetCommandShips != null) ctx.fleetCommandShips.clear();
         if (ctx.fleetSharedTargets != null) ctx.fleetSharedTargets.clear();
+        if (ctx.fleetResolvedCommands != null) ctx.fleetResolvedCommands.clear();
+        if (ctx.fleetResolvedFormations != null) ctx.fleetResolvedFormations.clear();
+        if (ctx.fleetSquadLabelByShip != null) ctx.fleetSquadLabelByShip.clear();
+        if (ctx.fleetSquadRoleByShip != null) ctx.fleetSquadRoleByShip.clear();
+        if (ctx.fleetSquadLeaderByShip != null) ctx.fleetSquadLeaderByShip.clear();
+        if (ctx.fleetSquadIndexByShip != null) ctx.fleetSquadIndexByShip.clear();
         markKillConfirmTargets(ctx);
 
         Map<Integer, Double> bestScore = new HashMap<>();
@@ -292,6 +304,7 @@ public final class AISystem {
             Ship threatened = selectMissileThreatFocusForTeam(ctx, members, flagship);
             if (threatened != null) out.missileThreatFocus.put(teamId, threatened);
             assignSquadObjectives(out, teamId, members, flagship, (shared == null) ? null : shared.target, threatened);
+            assignSquadronIdentities(out, teamId, members, flagship);
         }
         pruneTeamTransientState(out.members.keySet());
 
@@ -310,6 +323,7 @@ public final class AISystem {
                 ctx.fleetSharedTargets.put(f, e.getValue());
             }
         }
+        syncFleetPresentation(ctx, out);
         return out;
     }
 
@@ -418,6 +432,121 @@ public final class AISystem {
             }
         }
         return best;
+    }
+
+    private static void syncFleetPresentation(GameContext ctx, FleetState state) {
+        if (ctx == null || state == null) return;
+        if (ctx.fleetSquadLabelByShip != null) ctx.fleetSquadLabelByShip.putAll(state.squadLabels);
+        if (ctx.fleetSquadRoleByShip != null) ctx.fleetSquadRoleByShip.putAll(state.squadRoles);
+        if (ctx.fleetSquadLeaderByShip != null) ctx.fleetSquadLeaderByShip.putAll(state.squadLeaders);
+        if (ctx.fleetSquadIndexByShip != null) ctx.fleetSquadIndexByShip.putAll(state.squadIndexes);
+        syncResolvedFleetOrders(ctx, state);
+        updateFleetNetTraffic(ctx, state);
+    }
+
+    private static void syncResolvedFleetOrders(GameContext ctx, FleetState state) {
+        if (ctx == null || state == null) return;
+        for (Map.Entry<Integer, Ship> e : state.flagships.entrySet()) {
+            if (e == null) continue;
+            int teamId = e.getKey();
+            Ship flagship = e.getValue();
+            Faction teamFaction = state.teamFactions.get(teamId);
+            if (teamFaction == null || !isAlive(flagship)) continue;
+
+            GameContext.FleetCommand command = resolveFleetCommand(ctx, flagship, flagship);
+            if (ctx.fleetResolvedCommands != null) {
+                ctx.fleetResolvedCommands.put(teamFaction,
+                        (command == null) ? GameContext.FleetCommand.AUTO : command);
+            }
+
+            boolean playerDirected = playerCanDirectTeamFleet(ctx, flagship, flagship);
+            GameContext.FleetFormation formation = playerDirected
+                    ? ctx.alliedFleetFormation
+                    : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
+            if (ctx.fleetResolvedFormations != null) {
+                ctx.fleetResolvedFormations.put(teamFaction,
+                        (formation == null) ? GameContext.FleetFormation.WEDGE : formation);
+            }
+        }
+    }
+
+    private static void updateFleetNetTraffic(GameContext ctx, FleetState state) {
+        if (ctx == null || state == null || ctx.player == null || ctx.player.faction == null) return;
+        int playerTeamId = ctx.player.faction.teamId();
+        java.util.HashSet<String> activeKeys = new java.util.HashSet<>();
+        for (Map.Entry<Integer, String> e : state.squadLabels.entrySet()) {
+            Integer shipId = e.getKey();
+            if (shipId == null) continue;
+            Integer leaderId = state.squadLeaders.get(shipId);
+            if (leaderId == null || leaderId.intValue() != shipId.intValue()) continue;
+            Ship leader = findShipById(ctx.ships, shipId);
+            if (!isAlive(leader) || leader.faction == null || leader.faction.teamId() != playerTeamId) continue;
+
+            Ship flagship = state.flagships.get(playerTeamId);
+            SquadObjective objective = state.squadObjectives.getOrDefault(shipId, SquadObjective.HOLD);
+            GameContext.FleetCommand command = resolveFleetCommand(ctx, leader, flagship);
+            Ship target = state.sharedTargets.get(playerTeamId);
+            String key = playerTeamId + ":" + e.getValue();
+            activeKeys.add(key);
+            boolean trackTarget = objective == SquadObjective.FLANK || command == GameContext.FleetCommand.ATTACK;
+            String signature = ((command == null) ? "AUTO" : command.name())
+                    + "|" + objective.name()
+                    + "|" + (trackTarget && isAlive(target) ? target.id : -1)
+                    + "|" + (leader.isWarpCharging() ? "WARP" : "LINE");
+            String previous = ctx.fleetSquadStatusMemory.get(key);
+            if (previous != null && !previous.equals(signature)) {
+                postFleetComm(ctx, leader.faction, e.getValue(), describeSquadTraffic(leader, e.getValue(), command, objective, target));
+            }
+            ctx.fleetSquadStatusMemory.put(key, signature);
+        }
+        if (!ctx.fleetSquadStatusMemory.isEmpty()) {
+            ctx.fleetSquadStatusMemory.entrySet().removeIf(entry -> entry == null || !activeKeys.contains(entry.getKey()));
+        }
+    }
+
+    private static String describeSquadTraffic(Ship leader, String label, GameContext.FleetCommand command,
+                                               SquadObjective objective, Ship target) {
+        if (leader != null && leader.isWarpCharging()) return "warping to reform with command";
+        if (command == null) command = GameContext.FleetCommand.AUTO;
+        return switch (objective) {
+            case INTERCEPT -> "screening inbound threats";
+            case FLANK -> isAlive(target) ? "flanking target " + target.id : "swinging wide on the flank";
+            case RESERVE -> (command == GameContext.FleetCommand.REPAIR || command == GameContext.FleetCommand.RETREAT)
+                    ? "falling back for repairs"
+                    : "holding in reserve";
+            case HOLD -> switch (command) {
+                case ATTACK -> isAlive(target) ? "advancing on target " + target.id : "pushing forward";
+                case DEFEND, ESCORT, FORM_UP -> "holding the battle line";
+                case RETREAT, REPAIR, RTB -> "covering the withdrawal";
+                case MINE -> "covering the mining screen";
+                default -> "maintaining formation";
+            };
+        };
+    }
+
+    private static void postFleetComm(GameContext ctx, Faction faction, String channel, String text) {
+        if (ctx == null || text == null || text.isBlank()) return;
+        if (ctx.fleetCommLog.size() >= MAX_FLEET_COMM_LOG) {
+            ctx.fleetCommLog.remove(0);
+        }
+        ctx.fleetCommLog.add(new GameContext.FleetCommMessage(faction, channel, text, 8.5));
+    }
+
+    private static void tickFleetCommLog(GameContext ctx, double dt) {
+        if (ctx == null || ctx.fleetCommLog.isEmpty()) return;
+        ctx.fleetCommLog.removeIf(msg -> {
+            if (msg == null) return true;
+            msg.ttl -= dt;
+            return msg.ttl <= 0.0;
+        });
+    }
+
+    private static Ship findShipById(List<Ship> ships, int shipId) {
+        if (ships == null || shipId <= 0) return null;
+        for (Ship s : ships) {
+            if (s != null && s.id == shipId) return s;
+        }
+        return null;
     }
 
     private static SharedTargetChoice applyCommandLatencyAndFog(GameContext ctx, int teamId, Faction teamFaction,
@@ -558,6 +687,69 @@ public final class AISystem {
         for (Ship s : pool) {
             SquadObjective objective = assigned.getOrDefault(s.id, SquadObjective.HOLD);
             state.squadObjectives.put(s.id, objective);
+        }
+    }
+
+    private static void assignSquadronIdentities(FleetState state, int teamId, List<Ship> members, Ship flagship) {
+        if (state == null || members == null || members.isEmpty()) return;
+        int nextIndex = 1;
+        if (isAlive(flagship)) {
+            registerSquadronChunk(state, nextIndex++, "COMMAND", "Command", flagship);
+        }
+
+        List<Ship> intercept = collectObjectiveMembers(state, members, flagship, SquadObjective.INTERCEPT);
+        List<Ship> flank = collectObjectiveMembers(state, members, flagship, SquadObjective.FLANK);
+        List<Ship> hold = collectObjectiveMembers(state, members, flagship, SquadObjective.HOLD);
+        List<Ship> reserve = collectObjectiveMembers(state, members, flagship, SquadObjective.RESERVE);
+
+        nextIndex = assignSquadronChunks(state, intercept, "PICKET", "Intercept", nextIndex, 3);
+        nextIndex = assignSquadronChunks(state, flank, "LANCE", "Flank", nextIndex, 3);
+        nextIndex = assignSquadronChunks(state, hold, "SPEAR", "Battleline", nextIndex, 4);
+        assignSquadronChunks(state, reserve, "RESERVE", "Reserve", nextIndex, 4);
+    }
+
+    private static List<Ship> collectObjectiveMembers(FleetState state, List<Ship> members, Ship flagship, SquadObjective objective) {
+        List<Ship> out = new ArrayList<>();
+        if (state == null || members == null || objective == null) return out;
+        for (Ship s : members) {
+            if (!isAlive(s) || s == flagship) continue;
+            if (state.squadObjectives.getOrDefault(s.id, SquadObjective.HOLD) != objective) continue;
+            out.add(s);
+        }
+        out.sort(Comparator.comparingDouble(AISystem::flagshipScore).reversed());
+        return out;
+    }
+
+    private static int assignSquadronChunks(FleetState state, List<Ship> ships, String prefix, String role, int nextIndex, int chunkSize) {
+        if (state == null || ships == null || ships.isEmpty()) return nextIndex;
+        int safeChunkSize = Math.max(1, chunkSize);
+        for (int start = 0; start < ships.size(); start += safeChunkSize) {
+            int end = Math.min(ships.size(), start + safeChunkSize);
+            String label = prefix + " " + nextIndex;
+            Ship[] chunk = new Ship[end - start];
+            for (int i = start; i < end; i++) {
+                chunk[i - start] = ships.get(i);
+            }
+            registerSquadronChunk(state, nextIndex, label, role, chunk);
+            nextIndex++;
+        }
+        return nextIndex;
+    }
+
+    private static void registerSquadronChunk(FleetState state, int squadIndex, String label, String role, Ship... chunk) {
+        if (state == null || chunk == null || chunk.length <= 0) return;
+        Ship leader = null;
+        for (Ship s : chunk) {
+            if (!isAlive(s)) continue;
+            if (leader == null) leader = s;
+        }
+        if (!isAlive(leader)) return;
+        for (Ship s : chunk) {
+            if (!isAlive(s)) continue;
+            state.squadLabels.put(s.id, label);
+            state.squadRoles.put(s.id, role);
+            state.squadLeaders.put(s.id, leader.id);
+            state.squadIndexes.put(s.id, squadIndex);
         }
     }
 
@@ -956,6 +1148,21 @@ public final class AISystem {
         } else if (objective == SquadObjective.INTERCEPT && isAlive(threatFocus)) {
             anchor[0] = anchor[0] * 0.44 + threatFocus.x * 0.56;
             anchor[1] = anchor[1] * 0.44 + threatFocus.y * 0.56;
+        }
+        Integer squadLeaderId = state.squadLeaders.get(s.id);
+        if (squadLeaderId != null && squadLeaderId != s.id) {
+            Ship squadLeader = findShipById(ctx.ships, squadLeaderId);
+            if (isAlive(squadLeader) && squadLeader.faction != null && s.faction != null
+                    && squadLeader.faction.teamId() == s.faction.teamId()) {
+                double squadPull = switch (objective) {
+                    case INTERCEPT -> 0.58;
+                    case FLANK -> 0.64;
+                    case RESERVE -> 0.42;
+                    case HOLD -> 0.48;
+                };
+                anchor[0] = anchor[0] * (1.0 - squadPull) + squadLeader.x * squadPull;
+                anchor[1] = anchor[1] * (1.0 - squadPull) + squadLeader.y * squadPull;
+            }
         }
         DangerMemory danger = state.dangerMemory.get(teamId);
         if (danger != null && danger.ttl > 0.0 && danger.intensity > 0.05) {
@@ -2060,7 +2267,14 @@ public final class AISystem {
                         preferredRange(member) * 0.35 * spacingMul,
                         desiredFormation,
                         cmd);
-                member.beginBattlefieldWarpFollowing(exit[0], exit[1], remaining, flagship.id);
+                boolean wasCharging = member.isWarpCharging();
+                boolean started = member.beginBattlefieldWarpFollowing(exit[0], exit[1], remaining, flagship.id);
+                if (started && !wasCharging && ctx.player != null && member.faction != null
+                        && ctx.player.faction != null
+                        && member.faction.teamId() == ctx.player.faction.teamId()) {
+                    String label = ctx.fleetSquadLabelByShip.getOrDefault(member.id, "ESCORT");
+                    postFleetComm(ctx, member.faction, label, "matching command warp profile");
+                }
             }
         }
     }
@@ -3219,7 +3433,14 @@ public final class AISystem {
         }
 
         double desiredOffset = Math.max(180.0, Math.min(340.0, s.radius + preferredRange(s) * 0.30));
-        return maybeStartBattlefieldWarp(ctx, s, anchorX, anchorY, desiredOffset);
+        boolean started = maybeStartBattlefieldWarp(ctx, s, anchorX, anchorY, desiredOffset);
+        if (started && ctx.player != null && s.faction != null
+                && ctx.player.faction != null
+                && s.faction.teamId() == ctx.player.faction.teamId()) {
+            String label = ctx.fleetSquadLabelByShip.getOrDefault(s.id, "ESCORT");
+            postFleetComm(ctx, s.faction, label, "warping back into formation");
+        }
+        return started;
     }
 
     private static boolean shouldJoinFlagshipWarp(GameContext ctx, Ship ship, Ship flagship) {

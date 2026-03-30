@@ -152,6 +152,10 @@ public class Turret {
 
         double cycleMul = host.weaponCycleRateMultiplier();
         double damageMul = host.weaponDamageMultiplier();
+        if (kind == Kind.MISSILE) {
+            cycleMul *= host.missileCycleRateMultiplier();
+            damageMul *= host.missileDamageMultiplier();
+        }
         cycleMul = Math.max(0.20, cycleMul);
         damageMul = Math.max(0.20, damageMul);
         coolLeft = cooldown / cycleMul;

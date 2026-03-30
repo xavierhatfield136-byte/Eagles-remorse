@@ -4,6 +4,20 @@ import java.util.*;
  * All systems operate on this instead of owning state in GamePanel.
  */
 public class GameContext {
+    public static final class FleetCommMessage {
+        public final Faction faction;
+        public final String channel;
+        public final String text;
+        public double ttl;
+
+        public FleetCommMessage(Faction faction, String channel, String text, double ttl) {
+            this.faction = faction;
+            this.channel = (channel == null || channel.isBlank()) ? "FLEET" : channel;
+            this.text = (text == null || text.isBlank()) ? "Traffic spike." : text;
+            this.ttl = Math.max(0.2, ttl);
+        }
+    }
+
     // Config / world
     public final GameConfig config;
     public final int WORLD_W;
@@ -30,6 +44,7 @@ public class GameContext {
     public final List<Salvage> salvage = new ArrayList<>();
     public final List<DamageEvent> damageEvents = new ArrayList<>();
     public final List<AudioEvent> audioEvents = new ArrayList<>();
+    public final List<FleetCommMessage> fleetCommLog = new ArrayList<>();
     public final EntityQueryIndex entityQuery = new EntityQueryIndex();
 
     // Bases
@@ -164,6 +179,13 @@ public class GameContext {
     public final Map<Integer, FleetCommand> shipFleetCommandOverrides = new HashMap<>();
     public final java.util.EnumMap<Faction, Ship> fleetCommandShips = new java.util.EnumMap<>(Faction.class);
     public final java.util.EnumMap<Faction, Ship> fleetSharedTargets = new java.util.EnumMap<>(Faction.class);
+    public final java.util.EnumMap<Faction, FleetCommand> fleetResolvedCommands = new java.util.EnumMap<>(Faction.class);
+    public final java.util.EnumMap<Faction, FleetFormation> fleetResolvedFormations = new java.util.EnumMap<>(Faction.class);
+    public final Map<Integer, String> fleetSquadLabelByShip = new HashMap<>();
+    public final Map<Integer, String> fleetSquadRoleByShip = new HashMap<>();
+    public final Map<Integer, Integer> fleetSquadLeaderByShip = new HashMap<>();
+    public final Map<Integer, Integer> fleetSquadIndexByShip = new HashMap<>();
+    public final Map<String, String> fleetSquadStatusMemory = new HashMap<>();
     public boolean playerTeleportCharging = false;
     public double playerTeleportChargeRemaining = 0.0;
     public Faction shootingRangeTargetFaction = Faction.ENEMY;

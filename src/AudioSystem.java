@@ -61,6 +61,22 @@ public final class AudioSystem {
                 "Hold the line. Defensive posture.",
                 "Defensive stations. Hold position.",
                 "Maintain defense coverage."),
+        CAPTAIN_ORDER_FORM_UP("captain", "order_form_up", 4.0, 2, 3,
+                "Fleet, reform on command.",
+                "Form up and hold your spacing.",
+                "Maintain formation and use your discretion."),
+        CAPTAIN_ORDER_MINE("captain", "order_mine", 4.5, 2, 3,
+                "Mining group, proceed to extraction.",
+                "Mining detail, move on the resource pocket.",
+                "Cover the miners and hold the lane."),
+        CAPTAIN_ORDER_REPAIR("captain", "order_repair", 4.5, 2, 3,
+                "Damaged ships, peel off for repairs.",
+                "Repair group, disengage and recover.",
+                "Withdraw damaged hulls and begin damage control."),
+        CAPTAIN_ORDER_RTB("captain", "order_rtb", 4.5, 2, 3,
+                "All units, return to base.",
+                "Return to base and prepare to dock.",
+                "Base recovery pattern is now in effect."),
 
         HELM_INTERCEPT("helm", "intercept", 4.0, 1, 3,
                 "Intercept course set.",
@@ -181,6 +197,9 @@ public final class AudioSystem {
         int lastExplosionCount;
         GameContext.HelmMode lastHelmMode;
         GameContext.CaptainDirective lastCaptainDirective;
+        int lastFriendlyCommandShipId = -1;
+        GameContext.FleetCommand lastFriendlyFleetCommand = null;
+        GameContext.FleetFormation lastFriendlyFleetFormation = null;
 
         final EnumMap<VoiceCue, Double> voiceCooldownUntil = new EnumMap<>(VoiceCue.class);
         final Map<String, Double> sfxCooldownUntil = new HashMap<>();
@@ -218,6 +237,12 @@ public final class AudioSystem {
                 s.lastExplosionCount = explosionCountNearPlayer(ctx);
                 s.lastHelmMode = ctx.helmMode;
                 s.lastCaptainDirective = ctx.captainDirective;
+                Ship commandShip = friendlyCommandShip(ctx);
+                if (commandShip != null) {
+                    s.lastFriendlyCommandShipId = commandShip.id;
+                    s.lastFriendlyFleetCommand = resolvedFleetCommand(ctx, commandShip);
+                    s.lastFriendlyFleetFormation = resolvedFleetFormation(ctx, commandShip);
+                }
                 double seededUntil = nowSec() + 12.0;
                 for (Ship hostile : visibleHostiles) {
                     if (hostile == null) continue;
@@ -423,6 +448,24 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION, sourceX, sourceY);
     }
 
+    public static void onCommandShipFormationOrder(GameContext ctx, Ship commander, GameContext.FleetFormation formation) {
+        if (ctx == null || commander == null || formation == null) return;
+        if (commander != ctx.player || !isPlayerFleetCommandShip(ctx)) return;
+        RuntimeState st = stateFor(ctx);
+        emitCommandVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_FORM_UP, nowSec(), commander,
+                formationCaption(formation, null));
+    }
+
+    public static void onCommandShipShipOrder(GameContext ctx, Ship commander, GameContext.FleetCommand command, Ship target) {
+        if (ctx == null || commander == null || command == null || target == null) return;
+        if (commander != ctx.player || !isPlayerFleetCommandShip(ctx)) return;
+        RuntimeState st = stateFor(ctx);
+        VoiceCue cue = voiceCueForFleetCommand(command);
+        if (cue == null) return;
+        emitCommandVoice(ctx, st, cue, nowSec(), commander,
+                targetedFleetOrderCaption(command, target));
+    }
+
     public static synchronized void setTelemetryOnly(boolean telemetryOnly) {
         TELEMETRY_ONLY = telemetryOnly;
         Clip clip = ambientClip;
@@ -568,18 +611,10 @@ public final class AudioSystem {
         if (ctx.captainDirective != st.lastCaptainDirective) {
             if (ctx.captainDirective == GameContext.CaptainDirective.RTB) {
                 emitVoice(ctx, st, VoiceCue.HELM_RTB, now);
-                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_RETREAT, now);
-            } else if (ctx.captainDirective == GameContext.CaptainDirective.ATTACK) {
-                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_PUSH, now);
-            } else if (ctx.captainDirective == GameContext.CaptainDirective.ESCORT) {
-                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_ESCORT, now);
-            } else if (ctx.captainDirective == GameContext.CaptainDirective.DEFEND) {
-                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_DEFEND, now);
-            } else if (ctx.captainDirective == GameContext.CaptainDirective.REPAIR
-                    || ctx.captainDirective == GameContext.CaptainDirective.EMERGENCY) {
-                emitVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_RETREAT, now);
             }
+            emitVoiceForCaptainDirective(ctx, st, ctx.captainDirective, now);
         }
+        processFriendlyCommandShipBroadcast(ctx, st, now);
 
         st.hadCombatContact = hostiles > 0;
         st.hostileContactCount = hostiles;
@@ -591,6 +626,148 @@ public final class AudioSystem {
         st.lastReactorFrac = reactorNow;
         st.lastHelmMode = ctx.helmMode;
         st.lastCaptainDirective = ctx.captainDirective;
+        Ship commandShip = friendlyCommandShip(ctx);
+        if (commandShip == null) {
+            st.lastFriendlyCommandShipId = -1;
+            st.lastFriendlyFleetCommand = null;
+            st.lastFriendlyFleetFormation = null;
+        } else {
+            st.lastFriendlyCommandShipId = commandShip.id;
+            st.lastFriendlyFleetCommand = resolvedFleetCommand(ctx, commandShip);
+            st.lastFriendlyFleetFormation = resolvedFleetFormation(ctx, commandShip);
+        }
+    }
+
+    private static void processFriendlyCommandShipBroadcast(GameContext ctx, RuntimeState st, double now) {
+        if (ctx == null || st == null || ctx.player == null || ctx.player.faction == null) return;
+        Ship commandShip = friendlyCommandShip(ctx);
+        if (commandShip == null || commandShip == ctx.player || commandShip.faction == null) return;
+        GameContext.FleetCommand command = resolvedFleetCommand(ctx, commandShip);
+        if (command == null) command = GameContext.FleetCommand.AUTO;
+
+        if (st.lastFriendlyCommandShipId != commandShip.id) return;
+        if (command == st.lastFriendlyFleetCommand) return;
+
+        VoiceCue cue = voiceCueForFleetCommand(command);
+        if (cue == null) return;
+        emitCommandVoice(ctx, st, cue, now, commandShip, null);
+    }
+
+    private static void emitVoiceForCaptainDirective(GameContext ctx, RuntimeState st,
+                                                     GameContext.CaptainDirective directive, double now) {
+        if (ctx == null || st == null || directive == null) return;
+        boolean commandAuthority = isPlayerFleetCommandShip(ctx);
+        VoiceCue cue = voiceCueForCaptainDirective(directive, commandAuthority);
+        if (cue == null) return;
+        emitVoice(ctx, st, cue, now,
+                commandAuthority ? commandSpeakerLabel(ctx.player) : null,
+                null);
+    }
+
+    private static void emitCommandVoice(GameContext ctx, RuntimeState st, VoiceCue cue, double now,
+                                         Ship commander, String captionOverride) {
+        if (ctx == null || st == null || cue == null) return;
+        emitVoice(ctx, st, cue, now, commandSpeakerLabel(commander), captionOverride);
+    }
+
+    private static VoiceCue voiceCueForCaptainDirective(GameContext.CaptainDirective directive, boolean commandAuthority) {
+        if (directive == null) return null;
+        return switch (directive) {
+            case BALANCED -> commandAuthority ? VoiceCue.CAPTAIN_ORDER_FORM_UP : null;
+            case ATTACK -> VoiceCue.CAPTAIN_ORDER_PUSH;
+            case DEFENSE, DEFEND -> VoiceCue.CAPTAIN_ORDER_DEFEND;
+            case EMERGENCY -> VoiceCue.CAPTAIN_ORDER_RETREAT;
+            case MINE -> commandAuthority ? VoiceCue.CAPTAIN_ORDER_MINE : null;
+            case ESCORT -> VoiceCue.CAPTAIN_ORDER_ESCORT;
+            case REPAIR -> commandAuthority ? VoiceCue.CAPTAIN_ORDER_REPAIR : VoiceCue.CAPTAIN_ORDER_RETREAT;
+            case RTB -> commandAuthority ? VoiceCue.CAPTAIN_ORDER_RTB : VoiceCue.CAPTAIN_ORDER_RETREAT;
+        };
+    }
+
+    private static VoiceCue voiceCueForFleetCommand(GameContext.FleetCommand command) {
+        if (command == null) return null;
+        return switch (command) {
+            case AUTO, FORM_UP -> VoiceCue.CAPTAIN_ORDER_FORM_UP;
+            case ATTACK -> VoiceCue.CAPTAIN_ORDER_PUSH;
+            case DEFEND -> VoiceCue.CAPTAIN_ORDER_DEFEND;
+            case ESCORT -> VoiceCue.CAPTAIN_ORDER_ESCORT;
+            case REPAIR -> VoiceCue.CAPTAIN_ORDER_REPAIR;
+            case RTB -> VoiceCue.CAPTAIN_ORDER_RTB;
+            case RETREAT -> VoiceCue.CAPTAIN_ORDER_RETREAT;
+            case MINE -> VoiceCue.CAPTAIN_ORDER_MINE;
+        };
+    }
+
+    private static String targetedFleetOrderCaption(GameContext.FleetCommand command, Ship target) {
+        String shipLabel = (target == null) ? "UNIT" : "SHIP " + target.id;
+        if (command == null) command = GameContext.FleetCommand.AUTO;
+        return switch (command) {
+            case ATTACK -> shipLabel + ", engage and press the attack.";
+            case DEFEND -> shipLabel + ", hold the line and defend.";
+            case ESCORT -> shipLabel + ", assume escort posture.";
+            case REPAIR -> shipLabel + ", peel off and begin repairs.";
+            case RTB -> shipLabel + ", return to base.";
+            case RETREAT -> shipLabel + ", break contact and fall back.";
+            case MINE -> shipLabel + ", move to the mining pocket.";
+            case AUTO, FORM_UP -> shipLabel + ", resume command formation.";
+        };
+    }
+
+    private static String formationCaption(GameContext.FleetFormation formation, String fallback) {
+        if (formation == null) return fallback;
+        return switch (formation) {
+            case WEDGE -> "Set wedge formation. Hold on command.";
+            case LINE -> "Reform line formation.";
+            case SCREEN -> "Screen formation. Maintain separation.";
+        };
+    }
+
+    private static Ship friendlyCommandShip(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.fleetCommandShips == null) return null;
+        Ship direct = ctx.fleetCommandShips.get(ctx.player.faction);
+        if (direct != null) return direct;
+        for (Faction faction : Faction.fourTeamFactions()) {
+            if (faction == null || !faction.isFriendlyTo(ctx.player.faction)) continue;
+            Ship candidate = ctx.fleetCommandShips.get(faction);
+            if (candidate != null) return candidate;
+        }
+        return null;
+    }
+
+    private static boolean isPlayerFleetCommandShip(GameContext ctx) {
+        Ship commandShip = friendlyCommandShip(ctx);
+        return commandShip != null && commandShip == ctx.player;
+    }
+
+    private static GameContext.FleetCommand resolvedFleetCommand(GameContext ctx, Ship commander) {
+        if (ctx == null || commander == null || commander.faction == null) return null;
+        GameContext.FleetCommand direct = ctx.fleetResolvedCommands.get(commander.faction);
+        if (direct != null) return direct;
+        for (Faction faction : Faction.fourTeamFactions()) {
+            if (faction == null || !faction.isFriendlyTo(commander.faction)) continue;
+            GameContext.FleetCommand fallback = ctx.fleetResolvedCommands.get(faction);
+            if (fallback != null) return fallback;
+        }
+        return null;
+    }
+
+    private static GameContext.FleetFormation resolvedFleetFormation(GameContext ctx, Ship commander) {
+        if (ctx == null || commander == null || commander.faction == null) return null;
+        GameContext.FleetFormation direct = ctx.fleetResolvedFormations.get(commander.faction);
+        if (direct != null) return direct;
+        for (Faction faction : Faction.fourTeamFactions()) {
+            if (faction == null || !faction.isFriendlyTo(commander.faction)) continue;
+            GameContext.FleetFormation fallback = ctx.fleetResolvedFormations.get(faction);
+            if (fallback != null) return fallback;
+        }
+        return null;
+    }
+
+    private static String commandSpeakerLabel(Ship commander) {
+        if (commander != null && commander.faction != null && commander.faction.teamName() != null) {
+            return commander.faction.teamName().toUpperCase(Locale.US) + " COMMAND";
+        }
+        return "COMMAND";
     }
 
     private static void pruneScienceContactMemory(RuntimeState st, double now) {
@@ -646,6 +823,11 @@ public final class AudioSystem {
     }
 
     private static void emitVoice(GameContext ctx, RuntimeState st, VoiceCue cue, double now) {
+        emitVoice(ctx, st, cue, now, null, null);
+    }
+
+    private static void emitVoice(GameContext ctx, RuntimeState st, VoiceCue cue, double now,
+                                  String speakerLabelOverride, String captionOverride) {
         if (ctx == null || st == null || cue == null) return;
 
         Double cd = st.voiceCooldownUntil.get(cue);
@@ -677,6 +859,9 @@ public final class AudioSystem {
         int fallbackVariantCount = cue.captionVariantCount();
         int variantIndex = chooseVariantIndex(st, cue.cooldownKey, fallbackVariantCount);
         String caption = cue.captionForVariant(variantIndex);
+        if (captionOverride != null && !captionOverride.isBlank()) {
+            caption = captionOverride;
+        }
 
         double roleVol = voiceRoleVolume(ctx, cue.role);
         double roleVolGainDb = volumeToGainOffsetDb(roleVol);
@@ -701,7 +886,10 @@ public final class AudioSystem {
         applyPortraitExpression(ctx, cue, variantIndex);
 
         if (ctx.voiceCaptionsEnabled) {
-            ctx.voiceCaption = cue.roleLabel() + ": " + caption;
+            String speaker = (speakerLabelOverride == null || speakerLabelOverride.isBlank())
+                    ? cue.roleLabel()
+                    : speakerLabelOverride;
+            ctx.voiceCaption = speaker + ": " + caption;
             ctx.voiceCaptionT = 1.8;
         }
         logAudioEvent(ctx, new AudioEvent(

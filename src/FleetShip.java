@@ -1095,12 +1095,12 @@ public class FleetShip extends Ship {
                 };
 
                 if (superweaponPattern == SuperweaponPattern.DESTABILIZER_PULSE) {
-                    superweaponChargeTime = 3.1;
-                    superweaponCooldown = 22.0;
-                    superweaponDamage = 90;
-                    superweaponSpeed = 1380.0;
-                    superweaponLife = 170;
-                    superweaponRadius = 15.0;
+                    superweaponChargeTime = 2.9;
+                    superweaponCooldown = 19.0;
+                    superweaponDamage = 108;
+                    superweaponSpeed = 1500.0;
+                    superweaponLife = 188;
+                    superweaponRadius = 16.5;
                     superweaponBeamDuration = 0.0;
                 } else if (superweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
                     superweaponChargeTime = 3.0;

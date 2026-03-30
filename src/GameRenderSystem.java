@@ -68,6 +68,7 @@ public final class GameRenderSystem {
 
         Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.fleetCommandShips, ctx.fleetSharedTargets,
                 viewMinX, viewMinY, viewMaxX, viewMaxY);
+        drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         TutorialSystem.drawWorldMarkers(ctx, worldG);
         worldG.dispose();
@@ -142,6 +143,7 @@ public final class GameRenderSystem {
         );
         TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
         drawVoiceCaption(ctx, g2, viewportW, viewportH);
+        drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
         Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.waypointX, ctx.waypointY, ctx.mapPings);
@@ -317,6 +319,162 @@ if (DevTools.isDebugOverlay()) {
         int ty = y + (h + fm.getAscent() - fm.getDescent()) / 2;
         g2.drawString(text, tx, ty);
     }
+
+    private static void drawFleetNetOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
+
+        java.util.List<String> squadLines = activeSquadSummaryLines(ctx);
+        java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 4);
+        if (squadLines.isEmpty() && messages.isEmpty()) return;
+
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        int w = Math.min(300, Math.max(240, viewportW / 4));
+        int x = viewportW - w - 16;
+        int y = 16;
+        int h = 42 + squadLines.size() * 15;
+        for (GameContext.FleetCommMessage msg : messages) {
+            h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
+        }
+
+        g2.setColor(new Color(0, 0, 0, 165));
+        g2.fillRoundRect(x, y, w, h, 16, 16);
+        g2.setColor(new Color(140, 190, 255, 190));
+        g2.drawRoundRect(x, y, w, h, 16, 16);
+
+        int rowY = y + 22;
+        g2.setFont(titleFont);
+        g2.setColor(new Color(236, 244, 255, 230));
+        g2.drawString("FLEET NET", x + 12, rowY);
+        rowY += 16;
+
+        g2.setFont(bodyFont);
+        for (String line : squadLines) {
+            g2.setColor(new Color(168, 212, 255, 214));
+            g2.drawString(line, x + 12, rowY);
+            rowY += 15;
+        }
+        if (!squadLines.isEmpty() && !messages.isEmpty()) {
+            g2.setColor(new Color(255, 255, 255, 58));
+            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            rowY += 14;
+        }
+        for (GameContext.FleetCommMessage msg : messages) {
+            java.util.List<String> wrapped = wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24);
+            Color accent = squadColor(msg.faction, 210);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 88));
+            g2.fillRoundRect(x + 10, rowY - 10, w - 20, 14 + wrapped.size() * 14, 10, 10);
+            g2.setColor(new Color(244, 248, 255, 226));
+            for (String line : wrapped) {
+                g2.drawString(line, x + 16, rowY + 2);
+                rowY += 14;
+            }
+            rowY += 8;
+        }
+    }
+
+    private static java.util.List<String> activeSquadSummaryLines(GameContext ctx) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.ships == null) return out;
+        int teamId = ctx.player.faction.teamId();
+        java.util.List<Ship> leaders = new java.util.ArrayList<>();
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.teamId() != teamId) continue;
+            Integer leaderId = ctx.fleetSquadLeaderByShip.get(s.id);
+            if (leaderId == null || leaderId != s.id) continue;
+            leaders.add(s);
+        }
+        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
+        for (Ship leader : leaders) {
+            String label = ctx.fleetSquadLabelByShip.get(leader.id);
+            if (label == null || label.isBlank()) continue;
+            String role = ctx.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
+            out.add(label + "  " + role.toUpperCase());
+            if (out.size() >= 4) break;
+        }
+        return out;
+    }
+
+    private static java.util.List<GameContext.FleetCommMessage> recentFleetCommMessages(GameContext ctx, int maxCount) {
+        java.util.ArrayList<GameContext.FleetCommMessage> out = new java.util.ArrayList<>();
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.fleetCommLog.isEmpty()) return out;
+        int teamId = ctx.player.faction.teamId();
+        for (int i = ctx.fleetCommLog.size() - 1; i >= 0 && out.size() < Math.max(0, maxCount); i--) {
+            GameContext.FleetCommMessage msg = ctx.fleetCommLog.get(i);
+            if (msg == null || msg.faction == null || msg.faction.teamId() != teamId) continue;
+            out.add(0, msg);
+        }
+        return out;
+    }
+
+    private static java.util.List<String> wrapLines(FontMetrics fm, String text, int maxWidth) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        if (fm == null || text == null || text.isBlank() || maxWidth <= 0) return out;
+        String[] words = text.trim().split("\\s+");
+        String line = "";
+        for (String word : words) {
+            if (word == null || word.isBlank()) continue;
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && fm.stringWidth(candidate) > maxWidth) {
+                out.add(line);
+                line = word;
+            } else {
+                line = candidate;
+            }
+        }
+        if (!line.isEmpty()) out.add(line);
+        return out;
+    }
+
+    private static void drawFleetSquadMarkers(GameContext ctx, Graphics2D g2,
+                                              double minX, double minY, double maxX, double maxY) {
+        if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null || ctx.ships == null) return;
+        int playerTeamId = ctx.player.faction.teamId();
+        Font oldFont = g2.getFont();
+        java.util.List<Ship> leaders = new java.util.ArrayList<>();
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.faction == null || s.faction.teamId() != playerTeamId) continue;
+            Integer leaderId = ctx.fleetSquadLeaderByShip.get(s.id);
+            if (leaderId == null || leaderId != s.id) continue;
+            if (s.x + s.radius + 90.0 < minX || s.x - s.radius - 90.0 > maxX
+                    || s.y + s.radius + 90.0 < minY || s.y - s.radius - 90.0 > maxY) continue;
+            leaders.add(s);
+        }
+        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
+        for (Ship leader : leaders) {
+            String label = ctx.fleetSquadLabelByShip.get(leader.id);
+            if (label == null || label.isBlank()) continue;
+            String role = ctx.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
+            int x = (int) Math.round(leader.x);
+            int y = (int) Math.round(leader.y - leader.radius - 48);
+            Color accent = squadColor(leader.faction, 215);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 70));
+            g2.fillRoundRect(x - 40, y - 12, 80, 26, 10, 10);
+            g2.setColor(new Color(248, 252, 255, 210));
+            g2.drawRoundRect(x - 40, y - 12, 80, 26, 10, 10);
+            g2.setFont(new Font("Consolas", Font.BOLD, 10));
+            FontMetrics fm = g2.getFontMetrics();
+            g2.drawString(label, x - fm.stringWidth(label) / 2, y);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            FontMetrics roleFm = g2.getFontMetrics();
+            g2.setColor(new Color(214, 228, 246, 214));
+            g2.drawString(role.toUpperCase(), x - roleFm.stringWidth(role.toUpperCase()) / 2, y + 10);
+        }
+        g2.setFont(oldFont);
+    }
+
+    private static Color squadColor(Faction faction, int alpha) {
+        if (faction == null) return new Color(160, 200, 255, alpha);
+        return switch (faction) {
+            case PLAYER, ALLY -> new Color(120, 196, 255, alpha);
+            case ENEMY -> new Color(255, 126, 126, alpha);
+            case TEAM_C -> new Color(144, 238, 154, alpha);
+            case TEAM_D -> new Color(255, 212, 122, alpha);
+        };
+    }
+
     private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2,
                                             double minX, double minY, double maxX, double maxY) {
         if (!CampaignSystem.hasCapturePoint(ctx)) return;

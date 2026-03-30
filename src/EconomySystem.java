@@ -852,8 +852,9 @@ public final class EconomySystem {
 
             double range = Math.max(BASE_REPAIR_MIN_RANGE, base.repairRange);
             double range2 = range * range;
-            double hullPerSec = Math.max(0.0, base.repairHullPerSec);
-            double shieldPerSec = Math.max(0.0, base.repairShieldPerSec);
+            double supportMul = base.supportFieldMultiplier();
+            double hullPerSec = Math.max(0.0, base.repairHullPerSec * supportMul);
+            double shieldPerSec = Math.max(0.0, base.repairShieldPerSec * supportMul);
             if (hullPerSec <= 0.0 && shieldPerSec <= 0.0) continue;
 
             for (Ship ally : ctx.ships) {
@@ -880,6 +881,7 @@ public final class EconomySystem {
 
             double range = Math.max(TRANSPORT_SUPPORT_MIN_RANGE, transport.repairRange);
             double range2 = range * range;
+            double supportMul = transport.supportFieldMultiplier();
             for (Ship ally : ctx.ships) {
                 if (ally == null) continue;
                 if (!ally.alive || ally.dying || ally.hp <= 0) continue;
@@ -888,8 +890,8 @@ public final class EconomySystem {
                 if (GameMath.dist2(ally.x, ally.y, transport.x, transport.y) > range2) continue;
 
                 ally.applySupportField(
-                        TRANSPORT_ROOM_HEAL_FRAC_PER_SEC,
-                        TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC,
+                        TRANSPORT_ROOM_HEAL_FRAC_PER_SEC * supportMul,
+                        TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC * supportMul,
                         dt
                 );
             }

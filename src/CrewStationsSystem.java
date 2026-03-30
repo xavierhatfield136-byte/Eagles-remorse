@@ -143,11 +143,11 @@ public final class CrewStationsSystem {
                 ctx.alliedFleetCommand = GameContext.FleetCommand.MINE;
             }
             case ESCORT -> {
-                Ship escort = pickEscortFriendly(ctx);
+                Ship escort = pickEscortAnchor(ctx);
                 if (escort != null) {
                     ctx.waypointX = escort.x;
                     ctx.waypointY = escort.y;
-                    ctx.helmDesiredRange = Math.max(200.0, escort.radius + ctx.player.radius + 120.0);
+                    ctx.helmDesiredRange = escortFollowRange(ctx.player, escort);
                 }
                 if (ctx.helmAutomation) ctx.helmMode = GameContext.HelmMode.ORBIT;
                 if (ctx.tacticalAutomation) ctx.tacticalMode = GameContext.TacticalMode.DEFENSIVE;
@@ -229,6 +229,33 @@ public final class CrewStationsSystem {
             }
         }
         return best;
+    }
+
+    private static Ship pickEscortAnchor(GameContext ctx) {
+        Ship commandShip = friendlyCommandShip(ctx);
+        if (isLiveEscortAnchor(ctx, commandShip) && commandShip != ctx.player) {
+            return commandShip;
+        }
+        return pickEscortFriendly(ctx);
+    }
+
+    private static Ship friendlyCommandShip(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || ctx.fleetCommandShips == null) return null;
+        Ship direct = ctx.fleetCommandShips.get(ctx.player.faction);
+        if (isLiveEscortAnchor(ctx, direct)) return direct;
+        for (Faction faction : Faction.fourTeamFactions()) {
+            if (faction == null || !faction.isFriendlyTo(ctx.player.faction)) continue;
+            Ship candidate = ctx.fleetCommandShips.get(faction);
+            if (isLiveEscortAnchor(ctx, candidate)) return candidate;
+        }
+        return null;
+    }
+
+    private static boolean isLiveEscortAnchor(GameContext ctx, Ship ship) {
+        if (ctx == null || ctx.player == null || ship == null) return false;
+        if (!ship.alive || ship.dying || ship.hp <= 0) return false;
+        if (ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) return false;
+        return ship.faction != null && ship.faction.isFriendlyTo(ctx.player.faction);
     }
 
     private static double escortRoleScore(ShipRole role) {
@@ -327,6 +354,10 @@ public final class CrewStationsSystem {
         Ship target = preferredTarget(ctx, 2800.0);
         double speed = MovementModel.speedCeiling(p);
 
+        if (directive == GameContext.CaptainDirective.ESCORT && applyEscortHelmAutomation(ctx, p, dt, speed, target)) {
+            return;
+        }
+
         switch (ctx.helmMode) {
             case INTERCEPT -> {
                 if (captainNavPriority && hasWaypoint) {
@@ -417,6 +448,50 @@ public final class CrewStationsSystem {
         }
     }
 
+    private static boolean applyEscortHelmAutomation(GameContext ctx, Player player, double dt, double speed, Ship target) {
+        if (ctx == null || player == null || dt <= 0.0) return false;
+        Ship anchor = pickEscortAnchor(ctx);
+        if (!isLiveEscortAnchor(ctx, anchor) || anchor == player) return false;
+
+        ctx.waypointX = anchor.x;
+        ctx.waypointY = anchor.y;
+        double desiredRange = escortFollowRange(player, anchor);
+        ctx.helmDesiredRange = desiredRange;
+
+        if (anchor.isWarpCharging()) {
+            maybeStartEscortWarpFollow(player, anchor, desiredRange);
+        }
+        if (player.isWarpCharging()) {
+            steerWarpChargingShip(player, dt);
+            return true;
+        }
+
+        double[] slot = escortSlot(anchor, player, anchor.x, anchor.y, desiredRange);
+        double distToSlot = Math.hypot(slot[0] - player.x, slot[1] - player.y);
+        if (distToSlot > Math.max(120.0, desiredRange * 0.60)) {
+            moveToward(player, slot[0], slot[1], speed, dt);
+        } else {
+            double desiredVx = anchor.vx / Math.max(1e-9, dt);
+            double desiredVy = anchor.vy / Math.max(1e-9, dt);
+            double vx = desiredVx + (slot[0] - player.x) * 1.8;
+            double vy = desiredVy + (slot[1] - player.y) * 1.8;
+            double vMag = Math.hypot(vx, vy);
+            double maxSpeed = speed * 0.96;
+            if (vMag > maxSpeed && vMag > 1e-6) {
+                double scale = maxSpeed / vMag;
+                vx *= scale;
+                vy *= scale;
+            }
+            setVelPerSec(player, vx, vy, dt);
+            if (isValidTarget(ctx, target)) {
+                rotateShipToward(player, Math.atan2(target.y - player.y, target.x - player.x), dt);
+            } else {
+                rotateShipToward(player, Math.atan2(anchor.y - player.y, anchor.x - player.x), dt);
+            }
+        }
+        return true;
+    }
+
     private static boolean isCaptainNavigationDirective(GameContext.CaptainDirective directive) {
         if (directive == null) return false;
         return switch (directive) {
@@ -460,6 +535,56 @@ public final class CrewStationsSystem {
         double vy = (dy / len) * speedPerSec;
         setVelPerSec(ship, vx, vy, dt);
         rotateShipToward(ship, Math.atan2(vy, vx), dt);
+    }
+
+    private static double escortFollowRange(Ship escort, Ship anchor) {
+        if (escort == null || anchor == null) return 240.0;
+        return Math.max(220.0, anchor.radius + escort.radius + 120.0);
+    }
+
+    private static double[] escortSlot(Ship anchor, Ship escort, double anchorX, double anchorY, double desiredRange) {
+        double lateral = Math.max(140.0, desiredRange * 0.74);
+        double back = Math.max(96.0, anchor.radius + escort.radius + 36.0);
+        double side = ((escort.id & 1) == 0) ? -1.0 : 1.0;
+        double fx = Math.cos(anchor.angle);
+        double fy = Math.sin(anchor.angle);
+        double rx = -Math.sin(anchor.angle);
+        double ry = Math.cos(anchor.angle);
+        return new double[]{
+                anchorX - fx * back + rx * side * lateral,
+                anchorY - fy * back + ry * side * lateral
+        };
+    }
+
+    private static void maybeStartEscortWarpFollow(Player player, Ship anchor, double desiredRange) {
+        if (player == null || anchor == null) return;
+        if (!player.canUseBattlefieldWarp() || player.isWarpCharging()) return;
+        double tx = anchor.warpExitX();
+        double ty = anchor.warpExitY();
+        if (!Double.isFinite(tx) || !Double.isFinite(ty)) return;
+        double[] exit = escortSlot(anchor, player, tx, ty, desiredRange);
+        player.beginBattlefieldWarpFollowing(exit[0], exit[1], Math.max(0.1, anchor.warpChargeRemaining()), anchor.id);
+    }
+
+    private static void steerWarpChargingShip(Ship ship, double dt) {
+        if (ship == null || dt <= 0.0) return;
+        double tx = ship.warpExitX();
+        double ty = ship.warpExitY();
+        if (!Double.isFinite(tx) || !Double.isFinite(ty)) {
+            setVelPerSec(ship, 0.0, 0.0, dt);
+            return;
+        }
+
+        double dist = Math.hypot(tx - ship.x, ty - ship.y);
+        if (dist <= Math.max(80.0, ship.radius * 2.4)) {
+            setVelPerSec(ship, 0.0, 0.0, dt);
+            return;
+        }
+
+        double speed = MovementModel.speedCeiling(ship);
+        double slowRadius = Math.max(260.0, ship.radius * 8.0);
+        double speedMul = MathUtil.clamp(dist / slowRadius, 0.42, 1.0);
+        moveToward(ship, tx, ty, speed * speedMul, dt);
     }
 
     private static void orbit(Ship ship, double cx, double cy, double desiredRange, double speedPerSec, double dt, double dir) {

@@ -217,7 +217,9 @@ public abstract class Ship {
     private Ship superweaponBeamTarget = null;
     private double temporaryDisableTimer = 0.0;
     private double destabilizedTimer = 0.0;
+    private double kineticMomentumTimer = 0.0;
     private static final double DESTABILIZED_SYSTEM_MULTIPLIER = 0.80;
+    private static final double KINETIC_MOMENTUM_WINDOW_SECONDS = 2.4;
     private static final double ROOM_DISRUPTION_FULL_SHIP_MULTIPLIER = 0.42;
     private static final double ROOM_DISRUPTION_CURVE_EXPONENT = 0.92;
     private static final double ROOM_DISRUPTION_REPAIR_SECONDS = 1.0;
@@ -716,6 +718,10 @@ public abstract class Ship {
         x += vx;
         y += vy;
         if (dt > 0.0) noDamageTimerSeconds += dt;
+        if (kineticMomentumTimer > 0.0) {
+            kineticMomentumTimer -= dt;
+            if (kineticMomentumTimer < 0.0) kineticMomentumTimer = 0.0;
+        }
         if (catastrophicChainGraceTimer > 0.0) {
             catastrophicChainGraceTimer -= dt;
             if (catastrophicChainGraceTimer < 0.0) catastrophicChainGraceTimer = 0.0;
@@ -965,6 +971,7 @@ public abstract class Ship {
         hp = Math.max(1, hpMax);
         temporaryDisableTimer = 0.0;
         destabilizedTimer = 0.0;
+        kineticMomentumTimer = 0.0;
         ciwsTimer = 0.0;
         fighterTimer = 0.0;
         baseSpawnTimer = 0.0;
@@ -1375,7 +1382,7 @@ public abstract class Ship {
         if (dx * dx + dy * dy > reach * reach) return 0;
 
         // Accumulate fractional mining and take whole units.
-        miningBuffer += Math.max(0.0, miningRate) * Math.max(0.0, dt);
+        miningBuffer += Math.max(0.0, miningRate) * miningYieldMultiplier() * Math.max(0.0, dt);
         int want = (int) Math.floor(miningBuffer);
         if (want <= 0) return 0;
         miningBuffer -= want;
@@ -1421,6 +1428,9 @@ public abstract class Ship {
     public void onFiredWeapon() {
         reveal(1.4);
         crewCombatStress = Math.max(crewCombatStress, 1.0);
+        if (factionTrait().id == ShipIdentityRegistry.FactionTraitId.KINETIC_MOMENTUM) {
+            kineticMomentumTimer = KINETIC_MOMENTUM_WINDOW_SECONDS;
+        }
     }
 
     public boolean usesLimitedStrikeCraftMunitions() {
@@ -1453,6 +1463,38 @@ public abstract class Ship {
 
     public double warpChargeSpeedMultiplier() {
         return warpCharging ? 0.5 : 1.0;
+    }
+
+    public ShipIdentityRegistry.FactionTrait factionTrait() {
+        return ShipIdentityRegistry.factionTraitFor(faction);
+    }
+
+    public String factionTraitName() {
+        return factionTrait().name;
+    }
+
+    public String factionTraitDescription() {
+        return factionTrait().description;
+    }
+
+    public ShipIdentityRegistry.RoleBonus roleBonusProfile() {
+        return ShipIdentityRegistry.roleBonusFor(faction, role);
+    }
+
+    public ShipIdentityRegistry.IdentityStat roleBonusStat() {
+        return roleBonusProfile().stat;
+    }
+
+    public double roleBonusMultiplier() {
+        return roleBonusProfile().multiplier;
+    }
+
+    public String roleBonusName() {
+        return roleBonusProfile().name;
+    }
+
+    public String roleBonusDescription() {
+        return roleBonusProfile().description;
     }
 
     public double warpChargeRemaining() {
@@ -1494,7 +1536,7 @@ public abstract class Ship {
         if (!canUseBattlefieldWarp()) return false;
         if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return false;
         warpCharging = true;
-        warpChargeDuration = Math.max(0.1, spoolSeconds);
+        warpChargeDuration = Math.max(0.1, spoolSeconds / Math.max(0.10, warpChargeRateMultiplier()));
         warpChargeRemaining = warpChargeDuration;
         warpExitX = targetX;
         warpExitY = targetY;
@@ -2405,6 +2447,7 @@ public abstract class Ship {
         out *= weaponsPowerMultiplier();
         out *= crewWeaponMul;
         out *= roomDisruptionSystemMultiplier();
+        out *= identityStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_DAMAGE);
         return Math.max(0.12, Math.min(1.50, out));
     }
 
@@ -2415,6 +2458,7 @@ public abstract class Ship {
         out *= weaponsPowerMultiplier();
         out *= crewWeaponMul;
         out *= roomDisruptionSystemMultiplier();
+        out *= identityStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_CYCLE);
         return Math.max(0.12, Math.min(1.45, out));
     }
 
@@ -2434,6 +2478,7 @@ public abstract class Ship {
         localFirePenalty += totalFireIntensity() * 0.05;
         out *= (1.0 - MathUtil.clamp(localFirePenalty, 0.0, 0.72));
         out *= roomDisruptionSystemMultiplier();
+        out *= identityStatMultiplier(ShipIdentityRegistry.IdentityStat.SENSOR_RANGE);
         return Math.max(0.16, Math.min(1.25, out));
     }
 
@@ -2448,6 +2493,7 @@ public abstract class Ship {
         regen *= crewShieldMul;
         regen *= teamCShieldStripRegenMultiplier();
         regen *= roomDisruptionSystemMultiplier();
+        regen *= identityStatMultiplier(ShipIdentityRegistry.IdentityStat.SHIELD_REGEN);
         return Math.max(0.0, Math.min(1.65, regen));
     }
 
@@ -3541,7 +3587,8 @@ public abstract class Ship {
                     + (1.0 - SUPERWEAPON_RECHARGE_MIN_MULT) * Math.pow(Math.max(0.0, ratio), 1.15);
         }
         double infrastructure = MathUtil.clamp(powerBusEffectiveMultiplier(PowerBus.AUXILIARY) / Math.max(0.12, ratio), 0.72, 1.22);
-        return MathUtil.clamp(scaled * infrastructure, SUPERWEAPON_RECHARGE_MIN_MULT, SUPERWEAPON_RECHARGE_MAX_MULT);
+        double identity = identityStatMultiplier(ShipIdentityRegistry.IdentityStat.SUPERWEAPON_RECHARGE);
+        return MathUtil.clamp(scaled * infrastructure * identity, SUPERWEAPON_RECHARGE_MIN_MULT, SUPERWEAPON_RECHARGE_MAX_MULT);
     }
 
     private void updateCrewState(double dt) {
@@ -4353,6 +4400,7 @@ public abstract class Ship {
         mobility *= emergencyThrustSpeedMultiplier();
         mobility *= crewEngineMul;
         mobility *= roomDisruptionSystemMultiplier();
+        mobility *= identityStatMultiplier(ShipIdentityRegistry.IdentityStat.MOBILITY);
         mobility = Math.max(0.18, Math.min(1.38, mobility));
         desiredSpeed = desiredSpeedBase * mobility;
     }
@@ -4848,9 +4896,10 @@ public abstract class Ship {
         Missile closest = null;
         double bestD2 = Double.POSITIVE_INFINITY;
         Iterable<? extends Projectile> source = projectiles;
+        double range = effectiveCiwsRange();
 
         if (query != null) {
-            query.collectMissilesNear(x, y, ciwsRange, ciwsMissileScratch);
+            query.collectMissilesNear(x, y, range, ciwsMissileScratch);
             source = ciwsMissileScratch;
         }
 
@@ -4860,7 +4909,7 @@ public abstract class Ship {
             if (faction != null && faction.isFriendlyTo(m.faction)) continue;
 
             double d2 = GameMath.dist2(x, y, m.x, m.y);
-            if (d2 <= ciwsRange * ciwsRange && d2 < bestD2) {
+            if (d2 <= range * range && d2 < bestD2) {
                 bestD2 = d2;
                 closest = m;
             }
@@ -4873,9 +4922,10 @@ public abstract class Ship {
         Ship closest = null;
         double bestD2 = Double.POSITIVE_INFINITY;
         Iterable<Ship> source = ships;
+        double range = effectiveCiwsRange();
 
         if (query != null && faction != null) {
-            query.collectHostileShipsNear(faction, x, y, ciwsRange, ciwsShipScratch);
+            query.collectHostileShipsNear(faction, x, y, range, ciwsShipScratch);
             source = ciwsShipScratch;
         }
 
@@ -4886,7 +4936,7 @@ public abstract class Ship {
             if (faction != null && faction.isFriendlyTo(s.faction)) continue;
 
             double d2 = GameMath.dist2(x, y, s.x, s.y);
-            if (d2 <= ciwsRange * ciwsRange && d2 < bestD2) {
+            if (d2 <= range * range && d2 < bestD2) {
                 bestD2 = d2;
                 closest = s;
             }
@@ -4971,7 +5021,7 @@ public abstract class Ship {
     }
 
     public void resetFighterTimer() {
-        fighterTimer = fighterLaunchCooldown;
+        fighterTimer = fighterLaunchCooldown / Math.max(0.10, strikeCraftTempoMultiplier());
     }
 
     public void resetFlightDeckLoadout() {
@@ -5023,7 +5073,8 @@ public abstract class Ship {
     }
 
     public void resetBaseSpawnTimer() {
-        baseSpawnTimer = baseSpawnCooldown;
+        double tempo = isCarrier ? strikeCraftTempoMultiplier() : 1.0;
+        baseSpawnTimer = baseSpawnCooldown / Math.max(0.10, tempo);
     }
 
     public double getSuperweaponRemaining() {
@@ -5307,6 +5358,144 @@ public abstract class Ship {
         return isDestabilized() ? DESTABILIZED_SYSTEM_MULTIPLIER : 1.0;
     }
 
+    public double missileDamageMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.MISSILE_DAMAGE);
+    }
+
+    public double missileCycleRateMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.MISSILE_CYCLE);
+    }
+
+    public double ciwsRangeMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.CIWS_RANGE);
+    }
+
+    public double effectiveCiwsRange() {
+        return Math.max(0.0, ciwsRange * ciwsRangeMultiplier());
+    }
+
+    public double strikeCraftTempoMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.STRIKE_CRAFT);
+    }
+
+    public double supportFieldMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.SUPPORT_FIELD);
+    }
+
+    public double miningYieldMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.MINING_YIELD);
+    }
+
+    public double warpChargeRateMultiplier() {
+        return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.WARP_CHARGE);
+    }
+
+    public boolean hasMissileBattery() {
+        if (turrets == null || turrets.isEmpty()) return false;
+        for (Turret t : turrets) {
+            if (t != null && t.kind == Turret.Kind.MISSILE) return true;
+        }
+        return false;
+    }
+
+    private double identityStatMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        if (stat == null || stat == ShipIdentityRegistry.IdentityStat.NONE) return 1.0;
+        double roleMul = roleBonusMultiplierFor(stat);
+        double factionMul = factionTraitMultiplier(stat);
+        return Math.max(0.10, roleMul * factionMul);
+    }
+
+    private double roleBonusMultiplierFor(ShipIdentityRegistry.IdentityStat stat) {
+        ShipIdentityRegistry.RoleBonus bonus = roleBonusProfile();
+        if (bonus.stat != stat) return 1.0;
+        return Math.max(1.0, bonus.multiplier);
+    }
+
+    private double factionTraitMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        ShipIdentityRegistry.FactionTraitId trait = factionTrait().id;
+        if (trait == ShipIdentityRegistry.FactionTraitId.NONE) return 1.0;
+        return switch (trait) {
+            case COMMAND_NET -> commandNetMultiplier(stat);
+            case KINETIC_MOMENTUM -> kineticMomentumMultiplier(stat);
+            case AEGIS_LATTICE -> aegisLatticeMultiplier(stat);
+            case VIPER_ASSAULT -> viperAssaultMultiplier(stat);
+            case NONE -> 1.0;
+        };
+    }
+
+    private double commandNetMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        double strength = commandNetStrength();
+        return switch (stat) {
+            case SENSOR_RANGE -> 1.0 + 0.12 * strength;
+            case SHIELD_REGEN -> 1.0 + 0.10 * strength;
+            case SUPPORT_FIELD -> 1.0 + 0.12 * strength;
+            case SUPERWEAPON_RECHARGE -> 1.0 + 0.08 * strength;
+            case WARP_CHARGE -> 1.0 + 0.06 * strength;
+            default -> 1.0;
+        };
+    }
+
+    private double kineticMomentumMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        double strength = MathUtil.clamp(kineticMomentumTimer / KINETIC_MOMENTUM_WINDOW_SECONDS, 0.0, 1.0);
+        return switch (stat) {
+            case WEAPON_DAMAGE -> 1.0 + 0.10 * strength;
+            case WEAPON_CYCLE -> 1.0 + 0.12 * strength;
+            case MISSILE_DAMAGE -> 1.0 + 0.06 * strength;
+            case MISSILE_CYCLE -> 1.0 + 0.08 * strength;
+            case MOBILITY -> 1.0 + 0.06 * strength;
+            default -> 1.0;
+        };
+    }
+
+    private double aegisLatticeMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        double strength = aegisLatticeStrength();
+        return switch (stat) {
+            case SHIELD_REGEN -> 1.0 + 0.16 * strength;
+            case SENSOR_RANGE -> 1.0 + 0.08 * strength;
+            case CIWS_RANGE -> 1.0 + 0.10 * strength;
+            case WEAPON_CYCLE -> 1.0 + 0.06 * strength;
+            default -> 1.0;
+        };
+    }
+
+    private double viperAssaultMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        double strength = viperAssaultStrength();
+        boolean missileShip = hasMissileBattery();
+        return switch (stat) {
+            case MISSILE_DAMAGE -> 1.0 + 0.10 * strength;
+            case MISSILE_CYCLE -> 1.0 + 0.12 * strength;
+            case WARP_CHARGE -> 1.0 + 0.08 * strength;
+            case WEAPON_CYCLE -> missileShip ? 1.0 : (1.0 + 0.06 * strength);
+            case MOBILITY -> 1.0 + 0.05 * strength;
+            default -> 1.0;
+        };
+    }
+
+    private double commandNetStrength() {
+        double bridge = systemHealthFraction(InternalSystem.BRIDGE);
+        double sensors = systemHealthFraction(InternalSystem.SENSORS);
+        double readiness = MathUtil.clamp(crewReadiness, 0.0, 1.0);
+        double disruptionPenalty = MathUtil.clamp(roomDisruptionFraction() * 0.80, 0.0, 0.75);
+        double firePenalty = MathUtil.clamp(totalFireIntensity() * 0.10, 0.0, 0.60);
+        double calm = MathUtil.clamp(1.0 - disruptionPenalty - firePenalty, 0.0, 1.0);
+        return MathUtil.clamp((bridge * 0.42 + sensors * 0.33 + readiness * 0.25) * calm, 0.0, 1.0);
+    }
+
+    private double aegisLatticeStrength() {
+        double stripIntegrity = MathUtil.clamp(activeTeamCShieldStripCount() / (double) SHIELD_FACE_COUNT, 0.0, 1.0);
+        double effectiveCap = effectiveShieldCapacityMax();
+        double shieldFrac = (effectiveCap <= 1e-6) ? 0.0 : MathUtil.clamp(shield / effectiveCap, 0.0, 1.0);
+        double shieldSystems = systemHealthFraction(InternalSystem.SHIELDS);
+        return MathUtil.clamp(stripIntegrity * 0.45 + shieldFrac * 0.40 + shieldSystems * 0.15, 0.0, 1.0);
+    }
+
+    private double viperAssaultStrength() {
+        double hullFrac = (hpMax <= 0) ? 0.0 : MathUtil.clamp(hp / (double) hpMax, 0.0, 1.0);
+        double weapons = systemHealthFraction(InternalSystem.WEAPONS);
+        double recentPressure = 1.0 - MathUtil.clamp(secondsSinceDamage() / 5.0, 0.0, 1.0);
+        return MathUtil.clamp(hullFrac * 0.50 + weapons * 0.30 + recentPressure * 0.20, 0.0, 1.0);
+    }
+
     private void cancelSuperweaponSequence() {
         superweaponCharging = false;
         superweaponChargeTimer = 0.0;
@@ -5336,13 +5525,13 @@ public abstract class Ship {
     private Projectile createDestabilizerPulse(double dt, double aim) {
         double sx = x + Math.cos(aim) * (radius + 12.0);
         double sy = y + Math.sin(aim) * (radius + 12.0);
-        int hullDamage = Math.max(32, (int) Math.round(superweaponDamage * 0.76));
-        double shieldDamage = Math.max(12.0, superweaponDamage * 0.24);
-        double pulseSpeed = Math.max(560.0, superweaponSpeed * 0.78);
-        int pulseLife = Math.max(42, (int) Math.round(superweaponLife * 1.05));
-        double pulseRadius = Math.max(16.0, superweaponRadius * 1.55);
-        double blastRadius = Math.max(320.0, pulseRadius * 11.5);
-        double destabilizeSeconds = 7.0;
+        int hullDamage = Math.max(36, (int) Math.round(superweaponDamage * 0.82));
+        double shieldDamage = Math.max(18.0, superweaponDamage * 0.46);
+        double pulseSpeed = Math.max(620.0, superweaponSpeed * 0.84);
+        int pulseLife = Math.max(48, (int) Math.round(superweaponLife * 1.10));
+        double pulseRadius = Math.max(18.0, superweaponRadius * 1.65);
+        double blastRadius = Math.max(360.0, pulseRadius * 12.4);
+        double destabilizeSeconds = 8.5;
         Projectile pulse = new DestabilizerPulse(
                 sx,
                 sy,
