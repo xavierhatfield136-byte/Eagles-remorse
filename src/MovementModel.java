@@ -38,6 +38,7 @@ public final class MovementModel {
             case BOMBER -> new Profile(1.02, 9.4, 8.8, Math.toRadians(162.0), 0.72, 0.16);
             case FRIGATE -> new Profile(1.00, 9.0, 8.4, Math.toRadians(134.0), 0.74, 0.18);
             case PICKET -> new Profile(1.00, 8.7, 8.2, Math.toRadians(146.0), 0.70, 0.18);
+            case ARTILLERY_SHIP -> new Profile(1.01, 8.2, 7.6, Math.toRadians(122.0), 0.66, 0.20);
             case LIGHT_CRUISER -> new Profile(0.98, 8.1, 7.6, Math.toRadians(124.0), 0.66, 0.20);
             case MISSILE_BOAT -> new Profile(0.99, 7.8, 7.2, Math.toRadians(116.0), 0.64, 0.22);
             case BATTLECRUISER -> new Profile(0.96, 7.3, 6.8, Math.toRadians(104.0), 0.60, 0.23);

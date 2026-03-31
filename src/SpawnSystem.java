@@ -180,7 +180,7 @@ public final class SpawnSystem {
                  MINER, HAULER,
                  PICKET, PATROL,
                  FIGHTER, BOMBER, PD_CRAFT, DRONE,
-                 FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> 0;
+                 FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE -> 0;
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
             case TRANSPORT -> 1;
             case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP -> 2;
@@ -377,6 +377,7 @@ public final class SpawnSystem {
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
             };
             case LIGHT_CRUISER -> new ShipRole[]{ShipRole.FRIGATE};
+            case ARTILLERY_SHIP -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.PICKET};
             case STEALTH_SHIP -> new ShipRole[]{ShipRole.MISSILE_BOAT, ShipRole.PICKET, ShipRole.FRIGATE};
             case CARRIER -> new ShipRole[]{
                     ShipRole.DRONE_CARRIER, ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER,
@@ -416,6 +417,7 @@ public final class SpawnSystem {
         spawnTeamShip(ctx, ShipRole.PATROL, faction, x + 0, y + 0);
         spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 70, y + 50);
         spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x - 90, y + 70);
+        if (ctx.rng.nextDouble() < 0.22) spawnTeamShip(ctx, ShipRole.ARTILLERY_SHIP, faction, x + 120, y + 120);
         if (ctx.rng.nextDouble() < 0.18) spawnTeamShip(ctx, ShipRole.CRUISER, faction, x - 40, y - 120);
         if (ctx.rng.nextDouble() < 0.35) spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 110, y - 80);
         if (ctx.rng.nextDouble() < 0.08) spawnTeamShip(ctx, ShipRole.SUPERSHIP, faction, x + 180, y - 40);
@@ -577,6 +579,12 @@ public final class SpawnSystem {
         ox = (ctx.rng.nextDouble() - 0.5) * 220.0;
         oy = (ctx.rng.nextDouble() - 0.5) * 220.0;
         spawnTeamShip(ctx, ShipRole.FRIGATE, team, base.x + ox, base.y + oy);
+
+        if (ctx.rng.nextDouble() < 0.26) {
+            ox = (ctx.rng.nextDouble() - 0.5) * 230.0;
+            oy = (ctx.rng.nextDouble() - 0.5) * 230.0;
+            spawnTeamShip(ctx, ShipRole.ARTILLERY_SHIP, team, base.x + ox, base.y + oy);
+        }
 
         if (ctx.rng.nextDouble() < 0.22) {
             ox = (ctx.rng.nextDouble() - 0.5) * 240.0;
@@ -871,6 +879,7 @@ public final class SpawnSystem {
 
         // Escort and skirmish line.
         out.add(spec(ShipRole.FRIGATE, 460, -90, "FRIGATE DUEL HULL", true));
+        out.add(spec(ShipRole.ARTILLERY_SHIP, 560, -28, "ARTILLERY SPINAL SKIFF", true));
         out.add(spec(ShipRole.MISSILE_BOAT, 635, -130, "MISSILE BOAT SALVO", false));
         out.add(spec(ShipRole.CIWS_CORVETTE, 785, -52, "CIWS CORVETTE SCREEN", false));
         out.add(spec(ShipRole.LIGHT_CRUISER, 980, -120, "LIGHT CRUISER SHIELD", true));

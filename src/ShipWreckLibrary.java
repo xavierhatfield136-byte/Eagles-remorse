@@ -89,6 +89,7 @@ final class ShipWreckLibrary {
 
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
+        if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
         return role.name().toLowerCase(Locale.ROOT);
     }
 

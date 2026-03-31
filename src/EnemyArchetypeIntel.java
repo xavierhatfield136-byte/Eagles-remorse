@@ -16,6 +16,7 @@ public final class EnemyArchetypeIntel {
             case PD_CRAFT -> "PD Escort Frigate";
             case DRONE -> "Missile Drone";
             case FRIGATE -> "Line Frigate";
+            case ARTILLERY_SHIP -> "Pocket Artillery Ship";
             case MISSILE_BOAT -> "Siege Missile Boat";
             case CIWS_CORVETTE -> "CIWS Corvette";
             case LIGHT_CRUISER -> "Light Cruiser";
@@ -45,6 +46,7 @@ public final class EnemyArchetypeIntel {
             case PD_CRAFT -> "Use direct gun DPS and split missile salvos across the escort screen.";
             case DRONE -> "Use CIWS + fast guns before missile swarms saturate.";
             case FRIGATE -> "Orbit mid-range and concentrate fire.";
+            case ARTILLERY_SHIP -> "Rush it or break line-of-sight before the spinal gun lands repeated hits.";
             case MISSILE_BOAT -> "Rush under CIWS cover and break target lock.";
             case CIWS_CORVETTE -> "Lead with guns/beam bolts, not missiles.";
             case LIGHT_CRUISER -> "Kite near max range while stripping shield.";
@@ -64,6 +66,6 @@ public final class EnemyArchetypeIntel {
 
     public static int archetypeCount() {
         // Number of role entries with explicit counter mapping.
-        return 22;
+        return 23;
     }
 }

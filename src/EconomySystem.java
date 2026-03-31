@@ -647,7 +647,7 @@ public final class EconomySystem {
     private static boolean isCarrierRespawnRole(ShipRole role) {
         if (role == null) return false;
         return switch (role) {
-            case PATROL, PICKET, FRIGATE, MISSILE_BOAT, CIWS_CORVETTE,
+            case PATROL, PICKET, FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE,
                     LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, TRANSPORT -> true;
             default -> false;
         };
@@ -1490,9 +1490,10 @@ public final class EconomySystem {
             }
             case ARTILLERY -> {
                 if (base != null && base.maxDefenders >= 10 && pressure < 0.78 && roll < 0.16) yield ShipRole.BATTLECRUISER;
-                if (roll < 0.40) yield ShipRole.MISSILE_BOAT;
-                if (roll < 0.68) yield ShipRole.LIGHT_CRUISER;
-                if (roll < 0.86) yield ShipRole.MEDIUM_CRUISER;
+                if (roll < 0.24) yield ShipRole.ARTILLERY_SHIP;
+                if (roll < 0.52) yield ShipRole.MISSILE_BOAT;
+                if (roll < 0.76) yield ShipRole.LIGHT_CRUISER;
+                if (roll < 0.90) yield ShipRole.MEDIUM_CRUISER;
                 yield ShipRole.CRUISER;
             }
             case STEALTH -> {
@@ -1524,7 +1525,7 @@ public final class EconomySystem {
                 yield new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP};
             }
             case ESCORT -> new ShipRole[]{ShipRole.CIWS_CORVETTE, ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
-            case ARTILLERY -> new ShipRole[]{ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
+            case ARTILLERY -> new ShipRole[]{ShipRole.ARTILLERY_SHIP, ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case STEALTH -> new ShipRole[]{ShipRole.STEALTH_SHIP, ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
             case CARRIER -> new ShipRole[]{ShipRole.DRONE_CARRIER, ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.DREADNOUGHT};
             case LINE -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
@@ -1537,6 +1538,7 @@ public final class EconomySystem {
             case PATROL -> new ShipRole[]{ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.STEALTH_SHIP, ShipRole.LIGHT_CRUISER};
             case PICKET -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER};
             case FRIGATE -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
+            case ARTILLERY_SHIP -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case CIWS_CORVETTE -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case MISSILE_BOAT -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP};
             case STEALTH_SHIP -> new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER};
@@ -1701,7 +1703,7 @@ public final class EconomySystem {
             case BATTLESHIP, DREADNOUGHT, SUPERSHIP, BATTLECRUISER -> CombatBucket.FLAGSHIP;
             case CARRIER, DRONE_CARRIER -> CombatBucket.CARRIER;
             case STEALTH_SHIP -> CombatBucket.STEALTH;
-            case MISSILE_BOAT, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> CombatBucket.ARTILLERY;
+            case ARTILLERY_SHIP, MISSILE_BOAT, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> CombatBucket.ARTILLERY;
             case PATROL, PICKET, CIWS_CORVETTE, PD_CRAFT, FIGHTER, DRONE, BOMBER -> CombatBucket.ESCORT;
             default -> CombatBucket.LINE;
         };
@@ -1719,6 +1721,7 @@ public final class EconomySystem {
         if (role == null) return 0.0;
         RoleStats.Stats st = RoleStats.get(role);
         double score = st.hpMax + st.shieldMax * 0.75 + st.desiredSpeed * 0.08 + st.bountyValue * 0.45;
+        if (role == ShipRole.ARTILLERY_SHIP) score += 12.0;
         if (role == ShipRole.MISSILE_BOAT) score += 8.0;
         if (role == ShipRole.STEALTH_SHIP) score += 10.0;
         if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) score += 18.0;
@@ -1739,6 +1742,7 @@ public final class EconomySystem {
             case PATROL -> 120;
             case PICKET -> 180;
             case FRIGATE -> 240;
+            case ARTILLERY_SHIP -> 320;
             case CIWS_CORVETTE -> 250;
             case MISSILE_BOAT -> 300;
             case LIGHT_CRUISER -> 700;

@@ -557,6 +557,7 @@ public final class UISystem {
             case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 0, 0);
             case PICKET -> trySwapHull(ctx, ShipRole.PICKET, 180, 0);
             case FRIGATE -> trySwapHull(ctx, ShipRole.FRIGATE, 0, 0);
+            case ARTILLERY_SHIP -> trySwapHull(ctx, ShipRole.ARTILLERY_SHIP, 320, 0);
             case MISSILE_BOAT -> trySwapHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
             case CIWS_CORVETTE -> trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
             case LIGHT_CRUISER -> trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
@@ -614,15 +615,22 @@ public final class UISystem {
     public static void tryBuyHullPlating(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (!ctx.player.canBuyHullPlatingUpgrade()) {
+            EventSystem.showBanner(ctx, "HULL PLATING AT CAP", 1.2);
+            return;
+        }
         int cost = 60;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
         ctx.credits -= cost;
-        ctx.player.hpMax += 10;
-        ctx.player.healHull(10);
-        EventSystem.showBanner(ctx, "HULL UPGRADED", 1.2);
+        if (ctx.player.buyHullPlatingUpgrade()) {
+            EventSystem.showBanner(ctx, "HULL UPGRADED", 1.2);
+        } else {
+            ctx.credits += cost;
+            EventSystem.showBanner(ctx, "HULL PLATING AT CAP", 1.2);
+        }
     }
 
     public static void tryBuyShieldArray(GameContext ctx) {
@@ -633,42 +641,64 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "NO SHIELD SYSTEM", 1.4);
             return;
         }
+        if (!p.canBuyShieldArrayUpgrade()) {
+            EventSystem.showBanner(ctx, "SHIELD ARRAY AT CAP", 1.2);
+            return;
+        }
         int cost = 70;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
         ctx.credits -= cost;
-        p.shieldMax += 12.0;
-        p.shieldRegen += 0.3;
-        p.shield += 12.0;
-        EventSystem.showBanner(ctx, "SHIELD ARRAY UPGRADED", 1.2);
+        if (p.buyShieldArrayUpgrade()) {
+            EventSystem.showBanner(ctx, "SHIELD ARRAY UPGRADED", 1.2);
+        } else {
+            ctx.credits += cost;
+            EventSystem.showBanner(ctx, "SHIELD ARRAY AT CAP", 1.2);
+        }
     }
 
     public static void tryAddGunTurret(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (!ctx.player.canAddGunTurretUpgrade()) {
+            EventSystem.showBanner(ctx, "GUN HARDPOINTS FULL", 1.2);
+            return;
+        }
         int cost = 100;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
         ctx.credits -= cost;
-        ctx.player.addGunTurret();
-        EventSystem.showBanner(ctx, "GUN TURRET ADDED", 1.2);
+        if (ctx.player.addGunTurretUpgrade()) {
+            EventSystem.showBanner(ctx, "GUN TURRET ADDED", 1.2);
+        } else {
+            ctx.credits += cost;
+            EventSystem.showBanner(ctx, "GUN HARDPOINTS FULL", 1.2);
+        }
     }
 
     public static void tryAddMissileRack(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (!ctx.player.canAddMissileRackUpgrade()) {
+            EventSystem.showBanner(ctx, "MISSILE HARDPOINTS FULL", 1.2);
+            return;
+        }
         int cost = 140;
         if (ctx.credits < cost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
         ctx.credits -= cost;
-        ctx.player.addMissileTurret();
-        EventSystem.showBanner(ctx, "MISSILE RACK ADDED", 1.2);
+        if (ctx.player.addMissileRackUpgrade()) {
+            EventSystem.showBanner(ctx, "MISSILE RACK ADDED", 1.2);
+        } else {
+            ctx.credits += cost;
+            EventSystem.showBanner(ctx, "MISSILE HARDPOINTS FULL", 1.2);
+        }
     }
 
     public static void tryUpgradeCIWS(GameContext ctx) {
@@ -1151,5 +1181,3 @@ public final class UISystem {
         MenuSettingsStore.save(settings);
     }
 }
-
-

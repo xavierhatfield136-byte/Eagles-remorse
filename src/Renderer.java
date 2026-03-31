@@ -108,6 +108,7 @@ public class Renderer {
             new ShopHullOffer(ShipRole.PATROL, 0, 0),
             new ShopHullOffer(ShipRole.PICKET, 180, 0),
             new ShopHullOffer(ShipRole.FRIGATE, 0, 0),
+            new ShopHullOffer(ShipRole.ARTILLERY_SHIP, 320, 0),
             new ShopHullOffer(ShipRole.MISSILE_BOAT, 300, 0),
             new ShopHullOffer(ShipRole.CIWS_CORVETTE, 250, 0),
             new ShopHullOffer(ShipRole.LIGHT_CRUISER, 700, 1),
@@ -294,9 +295,14 @@ public class Renderer {
         return new Color(faceTint.getRed(), faceTint.getGreen(), faceTint.getBlue(), a);
     }
 
-    private static String shieldLeakReadout(Ship ship) {
-        if (ship == null || !ship.shieldActive || ship.effectiveShieldCapacityMax() <= 0.0) return "N/A";
-        return String.format(Locale.US, "%.0f%%", ship.shieldPassthroughChance() * 100.0);
+    private static String shieldGateReadout(Ship ship) {
+        if (ship == null) return "N/A";
+        int cap = ship.externalShieldGateHitCap();
+        if (cap <= 0) return "N/A";
+        return "F" + ship.externalShieldGateHitsRemaining(Ship.SHIELD_FACE_FORE)
+                + " L" + ship.externalShieldGateHitsRemaining(Ship.SHIELD_FACE_LEFT)
+                + " R" + ship.externalShieldGateHitsRemaining(Ship.SHIELD_FACE_RIGHT)
+                + " A" + ship.externalShieldGateHitsRemaining(Ship.SHIELD_FACE_REAR);
     }
 
     private static String superweaponStatusReadout(Player player) {
@@ -313,14 +319,14 @@ public class Renderer {
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
         int x = panel.x + 24;
         int y = panel.y + 136;
-        int w = Math.min(430, Math.max(360, (int) Math.round(panel.width * 0.37)));
+        int w = Math.min(396, Math.max(332, (int) Math.round(panel.width * 0.34)));
         int h = panel.height - 168;
         return new Rectangle(x, y, w, h);
     }
 
     private static Rectangle getShopHullArea(Rectangle panel) {
         Rectangle upgrades = getShopUpgradeArea(panel);
-        int x = upgrades.x + upgrades.width + 26;
+        int x = upgrades.x + upgrades.width + 20;
         int y = upgrades.y;
         int w = panel.x + panel.width - x - 24;
         int h = upgrades.height;
@@ -342,8 +348,8 @@ public class Renderer {
 
     private static Rectangle getShopHullCardRect(Rectangle panel, int index) {
         Rectangle area = getShopHullArea(panel);
-        int cols = 3;
-        int gap = 12;
+        int cols = 4;
+        int gap = 10;
         int cardW = (area.width - gap * (cols - 1)) / cols;
         int cardH = 82;
         int col = Math.max(0, index % cols);
@@ -2259,7 +2265,7 @@ public class Renderer {
         chips.add("POWER " + player.powerPreset.name(), new Color(114, 226, 166, 208), true);
         chips.add("CREW " + player.crewOrder.name(), new Color(244, 198, 116, 208), true);
         if (player.shieldActive && player.shieldMax > 0.0) {
-            chips.add("LEAK " + shieldLeakReadout(player), new Color(154, 186, 255, 208), true);
+            chips.add("GATE " + shieldGateReadout(player), new Color(154, 186, 255, 208), true);
         }
         if (player.hasSuperweapon && mode == GameContext.HudDetail.FULL) {
             chips.add("SUPER " + superweaponStatusReadout(player), new Color(156, 214, 255, 214),
@@ -2472,7 +2478,7 @@ public class Renderer {
         if (detail == GameContext.HudDetail.COMPACT) {
             rows.add("CURSOR COMBAT: LMB guns | RMB missiles" + (player.hasSuperweapon ? " | X superweapon" : ""));
             rows.add("TARGETING: L lock | [ ] cycle | T auto-lock");
-            rows.add("SYSTEM: Y preset | U crew | watch LEAK chip as shields wear down");
+            rows.add("SYSTEM: Y preset | U crew | watch the per-side GATE chip for the outer shield screen");
             rows.add("OVERLAYS: TAB shop | B base | M map | O power | H crew | bottom bar");
             rows.add("X-RAY: ` filter | ' clear focus | click room focus");
             rows.add("META: ESC pause/resume");
@@ -2483,7 +2489,7 @@ public class Renderer {
         rows.add("UTILITY: F mine | ; emergency thrust | E shield overcharge");
         rows.add("TARGETING: L lock under mouse | [ ] cycle targets | T auto-lock");
         rows.add("SYSTEMS: O power mgmt | H crew stations | Y power preset | U crew order");
-        rows.add("SHIELDS: the bubble covers the whole ship; lower HP means higher leak chance");
+        rows.add("SHIELDS: each side has its own gate; burn one arc down and the core shield behind that side starts taking damage");
         rows.add("X-RAY: ` cycle filter | ' clear focus | click room to focus | RMB clears focus");
         rows.add("OVERLAYS: TAB shop/loadout | B base upgrades | bottom bar quick access");
         rows.add("WARP: - or BACKSPACE charge 10s warp to waypoint or friendly base");
@@ -2884,7 +2890,7 @@ public class Renderer {
         gx.drawString("SHOP / LOADOUT", panel.x + 22, panel.y + 28);
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(192, 210, 232, 180));
-        gx.drawString("Click a button to buy upgrades or swap hulls. TAB/ESC closes.", panel.x + 22, panel.y + 48);
+        gx.drawString("Click a button to buy capped upgrades or swap hulls. TAB/ESC closes.", panel.x + 22, panel.y + 48);
 
         drawShopMetricPill(gx, panel.x + 22, panel.y + 64, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
         drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150, "HANGAR", "TIER " + hangarTier, new Color(158, 196, 255));
@@ -2893,18 +2899,11 @@ public class Renderer {
 
         Rectangle upgradesArea = getShopUpgradeArea(panel);
         Rectangle hullArea = getShopHullArea(panel);
-        drawShopSectionLabel(gx, upgradesArea.x, upgradesArea.y, "UPGRADES", "Weapons, defenses, and system tuning");
-        drawShopSectionLabel(gx, hullArea.x, hullArea.y, "HULL BAY", "Swap frames with dedicated action buttons");
+        drawShopSectionLabel(gx, upgradesArea.x, upgradesArea.y, "UPGRADES", "Weapons, defenses, and capped frame tuning");
+        drawShopSectionLabel(gx, hullArea.x, hullArea.y, "HULL BAY", "Swap frames from the full roster without scrolling");
 
-        int gunCount = 0;
-        int missileCount = 0;
-        if (player.turrets != null) {
-            for (Turret t : player.turrets) {
-                if (t == null) continue;
-                if (t.kind == Turret.Kind.GUN) gunCount++;
-                else if (t.kind == Turret.Kind.MISSILE) missileCount++;
-            }
-        }
+        int gunCount = player.gunTurretCount();
+        int missileCount = player.missileRackCount();
 
         for (int i = 0; i < 7; i++) {
             Rectangle card = getShopUpgradeCardRect(panel, i);
@@ -2977,40 +2976,68 @@ public class Renderer {
                 accent = new Color(144, 230, 255);
             }
             case SHOP_UPGRADE_HULL -> {
+                int level = player.getHullPlatingUpgradeLevel();
+                int maxLevel = player.maxHullPlatingUpgrades();
+                boolean maxed = level >= maxLevel;
                 title = "Hull Plating";
-                line1 = "Hull integrity " + player.hpMax + " -> " + (player.hpMax + 10);
-                line2 = "Instant repair on purchase";
-                buttonLabel = credits >= 60 ? "BUY $60" : "NEED $60";
-                enabled = credits >= 60;
+                line1 = maxed
+                        ? "Hull integrity " + player.hpMax + " at cap"
+                        : "Hull integrity " + player.hpMax + " -> " + (player.hpMax + 10);
+                line2 = "Plating level " + level + "/" + maxLevel + " on this hull";
+                buttonLabel = maxed ? "MAX " + level + "/" + maxLevel : (credits >= 60 ? "BUY $60" : "NEED $60");
+                enabled = !maxed && credits >= 60;
+                accentStrong = maxed;
                 accent = new Color(255, 194, 126);
             }
             case SHOP_UPGRADE_SHIELD -> {
                 boolean available = player.shieldActive && player.shieldMax > 0.0;
+                int level = player.getShieldArrayUpgradeLevel();
+                int maxLevel = player.maxShieldArrayUpgrades();
+                boolean maxed = available && level >= maxLevel;
                 title = "Shield Array";
-                line1 = available
-                        ? "Shield " + (int) Math.round(player.shieldMax) + " -> " + (int) Math.round(player.shieldMax + 12.0)
-                        : "This hull does not mount shield hardware";
-                line2 = available
-                        ? "Regen " + fmt1(player.shieldRegen) + " -> " + fmt1(player.shieldRegen + 0.3)
-                        : "Switch to a shield-capable hull to use this";
-                buttonLabel = !available ? "NO SHIELD" : (credits >= 70 ? "BUY $70" : "NEED $70");
-                enabled = available && credits >= 70;
+                line1 = !available
+                        ? "This hull does not mount shield hardware"
+                        : maxed
+                        ? "Shield " + (int) Math.round(player.shieldMax) + " at cap"
+                        : "Shield " + (int) Math.round(player.shieldMax) + " -> " + (int) Math.round(player.shieldMax + 12.0);
+                line2 = !available
+                        ? "Switch to a shield-capable hull to use this"
+                        : maxed
+                        ? "Array level " + level + "/" + maxLevel + "  Regen " + fmt1(player.shieldRegen)
+                        : "Array level " + level + "/" + maxLevel + "  Regen " + fmt1(player.shieldRegen) + " -> " + fmt1(player.shieldRegen + 0.3);
+                buttonLabel = !available
+                        ? "NO SHIELD"
+                        : (maxed ? "MAX " + level + "/" + maxLevel : (credits >= 70 ? "BUY $70" : "NEED $70"));
+                enabled = available && !maxed && credits >= 70;
+                accentStrong = maxed;
                 accent = new Color(144, 176, 255);
             }
             case SHOP_UPGRADE_GUN -> {
+                int level = player.getGunTurretUpgradeLevel();
+                int maxLevel = player.maxExtraGunTurrets();
+                boolean maxed = level >= maxLevel;
                 title = "Add Gun Turret";
-                line1 = "Gun mounts " + gunCount + " -> " + (gunCount + 1);
-                line2 = "Adds another primary hardpoint";
-                buttonLabel = credits >= 100 ? "BUY $100" : "NEED $100";
-                enabled = credits >= 100;
+                line1 = maxed
+                        ? "Gun mounts " + gunCount + " at cap"
+                        : "Gun mounts " + gunCount + " -> " + (gunCount + 1);
+                line2 = "Extra hardpoints " + level + "/" + maxLevel + " on this hull";
+                buttonLabel = maxed ? "MAX " + level + "/" + maxLevel : (credits >= 100 ? "BUY $100" : "NEED $100");
+                enabled = !maxed && credits >= 100;
+                accentStrong = maxed;
                 accent = new Color(255, 180, 124);
             }
             case SHOP_UPGRADE_MISSILE -> {
+                int level = player.getMissileRackUpgradeLevel();
+                int maxLevel = player.maxExtraMissileRacks();
+                boolean maxed = level >= maxLevel;
                 title = "Add Missile Rack";
-                line1 = "Missile racks " + missileCount + " -> " + (missileCount + 1);
-                line2 = "Adds another secondary launcher";
-                buttonLabel = credits >= 140 ? "BUY $140" : "NEED $140";
-                enabled = credits >= 140;
+                line1 = maxed
+                        ? "Missile racks " + missileCount + " at cap"
+                        : "Missile racks " + missileCount + " -> " + (missileCount + 1);
+                line2 = "Extra launchers " + level + "/" + maxLevel + " on this hull";
+                buttonLabel = maxed ? "MAX " + level + "/" + maxLevel : (credits >= 140 ? "BUY $140" : "NEED $140");
+                enabled = !maxed && credits >= 140;
+                accentStrong = maxed;
                 accent = new Color(255, 148, 126);
             }
             case SHOP_UPGRADE_CIWS -> {
@@ -3050,11 +3077,13 @@ public class Renderer {
         drawShopCardFrame(g2, card, accent, accentStrong);
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(245, 248, 255, 222));
-        g2.drawString(title, card.x + 12, card.y + 18);
+        FontMetrics titleMetrics = g2.getFontMetrics();
+        g2.drawString(fitShopText(titleMetrics, title, card.width - 24), card.x + 12, card.y + 18);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(204, 216, 230, 182));
-        g2.drawString(line1, card.x + 12, card.y + 39);
-        g2.drawString(line2, card.x + 12, card.y + 54);
+        FontMetrics bodyMetrics = g2.getFontMetrics();
+        g2.drawString(fitShopText(bodyMetrics, line1, card.width - 24), card.x + 12, card.y + 39);
+        g2.drawString(fitShopText(bodyMetrics, line2, card.width - 24), card.x + 12, card.y + 54);
         drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, accentStrong);
     }
 
@@ -3067,17 +3096,19 @@ public class Renderer {
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
         drawShopCardFrame(g2, card, accent, current);
-        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
         g2.setColor(new Color(244, 248, 255, 220));
-        g2.drawString(shopRoleTitle(offer.role), card.x + 10, card.y + 18);
+        FontMetrics titleMetrics = g2.getFontMetrics();
+        String title = fitShopText(titleMetrics, shopRoleTitle(offer.role), card.width - 20);
+        g2.drawString(title, card.x + 10, card.y + 18);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(196, 210, 226, 180));
-        g2.drawString("Tier " + offer.requiredTier + "   Cost $" + offer.cost, card.x + 10, card.y + 36);
+        g2.drawString("Tier " + offer.requiredTier + "   Cost $" + offer.cost, card.x + 10, card.y + 35);
 
         String line2 = current
                 ? "Currently equipped"
-                : (tierOk ? "Ready for swap" : "Needs hangar tier " + offer.requiredTier);
-        g2.drawString(line2, card.x + 10, card.y + 51);
+                : (tierOk ? "Ready for swap" : "Needs hangar T" + offer.requiredTier);
+        g2.drawString(line2, card.x + 10, card.y + 49);
 
         String buttonLabel;
         if (current) buttonLabel = "CURRENT";
@@ -3123,10 +3154,22 @@ public class Renderer {
         g2.drawString(label, tx, ty);
     }
 
+    private static String fitShopText(FontMetrics metrics, String text, int maxWidth) {
+        if (metrics == null || text == null || metrics.stringWidth(text) <= maxWidth) return text;
+        String ellipsis = "...";
+        int ellipsisWidth = metrics.stringWidth(ellipsis);
+        int end = text.length();
+        while (end > 1 && metrics.stringWidth(text.substring(0, end)) + ellipsisWidth > maxWidth) {
+            end--;
+        }
+        return text.substring(0, Math.max(1, end)) + ellipsis;
+    }
+
     private static String shopRoleTitle(ShipRole role) {
         if (role == null) return "UNKNOWN";
         return switch (role) {
-            case CRUISER -> "GUIDED MISSILE CRUISER";
+            case ARTILLERY_SHIP -> "ARTILLERY SHIP";
+            case CRUISER -> "MISSILE CRUISER";
             default -> role.name().replace('_', ' ');
         };
     }
@@ -3237,7 +3280,7 @@ public class Renderer {
         g2.setColor(new Color(180, 225, 255, 220));
         g2.drawString("Shield Effectiveness: " + signedPct(shield) + "   Super Recharge: " + signedPct(superCharge), x + 20, py);
         py += 16;
-        g2.drawString("Shield Leak Chance: " + shieldLeakReadout(player) + "   Super Charge: "
+        g2.drawString("Shield Gate: " + shieldGateReadout(player) + "   Super Charge: "
                 + (int) Math.round(player.getSuperweaponRechargeProgress() * 100.0) + "%", x + 20, py);
         py += 20;
 
@@ -4891,6 +4934,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     v.engines.add(new EnginePoint(-r + 1, -r / 4));
                     v.engines.add(new EnginePoint(-r + 1, r / 4));
                 }
+                case ARTILLERY_SHIP -> {
+                    v.hullPolys.add(poly(new int[]{r + 7, r - 2, -r + 4, -r, -r + 4, r - 2},
+                            new int[]{0, -r / 2, -r / 3, 0, r / 3, r / 2}));
+                    v.superPolys.add(poly(new int[]{0, r / 3, r / 6, -r / 6}, new int[]{-r / 5, 0, r / 5, r / 5}));
+                    v.engines.add(new EnginePoint(-r + 1, -r / 4));
+                    v.engines.add(new EnginePoint(-r + 1, r / 4));
+                }
                 case LIGHT_CRUISER -> {
                     v.hullPolys.add(poly(new int[]{r + 12, r - 7, -r + 2, -r, -r + 8, -r, -r + 2, r - 7},
                             new int[]{0, -r / 2, -r / 2, -r / 6, 0, r / 6, r / 2, r / 2}));
@@ -5647,6 +5697,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static String keyForRole(ShipRole role) {
             if (role == null) return "frigate";
+            if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
             return role.name().toLowerCase(Locale.ROOT);
         }
 
@@ -6122,6 +6173,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Polygon hullPoly = switch (ship.role) {
             case PATROL -> hullPatrol(ship.radius);
             case PICKET -> hullPicket(ship.radius);
+            case ARTILLERY_SHIP -> hullPatrol(ship.radius);
             case STEALTH_SHIP -> hullStealth(ship.radius);
             case FIGHTER -> hullFighter(ship.radius);
             case MISSILE_BOAT -> hullMissileBoat(ship.radius);
@@ -6212,6 +6264,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Polygon base = switch (ship.role) {
             case PATROL -> hullPatrol(ship.radius);
             case PICKET -> hullPicket(ship.radius);
+            case ARTILLERY_SHIP -> hullPatrol(ship.radius);
             case STEALTH_SHIP -> hullStealth(ship.radius);
             case FIGHTER -> hullFighter(ship.radius);
             case MISSILE_BOAT -> hullMissileBoat(ship.radius);
@@ -6321,6 +6374,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g.setColor(new Color(255, 255, 255, 70));
                 g.drawLine(-r + 6, -r / 4, r - 2, -r / 4);
                 g.drawLine(-r + 6, r / 4, r - 2, r / 4);
+            }
+            case ARTILLERY_SHIP -> {
+                g.setColor(new Color(255, 255, 255, 90));
+                g.drawLine(-r + 6, -r / 4, r + 6, -r / 6);
+                g.drawLine(-r + 6, r / 4, r + 6, r / 6);
+
+                g.setColor(new Color(255, 255, 255, 120));
+                g.drawOval(r / 6, -3, 6, 6);
             }
             case CIWS_CORVETTE -> {
                 g.setColor(new Color(255, 255, 255, 120));
@@ -6491,7 +6552,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (role == null) return 0;
         return switch (role) {
             case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 1;
-            case PATROL, FRIGATE, PICKET, LIGHT_CRUISER, MISSILE_BOAT, MINER, TRANSPORT, HAULER, DRONE_CARRIER, CARRIER -> 2;
+            case PATROL, FRIGATE, PICKET, ARTILLERY_SHIP, LIGHT_CRUISER, MISSILE_BOAT, MINER, TRANSPORT, HAULER, DRONE_CARRIER, CARRIER -> 2;
             case MEDIUM_CRUISER, CRUISER -> 3;
             case BATTLECRUISER, SUPERSHIP -> 4;
             case BATTLESHIP -> 5;
@@ -6505,6 +6566,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return switch (role) {
             case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 0.18;
             case PATROL, PICKET, FRIGATE, MISSILE_BOAT, MINER -> 0.28;
+            case ARTILLERY_SHIP -> 0.28;
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, TRANSPORT, HAULER -> 0.38;
             case CARRIER, DRONE_CARRIER -> 0.34;
             case BATTLECRUISER, BATTLESHIP -> 0.48;
@@ -6761,6 +6823,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (role == null) return new TurretVisualScale(1.0, 1.0, 1.0);
         return switch (role) {
             case PATROL, PICKET, FIGHTER -> new TurretVisualScale(0.84, 0.86, 0.88);
+            case ARTILLERY_SHIP -> new TurretVisualScale(1.08, 1.04, 1.00);
             case FRIGATE, MISSILE_BOAT, CIWS_CORVETTE, MINER -> new TurretVisualScale(0.95, 0.96, 0.95);
             case LIGHT_CRUISER, CRUISER, MEDIUM_CRUISER, STEALTH_SHIP -> new TurretVisualScale(1.02, 1.01, 0.98);
             case BATTLECRUISER -> new TurretVisualScale(1.14, 1.08, 1.02);
@@ -7707,6 +7770,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return p;
     }
 
+    private static Polygon hullArtilleryShip(double radius) {
+        return hullPatrol(radius);
+    }
+
     private static Polygon hullMissileBoat(double radius) {
         int r = (int) Math.round(radius);
         Polygon p = new Polygon();
@@ -8021,6 +8088,3 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
 }
-
-
-

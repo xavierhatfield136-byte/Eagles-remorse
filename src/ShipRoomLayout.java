@@ -501,7 +501,7 @@ public final class ShipRoomLayout {
         if (role == null) return "capital";
         return switch (role) {
             case FIGHTER, BOMBER, DRONE, PD_CRAFT, PICKET, PATROL, STEALTH_SHIP,
-                 FRIGATE, MISSILE_BOAT, CIWS_CORVETTE -> "small";
+                 FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE -> "small";
             case CARRIER, DRONE_CARRIER, TRANSPORT, HAULER, MINER -> "carrier";
             case BASE, STATIC_TURRET -> "station";
             default -> "capital";

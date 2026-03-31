@@ -10,12 +10,19 @@ public class Player extends Ship {
     private static final int ALT_TEAM_SECONDARY_BURST_COUNT = 3;
     private static final double ALT_TEAM_SECONDARY_BURST_SPREAD = 0.055;
     private static final double ALT_TEAM_SECONDARY_BURST_TRAIL_SPACING = 11.0;
+    private static final int HULL_PLATING_HP_PER_LEVEL = 10;
+    private static final double SHIELD_ARRAY_STRENGTH_PER_LEVEL = 12.0;
+    private static final double SHIELD_ARRAY_REGEN_PER_LEVEL = 0.3;
 
     // Abilities
     private double shieldOverchargeCooldown = 2.0;
     private double shieldOverchargeTimer = 0;
     private double overShieldTimer = 0;
     private double overShieldAdded = 0;
+    private int shopHullPlatingLevel = 0;
+    private int shopShieldArrayLevel = 0;
+    private int baseGunMounts = 0;
+    private int baseMissileMounts = 0;
 
     public Player(double x, double y) {
         this(ShipRole.FRIGATE, x, y);
@@ -48,6 +55,7 @@ public class Player extends Ship {
 
         // New hull means old impact/breach marks are no longer valid.
         clearHullImpactMarks();
+        resetShopUpgradeTrackers();
 
         // Keep whichever team the player is currently assigned to.
         this.faction = preservedFaction;
@@ -139,6 +147,108 @@ public class Player extends Ship {
         rack.radius = 7;
         rack.barrelLen = 10;
         addTurret(rack);
+    }
+
+    public int gunTurretCount() {
+        return countTurrets(Turret.Kind.GUN);
+    }
+
+    public int missileRackCount() {
+        return countTurrets(Turret.Kind.MISSILE);
+    }
+
+    public int getHullPlatingUpgradeLevel() {
+        return shopHullPlatingLevel;
+    }
+
+    public int getShieldArrayUpgradeLevel() {
+        return shopShieldArrayLevel;
+    }
+
+    public int getGunTurretUpgradeLevel() {
+        return Math.max(0, gunTurretCount() - baseGunMounts);
+    }
+
+    public int getMissileRackUpgradeLevel() {
+        return Math.max(0, missileRackCount() - baseMissileMounts);
+    }
+
+    public int maxHullPlatingUpgrades() {
+        return switch (SpawnSystem.requiredHangarTierForRole(role)) {
+            case 0 -> 2;
+            case 1 -> 3;
+            default -> 4;
+        };
+    }
+
+    public int maxShieldArrayUpgrades() {
+        if (!shieldActive || shieldMax <= 0.0) return 0;
+        return switch (SpawnSystem.requiredHangarTierForRole(role)) {
+            case 0 -> 2;
+            case 1 -> 3;
+            default -> 4;
+        };
+    }
+
+    public int maxExtraGunTurrets() {
+        return SpawnSystem.requiredHangarTierForRole(role) <= 1 ? 1 : 2;
+    }
+
+    public int maxExtraMissileRacks() {
+        return SpawnSystem.requiredHangarTierForRole(role) <= 1 ? 1 : 2;
+    }
+
+    public int totalGunMountCap() {
+        return baseGunMounts + maxExtraGunTurrets();
+    }
+
+    public int totalMissileRackCap() {
+        return baseMissileMounts + maxExtraMissileRacks();
+    }
+
+    public boolean canBuyHullPlatingUpgrade() {
+        return getHullPlatingUpgradeLevel() < maxHullPlatingUpgrades();
+    }
+
+    public boolean canBuyShieldArrayUpgrade() {
+        return getShieldArrayUpgradeLevel() < maxShieldArrayUpgrades();
+    }
+
+    public boolean canAddGunTurretUpgrade() {
+        return getGunTurretUpgradeLevel() < maxExtraGunTurrets();
+    }
+
+    public boolean canAddMissileRackUpgrade() {
+        return getMissileRackUpgradeLevel() < maxExtraMissileRacks();
+    }
+
+    public boolean buyHullPlatingUpgrade() {
+        if (!canBuyHullPlatingUpgrade()) return false;
+        shopHullPlatingLevel++;
+        hpMax += HULL_PLATING_HP_PER_LEVEL;
+        healHull(HULL_PLATING_HP_PER_LEVEL);
+        return true;
+    }
+
+    public boolean buyShieldArrayUpgrade() {
+        if (!canBuyShieldArrayUpgrade()) return false;
+        shopShieldArrayLevel++;
+        shieldMax += SHIELD_ARRAY_STRENGTH_PER_LEVEL;
+        shieldRegen += SHIELD_ARRAY_REGEN_PER_LEVEL;
+        shield = Math.min(shieldMax, shield + SHIELD_ARRAY_STRENGTH_PER_LEVEL);
+        return true;
+    }
+
+    public boolean addGunTurretUpgrade() {
+        if (!canAddGunTurretUpgrade()) return false;
+        addGunTurret();
+        return true;
+    }
+
+    public boolean addMissileRackUpgrade() {
+        if (!canAddMissileRackUpgrade()) return false;
+        addMissileTurret();
+        return true;
     }
 
     public boolean isCIWSUpgradeMaxed() {
@@ -260,6 +370,21 @@ public class Player extends Ship {
             nt.primary = turret.primary;
             this.turrets.add(nt);
         }
+    }
+
+    private int countTurrets(Turret.Kind kind) {
+        int count = 0;
+        for (Turret turret : turrets) {
+            if (turret != null && turret.kind == kind) count++;
+        }
+        return count;
+    }
+
+    private void resetShopUpgradeTrackers() {
+        shopHullPlatingLevel = 0;
+        shopShieldArrayLevel = 0;
+        baseGunMounts = countTurrets(Turret.Kind.GUN);
+        baseMissileMounts = countTurrets(Turret.Kind.MISSILE);
     }
 
     public List<Projectile> firePrimary(double targetX, double targetY, double dt) {

@@ -12,6 +12,7 @@ public enum ShipRole {
 
     // Medium ships
     FRIGATE,
+    ARTILLERY_SHIP,
     MISSILE_BOAT,
     CIWS_CORVETTE,
     LIGHT_CRUISER,

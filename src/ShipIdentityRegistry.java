@@ -162,6 +162,11 @@ public final class ShipIdentityRegistry {
                     spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Impact Drill"),
                     spec(IdentityStat.SENSOR_RANGE, 1.14, "Fire-Control Relay"),
                     spec(IdentityStat.MISSILE_CYCLE, 1.16, "Volley Feeds"));
+            case ARTILLERY_SHIP -> matrixBonus(key, role,
+                    spec(IdentityStat.SENSOR_RANGE, 1.16, "Fire-Control Relay"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.18, "Overpressure Cannon"),
+                    spec(IdentityStat.WEAPON_CYCLE, 1.14, "Beam Stabilizers"),
+                    spec(IdentityStat.MOBILITY, 1.14, "Shoot-and-Scoot Thrusters"));
             case MISSILE_BOAT -> matrixBonus(key, role,
                     spec(IdentityStat.SENSOR_RANGE, 1.14, "Target Data Link"),
                     spec(IdentityStat.MISSILE_DAMAGE, 1.18, "Breaker Salvos"),

@@ -55,6 +55,7 @@ public final class RoleStats {
             case PD_CRAFT -> new Stats(18, 1, 1, 0.0, 170, 105, -1, -1, -1);
             case DRONE -> new Stats(11, 1, 1, 0.0, 285, 38, -1, -1, -1);
             case FRIGATE -> new Stats(18, 19, 18, 2.0, 152, 96, -1, -1, -1);
+            case ARTILLERY_SHIP -> new Stats(17, 10, 8, 1.0, 126, 118, -1, -1, -1);
             case MISSILE_BOAT -> new Stats(20, 11, 8, 1.2, 108, 112, -1, -1, -1);
             case CIWS_CORVETTE -> new Stats(16, 12, 8, 1.4, 205, 98, -1, -1, -1);
             case LIGHT_CRUISER -> new Stats(23, 26, 24, 2.3, 128, 152, -1, -1, -1);
@@ -109,7 +110,7 @@ public final class RoleStats {
         try {
             DoctrineProfile prof = DoctrineRegistry.forFaction(s.faction);
             if (prof.doctrine == Doctrine.ENERGY_NAVY && !(s instanceof Player)) {
-                if (role == ShipRole.BATTLESHIP || role == ShipRole.BATTLECRUISER
+                if (role == ShipRole.ARTILLERY_SHIP || role == ShipRole.BATTLESHIP || role == ShipRole.BATTLECRUISER
                         || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP) {
                     s.primaryWeaponFamily = Ship.PrimaryWeaponFamily.BEAM_BOLT;
                 } else {

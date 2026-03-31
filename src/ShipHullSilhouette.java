@@ -237,6 +237,7 @@ public final class ShipHullSilhouette {
 
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
+        if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
         return role.name().toLowerCase(Locale.ROOT);
     }
 
@@ -289,6 +290,9 @@ public final class ShipHullSilhouette {
                     new int[]{0, -r / 2, 0, r / 2});
             case BOMBER -> poly(
                     new int[]{r + 7, r - 4, -r + 1, -r, -r + 1, r - 4},
+                    new int[]{0, -r / 2, -r / 3, 0, r / 3, r / 2});
+            case ARTILLERY_SHIP -> poly(
+                    new int[]{r + 7, r - 2, -r, -r + 6, -r, r - 2},
                     new int[]{0, -r / 2, -r / 3, 0, r / 3, r / 2});
             case MISSILE_BOAT -> poly(
                     new int[]{r + 6, r - 8, -r, -r + 10, -r, r - 8},

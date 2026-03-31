@@ -387,6 +387,38 @@ public class FleetShip extends Ship {
                 ciwsPelletSpeed = 900;
             }
 
+            case ARTILLERY_SHIP -> {
+                name = (faction == Faction.ENEMY ? "Enemy Artillery Ship" : "Artillery Ship");
+                radius = 17;
+                hpMax = 10;
+                hp = hpMax;
+
+                shieldMax = 8;
+                shield = shieldMax;
+                shieldRegen = 1.0;
+                shieldActive = true;
+
+                desiredSpeed = 126;
+                bountyValue = 118;
+
+                // Single battleship-grade spinal gun on a fragile early-game hull.
+                Turret spinalGun = new Turret(Turret.Kind.GUN, 16, 0);
+                spinalGun.cooldown = 0.34;
+                spinalGun.damage = 4;
+                spinalGun.bulletSpeed = 980;
+                spinalGun.bulletLife = 270;
+                spinalGun.primary = true;
+                spinalGun.radius = 8.5;
+                spinalGun.barrelLen = 21;
+                addTurret(spinalGun);
+
+                hasCIWS = true;
+                ciwsQuality = 0.08;
+                ciwsRange = 165;
+                ciwsCooldown = 0.19;
+                ciwsPelletsPerBurst = 1;
+            }
+
             case CIWS_CORVETTE -> {
                 name = (faction == Faction.ENEMY ? "Enemy CIWS Corvette" : "CIWS Corvette");
                 radius = 16;

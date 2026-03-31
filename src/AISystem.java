@@ -2685,6 +2685,7 @@ public final class AISystem {
             case PATROL -> 300;
             case PICKET -> 460;
             case FRIGATE -> 370;
+            case ARTILLERY_SHIP -> 720;
             case CIWS_CORVETTE -> 280;
             case MISSILE_BOAT -> 760;
             case LIGHT_CRUISER -> 440;
@@ -2716,6 +2717,7 @@ public final class AISystem {
             case LIGHT_CRUISER -> 0.08;
             case MEDIUM_CRUISER, CRUISER -> 0.00;
             case PICKET -> -0.05;
+            case ARTILLERY_SHIP -> -0.18;
             case BATTLESHIP -> -0.12;
             case DRONE_CARRIER -> -0.16;
             case DREADNOUGHT -> -0.18;
@@ -2731,6 +2733,7 @@ public final class AISystem {
     private static double roleStandoffBias(ShipRole role) {
         if (role == null) return 0.0;
         return switch (role) {
+            case ARTILLERY_SHIP -> 0.68;
             case MISSILE_BOAT -> 0.75;
             case TRANSPORT, HAULER, MINER -> 0.70;
             case CARRIER -> 0.62;
@@ -2767,6 +2770,7 @@ public final class AISystem {
             case FRIGATE, LIGHT_CRUISER -> 1.00;
             case MEDIUM_CRUISER, CRUISER -> 0.98;
             case PICKET -> 0.95;
+            case ARTILLERY_SHIP -> 0.90;
             case DRONE_CARRIER -> 0.92;
             case MISSILE_BOAT, BATTLESHIP -> 0.92;
             case DREADNOUGHT -> 0.88;
@@ -2791,6 +2795,7 @@ public final class AISystem {
             case PICKET, LIGHT_CRUISER -> 0.98;
             case MEDIUM_CRUISER, CRUISER -> 0.95;
             case BOMBER -> 0.94;
+            case ARTILLERY_SHIP -> 0.90;
             case MISSILE_BOAT -> 0.88;
             case BATTLESHIP -> 0.86;
             case DRONE_CARRIER -> 0.84;
@@ -2806,6 +2811,7 @@ public final class AISystem {
         if (role == null) return 1.0;
         return switch (role) {
             case PICKET -> 1.38;
+            case ARTILLERY_SHIP -> 1.32;
             case BATTLESHIP -> 1.32;
             case DREADNOUGHT -> 1.36;
             case SUPERSHIP -> 1.42;
@@ -2837,6 +2843,7 @@ public final class AISystem {
             case BATTLECRUISER -> 1.08;
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1.05;
             case STEALTH_SHIP -> 1.02;
+            case ARTILLERY_SHIP -> 1.00;
             case FRIGATE -> 1.00;
             case CIWS_CORVETTE -> 0.92;
             case PICKET, PATROL -> 0.90;

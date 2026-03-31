@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -148,6 +149,11 @@ public abstract class Ship {
     public boolean shieldActive = false;
     public double shieldRebootDelay = 2.2;
     private double shieldOfflineTimer = 0.0;
+    private final int[] shieldGateHitsRemaining = new int[SHIELD_FACE_COUNT];
+    private final int[] shieldGateHitsMax = new int[SHIELD_FACE_COUNT];
+    private final double[] shieldGateRechargeTimer = new double[SHIELD_FACE_COUNT];
+    private final int[] armorGateHitsRemaining = new int[SHIELD_FACE_COUNT];
+    private final int[] armorGateHitsMax = new int[SHIELD_FACE_COUNT];
     private static final double SHIELD_PASSTHROUGH_MIN_CHANCE = 0.01;
     private static final double SHIELD_PASSTHROUGH_MAX_CHANCE = 0.50;
     private static final double SHIELD_PASSTHROUGH_FULL_FRAC = 1.0;
@@ -760,6 +766,8 @@ public abstract class Ship {
         if (isShieldOnline() && shield < effectiveShieldCapacityMax()) {
             distributeShieldRegen(shieldRegen * shieldRegenMultiplier() * dt);
         }
+        syncDefenseGateState(false);
+        updateShieldGateRecharge(dt);
 
         for (Turret t : turrets) t.update(dt);
 
@@ -1039,19 +1047,29 @@ public abstract class Ship {
         crewCombatStress = Math.max(crewCombatStress, 1.4);
         ensureRoomSystemsInitialized();
         ensureShieldFacesSynced();
+        syncDefenseGateState(false);
         HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
         ShipRoomLayout.RoomDef primaryRoom = resolvePrimaryRoomForHullHit(impact, hitX, hitY, impactVx, impactVy);
         int hullDamage = dmg;
 
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        int shieldGateFace = shieldFaceForImpactAngle(threatFacingAngle, getShieldFacingAngle());
         if (isShieldOnline() && shield > 0) {
             double shieldBefore = shield;
-            double effectiveShieldMax = Math.max(1e-9, effectiveShieldCapacityMax());
-            double passThroughChance = computeShieldPassthroughChance(shieldBefore / effectiveShieldMax);
             if (Double.isFinite(threatFacingAngle)) {
                 recentShieldImpactAngle = threatFacingAngle;
                 recentShieldImpactTimer = 1.2;
-                recentShieldImpactFace = SHIELD_FACE_FORE;
+                recentShieldImpactFace = shieldGateFace;
+            }
+            if (consumeShieldGateHit(shieldGateFace)) {
+                double absorbedDamage = Math.min(shieldBefore, Math.max(0.0, dmg));
+                if (absorbedDamage > 1e-6) {
+                    registerShieldImpact(absorbedDamage, impact);
+                }
+                double fx = Double.isFinite(hitX) ? hitX : x;
+                double fy = Double.isFinite(hitY) ? hitY : y;
+                Explosion.spawnShieldHit(fx, fy);
+                return;
             }
             double absorbedDamage = Math.min(shieldBefore, Math.max(0.0, dmg));
             if (absorbedDamage > 1e-6) {
@@ -1066,17 +1084,16 @@ public abstract class Ship {
             Explosion.spawnShieldHit(fx, fy);
 
             double overflow = Math.max(0.0, dmg - shieldBefore);
-            boolean randomPassThrough = randomUnit() < passThroughChance;
-            if (overflow <= 1e-6 && !randomPassThrough) {
+            if (overflow <= 1e-6) {
                 return;
             }
-            hullDamage = randomPassThrough
-                    ? Math.max(1, dmg)
-                    : Math.max(1, (int) Math.round(overflow));
+            hullDamage = Math.max(1, (int) Math.round(overflow));
         }
 
         ShipRoomLayout.RoomDef armorRoom = resolveArmorRoomForImpact(impact, primaryRoom);
         ShipRoomLayout.RoomDef interiorRoom = resolveInteriorRoomForImpact(impact, primaryRoom);
+        int armorGateFace = armorGateFaceForImpact(impact, primaryRoom);
+        boolean armorGateAbsorbed = hullDamage > 0 && consumeArmorGateHit(armorGateFace);
         if (armorRoom != null && hullDamage > 0) {
             double armorBefore = roomHp.getOrDefault(armorRoom.id, roomHpMax.getOrDefault(armorRoom.id, 0.0));
             double nx = (impact == null) ? Double.NaN : impact.normalizedX;
@@ -1085,13 +1102,19 @@ public abstract class Ship {
             double armorAfter = roomHp.getOrDefault(armorRoom.id, armorBefore);
             double absorbed = Math.max(0.0, armorBefore - armorAfter);
             hullDamage = Math.max(0, (int) Math.round(Math.max(0.0, hullDamage - absorbed)));
-            if (hullDamage <= 0) {
+            if (armorGateAbsorbed || hullDamage <= 0) {
                 registerHullImpact(Math.max(1, (int) Math.round(dmg * 0.22)), impact, armorRoom);
                 syncHullFromRoomIntegrity();
                 evaluateCondemnedStateFromRooms();
                 return;
             }
         } else {
+            if (armorGateAbsorbed) {
+                registerHullImpact(Math.max(1, (int) Math.round(dmg * 0.22)), impact, primaryRoom);
+                syncHullFromRoomIntegrity();
+                evaluateCondemnedStateFromRooms();
+                return;
+            }
             interiorRoom = primaryRoom;
         }
 
@@ -2328,10 +2351,50 @@ public abstract class Ship {
     }
 
     public double shieldPassthroughChance() {
-        if (!shieldActive) return 1.0;
+        if (!shieldActive || shield <= 1e-9) return 1.0;
         double effectiveMax = effectiveShieldCapacityMax();
         if (effectiveMax <= 1e-9) return 1.0;
-        return computeShieldPassthroughChance(shield / effectiveMax);
+        return 0.0;
+    }
+
+    public int externalShieldGateHitCap() {
+        syncDefenseGateState(false);
+        return maxGateValue(shieldGateHitsMax);
+    }
+
+    public int externalShieldGateHitsRemaining() {
+        syncDefenseGateState(false);
+        return minGateValue(shieldGateHitsRemaining);
+    }
+
+    public int externalShieldGateHitCap(int face) {
+        syncDefenseGateState(false);
+        return gateValueForFace(shieldGateHitsMax, face);
+    }
+
+    public int externalShieldGateHitsRemaining(int face) {
+        syncDefenseGateState(false);
+        return gateValueForFace(shieldGateHitsRemaining, face);
+    }
+
+    public int armorGateHitCap() {
+        syncDefenseGateState(false);
+        return maxGateValue(armorGateHitsMax);
+    }
+
+    public int armorGateHitsRemaining() {
+        syncDefenseGateState(false);
+        return minGateValue(armorGateHitsRemaining);
+    }
+
+    public int armorGateHitCap(int face) {
+        syncDefenseGateState(false);
+        return gateValueForFace(armorGateHitsMax, face);
+    }
+
+    public int armorGateHitsRemaining(int face) {
+        syncDefenseGateState(false);
+        return gateValueForFace(armorGateHitsRemaining, face);
     }
 
     public double collapseShield(double offlineSeconds, double hitX, double hitY, double impactVx, double impactVy) {
@@ -2343,10 +2406,11 @@ public abstract class Ship {
         double stripped = Math.max(0.0, shield);
         HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        int impactFace = shieldFaceForImpactAngle(threatFacingAngle, getShieldFacingAngle());
         if (Double.isFinite(threatFacingAngle)) {
             recentShieldImpactAngle = threatFacingAngle;
             recentShieldImpactTimer = 1.2;
-            recentShieldImpactFace = SHIELD_FACE_FORE;
+            recentShieldImpactFace = impactFace;
         }
         if (stripped > 1e-6) {
             registerShieldImpact(stripped, impact);
@@ -2373,10 +2437,11 @@ public abstract class Ship {
 
         HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        int impactFace = shieldFaceForImpactAngle(threatFacingAngle, getShieldFacingAngle());
         if (Double.isFinite(threatFacingAngle)) {
             recentShieldImpactAngle = threatFacingAngle;
             recentShieldImpactTimer = 1.2;
-            recentShieldImpactFace = SHIELD_FACE_FORE;
+            recentShieldImpactFace = impactFace;
         }
         registerShieldImpact(drained, impact);
         applyShieldDamage(drained);
@@ -2401,10 +2466,11 @@ public abstract class Ship {
 
         HullGeometry.ImpactSample impact = resolveHullImpactSample(hitX, hitY, impactVx, impactVy);
         double threatFacingAngle = resolveShieldThreatFacingAngle(hitX, hitY, impactVx, impactVy);
+        int impactFace = shieldFaceForImpactAngle(threatFacingAngle, getShieldFacingAngle());
         if (Double.isFinite(threatFacingAngle)) {
             recentShieldImpactAngle = threatFacingAngle;
             recentShieldImpactTimer = 1.2;
-            recentShieldImpactFace = SHIELD_FACE_FORE;
+            recentShieldImpactFace = impactFace;
         }
         registerShieldImpact(drained, impact);
         applyShieldDamage(drained);
@@ -2532,6 +2598,11 @@ public abstract class Ship {
         roomDisabledSystems.clear();
         shieldFacesInitialized = false;
         shieldFacesSyncedMax = Double.NaN;
+        Arrays.fill(shieldGateHitsRemaining, 0);
+        Arrays.fill(shieldGateHitsMax, -1);
+        Arrays.fill(shieldGateRechargeTimer, 0.0);
+        Arrays.fill(armorGateHitsRemaining, 0);
+        Arrays.fill(armorGateHitsMax, -1);
     }
 
     private void ensureRoomSystemsInitialized() {
@@ -4362,6 +4433,27 @@ public abstract class Ship {
         return (rel > 0.0) ? SHIELD_FACE_RIGHT : SHIELD_FACE_LEFT;
     }
 
+    private int armorGateFaceForImpact(HullGeometry.ImpactSample impact,
+                                       ShipRoomLayout.RoomDef primaryRoom) {
+        ShipRoomLayout.RoomDef preferredArmor = preferredArmorRoomForImpact(impact);
+        if (preferredArmor != null) return faceForArmorRoom(preferredArmor.id);
+        if (primaryRoom != null) return faceForArmorRoom(primaryRoom.id);
+        return SHIELD_FACE_FORE;
+    }
+
+    private int faceForArmorRoom(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return SHIELD_FACE_FORE;
+        ShipRoomLayout.RoomId outer = ShipRoomLayout.outerArmorRoomFor(roomId);
+        if (outer == null) outer = roomId;
+        return switch (outer) {
+            case BOW_ARMOR -> SHIELD_FACE_FORE;
+            case AFT_ARMOR -> SHIELD_FACE_REAR;
+            case DORSAL_ARMOR -> SHIELD_FACE_LEFT;
+            case VENTRAL_ARMOR -> SHIELD_FACE_RIGHT;
+            default -> SHIELD_FACE_FORE;
+        };
+    }
+
     private void applyShieldDamageToFace(int face, double amount) {
         if (amount <= 0.0) return;
         ensureShieldFacesSynced();
@@ -4378,6 +4470,8 @@ public abstract class Ship {
     private void forceShieldOffline(double duration) {
         for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaces[i] = 0.0;
         shield = 0.0;
+        Arrays.fill(shieldGateHitsRemaining, 0);
+        Arrays.fill(shieldGateRechargeTimer, shieldGateRechargeDelaySeconds());
         shieldOfflineTimer = Math.max(shieldOfflineTimer, duration);
         shieldFacesSyncedMax = Math.max(0.0, shieldMax);
         shieldFacesInitialized = true;
@@ -5180,9 +5274,164 @@ public abstract class Ship {
         recentShieldImpactFace = -1;
         clearShieldImpactMarks();
         for (int i = 0; i < SHIELD_FACE_COUNT; i++) shieldFaceRegenLock[i] = 0.0;
+        Arrays.fill(shieldGateHitsRemaining, 0);
+        Arrays.fill(shieldGateHitsMax, -1);
+        Arrays.fill(shieldGateRechargeTimer, 0.0);
+        Arrays.fill(armorGateHitsRemaining, 0);
+        Arrays.fill(armorGateHitsMax, -1);
+        syncDefenseGateState(false);
         if (shieldFacingMode == ShieldFacingMode.FORWARD) {
             shieldFacingAngle = angle;
         }
+    }
+
+    private void syncDefenseGateState(boolean allowRestore) {
+        int shieldCap = configuredShieldGateHitCap();
+        for (int face = 0; face < SHIELD_FACE_COUNT; face++) {
+            boolean initShield = shieldGateHitsMax[face] != shieldCap;
+            shieldGateHitsMax[face] = shieldCap;
+            if (shieldCap <= 0) {
+                shieldGateHitsRemaining[face] = 0;
+                shieldGateRechargeTimer[face] = 0.0;
+                continue;
+            }
+            if (initShield) {
+                shieldGateHitsRemaining[face] = shieldCap;
+                shieldGateRechargeTimer[face] = 0.0;
+            }
+            shieldGateHitsRemaining[face] = Math.max(0, Math.min(shieldGateHitsRemaining[face], shieldCap));
+            shieldGateRechargeTimer[face] = Math.max(0.0, shieldGateRechargeTimer[face]);
+        }
+
+        int armorCap = configuredArmorGateHitCap();
+        for (int face = 0; face < SHIELD_FACE_COUNT; face++) {
+            boolean initArmor = armorGateHitsMax[face] != armorCap;
+            armorGateHitsMax[face] = armorCap;
+            if (armorCap <= 0) {
+                armorGateHitsRemaining[face] = 0;
+                continue;
+            }
+            if (initArmor) armorGateHitsRemaining[face] = armorCap;
+            armorGateHitsRemaining[face] = Math.max(0, Math.min(armorGateHitsRemaining[face], armorCap));
+            if (allowRestore && armorDefenseLayerFullyRestored(face)) {
+                armorGateHitsRemaining[face] = armorCap;
+            }
+        }
+    }
+
+    private int configuredShieldGateHitCap() {
+        if (!shieldActive || shieldMax <= 1e-9) return 0;
+        Faction durabilityFaction = (faction == null) ? Faction.ENEMY : faction;
+        return switch (durabilityFaction) {
+            case PLAYER, ALLY -> 5;
+            case TEAM_C -> 10;
+            case ENEMY -> 1;
+            default -> 0;
+        };
+    }
+
+    private int configuredArmorGateHitCap() {
+        return (faction == Faction.TEAM_D && hasArmorLayer()) ? 5 : 0;
+    }
+
+    private boolean consumeShieldGateHit(int face) {
+        int normalizedFace = normalizeDefenseFace(face);
+        if (shieldGateHitsRemaining[normalizedFace] <= 0) return false;
+        shieldGateHitsRemaining[normalizedFace]--;
+        if (shieldGateHitsRemaining[normalizedFace] < shieldGateHitsMax[normalizedFace]) {
+            shieldGateRechargeTimer[normalizedFace] = shieldGateRechargeDelaySeconds();
+        }
+        return true;
+    }
+
+    private boolean consumeArmorGateHit(int face) {
+        int normalizedFace = normalizeDefenseFace(face);
+        if (armorGateHitsRemaining[normalizedFace] <= 0) return false;
+        armorGateHitsRemaining[normalizedFace]--;
+        return true;
+    }
+
+    private boolean armorDefenseLayerFullyRestored(int face) {
+        if (configuredArmorGateHitCap() <= 0) return false;
+        ensureRoomSystemsInitialized();
+        ShipRoomLayout.RoomId outerRoom = armorRoomForFace(face, false);
+        ShipRoomLayout.RoomId innerRoom = armorRoomForFace(face, true);
+        boolean found = false;
+        for (ShipRoomLayout.RoomId roomId : new ShipRoomLayout.RoomId[]{outerRoom, innerRoom}) {
+            if (roomId == null) continue;
+            double max = roomHpMax.getOrDefault(roomId, 0.0);
+            if (max <= 1e-6) continue;
+            found = true;
+            double hpv = roomHp.getOrDefault(roomId, max);
+            if (hpv < max - 1e-6) return false;
+        }
+        return found;
+    }
+
+    private void updateShieldGateRecharge(double dt) {
+        if (dt <= 0.0) return;
+        if (!shieldActive || shieldMax <= 1e-9) return;
+        if (!isShieldOnline() || shield <= 1e-6) return;
+        double interval = shieldGateRechargeIntervalSeconds();
+        for (int face = 0; face < SHIELD_FACE_COUNT; face++) {
+            int maxHits = shieldGateHitsMax[face];
+            if (maxHits <= 0) continue;
+            if (shieldGateHitsRemaining[face] >= maxHits) {
+                shieldGateRechargeTimer[face] = 0.0;
+                continue;
+            }
+            shieldGateRechargeTimer[face] = Math.max(0.0, shieldGateRechargeTimer[face] - dt);
+            while (shieldGateRechargeTimer[face] <= 1e-9 && shieldGateHitsRemaining[face] < maxHits) {
+                shieldGateHitsRemaining[face]++;
+                if (shieldGateHitsRemaining[face] < maxHits) {
+                    shieldGateRechargeTimer[face] += interval;
+                } else {
+                    shieldGateRechargeTimer[face] = 0.0;
+                }
+            }
+        }
+    }
+
+    private int gateValueForFace(int[] values, int face) {
+        if (values == null || values.length <= 0) return 0;
+        return values[normalizeDefenseFace(face)];
+    }
+
+    private int minGateValue(int[] values) {
+        if (values == null || values.length <= 0) return 0;
+        int min = Integer.MAX_VALUE;
+        for (int value : values) min = Math.min(min, value);
+        return (min == Integer.MAX_VALUE) ? 0 : Math.max(0, min);
+    }
+
+    private int maxGateValue(int[] values) {
+        if (values == null || values.length <= 0) return 0;
+        int max = 0;
+        for (int value : values) max = Math.max(max, value);
+        return Math.max(0, max);
+    }
+
+    private int normalizeDefenseFace(int face) {
+        if (face < 0 || face >= SHIELD_FACE_COUNT) return SHIELD_FACE_FORE;
+        return face;
+    }
+
+    private ShipRoomLayout.RoomId armorRoomForFace(int face, boolean inner) {
+        return switch (normalizeDefenseFace(face)) {
+            case SHIELD_FACE_FORE -> inner ? ShipRoomLayout.RoomId.BOW_ARMOR_INNER : ShipRoomLayout.RoomId.BOW_ARMOR;
+            case SHIELD_FACE_REAR -> inner ? ShipRoomLayout.RoomId.AFT_ARMOR_INNER : ShipRoomLayout.RoomId.AFT_ARMOR;
+            case SHIELD_FACE_LEFT -> inner ? ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER : ShipRoomLayout.RoomId.DORSAL_ARMOR;
+            case SHIELD_FACE_RIGHT -> inner ? ShipRoomLayout.RoomId.VENTRAL_ARMOR_INNER : ShipRoomLayout.RoomId.VENTRAL_ARMOR;
+            default -> inner ? ShipRoomLayout.RoomId.BOW_ARMOR_INNER : ShipRoomLayout.RoomId.BOW_ARMOR;
+        };
+    }
+
+    private double shieldGateRechargeDelaySeconds() {
+        return Math.max(2.0, shieldRebootDelay * 1.5);
+    }
+
+    private double shieldGateRechargeIntervalSeconds() {
+        return Math.max(1.0, shieldRebootDelay * 0.75);
     }
 
     private double resolveSuperweaponAim(double targetX, double targetY) {
