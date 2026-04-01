@@ -2,9 +2,11 @@ import app.config.GameMode;
 import app.persistence.CampaignCheckpointStore;
 import app.persistence.CampaignUnlockProfile;
 import java.awt.Color;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -177,6 +179,7 @@ public final class CampaignSystem {
         public int campaignKills = 0;
         public int branchScore = 0;
         public String branchRoute = "BALANCED";
+        public final List<TitanArchetype> ownedTitans = new ArrayList<>();
 
         public boolean unlockAuxGunGranted = false;
         public int unlockMissileTierGranted = 0;
@@ -1709,6 +1712,7 @@ public final class CampaignSystem {
         cp.bossDropMissileCore = st.bossDropMissileCore;
         cp.bossDropFlagCore = st.bossDropFlagCore;
         cp.bossDropsCollected = st.bossDropsCollected;
+        cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
 
         Player player = ctx.player;
         cp.playerFactionName = (player.faction == null) ? Faction.PLAYER.name() : player.faction.name();
@@ -1774,6 +1778,7 @@ public final class CampaignSystem {
         st.bossDropMissileCore = cp.bossDropMissileCore;
         st.bossDropFlagCore = cp.bossDropFlagCore;
         st.bossDropsCollected = cp.bossDropsCollected;
+        TitanFleetSystem.restoreOwnedTitans(st, cp.ownedTitans);
 
         restorePlayerFromCheckpoint(ctx.player, cp);
         restoreBaseCheckpoint(ctx.allyBase, ctx.baseUpgrades.get(ctx.allyBase),

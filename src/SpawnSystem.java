@@ -709,6 +709,7 @@ public final class SpawnSystem {
         ctx.allyBase = null;
         ctx.enemyBase = null;
         clearShootingRangeTargetSlots(ctx);
+        ctx.command.shootingRangeTitanArchetype = null;
 
         double px = GameMath.clamp(Math.max(240.0, ctx.WORLD_W * 0.16), 90.0, ctx.WORLD_W - 90.0);
         double py = GameMath.clamp(ctx.WORLD_H * 0.5, 90.0, ctx.WORLD_H - 90.0);
@@ -733,7 +734,7 @@ public final class SpawnSystem {
 
     static void populateShootingRangeTargets(GameContext ctx, double originX, double originY, Faction faction) {
         if (ctx == null || faction == null) return;
-        for (ShootingRangeTargetSpec spec : shootingRangeLayout()) {
+        for (ShootingRangeTargetSpec spec : shootingRangeLayout(currentShootingRangeTitanLayout(ctx))) {
             spawnRangeTarget(ctx,
                     spec.role,
                     faction,
@@ -798,6 +799,20 @@ public final class SpawnSystem {
         return true;
     }
 
+    public static boolean setShootingRangeTitanLayout(GameContext ctx, TitanArchetype archetype) {
+        if (!canSwitchShootingRangeLayout(ctx) || archetype == null) return false;
+        ctx.command.shootingRangeTitanArchetype = archetype;
+        replaceShootingRangeTargets(ctx, ctx.command.shootingRangeTargetFaction);
+        return true;
+    }
+
+    public static boolean clearShootingRangeTitanLayout(GameContext ctx) {
+        if (!canSwitchShootingRangeLayout(ctx)) return false;
+        ctx.command.shootingRangeTitanArchetype = null;
+        replaceShootingRangeTargets(ctx, ctx.command.shootingRangeTargetFaction);
+        return true;
+    }
+
     private static java.util.Map<String, ShootingRangeTargetSlot> shootingRangeTargetSlotsFor(GameContext ctx) {
         return SHOOTING_RANGE_TARGET_SLOTS.computeIfAbsent(ctx, k -> new java.util.LinkedHashMap<>());
     }
@@ -813,7 +828,7 @@ public final class SpawnSystem {
         clearShootingRangeTargetSlots(ctx);
         ctx.command.shootingRangeTargetFaction = faction;
         populateShootingRangeTargets(ctx, ctx.command.shootingRangeOriginX, ctx.command.shootingRangeOriginY, faction);
-        ctx.eventBanner = shootingRangeBanner(faction);
+        ctx.eventBanner = shootingRangeBanner(faction, currentShootingRangeTitanLayout(ctx));
         ctx.eventBannerT = 2.4;
     }
 
@@ -829,9 +844,24 @@ public final class SpawnSystem {
         return Faction.ENEMY;
     }
 
-    private static String shootingRangeBanner(Faction faction) {
+    private static boolean canSwitchShootingRangeLayout(GameContext ctx) {
+        if (ctx == null || ctx.command == null) return false;
+        if (ctx.config == null || ctx.config.mode != GameMode.SHOOTING_RANGE) return false;
+        return Double.isFinite(ctx.command.shootingRangeOriginX) && Double.isFinite(ctx.command.shootingRangeOriginY);
+    }
+
+    private static TitanArchetype currentShootingRangeTitanLayout(GameContext ctx) {
+        if (ctx == null || ctx.command == null) return null;
+        return ctx.command.shootingRangeTitanArchetype;
+    }
+
+    private static String shootingRangeBanner(Faction faction, TitanArchetype titanArchetype) {
         String label = (faction == null) ? "UNKNOWN" : faction.teamName().toUpperCase();
-        return "SHOOTING RANGE  -  TARGETS: " + label + "  (KEYS 1-4)";
+        if (titanArchetype == null) {
+            return "SHOOTING RANGE  -  TARGETS: " + label + "  (1-4 FACTION / SHIFT+1-0,Q,E,R TITANS)";
+        }
+        return "SHOOTING RANGE  -  " + label + " / " + titanArchetype.displayName()
+                + "  (SHIFT+BACKSPACE RESET)";
     }
 
     private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, Faction faction, double x, double y, String label, boolean keepShields) {
@@ -865,7 +895,14 @@ public final class SpawnSystem {
         return s;
     }
 
-    private static java.util.List<ShootingRangeTargetSpec> shootingRangeLayout() {
+    private static java.util.List<ShootingRangeTargetSpec> shootingRangeLayout(TitanArchetype titanArchetype) {
+        if (titanArchetype != null) {
+            return titanShootingRangeLayout(titanArchetype);
+        }
+        return defaultShootingRangeLayout();
+    }
+
+    private static java.util.List<ShootingRangeTargetSpec> defaultShootingRangeLayout() {
         java.util.List<ShootingRangeTargetSpec> out = new java.util.ArrayList<>();
 
         // Forward screen: tiny craft and raiders.
@@ -904,6 +941,153 @@ public final class SpawnSystem {
         out.add(spec(ShipRole.STATIC_TURRET, 2140, 392, "DEFENSE NODE STARBOARD", false));
         out.add(spec(ShipRole.BASE, 2420, 320, "RANGE FORTRESS CORE", true));
         return out;
+    }
+
+    private static java.util.List<ShootingRangeTargetSpec> titanShootingRangeLayout(TitanArchetype archetype) {
+        if (archetype == null) return defaultShootingRangeLayout();
+        return switch (archetype) {
+            case TRANSPORT -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+                    ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.TRANSPORT, ShipRole.HAULER,
+                    ShipRole.MINER, ShipRole.DRONE_CARRIER);
+            case BULWARK -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+                    ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.CARRIER);
+            case CARRIER_SUPPORT -> titanFormation(archetype, ShipRole.CARRIER,
+                    ShipRole.DRONE_CARRIER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.FRIGATE, ShipRole.FIGHTER,
+                    ShipRole.BOMBER, ShipRole.DRONE,
+                    ShipRole.PD_CRAFT, ShipRole.TRANSPORT);
+            case VANGUARD -> titanFormation(archetype, ShipRole.BATTLECRUISER,
+                    ShipRole.BATTLECRUISER, ShipRole.CRUISER,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.FRIGATE, ShipRole.MISSILE_BOAT,
+                    ShipRole.PATROL, ShipRole.STEALTH_SHIP);
+            case INTERDICTION -> titanFormation(archetype, ShipRole.BATTLECRUISER,
+                    ShipRole.CRUISER, ShipRole.CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.FRIGATE, ShipRole.MISSILE_BOAT,
+                    ShipRole.CIWS_CORVETTE, ShipRole.STEALTH_SHIP,
+                    ShipRole.PATROL, ShipRole.DRONE_CARRIER);
+            case COMMAND_INTEL -> titanFormation(archetype, ShipRole.BATTLESHIP,
+                    ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.FRIGATE,
+                    ShipRole.PICKET, ShipRole.PATROL,
+                    ShipRole.CIWS_CORVETTE, ShipRole.DRONE_CARRIER);
+            case BOARDING_RECOVERY -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.MISSILE_BOAT, ShipRole.TRANSPORT,
+                    ShipRole.HAULER, ShipRole.DRONE_CARRIER);
+            case ARTILLERY -> titanFormation(archetype, ShipRole.BATTLESHIP,
+                    ShipRole.BATTLECRUISER, ShipRole.CRUISER,
+                    ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.PICKET, ShipRole.DREADNOUGHT);
+            case SHIELD_BASTION -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+                    ShipRole.BATTLESHIP, ShipRole.CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.DRONE_CARRIER, ShipRole.TRANSPORT);
+            case FLEET_TELEPORTER -> titanFormation(archetype, ShipRole.SUPERSHIP,
+                    ShipRole.BATTLECRUISER, ShipRole.CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.FRIGATE,
+                    ShipRole.PICKET, ShipRole.CIWS_CORVETTE,
+                    ShipRole.TRANSPORT, ShipRole.DRONE_CARRIER);
+            case ELITE_SUPERSHIP_COMMAND -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+                    ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
+                    ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
+                    ShipRole.SUPERSHIP);
+            case MOBILE_STATION -> titanFormation(archetype, ShipRole.BASE,
+                    ShipRole.CARRIER, ShipRole.DRONE_CARRIER,
+                    ShipRole.TRANSPORT, ShipRole.HAULER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.STATIC_TURRET);
+            case HYPERWEAPON -> titanFormation(archetype, ShipRole.SUPERSHIP,
+                    ShipRole.BATTLESHIP, ShipRole.CRUISER,
+                    ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
+                    ShipRole.PICKET, ShipRole.DREADNOUGHT);
+        };
+    }
+
+    private static java.util.List<ShootingRangeTargetSpec> titanFormation(TitanArchetype archetype,
+                                                                          ShipRole titanRole,
+                                                                          ShipRole... deploymentRoles) {
+        java.util.ArrayList<ShootingRangeTargetSpec> out = new java.util.ArrayList<>();
+        out.add(spec(titanRole, 2180, 0, titanCoreLabel(archetype), true));
+
+        double[][] slots = titanFormationSlots(deploymentRoles == null ? 0 : deploymentRoles.length);
+        if (deploymentRoles == null) return out;
+        for (int i = 0; i < deploymentRoles.length && i < slots.length; i++) {
+            ShipRole role = deploymentRoles[i];
+            if (role == null) continue;
+            out.add(spec(role,
+                    slots[i][0],
+                    slots[i][1],
+                    titanDeployLabel(archetype, role, i + 1),
+                    titanKeepShields(role)));
+        }
+        return out;
+    }
+
+    private static double[][] titanFormationSlots(int count) {
+        if (count <= 5) {
+            return new double[][]{
+                    {1400, -280},
+                    {1625, -120},
+                    {1845, 0},
+                    {1625, 120},
+                    {1400, 280}
+            };
+        }
+        return new double[][]{
+                {1280, -360},
+                {1455, -220},
+                {1620, -90},
+                {1790, -280},
+                {1965, -140},
+                {1280, 360},
+                {1455, 220},
+                {1620, 90},
+                {1790, 280},
+                {1965, 140}
+        };
+    }
+
+    private static String titanCoreLabel(TitanArchetype archetype) {
+        if (archetype == null) return "TITAN CORE";
+        return archetype.displayName() + " Core";
+    }
+
+    private static String titanDeployLabel(TitanArchetype archetype, ShipRole role, int index) {
+        String titanLabel = (archetype == null) ? "Titan" : archetype.displayName();
+        String roleLabel = (role == null) ? "Ship" : role.name().replace('_', ' ');
+        String slot = (index < 10) ? "0" + index : Integer.toString(index);
+        return titanLabel + " Deploy " + slot + " " + roleLabel;
+    }
+
+    private static boolean titanKeepShields(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case FRIGATE, ARTILLERY_SHIP, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER,
+                    BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER, BASE -> true;
+            default -> false;
+        };
     }
 
     private static ShootingRangeTargetSpec spec(ShipRole role, double dx, double dy, String label, boolean keepShields) {

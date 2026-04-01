@@ -1,0 +1,272 @@
+public enum TitanArchetype {
+    TRANSPORT(
+            "Transport Titan",
+            1400,
+            TitanAvailability.EARLY,
+            10,
+            0,
+            "Logistics, recovery, cargo survival",
+            "+25% salvage, +20% resupply, +1 emergency extraction",
+            "escort cruisers",
+            "point-defense frigates",
+            "line destroyers",
+            "repair frigates",
+            "sensor ship",
+            "interdiction escort"),
+    BULWARK(
+            "Bulwark Titan",
+            1800,
+            TitanAvailability.EARLY,
+            10,
+            0,
+            "Frontline defense, Mothership guard",
+            "+20% shield durability near the Mothership, +15% point-defense accuracy",
+            "heavy line cruisers",
+            "shield frigates",
+            "point-defense destroyers",
+            "missile escorts",
+            "support carrier"),
+    CARRIER_SUPPORT(
+            "Carrier Support Titan",
+            1900,
+            TitanAvailability.EARLY_MID,
+            10,
+            0,
+            "Small Craft sustainment",
+            "-30% Small Craft repair/rearm time, +1 upgrade tier for deployed wings",
+            "light carriers",
+            "escort frigates",
+            "interceptor destroyers",
+            "repair frigates",
+            "fleet tender",
+            "screen cruiser"),
+    VANGUARD(
+            "Vanguard Titan",
+            2100,
+            TitanAvailability.EARLY_MID,
+            10,
+            0,
+            "Fast reserve, breach response",
+            "+25% deployment speed, faster intercept and rapid-reaction orders",
+            "fast cruisers",
+            "missile destroyers",
+            "interceptor frigates",
+            "recon ship",
+            "support escort"),
+    INTERDICTION(
+            "Interdiction Titan",
+            2300,
+            TitanAvailability.MID,
+            10,
+            0,
+            "Trap, slow, isolate",
+            "Suppresses enemy retreat/warp behavior and improves pursuit quality",
+            "fast cruisers",
+            "electronic-warfare frigates",
+            "pursuit destroyers",
+            "interception escorts",
+            "sensor ship",
+            "strike carrier"),
+    COMMAND_INTEL(
+            "Command / Intel Titan",
+            2400,
+            TitanAvailability.MID,
+            10,
+            0,
+            "Sensor command, targeting coordination",
+            "+30% sensor reach, +20% target-lock quality, +15% long-range firing accuracy",
+            "sensor cruisers",
+            "command frigates",
+            "line destroyers",
+            "point-defense escorts",
+            "artillery cruiser",
+            "signals ship"),
+    BOARDING_RECOVERY(
+            "Boarding / Recovery Titan",
+            2450,
+            TitanAvailability.MID,
+            10,
+            0,
+            "Liberation, capture, recovery",
+            "+25% disablement efficiency, +20% liberation success against yellow ships",
+            "interdiction cruisers",
+            "boarding frigates",
+            "disablement destroyers",
+            "repair escorts",
+            "salvage escorts",
+            "support carrier"),
+    ARTILLERY(
+            "Artillery Titan",
+            2500,
+            TitanAvailability.MID,
+            10,
+            0,
+            "Long-range bombardment",
+            "+25% artillery range, +15% long-range firing-solution accuracy",
+            "artillery cruisers",
+            "sensor frigates",
+            "point-defense escorts",
+            "line destroyers",
+            "shield support ship"),
+    SHIELD_BASTION(
+            "Shield Bastion Titan",
+            2600,
+            TitanAvailability.MID_LATE,
+            10,
+            0,
+            "Defensive shield anchoring",
+            "Projects layered shield coverage and reduces alpha-strike spike damage",
+            "shield frigates",
+            "point-defense destroyers",
+            "heavy line cruisers",
+            "repair escorts",
+            "command escort"),
+    FLEET_TELEPORTER(
+            "Fleet Teleporter Titan",
+            2900,
+            TitanAvailability.MID_LATE,
+            10,
+            0,
+            "Reposition, redeploy, recover",
+            "Redeploys allied deployments and rescues isolated ships behind the line",
+            "guard cruisers",
+            "fast destroyers",
+            "repair frigates",
+            "sensor escorts",
+            "command escorts",
+            "shield frigate",
+            "supply ship"),
+    ELITE_SUPERSHIP_COMMAND(
+            "Elite Supership Command Titan",
+            3200,
+            TitanAvailability.LATE,
+            0,
+            5,
+            "Elite strike command",
+            "Coordinates a 4-5 Supership wing with stronger focus-fire lethality",
+            "elite Superships",
+            "recon escort",
+            "support command escort"),
+    MOBILE_STATION(
+            "Mobile Station Titan",
+            3400,
+            TitanAvailability.LATE,
+            10,
+            0,
+            "Rear-base support, field services",
+            "Creates a durable service node for repair, resupply, and local defense",
+            "repair frigates",
+            "ammo tenders",
+            "point-defense destroyers",
+            "shield frigates",
+            "salvage ship",
+            "escort carrier"),
+    HYPERWEAPON(
+            "Hyperweapon Titan",
+            3800,
+            TitanAvailability.LATE,
+            10,
+            0,
+            "Strategic finisher",
+            "Carries a battle-defining weapon with major payoff against marked targets",
+            "shield support ships",
+            "point-defense frigates",
+            "artillery cruisers",
+            "sensor ships",
+            "repair escort",
+            "interdiction escort");
+
+    private final String displayName;
+    private final int costCredits;
+    private final TitanAvailability availability;
+    private final int standardShipCommandCapacity;
+    private final int eliteSupershipCommandCapacity;
+    private final String roleLabel;
+    private final String commandBonusSummary;
+    private final String[] preferredDeploymentRoles;
+
+    TitanArchetype(String displayName,
+                   int costCredits,
+                   TitanAvailability availability,
+                   int standardShipCommandCapacity,
+                   int eliteSupershipCommandCapacity,
+                   String roleLabel,
+                   String commandBonusSummary,
+                   String... preferredDeploymentRoles) {
+        this.displayName = (displayName == null || displayName.isBlank()) ? name() : displayName;
+        this.costCredits = Math.max(0, costCredits);
+        this.availability = (availability == null) ? TitanAvailability.EARLY : availability;
+        this.standardShipCommandCapacity = Math.max(0, standardShipCommandCapacity);
+        this.eliteSupershipCommandCapacity = Math.max(0, eliteSupershipCommandCapacity);
+        this.roleLabel = (roleLabel == null || roleLabel.isBlank()) ? "Fleet role" : roleLabel;
+        this.commandBonusSummary = (commandBonusSummary == null || commandBonusSummary.isBlank())
+                ? "No command bonus."
+                : commandBonusSummary;
+        this.preferredDeploymentRoles = (preferredDeploymentRoles == null) ? new String[0] : preferredDeploymentRoles.clone();
+    }
+
+    public String displayName() {
+        return displayName;
+    }
+
+    public int costCredits() {
+        return costCredits;
+    }
+
+    public TitanAvailability availability() {
+        return availability;
+    }
+
+    public int standardShipCommandCapacity() {
+        return standardShipCommandCapacity;
+    }
+
+    public int eliteSupershipCommandCapacity() {
+        return eliteSupershipCommandCapacity;
+    }
+
+    public int totalCommandHullCapacity() {
+        return standardShipCommandCapacity + eliteSupershipCommandCapacity;
+    }
+
+    public boolean commandsEliteSupershipWing() {
+        return eliteSupershipCommandCapacity > 0;
+    }
+
+    public String roleLabel() {
+        return roleLabel;
+    }
+
+    public String commandBonusSummary() {
+        return commandBonusSummary;
+    }
+
+    public String[] preferredDeploymentRoles() {
+        return preferredDeploymentRoles.clone();
+    }
+
+    public boolean isAvailableInSector(int sector) {
+        return availability.isAvailableInSector(sector);
+    }
+
+    public static TitanArchetype fromSerializedName(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return null;
+        try {
+            return TitanArchetype.valueOf(trimmed);
+        } catch (IllegalArgumentException ignored) {
+            for (TitanArchetype archetype : values()) {
+                if (archetype.displayName.equalsIgnoreCase(trimmed)) {
+                    return archetype;
+                }
+            }
+            return null;
+        }
+    }
+
+    @Override
+    public String toString() {
+        return displayName + " [" + availability + ", $" + costCredits + ", cmd " + totalCommandHullCapacity() + "]";
+    }
+}

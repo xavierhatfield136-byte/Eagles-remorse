@@ -36,6 +36,7 @@ public final class CommandState {
     public boolean playerTeleportCharging = false;
     public double playerTeleportChargeRemaining = 0.0;
     public Faction shootingRangeTargetFaction = Faction.ENEMY;
+    public TitanArchetype shootingRangeTitanArchetype = null;
     public double shootingRangeOriginX = Double.NaN;
     public double shootingRangeOriginY = Double.NaN;
 }

@@ -1994,6 +1994,21 @@ public class Renderer {
         ArrayList<String> statusLines = new ArrayList<>();
         String modeName = ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString());
         statusLines.add("Mode: " + modeName + "   Tier: " + hangarTier);
+        if (CampaignSystem.isCampaignActive(ctx)) {
+            int titanCount = TitanFleetSystem.ownedTitanCount(ctx);
+            int standardCommand = TitanFleetSystem.totalStandardShipCommandCapacity(ctx);
+            int eliteCommand = TitanFleetSystem.totalEliteSupershipCommandCapacity(ctx);
+            String fleetLine = "Fleet: Titans " + titanCount + "/" + TitanFleetSystem.mothershipTitanCap()
+                    + "   Cmd " + standardCommand;
+            if (eliteCommand > 0) fleetLine += "   Elite " + eliteCommand;
+            statusLines.add(fleetLine);
+            if (detail == GameContext.HudDetail.FULL) {
+                TitanArchetype nextTitan = TitanFleetSystem.nextLockedArchetype(ctx);
+                if (nextTitan != null) {
+                    statusLines.add("Next Titan: " + nextTitan.displayName() + "   S" + nextTitan.availability().minSector());
+                }
+            }
+        }
         if (player != null && player.cargoMax > 0) {
             statusLines.add("Cargo: " + player.cargo + "/" + player.cargoMax + (dockedAtBase ? "   Docked" : ""));
         }

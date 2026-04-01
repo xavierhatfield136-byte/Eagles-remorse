@@ -440,9 +440,36 @@ public final class GameplayActions {
         return true;
     }
 
-    public static boolean tryHandleShootingRangeHotkey(GameContext ctx, int keyCode) {
+    public static boolean tryHandleShootingRangeHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
         if (!canIssueCombatAction(ctx)) return false;
+        if (e == null) return false;
         if (!SpawnSystem.hasShootingRangeTargets(ctx)) return false;
+        int keyCode = e.getKeyCode();
+
+        if (e.isShiftDown()) {
+            if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
+                return SpawnSystem.clearShootingRangeTitanLayout(ctx);
+            }
+
+            TitanArchetype archetype = switch (keyCode) {
+                case java.awt.event.KeyEvent.VK_1 -> TitanArchetype.TRANSPORT;
+                case java.awt.event.KeyEvent.VK_2 -> TitanArchetype.BULWARK;
+                case java.awt.event.KeyEvent.VK_3 -> TitanArchetype.CARRIER_SUPPORT;
+                case java.awt.event.KeyEvent.VK_4 -> TitanArchetype.VANGUARD;
+                case java.awt.event.KeyEvent.VK_5 -> TitanArchetype.INTERDICTION;
+                case java.awt.event.KeyEvent.VK_6 -> TitanArchetype.COMMAND_INTEL;
+                case java.awt.event.KeyEvent.VK_7 -> TitanArchetype.BOARDING_RECOVERY;
+                case java.awt.event.KeyEvent.VK_8 -> TitanArchetype.ARTILLERY;
+                case java.awt.event.KeyEvent.VK_9 -> TitanArchetype.SHIELD_BASTION;
+                case java.awt.event.KeyEvent.VK_0 -> TitanArchetype.FLEET_TELEPORTER;
+                case java.awt.event.KeyEvent.VK_Q -> TitanArchetype.ELITE_SUPERSHIP_COMMAND;
+                case java.awt.event.KeyEvent.VK_E -> TitanArchetype.MOBILE_STATION;
+                case java.awt.event.KeyEvent.VK_R -> TitanArchetype.HYPERWEAPON;
+                default -> null;
+            };
+            if (archetype == null) return false;
+            return SpawnSystem.setShootingRangeTitanLayout(ctx, archetype);
+        }
 
         Faction targetFaction = switch (keyCode) {
             case java.awt.event.KeyEvent.VK_1 -> Faction.ALLY;

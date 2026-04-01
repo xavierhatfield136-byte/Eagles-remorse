@@ -30,6 +30,7 @@ public final class CampaignCheckpointStore {
     private static final String DEFAULT_OVERLOAD_BUS_NAME = "TACTICAL";
     private static final String DEFAULT_POWER_BUSES = "0.18,0.18,0.19,0.15,0.18,0.12";
     private static final String DEFAULT_CARRIER_COMMAND_MODE_NAME = "ATTACK";
+    private static final String DEFAULT_OWNED_TITANS = "";
 
     private CampaignCheckpointStore() {}
 
@@ -95,6 +96,7 @@ public final class CampaignCheckpointStore {
         public String carrierCommandModeName = DEFAULT_CARRIER_COMMAND_MODE_NAME;
         public boolean carrierAutoLaunch = true;
         public String flightDeckLoadout = "";
+        public String ownedTitans = DEFAULT_OWNED_TITANS;
 
         public int allyOreStockpile = 0;
         public int enemyOreStockpile = 0;
@@ -150,6 +152,7 @@ public final class CampaignCheckpointStore {
             powerBuses = safeName(powerBuses, DEFAULT_POWER_BUSES);
             turretData = (turretData == null) ? "" : turretData.trim();
             flightDeckLoadout = (flightDeckLoadout == null) ? "" : flightDeckLoadout.trim();
+            ownedTitans = (ownedTitans == null) ? DEFAULT_OWNED_TITANS : ownedTitans.trim();
             allyOreStockpile = Math.max(0, allyOreStockpile);
             enemyOreStockpile = Math.max(0, enemyOreStockpile);
             allyHullLv = clamp(allyHullLv, 0, 3);
@@ -170,7 +173,10 @@ public final class CampaignCheckpointStore {
 
         public String menuSummary() {
             String role = playerRoleName.replace('_', ' ');
-            return "Sector " + nextSector + "  |  " + role + "  |  Route " + branchRoute;
+            return "Sector " + nextSector
+                    + "  |  " + role
+                    + "  |  Route " + branchRoute
+                    + "  |  Titans " + countCsvEntries(ownedTitans) + "/8";
         }
 
         public GameConfig toGameConfig() {
@@ -238,6 +244,7 @@ public final class CampaignCheckpointStore {
                 cp.carrierCommandModeName = props.getProperty("carrierCommandModeName", cp.carrierCommandModeName);
                 cp.carrierAutoLaunch = parseBoolean(props, "carrierAutoLaunch", cp.carrierAutoLaunch);
                 cp.flightDeckLoadout = props.getProperty("flightDeckLoadout", cp.flightDeckLoadout);
+                cp.ownedTitans = props.getProperty("ownedTitans", cp.ownedTitans);
                 cp.allyOreStockpile = parseInt(props, "allyOreStockpile", cp.allyOreStockpile);
                 cp.enemyOreStockpile = parseInt(props, "enemyOreStockpile", cp.enemyOreStockpile);
                 cp.allyHullLv = parseInt(props, "allyHullLv", cp.allyHullLv);
@@ -323,6 +330,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("carrierCommandModeName", cp.carrierCommandModeName);
             props.setProperty("carrierAutoLaunch", String.valueOf(cp.carrierAutoLaunch));
             props.setProperty("flightDeckLoadout", cp.flightDeckLoadout);
+            props.setProperty("ownedTitans", cp.ownedTitans);
             props.setProperty("allyOreStockpile", String.valueOf(cp.allyOreStockpile));
             props.setProperty("enemyOreStockpile", String.valueOf(cp.enemyOreStockpile));
             props.setProperty("allyHullLv", String.valueOf(cp.allyHullLv));
@@ -412,6 +420,15 @@ public final class CampaignCheckpointStore {
         if (value == null) return fallback;
         String trimmed = value.trim();
         return trimmed.isBlank() ? fallback : trimmed;
+    }
+
+    private static int countCsvEntries(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        int count = 0;
+        for (String part : raw.split(",")) {
+            if (part != null && !part.trim().isEmpty()) count++;
+        }
+        return count;
     }
 
     private static double finiteOr(double value, double fallback) {
