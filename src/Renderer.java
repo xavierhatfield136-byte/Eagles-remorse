@@ -129,6 +129,9 @@ public class Renderer {
             new ShopHullOffer(ShipRole.FRIGATE, 0, 0, ShopHullCategory.ESCORT,
                     "Balanced fleet-standard frigate",
                     "Reliable baseline hull for general combat upgrades."),
+            new ShopHullOffer(ShipRole.MINER, 160, 0, ShopHullCategory.ESCORT,
+                    "Ore extraction utility hull",
+                    "Low-cost mining ship that keeps the fleet stores flowing."),
             new ShopHullOffer(ShipRole.ARTILLERY_SHIP, 320, 0, ShopHullCategory.ESCORT,
                     "Budget long-range gun platform",
                     "Cheap reach for keeping pressure on distant targets."),
@@ -148,6 +151,9 @@ public class Renderer {
             new ShopHullOffer(ShipRole.CRUISER, 1100, 1, ShopHullCategory.LINE,
                     "Missile cruiser",
                     "Long-range salvo ship with sustained rack pressure."),
+            new ShopHullOffer(ShipRole.HAULER, 260, 1, ShopHullCategory.LINE,
+                    "Bulk logistics hauler",
+                    "Moves ore off miners fast and keeps the command ship topped up."),
             new ShopHullOffer(ShipRole.BATTLECRUISER, 1600, 2, ShopHullCategory.LINE,
                     "Fast capital hunter",
                     "Aggressive heavy hull for breakthrough pushes."),
@@ -2011,18 +2017,22 @@ public class Renderer {
                 : Math.max(270, Math.min(340, viewW / 4));
         leftW = Math.max(250, Math.min(leftW, viewW - 28));
 
+        int objectiveH = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, leftW, detail);
         int commandH = computeCommandOverviewCardHeight(player, hangarTier, dockedAtBase, resourceRush,
-                allyOre, enemyOre, goal, objectiveDetail, orePriceMul, orePriceT, miningMul, miningT,
+                allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT,
                 gameOverText, leftW, detail, ctx);
         int actionH = (detail == GameContext.HudDetail.FULL) ? computeActionStripCardHeight(player, detail, leftW) : 0;
         int shipH = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, leftW, detail);
 
-        int totalH = commandH + 10 + shipH + (actionH > 0 ? actionH + 10 : 0);
+        int totalH = commandH + 10 + shipH + (actionH > 0 ? actionH + 10 : 0) + (objectiveH > 0 ? objectiveH + 10 : 0);
         int cardY = Math.max(16, coreMenu.y - 12 - totalH);
+        if (objectiveH > 0) {
+            cardY += drawObjectiveCard(g2, objectiveTitle, objectiveDetail, leftX, cardY, leftW, detail);
+            cardY += 10;
+        }
         cardY += drawCommandOverviewCard(g2, player, credits, hangarTier, dockedAtBase,
-                resourceRush, allyOre, enemyOre, goal, objectiveTitle, objectiveDetail,
-                orePriceMul, orePriceT, miningMul, miningT, gameOverText,
+                resourceRush, allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText,
                 leftX, cardY, leftW, detail, ctx);
         if (actionH > 0) {
             cardY += 10;
@@ -2079,9 +2089,70 @@ public class Renderer {
         }
     }
 
+    private static int drawObjectiveCard(Graphics2D g2, String objectiveTitle, String objectiveDetail,
+                                         int x, int y, int w, GameContext.HudDetail detail) {
+        if (g2 == null) return 0;
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        FontMetrics titleFm = g2.getFontMetrics(titleFont);
+        FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
+        int contentW = Math.max(220, w - 24);
+
+        List<String> titleLines = buildObjectiveTitleLines(titleFm, objectiveTitle, contentW, detail);
+        List<String> detailLines = buildObjectiveDetailLines(bodyFm, objectiveDetail, contentW, detail);
+        if (titleLines.isEmpty() && detailLines.isEmpty()) return 0;
+
+        int h = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, w, detail);
+        drawHudPanelFrame(g2, x, y, w, h, "OBJECTIVE", new Color(255, 214, 132, 220));
+
+        int rowY = y + 38;
+        g2.setFont(titleFont);
+        g2.setColor(new Color(255, 232, 170, 232));
+        for (String line : titleLines) {
+            g2.drawString(line, x + 12, rowY);
+            rowY += 16;
+        }
+
+        if (!titleLines.isEmpty() && !detailLines.isEmpty()) {
+            g2.setColor(new Color(255, 255, 255, 44));
+            g2.drawLine(x + 12, rowY + 1, x + w - 12, rowY + 1);
+            rowY += 16;
+        }
+
+        g2.setFont(bodyFont);
+        g2.setColor(new Color(220, 232, 244, 208));
+        for (String line : detailLines) {
+            g2.drawString(line, x + 12, rowY);
+            rowY += 15;
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+        return h;
+    }
+
+    private static int computeObjectiveCardHeight(String objectiveTitle, String objectiveDetail, int w,
+                                                  GameContext.HudDetail detail) {
+        Canvas metricsCanvas = new Canvas();
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        FontMetrics titleFm = metricsCanvas.getFontMetrics(titleFont);
+        FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
+        int contentW = Math.max(220, w - 24);
+        List<String> titleLines = buildObjectiveTitleLines(titleFm, objectiveTitle, contentW, detail);
+        List<String> detailLines = buildObjectiveDetailLines(bodyFm, objectiveDetail, contentW, detail);
+        if (titleLines.isEmpty() && detailLines.isEmpty()) return 0;
+        int h = 34 + titleLines.size() * 16;
+        if (!titleLines.isEmpty() && !detailLines.isEmpty()) h += 16;
+        h += detailLines.size() * 15 + 12;
+        return Math.max(66, h);
+    }
+
     private static int drawCommandOverviewCard(Graphics2D g2, Player player, int credits, int hangarTier, boolean dockedAtBase,
                                                boolean resourceRush, int allyOre, int enemyOre, int goal,
-                                               String objectiveTitle, String objectiveDetail,
                                                double orePriceMul, double orePriceT, double miningMul, double miningT,
                                                String gameOverText, int x, int y, int w,
                                                GameContext.HudDetail detail, GameContext ctx) {
@@ -2090,14 +2161,10 @@ public class Renderer {
         Font oldFont = g2.getFont();
         Color oldColor = g2.getColor();
         Font bodyFont = new Font("Consolas", Font.PLAIN, 13);
-        FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
-        int contentW = Math.max(220, w - 24);
-
-        List<String> objectiveLines = buildCommandObjectiveLines(bodyFm, objectiveDetail, contentW, detail);
         List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
                 allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
         int h = computeCommandOverviewCardHeight(player, hangarTier, dockedAtBase, resourceRush,
-                allyOre, enemyOre, goal, objectiveDetail, orePriceMul, orePriceT, miningMul, miningT,
+                allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT,
                 gameOverText, w, detail, ctx);
 
         drawHudPanelFrame(g2, x, y, w, h, "COMMAND", factionHudColor(player.faction, 210));
@@ -2115,23 +2182,9 @@ public class Renderer {
         g2.setColor(new Color(150, 214, 255, 225));
         g2.drawString(creditLabel, x + w - 12 - creditFm.stringWidth(creditLabel), titleY);
 
-        int rowY = y + 56;
-        if (objectiveTitle != null && !objectiveTitle.isBlank()) {
-            g2.setFont(new Font("Consolas", Font.BOLD, 13));
-            g2.setColor(new Color(255, 226, 154, 230));
-            g2.drawString(objectiveTitle, x + 12, rowY);
-            rowY += 17;
-        }
-
-        g2.setFont(bodyFont);
-        g2.setColor(new Color(222, 234, 246, 208));
-        for (String line : objectiveLines) {
-            g2.drawString(line, x + 12, rowY);
-            rowY += 15;
-        }
-
+        int rowY = y + 58;
         g2.setColor(new Color(255, 255, 255, 58));
-        g2.drawLine(x + 12, rowY + 2, x + w - 12, rowY + 2);
+        g2.drawLine(x + 12, rowY, x + w - 12, rowY);
         rowY += 18;
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -2150,29 +2203,33 @@ public class Renderer {
 
     private static int computeCommandOverviewCardHeight(Player player, int hangarTier, boolean dockedAtBase,
                                                         boolean resourceRush, int allyOre, int enemyOre, int goal,
-                                                        String objectiveDetail, double orePriceMul, double orePriceT,
+                                                        double orePriceMul, double orePriceT,
                                                         double miningMul, double miningT, String gameOverText,
                                                         int w, GameContext.HudDetail detail, GameContext ctx) {
         if (player == null) return 0;
-        Canvas metricsCanvas = new Canvas();
-        Font bodyFont = new Font("Consolas", Font.PLAIN, 13);
-        FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
-        int contentW = Math.max(220, w - 24);
-        List<String> objectiveLines = buildCommandObjectiveLines(bodyFm, objectiveDetail, contentW, detail);
         List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
                 allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
-        return 72 + objectiveLines.size() * 15 + statusLines.size() * 15;
+        return 76 + statusLines.size() * 15;
     }
 
-    private static List<String> buildCommandObjectiveLines(FontMetrics bodyFm, String objectiveDetail, int contentW,
-                                                           GameContext.HudDetail detail) {
-        List<String> lines = wrapHudText(bodyFm,
-                (objectiveDetail == null || objectiveDetail.isBlank()) ? "Free navigation." : objectiveDetail,
-                contentW);
+    private static List<String> buildObjectiveTitleLines(FontMetrics titleFm, String objectiveTitle, int contentW,
+                                                         GameContext.HudDetail detail) {
+        List<String> lines = wrapHudText(titleFm, objectiveTitle, contentW);
         int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
             case MINIMAL -> 1;
             case COMPACT -> 2;
             case FULL -> 3;
+        };
+        return limitHudLines(lines, maxLines);
+    }
+
+    private static List<String> buildObjectiveDetailLines(FontMetrics bodyFm, String objectiveDetail, int contentW,
+                                                          GameContext.HudDetail detail) {
+        List<String> lines = wrapHudText(bodyFm, objectiveDetail, contentW);
+        int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
+            case MINIMAL -> 1;
+            case COMPACT -> 3;
+            case FULL -> 5;
         };
         return limitHudLines(lines, maxLines);
     }
@@ -2185,13 +2242,22 @@ public class Renderer {
         String modeName = ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString());
         statusLines.add("Mode: " + modeName + "   Tier: " + hangarTier);
         if (CampaignSystem.isCampaignActive(ctx)) {
+            int escortCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT);
+            int lineCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE);
+            int capitalCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
+            int titanHullCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
             int titanCount = TitanFleetSystem.ownedTitanCount(ctx);
             int standardCommand = TitanFleetSystem.totalStandardShipCommandCapacity(ctx);
             int eliteCommand = TitanFleetSystem.totalEliteSupershipCommandCapacity(ctx);
-            String fleetLine = "Fleet: Titans " + titanCount + "/" + TitanFleetSystem.mothershipTitanCap()
-                    + "   Cmd " + standardCommand;
-            if (eliteCommand > 0) fleetLine += "   Elite " + eliteCommand;
+            String fleetLine = "Fleet: E " + escortCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT)
+                    + "   L " + lineCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.LINE)
+                    + "   C " + capitalCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL)
+                    + "   T " + titanHullCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.TITAN);
             statusLines.add(fleetLine);
+            String commandLine = "Command: Grid " + titanCount + "/" + TitanFleetSystem.mothershipTitanCap()
+                    + "   Std " + standardCommand;
+            if (eliteCommand > 0) commandLine += "   Elite " + eliteCommand;
+            statusLines.add(commandLine);
             if (detail == GameContext.HudDetail.FULL) {
                 TitanArchetype nextTitan = TitanFleetSystem.nextLockedArchetype(ctx);
                 if (nextTitan != null) {
@@ -3148,7 +3214,7 @@ public class Renderer {
                 shopRoleTitle(player.role),
                 new Color(255, 206, 122));
         drawShopMetricPill(gx, panel.x + 622, panel.y + 64, 170,
-                campaignShop ? "BLUE FLEET" : "SUPERWEAPON",
+                campaignShop ? "FLEET CAPS" : "SUPERWEAPON",
                 campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
                 new Color(156, 224, 255));
 
@@ -3175,7 +3241,7 @@ public class Renderer {
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(196, 208, 224, 164));
         gx.drawString(campaignShop
-                        ? "Tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Commissioned blue ships persist until destroyed."
+                        ? "Tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Each hull band has its own cap and commissioned ships persist until destroyed."
                         : "Hull tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Tier-locked hulls need a stronger base hangar.",
                 panel.x + 22, panel.y + panel.height - 18);
         gx.dispose();
@@ -3240,12 +3306,24 @@ public class Renderer {
         g2.fillRoundRect(x, y, w, 46, 16, 16);
         g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), 84));
         g2.drawRoundRect(x, y, w, 46, 16, 16);
-        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        Font labelFont = new Font("Consolas", Font.BOLD, 11);
+        g2.setFont(labelFont);
         g2.setColor(new Color(210, 228, 246, 172));
-        g2.drawString(label, x + 12, y + 15);
-        g2.setFont(new Font("Consolas", Font.BOLD, 15));
+        FontMetrics labelFm = g2.getFontMetrics();
+        g2.drawString(fitShopText(labelFm, label, w - 24), x + 12, y + 15);
+        Font valueFont = new Font("Consolas", Font.BOLD, 15);
+        FontMetrics valueFm = g2.getFontMetrics(valueFont);
+        if (valueFm.stringWidth(value) > w - 24) {
+            valueFont = new Font("Consolas", Font.BOLD, 13);
+            valueFm = g2.getFontMetrics(valueFont);
+        }
+        if (valueFm.stringWidth(value) > w - 24) {
+            valueFont = new Font("Consolas", Font.BOLD, 12);
+            valueFm = g2.getFontMetrics(valueFont);
+        }
+        g2.setFont(valueFont);
         g2.setColor(new Color(245, 249, 255, 228));
-        g2.drawString(value, x + 12, y + 33);
+        g2.drawString(fitShopText(valueFm, value, w - 24), x + 12, y + 33);
     }
 
     private static void drawShopSectionLabel(Graphics2D g2, int x, int y, String title, String subtitle) {
@@ -3404,11 +3482,15 @@ public class Renderer {
                                          int credits, int hangarTier, Player player, GameContext ctx) {
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
         int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, offer.requiredTier) : 0;
+        ShopHullCategory fleetBand = ShopHullCategory.forRole(offer.role);
+        int bandCount = campaignShop ? CampaignSystem.livePersistentFleetCount(ctx, fleetBand) : 0;
+        int bandCap = campaignShop ? CampaignSystem.persistentFleetCap(fleetBand) : 0;
         boolean current = player.role == offer.role;
         boolean tierOk = hangarTier >= offer.requiredTier;
         boolean affordable = credits >= offer.cost;
         boolean oreAffordable = !campaignShop || (ctx != null && ctx.player != null && ctx.player.cargo >= oreCost);
-        boolean enabled = !current && tierOk && affordable && oreAffordable;
+        boolean capOk = !campaignShop || bandCount < bandCap;
+        boolean enabled = !current && tierOk && affordable && oreAffordable && capOk;
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
         drawShopCardFrame(g2, card, accent, current);
@@ -3425,18 +3507,22 @@ public class Renderer {
 
         String line2 = current
                 ? (campaignShop ? "Flagship hull currently commanded" : "Currently equipped")
-                : (tierOk ? (campaignShop ? "Ready to commission" : "Ready for swap") : "Needs hangar T" + offer.requiredTier);
+                : (!tierOk ? "Needs hangar T" + offer.requiredTier
+                : (campaignShop && !capOk)
+                ? (fleetBand.label() + " cap " + bandCount + "/" + bandCap + " full")
+                : (campaignShop ? "Ready to commission" : "Ready for swap"));
         String costLine = campaignShop
                 ? ("Tier " + offer.requiredTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
                 : ("Tier " + offer.requiredTier + "   Cost $" + offer.cost);
         g2.drawString(fitShopText(bodyMetrics, costLine, card.width - 20), card.x + 10, card.y + 69);
-        g2.drawString(line2, card.x + 10, card.y + 86);
+        g2.drawString(fitShopText(bodyMetrics, line2, card.width - 20), card.x + 10, card.y + 86);
 
         String buttonLabel;
         if (current) buttonLabel = "CURRENT";
         else if (!tierOk) buttonLabel = "LOCK T" + offer.requiredTier;
         else if (!affordable) buttonLabel = "NEED $" + offer.cost;
         else if (!oreAffordable) buttonLabel = "NEED " + oreCost + " ORE";
+        else if (!capOk) buttonLabel = "CAP FULL";
         else if (campaignShop) buttonLabel = (offer.cost <= 0) ? "BUY FREE" : ("BUY $" + offer.cost);
         else if (offer.cost <= 0) buttonLabel = "SWAP FREE";
         else buttonLabel = "SWAP $" + offer.cost;
@@ -3444,7 +3530,7 @@ public class Renderer {
     }
 
     private static String campaignFleetCount(GameContext ctx) {
-        return CampaignSystem.livePersistentFleetCount(ctx) + "/24";
+        return CampaignSystem.persistentFleetCompactSummary(ctx);
     }
 
     private static void drawShopCardFrame(Graphics2D g2, Rectangle card, Color accent, boolean strong) {

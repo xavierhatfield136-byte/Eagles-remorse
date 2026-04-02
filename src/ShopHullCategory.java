@@ -1,6 +1,6 @@
 public enum ShopHullCategory {
-    ESCORT("ESCORT", "Patrol hulls, escorts, and light skirmishers"),
-    LINE("LINE", "Frigates, cruisers, and front-line warships"),
+    ESCORT("ESCORT", "Patrol hulls, escorts, and light utility craft"),
+    LINE("LINE", "Frigates, cruisers, and logistics line hulls"),
     CAPITAL("CAPITAL", "Heavy capitals, carriers, and super-capitals"),
     TITAN("TITAN", "Titan command hulls and the Mothership");
 
@@ -28,13 +28,16 @@ public enum ShopHullCategory {
                     FRIGATE,
                     ARTILLERY_SHIP,
                     MISSILE_BOAT,
-                    CIWS_CORVETTE -> ESCORT;
+                    CIWS_CORVETTE,
+                    MINER -> ESCORT;
             case LIGHT_CRUISER,
                     MEDIUM_CRUISER,
                     CRUISER,
                     BATTLECRUISER,
                     BATTLESHIP,
-                    STEALTH_SHIP -> LINE;
+                    STEALTH_SHIP,
+                    TRANSPORT,
+                    HAULER -> LINE;
             case DREADNOUGHT,
                     CARRIER,
                     DRONE_CARRIER,

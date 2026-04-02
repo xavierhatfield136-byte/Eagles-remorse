@@ -1977,7 +1977,11 @@ public final class EconomySystem {
                 s.minerDebugNote = "";
                 if (inDepositRange(s, base)) {
                     int moved = s.depositCargoTo(base);
-                    if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction)) {
+                    boolean mothershipFleetDeposit = CampaignSystem.isCampaignActive(ctx)
+                            && base != null
+                            && base.role != null
+                            && base.role.isMothership();
+                    if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction) && !mothershipFleetDeposit) {
                         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
                         priceMul *= CampaignSystem.oreCreditMul(ctx);
                         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
@@ -2002,7 +2006,7 @@ public final class EconomySystem {
         double bestD2 = Double.POSITIVE_INFINITY;
         for (Ship s : ctx.ships) {
             if (s == null) continue;
-            if (s.role != ShipRole.BASE) continue;
+            if (!s.canReceiveOreDeposits()) continue;
             if (s.faction != miner.faction) continue;
             if (!s.alive || s.hp <= 0) continue;
             double d2 = GameMath.dist2(miner.x, miner.y, s.x, s.y);

@@ -116,7 +116,9 @@ public final class CampaignSystem {
 
     private static final int AUTHORED_VERTICAL_SLICE_LAST_SECTOR = 3;
     private static final int CAMPAIGN_STARTING_CREDITS = 1000;
-    private static final int CAMPAIGN_BLUE_FLEET_CAP = 24;
+    private static final int CAMPAIGN_BLUE_ESCORT_CAP = 15;
+    private static final int CAMPAIGN_BLUE_LINE_CAP = 11;
+    private static final int CAMPAIGN_BLUE_CAPITAL_CAP = 7;
     private static final String[] ACT_TITLES = {
             "",
             "TRADE HUB COLLAPSE",
@@ -567,20 +569,51 @@ public final class CampaignSystem {
     }
 
     public static int campaignOreCost(ShipRole role, int creditCost, int requiredTier) {
-        int base = Math.max(18, (int) Math.round(Math.max(0, creditCost) * 0.18));
-        int tierTax = Math.max(0, requiredTier) * 12;
-        int roleTax = switch ((role == null) ? ShipRole.FRIGATE : role) {
-            case PATROL, PICKET, FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE -> 0;
-            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, STEALTH_SHIP, TRANSPORT -> 22;
-            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, CARRIER, DRONE_CARRIER, SUPERSHIP -> 55;
-            case TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
-                 INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
-                 ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
-                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN -> 90;
-            case MOTHERSHIP -> 180;
-            default -> 10;
+        ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
+        return switch (resolved) {
+            case PATROL -> 10;
+            case PICKET -> 18;
+            case FRIGATE -> 12;
+            case ARTILLERY_SHIP -> 24;
+            case MISSILE_BOAT -> 24;
+            case CIWS_CORVETTE -> 20;
+            case MINER -> 14;
+
+            case LIGHT_CRUISER -> 52;
+            case MEDIUM_CRUISER -> 68;
+            case CRUISER -> 78;
+            case BATTLECRUISER -> 108;
+            case BATTLESHIP -> 138;
+            case STEALTH_SHIP -> 94;
+            case HAULER -> 34;
+            case TRANSPORT -> 46;
+
+            case DREADNOUGHT -> 210;
+            case CARRIER -> 184;
+            case DRONE_CARRIER -> 196;
+            case SUPERSHIP -> 320;
+
+            case TRANSPORT_TITAN -> 260;
+            case BULWARK_TITAN -> 300;
+            case CARRIER_SUPPORT_TITAN -> 315;
+            case VANGUARD_TITAN -> 330;
+            case INTERDICTION_TITAN -> 340;
+            case COMMAND_INTEL_TITAN -> 320;
+            case BOARDING_RECOVERY_TITAN -> 330;
+            case ARTILLERY_TITAN -> 360;
+            case SHIELD_BASTION_TITAN -> 380;
+            case FLEET_TELEPORTER_TITAN -> 350;
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> 410;
+            case MOBILE_STATION_TITAN -> 430;
+            case HYPERWEAPON_TITAN -> 480;
+            case MOTHERSHIP -> 720;
+
+            default -> {
+                int base = Math.max(18, (int) Math.round(Math.max(0, creditCost) * 0.10));
+                int tierTax = Math.max(0, requiredTier) * 16;
+                yield Math.max(18, base + tierTax);
+            }
         };
-        return Math.max(15, base + tierTax + roleTax);
     }
 
     public static boolean purchasePersistentBlueShip(GameContext ctx, ShipRole role, int creditCost, int requiredTier) {
@@ -594,8 +627,11 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "CAMPAIGN COMMAND REQUIRES THE MOTHERSHIP", 1.6);
             return false;
         }
-        if (livePersistentFleetSlots(st) >= CAMPAIGN_BLUE_FLEET_CAP) {
-            EventSystem.showBanner(ctx, "BLUE FLEET COMMAND CAP REACHED", 1.8);
+        ShopHullCategory category = ShopHullCategory.forRole(role);
+        int liveCount = livePersistentFleetSlots(st, category);
+        int cap = persistentFleetCap(category);
+        if (liveCount >= cap) {
+            EventSystem.showBanner(ctx, category.label() + " COMMAND CAP REACHED", 1.8);
             return false;
         }
 
@@ -623,7 +659,7 @@ public final class CampaignSystem {
         PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, generatedBlueFleetName(role, slotId));
         st.persistentBlueFleet.add(entry);
         TitanArchetype titan = TitanArchetype.fromShipRole(role);
-        if (titan != null) {
+        if (titan != null && st.ownedTitans.size() < TitanFleetSystem.mothershipTitanCap()) {
             st.ownedTitans.add(titan);
         }
         spawnSinglePersistentBlueShip(ctx, st, entry, st.persistentBlueFleet.size() - 1);
@@ -642,6 +678,31 @@ public final class CampaignSystem {
     public static int livePersistentFleetCount(GameContext ctx) {
         CampaignState st = state(ctx);
         return livePersistentFleetSlots(st);
+    }
+
+    static int livePersistentFleetCount(GameContext ctx, ShopHullCategory category) {
+        return livePersistentFleetSlots(state(ctx), category);
+    }
+
+    static int persistentFleetCap(ShopHullCategory category) {
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> CAMPAIGN_BLUE_ESCORT_CAP;
+            case LINE -> CAMPAIGN_BLUE_LINE_CAP;
+            case CAPITAL -> CAMPAIGN_BLUE_CAPITAL_CAP;
+            case TITAN -> TitanFleetSystem.mothershipTitanCap();
+        };
+    }
+
+    static String persistentFleetCompactSummary(GameContext ctx) {
+        int escort = livePersistentFleetCount(ctx, ShopHullCategory.ESCORT);
+        int line = livePersistentFleetCount(ctx, ShopHullCategory.LINE);
+        int capital = livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
+        int titan = livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
+        return "E" + escort + "/" + persistentFleetCap(ShopHullCategory.ESCORT)
+                + " L" + line + "/" + persistentFleetCap(ShopHullCategory.LINE)
+                + " C" + capital + "/" + persistentFleetCap(ShopHullCategory.CAPITAL)
+                + " T" + titan + "/" + persistentFleetCap(ShopHullCategory.TITAN);
     }
 
     public static String[] activeModifierLabels(GameContext ctx) {
@@ -2569,6 +2630,17 @@ public final class CampaignSystem {
         int count = 0;
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry != null && !entry.destroyed) count++;
+        }
+        return count;
+    }
+
+    private static int livePersistentFleetSlots(CampaignState st, ShopHullCategory category) {
+        if (st == null) return 0;
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        int count = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (ShopHullCategory.forRole(entry.role) == resolved) count++;
         }
         return count;
     }

@@ -1439,20 +1439,34 @@ public abstract class Ship {
         return got;
     }
 
+    public boolean canReceiveOreDeposits() {
+        return isBase || (role != null && role.isMothership());
+    }
+
     /**
-     * Deposit all carried cargo to a friendly base, increasing its oreStockpile.
+     * Deposit carried ore to a friendly receiver.
+     * Bases accumulate ore in their stockpile; the Mothership stores it in cargo.
      *
      * @return amount deposited.
      */
     public int depositCargoTo(Ship base) {
         if (!alive || dying) return 0;
         if (cargo <= 0) return 0;
-        if (base == null || !base.isBase) return 0;
+        if (base == null || !base.canReceiveOreDeposits()) return 0;
         if (!faction.isFriendlyTo(base.faction)) return 0;
 
-        int moved = cargo;
-        cargo = 0;
-        base.oreStockpile += moved;
+        int moved;
+        if (base.isBase) {
+            moved = cargo;
+            cargo = 0;
+            base.oreStockpile += moved;
+        } else {
+            int room = Math.max(0, base.cargoMax - base.cargo);
+            moved = Math.min(cargo, room);
+            if (moved <= 0) return 0;
+            cargo -= moved;
+            base.cargo = Math.min(base.cargoMax, base.cargo + moved);
+        }
         return moved;
     }
 
