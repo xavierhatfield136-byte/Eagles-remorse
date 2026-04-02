@@ -473,8 +473,10 @@ public class CollisionSystem {
 
     private static void applyDestabilizerBlast(GameContext ctx, DestabilizerPulse pulse, double x, double y, List<Ship> ships) {
         if (pulse == null) return;
-        double rr = Math.max(120.0, pulse.blastRadius);
         Ship shooter = resolveSourceShip(ctx, ships, pulse);
+        boolean artilleryTitanPulse = shooter != null && shooter.role == ShipRole.ARTILLERY_TITAN;
+        double rr = Math.max(120.0, pulse.blastRadius);
+        if (artilleryTitanPulse) rr = Math.max(rr, pulse.blastRadius * 1.22);
         boolean affected = false;
 
         Iterable<Ship> candidates = ships;
@@ -512,18 +514,49 @@ public class CollisionSystem {
                 double shieldDamage = Math.max(0.0, pulse.shieldDamage
                         * shieldScale
                         * (1.0 + DESTABILIZER_PULSE_SHIELD_CORE_BONUS * coreFrac));
+                if (artilleryTitanPulse) {
+                    shieldDamage *= 1.75;
+                }
                 double stripped = s.drainShieldByAmount(shieldDamage, x, y, impactVx, impactVy);
 
                 int hullDamage = Math.max(8, (int) Math.round(pulse.damage * intensity * hullBurst));
+                if (artilleryTitanPulse) {
+                    hullDamage = Math.max(hullDamage, (int) Math.round(pulse.damage * (1.18 + intensity + coreFrac)));
+                }
                 markPlayerHitContribution(ctx, pulse, s);
-                s.takePenetratingInternalDamage(hullDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
-                logDamageEvent(ctx, "destabilizer:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
-                s.applyShipwideRoomDisruption();
-                s.applyDestabilized(pulse.destabilizeSeconds * (0.58 + 0.42 * intensity) * (1.0 + 0.35 * coreFrac));
-                if (coreFrac > 1e-6) {
-                    double disableSeconds = (DESTABILIZER_PULSE_DISABLE_FLOOR_SECONDS
-                            + DESTABILIZER_PULSE_DISABLE_CORE_SECONDS * coreFrac) * intensity;
-                    s.addTemporaryDisable(disableSeconds);
+                boolean artilleryExecute = artilleryTitanPulse && s.hpMax < RoleStats.get(ShipRole.BATTLESHIP).hpMax;
+                if (artilleryExecute) {
+                    int executionDamage = Math.max(720, s.hpMax * 20);
+                    s.drainShieldByAmount(s.shieldMax + shieldDamage * 2.0, x, y, impactVx, impactVy);
+                    s.takeDamage(executionDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
+                    if (s.alive && !s.dying && s.hp > 0) {
+                        s.takePenetratingInternalDamage(executionDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
+                    }
+                    logDamageEvent(ctx, "destabilizer_execution:" + System.identityHashCode(pulse), executionDamage, VFX.ImpactStyle.ENERGY, s, x, y);
+                    hullDamage = executionDamage;
+                    s.applyShipwideRoomDisruption();
+                    s.applyDestabilized(Math.max(10.0, pulse.destabilizeSeconds * 1.6));
+                    s.addTemporaryDisable(3.0);
+                    if (ctx != null) {
+                        VFX.spawnArtilleryExecutionEffect(impactPoints.hullX(), impactPoints.hullY(),
+                                Math.max(s.radius * 1.35, pulse.radius * 3.8));
+                        EventSystem.showWorldCallout(ctx, s.x, s.y - s.radius - 26.0, "EXECUTED",
+                                new java.awt.Color(132, 242, 255), 1.2);
+                        if (shooter == ctx.player) {
+                            EventSystem.showBanner(ctx, "TARGET ANNIHILATED", 1.0);
+                        }
+                    }
+                } else {
+                    s.takePenetratingInternalDamage(hullDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
+                    logDamageEvent(ctx, "destabilizer:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
+                    s.applyShipwideRoomDisruption();
+                    s.applyDestabilized(pulse.destabilizeSeconds * (0.58 + 0.42 * intensity) * (1.0 + 0.35 * coreFrac));
+                    if (coreFrac > 1e-6) {
+                        double disableSeconds = (DESTABILIZER_PULSE_DISABLE_FLOOR_SECONDS
+                                + DESTABILIZER_PULSE_DISABLE_CORE_SECONDS * coreFrac) * intensity;
+                        if (artilleryTitanPulse) disableSeconds *= 1.45;
+                        s.addTemporaryDisable(disableSeconds);
+                    }
                 }
 
                 boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
@@ -1012,10 +1045,8 @@ public class CollisionSystem {
 
     private static boolean isCapitalShip(ShipRole role) {
         if (role == null) return false;
-        return switch (role) {
-            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER, TRANSPORT -> true;
-            default -> false;
-        };
+        return role.isCapitalCombatant() || role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER
+                || role == ShipRole.TRANSPORT;
     }
 
     private static void logDamageEvent(GameContext ctx,

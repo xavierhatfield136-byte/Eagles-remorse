@@ -1,13 +1,42 @@
 import app.persistence.MenuSettingsStore;
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.Iterator;
 import java.util.List;
 
 /**
  * UI, overlay, and presentation state that does not belong in the core simulation bucket.
  */
 public final class UiState {
+    public static final class CombatCallout {
+        public double x;
+        public double y;
+        public final String text;
+        public final Color color;
+        public double ttl;
+        public final double maxTtl;
+        public final double risePerSecond;
+
+        CombatCallout(double x, double y, String text, Color color, double ttl) {
+            this.x = x;
+            this.y = y;
+            this.text = (text == null || text.isBlank()) ? "ALERT" : text;
+            this.color = (color == null) ? new Color(160, 220, 255) : color;
+            this.ttl = Math.max(0.25, ttl);
+            this.maxTtl = this.ttl;
+            this.risePerSecond = 16.0;
+        }
+
+        public double alphaFrac() {
+            if (maxTtl <= 1e-6) return 0.0;
+            return MathUtil.clamp(ttl / maxTtl, 0.0, 1.0);
+        }
+    }
+
     public boolean shopOpen = false;
+    public ShopHullCategory shopHullCategory = ShopHullCategory.ESCORT;
+    public int shopHullPage = 0;
     public boolean baseMenuOpen = false;
     public boolean mapOpen = false;
     public boolean powerManagementOpen = false;
@@ -35,6 +64,7 @@ public final class UiState {
             new EnumMap<>(GameContext.CrewStation.class);
     public final EnumMap<GameContext.CrewStation, Double> portraitExpressionTimerSec =
             new EnumMap<>(GameContext.CrewStation.class);
+    public final List<CombatCallout> combatCallouts = new ArrayList<>();
 
     public boolean hasBlockingOverlay() {
         return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen;
@@ -43,6 +73,26 @@ public final class UiState {
     public void clearVoiceCaption() {
         voiceCaption = "";
         voiceCaptionT = 0.0;
+    }
+
+    public void addCombatCallout(double x, double y, String text, Color color, double ttl) {
+        combatCallouts.add(new CombatCallout(x, y, text, color, ttl));
+        while (combatCallouts.size() > 24) {
+            combatCallouts.remove(0);
+        }
+    }
+
+    public void updateCombatCallouts(double dt) {
+        if (combatCallouts.isEmpty()) return;
+        double step = Math.max(0.0, dt);
+        for (Iterator<CombatCallout> it = combatCallouts.iterator(); it.hasNext(); ) {
+            CombatCallout callout = it.next();
+            callout.ttl -= step;
+            callout.y -= callout.risePerSecond * step;
+            if (callout.ttl <= 0.0) {
+                it.remove();
+            }
+        }
     }
 
     public void initAudioPreferences() {

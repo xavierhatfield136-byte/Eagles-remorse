@@ -249,6 +249,44 @@ public enum TitanArchetype {
         return availability.isAvailableInSector(sector);
     }
 
+    public ShipRole shipRole() {
+        return switch (this) {
+            case TRANSPORT -> ShipRole.TRANSPORT_TITAN;
+            case BULWARK -> ShipRole.BULWARK_TITAN;
+            case CARRIER_SUPPORT -> ShipRole.CARRIER_SUPPORT_TITAN;
+            case VANGUARD -> ShipRole.VANGUARD_TITAN;
+            case INTERDICTION -> ShipRole.INTERDICTION_TITAN;
+            case COMMAND_INTEL -> ShipRole.COMMAND_INTEL_TITAN;
+            case BOARDING_RECOVERY -> ShipRole.BOARDING_RECOVERY_TITAN;
+            case ARTILLERY -> ShipRole.ARTILLERY_TITAN;
+            case SHIELD_BASTION -> ShipRole.SHIELD_BASTION_TITAN;
+            case FLEET_TELEPORTER -> ShipRole.FLEET_TELEPORTER_TITAN;
+            case ELITE_SUPERSHIP_COMMAND -> ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN;
+            case MOBILE_STATION -> ShipRole.MOBILE_STATION_TITAN;
+            case HYPERWEAPON -> ShipRole.HYPERWEAPON_TITAN;
+        };
+    }
+
+    public static TitanArchetype fromShipRole(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case TRANSPORT_TITAN -> TRANSPORT;
+            case BULWARK_TITAN -> BULWARK;
+            case CARRIER_SUPPORT_TITAN -> CARRIER_SUPPORT;
+            case VANGUARD_TITAN -> VANGUARD;
+            case INTERDICTION_TITAN -> INTERDICTION;
+            case COMMAND_INTEL_TITAN -> COMMAND_INTEL;
+            case BOARDING_RECOVERY_TITAN -> BOARDING_RECOVERY;
+            case ARTILLERY_TITAN -> ARTILLERY;
+            case SHIELD_BASTION_TITAN -> SHIELD_BASTION;
+            case FLEET_TELEPORTER_TITAN -> FLEET_TELEPORTER;
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> ELITE_SUPERSHIP_COMMAND;
+            case MOBILE_STATION_TITAN -> MOBILE_STATION;
+            case HYPERWEAPON_TITAN -> HYPERWEAPON;
+            default -> null;
+        };
+    }
+
     public static TitanArchetype fromSerializedName(String raw) {
         if (raw == null) return null;
         String trimmed = raw.trim();

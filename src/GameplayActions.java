@@ -18,6 +18,7 @@ public final class GameplayActions {
         if (ctx == null || ctx.player == null) return false;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
         if (ctx.state != GameState.RUNNING) return false;
+        if (CampaignSystem.isPlayerControlLocked(ctx)) return false;
         return !ctx.ui.hasBlockingOverlay();
     }
 
@@ -215,7 +216,31 @@ public final class GameplayActions {
 
     public static boolean tryHandleShopHotkey(GameContext ctx, int keyCode) {
         if (ctx == null || !ctx.ui.shopOpen) return false;
-        return false;
+        switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_1 -> UISystem.selectShopHullCategory(ctx, ShopHullCategory.ESCORT);
+            case java.awt.event.KeyEvent.VK_2 -> UISystem.selectShopHullCategory(ctx, ShopHullCategory.LINE);
+            case java.awt.event.KeyEvent.VK_3 -> UISystem.selectShopHullCategory(ctx, ShopHullCategory.CAPITAL);
+            case java.awt.event.KeyEvent.VK_4 -> UISystem.selectShopHullCategory(ctx, ShopHullCategory.TITAN);
+            case java.awt.event.KeyEvent.VK_LEFT,
+                    java.awt.event.KeyEvent.VK_OPEN_BRACKET,
+                    java.awt.event.KeyEvent.VK_MINUS,
+                    java.awt.event.KeyEvent.VK_SUBTRACT -> UISystem.stepShopHullPage(ctx, -1);
+            case java.awt.event.KeyEvent.VK_RIGHT,
+                    java.awt.event.KeyEvent.VK_CLOSE_BRACKET,
+                    java.awt.event.KeyEvent.VK_EQUALS,
+                    java.awt.event.KeyEvent.VK_ADD -> UISystem.stepShopHullPage(ctx, +1);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean tryHandleCampaignEpisodeHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
+        if (ctx == null || e == null) return false;
+        int keyCode = e.getKeyCode();
+        if (keyCode != java.awt.event.KeyEvent.VK_ENTER && keyCode != java.awt.event.KeyEvent.VK_SPACE) return false;
+        return CampaignSystem.launchPendingEpisode(ctx);
     }
 
     public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {
@@ -445,6 +470,42 @@ public final class GameplayActions {
         if (e == null) return false;
         if (!SpawnSystem.hasShootingRangeTargets(ctx)) return false;
         int keyCode = e.getKeyCode();
+
+        if (e.isControlDown() && e.isShiftDown()) {
+            if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
+                ctx.player.applyHull(ShipRole.FRIGATE, ctx.player.x, ctx.player.y);
+                EventSystem.showBanner(ctx, "PLAYER HULL: FRIGATE", 1.0);
+                return true;
+            }
+            if (keyCode == java.awt.event.KeyEvent.VK_M) {
+                ctx.player.applyHull(ShipRole.MOTHERSHIP, ctx.player.x, ctx.player.y);
+                EventSystem.showBanner(ctx, "PLAYER HULL: MOTHERSHIP", 1.1);
+                return true;
+            }
+
+            TitanArchetype playerArchetype = switch (keyCode) {
+                case java.awt.event.KeyEvent.VK_1 -> TitanArchetype.TRANSPORT;
+                case java.awt.event.KeyEvent.VK_2 -> TitanArchetype.BULWARK;
+                case java.awt.event.KeyEvent.VK_3 -> TitanArchetype.CARRIER_SUPPORT;
+                case java.awt.event.KeyEvent.VK_4 -> TitanArchetype.VANGUARD;
+                case java.awt.event.KeyEvent.VK_5 -> TitanArchetype.INTERDICTION;
+                case java.awt.event.KeyEvent.VK_6 -> TitanArchetype.COMMAND_INTEL;
+                case java.awt.event.KeyEvent.VK_7 -> TitanArchetype.BOARDING_RECOVERY;
+                case java.awt.event.KeyEvent.VK_8 -> TitanArchetype.ARTILLERY;
+                case java.awt.event.KeyEvent.VK_9 -> TitanArchetype.SHIELD_BASTION;
+                case java.awt.event.KeyEvent.VK_0 -> TitanArchetype.FLEET_TELEPORTER;
+                case java.awt.event.KeyEvent.VK_Q -> TitanArchetype.ELITE_SUPERSHIP_COMMAND;
+                case java.awt.event.KeyEvent.VK_E -> TitanArchetype.MOBILE_STATION;
+                case java.awt.event.KeyEvent.VK_R -> TitanArchetype.HYPERWEAPON;
+                default -> null;
+            };
+            if (playerArchetype == null) return false;
+
+            ShipRole hullRole = playerArchetype.shipRole();
+            ctx.player.applyHull(hullRole, ctx.player.x, ctx.player.y);
+            EventSystem.showBanner(ctx, "PLAYER HULL: " + playerArchetype.displayName().toUpperCase(), 1.1);
+            return true;
+        }
 
         if (e.isShiftDown()) {
             if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {

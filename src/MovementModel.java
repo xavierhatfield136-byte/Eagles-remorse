@@ -50,6 +50,20 @@ public final class MovementModel {
             case CARRIER -> new Profile(0.88, 5.1, 4.8, Math.toRadians(68.0), 0.48, 0.30);
             case DREADNOUGHT -> new Profile(0.86, 4.7, 4.4, Math.toRadians(62.0), 0.42, 0.32);
             case SUPERSHIP -> new Profile(0.84, 4.1, 3.9, Math.toRadians(50.0), 0.38, 0.34);
+            case TRANSPORT_TITAN -> new Profile(0.82, 3.8, 3.6, Math.toRadians(46.0), 0.36, 0.36);
+            case BULWARK_TITAN -> new Profile(0.80, 3.5, 3.3, Math.toRadians(42.0), 0.34, 0.38);
+            case CARRIER_SUPPORT_TITAN -> new Profile(0.81, 3.7, 3.5, Math.toRadians(44.0), 0.35, 0.37);
+            case VANGUARD_TITAN -> new Profile(0.87, 4.3, 4.1, Math.toRadians(56.0), 0.42, 0.33);
+            case INTERDICTION_TITAN -> new Profile(0.85, 4.0, 3.8, Math.toRadians(52.0), 0.40, 0.35);
+            case COMMAND_INTEL_TITAN -> new Profile(0.84, 3.9, 3.7, Math.toRadians(50.0), 0.39, 0.35);
+            case BOARDING_RECOVERY_TITAN -> new Profile(0.83, 3.8, 3.6, Math.toRadians(48.0), 0.38, 0.36);
+            case ARTILLERY_TITAN -> new Profile(0.80, 3.4, 3.2, Math.toRadians(40.0), 0.34, 0.39);
+            case SHIELD_BASTION_TITAN -> new Profile(0.79, 3.3, 3.1, Math.toRadians(38.0), 0.32, 0.40);
+            case FLEET_TELEPORTER_TITAN -> new Profile(0.88, 4.5, 4.2, Math.toRadians(58.0), 0.44, 0.33);
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> new Profile(0.82, 3.7, 3.5, Math.toRadians(44.0), 0.36, 0.36);
+            case MOBILE_STATION_TITAN -> new Profile(0.74, 2.8, 2.7, Math.toRadians(28.0), 0.24, 0.44);
+            case HYPERWEAPON_TITAN -> new Profile(0.78, 3.2, 3.0, Math.toRadians(34.0), 0.28, 0.41);
+            case MOTHERSHIP -> new Profile(0.68, 2.2, 2.1, Math.toRadians(22.0), 0.18, 0.52);
             case BASE, STATIC_TURRET -> new Profile(0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
         };
     }

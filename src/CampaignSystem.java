@@ -2,7 +2,9 @@ import app.config.GameMode;
 import app.persistence.CampaignCheckpointStore;
 import app.persistence.CampaignUnlockProfile;
 import java.awt.Color;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
@@ -82,38 +84,116 @@ public final class CampaignSystem {
         }
     }
 
+    private static final class SectorLore {
+        final int sector;
+        final String title;
+        final String location;
+        final String hudLead;
+        final String completionLead;
+
+        SectorLore(int sector, String title, String location, String hudLead, String completionLead) {
+            this.sector = sector;
+            this.title = title;
+            this.location = location;
+            this.hudLead = hudLead;
+            this.completionLead = completionLead;
+        }
+    }
+
+    private static final class PersistentFleetEntry {
+        final int slotId;
+        final ShipRole role;
+        final String name;
+        boolean destroyed = false;
+        int activeShipId = -1;
+
+        PersistentFleetEntry(int slotId, ShipRole role, String name) {
+            this.slotId = Math.max(1, slotId);
+            this.role = (role == null) ? ShipRole.FRIGATE : role;
+            this.name = (name == null || name.isBlank()) ? ("Blue Wing " + this.slotId) : name;
+        }
+    }
+
     private static final int AUTHORED_VERTICAL_SLICE_LAST_SECTOR = 3;
+    private static final int CAMPAIGN_STARTING_CREDITS = 1000;
+    private static final int CAMPAIGN_BLUE_FLEET_CAP = 24;
+    private static final String[] ACT_TITLES = {
+            "",
+            "TRADE HUB COLLAPSE",
+            "THE LONG ROAD HOME",
+            "RETURN TO EARTH"
+    };
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
-            new SectorScript(1, ObjectiveType.SURVIVE, "Hold perimeter through attack waves", 360, 630, BossKind.NONE, MapModifier.NONE),
-            new SectorScript(2, ObjectiveType.DESTROY, "Destroy scripted strike group", 16, 720, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(3, ObjectiveType.CAPTURE, "Eliminate relay guard, then hold beacon", 120, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(4, ObjectiveType.BOSS, "Eliminate Mid-Boss Alpha", 1, 720, BossKind.MID_ALPHA, MapModifier.EMP_ZONE),
-            new SectorScript(5, ObjectiveType.ESCORT, "Escort convoy to jump corridor", 180, 720, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(6, ObjectiveType.DESTROY, "Break enemy vanguard", 24, 720, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(7, ObjectiveType.CAPTURE, "Secure deep-space array", 120, 720, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(8, ObjectiveType.BOSS, "Eliminate Mid-Boss Beta", 1, 780, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR),
-            new SectorScript(9, ObjectiveType.SURVIVE, "Hold line under siege", 210, 720, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(10, ObjectiveType.ESCORT, "Escort carrier task force", 210, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(11, ObjectiveType.DESTROY, "Cripple enemy fleet core", 28, 780, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(12, ObjectiveType.FINAL_BOSS, "Destroy Enemy Flagship", 1, 840, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
+            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 360, 630, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(2, ObjectiveType.DESTROY, "Break the red interdiction cordon", 8, 720, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(3, ObjectiveType.CAPTURE, "Seize the authority relay, then hold the uplink", 120, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(4, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(5, ObjectiveType.ESCORT, "Escort the Exodus Transport Titan", 210, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(6, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 12, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(7, ObjectiveType.CAPTURE, "Secure the green contract array", 120, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(8, ObjectiveType.BOSS, "Destroy the Ash Gate Artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(9, ObjectiveType.SURVIVE, "Hold the outer-Sol arrival corridor", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(10, ObjectiveType.ESCORT, "Escort the liberated recovery Titan", 220, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(11, ObjectiveType.DESTROY, "Break the Luna orbital cordon", 14, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(12, ObjectiveType.FINAL_BOSS, "Destroy the AI Mothership over Earth", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
     };
 
     private static final SideObjectiveScript[] SIDE_SCRIPTS = new SideObjectiveScript[]{
             null,
-            new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Avoid hull damage for 120s", 120, 160),
-            new SideObjectiveScript(2, SideObjectiveType.KILL_COUNT, "Destroy 12 hostiles", 12, 200),
-            new SideObjectiveScript(3, SideObjectiveType.CLEAR_BEFORE_TIME, "Clear sector in 660s", 660, 240),
-            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Clear sector in 560s", 560, 190),
-            new SideObjectiveScript(5, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Avoid hull damage for 120s", 120, 210),
-            new SideObjectiveScript(6, SideObjectiveType.KILL_COUNT, "Destroy 14 hostiles", 14, 230),
-            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Clear sector in 560s", 560, 250),
-            new SideObjectiveScript(8, SideObjectiveType.KILL_COUNT, "Destroy 8 hostiles", 8, 280),
-            new SideObjectiveScript(9, SideObjectiveType.KILL_COUNT, "Destroy 16 hostiles", 16, 300),
-            new SideObjectiveScript(10, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Avoid hull damage for 150s", 150, 320),
-            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Clear sector in 620s", 620, 350),
-            new SideObjectiveScript(12, SideObjectiveType.CLEAR_BEFORE_TIME, "Clear sector in 700s", 700, 400)
+            new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Mothership pristine for 120s", 120, 160),
+            new SideObjectiveScript(2, SideObjectiveType.KILL_COUNT, "Destroy 6 interdiction ships", 6, 200),
+            new SideObjectiveScript(3, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the relay in 660s", 660, 240),
+            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the pursuit Titan in 600s", 600, 220),
+            new SideObjectiveScript(5, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Exodus Titan undamaged for 120s", 120, 210),
+            new SideObjectiveScript(6, SideObjectiveType.KILL_COUNT, "Destroy 10 vanguard escorts", 10, 230),
+            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the contract array in 600s", 600, 250),
+            new SideObjectiveScript(8, SideObjectiveType.KILL_COUNT, "Destroy 6 siege escorts", 6, 280),
+            new SideObjectiveScript(9, SideObjectiveType.KILL_COUNT, "Destroy 14 attackers during the hold", 14, 300),
+            new SideObjectiveScript(10, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep liberated crews secure for 150s", 150, 320),
+            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the orbital cordon in 620s", 620, 350),
+            new SideObjectiveScript(12, SideObjectiveType.CLEAR_BEFORE_TIME, "End the occupation in 720s", 720, 400)
+    };
+
+    private static final SectorLore[] LORE = new SectorLore[]{
+            null,
+            new SectorLore(1, "ANCHORAGE FIRESTORM", "Far Trade Anchorage",
+                    "Earth has fallen. Hold the evacuation lanes while the colony burns.",
+                    "The trade hub is gone, but the fleet still has a road home."),
+            new SectorLore(2, "BREAKOUT VECTOR", "Outer Colony Jump Ring",
+                    "Red interdiction packs are sealing the jump ring. Break the cordon before it collapses.",
+                    "The first blockade is broken and the road home stays open."),
+            new SectorLore(3, "LAST AUTHORITY RELAY", "Gate Relay Tethys",
+                    "Seize the authority relay and keep the uplink alive long enough to chart the Earth vector.",
+                    "Navigation control is restored and the homeward route is real."),
+            new SectorLore(4, "RED KNIFE PURSUIT", "Burning Debris Wake",
+                    "A pursuit Titan is closing fast. Kill it before it pins the refugee column in deep space.",
+                    "The AI's first Titan hunter is down and the fleet escapes the kill box."),
+            new SectorLore(5, "REFUGEE WAYLINE", "Civilian Exodus Corridor",
+                    "Escort the Exodus Transport Titan carrying refugees, fuel, and state archives.",
+                    "The civilian column survives and the fleet keeps its people with it."),
+            new SectorLore(6, "BROKEN ARMISTICE", "Neutral Trade Spine",
+                    "Break the AI vanguard and hold the lane long enough for neutral survivors to defect.",
+                    "More hulls fall in behind the Mothership and the return fleet grows."),
+            new SectorLore(7, "GREEN CONTRACT FRONT", "Coalition Array Nysa",
+                    "Secure the green contract array and convince the coalition fleet to join the road home.",
+                    "Green signals are back on the net and the coalition starts to form."),
+            new SectorLore(8, "ASHEN GATE", "Siege Gate Kharon",
+                    "A red Artillery Titan is blocking the Earthward lane. Silence it.",
+                    "The siege gate is broken and the fleet can press toward Sol."),
+            new SectorLore(9, "OUTER SOL HOLD", "Outer Sol Defense Ring",
+                    "The AI knows you are coming. Hold formation while the coalition assembles for the final push.",
+                    "The line holds. Sol is in reach and the coalition remains intact."),
+            new SectorLore(10, "YELLOW BREAKCHAIN", "Liberation Corridor",
+                    "Escort the liberated recovery Titan and its freed crews back into formation.",
+                    "Yellow survivors are back in the fleet and the liberation war becomes real."),
+            new SectorLore(11, "EARTH APPROACH", "Luna Perimeter",
+                    "Break the orbital cordon, shatter the AI screen, and open a lane to Earth.",
+                    "Earth is ahead. Only the occupation fleet remains."),
+            new SectorLore(12, "HOMEWORLD LIBERATION", "Earth High Orbit",
+                    "Destroy the AI Mothership over Earth and end the occupation.",
+                    "The AI is broken, Earth is free, and the long road home is over.")
     };
 
     public static final class CampaignState {
@@ -180,6 +260,19 @@ public final class CampaignSystem {
         public int branchScore = 0;
         public String branchRoute = "BALANCED";
         public final List<TitanArchetype> ownedTitans = new ArrayList<>();
+        public final List<PersistentFleetEntry> persistentBlueFleet = new ArrayList<>();
+        public int nextPersistentFleetSlotId = 1;
+        public boolean awaitingEpisodeLaunch = false;
+        public int pendingEpisodeSector = 0;
+        public boolean introSequenceActive = false;
+        public int introPhase = 0;
+        public double introTimer = 0.0;
+        public double introWarpX = Double.NaN;
+        public double introWarpY = Double.NaN;
+        public double cinematicFocusX = Double.NaN;
+        public double cinematicFocusY = Double.NaN;
+        public boolean campaignBlueGreenAlliance = true;
+        public boolean campaignBlueYellowAlliance = false;
 
         public boolean unlockAuxGunGranted = false;
         public int unlockMissileTierGranted = 0;
@@ -209,10 +302,10 @@ public final class CampaignSystem {
     }
 
     private enum BranchOutcome {
-        STANDARD("CAMPAIGN COMPLETE", "VICTORY: CAMPAIGN COMPLETE"),
-        STRATEGIC_SUPREMACY("ALT ENDING: STRATEGIC SUPREMACY", "VICTORY: STRATEGIC SUPREMACY"),
-        TRUE_RESTORATION("TRUE ENDING: RESTORED FRONTIER", "VICTORY: TRUE ENDING UNLOCKED"),
-        PYRRHIC("ALT ENDING: PYRRHIC VICTORY", "VICTORY: PYRRHIC VICTORY");
+        STANDARD("EARTH LIBERATED", "VICTORY: EARTH LIBERATED"),
+        STRATEGIC_SUPREMACY("ALT ENDING: DECISIVE LIBERATION", "VICTORY: AI FLEET SHATTERED"),
+        TRUE_RESTORATION("TRUE ENDING: HOMEWORLD RESTORED", "VICTORY: TRUE RESTORATION"),
+        PYRRHIC("ALT ENDING: EARTH LIBERATED AT GREAT COST", "VICTORY: PYRRHIC LIBERATION");
 
         final String gameOverText;
         final String bannerText;
@@ -230,18 +323,22 @@ public final class CampaignSystem {
         CampaignState st = new CampaignState();
         st.enabled = true;
         ctx.campaign = st;
+        configureCampaignSession(ctx, st);
         CampaignCheckpointStore.Checkpoint checkpoint = ctx.config.resumeCampaign ? CampaignCheckpointStore.load() : null;
         if (checkpoint != null && checkpoint.isUsable() && applyCheckpoint(ctx, st, checkpoint)) {
-            EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: SECTOR " + checkpoint.nextSector + "/12", 2.2);
+            configureCampaignSession(ctx, st);
+            EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: " + loreFor(checkpoint.nextSector).title, 2.2);
             startSector(ctx, checkpoint.nextSector);
             return;
         }
 
         CampaignCheckpointStore.clear();
+        ctx.credits = CAMPAIGN_STARTING_CREDITS;
         applyPersistedUnlockProfile(ctx, st);
+        seedStartingBlueFleet(st);
         persistRunStart(ctx);
 
-        EventSystem.showBanner(ctx, "CAMPAIGN START: SECTOR 1/12", 2.0);
+        EventSystem.showBanner(ctx, "CAMPAIGN START: ACT I - " + actTitleFor(1), 2.2);
         startSector(ctx, 1);
     }
 
@@ -251,6 +348,13 @@ public final class CampaignSystem {
 
         if (ctx.player == null || !ctx.player.alive || ctx.player.hp <= 0) {
             failRun(ctx, "DEFEAT: FLAGSHIP LOST");
+            return;
+        }
+
+        refreshCampaignAlliances(st);
+
+        if (st.awaitingEpisodeLaunch) {
+            syncPersistentFleetCasualties(ctx, st);
             return;
         }
 
@@ -271,6 +375,11 @@ public final class CampaignSystem {
             return;
         }
 
+        if (st.introSequenceActive) {
+            updateSectorOneIntro(ctx, st, dt);
+            return;
+        }
+
         if (st.enemyBaseWinConditionActive && isEnemyBaseDestroyed(ctx)) {
             st.objectiveProgress = st.objectiveGoal;
             onSectorComplete(ctx);
@@ -283,6 +392,7 @@ public final class CampaignSystem {
             return;
         }
 
+        syncPersistentFleetCasualties(ctx, st);
         detectHostileKills(ctx);
         updateAuthoredSectorScript(ctx, st);
         updateSideObjective(ctx, dt);
@@ -322,7 +432,11 @@ public final class CampaignSystem {
     public static String hudObjectiveTitle(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null || !st.enabled) return "";
-        return "ACT " + st.act + "   SECTOR " + st.sector + "/" + st.totalSectors + "   ROUTE " + st.branchRoute;
+        SectorLore lore = loreFor(st.sector);
+        return "ACT " + st.act + ": " + actTitleFor(st.act)
+                + "   SECTOR " + st.sector + "/" + st.totalSectors
+                + "   DOCTRINE " + st.branchRoute
+                + "   " + lore.title;
     }
 
     public static String hudObjectiveDetail(GameContext ctx) {
@@ -331,7 +445,12 @@ public final class CampaignSystem {
         int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
         String mods = modifiersSummary(st.activeModifiers);
-        String base = st.objectiveLabel + "   [" + p + "]   MOD: " + mods + "   " + failureHint(st.objectiveType) + "   T-" + left + "s";
+        SectorLore lore = loreFor(st.sector);
+        String base = lore.location + "   " + lore.hudLead
+                + "   OBJ: " + st.objectiveLabel
+                + "   [" + p + "]   MOD: " + mods
+                + "   " + failureHint(st.objectiveType)
+                + "   T-" + left + "s";
         String side = sideObjectiveHud(st);
         String drop = bossDropHud(st);
         String withSide = side.isBlank() ? base : (base + "   SIDE: " + side);
@@ -360,12 +479,12 @@ public final class CampaignSystem {
 
     public static boolean isTransitioning(GameContext ctx) {
         CampaignState st = state(ctx);
-        return st != null && st.enabled && st.transitionTimer > 0;
+        return st != null && st.enabled && (st.transitionTimer > 0 || st.awaitingEpisodeLaunch);
     }
 
     public static double transitionSeconds(GameContext ctx) {
         CampaignState st = state(ctx);
-        return (st == null) ? 0.0 : st.transitionTimer;
+        return (st == null || st.awaitingEpisodeLaunch) ? 0.0 : st.transitionTimer;
     }
 
     public static String transitionLabel(GameContext ctx) {
@@ -407,6 +526,122 @@ public final class CampaignSystem {
     public static boolean suppressAutoLock(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.enabled && st.disableAutoLock;
+    }
+
+    public static boolean usesPersistentFleetShop(GameContext ctx) {
+        return isCampaignActive(ctx);
+    }
+
+    public static boolean isPlayerControlLocked(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled && st.introSequenceActive;
+    }
+
+    public static boolean hasCinematicFocus(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled
+                && Double.isFinite(st.cinematicFocusX)
+                && Double.isFinite(st.cinematicFocusY);
+    }
+
+    public static double cinematicFocusX(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null || !Double.isFinite(st.cinematicFocusX))
+                ? ((ctx == null || ctx.player == null) ? 0.0 : ctx.player.x)
+                : st.cinematicFocusX;
+    }
+
+    public static double cinematicFocusY(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null || !Double.isFinite(st.cinematicFocusY))
+                ? ((ctx == null || ctx.player == null) ? 0.0 : ctx.player.y)
+                : st.cinematicFocusY;
+    }
+
+    public static Ship currentBaseUpgradeAnchor(GameContext ctx) {
+        if (ctx == null) return null;
+        if (isCampaignActive(ctx)) {
+            return ctx.player;
+        }
+        return EconomySystem.getDockedFriendlyBase(ctx);
+    }
+
+    public static int campaignOreCost(ShipRole role, int creditCost, int requiredTier) {
+        int base = Math.max(18, (int) Math.round(Math.max(0, creditCost) * 0.18));
+        int tierTax = Math.max(0, requiredTier) * 12;
+        int roleTax = switch ((role == null) ? ShipRole.FRIGATE : role) {
+            case PATROL, PICKET, FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE -> 0;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, STEALTH_SHIP, TRANSPORT -> 22;
+            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, CARRIER, DRONE_CARRIER, SUPERSHIP -> 55;
+            case TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                 INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                 ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN -> 90;
+            case MOTHERSHIP -> 180;
+            default -> 10;
+        };
+        return Math.max(15, base + tierTax + roleTax);
+    }
+
+    public static boolean purchasePersistentBlueShip(GameContext ctx, ShipRole role, int creditCost, int requiredTier) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || ctx.player == null || role == null) return false;
+        if (role == ShipRole.MOTHERSHIP) {
+            EventSystem.showBanner(ctx, "MOTHERSHIP ALREADY UNDER COMMAND", 1.6);
+            return false;
+        }
+        if (ctx.player.role != ShipRole.MOTHERSHIP) {
+            EventSystem.showBanner(ctx, "CAMPAIGN COMMAND REQUIRES THE MOTHERSHIP", 1.6);
+            return false;
+        }
+        if (livePersistentFleetSlots(st) >= CAMPAIGN_BLUE_FLEET_CAP) {
+            EventSystem.showBanner(ctx, "BLUE FLEET COMMAND CAP REACHED", 1.8);
+            return false;
+        }
+
+        int hangarTier = 0;
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
+        if (up != null) {
+            up.hangarLv = Math.max(up.hangarLv, 3);
+            hangarTier = up.hangarLv;
+        }
+        if (hangarTier < requiredTier) {
+            EventSystem.showBanner(ctx, "COMMAND BAY TIER TOO LOW", 1.6);
+            return false;
+        }
+
+        int oreCost = campaignOreCost(role, creditCost, requiredTier);
+        if (ctx.credits < Math.max(0, creditCost) || ctx.player.cargo < oreCost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS / ORE", 1.6);
+            return false;
+        }
+
+        ctx.credits -= Math.max(0, creditCost);
+        ctx.player.cargo = Math.max(0, ctx.player.cargo - oreCost);
+
+        int slotId = st.nextPersistentFleetSlotId++;
+        PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, generatedBlueFleetName(role, slotId));
+        st.persistentBlueFleet.add(entry);
+        TitanArchetype titan = TitanArchetype.fromShipRole(role);
+        if (titan != null) {
+            st.ownedTitans.add(titan);
+        }
+        spawnSinglePersistentBlueShip(ctx, st, entry, st.persistentBlueFleet.size() - 1);
+        EventSystem.showBanner(ctx, "BLUE HULL COMMISSIONED: " + entry.name, 1.8);
+        return true;
+    }
+
+    public static boolean launchPendingEpisode(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.awaitingEpisodeLaunch || st.pendingEpisodeSector <= 0) return false;
+        UISystem.closeAllOverlays(ctx);
+        startSector(ctx, st.pendingEpisodeSector);
+        return true;
+    }
+
+    public static int livePersistentFleetCount(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return livePersistentFleetSlots(st);
     }
 
     public static String[] activeModifierLabels(GameContext ctx) {
@@ -451,6 +686,177 @@ public final class CampaignSystem {
         return ctx.campaign;
     }
 
+    private static void configureCampaignSession(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        ctx.player.faction = Faction.ALLY;
+        ctx.player.name = "Blue Mothership";
+        ctx.player.applyHull(ShipRole.MOTHERSHIP, ctx.player.x, ctx.player.y);
+        ctx.player.fullyRepairHull();
+        if (ctx.player.shieldActive && ctx.player.shieldMax > 0.0) {
+            ctx.player.shield = ctx.player.shieldMax;
+        }
+
+        Ship oldBlueBase = ctx.allyBase;
+        if (oldBlueBase != null) {
+            ctx.ships.remove(oldBlueBase);
+            ctx.baseUpgrades.remove(oldBlueBase);
+        }
+        ctx.allyBase = null;
+        ctx.teamBases.remove(Faction.ALLY);
+
+        BaseUpgrades mothershipUpgrades = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
+        mothershipUpgrades.hangarLv = Math.max(mothershipUpgrades.hangarLv, 3);
+        refreshCampaignAlliances(st);
+    }
+
+    private static void seedStartingBlueFleet(CampaignState st) {
+        if (st == null || !st.persistentBlueFleet.isEmpty()) return;
+        addPersistentFleetEntry(st, ShipRole.PICKET, "Blue Screen One");
+        addPersistentFleetEntry(st, ShipRole.FRIGATE, "Blue Guard One");
+        addPersistentFleetEntry(st, ShipRole.CIWS_CORVETTE, "Blue Guard Two");
+    }
+
+    private static void refreshCampaignAlliances(CampaignState st) {
+        if (st == null) {
+            Faction.clearCampaignAlliances();
+            return;
+        }
+        boolean yellowAlliance = st.campaignBlueYellowAlliance || st.sector >= 10;
+        st.campaignBlueYellowAlliance = yellowAlliance;
+        Faction.configureCampaignAlliances(st.campaignBlueGreenAlliance, yellowAlliance);
+    }
+
+    private static void syncPersistentFleetCasualties(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.persistentBlueFleet.isEmpty()) return;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
+            Ship live = findShipById(ctx, entry.activeShipId);
+            if (live == null || !live.alive || live.dying || live.hp <= 0) {
+                entry.destroyed = true;
+                entry.activeShipId = -1;
+            }
+        }
+    }
+
+    private static void updateSectorOneIntro(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        st.introTimer += Math.max(0.0, dt);
+        switch (st.introPhase) {
+            case 0 -> {
+                st.cinematicFocusX = ctx.player.x;
+                st.cinematicFocusY = ctx.player.y;
+                AudioSystem.playScriptedVoice(
+                        ctx,
+                        "captain",
+                        "campaign_earthfall_alert_01",
+                        "BLUE COMMAND",
+                        "Emergency traffic from Sol. Earth has fallen. Rogue AI occupation confirmed. All blue elements are ordered to return home immediately.",
+                        7.5);
+                EventSystem.showBanner(ctx, "URGENT SOL TRAFFIC", 2.4);
+                st.introPhase = 1;
+                st.introTimer = 0.0;
+            }
+            case 1 -> {
+                if (st.introTimer < 4.8) return;
+                st.cinematicFocusX = st.introWarpX;
+                st.cinematicFocusY = st.introWarpY;
+                EventSystem.showBanner(ctx, "RED WARP SIGNATURES DETECTED", 2.1);
+                st.introPhase = 2;
+                st.introTimer = 0.0;
+            }
+            case 2 -> {
+                if (st.introTimer < 2.0) return;
+                spawnIntroRedDetachment(ctx, st);
+                st.introPhase = 3;
+                st.introTimer = 0.0;
+            }
+            default -> {
+                if (st.introTimer < 2.8) return;
+                st.introSequenceActive = false;
+                st.introPhase = 0;
+                st.introTimer = 0.0;
+                st.cinematicFocusX = Double.NaN;
+                st.cinematicFocusY = Double.NaN;
+            }
+        }
+    }
+
+    private static void resetPersistentFleetSpawnHandles(CampaignState st) {
+        if (st == null) return;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null) continue;
+            entry.activeShipId = -1;
+        }
+    }
+
+    private static void spawnPersistentBlueFleet(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        int liveIndex = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            spawnSinglePersistentBlueShip(ctx, st, entry, liveIndex++);
+        }
+    }
+
+    private static void quietEpisodeInterlude(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        Set<Integer> persistentIds = new HashSet<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && !entry.destroyed && entry.activeShipId > 0) {
+                persistentIds.add(entry.activeShipId);
+            }
+        }
+        ctx.projectiles.clear();
+        ctx.salvage.clear();
+        ctx.lockedTarget = null;
+        ctx.ships.removeIf(s -> s != null
+                && s != ctx.player
+                && s != ctx.enemyBase
+                && !persistentIds.contains(s.id));
+        ctx.player.vx = 0.0;
+        ctx.player.vy = 0.0;
+        healAndRefitPlayer(ctx);
+        for (Ship s : ctx.ships) {
+            if (s == null || s == ctx.player) continue;
+            if (!persistentIds.contains(s.id)) continue;
+            s.fullyRepairHull();
+            if (s.shieldActive && s.shieldMax > 0.0) s.shield = s.shieldMax;
+            s.vx = 0.0;
+            s.vy = 0.0;
+        }
+    }
+
+    private static Ship spawnCampaignBase(GameContext ctx, Faction faction, double x, double y, String name) {
+        if (ctx == null || faction == null) return null;
+        Ship base = new FleetShip(ShipRole.BASE, faction,
+                GameMath.clamp(x, 40.0, ctx.WORLD_W - 40.0),
+                GameMath.clamp(y, 40.0, ctx.WORLD_H - 40.0));
+        if (name != null && !name.isBlank()) base.name = name;
+        ctx.ships.add(base);
+        ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
+        if (!ctx.teamBases.containsKey(faction)) ctx.teamBases.put(faction, base);
+        if (faction == Faction.ENEMY) ctx.enemyBase = base;
+        return base;
+    }
+
+    private static Ship spawnCampaignFactionAtPlayerOffset(GameContext ctx, ShipRole role, Faction faction,
+                                                           double ox, double oy, String name) {
+        if (ctx == null || ctx.player == null) return null;
+        return spawnCampaignShip(ctx, role, faction, ctx.player.x + ox, ctx.player.y + oy, name);
+    }
+
+    private static Ship spawnEscortTitan(GameContext ctx, ShipRole role, Faction faction, String name) {
+        if (ctx == null || ctx.player == null) return null;
+        Ship anchor = TeamSystem.getBaseForTeam(ctx, faction);
+        double sx = (anchor != null) ? anchor.x + 110.0 : (ctx.player.x - 180.0);
+        double sy = (anchor != null) ? anchor.y + 90.0 : (ctx.player.y + 40.0);
+        Ship titan = spawnCampaignShip(ctx, role, faction, sx, sy, name);
+        if (titan != null) {
+            titan.desiredSpeed = Math.max(48.0, titan.desiredSpeed);
+        }
+        return titan;
+    }
+
     private static void startSector(GameContext ctx, int sector) {
         CampaignState st = state(ctx);
         if (st == null) return;
@@ -458,6 +864,8 @@ public final class CampaignSystem {
         st.sector = sector;
         st.act = actForSector(sector);
         st.transitionTimer = 0.0;
+        st.awaitingEpisodeLaunch = false;
+        st.pendingEpisodeSector = 0;
         st.sectorElapsed = 0.0;
         st.kills = 0;
         st.knownHostiles.clear();
@@ -474,21 +882,35 @@ public final class CampaignSystem {
         st.transitionSummaryTop = "";
         st.transitionSummaryBottom = "";
         st.sectorStartMillis = System.currentTimeMillis();
+        st.introSequenceActive = false;
+        st.introPhase = 0;
+        st.introTimer = 0.0;
+        st.introWarpX = Double.NaN;
+        st.introWarpY = Double.NaN;
+        st.cinematicFocusX = Double.NaN;
+        st.cinematicFocusY = Double.NaN;
 
+        refreshCampaignAlliances(st);
+        resetPersistentFleetSpawnHandles(st);
         pruneTransientUnits(ctx);
         regroupPlayerAtAlliedBase(ctx);
         SpawnSystem.spawnAsteroidField(ctx);
         healAndRefitPlayer(ctx);
+        ensureCampaignTitanInfrastructure(ctx);
 
         SectorScript script = configureObjective(ctx);
         applySectorModifiers(ctx, st, script);
         spawnSectorForces(ctx);
+        spawnPersistentBlueFleet(ctx, st);
         st.enemyBaseWinConditionActive = hasLiveEnemyBase(ctx);
         snapshotHostiles(ctx, st.knownHostiles);
 
         ctx.enemyWaveTimer = nextWaveDelay(ctx);
 
-        String msg = "SECTOR " + st.sector + "/" + st.totalSectors + ": " + st.objectiveLabel + " [" + modifiersSummary(st.activeModifiers) + "]";
+        SectorLore lore = loreFor(st.sector);
+        String msg = "SECTOR " + st.sector + "/" + st.totalSectors
+                + "  " + lore.title
+                + "  |  " + st.objectiveLabel;
         EventSystem.showBanner(ctx, msg, 3.2);
         logTelemetry("sector_start",
                 "sector=" + st.sector +
@@ -554,23 +976,38 @@ public final class CampaignSystem {
     }
 
     private static void spawnSector1(GameContext ctx, CampaignState st) {
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 520, -130);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 640, 140);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 760, -260);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 820, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.PICKET, -120, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.PATROL, -180, -30);
+        double px = ctx.player.x;
+        double py = ctx.player.y;
+        spawnCampaignBase(ctx, Faction.TEAM_C, px - 220.0, py - 40.0, "Green Exchange Spire");
+        spawnCampaignBase(ctx, Faction.TEAM_C, px + 260.0, py - 260.0, "Green Market Bastion");
+        spawnCampaignBase(ctx, Faction.TEAM_C, px + 280.0, py + 250.0, "Green Customs Pier");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT_TITAN, Faction.TEAM_C, -120, -160, "Green Ledger Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MOBILE_STATION_TITAN, Faction.TEAM_C, 120, 150, "Green Harbor Forge");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MINER, Faction.TEAM_C, -340, 120, "Trade Miner One");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MINER, Faction.TEAM_C, -290, -170, "Trade Miner Two");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, 40, 210, "Cargo Lighter");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, 320, 20, "Merchant Spine");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, 180, -120, "Green Screen One");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, 340, -80, "Green Guard One");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, 360, 110, "Green Guard Two");
+        st.introSequenceActive = true;
+        st.introPhase = 0;
+        st.introTimer = 0.0;
+        st.cinematicFocusX = px + 40.0;
+        st.cinematicFocusY = py - 40.0;
+        st.introWarpX = GameMath.clamp(px + 900.0, 220.0, ctx.WORLD_W - 220.0);
+        st.introWarpY = GameMath.clamp(py - 90.0, 220.0, ctx.WORLD_H - 220.0);
     }
 
     private static void spawnSector2(GameContext ctx, CampaignState st) {
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 560, -200);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 640, -130);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 740, -220);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 860, 90);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 920, 130);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 980, -40);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -200, -50);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.VANGUARD_TITAN, 760, -80);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 860, -160);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.CIWS_CORVETTE, 900, -40);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 980, 60);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 1020, 140);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -360, 60, "Green Bulwark Titan Broker Shield");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Green Escort Spear");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -200, -50, "Green Screen Lance");
     }
 
     private static void spawnSector3(GameContext ctx, CampaignState st) {
@@ -578,99 +1015,111 @@ public final class CampaignSystem {
         st.captureX = GameMath.clamp(ctx.player.x + 700, 220, ctx.WORLD_W - 220);
         st.captureY = GameMath.clamp(ctx.player.y + 220, 220, ctx.WORLD_H - 220);
         st.captureRadius = 200.0;
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.INTERDICTION_TITAN, st.captureX + 220, st.captureY - 20);
         spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.FRIGATE, st.captureX + 90, st.captureY - 90);
         spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.CIWS_CORVETTE, st.captureX - 120, st.captureY + 60);
-        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.PATROL, st.captureX + 150, st.captureY + 100);
-        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.MISSILE_BOAT, st.captureX + 220, st.captureY - 40);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -100, 60);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.PICKET, -170, -40);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.MISSILE_BOAT, st.captureX + 220, st.captureY - 140);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT_TITAN, Faction.TEAM_C, -340, 70, "Green Navigation Titan Atlas Memory");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -100, 60, "Green Relay Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -170, -40, "Green Relay Screen");
     }
 
     private static void spawnSector4(GameContext ctx, CampaignState st) {
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -120, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -180, -60);
-        st.bossTargetId = spawnBoss(ctx, "MID-BOSS ALPHA");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -320, 40, "Green Bulwark Titan Vigilant Home");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Pursuit Screen");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Pursuit Flak");
+        st.bossTargetId = spawnBoss(ctx, ShipRole.INTERDICTION_TITAN, "AI PURSUIT TITAN RED KNIFE", 1.55, 1.65);
     }
 
     private static void spawnSector5(GameContext ctx, CampaignState st) {
-        st.escortShip = spawnConvoy(ctx, "Convoy");
+        st.escortShip = spawnEscortTitan(ctx, ShipRole.TRANSPORT_TITAN, Faction.TEAM_C, "Green Exodus Transport Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_C, -340, -120, "Green Carrier Support Titan Hearthwing");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 560, -120);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 760, -200);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 860, 40);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 920, 120);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -120, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -180, -60);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, 980, 120);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Refugee Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Refugee Flak");
     }
 
     private static void spawnSector6(GameContext ctx, CampaignState st) {
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, 760, -60);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 560, -140);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 720, -240);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 760, -30);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 900, -110);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 980, 90);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 840, 180);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 1020, 20);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -120, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -180, -60);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, Faction.TEAM_C, -340, 40, "Green Vanguard Titan Waybreaker");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Lane Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Lane Flak");
     }
 
     private static void spawnSector7(GameContext ctx, CampaignState st) {
         st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
         st.captureY = GameMath.clamp(ctx.player.y + 140, 220, ctx.WORLD_H - 220);
         spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 180, st.captureY - 130);
-        spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX - 120, st.captureY + 90);
+        spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 260, st.captureY + 20);
         spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 230, st.captureY + 80);
         spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX - 200, st.captureY - 10);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -60);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -360, 80, "Green Contract Command Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 80, "Green Contract Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -60, "Green Contract Screen");
     }
 
     private static void spawnSector8(GameContext ctx, CampaignState st) {
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -120, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -180, -60);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, -250, 90);
-        st.bossTargetId = spawnBoss(ctx, "MID-BOSS BETA");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -340, 90, "Green Contract Command Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Siege Scout");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Siege Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -250, 90, "Green Siege Cruiser");
+        st.bossTargetId = spawnBoss(ctx, ShipRole.ARTILLERY_TITAN, "ASH GATE ARTILLERY TITAN", 1.60, 1.75);
     }
 
     private static void spawnSector9(GameContext ctx, CampaignState st) {
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.SHIELD_BASTION_TITAN, Faction.TEAM_C, -360, -80, "Green Shield Bastion Titan Solward");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -440, 120, "Green Bulwark Titan Aegis Return");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 580, -180);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 700, 170);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 820, -130);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.INTERDICTION_TITAN, 860, -40);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 910, 90);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 1050, -20);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -210, -60);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Green Sol Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -210, -60, "Green Sol Flak");
     }
 
     private static void spawnSector10(GameContext ctx, CampaignState st) {
-        st.escortShip = spawnConvoy(ctx, "Carrier Task Convoy");
+        st.escortShip = spawnEscortTitan(ctx, ShipRole.BOARDING_RECOVERY_TITAN, Faction.TEAM_D, "Liberated Yellow Recovery Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_C, -360, -110, "Green Carrier Support Titan");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 640, -140);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 740, 110);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, 990, -20);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, 990, -20);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 880, 200);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 840, -220);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -210, -60);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, -300, 60);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 70, "Yellow Breakchain Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -210, -60, "Yellow Breakchain Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -300, 60, "Green Liberation Cruiser");
     }
 
     private static void spawnSector11(GameContext ctx, CampaignState st) {
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 700, -170);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.INTERDICTION_TITAN, 760, -120);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, 920, 80);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 790, 150);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, 980, -80);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 910, 200);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 860, -240);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 1020, 70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, -320, 20);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.ARTILLERY_TITAN, Faction.TEAM_C, -380, -40, "Green Artillery Titan Homebound");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 80, "Yellow Return Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -220, -70, "Yellow Return Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Earthway Cruiser");
     }
 
     private static void spawnSector12(GameContext ctx, CampaignState st) {
-        spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -70);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, -320, 20);
-        spawnAllyAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, -420, -40);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -420, -120, "Green Bulwark Titan Aegis Return");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.ARTILLERY_TITAN, Faction.TEAM_C, -500, 40, "Green Artillery Titan Homebound");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_D, -540, 180, "Yellow Carrier Support Titan Renewal");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 80, "Yellow Earthfall Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -220, -70, "Yellow Earthfall Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Homefront Cruiser");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, Faction.TEAM_C, -420, -40, "Green Breakthrough Battlecruiser");
         st.bossTargetId = spawnFinalBoss(ctx);
     }
 
@@ -707,7 +1156,7 @@ public final class CampaignSystem {
         if (st.authoredWaveCursor == 2 && t >= 220.0) {
             spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 980, -50);
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 1020, 150);
-            spawnAllyAtPlayerOffset(ctx, ShipRole.PICKET, -240, 90);
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -240, 90, "Green Relief Screen");
             st.authoredWaveCursor++;
             logTelemetry("sector_script", "sector=1 wave=3 t=" + Math.round(t));
             return;
@@ -738,7 +1187,7 @@ public final class CampaignSystem {
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 980, 180);
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 1040, 70);
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 930, 230);
-            spawnAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -240, -60);
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -240, -60, "Green Relief Flak");
             st.authoredWaveCursor++;
             EventSystem.showBanner(ctx, "STRIKE GROUP MAIN BODY", 1.8);
             logTelemetry("sector_script", "sector=2 wave=2 t=" + Math.round(t));
@@ -758,9 +1207,9 @@ public final class CampaignSystem {
         if (!st.captureArmed) {
             if (st.authoredObjectiveHostiles.isEmpty()) {
                 st.captureArmed = true;
-                st.objectiveLabel = "Hold relay beacon";
+                st.objectiveLabel = "Hold the relay uplink while jump authority is restored";
                 st.authoredWaveCursor = 0;
-                EventSystem.showBanner(ctx, "RELAY SECURED: HOLD POSITION", 2.2);
+                EventSystem.showBanner(ctx, "RELAY SECURED: HOLD THE UPLINK", 2.2);
                 logTelemetry("sector_script", "sector=3 capture_armed t=" + Math.round(st.sectorElapsed));
             }
             return;
@@ -777,7 +1226,7 @@ public final class CampaignSystem {
             spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 250, st.captureY - 150);
             spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY + 10);
             spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 210, st.captureY + 150);
-            spawnAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -240, 120);
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -240, 120, "Green Uplink Guard");
             st.authoredWaveCursor++;
             logTelemetry("sector_script", "sector=3 wave=2 p=" + Math.round(st.objectiveProgress));
             return;
@@ -786,49 +1235,65 @@ public final class CampaignSystem {
             spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX - 280, st.captureY - 40);
             spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 320, st.captureY + 70);
             st.authoredWaveCursor++;
-            EventSystem.showBanner(ctx, "HOLD THE BEACON", 2.0);
+            EventSystem.showBanner(ctx, "HOLD THE EARTH VECTOR", 2.0);
             logTelemetry("sector_script", "sector=3 wave=3 p=" + Math.round(st.objectiveProgress));
         }
     }
 
-    private static int spawnBoss(GameContext ctx, String name) {
-        Ship boss = SpawnSystem.spawnEnemy(ctx, ShipRole.BATTLECRUISER, ctx.player.x + 760, ctx.player.y - 120);
+    private static int spawnBoss(GameContext ctx, ShipRole role, String name, double hpMul, double shieldMul) {
+        Ship boss = spawnCampaignShip(ctx, role, Faction.ENEMY, ctx.player.x + 760, ctx.player.y - 120, name);
+        if (boss == null) return -1;
         boss.name = name;
-        boss.hpMax = (int) Math.round(boss.hpMax * 1.9);
+        boss.hpMax = (int) Math.round(boss.hpMax * hpMul);
         boss.hp = boss.hpMax;
-        boss.shieldMax *= 1.7;
+        boss.shieldMax *= shieldMul;
         boss.shield = boss.shieldMax;
         for (Turret t : boss.turrets) {
             t.damage = Math.max(1, (int) Math.round(t.damage * 1.35));
             t.cooldown = Math.max(0.05, t.cooldown * 0.88);
         }
-        SpawnSystem.spawnEnemy(ctx, ShipRole.MISSILE_BOAT, boss.x + 130, boss.y - 60);
-        SpawnSystem.spawnEnemy(ctx, ShipRole.CIWS_CORVETTE, boss.x - 130, boss.y + 60);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, boss.x + 160, boss.y - 80);
+        spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, boss.x - 150, boss.y + 100);
+        spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, boss.x + 220, boss.y + 40);
         return boss.id;
     }
 
     private static int spawnFinalBoss(GameContext ctx) {
-        Ship boss = SpawnSystem.spawnEnemy(ctx, ShipRole.DREADNOUGHT, ctx.player.x + 900, ctx.player.y - 180);
-        boss.name = "ENEMY FLAGSHIP";
-        boss.hpMax = (int) Math.round(boss.hpMax * 2.6);
+        Ship boss = spawnCampaignShip(ctx, ShipRole.MOTHERSHIP, Faction.ENEMY,
+                ctx.player.x + 960, ctx.player.y - 120, "AI MOTHERSHIP EARTHFALL");
+        if (boss == null) return -1;
+        boss.hpMax = (int) Math.round(boss.hpMax * 2.2);
         boss.hp = boss.hpMax;
-        boss.shieldMax *= 2.2;
+        boss.shieldMax *= 2.6;
         boss.shield = boss.shieldMax;
         boss.shieldRegen *= 1.5;
         for (Turret t : boss.turrets) {
             t.damage = Math.max(1, (int) Math.round(t.damage * 1.55));
             t.cooldown = Math.max(0.05, t.cooldown * 0.84);
         }
-
-        SpawnSystem.spawnEnemy(ctx, ShipRole.BATTLESHIP, boss.x + 170, boss.y + 90);
-        SpawnSystem.spawnEnemy(ctx, ShipRole.BATTLECRUISER, boss.x - 170, boss.y - 90);
-        SpawnSystem.spawnEnemy(ctx, ShipRole.MISSILE_BOAT, boss.x + 220, boss.y - 140);
+        spawnCampaignShip(ctx, ShipRole.BULWARK_TITAN, Faction.ENEMY, boss.x + 220, boss.y + 140, "Earthfall Bulwark");
+        spawnCampaignShip(ctx, ShipRole.HYPERWEAPON_TITAN, Faction.ENEMY, boss.x - 240, boss.y - 150, "Earthfall Lance");
+        spawnEnemyAtPoint(ctx, ShipRole.BATTLESHIP, boss.x + 170, boss.y + 90);
+        spawnEnemyAtPoint(ctx, ShipRole.BATTLECRUISER, boss.x - 170, boss.y - 90);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, boss.x + 260, boss.y - 180);
         return boss.id;
     }
 
     private static SectorScript scriptFor(int sector) {
         int idx = Math.max(1, Math.min(12, sector));
         return SCRIPTS[idx];
+    }
+
+    private static SectorLore loreFor(int sector) {
+        int idx = Math.max(1, Math.min(12, sector));
+        SectorLore lore = LORE[idx];
+        if (lore != null) return lore;
+        return new SectorLore(idx, "UNTITLED SECTOR", "Unknown Theater", "Push the fleet onward.", "The fleet keeps moving.");
+    }
+
+    private static String actTitleFor(int act) {
+        int idx = Math.max(1, Math.min(ACT_TITLES.length - 1, act));
+        return ACT_TITLES[idx];
     }
 
     private static SideObjectiveScript sideScriptFor(int sector) {
@@ -852,8 +1317,25 @@ public final class CampaignSystem {
         return SpawnSystem.spawnAlly(ctx, role, ctx.player.x + ox, ctx.player.y + oy);
     }
 
+    private static Ship spawnCampaignAllyAtPlayerOffset(GameContext ctx, ShipRole role, double ox, double oy, String name) {
+        return spawnCampaignShip(ctx, role, Faction.ALLY, ctx.player.x + ox, ctx.player.y + oy, name);
+    }
+
     private static Ship spawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y) {
         return SpawnSystem.spawnEnemy(ctx, role, x, y);
+    }
+
+    private static Ship spawnCampaignShip(GameContext ctx, ShipRole role, Faction faction, double x, double y, String name) {
+        if (ctx == null || role == null || faction == null) return null;
+        Ship ship = new FleetShip(role, faction,
+                GameMath.clamp(x, 30.0, ctx.WORLD_W - 30.0),
+                GameMath.clamp(y, 30.0, ctx.WORLD_H - 30.0));
+        ctx.ships.add(ship);
+        try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
+        if (ship != null && name != null && !name.isBlank()) {
+            ship.name = name;
+        }
+        return ship;
     }
 
     private static Ship spawnAuthoredObjectiveEnemyAtPoint(GameContext ctx, CampaignState st, ShipRole role, double x, double y) {
@@ -875,6 +1357,17 @@ public final class CampaignSystem {
         convoy.name = name;
         convoy.desiredSpeed = Math.max(55.0, convoy.desiredSpeed);
         return convoy;
+    }
+
+    private static Ship spawnEscortTitan(GameContext ctx, ShipRole role, String name) {
+        Ship base = TeamSystem.getBaseForTeam(ctx, Faction.ALLY);
+        double sx = (base != null) ? base.x + 110 : ctx.player.x - 180;
+        double sy = (base != null) ? base.y + 90 : ctx.player.y + 40;
+        Ship titan = spawnCampaignShip(ctx, role, Faction.ALLY, sx, sy, name);
+        if (titan != null) {
+            titan.desiredSpeed = Math.max(48.0, titan.desiredSpeed);
+        }
+        return titan;
     }
 
     private static void applySectorModifiers(GameContext ctx, CampaignState st, SectorScript script) {
@@ -984,7 +1477,7 @@ public final class CampaignSystem {
             }
             case ESCORT -> {
                 if (st.escortShip == null || !st.escortShip.alive || st.escortShip.hp <= 0) {
-                    failRun(ctx, "DEFEAT: CONVOY DESTROYED");
+                    failRun(ctx, "DEFEAT: ESCORT LOST");
                     return;
                 }
                 st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + dt);
@@ -1124,6 +1617,7 @@ public final class CampaignSystem {
         updateBranchProgress(st, sideBonus);
         persistSectorProgress(ctx, st.sector);
         String unlock = grantSectorUnlock(ctx);
+        String storyReward = grantStoryFleetReward(ctx, st);
         String bossDrop = grantBossDrop(ctx);
         int nextSector = st.sector + 1;
         boolean checkpointSaved = nextSector <= st.totalSectors && saveCheckpoint(ctx, st, nextSector);
@@ -1132,31 +1626,43 @@ public final class CampaignSystem {
         }
 
         boolean actBreak = isActBreakAfter(st.sector);
-        st.transitionTimer = actBreak ? 7.0 : 3.5;
-        st.transitionLabel = actBreak
-                ? ("ACT " + (st.act + 1) + " INBOUND")
-                : ("JUMPING TO SECTOR " + (st.sector + 1));
-        st.transitionSummaryTop = "Sector " + st.sector + " clear: " + st.objectiveType + " in " + Math.round(st.sectorElapsed) + "s";
-        st.transitionSummaryBottom = "+" + bonus + " credits   |   MOD: " + modifiersSummary(st.activeModifiers)
+        SectorLore clearedLore = loreFor(st.sector);
+        SectorLore nextLore = loreFor(Math.min(st.totalSectors, Math.max(1, nextSector)));
+        st.transitionTimer = 0.0;
+        st.awaitingEpisodeLaunch = nextSector <= st.totalSectors;
+        st.pendingEpisodeSector = st.awaitingEpisodeLaunch ? nextSector : 0;
+        st.transitionLabel = st.awaitingEpisodeLaunch
+                ? ("EPISODE " + nextSector + ": " + nextLore.title)
+                : (actBreak
+                ? ("ACT " + (st.act + 1) + ": " + actTitleFor(st.act + 1))
+                : ("JUMP TO " + nextLore.title));
+        st.transitionSummaryTop = clearedLore.title + " secure. " + clearedLore.completionLead;
+        st.transitionSummaryBottom = "+" + bonus + " credits   |   DOCTRINE: " + st.branchRoute
+                + "   |   MOD: " + modifiersSummary(st.activeModifiers)
                 + sideRewardSummary(st, sideBonus)
-                + "   |   ROUTE: " + st.branchRoute
+                + (storyReward.isBlank() ? "" : "   |   " + storyReward)
                 + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
                 + (unlock.isBlank() ? "" : "   |   " + unlock)
-                + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "");
+                + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "")
+                + (st.awaitingEpisodeLaunch ? "   |   PRESS ENTER TO LAUNCH" : "");
+        quietEpisodeInterlude(ctx, st);
         EventSystem.showBanner(ctx,
-                "SECTOR CLEARED +" + bonus + " CREDITS"
+                clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
+                        + (storyReward.isBlank() ? "" : "  FLEET EXPANDED")
                         + (bossDrop.isBlank() ? "" : "  DROP ACQUIRED")
-                        + "  ROUTE " + st.branchRoute
+                        + "  DOCTRINE " + st.branchRoute
                         + (checkpointSaved ? "  CHECKPOINT SAVED" : "")
-                        + (actBreak ? "  ACT BREAK" : ""),
-                actBreak ? 4.0 : 2.4);
+                        + (st.awaitingEpisodeLaunch ? "  EPISODE READY" : "")
+                        + (!st.awaitingEpisodeLaunch && actBreak ? "  ACT BREAK" : ""),
+                st.awaitingEpisodeLaunch ? 3.2 : (actBreak ? 4.0 : 2.4));
         logTelemetry("sector_clear",
                 "sector=" + st.sector +
                         " elapsedSec=" + Math.round(st.sectorElapsed) +
                         " objective=" + st.objectiveType +
                         " bonus=" + bonus +
                         " sideBonus=" + sideBonus +
+                        " storyReward=" + (storyReward.isBlank() ? "none" : storyReward) +
                         " drop=" + (bossDrop.isBlank() ? "none" : bossDrop) +
                         " checkpoint=" + checkpointSaved +
                         " route=" + st.branchRoute +
@@ -1226,6 +1732,27 @@ public final class CampaignSystem {
         if (duplicateBonus > 0) ctx.credits += duplicateBonus;
         EventSystem.showBanner(ctx, unlock, 2.8);
         return unlock;
+    }
+
+    private static String grantStoryFleetReward(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return "";
+        return switch (st.sector) {
+            case 4 -> grantStoryResources(ctx, 220, 70, "ESCAPE CACHE RECOVERED");
+            case 7 -> grantStoryResources(ctx, 340, 110, "GREEN MARKET ACCESS OPEN");
+            case 10 -> grantStoryResources(ctx, 420, 140, "LIBERATION STORES TRANSFERRED");
+            default -> "";
+        };
+    }
+
+    private static String grantStoryResources(GameContext ctx, int credits, int ore, String label) {
+        if (ctx == null || ctx.player == null) return "";
+        int creditReward = GameContext.scaleCreditEarnings(Math.max(0, credits));
+        int oreReward = Math.max(0, ore);
+        ctx.credits += creditReward;
+        ctx.player.cargo = Math.min(ctx.player.cargoMax, ctx.player.cargo + oreReward);
+        String message = label + "  +" + creditReward + "C  +" + oreReward + " ORE";
+        EventSystem.showBanner(ctx, message, 2.6);
+        return label + " +" + creditReward + "c +" + oreReward + " ore";
     }
 
     private static String grantBossDrop(GameContext ctx) {
@@ -1371,12 +1898,21 @@ public final class CampaignSystem {
         ctx.projectiles.clear();
         ctx.salvage.clear();
         ctx.lockedTarget = null;
-
-        ctx.ships.removeIf(s -> s != null && s != ctx.player && s.role != ShipRole.BASE);
+        ctx.ships.removeIf(s -> s != null && s != ctx.player && s != ctx.enemyBase);
+        ctx.allyBase = null;
+        ctx.teamBases.clear();
+        if (ctx.enemyBase != null) {
+            ctx.teamBases.put(Faction.ENEMY, ctx.enemyBase);
+        }
     }
 
     private static void regroupPlayerAtAlliedBase(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
+        if (isCampaignActive(ctx)) {
+            ctx.player.vx = 0.0;
+            ctx.player.vy = 0.0;
+            return;
+        }
         double[] spawn = SpawnSystem.playerRespawnPose(ctx);
         if (spawn == null || spawn.length < 3) return;
         ctx.player.respawnAt(spawn[0], spawn[1], spawn[2]);
@@ -1388,6 +1924,24 @@ public final class CampaignSystem {
         if (ctx.player.shieldActive && ctx.player.shieldMax > 0) {
             ctx.player.shield = ctx.player.shieldMax;
         }
+    }
+
+    private static void ensureCampaignTitanInfrastructure(GameContext ctx) {
+        if (ctx == null || ctx.baseUpgrades == null) return;
+        ensureCampaignHangarTier(ctx, ctx.allyBase);
+        ensureCampaignHangarTier(ctx, ctx.enemyBase);
+    }
+
+    private static void ensureCampaignHangarTier(GameContext ctx, Ship base) {
+        if (ctx == null || base == null || base.role != ShipRole.BASE) return;
+        BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
+        upgrades.hangarLv = Math.max(upgrades.hangarLv, 3);
+    }
+
+    private static void ensureStartingTitanRoster(CampaignState st) {
+        if (st == null || !st.ownedTitans.isEmpty()) return;
+        st.ownedTitans.add(TitanArchetype.TRANSPORT);
+        st.ownedTitans.add(TitanArchetype.BULWARK);
     }
 
     private static void applyPersistedUnlockProfile(GameContext ctx, CampaignState st) {
@@ -1525,7 +2079,7 @@ public final class CampaignSystem {
     }
 
     private static boolean isActBreakAfter(int sector) {
-        return sector == 4 || sector == 8 || sector == 11;
+        return sector == 4 || sector == 8;
     }
 
     private static String formatProgress(double progress, double goal) {
@@ -1608,7 +2162,7 @@ public final class CampaignSystem {
 
     private static String failureHint(ObjectiveType type) {
         return switch (type) {
-            case ESCORT -> "FAIL: convoy destroyed";
+            case ESCORT -> "FAIL: escort lost";
             case BOSS, FINAL_BOSS -> "FAIL: timeout / player death";
             default -> "FAIL: timeout";
         };
@@ -1713,6 +2267,8 @@ public final class CampaignSystem {
         cp.bossDropFlagCore = st.bossDropFlagCore;
         cp.bossDropsCollected = st.bossDropsCollected;
         cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
+        cp.persistentBlueFleet = serializePersistentBlueFleet(st.persistentBlueFleet);
+        cp.campaignBlueYellowAlliance = st.campaignBlueYellowAlliance;
 
         Player player = ctx.player;
         cp.playerFactionName = (player.faction == null) ? Faction.PLAYER.name() : player.faction.name();
@@ -1751,7 +2307,8 @@ public final class CampaignSystem {
         cp.carrierAutoLaunch = player.carrierAutoLaunch;
         cp.flightDeckLoadout = serializeFlightDeck(player);
 
-        copyBaseCheckpoint(ctx.allyBase, ctx.baseUpgrades.get(ctx.allyBase), true, cp);
+        Ship anchor = currentBaseUpgradeAnchor(ctx);
+        copyBaseCheckpoint(anchor, ctx.baseUpgrades.get(anchor), true, cp);
         copyBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase), false, cp);
         cp.normalize();
         return cp;
@@ -1779,9 +2336,12 @@ public final class CampaignSystem {
         st.bossDropFlagCore = cp.bossDropFlagCore;
         st.bossDropsCollected = cp.bossDropsCollected;
         TitanFleetSystem.restoreOwnedTitans(st, cp.ownedTitans);
+        st.campaignBlueYellowAlliance = cp.campaignBlueYellowAlliance;
+        restorePersistentBlueFleet(st, cp.persistentBlueFleet);
 
         restorePlayerFromCheckpoint(ctx.player, cp);
-        restoreBaseCheckpoint(ctx.allyBase, ctx.baseUpgrades.get(ctx.allyBase),
+        Ship anchor = currentBaseUpgradeAnchor(ctx);
+        restoreBaseCheckpoint(anchor, ctx.baseUpgrades.get(anchor),
                 cp.allyOreStockpile, cp.allyHullLv, cp.allyShieldLv, cp.allyTurretLv, cp.allyMiningLv, cp.allyHangarLv);
         restoreBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase),
                 cp.enemyOreStockpile, cp.enemyHullLv, cp.enemyShieldLv, cp.enemyTurretLv, cp.enemyMiningLv, cp.enemyHangarLv);
@@ -1997,6 +2557,104 @@ public final class CampaignSystem {
             }
         }
         return fallback;
+    }
+
+    private static void addPersistentFleetEntry(CampaignState st, ShipRole role, String name) {
+        if (st == null || role == null) return;
+        st.persistentBlueFleet.add(new PersistentFleetEntry(st.nextPersistentFleetSlotId++, role, name));
+    }
+
+    private static int livePersistentFleetSlots(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && !entry.destroyed) count++;
+        }
+        return count;
+    }
+
+    private static void spawnSinglePersistentBlueShip(GameContext ctx, CampaignState st, PersistentFleetEntry entry, int liveIndex) {
+        if (ctx == null || st == null || entry == null || ctx.player == null || entry.destroyed) return;
+        double lane = liveIndex % 3;
+        double row = liveIndex / 3;
+        double side = lane - 1.0;
+        double aft = 180.0 + row * 92.0;
+        double lateral = side * (130.0 + row * 12.0);
+        double sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
+        double sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
+        sx = GameMath.clamp(sx, 40.0, ctx.WORLD_W - 40.0);
+        sy = GameMath.clamp(sy, 40.0, ctx.WORLD_H - 40.0);
+
+        Ship ship = new FleetShip(entry.role, Faction.ALLY, sx, sy);
+        ship.name = entry.name;
+        ship.angle = ctx.player.angle;
+        ship.vx = ctx.player.vx;
+        ship.vy = ctx.player.vy;
+        ship.minerHomeBase = ctx.player;
+        ctx.ships.add(ship);
+        try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
+        entry.activeShipId = ship.id;
+    }
+
+    private static void spawnIntroRedDetachment(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        double x = Double.isFinite(st.introWarpX) ? st.introWarpX : ctx.player.x + 820.0;
+        double y = Double.isFinite(st.introWarpY) ? st.introWarpY : ctx.player.y - 80.0;
+        Explosion.spawnDestabilizerPulse(x, y, 220.0);
+        Explosion.spawnDestabilizerPulse(x + 90.0, y - 60.0, 160.0);
+        Explosion.spawnDestabilizerPulse(x - 110.0, y + 80.0, 160.0);
+        spawnCampaignShip(ctx, ShipRole.VANGUARD_TITAN, Faction.ENEMY, x, y, "Red Knife Advance Titan");
+        spawnCampaignShip(ctx, ShipRole.FRIGATE, Faction.ENEMY, x + 120.0, y - 120.0, "Red Strike Frigate");
+        spawnCampaignShip(ctx, ShipRole.MISSILE_BOAT, Faction.ENEMY, x + 160.0, y + 20.0, "Red Strike Missile Boat");
+        spawnCampaignShip(ctx, ShipRole.PICKET, Faction.ENEMY, x + 70.0, y + 130.0, "Red Pursuit Picket");
+        snapshotHostiles(ctx, st.knownHostiles);
+        EventSystem.showBanner(ctx, "RED DETACHMENT ATTACKING", 2.2);
+    }
+
+    private static String generatedBlueFleetName(ShipRole role, int slotId) {
+        String title = (role == null) ? "Hull" : role.name().replace('_', ' ');
+        return "Blue " + title + " " + Math.max(1, slotId);
+    }
+
+    private static String serializePersistentBlueFleet(List<PersistentFleetEntry> fleet) {
+        if (fleet == null || fleet.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        for (PersistentFleetEntry entry : fleet) {
+            if (entry == null || entry.role == null) continue;
+            if (sb.length() > 0) sb.append(';');
+            String encodedName = encoder.encodeToString(entry.name.getBytes(StandardCharsets.UTF_8));
+            sb.append(entry.slotId).append(',')
+                    .append(entry.role.name()).append(',')
+                    .append(entry.destroyed).append(',')
+                    .append(encodedName);
+        }
+        return sb.toString();
+    }
+
+    private static void restorePersistentBlueFleet(CampaignState st, String raw) {
+        if (st == null) return;
+        st.persistentBlueFleet.clear();
+        st.nextPersistentFleetSlotId = 1;
+        if (raw == null || raw.isBlank()) return;
+        Base64.Decoder decoder = Base64.getUrlDecoder();
+        for (String entryRaw : raw.split(";")) {
+            if (entryRaw == null || entryRaw.isBlank()) continue;
+            String[] parts = entryRaw.split(",", 4);
+            if (parts.length < 4) continue;
+            try {
+                int slotId = Math.max(1, Integer.parseInt(parts[0].trim()));
+                ShipRole role = parseEnum(parts[1], ShipRole.FRIGATE);
+                boolean destroyed = Boolean.parseBoolean(parts[2].trim());
+                String name = new String(decoder.decode(parts[3].trim()), StandardCharsets.UTF_8);
+                PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, name);
+                entry.destroyed = destroyed;
+                st.persistentBlueFleet.add(entry);
+                st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);
+            } catch (Exception ignored) {
+                // Skip malformed checkpoint fleet entries.
+            }
+        }
     }
 
 }

@@ -33,6 +33,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
+            focusShopHullRole(ctx, (ctx.player == null) ? ShipRole.FRIGATE : ctx.player.role);
             ctx.state = GameState.SHOP;
             AudioSystem.onUiOpen(ctx);
         } else {
@@ -63,7 +64,7 @@ public final class UISystem {
     public static void toggleBaseMenu(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
-        Ship dock = EconomySystem.getDockedFriendlyBase(ctx);
+        Ship dock = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         if (dock == null) {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE TO UPGRADE", 2.0);
             return;
@@ -172,12 +173,20 @@ public final class UISystem {
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
 
         Renderer.ShopClickTarget target = Renderer.shopClickTargetAt(
-                ctx.player, ctx.credits, getMaxHangarTierForPlayer(ctx),
+                ctx.player, ctx.ui, ctx.credits, getMaxHangarTierForPlayer(ctx),
                 viewportW, viewportH, e.getX(), e.getY());
         if (target == null) return false;
 
         if (target.kind == Renderer.ShopClickTarget.Kind.UPGRADE) {
             performShopUpgradeById(ctx, target.upgradeId);
+            return true;
+        }
+        if (target.kind == Renderer.ShopClickTarget.Kind.CATEGORY && target.category != null) {
+            selectShopHullCategory(ctx, target.category);
+            return true;
+        }
+        if (target.kind == Renderer.ShopClickTarget.Kind.PAGE && target.pageDelta != 0) {
+            stepShopHullPage(ctx, target.pageDelta);
             return true;
         }
         if (target.kind == Renderer.ShopClickTarget.Kind.HULL && target.role != null) {
@@ -551,8 +560,74 @@ public final class UISystem {
         }
     }
 
+    public static void selectShopHullCategory(GameContext ctx, ShopHullCategory category) {
+        if (ctx == null || category == null) return;
+        ctx.ui.shopHullCategory = category;
+        ctx.ui.shopHullPage = Renderer.clampShopHullPage(category, 0);
+    }
+
+    public static void stepShopHullPage(GameContext ctx, int dir) {
+        if (ctx == null) return;
+        ShopHullCategory category = (ctx.ui.shopHullCategory == null) ? ShopHullCategory.ESCORT : ctx.ui.shopHullCategory;
+        int step = (dir < 0) ? -1 : 1;
+        int pages = Renderer.shopHullPageCount(category);
+        if (pages <= 1) {
+            ctx.ui.shopHullPage = 0;
+            return;
+        }
+        int next = ctx.ui.shopHullPage + step;
+        if (next < 0) next = pages - 1;
+        if (next >= pages) next = 0;
+        ctx.ui.shopHullPage = Renderer.clampShopHullPage(category, next);
+    }
+
+    public static void focusShopHullRole(GameContext ctx, ShipRole role) {
+        if (ctx == null) return;
+        ShopHullCategory category = ShopHullCategory.forRole(role);
+        ctx.ui.shopHullCategory = category;
+        ctx.ui.shopHullPage = Renderer.shopHullPageForRole(role);
+    }
+
     public static void performHullSwapByRole(GameContext ctx, ShipRole role) {
         if (ctx == null || role == null || !ctx.ui.shopOpen) return;
+        focusShopHullRole(ctx, role);
+        if (CampaignSystem.usesPersistentFleetShop(ctx)) {
+            switch (role) {
+                case PATROL -> tryBuyCampaignHull(ctx, ShipRole.PATROL, 0, 0);
+                case PICKET -> tryBuyCampaignHull(ctx, ShipRole.PICKET, 180, 0);
+                case FRIGATE -> tryBuyCampaignHull(ctx, ShipRole.FRIGATE, 0, 0);
+                case ARTILLERY_SHIP -> tryBuyCampaignHull(ctx, ShipRole.ARTILLERY_SHIP, 320, 0);
+                case MISSILE_BOAT -> tryBuyCampaignHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
+                case CIWS_CORVETTE -> tryBuyCampaignHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
+                case LIGHT_CRUISER -> tryBuyCampaignHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
+                case MEDIUM_CRUISER -> tryBuyCampaignHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
+                case CRUISER -> tryBuyCampaignHull(ctx, ShipRole.CRUISER, 1100, 1);
+                case BATTLECRUISER -> tryBuyCampaignHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
+                case BATTLESHIP -> tryBuyCampaignHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
+                case STEALTH_SHIP -> tryBuyCampaignHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
+                case DREADNOUGHT -> tryBuyCampaignHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
+                case CARRIER -> tryBuyCampaignHull(ctx, ShipRole.CARRIER, 2800, 3);
+                case DRONE_CARRIER -> tryBuyCampaignHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
+                case SUPERSHIP -> tryBuyCampaignHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
+                case TRANSPORT_TITAN -> tryBuyCampaignHull(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3);
+                case BULWARK_TITAN -> tryBuyCampaignHull(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3);
+                case CARRIER_SUPPORT_TITAN -> tryBuyCampaignHull(ctx, ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3);
+                case VANGUARD_TITAN -> tryBuyCampaignHull(ctx, ShipRole.VANGUARD_TITAN, TitanArchetype.VANGUARD.costCredits(), 3);
+                case INTERDICTION_TITAN -> tryBuyCampaignHull(ctx, ShipRole.INTERDICTION_TITAN, TitanArchetype.INTERDICTION.costCredits(), 3);
+                case COMMAND_INTEL_TITAN -> tryBuyCampaignHull(ctx, ShipRole.COMMAND_INTEL_TITAN, TitanArchetype.COMMAND_INTEL.costCredits(), 3);
+                case BOARDING_RECOVERY_TITAN -> tryBuyCampaignHull(ctx, ShipRole.BOARDING_RECOVERY_TITAN, TitanArchetype.BOARDING_RECOVERY.costCredits(), 3);
+                case ARTILLERY_TITAN -> tryBuyCampaignHull(ctx, ShipRole.ARTILLERY_TITAN, TitanArchetype.ARTILLERY.costCredits(), 3);
+                case SHIELD_BASTION_TITAN -> tryBuyCampaignHull(ctx, ShipRole.SHIELD_BASTION_TITAN, TitanArchetype.SHIELD_BASTION.costCredits(), 3);
+                case FLEET_TELEPORTER_TITAN -> tryBuyCampaignHull(ctx, ShipRole.FLEET_TELEPORTER_TITAN, TitanArchetype.FLEET_TELEPORTER.costCredits(), 3);
+                case ELITE_SUPERSHIP_COMMAND_TITAN -> tryBuyCampaignHull(ctx, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3);
+                case MOBILE_STATION_TITAN -> tryBuyCampaignHull(ctx, ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3);
+                case HYPERWEAPON_TITAN -> tryBuyCampaignHull(ctx, ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3);
+                case MOTHERSHIP -> EventSystem.showBanner(ctx, "MOTHERSHIP ALREADY UNDER COMMAND", 1.4);
+                default -> {
+                }
+            }
+            return;
+        }
         switch (role) {
             case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 0, 0);
             case PICKET -> trySwapHull(ctx, ShipRole.PICKET, 180, 0);
@@ -570,6 +645,20 @@ public final class UISystem {
             case CARRIER -> trySwapHull(ctx, ShipRole.CARRIER, 2800, 3);
             case DRONE_CARRIER -> trySwapHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
             case SUPERSHIP -> trySwapHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
+            case TRANSPORT_TITAN -> trySwapHull(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3);
+            case BULWARK_TITAN -> trySwapHull(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3);
+            case CARRIER_SUPPORT_TITAN -> trySwapHull(ctx, ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3);
+            case VANGUARD_TITAN -> trySwapHull(ctx, ShipRole.VANGUARD_TITAN, TitanArchetype.VANGUARD.costCredits(), 3);
+            case INTERDICTION_TITAN -> trySwapHull(ctx, ShipRole.INTERDICTION_TITAN, TitanArchetype.INTERDICTION.costCredits(), 3);
+            case COMMAND_INTEL_TITAN -> trySwapHull(ctx, ShipRole.COMMAND_INTEL_TITAN, TitanArchetype.COMMAND_INTEL.costCredits(), 3);
+            case BOARDING_RECOVERY_TITAN -> trySwapHull(ctx, ShipRole.BOARDING_RECOVERY_TITAN, TitanArchetype.BOARDING_RECOVERY.costCredits(), 3);
+            case ARTILLERY_TITAN -> trySwapHull(ctx, ShipRole.ARTILLERY_TITAN, TitanArchetype.ARTILLERY.costCredits(), 3);
+            case SHIELD_BASTION_TITAN -> trySwapHull(ctx, ShipRole.SHIELD_BASTION_TITAN, TitanArchetype.SHIELD_BASTION.costCredits(), 3);
+            case FLEET_TELEPORTER_TITAN -> trySwapHull(ctx, ShipRole.FLEET_TELEPORTER_TITAN, TitanArchetype.FLEET_TELEPORTER.costCredits(), 3);
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> trySwapHull(ctx, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3);
+            case MOBILE_STATION_TITAN -> trySwapHull(ctx, ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3);
+            case HYPERWEAPON_TITAN -> trySwapHull(ctx, ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3);
+            case MOTHERSHIP -> trySwapHull(ctx, ShipRole.MOTHERSHIP, 7200, 3);
             default -> {
             }
         }
@@ -586,12 +675,12 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "BEAM BOLT ALREADY EQUIPPED", 1.4);
             return;
         }
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
 
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         player.primaryWeaponFamily = Ship.PrimaryWeaponFamily.BEAM_BOLT;
         player.applyPrimaryWeaponFamily();
         EventSystem.showBanner(ctx, "BEAM BOLT ONLINE", 1.6);
@@ -620,15 +709,15 @@ public final class UISystem {
             return;
         }
         int cost = 60;
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         if (ctx.player.buyHullPlatingUpgrade()) {
             EventSystem.showBanner(ctx, "HULL UPGRADED", 1.2);
         } else {
-            ctx.credits += cost;
+            refundCredits(ctx, cost);
             EventSystem.showBanner(ctx, "HULL PLATING AT CAP", 1.2);
         }
     }
@@ -646,15 +735,15 @@ public final class UISystem {
             return;
         }
         int cost = 70;
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         if (p.buyShieldArrayUpgrade()) {
             EventSystem.showBanner(ctx, "SHIELD ARRAY UPGRADED", 1.2);
         } else {
-            ctx.credits += cost;
+            refundCredits(ctx, cost);
             EventSystem.showBanner(ctx, "SHIELD ARRAY AT CAP", 1.2);
         }
     }
@@ -667,15 +756,15 @@ public final class UISystem {
             return;
         }
         int cost = 100;
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         if (ctx.player.addGunTurretUpgrade()) {
             EventSystem.showBanner(ctx, "GUN TURRET ADDED", 1.2);
         } else {
-            ctx.credits += cost;
+            refundCredits(ctx, cost);
             EventSystem.showBanner(ctx, "GUN HARDPOINTS FULL", 1.2);
         }
     }
@@ -688,15 +777,15 @@ public final class UISystem {
             return;
         }
         int cost = 140;
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         if (ctx.player.addMissileRackUpgrade()) {
             EventSystem.showBanner(ctx, "MISSILE RACK ADDED", 1.2);
         } else {
-            ctx.credits += cost;
+            refundCredits(ctx, cost);
             EventSystem.showBanner(ctx, "MISSILE HARDPOINTS FULL", 1.2);
         }
     }
@@ -713,16 +802,16 @@ public final class UISystem {
             return;
         }
         int cost = 120;
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         if (ctx.player.upgradeCIWS()) {
             EventSystem.showBanner(ctx, "CIWS UPGRADED", 1.2);
         } else {
             // Safety fallback in case CIWS state changed between checks.
-            ctx.credits += cost;
+            refundCredits(ctx, cost);
             EventSystem.showBanner(ctx, "CIWS AT MAX LEVEL", 1.2);
         }
     }
@@ -836,12 +925,12 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "HANGAR TIER TOO LOW", 1.4);
             return;
         }
-        if (ctx.credits < cost) {
+        if (!canAffordCredits(ctx, cost)) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS", 1.4);
             return;
         }
         Ship.PrimaryWeaponFamily retainedPrimary = ctx.player.primaryWeaponFamily;
-        ctx.credits -= cost;
+        spendCredits(ctx, cost);
         ctx.player.applyHull(role, ctx.player.x, ctx.player.y);
         ctx.player.primaryWeaponFamily = retainedPrimary;
         ctx.player.applyPrimaryWeaponFamily();
@@ -852,7 +941,7 @@ public final class UISystem {
         if (ctx == null) return;
         if (!ctx.ui.baseMenuOpen) return;
         if (which < 1 || which > 5) return;
-        Ship base = EconomySystem.getDockedFriendlyBase(ctx);
+        Ship base = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         if (base == null) {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE", 1.4);
             return;
@@ -896,13 +985,20 @@ public final class UISystem {
             default -> 0;
         };
 
-        if (ctx.credits < cCost || base.oreStockpile < oCost) {
+        int oreAvailable = CampaignSystem.isCampaignActive(ctx) && ctx.player != null
+                ? ctx.player.cargo
+                : base.oreStockpile;
+        if (!canAffordCredits(ctx, cCost) || oreAvailable < oCost) {
             EventSystem.showBanner(ctx, "INSUFFICIENT RESOURCES", 1.4);
             return;
         }
 
-        ctx.credits -= cCost;
-        base.oreStockpile -= oCost;
+        spendCredits(ctx, cCost);
+        if (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) {
+            ctx.player.cargo = Math.max(0, ctx.player.cargo - oCost);
+        } else {
+            base.oreStockpile -= oCost;
+        }
 
         switch (which) {
             case 1 -> {
@@ -953,9 +1049,41 @@ public final class UISystem {
         }
     }
 
+    private static boolean isFreePurchaseMode(GameContext ctx) {
+        return ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOOTING_RANGE;
+    }
+
+    private static boolean canAffordCredits(GameContext ctx, int cost) {
+        if (ctx == null) return false;
+        if (cost <= 0) return true;
+        return isFreePurchaseMode(ctx) || ctx.credits >= cost;
+    }
+
+    private static boolean spendCredits(GameContext ctx, int cost) {
+        if (ctx == null) return false;
+        if (cost <= 0) return true;
+        if (isFreePurchaseMode(ctx)) {
+            ctx.credits = Math.max(ctx.credits, 999_999);
+            return true;
+        }
+        if (ctx.credits < cost) return false;
+        ctx.credits -= cost;
+        return true;
+    }
+
+    private static void refundCredits(GameContext ctx, int cost) {
+        if (ctx == null || cost <= 0) return;
+        if (isFreePurchaseMode(ctx)) return;
+        ctx.credits += cost;
+    }
+
     public static int getMaxHangarTierForPlayer(GameContext ctx) {
         if (ctx == null || ctx.baseUpgrades == null) return 0;
         if (ctx.config != null && ctx.config.mode == GameMode.SHOOTING_RANGE) return 3;
+        if (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) {
+            BaseUpgrades playerUpgrades = ctx.baseUpgrades.get(ctx.player);
+            if (playerUpgrades != null) return Math.max(0, playerUpgrades.hangarLv);
+        }
         int best = 0;
         for (java.util.Map.Entry<Ship, BaseUpgrades> e : ctx.baseUpgrades.entrySet()) {
             Ship b = e.getKey();
@@ -966,6 +1094,11 @@ public final class UISystem {
             if (up.hangarLv > best) best = up.hangarLv;
         }
         return best;
+    }
+
+    private static void tryBuyCampaignHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {
+        if (ctx == null || role == null) return;
+        CampaignSystem.purchasePersistentBlueShip(ctx, role, cost, requiredTier);
     }
 
     public static void setHelmMode(GameContext ctx, GameContext.HelmMode mode) {

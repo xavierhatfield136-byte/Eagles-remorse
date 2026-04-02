@@ -35,6 +35,12 @@ public abstract class Ship {
         return Math.random();
     }
 
+    private static double[] initCommandStatMultipliers() {
+        double[] out = new double[ShipIdentityRegistry.IdentityStat.values().length];
+        Arrays.fill(out, 1.0);
+        return out;
+    }
+
     public final int id = NEXT_ID++;
     /** Backwards-compatible alias used by Turret/GamePanel. */
     public void onFire() {
@@ -74,6 +80,7 @@ public abstract class Ship {
     public boolean alive = true;
     public double armorRoomHpMultiplier = 1.0;
     public double shieldStripRoomHpMultiplier = 1.0;
+    private final double[] commandStatMultipliers = initCommandStatMultipliers();
 
     // ------------------------------
     // Death sequence (wreck -> fire -> explosion -> loot)
@@ -193,7 +200,8 @@ public abstract class Ship {
         PULSE_BARRAGE,   // Legacy rapid-fire wave pulses
         KINETIC_SLUG,    // Red team: single heavy kinetic shell
         DIRECT_BEAM,     // Green team: strong direct-energy beam
-        MISSILE_BARRAGE  // Missile team: repeated heavy missile salvos
+        MISSILE_BARRAGE, // Missile team: repeated heavy missile salvos
+        LANCE_CONE       // Hyperweapon: piercing beam followed by a delayed cone burst
     }
 
     public boolean hasSuperweapon = false;
@@ -1194,6 +1202,8 @@ public abstract class Ship {
     private double destructionBurnDurationForRole(ShipRole shipRole) {
         double r = randomUnit();
         if (shipRole == null) return 1.5 + r * 0.8;
+        if (shipRole.isTitan()) return 2.15 + r * 1.20;
+        if (shipRole.isMothership()) return 2.80 + r * 1.40;
         return switch (shipRole) {
             case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
                     PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.45 + r * 0.35;
@@ -1206,6 +1216,9 @@ public abstract class Ship {
     private double destructionSpinForRole(ShipRole shipRole) {
         boolean multipart = ShipPartLibrary.hasParts(shipRole, faction);
         if (multipart) {
+            if (shipRole != null && shipRole.isTitanOrMothership()) {
+                return (randomUnit() - 0.5) * (shipRole.isMothership() ? 0.10 : 0.13);
+            }
             double base = switch (shipRole) {
                 case MISSILE_BOAT, FIGHTER, BOMBER, DRONE, PATROL, PICKET, CIWS_CORVETTE,
                         PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.55;
@@ -1214,6 +1227,9 @@ public abstract class Ship {
                 default -> 0.24;
             };
             return (randomUnit() - 0.5) * base;
+        }
+        if (shipRole != null && shipRole.isTitanOrMothership()) {
+            return (randomUnit() - 0.5) * (shipRole.isMothership() ? 0.55 : 1.10);
         }
         double base = switch (shipRole) {
             case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
@@ -2660,6 +2676,8 @@ public abstract class Ship {
 
     private double roomIntegrityDamageBudgetMultiplier() {
         if (role == null) return 1.0;
+        if (role.isMothership()) return 0.60;
+        if (role.isTitan()) return 0.68;
         return switch (role) {
             case SUPERSHIP -> 0.72;
             case DREADNOUGHT -> 0.78;
@@ -2671,6 +2689,8 @@ public abstract class Ship {
 
     private double roomCondemnedThreshold() {
         if (role == null) return BASE_ROOM_CONDEMNED_THRESHOLD;
+        if (role.isMothership()) return 0.18;
+        if (role.isTitan()) return 0.21;
         return switch (role) {
             case SUPERSHIP -> 0.20;
             case DREADNOUGHT -> 0.22;
@@ -2682,6 +2702,8 @@ public abstract class Ship {
 
     private double catastrophicChainDamageCapFraction() {
         if (role == null) return BASE_CATASTROPHIC_CHAIN_DAMAGE_CAP_FRAC;
+        if (role.isMothership()) return 0.10;
+        if (role.isTitan()) return 0.11;
         return switch (role) {
             case SUPERSHIP -> 0.12;
             case DREADNOUGHT -> 0.14;
@@ -5480,6 +5502,10 @@ public abstract class Ship {
                 superweaponBeamTimer = Math.max(0.45, superweaponBeamDuration * 1.7);
                 superweaponBeamTickTimer = superweaponTickSpacing();
             }
+            case LANCE_CONE -> {
+                superweaponBeamTimer = Math.max(0.22, superweaponBeamDuration);
+                superweaponBeamTickTimer = superweaponTickSpacing();
+            }
             default -> {
                 superweaponBeamTimer = 0.0;
                 superweaponBeamTickTimer = 0.0;
@@ -5500,6 +5526,7 @@ public abstract class Ship {
         return switch (superweaponPattern) {
             case MISSILE_BARRAGE -> Math.max(0.14, superweaponBeamTickInterval * 1.8);
             case PULSE_BARRAGE -> Math.max(0.03, superweaponBeamTickInterval / SUPERWEAPON_PROJECTILE_RATE_MULT);
+            case LANCE_CONE -> Math.max(0.20, superweaponBeamTickInterval);
             default -> Math.max(0.06, superweaponBeamTickInterval);
         };
     }
@@ -5512,6 +5539,10 @@ public abstract class Ship {
             case DIRECT_BEAM -> addSuperweaponProjectile(out, createDirectBeamSuperweapon(aim));
             case MISSILE_BARRAGE -> out.addAll(createMissileBarrageVolley(dt, aim, target, beamTick));
             case PULSE_BARRAGE -> addSuperweaponProjectile(out, createSuperweaponPulse(dt, aim, beamTick));
+            case LANCE_CONE -> {
+                if (beamTick) out.addAll(createLanceConeShardVolley(dt, aim));
+                else addSuperweaponProjectile(out, createLanceConePrimaryBeam(aim));
+            }
         }
         return out;
     }
@@ -5639,6 +5670,18 @@ public abstract class Ship {
         return identityStatMultiplier(ShipIdentityRegistry.IdentityStat.WARP_CHARGE);
     }
 
+    public void clearCommandStatMultipliers() {
+        Arrays.fill(commandStatMultipliers, 1.0);
+    }
+
+    public void applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat stat, double multiplier) {
+        if (stat == null || stat == ShipIdentityRegistry.IdentityStat.NONE) return;
+        if (!Double.isFinite(multiplier)) return;
+        int idx = stat.ordinal();
+        if (idx < 0 || idx >= commandStatMultipliers.length) return;
+        commandStatMultipliers[idx] = Math.max(commandStatMultipliers[idx], Math.max(1.0, multiplier));
+    }
+
     public boolean hasMissileBattery() {
         if (turrets == null || turrets.isEmpty()) return false;
         for (Turret t : turrets) {
@@ -5651,7 +5694,15 @@ public abstract class Ship {
         if (stat == null || stat == ShipIdentityRegistry.IdentityStat.NONE) return 1.0;
         double roleMul = roleBonusMultiplierFor(stat);
         double factionMul = factionTraitMultiplier(stat);
-        return Math.max(0.10, roleMul * factionMul);
+        double commandMul = commandStatMultiplier(stat);
+        return Math.max(0.10, roleMul * factionMul * commandMul);
+    }
+
+    private double commandStatMultiplier(ShipIdentityRegistry.IdentityStat stat) {
+        if (stat == null || stat == ShipIdentityRegistry.IdentityStat.NONE) return 1.0;
+        int idx = stat.ordinal();
+        if (idx < 0 || idx >= commandStatMultipliers.length) return 1.0;
+        return Math.max(1.0, commandStatMultipliers[idx]);
     }
 
     private double roleBonusMultiplierFor(ShipIdentityRegistry.IdentityStat stat) {
@@ -5771,6 +5822,20 @@ public abstract class Ship {
         return beam;
     }
 
+    private Projectile createLanceConePrimaryBeam(double aim) {
+        angle = aim;
+        double beamDurationSec = Math.max(0.42, superweaponBeamDuration * 1.65);
+        int beamLife = Math.max(6, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
+        double totalDamage = Math.max(1.0, superweaponDamage * 2.1);
+        double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
+        double beamLength = hyperLanceBeamLength();
+        double beamWidth = Math.max(16.0, superweaponRadius * 2.5);
+        double muzzleOffset = radius + 14.0;
+        Projectile beam = new PhaserBeam(this, aim, beamLength, beamWidth, beamDps, beamLife, muzzleOffset, faction);
+        beam.sourceShipId = id;
+        return beam;
+    }
+
     private Projectile createDestabilizerPulse(double dt, double aim) {
         double sx = x + Math.cos(aim) * (radius + 12.0);
         double sy = y + Math.sin(aim) * (radius + 12.0);
@@ -5797,6 +5862,45 @@ public abstract class Ship {
         );
         pulse.sourceShipId = id;
         return pulse;
+    }
+
+    private List<Projectile> createLanceConeShardVolley(double dt, double aim) {
+        int shardCount = 7;
+        double spread = Math.toRadians(52.0);
+        int damage = Math.max(12, (int) Math.round(superweaponDamage * Math.max(0.28, superweaponBeamDamageScale * 1.55)));
+        double speed = Math.max(560.0, superweaponSpeed * 0.56);
+        int life = Math.max(32, (int) Math.round(superweaponLife * 0.44));
+        double shotRadius = Math.max(8.0, superweaponRadius * 0.88);
+        int maxHits = Math.max(2, (int) Math.round(superweaponMaxHits * 0.16));
+        double beamLength = hyperLanceBeamLength();
+        double muzzle = radius + 14.0;
+        double anchor = muzzle + Math.max(120.0, beamLength * 0.74);
+        double anchorX = x + Math.cos(aim) * anchor;
+        double anchorY = y + Math.sin(aim) * anchor;
+        List<Projectile> out = new ArrayList<>(shardCount);
+
+        for (int i = 0; i < shardCount; i++) {
+            double t = (shardCount <= 1) ? 0.0 : (i / (double) (shardCount - 1) - 0.5);
+            double shotAim = MathUtil.normalizeAngle(aim + t * spread);
+            double lateral = t * Math.max(18.0, superweaponRadius * 2.4);
+            double sx = anchorX + (-Math.sin(aim)) * lateral;
+            double sy = anchorY + (Math.cos(aim)) * lateral;
+            SuperweaponShot shot = new SuperweaponShot(
+                    sx,
+                    sy,
+                    shotAim,
+                    dt,
+                    speed,
+                    damage,
+                    life,
+                    shotRadius,
+                    maxHits,
+                    faction
+            );
+            shot.sourceShipId = id;
+            out.add(shot);
+        }
+        return out;
     }
 
     private List<Projectile> createMissileBarrageVolley(double dt, double aim, Ship target, boolean beamTick) {
@@ -5872,6 +5976,10 @@ public abstract class Ship {
             return referencePulseBarrageFullHitDamage();
         }
         return Math.max(1.0, superweaponDamage * 3.6);
+    }
+
+    private double hyperLanceBeamLength() {
+        return MathUtil.clamp(superweaponSpeed * 0.74, 720.0, 1500.0);
     }
 
     private static double referencePulseBarrageFullHitDamage() {

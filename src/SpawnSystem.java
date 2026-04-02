@@ -1,4 +1,5 @@
 import app.config.GameMode;
+import java.util.Locale;
 import java.util.Random;
 
 public final class SpawnSystem {
@@ -48,6 +49,8 @@ public final class SpawnSystem {
     private static final double ASTEROID_ORE_MULTIPLIER = 10.0;
 
     public static void initWorld(GameContext ctx) {
+        Faction.clearCampaignAlliances();
+
         if (ctx.config.mode == GameMode.SHOWCASE) {
             initShowcase(ctx);
             return;
@@ -91,7 +94,8 @@ public final class SpawnSystem {
         double[] spawn = inwardSpawnNearBase(ctx, playerAnchor);
         double px = spawn[0];
         double py = spawn[1];
-        ctx.player = new Player(ShipRole.FRIGATE, px, py);
+        ShipRole playerRole = (ctx.config.mode == GameMode.CAMPAIGN_OPS) ? ShipRole.MOTHERSHIP : ShipRole.FRIGATE;
+        ctx.player = new Player(playerRole, px, py);
         ctx.player.faction = playerFaction;
         ctx.ships.add(ctx.player);
 
@@ -184,7 +188,13 @@ public final class SpawnSystem {
             case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1;
             case TRANSPORT -> 1;
             case BATTLECRUISER, BATTLESHIP, STEALTH_SHIP -> 2;
-            case DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER -> 3;
+            case DREADNOUGHT, SUPERSHIP,
+                 TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                 INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                 ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 MOTHERSHIP,
+                 CARRIER, DRONE_CARRIER -> 3;
         };
     }
 
@@ -192,6 +202,19 @@ public final class SpawnSystem {
         if (ctx == null || faction == null) return 0;
         int best = 0;
         boolean hasAliveBase = false;
+
+        if (CampaignSystem.isCampaignActive(ctx)
+                && faction.teamId() == Faction.ALLY.teamId()
+                && ctx.player != null
+                && ctx.player.alive
+                && !ctx.player.dying
+                && ctx.player.hp > 0) {
+            BaseUpgrades playerUpgrades = ctx.baseUpgrades.get(ctx.player);
+            if (playerUpgrades != null) {
+                best = Math.max(best, playerUpgrades.hangarLv);
+                hasAliveBase = true;
+            }
+        }
 
         if (ctx.baseUpgrades != null && !ctx.baseUpgrades.isEmpty()) {
             for (java.util.Map.Entry<Ship, BaseUpgrades> e : ctx.baseUpgrades.entrySet()) {
@@ -360,6 +383,44 @@ public final class SpawnSystem {
         if (role == null) return new ShipRole[0];
         return switch (role) {
             case SUPERSHIP -> new ShipRole[]{
+                    ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case TRANSPORT_TITAN -> new ShipRole[]{
+                    ShipRole.TRANSPORT, ShipRole.HAULER, ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP,
+                    ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case BULWARK_TITAN -> new ShipRole[]{
+                    ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case CARRIER_SUPPORT_TITAN -> new ShipRole[]{
+                    ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.BATTLECRUISER,
+                    ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case VANGUARD_TITAN, INTERDICTION_TITAN -> new ShipRole[]{
+                    ShipRole.BATTLECRUISER, ShipRole.CRUISER, ShipRole.MEDIUM_CRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN, ARTILLERY_TITAN,
+                 SHIELD_BASTION_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> new ShipRole[]{
+                    ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case FLEET_TELEPORTER_TITAN -> new ShipRole[]{
+                    ShipRole.SUPERSHIP, ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP,
+                    ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case MOBILE_STATION_TITAN -> new ShipRole[]{
+                    ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.TRANSPORT,
+                    ShipRole.HAULER, ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case HYPERWEAPON_TITAN -> new ShipRole[]{
+                    ShipRole.SUPERSHIP, ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP,
+                    ShipRole.BATTLECRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case MOTHERSHIP -> new ShipRole[]{
+                    ShipRole.MOBILE_STATION_TITAN, ShipRole.CARRIER_SUPPORT_TITAN, ShipRole.SUPERSHIP,
                     ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
                     ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
             };
@@ -619,23 +680,23 @@ public final class SpawnSystem {
         ctx.teamBases.clear();
         ctx.baseUpgrades.clear();
 
-        // Arrange all showcase ships in a square grid so hulls do not overlap.
         ShipRole[] roles = ShipRole.values();
-        int roleCount = 0;
-        for (ShipRole r : roles) {
-            if (r == ShipRole.FRIGATE) continue;
-            roleCount++;
-        }
-        int totalShips = roleCount + 1; // +player
-        int perSide = Math.max(3, (int) Math.ceil(Math.sqrt(totalShips)));
-        double spacing = 230.0;
-        double gridW = (perSide - 1) * spacing;
-        double gridH = (perSide - 1) * spacing;
-        double startX = GameMath.clamp((ctx.WORLD_W - gridW) * 0.5, 90.0, ctx.WORLD_W - 90.0 - gridW);
-        double startY = GameMath.clamp((ctx.WORLD_H - gridH - 260.0) * 0.5, 90.0, ctx.WORLD_H - 90.0 - gridH);
+        Faction[] factions = Faction.fourTeamFactions();
+        int rolesPerFaction = roles.length;
+        int blockCols = Math.max(4, (int) Math.ceil(Math.sqrt(rolesPerFaction)));
+        int blockRows = (int) Math.ceil(rolesPerFaction / (double) blockCols);
+        double spacing = 210.0;
+        double blockGapX = 340.0;
+        double blockGapY = 320.0;
+        double blockW = (blockCols - 1) * spacing;
+        double blockH = (blockRows - 1) * spacing;
+        double galleryW = blockW * 2.0 + blockGapX;
+        double galleryH = blockH * 2.0 + blockGapY;
+        double startX = GameMath.clamp((ctx.WORLD_W - galleryW) * 0.5, 120.0, ctx.WORLD_W - 120.0 - galleryW);
+        double startY = GameMath.clamp((ctx.WORLD_H - galleryH - 420.0) * 0.5, 180.0, ctx.WORLD_H - 180.0 - galleryH);
 
-        double playerX = startX;
-        double playerY = startY;
+        double playerX = GameMath.clamp(startX + galleryW * 0.5, 120.0, ctx.WORLD_W - 120.0);
+        double playerY = GameMath.clamp(startY - 220.0, 120.0, ctx.WORLD_H - 120.0);
         ctx.player = new Player(ShipRole.FRIGATE, playerX, playerY);
         ctx.player.name = "Showcase Camera";
         ctx.player.vx = 0;
@@ -643,39 +704,41 @@ public final class SpawnSystem {
         ctx.player.angle = 0.0; // face right
         ctx.ships.add(ctx.player);
 
-        int gridSlot = 1; // slot 0 is the player
-        int factionIndex = 0;
-        Faction[] factions = new Faction[]{Faction.ALLY, Faction.ENEMY, Faction.TEAM_C, Faction.TEAM_D};
         double maxShowcaseY = playerY;
 
-        for (ShipRole role : roles) {
-            if (role == ShipRole.FRIGATE) continue;
+        for (int factionIndex = 0; factionIndex < factions.length; factionIndex++) {
+            Faction faction = factions[factionIndex];
+            int blockCol = factionIndex % 2;
+            int blockRow = factionIndex / 2;
+            double blockStartX = startX + blockCol * (blockW + blockGapX);
+            double blockStartY = startY + blockRow * (blockH + blockGapY);
 
-            int row = gridSlot / perSide;
-            int col = gridSlot % perSide;
-            double sx = GameMath.clamp(startX + col * spacing, 80.0, ctx.WORLD_W - 80.0);
-            double sy = GameMath.clamp(startY + row * spacing, 80.0, ctx.WORLD_H - 180.0);
+            for (int roleIndex = 0; roleIndex < roles.length; roleIndex++) {
+                ShipRole role = roles[roleIndex];
+                int row = roleIndex / blockCols;
+                int col = roleIndex % blockCols;
+                double sx = GameMath.clamp(blockStartX + col * spacing, 80.0, ctx.WORLD_W - 80.0);
+                double sy = GameMath.clamp(blockStartY + row * spacing, 80.0, ctx.WORLD_H - 180.0);
 
-            Faction faction = factions[factionIndex % factions.length];
-            factionIndex++;
-            Ship s = new FleetShip(role, faction, sx, sy);
-            s.vx = 0;
-            s.vy = 0;
-            s.angle = 0.0; // face right
+                Ship s = new FleetShip(role, faction, sx, sy);
+                s.name = showcaseShipName(faction, role);
+                s.vx = 0;
+                s.vy = 0;
+                s.angle = 0.0; // face right
 
-            ctx.ships.add(s);
-            if (sy > maxShowcaseY) maxShowcaseY = sy;
-            if (role == ShipRole.BASE) {
-                if (faction == Faction.ENEMY) ctx.enemyBase = s;
-                else if (faction == Faction.ALLY) ctx.allyBase = s;
-                ctx.teamBases.put(faction, s);
-                ctx.baseUpgrades.put(s, new BaseUpgrades());
+                ctx.ships.add(s);
+                if (sy > maxShowcaseY) maxShowcaseY = sy;
+                if (role == ShipRole.BASE) {
+                    if (faction == Faction.ENEMY) ctx.enemyBase = s;
+                    else if (faction == Faction.ALLY) ctx.allyBase = s;
+                    ctx.teamBases.put(faction, s);
+                    ctx.baseUpgrades.put(s, new BaseUpgrades());
+                }
             }
-            gridSlot++;
         }
 
         double projectileY = Math.min(ctx.WORLD_H - 140.0, maxShowcaseY + 120.0);
-        double projectileStartX = GameMath.clamp(startX, 120.0, ctx.WORLD_W - 120.0);
+        double projectileStartX = GameMath.clamp(startX + galleryW * 0.5 - 2.0 * 220.0, 120.0, ctx.WORLD_W - 120.0);
         double projectileStep = 220.0;
 
         // Static display set: one sample of each projectile class/style.
@@ -695,8 +758,30 @@ public final class SpawnSystem {
         ctx.credits = 100;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
-        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF";
+        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF  -  TL BLUE / TR RED / BL GREEN / BR YELLOW";
         ctx.eventBannerT = 9999.0;
+    }
+
+    private static String showcaseShipName(Faction faction, ShipRole role) {
+        String team = (faction == null) ? "Unknown" : faction.teamName();
+        return team + " " + showcaseRoleTitle(role);
+    }
+
+    private static String showcaseRoleTitle(ShipRole role) {
+        if (role == null) return "Ship";
+        TitanArchetype titan = TitanArchetype.fromShipRole(role);
+        if (titan != null) return titan.displayName();
+        if (role == ShipRole.MOTHERSHIP) return "Mothership";
+        String raw = role.name().toLowerCase(Locale.US).replace('_', ' ');
+        String[] parts = raw.split(" ");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isBlank()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) out.append(part.substring(1));
+        }
+        return out.toString();
     }
 
     private static void initShootingRange(GameContext ctx) {
@@ -725,7 +810,7 @@ public final class SpawnSystem {
         Faction targetFaction = defaultShootingRangeTargetFaction(ctx.player.faction);
         activateShootingRange(ctx, px, py, targetFaction);
 
-        ctx.credits = 10000;
+        ctx.credits = 999_999;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
         ctx.minerReinforcementTimer = Double.POSITIVE_INFINITY;
@@ -858,10 +943,11 @@ public final class SpawnSystem {
     private static String shootingRangeBanner(Faction faction, TitanArchetype titanArchetype) {
         String label = (faction == null) ? "UNKNOWN" : faction.teamName().toUpperCase();
         if (titanArchetype == null) {
-            return "SHOOTING RANGE  -  TARGETS: " + label + "  (1-4 FACTION / SHIFT+1-0,Q,E,R TITANS)";
+            return "SHOOTING RANGE  -  TARGETS: " + label
+                    + "  (1-4 FACTION / SHIFT+1-0,Q,E,R TITANS / CTRL+SHIFT+1-0,Q,E,R,M PLAYER HULL)";
         }
         return "SHOOTING RANGE  -  " + label + " / " + titanArchetype.displayName()
-                + "  (SHIFT+BACKSPACE RESET)";
+                + "  (SHIFT+BACKSPACE RESET / CTRL+SHIFT+M MOTHERSHIP)";
     }
 
     private static void registerShootingRangeTarget(GameContext ctx, ShipRole role, Faction faction, double x, double y, String label, boolean keepShields) {
@@ -946,77 +1032,77 @@ public final class SpawnSystem {
     private static java.util.List<ShootingRangeTargetSpec> titanShootingRangeLayout(TitanArchetype archetype) {
         if (archetype == null) return defaultShootingRangeLayout();
         return switch (archetype) {
-            case TRANSPORT -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+            case TRANSPORT -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.FRIGATE, ShipRole.FRIGATE,
                     ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
                     ShipRole.TRANSPORT, ShipRole.HAULER,
                     ShipRole.MINER, ShipRole.DRONE_CARRIER);
-            case BULWARK -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+            case BULWARK -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
                     ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE,
                     ShipRole.CIWS_CORVETTE, ShipRole.CARRIER);
-            case CARRIER_SUPPORT -> titanFormation(archetype, ShipRole.CARRIER,
+            case CARRIER_SUPPORT -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.DRONE_CARRIER, ShipRole.LIGHT_CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.FRIGATE, ShipRole.FIGHTER,
                     ShipRole.BOMBER, ShipRole.DRONE,
                     ShipRole.PD_CRAFT, ShipRole.TRANSPORT);
-            case VANGUARD -> titanFormation(archetype, ShipRole.BATTLECRUISER,
+            case VANGUARD -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLECRUISER, ShipRole.CRUISER,
                     ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.FRIGATE, ShipRole.MISSILE_BOAT,
                     ShipRole.PATROL, ShipRole.STEALTH_SHIP);
-            case INTERDICTION -> titanFormation(archetype, ShipRole.BATTLECRUISER,
+            case INTERDICTION -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.CRUISER, ShipRole.CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.FRIGATE, ShipRole.MISSILE_BOAT,
                     ShipRole.CIWS_CORVETTE, ShipRole.STEALTH_SHIP,
                     ShipRole.PATROL, ShipRole.DRONE_CARRIER);
-            case COMMAND_INTEL -> titanFormation(archetype, ShipRole.BATTLESHIP,
+            case COMMAND_INTEL -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
                     ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.FRIGATE, ShipRole.FRIGATE,
                     ShipRole.PICKET, ShipRole.PATROL,
                     ShipRole.CIWS_CORVETTE, ShipRole.DRONE_CARRIER);
-            case BOARDING_RECOVERY -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+            case BOARDING_RECOVERY -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE,
                     ShipRole.MISSILE_BOAT, ShipRole.TRANSPORT,
                     ShipRole.HAULER, ShipRole.DRONE_CARRIER);
-            case ARTILLERY -> titanFormation(archetype, ShipRole.BATTLESHIP,
+            case ARTILLERY -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLECRUISER, ShipRole.CRUISER,
                     ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
                     ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
                     ShipRole.PICKET, ShipRole.DREADNOUGHT);
-            case SHIELD_BASTION -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+            case SHIELD_BASTION -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLESHIP, ShipRole.CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.FRIGATE, ShipRole.FRIGATE,
                     ShipRole.CIWS_CORVETTE, ShipRole.CIWS_CORVETTE,
                     ShipRole.DRONE_CARRIER, ShipRole.TRANSPORT);
-            case FLEET_TELEPORTER -> titanFormation(archetype, ShipRole.SUPERSHIP,
+            case FLEET_TELEPORTER -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLECRUISER, ShipRole.CRUISER,
                     ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.FRIGATE, ShipRole.FRIGATE,
                     ShipRole.PICKET, ShipRole.CIWS_CORVETTE,
                     ShipRole.TRANSPORT, ShipRole.DRONE_CARRIER);
-            case ELITE_SUPERSHIP_COMMAND -> titanFormation(archetype, ShipRole.DREADNOUGHT,
+            case ELITE_SUPERSHIP_COMMAND -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
                     ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
                     ShipRole.SUPERSHIP);
-            case MOBILE_STATION -> titanFormation(archetype, ShipRole.BASE,
+            case MOBILE_STATION -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.CARRIER, ShipRole.DRONE_CARRIER,
                     ShipRole.TRANSPORT, ShipRole.HAULER,
                     ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
                     ShipRole.FRIGATE, ShipRole.FRIGATE,
                     ShipRole.CIWS_CORVETTE, ShipRole.STATIC_TURRET);
-            case HYPERWEAPON -> titanFormation(archetype, ShipRole.SUPERSHIP,
+            case HYPERWEAPON -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.BATTLESHIP, ShipRole.CRUISER,
                     ShipRole.ARTILLERY_SHIP, ShipRole.ARTILLERY_SHIP,
                     ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,

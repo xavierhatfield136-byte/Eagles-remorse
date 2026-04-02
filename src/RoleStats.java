@@ -65,6 +65,20 @@ public final class RoleStats {
             case BATTLESHIP -> new Stats(36, 84, 56, 3.4, 68, 440, -1, -1, -1);
             case DREADNOUGHT -> new Stats(44, 122, 82, 3.8, 58, 900, -1, -1, -1);
             case SUPERSHIP -> new Stats(52, 182, 134, 4.6, 48, 1700, -1, -1, -1);
+            case TRANSPORT_TITAN -> new Stats(58, 220, 186, 5.8, 40, 2600, 900, 0.0, 0.0);
+            case BULWARK_TITAN -> new Stats(60, 240, 210, 6.8, 38, 3000, -1, -1, -1);
+            case CARRIER_SUPPORT_TITAN -> new Stats(60, 232, 194, 6.2, 38, 3100, -1, -1, -1);
+            case VANGUARD_TITAN -> new Stats(56, 210, 160, 5.1, 62, 2900, -1, -1, -1);
+            case INTERDICTION_TITAN -> new Stats(58, 225, 176, 5.5, 46, 3000, -1, -1, -1);
+            case COMMAND_INTEL_TITAN -> new Stats(58, 210, 176, 5.6, 46, 3000, -1, -1, -1);
+            case BOARDING_RECOVERY_TITAN -> new Stats(58, 225, 176, 5.7, 44, 3050, 360, 0.0, 0.0);
+            case ARTILLERY_TITAN -> new Stats(60, 220, 170, 5.2, 34, 3150, -1, -1, -1);
+            case SHIELD_BASTION_TITAN -> new Stats(62, 236, 240, 8.2, 34, 3250, -1, -1, -1);
+            case FLEET_TELEPORTER_TITAN -> new Stats(58, 205, 172, 5.5, 54, 3300, -1, -1, -1);
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> new Stats(60, 230, 186, 6.0, 42, 3450, -1, -1, -1);
+            case MOBILE_STATION_TITAN -> new Stats(64, 250, 210, 7.4, 28, 3600, 520, 0.0, 0.0);
+            case HYPERWEAPON_TITAN -> new Stats(60, 170, 120, 4.4, 30, 3800, -1, -1, -1);
+            case MOTHERSHIP -> new Stats(76, 360, 310, 9.8, 24, 6000, 1400, 0.0, 0.0);
             case CARRIER -> new Stats(34, 54, 38, 3.2, 80, 372, -1, -1, -1);
             case DRONE_CARRIER -> new Stats(32, 38, 20, 2.2, 110, 332, -1, -1, -1);
             case TRANSPORT -> new Stats(24, 28, 24, 2.3, 116, 170, -1, -1, -1);
@@ -111,7 +125,8 @@ public final class RoleStats {
             DoctrineProfile prof = DoctrineRegistry.forFaction(s.faction);
             if (prof.doctrine == Doctrine.ENERGY_NAVY && !(s instanceof Player)) {
                 if (role == ShipRole.ARTILLERY_SHIP || role == ShipRole.BATTLESHIP || role == ShipRole.BATTLECRUISER
-                        || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP) {
+                        || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP
+                        || role.isTitanOrMothership()) {
                     s.primaryWeaponFamily = Ship.PrimaryWeaponFamily.BEAM_BOLT;
                 } else {
                     s.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;

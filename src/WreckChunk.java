@@ -432,6 +432,7 @@ final class WreckChunk {
 
     private static Profile profileFor(Ship ship) {
         if (ship == null || ship.role == null) return Profile.MEDIUM;
+        if (ship.role.isTitanOrMothership()) return Profile.LARGE;
         return switch (ship.role) {
             case FIGHTER, BOMBER, DRONE -> Profile.SMALL;
             case CARRIER, DRONE_CARRIER, BATTLESHIP, DREADNOUGHT, SUPERSHIP, STEALTH_SHIP -> Profile.LARGE;

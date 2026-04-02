@@ -97,6 +97,9 @@ public final class AISystem {
                         allyGroups += Math.min(2, deficit / 3);
                     }
                 }
+                if (CampaignSystem.isCampaignActive(ctx)) {
+                    allyGroups = 0;
+                }
                 for (int i = 0; i < enemyGroups; i++) {
                     double[] spawn = teamWaveStagingPoint(ctx, Faction.ENEMY);
                     SpawnSystem.spawnEnemyGroup(
@@ -1001,6 +1004,8 @@ public final class AISystem {
 
     private static double roleWeightForFlagship(ShipRole role) {
         if (role == null) return 1.0;
+        Double titanWeight = titanFlagshipWeight(role);
+        if (titanWeight != null) return titanWeight;
         return switch (role) {
             case SUPERSHIP -> 16.0;
             case DREADNOUGHT -> 15.0;
@@ -1909,28 +1914,15 @@ public final class AISystem {
     }
 
     private static boolean isSupportRole(ShipRole role) {
-        if (role == null) return false;
-        return switch (role) {
-            case MINER, HAULER, TRANSPORT, CARRIER, DRONE_CARRIER -> true;
-            default -> false;
-        };
+        return role != null && role.isSupportHull();
     }
 
     private static boolean isMissileThreatRole(ShipRole role) {
-        if (role == null) return false;
-        return switch (role) {
-            case MISSILE_BOAT, BOMBER, STEALTH_SHIP, CRUISER,
-                    BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> true;
-            default -> false;
-        };
+        return role != null && role.isHeavyMissileThreat();
     }
 
     private static boolean isCapitalRole(ShipRole role) {
-        if (role == null) return false;
-        return switch (role) {
-            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> true;
-            default -> false;
-        };
+        return role != null && role.isCapitalCombatant();
     }
 
     private static double battlelineCoherenceScore(List<Ship> members, Ship flagship, Ship ship, Ship target) {
@@ -2035,6 +2027,8 @@ public final class AISystem {
     }
 
     private static double defaultThreatPriority(ShipRole enemy) {
+        Double titanPriority = titanThreatPriority(enemy);
+        if (titanPriority != null) return titanPriority;
         return switch (enemy) {
             case SUPERSHIP -> 3.1;
             case DREADNOUGHT -> 2.9;
@@ -2424,21 +2418,24 @@ public final class AISystem {
 
         if (s.hasSuperweapon && (s.isSuperweaponCharging() || s.isSuperweaponBeamActive())) {
             s.trackSuperweaponAim(target.x, target.y);
-            if (s.role == ShipRole.SUPERSHIP && s.isSuperweaponCharging()) {
+            if ((s.role == ShipRole.SUPERSHIP || s.role == ShipRole.HYPERWEAPON_TITAN)
+                    && s.isSuperweaponCharging()) {
                 rotateShipTowardAssist(s, s.getSuperweaponAimAngle(), dt, Math.toRadians(260.0));
             }
         }
 
         if (s.hasSuperweapon) {
             double superweaponRangeBase = 2200.0;
-            if (s.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
-                // Match fire gating to actual beam reach so Team C supers don't waste casts at extreme standoff.
-                double beamReach = MathUtil.clamp(s.superweaponSpeed * 0.96, 760.0, 1760.0);
+            if (s.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM
+                    || s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) {
+                // Match fire gating to actual beam reach so beam-pattern supers don't waste casts at extreme standoff.
+                double beamScale = (s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) ? 0.74 : 0.96;
+                double beamReach = MathUtil.clamp(s.superweaponSpeed * beamScale, 720.0, 1760.0);
                 superweaponRangeBase = Math.max(640.0, beamReach * 0.92);
             }
             double superweaponRange = superweaponRangeBase * rangeMul;
             if (dist <= superweaponRange) {
-                boolean superShip = (s.role == ShipRole.SUPERSHIP);
+                boolean superShip = (s.role == ShipRole.SUPERSHIP || s.role == ShipRole.HYPERWEAPON_TITAN);
                 boolean allowSuperweapon;
                 if (superShip) {
                     // Supership ultimates should be visible threats; do not over-throttle them.
@@ -2677,6 +2674,8 @@ public final class AISystem {
 
     private static double preferredRange(Ship s) {
         if (s == null) return 380;
+        Double titanRange = titanPreferredRange(s.role);
+        if (titanRange != null) return titanRange;
         // Keep roles feeling different
         return switch (s.role) {
             case FIGHTER, DRONE -> 210;
@@ -2705,6 +2704,8 @@ public final class AISystem {
 
     private static double roleAggressionBias(ShipRole role) {
         if (role == null) return 0.0;
+        Double titanBias = titanAggressionBias(role);
+        if (titanBias != null) return titanBias;
         return switch (role) {
             case DRONE -> 0.65;
             case FIGHTER -> 0.55;
@@ -2732,6 +2733,8 @@ public final class AISystem {
 
     private static double roleStandoffBias(ShipRole role) {
         if (role == null) return 0.0;
+        Double titanBias = titanStandoffBias(role);
+        if (titanBias != null) return titanBias;
         return switch (role) {
             case ARTILLERY_SHIP -> 0.68;
             case MISSILE_BOAT -> 0.75;
@@ -2759,6 +2762,8 @@ public final class AISystem {
 
     private static double roleApproachSpeedMul(ShipRole role) {
         if (role == null) return 1.0;
+        Double titanMul = titanApproachSpeedMul(role);
+        if (titanMul != null) return titanMul;
         return switch (role) {
             case DRONE -> 1.22;
             case FIGHTER -> 1.18;
@@ -2784,6 +2789,8 @@ public final class AISystem {
 
     private static double roleOrbitSpeedMul(ShipRole role) {
         if (role == null) return 1.0;
+        Double titanMul = titanOrbitSpeedMul(role);
+        if (titanMul != null) return titanMul;
         return switch (role) {
             case FIGHTER -> 1.20;
             case DRONE -> 1.18;
@@ -2809,6 +2816,8 @@ public final class AISystem {
 
     private static double gunRangeRoleMul(ShipRole role) {
         if (role == null) return 1.0;
+        Double titanMul = titanGunRangeMul(role);
+        if (titanMul != null) return titanMul;
         return switch (role) {
             case PICKET -> 1.38;
             case ARTILLERY_SHIP -> 1.32;
@@ -2832,6 +2841,8 @@ public final class AISystem {
 
     private static double missileRangeRoleMul(ShipRole role) {
         if (role == null) return 1.0;
+        Double titanMul = titanMissileRangeMul(role);
+        if (titanMul != null) return titanMul;
         return switch (role) {
             case MISSILE_BOAT -> 1.28;
             case BOMBER -> 1.20;
@@ -2850,6 +2861,137 @@ public final class AISystem {
             case FIGHTER, DRONE, PD_CRAFT -> 0.80;
             case TRANSPORT, HAULER, MINER -> 0.86;
             default -> 1.0;
+        };
+    }
+
+    private static Double titanFlagshipWeight(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case MOTHERSHIP -> 18.0;
+            case HYPERWEAPON_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 17.0;
+            case MOBILE_STATION_TITAN, CARRIER_SUPPORT_TITAN, BULWARK_TITAN, SHIELD_BASTION_TITAN -> 16.0;
+            case TRANSPORT_TITAN, VANGUARD_TITAN, INTERDICTION_TITAN, COMMAND_INTEL_TITAN,
+                    BOARDING_RECOVERY_TITAN, ARTILLERY_TITAN, FLEET_TELEPORTER_TITAN -> 15.0;
+            default -> null;
+        };
+    }
+
+    private static Double titanThreatPriority(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case MOTHERSHIP -> 3.35;
+            case HYPERWEAPON_TITAN -> 3.25;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, BULWARK_TITAN, SHIELD_BASTION_TITAN -> 3.05;
+            case MOBILE_STATION_TITAN, CARRIER_SUPPORT_TITAN, COMMAND_INTEL_TITAN, FLEET_TELEPORTER_TITAN -> 2.95;
+            case TRANSPORT_TITAN, VANGUARD_TITAN, INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN, ARTILLERY_TITAN -> 2.85;
+            default -> null;
+        };
+    }
+
+    private static Double titanPreferredRange(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case TRANSPORT_TITAN -> 920.0;
+            case BULWARK_TITAN -> 700.0;
+            case CARRIER_SUPPORT_TITAN -> 980.0;
+            case VANGUARD_TITAN -> 520.0;
+            case INTERDICTION_TITAN -> 620.0;
+            case COMMAND_INTEL_TITAN -> 860.0;
+            case BOARDING_RECOVERY_TITAN -> 600.0;
+            case ARTILLERY_TITAN -> 1180.0;
+            case SHIELD_BASTION_TITAN -> 760.0;
+            case FLEET_TELEPORTER_TITAN -> 900.0;
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> 1020.0;
+            case MOBILE_STATION_TITAN -> 980.0;
+            case HYPERWEAPON_TITAN -> 1220.0;
+            case MOTHERSHIP -> 1120.0;
+            default -> null;
+        };
+    }
+
+    private static Double titanAggressionBias(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case VANGUARD_TITAN -> 0.22;
+            case BOARDING_RECOVERY_TITAN, INTERDICTION_TITAN -> 0.10;
+            case BULWARK_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 0.04;
+            case COMMAND_INTEL_TITAN, TRANSPORT_TITAN -> -0.08;
+            case ARTILLERY_TITAN, SHIELD_BASTION_TITAN -> -0.18;
+            case CARRIER_SUPPORT_TITAN, MOBILE_STATION_TITAN, MOTHERSHIP -> -0.24;
+            case FLEET_TELEPORTER_TITAN -> -0.12;
+            case HYPERWEAPON_TITAN -> -0.28;
+            default -> null;
+        };
+    }
+
+    private static Double titanStandoffBias(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case TRANSPORT_TITAN, CARRIER_SUPPORT_TITAN, MOBILE_STATION_TITAN, MOTHERSHIP -> 0.66;
+            case COMMAND_INTEL_TITAN, ARTILLERY_TITAN, HYPERWEAPON_TITAN -> 0.62;
+            case SHIELD_BASTION_TITAN -> 0.54;
+            case FLEET_TELEPORTER_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 0.50;
+            case BULWARK_TITAN -> 0.22;
+            case VANGUARD_TITAN -> -0.08;
+            case INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN -> 0.08;
+            default -> null;
+        };
+    }
+
+    private static Double titanApproachSpeedMul(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case VANGUARD_TITAN, FLEET_TELEPORTER_TITAN -> 0.96;
+            case INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN -> 0.92;
+            case BULWARK_TITAN, SHIELD_BASTION_TITAN -> 0.82;
+            case ARTILLERY_TITAN, HYPERWEAPON_TITAN -> 0.78;
+            case MOBILE_STATION_TITAN, MOTHERSHIP -> 0.72;
+            case TRANSPORT_TITAN, CARRIER_SUPPORT_TITAN, COMMAND_INTEL_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 0.84;
+            default -> null;
+        };
+    }
+
+    private static Double titanOrbitSpeedMul(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case VANGUARD_TITAN, FLEET_TELEPORTER_TITAN -> 0.90;
+            case INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN -> 0.86;
+            case BULWARK_TITAN, SHIELD_BASTION_TITAN -> 0.76;
+            case ARTILLERY_TITAN, HYPERWEAPON_TITAN -> 0.70;
+            case MOBILE_STATION_TITAN, MOTHERSHIP -> 0.62;
+            case TRANSPORT_TITAN, CARRIER_SUPPORT_TITAN, COMMAND_INTEL_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 0.74;
+            default -> null;
+        };
+    }
+
+    private static Double titanGunRangeMul(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case ARTILLERY_TITAN -> 1.48;
+            case HYPERWEAPON_TITAN -> 1.44;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, MOTHERSHIP -> 1.30;
+            case BULWARK_TITAN, SHIELD_BASTION_TITAN -> 1.24;
+            case COMMAND_INTEL_TITAN -> 1.22;
+            case VANGUARD_TITAN -> 1.18;
+            case INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN, FLEET_TELEPORTER_TITAN -> 1.10;
+            case CARRIER_SUPPORT_TITAN, MOBILE_STATION_TITAN -> 1.04;
+            case TRANSPORT_TITAN -> 0.92;
+            default -> null;
+        };
+    }
+
+    private static Double titanMissileRangeMul(ShipRole role) {
+        if (role == null) return null;
+        return switch (role) {
+            case HYPERWEAPON_TITAN -> 1.26;
+            case ARTILLERY_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> 1.18;
+            case INTERDICTION_TITAN, BOARDING_RECOVERY_TITAN, FLEET_TELEPORTER_TITAN -> 1.14;
+            case CARRIER_SUPPORT_TITAN, MOBILE_STATION_TITAN, MOTHERSHIP -> 1.12;
+            case COMMAND_INTEL_TITAN -> 1.08;
+            case VANGUARD_TITAN -> 1.06;
+            case BULWARK_TITAN, SHIELD_BASTION_TITAN -> 1.02;
+            case TRANSPORT_TITAN -> 0.94;
+            default -> null;
         };
     }
 
@@ -3260,7 +3402,11 @@ public final class AISystem {
         if (incomingMissiles <= 0) return false;
         double effectiveHp = Math.max(1.0, target.hp + Math.max(0.0, target.shield));
         double expectedVolley = incomingMissiles * 7.0;
-        if (target.role == ShipRole.DREADNOUGHT || target.role == ShipRole.SUPERSHIP) expectedVolley *= 0.75;
+        if (target.role == ShipRole.DREADNOUGHT || target.role == ShipRole.SUPERSHIP
+                || target.role == ShipRole.BULWARK_TITAN || target.role == ShipRole.SHIELD_BASTION_TITAN
+                || target.role == ShipRole.MOBILE_STATION_TITAN || target.role == ShipRole.MOTHERSHIP) {
+            expectedVolley *= 0.75;
+        }
         return expectedVolley >= effectiveHp * 1.15;
     }
 

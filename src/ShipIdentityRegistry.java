@@ -212,6 +212,76 @@ public final class ShipIdentityRegistry {
                     spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Catastrophic Impact"),
                     spec(IdentityStat.SHIELD_REGEN, 1.14, "Lattice Bastion"),
                     spec(IdentityStat.MISSILE_CYCLE, 1.18, "Apocalypse Salvos"));
+            case TRANSPORT_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SUPPORT_FIELD, 1.28, "Fleet Sustainment"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.16, "Convoy Shield Spine"),
+                    spec(IdentityStat.WARP_CHARGE, 1.16, "Extraction Corridor"),
+                    spec(IdentityStat.MOBILITY, 1.12, "Heavy Transfer Drives"));
+            case BULWARK_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SHIELD_REGEN, 1.18, "Guard Bastion"),
+                    spec(IdentityStat.CIWS_RANGE, 1.18, "Guardian Mesh"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Linebreaker Ram"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.16, "Covering Wall"));
+            case CARRIER_SUPPORT_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.STRIKE_CRAFT, 1.24, "Flight Control Nexus"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.20, "Service Grid"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Hangar Screens"),
+                    spec(IdentityStat.MISSILE_CYCLE, 1.16, "Deck Feed"));
+            case VANGUARD_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.MOBILITY, 1.16, "Gap-Runner Drives"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Rapid Breach Guns"),
+                    spec(IdentityStat.WARP_CHARGE, 1.16, "Reaction Spool"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.14, "Forward Scout Net"));
+            case INTERDICTION_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.WARP_CHARGE, 1.16, "Pursuit Lock"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.16, "Trap Ranging"),
+                    spec(IdentityStat.MISSILE_DAMAGE, 1.16, "Snare Payload"),
+                    spec(IdentityStat.MOBILITY, 1.12, "Pincer Thrusters"));
+            case COMMAND_INTEL_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SENSOR_RANGE, 1.20, "Command Web"),
+                    spec(IdentityStat.WEAPON_CYCLE, 1.14, "Fire Control Relay"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.16, "Command Bus"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Protected Flag Bridge"));
+            case BOARDING_RECOVERY_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SUPPORT_FIELD, 1.20, "Recovery Lanes"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Disablement Batteries"),
+                    spec(IdentityStat.WARP_CHARGE, 1.14, "Extraction Pull"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Assault Screens"));
+            case ARTILLERY_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SENSOR_RANGE, 1.18, "Ranging Cathedral"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.16, "Siege Spine"),
+                    spec(IdentityStat.WEAPON_CYCLE, 1.12, "Fire Solution Loop"),
+                    spec(IdentityStat.MISSILE_CYCLE, 1.16, "Auxiliary Salvos"));
+            case SHIELD_BASTION_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SHIELD_REGEN, 1.20, "Layered Aegis"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.18, "Shelter Field"),
+                    spec(IdentityStat.CIWS_RANGE, 1.18, "Ward Lattice"),
+                    spec(IdentityStat.WEAPON_CYCLE, 1.12, "Shielded Battery"));
+            case FLEET_TELEPORTER_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.WARP_CHARGE, 1.20, "Transit Corridor"),
+                    spec(IdentityStat.MOBILITY, 1.16, "Phase Drives"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.16, "Recovery Anchor"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.14, "Transit Plotting"));
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.16, "Strike Coordination"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.16, "Command Targeting"),
+                    spec(IdentityStat.WARP_CHARGE, 1.14, "Wing Spool"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Honor Guard Screens"));
+            case MOBILE_STATION_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SUPPORT_FIELD, 1.30, "Dockyard Spine"),
+                    spec(IdentityStat.STRIKE_CRAFT, 1.18, "Reserve Decks"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.18, "Service Bastion"),
+                    spec(IdentityStat.WARP_CHARGE, 1.12, "Harbor Relocation"));
+            case HYPERWEAPON_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.SUPERWEAPON_RECHARGE, 1.18, "Overcharge Lattice"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.16, "Termination Spine"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.16, "Execution Plot"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Containment Screens"));
+            case MOTHERSHIP -> matrixBonus(key, role,
+                    spec(IdentityStat.SUPPORT_FIELD, 1.34, "Fleet Command Harbor"),
+                    spec(IdentityStat.STRIKE_CRAFT, 1.22, "Grand Flight Control"),
+                    spec(IdentityStat.SHIELD_REGEN, 1.20, "Citadel Lattice"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.14, "Citadel Batteries"));
             case CARRIER -> matrixBonus(key, role,
                     spec(IdentityStat.STRIKE_CRAFT, 1.18, "Sortie Control"),
                     spec(IdentityStat.WEAPON_CYCLE, 1.12, "Aggression Deck"),

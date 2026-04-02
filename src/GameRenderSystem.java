@@ -69,6 +69,7 @@ public final class GameRenderSystem {
 
         Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
                 viewMinX, viewMinY, viewMaxX, viewMaxY);
+        Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         TutorialSystem.drawWorldMarkers(ctx, worldG);
@@ -78,7 +79,7 @@ public final class GameRenderSystem {
         int enemyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ENEMY);
         boolean resRush = (ctx.config != null && ctx.config.mode == GameMode.RESOURCE_RUSH);
 
-        Ship docked = EconomySystem.getDockedFriendlyBase(ctx);
+        Ship docked = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         int hangarTier = UISystem.getMaxHangarTierForPlayer(ctx);
         int maxHangarTier = 3;
         int playerWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.player);
@@ -158,10 +159,11 @@ public final class GameRenderSystem {
         }
 
         if (ctx.ui.baseMenuOpen) {
-            Ship base = EconomySystem.getDockedFriendlyBase(ctx);
+            Ship base = CampaignSystem.currentBaseUpgradeAnchor(ctx);
             if (base != null) {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
-                Renderer.drawBaseUpgradeOverlay(g2, base.name, ctx.credits, base.oreStockpile,
+                int baseOre = (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) ? ctx.player.cargo : base.oreStockpile;
+                Renderer.drawBaseUpgradeOverlay(g2, base.name, ctx.credits, baseOre,
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
                         maxHangarTier);
             }
@@ -826,7 +828,5 @@ if (DevTools.isDebugOverlay()) {
 
     // (Removed reflection bridge; hangar tier is computed from base upgrades.)
 }
-
-
 
 

@@ -1,3 +1,5 @@
+import java.awt.Color;
+
 public final class EventSystem {
     private EventSystem(){}
 
@@ -6,9 +8,23 @@ public final class EventSystem {
         ctx.eventBannerT = seconds;
     }
 
+    public static void showWorldCallout(GameContext ctx, double x, double y, String msg, Color color, double seconds) {
+        if (ctx == null || ctx.ui == null) return;
+        if (!Double.isFinite(x) || !Double.isFinite(y)) return;
+        ctx.ui.addCombatCallout(x, y, msg, color, seconds);
+    }
+
+    public static boolean isPlayerNear(GameContext ctx, double x, double y, double radius) {
+        if (ctx == null || ctx.player == null) return false;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return false;
+        double rr = Math.max(0.0, radius);
+        return Math.hypot(ctx.player.x - x, ctx.player.y - y) <= rr;
+    }
+
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
         if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
+        if (ctx.ui != null) ctx.ui.updateCombatCallouts(dt);
         if (ctx.hazardHintCooldown > 0.0) ctx.hazardHintCooldown -= dt;
         if (ctx.hazardCriticalCooldown > 0.0) ctx.hazardCriticalCooldown -= dt;
         updateHazardWarnings(ctx);

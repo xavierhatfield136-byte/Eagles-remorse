@@ -484,6 +484,7 @@ public final class ShipRoomLayout {
             case "small" -> buildSmallProfile(role, faction);
             case "carrier" -> buildCarrierProfile(role, faction);
             case "station" -> buildStationProfile(role, faction);
+            case "titan" -> buildTitanProfile(role, faction);
             default -> buildCapitalProfile(role, faction);
         };
         Profile built = buildGeneratedProfile(role, faction, template);
@@ -499,12 +500,25 @@ public final class ShipRoomLayout {
 
     private static String profileKey(ShipRole role) {
         if (role == null) return "capital";
+        if (role.isTitanOrMothership()) return "titan";
         return switch (role) {
             case FIGHTER, BOMBER, DRONE, PD_CRAFT, PICKET, PATROL, STEALTH_SHIP,
                  FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT, CIWS_CORVETTE -> "small";
             case CARRIER, DRONE_CARRIER, TRANSPORT, HAULER, MINER -> "carrier";
             case BASE, STATIC_TURRET -> "station";
             default -> "capital";
+        };
+    }
+
+    private static Profile buildTitanProfile(ShipRole role, Faction faction) {
+        if (role == null) return buildCapitalProfile(null, faction);
+        return switch (role) {
+            case TRANSPORT_TITAN,
+                 CARRIER_SUPPORT_TITAN,
+                 BOARDING_RECOVERY_TITAN,
+                 MOBILE_STATION_TITAN,
+                 MOTHERSHIP -> buildCarrierProfile(role, faction);
+            default -> buildCapitalProfile(role, faction);
         };
     }
 
@@ -753,17 +767,19 @@ public final class ShipRoomLayout {
         if (hull == null) {
             hull = switch (profileKey(role)) {
                 case "small" -> defaultSmallHull();
+                case "titan" -> defaultCapitalHull();
                 case "carrier" -> defaultCarrierHull();
                 case "station" -> defaultStationHull();
                 default -> defaultCapitalHull();
             };
         }
 
-        List<VisualCell> hullConforming = buildHullConformingVisualCells(role, faction, hull, rooms);
+        List<VisualCell> hullConforming = buildGeneratedVisualCells(role, faction, hull, rooms);
         if (!hullConforming.isEmpty()) return hullConforming;
 
         return switch (profileKey(role)) {
             case "small" -> buildSmallVisualCells(hull, faction, rooms);
+            case "titan" -> buildTitanVisualCells(role, faction, hull, rooms);
             case "carrier" -> buildCarrierVisualCells(hull, faction, rooms);
             case "station" -> buildStationVisualCells(hull, faction, rooms);
             default -> buildCapitalVisualCells(hull, faction, rooms);
@@ -852,7 +868,7 @@ public final class ShipRoomLayout {
         HullProfile hull = HullProfile.fromSilhouette(role, faction);
         if (hull == null) return null;
 
-        List<VisualCell> visualCells = buildHullConformingVisualCells(role, faction, hull, template.rooms);
+        List<VisualCell> visualCells = buildGeneratedVisualCells(role, faction, hull, template.rooms);
         if (visualCells == null || visualCells.isEmpty()) return null;
 
         EnumMap<RoomId, Area> coverageAreas = new EnumMap<>(RoomId.class);
@@ -871,6 +887,245 @@ public final class ShipRoomLayout {
         }
 
         return new Profile(rooms, visualCells);
+    }
+
+    private static List<VisualCell> buildGeneratedVisualCells(ShipRole role,
+                                                              Faction faction,
+                                                              HullProfile hull,
+                                                              List<RoomDef> rooms) {
+        if ("titan".equals(profileKey(role))) {
+            return buildTitanVisualCells(role, faction, hull, rooms);
+        }
+        return buildHullConformingVisualCells(role, faction, hull, rooms);
+    }
+
+    private static List<VisualCell> buildTitanVisualCells(ShipRole role,
+                                                          Faction faction,
+                                                          HullProfile hull,
+                                                          List<RoomDef> rooms) {
+        if (hull == null) return Collections.emptyList();
+
+        int cols = (role == ShipRole.MOTHERSHIP) ? 42 : 38;
+        int rows = (role == ShipRole.MOTHERSHIP) ? 24 : 22;
+
+        List<VisualCell> raw = new ArrayList<>();
+        for (int row = 0; row < rows; row++) {
+            double y0 = -1.0 + 2.0 * row / (double) rows;
+            double y1 = -1.0 + 2.0 * (row + 1) / (double) rows;
+            RoomId activeRoom = null;
+            int spanStart = -1;
+
+            for (int col = 0; col <= cols; col++) {
+                RoomId roomId = null;
+                if (col < cols) {
+                    double x0 = -1.0 + 2.0 * col / (double) cols;
+                    double x1 = -1.0 + 2.0 * (col + 1) / (double) cols;
+                    double cx = (x0 + x1) * 0.5;
+                    double cy = (y0 + y1) * 0.5;
+                    if (pointInsideHull(hull, cx, cy)) {
+                        roomId = titanRoomForPoint(role, faction, hull, cx, cy);
+                    }
+                }
+
+                if (col == 0) {
+                    activeRoom = roomId;
+                    spanStart = (roomId == null) ? -1 : 0;
+                    continue;
+                }
+
+                if (roomId == activeRoom) continue;
+
+                if (activeRoom != null && spanStart >= 0) {
+                    double spanX0 = -1.0 + 2.0 * spanStart / (double) cols;
+                    double spanX1 = -1.0 + 2.0 * col / (double) cols;
+                    VisualCell cell = hullGridCell(hull, activeRoom, spanX0, spanX1, y0, y1);
+                    if (cell != null) raw.add(cell);
+                }
+
+                activeRoom = roomId;
+                spanStart = (roomId == null) ? -1 : col;
+            }
+        }
+
+        if (raw.isEmpty()) return Collections.emptyList();
+        appendPerimeterShellCells(raw, hull, faction);
+        return assignVisualLabels(raw, rooms);
+    }
+
+    private static RoomId titanRoomForPoint(ShipRole role,
+                                            Faction faction,
+                                            HullProfile hull,
+                                            double x,
+                                            double y) {
+        double top = hull.innerY(x, 0.0);
+        double bottom = hull.innerY(x, 1.0);
+        double thickness = Math.max(1e-4, bottom - top);
+        double v = MathUtil.clamp((y - top) / thickness, 0.0, 1.0);
+        double edgeFrac = Math.min(v, 1.0 - v);
+        boolean topSide = v <= 0.5;
+        double along = MathUtil.clamp((x + 1.0) * 0.5, 0.0, 1.0);
+
+        if (faction == Faction.TEAM_D && edgeFrac <= 0.18) {
+            if (edgeFrac <= 0.09) {
+                RoomId outer = outerDefenseRoomForSpan(x, topSide, faction);
+                if (outer != null) return outer;
+            }
+            RoomId inner = innerArmorRoomFor(outerArmorRoomForSpan(x, topSide));
+            if (inner != null) return inner;
+        } else if (edgeFrac <= 0.08) {
+            RoomId perimeter = outerDefenseRoomForSpan(x, topSide, faction);
+            if (perimeter != null) return perimeter;
+        }
+
+        TitanRoomMode mode = titanRoomMode(role);
+        boolean upper = v < 0.34;
+        boolean lower = v > 0.66;
+        boolean centerline = !upper && !lower;
+        boolean extremeUpper = v < 0.18;
+        boolean extremeLower = v > 0.82;
+
+        if (along <= 0.08) {
+            return centerline ? RoomId.AFT_SPINE : (topSide ? RoomId.PORT_ENGINES : RoomId.STARBOARD_ENGINES);
+        }
+        if (along <= 0.18) {
+            if (centerline) return RoomId.WARP_DRIVE;
+            return topSide ? RoomId.PORT_ENGINES : RoomId.STARBOARD_ENGINES;
+        }
+        if (along <= 0.30) {
+            return switch (mode) {
+                case LOGISTICS, MOTHERSHIP -> centerline ? RoomId.ENGINES : (topSide ? RoomId.SERVICE_BAY : RoomId.CARGO_BAY);
+                case CONTROL -> centerline ? RoomId.ENGINES : (topSide ? RoomId.PORT_POWER : RoomId.STARBOARD_POWER);
+                default -> centerline ? RoomId.ENGINES : (topSide ? RoomId.PORT_ENGINES : RoomId.STARBOARD_ENGINES);
+            };
+        }
+        if (along <= 0.44) {
+            return switch (mode) {
+                case LOGISTICS -> {
+                    if (centerline) yield RoomId.POWER_CONDUITS;
+                    yield topSide ? RoomId.SERVICE_BAY : RoomId.CARGO_BAY;
+                }
+                case CONTROL -> {
+                    if (centerline) yield RoomId.POWER_CONDUITS;
+                    yield topSide ? RoomId.INTEGRITY_FIELD : RoomId.MISSILE_LAUNCHERS;
+                }
+                case BASTION -> {
+                    if (centerline) yield RoomId.REACTOR;
+                    yield topSide ? RoomId.INTEGRITY_FIELD : RoomId.MAGAZINES;
+                }
+                case ARTILLERY -> {
+                    if (centerline) yield RoomId.MAIN_WEAPON;
+                    yield topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+                }
+                case MOTHERSHIP -> {
+                    if (centerline) yield RoomId.REACTOR;
+                    yield topSide ? RoomId.SERVICE_BAY : RoomId.CARGO_BAY;
+                }
+                default -> {
+                    if (centerline) yield RoomId.REACTOR;
+                    yield topSide ? RoomId.PORT_POWER : RoomId.STARBOARD_POWER;
+                }
+            };
+        }
+        if (along <= 0.60) {
+            return switch (mode) {
+                case LOGISTICS -> {
+                    if (centerline) yield (role == ShipRole.TRANSPORT_TITAN) ? RoomId.CARGO_BAY : RoomId.REACTOR;
+                    yield topSide ? RoomId.SERVICE_BAY : RoomId.CARGO_BAY;
+                }
+                case CONTROL -> {
+                    if (centerline) yield RoomId.INTEGRITY_FIELD;
+                    yield topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+                }
+                case BASTION -> {
+                    if (centerline) yield RoomId.INTEGRITY_FIELD;
+                    yield topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+                }
+                case ARTILLERY -> {
+                    if (centerline) yield RoomId.MAIN_WEAPON;
+                    yield topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+                }
+                case MOTHERSHIP -> {
+                    if (centerline) yield RoomId.MAIN_WEAPON;
+                    yield topSide ? RoomId.CREW_QUARTERS : RoomId.CARGO_BAY;
+                }
+                default -> {
+                    if (centerline) yield RoomId.MAIN_WEAPON;
+                    yield topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+                }
+            };
+        }
+        if (along <= 0.74) {
+            return switch (mode) {
+                case LOGISTICS -> {
+                    if (centerline) yield RoomId.CREW_QUARTERS;
+                    yield topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+                }
+                case CONTROL -> {
+                    if (centerline) yield RoomId.BRIDGE;
+                    yield topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+                }
+                case BASTION -> {
+                    if (centerline) yield RoomId.BRIDGE;
+                    yield topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+                }
+                case ARTILLERY -> {
+                    if (centerline) yield RoomId.MAIN_WEAPON;
+                    yield topSide ? RoomId.BRIDGE : RoomId.MISSILE_LAUNCHERS;
+                }
+                case MOTHERSHIP -> {
+                    if (centerline) yield RoomId.BRIDGE;
+                    yield topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+                }
+                default -> {
+                    if (centerline) yield RoomId.BRIDGE;
+                    yield topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+                }
+            };
+        }
+        if (along <= 0.88) {
+            if (centerline) {
+                return switch (mode) {
+                    case ARTILLERY -> RoomId.MAIN_WEAPON;
+                    case LOGISTICS -> RoomId.BOW;
+                    default -> RoomId.BOW;
+                };
+            }
+            if (mode == TitanRoomMode.CONTROL || mode == TitanRoomMode.MOTHERSHIP) {
+                return topSide ? RoomId.SENSORS : RoomId.MISSILE_LAUNCHERS;
+            }
+            return topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+        }
+
+        if (centerline || (!extremeUpper && !extremeLower)) return RoomId.BOW;
+        return topSide ? RoomId.PORT_BATTERY : RoomId.STARBOARD_BATTERY;
+    }
+
+    private static TitanRoomMode titanRoomMode(ShipRole role) {
+        if (role == null) return TitanRoomMode.ASSAULT;
+        return switch (role) {
+            case TRANSPORT_TITAN,
+                 CARRIER_SUPPORT_TITAN,
+                 BOARDING_RECOVERY_TITAN,
+                 MOBILE_STATION_TITAN -> TitanRoomMode.LOGISTICS;
+            case INTERDICTION_TITAN,
+                 COMMAND_INTEL_TITAN,
+                 FLEET_TELEPORTER_TITAN -> TitanRoomMode.CONTROL;
+            case BULWARK_TITAN,
+                 SHIELD_BASTION_TITAN -> TitanRoomMode.BASTION;
+            case ARTILLERY_TITAN,
+                 HYPERWEAPON_TITAN -> TitanRoomMode.ARTILLERY;
+            case MOTHERSHIP -> TitanRoomMode.MOTHERSHIP;
+            default -> TitanRoomMode.ASSAULT;
+        };
+    }
+
+    private enum TitanRoomMode {
+        LOGISTICS,
+        CONTROL,
+        BASTION,
+        ARTILLERY,
+        ASSAULT,
+        MOTHERSHIP
     }
 
     private static List<VisualCell> buildHullConformingVisualCells(ShipRole role,
@@ -1618,10 +1873,12 @@ public final class ShipRoomLayout {
             java.awt.Rectangle bounds = hull.getBounds();
             if (bounds.width <= 1 || bounds.height <= 1) return null;
 
-            double cx = bounds.getCenterX();
-            double cy = bounds.getCenterY();
-            double halfW = Math.max(1.0, bounds.width * 0.5);
-            double halfH = Math.max(1.0, bounds.height * 0.5);
+            double minX = bounds.getMinX();
+            double maxX = bounds.getMaxX();
+            double minYBound = bounds.getMinY();
+            double maxYBound = bounds.getMaxY();
+            double halfW = Math.max(1.0, Math.max(Math.abs(minX), Math.abs(maxX)));
+            double halfH = Math.max(1.0, Math.max(Math.abs(minYBound), Math.abs(maxYBound)));
 
             int xSamples = 81;
             int ySamples = 241;
@@ -1643,10 +1900,10 @@ public final class ShipRoomLayout {
                     maxY = Math.max(maxY, sampleY);
                 }
 
-                xs[i] = MathUtil.clamp(((sampleX - cx) / halfW) * 0.98, -1.0, 1.0);
+                xs[i] = MathUtil.clamp((sampleX / halfW) * 0.98, -1.0, 1.0);
                 if (Double.isFinite(minY) && Double.isFinite(maxY) && maxY > minY) {
-                    top[i] = MathUtil.clamp(((minY - cy) / halfH) * 0.98, -1.0, 1.0);
-                    bottom[i] = MathUtil.clamp(((maxY - cy) / halfH) * 0.98, -1.0, 1.0);
+                    top[i] = MathUtil.clamp((minY / halfH) * 0.98, -1.0, 1.0);
+                    bottom[i] = MathUtil.clamp((maxY / halfH) * 0.98, -1.0, 1.0);
                     valid[i] = true;
                 }
             }

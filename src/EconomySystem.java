@@ -161,6 +161,7 @@ public final class EconomySystem {
 
     private static void handlePlayerDeposit(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
+        if (CampaignSystem.isCampaignActive(ctx)) return;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
         if (ctx.player.cargo <= 0) return;
 
@@ -178,6 +179,7 @@ public final class EconomySystem {
 
     private static void handlePlayerHaulerSales(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
+        if (CampaignSystem.isCampaignActive(ctx)) return;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
         if (ctx.player.cargo <= 0) return;
 
@@ -480,6 +482,9 @@ public final class EconomySystem {
             if (carrier == null) continue;
             if (!carrier.isCarrier) continue;
             if (!carrier.alive || carrier.dying || carrier.hp <= 0) continue;
+            if (CampaignSystem.isCampaignActive(ctx)
+                    && carrier.faction != null
+                    && carrier.faction.teamId() == Faction.ALLY.teamId()) continue;
             if (!carrier.canSpawnMobileReinforcement()) continue;
 
             int supported = countCarrierReinforcements(ctx, carrier);
@@ -500,6 +505,9 @@ public final class EconomySystem {
         List<Ship> anchors = new ArrayList<>(ctx.ships);
         for (Ship anchor : anchors) {
             if (!isEscortAnchor(anchor)) continue;
+            if (CampaignSystem.isCampaignActive(ctx)
+                    && anchor.faction != null
+                    && anchor.faction.teamId() == Faction.ALLY.teamId()) continue;
             int active = countActiveEscortFighters(ctx, anchor);
             if (active >= 2) continue;
 

@@ -321,7 +321,12 @@ public final class ShipHullSilhouette {
             case BATTLESHIP -> poly(
                     new int[]{r + 16, r - 8, r - 18, -r + 2, -r, -r + 14, -r, -r + 2, r - 18, r - 8},
                     new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2});
-            case DREADNOUGHT, SUPERSHIP -> poly(
+            case DREADNOUGHT, SUPERSHIP,
+                 TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                 INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                 ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 MOTHERSHIP -> poly(
                     new int[]{r + 18, r - 10, r - 22, -r + 2, -r, -r + 16, -r, -r + 2, r - 22, r - 10},
                     new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2});
             case CARRIER, DRONE_CARRIER, TRANSPORT, HAULER -> poly(

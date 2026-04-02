@@ -1,4 +1,5 @@
 import app.config.GameMode;
+import java.awt.Color;
 import java.util.Iterator;
 
 /**
@@ -23,15 +24,45 @@ public final class PhysicsSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             boolean superFired = false;
+            boolean hyperLanceBeam = false;
+            boolean hyperLanceBurst = false;
             while (true) {
                 Projectile shot = s.pollSuperweaponShot();
                 if (shot == null) break;
                 ctx.projectiles.add(shot);
                 superFired = true;
+                if (s.role == ShipRole.HYPERWEAPON_TITAN
+                        && s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE
+                        && shot instanceof PhaserBeam) {
+                    hyperLanceBeam = true;
+                }
+                if (!hyperLanceBurst
+                        && s.role == ShipRole.HYPERWEAPON_TITAN
+                        && s.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE
+                        && shot instanceof SuperweaponShot) {
+                    hyperLanceBurst = true;
+                    VFX.spawnHyperLanceFractureEffect(shot.x, shot.y, ((SuperweaponShot) shot).angle);
+                    EventSystem.showWorldCallout(ctx, shot.x, shot.y - 24.0, "FRACTURE",
+                            new Color(136, 240, 255), 0.95);
+                }
             }
             if (!superFired) continue;
+            if (hyperLanceBeam) {
+                VFX.spawnHyperLanceFireEffect(
+                        s.x + Math.cos(s.angle) * (s.radius + 14.0),
+                        s.y + Math.sin(s.angle) * (s.radius + 14.0),
+                        s.angle,
+                        Math.max(220.0, s.superweaponSpeed * 0.76));
+                EventSystem.showWorldCallout(ctx, s.x, s.y - s.radius - 26.0, "LANCE",
+                        new Color(122, 232, 255), 0.95);
+            }
             if (s == ctx.player) {
-                EventSystem.showBanner(ctx, "SUPERWEAPON FIRED", 1.0);
+                String banner = hyperLanceBeam
+                        ? "HYPER LANCE FIRING"
+                        : "SUPERWEAPON FIRED";
+                if (!hyperLanceBurst || hyperLanceBeam) {
+                    EventSystem.showBanner(ctx, banner, 1.0);
+                }
                 AudioSystem.onWeaponWave(ctx, s);
                 ScreenShake.kick(8.0);
             } else {
@@ -54,7 +85,8 @@ public final class PhysicsSystem {
             double rangeMul = CampaignSystem.targetingRangeMul(ctx);
             boolean autoLockSuppressed = CampaignSystem.suppressAutoLock(ctx);
             boolean manualAllowed = !ctx.ui.shopOpen && !ctx.ui.baseMenuOpen && !ctx.ui.mapOpen
-                    && !ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen;
+                    && !ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen
+                    && !CampaignSystem.isPlayerControlLocked(ctx);
             boolean firePrimary = (manualAllowed && ctx.firingPrimaryManual) || ctx.firingPrimaryAuto;
             boolean fireSecondary = (manualAllowed && ctx.firingSecondaryManual) || ctx.firingSecondaryAuto;
 
@@ -200,4 +232,3 @@ public final class PhysicsSystem {
         }
     }
 }
-

@@ -7,8 +7,10 @@ public final class CameraSystem {
         if (ctx.player == null) return;
         double viewW = worldViewWidth(ctx, viewportW);
         double viewH = worldViewHeight(ctx, viewportH);
-        ctx.camX = ctx.player.x + ctx.cameraOffsetX - viewW / 2.0;
-        ctx.camY = ctx.player.y + ctx.cameraOffsetY - viewH / 2.0;
+        double focusX = CampaignSystem.hasCinematicFocus(ctx) ? CampaignSystem.cinematicFocusX(ctx) : ctx.player.x + ctx.cameraOffsetX;
+        double focusY = CampaignSystem.hasCinematicFocus(ctx) ? CampaignSystem.cinematicFocusY(ctx) : ctx.player.y + ctx.cameraOffsetY;
+        ctx.camX = focusX - viewW / 2.0;
+        ctx.camY = focusY - viewH / 2.0;
     }
 
     public static double normalizedZoom(GameContext ctx) {

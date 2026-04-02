@@ -101,6 +101,7 @@ public final class GameSimulationRuntime {
         ctx.entityQuery.rebuild(ctx);
         updatePlayerRespawn(dt);
         updateBattlefieldWarpCharges(dt);
+        TitanAbilitySystem.update(ctx, dt);
         AISystem.update(ctx, dt);
         CarrierSystem.update(ctx, dt);
         EconomySystem.update(ctx, dt);
@@ -264,6 +265,11 @@ public final class GameSimulationRuntime {
             p.vy = 0.0;
             return;
         }
+        if (CampaignSystem.isPlayerControlLocked(ctx)) {
+            p.vx = 0.0;
+            p.vy = 0.0;
+            return;
+        }
         if (p.hasSuperweapon) p.trackSuperweaponAim(mouseWorldX, mouseWorldY);
 
         boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);
@@ -323,5 +329,3 @@ public final class GameSimulationRuntime {
         return prev + (sample - prev) * Math.max(0.0, Math.min(1.0, alpha));
     }
 }
-
-

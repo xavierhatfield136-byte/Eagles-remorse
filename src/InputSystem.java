@@ -63,6 +63,7 @@ public final class InputSystem {
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
                 handleCameraPanKeyPressed(ctx, keyCode);
+                if (GameplayActions.tryHandleCampaignEpisodeHotkey(ctx, e)) return;
                 if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) return;

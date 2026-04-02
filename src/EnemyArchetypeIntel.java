@@ -26,6 +26,20 @@ public final class EnemyArchetypeIntel {
             case BATTLESHIP -> "Battleship";
             case DREADNOUGHT -> "Dreadnought";
             case SUPERSHIP -> "Supership";
+            case TRANSPORT_TITAN -> "Transport Titan";
+            case BULWARK_TITAN -> "Bulwark Titan";
+            case CARRIER_SUPPORT_TITAN -> "Carrier Support Titan";
+            case VANGUARD_TITAN -> "Vanguard Titan";
+            case INTERDICTION_TITAN -> "Interdiction Titan";
+            case COMMAND_INTEL_TITAN -> "Command / Intel Titan";
+            case BOARDING_RECOVERY_TITAN -> "Boarding / Recovery Titan";
+            case ARTILLERY_TITAN -> "Artillery Titan";
+            case SHIELD_BASTION_TITAN -> "Shield Bastion Titan";
+            case FLEET_TELEPORTER_TITAN -> "Fleet Teleporter Titan";
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> "Elite Supership Command Titan";
+            case MOBILE_STATION_TITAN -> "Mobile Station Titan";
+            case HYPERWEAPON_TITAN -> "Hyperweapon Titan";
+            case MOTHERSHIP -> "Mothership";
             case CARRIER, DRONE_CARRIER -> "Carrier";
             case TRANSPORT -> "Support Transport";
             case MINER -> "Logistics Miner";
@@ -56,6 +70,20 @@ public final class EnemyArchetypeIntel {
             case BATTLESHIP -> "Flank and sustain pressure; avoid frontal duel.";
             case DREADNOUGHT -> "Phase fight: clear adds, then burst windows.";
             case SUPERSHIP -> "Break line-of-sight on charge and spread before superweapon fire.";
+            case TRANSPORT_TITAN -> "Kill the repair spine early before the whole fleet stabilizes.";
+            case BULWARK_TITAN -> "Do not front-duel it; peel escorts and attack from offset angles.";
+            case CARRIER_SUPPORT_TITAN -> "Pressure the hull fast to collapse its strike-craft sustain.";
+            case VANGUARD_TITAN -> "Bait the lunge, then punish while it turns back into line.";
+            case INTERDICTION_TITAN -> "Stay grouped and avoid isolated warp attempts.";
+            case COMMAND_INTEL_TITAN -> "Break sensor support first to weaken the whole enemy line.";
+            case BOARDING_RECOVERY_TITAN -> "Keep shields up and deny it close disablement windows.";
+            case ARTILLERY_TITAN -> "Use cover, force repositioning, and never sit on the same lane.";
+            case SHIELD_BASTION_TITAN -> "Strip its escorts and grind it down after the shield wall falters.";
+            case FLEET_TELEPORTER_TITAN -> "Track re-entry angles and punish it when the jump finishes.";
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> "Spread out so its strike group cannot focus-fire one target.";
+            case MOBILE_STATION_TITAN -> "Destroy the service hub before committing to a long fleet brawl.";
+            case HYPERWEAPON_TITAN -> "Break line-of-sight and force the shot into overkill or empty space.";
+            case MOTHERSHIP -> "Treat it like a mobile base: clear Titan cover, then collapse it from the flanks.";
             case CARRIER, DRONE_CARRIER -> "Kill carrier hull to collapse wing pressure.";
             case TRANSPORT -> "Snipe early to remove repair aura.";
             case MINER, HAULER -> "Pick off to starve enemy economy.";
@@ -66,6 +94,6 @@ public final class EnemyArchetypeIntel {
 
     public static int archetypeCount() {
         // Number of role entries with explicit counter mapping.
-        return 23;
+        return ShipRole.values().length;
     }
 }

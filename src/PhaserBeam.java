@@ -120,6 +120,12 @@ public class PhaserBeam extends Projectile {
         return penetratesTargets;
     }
 
+    public boolean isHyperLanceBeam() {
+        return emitter != null
+                && emitter.role == ShipRole.HYPERWEAPON_TITAN
+                && emitter.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE;
+    }
+
     public int rollFrameDamage(java.util.Random rng, double dt) {
         double expected = Math.max(0.0, damagePerSecond * Math.max(0.0, dt));
         if (expected <= 0.0) return 0;

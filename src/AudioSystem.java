@@ -535,6 +535,35 @@ public final class AudioSystem {
         );
     }
 
+    public static void playScriptedVoice(GameContext ctx, String role, String eventId,
+                                         String speakerLabel, String caption, double captionSeconds) {
+        if (ctx == null || role == null || role.isBlank() || eventId == null || eventId.isBlank()) return;
+        RuntimeState st = stateFor(ctx);
+        int variantCount = Math.max(1, AssetLibrary.voiceVariantCount(role, eventId));
+        int variantIndex = chooseVariantIndex(st, "scripted." + role + "." + eventId, variantCount);
+        AssetLibrary.VoicePick voicePick = AssetLibrary.pickVoice(role, eventId, variantIndex);
+
+        double roleVol = voiceRoleVolume(ctx, role);
+        double roleVolGainDb = 20.0 * Math.log10(Math.max(0.05, roleVol));
+        if (voicePick != null && (voicePick.file() != null || voicePick.resourcePath() != null)) {
+            playAssetAsync(voicePick.file(), voicePick.resourcePath(), false, -12.0 + roleVolGainDb);
+            variantIndex = voicePick.variantIndex();
+        }
+
+        if (ctx.ui != null && ctx.ui.voiceCaptionsEnabled) {
+            String resolvedSpeaker = (speakerLabel == null || speakerLabel.isBlank()) ? role.toUpperCase(Locale.US) : speakerLabel;
+            String resolvedCaption = (caption == null || caption.isBlank()) ? eventId : caption;
+            ctx.ui.voiceCaption = resolvedSpeaker + ": " + resolvedCaption;
+            ctx.ui.voiceCaptionT = Math.max(1.6, captionSeconds);
+        }
+        GameContext.CrewStation station = stationForRole(role);
+        if (station != null) {
+            ctx.setPortraitExpression(station, 3, Math.max(1.3, captionSeconds));
+        }
+        st.voiceDispatchCount++;
+        st.voiceDispatchByEvent.put("scripted." + eventId, st.voiceDispatchByEvent.getOrDefault("scripted." + eventId, 0) + 1);
+    }
+
     private static RuntimeState stateFor(GameContext ctx) {
         return STATE.computeIfAbsent(ctx, RuntimeState::seed);
     }
@@ -1332,4 +1361,3 @@ public final class AudioSystem {
         ctx.audioEvents.add(event);
     }
 }
-

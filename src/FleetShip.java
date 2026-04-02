@@ -24,7 +24,9 @@ public class FleetShip extends Ship {
         setup(role);
         conformTurretsToHull();
         standardizeCiwsLoadout();
+        finalizeCapitalLethalityProfile();
         resetFlightDeckLoadout();
+        applyCustomFlightDeckLoadout();
     }
 
     private void standardizeCiwsLoadout() {
@@ -39,7 +41,107 @@ public class FleetShip extends Ship {
         };
     }
 
+    private void finalizeCapitalLethalityProfile() {
+        if (!role.isTitanOrMothership()) return;
+
+        double gunCooldownMul = switch (role) {
+            case ARTILLERY_TITAN -> 0.80;
+            case VANGUARD_TITAN -> 0.84;
+            case HYPERWEAPON_TITAN -> 1.08;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, MOTHERSHIP -> 0.90;
+            default -> 0.92;
+        };
+        double missileCooldownMul = switch (role) {
+            case INTERDICTION_TITAN, FLEET_TELEPORTER_TITAN -> 0.84;
+            case VANGUARD_TITAN -> 0.80;
+            case HYPERWEAPON_TITAN -> 1.14;
+            case MOTHERSHIP -> 0.88;
+            default -> 0.90;
+        };
+        int gunDamageBonus = switch (role) {
+            case ARTILLERY_TITAN, VANGUARD_TITAN, MOTHERSHIP -> 2;
+            case HYPERWEAPON_TITAN -> 0;
+            default -> 1;
+        };
+        int missileDamageBonus = switch (role) {
+            case VANGUARD_TITAN, ARTILLERY_TITAN -> 3;
+            case MOTHERSHIP -> 3;
+            case HYPERWEAPON_TITAN -> 0;
+            default -> 2;
+        };
+
+        for (Turret turret : turrets) {
+            if (turret == null) continue;
+            if (turret.kind == Turret.Kind.GUN) {
+                turret.cooldown = Math.max(0.10, turret.cooldown * gunCooldownMul);
+                turret.damage = Math.max(1, turret.damage + gunDamageBonus);
+                turret.bulletSpeed = Math.max(720.0, turret.bulletSpeed * 1.06);
+                turret.bulletLife += (role == ShipRole.ARTILLERY_TITAN) ? 44 : 18;
+            } else if (turret.kind == Turret.Kind.MISSILE) {
+                turret.cooldown = Math.max(0.60, turret.cooldown * missileCooldownMul);
+                turret.damage = Math.max(2, turret.damage + missileDamageBonus);
+                turret.missileSpeed = Math.max(260.0, turret.missileSpeed * 1.08);
+                turret.missileLife += 24;
+                turret.missileTurnRate *= 1.06;
+            }
+        }
+
+        if (hasCIWS) {
+            ciwsRange += role.isMothership() ? 36.0 : 18.0;
+            ciwsCooldown = Math.max(0.055, ciwsCooldown * 0.94);
+            ciwsPelletDamage = Math.max(ciwsPelletDamage, role.isMothership() ? 2 : 1);
+        }
+
+        switch (role) {
+            case TRANSPORT_TITAN -> {
+                cargoMax = Math.max(cargoMax, 1400);
+                shieldRegen += 0.30;
+            }
+            case BULWARK_TITAN -> {
+                shieldMax += 26.0;
+                shield = shieldMax;
+            }
+            case CARRIER_SUPPORT_TITAN -> {
+                maxFighters = Math.max(maxFighters, 24);
+                ciwsRange += 18.0;
+            }
+            case VANGUARD_TITAN -> desiredSpeed += 22.0;
+            case COMMAND_INTEL_TITAN -> ciwsRange += 12.0;
+            case ARTILLERY_TITAN -> {
+                superweaponChargeTime = Math.max(2.4, superweaponChargeTime * 0.82);
+                superweaponCooldown = Math.max(13.5, superweaponCooldown * 0.78);
+                superweaponDamage += 46;
+                superweaponRadius += 6.0;
+                superweaponMaxHits += 8;
+            }
+            case SHIELD_BASTION_TITAN -> {
+                shieldMax += 34.0;
+                shield = shieldMax;
+                shieldRegen += 0.65;
+            }
+            case FLEET_TELEPORTER_TITAN -> desiredSpeed += 8.0;
+            case MOBILE_STATION_TITAN -> maxFighters = Math.max(maxFighters, 14);
+            case HYPERWEAPON_TITAN -> {
+                desiredSpeed = Math.max(30.0, desiredSpeed - 6.0);
+                ciwsRange = Math.max(260.0, ciwsRange - 44.0);
+                superweaponChargeTime = Math.max(3.0, superweaponChargeTime * 0.88);
+                superweaponCooldown = Math.max(18.0, superweaponCooldown * 0.90);
+                superweaponDamage += 10;
+                superweaponBeamDamageScale += 0.10;
+            }
+            case MOTHERSHIP -> {
+                maxFighters = Math.max(maxFighters, 20);
+                shieldMax += 48.0;
+                shield = shieldMax;
+                shieldRegen += 0.45;
+            }
+            default -> {
+            }
+        }
+    }
+
     private void setup(ShipRole role) {
+        radius = RoleStats.get(role).radius;
         switch (role) {
 
             // -----------------------
@@ -1037,65 +1139,10 @@ public class FleetShip extends Ship {
                 desiredSpeed = 52;
                 bountyValue = 1600;
 
-                Turret a1 = new Turret(Turret.Kind.GUN, 38, -18);
-                a1.cooldown = 0.36;
-                a1.damage = 6;
-                a1.bulletSpeed = 1080;
-                a1.bulletLife = 320;
-                a1.primary = true;
-                a1.radius = 12;
-                a1.barrelLen = 30;
-                addTurret(a1);
-
-                Turret a2 = new Turret(Turret.Kind.GUN, 38, 18);
-                a2.cooldown = 0.36;
-                a2.damage = 6;
-                a2.bulletSpeed = 1080;
-                a2.bulletLife = 320;
-                a2.primary = true;
-                a2.radius = 12;
-                a2.barrelLen = 30;
-                addTurret(a2);
-
-                Turret s1 = new Turret(Turret.Kind.GUN, 14, -24);
-                s1.cooldown = 0.30;
-                s1.damage = 4;
-                s1.bulletSpeed = 980;
-                s1.bulletLife = 280;
-                s1.primary = true;
-                s1.radius = 10;
-                s1.barrelLen = 24;
-                addTurret(s1);
-
-                Turret s2 = new Turret(Turret.Kind.GUN, 14, 24);
-                s2.cooldown = 0.30;
-                s2.damage = 4;
-                s2.bulletSpeed = 980;
-                s2.bulletLife = 280;
-                s2.primary = true;
-                s2.radius = 10;
-                s2.barrelLen = 24;
-                addTurret(s2);
-
-                Turret s3 = new Turret(Turret.Kind.GUN, -12, -20);
-                s3.cooldown = 0.32;
-                s3.damage = 4;
-                s3.bulletSpeed = 960;
-                s3.bulletLife = 265;
-                s3.primary = true;
-                s3.radius = 9;
-                s3.barrelLen = 22;
-                addTurret(s3);
-
-                Turret s4 = new Turret(Turret.Kind.GUN, -12, 20);
-                s4.cooldown = 0.32;
-                s4.damage = 4;
-                s4.bulletSpeed = 960;
-                s4.bulletLife = 265;
-                s4.primary = true;
-                s4.radius = 9;
-                s4.barrelLen = 22;
-                addTurret(s4);
+                addHullCenterGunTurret(0.72, 0.36, 6, 1080, 320, true, 12, 30);
+                addHullCenterGunTurret(0.56, 0.34, 6, 1060, 312, true, 12, 28);
+                addHullCenterGunTurret(0.42, 0.30, 4, 980, 280, true, 10, 24);
+                addHullCenterGunTurret(0.28, 0.32, 4, 960, 265, true, 9, 22);
 
                 Turret mb = new Turret(Turret.Kind.MISSILE, 2, 0);
                 mb.cooldown = 1.65;
@@ -1157,6 +1204,233 @@ public class FleetShip extends Ship {
                 ciwsRange = 320;
                 ciwsCooldown = 0.11;
                 ciwsPelletsPerBurst = 3;
+            }
+
+            case TRANSPORT_TITAN -> {
+                name = factionCapitalName("Transport Titan");
+
+                addHullGunPair(0.57, 0.47, 0.28, 3, 900, 230, true, 10, 22);
+                addHullGunPair(0.39, 0.62, 0.36, 2, 820, 195, true, 8.5, 18);
+                addHullMissilePair(0.50, 0.28, 1.55, 7, 300, 185, 360, 11, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.64;
+                ciwsRange = 360;
+                ciwsCooldown = 0.10;
+
+                configureRepairAura(560, 5.8, 16.0);
+            }
+
+            case BULWARK_TITAN -> {
+                name = factionCapitalName("Bulwark Titan");
+
+                addHullGunPair(0.60, 0.56, 0.34, 7, 1080, 335, true, 13, 32);
+                addHullGunPair(0.44, 0.68, 0.30, 5, 980, 290, true, 11, 25);
+                addHullGunPair(0.27, 0.57, 0.36, 4, 920, 250, true, 9.5, 21);
+                addHullCenterMissileTurret(0.46, 1.70, 10, 315, 180, 430, 12, 20);
+
+                hasCIWS = true;
+                ciwsQuality = 0.82;
+                ciwsRange = 395;
+                ciwsCooldown = 0.08;
+
+                configureRepairAura(360, 0.8, 14.5);
+            }
+
+            case CARRIER_SUPPORT_TITAN -> {
+                name = factionCapitalName("Carrier Support Titan");
+
+                addHullGunPair(0.54, 0.60, 0.24, 3, 900, 215, true, 9.5, 20);
+                addHullGunPair(0.36, 0.48, 0.28, 2, 860, 195, true, 8.0, 18);
+                addHullMissilePair(0.53, 0.24, 1.35, 6, 300, 195, 320, 10.5, 17);
+                addHullMissilePair(0.34, 0.44, 1.60, 7, 295, 185, 335, 10.5, 17);
+
+                hasCIWS = true;
+                ciwsQuality = 0.70;
+                ciwsRange = 370;
+                ciwsCooldown = 0.09;
+
+                configureRepairAura(500, 4.0, 14.0);
+                configureCarrierSuite(1.5, 24, 6.8, 10);
+                setFlightDeckRole(0, ShipRole.FIGHTER);
+                setFlightDeckRole(1, ShipRole.BOMBER);
+                setFlightDeckRole(2, ShipRole.FIGHTER);
+                setFlightDeckRole(3, ShipRole.BOMBER);
+                setFlightDeckRole(4, ShipRole.DRONE);
+            }
+
+            case VANGUARD_TITAN -> {
+                name = factionCapitalName("Vanguard Titan");
+
+                addHullGunPair(0.44, 0.72, 0.27, 7, 1120, 340, true, 12, 30);
+                addHullGunPair(0.28, 0.86, 0.24, 5, 1020, 290, true, 10, 24);
+                addHullMissilePair(0.54, 0.58, 1.10, 9, 350, 245, 360, 11, 18);
+                addHullCenterMissileTurret(0.20, 1.55, 7, 320, 205, 320, 10.0, 17);
+
+                hasCIWS = true;
+                ciwsQuality = 0.66;
+                ciwsRange = 350;
+                ciwsCooldown = 0.09;
+            }
+
+            case INTERDICTION_TITAN -> {
+                name = factionCapitalName("Interdiction Titan");
+
+                addHullGunPair(0.56, 0.46, 0.29, 5, 1000, 295, true, 11, 27);
+                addHullGunPair(0.38, 0.60, 0.32, 4, 940, 250, true, 9.5, 22);
+                addHullMissilePair(0.54, 0.24, 1.15, 7, 320, 255, 360, 10.5, 18);
+                addHullCenterMissileTurret(0.33, 1.55, 8, 300, 220, 390, 11.5, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.68;
+                ciwsRange = 390;
+                ciwsCooldown = 0.09;
+            }
+
+            case COMMAND_INTEL_TITAN -> {
+                name = factionCapitalName("Command / Intel Titan");
+
+                addHullGunPair(0.62, 0.38, 0.27, 4, 980, 280, true, 10.5, 24);
+                addHullGunPair(0.42, 0.42, 0.25, 3, 920, 225, true, 9, 20);
+                addHullMissilePair(0.40, 0.20, 1.45, 7, 305, 205, 355, 10.5, 17);
+
+                hasCIWS = true;
+                ciwsQuality = 0.74;
+                ciwsRange = 390;
+                ciwsCooldown = 0.09;
+
+                configureRepairAura(360, 1.0, 8.0);
+            }
+
+            case BOARDING_RECOVERY_TITAN -> {
+                name = factionCapitalName("Boarding / Recovery Titan");
+
+                addHullGunPair(0.58, 0.44, 0.30, 6, 1020, 300, true, 11.5, 28);
+                addHullGunPair(0.40, 0.58, 0.29, 4, 950, 255, true, 9.5, 22);
+                addHullMissilePair(0.52, 0.22, 1.20, 7, 315, 245, 350, 10.5, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.72;
+                ciwsRange = 370;
+                ciwsCooldown = 0.09;
+
+                configureRepairAura(420, 2.8, 10.5);
+                configureCarrierSuite(1.8, 14, 8.0, 8);
+                setFlightDeckRole(0, ShipRole.BOMBER);
+                setFlightDeckRole(1, ShipRole.BOMBER);
+                setFlightDeckRole(2, ShipRole.FIGHTER);
+                setFlightDeckRole(3, ShipRole.BOMBER);
+                setFlightDeckRole(4, ShipRole.BOMBER);
+            }
+
+            case ARTILLERY_TITAN -> {
+                name = factionCapitalName("Artillery Titan");
+
+                addHullGunPair(0.70, 0.34, 0.38, 8, 1220, 390, true, 13.5, 34);
+                addHullGunPair(0.49, 0.50, 0.34, 5, 1040, 320, true, 10.5, 26);
+                addHullGunPair(0.31, 0.66, 0.42, 5, 980, 340, true, 10.0, 24);
+                addHullMissilePair(0.46, 0.20, 1.65, 8, 310, 190, 400, 11.0, 19);
+                addHullCenterMissileTurret(0.24, 2.00, 10, 295, 165, 430, 11.5, 20);
+
+                hasCIWS = true;
+                ciwsQuality = 0.60;
+                ciwsRange = 340;
+                ciwsCooldown = 0.10;
+
+                SuperweaponPattern artilleryPattern = (faction == Faction.ALLY || faction == Faction.PLAYER)
+                        ? SuperweaponPattern.DESTABILIZER_PULSE
+                        : resolveTitanSuperweaponPattern();
+                configureSuperweapon(artilleryPattern, 2.8, 18.0, 140, 1500.0, 190, 22.0, 24,
+                        0.0, 0.12, 0.30);
+            }
+
+            case SHIELD_BASTION_TITAN -> {
+                name = factionCapitalName("Shield Bastion Titan");
+
+                addHullGunPair(0.24, 0.88, 0.31, 5, 1020, 305, true, 11.5, 28);
+                addHullGunPair(0.40, 0.76, 0.34, 4, 940, 260, true, 9.5, 22);
+                addHullMissilePair(0.58, 0.62, 1.50, 7, 300, 205, 360, 10.5, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.86;
+                ciwsRange = 410;
+                ciwsCooldown = 0.08;
+
+                configureRepairAura(620, 1.8, 22.0);
+            }
+
+            case FLEET_TELEPORTER_TITAN -> {
+                name = factionCapitalName("Fleet Teleporter Titan");
+
+                addHullGunPair(0.24, 0.84, 0.28, 5, 1010, 300, true, 11, 26);
+                addHullGunPair(0.42, 0.72, 0.30, 4, 940, 250, true, 9.5, 22);
+                addHullMissilePairDirect(0.68, 0.56, 1.20, 8, 335, 260, 355, 11.0, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.70;
+                ciwsRange = 370;
+                ciwsCooldown = 0.09;
+            }
+
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> {
+                name = factionCapitalName("Elite Supership Command Titan");
+
+                addHullGunPair(0.24, 0.88, 0.33, 7, 1100, 340, true, 12.5, 32);
+                addHullGunPair(0.42, 0.76, 0.31, 5, 990, 285, true, 10.5, 25);
+                addHullCenterMissileTurret(0.58, 1.55, 10, 320, 205, 420, 12.0, 20);
+
+                hasCIWS = true;
+                ciwsQuality = 0.78;
+                ciwsRange = 385;
+                ciwsCooldown = 0.08;
+            }
+
+            case MOBILE_STATION_TITAN -> {
+                name = factionCapitalName("Mobile Station Titan");
+
+                addHullGunPair(0.24, 0.84, 0.27, 4, 930, 245, true, 10.0, 22);
+                addHullGunPair(0.40, 0.72, 0.34, 3, 860, 220, true, 9.0, 19);
+                addHullMissilePairDirect(0.58, 0.56, 1.50, 7, 295, 195, 350, 10.5, 17);
+
+                hasCIWS = true;
+                ciwsQuality = 0.80;
+                ciwsRange = 405;
+                ciwsCooldown = 0.08;
+
+                configureRepairAura(500, 4.4, 18.0);
+                configureCarrierSuite(3.4, 12, 11.0, 8);
+            }
+
+            case HYPERWEAPON_TITAN -> {
+                name = factionCapitalName("Hyperweapon Titan");
+
+                addHullGunPair(0.22, 0.88, 0.44, 4, 980, 255, true, 10.5, 24);
+                addHullGunPair(0.50, 0.72, 0.62, 2, 900, 215, true, 8.0, 18);
+
+                hasCIWS = true;
+                ciwsQuality = 0.56;
+                ciwsRange = 305;
+                ciwsCooldown = 0.11;
+
+                configureSuperweapon(SuperweaponPattern.LANCE_CONE, 3.9, 24.0, 96, 1620.0, 190, 20.0, 18,
+                        0.28, 0.26, 0.32);
+            }
+
+            case MOTHERSHIP -> {
+                name = factionCapitalName("Mothership");
+
+                addHullGunPair(0.24, 0.90, 0.34, 8, 1120, 360, true, 13.0, 34);
+                addHullGunPair(0.42, 0.80, 0.30, 6, 1020, 320, true, 11.5, 28);
+                addHullGunPairDirect(0.60, 0.62, 0.34, 5, 960, 275, true, 10.5, 24);
+                addHullMissilePairDirect(0.72, 0.48, 1.45, 9, 320, 210, 420, 12.0, 20);
+
+                hasCIWS = true;
+                ciwsQuality = 0.92;
+                ciwsRange = 455;
+                ciwsCooldown = 0.07;
+
+                configureRepairAura(560, 5.0, 22.0);
+                configureCarrierSuite(2.3, 18, 8.5, 12);
             }
 
             case CARRIER -> {
@@ -1563,14 +1837,17 @@ public class FleetShip extends Ship {
             speedMul = 0.97;
             turnMul = 0.96;
             lifeMul = 0.98;
-        } else if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) {
+        } else if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER
+                || role == ShipRole.CARRIER_SUPPORT_TITAN || role == ShipRole.MOBILE_STATION_TITAN
+                || role == ShipRole.MOTHERSHIP) {
             cooldownMul = 1.16;
             damageMul = 0.90;
             speedMul = 0.93;
             turnMul = 0.91;
             lifeMul = 0.93;
         } else if (role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP
-                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP) {
+                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP
+                || role.isTitanOrMothership()) {
             cooldownMul = 1.12;
             damageMul = 0.94;
             speedMul = 0.95;
@@ -1656,5 +1933,313 @@ public class FleetShip extends Ship {
         copy.barrelLen = src.barrelLen;
         copy.primary = src.primary;
         return copy;
+    }
+
+    private String factionCapitalName(String hullName) {
+        String prefix = switch (faction) {
+            case ENEMY -> "Red";
+            case TEAM_C -> "Green";
+            case TEAM_D -> "Yellow";
+            default -> "Blue";
+        };
+        return prefix + " " + hullName;
+    }
+
+    private Turret addGunTurret(double localX, double localY, double cooldown, int damage,
+                                double bulletSpeed, int bulletLife, boolean primary,
+                                double turretRadius, double barrelLen) {
+        Turret gun = new Turret(Turret.Kind.GUN, localX, localY);
+        gun.cooldown = cooldown;
+        gun.damage = damage;
+        gun.bulletSpeed = bulletSpeed;
+        gun.bulletLife = bulletLife;
+        gun.primary = primary;
+        gun.radius = turretRadius;
+        gun.barrelLen = barrelLen;
+        addTurret(gun);
+        return gun;
+    }
+
+    private Turret addMissileTurret(double localX, double localY, double cooldown, int damage,
+                                    double missileSpeed, double missileTurnRateDeg, int missileLife,
+                                    double turretRadius, double barrelLen) {
+        Turret rack = new Turret(Turret.Kind.MISSILE, localX, localY);
+        rack.cooldown = cooldown;
+        rack.damage = damage;
+        rack.primary = false;
+        rack.missileSpeed = missileSpeed;
+        rack.missileTurnRate = Math.toRadians(missileTurnRateDeg);
+        rack.missileLife = missileLife;
+        rack.radius = turretRadius;
+        rack.barrelLen = barrelLen;
+        addTurret(rack);
+        return rack;
+    }
+
+    private void addHullGunPair(double alongFrac, double lateralFrac, double cooldown, int damage,
+                                double bulletSpeed, int bulletLife, boolean primary,
+                                double turretRadius, double barrelLen) {
+        double[] upper = hullMount(alongFrac, lateralFrac, true);
+        double[] lower = hullMount(alongFrac, lateralFrac, false);
+        addGunTurret(upper[0], upper[1], cooldown, damage, bulletSpeed, bulletLife, primary, turretRadius, barrelLen);
+        addGunTurret(lower[0], lower[1], cooldown, damage, bulletSpeed, bulletLife, primary, turretRadius, barrelLen);
+    }
+
+    private void addHullGunPairDirect(double alongFrac, double lateralFrac, double cooldown, int damage,
+                                      double bulletSpeed, int bulletLife, boolean primary,
+                                      double turretRadius, double barrelLen) {
+        double[] upper = hullMountExact(alongFrac, lateralFrac, true);
+        double[] lower = hullMountExact(alongFrac, lateralFrac, false);
+        addGunTurret(upper[0], upper[1], cooldown, damage, bulletSpeed, bulletLife, primary, turretRadius, barrelLen);
+        addGunTurret(lower[0], lower[1], cooldown, damage, bulletSpeed, bulletLife, primary, turretRadius, barrelLen);
+    }
+
+    private Turret addHullCenterGunTurret(double alongFrac, double cooldown, int damage,
+                                          double bulletSpeed, int bulletLife, boolean primary,
+                                          double turretRadius, double barrelLen) {
+        double[] center = hullCenterMount(alongFrac);
+        return addGunTurret(center[0], center[1], cooldown, damage, bulletSpeed, bulletLife, primary,
+                turretRadius, barrelLen);
+    }
+
+    private void addHullMissilePair(double alongFrac, double lateralFrac, double cooldown, int damage,
+                                    double missileSpeed, double missileTurnRateDeg, int missileLife,
+                                    double turretRadius, double barrelLen) {
+        double[] upper = hullMount(alongFrac, lateralFrac, true);
+        double[] lower = hullMount(alongFrac, lateralFrac, false);
+        addMissileTurret(upper[0], upper[1], cooldown, damage, missileSpeed, missileTurnRateDeg, missileLife,
+                turretRadius, barrelLen);
+        addMissileTurret(lower[0], lower[1], cooldown, damage, missileSpeed, missileTurnRateDeg, missileLife,
+                turretRadius, barrelLen);
+    }
+
+    private void addHullMissilePairDirect(double alongFrac, double lateralFrac, double cooldown, int damage,
+                                          double missileSpeed, double missileTurnRateDeg, int missileLife,
+                                          double turretRadius, double barrelLen) {
+        double[] upper = hullMountExact(alongFrac, lateralFrac, true);
+        double[] lower = hullMountExact(alongFrac, lateralFrac, false);
+        addMissileTurret(upper[0], upper[1], cooldown, damage, missileSpeed, missileTurnRateDeg, missileLife,
+                turretRadius, barrelLen);
+        addMissileTurret(lower[0], lower[1], cooldown, damage, missileSpeed, missileTurnRateDeg, missileLife,
+                turretRadius, barrelLen);
+    }
+
+    private Turret addHullCenterMissileTurret(double alongFrac, double cooldown, int damage,
+                                              double missileSpeed, double missileTurnRateDeg, int missileLife,
+                                              double turretRadius, double barrelLen) {
+        double[] center = hullCenterMount(alongFrac);
+        return addMissileTurret(center[0], center[1], cooldown, damage, missileSpeed, missileTurnRateDeg, missileLife,
+                turretRadius, barrelLen);
+    }
+
+    private double[] hullCenterMount(double alongFrac) {
+        HullMountColumn column = hullMountColumn(alongFrac);
+        return new double[]{column.localX, 0.0};
+    }
+
+    private double[] hullMount(double alongFrac, double lateralFrac, boolean upper) {
+        HullMountColumn column = hullMountColumn(alongFrac, lateralFrac);
+        return hullMountFromColumn(column, lateralFrac, upper);
+    }
+
+    private double[] hullMountExact(double alongFrac, double lateralFrac, boolean upper) {
+        HullMountColumn column = hullMountColumn(alongFrac);
+        return hullMountFromColumn(column, lateralFrac, upper);
+    }
+
+    private double[] hullMountFromColumn(HullMountColumn column, double lateralFrac, boolean upper) {
+        double frac = MathUtil.clamp(lateralFrac, 0.0, 0.92);
+        double safetyInset = Math.max(1.25, column.thickness * 0.06);
+        double symmetricHalfSpan = Math.max(2.0,
+                column.balancedHalfSpan - safetyInset);
+        double edgeFrac = MathUtil.clamp(0.66 + frac * 0.28, 0.66, 0.92);
+        double offset = symmetricHalfSpan * edgeFrac;
+        double y = upper ? -offset : offset;
+        return new double[]{column.localX, y};
+    }
+
+    private HullMountColumn hullMountColumn(double alongFrac) {
+        java.awt.Polygon hull = ShipHullSilhouette.hullPolygon(role, radius, faction);
+        if (hull == null || hull.npoints < 3) {
+            double fallbackX = MathUtil.clamp(alongFrac, 0.0, 1.0) * radius * 1.8 - radius * 0.9;
+            return new HullMountColumn(fallbackX, 0.0, Math.max(6.0, radius * 0.42));
+        }
+
+        java.awt.Rectangle bounds = hull.getBounds();
+        double minX = bounds.getMinX();
+        double maxX = bounds.getMaxX();
+        double targetX = minX + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, maxX - minX);
+
+        HullMountColumn column = sampleHullMountColumn(hull, targetX);
+        if (column != null) return column;
+
+        double[] offsets = new double[]{-2.5, 2.5, -5.0, 5.0, -8.0, 8.0, -12.0, 12.0};
+        for (double offset : offsets) {
+            column = sampleHullMountColumn(hull, targetX + offset);
+            if (column != null) return column;
+        }
+
+        double fallbackX = MathUtil.clamp(targetX, minX, maxX);
+        double fallbackHalfSpan = Math.max(6.0, bounds.getHeight() * 0.18);
+        return new HullMountColumn(fallbackX, -fallbackHalfSpan, fallbackHalfSpan);
+    }
+
+    private HullMountColumn hullMountColumn(double alongFrac, double lateralFrac) {
+        java.awt.Polygon hull = ShipHullSilhouette.hullPolygon(role, radius, faction);
+        if (hull == null || hull.npoints < 3) {
+            return hullMountColumn(alongFrac);
+        }
+
+        java.awt.Rectangle bounds = hull.getBounds();
+        double minX = bounds.getMinX();
+        double maxX = bounds.getMaxX();
+        double targetX = minX + MathUtil.clamp(alongFrac, 0.0, 1.0) * Math.max(1.0, maxX - minX);
+
+        HullMountColumn primary = hullMountColumn(alongFrac);
+        double frac = MathUtil.clamp(lateralFrac, 0.0, 0.92);
+        double desiredBalancedHalfSpan = Math.max(6.0, radius * (0.20 + frac * 0.14));
+        if (primary.balancedHalfSpan >= desiredBalancedHalfSpan) return primary;
+
+        HullMountColumn best = primary;
+        double bestScore = mountColumnScore(primary, 0.0, desiredBalancedHalfSpan);
+        double searchRange = Math.max(14.0, radius * 0.74);
+        for (double offset = -searchRange; offset <= searchRange; offset += 2.0) {
+            if (Math.abs(offset) < 1.0) continue;
+            HullMountColumn candidate = sampleHullMountColumn(hull, targetX + offset);
+            if (candidate == null) continue;
+            double score = mountColumnScore(candidate, Math.abs(offset), desiredBalancedHalfSpan);
+            if (score > bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private double mountColumnScore(HullMountColumn column, double offsetDistance, double desiredBalancedHalfSpan) {
+        if (column == null) return Double.NEGATIVE_INFINITY;
+        double balancedCoverage = Math.min(column.balancedHalfSpan, desiredBalancedHalfSpan) * 2.8;
+        double excessCoverage = Math.max(0.0, column.balancedHalfSpan - desiredBalancedHalfSpan) * 0.8;
+        double thicknessBonus = column.thickness * 0.08;
+        double distancePenalty = offsetDistance * 0.32;
+        return balancedCoverage + excessCoverage + thicknessBonus - distancePenalty;
+    }
+
+    private HullMountColumn sampleHullMountColumn(java.awt.Polygon hull, double sampleX) {
+        if (hull == null || hull.npoints < 3) return null;
+        java.util.ArrayList<Double> ys = new java.util.ArrayList<>();
+        final double eps = 1e-6;
+        for (int i = 0, j = hull.npoints - 1; i < hull.npoints; j = i++) {
+            double ax = hull.xpoints[j];
+            double ay = hull.ypoints[j];
+            double bx = hull.xpoints[i];
+            double by = hull.ypoints[i];
+            double min = Math.min(ax, bx);
+            double max = Math.max(ax, bx);
+            if (sampleX < min - eps || sampleX > max + eps) continue;
+
+            if (Math.abs(ax - bx) <= eps) {
+                if (Math.abs(sampleX - ax) <= 0.75) {
+                    ys.add(ay);
+                    ys.add(by);
+                }
+                continue;
+            }
+
+            double t = (sampleX - ax) / (bx - ax);
+            if (t < -eps || t > 1.0 + eps) continue;
+            ys.add(ay + (by - ay) * t);
+        }
+        if (ys.size() < 2) return null;
+        java.util.Collections.sort(ys);
+        double top = ys.get(0);
+        double bottom = ys.get(ys.size() - 1);
+        if (bottom - top < 2.0) return null;
+        return new HullMountColumn(sampleX, top, bottom);
+    }
+
+    private static final class HullMountColumn {
+        final double localX;
+        final double topY;
+        final double bottomY;
+        final double thickness;
+        final double balancedHalfSpan;
+
+        HullMountColumn(double localX, double topY, double bottomY) {
+            this.localX = localX;
+            this.topY = Math.min(topY, bottomY);
+            this.bottomY = Math.max(topY, bottomY);
+            this.thickness = Math.max(0.0, this.bottomY - this.topY);
+            this.balancedHalfSpan = Math.min(Math.abs(this.topY), Math.abs(this.bottomY));
+        }
+    }
+
+    private void configureRepairAura(double range, double hullPerSec, double shieldPerSec) {
+        repairRange = range;
+        repairHullPerSec = hullPerSec;
+        repairShieldPerSec = shieldPerSec;
+    }
+
+    private void configureCarrierSuite(double launchCooldown, int fighters, double spawnCooldown, int defenders) {
+        isCarrier = true;
+        fighterLaunchCooldown = launchCooldown;
+        maxFighters = fighters;
+        baseSpawnCooldown = spawnCooldown;
+        maxDefenders = defenders;
+    }
+
+    private void applyCustomFlightDeckLoadout() {
+        switch (role) {
+            case CARRIER_SUPPORT_TITAN -> {
+                setFlightDeckRole(0, ShipRole.FIGHTER);
+                setFlightDeckRole(1, ShipRole.BOMBER);
+                setFlightDeckRole(2, ShipRole.FIGHTER);
+                setFlightDeckRole(3, ShipRole.BOMBER);
+                setFlightDeckRole(4, ShipRole.DRONE);
+            }
+            case BOARDING_RECOVERY_TITAN -> {
+                setFlightDeckRole(0, ShipRole.BOMBER);
+                setFlightDeckRole(1, ShipRole.BOMBER);
+                setFlightDeckRole(2, ShipRole.FIGHTER);
+                setFlightDeckRole(3, ShipRole.BOMBER);
+                setFlightDeckRole(4, ShipRole.BOMBER);
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void configureSuperweapon(SuperweaponPattern pattern,
+                                      double chargeTime,
+                                      double cooldown,
+                                      int damage,
+                                      double speed,
+                                      int life,
+                                      double shotRadius,
+                                      int maxHits,
+                                      double beamDuration,
+                                      double beamTickInterval,
+                                      double beamDamageScale) {
+        hasSuperweapon = true;
+        superweaponPattern = (pattern == null) ? SuperweaponPattern.DESTABILIZER_PULSE : pattern;
+        superweaponChargeTime = chargeTime;
+        superweaponCooldown = cooldown;
+        superweaponDamage = damage;
+        superweaponSpeed = speed;
+        superweaponLife = life;
+        superweaponRadius = shotRadius;
+        superweaponMaxHits = maxHits;
+        superweaponBeamDuration = beamDuration;
+        superweaponBeamTickInterval = beamTickInterval;
+        superweaponBeamDamageScale = beamDamageScale;
+    }
+
+    private SuperweaponPattern resolveTitanSuperweaponPattern() {
+        return switch (faction) {
+            case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
+            case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
+            case TEAM_D -> SuperweaponPattern.MISSILE_BARRAGE;
+            default -> SuperweaponPattern.DESTABILIZER_PULSE;
+        };
     }
 }

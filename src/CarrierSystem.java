@@ -203,6 +203,7 @@ public final class CarrierSystem {
     private static void applyAttack(GameContext ctx, Ship craft, Ship carrier, double dt) {
         Ship hostile = preferredTargetForCraft(ctx, craft, carrier);
         if (hostile != null) {
+            if (attemptBoardingCapture(ctx, craft, carrier, hostile)) return;
             steerWingTowardTarget(ctx, craft, carrier, hostile, Math.max(135.0, craft.desiredSpeed * 1.02), dt);
             return;
         }
@@ -275,6 +276,17 @@ public final class CarrierSystem {
         return count;
     }
 
+    private static boolean attemptBoardingCapture(GameContext ctx, Ship craft, Ship carrier, Ship hostile) {
+        if (!isBoardingBomber(craft, carrier)) return false;
+        if (!isBoardingTarget(ctx, hostile, carrier.faction)) return false;
+        double captureRange = Math.max(42.0, hostile.radius + craft.radius + 18.0);
+        if (dist2(craft.x, craft.y, hostile.x, hostile.y) > captureRange * captureRange) return false;
+
+        convertBoardedShip(ctx, carrier, hostile);
+        retireCraft(craft);
+        return true;
+    }
+
     private static int launchFlight(GameContext ctx, Ship carrier, double dt) {
         if (ctx == null || carrier == null) return 0;
         int activeWing = countActiveWingByCarrier(ctx, carrier.id);
@@ -339,6 +351,9 @@ public final class CarrierSystem {
         if (!isAlive(carrier) && craft.carrierOwnerId >= 0) {
             carrier = findLiveShipById(ctx.ships, craft.carrierOwnerId);
         }
+        if (isBoardingBomber(craft, carrier)) {
+            return preferredBoardingTarget(ctx, craft, carrier);
+        }
         Ship protectedBomber = (craft.role == ShipRole.FIGHTER) ? findEscortBomber(ctx, craft) : null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
@@ -366,6 +381,31 @@ public final class CarrierSystem {
                 }
             }
 
+            if (score > bestScore) {
+                bestScore = score;
+                best = enemy;
+            }
+        }
+        return best;
+    }
+
+    private static Ship preferredBoardingTarget(GameContext ctx, Ship craft, Ship carrier) {
+        if (ctx == null || craft == null || carrier == null || carrier.faction == null) return null;
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(carrier.faction, craft.x, craft.y, ATTACK_SEARCH_RANGE, nearby);
+        for (Ship enemy : nearby) {
+            if (!isBoardingTarget(ctx, enemy, carrier.faction)) continue;
+
+            double dCraft = Math.hypot(enemy.x - craft.x, enemy.y - craft.y);
+            double dCarrier = Math.hypot(enemy.x - carrier.x, enemy.y - carrier.y);
+            double hullFrac = (enemy.hpMax <= 0) ? 0.0 : MathUtil.clamp(enemy.hp / (double) enemy.hpMax, 0.0, 1.0);
+            double shieldFrac = (enemy.shieldMax <= 1e-6) ? 0.0 : MathUtil.clamp(enemy.shield / enemy.shieldMax, 0.0, 1.0);
+            double score = Math.max(0.0, 1600.0 - dCraft) * 0.72;
+            score += Math.max(0.0, 1400.0 - dCarrier) * 0.08;
+            score += (1.0 - hullFrac) * 520.0;
+            score += (1.0 - shieldFrac) * 260.0;
             if (score > bestScore) {
                 bestScore = score;
                 best = enemy;
@@ -697,6 +737,71 @@ public final class CarrierSystem {
             };
             default -> 0.0;
         };
+    }
+
+    private static boolean isBoardingBomber(Ship craft, Ship carrier) {
+        return craft != null && craft.role == ShipRole.BOMBER && isBoardingCarrier(carrier);
+    }
+
+    private static boolean isBoardingCarrier(Ship carrier) {
+        return isAlive(carrier) && carrier.role == ShipRole.BOARDING_RECOVERY_TITAN;
+    }
+
+    private static boolean isBoardingTarget(GameContext ctx, Ship target, Faction boardingFaction) {
+        if (!isAlive(target) || boardingFaction == null || target.faction == null) return false;
+        if (boardingFaction.isFriendlyTo(target.faction)) return false;
+        if (target.isSmallCraft()) return false;
+        if (target.role == ShipRole.BASE || target.role == ShipRole.STATIC_TURRET) return false;
+        if (target.role.isTitanOrMothership()) return false;
+
+        double hullFrac = (target.hpMax <= 0) ? 0.0 : MathUtil.clamp(target.hp / (double) target.hpMax, 0.0, 1.0);
+        double shieldFrac = (target.shieldMax <= 1e-6) ? 0.0 : MathUtil.clamp(target.shield / target.shieldMax, 0.0, 1.0);
+        boolean weakEnough = hullFrac <= 0.60 || (hullFrac + shieldFrac) <= 0.92;
+        if (!weakEnough) return false;
+        return isIsolatedBoardingTarget(ctx, target);
+    }
+
+    private static boolean isIsolatedBoardingTarget(GameContext ctx, Ship target) {
+        if (ctx == null || target == null || target.faction == null) return false;
+        int nearbyFriends = 0;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectAliveShipsNear(target.x, target.y, 250.0, nearby);
+        for (Ship s : nearby) {
+            if (!isAlive(s) || s == target) continue;
+            if (s.faction == null || !s.faction.isFriendlyTo(target.faction)) continue;
+            if (s.isSmallCraft()) continue;
+            nearbyFriends++;
+            if (nearbyFriends > 1) return false;
+        }
+        return true;
+    }
+
+    private static void convertBoardedShip(GameContext ctx, Ship carrier, Ship target) {
+        if (carrier == null || target == null || carrier.faction == null) return;
+        Faction convertedFaction = Faction.forTeamId(carrier.faction.teamId());
+        target.faction = convertedFaction;
+        target.cancelBattlefieldWarp();
+        target.reveal(3.0);
+        target.addTemporaryDisable(0.45);
+        target.healHull(Math.max(8.0, target.hpMax * 0.18));
+        target.healShield(Math.max(12.0, target.shieldMax * 0.30));
+        target.playerTaggedForKillCredit = false;
+        target.playerKillCreditPaid = false;
+        try {
+            DoctrineRegistry.applyToShip(target);
+        } catch (Throwable ignored) {
+        }
+        if (target.isCarrier) {
+            recallWing(ctx, target);
+        }
+        if (ctx != null) {
+            java.awt.Color tint = new java.awt.Color(132, 255, 214);
+            VFX.spawnBoardingCaptureEffect(carrier.x, carrier.y, target.x, target.y, tint);
+            EventSystem.showWorldCallout(ctx, target.x, target.y - target.radius - 24.0, "CONVERTED", tint, 1.25);
+            if (carrier == ctx.player) {
+                EventSystem.showBanner(ctx, "BOARDING ACTION SUCCESSFUL", 1.1);
+            }
+        }
     }
 
     private static Ship findLiveShipById(List<Ship> ships, int id) {

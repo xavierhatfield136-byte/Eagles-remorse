@@ -19,7 +19,7 @@ class ShootingRangeTitanSpawnTest {
         assertTrue(SpawnSystem.setShootingRangeTitanLayout(ctx, TitanArchetype.CARRIER_SUPPORT));
         assertEquals(TitanArchetype.CARRIER_SUPPORT, ctx.command.shootingRangeTitanArchetype);
         assertEquals(11, nonPlayerShips(ctx).size());
-        assertRoleCountAtLeast(ctx, ShipRole.CARRIER, 1);
+        assertRoleCountAtLeast(ctx, ShipRole.CARRIER_SUPPORT_TITAN, 1);
         assertRoleCountAtLeast(ctx, ShipRole.DRONE_CARRIER, 1);
         assertRoleCountAtLeast(ctx, ShipRole.FIGHTER, 1);
         assertRoleCountAtLeast(ctx, ShipRole.BOMBER, 1);

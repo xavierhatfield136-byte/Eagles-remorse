@@ -436,6 +436,57 @@ public final class VFX {
         addCapped(p);
     }
 
+    public static void spawnBoardingCaptureEffect(double craftX, double craftY, double targetX, double targetY, Color color) {
+        Color tint = (color != null) ? color : new Color(126, 255, 204);
+        double dx = craftX - targetX;
+        double dy = craftY - targetY;
+        spawnShieldRipple(targetX, targetY, 22.0, tint);
+        spawnShieldRipple(targetX, targetY, 34.0, mixColor(tint, Color.WHITE, 0.38));
+        spawnImpactBloom(targetX, targetY, 20.0, tint, 14, 190);
+        spawnImpactBurst(targetX, targetY, dx, dy, 18, tint, Math.toRadians(42.0),
+                120.0, 180.0, 10, 10, 1.2, 1.9, 210);
+        for (int i = 1; i <= 3; i++) {
+            double t = i / 4.0;
+            double mx = targetX + dx * t;
+            double my = targetY + dy * t;
+            spawnImpactBloom(mx, my, 7.5 - i * 1.2, tint, 8, 135);
+        }
+        spawnImpactBloom(craftX, craftY, 10.0, mixColor(tint, Color.WHITE, 0.52), 10, 160);
+    }
+
+    public static void spawnArtilleryExecutionEffect(double x, double y, double radius) {
+        double rr = Math.max(34.0, radius);
+        Color core = new Color(132, 242, 255);
+        Color hot = new Color(220, 250, 255);
+        spawnShieldRipple(x, y, rr * 0.55, core);
+        spawnShieldRipple(x, y, rr * 0.92, hot);
+        spawnImpactBloom(x, y, rr * 0.44, core, 15, 205);
+        spawnImpactBloom(x, y, rr * 0.24, Color.WHITE, 12, 185);
+        spawnImpactBurst(x, y, 1.0, 0.0, 22, core, Math.PI * 2.0,
+                130.0, 220.0, 12, 12, 1.2, 1.8, 215);
+    }
+
+    public static void spawnHyperLanceFireEffect(double x, double y, double angle, double length) {
+        Color base = new Color(116, 228, 255);
+        double dx = Math.cos(angle);
+        double dy = Math.sin(angle);
+        spawnImpactBloom(x, y, 18.0, base, 12, 190);
+        spawnShieldRipple(x, y, 24.0, base);
+        spawnImpactBurst(x, y, dx, dy, 14, base, Math.toRadians(34.0),
+                160.0, 220.0, 10, 10, 1.0, 1.7, 205);
+        double leadX = x + dx * Math.max(36.0, length * 0.18);
+        double leadY = y + dy * Math.max(36.0, length * 0.18);
+        spawnImpactBloom(leadX, leadY, 12.0, mixColor(base, Color.WHITE, 0.38), 9, 150);
+    }
+
+    public static void spawnHyperLanceFractureEffect(double x, double y, double angle) {
+        Color base = new Color(132, 240, 255);
+        spawnShieldRipple(x, y, 20.0, base);
+        spawnImpactBloom(x, y, 16.0, base, 12, 180);
+        spawnImpactBurst(x, y, Math.cos(angle), Math.sin(angle), 18, base, Math.toRadians(72.0),
+                170.0, 210.0, 10, 12, 1.1, 1.9, 205);
+    }
+
     public static void spawnHitSparks(double x, double y, double dirX, double dirY) {
         spawnImpactSparks(x, y, dirX, dirY, 1);
     }
@@ -536,5 +587,15 @@ public final class VFX {
         int maxLife;
         int baseAlpha;
         Color color;
+    }
+
+    private static Color mixColor(Color a, Color b, double t) {
+        if (a == null) return (b == null) ? Color.WHITE : b;
+        if (b == null) return a;
+        double u = MathUtil.clamp(t, 0.0, 1.0);
+        int r = (int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * u);
+        int g = (int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * u);
+        int bb = (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * u);
+        return new Color(MathUtil.clamp(r, 0, 255), MathUtil.clamp(g, 0, 255), MathUtil.clamp(bb, 0, 255));
     }
 }

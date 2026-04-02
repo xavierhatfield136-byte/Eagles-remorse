@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.geom.RoundRectangle2D;
@@ -70,17 +71,23 @@ public class Renderer {
     public static final class ShopClickTarget {
         public enum Kind {
             UPGRADE,
-            HULL
+            HULL,
+            CATEGORY,
+            PAGE
         }
 
         public final Kind kind;
         public final int upgradeId;
         public final ShipRole role;
+        public final ShopHullCategory category;
+        public final int pageDelta;
 
-        public ShopClickTarget(Kind kind, int upgradeId, ShipRole role) {
+        public ShopClickTarget(Kind kind, int upgradeId, ShipRole role, ShopHullCategory category, int pageDelta) {
             this.kind = kind;
             this.upgradeId = upgradeId;
             this.role = role;
+            this.category = category;
+            this.pageDelta = pageDelta;
         }
     }
 
@@ -88,11 +95,18 @@ public class Renderer {
         final ShipRole role;
         final int cost;
         final int requiredTier;
+        final ShopHullCategory category;
+        final String tagLine;
+        final String detail;
 
-        ShopHullOffer(ShipRole role, int cost, int requiredTier) {
+        ShopHullOffer(ShipRole role, int cost, int requiredTier,
+                      ShopHullCategory category, String tagLine, String detail) {
             this.role = role;
             this.cost = cost;
             this.requiredTier = requiredTier;
+            this.category = (category == null) ? ShopHullCategory.ESCORT : category;
+            this.tagLine = (tagLine == null || tagLine.isBlank()) ? "Combat hull" : tagLine;
+            this.detail = (detail == null || detail.isBlank()) ? "Ready for refit." : detail;
         }
     }
 
@@ -103,24 +117,102 @@ public class Renderer {
     private static final int SHOP_UPGRADE_GUN = 5;
     private static final int SHOP_UPGRADE_MISSILE = 6;
     private static final int SHOP_UPGRADE_CIWS = 7;
+    private static final int SHOP_HULL_PAGE_SIZE = 8;
 
     private static final ShopHullOffer[] SHOP_HULL_OFFERS = new ShopHullOffer[]{
-            new ShopHullOffer(ShipRole.PATROL, 0, 0),
-            new ShopHullOffer(ShipRole.PICKET, 180, 0),
-            new ShopHullOffer(ShipRole.FRIGATE, 0, 0),
-            new ShopHullOffer(ShipRole.ARTILLERY_SHIP, 320, 0),
-            new ShopHullOffer(ShipRole.MISSILE_BOAT, 300, 0),
-            new ShopHullOffer(ShipRole.CIWS_CORVETTE, 250, 0),
-            new ShopHullOffer(ShipRole.LIGHT_CRUISER, 700, 1),
-            new ShopHullOffer(ShipRole.MEDIUM_CRUISER, 950, 1),
-            new ShopHullOffer(ShipRole.CRUISER, 1100, 1),
-            new ShopHullOffer(ShipRole.BATTLECRUISER, 1600, 2),
-            new ShopHullOffer(ShipRole.BATTLESHIP, 2200, 2),
-            new ShopHullOffer(ShipRole.STEALTH_SHIP, 1200, 2),
-            new ShopHullOffer(ShipRole.DREADNOUGHT, 3200, 3),
-            new ShopHullOffer(ShipRole.CARRIER, 2800, 3),
-            new ShopHullOffer(ShipRole.DRONE_CARRIER, 3000, 3),
-            new ShopHullOffer(ShipRole.SUPERSHIP, 5200, 3)
+            new ShopHullOffer(ShipRole.PATROL, 0, 0, ShopHullCategory.ESCORT,
+                    "Fast scout and skirmish frame",
+                    "Long sensor reach and clean entry-point mobility."),
+            new ShopHullOffer(ShipRole.PICKET, 180, 0, ShopHullCategory.ESCORT,
+                    "Interceptor picket hull",
+                    "Ambush pursuit frame with stronger standoff control."),
+            new ShopHullOffer(ShipRole.FRIGATE, 0, 0, ShopHullCategory.ESCORT,
+                    "Balanced fleet-standard frigate",
+                    "Reliable baseline hull for general combat upgrades."),
+            new ShopHullOffer(ShipRole.ARTILLERY_SHIP, 320, 0, ShopHullCategory.ESCORT,
+                    "Budget long-range gun platform",
+                    "Cheap reach for keeping pressure on distant targets."),
+            new ShopHullOffer(ShipRole.MISSILE_BOAT, 300, 0, ShopHullCategory.ESCORT,
+                    "Compact launcher skirmisher",
+                    "Punches above size with burst missile pressure."),
+            new ShopHullOffer(ShipRole.CIWS_CORVETTE, 250, 0, ShopHullCategory.ESCORT,
+                    "Escort flak and defense net",
+                    "Best early frame for anti-missile and anti-craft screens."),
+
+            new ShopHullOffer(ShipRole.LIGHT_CRUISER, 700, 1, ShopHullCategory.LINE,
+                    "Entry heavy line hull",
+                    "First true line-warship with room for upgrades."),
+            new ShopHullOffer(ShipRole.MEDIUM_CRUISER, 950, 1, ShopHullCategory.LINE,
+                    "Versatile strike cruiser",
+                    "Flexible midline ship with stronger staying power."),
+            new ShopHullOffer(ShipRole.CRUISER, 1100, 1, ShopHullCategory.LINE,
+                    "Missile cruiser",
+                    "Long-range salvo ship with sustained rack pressure."),
+            new ShopHullOffer(ShipRole.BATTLECRUISER, 1600, 2, ShopHullCategory.LINE,
+                    "Fast capital hunter",
+                    "Aggressive heavy hull for breakthrough pushes."),
+            new ShopHullOffer(ShipRole.BATTLESHIP, 2200, 2, ShopHullCategory.LINE,
+                    "Line-breaking heavy capital",
+                    "Dense broadside hull built to win frontal exchanges."),
+            new ShopHullOffer(ShipRole.STEALTH_SHIP, 1200, 2, ShopHullCategory.LINE,
+                    "Raid and ambush specialist",
+                    "High-risk strike hull for flanks and precision kills."),
+
+            new ShopHullOffer(ShipRole.DREADNOUGHT, 3200, 3, ShopHullCategory.CAPITAL,
+                    "Siege capital",
+                    "Slow, hard-killing warship for attrition fights."),
+            new ShopHullOffer(ShipRole.CARRIER, 2800, 3, ShopHullCategory.CAPITAL,
+                    "Strike-carrier capital",
+                    "Launches and sustains wings while anchoring the line."),
+            new ShopHullOffer(ShipRole.DRONE_CARRIER, 3000, 3, ShopHullCategory.CAPITAL,
+                    "Drone warfare carrier",
+                    "Swarm-focused carrier with strong automated pressure."),
+            new ShopHullOffer(ShipRole.SUPERSHIP, 5200, 3, ShopHullCategory.CAPITAL,
+                    "Elite super-capital",
+                    "Prestige hull with flagship-grade lethality."),
+
+            new ShopHullOffer(ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.TRANSPORT.roleLabel(),
+                    TitanArchetype.TRANSPORT.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.BULWARK.roleLabel(),
+                    TitanArchetype.BULWARK.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.CARRIER_SUPPORT.roleLabel(),
+                    TitanArchetype.CARRIER_SUPPORT.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.VANGUARD_TITAN, TitanArchetype.VANGUARD.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.VANGUARD.roleLabel(),
+                    TitanArchetype.VANGUARD.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.INTERDICTION_TITAN, TitanArchetype.INTERDICTION.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.INTERDICTION.roleLabel(),
+                    TitanArchetype.INTERDICTION.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.COMMAND_INTEL_TITAN, TitanArchetype.COMMAND_INTEL.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.COMMAND_INTEL.roleLabel(),
+                    TitanArchetype.COMMAND_INTEL.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.BOARDING_RECOVERY_TITAN, TitanArchetype.BOARDING_RECOVERY.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.BOARDING_RECOVERY.roleLabel(),
+                    TitanArchetype.BOARDING_RECOVERY.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.ARTILLERY_TITAN, TitanArchetype.ARTILLERY.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.ARTILLERY.roleLabel(),
+                    TitanArchetype.ARTILLERY.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.SHIELD_BASTION_TITAN, TitanArchetype.SHIELD_BASTION.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.SHIELD_BASTION.roleLabel(),
+                    TitanArchetype.SHIELD_BASTION.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.FLEET_TELEPORTER_TITAN, TitanArchetype.FLEET_TELEPORTER.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.FLEET_TELEPORTER.roleLabel(),
+                    TitanArchetype.FLEET_TELEPORTER.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.ELITE_SUPERSHIP_COMMAND.roleLabel(),
+                    TitanArchetype.ELITE_SUPERSHIP_COMMAND.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.MOBILE_STATION.roleLabel(),
+                    TitanArchetype.MOBILE_STATION.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.HYPERWEAPON.roleLabel(),
+                    TitanArchetype.HYPERWEAPON.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.MOTHERSHIP, 7200, 3, ShopHullCategory.TITAN,
+                    "Fleet anchor and command citadel",
+                    "Grand carrier, repair harbor, and apex fleet flagship.")
     };
 
     public static Rectangle getStrategicMapRect(int viewW, int viewH) {
@@ -142,22 +234,69 @@ public class Renderer {
         return new Rectangle(x, y, w, h);
     }
 
-    public static ShopClickTarget shopClickTargetAt(Player player, int credits, int hangarTier,
+    public static int shopHullPageCount(ShopHullCategory category) {
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        int count = 0;
+        for (ShopHullOffer offer : SHOP_HULL_OFFERS) {
+            if (offer != null && offer.category == resolved) count++;
+        }
+        return Math.max(1, (count + SHOP_HULL_PAGE_SIZE - 1) / SHOP_HULL_PAGE_SIZE);
+    }
+
+    public static int clampShopHullPage(ShopHullCategory category, int page) {
+        return MathUtil.clamp(page, 0, shopHullPageCount(category) - 1);
+    }
+
+    public static int shopHullPageForRole(ShipRole role) {
+        ShopHullCategory category = ShopHullCategory.forRole(role);
+        int slot = 0;
+        for (ShopHullOffer offer : SHOP_HULL_OFFERS) {
+            if (offer == null || offer.category != category) continue;
+            if (offer.role == role) return slot / SHOP_HULL_PAGE_SIZE;
+            slot++;
+        }
+        return 0;
+    }
+
+    public static ShopClickTarget shopClickTargetAt(Player player, UiState ui, int credits, int hangarTier,
                                                     int viewW, int viewH, int mouseX, int mouseY) {
         if (player == null) return null;
         Rectangle panel = getShopOverlayRect(viewW, viewH);
         if (!panel.contains(mouseX, mouseY)) return null;
+        ShopHullCategory category = (ui == null || ui.shopHullCategory == null)
+                ? ShopHullCategory.forRole(player.role)
+                : ui.shopHullCategory;
+        int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
 
         for (int i = 0; i < 7; i++) {
             Rectangle button = getShopCardButtonRect(getShopUpgradeCardRect(panel, i));
             if (button.contains(mouseX, mouseY)) {
-                return new ShopClickTarget(ShopClickTarget.Kind.UPGRADE, i + 1, null);
+                return new ShopClickTarget(ShopClickTarget.Kind.UPGRADE, i + 1, null, null, 0);
             }
         }
-        for (int i = 0; i < SHOP_HULL_OFFERS.length; i++) {
-            Rectangle button = getShopCardButtonRect(getShopHullCardRect(panel, i));
+        for (ShopHullCategory candidate : ShopHullCategory.values()) {
+            Rectangle tab = getShopHullCategoryTabRect(panel, candidate);
+            if (tab.contains(mouseX, mouseY)) {
+                return new ShopClickTarget(ShopClickTarget.Kind.CATEGORY, 0, null, candidate, 0);
+            }
+        }
+        if (shopHullPageCount(category) > 1) {
+            Rectangle prev = getShopHullPageButtonRect(panel, false);
+            Rectangle next = getShopHullPageButtonRect(panel, true);
+            if (prev.contains(mouseX, mouseY)) {
+                return new ShopClickTarget(ShopClickTarget.Kind.PAGE, 0, null, null, -1);
+            }
+            if (next.contains(mouseX, mouseY)) {
+                return new ShopClickTarget(ShopClickTarget.Kind.PAGE, 0, null, null, 1);
+            }
+        }
+
+        for (int slot = 0; slot < SHOP_HULL_PAGE_SIZE; slot++) {
+            ShopHullOffer offer = shopHullOfferAt(category, page, slot);
+            if (offer == null) continue;
+            Rectangle button = getShopCardButtonRect(getShopHullCardRect(panel, slot));
             if (button.contains(mouseX, mouseY)) {
-                return new ShopClickTarget(ShopClickTarget.Kind.HULL, 0, SHOP_HULL_OFFERS[i].role);
+                return new ShopClickTarget(ShopClickTarget.Kind.HULL, 0, offer.role, null, 0);
             }
         }
         return null;
@@ -212,7 +351,7 @@ public class Renderer {
                 ctx.ui.powerManagementOpen,
                 ctx.ui.crewStationsOpen
         };
-        boolean baseAvailable = EconomySystem.getDockedFriendlyBase(ctx) != null;
+        boolean baseAvailable = CampaignSystem.currentBaseUpgradeAnchor(ctx) != null;
         boolean controlsDisabled = ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER;
 
         Font oldFont = g2.getFont();
@@ -346,17 +485,58 @@ public class Renderer {
         return new Rectangle(x, y, cardW, cardH);
     }
 
-    private static Rectangle getShopHullCardRect(Rectangle panel, int index) {
+    private static Rectangle getShopHullCategoryTabRect(Rectangle panel, ShopHullCategory category) {
+        Rectangle area = getShopHullArea(panel);
+        ShopHullCategory[] categories = ShopHullCategory.values();
+        int tabGap = 8;
+        int tabY = area.y + 18;
+        int tabH = 28;
+        int usableW = area.width - 128;
+        int tabW = Math.max(100, (usableW - tabGap * (categories.length - 1)) / categories.length);
+        int idx = 0;
+        for (int i = 0; i < categories.length; i++) {
+            if (categories[i] == category) {
+                idx = i;
+                break;
+            }
+        }
+        int x = area.x + idx * (tabW + tabGap);
+        return new Rectangle(x, tabY, tabW, tabH);
+    }
+
+    private static Rectangle getShopHullPageButtonRect(Rectangle panel, boolean next) {
+        Rectangle area = getShopHullArea(panel);
+        int w = 42;
+        int h = 28;
+        int y = area.y + 18;
+        int x = area.x + area.width - (next ? w : (w * 2 + 8));
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle getShopHullCardRect(Rectangle panel, int slot) {
         Rectangle area = getShopHullArea(panel);
         int cols = 4;
         int gap = 10;
         int cardW = (area.width - gap * (cols - 1)) / cols;
-        int cardH = 82;
-        int col = Math.max(0, index % cols);
-        int row = Math.max(0, index / cols);
+        int cardH = 136;
+        int col = Math.max(0, slot % cols);
+        int row = Math.max(0, slot / cols);
         int x = area.x + col * (cardW + gap);
-        int y = area.y + 28 + row * (cardH + gap);
+        int y = area.y + 64 + row * (cardH + gap);
         return new Rectangle(x, y, cardW, cardH);
+    }
+
+    private static ShopHullOffer shopHullOfferAt(ShopHullCategory category, int page, int slot) {
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        int clampedPage = clampShopHullPage(resolved, page);
+        int wanted = clampedPage * SHOP_HULL_PAGE_SIZE + Math.max(0, slot);
+        int idx = 0;
+        for (ShopHullOffer offer : SHOP_HULL_OFFERS) {
+            if (offer == null || offer.category != resolved) continue;
+            if (idx == wanted) return offer;
+            idx++;
+        }
+        return null;
     }
 
     private static Rectangle getShopCardButtonRect(Rectangle cardRect) {
@@ -1316,30 +1496,38 @@ public class Renderer {
         double sy = beam.startY();
         double ex = beam.endX();
         double ey = beam.endY();
-        Color base = beamColorForFaction(beam.faction);
-        Color hot = mixColor(base, Color.WHITE, 0.72);
+        boolean hyperLance = beam.isHyperLanceBeam();
+        Color base = hyperLance ? new Color(122, 232, 255) : beamColorForFaction(beam.faction);
+        Color hot = mixColor(base, Color.WHITE, hyperLance ? 0.82 : 0.72);
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 10.0);
-        float width = (float) Math.max(2.2, beam.width * (0.90 + 0.16 * pulse));
+        float width = (float) Math.max(2.2, beam.width * (hyperLance ? (1.02 + 0.24 * pulse) : (0.90 + 0.16 * pulse)));
 
         Stroke old = g2.getStroke();
 
-        g2.setStroke(new BasicStroke(width * 2.15f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(base, (int) Math.round(56 + pulse * 28)));
+        g2.setStroke(new BasicStroke(width * (hyperLance ? 2.75f : 2.15f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, (int) Math.round((hyperLance ? 86 : 56) + pulse * (hyperLance ? 44 : 28))));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        g2.setStroke(new BasicStroke(width * 1.05f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(hot, 210));
+        g2.setStroke(new BasicStroke(width * (hyperLance ? 1.35f : 1.05f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, hyperLance ? 228 : 210));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        g2.setStroke(new BasicStroke(Math.max(1.1f, width * 0.40f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(Color.WHITE, 165));
+        g2.setStroke(new BasicStroke(Math.max(1.1f, width * (hyperLance ? 0.54f : 0.40f)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(Color.WHITE, hyperLance ? 205 : 165));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        int glowR = (int) Math.round(Math.max(5.0, beam.width * 1.3));
+        int glowR = (int) Math.round(Math.max(hyperLance ? 8.0 : 5.0, beam.width * (hyperLance ? 1.8 : 1.3)));
         g2.setColor(withAlpha(base, 150));
         g2.fillOval((int) Math.round(sx) - glowR, (int) Math.round(sy) - glowR, glowR * 2, glowR * 2);
         g2.setColor(withAlpha(hot, 126));
         g2.fillOval((int) Math.round(ex) - glowR, (int) Math.round(ey) - glowR, glowR * 2, glowR * 2);
+        if (hyperLance) {
+            int terminalR = (int) Math.round(Math.max(16.0, beam.width * 2.2));
+            g2.setColor(withAlpha(base, 96));
+            g2.fillOval((int) Math.round(ex) - terminalR, (int) Math.round(ey) - terminalR, terminalR * 2, terminalR * 2);
+            g2.setColor(withAlpha(Color.WHITE, 118));
+            g2.drawOval((int) Math.round(ex) - terminalR, (int) Math.round(ey) - terminalR, terminalR * 2, terminalR * 2);
+        }
 
         g2.setStroke(old);
     }
@@ -1594,7 +1782,6 @@ public class Renderer {
         for (Ship ship : ships) {
             if (ship == null || ship == player) continue;
             if (!ship.alive || ship.dying || ship.hp <= 0) continue;
-            if (ship.role != ShipRole.SUPERSHIP) continue;
             if (!ship.hasSuperweapon || !ship.isSuperweaponCharging()) continue;
             double aim = ship.getSuperweaponAimAngle();
             double len = npcSuperweaponCueLength(ship);
@@ -1640,8 +1827,10 @@ public class Renderer {
 
     private static double npcSuperweaponCueLength(Ship ship) {
         if (ship == null) return 2200.0;
-        if (ship.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM) {
-            return MathUtil.clamp(ship.superweaponSpeed * 0.96, 760.0, 1760.0);
+        if (ship.superweaponPattern == Ship.SuperweaponPattern.DIRECT_BEAM
+                || ship.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) {
+            double beamScale = (ship.superweaponPattern == Ship.SuperweaponPattern.LANCE_CONE) ? 0.74 : 0.96;
+            return MathUtil.clamp(ship.superweaponSpeed * beamScale, 720.0, 1760.0);
         }
         return 2200.0;
     }
@@ -1886,7 +2075,7 @@ public class Renderer {
 
 
         if (shopOpen) {
-            drawShopOverlay(g2, player, credits, hangarTier);
+            drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
         }
     }
 
@@ -1919,7 +2108,8 @@ public class Renderer {
         String shipLabel = (player.role == null) ? "COMMAND SHIP" : player.role.name().replace('_', ' ');
         g2.drawString(shipLabel, x + 12, titleY);
 
-        String creditLabel = "CREDITS " + credits;
+        boolean infiniteCredits = ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOOTING_RANGE;
+        String creditLabel = infiniteCredits ? "CREDITS INF" : ("CREDITS " + credits);
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         FontMetrics creditFm = g2.getFontMetrics();
         g2.setColor(new Color(150, 214, 255, 225));
@@ -2010,7 +2200,9 @@ public class Renderer {
             }
         }
         if (player != null && player.cargoMax > 0) {
-            statusLines.add("Cargo: " + player.cargo + "/" + player.cargoMax + (dockedAtBase ? "   Docked" : ""));
+            String label = CampaignSystem.isCampaignActive(ctx) ? "Ore: " : "Cargo: ";
+            String suffix = CampaignSystem.isCampaignActive(ctx) ? "   Fleet stores" : (dockedAtBase ? "   Docked" : "");
+            statusLines.add(label + player.cargo + "/" + player.cargoMax + suffix);
         }
         if (resourceRush) {
             statusLines.add("Race: ally " + allyOre + "   enemy " + enemyOre + "   goal " + goal);
@@ -2882,13 +3074,49 @@ public class Renderer {
         }
     }
 
+    public static void drawCombatCallouts(Graphics2D g2, List<UiState.CombatCallout> callouts,
+                                          double minX, double minY, double maxX, double maxY) {
+        if (g2 == null || callouts == null || callouts.isEmpty()) return;
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics fm = g2.getFontMetrics();
+        for (UiState.CombatCallout callout : callouts) {
+            if (callout == null || callout.text == null || callout.text.isBlank()) continue;
+            if (!isWorldCircleVisible(callout.x, callout.y, 90.0, minX, minY, maxX, maxY)) continue;
+            double fade = MathUtil.clamp(callout.alphaFrac(), 0.0, 1.0);
+            int textW = fm.stringWidth(callout.text);
+            int x = (int) Math.round(callout.x - textW * 0.5);
+            int y = (int) Math.round(callout.y);
+            int bgX = x - 6;
+            int bgY = y - 11;
+            int bgW = textW + 12;
+            int bgH = 16;
+            g2.setColor(new Color(6, 10, 18, (int) Math.round(42 + fade * 78)));
+            g2.fillRoundRect(bgX, bgY, bgW, bgH, 10, 10);
+            Color text = callout.color;
+            g2.setColor(new Color(text.getRed(), text.getGreen(), text.getBlue(), (int) Math.round(84 + fade * 164)));
+            g2.drawRoundRect(bgX, bgY, bgW, bgH, 10, 10);
+            g2.setColor(new Color(0, 0, 0, (int) Math.round(44 + fade * 88)));
+            g2.drawString(callout.text, x + 1, y + 1);
+            g2.setColor(new Color(text.getRed(), text.getGreen(), text.getBlue(), (int) Math.round(120 + fade * 120)));
+            g2.drawString(callout.text, x, y);
+        }
+        g2.setFont(oldFont);
+    }
 
-    private static void drawShopOverlay(Graphics2D g2, Player player, int credits, int hangarTier) {
+
+    private static void drawShopOverlay(Graphics2D g2, GameContext ctx, Player player, int credits, int hangarTier, UiState ui) {
         Rectangle clip = g2.getClipBounds();
         int viewW = clip.width;
         int viewH = clip.height;
         Rectangle panel = getShopOverlayRect(viewW, viewH);
         Graphics2D gx = (Graphics2D) g2.create();
+        ShopHullCategory category = (ui == null || ui.shopHullCategory == null)
+                ? ShopHullCategory.forRole(player.role)
+                : ui.shopHullCategory;
+        int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
+        int pageCount = shopHullPageCount(category);
+        boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
 
         GradientPaint panelFill = new GradientPaint(
                 panel.x, panel.y, new Color(7, 10, 16, 236),
@@ -2902,20 +3130,33 @@ public class Renderer {
 
         gx.setFont(new Font("Consolas", Font.BOLD, 18));
         gx.setColor(new Color(245, 248, 255, 230));
-        gx.drawString("SHOP / LOADOUT", panel.x + 22, panel.y + 28);
+        gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", panel.x + 22, panel.y + 28);
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(192, 210, 232, 180));
-        gx.drawString("Click a button to buy capped upgrades or swap hulls. TAB/ESC closes.", panel.x + 22, panel.y + 48);
+        gx.drawString(campaignShop
+                        ? "Upgrade the Mothership on the left and commission persistent blue hulls on the right. TAB/ESC closes."
+                        : "Buy capped upgrades on the left and browse hull classes on the right. TAB/ESC closes.",
+                panel.x + 22, panel.y + 48);
 
         drawShopMetricPill(gx, panel.x + 22, panel.y + 64, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
-        drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150, "HANGAR", "TIER " + hangarTier, new Color(158, 196, 255));
-        drawShopMetricPill(gx, panel.x + 362, panel.y + 64, 250, "CURRENT HULL", shopRoleTitle(player.role), new Color(255, 206, 122));
-        drawShopMetricPill(gx, panel.x + 622, panel.y + 64, 170, "SUPERWEAPON", superweaponStatusReadout(player), new Color(156, 224, 255));
+        drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150,
+                campaignShop ? "ORE" : "HANGAR",
+                campaignShop ? ((ctx == null || ctx.player == null) ? "0" : String.valueOf(ctx.player.cargo)) : ("TIER " + hangarTier),
+                new Color(158, 196, 255));
+        drawShopMetricPill(gx, panel.x + 362, panel.y + 64, 250,
+                campaignShop ? "FLAGSHIP" : "CURRENT HULL",
+                shopRoleTitle(player.role),
+                new Color(255, 206, 122));
+        drawShopMetricPill(gx, panel.x + 622, panel.y + 64, 170,
+                campaignShop ? "BLUE FLEET" : "SUPERWEAPON",
+                campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
+                new Color(156, 224, 255));
 
         Rectangle upgradesArea = getShopUpgradeArea(panel);
         Rectangle hullArea = getShopHullArea(panel);
         drawShopSectionLabel(gx, upgradesArea.x, upgradesArea.y, "UPGRADES", "Weapons, defenses, and capped frame tuning");
-        drawShopSectionLabel(gx, hullArea.x, hullArea.y, "HULL BAY", "Swap frames from the full roster without scrolling");
+        drawShopSectionLabel(gx, hullArea.x, hullArea.y, "HULL BAY", category.subtitle());
+        drawShopHullTabs(gx, panel, category, page, pageCount);
 
         int gunCount = player.gunTurretCount();
         int missileCount = player.missileRackCount();
@@ -2924,16 +3165,73 @@ public class Renderer {
             Rectangle card = getShopUpgradeCardRect(panel, i);
             drawShopUpgradeCard(gx, card, player, credits, gunCount, missileCount, i + 1);
         }
-        for (int i = 0; i < SHOP_HULL_OFFERS.length; i++) {
-            Rectangle card = getShopHullCardRect(panel, i);
-            drawShopHullCard(gx, card, SHOP_HULL_OFFERS[i], credits, hangarTier, player);
+        for (int slot = 0; slot < SHOP_HULL_PAGE_SIZE; slot++) {
+            ShopHullOffer offer = shopHullOfferAt(category, page, slot);
+            if (offer == null) continue;
+            Rectangle card = getShopHullCardRect(panel, slot);
+            drawShopHullCard(gx, card, offer, credits, hangarTier, player, ctx);
         }
 
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(196, 208, 224, 164));
-        gx.drawString("Tier-locked hulls need a stronger friendly base hangar. Upgrade one from the base menu if you want bigger frames.",
+        gx.drawString(campaignShop
+                        ? "Tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Commissioned blue ships persist until destroyed."
+                        : "Hull tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Tier-locked hulls need a stronger base hangar.",
                 panel.x + 22, panel.y + panel.height - 18);
         gx.dispose();
+    }
+
+    private static void drawShopHullTabs(Graphics2D g2, Rectangle panel, ShopHullCategory current, int page, int pageCount) {
+        for (ShopHullCategory category : ShopHullCategory.values()) {
+            Rectangle tab = getShopHullCategoryTabRect(panel, category);
+            boolean active = category == current;
+            Color accent = switch (category) {
+                case ESCORT -> new Color(118, 214, 255);
+                case LINE -> new Color(255, 206, 122);
+                case CAPITAL -> new Color(255, 150, 126);
+                case TITAN -> new Color(176, 210, 255);
+            };
+            g2.setColor(active
+                    ? new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 132)
+                    : new Color(22, 28, 42, 188));
+            g2.fillRoundRect(tab.x, tab.y, tab.width, tab.height, 12, 12);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), active ? 170 : 78));
+            g2.drawRoundRect(tab.x, tab.y, tab.width, tab.height, 12, 12);
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            FontMetrics fm = g2.getFontMetrics();
+            String label = category.label();
+            int tx = tab.x + (tab.width - fm.stringWidth(label)) / 2;
+            int ty = tab.y + (tab.height + fm.getAscent() - fm.getDescent()) / 2 - 1;
+            g2.setColor(active ? new Color(248, 250, 255, 238) : new Color(198, 212, 230, 192));
+            g2.drawString(label, tx, ty);
+        }
+
+        if (pageCount > 1) {
+            Rectangle prev = getShopHullPageButtonRect(panel, false);
+            Rectangle next = getShopHullPageButtonRect(panel, true);
+            drawShopPageButton(g2, prev, "<", page > 0);
+            drawShopPageButton(g2, next, ">", page < pageCount - 1);
+        }
+
+        Rectangle area = getShopHullArea(panel);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(204, 220, 238, 190));
+        String pageLabel = "PAGE " + (page + 1) + " / " + pageCount;
+        FontMetrics fm = g2.getFontMetrics();
+        int px = area.x + area.width - 132 - fm.stringWidth(pageLabel);
+        g2.drawString(pageLabel, Math.max(area.x + 8, px), area.y + 13);
+    }
+
+    private static void drawShopPageButton(Graphics2D g2, Rectangle rect, String label, boolean enabled) {
+        g2.setColor(enabled ? new Color(58, 104, 156, 180) : new Color(48, 54, 68, 170));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+        g2.setColor(enabled ? new Color(220, 234, 255, 208) : new Color(140, 150, 168, 118));
+        g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        FontMetrics fm = g2.getFontMetrics();
+        int tx = rect.x + (rect.width - fm.stringWidth(label)) / 2;
+        int ty = rect.y + (rect.height + fm.getAscent() - fm.getDescent()) / 2 - 1;
+        g2.drawString(label, tx, ty);
     }
 
     private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
@@ -3103,11 +3401,14 @@ public class Renderer {
     }
 
     private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
-                                         int credits, int hangarTier, Player player) {
+                                         int credits, int hangarTier, Player player, GameContext ctx) {
+        boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
+        int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, offer.requiredTier) : 0;
         boolean current = player.role == offer.role;
         boolean tierOk = hangarTier >= offer.requiredTier;
         boolean affordable = credits >= offer.cost;
-        boolean enabled = !current && tierOk && affordable;
+        boolean oreAffordable = !campaignShop || (ctx != null && ctx.player != null && ctx.player.cargo >= oreCost);
+        boolean enabled = !current && tierOk && affordable && oreAffordable;
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
         drawShopCardFrame(g2, card, accent, current);
@@ -3118,20 +3419,32 @@ public class Renderer {
         g2.drawString(title, card.x + 10, card.y + 18);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(196, 210, 226, 180));
-        g2.drawString("Tier " + offer.requiredTier + "   Cost $" + offer.cost, card.x + 10, card.y + 35);
+        FontMetrics bodyMetrics = g2.getFontMetrics();
+        g2.drawString(fitShopText(bodyMetrics, offer.tagLine, card.width - 20), card.x + 10, card.y + 35);
+        g2.drawString(fitShopText(bodyMetrics, offer.detail, card.width - 20), card.x + 10, card.y + 52);
 
         String line2 = current
-                ? "Currently equipped"
-                : (tierOk ? "Ready for swap" : "Needs hangar T" + offer.requiredTier);
-        g2.drawString(line2, card.x + 10, card.y + 49);
+                ? (campaignShop ? "Flagship hull currently commanded" : "Currently equipped")
+                : (tierOk ? (campaignShop ? "Ready to commission" : "Ready for swap") : "Needs hangar T" + offer.requiredTier);
+        String costLine = campaignShop
+                ? ("Tier " + offer.requiredTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
+                : ("Tier " + offer.requiredTier + "   Cost $" + offer.cost);
+        g2.drawString(fitShopText(bodyMetrics, costLine, card.width - 20), card.x + 10, card.y + 69);
+        g2.drawString(line2, card.x + 10, card.y + 86);
 
         String buttonLabel;
         if (current) buttonLabel = "CURRENT";
         else if (!tierOk) buttonLabel = "LOCK T" + offer.requiredTier;
         else if (!affordable) buttonLabel = "NEED $" + offer.cost;
+        else if (!oreAffordable) buttonLabel = "NEED " + oreCost + " ORE";
+        else if (campaignShop) buttonLabel = (offer.cost <= 0) ? "BUY FREE" : ("BUY $" + offer.cost);
         else if (offer.cost <= 0) buttonLabel = "SWAP FREE";
         else buttonLabel = "SWAP $" + offer.cost;
         drawShopActionButton(g2, getShopCardButtonRect(card), buttonLabel, enabled, accent, current);
+    }
+
+    private static String campaignFleetCount(GameContext ctx) {
+        return CampaignSystem.livePersistentFleetCount(ctx) + "/24";
     }
 
     private static void drawShopCardFrame(Graphics2D g2, Rectangle card, Color accent, boolean strong) {
@@ -3182,9 +3495,12 @@ public class Renderer {
 
     private static String shopRoleTitle(ShipRole role) {
         if (role == null) return "UNKNOWN";
+        TitanArchetype titan = TitanArchetype.fromShipRole(role);
+        if (titan != null) return titan.displayName().toUpperCase(Locale.US);
         return switch (role) {
             case ARTILLERY_SHIP -> "ARTILLERY SHIP";
             case CRUISER -> "MISSILE CRUISER";
+            case MOTHERSHIP -> "MOTHERSHIP";
             default -> role.name().replace('_', ' ');
         };
     }
@@ -4231,15 +4547,17 @@ public class Renderer {
         Rectangle b = hull.getBounds();
         if (b.width <= 0 || b.height <= 0) return null;
 
-        double cx = b.getCenterX();
-        double cy = b.getCenterY();
-        double halfW = Math.max(1.0, b.width * 0.5);
-        double halfH = Math.max(1.0, b.height * 0.5);
+        double minX = b.getMinX();
+        double maxX = b.getMaxX();
+        double minY = b.getMinY();
+        double maxY = b.getMaxY();
+        double halfW = Math.max(1.0, Math.max(Math.abs(minX), Math.abs(maxX)));
+        double halfH = Math.max(1.0, Math.max(Math.abs(minY), Math.abs(maxY)));
         double[] normalizedXs = new double[hull.npoints];
         double[] normalizedYs = new double[hull.npoints];
         for (int i = 0; i < hull.npoints; i++) {
-            normalizedXs[i] = MathUtil.clamp(((hull.xpoints[i] - cx) / halfW) * 0.98, -1.0, 1.0);
-            normalizedYs[i] = MathUtil.clamp(((hull.ypoints[i] - cy) / halfH) * 0.98, -1.0, 1.0);
+            normalizedXs[i] = MathUtil.clamp((hull.xpoints[i] / halfW) * 0.98, -1.0, 1.0);
+            normalizedYs[i] = MathUtil.clamp((hull.ypoints[i] / halfH) * 0.98, -1.0, 1.0);
         }
         return xrayRoomPolygon(mapRect.x, mapRect.y, mapRect.width, mapRect.height, normalizedXs, normalizedYs);
     }
@@ -5356,7 +5674,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 Ship.RoomStatus rs = statusById.get(cell.roomId);
                 if (rs == null) continue;
 
-                Polygon p = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+                Polygon p = roomPolygonShipLocal(ship, cell.xs, cell.ys);
                 if (p == null || p.npoints < 3) continue;
                 drewVisualCells = true;
 
@@ -5397,7 +5715,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             if (!drewVisualCells) {
                 for (Ship.RoomStatus rs : rooms) {
-                    Polygon p = roomPolygonShipLocal(ship.radius, rs.normalizedXs, rs.normalizedYs);
+                    Polygon p = roomPolygonShipLocal(ship, rs.normalizedXs, rs.normalizedYs);
                     if (p == null || p.npoints < 3) continue;
 
                     double frac = (rs.hpMax <= 1e-9) ? 1.0 : Math.max(0.0, Math.min(1.0, rs.hp / rs.hpMax));
@@ -5444,8 +5762,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     for (int i = start; i < events.size(); i++) {
                         Ship.RoomDamageEvent ev = events.get(i);
                         if (!Double.isFinite(ev.normalizedX) || !Double.isFinite(ev.normalizedY)) continue;
-                        int px = (int) Math.round(ev.normalizedX * ship.radius);
-                        int py = (int) Math.round(ev.normalizedY * ship.radius);
+                        Point pt = normalizedShipLocalPoint(ship, ev.normalizedX, ev.normalizedY);
+                        int px = pt.x;
+                        int py = pt.y;
                         g.setColor(ev.fromHazard ? new Color(255, 130, 70, 200) : new Color(255, 250, 170, 210));
                         g.fillOval(px - 2, py - 2, 4, 4);
                     }
@@ -6315,7 +6634,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (ship.role == ShipRole.LIGHT_CRUISER || ship.role == ShipRole.MEDIUM_CRUISER || ship.role == ShipRole.CRUISER
                 || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.BATTLESHIP
                 || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP
-                || ship.role == ShipRole.CARRIER) {
+                || ship.role == ShipRole.CARRIER || ship.role.isTitanOrMothership()) {
             g.setColor(new Color(255, 255, 255, 65));
             int n = Math.max(4, r / 4);
             for (int i = 0; i < n; i++) {
@@ -6352,7 +6671,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int bh = r / 3;
 
         if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT
-                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.SUPERSHIP) {
+                || ship.role == ShipRole.BATTLECRUISER || ship.role == ShipRole.SUPERSHIP
+                || ship.role.isTitanOrMothership()) {
             bx = r / 10;
             by = -r / 5;
             bw = r / 2;
@@ -6440,7 +6760,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g.drawRect(-r / 4, -r / 5, r / 3, r / 2);
                 g.drawRect(r / 10, -r / 7, r / 4, r / 3);
             }
-            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> {
+            case BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP,
+                 TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                 INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                 ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 MOTHERSHIP -> {
                 g.setColor(new Color(255, 255, 255, 75));
                 g.drawLine(-r + 6, -r / 2, r + 10, -r / 6);
                 g.drawLine(-r + 6, r / 2, r + 10, r / 6);
@@ -6472,17 +6797,57 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return new Polygon(xs, ys, n);
     }
 
-    private static Polygon roomPolygonShipLocal(double radius, double[] normalizedXs, double[] normalizedYs) {
-        if (normalizedXs == null || normalizedYs == null) return null;
+    private static Polygon roomPolygonShipLocal(Ship ship, double[] normalizedXs, double[] normalizedYs) {
+        if (ship == null || normalizedXs == null || normalizedYs == null) return null;
         int n = Math.min(normalizedXs.length, normalizedYs.length);
         if (n < 3) return null;
+        HullRoomProjection projection = hullRoomProjection(ship);
         int[] xs = new int[n];
         int[] ys = new int[n];
         for (int i = 0; i < n; i++) {
-            xs[i] = (int) Math.round(normalizedXs[i] * radius);
-            ys[i] = (int) Math.round(normalizedYs[i] * radius);
+            xs[i] = (int) Math.round(normalizedXs[i] * projection.roomScaleX);
+            ys[i] = (int) Math.round(normalizedYs[i] * projection.roomScaleY);
         }
         return new Polygon(xs, ys, n);
+    }
+
+    private static Point normalizedShipLocalPoint(Ship ship, double normalizedX, double normalizedY) {
+        HullRoomProjection projection = hullRoomProjection(ship);
+        int x = (int) Math.round(normalizedX * projection.localExtentX);
+        int y = (int) Math.round(normalizedY * projection.localExtentY);
+        return new Point(x, y);
+    }
+
+    private static HullRoomProjection hullRoomProjection(Ship ship) {
+        double fallback = (ship == null) ? 16.0 : Math.max(8.0, ship.radius);
+        if (ship == null) return new HullRoomProjection(fallback, fallback, fallback, fallback);
+
+        Polygon hull = ShipHullSilhouette.hullPolygon(ship.role, ship.radius, ship.faction);
+        if (hull == null || hull.npoints < 3) {
+            return new HullRoomProjection(fallback, fallback, fallback, fallback);
+        }
+
+        double maxAbsX = 1.0;
+        double maxAbsY = 1.0;
+        for (int i = 0; i < hull.npoints; i++) {
+            maxAbsX = Math.max(maxAbsX, Math.abs(hull.xpoints[i]));
+            maxAbsY = Math.max(maxAbsY, Math.abs(hull.ypoints[i]));
+        }
+        return new HullRoomProjection(maxAbsX, maxAbsY, maxAbsX / 0.98, maxAbsY / 0.98);
+    }
+
+    private static final class HullRoomProjection {
+        final double localExtentX;
+        final double localExtentY;
+        final double roomScaleX;
+        final double roomScaleY;
+
+        HullRoomProjection(double localExtentX, double localExtentY, double roomScaleX, double roomScaleY) {
+            this.localExtentX = Math.max(1.0, localExtentX);
+            this.localExtentY = Math.max(1.0, localExtentY);
+            this.roomScaleX = Math.max(1.0, roomScaleX);
+            this.roomScaleY = Math.max(1.0, roomScaleY);
+        }
     }
 
     private static int clamp255(int v) {
@@ -6565,6 +6930,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int engineCountForRole(ShipRole role) {
         if (role == null) return 0;
+        if (role == ShipRole.MOTHERSHIP) return 8;
+        if (role.isTitan()) {
+            return switch (role) {
+                case VANGUARD_TITAN, FLEET_TELEPORTER_TITAN -> 5;
+                case MOBILE_STATION_TITAN -> 4;
+                default -> 6;
+            };
+        }
         return switch (role) {
             case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 1;
             case PATROL, FRIGATE, PICKET, ARTILLERY_SHIP, LIGHT_CRUISER, MISSILE_BOAT, MINER, TRANSPORT, HAULER, DRONE_CARRIER, CARRIER -> 2;
@@ -6578,6 +6951,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static double engineSpanFraction(ShipRole role) {
         if (role == null) return 0.40;
+        if (role == ShipRole.MOTHERSHIP) return 0.68;
+        if (role.isTitan()) return 0.60;
         return switch (role) {
             case DRONE, FIGHTER, BOMBER, STEALTH_SHIP, PD_CRAFT -> 0.18;
             case PATROL, PICKET, FRIGATE, MISSILE_BOAT, MINER -> 0.28;
@@ -6817,7 +7192,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static boolean isHeavyTurretRole(ShipRole role) {
         return role == ShipRole.BATTLECRUISER || role == ShipRole.BATTLESHIP
-                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP;
+                || role == ShipRole.DREADNOUGHT || role == ShipRole.SUPERSHIP
+                || (role != null && role.isTitanOrMothership());
     }
 
     private static double turretFireFraction(Turret t) {
@@ -6836,6 +7212,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static TurretVisualScale turretVisualScale(ShipRole role, Turret.Kind kind) {
         if (role == null) return new TurretVisualScale(1.0, 1.0, 1.0);
+        if (role == ShipRole.MOTHERSHIP) return new TurretVisualScale(1.56, 1.30, 1.28);
+        if (role.isTitan()) {
+            if (kind == Turret.Kind.MISSILE) return new TurretVisualScale(1.24, 1.12, 1.18);
+            return switch (role) {
+                case VANGUARD_TITAN, INTERDICTION_TITAN -> new TurretVisualScale(1.34, 1.18, 1.20);
+                case ARTILLERY_TITAN, HYPERWEAPON_TITAN -> new TurretVisualScale(1.48, 1.28, 1.22);
+                case MOBILE_STATION_TITAN -> new TurretVisualScale(1.28, 1.14, 1.24);
+                default -> new TurretVisualScale(1.42, 1.24, 1.20);
+            };
+        }
         return switch (role) {
             case PATROL, PICKET, FIGHTER -> new TurretVisualScale(0.84, 0.86, 0.88);
             case ARTILLERY_SHIP -> new TurretVisualScale(1.08, 1.04, 1.00);
@@ -7158,7 +7544,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             ShipRoomLayout.RoomId roomId = entry.getKey();
             Area shellArea = entry.getValue();
             if (shellArea == null || shellArea.isEmpty()) continue;
-            ShipRoomLayout.RoomId facingRoom = breachFacingRoomId(ship, roomId, shellArea.getBounds(), ship.radius);
+            ShipRoomLayout.RoomId facingRoom = breachFacingRoomId(ship, roomId, shellArea.getBounds());
 
             Area breachArea = buildDestroyedRoomBreachArea(ship, roomId, shellArea, marks, span);
             if (breachArea == null || breachArea.isEmpty()) continue;
@@ -7188,7 +7574,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (cell == null || cell.roomId == null) continue;
             if (ship.roomHealthFraction(cell.roomId) > 1e-3) continue;
 
-            Polygon poly = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+            Polygon poly = roomPolygonShipLocal(ship, cell.xs, cell.ys);
             if (poly == null || poly.npoints < 3) continue;
 
             Area cellArea = new Area(poly);
@@ -7213,16 +7599,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return !overlap.isEmpty() && overlap.getBounds().width > 0 && overlap.getBounds().height > 0;
     }
 
-    private static ShipRoomLayout.RoomId breachFacingRoomId(Ship ship, ShipRoomLayout.RoomId roomId, Rectangle bounds, double radius) {
+    private static ShipRoomLayout.RoomId breachFacingRoomId(Ship ship, ShipRoomLayout.RoomId roomId, Rectangle bounds) {
         if (ShipRoomLayout.isArmorRoom(roomId)) return roomId;
         Faction faction = (ship == null) ? null : ship.faction;
-        if (bounds == null || radius <= 1e-6) {
+        if (bounds == null) {
             ShipRoomLayout.RoomId fallback = ShipRoomLayout.RoomId.DORSAL_ARMOR;
             return (faction == Faction.TEAM_C) ? ShipRoomLayout.shieldStripRoomFor(fallback) : fallback;
         }
 
-        double nx = bounds.getCenterX() / Math.max(1.0, radius);
-        double ny = bounds.getCenterY() / Math.max(1.0, radius);
+        HullRoomProjection projection = hullRoomProjection(ship);
+        double nx = bounds.getCenterX() / Math.max(1.0, projection.localExtentX);
+        double ny = bounds.getCenterY() / Math.max(1.0, projection.localExtentY);
         ShipRoomLayout.RoomId facing;
         if (Math.abs(nx) > Math.abs(ny) * 1.15) {
             facing = (nx >= 0.0) ? ShipRoomLayout.RoomId.BOW_ARMOR : ShipRoomLayout.RoomId.AFT_ARMOR;
@@ -7371,7 +7758,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawCarrierBreachBackdrop(g, breachBounds, breachedRoom, ship);
             return;
         }
-        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP) {
+        if (ship.role == ShipRole.BATTLESHIP || ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.SUPERSHIP
+                || ship.role.isTitanOrMothership()) {
             drawHeavyCapitalBreachBackdrop(g, breachBounds, breachedRoom, ship);
             return;
         }
@@ -7524,7 +7912,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (exposedRooms.isEmpty()) return;
 
         Rectangle breachBounds = breachShape.getBounds();
-        double offsetStrength = breachOffsetStrength(breachBounds, ship.radius);
+        double offsetStrength = breachOffsetStrength(ship, breachBounds);
         double offset = Math.max(0.0, Math.min(breachBounds.width, breachBounds.height) * 0.24 * offsetStrength);
         int shiftX = 0;
         int shiftY = 0;
@@ -7543,7 +7931,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (cell == null || cell.roomId == null) continue;
             if (!exposedRooms.contains(cell.roomId) || ShipRoomLayout.isArmorRoom(cell.roomId)) continue;
 
-            Polygon poly = roomPolygonShipLocal(ship.radius, cell.xs, cell.ys);
+            Polygon poly = roomPolygonShipLocal(ship, cell.xs, cell.ys);
             if (poly == null || poly.npoints < 3) continue;
 
             double frac = ship.roomHealthFraction(cell.roomId);
@@ -7577,10 +7965,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g.translate(-shiftX, -shiftY);
     }
 
-    private static double breachOffsetStrength(Rectangle breachBounds, double radius) {
-        if (breachBounds == null || radius <= 1e-6) return 1.0;
-        double nx = Math.abs(breachBounds.getCenterX()) / Math.max(1.0, radius);
-        double ny = Math.abs(breachBounds.getCenterY()) / Math.max(1.0, radius);
+    private static double breachOffsetStrength(Ship ship, Rectangle breachBounds) {
+        if (ship == null || breachBounds == null) return 1.0;
+        HullRoomProjection projection = hullRoomProjection(ship);
+        double nx = Math.abs(breachBounds.getCenterX()) / Math.max(1.0, projection.localExtentX);
+        double ny = Math.abs(breachBounds.getCenterY()) / Math.max(1.0, projection.localExtentY);
         double edge = Math.max(nx, ny);
         return MathUtil.clamp((edge - 0.38) / 0.40, 0.0, 1.0);
     }

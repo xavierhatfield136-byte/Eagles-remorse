@@ -74,9 +74,10 @@ class TitanFleetSystemTest {
         cp.playerRoleName = "BATTLECRUISER";
         cp.branchRoute = "BALANCED";
         cp.ownedTitans = "BULWARK,COMMAND_INTEL,SHIELD_BASTION";
+        cp.persistentBlueFleet = "1,FRIGATE,false,Qmx1ZSBHdWFyZCBPbmU";
         cp.normalize();
 
-        assertEquals("Sector 6  |  BATTLECRUISER  |  Route BALANCED  |  Titans 3/8", cp.menuSummary());
+        assertEquals("Sector 6  |  BATTLECRUISER  |  Doctrine BALANCED  |  Titans 3/8  |  Fleet 1", cp.menuSummary());
     }
 
     private static GameContext campaignContext(int sector, int credits) {
