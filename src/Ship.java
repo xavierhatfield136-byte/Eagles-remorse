@@ -230,6 +230,7 @@ public abstract class Ship {
     private double superweaponBeamAim = Double.NaN;
     private Ship superweaponBeamTarget = null;
     private double temporaryDisableTimer = 0.0;
+    private double stasisFieldTimer = 0.0;
     private double destabilizedTimer = 0.0;
     private double kineticMomentumTimer = 0.0;
     private static final double DESTABILIZED_SYSTEM_MULTIPLIER = 0.80;
@@ -724,6 +725,10 @@ public abstract class Ship {
             vx = 0.0;
             vy = 0.0;
         }
+        if (stasisFieldTimer > 0.0) {
+            stasisFieldTimer -= dt;
+            if (stasisFieldTimer < 0.0) stasisFieldTimer = 0.0;
+        }
         if (destabilizedTimer > 0.0) {
             destabilizedTimer -= dt;
             if (destabilizedTimer < 0.0) destabilizedTimer = 0.0;
@@ -986,6 +991,7 @@ public abstract class Ship {
         deathCriticalCueStage = 0;
         hp = Math.max(1, hpMax);
         temporaryDisableTimer = 0.0;
+        stasisFieldTimer = 0.0;
         destabilizedTimer = 0.0;
         kineticMomentumTimer = 0.0;
         ciwsTimer = 0.0;
@@ -1154,6 +1160,26 @@ public abstract class Ship {
         int hullBefore = hp;
         RoomDamageResult split = applySystemDamageFromHullHit(penetratingDamage, impact, interiorRoom, hullBefore);
         if (split != null) lastRoomDamageResult = split;
+        syncHullFromRoomIntegrity();
+        evaluateCondemnedStateFromRooms();
+    }
+
+    public void scaleCurrentHullIntegrity(double factor) {
+        if (!alive || dying || hp <= 0) return;
+        ensureRoomSystemsInitialized();
+        double clamped = MathUtil.clamp(factor, 0.0, 1.0);
+        boolean changed = false;
+        for (ShipRoomLayout.RoomId roomId : roomHpMax.keySet()) {
+            double max = roomHpMax.getOrDefault(roomId, 0.0);
+            if (max <= 1e-6) continue;
+            double current = roomHp.getOrDefault(roomId, max);
+            double next = Math.max(0.0, current * clamped);
+            if (next + 1e-6 < current) {
+                roomHp.put(roomId, next);
+                changed = true;
+            }
+        }
+        if (!changed) return;
         syncHullFromRoomIntegrity();
         evaluateCondemnedStateFromRooms();
     }
@@ -1503,6 +1529,7 @@ public abstract class Ship {
     public boolean canUseBattlefieldWarp() {
         if (!alive || dying || hp <= 0) return false;
         if (isTemporarilyDisabled()) return false;
+        if (isStasisFieldTrapped()) return false;
         if (isSmallCraft()) return false;
         if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return false;
         return propulsionRoomIntegrity() > 0.20
@@ -2769,6 +2796,7 @@ public abstract class Ship {
     public boolean canUseCombatSystems() {
         if (!alive || dying || hp <= 0) return false;
         if (isTemporarilyDisabled()) return false;
+        if (isStasisFieldTrapped()) return false;
         return !reactorBlackoutActive();
     }
 
@@ -5250,6 +5278,7 @@ public abstract class Ship {
         superweaponTimer = 0.0;
         superweaponChargeTimer = 0.0;
         superweaponCharging = false;
+        stasisFieldTimer = 0.0;
         pendingSuperweaponShots.clear();
         queuedSuperweaponAim = Double.NaN;
         queuedSuperweaponTarget = null;
@@ -5513,8 +5542,14 @@ public abstract class Ship {
                 superweaponBeamTickTimer = superweaponTickSpacing();
             }
             case MISSILE_BARRAGE -> {
-                superweaponBeamTimer = Math.max(0.45, superweaponBeamDuration * 1.7);
-                superweaponBeamTickTimer = superweaponTickSpacing();
+                if (isYellowHyperweaponTitan()) {
+                    superweaponBeamTimer = 0.0;
+                    superweaponBeamTickTimer = 0.0;
+                    superweaponBeamTarget = null;
+                } else {
+                    superweaponBeamTimer = Math.max(0.45, superweaponBeamDuration * 1.7);
+                    superweaponBeamTickTimer = superweaponTickSpacing();
+                }
             }
             case LANCE_CONE -> {
                 superweaponBeamTimer = Math.max(0.22, superweaponBeamDuration);
@@ -5599,6 +5634,14 @@ public abstract class Ship {
         return Math.max(0.0, temporaryDisableTimer);
     }
 
+    public boolean isStasisFieldTrapped() {
+        return stasisFieldTimer > 1e-6;
+    }
+
+    public double getStasisFieldRemaining() {
+        return Math.max(0.0, stasisFieldTimer);
+    }
+
     public boolean isDestabilized() {
         return destabilizedTimer > 1e-6;
     }
@@ -5632,6 +5675,15 @@ public abstract class Ship {
         temporaryDisableTimer = Math.min(disableDurationCap(), temporaryDisableTimer + adjusted);
         vx = 0.0;
         vy = 0.0;
+        cancelBattlefieldWarp();
+        cancelSuperweaponSequence();
+    }
+
+    public void applyStasisField(double seconds) {
+        if (!alive || dying || hp <= 0) return;
+        double duration = Math.max(0.0, seconds);
+        if (duration <= 0.0) return;
+        stasisFieldTimer = Math.max(stasisFieldTimer, duration);
         cancelBattlefieldWarp();
         cancelSuperweaponSequence();
     }
@@ -5824,12 +5876,19 @@ public abstract class Ship {
 
     private Projectile createDirectBeamSuperweapon(double aim) {
         angle = aim;
-        double beamDurationSec = Math.max(0.65, superweaponBeamDuration * 2.0);
+        boolean greenHyperweaponTitan = isGreenHyperweaponTitan();
+        double beamDurationSec = greenHyperweaponTitan
+                ? Math.max(1.10, superweaponBeamDuration * 2.35)
+                : Math.max(0.65, superweaponBeamDuration * 2.0);
         int beamLife = Math.max(8, (int) Math.round(beamDurationSec / Math.max(GameContext.DT, 1e-4)));
         double totalDamage = resolveDirectBeamSuperweaponTotalDamage();
         double beamDps = totalDamage / Math.max(GameContext.DT, beamLife * GameContext.DT);
-        double beamLength = MathUtil.clamp(superweaponSpeed * 0.96, 760.0, 1760.0);
-        double beamWidth = Math.max(10.0, superweaponRadius * 1.9);
+        double beamLength = greenHyperweaponTitan
+                ? MathUtil.clamp(superweaponSpeed * 1.06, 980.0, 2140.0)
+                : MathUtil.clamp(superweaponSpeed * 0.96, 760.0, 1760.0);
+        double beamWidth = greenHyperweaponTitan
+                ? Math.max(22.0, superweaponRadius * 2.65)
+                : Math.max(10.0, superweaponRadius * 1.9);
         double muzzleOffset = radius + 12.0;
         Projectile beam = new PhaserBeam(this, aim, beamLength, beamWidth, beamDps, beamLife, muzzleOffset, faction);
         beam.sourceShipId = id;
@@ -5918,6 +5977,10 @@ public abstract class Ship {
     }
 
     private List<Projectile> createMissileBarrageVolley(double dt, double aim, Ship target, boolean beamTick) {
+        if (isYellowHyperweaponTitan()) {
+            if (beamTick) return java.util.Collections.emptyList();
+            return java.util.Collections.singletonList(createNuclearWarhead(dt, aim, target));
+        }
         int missileCount = beamTick ? 4 : 9;
         double spread = beamTick ? Math.toRadians(28.0) : Math.toRadians(46.0);
         int damage = Math.max(6, (int) Math.round(superweaponDamage * (beamTick ? 0.42 : 0.56)));
@@ -5940,6 +6003,24 @@ public abstract class Ship {
             out.add(missile);
         }
         return out;
+    }
+
+    private Missile createNuclearWarhead(double dt, double aim, Ship target) {
+        double muzzle = radius + 14.0;
+        double sx = x + Math.cos(aim) * muzzle;
+        double sy = y + Math.sin(aim) * muzzle;
+        Ship lock = isValidSuperweaponTarget(target) ? target : null;
+        int damage = Math.max(18, (int) Math.round(superweaponDamage * 0.28));
+        double speed = Math.max(320.0, superweaponSpeed);
+        double turnRate = Math.toRadians(96.0);
+        int life = Math.max(180, superweaponLife);
+        double missileRadius = Math.max(16.0, superweaponRadius * 1.18);
+        Missile missile = new Missile(sx, sy, aim, lock, dt, speed, turnRate, damage, life, missileRadius, faction);
+        missile.interceptHp = Missile.HEAVY_INTERCEPT_HP + 3;
+        missile.blastRadius = Math.max(260.0, missileRadius * 14.0);
+        missile.splashDamageMul = 0.0;
+        missile.sourceShipId = id;
+        return missile;
     }
 
     private boolean isValidSuperweaponTarget(Ship target) {
@@ -5986,10 +6067,21 @@ public abstract class Ship {
     }
 
     private double resolveDirectBeamSuperweaponTotalDamage() {
+        if (isGreenHyperweaponTitan()) {
+            return Math.max(referencePulseBarrageFullHitDamage() * 2.8, superweaponDamage * 6.0);
+        }
         if (faction == Faction.TEAM_C) {
             return referencePulseBarrageFullHitDamage();
         }
         return Math.max(1.0, superweaponDamage * 3.6);
+    }
+
+    private boolean isGreenHyperweaponTitan() {
+        return role == ShipRole.HYPERWEAPON_TITAN && faction == Faction.TEAM_C;
+    }
+
+    private boolean isYellowHyperweaponTitan() {
+        return role == ShipRole.HYPERWEAPON_TITAN && faction == Faction.TEAM_D;
     }
 
     private double hyperLanceBeamLength() {

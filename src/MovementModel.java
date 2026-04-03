@@ -75,6 +75,9 @@ public final class MovementModel {
         if (p.maxSpeedMul <= 1e-6) return 0.0;
         double base = Math.max(0.0, ship.desiredSpeed);
         double cap = Math.max(40.0, base * p.maxSpeedMul);
+        if (ship.isStasisFieldTrapped()) {
+            return cap * 0.10;
+        }
         return cap * ship.warpChargeSpeedMultiplier();
     }
 

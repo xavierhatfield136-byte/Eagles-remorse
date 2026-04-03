@@ -40,6 +40,25 @@ class CampaignMiningDepositTest {
         assertSame(ctx.player, miner.minerHomeBase);
     }
 
+    @Test
+    void minerRemoteDepositsToCampaignMothershipWhenFleetLeavesMiningPosture() {
+        GameContext ctx = campaignContext();
+        ctx.command.alliedFleetCommand = GameContext.FleetCommand.ATTACK;
+        ctx.player.cargo = 30;
+
+        Ship miner = new FleetShip(ShipRole.MINER, Faction.ALLY, ctx.player.x + 900.0, ctx.player.y + 640.0);
+        miner.cargo = 80;
+        miner.minerState = Ship.MinerState.RETURN_TO_BASE;
+        miner.minerHomeBase = ctx.player;
+        ctx.ships.add(miner);
+
+        EconomySystem.update(ctx, GameContext.DT);
+
+        assertEquals(110, ctx.player.cargo);
+        assertEquals(0, miner.cargo);
+        assertEquals(Ship.MinerState.SEEK_ASTEROID, miner.minerState);
+    }
+
     private static GameContext campaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();

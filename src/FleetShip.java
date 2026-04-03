@@ -1412,8 +1412,20 @@ public class FleetShip extends Ship {
                 ciwsRange = 305;
                 ciwsCooldown = 0.11;
 
-                configureSuperweapon(SuperweaponPattern.LANCE_CONE, 3.9, 24.0, 96, 1620.0, 190, 20.0, 18,
-                        0.28, 0.26, 0.32);
+                SuperweaponPattern hyperweaponPattern = resolveTitanSuperweaponPattern();
+                if (hyperweaponPattern == SuperweaponPattern.KINETIC_SLUG) {
+                    configureSuperweapon(hyperweaponPattern, 4.2, 28.0, 104, 1460.0, 210, 22.0, 12,
+                            0.0, 0.12, 0.0);
+                } else if (hyperweaponPattern == SuperweaponPattern.DIRECT_BEAM) {
+                    configureSuperweapon(hyperweaponPattern, 4.1, 26.0, 164, 2140.0, 220, 28.0, 24,
+                            1.18, 0.12, 0.54);
+                } else if (hyperweaponPattern == SuperweaponPattern.MISSILE_BARRAGE) {
+                    configureSuperweapon(hyperweaponPattern, 4.4, 30.0, 72, 820.0, 280, 24.0, 1,
+                            0.0, 0.16, 0.0);
+                } else {
+                    configureSuperweapon(hyperweaponPattern, 4.0, 24.0, 152, 1760.0, 220, 24.0, 24,
+                            0.0, 0.12, 0.0);
+                }
             }
 
             case MOTHERSHIP -> {

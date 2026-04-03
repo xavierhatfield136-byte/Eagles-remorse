@@ -1895,12 +1895,13 @@ public final class EconomySystem {
         double cargo = getShipOre(s);
         double cargoMax = Math.max(1, s.cargoMax);
         boolean cargoFullEnough = cargo >= cargoMax * MINER_FULL_FRAC;
+        boolean campaignRemoteMothershipDeposit = canCampaignMinerRemoteDepositToMothership(ctx, s);
 
         if (cargoFullEnough
                 && s.minerState != Ship.MinerState.RETURN_TO_BASE
                 && s.minerState != Ship.MinerState.DEPOSIT
                 && !hasNearbyHaulerWithCapacity(ctx, s, 260.0)) {
-            s.minerState = Ship.MinerState.RETURN_TO_BASE;
+            s.minerState = campaignRemoteMothershipDeposit ? Ship.MinerState.DEPOSIT : Ship.MinerState.RETURN_TO_BASE;
         }
 
         switch (s.minerState) {
@@ -1963,6 +1964,10 @@ public final class EconomySystem {
                 }
                 Ship base = s.minerHomeBase;
                 s.minerDebugNote = "";
+                if (canCampaignMinerRemoteDepositToMothership(ctx, s)) {
+                    processMinerDeposit(ctx, s, base, dt);
+                    break;
+                }
                 steerTo(s, base.x, base.y, dt);
                 if (inDepositRange(s, base)) {
                     s.minerState = Ship.MinerState.DEPOSIT;
@@ -1975,21 +1980,8 @@ public final class EconomySystem {
                 }
                 Ship base = s.minerHomeBase;
                 s.minerDebugNote = "";
-                if (inDepositRange(s, base)) {
-                    int moved = s.depositCargoTo(base);
-                    boolean mothershipFleetDeposit = CampaignSystem.isCampaignActive(ctx)
-                            && base != null
-                            && base.role != null
-                            && base.role.isMothership();
-                    if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, s.faction) && !mothershipFleetDeposit) {
-                        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
-                        priceMul *= CampaignSystem.oreCreditMul(ctx);
-                        int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-                        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
-                    }
-                    // repair a bit (hp/hpMax are ints in this codebase)
-                    int heal = (int) Math.round(18 * dt);
-                    if (heal > 0) s.healHull(heal);
+                if (canCampaignMinerRemoteDepositToMothership(ctx, s) || inDepositRange(s, base)) {
+                    processMinerDeposit(ctx, s, base, dt);
                 }
                 s.minerState = Ship.MinerState.SEEK_ASTEROID;
             }
@@ -1999,6 +1991,35 @@ public final class EconomySystem {
                 if (hasBase) s.minerState = Ship.MinerState.SEEK_ASTEROID;
             }
         }
+    }
+
+    private static boolean canCampaignMinerRemoteDepositToMothership(GameContext ctx, Ship miner) {
+        if (ctx == null || miner == null || ctx.player == null) return false;
+        if (!CampaignSystem.isCampaignActive(ctx)) return false;
+        if (ctx.command == null || ctx.command.alliedFleetCommand == GameContext.FleetCommand.MINE) return false;
+        if (miner.faction == null || ctx.player.faction == null || !miner.faction.isFriendlyTo(ctx.player.faction)) return false;
+        Ship base = miner.minerHomeBase;
+        return base != null
+                && base == ctx.player
+                && base.role != null
+                && base.role.isMothership();
+    }
+
+    private static void processMinerDeposit(GameContext ctx, Ship miner, Ship base, double dt) {
+        if (ctx == null || miner == null || base == null) return;
+        int moved = miner.depositCargoTo(base);
+        boolean mothershipFleetDeposit = CampaignSystem.isCampaignActive(ctx)
+                && base.role != null
+                && base.role.isMothership();
+        if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, miner.faction) && !mothershipFleetDeposit) {
+            double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
+            priceMul *= CampaignSystem.oreCreditMul(ctx);
+            int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+            ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+        }
+        int heal = (int) Math.round(18 * dt);
+        if (heal > 0) miner.healHull(heal);
+        miner.minerState = Ship.MinerState.SEEK_ASTEROID;
     }
 
     private static Ship findHomeBaseFor(GameContext ctx, Ship miner) {

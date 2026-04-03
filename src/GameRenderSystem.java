@@ -59,6 +59,8 @@ public final class GameRenderSystem {
                     drawDestabilizerPulseExplosion(worldG, e);
                 } else if (e.kind == Explosion.Kind.SUPERWEAPON_BLAST) {
                     drawSuperweaponBlastExplosion(worldG, e);
+                } else if (e.kind == Explosion.Kind.STASIS_FIELD) {
+                    drawStasisFieldExplosion(worldG, e);
                 } else if (e.kind == Explosion.Kind.FINAL_DETONATION) {
                     drawFinalDetonationExplosion(worldG, e);
                 } else {
@@ -744,6 +746,35 @@ if (DevTools.isDebugOverlay()) {
         }
     }
 
+    private static void drawStasisFieldExplosion(Graphics2D g2, Explosion e) {
+        double rem = e.frac();
+        int fieldR = (int) Math.round(e.stasisFieldRadius());
+        int coreR = (int) Math.round(e.stasisFieldCoreRadius());
+        int hazeR = (int) Math.round(fieldR * 1.08);
+
+        int fieldA = (int) MathUtil.clamp(74 * (0.55 + rem * 0.45), 0, 92);
+        int coreA = (int) MathUtil.clamp(146 * (0.40 + rem * 0.60), 0, 168);
+        int ringA = (int) MathUtil.clamp(178 * (0.42 + rem * 0.58), 0, 196);
+        int hazeA = (int) MathUtil.clamp(78 * rem, 0, 96);
+
+        g2.setColor(new Color(118, 32, 32, fieldA));
+        g2.fillOval((int) Math.round(e.x - fieldR), (int) Math.round(e.y - fieldR), fieldR * 2, fieldR * 2);
+
+        g2.setColor(new Color(255, 108, 108, coreA));
+        g2.fillOval((int) Math.round(e.x - coreR), (int) Math.round(e.y - coreR), coreR * 2, coreR * 2);
+
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(4.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 196, 196, ringA));
+        g2.drawOval((int) Math.round(e.x - fieldR), (int) Math.round(e.y - fieldR), fieldR * 2, fieldR * 2);
+        g2.setStroke(old);
+
+        if (hazeA > 4) {
+            g2.setColor(new Color(86, 18, 18, hazeA));
+            g2.drawOval((int) Math.round(e.x - hazeR), (int) Math.round(e.y - hazeR), hazeR * 2, hazeR * 2);
+        }
+    }
+
     private static void drawDestabilizerPulseExplosion(Graphics2D g2, Explosion e) {
         double rem = e.frac();
         double age = e.ageFrac();
@@ -828,5 +859,4 @@ if (DevTools.isDebugOverlay()) {
 
     // (Removed reflection bridge; hangar tier is computed from base upgrades.)
 }
-
 

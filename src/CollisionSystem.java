@@ -13,6 +13,9 @@ public class CollisionSystem {
     private static final double DESTABILIZER_PULSE_DISABLE_CORE_SECONDS = 2.4;
     private static final double SUPERWEAPON_RING_DISABLE_SECONDS = 5.0;
     private static final double SUPERWEAPON_RING_SHIELD_DRAIN_FRACTION = 0.25;
+    private static final double RED_STASIS_FIELD_SECONDS = 30.0;
+    private static final double RED_STASIS_FIELD_REFRESH_SECONDS = 0.35;
+    private static final double RED_STASIS_FIELD_SHIELD_LOCK_SECONDS = 0.85;
 
     private CollisionSystem() {}
 
@@ -154,7 +157,7 @@ public class CollisionSystem {
                 if (disruptorSlug) {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     slug.markAffected(s);
-                    applyDisruptorBlast(ctx, slug, p.x, p.y, ships);
+                    applyDisruptorBlast(ctx, slug, p.x, p.y, ships, s);
                     if (disruptorSlugDetonatesOn(s)) {
                         p.alive = false;
                         break;
@@ -349,7 +352,7 @@ public class CollisionSystem {
                 }
 
                 if (p instanceof DisruptorSlug slug) {
-                    applyDisruptorBlast(ctx, slug, p.x, p.y, ctx == null ? null : ctx.ships);
+                    applyDisruptorBlast(ctx, slug, p.x, p.y, ctx == null ? null : ctx.ships, null);
                 }
                 if (p instanceof DestabilizerPulse pulse) {
                     applyDestabilizerBlast(ctx, pulse, p.x, p.y, ctx == null ? null : ctx.ships);
@@ -432,11 +435,52 @@ public class CollisionSystem {
         }
     }
 
+    public static void handleStasisFields(GameContext ctx) {
+        if (ctx == null || ctx.ships == null || ctx.ships.isEmpty() || Explosion.active.isEmpty()) return;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        for (Explosion explosion : Explosion.active) {
+            if (explosion == null || explosion.kind != Explosion.Kind.STASIS_FIELD) continue;
+            double fieldRadius = explosion.stasisFieldRadius();
+            if (fieldRadius <= 1e-6) continue;
+
+            nearbyShips.clear();
+            ctx.entityQuery.collectAliveShipsNear(
+                    explosion.x,
+                    explosion.y,
+                    fieldRadius + ctx.entityQuery.maxShipBroadPhaseRadius(),
+                    nearbyShips);
+
+            for (Ship ship : nearbyShips) {
+                if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+                if (ship.id == explosion.sourceShipId) continue;
+                if (explosion.sourceFaction != null && ship.faction != null && explosion.sourceFaction.isFriendlyTo(ship.faction)) {
+                    continue;
+                }
+
+                double maxD = fieldRadius + HullGeometry.broadPhaseRadius(ship);
+                if (GameMath.dist2(ship.x, ship.y, explosion.x, explosion.y) > maxD * maxD) continue;
+
+                ship.applyStasisField(RED_STASIS_FIELD_REFRESH_SECONDS);
+                ship.collapseShield(
+                        RED_STASIS_FIELD_SHIELD_LOCK_SECONDS,
+                        explosion.x,
+                        explosion.y,
+                        ship.x - explosion.x,
+                        ship.y - explosion.y);
+            }
+        }
+    }
+
     private static void applyMissileBlast(GameContext ctx, Missile m, Ship directHit, List<Ship> ships) {
         if (m == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(20.0, m.blastRadius);
         double baseSplash = Math.max(0.0, m.damage * m.splashDamageMul);
         Ship shooter = resolveSourceShip(ctx, ships, m);
+
+        if (isYellowHyperweaponWarhead(shooter, m)) {
+            applyNuclearBlast(ctx, m, directHit, ships, shooter);
+            return;
+        }
 
         if (baseSplash > 1e-6) {
             Iterable<Ship> candidates = ships;
@@ -471,10 +515,103 @@ public class CollisionSystem {
         AudioSystem.onExplosion(ctx, m.x, m.y);
     }
 
+    private static void applyNuclearBlast(GameContext ctx, Missile missile, Ship directHit, List<Ship> ships, Ship shooter) {
+        if (missile == null || ships == null || ships.isEmpty()) return;
+        double rr = Math.max(240.0, missile.blastRadius);
+        boolean affected = false;
+
+        Iterable<Ship> candidates = ships;
+        List<Ship> nearbyShips = new java.util.ArrayList<>();
+        if (ctx != null) {
+            ctx.entityQuery.collectAliveShipsNear(missile.x, missile.y, rr + ctx.entityQuery.maxShipBroadPhaseRadius(), nearbyShips);
+            candidates = nearbyShips;
+        }
+
+        for (Ship ship : candidates) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction != null && missile.faction != null && ship.faction.isFriendlyTo(missile.faction)) continue;
+            if (!canProjectileDamageShip(shooter, missile, ship)) continue;
+
+            double dx = ship.x - missile.x;
+            double dy = ship.y - missile.y;
+            double maxD = rr + HullGeometry.broadPhaseRadius(ship);
+            double dist = Math.hypot(dx, dy);
+            if (dist > maxD) continue;
+
+            double falloff = 1.0 - MathUtil.clamp(dist / Math.max(1.0, maxD), 0.0, 1.0);
+            double impactVx = (dist > 1e-6) ? dx : missile.vx;
+            double impactVy = (dist > 1e-6) ? dy : missile.vy;
+            ImpactVisualPoints impactPoints = resolveImpactVisualPoints(ship, missile.x, missile.y, impactVx, impactVy);
+            double shieldBefore = ship.shield;
+            int hpBefore = ship.hp;
+
+            double stripped = ship.drainShieldByAmount(
+                    Math.max(18.0, missile.damage * (0.70 + 0.40 * falloff)),
+                    missile.x,
+                    missile.y,
+                    impactVx,
+                    impactVy);
+
+            boolean unshieldedHull = shieldBefore <= 1e-6;
+            boolean titanOrMothership = ship.role != null && ship.role.isTitanOrMothership();
+            if (unshieldedHull) {
+                if (!titanOrMothership && ship.role != null && SpawnSystem.requiredHangarTierForRole(ship.role) <= 2) {
+                    ship.scaleCurrentHullIntegrity(0.0);
+                } else if (titanOrMothership) {
+                    ship.scaleCurrentHullIntegrity(Math.max(0.28, 0.62 - 0.22 * falloff));
+                } else {
+                    ship.scaleCurrentHullIntegrity(Math.max(0.10, 0.42 - 0.26 * falloff));
+                }
+            } else if (ship == directHit && ship.shield <= 1e-6) {
+                ship.scaleCurrentHullIntegrity(0.84);
+            }
+
+            int hullDamage = Math.max(0, hpBefore - ship.hp);
+            if (stripped > 1e-6 || hullDamage > 0) {
+                markPlayerHitContribution(ctx, missile, ship);
+                if (hullDamage > 0) {
+                    logDamageEvent(ctx, "nuclear_blast:" + System.identityHashCode(missile), hullDamage, VFX.ImpactStyle.EXPLOSIVE, ship, missile.x, missile.y);
+                }
+
+                boolean shieldHit = stripped > 1e-6 || ship.shield < shieldBefore - 1e-6;
+                boolean hullHit = ship.hp < hpBefore;
+                boolean showShipVfx = shouldRenderDamageVfx(ctx, ship,
+                        shieldHit && !hullHit ? impactPoints.shieldX() : impactPoints.hullX(),
+                        shieldHit && !hullHit ? impactPoints.shieldY() : impactPoints.hullY());
+                if (showShipVfx) {
+                    double dirLen = Math.hypot(impactVx, impactVy);
+                    double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
+                    double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
+                    if (shieldHit) {
+                        VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY,
+                                Math.max(3, (int) Math.round(3.0 + stripped * 0.05)), VFX.ImpactStyle.EXPLOSIVE);
+                        Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                    }
+                    if (hullHit) {
+                        VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY,
+                                Math.max(4, hullDamage), VFX.ImpactStyle.EXPLOSIVE);
+                    }
+                }
+                affected = true;
+            }
+        }
+
+        boolean showImpactVfx = shouldRenderDamageVfx(ctx, directHit, missile.x, missile.y);
+        if (showImpactVfx) {
+            VFX.spawnHullImpact(missile.x, missile.y, 0.0, 0.0, Math.max(5, missile.damage), VFX.ImpactStyle.EXPLOSIVE);
+            Explosion.spawnFinalDetonation(missile.x, missile.y, rr);
+            ScreenShake.kick(Math.min(8.5, 4.0 + rr * 0.010));
+        }
+        if (affected) {
+            AudioSystem.onExplosion(ctx, missile.x, missile.y);
+        }
+    }
+
     private static void applyDestabilizerBlast(GameContext ctx, DestabilizerPulse pulse, double x, double y, List<Ship> ships) {
         if (pulse == null) return;
         Ship shooter = resolveSourceShip(ctx, ships, pulse);
         boolean artilleryTitanPulse = shooter != null && shooter.role == ShipRole.ARTILLERY_TITAN;
+        boolean blueHyperweaponPulse = isBlueHyperweaponPulse(shooter);
         double rr = Math.max(120.0, pulse.blastRadius);
         if (artilleryTitanPulse) rr = Math.max(rr, pulse.blastRadius * 1.22);
         boolean affected = false;
@@ -509,6 +646,50 @@ public class CollisionSystem {
                 ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, x, y, impactVx, impactVy);
                 double shieldBefore = s.shield;
                 int hpBefore = s.hp;
+                if (blueHyperweaponPulse) {
+                    markPlayerHitContribution(ctx, pulse, s);
+                    double stripped = s.collapseShield(
+                            Math.max(1.0, s.shieldRebootDelay * 1.45),
+                            x,
+                            y,
+                            impactVx,
+                            impactVy);
+                    if (s.role != null && s.role.isTitanOrMothership()) {
+                        s.scaleCurrentHullIntegrity(0.50);
+                    } else {
+                        s.scaleCurrentHullIntegrity(0.0);
+                    }
+                    int hullDamage = Math.max(0, hpBefore - s.hp);
+                    if (hullDamage > 0) {
+                        logDamageEvent(ctx, "hyper_pulse:" + System.identityHashCode(pulse), hullDamage, VFX.ImpactStyle.ENERGY, s, x, y);
+                    }
+
+                    boolean shieldHit = stripped > 1e-6 || s.shield < shieldBefore - 1e-6;
+                    boolean hullHit = s.hp < hpBefore;
+                    boolean showShipVfx = shouldRenderDamageVfx(ctx, s, impactPoints.hullX(), impactPoints.hullY());
+                    if (showShipVfx) {
+                        double dirLen = Math.hypot(impactVx, impactVy);
+                        double dirX = (dirLen > 1e-6) ? (impactVx / dirLen) : 1.0;
+                        double dirY = (dirLen > 1e-6) ? (impactVy / dirLen) : 0.0;
+                        if (shieldHit) {
+                            VFX.spawnShieldImpact(impactPoints.shieldX(), impactPoints.shieldY(), dirX, dirY,
+                                    Math.max(4, (int) Math.round(4.0 + stripped * 0.07)), VFX.ImpactStyle.ENERGY);
+                            Explosion.spawnShieldHit(impactPoints.shieldX(), impactPoints.shieldY());
+                        }
+                        if (hullHit) {
+                            VFX.spawnHullImpact(impactPoints.hullX(), impactPoints.hullY(), dirX, dirY,
+                                    Math.max(6, hullDamage), VFX.ImpactStyle.ENERGY);
+                        }
+                    }
+                    if (shieldHit) {
+                        AudioSystem.onShieldImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.shieldX(), impactPoints.shieldY());
+                    }
+                    if (hullHit) {
+                        AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.ENERGY, impactPoints.hullX(), impactPoints.hullY());
+                    }
+                    affected = true;
+                    continue;
+                }
                 double shieldScale = DESTABILIZER_PULSE_SHIELD_EDGE_SCALE
                         + (1.0 - DESTABILIZER_PULSE_SHIELD_EDGE_SCALE) * falloff;
                 double shieldDamage = Math.max(0.0, pulse.shieldDamage
@@ -600,11 +781,28 @@ public class CollisionSystem {
         }
     }
 
-    private static void applyDisruptorBlast(GameContext ctx, DisruptorSlug slug, double x, double y, List<Ship> ships) {
+    private static void applyDisruptorBlast(GameContext ctx,
+                                            DisruptorSlug slug,
+                                            double x,
+                                            double y,
+                                            List<Ship> ships,
+                                            Ship directHit) {
         if (slug == null || ships == null || ships.isEmpty()) return;
         double rr = Math.max(64.0, slug.blastRadius);
         boolean affected = false;
         Ship shooter = resolveSourceShip(ctx, ships, slug);
+
+        if (isRedHyperweaponStasisWeapon(shooter)) {
+            Explosion.spawnStasisField(x, y, RED_STASIS_FIELD_SECONDS, slug.sourceShipId, slug.faction, rr);
+            boolean showImpactVfx = shouldRenderDamageVfx(ctx, null, x, y);
+            if (showImpactVfx) {
+                VFX.spawnHullImpact(x, y, 0.0, 0.0, Math.max(4, slug.damage), VFX.ImpactStyle.EXPLOSIVE);
+                Explosion.spawnShieldHit(x, y);
+                ScreenShake.kick(Math.min(8.0, 4.2 + rr * 0.010));
+            }
+            AudioSystem.onExplosion(ctx, x, y);
+            return;
+        }
 
         Iterable<Ship> candidates = ships;
         List<Ship> nearbyShips = new java.util.ArrayList<>();
@@ -616,6 +814,7 @@ public class CollisionSystem {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.id == slug.sourceShipId) continue;
             if (!canProjectileDamageShip(shooter, slug, s)) continue;
+            if (isRedSupershipTitanSplashImmune(shooter, s, directHit)) continue;
 
             double maxD = rr + HullGeometry.broadPhaseRadius(s);
             if (GameMath.dist2(s.x, s.y, x, y) > maxD * maxD) continue;
@@ -631,7 +830,7 @@ public class CollisionSystem {
             int hpBefore = s.hp;
             double shieldOfflineSeconds = resolveDisruptorShieldOfflineSeconds(s);
             double stripped = s.collapseShield(shieldOfflineSeconds, x, y, impactVx, impactVy);
-            int hullDamage = resolveDisruptorHullDamage(slug, s, falloff, centerDist <= Math.max(24.0, s.radius * 0.85));
+            int hullDamage = resolveDisruptorHullDamage(slug, s, falloff, s == directHit);
             if (hullDamage > 0) {
                 markPlayerHitContribution(ctx, slug, s);
                 s.takeDamage(hullDamage, x, y, impactVx, impactVy);
@@ -702,10 +901,42 @@ public class CollisionSystem {
         return SpawnSystem.requiredHangarTierForRole(ship.role) > 2;
     }
 
+    private static boolean isRedSupershipTitanSplashImmune(Ship shooter, Ship target, Ship directHit) {
+        return shooter != null
+                && shooter.role == ShipRole.SUPERSHIP
+                && shooter.faction == Faction.ENEMY
+                && target != null
+                && target.role != null
+                && target.role.isTitanOrMothership()
+                && target != directHit;
+    }
+
+    private static boolean isRedHyperweaponStasisWeapon(Ship shooter) {
+        return shooter != null
+                && shooter.role == ShipRole.HYPERWEAPON_TITAN
+                && shooter.faction == Faction.ENEMY;
+    }
+
+    private static boolean isBlueHyperweaponPulse(Ship shooter) {
+        return shooter != null
+                && shooter.role == ShipRole.HYPERWEAPON_TITAN
+                && shooter.faction != Faction.ENEMY
+                && shooter.faction != Faction.TEAM_C
+                && shooter.faction != Faction.TEAM_D;
+    }
+
+    private static boolean isYellowHyperweaponWarhead(Ship shooter, Missile missile) {
+        return shooter != null
+                && missile != null
+                && shooter.role == ShipRole.HYPERWEAPON_TITAN
+                && shooter.faction == Faction.TEAM_D;
+    }
+
     private static boolean canDisruptorFieldAffectShip(Ship shooter, Faction sourceFaction, Ship target) {
         if (target == null) return false;
         if (sourceFaction != null && target.faction != null && sourceFaction.isFriendlyTo(target.faction)) return false;
         if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        if (isRedSupershipTitanSplashImmune(shooter, target, null)) return false;
         if (shooter == null || shooter.role == null) return true;
         if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
         return true;

@@ -190,6 +190,10 @@ public final class PhysicsSystem {
         } catch (Throwable ignored) {
         }
         try {
+            CollisionSystem.handleStasisFields(ctx);
+        } catch (Throwable ignored) {
+        }
+        try {
             CollisionSystem.handleSuperweaponBlastRings(ctx);
         } catch (Throwable ignored) {
         }

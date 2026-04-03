@@ -17,6 +17,7 @@ public class Explosion {
         DEATH,
         DESTABILIZER_PULSE,
         SUPERWEAPON_BLAST,
+        STASIS_FIELD,
         FINAL_DETONATION
     }
 
@@ -76,6 +77,10 @@ public class Explosion {
 
     public static void spawnSuperweaponBlast(double x, double y, int sourceShipId, Faction sourceFaction) {
         addCapped(new Explosion(x, y, 0.92, Kind.SUPERWEAPON_BLAST, sourceShipId, sourceFaction));
+    }
+
+    public static void spawnStasisField(double x, double y, double seconds, int sourceShipId, Faction sourceFaction, double effectRadius) {
+        addCapped(new Explosion(x, y, Math.max(0.1, seconds), Kind.STASIS_FIELD, sourceShipId, sourceFaction, effectRadius));
     }
 
     public static void spawnFinalDetonation(double x, double y, double effectRadius) {
@@ -165,6 +170,17 @@ public class Explosion {
         return 240.0 + Math.max(0.0, age - 0.08) * 572.0;
     }
 
+    public double stasisFieldRadius() {
+        if (kind != Kind.STASIS_FIELD) return 0.0;
+        return Math.max(120.0, effectRadius);
+    }
+
+    public double stasisFieldCoreRadius() {
+        if (kind != Kind.STASIS_FIELD) return 0.0;
+        double pulse = 0.88 + 0.12 * Math.sin(ageFrac() * Math.PI * 4.0);
+        return stasisFieldRadius() * pulse;
+    }
+
     public double finalDetonationPlasmaRadius() {
         if (kind != Kind.FINAL_DETONATION) return 0.0;
         double age = ageFrac();
@@ -235,6 +251,7 @@ public class Explosion {
             case SHIELD_HIT -> 24.0;
             case DESTABILIZER_PULSE -> Math.max(220.0, effectRadius * 1.35);
             case SUPERWEAPON_BLAST -> 840.0;
+            case STASIS_FIELD -> Math.max(140.0, effectRadius * 1.18);
             case FINAL_DETONATION -> Math.max(120.0, effectRadius * 2.1);
             default -> 72.0;
         };

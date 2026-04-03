@@ -1,3 +1,9 @@
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import java.io.File;
+import java.util.Iterator;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -6,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TitanHullRoleIntegrationTest {
+    private static final String SKIN_DIR = "assets/ship_skins";
 
     @Test
     void titanArchetypesMapToRealShipRoles() {
@@ -53,5 +60,46 @@ class TitanHullRoleIntegrationTest {
         FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 0, 0);
         java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(ShipRole.MOTHERSHIP, mothership.radius, Faction.ALLY);
         assertTrue(poly != null && poly.npoints >= 3, "expected hull polygon for MOTHERSHIP");
+    }
+
+    @Test
+    void titanHullSilhouettesResolveForLiveGreenSkins() {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            ShipRole role = archetype.shipRole();
+            FleetShip ship = new FleetShip(role, Faction.TEAM_C, 0, 0);
+            java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(role, ship.radius, Faction.TEAM_C);
+            assertTrue(poly != null && poly.npoints >= 3, "expected Team C hull polygon for " + role);
+        }
+
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.TEAM_C, 0, 0);
+        java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(ShipRole.MOTHERSHIP, mothership.radius, Faction.TEAM_C);
+        assertTrue(poly != null && poly.npoints >= 3, "expected Team C hull polygon for MOTHERSHIP");
+    }
+
+    @Test
+    void liveGreenTitanRuntimeSkinsUseSquareCanvases() throws Exception {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            String filename = archetype.shipRole().name().toLowerCase() + "_team_c_albedo.png";
+            assertSquareSkin(filename);
+        }
+        assertSquareSkin("mothership_team_c_albedo.png");
+    }
+
+    private static void assertSquareSkin(String filename) throws Exception {
+        File file = new File(SKIN_DIR, filename);
+        assertTrue(file.isFile(), "missing Team C runtime skin " + filename);
+        try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
+            assertTrue(in != null, "failed to open Team C runtime skin " + filename);
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
+            assertTrue(readers.hasNext(), "no reader for Team C runtime skin " + filename);
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                assertEquals(reader.getWidth(0), reader.getHeight(0),
+                        "expected square runtime canvas for " + filename);
+            } finally {
+                reader.dispose();
+            }
+        }
     }
 }
