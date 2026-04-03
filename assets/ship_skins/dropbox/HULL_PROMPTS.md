@@ -77,71 +77,73 @@ red faction hauler hull, bulky logistics hull, broad cargo spine, durable convoy
 
 Green Faction / Team C / *_team_c_albedo.png
 
+Apply this extra Team C differentiation lock to every green entry: the hull should read as part of the existing bright pale-jade Team C fleet already in the repo, not as a blue allied navy ship recolored green. Favor long low horizontal silhouettes, smooth continuous hull bodies, broad shoulder masses, narrow central spines, integrated shield-lattice structures, and luminous emerald-teal glazing embedded into pale celadon and silver-green armor. Avoid cobalt armor panels, navy paint blocks, weathered gray steel dominance, industrial bunker massing, aircraft cues, or exposed weapons.
+
 1. picket_team_c_albedo.png
-green faction Aegis Lattice picket hull, precise escort silhouette, narrow spearhead bow, elegant symmetry, shield-tech geometry, refined lines, advanced military design, pale alloy hull with emerald and teal luminous seams.
+green faction Aegis Lattice picket hull, tiny warding escort with a needle-spear prow, chapel-like shoulder flares, strict bilateral symmetry, precise shield-tech geometry, white ceramic-metal armor, inset emerald stained-glass shield panes, and a jewel-like teal command slit, elegant and defensive rather than rugged.
 
 2. patrol_team_c_albedo.png
-green faction patrol hull, light and graceful, arrowhead profile, clean geometric surfaces, disciplined symmetry, advanced shield-oriented navy styling, pale metal with green-cyan energy accents.
+green faction patrol hull, light outrider warship with a narrow arrowhead profile, cloistered flank channels, clean geometric surfaces, disciplined symmetry, refined shield-navy styling, pale ivory alloy plating, and thin emerald lattice cuts running along the dorsal spine.
 
 3. stealth_ship_team_c_albedo.png
-green faction stealth hull, razor-clean faceted silhouette, refined low-profile shape, precision geometry, advanced energy navy covert craft, elegant not savage, pale alloy with subtle green luminous cuts.
+green faction stealth hull, monastic stealth cutter with a razor-clean faceted wedge silhouette, refined low-profile body, sealed precision geometry, advanced covert shield-fleet engineering, elegant not savage, white ceramic shell with hairline emerald shield slits and restrained dark recessed seams.
 
 4. fighter_team_c_albedo.png
-green faction fighter hull, tiny precise dart silhouette, elegant spearhead body, clean symmetry, advanced lattice-tech styling, readable at small size, pale alloy with emerald highlights.
+green faction fighter hull, miniature line-warship dart silhouette, elegant spearhead body, clean bilateral symmetry, advanced lattice-tech styling, readable at small size, ivory armor plating with tiny emerald shoulder windows and a disciplined teal command-glass accent.
 
 5. bomber_team_c_albedo.png
-green faction bomber hull, compact but refined strike craft silhouette, slightly broader central body, geometric precision, advanced military engineering, pale metal with teal-green energy seams.
+green faction bomber hull, compact but refined strike craft silhouette with a broader sanctum-like central body, geometric precision, advanced military engineering, pale ceramic-metal plating, recessed emerald lattice channels, and controlled teal shield-window accents instead of rugged ordnance language.
 
 6. pd_craft_team_c_albedo.png
-green faction point-defense craft hull, compact escort silhouette, controlled symmetry, defensive shield-escort styling, elegant and advanced, pale alloy with subtle luminous green channels.
+green faction point-defense craft hull, compact shield-guardian escort silhouette, controlled symmetry, defensive Aegis geometry, elegant and advanced, ivory alloy plating with buttressed flanks, subtle emerald shield windows, and crisp recessed teal lattice channels.
 
 7. drone_team_c_albedo.png
-green faction drone hull, tiny autonomous lattice-tech silhouette, clean geometric wedge, elegant and minimal, precision-built, pale metal with faint green-cyan accents.
+green faction drone hull, tiny autonomous lattice-tech sentinel silhouette, clean geometric wedge with a needle prow, elegant and minimal, precision-built, white ceramic shell with faint emerald window cuts and disciplined teal-glass sensor accents.
 
 8. frigate_team_c_albedo.png
-green faction frigate hull, line-warship silhouette with narrow spearhead bow, symmetric shielded midsection, refined hull transitions, precision energy navy styling, pale alloy with emerald lattice accents, calm and advanced.
+green faction frigate hull, line-warship silhouette with a narrow spearhead bow, shield-citadel midsection, cathedral-buttress shoulders, refined hull transitions, precision energy navy styling, pale ivory armor with embedded emerald lattice windows, calm, advanced, and visibly non-industrial.
 
 9. missile_boat_team_c_albedo.png
-green faction missile boat hull reimagined for the Aegis Lattice, compact precision strike hull, streamlined body, elegant military geometry, internalized systems, minimal ordnance emphasis, pale alloy with teal-green luminous seams.
+green faction missile boat hull reimagined for the Aegis Lattice, compact precision strike hull with a streamlined spearhead body, elegant military geometry, fully internalized systems, minimal exposed ordnance identity, pale ceramic-metal plating, emerald shield apertures, and disciplined teal lattice seams.
 
 10. ciws_corvette_team_c_albedo.png
-green faction CIWS corvette hull, short advanced escort silhouette, defensive shield-guardian feel, compact broad-body geometry, elegant and disciplined, pale alloy plating with green-cyan highlights.
+green faction CIWS corvette hull, short advanced escort silhouette with compact broad-body geometry, defensive shield-guardian feel, elegant and disciplined, ivory armor plating, flared protective shoulders, embedded emerald watch-window bands, and restrained teal command-glass highlights.
 
 11. light_cruiser_team_c_albedo.png
-green faction light cruiser hull, long balanced profile, refined spine, symmetric armored surfaces, advanced energy line-ship design, elegant but militarized, pale alloy with luminous emerald lattice details.
+green faction light cruiser hull, long balanced profile with a refined dorsal spine, symmetric armored surfaces, shield-cathedral shoulder forms, advanced energy line-ship design, elegant but militarized, pale ivory hull with luminous emerald lattice windows set deep into the flanks.
 
 12. medium_cruiser_team_c_albedo.png
-green faction medium cruiser hull, deliberate line-battle silhouette, smooth geometric shoulders, shield-projector architecture, disciplined symmetry, precision navy style, pale metal with green and teal energy channels.
+green faction medium cruiser hull, deliberate line-battle silhouette with smooth geometric shoulders, strong shield-projector architecture, disciplined symmetry, and elevated nave-like central mass, precision navy style, pale ceramic-metal with emerald stained-glass channels and restrained teal command zones.
 
 13. cruiser_team_c_albedo.png
-green faction cruiser hull, composed and majestic line-ship silhouette, elegant central spine, shield-emitter geometry, balanced massing, advanced energy warship design, pale alloy with glowing emerald lattice seams.
+green faction cruiser hull, composed and majestic line-ship silhouette with an elegant central spine, shield-emitter buttress geometry, balanced sacred-machine massing, advanced energy warship design, ivory alloy surfaces, and deep glowing emerald lattice windows rather than painted naval panels.
 
 14. battlecruiser_team_c_albedo.png
-green faction battlecruiser hull, long high-status warship silhouette, commanding spearhead bow, refined structural rhythm, advanced shield architecture, powerful but restrained, pale alloy with luminous green energy lines.
+green faction battlecruiser hull, long high-status warship silhouette with a commanding spearhead bow, cathedral-like structural rhythm, advanced shield architecture, powerful but restrained, pale ceramic armor, emerald shield transepts, and narrow teal-glass command insets.
 
 15. battleship_team_c_albedo.png
-green faction battleship hull, grand line battleship silhouette, cathedral-like spine, disciplined symmetry, layered shield technology built into the hull form, majestic energy navy design, pale alloy and emerald-teal luminous accents.
+green faction battleship hull, grand line battleship silhouette with a cathedral-like spine, massive buttressed shoulders, disciplined symmetry, and layered shield technology built into the hull form, majestic energy navy design, white-ivory armor with monumental emerald stained-glass shield sections and restrained teal command lights.
 
 16. dreadnought_team_c_albedo.png
-green faction dreadnought hull, vast elegant fortress warship silhouette, sophisticated geometric massing, shield-dominant architecture, advanced and serene rather than brutal, pale metallic hull with bright green lattice channels.
+green faction dreadnought hull, vast elegant fortress warship silhouette with sophisticated geometric massing, cloistered side volumes, shield-dominant cathedral architecture, advanced and serene rather than brutal, pale metallic hull with huge embedded emerald lattice galleries and only minimal teal signal glass.
 
 17. supership_team_c_albedo.png
-green faction supership hull, apex Aegis Lattice flagship, monumental line-ship silhouette, majestic symmetry, integrated shield architecture, advanced energy empire aesthetic, pristine pale alloy with strong emerald and teal luminous structure lines.
+green faction supership hull, apex Aegis Lattice flagship, monumental line-ship silhouette with majestic symmetry, cathedral-buttress shoulder arcs, integrated shield architecture, and an elevated sanctum-like command spine, pristine pale alloy hull with strong emerald shield galleries and concentrated teal command-glass structure lines.
 
 18. carrier_team_c_albedo.png
-green faction carrier hull, advanced fleet carrier silhouette, broad but elegant body, refined internal bay architecture expressed through clean hull lines, shield-oriented escort-carrier design, pale alloy with green-cyan energy accents.
+green faction carrier hull, advanced fleet carrier silhouette with a broad but elegant body, refined internal bay architecture expressed through cloistered hull framing, shield-oriented escort-carrier design, pale ivory alloy plating, emerald bay-window lattice accents, and restrained teal service-glass details.
 
 19. drone_carrier_team_c_albedo.png
-green faction drone carrier hull, sleek support-carrier silhouette, lighter and more agile than the fleet carrier, clean advanced geometry, elegant lattice-tech body, pale metal with subtle glowing green seams.
+green faction drone carrier hull, sleek support-carrier silhouette, lighter and more agile than the fleet carrier, clean advanced geometry, elegant lattice-tech body, white ceramic-metal armor with subtle emerald shield slits, thin teal relay windows, and refined chapel-shoulder framing.
 
 20. transport_team_c_albedo.png
-green faction transport hull, protected logistics ship, smooth and symmetric cargo silhouette, advanced military utility design, internalized systems, pale alloy hull with emerald utility markings.
+green faction transport hull, protected logistics ship with a smooth and symmetric cargo silhouette, advanced military utility design, internalized systems, pale ivory hull surfaces, emerald utility-window bands set into armored cargo shoulders, and restrained teal sanctum-glass at the prow.
 
 21. miner_team_c_albedo.png
-green faction miner hull, advanced extraction vessel silhouette, practical but refined, geometric utility form, shield-tech industrial craft, clean lines and elegant structure, pale alloy with green-cyan energy accents.
+green faction miner hull, advanced extraction vessel silhouette, practical but refined, geometric utility form, shield-tech industrial craft reinterpreted through Aegis symmetry, clean lines, pale ceramic-metal surfaces, emerald process-window lattice cuts, and minimal teal service-glass accents.
 
 22. hauler_team_c_albedo.png
-green faction hauler hull, broad advanced cargo silhouette, elegant logistics ship, balanced geometry, protected utility craft feel, pale alloy plating with subtle emerald lattice markings.
+green faction hauler hull, broad advanced cargo silhouette with elegant logistics-ship balance, protected utility craft feel, white-ivory plating, buttressed cargo flanks, embedded emerald lattice markings, and a composed shield-fleet silhouette that reads as sacred-machine transport rather than blue naval freighter.
 
 Missile Faction / Team D / *_team_d_albedo.png
 
