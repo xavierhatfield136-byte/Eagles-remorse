@@ -544,6 +544,10 @@ public final class TutorialSystem {
             if (ctx.player != null && ctx.player.isCarrier && !st.flightDeckBaselineCaptured) {
                 captureCarrierBaseline(ctx, st);
             }
+            if (carrierWarpObjectiveReady(st) && !st.warpChargeStarted) {
+                focusGammaWaypoint(ctx, st);
+                st.gammaWaypointSet = true;
+            }
         } else if (lesson == LessonId.COMPLETE) {
             ctx.ui.waypointX = Double.NaN;
             ctx.ui.waypointY = Double.NaN;
@@ -738,8 +742,8 @@ public final class TutorialSystem {
                         "Toggle wing mode with V or auto-launch with Z to change carrier behavior.",
                         st.carrierModeChanged || st.carrierAutoLaunchChanged));
                 items.add(new ChecklistItem(
-                        "[M then -] Set NAV GAMMA and begin warp charge.",
-                        "Place a waypoint on NAV GAMMA, close the map, then start battlefield warp with - or Backspace.",
+                        "[-] Begin warp charge to NAV GAMMA.",
+                        "Once the carrier tasks are complete, the tutorial locks your active waypoint onto NAV GAMMA. Open the map if you want to confirm it, then start battlefield warp with - or Backspace.",
                         st.warpChargeStarted));
             }
             case COMPLETE -> {
@@ -769,6 +773,19 @@ public final class TutorialSystem {
             ctx.ui.waypointX = base.x;
             ctx.ui.waypointY = base.y;
         }
+    }
+
+    private static void focusGammaWaypoint(GameContext ctx, TutorialState st) {
+        if (ctx == null || st == null) return;
+        ctx.ui.waypointX = st.gammaX;
+        ctx.ui.waypointY = st.gammaY;
+    }
+
+    private static boolean carrierWarpObjectiveReady(TutorialState st) {
+        return st != null
+                && st.openedFlightDeck
+                && st.launchedWing
+                && (st.carrierModeChanged || st.carrierAutoLaunchChanged);
     }
 
     private static void capturePowerAndCrewBaseline(GameContext ctx, TutorialState st) {
@@ -849,7 +866,7 @@ public final class TutorialSystem {
                     ? new Marker("MINING POCKET", st.miningX, st.miningY, MINING_RADIUS)
                     : homeBaseMarker(ctx, st);
             case BRIDGE_SYSTEMS -> st.swappedToCarrier ? null : homeBaseMarker(ctx, st);
-            case CARRIER_AND_WARP -> (st.openedFlightDeck && st.launchedWing && (st.carrierModeChanged || st.carrierAutoLaunchChanged))
+            case CARRIER_AND_WARP -> carrierWarpObjectiveReady(st)
                     ? new Marker("NAV GAMMA", st.gammaX, st.gammaY, POINT_REACHED_RADIUS)
                     : null;
             case COMPLETE -> null;
