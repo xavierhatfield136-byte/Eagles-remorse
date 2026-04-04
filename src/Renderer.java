@@ -51,6 +51,8 @@ public class Renderer {
     private static final Stroke XRAY_HIT_STROKE = new BasicStroke(1.8f);
     private static final Stroke XRAY_DISABLED_STROKE = new BasicStroke(1.5f);
     private static final Stroke XRAY_FOCUS_STROKE = new BasicStroke(2.1f);
+    private static final Font HOVER_TOOLTIP_TITLE_FONT = new Font("Consolas", Font.BOLD, 12);
+    private static final Font HOVER_TOOLTIP_BODY_FONT = new Font("Consolas", Font.PLAIN, 11);
 
     // ------------------------------------------------------------
     // Option 8: Strategic map / waypoints / pings
@@ -88,6 +90,18 @@ public class Renderer {
             this.role = role;
             this.category = category;
             this.pageDelta = pageDelta;
+        }
+    }
+
+    public static final class HoverTooltip {
+        public final String key;
+        public final String title;
+        public final String body;
+
+        HoverTooltip(String key, String title, String body) {
+            this.key = (key == null) ? "" : key;
+            this.title = (title == null) ? "" : title;
+            this.body = (body == null) ? "" : body;
         }
     }
 
@@ -339,6 +353,353 @@ public class Renderer {
             if (r.contains(mouseX, mouseY)) return i;
         }
         return -1;
+    }
+
+    public static HoverTooltip hoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.ui == null) return null;
+        HoverTooltip tooltip = null;
+        if (ctx.ui.shopOpen) tooltip = shopHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        else if (ctx.ui.baseMenuOpen) tooltip = baseUpgradeHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        else if (ctx.ui.powerManagementOpen) tooltip = powerManagementHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        else if (ctx.ui.flightDeckOpen) tooltip = flightDeckHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        else if (ctx.ui.crewStationsOpen) tooltip = crewStationsHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        if (tooltip != null) return tooltip;
+
+        tooltip = objectiveCardHoverTooltipAt(ctx, mouseX, mouseY);
+        if (tooltip != null) return tooltip;
+
+        tooltip = coreMenuHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        if (tooltip != null) return tooltip;
+        if (ctx.ui.hasBlockingOverlay()) return null;
+        if (ctx.ui.xrayHoveredRoom != null) return null;
+        return shipHoverTooltipAt(ctx);
+    }
+
+    public static void drawHoverTooltip(Graphics2D g2, UiState ui, int mouseX, int mouseY, int viewW, int viewH) {
+        if (g2 == null || ui == null || !ui.hoverTooltipVisible || ui.hoverTooltipBody == null || ui.hoverTooltipBody.isBlank()) {
+            return;
+        }
+
+        FontMetrics titleFm = g2.getFontMetrics(HOVER_TOOLTIP_TITLE_FONT);
+        FontMetrics bodyFm = g2.getFontMetrics(HOVER_TOOLTIP_BODY_FONT);
+        java.util.List<String> lines = wrapTooltipLines(bodyFm, ui.hoverTooltipBody, 320);
+        int contentW = 0;
+        if (ui.hoverTooltipTitle != null && !ui.hoverTooltipTitle.isBlank()) {
+            contentW = Math.max(contentW, titleFm.stringWidth(ui.hoverTooltipTitle));
+        }
+        for (String line : lines) {
+            contentW = Math.max(contentW, bodyFm.stringWidth(line));
+        }
+        int pad = 10;
+        int width = Math.min(360, Math.max(150, contentW + pad * 2));
+        int height = pad * 2 + lines.size() * bodyFm.getHeight() + 4;
+        if (ui.hoverTooltipTitle != null && !ui.hoverTooltipTitle.isBlank()) {
+            height += titleFm.getHeight() + 4;
+        }
+
+        int x = mouseX + 18;
+        int y = mouseY + 18;
+        if (x + width > viewW - 12) x = mouseX - width - 18;
+        if (x < 12) x = 12;
+        if (y + height > viewH - 12) y = mouseY - height - 18;
+        if (y < 12) y = 12;
+
+        g2.setColor(new Color(4, 8, 16, 228));
+        g2.fillRoundRect(x, y, width, height, 12, 12);
+        g2.setColor(new Color(190, 222, 255, 170));
+        g2.drawRoundRect(x, y, width, height, 12, 12);
+
+        int ty = y + pad + bodyFm.getAscent();
+        if (ui.hoverTooltipTitle != null && !ui.hoverTooltipTitle.isBlank()) {
+            g2.setFont(HOVER_TOOLTIP_TITLE_FONT);
+            g2.setColor(new Color(246, 250, 255, 240));
+            ty = y + pad + titleFm.getAscent();
+            g2.drawString(ui.hoverTooltipTitle, x + pad, ty);
+            ty += titleFm.getDescent() + 8;
+            g2.setColor(new Color(155, 206, 255, 110));
+            g2.drawLine(x + pad, ty - 2, x + width - pad, ty - 2);
+            ty += bodyFm.getAscent();
+        }
+
+        g2.setFont(HOVER_TOOLTIP_BODY_FONT);
+        g2.setColor(new Color(224, 235, 248, 228));
+        for (String line : lines) {
+            g2.drawString(line, x + pad, ty);
+            ty += bodyFm.getHeight();
+        }
+    }
+
+    private static HoverTooltip coreMenuHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        int index = coreMenuButtonAt(viewW, viewH, mouseX, mouseY);
+        if (index < 0) return null;
+        String body = switch (index) {
+            case 0 -> "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
+            case 1 -> "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
+            case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
+            case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
+            case 4 -> "Crew stations. Review Captain, Helm, Tactical, Engineering, and Science automation plus voice mix. Hotkey: H.";
+            default -> "";
+        };
+        return body.isBlank() ? null : new HoverTooltip("core:" + index, CORE_MENU_LABELS[index], body);
+    }
+
+    private static HoverTooltip objectiveCardHoverTooltipAt(GameContext ctx, int mouseX, int mouseY) {
+        if (ctx == null || ctx.ui == null || ctx.ui.objectiveHoverRect == null) return null;
+        if (!ctx.ui.objectiveHoverRect.contains(mouseX, mouseY)) return null;
+        String body = ctx.ui.objectiveHoverBody;
+        if (body == null || body.isBlank()) return null;
+        String title = (ctx.ui.objectiveHoverTitle == null || ctx.ui.objectiveHoverTitle.isBlank())
+                ? "OBJECTIVE"
+                : ctx.ui.objectiveHoverTitle;
+        return new HoverTooltip("hud:objective", title, body);
+    }
+
+    private static HoverTooltip shopHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.player == null) return null;
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        if (!panel.contains(mouseX, mouseY)) return null;
+        Player player = ctx.player;
+        UiState ui = ctx.ui;
+        ShopHullCategory category = (ui == null || ui.shopHullCategory == null) ? ShopHullCategory.ESCORT : ui.shopHullCategory;
+        int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
+
+        for (int i = 0; i < 7; i++) {
+            Rectangle card = getShopUpgradeCardRect(panel, i);
+            if (!card.contains(mouseX, mouseY)) continue;
+            return switch (i + 1) {
+                case 1 -> new HoverTooltip("shop:upgrade:1", "Energy Bolt Primary",
+                        "Standard bolt primary. Balanced cadence, no credit cost, and the safe baseline if you want to reset the flagship weapon package.");
+                case 2 -> new HoverTooltip("shop:upgrade:2", "Beam Bolt Primary",
+                        "Heavy direct-energy bolt package. Slower cadence, stronger punch, and a clean way to push the flagship toward longer-range alpha damage.");
+                case 3 -> new HoverTooltip("shop:upgrade:3", "Hull Plating",
+                        "Permanent plating upgrade for the current hull. Raises flagship hull integrity by 10 per level until that chassis reaches its plating cap.");
+                case 4 -> new HoverTooltip("shop:upgrade:4", "Shield Array",
+                        "Improves shield strength and regeneration on shield-capable hulls. No effect on hulls that do not mount shields.");
+                case 5 -> new HoverTooltip("shop:upgrade:5", "Add Gun Turret",
+                        "Adds another gun hardpoint if the current hull still has spare gun upgrade capacity. Useful for broadside and anti-light pressure.");
+                case 6 -> new HoverTooltip("shop:upgrade:6", "Add Missile Rack",
+                        "Adds another missile launcher if the hull can still take one. Best for burst damage, harassment, and long-range pressure.");
+                case 7 -> new HoverTooltip("shop:upgrade:7", "Upgrade CIWS",
+                        "Improves close-in defense quality, reach, and burst output on CIWS-capable hulls. Helps against missiles and strike craft.");
+                default -> null;
+            };
+        }
+
+        for (ShopHullCategory candidate : ShopHullCategory.values()) {
+            Rectangle tab = getShopHullCategoryTabRect(panel, candidate);
+            if (!tab.contains(mouseX, mouseY)) continue;
+            return new HoverTooltip("shop:tab:" + candidate.name(), candidate.label(),
+                    candidate.subtitle() + " Click to swap the hull bay to this band.");
+        }
+
+        if (shopHullPageCount(category) > 1) {
+            if (getShopHullPageButtonRect(panel, false).contains(mouseX, mouseY)) {
+                return new HoverTooltip("shop:page:prev", "Previous Page",
+                        "Browse the previous page of " + category.label().toLowerCase(Locale.US) + " hull offers.");
+            }
+            if (getShopHullPageButtonRect(panel, true).contains(mouseX, mouseY)) {
+                return new HoverTooltip("shop:page:next", "Next Page",
+                        "Browse the next page of " + category.label().toLowerCase(Locale.US) + " hull offers.");
+            }
+        }
+
+        for (int slot = 0; slot < SHOP_HULL_PAGE_SIZE; slot++) {
+            ShopHullOffer offer = shopHullOfferAt(category, page, slot);
+            if (offer == null) continue;
+            Rectangle card = getShopHullCardRect(panel, slot);
+            if (!card.contains(mouseX, mouseY)) continue;
+            boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
+            int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, offer.requiredTier) : 0;
+            String body = offer.tagLine + ". " + offer.detail
+                    + " Required tier " + offer.requiredTier
+                    + ", cost $" + offer.cost
+                    + (campaignShop ? (" plus " + oreCost + " ore") : "")
+                    + ".";
+            return new HoverTooltip("shop:hull:" + offer.role.name(), shopRoleTitle(offer.role), body);
+        }
+        return null;
+    }
+
+    private static HoverTooltip baseUpgradeHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle panel = getBaseUpgradeOverlayRect(viewW);
+        if (!panel.contains(mouseX, mouseY)) return null;
+        int lineY = panel.y + 124;
+        for (int i = 0; i < 5; i++) {
+            Rectangle row = new Rectangle(panel.x + 18, lineY - 12 + i * 26, 480, 22);
+            if (!row.contains(mouseX, mouseY)) continue;
+            return switch (i) {
+                case 0 -> new HoverTooltip("base:1", "Hull Fortification",
+                        "Adds base hull durability so the dock can survive longer under direct attack. Purchased with credits and ore.");
+                case 1 -> new HoverTooltip("base:2", "Shield Array",
+                        "Improves base shield strength and regeneration, making the dock much harder to burst down.");
+                case 2 -> new HoverTooltip("base:3", "Turret Systems",
+                        "Upgrades the base defense battery, improving local firepower and orbital screen coverage.");
+                case 3 -> new HoverTooltip("base:4", "Mining Ops",
+                        "Improves mining throughput and ore sale value across the docked economy package.");
+                case 4 -> new HoverTooltip("base:5", "Hangar Expansion",
+                        "Raises available hangar tier so stronger hull classes can be fielded from the shipyard.");
+                default -> null;
+            };
+        }
+        return null;
+    }
+
+    private static HoverTooltip powerManagementHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.player == null) return null;
+        int w = Math.min(700, viewW - 110);
+        int h = 462;
+        int x = (viewW - w) / 2;
+        int y = Math.max(54, (viewH - h) / 2);
+        if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+
+        String[] titles = {"Propulsion", "Shield", "Tactical", "Sensor", "Engineering", "Supercharge"};
+        String[] bodies = {
+                "Controls acceleration, cruise speed, and repositioning headroom.",
+                "Controls shield upkeep, recharge effectiveness, and staying power.",
+                "Controls weapon cycle pressure and combat lethality.",
+                "Controls sensor reach, lock quality, and target acquisition comfort.",
+                "Controls repair throughput and ship survivability under load.",
+                "Controls superweapon recharge tempo and burst readiness."
+        };
+        int rowY = y + 110;
+        for (int i = 0; i < titles.length; i++) {
+            Rectangle row = new Rectangle(x + 18, rowY + i * 28 - 2, w - 36, 22);
+            if (!row.contains(mouseX, mouseY)) continue;
+            return new HoverTooltip("power:" + i, titles[i],
+                    bodies[i] + " Current allocation: " + (int) Math.round(ctx.player.powerBusFractions()[i] * 100.0) + "%.");
+        }
+        return new HoverTooltip("power:panel", "Power Management",
+                "Hover a bus row to read its role. This panel lets you redistribute the flagship power budget and preview the resulting combat tradeoffs.");
+    }
+
+    private static HoverTooltip flightDeckHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.player == null || !ctx.player.isCarrier) return null;
+        int w = Math.min(820, viewW - 100);
+        int h = 356;
+        int x = (viewW - w) / 2;
+        int y = Math.max(48, (viewH - h) / 2);
+        if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+
+        int slotGap = 12;
+        int slotW = (w - 36 - slotGap * 4) / 5;
+        int slotH = 132;
+        int slotY = y + 108;
+        for (int i = 0; i < 5; i++) {
+            Rectangle slot = new Rectangle(x + 18 + i * (slotW + slotGap), slotY, slotW, slotH);
+            if (!slot.contains(mouseX, mouseY)) continue;
+            ShipRole role = ctx.player.flightDeckRoleAt(i);
+            return new HoverTooltip("deck:" + i, "Squad " + (i + 1),
+                    flightDeckRoleLabel(role) + ". " + flightDeckRoleDescription(role)
+                            + ". Each slot launches as a 2-ship pair in deck order.");
+        }
+        return null;
+    }
+
+    private static HoverTooltip crewStationsHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.player == null) return null;
+        int w = Math.min(1010, viewW - 56);
+        int h = 438;
+        int x = (viewW - w) / 2;
+        int y = Math.max(34, (viewH - h) / 2);
+        if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+
+        int portraitPaneW = 232;
+        int panelX = x + 18 + portraitPaneW + 14;
+        int panelW = x + w - panelX - 14;
+        int tabX = panelX + 8;
+        int tabY = y + 70;
+        int tabGap = 8;
+        int stationCount = GameContext.CrewStation.values().length;
+        int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
+        for (GameContext.CrewStation station : GameContext.CrewStation.values()) {
+            Rectangle tab = new Rectangle(tabX, tabY, tw, 24);
+            if (tab.contains(mouseX, mouseY)) {
+                String body = switch (station) {
+                    case CAPTAIN -> "High-level battle posture. Captain directives push shipwide stance and allied fleet orders.";
+                    case HELM -> "Movement and spacing control. Helm automation handles intercepts, orbiting, and evasive maneuvering.";
+                    case TACTICAL -> "Weapons release and lock discipline. Tactical automation decides how aggressively the ship fires.";
+                    case ENGINEERING -> "Power and damage-control authority. Engineering automation sets repair bias and overload posture.";
+                    case SCIENCE -> "Sensors, locks, and electronic warfare. Science automation handles target acquisition and jamming.";
+                };
+                return new HoverTooltip("crew:" + station.name(), station.name(),
+                        body + " Current mode: " + (UISystem.stationAutomation(ctx, station) ? "AI" : "MAN") + ".");
+            }
+            tabX += tw + tabGap;
+        }
+        return null;
+    }
+
+    private static HoverTooltip shipHoverTooltipAt(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return null;
+        Ship best = null;
+        double bestDist2 = Double.POSITIVE_INFINITY;
+        double wx = ctx.cursorWorldX;
+        double wy = ctx.cursorWorldY;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            double radius = Math.max(38.0, ship.radius * 1.6 + 12.0);
+            double d2 = GameMath.dist2(wx, wy, ship.x, ship.y);
+            if (d2 > radius * radius || d2 >= bestDist2) continue;
+            best = ship;
+            bestDist2 = d2;
+        }
+        if (best == null) return null;
+
+        String title = (best.name == null || best.name.isBlank()) ? shopRoleTitle(best.role) : best.name;
+        String faction = (best.faction == null) ? "Unknown" : best.faction.name().replace('_', ' ');
+        String hull = best.hp + "/" + best.hpMax;
+        String shield = best.shieldActive
+                ? ((int) Math.round(best.shield)) + "/" + ((int) Math.round(best.shieldMax))
+                : "offline";
+        String body = "Role: " + shopRoleTitle(best.role)
+                + ". Faction: " + faction
+                + ". Hull " + hull
+                + ", shield " + shield
+                + ", crew order " + best.crewOrder + ".";
+        return new HoverTooltip("ship:" + best.id, title, body);
+    }
+
+    private static Rectangle getBaseUpgradeOverlayRect(int viewW) {
+        int w = 520;
+        int h = 284;
+        int pad = 22;
+        int x = viewW - w - pad;
+        int y = 240;
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static java.util.List<String> wrapTooltipLines(FontMetrics metrics, String raw, int maxWidth) {
+        java.util.List<String> out = new ArrayList<>();
+        if (metrics == null || raw == null || raw.isBlank()) {
+            out.add("");
+            return out;
+        }
+        for (String paragraph : raw.split("\\n")) {
+            String text = paragraph.trim();
+            if (text.isEmpty()) {
+                out.add("");
+                continue;
+            }
+            StringBuilder line = new StringBuilder();
+            for (String word : text.split("\\s+")) {
+                if (line.length() == 0) {
+                    line.append(word);
+                    continue;
+                }
+                String candidate = line + " " + word;
+                if (metrics.stringWidth(candidate) <= maxWidth) {
+                    line.setLength(0);
+                    line.append(candidate);
+                } else {
+                    out.add(line.toString());
+                    line.setLength(0);
+                    line.append(word);
+                }
+            }
+            if (line.length() > 0) out.add(line.toString());
+        }
+        if (out.isEmpty()) out.add("");
+        return out;
     }
 
     public static void drawCoreMenuBar(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -2016,6 +2377,9 @@ public class Renderer {
                 ? Math.max(250, Math.min(340, xrayLayout.playerX - leftX - 26))
                 : Math.max(270, Math.min(340, viewW / 4));
         leftW = Math.max(250, Math.min(leftW, viewW - 28));
+        if (ctx != null && ctx.ui != null) {
+            ctx.ui.clearObjectiveHover();
+        }
 
         int objectiveH = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, leftW, detail);
         int commandH = computeCommandOverviewCardHeight(player, hangarTier, dockedAtBase, resourceRush,
@@ -2028,6 +2392,12 @@ public class Renderer {
         int totalH = commandH + 10 + shipH + (actionH > 0 ? actionH + 10 : 0) + (objectiveH > 0 ? objectiveH + 10 : 0);
         int cardY = Math.max(16, coreMenu.y - 12 - totalH);
         if (objectiveH > 0) {
+            if (ctx != null && ctx.ui != null) {
+                ctx.ui.setObjectiveHover(
+                        new Rectangle(leftX, cardY, leftW, objectiveH),
+                        "OBJECTIVE",
+                        buildObjectiveHoverBody(objectiveTitle, objectiveDetail));
+            }
             cardY += drawObjectiveCard(g2, objectiveTitle, objectiveDetail, leftX, cardY, leftW, detail);
             cardY += 10;
         }
@@ -2149,6 +2519,18 @@ public class Renderer {
         if (!titleLines.isEmpty() && !detailLines.isEmpty()) h += 16;
         h += detailLines.size() * 15 + 12;
         return Math.max(66, h);
+    }
+
+    private static String buildObjectiveHoverBody(String objectiveTitle, String objectiveDetail) {
+        StringBuilder body = new StringBuilder();
+        if (objectiveTitle != null && !objectiveTitle.isBlank()) {
+            body.append(objectiveTitle.trim());
+        }
+        if (objectiveDetail != null && !objectiveDetail.isBlank()) {
+            if (body.length() > 0) body.append('\n');
+            body.append(objectiveDetail.trim());
+        }
+        return body.toString();
     }
 
     private static int drawCommandOverviewCard(Graphics2D g2, Player player, int credits, int hangarTier, boolean dockedAtBase,

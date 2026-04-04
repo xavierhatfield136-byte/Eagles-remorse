@@ -207,6 +207,22 @@ public final class GameRenderSystem {
 
         // Persistent quick-access overlays bar.
         Renderer.drawCoreMenuBar(g2, ctx, viewportW, viewportH);
+        int mouseX = (int) Math.round(ctx.cursorScreenX);
+        int mouseY = (int) Math.round(ctx.cursorScreenY);
+        Renderer.HoverTooltip hoverTooltip = Renderer.hoverTooltipAt(ctx, viewportW, viewportH, mouseX, mouseY);
+        if (hoverTooltip != null) {
+            ctx.ui.updateHoverTooltip(
+                    hoverTooltip.key,
+                    hoverTooltip.title,
+                    hoverTooltip.body,
+                    mouseX,
+                    mouseY,
+                    System.nanoTime(),
+                    420_000_000L);
+        } else {
+            ctx.ui.clearHoverTooltip();
+        }
+        Renderer.drawHoverTooltip(g2, ctx.ui, mouseX, mouseY, viewportW, viewportH);
 
 // Dev debug overlay (F3)
 if (DevTools.isDebugOverlay()) {
@@ -859,4 +875,3 @@ if (DevTools.isDebugOverlay()) {
 
     // (Removed reflection bridge; hangar tier is computed from base upgrades.)
 }
-

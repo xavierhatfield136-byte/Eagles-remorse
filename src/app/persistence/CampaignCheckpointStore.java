@@ -100,6 +100,10 @@ public final class CampaignCheckpointStore {
         public String ownedTitans = DEFAULT_OWNED_TITANS;
         public String persistentBlueFleet = DEFAULT_PERSISTENT_BLUE_FLEET;
         public boolean campaignBlueYellowAlliance = false;
+        public boolean greenContractFleetJoined = false;
+        public boolean yellowLiberationFleetJoined = false;
+        public int greenContractFavor = 0;
+        public int yellowLiberationFavor = 0;
 
         public int allyOreStockpile = 0;
         public int enemyOreStockpile = 0;
@@ -157,6 +161,8 @@ public final class CampaignCheckpointStore {
             flightDeckLoadout = (flightDeckLoadout == null) ? "" : flightDeckLoadout.trim();
             ownedTitans = (ownedTitans == null) ? DEFAULT_OWNED_TITANS : ownedTitans.trim();
             persistentBlueFleet = (persistentBlueFleet == null) ? DEFAULT_PERSISTENT_BLUE_FLEET : persistentBlueFleet.trim();
+            greenContractFavor = Math.max(0, greenContractFavor);
+            yellowLiberationFavor = Math.max(0, yellowLiberationFavor);
             allyOreStockpile = Math.max(0, allyOreStockpile);
             enemyOreStockpile = Math.max(0, enemyOreStockpile);
             allyHullLv = clamp(allyHullLv, 0, 3);
@@ -252,6 +258,10 @@ public final class CampaignCheckpointStore {
                 cp.ownedTitans = props.getProperty("ownedTitans", cp.ownedTitans);
                 cp.persistentBlueFleet = props.getProperty("persistentBlueFleet", cp.persistentBlueFleet);
                 cp.campaignBlueYellowAlliance = parseBoolean(props, "campaignBlueYellowAlliance", cp.campaignBlueYellowAlliance);
+                cp.greenContractFleetJoined = parseBoolean(props, "greenContractFleetJoined", cp.greenContractFleetJoined);
+                cp.yellowLiberationFleetJoined = parseBoolean(props, "yellowLiberationFleetJoined", cp.yellowLiberationFleetJoined);
+                cp.greenContractFavor = parseInt(props, "greenContractFavor", cp.greenContractFavor);
+                cp.yellowLiberationFavor = parseInt(props, "yellowLiberationFavor", cp.yellowLiberationFavor);
                 cp.allyOreStockpile = parseInt(props, "allyOreStockpile", cp.allyOreStockpile);
                 cp.enemyOreStockpile = parseInt(props, "enemyOreStockpile", cp.enemyOreStockpile);
                 cp.allyHullLv = parseInt(props, "allyHullLv", cp.allyHullLv);
@@ -340,6 +350,10 @@ public final class CampaignCheckpointStore {
             props.setProperty("ownedTitans", cp.ownedTitans);
             props.setProperty("persistentBlueFleet", cp.persistentBlueFleet);
             props.setProperty("campaignBlueYellowAlliance", String.valueOf(cp.campaignBlueYellowAlliance));
+            props.setProperty("greenContractFleetJoined", String.valueOf(cp.greenContractFleetJoined));
+            props.setProperty("yellowLiberationFleetJoined", String.valueOf(cp.yellowLiberationFleetJoined));
+            props.setProperty("greenContractFavor", String.valueOf(cp.greenContractFavor));
+            props.setProperty("yellowLiberationFavor", String.valueOf(cp.yellowLiberationFavor));
             props.setProperty("allyOreStockpile", String.valueOf(cp.allyOreStockpile));
             props.setProperty("enemyOreStockpile", String.valueOf(cp.enemyOreStockpile));
             props.setProperty("allyHullLv", String.valueOf(cp.allyHullLv));

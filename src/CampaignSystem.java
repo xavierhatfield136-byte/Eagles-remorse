@@ -106,6 +106,7 @@ public final class CampaignSystem {
         final String name;
         boolean destroyed = false;
         int activeShipId = -1;
+        int commandGroupId = 0;
 
         PersistentFleetEntry(int slotId, ShipRole role, String name) {
             this.slotId = Math.max(1, slotId);
@@ -119,6 +120,11 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_BLUE_ESCORT_CAP = 15;
     private static final int CAMPAIGN_BLUE_LINE_CAP = 11;
     private static final int CAMPAIGN_BLUE_CAPITAL_CAP = 7;
+    private static final int CAMPAIGN_FLAGSHIP_COMMAND_GROUP = 0;
+    private static final double ESCORT_PLAYER_FORMATION_RADIUS = 360.0;
+    private static final double ESCORT_SUPPORT_RADIUS = 460.0;
+    private static final double ESCORT_THREAT_RADIUS = 620.0;
+    private static final double ESCORT_PROGRESS_THRESHOLD = 0.58;
     private static final String[] ACT_TITLES = {
             "",
             "TRADE HUB COLLAPSE",
@@ -251,8 +257,11 @@ public final class CampaignSystem {
         public double sideObjectiveProgress = 0.0;
         public double sideObjectiveGoal = 0.0;
         public int sideObjectiveRewardCredits = 0;
+        public int sideObjectiveProtectedShipId = -1;
+        public int sideObjectiveProtectedShipStartHp = 0;
         public boolean sideObjectiveCompleted = false;
         public boolean sideObjectiveFailed = false;
+        public double escortFormationIntegrity = 0.0;
         public int sideObjectiveBaseKills = 0;
         public int sideObjectiveStartPlayerHp = 0;
         public int sideObjectivesCompletedTotal = 0;
@@ -275,6 +284,10 @@ public final class CampaignSystem {
         public double cinematicFocusY = Double.NaN;
         public boolean campaignBlueGreenAlliance = true;
         public boolean campaignBlueYellowAlliance = false;
+        public boolean greenContractFleetJoined = false;
+        public boolean yellowLiberationFleetJoined = false;
+        public int greenContractFavor = 0;
+        public int yellowLiberationFavor = 0;
 
         public boolean unlockAuxGunGranted = false;
         public int unlockMissileTierGranted = 0;
@@ -448,9 +461,15 @@ public final class CampaignSystem {
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
         String mods = modifiersSummary(st.activeModifiers);
         SectorLore lore = loreFor(st.sector);
+        String escort = (st.objectiveType == ObjectiveType.ESCORT)
+                ? ("   FORMATION " + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%")
+                : "";
+        String coalition = coalitionSupportHud(st);
         String base = lore.location + "   " + lore.hudLead
                 + "   OBJ: " + st.objectiveLabel
-                + "   [" + p + "]   MOD: " + mods
+                + "   [" + p + "]" + escort
+                + "   MOD: " + mods
+                + coalition
                 + "   " + failureHint(st.objectiveType)
                 + "   T-" + left + "s";
         String side = sideObjectiveHud(st);
@@ -662,7 +681,8 @@ public final class CampaignSystem {
         if (titan != null && st.ownedTitans.size() < TitanFleetSystem.mothershipTitanCap()) {
             st.ownedTitans.add(titan);
         }
-        spawnSinglePersistentBlueShip(ctx, st, entry, st.persistentBlueFleet.size() - 1);
+        rebalancePersistentCommandGroups(st);
+        spawnPurchasedPersistentBlueShip(ctx, st, entry);
         EventSystem.showBanner(ctx, "BLUE HULL COMMISSIONED: " + entry.name, 1.8);
         return true;
     }
@@ -775,6 +795,7 @@ public final class CampaignSystem {
         addPersistentFleetEntry(st, ShipRole.PICKET, "Blue Screen One");
         addPersistentFleetEntry(st, ShipRole.FRIGATE, "Blue Guard One");
         addPersistentFleetEntry(st, ShipRole.CIWS_CORVETTE, "Blue Guard Two");
+        rebalancePersistentCommandGroups(st);
     }
 
     private static void refreshCampaignAlliances(CampaignState st) {
@@ -789,14 +810,17 @@ public final class CampaignSystem {
 
     private static void syncPersistentFleetCasualties(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null || st.persistentBlueFleet.isEmpty()) return;
+        boolean changed = false;
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
             Ship live = findShipById(ctx, entry.activeShipId);
             if (live == null || !live.alive || live.dying || live.hp <= 0) {
                 entry.destroyed = true;
                 entry.activeShipId = -1;
+                changed = true;
             }
         }
+        if (changed) rebalancePersistentCommandGroups(st);
     }
 
     private static void updateSectorOneIntro(GameContext ctx, CampaignState st, double dt) {
@@ -851,12 +875,74 @@ public final class CampaignSystem {
     }
 
     private static void spawnPersistentBlueFleet(GameContext ctx, CampaignState st) {
-        if (ctx == null || st == null) return;
-        int liveIndex = 0;
+        if (ctx == null || st == null || ctx.player == null) return;
+        rebalancePersistentCommandGroups(st);
+        java.util.Map<Integer, Ship> groupAnchors = new java.util.HashMap<>();
+        java.util.Map<Integer, Integer> groupMemberIndices = new java.util.HashMap<>();
+        int titanIndex = 0;
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed) continue;
-            spawnSinglePersistentBlueShip(ctx, st, entry, liveIndex++);
+            if (!isTitanPersistentEntry(entry)) continue;
+            Ship ship = spawnPersistentBlueShipFromFlagship(ctx, st, entry, titanIndex++, true);
+            if (ship != null) {
+                groupAnchors.put(entry.commandGroupId, ship);
+            }
         }
+
+        int reserveIndex = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed || isTitanPersistentEntry(entry)) continue;
+            Ship anchor = groupAnchors.get(entry.commandGroupId);
+            if (anchor != null) {
+                int memberIndex = groupMemberIndices.getOrDefault(entry.commandGroupId, 0);
+                Ship ship = spawnPersistentBlueShipFromAnchor(ctx, st, entry, anchor, memberIndex);
+                if (ship != null) {
+                    groupMemberIndices.put(entry.commandGroupId, memberIndex + 1);
+                }
+            } else {
+                spawnPersistentBlueShipFromFlagship(ctx, st, entry, reserveIndex++, false);
+            }
+        }
+    }
+
+    private static void spawnPurchasedPersistentBlueShip(GameContext ctx, CampaignState st, PersistentFleetEntry entry) {
+        if (ctx == null || st == null || entry == null || entry.destroyed) return;
+        if (isTitanPersistentEntry(entry)) {
+            int titanIndex = 0;
+            for (PersistentFleetEntry candidate : st.persistentBlueFleet) {
+                if (candidate == null || candidate.destroyed || !isTitanPersistentEntry(candidate)) continue;
+                if (candidate == entry) break;
+                titanIndex++;
+            }
+            spawnPersistentBlueShipFromFlagship(ctx, st, entry, titanIndex, true);
+            return;
+        }
+
+        Ship anchor = findPersistentCommandAnchor(ctx, st, entry.commandGroupId);
+        if (anchor != null) {
+            int memberIndex = 0;
+            for (PersistentFleetEntry candidate : st.persistentBlueFleet) {
+                if (candidate == null || candidate == entry || candidate.destroyed || isTitanPersistentEntry(candidate)) continue;
+                if (candidate.commandGroupId != entry.commandGroupId) continue;
+                Ship live = findShipById(ctx, candidate.activeShipId);
+                if (live != null && live.alive && !live.dying && live.hp > 0) {
+                    memberIndex++;
+                }
+            }
+            spawnPersistentBlueShipFromAnchor(ctx, st, entry, anchor, memberIndex);
+            return;
+        }
+
+        int reserveIndex = 0;
+        for (PersistentFleetEntry candidate : st.persistentBlueFleet) {
+            if (candidate == null || candidate == entry || candidate.destroyed || isTitanPersistentEntry(candidate)) continue;
+            if (candidate.commandGroupId != CAMPAIGN_FLAGSHIP_COMMAND_GROUP) continue;
+            Ship live = findShipById(ctx, candidate.activeShipId);
+            if (live != null && live.alive && !live.dying && live.hp > 0) {
+                reserveIndex++;
+            }
+        }
+        spawnPersistentBlueShipFromFlagship(ctx, st, entry, reserveIndex, false);
     }
 
     private static void quietEpisodeInterlude(GameContext ctx, CampaignState st) {
@@ -950,8 +1036,10 @@ public final class CampaignSystem {
         st.introWarpY = Double.NaN;
         st.cinematicFocusX = Double.NaN;
         st.cinematicFocusY = Double.NaN;
+        st.escortFormationIntegrity = 0.0;
 
         refreshCampaignAlliances(st);
+        rebalancePersistentCommandGroups(st);
         resetPersistentFleetSpawnHandles(st);
         pruneTransientUnits(ctx);
         regroupPlayerAtAlliedBase(ctx);
@@ -963,6 +1051,8 @@ public final class CampaignSystem {
         applySectorModifiers(ctx, st, script);
         spawnSectorForces(ctx);
         spawnPersistentBlueFleet(ctx, st);
+        spawnCoalitionSupportFleet(ctx, st);
+        captureSideObjectiveProtectedShip(ctx, st);
         st.enemyBaseWinConditionActive = hasLiveEnemyBase(ctx);
         snapshotHostiles(ctx, st.knownHostiles);
 
@@ -1010,6 +1100,8 @@ public final class CampaignSystem {
         st.sideObjectiveGoal = Math.max(0.0, side.goal);
         st.sideObjectiveProgress = 0.0;
         st.sideObjectiveRewardCredits = GameContext.scaleCreditEarnings(Math.max(0, side.rewardCredits));
+        st.sideObjectiveProtectedShipId = -1;
+        st.sideObjectiveProtectedShipStartHp = 0;
         st.sideObjectiveCompleted = false;
         st.sideObjectiveFailed = false;
         st.sideObjectiveBaseKills = st.kills;
@@ -1431,6 +1523,37 @@ public final class CampaignSystem {
         return titan;
     }
 
+    private static void spawnCoalitionSupportFleet(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        int greenTier = greenContractTier(st);
+        if (greenTier >= 1 && st.sector >= 8) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -260, 220, "Green Contract Cruiser");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, 300, "Green Contract Flak");
+        }
+        if (greenTier >= 2 && st.sector >= 8) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -380, 180, "Green Contract Frigate");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -420, 280, "Green Contract Tender");
+        }
+        if (greenTier >= 3 && st.sector >= 9) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -520, 70, "Green Contract Relay Titan");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -450, 360, "Green Contract Screen Two");
+        }
+
+        int yellowTier = yellowLiberationTier(st);
+        if (yellowTier >= 1 && st.sector >= 11) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, Faction.TEAM_D, -340, 250, "Yellow Liberation Missile Boat");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -260, 330, "Yellow Liberation Flak");
+        }
+        if (yellowTier >= 2 && st.sector >= 11) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -430, 180, "Yellow Liberation Frigate");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_D, -380, 340, "Yellow Liberation Screen");
+        }
+        if (yellowTier >= 3 && st.sector >= 12) {
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BOARDING_RECOVERY_TITAN, Faction.TEAM_D, -560, 120, "Yellow Liberation Recovery Titan");
+            spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, Faction.TEAM_D, -500, 300, "Yellow Liberation Cutter");
+        }
+    }
+
     private static void applySectorModifiers(GameContext ctx, CampaignState st, SectorScript script) {
         st.activeModifiers = script.modifiers;
         st.targetingRangeMul = 1.0;
@@ -1541,7 +1664,15 @@ public final class CampaignSystem {
                     failRun(ctx, "DEFEAT: ESCORT LOST");
                     return;
                 }
-                st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + dt);
+                st.escortFormationIntegrity = escortFormationIntegrity(ctx, st);
+                if (st.escortFormationIntegrity >= ESCORT_PROGRESS_THRESHOLD) {
+                    double gain = dt * Math.max(0.45, st.escortFormationIntegrity);
+                    st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + gain);
+                } else {
+                    double deficit = ESCORT_PROGRESS_THRESHOLD - st.escortFormationIntegrity;
+                    double decay = dt * (0.30 + deficit * 1.35);
+                    st.objectiveProgress = Math.max(0.0, st.objectiveProgress - decay);
+                }
             }
             case CAPTURE -> {
                 if (st.sector == 3 && !st.captureArmed) {
@@ -1581,11 +1712,12 @@ public final class CampaignSystem {
                 }
             }
             case NO_HULL_DAMAGE_WINDOW -> {
-                if (ctx.player == null || !ctx.player.alive || ctx.player.hp <= 0) {
-                    markSideObjectiveFailed(ctx, st, "player_down");
+                Ship protectedShip = captureSideObjectiveProtectedShip(ctx, st);
+                if (protectedShip == null || !protectedShip.alive || protectedShip.hp <= 0) {
+                    markSideObjectiveFailed(ctx, st, (st.objectiveType == ObjectiveType.ESCORT) ? "escort_down" : "player_down");
                     return;
                 }
-                if (ctx.player.hp < st.sideObjectiveStartPlayerHp) {
+                if (protectedShip.hp < st.sideObjectiveProtectedShipStartHp) {
                     markSideObjectiveFailed(ctx, st, "hull_damage");
                     return;
                 }
@@ -1679,6 +1811,7 @@ public final class CampaignSystem {
         persistSectorProgress(ctx, st.sector);
         String unlock = grantSectorUnlock(ctx);
         String storyReward = grantStoryFleetReward(ctx, st);
+        advanceCoalitionMomentumOnSectorClear(st);
         String bossDrop = grantBossDrop(ctx);
         int nextSector = st.sector + 1;
         boolean checkpointSaved = nextSector <= st.totalSectors && saveCheckpoint(ctx, st, nextSector);
@@ -1700,6 +1833,7 @@ public final class CampaignSystem {
         st.transitionSummaryTop = clearedLore.title + " secure. " + clearedLore.completionLead;
         st.transitionSummaryBottom = "+" + bonus + " credits   |   DOCTRINE: " + st.branchRoute
                 + "   |   MOD: " + modifiersSummary(st.activeModifiers)
+                + coalitionSupportSummary(st)
                 + sideRewardSummary(st, sideBonus)
                 + (storyReward.isBlank() ? "" : "   |   " + storyReward)
                 + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
@@ -1799,10 +1933,64 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return "";
         return switch (st.sector) {
             case 4 -> grantStoryResources(ctx, 220, 70, "ESCAPE CACHE RECOVERED");
-            case 7 -> grantStoryResources(ctx, 340, 110, "GREEN MARKET ACCESS OPEN");
-            case 10 -> grantStoryResources(ctx, 420, 140, "LIBERATION STORES TRANSFERRED");
+            case 7 -> grantGreenContractPackage(ctx, st);
+            case 10 -> grantYellowLiberationPackage(ctx, st);
             default -> "";
         };
+    }
+
+    private static String grantGreenContractPackage(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return "";
+        st.greenContractFleetJoined = true;
+        st.greenContractFavor += st.sideObjectiveCompleted ? 2 : 1;
+        return grantStoryResources(ctx, 340, 110,
+                "GREEN CONTRACT TIER " + greenContractTier(st) + " TASK GROUP JOINED");
+    }
+
+    private static String grantYellowLiberationPackage(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return "";
+        st.yellowLiberationFleetJoined = true;
+        st.campaignBlueYellowAlliance = true;
+        st.yellowLiberationFavor += st.sideObjectiveCompleted ? 2 : 1;
+        return grantStoryResources(ctx, 420, 140,
+                "YELLOW LIBERATION TIER " + yellowLiberationTier(st) + " TASK GROUP JOINED");
+    }
+
+    private static void advanceCoalitionMomentumOnSectorClear(CampaignState st) {
+        if (st == null) return;
+        int momentumGain = st.sideObjectiveCompleted ? 2 : 1;
+        if (st.greenContractFleetJoined && st.sector >= 8 && st.sector <= 9) {
+            st.greenContractFavor += momentumGain;
+        }
+        if (st.yellowLiberationFleetJoined && st.sector >= 11 && st.sector <= 12) {
+            st.yellowLiberationFavor += momentumGain;
+        }
+    }
+
+    private static int greenContractTier(CampaignState st) {
+        if (st == null || !st.greenContractFleetJoined) return 0;
+        return MathUtil.clamp(1 + Math.max(0, st.greenContractFavor) / 2, 1, 3);
+    }
+
+    private static int yellowLiberationTier(CampaignState st) {
+        if (st == null || !st.yellowLiberationFleetJoined) return 0;
+        return MathUtil.clamp(1 + Math.max(0, st.yellowLiberationFavor) / 2, 1, 3);
+    }
+
+    private static String coalitionSupportHud(CampaignState st) {
+        if (st == null) return "";
+        int greenTier = greenContractTier(st);
+        int yellowTier = yellowLiberationTier(st);
+        if (greenTier <= 0 && yellowTier <= 0) return "";
+        return "   COALITION G" + Math.max(0, greenTier) + " Y" + Math.max(0, yellowTier);
+    }
+
+    private static String coalitionSupportSummary(CampaignState st) {
+        if (st == null) return "";
+        int greenTier = greenContractTier(st);
+        int yellowTier = yellowLiberationTier(st);
+        if (greenTier <= 0 && yellowTier <= 0) return "";
+        return "   |   COALITION G" + Math.max(0, greenTier) + "/Y" + Math.max(0, yellowTier);
     }
 
     private static String grantStoryResources(GameContext ctx, int credits, int ore, String label) {
@@ -1993,6 +2181,33 @@ public final class CampaignSystem {
         ensureCampaignHangarTier(ctx, ctx.enemyBase);
     }
 
+    private static Ship captureSideObjectiveProtectedShip(GameContext ctx, CampaignState st) {
+        if (st == null || st.sideObjectiveType != SideObjectiveType.NO_HULL_DAMAGE_WINDOW) return null;
+        Ship target = sideObjectiveProtectedShip(ctx, st);
+        if (target == null) {
+            st.sideObjectiveProtectedShipId = -1;
+            st.sideObjectiveProtectedShipStartHp = 0;
+            return null;
+        }
+        if (st.sideObjectiveProtectedShipId != target.id) {
+            st.sideObjectiveProtectedShipId = target.id;
+            st.sideObjectiveProtectedShipStartHp = Math.max(0, target.hp);
+        }
+        return target;
+    }
+
+    private static Ship sideObjectiveProtectedShip(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return null;
+        if (st.objectiveType == ObjectiveType.ESCORT
+                && st.escortShip != null
+                && st.escortShip.alive
+                && !st.escortShip.dying
+                && st.escortShip.hp > 0) {
+            return st.escortShip;
+        }
+        return ctx.player;
+    }
+
     private static void ensureCampaignHangarTier(GameContext ctx, Ship base) {
         if (ctx == null || base == null || base.role != ShipRole.BASE) return;
         BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
@@ -2057,10 +2272,14 @@ public final class CampaignSystem {
                 } else {
                     markSideObjectiveFailed(ctx, st, "late_clear");
                 }
-            } else if (st.sideObjectiveType == SideObjectiveType.NO_HULL_DAMAGE_WINDOW
-                    && ctx.player != null
-                    && ctx.player.hp < st.sideObjectiveStartPlayerHp) {
-                markSideObjectiveFailed(ctx, st, "hull_damage");
+            } else if (st.sideObjectiveType == SideObjectiveType.NO_HULL_DAMAGE_WINDOW) {
+                Ship protectedShip = captureSideObjectiveProtectedShip(ctx, st);
+                if (protectedShip == null
+                        || !protectedShip.alive
+                        || protectedShip.hp <= 0
+                        || protectedShip.hp < st.sideObjectiveProtectedShipStartHp) {
+                    markSideObjectiveFailed(ctx, st, "hull_damage");
+                }
             }
         }
         return st.sideObjectiveCompleted ? st.sideObjectiveRewardCredits : 0;
@@ -2206,6 +2425,41 @@ public final class CampaignSystem {
         return (sb.length() == 0) ? MapModifier.NONE.label : sb.toString();
     }
 
+    private static double escortFormationIntegrity(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null || st.escortShip == null) return 0.0;
+        Ship escort = st.escortShip;
+        if (!escort.alive || escort.dying || escort.hp <= 0) return 0.0;
+
+        double playerDist = Math.hypot(ctx.player.x - escort.x, ctx.player.y - escort.y);
+        double playerCover = 1.0 - MathUtil.clamp(
+                (playerDist - ESCORT_PLAYER_FORMATION_RADIUS) / Math.max(180.0, ESCORT_PLAYER_FORMATION_RADIUS),
+                0.0, 1.0);
+
+        int supportCount = 0;
+        int threatCount = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == escort) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            double dist = Math.hypot(ship.x - escort.x, ship.y - escort.y);
+            if (ship.faction != null && ship.faction.isFriendlyTo(escort.faction)) {
+                if (ship.role != ShipRole.BASE
+                        && ship != ctx.player
+                        && dist <= ESCORT_SUPPORT_RADIUS) {
+                    supportCount++;
+                }
+            } else if (dist <= ESCORT_THREAT_RADIUS) {
+                threatCount++;
+            }
+        }
+
+        double supportScore = MathUtil.clamp(supportCount / 3.0, 0.0, 1.0);
+        if (playerCover < 0.35) {
+            supportScore *= 0.55;
+        }
+        double threatPenalty = Math.min(0.34, threatCount * 0.08);
+        return MathUtil.clamp(playerCover * 0.74 + supportScore * 0.34 - threatPenalty, 0.0, 1.0);
+    }
+
     private static Color tintFor(MapModifier m) {
         if (m == null) return null;
         return switch (m) {
@@ -2330,6 +2584,10 @@ public final class CampaignSystem {
         cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
         cp.persistentBlueFleet = serializePersistentBlueFleet(st.persistentBlueFleet);
         cp.campaignBlueYellowAlliance = st.campaignBlueYellowAlliance;
+        cp.greenContractFleetJoined = st.greenContractFleetJoined;
+        cp.yellowLiberationFleetJoined = st.yellowLiberationFleetJoined;
+        cp.greenContractFavor = st.greenContractFavor;
+        cp.yellowLiberationFavor = st.yellowLiberationFavor;
 
         Player player = ctx.player;
         cp.playerFactionName = (player.faction == null) ? Faction.PLAYER.name() : player.faction.name();
@@ -2398,6 +2656,10 @@ public final class CampaignSystem {
         st.bossDropsCollected = cp.bossDropsCollected;
         TitanFleetSystem.restoreOwnedTitans(st, cp.ownedTitans);
         st.campaignBlueYellowAlliance = cp.campaignBlueYellowAlliance;
+        st.greenContractFleetJoined = cp.greenContractFleetJoined;
+        st.yellowLiberationFleetJoined = cp.yellowLiberationFleetJoined;
+        st.greenContractFavor = cp.greenContractFavor;
+        st.yellowLiberationFavor = cp.yellowLiberationFavor;
         restorePersistentBlueFleet(st, cp.persistentBlueFleet);
 
         restorePlayerFromCheckpoint(ctx.player, cp);
@@ -2625,6 +2887,83 @@ public final class CampaignSystem {
         st.persistentBlueFleet.add(new PersistentFleetEntry(st.nextPersistentFleetSlotId++, role, name));
     }
 
+    private static boolean isTitanPersistentEntry(PersistentFleetEntry entry) {
+        return entry != null && TitanArchetype.fromShipRole(entry.role) != null;
+    }
+
+    private static int persistentCommandGroupCapacity(PersistentFleetEntry entry) {
+        TitanArchetype titan = (entry == null) ? null : TitanArchetype.fromShipRole(entry.role);
+        return (titan == null) ? 0 : Math.max(4, titan.totalCommandHullCapacity());
+    }
+
+    private static void rebalancePersistentCommandGroups(CampaignState st) {
+        if (st == null) return;
+
+        java.util.Map<Integer, Integer> groupCap = new java.util.HashMap<>();
+        java.util.Map<Integer, Integer> groupLoad = new java.util.HashMap<>();
+        java.util.List<PersistentFleetEntry> standards = new ArrayList<>();
+
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (isTitanPersistentEntry(entry)) {
+                entry.commandGroupId = entry.slotId;
+                groupCap.put(entry.slotId, persistentCommandGroupCapacity(entry));
+                groupLoad.put(entry.slotId, 0);
+            } else {
+                standards.add(entry);
+            }
+        }
+
+        if (groupCap.isEmpty()) {
+            for (PersistentFleetEntry entry : standards) {
+                entry.commandGroupId = CAMPAIGN_FLAGSHIP_COMMAND_GROUP;
+            }
+            return;
+        }
+
+        java.util.List<PersistentFleetEntry> unassigned = new ArrayList<>();
+        for (PersistentFleetEntry entry : standards) {
+            int currentGroup = entry.commandGroupId;
+            Integer load = groupLoad.get(currentGroup);
+            Integer cap = groupCap.get(currentGroup);
+            if (currentGroup != CAMPAIGN_FLAGSHIP_COMMAND_GROUP
+                    && load != null
+                    && cap != null
+                    && load < cap) {
+                groupLoad.put(currentGroup, load + 1);
+            } else {
+                entry.commandGroupId = CAMPAIGN_FLAGSHIP_COMMAND_GROUP;
+                unassigned.add(entry);
+            }
+        }
+
+        for (PersistentFleetEntry entry : unassigned) {
+            int groupId = bestPersistentCommandGroup(groupLoad, groupCap);
+            if (groupId == CAMPAIGN_FLAGSHIP_COMMAND_GROUP) continue;
+            entry.commandGroupId = groupId;
+            groupLoad.put(groupId, groupLoad.getOrDefault(groupId, 0) + 1);
+        }
+    }
+
+    private static int bestPersistentCommandGroup(java.util.Map<Integer, Integer> groupLoad,
+                                                  java.util.Map<Integer, Integer> groupCap) {
+        int bestId = CAMPAIGN_FLAGSHIP_COMMAND_GROUP;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (java.util.Map.Entry<Integer, Integer> capEntry : groupCap.entrySet()) {
+            int groupId = capEntry.getKey();
+            int cap = Math.max(1, capEntry.getValue());
+            int load = groupLoad.getOrDefault(groupId, 0);
+            if (load >= cap) continue;
+            double fill = load / (double) cap;
+            double score = fill - (cap - load) * 0.001;
+            if (score < bestScore) {
+                bestScore = score;
+                bestId = groupId;
+            }
+        }
+        return bestId;
+    }
+
     private static int livePersistentFleetSlots(CampaignState st) {
         if (st == null) return 0;
         int count = 0;
@@ -2645,27 +2984,72 @@ public final class CampaignSystem {
         return count;
     }
 
-    private static void spawnSinglePersistentBlueShip(GameContext ctx, CampaignState st, PersistentFleetEntry entry, int liveIndex) {
-        if (ctx == null || st == null || entry == null || ctx.player == null || entry.destroyed) return;
-        double lane = liveIndex % 3;
-        double row = liveIndex / 3;
+    private static Ship spawnPersistentBlueShipFromFlagship(GameContext ctx, CampaignState st, PersistentFleetEntry entry,
+                                                            int liveIndex, boolean titanAnchor) {
+        if (ctx == null || st == null || entry == null || ctx.player == null || entry.destroyed) return null;
+        double sx;
+        double sy;
+        if (titanAnchor) {
+            double side = ((liveIndex & 1) == 0) ? -1.0 : 1.0;
+            double row = liveIndex / 2.0;
+            double aft = 300.0 + row * 150.0;
+            double lateral = side * (250.0 + row * 44.0);
+            sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
+            sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
+        } else {
+            double lane = liveIndex % 3;
+            double row = liveIndex / 3.0;
+            double side = lane - 1.0;
+            double aft = 180.0 + row * 92.0;
+            double lateral = side * (130.0 + row * 12.0);
+            sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
+            sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
+        }
+        return spawnPersistentBlueShipAtPose(ctx, entry, sx, sy, ctx.player.angle, ctx.player.vx, ctx.player.vy);
+    }
+
+    private static Ship spawnPersistentBlueShipFromAnchor(GameContext ctx, CampaignState st, PersistentFleetEntry entry,
+                                                          Ship anchor, int memberIndex) {
+        if (ctx == null || st == null || entry == null || anchor == null || entry.destroyed) return null;
+        double lane = memberIndex % 3;
+        double row = memberIndex / 3.0;
         double side = lane - 1.0;
-        double aft = 180.0 + row * 92.0;
-        double lateral = side * (130.0 + row * 12.0);
-        double sx = ctx.player.x - Math.cos(ctx.player.angle) * aft - Math.sin(ctx.player.angle) * lateral;
-        double sy = ctx.player.y - Math.sin(ctx.player.angle) * aft + Math.cos(ctx.player.angle) * lateral;
+        double aft = Math.max(160.0, anchor.radius + 90.0) + row * 84.0;
+        double lateral = side * (140.0 + row * 14.0);
+        double sx = anchor.x - Math.cos(anchor.angle) * aft - Math.sin(anchor.angle) * lateral;
+        double sy = anchor.y - Math.sin(anchor.angle) * aft + Math.cos(anchor.angle) * lateral;
+        return spawnPersistentBlueShipAtPose(ctx, entry, sx, sy, anchor.angle, anchor.vx, anchor.vy);
+    }
+
+    private static Ship spawnPersistentBlueShipAtPose(GameContext ctx, PersistentFleetEntry entry,
+                                                      double sx, double sy, double angle, double vx, double vy) {
+        if (ctx == null || entry == null) return null;
         sx = GameMath.clamp(sx, 40.0, ctx.WORLD_W - 40.0);
         sy = GameMath.clamp(sy, 40.0, ctx.WORLD_H - 40.0);
 
         Ship ship = new FleetShip(entry.role, Faction.ALLY, sx, sy);
         ship.name = entry.name;
-        ship.angle = ctx.player.angle;
-        ship.vx = ctx.player.vx;
-        ship.vy = ctx.player.vy;
+        ship.angle = angle;
+        ship.vx = vx;
+        ship.vy = vy;
         ship.minerHomeBase = ctx.player;
         ctx.ships.add(ship);
         try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
         entry.activeShipId = ship.id;
+        return ship;
+    }
+
+    private static Ship findPersistentCommandAnchor(GameContext ctx, CampaignState st, int commandGroupId) {
+        if (ctx == null || st == null || commandGroupId == CAMPAIGN_FLAGSHIP_COMMAND_GROUP) return null;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed || !isTitanPersistentEntry(entry)) continue;
+            if (entry.commandGroupId != commandGroupId) continue;
+            Ship live = findShipById(ctx, entry.activeShipId);
+            if (live != null && live.alive && !live.dying && live.hp > 0) {
+                return live;
+            }
+        }
+        return null;
     }
 
     private static void spawnIntroRedDetachment(GameContext ctx, CampaignState st) {
@@ -2699,7 +3083,8 @@ public final class CampaignSystem {
             sb.append(entry.slotId).append(',')
                     .append(entry.role.name()).append(',')
                     .append(entry.destroyed).append(',')
-                    .append(encodedName);
+                    .append(encodedName).append(',')
+                    .append(entry.commandGroupId);
         }
         return sb.toString();
     }
@@ -2712,7 +3097,7 @@ public final class CampaignSystem {
         Base64.Decoder decoder = Base64.getUrlDecoder();
         for (String entryRaw : raw.split(";")) {
             if (entryRaw == null || entryRaw.isBlank()) continue;
-            String[] parts = entryRaw.split(",", 4);
+            String[] parts = entryRaw.split(",", 5);
             if (parts.length < 4) continue;
             try {
                 int slotId = Math.max(1, Integer.parseInt(parts[0].trim()));
@@ -2721,12 +3106,16 @@ public final class CampaignSystem {
                 String name = new String(decoder.decode(parts[3].trim()), StandardCharsets.UTF_8);
                 PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, name);
                 entry.destroyed = destroyed;
+                if (parts.length >= 5) {
+                    entry.commandGroupId = Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, Integer.parseInt(parts[4].trim()));
+                }
                 st.persistentBlueFleet.add(entry);
                 st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);
             } catch (Exception ignored) {
                 // Skip malformed checkpoint fleet entries.
             }
         }
+        rebalancePersistentCommandGroups(st);
     }
 
 }
