@@ -77,21 +77,67 @@ class TitanHullRoleIntegrationTest {
     }
 
     @Test
+    void titanHullSilhouettesResolveForLiveRedSkins() {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            ShipRole role = archetype.shipRole();
+            FleetShip ship = new FleetShip(role, Faction.ENEMY, 0, 0);
+            java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(role, ship.radius, Faction.ENEMY);
+            assertTrue(poly != null && poly.npoints >= 3, "expected Team B hull polygon for " + role);
+        }
+
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ENEMY, 0, 0);
+        java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(ShipRole.MOTHERSHIP, mothership.radius, Faction.ENEMY);
+        assertTrue(poly != null && poly.npoints >= 3, "expected Team B hull polygon for MOTHERSHIP");
+    }
+
+    @Test
+    void titanHullSilhouettesResolveForLiveYellowSkins() {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            ShipRole role = archetype.shipRole();
+            FleetShip ship = new FleetShip(role, Faction.TEAM_D, 0, 0);
+            java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(role, ship.radius, Faction.TEAM_D);
+            assertTrue(poly != null && poly.npoints >= 3, "expected Team D hull polygon for " + role);
+        }
+
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.TEAM_D, 0, 0);
+        java.awt.Polygon poly = ShipHullSilhouette.hullPolygon(ShipRole.MOTHERSHIP, mothership.radius, Faction.TEAM_D);
+        assertTrue(poly != null && poly.npoints >= 3, "expected Team D hull polygon for MOTHERSHIP");
+    }
+
+    @Test
     void liveGreenTitanRuntimeSkinsUseSquareCanvases() throws Exception {
         for (TitanArchetype archetype : TitanArchetype.values()) {
             String filename = archetype.shipRole().name().toLowerCase() + "_team_c_albedo.png";
-            assertSquareSkin(filename);
+            assertSquareSkin(filename, "Team C");
         }
-        assertSquareSkin("mothership_team_c_albedo.png");
+        assertSquareSkin("mothership_team_c_albedo.png", "Team C");
     }
 
-    private static void assertSquareSkin(String filename) throws Exception {
+    @Test
+    void liveRedTitanRuntimeSkinsUseSquareCanvases() throws Exception {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            String filename = archetype.shipRole().name().toLowerCase() + "_enemy_albedo.png";
+            assertSquareSkin(filename, "Team B");
+        }
+        assertSquareSkin("mothership_enemy_albedo.png", "Team B");
+    }
+
+    @Test
+    void liveYellowTitanRuntimeSkinsUseSquareCanvases() throws Exception {
+        for (TitanArchetype archetype : TitanArchetype.values()) {
+            String filename = archetype.shipRole().name().toLowerCase() + "_team_d_albedo.png";
+            assertSquareSkin(filename, "Team D");
+        }
+        assertSquareSkin("mothership_team_d_albedo.png", "Team D");
+    }
+
+    private static void assertSquareSkin(String filename, String label) throws Exception {
         File file = new File(SKIN_DIR, filename);
-        assertTrue(file.isFile(), "missing Team C runtime skin " + filename);
+        assertTrue(file.isFile(), "missing " + label + " runtime skin " + filename);
         try (ImageInputStream in = ImageIO.createImageInputStream(file)) {
-            assertTrue(in != null, "failed to open Team C runtime skin " + filename);
+            assertTrue(in != null, "failed to open " + label + " runtime skin " + filename);
             Iterator<ImageReader> readers = ImageIO.getImageReaders(in);
-            assertTrue(readers.hasNext(), "no reader for Team C runtime skin " + filename);
+            assertTrue(readers.hasNext(), "no reader for " + label + " runtime skin " + filename);
             ImageReader reader = readers.next();
             try {
                 reader.setInput(in, true, true);

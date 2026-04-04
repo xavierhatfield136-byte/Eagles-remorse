@@ -1,0 +1,450 @@
+﻿[
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "transport_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910017,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\transport_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_transport_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_transport_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/transport_team_d_albedo.png",
+        "reference_denoise":  0.46,
+        "coverage":  0.3573,
+        "width_height_ratio":  2.5576,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.065625,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "bulwark_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910154,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\bulwark_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_bulwark_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_battleship_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/battleship_team_d_albedo.png",
+        "reference_denoise":  0.44,
+        "coverage":  0.3577,
+        "width_height_ratio":  2.5413,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0671875,
+                        "bottom":  0.16944444444444445,
+                        "top":  0.225
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "carrier_support_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910291,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\carrier_support_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_carrier_support_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_carrier_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/carrier_team_d_albedo.png",
+        "reference_denoise":  0.48,
+        "coverage":  0.3574,
+        "width_height_ratio":  2.5517,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06484375,
+                        "right":  0.06796875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.225
+                    },
+        "center_offset":  {
+                              "y":  0.027083333333333334,
+                              "x":  0.0015625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "vanguard_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910428,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\vanguard_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_vanguard_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_battlecruiser_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/battlecruiser_team_d_albedo.png",
+        "reference_denoise":  0.52,
+        "coverage":  0.3567,
+        "width_height_ratio":  2.5413,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0671875,
+                        "bottom":  0.16944444444444445,
+                        "top":  0.225
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "interdiction_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910565,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\interdiction_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_interdiction_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_cruiser_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/cruiser_team_d_albedo.png",
+        "reference_denoise":  0.56,
+        "coverage":  0.3582,
+        "width_height_ratio":  2.5438,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0703125,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.0015625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "command_intel_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910702,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\command_intel_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_command_intel_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_supership_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/supership_team_d_albedo.png",
+        "reference_denoise":  0.5,
+        "coverage":  0.3573,
+        "width_height_ratio":  2.5645,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06484375,
+                        "right":  0.065625,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "boarding_recovery_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910839,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\boarding_recovery_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_boarding_recovery_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_frigate_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/frigate_team_d_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.3555,
+        "width_height_ratio":  2.6343,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.04453125,
+                        "right":  0.04375,
+                        "bottom":  0.23194444444444445,
+                        "top":  0.15277777777777779
+                    },
+        "center_offset":  {
+                              "y":  0.039583333333333331,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "artillery_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910976,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\artillery_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_artillery_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_dreadnought_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/dreadnought_team_d_albedo.png",
+        "reference_denoise":  0.44,
+        "coverage":  0.3574,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "shield_bastion_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911113,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\shield_bastion_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_shield_bastion_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_battleship_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/battleship_team_d_albedo.png",
+        "reference_denoise":  0.42,
+        "coverage":  0.3579,
+        "width_height_ratio":  2.5507,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06796875,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "fleet_teleporter_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911250,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\fleet_teleporter_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_fleet_teleporter_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_medium_cruiser_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/medium_cruiser_team_d_albedo.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3571,
+        "width_height_ratio":  2.5648,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.065625,
+                        "right":  0.06875,
+                        "bottom":  0.17222222222222222,
+                        "top":  0.22777777777777777
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.0015625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "elite_supership_command_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911387,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\elite_supership_command_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_elite_supership_command_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_supership_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/supership_team_d_albedo.png",
+        "reference_denoise":  0.4,
+        "coverage":  0.3572,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06640625,
+                        "right":  0.06796875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "mobile_station_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911524,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\mobile_station_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_mobile_station_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_hauler_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/hauler_team_d_albedo.png",
+        "reference_denoise":  0.54,
+        "coverage":  0.3562,
+        "width_height_ratio":  2.5494,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.0671875,
+                        "right":  0.06640625,
+                        "bottom":  0.16944444444444445,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.028472222222222222,
+                              "x":  0.000390625
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "hyperweapon_titan_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911661,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\hyperweapon_titan_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_hyperweapon_titan_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_supership_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/supership_team_d_albedo.png",
+        "reference_denoise":  0.46,
+        "coverage":  0.3574,
+        "width_height_ratio":  2.553,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06640625,
+                        "right":  0.06796875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.00078125
+                          }
+    },
+    {
+        "faction":  "team_d",
+        "staged_folder":  "missile_team_d",
+        "filename":  "mothership_team_d_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911798,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "build\\team_d_titan_autogen\\output\\missile_team_d\\mothership_team_d_albedo.png",
+        "raw_path":  "build\\team_d_titan_autogen\\scratch\\20260404_145515_mothership_team_d_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, little escort ships, visible missiles, floating ring parts, mech legs",
+        "reference_image":  "codex_shipref_supership_team_d_albedo.png",
+        "reference_source":  "C:/Users/xhatf/IdeaProjects/game/assets/ship_skins/dropbox/missile_team_d/supership_team_d_albedo.png",
+        "reference_denoise":  0.36,
+        "coverage":  0.3571,
+        "width_height_ratio":  2.5461,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.06953125,
+                        "right":  0.0671875,
+                        "bottom":  0.17083333333333334,
+                        "top":  0.22638888888888889
+                    },
+        "center_offset":  {
+                              "y":  0.027777777777777776,
+                              "x":  0.001171875
+                          }
+    }
+]

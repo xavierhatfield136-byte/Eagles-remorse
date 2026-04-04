@@ -1,0 +1,460 @@
+﻿[
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "transport_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910017,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\transport_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_transport_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_hauler_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\hauler_enemy_albedo.png",
+        "reference_denoise":  0.62,
+        "coverage":  0.3372,
+        "width_height_ratio":  2.125,
+        "largest_component_share":  1,
+        "components":  3,
+        "padding":  {
+                        "left":  0.011986301369863013,
+                        "right":  0.012842465753424657,
+                        "bottom":  0.20280612244897958,
+                        "top":  0.11352040816326531
+                    },
+        "center_offset":  {
+                              "y":  0.044642857142857144,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "bulwark_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910154,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\bulwark_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_bulwark_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_dreadnought_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dreadnought_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.2807,
+        "width_height_ratio":  2.3341,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.051369863013698627,
+                        "right":  0.039383561643835614,
+                        "bottom":  0.20408163265306123,
+                        "top":  0.21556122448979592
+                    },
+        "center_offset":  {
+                              "y":  0.0057397959183673472,
+                              "x":  0.0059931506849315065
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "carrier_support_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910291,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\carrier_support_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_carrier_support_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_carrier_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\carrier_enemy_albedo.png",
+        "reference_denoise":  0.62,
+        "coverage":  0.2479,
+        "width_height_ratio":  2.7396,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.051369863013698627,
+                        "right":  0.047945205479452052,
+                        "bottom":  0.24489795918367346,
+                        "top":  0.26530612244897961
+                    },
+        "center_offset":  {
+                              "y":  0.01020408163265306,
+                              "x":  0.0017123287671232876
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "vanguard_titan_enemy_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910428,
+        "score":  25,
+        "issues":  [
+                       "silhouette touches or nearly touches the left edge",
+                       "silhouette touches or nearly touches the right edge",
+                       "silhouette touches or nearly touches the top edge",
+                       "silhouette touches or nearly touches the bottom edge",
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\review\\vanguard_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_vanguard_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_battlecruiser_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\battlecruiser_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.275,
+        "width_height_ratio":  1.4898,
+        "largest_component_share":  0.9912,
+        "components":  1141,
+        "padding":  {
+                        "left":  0,
+                        "right":  0,
+                        "bottom":  0,
+                        "top":  0
+                    },
+        "center_offset":  {
+                              "y":  0,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "interdiction_titan_enemy_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910565,
+        "score":  70,
+        "issues":  [
+                       "silhouette touches or nearly touches the left edge",
+                       "silhouette is fragmented into too many separate components"
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\review\\interdiction_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_interdiction_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_cruiser_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\cruiser_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.2515,
+        "width_height_ratio":  1.7643,
+        "largest_component_share":  0.9999,
+        "components":  18,
+        "padding":  {
+                        "left":  0.0042808219178082189,
+                        "right":  0.047089041095890412,
+                        "bottom":  0.098214285714285712,
+                        "top":  0.10076530612244898
+                    },
+        "center_offset":  {
+                              "y":  0.0012755102040816326,
+                              "x":  0.021404109589041095
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "command_intel_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910702,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\command_intel_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_command_intel_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_supership_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\supership_enemy_albedo.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3178,
+        "width_height_ratio":  2.5155,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.016267123287671232,
+                        "right":  0.010273972602739725,
+                        "bottom":  0.20153061224489796,
+                        "top":  0.22193877551020408
+                    },
+        "center_offset":  {
+                              "y":  0.01020408163265306,
+                              "x":  0.0029965753424657533
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "boarding_recovery_titan_enemy_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  910839,
+        "score":  10,
+        "issues":  [
+                       "silhouette touches or nearly touches the left edge",
+                       "silhouette touches or nearly touches the right edge",
+                       "silhouette touches or nearly touches the top edge",
+                       "silhouette touches or nearly touches the bottom edge",
+                       "silhouette is fragmented into too many separate components",
+                       "largest silhouette component is too small relative to the whole image"
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\review\\boarding_recovery_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_boarding_recovery_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_battlecruiser_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\battlecruiser_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.3586,
+        "width_height_ratio":  1.4898,
+        "largest_component_share":  0.7644,
+        "components":  9507,
+        "padding":  {
+                        "left":  0,
+                        "right":  0,
+                        "bottom":  0,
+                        "top":  0
+                    },
+        "center_offset":  {
+                              "y":  0,
+                              "x":  0
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "artillery_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  910976,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\artillery_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_artillery_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_battleship_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\battleship_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.2626,
+        "width_height_ratio":  2.513,
+        "largest_component_share":  1,
+        "components":  3,
+        "padding":  {
+                        "left":  0.042808219178082189,
+                        "right":  0.047089041095890412,
+                        "bottom":  0.30739795918367346,
+                        "top":  0.15306122448979592
+                    },
+        "center_offset":  {
+                              "y":  0.077168367346938771,
+                              "x":  0.0021404109589041095
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "shield_bastion_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911113,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\shield_bastion_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_shield_bastion_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_dreadnought_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\dreadnought_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.2801,
+        "width_height_ratio":  2.3171,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.052226027397260275,
+                        "right":  0.053082191780821915,
+                        "bottom":  0.2066326530612245,
+                        "top":  0.21811224489795919
+                    },
+        "center_offset":  {
+                              "y":  0.0057397959183673472,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "fleet_teleporter_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911250,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\fleet_teleporter_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_fleet_teleporter_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_supership_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\supership_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.3201,
+        "width_height_ratio":  2.4735,
+        "largest_component_share":  1,
+        "components":  2,
+        "padding":  {
+                        "left":  0.020547945205479451,
+                        "right":  0.022260273972602738,
+                        "bottom":  0.20153061224489796,
+                        "top":  0.22193877551020408
+                    },
+        "center_offset":  {
+                              "y":  0.01020408163265306,
+                              "x":  0.00085616438356164379
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "elite_supership_command_titan_enemy_albedo.png",
+        "status":  "review",
+        "attempts":  1,
+        "seed":  911387,
+        "score":  85,
+        "issues":  [
+                       "silhouette touches or nearly touches the right edge"
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\review\\elite_supership_command_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_elite_supership_command_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_supership_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\supership_enemy_albedo.png",
+        "reference_denoise":  0.58,
+        "coverage":  0.3176,
+        "width_height_ratio":  2.4762,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.011986301369863013,
+                        "right":  0.0085616438356164379,
+                        "bottom":  0.1951530612244898,
+                        "top":  0.21556122448979592
+                    },
+        "center_offset":  {
+                              "y":  0.01020408163265306,
+                              "x":  0.0017123287671232876
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "mobile_station_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911524,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\mobile_station_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_mobile_station_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_carrier_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\carrier_enemy_albedo.png",
+        "reference_denoise":  0.64,
+        "coverage":  0.2507,
+        "width_height_ratio":  2.6405,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.053938356164383562,
+                        "right":  0.053082191780821915,
+                        "bottom":  0.23724489795918369,
+                        "top":  0.25892857142857145
+                    },
+        "center_offset":  {
+                              "y":  0.010841836734693877,
+                              "x":  0.00042808219178082189
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "hyperweapon_titan_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911661,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\hyperweapon_titan_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_hyperweapon_titan_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_supership_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\supership_enemy_albedo.png",
+        "reference_denoise":  0.6,
+        "coverage":  0.3188,
+        "width_height_ratio":  2.4912,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.019691780821917807,
+                        "right":  0.016267123287671232,
+                        "bottom":  0.20153061224489796,
+                        "top":  0.22193877551020408
+                    },
+        "center_offset":  {
+                              "y":  0.01020408163265306,
+                              "x":  0.0017123287671232876
+                          }
+    },
+    {
+        "faction":  "enemy",
+        "staged_folder":  "red_enemy",
+        "filename":  "mothership_enemy_albedo.png",
+        "status":  "passed",
+        "attempts":  1,
+        "seed":  911798,
+        "score":  100,
+        "issues":  [
+
+                   ],
+        "output_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\red_enemy_titans_full_redstyle\\red_enemy\\mothership_enemy_albedo.png",
+        "raw_path":  "C:\\Users\\xhatf\\IdeaProjects\\game\\build\\ship_skin_generation_red_titans_full_redstyle\\20260404_135228_mothership_enemy_albedo_1.raw.png",
+        "negative_prompt":  "isometric, perspective, 3/4 view, angled view, side view, front view, cinematic render, concept render, turntable render, starship beauty shot, hero render, gunship, shuttle, dropship, visible cannon, gun barrel, turret, exposed weapon pod, sticker outline, white outline, decal outline, cel shaded, comic ink, sketch render, background scene, stars, hangar bay interior, blue paint, white hull dominance, cyan glow, emerald glow, elegant cathedral styling, sleek luxury curves",
+        "reference_image":  "codex_shipref_supership_enemy_albedo.png",
+        "reference_source":  "C:\\Users\\xhatf\\IdeaProjects\\game\\assets\\ship_skins\\supership_enemy_albedo.png",
+        "reference_denoise":  0.64,
+        "coverage":  0.3178,
+        "width_height_ratio":  2.5055,
+        "largest_component_share":  1,
+        "components":  1,
+        "padding":  {
+                        "left":  0.019691780821917807,
+                        "right":  0.012842465753424657,
+                        "bottom":  0.20280612244897958,
+                        "top":  0.22193877551020408
+                    },
+        "center_offset":  {
+                              "y":  0.0095663265306122451,
+                              "x":  0.0034246575342465752
+                          }
+    }
+]

@@ -118,6 +118,82 @@ class HyperweaponBehaviorTest {
     }
 
     @Test
+    void redSupershipSlugDetonatesOnFirstShipHit() {
+        Explosion.active.clear();
+        GameContext ctx = combatContext();
+
+        FleetShip redSupership = new FleetShip(ShipRole.SUPERSHIP, Faction.ENEMY, 0.0, 0.0);
+        FleetShip firstTarget = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 420.0, 0.0);
+        FleetShip laterTarget = new FleetShip(ShipRole.DREADNOUGHT, Faction.ALLY, 1340.0, 0.0);
+
+        ctx.ships.add(redSupership);
+        ctx.ships.add(firstTarget);
+        ctx.ships.add(laterTarget);
+        ctx.entityQuery.rebuild(ctx);
+
+        double laterShieldBefore = laterTarget.shield;
+        int laterHpBefore = laterTarget.hp;
+
+        Projectile shot = chargeAndFireSuperweapon(redSupership, laterTarget.x, laterTarget.y);
+        DisruptorSlug slug = assertInstanceOf(DisruptorSlug.class, shot);
+        slug.x = firstTarget.x;
+        slug.y = firstTarget.y;
+        ctx.projectiles.add(slug);
+
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+
+        assertFalse(slug.alive);
+
+        slug.x = laterTarget.x;
+        slug.y = laterTarget.y;
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+
+        assertEquals(laterShieldBefore, laterTarget.shield, 1e-6);
+        assertEquals(laterHpBefore, laterTarget.hp);
+    }
+
+    @Test
+    void redHyperweaponSlugDetonatesOnFirstShipHit() {
+        Explosion.active.clear();
+        GameContext ctx = combatContext();
+
+        FleetShip redHyperweapon = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.ENEMY, 0.0, 0.0);
+        FleetShip firstTarget = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 760.0, 0.0);
+        FleetShip laterTarget = new FleetShip(ShipRole.DREADNOUGHT, Faction.ALLY, 1660.0, 0.0);
+
+        ctx.ships.add(redHyperweapon);
+        ctx.ships.add(firstTarget);
+        ctx.ships.add(laterTarget);
+        ctx.entityQuery.rebuild(ctx);
+
+        double laterShieldBefore = laterTarget.shield;
+        int laterHpBefore = laterTarget.hp;
+
+        Projectile shot = chargeAndFireSuperweapon(redHyperweapon, laterTarget.x, laterTarget.y);
+        DisruptorSlug slug = assertInstanceOf(DisruptorSlug.class, shot);
+        slug.x = firstTarget.x;
+        slug.y = firstTarget.y;
+        ctx.projectiles.add(slug);
+
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+        ctx.entityQuery.rebuild(ctx);
+        CollisionSystem.handleStasisFields(ctx);
+
+        assertFalse(slug.alive);
+        assertFalse(laterTarget.isStasisFieldTrapped());
+
+        slug.x = laterTarget.x;
+        slug.y = laterTarget.y;
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+        ctx.entityQuery.rebuild(ctx);
+        CollisionSystem.handleStasisFields(ctx);
+
+        assertFalse(laterTarget.isStasisFieldTrapped());
+        assertEquals(laterShieldBefore, laterTarget.shield, 1e-6);
+        assertEquals(laterHpBefore, laterTarget.hp);
+    }
+
+    @Test
     void greenHyperweaponFiresOversizedDirectBeam() {
         Explosion.active.clear();
         GameContext ctx = combatContext();

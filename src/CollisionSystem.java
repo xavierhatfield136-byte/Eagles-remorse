@@ -158,7 +158,7 @@ public class CollisionSystem {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     slug.markAffected(s);
                     applyDisruptorBlast(ctx, slug, p.x, p.y, ships, s);
-                    if (disruptorSlugDetonatesOn(s)) {
+                    if (redKineticSlugDetonatesOnFirstShipImpact(shooter) || disruptorSlugDetonatesOn(s)) {
                         p.alive = false;
                         break;
                     }
@@ -899,6 +899,12 @@ public class CollisionSystem {
     private static boolean disruptorSlugDetonatesOn(Ship ship) {
         if (ship == null || ship.role == null) return true;
         return SpawnSystem.requiredHangarTierForRole(ship.role) > 2;
+    }
+
+    private static boolean redKineticSlugDetonatesOnFirstShipImpact(Ship shooter) {
+        return shooter != null
+                && shooter.faction == Faction.ENEMY
+                && (shooter.role == ShipRole.SUPERSHIP || shooter.role == ShipRole.HYPERWEAPON_TITAN);
     }
 
     private static boolean isRedSupershipTitanSplashImmune(Ship shooter, Ship target, Ship directHit) {
