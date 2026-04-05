@@ -37,6 +37,7 @@ public final class EnemyArchetypeIntel {
             case SHIELD_BASTION_TITAN -> "Shield Bastion Titan";
             case FLEET_TELEPORTER_TITAN -> "Fleet Teleporter Titan";
             case ELITE_SUPERSHIP_COMMAND_TITAN -> "Elite Supership Command Titan";
+            case ELITE_REINFORCEMENTS_TITAN -> "Elite Reinforcements Titan";
             case MOBILE_STATION_TITAN -> "Mobile Station Titan";
             case HYPERWEAPON_TITAN -> "Hyperweapon Titan";
             case MOTHERSHIP -> "Mothership";
@@ -81,6 +82,7 @@ public final class EnemyArchetypeIntel {
             case SHIELD_BASTION_TITAN -> "Strip its escorts and grind it down after the shield wall falters.";
             case FLEET_TELEPORTER_TITAN -> "Track re-entry angles and punish it when the jump finishes.";
             case ELITE_SUPERSHIP_COMMAND_TITAN -> "Spread out so its strike group cannot focus-fire one target.";
+            case ELITE_REINFORCEMENTS_TITAN -> "Break its honor guard first so the titan cannot keep the assault group stabilized.";
             case MOBILE_STATION_TITAN -> "Destroy the service hub before committing to a long fleet brawl.";
             case HYPERWEAPON_TITAN -> "Break line-of-sight and force the shot into overkill or empty space.";
             case MOTHERSHIP -> "Treat it like a mobile base: clear Titan cover, then collapse it from the flanks.";

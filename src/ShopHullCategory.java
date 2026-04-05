@@ -53,6 +53,7 @@ public enum ShopHullCategory {
                     SHIELD_BASTION_TITAN,
                     FLEET_TELEPORTER_TITAN,
                     ELITE_SUPERSHIP_COMMAND_TITAN,
+                    ELITE_REINFORCEMENTS_TITAN,
                     MOBILE_STATION_TITAN,
                     HYPERWEAPON_TITAN,
                     MOTHERSHIP -> TITAN;

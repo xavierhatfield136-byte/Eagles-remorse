@@ -238,6 +238,7 @@ public final class ShipHullSilhouette {
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
         if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
+        if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
         return role.name().toLowerCase(Locale.ROOT);
     }
 
@@ -325,7 +326,8 @@ public final class ShipHullSilhouette {
                  TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
                  INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
                  ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
-                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                 MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
                  MOTHERSHIP -> poly(
                     new int[]{r + 18, r - 10, r - 22, -r + 2, -r, -r + 16, -r, -r + 2, r - 22, r - 10},
                     new int[]{0, -r / 2, -r / 2, -r / 2, -r / 3, 0, r / 3, r / 2, r / 2, r / 2});

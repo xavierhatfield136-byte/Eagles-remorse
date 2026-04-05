@@ -26,12 +26,14 @@ class CampaignLoreOverhaulTest {
         assertTrue(CampaignSystem.hudObjectiveTitle(ctx).contains("TRADE HUB COLLAPSE"));
         assertTrue(CampaignSystem.hudObjectiveTitle(ctx).contains("ANCHORAGE FIRESTORM"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Far Trade Anchorage"));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Far Trade Anchorage"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Hold the trade-hub evacuation lanes"));
         assertTrue(ctx.campaign.introSequenceActive);
         assertEquals(3, ctx.campaign.persistentBlueFleet.size());
         assertTrue(hasNamedShip(ctx, ShipRole.MOBILE_STATION_TITAN, "Green Harbor Forge"));
         assertTrue(hasNamedShip(ctx, ShipRole.TRANSPORT_TITAN, "Green Ledger Titan"));
         assertTrue(hasNamedShip(ctx, ShipRole.BASE, "Green Exchange Spire"));
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Far Trade Anchorage".equals(l.label)));
     }
 
     @Test
@@ -56,6 +58,20 @@ class CampaignLoreOverhaulTest {
         assertBossRole(ctx, 4, ShipRole.INTERDICTION_TITAN, "AI PURSUIT TITAN RED KNIFE");
         assertBossRole(ctx, 8, ShipRole.ARTILLERY_TITAN, "ASH GATE ARTILLERY TITAN");
         assertBossRole(ctx, 12, ShipRole.MOTHERSHIP, "AI MOTHERSHIP EARTHFALL");
+    }
+
+    @Test
+    void lateCampaignSectorsExposePlanetaryLandmarksInHud() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+
+        startSector(ctx, 11);
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Luna".equals(l.label)));
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earthrise".equals(l.label)));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Luna / Earthrise"));
+
+        startSector(ctx, 12);
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earth".equals(l.label)));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Earth / Earth High Orbit"));
     }
 
     private static GameContext initializedCampaignContext() {

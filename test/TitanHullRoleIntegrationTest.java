@@ -107,7 +107,7 @@ class TitanHullRoleIntegrationTest {
     @Test
     void liveGreenTitanRuntimeSkinsUseSquareCanvases() throws Exception {
         for (TitanArchetype archetype : TitanArchetype.values()) {
-            String filename = archetype.shipRole().name().toLowerCase() + "_team_c_albedo.png";
+            String filename = runtimeSkinBaseName(archetype.shipRole()) + "_team_c_albedo.png";
             assertSquareSkin(filename, "Team C");
         }
         assertSquareSkin("mothership_team_c_albedo.png", "Team C");
@@ -116,7 +116,7 @@ class TitanHullRoleIntegrationTest {
     @Test
     void liveRedTitanRuntimeSkinsUseSquareCanvases() throws Exception {
         for (TitanArchetype archetype : TitanArchetype.values()) {
-            String filename = archetype.shipRole().name().toLowerCase() + "_enemy_albedo.png";
+            String filename = runtimeSkinBaseName(archetype.shipRole()) + "_enemy_albedo.png";
             assertSquareSkin(filename, "Team B");
         }
         assertSquareSkin("mothership_enemy_albedo.png", "Team B");
@@ -125,10 +125,17 @@ class TitanHullRoleIntegrationTest {
     @Test
     void liveYellowTitanRuntimeSkinsUseSquareCanvases() throws Exception {
         for (TitanArchetype archetype : TitanArchetype.values()) {
-            String filename = archetype.shipRole().name().toLowerCase() + "_team_d_albedo.png";
+            String filename = runtimeSkinBaseName(archetype.shipRole()) + "_team_d_albedo.png";
             assertSquareSkin(filename, "Team D");
         }
         assertSquareSkin("mothership_team_d_albedo.png", "Team D");
+    }
+
+    private static String runtimeSkinBaseName(ShipRole role) {
+        if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) {
+            return "elite_supership_command_titan";
+        }
+        return role.name().toLowerCase();
     }
 
     private static void assertSquareSkin(String filename, String label) throws Exception {

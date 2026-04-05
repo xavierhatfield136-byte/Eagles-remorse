@@ -165,15 +165,15 @@ public final class CampaignCheckpointStore {
             yellowLiberationFavor = Math.max(0, yellowLiberationFavor);
             allyOreStockpile = Math.max(0, allyOreStockpile);
             enemyOreStockpile = Math.max(0, enemyOreStockpile);
-            allyHullLv = clamp(allyHullLv, 0, 3);
-            allyShieldLv = clamp(allyShieldLv, 0, 3);
-            allyTurretLv = clamp(allyTurretLv, 0, 3);
-            allyMiningLv = clamp(allyMiningLv, 0, 3);
-            allyHangarLv = clamp(allyHangarLv, 0, 3);
-            enemyHullLv = clamp(enemyHullLv, 0, 3);
-            enemyShieldLv = clamp(enemyShieldLv, 0, 3);
-            enemyTurretLv = clamp(enemyTurretLv, 0, 3);
-            enemyMiningLv = clamp(enemyMiningLv, 0, 3);
+            allyHullLv = clamp(allyHullLv, 0, 5);
+            allyShieldLv = clamp(allyShieldLv, 0, 5);
+            allyTurretLv = clamp(allyTurretLv, 0, 5);
+            allyMiningLv = clamp(allyMiningLv, 0, 5);
+            allyHangarLv = clamp(allyHangarLv, 0, 5);
+            enemyHullLv = clamp(enemyHullLv, 0, 5);
+            enemyShieldLv = clamp(enemyShieldLv, 0, 5);
+            enemyTurretLv = clamp(enemyTurretLv, 0, 5);
+            enemyMiningLv = clamp(enemyMiningLv, 0, 5);
             enemyHangarLv = clamp(enemyHangarLv, 0, 3);
         }
 

@@ -192,7 +192,8 @@ public final class SpawnSystem {
                  TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
                  INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
                  ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
-                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                 MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
                  MOTHERSHIP,
                  CARRIER, DRONE_CARRIER -> 3;
         };
@@ -406,6 +407,10 @@ public final class SpawnSystem {
                  SHIELD_BASTION_TITAN, ELITE_SUPERSHIP_COMMAND_TITAN -> new ShipRole[]{
                     ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
                     ShipRole.MEDIUM_CRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE
+            };
+            case ELITE_REINFORCEMENTS_TITAN -> new ShipRole[]{
+                    ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER,
+                    ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.CARRIER
             };
             case FLEET_TELEPORTER_TITAN -> new ShipRole[]{
                     ShipRole.SUPERSHIP, ShipRole.DREADNOUGHT, ShipRole.BATTLESHIP,
@@ -1096,6 +1101,10 @@ public final class SpawnSystem {
                     ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
                     ShipRole.SUPERSHIP, ShipRole.SUPERSHIP,
                     ShipRole.SUPERSHIP);
+            case ELITE_REINFORCEMENTS -> titanFormation(archetype, archetype.shipRole(),
+                    ShipRole.BATTLESHIP, ShipRole.BATTLECRUISER,
+                    ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE,
+                    ShipRole.CIWS_CORVETTE);
             case MOBILE_STATION -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.CARRIER, ShipRole.DRONE_CARRIER,
                     ShipRole.TRANSPORT, ShipRole.HAULER,

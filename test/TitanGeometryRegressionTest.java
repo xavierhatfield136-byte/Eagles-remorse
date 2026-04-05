@@ -20,6 +20,7 @@ class TitanGeometryRegressionTest {
             ShipRole.SHIELD_BASTION_TITAN,
             ShipRole.FLEET_TELEPORTER_TITAN,
             ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN,
+            ShipRole.ELITE_REINFORCEMENTS_TITAN,
             ShipRole.MOBILE_STATION_TITAN,
             ShipRole.HYPERWEAPON_TITAN,
             ShipRole.MOTHERSHIP
@@ -29,6 +30,7 @@ class TitanGeometryRegressionTest {
             ShipRole.SHIELD_BASTION_TITAN,
             ShipRole.FLEET_TELEPORTER_TITAN,
             ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN,
+            ShipRole.ELITE_REINFORCEMENTS_TITAN,
             ShipRole.MOBILE_STATION_TITAN,
             ShipRole.HYPERWEAPON_TITAN,
             ShipRole.MOTHERSHIP

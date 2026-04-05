@@ -100,6 +100,46 @@ public final class CampaignSystem {
         }
     }
 
+    public enum LandmarkType {
+        PLANET,
+        STAR,
+        RING,
+        COLONY,
+        RELAY,
+        FORTRESS,
+        FRONT,
+        CORRIDOR
+    }
+
+    public static final class CampaignLandmark {
+        public final LandmarkType type;
+        public final String label;
+        public final String subtitle;
+        public final double x;
+        public final double y;
+        public final double radius;
+        public final Color fillColor;
+        public final Color edgeColor;
+
+        CampaignLandmark(LandmarkType type,
+                         String label,
+                         String subtitle,
+                         double x,
+                         double y,
+                         double radius,
+                         Color fillColor,
+                         Color edgeColor) {
+            this.type = (type == null) ? LandmarkType.COLONY : type;
+            this.label = (label == null) ? "" : label;
+            this.subtitle = (subtitle == null) ? "" : subtitle;
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(40.0, radius);
+            this.fillColor = (fillColor == null) ? new Color(120, 170, 220, 46) : fillColor;
+            this.edgeColor = (edgeColor == null) ? new Color(200, 225, 255, 180) : edgeColor;
+        }
+    }
+
     private static final class PersistentFleetEntry {
         final int slotId;
         final ShipRole role;
@@ -120,7 +160,12 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_BLUE_ESCORT_CAP = 15;
     private static final int CAMPAIGN_BLUE_LINE_CAP = 11;
     private static final int CAMPAIGN_BLUE_CAPITAL_CAP = 7;
+    private static final int CAMPAIGN_PLAYER_STARTING_HANGAR_TIER = 1;
+    private static final int CAMPAIGN_PLAYER_MAX_HANGAR_TIER = 5;
+    private static final int CAMPAIGN_ENEMY_MAX_HANGAR_TIER = 3;
     private static final int CAMPAIGN_FLAGSHIP_COMMAND_GROUP = 0;
+    private static final int CAMPAIGN_FLAGSHIP_STANDARD_COMMAND_CAPACITY = 5;
+    private static final int CAMPAIGN_TRANSPORT_FLEET_ORE_CAPACITY = 10_000;
     private static final double ESCORT_PLAYER_FORMATION_RADIUS = 360.0;
     private static final double ESCORT_SUPPORT_RADIUS = 460.0;
     private static final double ESCORT_THREAT_RADIUS = 620.0;
@@ -231,6 +276,15 @@ public final class CampaignSystem {
         public final Set<Integer> authoredObjectiveHostiles = new HashSet<>();
         public int authoredObjectiveKills = 0;
         public int authoredWaveCursor = 0;
+        public final List<CampaignLandmark> landmarks = new ArrayList<>();
+        public String objectivePhaseLabel = "";
+        public String threatStateLabel = "";
+        public int objectiveStage = 0;
+        public int objectiveKillBaseline = 0;
+        public final Set<Integer> objectiveAssetIds = new HashSet<>();
+        public int objectiveAssetTotal = 0;
+        public int objectiveAssetLosses = 0;
+        public String objectiveAssetLabel = "";
 
         public double transitionTimer = 0.0;
         public String transitionLabel = "";
@@ -409,6 +463,7 @@ public final class CampaignSystem {
 
         syncPersistentFleetCasualties(ctx, st);
         detectHostileKills(ctx);
+        detectObjectiveAssetLosses(ctx);
         updateAuthoredSectorScript(ctx, st);
         updateSideObjective(ctx, dt);
         updateObjective(ctx, dt);
@@ -464,10 +519,18 @@ public final class CampaignSystem {
         String escort = (st.objectiveType == ObjectiveType.ESCORT)
                 ? ("   FORMATION " + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%")
                 : "";
+        String phase = (st.objectivePhaseLabel == null || st.objectivePhaseLabel.isBlank()) ? "" : ("   " + st.objectivePhaseLabel);
+        String threat = (st.threatStateLabel == null || st.threatStateLabel.isBlank()) ? "" : ("   " + st.threatStateLabel);
+        String assets = objectiveAssetHud(st);
+        String ao = landmarkHud(st);
         String coalition = coalitionSupportHud(st);
         String base = lore.location + "   " + lore.hudLead
+                + ao
+                + phase
+                + threat
                 + "   OBJ: " + st.objectiveLabel
                 + "   [" + p + "]" + escort
+                + assets
                 + "   MOD: " + mods
                 + coalition
                 + "   " + failureHint(st.objectiveType)
@@ -476,6 +539,26 @@ public final class CampaignSystem {
         String drop = bossDropHud(st);
         String withSide = side.isBlank() ? base : (base + "   SIDE: " + side);
         return drop.isBlank() ? withSide : (withSide + "   DROP: " + drop);
+    }
+
+    private static String landmarkHud(CampaignState st) {
+        if (st == null || st.landmarks.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("   AO: ");
+        int count = Math.min(2, st.landmarks.size());
+        for (int i = 0; i < count; i++) {
+            CampaignLandmark landmark = st.landmarks.get(i);
+            if (landmark == null || landmark.label == null || landmark.label.isBlank()) continue;
+            if (sb.length() > 7) sb.append(" / ");
+            sb.append(landmark.label);
+        }
+        return (sb.length() <= 7) ? "" : sb.toString();
+    }
+
+    private static String objectiveAssetHud(CampaignState st) {
+        if (st == null || st.objectiveAssetTotal <= 0) return "";
+        if (st.objectiveAssetLabel == null || st.objectiveAssetLabel.isBlank()) return "";
+        int alive = Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
+        return "   ASSETS: " + st.objectiveAssetLabel + " " + alive + "/" + st.objectiveAssetTotal;
     }
 
     public static boolean hasCapturePoint(GameContext ctx) {
@@ -496,6 +579,11 @@ public final class CampaignSystem {
     public static double captureRadius(GameContext ctx) {
         CampaignState st = state(ctx);
         return (st == null) ? 0.0 : st.captureRadius;
+    }
+
+    static List<CampaignLandmark> landmarks(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? List.of() : st.landmarks;
     }
 
     public static boolean isTransitioning(GameContext ctx) {
@@ -589,6 +677,7 @@ public final class CampaignSystem {
 
     public static int campaignOreCost(ShipRole role, int creditCost, int requiredTier) {
         ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
+        int effectiveTier = campaignRequiredTier(resolved, requiredTier);
         return switch (resolved) {
             case PATROL -> 10;
             case PICKET -> 18;
@@ -623,16 +712,113 @@ public final class CampaignSystem {
             case SHIELD_BASTION_TITAN -> 380;
             case FLEET_TELEPORTER_TITAN -> 350;
             case ELITE_SUPERSHIP_COMMAND_TITAN -> 410;
+            case ELITE_REINFORCEMENTS_TITAN -> 420;
             case MOBILE_STATION_TITAN -> 430;
             case HYPERWEAPON_TITAN -> 480;
             case MOTHERSHIP -> 720;
 
             default -> {
                 int base = Math.max(18, (int) Math.round(Math.max(0, creditCost) * 0.10));
-                int tierTax = Math.max(0, requiredTier) * 16;
+                int tierTax = Math.max(0, effectiveTier) * 16;
                 yield Math.max(18, base + tierTax);
             }
         };
+    }
+
+    static int campaignRequiredTier(ShipRole role, int requiredTier) {
+        ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
+        return switch (resolved) {
+            case SUPERSHIP -> 4;
+            case INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                    MOBILE_STATION_TITAN -> 4;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN, HYPERWEAPON_TITAN -> 5;
+            default -> Math.max(0, requiredTier);
+        };
+    }
+
+    static int campaignMaxHangarTier(GameContext ctx) {
+        return isCampaignActive(ctx) ? CAMPAIGN_PLAYER_MAX_HANGAR_TIER : CAMPAIGN_ENEMY_MAX_HANGAR_TIER;
+    }
+
+    static int campaignMinSectorForRole(ShipRole role) {
+        TitanArchetype titan = TitanArchetype.fromShipRole(role);
+        return (titan == null) ? 1 : titan.availability().minSector();
+    }
+
+    static boolean campaignSectorRequirementMet(GameContext ctx, ShipRole role) {
+        CampaignState st = state(ctx);
+        return st != null && st.sector >= campaignMinSectorForRole(role);
+    }
+
+    static boolean campaignNeedsMobileStation(ShipRole role) {
+        return role == ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN
+                || role == ShipRole.ELITE_REINFORCEMENTS_TITAN
+                || role == ShipRole.HYPERWEAPON_TITAN;
+    }
+
+    static int campaignStandardCommandCost(ShipRole role) {
+        if (role == null || role.isTitanOrMothership() || role == ShipRole.SUPERSHIP) return 0;
+        return switch (role) {
+            case DREADNOUGHT, CARRIER, DRONE_CARRIER -> 2;
+            default -> 1;
+        };
+    }
+
+    static int campaignEliteCommandCost(ShipRole role) {
+        return (role == ShipRole.SUPERSHIP) ? 1 : 0;
+    }
+
+    static int campaignStandardCommandCapacity(GameContext ctx) {
+        return standardCommandCapacity(state(ctx));
+    }
+
+    static int campaignStandardCommandUsed(GameContext ctx) {
+        return standardCommandUsed(state(ctx));
+    }
+
+    static int campaignEliteCommandCapacity(GameContext ctx) {
+        return eliteCommandCapacity(state(ctx));
+    }
+
+    static int campaignEliteCommandUsed(GameContext ctx) {
+        return eliteCommandUsed(state(ctx));
+    }
+
+    static boolean hasOperationalMobileStation(GameContext ctx) {
+        return hasOperationalRole(state(ctx), ShipRole.MOBILE_STATION_TITAN);
+    }
+
+    static String campaignCommissionRequirementsDetail(GameContext ctx, ShipRole role, int requiredTier) {
+        int effectiveTier = campaignRequiredTier(role, requiredTier);
+        StringBuilder detail = new StringBuilder("Requirements: shipyard T").append(effectiveTier);
+        int minSector = campaignMinSectorForRole(role);
+        if (minSector > 1) {
+            detail.append(", sector ").append(minSector);
+        }
+        int standardCost = campaignStandardCommandCost(role);
+        if (standardCost > 0) {
+            detail.append(", standard command ").append(standardCost)
+                    .append(" (")
+                    .append(campaignStandardCommandUsed(ctx))
+                    .append("/")
+                    .append(campaignStandardCommandCapacity(ctx))
+                    .append(" committed)");
+        }
+        int eliteCost = campaignEliteCommandCost(role);
+        if (eliteCost > 0) {
+            detail.append(", elite command ").append(eliteCost)
+                    .append(" (")
+                    .append(campaignEliteCommandUsed(ctx))
+                    .append("/")
+                    .append(campaignEliteCommandCapacity(ctx))
+                    .append(" committed)");
+        }
+        if (campaignNeedsMobileStation(role)) {
+            detail.append(", commissioned Mobile Station Titan");
+        }
+        detail.append(".");
+        return detail.toString();
     }
 
     public static boolean purchasePersistentBlueShip(GameContext ctx, ShipRole role, int creditCost, int requiredTier) {
@@ -646,6 +832,7 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "CAMPAIGN COMMAND REQUIRES THE MOTHERSHIP", 1.6);
             return false;
         }
+        int effectiveTier = campaignRequiredTier(role, requiredTier);
         ShopHullCategory category = ShopHullCategory.forRole(role);
         int liveCount = livePersistentFleetSlots(st, category);
         int cap = persistentFleetCap(category);
@@ -657,15 +844,48 @@ public final class CampaignSystem {
         int hangarTier = 0;
         BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
         if (up != null) {
-            up.hangarLv = Math.max(up.hangarLv, 3);
+            up.hangarLv = Math.max(up.hangarLv, CAMPAIGN_PLAYER_STARTING_HANGAR_TIER);
             hangarTier = up.hangarLv;
         }
-        if (hangarTier < requiredTier) {
-            EventSystem.showBanner(ctx, "COMMAND BAY TIER TOO LOW", 1.6);
+        if (hangarTier < effectiveTier) {
+            EventSystem.showBanner(ctx, "SHIPYARD T" + effectiveTier + " REQUIRED", 1.6);
             return false;
         }
 
-        int oreCost = campaignOreCost(role, creditCost, requiredTier);
+        int minSector = campaignMinSectorForRole(role);
+        if (st.sector < minSector) {
+            EventSystem.showBanner(ctx, "UNLOCKS IN SECTOR " + minSector, 1.6);
+            return false;
+        }
+
+        if (campaignNeedsMobileStation(role) && !hasOperationalRole(st, ShipRole.MOBILE_STATION_TITAN)) {
+            EventSystem.showBanner(ctx, "MOBILE STATION TITAN REQUIRED", 1.8);
+            return false;
+        }
+
+        int eliteCost = campaignEliteCommandCost(role);
+        int eliteCapacity = eliteCommandCapacity(st);
+        int eliteUsed = eliteCommandUsed(st);
+        if (eliteCost > 0) {
+            if (eliteCapacity <= 0) {
+                EventSystem.showBanner(ctx, "ELITE COMMAND TITAN REQUIRED", 1.8);
+                return false;
+            }
+            if (eliteUsed + eliteCost > eliteCapacity) {
+                EventSystem.showBanner(ctx, "ELITE COMMAND CAP REACHED", 1.8);
+                return false;
+            }
+        }
+
+        int standardCost = campaignStandardCommandCost(role);
+        int standardCapacity = standardCommandCapacity(st);
+        int standardUsed = standardCommandUsed(st);
+        if (standardCost > 0 && standardUsed + standardCost > standardCapacity) {
+            EventSystem.showBanner(ctx, "STANDARD COMMAND GRID FULL", 1.8);
+            return false;
+        }
+
+        int oreCost = campaignOreCost(role, creditCost, effectiveTier);
         if (ctx.credits < Math.max(0, creditCost) || ctx.player.cargo < oreCost) {
             EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS / ORE", 1.6);
             return false;
@@ -677,12 +897,20 @@ public final class CampaignSystem {
         int slotId = st.nextPersistentFleetSlotId++;
         PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, generatedBlueFleetName(role, slotId));
         st.persistentBlueFleet.add(entry);
+        ArrayList<PersistentFleetEntry> spawnedPackage = new ArrayList<>();
         TitanArchetype titan = TitanArchetype.fromShipRole(role);
         if (titan != null && st.ownedTitans.size() < TitanFleetSystem.mothershipTitanCap()) {
             st.ownedTitans.add(titan);
         }
+        if (titan == TitanArchetype.ELITE_REINFORCEMENTS) {
+            queueEliteReinforcementPackage(st, entry, spawnedPackage);
+        }
         rebalancePersistentCommandGroups(st);
+        applyCampaignFleetBonuses(ctx, st);
         spawnPurchasedPersistentBlueShip(ctx, st, entry);
+        for (PersistentFleetEntry supportEntry : spawnedPackage) {
+            spawnPurchasedPersistentBlueShip(ctx, st, supportEntry);
+        }
         EventSystem.showBanner(ctx, "BLUE HULL COMMISSIONED: " + entry.name, 1.8);
         return true;
     }
@@ -723,6 +951,57 @@ public final class CampaignSystem {
                 + " L" + line + "/" + persistentFleetCap(ShopHullCategory.LINE)
                 + " C" + capital + "/" + persistentFleetCap(ShopHullCategory.CAPITAL)
                 + " T" + titan + "/" + persistentFleetCap(ShopHullCategory.TITAN);
+    }
+
+    private static int standardCommandCapacity(CampaignState st) {
+        int capacity = CAMPAIGN_FLAGSHIP_STANDARD_COMMAND_CAPACITY;
+        if (st == null) return capacity;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            TitanArchetype titan = (entry == null || entry.destroyed) ? null : TitanArchetype.fromShipRole(entry.role);
+            if (titan == null) continue;
+            capacity += titan.standardShipCommandCapacity();
+        }
+        return Math.max(0, capacity);
+    }
+
+    private static int standardCommandUsed(CampaignState st) {
+        if (st == null) return 0;
+        int used = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            used += campaignStandardCommandCost(entry.role);
+        }
+        return Math.max(0, used);
+    }
+
+    private static int eliteCommandCapacity(CampaignState st) {
+        if (st == null) return 0;
+        int capacity = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            TitanArchetype titan = (entry == null || entry.destroyed) ? null : TitanArchetype.fromShipRole(entry.role);
+            if (titan == null) continue;
+            capacity += titan.eliteSupershipCommandCapacity();
+        }
+        return Math.max(0, capacity);
+    }
+
+    private static int eliteCommandUsed(CampaignState st) {
+        if (st == null) return 0;
+        int used = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            used += campaignEliteCommandCost(entry.role);
+        }
+        return Math.max(0, used);
+    }
+
+    private static boolean hasOperationalRole(CampaignState st, ShipRole role) {
+        if (st == null || role == null) return false;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (entry.role == role) return true;
+        }
+        return false;
     }
 
     public static String[] activeModifierLabels(GameContext ctx) {
@@ -786,7 +1065,7 @@ public final class CampaignSystem {
         ctx.teamBases.remove(Faction.ALLY);
 
         BaseUpgrades mothershipUpgrades = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
-        mothershipUpgrades.hangarLv = Math.max(mothershipUpgrades.hangarLv, 3);
+        mothershipUpgrades.hangarLv = Math.max(mothershipUpgrades.hangarLv, CAMPAIGN_PLAYER_STARTING_HANGAR_TIER);
         refreshCampaignAlliances(st);
     }
 
@@ -1019,6 +1298,15 @@ public final class CampaignSystem {
         st.authoredObjectiveHostiles.clear();
         st.authoredObjectiveKills = 0;
         st.authoredWaveCursor = 0;
+        st.landmarks.clear();
+        st.objectivePhaseLabel = "";
+        st.threatStateLabel = "";
+        st.objectiveStage = 0;
+        st.objectiveKillBaseline = 0;
+        st.objectiveAssetIds.clear();
+        st.objectiveAssetTotal = 0;
+        st.objectiveAssetLosses = 0;
+        st.objectiveAssetLabel = "";
         st.captureArmed = false;
         st.bossTargetId = -1;
         st.bossKind = BossKind.NONE;
@@ -1044,12 +1332,14 @@ public final class CampaignSystem {
         pruneTransientUnits(ctx);
         regroupPlayerAtAlliedBase(ctx);
         SpawnSystem.spawnAsteroidField(ctx);
+        applyCampaignFleetBonuses(ctx, st);
         healAndRefitPlayer(ctx);
         ensureCampaignTitanInfrastructure(ctx);
 
         SectorScript script = configureObjective(ctx);
         applySectorModifiers(ctx, st, script);
         spawnSectorForces(ctx);
+        populateSectorLandmarks(ctx, st);
         spawnPersistentBlueFleet(ctx, st);
         spawnCoalitionSupportFleet(ctx, st);
         captureSideObjectiveProtectedShip(ctx, st);
@@ -1106,6 +1396,46 @@ public final class CampaignSystem {
         st.sideObjectiveFailed = false;
         st.sideObjectiveBaseKills = st.kills;
         st.sideObjectiveStartPlayerHp = (ctx.player != null) ? ctx.player.hp : 0;
+        st.objectivePhaseLabel = initialPhaseLabel(st);
+        st.threatStateLabel = initialThreatLabel(st);
+    }
+
+    private static String initialPhaseLabel(CampaignState st) {
+        if (st == null) return "";
+        return switch (st.sector) {
+            case 1 -> "PHASE: Screen the anchorage while civilian lanes stay open";
+            case 2 -> "PHASE: Break the jump-ring blockade before the route collapses";
+            case 3 -> "PHASE: Sweep the relay perimeter and seize the authority core";
+            case 4 -> "PHASE: Hold formation until the pursuit Titan commits";
+            case 5 -> "PHASE: Keep the refugee titan screened and moving";
+            case 6 -> "PHASE: Shatter the first cordon before reserves entrench";
+            case 7 -> "PHASE: Push into the contract array and hold the uplink";
+            case 8 -> "PHASE: Close through the siege lane and silence the gate gun";
+            case 9 -> "PHASE: Hold the coalition mustering corridor under pressure";
+            case 10 -> "PHASE: Cover the liberated crews and rejoin the column";
+            case 11 -> "PHASE: Crack the Luna perimeter and clear an Earth lane";
+            case 12 -> "PHASE: Collapse the orbital defense ring and kill the AI flagship";
+            default -> "PHASE: Advance the campaign objective";
+        };
+    }
+
+    private static String initialThreatLabel(CampaignState st) {
+        if (st == null) return "";
+        return switch (st.sector) {
+            case 1 -> "THREAT: Raider probes and panic around the colony docks";
+            case 2 -> "THREAT: Interdiction packs covering the jump ring";
+            case 3 -> "THREAT: Relay defenders and response lances";
+            case 4 -> "THREAT: Titan pursuit group closing from the wake";
+            case 5 -> "THREAT: Vanguard hunters probing the convoy flanks";
+            case 6 -> "THREAT: Cordon reserves ready to counter-punch";
+            case 7 -> "THREAT: Contract-array defenders and jammer relief";
+            case 8 -> "THREAT: Siege escorts feeding the artillery gate";
+            case 9 -> "THREAT: Sol pickets converging on the corridor";
+            case 10 -> "THREAT: Breakchain raiders hunting the recovery line";
+            case 11 -> "THREAT: Orbital defense groups screening Luna";
+            case 12 -> "THREAT: Full occupation fleet over Earth";
+            default -> "THREAT: Hostile fleet contact expected";
+        };
     }
 
     private static void spawnSectorForces(GameContext ctx) {
@@ -1126,6 +1456,127 @@ public final class CampaignSystem {
             case 11 -> spawnSector11(ctx, st);
             default -> spawnSector12(ctx, st);
         }
+    }
+
+    private static void populateSectorLandmarks(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        st.landmarks.clear();
+
+        double px = ctx.player.x;
+        double py = ctx.player.y;
+        switch (st.sector) {
+            case 1 -> {
+                addLandmark(st, ctx, LandmarkType.COLONY, "Far Trade Anchorage", "Colony arcology and refugee docks",
+                        px + 860.0, py - 720.0, 280.0,
+                        new Color(96, 156, 210, 42), new Color(190, 228, 255, 176));
+                addLandmark(st, ctx, LandmarkType.RING, "Anchorage Exchange Ring", "Broken commercial traffic loop",
+                        px + 910.0, py - 760.0, 420.0,
+                        new Color(118, 200, 220, 20), new Color(162, 232, 248, 150));
+            }
+            case 2 -> {
+                addLandmark(st, ctx, LandmarkType.RING, "Outer Colony Jump Ring", "Civilian transit aperture",
+                        px + 1180.0, py - 140.0, 300.0,
+                        new Color(94, 158, 238, 18), new Color(164, 212, 255, 168));
+                addLandmark(st, ctx, LandmarkType.COLONY, "Cinder Anchorage", "Evacuation traffic drifting off the lane",
+                        px - 820.0, py + 520.0, 210.0,
+                        new Color(144, 124, 98, 28), new Color(228, 198, 170, 150));
+            }
+            case 3 -> {
+                addLandmark(st, ctx, LandmarkType.RELAY, "Gate Relay Tethys", "Jump authority uplink",
+                        st.captureX, st.captureY, 190.0,
+                        new Color(98, 166, 218, 24), new Color(206, 235, 255, 180));
+                addLandmark(st, ctx, LandmarkType.RING, "Tethys Transit Halo", "Dormant route-control lattice",
+                        st.captureX + 60.0, st.captureY - 40.0, 300.0,
+                        new Color(90, 186, 214, 16), new Color(150, 236, 255, 142));
+            }
+            case 4 -> {
+                addLandmark(st, ctx, LandmarkType.FRONT, "Burning Debris Wake", "Wreck belt from the breakout",
+                        px + 980.0, py - 280.0, 260.0,
+                        new Color(168, 116, 84, 22), new Color(236, 178, 146, 160));
+                addLandmark(st, ctx, LandmarkType.FRONT, "Pursuit Vector", "Red kill-box approach lane",
+                        px + 1260.0, py - 60.0, 180.0,
+                        new Color(158, 72, 72, 18), new Color(255, 144, 144, 154));
+            }
+            case 5 -> {
+                double ex = (st.escortShip != null) ? st.escortShip.x : px + 520.0;
+                double ey = (st.escortShip != null) ? st.escortShip.y : py - 40.0;
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Exodus Corridor", "Refugee wayline toward the spine",
+                        ex + 460.0, ey - 60.0, 240.0,
+                        new Color(120, 188, 126, 18), new Color(190, 245, 196, 155));
+                addLandmark(st, ctx, LandmarkType.COLONY, "Archive Lifeboat Cluster", "Civilian traffic struggling to stay grouped",
+                        ex - 420.0, ey + 260.0, 170.0,
+                        new Color(120, 150, 170, 20), new Color(210, 232, 246, 142));
+            }
+            case 6 -> {
+                addLandmark(st, ctx, LandmarkType.COLONY, "Neutral Trade Spine", "Broker depots and defecting logistics yards",
+                        px + 980.0, py - 320.0, 250.0,
+                        new Color(120, 154, 198, 24), new Color(214, 230, 255, 166));
+                addLandmark(st, ctx, LandmarkType.FORTRESS, "Red Cordon Bastion", "Entrenched blockade node",
+                        px + 1320.0, py + 40.0, 180.0,
+                        new Color(156, 68, 68, 18), new Color(255, 146, 146, 168));
+            }
+            case 7 -> {
+                addLandmark(st, ctx, LandmarkType.RELAY, "Coalition Array Nysa", "Contract relay and fleet-signature broker",
+                        st.captureX, st.captureY, 210.0,
+                        new Color(102, 196, 168, 24), new Color(190, 248, 226, 174));
+                addLandmark(st, ctx, LandmarkType.RING, "Array Service Halo", "Civilian maintenance lattice",
+                        st.captureX + 80.0, st.captureY - 50.0, 320.0,
+                        new Color(88, 170, 170, 18), new Color(162, 238, 236, 144));
+            }
+            case 8 -> {
+                addLandmark(st, ctx, LandmarkType.FORTRESS, "Siege Gate Kharon", "Artillery gatehouse and targeting spine",
+                        px + 1080.0, py - 120.0, 240.0,
+                        new Color(170, 88, 72, 20), new Color(248, 174, 152, 176));
+                addLandmark(st, ctx, LandmarkType.RING, "Ash Gate Spine", "Collapsed transit architecture under bombardment",
+                        px + 1210.0, py - 60.0, 360.0,
+                        new Color(176, 118, 90, 16), new Color(240, 202, 168, 138));
+            }
+            case 9 -> {
+                addLandmark(st, ctx, LandmarkType.STAR, "Sol", "The home star beyond the defense ring",
+                        px + 1540.0, py - 980.0, 460.0,
+                        new Color(255, 198, 116, 40), new Color(255, 236, 178, 164));
+                addLandmark(st, ctx, LandmarkType.RING, "Outer Sol Defense Ring", "Coalition arrival corridor",
+                        px + 860.0, py + 60.0, 320.0,
+                        new Color(142, 194, 244, 16), new Color(192, 226, 255, 146));
+            }
+            case 10 -> {
+                double ex = (st.escortShip != null) ? st.escortShip.x : px + 520.0;
+                double ey = (st.escortShip != null) ? st.escortShip.y : py - 40.0;
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Liberation Corridor", "Recovery line for freed yellow crews",
+                        ex + 420.0, ey - 20.0, 230.0,
+                        new Color(188, 174, 104, 18), new Color(255, 232, 152, 160));
+                addLandmark(st, ctx, LandmarkType.FRONT, "Breakchain Wreck Line", "Debris from snapped convoy chains",
+                        ex - 420.0, ey + 250.0, 180.0,
+                        new Color(126, 118, 90, 16), new Color(224, 206, 170, 138));
+            }
+            case 11 -> {
+                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Orbital perimeter and defense guns",
+                        px + 1300.0, py - 520.0, 260.0,
+                        new Color(184, 194, 210, 30), new Color(242, 246, 255, 172));
+                addLandmark(st, ctx, LandmarkType.PLANET, "Earthrise", "Occupied homeworld beyond the lunar lane",
+                        px + 1880.0, py - 1020.0, 420.0,
+                        new Color(92, 138, 220, 26), new Color(190, 220, 255, 156));
+            }
+            default -> {
+                addLandmark(st, ctx, LandmarkType.PLANET, "Earth", "Occupied homeworld under orbital fire",
+                        px + 1320.0, py - 640.0, 520.0,
+                        new Color(86, 134, 220, 34), new Color(188, 220, 255, 176));
+                addLandmark(st, ctx, LandmarkType.RING, "Earth High Orbit", "Occupation defense lattice",
+                        px + 1320.0, py - 640.0, 760.0,
+                        new Color(98, 148, 206, 14), new Color(202, 232, 255, 136));
+                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Shattered approach moon",
+                        px + 840.0, py - 220.0, 180.0,
+                        new Color(192, 198, 212, 24), new Color(246, 248, 255, 154));
+            }
+        }
+    }
+
+    private static void addLandmark(CampaignState st, GameContext ctx, LandmarkType type, String label, String subtitle,
+                                    double x, double y, double radius, Color fill, Color edge) {
+        if (st == null || ctx == null) return;
+        double clampedX = GameMath.clamp(x, radius + 120.0, ctx.WORLD_W - radius - 120.0);
+        double clampedY = GameMath.clamp(y, radius + 120.0, ctx.WORLD_H - radius - 120.0);
+        st.landmarks.add(new CampaignLandmark(type, label, subtitle, clampedX, clampedY, radius, fill, edge));
     }
 
     private static void spawnSector1(GameContext ctx, CampaignState st) {
@@ -1208,8 +1659,17 @@ public final class CampaignSystem {
     }
 
     private static void spawnSector7(GameContext ctx, CampaignState st) {
+        st.objectiveStage = 0;
+        st.captureArmed = false;
+        st.objectiveLabel = "Destroy the red jamming pylons around the contract array";
+        st.objectiveGoal = 3.0;
+        st.objectiveProgress = 0.0;
         st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
         st.captureY = GameMath.clamp(ctx.player.y + 140, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 240, st.captureY - 150);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 300, st.captureY + 20);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 180, st.captureY + 170);
         spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 180, st.captureY - 130);
         spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 260, st.captureY + 20);
         spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 230, st.captureY + 80);
@@ -1217,6 +1677,13 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -360, 80, "Green Contract Command Titan");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 80, "Green Contract Guard");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -60, "Green Contract Screen");
+        Ship uplinkAlpha = spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.TEAM_C,
+                st.captureX - 110, st.captureY + 95, "Green Contract Uplink Alpha");
+        Ship uplinkBeta = spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.TEAM_C,
+                st.captureX - 160, st.captureY - 105, "Green Contract Uplink Beta");
+        st.objectiveAssetLabel = "UPLINKS";
+        registerObjectiveAsset(st, uplinkAlpha);
+        registerObjectiveAsset(st, uplinkBeta);
     }
 
     private static void spawnSector8(GameContext ctx, CampaignState st) {
@@ -1253,6 +1720,14 @@ public final class CampaignSystem {
     }
 
     private static void spawnSector11(GameContext ctx, CampaignState st) {
+        st.objectiveStage = 0;
+        st.objectiveKillBaseline = 0;
+        st.objectiveLabel = "Destroy the Luna orbital defense anchors";
+        st.objectiveGoal = 3.0;
+        st.objectiveProgress = 0.0;
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 760, -200);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 930, 20);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 820, 220);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.INTERDICTION_TITAN, 760, -120);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, 920, 80);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 790, 150);
@@ -1263,6 +1738,17 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 80, "Yellow Return Guard");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -220, -70, "Yellow Return Flak");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Earthway Cruiser");
+        Ship evacTender = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_D, -320, 170, "Yellow Evac Tender");
+        Ship hospitalHauler = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_D, -390, -130, "Yellow Hospital Hauler");
+        if (evacTender != null) {
+            evacTender.desiredSpeed = Math.min(evacTender.desiredSpeed, 38.0);
+        }
+        if (hospitalHauler != null) {
+            hospitalHauler.desiredSpeed = Math.min(hospitalHauler.desiredSpeed, 34.0);
+        }
+        st.objectiveAssetLabel = "EVAC SHIPS";
+        registerObjectiveAsset(st, evacTender);
+        registerObjectiveAsset(st, hospitalHauler);
     }
 
     private static void spawnSector12(GameContext ctx, CampaignState st) {
@@ -1278,16 +1764,32 @@ public final class CampaignSystem {
 
     private static void updateAuthoredSectorScript(GameContext ctx, CampaignState st) {
         if (st == null) return;
-        if (st.sector > AUTHORED_VERTICAL_SLICE_LAST_SECTOR) return;
+        if (st.sector <= AUTHORED_VERTICAL_SLICE_LAST_SECTOR) {
+            switch (st.sector) {
+                case 1 -> updateSector1Script(ctx, st);
+                case 2 -> updateSector2Script(ctx, st);
+                case 3 -> updateSector3Script(ctx, st);
+                default -> {
+                    // No-op.
+                }
+            }
+            return;
+        }
 
         switch (st.sector) {
-            case 1 -> updateSector1Script(ctx, st);
-            case 2 -> updateSector2Script(ctx, st);
-            case 3 -> updateSector3Script(ctx, st);
+            case 7 -> {
+                updateSector7Script(ctx, st);
+                return;
+            }
+            case 11 -> {
+                updateSector11Script(ctx, st);
+                return;
+            }
             default -> {
-                // No-op.
+                // Fall through.
             }
         }
+        updateLateCampaignPressure(ctx, st);
     }
 
     private static void updateSector1Script(GameContext ctx, CampaignState st) {
@@ -1391,6 +1893,335 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "HOLD THE EARTH VECTOR", 2.0);
             logTelemetry("sector_script", "sector=3 wave=3 p=" + Math.round(st.objectiveProgress));
         }
+    }
+
+    private static void updateSector7Script(GameContext ctx, CampaignState st) {
+        if (!st.captureArmed) {
+            int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
+            st.objectivePhaseLabel = "PHASE: Sweep the array perimeter and cut the jammer triad (" + remaining + " remaining)";
+            st.threatStateLabel = "THREAT: Interdiction escorts are masking the uplink approach";
+            if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 32.0) {
+                spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 330, st.captureY - 210);
+                spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 380, st.captureY + 60);
+                st.authoredWaveCursor++;
+                EventSystem.showBanner(ctx, "JAMMER RELIEF WING INBOUND", 1.8);
+                logTelemetry("sector_script", "sector=7 wave=1 t=" + Math.round(st.sectorElapsed));
+                return;
+            }
+            if (st.authoredWaveCursor == 1 && st.sectorElapsed >= 92.0) {
+                spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 360, st.captureY - 40);
+                spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 260, st.captureY + 190);
+                spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 420, st.captureY + 140);
+                st.authoredWaveCursor++;
+                EventSystem.showBanner(ctx, "SECOND ARRAY SCREEN DEPLOYING", 1.8);
+                logTelemetry("sector_script", "sector=7 wave=2 t=" + Math.round(st.sectorElapsed));
+                return;
+            }
+            if (remaining == 0) {
+                st.captureArmed = true;
+                st.objectiveStage = 1;
+                st.objectiveLabel = "Hold the contract uplink while green command syncs the coalition net";
+                st.objectiveGoal = 120.0;
+                st.objectiveProgress = 0.0;
+                st.authoredWaveCursor = 0;
+                st.objectivePhaseLabel = "PHASE: Hold the uplink until coalition command handshakes complete";
+                st.threatStateLabel = "THREAT: Red relief wings are converging to retake the array";
+                EventSystem.showBanner(ctx, "JAMMERS DOWN: HOLD THE CONTRACT ARRAY", 2.2);
+                logTelemetry("sector_script", "sector=7 capture_armed t=" + Math.round(st.sectorElapsed));
+            }
+            return;
+        }
+        updateLateCapturePressure(ctx, st);
+    }
+
+    private static void updateSector11Script(GameContext ctx, CampaignState st) {
+        if (st.objectiveStage == 0) {
+            int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
+            st.objectivePhaseLabel = "PHASE: Silence the orbital anchor batteries (" + remaining + " remaining)";
+            st.threatStateLabel = "THREAT: Red cordon groups are screening Luna's defense lattice";
+            if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 38.0) {
+                spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 860, -210);
+                spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 980, 120);
+                st.authoredWaveCursor++;
+                EventSystem.showBanner(ctx, "ANCHOR PICKETS MOVING TO INTERCEPT", 1.8);
+                logTelemetry("sector_script", "sector=11 wave=1 t=" + Math.round(st.sectorElapsed));
+                return;
+            }
+            if (st.authoredWaveCursor == 1 && st.sectorElapsed >= 96.0) {
+                spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 1020, -30);
+                spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 1080, 160);
+                spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 960, 240);
+                st.authoredWaveCursor++;
+                EventSystem.showBanner(ctx, "LUNA CORDON RESERVES SCRAMBLING", 1.8);
+                logTelemetry("sector_script", "sector=11 wave=2 t=" + Math.round(st.sectorElapsed));
+                return;
+            }
+            if (remaining == 0) {
+                st.objectiveStage = 1;
+                st.objectiveKillBaseline = st.kills;
+                st.objectiveLabel = "Break the Luna orbital cordon and clear the Earth lane";
+                st.objectiveGoal = 10.0;
+                st.objectiveProgress = 0.0;
+                st.authoredWaveCursor = 0;
+                st.objectivePhaseLabel = "PHASE: Push through the shattered perimeter and cover the evacuation line";
+                st.threatStateLabel = "THREAT: Red reserve capitals are committing to protect the Earth approach";
+                EventSystem.showBanner(ctx, "ANCHORS SILENCED: BREAK THE CORDON", 2.2);
+                logTelemetry("sector_script", "sector=11 stage=cordon_break t=" + Math.round(st.sectorElapsed));
+            }
+            return;
+        }
+        updateLateDestroyPressure(ctx, st);
+    }
+
+    private static void updateLateCampaignPressure(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        switch (st.objectiveType) {
+            case SURVIVE -> updateLateSurvivePressure(ctx, st);
+            case DESTROY -> updateLateDestroyPressure(ctx, st);
+            case ESCORT -> updateLateEscortPressure(ctx, st);
+            case CAPTURE -> updateLateCapturePressure(ctx, st);
+            case BOSS, FINAL_BOSS -> updateLateBossPressure(ctx, st);
+        }
+    }
+
+    private static void updateLateSurvivePressure(GameContext ctx, CampaignState st) {
+        if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 50.0) {
+            launchPressureStage(ctx, st, "ENEMY PROBE WING INBOUND",
+                    "PHASE: Screen the arrival lane against forward probes",
+                    "THREAT: Red scouts are testing the corridor edges",
+                    pressureRolesFor(st, 0));
+            return;
+        }
+        if (st.authoredWaveCursor == 1 && st.sectorElapsed >= 135.0) {
+            launchPressureStage(ctx, st, "HEAVY BREAKTHROUGH FORMING",
+                    "PHASE: Hold the line while heavier ships push the lane",
+                    "THREAT: Capital-weight contacts are entering the battlespace",
+                    pressureRolesFor(st, 1));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && st.sectorElapsed >= 225.0) {
+            launchPressureStage(ctx, st, "KILL BOX CLOSING",
+                    "PHASE: Survive the final convergence and keep the corridor intact",
+                    "THREAT: Reserve strike elements are collapsing on the mustering lane",
+                    pressureRolesFor(st, 2));
+        }
+    }
+
+    private static void updateLateDestroyPressure(GameContext ctx, CampaignState st) {
+        double ratio = progressRatio(st);
+        if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 45.0 || ratio >= 0.20)) {
+            launchPressureStage(ctx, st, "CORDON RESERVES SCRAMBLING",
+                    "PHASE: Keep pressing before the reserve line stabilizes",
+                    "THREAT: Red reserve escorts are moving to seal the breach",
+                    pressureRolesFor(st, 0));
+            return;
+        }
+        if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 120.0 || ratio >= 0.50)) {
+            launchPressureStage(ctx, st, "COUNTER-ATTACK WING COMMITTED",
+                    "PHASE: Break the second cordon before it can mass guns",
+                    "THREAT: Counter-attack capitals are joining the screen",
+                    pressureRolesFor(st, 1));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 215.0 || ratio >= 0.78)) {
+            launchPressureStage(ctx, st, "LAST RED STAND",
+                    "PHASE: Shatter the final reserve and open the lane completely",
+                    "THREAT: The enemy is throwing its last standing reserve into the breach",
+                    pressureRolesFor(st, 2));
+        }
+    }
+
+    private static void updateLateEscortPressure(GameContext ctx, CampaignState st) {
+        double ratio = progressRatio(st);
+        if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 35.0 || ratio >= 0.16)) {
+            launchPressureStage(ctx, st, "PURSUIT SCREEN DETECTED",
+                    "PHASE: Keep the flagship screened while pursuit ships bracket the lane",
+                    "THREAT: Fast red hunters are probing the escort perimeter",
+                    pressureRolesFor(st, 0));
+            return;
+        }
+        if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 110.0 || ratio >= 0.45)) {
+            launchPressureStage(ctx, st, "MISSILE AMBUSH ON THE FLANK",
+                    "PHASE: Absorb the missile wave without losing formation integrity",
+                    "THREAT: Ambush elements are trying to strip the escort screen",
+                    pressureRolesFor(st, 1));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 195.0 || ratio >= 0.74)) {
+            launchPressureStage(ctx, st, "INTERDICTION NET DEPLOYING",
+                    "PHASE: Push the command ship through the last interception barrier",
+                    "THREAT: Heavy pursuit elements are trying to pin the convoy in place",
+                    pressureRolesFor(st, 2));
+        }
+    }
+
+    private static void updateLateCapturePressure(GameContext ctx, CampaignState st) {
+        double ratio = progressRatio(st);
+        if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 30.0 || ratio >= 0.18)) {
+            launchPressureStage(ctx, st, "RELIEF COLUMN INBOUND",
+                    "PHASE: Hold the objective while the first relief column arrives",
+                    "THREAT: Local defenders are calling in response ships",
+                    pressureRolesFor(st, 0));
+            return;
+        }
+        if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 105.0 || ratio >= 0.48)) {
+            launchPressureStage(ctx, st, "RECAPTURE PACKAGE COMMITTING",
+                    "PHASE: Keep the point clean while heavier hulls hit the perimeter",
+                    "THREAT: Electronic-war and missile hulls are contesting the uplink",
+                    pressureRolesFor(st, 1));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 190.0 || ratio >= 0.78)) {
+            launchPressureStage(ctx, st, "FINAL RECAPTURE PUSH",
+                    "PHASE: Beat back the final retake attempt and secure the array",
+                    "THREAT: The enemy is committing a last recapture package",
+                    pressureRolesFor(st, 2));
+        }
+    }
+
+    private static void updateLateBossPressure(GameContext ctx, CampaignState st) {
+        Ship boss = findShipById(ctx, st.bossTargetId);
+        if (boss == null || !boss.alive || boss.hp <= 0) return;
+        double hpFrac = (boss.hpMax <= 0) ? 0.0 : (boss.hp / (double) boss.hpMax);
+        if (st.authoredWaveCursor == 0 && hpFrac <= 0.82) {
+            launchPressureStage(ctx, st, "BOSS ESCORTS REDEPLOYING",
+                    "PHASE: Break through the first reserve screen around the flagship",
+                    "THREAT: Secondary escorts are moving to cover the command hull",
+                    pressureRolesFor(st, 0));
+            return;
+        }
+        if (st.authoredWaveCursor == 1 && hpFrac <= 0.54) {
+            launchPressureStage(ctx, st, "HEAVY ESCORTS JOINING THE FIGHT",
+                    "PHASE: Keep the flagship under pressure while the escort wall thickens",
+                    "THREAT: Heavy support hulls are reinforcing the boss",
+                    pressureRolesFor(st, 1));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && hpFrac <= 0.28) {
+            launchPressureStage(ctx, st, "FINAL DEFENSE SCREEN",
+                    "PHASE: Collapse the last defense layer and finish the command hull",
+                    "THREAT: The occupation fleet is committing its final close guard",
+                    pressureRolesFor(st, 2));
+        }
+    }
+
+    private static double progressRatio(CampaignState st) {
+        if (st == null || st.objectiveGoal <= 1e-6) return 0.0;
+        return MathUtil.clamp(st.objectiveProgress / st.objectiveGoal, 0.0, 1.0);
+    }
+
+    private static void launchPressureStage(GameContext ctx, CampaignState st, String banner,
+                                            String phaseLabel, String threatLabel, ShipRole... roles) {
+        if (ctx == null || st == null || roles == null || roles.length == 0) return;
+        spawnPressurePackage(ctx, st, roles);
+        st.authoredWaveCursor++;
+        st.objectivePhaseLabel = phaseLabel;
+        st.threatStateLabel = threatLabel;
+        EventSystem.showBanner(ctx, banner, 2.0);
+        logTelemetry("sector_pressure",
+                "sector=" + st.sector + " stage=" + st.authoredWaveCursor + " objective=" + st.objectiveType);
+    }
+
+    private static void spawnPressurePackage(GameContext ctx, CampaignState st, ShipRole... roles) {
+        if (ctx == null || st == null || roles == null || roles.length == 0) return;
+        double anchorX = objectiveAnchorX(ctx, st);
+        double anchorY = objectiveAnchorY(ctx, st);
+        double baseX = GameMath.clamp(anchorX + 720.0 + st.authoredWaveCursor * 110.0, 180.0, ctx.WORLD_W - 180.0);
+        double baseY = GameMath.clamp(anchorY + ((st.authoredWaveCursor % 2 == 0) ? -170.0 : 150.0), 180.0, ctx.WORLD_H - 180.0);
+        double[][] slots = {
+                {0.0, 0.0},
+                {120.0, -120.0},
+                {150.0, 110.0},
+                {280.0, -60.0},
+                {320.0, 140.0},
+                {420.0, 20.0}
+        };
+        for (int i = 0; i < roles.length && i < slots.length; i++) {
+            ShipRole role = roles[i];
+            if (role == null) continue;
+            spawnEnemyAtPoint(ctx, role, baseX + slots[i][0], baseY + slots[i][1]);
+        }
+    }
+
+    private static double objectiveAnchorX(GameContext ctx, CampaignState st) {
+        if (st != null) {
+            if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureX;
+            if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) return st.escortShip.x;
+            if ((st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS)) {
+                Ship boss = findShipById(ctx, st.bossTargetId);
+                if (boss != null) return boss.x;
+            }
+        }
+        return (ctx != null && ctx.player != null) ? ctx.player.x : 2500.0;
+    }
+
+    private static double objectiveAnchorY(GameContext ctx, CampaignState st) {
+        if (st != null) {
+            if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureY;
+            if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) return st.escortShip.y;
+            if ((st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS)) {
+                Ship boss = findShipById(ctx, st.bossTargetId);
+                if (boss != null) return boss.y;
+            }
+        }
+        return (ctx != null && ctx.player != null) ? ctx.player.y : 2500.0;
+    }
+
+    private static ShipRole[] pressureRolesFor(CampaignState st, int stage) {
+        if (st == null) return new ShipRole[]{ShipRole.FRIGATE};
+        boolean late = st.sector >= 9;
+        boolean endgame = st.sector >= 11;
+        return switch (st.objectiveType) {
+            case SURVIVE -> switch (stage) {
+                case 0 -> late
+                        ? new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER}
+                        : new ShipRole[]{ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+                case 1 -> endgame
+                        ? new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+                default -> endgame
+                        ? new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.VANGUARD_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+            };
+            case DESTROY -> switch (stage) {
+                case 0 -> late
+                        ? new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT}
+                        : new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.PICKET};
+                case 1 -> endgame
+                        ? new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+                default -> endgame
+                        ? new ShipRole[]{ShipRole.BULWARK_TITAN, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+            };
+            case ESCORT -> switch (stage) {
+                case 0 -> new ShipRole[]{ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+                case 1 -> late
+                        ? new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.MISSILE_BOAT, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+                default -> endgame
+                        ? new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.VANGUARD_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+            };
+            case CAPTURE -> switch (stage) {
+                case 0 -> new ShipRole[]{ShipRole.CIWS_CORVETTE, ShipRole.PATROL, ShipRole.LIGHT_CRUISER};
+                case 1 -> late
+                        ? new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+                default -> endgame
+                        ? new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.BATTLECRUISER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.COMMAND_INTEL_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+            };
+            case BOSS, FINAL_BOSS -> switch (stage) {
+                case 0 -> new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+                case 1 -> late
+                        ? new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT}
+                        : new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+                default -> endgame
+                        ? new ShipRole[]{ShipRole.BULWARK_TITAN, ShipRole.BATTLECRUISER, ShipRole.CIWS_CORVETTE}
+                        : new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.MISSILE_BOAT};
+            };
+        };
     }
 
     private static int spawnBoss(GameContext ctx, ShipRole role, String name, double hpMul, double shieldMul) {
@@ -1502,6 +2333,13 @@ public final class CampaignSystem {
         st.authoredObjectiveHostiles.add(s.id);
     }
 
+    private static void registerObjectiveAsset(CampaignState st, Ship s) {
+        if (st == null || s == null) return;
+        if (st.objectiveAssetIds.add(s.id)) {
+            st.objectiveAssetTotal++;
+        }
+    }
+
     private static Ship spawnConvoy(GameContext ctx, String name) {
         Ship base = TeamSystem.getBaseForTeam(ctx, Faction.ALLY);
         double sx = (base != null) ? base.x + 80 : ctx.player.x - 120;
@@ -1608,20 +2446,43 @@ public final class CampaignSystem {
         // while scripted wave pressure increases each sector.
         if (st.sector <= AUTHORED_VERTICAL_SLICE_LAST_SECTOR) {
             double sectorBonusMul = switch (st.sector) {
-                case 1 -> 1.20;
-                case 2 -> 1.15;
-                case 3 -> 1.10;
+                case 1 -> 1.08;
+                case 2 -> 1.06;
+                case 3 -> 1.04;
                 default -> 1.0;
             };
             double oreMul = switch (st.sector) {
-                case 1 -> 1.15;
-                case 2 -> 1.10;
-                case 3 -> 1.08;
+                case 1 -> 1.06;
+                case 2 -> 1.04;
+                case 3 -> 1.02;
                 default -> 1.0;
             };
             st.sectorCreditBonusMul *= sectorBonusMul;
             st.oreCreditMul *= oreMul;
         }
+
+        applySectorThreatBaseline(st);
+        applyFleetPressureScaling(st);
+    }
+
+    private static void applySectorThreatBaseline(CampaignState st) {
+        if (st == null) return;
+        int sectorIndex = Math.max(0, st.sector - 1);
+        st.enemyWaveGroupMul *= 1.0 + sectorIndex * 0.05;
+        st.enemyWaveDelayMul *= Math.max(0.72, 1.0 - sectorIndex * 0.025);
+        if (st.sector >= 8) st.enemyWaveGroupMul *= 1.10;
+        if (st.sector >= 11) st.enemyWaveDelayMul *= 0.92;
+    }
+
+    private static void applyFleetPressureScaling(CampaignState st) {
+        if (st == null) return;
+        int standardUsed = standardCommandUsed(st);
+        int eliteUsed = eliteCommandUsed(st);
+        int titanCount = livePersistentFleetSlots(st, ShopHullCategory.TITAN);
+        int extraStandard = Math.max(0, standardUsed - CAMPAIGN_FLAGSHIP_STANDARD_COMMAND_CAPACITY);
+        st.enemyWaveGroupMul *= 1.0 + extraStandard * 0.04 + eliteUsed * 0.10 + titanCount * 0.08;
+        double delayPenalty = 1.0 - extraStandard * 0.015 - eliteUsed * 0.035 - titanCount * 0.025;
+        st.enemyWaveDelayMul *= Math.max(0.70, delayPenalty);
     }
 
     private static void scaleAsteroidOre(GameContext ctx, double mul, boolean forceRichVisual) {
@@ -1644,8 +2505,10 @@ public final class CampaignSystem {
         switch (st.objectiveType) {
             case SURVIVE -> st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + dt);
             case DESTROY -> {
-                if (st.sector == 2) {
+                if (st.sector == 2 || (st.sector == 11 && st.objectiveStage == 0)) {
                     st.objectiveProgress = Math.min(st.objectiveGoal, st.authoredObjectiveKills);
+                } else if (st.sector == 11 && st.objectiveStage >= 1) {
+                    st.objectiveProgress = Math.min(st.objectiveGoal, Math.max(0, st.kills - st.objectiveKillBaseline));
                 } else {
                     st.objectiveProgress = Math.min(st.objectiveGoal, st.kills);
                 }
@@ -1675,8 +2538,12 @@ public final class CampaignSystem {
                 }
             }
             case CAPTURE -> {
-                if (st.sector == 3 && !st.captureArmed) {
-                    st.objectiveProgress = 0.0;
+                if (!st.captureArmed) {
+                    if (st.sector == 7) {
+                        st.objectiveProgress = Math.min(st.objectiveGoal, st.authoredObjectiveKills);
+                    } else if (st.sector == 3) {
+                        st.objectiveProgress = 0.0;
+                    }
                     break;
                 }
                 boolean playerInside = false;
@@ -1811,6 +2678,7 @@ public final class CampaignSystem {
         persistSectorProgress(ctx, st.sector);
         String unlock = grantSectorUnlock(ctx);
         String storyReward = grantStoryFleetReward(ctx, st);
+        String sectorOutcome = grantSectorOutcomeReward(ctx, st);
         advanceCoalitionMomentumOnSectorClear(st);
         String bossDrop = grantBossDrop(ctx);
         int nextSector = st.sector + 1;
@@ -1836,6 +2704,7 @@ public final class CampaignSystem {
                 + coalitionSupportSummary(st)
                 + sideRewardSummary(st, sideBonus)
                 + (storyReward.isBlank() ? "" : "   |   " + storyReward)
+                + (sectorOutcome.isBlank() ? "" : "   |   " + sectorOutcome)
                 + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
                 + (unlock.isBlank() ? "" : "   |   " + unlock)
                 + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "")
@@ -1845,6 +2714,7 @@ public final class CampaignSystem {
                 clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
                         + (storyReward.isBlank() ? "" : "  FLEET EXPANDED")
+                        + (sectorOutcome.isBlank() ? "" : "  OUTCOME SECURED")
                         + (bossDrop.isBlank() ? "" : "  DROP ACQUIRED")
                         + "  DOCTRINE " + st.branchRoute
                         + (checkpointSaved ? "  CHECKPOINT SAVED" : "")
@@ -1858,10 +2728,66 @@ public final class CampaignSystem {
                         " bonus=" + bonus +
                         " sideBonus=" + sideBonus +
                         " storyReward=" + (storyReward.isBlank() ? "none" : storyReward) +
+                        " outcome=" + (sectorOutcome.isBlank() ? "none" : sectorOutcome) +
                         " drop=" + (bossDrop.isBlank() ? "none" : bossDrop) +
                         " checkpoint=" + checkpointSaved +
                         " route=" + st.branchRoute +
                         " branchScore=" + st.branchScore);
+    }
+
+    private static String grantSectorOutcomeReward(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return "";
+        detectObjectiveAssetLosses(ctx);
+        if (st.objectiveAssetTotal <= 0) return "";
+        int survivors = Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
+        return switch (st.sector) {
+            case 7 -> resolveSector7Outcome(ctx, st, survivors);
+            case 11 -> resolveSector11Outcome(ctx, st, survivors);
+            default -> "";
+        };
+    }
+
+    private static String resolveSector7Outcome(GameContext ctx, CampaignState st, int survivors) {
+        if (survivors >= st.objectiveAssetTotal) {
+            int credits = GameContext.scaleCreditEarnings(140);
+            ctx.credits += credits;
+            st.greenContractFavor += 1;
+            st.branchScore += 1;
+            st.branchRoute = branchRouteLabel(st.branchScore);
+            EventSystem.showBanner(ctx, "UPLINK GRID SAVED  +" + credits + "C  GREEN FAVOR +1", 2.4);
+            return "UPLINK GRID SAVED +" + credits + "c +Green favor";
+        }
+        if (survivors > 0) {
+            st.greenContractFavor += 1;
+            EventSystem.showBanner(ctx, "PARTIAL ARRAY SALVAGE  GREEN FAVOR +1", 2.2);
+            return "PARTIAL ARRAY SALVAGE +Green favor";
+        }
+        st.branchScore -= 1;
+        st.branchRoute = branchRouteLabel(st.branchScore);
+        EventSystem.showBanner(ctx, "CONTRACT ARRAY MAULED", 2.0);
+        return "Contract array mauled";
+    }
+
+    private static String resolveSector11Outcome(GameContext ctx, CampaignState st, int survivors) {
+        if (survivors >= st.objectiveAssetTotal) {
+            int credits = GameContext.scaleCreditEarnings(180);
+            ctx.credits += credits;
+            st.yellowLiberationFavor += 1;
+            st.branchScore += 1;
+            st.branchRoute = branchRouteLabel(st.branchScore);
+            EventSystem.showBanner(ctx, "EVACUATION LINE SECURED  +" + credits + "C  YELLOW FAVOR +1", 2.4);
+            return "Evacuation line secured +" + credits + "c +Yellow favor";
+        }
+        if (survivors > 0) {
+            st.yellowLiberationFavor += 1;
+            EventSystem.showBanner(ctx, "EVAC SHIPS PARTIALLY SAVED  YELLOW FAVOR +1", 2.2);
+            return "Partial evacuation success +Yellow favor";
+        }
+        st.yellowLiberationFavor = Math.max(0, st.yellowLiberationFavor - 1);
+        st.branchScore -= 1;
+        st.branchRoute = branchRouteLabel(st.branchScore);
+        EventSystem.showBanner(ctx, "EVACUATION LINE SHATTERED", 2.0);
+        return "Evacuation line shattered -Yellow favor";
     }
 
     private static String grantSectorUnlock(GameContext ctx) {
@@ -2119,6 +3045,17 @@ public final class CampaignSystem {
         st.knownHostiles.addAll(aliveNow);
     }
 
+    private static void detectObjectiveAssetLosses(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.objectiveAssetIds.isEmpty()) return;
+        for (Iterator<Integer> it = st.objectiveAssetIds.iterator(); it.hasNext(); ) {
+            Ship ship = findShipById(ctx, it.next());
+            if (ship != null && ship.alive && !ship.dying && ship.hp > 0) continue;
+            st.objectiveAssetLosses++;
+            it.remove();
+        }
+    }
+
     private static boolean hostileInsideCapture(GameContext ctx, double x, double y, double r) {
         double r2 = r * r;
         for (Ship s : ctx.ships) {
@@ -2211,7 +3148,7 @@ public final class CampaignSystem {
     private static void ensureCampaignHangarTier(GameContext ctx, Ship base) {
         if (ctx == null || base == null || base.role != ShipRole.BASE) return;
         BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
-        upgrades.hangarLv = Math.max(upgrades.hangarLv, 3);
+        upgrades.hangarLv = Math.max(upgrades.hangarLv, CAMPAIGN_ENEMY_MAX_HANGAR_TIER);
     }
 
     private static void ensureStartingTitanRoster(CampaignState st) {
@@ -2749,11 +3686,14 @@ public final class CampaignSystem {
             base.oreStockpile = Math.max(0, oreStockpile);
         }
         if (upgrades != null) {
-            upgrades.hullLv = MathUtil.clamp(hullLv, 0, 3);
-            upgrades.shieldLv = MathUtil.clamp(shieldLv, 0, 3);
-            upgrades.turretLv = MathUtil.clamp(turretLv, 0, 3);
-            upgrades.miningLv = MathUtil.clamp(miningLv, 0, 3);
-            upgrades.hangarLv = MathUtil.clamp(hangarLv, 0, 3);
+            int maxHangarLv = (base != null && base.role == ShipRole.MOTHERSHIP)
+                    ? CAMPAIGN_PLAYER_MAX_HANGAR_TIER
+                    : CAMPAIGN_ENEMY_MAX_HANGAR_TIER;
+            upgrades.hullLv = MathUtil.clamp(hullLv, 0, 5);
+            upgrades.shieldLv = MathUtil.clamp(shieldLv, 0, 5);
+            upgrades.turretLv = MathUtil.clamp(turretLv, 0, 5);
+            upgrades.miningLv = MathUtil.clamp(miningLv, 0, 5);
+            upgrades.hangarLv = MathUtil.clamp(hangarLv, 0, maxHangarLv);
         }
     }
 
@@ -2883,8 +3823,15 @@ public final class CampaignSystem {
     }
 
     private static void addPersistentFleetEntry(CampaignState st, ShipRole role, String name) {
-        if (st == null || role == null) return;
-        st.persistentBlueFleet.add(new PersistentFleetEntry(st.nextPersistentFleetSlotId++, role, name));
+        addPersistentFleetEntry(st, role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+    }
+
+    private static PersistentFleetEntry addPersistentFleetEntry(CampaignState st, ShipRole role, String name, int commandGroupId) {
+        if (st == null || role == null) return null;
+        PersistentFleetEntry entry = new PersistentFleetEntry(st.nextPersistentFleetSlotId++, role, name);
+        entry.commandGroupId = Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, commandGroupId);
+        st.persistentBlueFleet.add(entry);
+        return entry;
     }
 
     private static boolean isTitanPersistentEntry(PersistentFleetEntry entry) {
@@ -3035,8 +3982,117 @@ public final class CampaignSystem {
         ship.minerHomeBase = ctx.player;
         ctx.ships.add(ship);
         try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
+        applyPersistentCampaignShipBonuses(state(ctx), entry, ship);
         entry.activeShipId = ship.id;
         return ship;
+    }
+
+    private static void applyCampaignFleetBonuses(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+        if (hasOperationalRole(st, ShipRole.TRANSPORT_TITAN)) {
+            ctx.player.cargoMax = Math.max(ctx.player.cargoMax, CAMPAIGN_TRANSPORT_FLEET_ORE_CAPACITY);
+        }
+    }
+
+    private static void queueEliteReinforcementPackage(CampaignState st, PersistentFleetEntry titanEntry,
+                                                       List<PersistentFleetEntry> out) {
+        if (st == null || titanEntry == null || out == null) return;
+        int groupId = titanEntry.slotId;
+        PersistentFleetEntry battleship = addPersistentFleetEntry(
+                st,
+                ShipRole.BATTLESHIP,
+                "Blue Honor Battleship " + groupId,
+                groupId);
+        PersistentFleetEntry battlecruiser = addPersistentFleetEntry(
+                st,
+                ShipRole.BATTLECRUISER,
+                "Blue Honor Battlecruiser " + groupId,
+                groupId);
+        PersistentFleetEntry frigate = addPersistentFleetEntry(
+                st,
+                ShipRole.FRIGATE,
+                "Blue Honor Frigate " + groupId,
+                groupId);
+        PersistentFleetEntry screen = addPersistentFleetEntry(
+                st,
+                ShipRole.CIWS_CORVETTE,
+                "Blue Honor Screen " + groupId,
+                groupId);
+        if (battleship != null) out.add(battleship);
+        if (battlecruiser != null) out.add(battlecruiser);
+        if (frigate != null) out.add(frigate);
+        if (screen != null) out.add(screen);
+    }
+
+    private static void applyPersistentCampaignShipBonuses(CampaignState st, PersistentFleetEntry entry, Ship ship) {
+        if (st == null || entry == null || ship == null) return;
+        if (entry.role == null || entry.role.isTitanOrMothership()) return;
+        if (entry.commandGroupId == CAMPAIGN_FLAGSHIP_COMMAND_GROUP) return;
+        PersistentFleetEntry anchor = persistentFleetEntryBySlotId(st, entry.commandGroupId);
+        if (anchor == null || anchor.role == null) return;
+        if (anchor.role == ShipRole.ELITE_REINFORCEMENTS_TITAN) {
+            applyEliteReinforcementVeterancy(ship);
+        }
+    }
+
+    private static void applyEliteReinforcementVeterancy(Ship ship) {
+        if (ship == null || ship.role == null) return;
+        if (ship.role.isTitanOrMothership() || ship.isSmallCraft()) return;
+        if (ship.role == ShipRole.TRANSPORT || ship.role == ShipRole.MINER || ship.role == ShipRole.HAULER) return;
+
+        boolean capital = ship.role == ShipRole.BATTLECRUISER
+                || ship.role == ShipRole.BATTLESHIP
+                || ship.role == ShipRole.DREADNOUGHT
+                || ship.role == ShipRole.SUPERSHIP
+                || ship.role.isCarrierHull();
+        double hullMultiplier = capital ? 1.18 : 1.10;
+        double shieldMultiplier = capital ? 1.18 : 1.10;
+        double speedMultiplier = capital ? 1.08 : 1.05;
+        double shieldRegenMultiplier = capital ? 1.14 : 1.10;
+        double turretCooldownMultiplier = capital ? 0.92 : 0.95;
+        int turretDamageBonus = capital ? 1 : 0;
+
+        ship.hpMax = Math.max(1, (int) Math.round(ship.hpMax * hullMultiplier));
+        ship.shieldMax = Math.max(0.0, ship.shieldMax * shieldMultiplier);
+        ship.shieldRegen *= shieldRegenMultiplier;
+        ship.desiredSpeed *= speedMultiplier;
+        ship.desiredSpeedBase = Math.max(0.0, ship.desiredSpeed);
+        if (ship.hasCIWS) {
+            ship.ciwsRange += capital ? 34.0 : 24.0;
+            ship.ciwsCooldown = Math.max(0.05, ship.ciwsCooldown * (capital ? 0.92 : 0.95));
+            ship.ciwsQuality = Math.min(1.0, ship.ciwsQuality + (capital ? 0.10 : 0.06));
+        }
+        for (Turret turret : ship.turrets) {
+            if (turret == null) continue;
+            if (turret.kind == Turret.Kind.GUN) {
+                turret.cooldown = Math.max(0.08, turret.cooldown * turretCooldownMultiplier);
+                turret.damage = Math.max(1, turret.damage + turretDamageBonus);
+                turret.bulletSpeed *= 1.04;
+                turret.bulletLife += capital ? 24 : 12;
+            } else if (turret.kind == Turret.Kind.MISSILE) {
+                turret.cooldown = Math.max(0.45, turret.cooldown * turretCooldownMultiplier);
+                turret.damage = Math.max(1, turret.damage + turretDamageBonus);
+                turret.missileSpeed *= 1.05;
+                turret.missileTurnRate *= 1.04;
+                turret.missileLife += capital ? 28 : 14;
+            }
+        }
+        ship.rebuildDefenseStateForCurrentStats();
+        ship.fullyRepairHull();
+        ship.resetShieldState();
+        if (ship.shieldActive && ship.shieldMax > 0.0) {
+            ship.shield = ship.shieldMax;
+        }
+    }
+
+    private static PersistentFleetEntry persistentFleetEntryBySlotId(CampaignState st, int slotId) {
+        if (st == null || slotId <= 0) return null;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && entry.slotId == slotId) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     private static Ship findPersistentCommandAnchor(GameContext ctx, CampaignState st, int commandGroupId) {

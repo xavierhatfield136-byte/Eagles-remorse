@@ -147,6 +147,19 @@ public enum TitanArchetype {
             "elite Superships",
             "recon escort",
             "support command escort"),
+    ELITE_REINFORCEMENTS(
+            "Elite Reinforcements Titan",
+            3300,
+            TitanAvailability.LATE,
+            6,
+            0,
+            "Shock task-group command",
+            "Auto-commissions a battleship-led honor guard with line escorts and boosts attached capital screens",
+            "honor-guard battleship",
+            "elite battlecruiser",
+            "screen frigate",
+            "ciws escort",
+            "assault reserve"),
     MOBILE_STATION(
             "Mobile Station Titan",
             3400,
@@ -262,6 +275,7 @@ public enum TitanArchetype {
             case SHIELD_BASTION -> ShipRole.SHIELD_BASTION_TITAN;
             case FLEET_TELEPORTER -> ShipRole.FLEET_TELEPORTER_TITAN;
             case ELITE_SUPERSHIP_COMMAND -> ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN;
+            case ELITE_REINFORCEMENTS -> ShipRole.ELITE_REINFORCEMENTS_TITAN;
             case MOBILE_STATION -> ShipRole.MOBILE_STATION_TITAN;
             case HYPERWEAPON -> ShipRole.HYPERWEAPON_TITAN;
         };
@@ -281,6 +295,7 @@ public enum TitanArchetype {
             case SHIELD_BASTION_TITAN -> SHIELD_BASTION;
             case FLEET_TELEPORTER_TITAN -> FLEET_TELEPORTER;
             case ELITE_SUPERSHIP_COMMAND_TITAN -> ELITE_SUPERSHIP_COMMAND;
+            case ELITE_REINFORCEMENTS_TITAN -> ELITE_REINFORCEMENTS;
             case MOBILE_STATION_TITAN -> MOBILE_STATION;
             case HYPERWEAPON_TITAN -> HYPERWEAPON;
             default -> null;

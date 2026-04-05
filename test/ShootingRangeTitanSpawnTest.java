@@ -41,6 +41,20 @@ class ShootingRangeTitanSpawnTest {
     }
 
     @Test
+    void shootingRangeTitanLayoutSupportsEliteReinforcementPackage() {
+        GameContext ctx = shootingRangeContext();
+
+        SpawnSystem.initWorld(ctx);
+        assertTrue(SpawnSystem.setShootingRangeTitanLayout(ctx, TitanArchetype.ELITE_REINFORCEMENTS));
+
+        assertEquals(TitanArchetype.ELITE_REINFORCEMENTS, ctx.command.shootingRangeTitanArchetype);
+        assertRoleCountAtLeast(ctx, ShipRole.ELITE_REINFORCEMENTS_TITAN, 1);
+        assertRoleCountAtLeast(ctx, ShipRole.BATTLESHIP, 1);
+        assertRoleCountAtLeast(ctx, ShipRole.BATTLECRUISER, 1);
+        assertRoleCountAtLeast(ctx, ShipRole.CIWS_CORVETTE, 1);
+    }
+
+    @Test
     void shootingRangeTitanLayoutCanResetToDefaultWall() {
         GameContext ctx = shootingRangeContext();
 

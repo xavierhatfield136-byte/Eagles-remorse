@@ -118,6 +118,9 @@ public final class TitanFleetSystem {
         CampaignSystem.CampaignState st = state(ctx);
         st.ownedTitans.add(archetype);
         ctx.credits -= archetype.costCredits();
+        if (archetype == TitanArchetype.TRANSPORT && ctx.player != null) {
+            ctx.player.cargoMax = Math.max(ctx.player.cargoMax, 10_000);
+        }
         EventSystem.showBanner(
                 ctx,
                 "TITAN ONLINE: " + archetype.displayName().toUpperCase(Locale.US),

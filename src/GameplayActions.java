@@ -495,6 +495,7 @@ public final class GameplayActions {
                 case java.awt.event.KeyEvent.VK_9 -> TitanArchetype.SHIELD_BASTION;
                 case java.awt.event.KeyEvent.VK_0 -> TitanArchetype.FLEET_TELEPORTER;
                 case java.awt.event.KeyEvent.VK_Q -> TitanArchetype.ELITE_SUPERSHIP_COMMAND;
+                case java.awt.event.KeyEvent.VK_T -> TitanArchetype.ELITE_REINFORCEMENTS;
                 case java.awt.event.KeyEvent.VK_E -> TitanArchetype.MOBILE_STATION;
                 case java.awt.event.KeyEvent.VK_R -> TitanArchetype.HYPERWEAPON;
                 default -> null;
@@ -524,6 +525,7 @@ public final class GameplayActions {
                 case java.awt.event.KeyEvent.VK_9 -> TitanArchetype.SHIELD_BASTION;
                 case java.awt.event.KeyEvent.VK_0 -> TitanArchetype.FLEET_TELEPORTER;
                 case java.awt.event.KeyEvent.VK_Q -> TitanArchetype.ELITE_SUPERSHIP_COMMAND;
+                case java.awt.event.KeyEvent.VK_T -> TitanArchetype.ELITE_REINFORCEMENTS;
                 case java.awt.event.KeyEvent.VK_E -> TitanArchetype.MOBILE_STATION;
                 case java.awt.event.KeyEvent.VK_R -> TitanArchetype.HYPERWEAPON;
                 default -> null;

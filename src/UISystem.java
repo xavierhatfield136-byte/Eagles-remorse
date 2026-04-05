@@ -622,6 +622,7 @@ public final class UISystem {
                 case SHIELD_BASTION_TITAN -> tryBuyCampaignHull(ctx, ShipRole.SHIELD_BASTION_TITAN, TitanArchetype.SHIELD_BASTION.costCredits(), 3);
                 case FLEET_TELEPORTER_TITAN -> tryBuyCampaignHull(ctx, ShipRole.FLEET_TELEPORTER_TITAN, TitanArchetype.FLEET_TELEPORTER.costCredits(), 3);
                 case ELITE_SUPERSHIP_COMMAND_TITAN -> tryBuyCampaignHull(ctx, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3);
+                case ELITE_REINFORCEMENTS_TITAN -> tryBuyCampaignHull(ctx, ShipRole.ELITE_REINFORCEMENTS_TITAN, TitanArchetype.ELITE_REINFORCEMENTS.costCredits(), 3);
                 case MOBILE_STATION_TITAN -> tryBuyCampaignHull(ctx, ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3);
                 case HYPERWEAPON_TITAN -> tryBuyCampaignHull(ctx, ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3);
                 case MOTHERSHIP -> EventSystem.showBanner(ctx, "MOTHERSHIP ALREADY UNDER COMMAND", 1.4);
@@ -660,6 +661,7 @@ public final class UISystem {
             case SHIELD_BASTION_TITAN -> trySwapHull(ctx, ShipRole.SHIELD_BASTION_TITAN, TitanArchetype.SHIELD_BASTION.costCredits(), 3);
             case FLEET_TELEPORTER_TITAN -> trySwapHull(ctx, ShipRole.FLEET_TELEPORTER_TITAN, TitanArchetype.FLEET_TELEPORTER.costCredits(), 3);
             case ELITE_SUPERSHIP_COMMAND_TITAN -> trySwapHull(ctx, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3);
+            case ELITE_REINFORCEMENTS_TITAN -> trySwapHull(ctx, ShipRole.ELITE_REINFORCEMENTS_TITAN, TitanArchetype.ELITE_REINFORCEMENTS.costCredits(), 3);
             case MOBILE_STATION_TITAN -> trySwapHull(ctx, ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3);
             case HYPERWEAPON_TITAN -> trySwapHull(ctx, ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3);
             case MOTHERSHIP -> trySwapHull(ctx, ShipRole.MOTHERSHIP, 7200, 3);
@@ -953,7 +955,7 @@ public final class UISystem {
         BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
 
         int max = switch (which) {
-            case 5 -> 3;
+            case 5 -> CampaignSystem.isCampaignActive(ctx) ? CampaignSystem.campaignMaxHangarTier(ctx) : 3;
             default -> 5;
         };
 

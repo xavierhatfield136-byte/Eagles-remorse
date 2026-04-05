@@ -39,6 +39,7 @@ public final class TitanAbilitySystem {
             case SHIELD_BASTION_TITAN -> applyShieldBastionTitanField(ctx, source, dt, nearby);
             case FLEET_TELEPORTER_TITAN -> applyFleetTeleporterTitanField(ctx, source, dt, nearby);
             case ELITE_SUPERSHIP_COMMAND_TITAN -> applyEliteSupershipCommandField(ctx, source, dt, nearby);
+            case ELITE_REINFORCEMENTS_TITAN -> applyEliteReinforcementField(ctx, source, dt, nearby);
             case MOBILE_STATION_TITAN -> applyMobileStationTitanField(ctx, source, dt, nearby);
             case HYPERWEAPON_TITAN -> applyHyperweaponTitanField(ctx, source, dt, nearby);
             case MOTHERSHIP -> applyMothershipField(ctx, source, dt, nearby);
@@ -191,14 +192,39 @@ public final class TitanAbilitySystem {
     }
 
     private static void applyEliteSupershipCommandField(GameContext ctx, Ship source, double dt, ArrayList<Ship> nearby) {
-        collectNearby(ctx, source, 520.0, nearby);
+        collectNearby(ctx, source, 600.0, nearby);
         for (Ship ship : nearby) {
-            if (!sameTeam(source, ship)) continue;
-            if (!isEliteCommandTarget(ship)) continue;
-            ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_DAMAGE, 1.18);
-            ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_CYCLE, 1.10);
-            ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.MISSILE_CYCLE, 1.12);
-            ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SENSOR_RANGE, 1.10);
+            if (!sameTeam(source, ship) || ship == source) continue;
+            if (ship.role == ShipRole.SUPERSHIP) {
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_DAMAGE, 1.28);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_CYCLE, 1.14);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.MISSILE_CYCLE, 1.16);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SENSOR_RANGE, 1.14);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SHIELD_REGEN, 1.14);
+            } else if (ship.role == ShipRole.DREADNOUGHT || ship.role == ShipRole.BATTLESHIP) {
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_DAMAGE, 1.12);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SENSOR_RANGE, 1.08);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SHIELD_REGEN, 1.08);
+            }
+        }
+    }
+
+    private static void applyEliteReinforcementField(GameContext ctx, Ship source, double dt, ArrayList<Ship> nearby) {
+        collectNearby(ctx, source, 560.0, nearby);
+        for (Ship ship : nearby) {
+            if (!sameTeam(source, ship) || ship == source) continue;
+            if (isEliteCapitalTarget(ship)) {
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_DAMAGE, 1.22);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_CYCLE, 1.12);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.MISSILE_CYCLE, 1.14);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SENSOR_RANGE, 1.12);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SHIELD_REGEN, 1.12);
+            } else if (isEliteEscortTarget(ship)) {
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.CIWS_RANGE, 1.14);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.WEAPON_CYCLE, 1.08);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.SHIELD_REGEN, 1.10);
+                ship.applyCommandStatMultiplier(ShipIdentityRegistry.IdentityStat.MOBILITY, 1.06);
+            }
         }
     }
 
@@ -272,11 +298,21 @@ public final class TitanAbilitySystem {
         ship.reloadStrikeCraftMunitions();
     }
 
-    private static boolean isEliteCommandTarget(Ship ship) {
+    private static boolean isEliteCapitalTarget(Ship ship) {
         if (ship == null || ship.role == null) return false;
         return switch (ship.role) {
             case SUPERSHIP, BATTLECRUISER, BATTLESHIP, DREADNOUGHT, MOTHERSHIP -> true;
             default -> ship.role.isTitan();
+        };
+    }
+
+    private static boolean isEliteEscortTarget(Ship ship) {
+        if (ship == null || ship.role == null) return false;
+        if (ship.isSmallCraft()) return false;
+        return switch (ship.role) {
+            case PATROL, PICKET, STEALTH_SHIP, FRIGATE, ARTILLERY_SHIP, MISSILE_BOAT,
+                    CIWS_CORVETTE, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> true;
+            default -> ship.role.isCarrierHull();
         };
     }
 

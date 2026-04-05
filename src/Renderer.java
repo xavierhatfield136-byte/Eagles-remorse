@@ -224,6 +224,9 @@ public class Renderer {
             new ShopHullOffer(ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits(), 3, ShopHullCategory.TITAN,
                     TitanArchetype.ELITE_SUPERSHIP_COMMAND.roleLabel(),
                     TitanArchetype.ELITE_SUPERSHIP_COMMAND.commandBonusSummary()),
+            new ShopHullOffer(ShipRole.ELITE_REINFORCEMENTS_TITAN, TitanArchetype.ELITE_REINFORCEMENTS.costCredits(), 3, ShopHullCategory.TITAN,
+                    TitanArchetype.ELITE_REINFORCEMENTS.roleLabel(),
+                    TitanArchetype.ELITE_REINFORCEMENTS.commandBonusSummary()),
             new ShopHullOffer(ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3, ShopHullCategory.TITAN,
                     TitanArchetype.MOBILE_STATION.roleLabel(),
                     TitanArchetype.MOBILE_STATION.commandBonusSummary()),
@@ -509,12 +512,14 @@ public class Renderer {
             Rectangle card = getShopHullCardRect(panel, slot);
             if (!card.contains(mouseX, mouseY)) continue;
             boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
-            int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, offer.requiredTier) : 0;
+            int displayTier = campaignShop ? CampaignSystem.campaignRequiredTier(offer.role, offer.requiredTier) : offer.requiredTier;
+            int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, displayTier) : 0;
             String body = offer.tagLine + ". " + offer.detail
-                    + " Required tier " + offer.requiredTier
+                    + " Required tier " + displayTier
                     + ", cost $" + offer.cost
                     + (campaignShop ? (" plus " + oreCost + " ore") : "")
-                    + ".";
+                    + "."
+                    + (campaignShop ? (" " + CampaignSystem.campaignCommissionRequirementsDetail(ctx, offer.role, offer.requiredTier)) : "");
             return new HoverTooltip("shop:hull:" + offer.role.name(), shopRoleTitle(offer.role), body);
         }
         return null;
@@ -537,7 +542,7 @@ public class Renderer {
                 case 3 -> new HoverTooltip("base:4", "Mining Ops",
                         "Improves mining throughput and ore sale value across the docked economy package.");
                 case 4 -> new HoverTooltip("base:5", "Hangar Expansion",
-                        "Raises available hangar tier so stronger hull classes can be fielded from the shipyard.");
+                        "Raises available shipyard tier so stronger hull classes can be fielded. In campaign, tiers four and five unlock strategic capitals and apex titan fabrication.");
                 default -> null;
             };
         }
@@ -2628,17 +2633,18 @@ public class Renderer {
             int lineCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE);
             int capitalCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
             int titanHullCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
-            int titanCount = TitanFleetSystem.ownedTitanCount(ctx);
-            int standardCommand = TitanFleetSystem.totalStandardShipCommandCapacity(ctx);
-            int eliteCommand = TitanFleetSystem.totalEliteSupershipCommandCapacity(ctx);
+            int standardCommand = CampaignSystem.campaignStandardCommandCapacity(ctx);
+            int standardUsed = CampaignSystem.campaignStandardCommandUsed(ctx);
+            int eliteCommand = CampaignSystem.campaignEliteCommandCapacity(ctx);
+            int eliteUsed = CampaignSystem.campaignEliteCommandUsed(ctx);
             String fleetLine = "Fleet: E " + escortCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT)
                     + "   L " + lineCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.LINE)
                     + "   C " + capitalCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL)
                     + "   T " + titanHullCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.TITAN);
             statusLines.add(fleetLine);
-            String commandLine = "Command: Grid " + titanCount + "/" + TitanFleetSystem.mothershipTitanCap()
-                    + "   Std " + standardCommand;
-            if (eliteCommand > 0) commandLine += "   Elite " + eliteCommand;
+            String commandLine = "Command: Grid " + titanHullCount + "/" + TitanFleetSystem.mothershipTitanCap()
+                    + "   Std " + standardUsed + "/" + standardCommand
+                    + "   Elite " + eliteUsed + "/" + eliteCommand;
             statusLines.add(commandLine);
             if (detail == GameContext.HudDetail.FULL) {
                 TitanArchetype nextTitan = TitanFleetSystem.nextLockedArchetype(ctx);
@@ -3623,7 +3629,7 @@ public class Renderer {
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(196, 208, 224, 164));
         gx.drawString(campaignShop
-                        ? "Tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Each hull band has its own cap and commissioned ships persist until destroyed."
+                        ? "Tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Campaign hulls obey shipyard tiers, command-grid limits, sector unlocks, and late titan infrastructure."
                         : "Hull tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Tier-locked hulls need a stronger base hangar.",
                 panel.x + 22, panel.y + panel.height - 18);
         gx.dispose();
@@ -3863,16 +3869,31 @@ public class Renderer {
     private static void drawShopHullCard(Graphics2D g2, Rectangle card, ShopHullOffer offer,
                                          int credits, int hangarTier, Player player, GameContext ctx) {
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
-        int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, offer.requiredTier) : 0;
+        int displayTier = campaignShop ? CampaignSystem.campaignRequiredTier(offer.role, offer.requiredTier) : offer.requiredTier;
+        int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, displayTier) : 0;
         ShopHullCategory fleetBand = ShopHullCategory.forRole(offer.role);
         int bandCount = campaignShop ? CampaignSystem.livePersistentFleetCount(ctx, fleetBand) : 0;
         int bandCap = campaignShop ? CampaignSystem.persistentFleetCap(fleetBand) : 0;
+        int minSector = campaignShop ? CampaignSystem.campaignMinSectorForRole(offer.role) : 1;
+        boolean sectorOk = !campaignShop || CampaignSystem.campaignSectorRequirementMet(ctx, offer.role);
+        boolean mobileStationOk = !campaignShop
+                || !CampaignSystem.campaignNeedsMobileStation(offer.role)
+                || CampaignSystem.hasOperationalMobileStation(ctx);
+        int standardCost = campaignShop ? CampaignSystem.campaignStandardCommandCost(offer.role) : 0;
+        int eliteCost = campaignShop ? CampaignSystem.campaignEliteCommandCost(offer.role) : 0;
+        int standardUsed = campaignShop ? CampaignSystem.campaignStandardCommandUsed(ctx) : 0;
+        int standardCapacity = campaignShop ? CampaignSystem.campaignStandardCommandCapacity(ctx) : 0;
+        int eliteUsed = campaignShop ? CampaignSystem.campaignEliteCommandUsed(ctx) : 0;
+        int eliteCapacity = campaignShop ? CampaignSystem.campaignEliteCommandCapacity(ctx) : 0;
+        boolean standardCommandOk = !campaignShop || standardCost <= 0 || (standardUsed + standardCost) <= standardCapacity;
+        boolean eliteCommandOk = !campaignShop || eliteCost <= 0 || (eliteCapacity > 0 && (eliteUsed + eliteCost) <= eliteCapacity);
         boolean current = player.role == offer.role;
-        boolean tierOk = hangarTier >= offer.requiredTier;
+        boolean tierOk = hangarTier >= displayTier;
         boolean affordable = credits >= offer.cost;
         boolean oreAffordable = !campaignShop || (ctx != null && ctx.player != null && ctx.player.cargo >= oreCost);
         boolean capOk = !campaignShop || bandCount < bandCap;
-        boolean enabled = !current && tierOk && affordable && oreAffordable && capOk;
+        boolean commandOk = standardCommandOk && eliteCommandOk;
+        boolean enabled = !current && tierOk && sectorOk && mobileStationOk && commandOk && affordable && oreAffordable && capOk;
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
         drawShopCardFrame(g2, card, accent, current);
@@ -3889,19 +3910,34 @@ public class Renderer {
 
         String line2 = current
                 ? (campaignShop ? "Flagship hull currently commanded" : "Currently equipped")
-                : (!tierOk ? "Needs hangar T" + offer.requiredTier
+                : (!tierOk ? "Needs shipyard T" + displayTier
+                : (campaignShop && !sectorOk)
+                ? ("Unlocks in sector " + minSector)
+                : (campaignShop && !mobileStationOk)
+                ? "Needs Mobile Station Titan"
+                : (campaignShop && eliteCost > 0 && eliteCapacity <= 0)
+                ? "Needs elite command titan"
+                : (campaignShop && !eliteCommandOk)
+                ? ("Elite grid " + eliteUsed + "/" + eliteCapacity + " committed")
+                : (campaignShop && !standardCommandOk)
+                ? ("Std grid " + standardUsed + "/" + standardCapacity + " committed")
                 : (campaignShop && !capOk)
                 ? (fleetBand.label() + " cap " + bandCount + "/" + bandCap + " full")
                 : (campaignShop ? "Ready to commission" : "Ready for swap"));
         String costLine = campaignShop
-                ? ("Tier " + offer.requiredTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
+                ? ("Tier " + displayTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
                 : ("Tier " + offer.requiredTier + "   Cost $" + offer.cost);
         g2.drawString(fitShopText(bodyMetrics, costLine, card.width - 20), card.x + 10, card.y + 69);
         g2.drawString(fitShopText(bodyMetrics, line2, card.width - 20), card.x + 10, card.y + 86);
 
         String buttonLabel;
         if (current) buttonLabel = "CURRENT";
-        else if (!tierOk) buttonLabel = "LOCK T" + offer.requiredTier;
+        else if (!tierOk) buttonLabel = "LOCK T" + displayTier;
+        else if (campaignShop && !sectorOk) buttonLabel = "LOCK S" + minSector;
+        else if (campaignShop && !mobileStationOk) buttonLabel = "NEED STATION";
+        else if (campaignShop && eliteCost > 0 && eliteCapacity <= 0) buttonLabel = "NEED ELITE";
+        else if (campaignShop && !eliteCommandOk) buttonLabel = "ELITE FULL";
+        else if (campaignShop && !standardCommandOk) buttonLabel = "GRID FULL";
         else if (!affordable) buttonLabel = "NEED $" + offer.cost;
         else if (!oreAffordable) buttonLabel = "NEED " + oreCost + " ORE";
         else if (!capOk) buttonLabel = "CAP FULL";
@@ -5303,7 +5339,7 @@ public class Renderer {
         ty = drawUpgradeLineConsole(g2, x + 18, ty, 2, "Shield Array",      shieldLv, 5, new Color(120, 200, 255, 220), cCost, oCost);
         ty = drawUpgradeLineConsole(g2, x + 18, ty, 3, "Turret Systems",    turretLv, 5, new Color(255, 210, 130, 220), cCost, oCost);
         ty = drawUpgradeLineConsole(g2, x + 18, ty, 4, "Mining Ops",        miningLv, 5, new Color(255, 230, 120, 220), cCost, oCost);
-        ty = drawUpgradeLineConsole(g2, x + 18, ty, 5, "Hangar Expansion",  hangarLv, 3, new Color(210, 170, 255, 220), cCost, oCost);
+        ty = drawUpgradeLineConsole(g2, x + 18, ty, 5, "Hangar Expansion",  hangarLv, maxHangarTier, new Color(210, 170, 255, 220), cCost, oCost);
 
         g2.setColor(new Color(255, 255, 255, 130));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -6500,6 +6536,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static String keyForRole(ShipRole role) {
             if (role == null) return "frigate";
             if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
+            if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
             return role.name().toLowerCase(Locale.ROOT);
         }
 
@@ -6603,6 +6640,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         private static String keyForRole(ShipRole role) {
             if (role == null) return "frigate";
+            if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
             return role.name().toLowerCase(Locale.ROOT);
         }
 
@@ -7232,7 +7270,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                  TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
                  INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
                  ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
-                 ELITE_SUPERSHIP_COMMAND_TITAN, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                 MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
                  MOTHERSHIP -> {
                 g.setColor(new Color(255, 255, 255, 75));
                 g.drawLine(-r + 6, -r / 2, r + 10, -r / 6);

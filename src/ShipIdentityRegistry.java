@@ -263,10 +263,15 @@ public final class ShipIdentityRegistry {
                     spec(IdentityStat.SUPPORT_FIELD, 1.16, "Recovery Anchor"),
                     spec(IdentityStat.SENSOR_RANGE, 1.14, "Transit Plotting"));
             case ELITE_SUPERSHIP_COMMAND_TITAN -> matrixBonus(key, role,
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.18, "Supership Command Net"),
+                    spec(IdentityStat.WEAPON_DAMAGE, 1.18, "Kill Chain Bridge"),
+                    spec(IdentityStat.SENSOR_RANGE, 1.16, "Aegis Target Choir"),
+                    spec(IdentityStat.WARP_CHARGE, 1.16, "Viper Spearhead"));
+            case ELITE_REINFORCEMENTS_TITAN -> matrixBonus(key, role,
                     spec(IdentityStat.WEAPON_DAMAGE, 1.16, "Strike Coordination"),
                     spec(IdentityStat.SENSOR_RANGE, 1.16, "Command Targeting"),
-                    spec(IdentityStat.WARP_CHARGE, 1.14, "Wing Spool"),
-                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Honor Guard Screens"));
+                    spec(IdentityStat.SHIELD_REGEN, 1.14, "Honor Guard Screens"),
+                    spec(IdentityStat.MOBILITY, 1.14, "Assault Screen Drives"));
             case MOBILE_STATION_TITAN -> matrixBonus(key, role,
                     spec(IdentityStat.SUPPORT_FIELD, 1.30, "Dockyard Spine"),
                     spec(IdentityStat.STRIKE_CRAFT, 1.18, "Reserve Decks"),
@@ -365,6 +370,8 @@ public final class ShipIdentityRegistry {
 
     private static String prettyRole(ShipRole role) {
         if (role == null) return "ships";
+        if (role == ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN) return "Elite Supership Command Titan";
+        if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "Elite Reinforcements Titan";
         String raw = role.name().toLowerCase(Locale.US).replace('_', ' ');
         String[] parts = raw.split(" ");
         StringBuilder out = new StringBuilder();

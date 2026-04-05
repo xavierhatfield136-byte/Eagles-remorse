@@ -245,6 +245,19 @@ class HyperweaponBehaviorTest {
         assertEquals(shieldedHpBefore, shieldedBattleship.hp);
     }
 
+    @Test
+    void hyperweaponTitanGunMountsStayBalancedAcrossCenterline() {
+        FleetShip hyperweapon = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.ALLY, 0.0, 0.0);
+
+        double averageLocalY = hyperweapon.turrets.stream()
+                .filter(turret -> turret != null && turret.kind == Turret.Kind.GUN)
+                .mapToDouble(turret -> turret.localY)
+                .average()
+                .orElse(Double.NaN);
+
+        assertEquals(0.0, averageLocalY, 0.01);
+    }
+
     private static GameContext combatContext() {
         return new GameContext(new GameConfig(GameMode.SHOOTING_RANGE, 5000, 5000, true, 1234L, false));
     }

@@ -76,6 +76,7 @@ public final class RoleStats {
             case SHIELD_BASTION_TITAN -> new Stats(62, 236, 240, 8.2, 34, 3250, -1, -1, -1);
             case FLEET_TELEPORTER_TITAN -> new Stats(58, 205, 172, 5.5, 54, 3300, -1, -1, -1);
             case ELITE_SUPERSHIP_COMMAND_TITAN -> new Stats(60, 230, 186, 6.0, 42, 3450, -1, -1, -1);
+            case ELITE_REINFORCEMENTS_TITAN -> new Stats(60, 230, 186, 6.0, 42, 3500, -1, -1, -1);
             case MOBILE_STATION_TITAN -> new Stats(64, 250, 210, 7.4, 28, 3600, 520, 0.0, 0.0);
             case HYPERWEAPON_TITAN -> new Stats(60, 170, 120, 4.4, 30, 3800, -1, -1, -1);
             case MOTHERSHIP -> new Stats(76, 360, 310, 9.8, 24, 6000, 1400, 0.0, 0.0);

@@ -48,7 +48,7 @@ public class FleetShip extends Ship {
             case ARTILLERY_TITAN -> 0.80;
             case VANGUARD_TITAN -> 0.84;
             case HYPERWEAPON_TITAN -> 1.08;
-            case ELITE_SUPERSHIP_COMMAND_TITAN, MOTHERSHIP -> 0.90;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN, MOTHERSHIP -> 0.90;
             default -> 0.92;
         };
         double missileCooldownMul = switch (role) {
@@ -1385,6 +1385,19 @@ public class FleetShip extends Ship {
                 ciwsCooldown = 0.08;
             }
 
+            case ELITE_REINFORCEMENTS_TITAN -> {
+                name = factionCapitalName("Elite Reinforcements Titan");
+
+                addHullGunPair(0.24, 0.88, 0.33, 7, 1100, 340, true, 12.5, 32);
+                addHullGunPair(0.42, 0.76, 0.31, 5, 990, 285, true, 10.5, 25);
+                addHullCenterMissileTurret(0.58, 1.55, 10, 320, 205, 420, 12.0, 20);
+
+                hasCIWS = true;
+                ciwsQuality = 0.78;
+                ciwsRange = 385;
+                ciwsCooldown = 0.08;
+            }
+
             case MOBILE_STATION_TITAN -> {
                 name = factionCapitalName("Mobile Station Titan");
 
@@ -1404,8 +1417,8 @@ public class FleetShip extends Ship {
             case HYPERWEAPON_TITAN -> {
                 name = factionCapitalName("Hyperweapon Titan");
 
-                addHullGunPair(0.22, 0.88, 0.44, 4, 980, 255, true, 10.5, 24);
-                addHullGunPair(0.50, 0.72, 0.62, 2, 900, 215, true, 8.0, 18);
+                addHullGunPairDirect(0.22, 0.88, 0.44, 4, 980, 255, true, 10.5, 24);
+                addHullGunPairDirect(0.50, 0.72, 0.62, 2, 900, 215, true, 8.0, 18);
 
                 hasCIWS = true;
                 ciwsQuality = 0.56;

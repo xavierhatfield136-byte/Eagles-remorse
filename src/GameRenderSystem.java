@@ -83,7 +83,9 @@ public final class GameRenderSystem {
 
         Ship docked = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         int hangarTier = UISystem.getMaxHangarTierForPlayer(ctx);
-        int maxHangarTier = 3;
+        int maxHangarTier = CampaignSystem.isCampaignActive(ctx)
+                ? CampaignSystem.campaignMaxHangarTier(ctx)
+                : 3;
         int playerWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.player);
         int playerWingCap = (ctx.player != null && ctx.player.isCarrier) ? Math.max(0, ctx.player.maxFighters) : 0;
         int lockedWingActive = CarrierSystem.countActiveWingByCarrier(ctx, ctx.lockedTarget);
@@ -497,6 +499,13 @@ if (DevTools.isDebugOverlay()) {
 
     private static void drawCampaignMarkers(GameContext ctx, Graphics2D g2,
                                             double minX, double minY, double maxX, double maxY) {
+        if (ctx == null || g2 == null) return;
+        Font oldFont = g2.getFont();
+        for (CampaignSystem.CampaignLandmark landmark : CampaignSystem.landmarks(ctx)) {
+            drawCampaignLandmark(g2, landmark, minX, minY, maxX, maxY);
+        }
+        g2.setFont(oldFont);
+
         if (!CampaignSystem.hasCapturePoint(ctx)) return;
         double x = CampaignSystem.captureX(ctx);
         double y = CampaignSystem.captureY(ctx);
@@ -515,15 +524,100 @@ if (DevTools.isDebugOverlay()) {
         g2.drawLine(ix, iy - 12, ix, iy + 12);
     }
 
+    private static void drawCampaignLandmark(Graphics2D g2, CampaignSystem.CampaignLandmark landmark,
+                                             double minX, double minY, double maxX, double maxY) {
+        if (g2 == null || landmark == null) return;
+        double r = Math.max(40.0, landmark.radius);
+        if (!isCircleVisible(landmark.x, landmark.y, r + 26.0, minX, minY, maxX, maxY)) return;
+
+        int x = (int) Math.round(landmark.x);
+        int y = (int) Math.round(landmark.y);
+        int ir = (int) Math.round(r);
+        Color fill = landmark.fillColor;
+        Color edge = landmark.edgeColor;
+
+        switch (landmark.type) {
+            case PLANET, STAR -> {
+                g2.setColor(fill);
+                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(220, edge.getAlpha())));
+                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(new Color(255, 255, 255, landmark.type == CampaignSystem.LandmarkType.STAR ? 72 : 42));
+                g2.drawOval(x - ir / 2, y - ir / 2, ir, ir);
+                g2.drawLine(x - ir / 2, y - ir / 3, x + ir / 3, y - ir / 2);
+            }
+            case RING -> {
+                g2.setColor(fill);
+                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(edge);
+                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+                int inner = Math.max(18, (int) Math.round(ir * 0.55));
+                g2.drawOval(x - inner, y - inner, inner * 2, inner * 2);
+                g2.drawLine(x - ir, y, x - inner, y);
+                g2.drawLine(x + inner, y, x + ir, y);
+                g2.drawLine(x, y - ir, x, y - inner);
+                g2.drawLine(x, y + inner, x, y + ir);
+            }
+            case RELAY -> {
+                g2.setColor(fill);
+                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(edge);
+                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.drawOval(x - ir / 2, y - ir / 2, ir, ir);
+                g2.drawLine(x - ir, y, x + ir, y);
+                g2.drawLine(x, y - ir, x, y + ir);
+            }
+            case FORTRESS -> {
+                g2.setColor(fill);
+                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(edge);
+                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+                int box = Math.max(26, (int) Math.round(ir * 0.85));
+                g2.drawRect(x - box / 2, y - box / 2, box, box);
+                g2.drawLine(x - box / 2, y, x + box / 2, y);
+                g2.drawLine(x, y - box / 2, x, y + box / 2);
+            }
+            case FRONT, CORRIDOR, COLONY -> {
+                g2.setColor(fill);
+                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
+                g2.setColor(edge);
+                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+                int wide = Math.max(30, (int) Math.round(ir * 1.35));
+                int tall = Math.max(18, (int) Math.round(ir * 0.55));
+                g2.drawOval(x - wide / 2, y - tall / 2, wide, tall);
+                g2.drawLine(x - wide / 2, y, x + wide / 2, y);
+            }
+        }
+
+        if (landmark.label != null && !landmark.label.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            FontMetrics titleFm = g2.getFontMetrics();
+            int labelY = y - ir - 14;
+            g2.setColor(new Color(18, 24, 34, 170));
+            g2.fillRoundRect(x - titleFm.stringWidth(landmark.label) / 2 - 8, labelY - 11,
+                    titleFm.stringWidth(landmark.label) + 16, 18, 8, 8);
+            g2.setColor(new Color(242, 246, 255, 224));
+            g2.drawString(landmark.label, x - titleFm.stringWidth(landmark.label) / 2, labelY + 2);
+        }
+        if (landmark.subtitle != null && !landmark.subtitle.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            FontMetrics subtitleFm = g2.getFontMetrics();
+            int subY = y - ir + 2;
+            g2.setColor(new Color(210, 228, 242, 176));
+            g2.drawString(landmark.subtitle, x - subtitleFm.stringWidth(landmark.subtitle) / 2, subY);
+        }
+    }
+
     private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2,
                                                   double minX, double minY, double maxX, double maxY) {
         if (ctx == null || g2 == null || ctx.ships == null) return;
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
-            if (s.role != ShipRole.TRANSPORT) continue;
+            if (s.role != ShipRole.TRANSPORT && s.role != ShipRole.TRANSPORT_TITAN) continue;
 
-            int r = (int) Math.round(Math.max(220.0, s.repairRange));
+            boolean titanTransport = s.role == ShipRole.TRANSPORT_TITAN;
+            int r = (int) Math.round(Math.max(titanTransport ? 420.0 : 220.0, s.repairRange));
             if (!isCircleVisible(s.x, s.y, r + 6.0, minX, minY, maxX, maxY)) continue;
             int x = (int) Math.round(s.x);
             int y = (int) Math.round(s.y);
@@ -540,6 +634,13 @@ if (DevTools.isDebugOverlay()) {
             int r2 = (int) Math.round(r * 0.66);
             g2.setColor(edge);
             g2.drawOval(x - r2, y - r2, r2 * 2, r2 * 2);
+            if (titanTransport) {
+                int r3 = (int) Math.round(r * 0.82);
+                g2.setColor(new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 170));
+                g2.drawOval(x - r3, y - r3, r3 * 2, r3 * 2);
+                g2.drawLine(x - 14, y, x + 14, y);
+                g2.drawLine(x, y - 14, x, y + 14);
+            }
         }
     }
 

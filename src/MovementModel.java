@@ -61,6 +61,7 @@ public final class MovementModel {
             case SHIELD_BASTION_TITAN -> new Profile(0.79, 3.3, 3.1, Math.toRadians(38.0), 0.32, 0.40);
             case FLEET_TELEPORTER_TITAN -> new Profile(0.88, 4.5, 4.2, Math.toRadians(58.0), 0.44, 0.33);
             case ELITE_SUPERSHIP_COMMAND_TITAN -> new Profile(0.82, 3.7, 3.5, Math.toRadians(44.0), 0.36, 0.36);
+            case ELITE_REINFORCEMENTS_TITAN -> new Profile(0.82, 3.7, 3.5, Math.toRadians(44.0), 0.36, 0.36);
             case MOBILE_STATION_TITAN -> new Profile(0.74, 2.8, 2.7, Math.toRadians(28.0), 0.24, 0.44);
             case HYPERWEAPON_TITAN -> new Profile(0.78, 3.2, 3.0, Math.toRadians(34.0), 0.28, 0.41);
             case MOTHERSHIP -> new Profile(0.68, 2.2, 2.1, Math.toRadians(22.0), 0.18, 0.52);

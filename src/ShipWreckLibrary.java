@@ -90,6 +90,7 @@ final class ShipWreckLibrary {
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
         if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
+        if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
         return role.name().toLowerCase(Locale.ROOT);
     }
 

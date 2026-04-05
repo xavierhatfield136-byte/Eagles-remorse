@@ -68,6 +68,17 @@ class TitanFleetSystemTest {
     }
 
     @Test
+    void eliteReinforcementsTitanAddsStandardCapacityWithoutEliteWing() {
+        GameContext ctx = campaignContext(12, 10_000);
+
+        TitanFleetSystem.PurchaseResult result = TitanFleetSystem.purchaseTitan(ctx, TitanArchetype.ELITE_REINFORCEMENTS);
+
+        assertEquals(TitanFleetSystem.PurchaseResult.PURCHASED, result);
+        assertEquals(6, TitanFleetSystem.totalStandardShipCommandCapacity(ctx));
+        assertEquals(0, TitanFleetSystem.totalEliteSupershipCommandCapacity(ctx));
+    }
+
+    @Test
     void checkpointSummaryIncludesTitanCount() {
         CampaignCheckpointStore.Checkpoint cp = new CampaignCheckpointStore.Checkpoint();
         cp.nextSector = 6;
