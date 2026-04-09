@@ -27,6 +27,28 @@ The fall of Earth should feel like the shattering event that changes the meaning
 - The trip home is both a military campaign and a rescue mission.
 - The end state is liberation and peace, not endless conquest.
 
+## World Texture
+
+The campaign should not feel like fleets drifting through anonymous blue nebula forever. The return-to-Earth route passes through inhabited places, working infrastructure, and ruined civilian space.
+
+Visual rule:
+- Empty deep-space nebula is for wilderness sectors, pursuit sectors, and dead transit lanes.
+- Colony sectors should replace that look with close-in world imagery: arcology belts, orbital elevators, trade piers, city-light webs, agri-bands, refinery shelves, lunar yards, and defense halos.
+- When the story is about a place, the background should read as that place instead of generic space wallpaper.
+
+Key world anchors:
+- `Far Trade Anchorage`: a neutral megacolony made of exchange rings, bonded markets, refinery piers, and refugee docks.
+- `Outer Colony Jump Ring`: a civilian transit aperture whose customs halo and approach habitats become a choke point during the breakout.
+- `Neutral Trade Spine`: broker depots, slipway habitats, and logistics yards where neutrality cracks under AI pressure.
+- `Coalition Array Nysa`: a green contract world wrapped in service halos, uplink sanctums, and fleet-signature exchanges.
+- `Luna Perimeter`: foundry belts, mass-driver yards, and old defense towers standing between the fleet and Earth.
+- `Earth High Orbit`: orbital lift termini, defense lattices, blackout city webs, and the AI occupation fleet hanging over the homeworld.
+
+This world texture matters for story clarity:
+- It shows that planets, colonies, and civilian industry still exist in the setting.
+- It makes the road home feel like a route through real inhabited systems.
+- It gives the final approach to Earth emotional scale instead of reading as another random battle map.
+
 ## Ship Hierarchy
 
 The campaign should use four clear ship hierarchies, from smallest to largest:

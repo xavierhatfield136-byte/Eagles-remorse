@@ -27,6 +27,7 @@ class CampaignLoreOverhaulTest {
         assertTrue(CampaignSystem.hudObjectiveTitle(ctx).contains("ANCHORAGE FIRESTORM"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Far Trade Anchorage"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Far Trade Anchorage"));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("arcology crowns"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Hold the trade-hub evacuation lanes"));
         assertTrue(ctx.campaign.introSequenceActive);
         assertEquals(3, ctx.campaign.persistentBlueFleet.size());
@@ -68,10 +69,98 @@ class CampaignLoreOverhaulTest {
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Luna".equals(l.label)));
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earthrise".equals(l.label)));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Luna / Earthrise"));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("foundry belts"));
 
         startSector(ctx, 12);
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earth".equals(l.label)));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Earth / Earth High Orbit"));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("city webs"));
+    }
+
+    @Test
+    void campaignBackdropPresetsShiftBySectorAndPhase() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+
+        assertEquals("trade_hub_colony", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("trade_hub_colony", Renderer.campaignBackdropBaseImageKey(ctx));
+        assertEquals("trade_hub_colony", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+        assertEquals("colony_arcology", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
+        assertEquals(0.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
+
+        startSector(ctx, 5);
+        assertEquals("exodus_gas_giant", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("exodus_gas_giant", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+        assertEquals("space_nebula", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(!Renderer.campaignBackdropReplacesNebula(ctx));
+
+        startSector(ctx, 7);
+        assertEquals("contract_world_array", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("contract_world_array", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+        assertEquals("colony_arcology", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
+        assertEquals(0.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
+
+        ctx.campaign.objectiveStage = 1;
+        ctx.campaign.captureArmed = true;
+        ctx.campaign.objectiveProgress = 60.0;
+        ctx.campaign.objectiveGoal = 120.0;
+        assertEquals("contract_world_array_phase1", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropPhaseBlend(ctx) > 0.5);
+
+        startSector(ctx, 11);
+        assertEquals("luna_earthrise_approach", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("luna_earthrise_approach", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+        assertEquals("lunar_installation", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
+        assertEquals(0.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
+
+        ctx.campaign.objectiveStage = 1;
+        ctx.campaign.objectiveProgress = 5.0;
+        ctx.campaign.objectiveGoal = 10.0;
+        assertEquals("luna_earthrise_approach_phase1", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropPhaseBlend(ctx) > 0.5);
+
+        startSector(ctx, 12);
+        assertEquals("earth_high_orbit", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("earth_high_orbit", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+        assertEquals("homeworld_citylights", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
+        assertEquals(1.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
+
+        ctx.campaign.objectiveStage = 1;
+        assertEquals("earth_high_orbit_phase1", Renderer.campaignBackdropImageKey(ctx));
+        assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
+    }
+
+    @Test
+    void campaignBackgroundAssetsExistForAllCurrentSectors() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        String[] keys = {
+                "trade_hub_colony",
+                "jump_ring_frontier",
+                "relay_halo_moon",
+                "burning_debris_wake",
+                "exodus_gas_giant",
+                "trade_spine_industrial_orbit",
+                "contract_world_array",
+                "ash_gate_gas_giant",
+                "outer_sol_starline",
+                "liberation_moon_orbit",
+                "luna_earthrise_approach",
+                "earth_high_orbit"
+        };
+        for (int sector = 1; sector <= 12; sector++) {
+            startSector(ctx, sector);
+            assertEquals(keys[sector - 1], Renderer.campaignBackdropBaseImageKey(ctx));
+            assertTrue(Renderer.campaignBackdropImageAvailable(keys[sector - 1]),
+                    "expected campaign background asset for " + keys[sector - 1]);
+        }
     }
 
     private static GameContext initializedCampaignContext() {

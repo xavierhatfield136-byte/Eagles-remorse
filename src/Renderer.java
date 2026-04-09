@@ -1315,22 +1315,151 @@ public class Renderer {
         }
     }
 
+    private enum BackdropBodyKind {
+        PLANET,
+        MOON,
+        GAS_GIANT,
+        STAR
+    }
+
+    private static final class CelestialBackdropSpec {
+        final BackdropBodyKind kind;
+        final double anchorX;
+        final double anchorY;
+        final double radiusPx;
+        final double parallax;
+        final Color baseColor;
+        final Color highlightColor;
+        final Color atmosphereColor;
+        final Color glowColor;
+        final boolean rings;
+        final boolean cityLights;
+        final boolean cloudBands;
+        final boolean agricultureBands;
+        final double infrastructureDensity;
+        final double trafficDensity;
+
+        CelestialBackdropSpec(BackdropBodyKind kind,
+                              double anchorX,
+                              double anchorY,
+                              double radiusPx,
+                              double parallax,
+                              Color baseColor,
+                              Color highlightColor,
+                              Color atmosphereColor,
+                              Color glowColor,
+                              boolean rings,
+                              boolean cityLights,
+                              boolean cloudBands,
+                              boolean agricultureBands,
+                              double infrastructureDensity,
+                              double trafficDensity) {
+            this.kind = kind;
+            this.anchorX = anchorX;
+            this.anchorY = anchorY;
+            this.radiusPx = radiusPx;
+            this.parallax = parallax;
+            this.baseColor = baseColor;
+            this.highlightColor = highlightColor;
+            this.atmosphereColor = atmosphereColor;
+            this.glowColor = glowColor;
+            this.rings = rings;
+            this.cityLights = cityLights;
+            this.cloudBands = cloudBands;
+            this.agricultureBands = agricultureBands;
+            this.infrastructureDensity = infrastructureDensity;
+            this.trafficDensity = trafficDensity;
+        }
+    }
+
+    private enum BackdropFieldMode {
+        SPACE_NEBULA("space_nebula"),
+        COLONY_ARCOLOGY("colony_arcology"),
+        INDUSTRIAL_YARDS("industrial_yards"),
+        LUNAR_INSTALLATION("lunar_installation"),
+        HOMEWORLD_CITYLIGHTS("homeworld_citylights");
+
+        final String debugName;
+
+        BackdropFieldMode(String debugName) {
+            this.debugName = (debugName == null || debugName.isBlank()) ? "space_nebula" : debugName;
+        }
+    }
+
+    private static final class CampaignBackdropSpec {
+        final String key;
+        final double phaseBlend;
+        final Color ambientTint;
+        final BackdropFieldMode fieldMode;
+        final CelestialBackdropSpec primary;
+        final CelestialBackdropSpec secondary;
+
+        CampaignBackdropSpec(String key,
+                             double phaseBlend,
+                             Color ambientTint,
+                             BackdropFieldMode fieldMode,
+                             CelestialBackdropSpec primary,
+                             CelestialBackdropSpec secondary) {
+            this.key = (key == null) ? "neutral_space" : key;
+            this.phaseBlend = MathUtil.clamp(phaseBlend, 0.0, 1.0);
+            this.ambientTint = (ambientTint == null) ? new Color(0, 0, 0, 0) : ambientTint;
+            this.fieldMode = (fieldMode == null) ? BackdropFieldMode.SPACE_NEBULA : fieldMode;
+            this.primary = primary;
+            this.secondary = secondary;
+        }
+
+        boolean replacesNebula() {
+            return fieldMode != BackdropFieldMode.SPACE_NEBULA;
+        }
+    }
+
     // Layered environment backgrounds with procedural fallback.
     public static void drawSpaceBackground(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
+        drawSpaceBackground(g2, null, camX, camY, viewW, viewH, seed);
+    }
+
+    public static void drawSpaceBackground(Graphics2D g2, GameContext ctx, double camX, double camY, int viewW, int viewH, long seed) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        BufferedImage campaignImage = EnvironmentSkinLibrary.campaignBackdrop(campaignBackdropImageKey(ctx));
+        if (campaignImage == null) {
+            campaignImage = EnvironmentSkinLibrary.campaignBackdrop(campaignBackdropBaseImageKey(ctx));
+        }
+        if (campaignImage != null) {
+            drawCampaignBackgroundImage(g2, campaignImage, viewW, viewH);
+            return;
+        }
+
         BufferedImage bgBase = EnvironmentSkinLibrary.backgroundBase();
         BufferedImage bgNebula = EnvironmentSkinLibrary.backgroundNebula();
         BufferedImage bgStars = EnvironmentSkinLibrary.backgroundStars();
         BufferedImage bgDust = EnvironmentSkinLibrary.backgroundDust();
 
-        if (bgBase == null && bgNebula == null && bgStars == null && bgDust == null) {
+        if (bgBase == null && bgNebula == null && bgStars == null && bgDust == null && spec == null) {
             drawSpaceBackgroundFallback(g2, camX, camY, viewW, viewH, seed);
             return;
         }
 
         drawTiledParallaxLayer(g2, bgBase, camX, camY, viewW, viewH, 0.05, 1.00f);
-        drawTiledParallaxLayer(g2, bgNebula, camX, camY, viewW, viewH, 0.10, 0.72f);
-        drawTiledParallaxLayer(g2, bgStars, camX, camY, viewW, viewH, 0.16, 0.95f);
-        drawTiledParallaxLayer(g2, bgDust, camX, camY, viewW, viewH, 0.24, 0.62f);
+        if (spec != null && spec.replacesNebula()) {
+            drawBackdropField(g2, spec, camX, camY, viewW, viewH, seed ^ 0x5DA41B77L);
+        } else {
+            drawTiledParallaxLayer(g2, bgNebula, camX, camY, viewW, viewH, 0.10, 0.72f);
+        }
+        drawTiledParallaxLayer(g2, bgStars, camX, camY, viewW, viewH, 0.16, backdropStarsAlpha(spec));
+        drawTiledParallaxLayer(g2, bgDust, camX, camY, viewW, viewH, 0.24, backdropDustAlpha(spec));
+        drawCampaignBackdropOverlay(g2, spec, camX, camY, viewW, viewH, seed);
+    }
+
+    private static void drawCampaignBackgroundImage(Graphics2D g2, BufferedImage image, int viewW, int viewH) {
+        if (g2 == null || image == null || viewW <= 0 || viewH <= 0) return;
+        int iw = Math.max(1, image.getWidth());
+        int ih = Math.max(1, image.getHeight());
+        double scale = Math.max(viewW / (double) iw, viewH / (double) ih);
+        int drawW = Math.max(1, (int) Math.round(iw * scale));
+        int drawH = Math.max(1, (int) Math.round(ih * scale));
+        int x = (viewW - drawW) / 2;
+        int y = (viewH - drawH) / 2;
+        g2.drawImage(image, x, y, drawW, drawH, null);
     }
 
     public static int drawShips(Graphics2D g2, List<Ship> ships) {
@@ -1528,6 +1657,849 @@ public class Renderer {
         }
 
         g2.setComposite(old);
+    }
+
+    static String campaignBackdropDebugName(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        return (spec == null) ? "neutral_space" : spec.key;
+    }
+
+    static String campaignBackdropBaseImageKey(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        return (spec == null) ? "" : spec.key;
+    }
+
+    static String campaignBackdropImageKey(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        if (spec == null) return "";
+        int stage = Math.max(0, CampaignSystem.objectiveStage(ctx));
+        if (stage <= 0) return spec.key;
+        return spec.key + "_phase" + stage;
+    }
+
+    static boolean campaignBackdropImageAvailable(String key) {
+        if (key == null || key.isBlank()) return false;
+        return EnvironmentSkinLibrary.campaignBackdrop(key) != null;
+    }
+
+    static String campaignBackdropFieldModeDebugName(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        return (spec == null) ? BackdropFieldMode.SPACE_NEBULA.debugName : spec.fieldMode.debugName;
+    }
+
+    static boolean campaignBackdropReplacesNebula(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        return spec != null && spec.replacesNebula();
+    }
+
+    static double campaignBackdropPhaseBlend(GameContext ctx) {
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        return (spec == null) ? 0.0 : spec.phaseBlend;
+    }
+
+    private static float backdropStarsAlpha(CampaignBackdropSpec spec) {
+        if (spec == null) return 0.95f;
+        return switch (spec.fieldMode) {
+            case COLONY_ARCOLOGY -> 0.56f;
+            case INDUSTRIAL_YARDS -> 0.46f;
+            case LUNAR_INSTALLATION -> 0.38f;
+            case HOMEWORLD_CITYLIGHTS -> 0.34f;
+            default -> 0.95f;
+        };
+    }
+
+    private static float backdropDustAlpha(CampaignBackdropSpec spec) {
+        if (spec == null) return 0.62f;
+        return switch (spec.fieldMode) {
+            case COLONY_ARCOLOGY -> 0.28f;
+            case INDUSTRIAL_YARDS -> 0.22f;
+            case LUNAR_INSTALLATION -> 0.16f;
+            case HOMEWORLD_CITYLIGHTS -> 0.14f;
+            default -> 0.62f;
+        };
+    }
+
+    private static void drawCampaignBackdropOverlay(Graphics2D g2, CampaignBackdropSpec spec,
+                                                    double camX, double camY, int viewW, int viewH,
+                                                    long seed) {
+        if (g2 == null || spec == null) return;
+
+        Color oldColor = g2.getColor();
+        Paint oldPaint = g2.getPaint();
+        Composite oldComposite = g2.getComposite();
+
+        if (spec.secondary != null) {
+            drawBackdropBody(g2, spec.secondary, spec.phaseBlend, camX, camY, viewW, viewH, seed ^ 0x28F71E4DL, false);
+        }
+        if (spec.primary != null) {
+            drawBackdropBody(g2, spec.primary, spec.phaseBlend, camX, camY, viewW, viewH, seed ^ 0xA53CB92DL, true);
+        }
+
+        int tintAlpha = MathUtil.clamp(spec.ambientTint.getAlpha(), 0, 255);
+        if (tintAlpha > 0) {
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, tintAlpha / 255f));
+            g2.setColor(new Color(spec.ambientTint.getRed(), spec.ambientTint.getGreen(), spec.ambientTint.getBlue()));
+            g2.fillRect(0, 0, viewW, viewH);
+        }
+
+        g2.setColor(oldColor);
+        g2.setPaint(oldPaint);
+        g2.setComposite(oldComposite);
+    }
+
+    private static void drawBackdropField(Graphics2D g2, CampaignBackdropSpec spec,
+                                          double camX, double camY, int viewW, int viewH,
+                                          long seed) {
+        if (g2 == null || spec == null || !spec.replacesNebula()) return;
+
+        CelestialBackdropSpec basis = (spec.primary != null) ? spec.primary : spec.secondary;
+        Color base = (basis != null && basis.baseColor != null) ? basis.baseColor : new Color(52, 74, 98, 255);
+        Color highlight = (basis != null && basis.highlightColor != null) ? basis.highlightColor : new Color(202, 224, 236, 255);
+        Color atmosphere = (basis != null && basis.atmosphereColor != null) ? basis.atmosphereColor : new Color(164, 214, 248, 118);
+
+        Color oldColor = g2.getColor();
+        Paint oldPaint = g2.getPaint();
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        Shape oldClip = g2.getClip();
+
+        double ox = -camX * 0.018;
+        double oy = -camY * 0.014;
+        Color top = darken(base, 0.22);
+        Color bottom = darken(base, 0.52);
+        if (spec.fieldMode == BackdropFieldMode.LUNAR_INSTALLATION) {
+            top = blend(top, new Color(118, 124, 138, 255), 0.34);
+            bottom = darken(blend(base, new Color(126, 132, 142, 255), 0.42), 0.52);
+        } else if (spec.fieldMode == BackdropFieldMode.HOMEWORLD_CITYLIGHTS) {
+            top = blend(top, new Color(18, 32, 54, 255), 0.48);
+            bottom = blend(bottom, new Color(12, 22, 38, 255), 0.36);
+        }
+
+        g2.setPaint(new GradientPaint(0f, 0f, top, 0f, (float) viewH, bottom));
+        g2.fillRect(0, 0, viewW, viewH);
+
+        drawBackdropTerraces(g2, spec, viewW, viewH, ox, oy, seed ^ 0x1E4A6D93L, base, highlight);
+        drawBackdropDistrictMesh(g2, spec, viewW, viewH, ox, oy, seed ^ 0x4B1CC45AL, base, highlight);
+        drawBackdropArcologySilhouettes(g2, spec, viewW, viewH, ox, oy, seed ^ 0x68B3E217L, base, highlight);
+        drawBackdropSurfaceLights(g2, spec, viewW, viewH, ox, oy, seed ^ 0x2246DA91L, highlight, atmosphere);
+        drawBackdropSkyways(g2, spec, viewW, viewH, ox, oy, seed ^ 0x7F122C4DL, atmosphere, highlight);
+        drawBackdropTethersAndDefense(g2, spec, viewW, viewH, ox, oy, seed ^ 0x31AE9B55L, atmosphere, highlight);
+
+        g2.setColor(oldColor);
+        g2.setPaint(oldPaint);
+        g2.setStroke(oldStroke);
+        g2.setComposite(oldComposite);
+        g2.setClip(oldClip);
+    }
+
+    private static void drawBackdropTerraces(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                             double ox, double oy, long seed, Color base, Color highlight) {
+        Random random = new Random(seed);
+        int bands = switch (spec.fieldMode) {
+            case COLONY_ARCOLOGY, HOMEWORLD_CITYLIGHTS -> 7;
+            case INDUSTRIAL_YARDS -> 8;
+            case LUNAR_INSTALLATION -> 6;
+            default -> 0;
+        };
+        for (int i = 0; i < bands; i++) {
+            double frac = (i + 1.0) / (bands + 1.0);
+            double y = viewH * (0.10 + frac * 0.78) + oy * (0.4 + frac * 0.5) + random.nextDouble() * 28.0;
+            double depth = viewH * (0.07 + random.nextDouble() * 0.08);
+            Path2D.Double ribbon = new Path2D.Double();
+            ribbon.moveTo(-viewW * 0.18, y);
+            ribbon.curveTo(viewW * 0.18, y - depth * (0.84 + random.nextDouble() * 0.34),
+                    viewW * 0.52, y + depth * (0.18 + random.nextDouble() * 0.32),
+                    viewW * 1.18, y - depth * (0.10 + random.nextDouble() * 0.20));
+            ribbon.lineTo(viewW * 1.18, y + depth * 1.24);
+            ribbon.curveTo(viewW * 0.76, y + depth * (1.16 + random.nextDouble() * 0.22),
+                    viewW * 0.32, y + depth * (0.88 + random.nextDouble() * 0.22),
+                    -viewW * 0.18, y + depth * (1.02 + random.nextDouble() * 0.22));
+            ribbon.closePath();
+
+            Color fill = switch (spec.fieldMode) {
+                case LUNAR_INSTALLATION -> blend(base, new Color(160, 168, 176, 255), 0.24 + frac * 0.28);
+                case INDUSTRIAL_YARDS -> blend(base, new Color(174, 176, 186, 255), 0.16 + frac * 0.24);
+                case HOMEWORLD_CITYLIGHTS -> blend(base, new Color(78, 116, 156, 255), 0.16 + frac * 0.26);
+                default -> blend(base, highlight, 0.14 + frac * 0.28);
+            };
+            int alpha = switch (spec.fieldMode) {
+                case HOMEWORLD_CITYLIGHTS -> 34 + (int) Math.round(frac * 26.0);
+                case LUNAR_INSTALLATION -> 40 + (int) Math.round(frac * 18.0);
+                default -> 26 + (int) Math.round(frac * 24.0);
+            };
+            g2.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), MathUtil.clamp(alpha, 0, 110)));
+            g2.fill(ribbon);
+            g2.setStroke(new BasicStroke((float) (1.3 + frac * 1.7)));
+            g2.setColor(new Color(highlight.getRed(), highlight.getGreen(), highlight.getBlue(),
+                    MathUtil.clamp(18 + (int) Math.round(frac * 26.0), 0, 88)));
+            g2.draw(ribbon);
+        }
+    }
+
+    private static void drawBackdropDistrictMesh(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                                 double ox, double oy, long seed, Color base, Color highlight) {
+        Random random = new Random(seed);
+        int slabs = switch (spec.fieldMode) {
+            case HOMEWORLD_CITYLIGHTS -> 42;
+            case INDUSTRIAL_YARDS -> 36;
+            case COLONY_ARCOLOGY -> 30;
+            case LUNAR_INSTALLATION -> 26;
+            default -> 0;
+        };
+        for (int i = 0; i < slabs; i++) {
+            double x = -viewW * 0.08 + random.nextDouble() * viewW * 1.16 + ox * (0.3 + random.nextDouble() * 0.4);
+            double y = viewH * (0.18 + random.nextDouble() * 0.74) + oy * (0.25 + random.nextDouble() * 0.45);
+            double w = viewW * (0.08 + random.nextDouble() * 0.18);
+            double h = viewH * (0.018 + random.nextDouble() * 0.055);
+            double arc = Math.max(8.0, h * 0.8);
+            Color fill = switch (spec.fieldMode) {
+                case INDUSTRIAL_YARDS -> blend(base, new Color(204, 200, 196, 255), 0.14 + random.nextDouble() * 0.18);
+                case LUNAR_INSTALLATION -> blend(base, new Color(188, 190, 196, 255), 0.12 + random.nextDouble() * 0.20);
+                case HOMEWORLD_CITYLIGHTS -> blend(base, new Color(88, 132, 178, 255), 0.12 + random.nextDouble() * 0.22);
+                default -> blend(base, highlight, 0.12 + random.nextDouble() * 0.18);
+            };
+            int alpha = switch (spec.fieldMode) {
+                case HOMEWORLD_CITYLIGHTS -> 18 + random.nextInt(28);
+                case LUNAR_INSTALLATION -> 20 + random.nextInt(24);
+                default -> 16 + random.nextInt(22);
+            };
+            g2.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), MathUtil.clamp(alpha, 0, 84)));
+            g2.fill(new RoundRectangle2D.Double(x, y, w, h, arc, arc));
+        }
+    }
+
+    private static void drawBackdropArcologySilhouettes(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                                        double ox, double oy, long seed, Color base, Color highlight) {
+        Random random = new Random(seed);
+        int towers = switch (spec.fieldMode) {
+            case INDUSTRIAL_YARDS -> 14;
+            case LUNAR_INSTALLATION -> 12;
+            case HOMEWORLD_CITYLIGHTS -> 18;
+            case COLONY_ARCOLOGY -> 16;
+            default -> 0;
+        };
+        double baseline = switch (spec.fieldMode) {
+            case LUNAR_INSTALLATION -> viewH * 0.60;
+            case HOMEWORLD_CITYLIGHTS -> viewH * 0.66;
+            default -> viewH * 0.64;
+        };
+        for (int i = 0; i < towers; i++) {
+            double x = viewW * (-0.04 + random.nextDouble() * 1.08) + ox * (0.18 + random.nextDouble() * 0.12);
+            double width = viewW * (0.028 + random.nextDouble() * 0.048);
+            double height = viewH * (0.12 + random.nextDouble() * 0.26);
+            double y = baseline + random.nextDouble() * viewH * 0.24 + oy * 0.2;
+
+            Path2D.Double tower = new Path2D.Double();
+            tower.moveTo(x - width * 0.50, y);
+            tower.lineTo(x - width * 0.20, y - height * (0.72 + random.nextDouble() * 0.16));
+            tower.lineTo(x - width * 0.08, y - height);
+            tower.lineTo(x + width * 0.08, y - height);
+            tower.lineTo(x + width * 0.20, y - height * (0.72 + random.nextDouble() * 0.16));
+            tower.lineTo(x + width * 0.50, y);
+            tower.closePath();
+
+            Color fill = switch (spec.fieldMode) {
+                case INDUSTRIAL_YARDS -> blend(base, new Color(198, 194, 188, 255), 0.18 + random.nextDouble() * 0.18);
+                case LUNAR_INSTALLATION -> blend(base, new Color(214, 216, 222, 255), 0.16 + random.nextDouble() * 0.16);
+                case HOMEWORLD_CITYLIGHTS -> blend(base, new Color(108, 148, 188, 255), 0.18 + random.nextDouble() * 0.22);
+                default -> blend(base, highlight, 0.16 + random.nextDouble() * 0.18);
+            };
+            int alpha = 26 + random.nextInt(30);
+            g2.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), MathUtil.clamp(alpha, 0, 110)));
+            g2.fill(tower);
+            g2.setColor(new Color(highlight.getRed(), highlight.getGreen(), highlight.getBlue(), 26 + random.nextInt(34)));
+            g2.draw(tower);
+        }
+    }
+
+    private static void drawBackdropSurfaceLights(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                                  double ox, double oy, long seed, Color highlight, Color atmosphere) {
+        Random random = new Random(seed);
+        int clusters = switch (spec.fieldMode) {
+            case HOMEWORLD_CITYLIGHTS -> 72;
+            case COLONY_ARCOLOGY -> 48;
+            case INDUSTRIAL_YARDS -> 38;
+            case LUNAR_INSTALLATION -> 26;
+            default -> 0;
+        };
+        Color node = blend(highlight, atmosphere, 0.45);
+        for (int i = 0; i < clusters; i++) {
+            double x = random.nextDouble() * viewW + ox * (0.20 + random.nextDouble() * 0.22);
+            double y = viewH * (0.20 + random.nextDouble() * 0.74) + oy * (0.16 + random.nextDouble() * 0.24);
+            double size = 6.0 + random.nextDouble() * 18.0;
+            int blocks = 3 + random.nextInt(4);
+            for (int b = 0; b < blocks; b++) {
+                double bx = x - size * 0.55 + random.nextDouble() * size;
+                double by = y - size * 0.35 + random.nextDouble() * size * 0.70;
+                double bw = 2.0 + random.nextDouble() * (size * 0.28);
+                double bh = 1.0 + random.nextDouble() * (size * 0.12);
+                int alpha = switch (spec.fieldMode) {
+                    case HOMEWORLD_CITYLIGHTS -> 34 + random.nextInt(52);
+                    case LUNAR_INSTALLATION -> 20 + random.nextInt(34);
+                    default -> 26 + random.nextInt(40);
+                };
+                g2.setColor(new Color(node.getRed(), node.getGreen(), node.getBlue(), MathUtil.clamp(alpha, 0, 138)));
+                g2.fill(new Rectangle2D.Double(bx, by, bw, bh));
+            }
+            g2.setColor(new Color(node.getRed(), node.getGreen(), node.getBlue(), 20 + random.nextInt(28)));
+            g2.draw(new java.awt.geom.Line2D.Double(x - size * 0.42, y, x + size * 0.42, y));
+        }
+    }
+
+    private static void drawBackdropSkyways(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                            double ox, double oy, long seed, Color atmosphere, Color highlight) {
+        Random random = new Random(seed);
+        Stroke oldStroke = g2.getStroke();
+        int lanes = switch (spec.fieldMode) {
+            case HOMEWORLD_CITYLIGHTS -> 8;
+            case COLONY_ARCOLOGY, INDUSTRIAL_YARDS -> 6;
+            case LUNAR_INSTALLATION -> 4;
+            default -> 0;
+        };
+        for (int i = 0; i < lanes; i++) {
+            double y = viewH * (0.14 + random.nextDouble() * 0.68) + oy * (0.12 + random.nextDouble() * 0.16);
+            float strokeW = 1.0f + random.nextFloat() * 1.4f;
+            float dash = 8.0f + random.nextFloat() * 12.0f;
+            g2.setStroke(new BasicStroke(strokeW, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{dash, dash * 1.7f}, random.nextFloat() * dash));
+            Color lane = blend(atmosphere, highlight, 0.40 + random.nextDouble() * 0.24);
+            int alpha = switch (spec.fieldMode) {
+                case LUNAR_INSTALLATION -> 26;
+                case HOMEWORLD_CITYLIGHTS -> 42;
+                default -> 34;
+            };
+            g2.setColor(new Color(lane.getRed(), lane.getGreen(), lane.getBlue(), alpha));
+            g2.draw(new java.awt.geom.Line2D.Double(-viewW * 0.10,
+                    y + random.nextDouble() * viewH * 0.08,
+                    viewW * 1.10,
+                    y - viewH * (0.04 + random.nextDouble() * 0.12)));
+        }
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawBackdropTethersAndDefense(Graphics2D g2, CampaignBackdropSpec spec, int viewW, int viewH,
+                                                      double ox, double oy, long seed, Color atmosphere, Color highlight) {
+        Random random = new Random(seed);
+        Stroke oldStroke = g2.getStroke();
+        int tethers = switch (spec.fieldMode) {
+            case COLONY_ARCOLOGY -> 4;
+            case INDUSTRIAL_YARDS -> 6;
+            case LUNAR_INSTALLATION -> 6;
+            case HOMEWORLD_CITYLIGHTS -> 5;
+            default -> 0;
+        };
+        g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        for (int i = 0; i < tethers; i++) {
+            double x = viewW * (0.08 + random.nextDouble() * 0.84) + ox * 0.12;
+            double top = viewH * (0.04 + random.nextDouble() * 0.24);
+            double bottom = viewH * (0.54 + random.nextDouble() * 0.30) + oy * 0.18;
+            Color tether = blend(atmosphere, highlight, 0.42);
+            int alpha = (spec.fieldMode == BackdropFieldMode.LUNAR_INSTALLATION) ? 44 : 30;
+            g2.setColor(new Color(tether.getRed(), tether.getGreen(), tether.getBlue(), alpha));
+            g2.draw(new java.awt.geom.Line2D.Double(x, top, x + random.nextDouble() * 34.0 - 17.0, bottom));
+        }
+
+        if (spec.fieldMode == BackdropFieldMode.LUNAR_INSTALLATION || spec.fieldMode == BackdropFieldMode.HOMEWORLD_CITYLIGHTS) {
+            g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{12f, 14f}, 0f));
+            Color defense = blend(highlight, atmosphere, 0.34);
+            int alpha = (spec.fieldMode == BackdropFieldMode.HOMEWORLD_CITYLIGHTS) ? 58 : 44;
+            g2.setColor(new Color(defense.getRed(), defense.getGreen(), defense.getBlue(), alpha));
+            double ringW = viewW * (1.10 + random.nextDouble() * 0.16);
+            double ringH = viewH * (0.42 + random.nextDouble() * 0.10);
+            drawBackdropArcBand(g2, (viewW - ringW) / 2.0 + ox * 0.10, viewH * (0.02 + random.nextDouble() * 0.06) + oy * 0.08,
+                    ringW, ringH, 186.0, 126.0);
+            drawBackdropArcBand(g2, (viewW - ringW) / 2.0 + ox * 0.08, viewH * (0.08 + random.nextDouble() * 0.06) + oy * 0.06,
+                    ringW, ringH, 12.0, 96.0);
+        }
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawBackdropBody(Graphics2D g2, CelestialBackdropSpec spec, double blend,
+                                         double camX, double camY, int viewW, int viewH,
+                                         long seed, boolean primary) {
+        if (g2 == null || spec == null) return;
+        double cx = viewW * spec.anchorX - camX * spec.parallax;
+        double cy = viewH * spec.anchorY - camY * spec.parallax;
+        double radius = spec.radiusPx;
+        if (!primary) {
+            radius *= 0.92;
+        }
+        if (spec.kind == BackdropBodyKind.STAR) {
+            radius *= 1.0 + blend * 0.08;
+        } else if (spec.cityLights) {
+            radius *= 1.0 + blend * 0.03;
+        }
+
+        drawBackdropGlow(g2, cx, cy, radius, spec.glowColor);
+
+        Shape oldClip = g2.getClip();
+        Paint oldPaint = g2.getPaint();
+        Color oldColor = g2.getColor();
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+
+        Ellipse2D.Double body = new Ellipse2D.Double(cx - radius, cy - radius, radius * 2.0, radius * 2.0);
+        RadialGradientPaint fill = new RadialGradientPaint(
+                new Point2D.Double(cx - radius * 0.34, cy - radius * 0.28),
+                (float) (radius * 1.15),
+                new float[]{0f, 0.58f, 1f},
+                new Color[]{
+                        scaleAlpha(spec.highlightColor, 0.98),
+                        scaleAlpha(spec.baseColor, 0.96),
+                        darken(spec.baseColor, 0.46)
+                });
+        g2.setPaint(fill);
+        g2.fill(body);
+
+        if (spec.kind != BackdropBodyKind.STAR) {
+            Stroke atmStroke = new BasicStroke((float) Math.max(2.0, radius * 0.05));
+            g2.setStroke(atmStroke);
+            g2.setColor(scaleAlpha(spec.atmosphereColor, 0.55 + 0.20 * blend));
+            g2.draw(new Ellipse2D.Double(cx - radius * 1.01, cy - radius * 1.01, radius * 2.02, radius * 2.02));
+        }
+
+        g2.setClip(body);
+        if (spec.kind == BackdropBodyKind.GAS_GIANT || spec.cloudBands) {
+            drawBackdropBands(g2, cx, cy, radius, spec, blend, seed);
+        }
+        if (spec.kind == BackdropBodyKind.MOON) {
+            drawBackdropCraters(g2, cx, cy, radius, seed);
+        }
+        if (spec.kind == BackdropBodyKind.PLANET && spec.agricultureBands) {
+            drawBackdropAgriculture(g2, cx, cy, radius, seed, blend);
+        }
+        if (spec.kind == BackdropBodyKind.PLANET && spec.cityLights) {
+            drawBackdropCityLights(g2, cx, cy, radius, spec, blend, seed);
+        }
+        if (spec.kind == BackdropBodyKind.PLANET || spec.kind == BackdropBodyKind.GAS_GIANT) {
+            drawBackdropCloudDeck(g2, cx, cy, radius, spec, blend, seed);
+        }
+        g2.setClip(oldClip);
+
+        drawBackdropInfrastructure(g2, cx, cy, radius, spec, blend, seed);
+        drawBackdropLanes(g2, cx, cy, radius, spec, blend, seed);
+
+        g2.setStroke(oldStroke);
+        g2.setPaint(oldPaint);
+        g2.setColor(oldColor);
+        g2.setComposite(oldComposite);
+        g2.setClip(oldClip);
+    }
+
+    private static void drawBackdropGlow(Graphics2D g2, double cx, double cy, double radius, Color glow) {
+        if (g2 == null || glow == null) return;
+        Color oldColor = g2.getColor();
+        Composite oldComposite = g2.getComposite();
+        for (int i = 3; i >= 1; i--) {
+            double scale = 1.18 + i * 0.16;
+            float alpha = Math.max(0.02f, Math.min(0.25f, glow.getAlpha() / 255f * (0.14f / i)));
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+            g2.setColor(new Color(glow.getRed(), glow.getGreen(), glow.getBlue()));
+            g2.fill(new Ellipse2D.Double(cx - radius * scale, cy - radius * scale, radius * 2.0 * scale, radius * 2.0 * scale));
+        }
+        g2.setComposite(oldComposite);
+        g2.setColor(oldColor);
+    }
+
+    private static void drawBackdropBands(Graphics2D g2, double cx, double cy, double radius,
+                                          CelestialBackdropSpec spec, double blend, long seed) {
+        Random random = new Random(seed ^ 0x4F31A17BL);
+        int bands = 7;
+        for (int i = 0; i < bands; i++) {
+            double frac = (i + 0.5) / bands;
+            double y = cy - radius * 0.86 + frac * radius * 1.72;
+            double height = radius * (0.12 + random.nextDouble() * 0.06);
+            double width = radius * 2.25 * (0.72 + random.nextDouble() * 0.22);
+            int alpha = 18 + random.nextInt(28);
+            if (spec.kind == BackdropBodyKind.GAS_GIANT) {
+                alpha += 18;
+            }
+            Color band = blend(spec.highlightColor, spec.baseColor, 0.22 + frac * 0.48);
+            g2.setColor(new Color(band.getRed(), band.getGreen(), band.getBlue(), MathUtil.clamp(alpha, 0, 120)));
+            g2.fill(new RoundRectangle2D.Double(cx - width / 2.0, y - height / 2.0, width, height, height, height));
+        }
+        g2.setColor(new Color(255, 255, 255, MathUtil.clamp((int) Math.round(16 + 20 * blend), 0, 72)));
+        g2.fill(new Ellipse2D.Double(cx - radius * 0.82, cy - radius * 0.62, radius * 1.20, radius * 0.26));
+    }
+
+    private static void drawBackdropCraters(Graphics2D g2, double cx, double cy, double radius, long seed) {
+        Random random = new Random(seed ^ 0x2F17D31BL);
+        int craterCount = 14;
+        for (int i = 0; i < craterCount; i++) {
+            double ang = random.nextDouble() * Math.PI * 2.0;
+            double dist = radius * random.nextDouble() * 0.72;
+            double x = cx + Math.cos(ang) * dist;
+            double y = cy + Math.sin(ang) * dist;
+            double size = radius * (0.05 + random.nextDouble() * 0.11);
+            g2.setColor(new Color(26, 34, 42, 24));
+            g2.fill(new Ellipse2D.Double(x - size * 0.58, y - size * 0.42, size * 1.16, size * 0.84));
+            g2.setColor(new Color(230, 236, 242, 16));
+            g2.draw(new Ellipse2D.Double(x - size * 0.60, y - size * 0.44, size * 1.20, size * 0.88));
+        }
+    }
+
+    private static void drawBackdropAgriculture(Graphics2D g2, double cx, double cy, double radius, long seed, double blend) {
+        Random random = new Random(seed ^ 0x6A1CF42DL);
+        for (int i = 0; i < 9; i++) {
+            double x = cx - radius * 0.65 + random.nextDouble() * radius * 1.15;
+            double y = cy - radius * 0.25 + random.nextDouble() * radius * 0.70;
+            double w = radius * (0.16 + random.nextDouble() * 0.14);
+            double h = radius * (0.04 + random.nextDouble() * 0.06);
+            Color band = new Color(76, 128 + random.nextInt(36), 88 + random.nextInt(24), MathUtil.clamp((int) Math.round(18 + 10 * blend), 0, 72));
+            g2.setColor(band);
+            g2.fill(new RoundRectangle2D.Double(x - w / 2.0, y - h / 2.0, w, h, h, h));
+        }
+    }
+
+    private static void drawBackdropCityLights(Graphics2D g2, double cx, double cy, double radius,
+                                               CelestialBackdropSpec spec, double blend, long seed) {
+        Random random = new Random(seed ^ 0x91B4E12DL);
+        int streets = 36;
+        for (int i = 0; i < streets; i++) {
+            double x1 = cx - radius * 0.40 + random.nextDouble() * radius * 0.86;
+            double y1 = cy + radius * 0.04 + random.nextDouble() * radius * 0.46;
+            double x2 = x1 + radius * (0.07 + random.nextDouble() * 0.18);
+            double y2 = y1 + radius * (-0.02 + random.nextDouble() * 0.05);
+            int alpha = MathUtil.clamp((int) Math.round(28 + 58 * (0.45 + blend)), 0, 128);
+            g2.setColor(new Color(255, 214, 138, alpha));
+            g2.draw(new java.awt.geom.Line2D.Double(x1, y1, x2, y2));
+        }
+        int clusters = 6 + (int) Math.round(spec.infrastructureDensity * 8.0);
+        for (int i = 0; i < clusters; i++) {
+            double x = cx - radius * 0.42 + random.nextDouble() * radius * 0.86;
+            double y = cy + radius * 0.10 + random.nextDouble() * radius * 0.36;
+            double size = radius * (0.08 + random.nextDouble() * 0.08);
+            drawBackdropCityCluster(g2, x, y, size, blend, random);
+        }
+        for (int i = 0; i < 12; i++) {
+            double x = cx - radius * 0.38 + random.nextDouble() * radius * 0.80;
+            double y = cy + radius * 0.06 + random.nextDouble() * radius * 0.42;
+            double s = radius * (0.010 + random.nextDouble() * 0.018);
+            g2.setColor(new Color(255, 234, 176, MathUtil.clamp((int) Math.round(38 + 66 * blend), 0, 156)));
+            g2.fill(new Ellipse2D.Double(x, y, s * 1.8, s));
+        }
+    }
+
+    private static void drawBackdropCloudDeck(Graphics2D g2, double cx, double cy, double radius,
+                                              CelestialBackdropSpec spec, double blend, long seed) {
+        Random random = new Random(seed ^ 0x17ABF02DL);
+        int clouds = (spec.kind == BackdropBodyKind.GAS_GIANT) ? 10 : 6;
+        for (int i = 0; i < clouds; i++) {
+            double x = cx - radius * 0.78 + random.nextDouble() * radius * 1.36;
+            double y = cy - radius * 0.30 + random.nextDouble() * radius * 0.86;
+            double w = radius * (0.24 + random.nextDouble() * 0.34);
+            double h = radius * (0.06 + random.nextDouble() * 0.11);
+            int alpha = MathUtil.clamp((int) Math.round((spec.kind == BackdropBodyKind.GAS_GIANT ? 18 : 14) + 16 * blend), 0, 72);
+            g2.setColor(new Color(240, 246, 255, alpha));
+            g2.fill(new Ellipse2D.Double(x, y, w, h));
+        }
+    }
+
+    private static void drawBackdropInfrastructure(Graphics2D g2, double cx, double cy, double radius,
+                                                   CelestialBackdropSpec spec, double blend, long seed) {
+        if (spec.infrastructureDensity <= 0.01) return;
+        Random random = new Random(seed ^ 0x5B2A73DCL);
+        Stroke oldStroke = g2.getStroke();
+        int rings = 1 + (int) Math.round(spec.infrastructureDensity * 2.5);
+        for (int i = 0; i < rings; i++) {
+            double orbit = radius * (1.14 + i * 0.12);
+            int alpha = MathUtil.clamp((int) Math.round(18 + 56 * spec.infrastructureDensity + 18 * blend), 0, 120);
+            float strokeW = (float) (1.1 + i * 0.35);
+            g2.setStroke(new BasicStroke(strokeW));
+            g2.setColor(new Color(168, 212, 255, alpha));
+            double arcW = orbit * 2.36;
+            double arcH = orbit * 0.68;
+            drawBackdropArcBand(g2, cx - arcW / 2.0, cy - arcH / 2.0, arcW, arcH, i * 18.0, 112.0);
+            drawBackdropArcBand(g2, cx - arcW / 2.0, cy - arcH / 2.0, arcW, arcH, 180.0 + i * 14.0, 92.0);
+            if (spec.infrastructureDensity >= 0.55) {
+                g2.setColor(new Color(206, 232, 255, MathUtil.clamp(alpha + 16, 0, 148)));
+                drawBackdropArcBand(g2, cx - arcW / 2.0, cy - arcH / 2.0, arcW, arcH, 300.0 - i * 10.0, 42.0);
+            }
+            int nodes = 4 + random.nextInt(4) + (spec.infrastructureDensity >= 0.7 ? 1 : 0);
+            for (int n = 0; n < nodes; n++) {
+                double ang = (Math.PI * 2.0 * n / nodes) + random.nextDouble() * 0.12;
+                double nx = cx + Math.cos(ang) * orbit * 1.02;
+                double ny = cy + Math.sin(ang) * orbit * 0.28;
+                double size = 5.0 + random.nextDouble() * 5.0;
+                drawBackdropStationGlyph(g2, nx, ny, size, MathUtil.clamp(alpha + 28, 0, 180));
+                if (spec.infrastructureDensity >= 0.72) {
+                    g2.setColor(new Color(136, 200, 255, MathUtil.clamp(alpha / 2, 0, 90)));
+                    g2.draw(new java.awt.geom.Line2D.Double(cx, cy, nx, ny));
+                }
+            }
+        }
+        if (spec.rings) {
+            double ringR = radius * 1.45;
+            g2.setStroke(new BasicStroke((float) Math.max(2.0, radius * 0.018)));
+            g2.setColor(new Color(215, 232, 255, MathUtil.clamp((int) Math.round(26 + 44 * spec.infrastructureDensity), 0, 120)));
+            double ringW = ringR * 2.36;
+            double ringH = ringR * 0.60;
+            drawBackdropArcBand(g2, cx - ringW / 2.0, cy - ringH / 2.0, ringW, ringH, 18.0, 138.0);
+            drawBackdropArcBand(g2, cx - ringW / 2.0, cy - ringH / 2.0, ringW, ringH, 198.0, 122.0);
+        }
+        if (spec.infrastructureDensity >= 0.65) {
+            double haloR = radius * 1.62;
+            g2.setStroke(new BasicStroke((float) Math.max(1.4, radius * 0.012), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{10f, 12f}, 0f));
+            g2.setColor(new Color(122, 210, 255, MathUtil.clamp((int) Math.round(18 + 54 * spec.infrastructureDensity), 0, 110)));
+            drawBackdropArcBand(g2, cx - haloR, cy - haloR, haloR * 2.0, haloR * 2.0, 28.0, 64.0);
+            drawBackdropArcBand(g2, cx - haloR, cy - haloR, haloR * 2.0, haloR * 2.0, 214.0, 58.0);
+        }
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawBackdropLanes(Graphics2D g2, double cx, double cy, double radius,
+                                          CelestialBackdropSpec spec, double blend, long seed) {
+        if (spec.trafficDensity <= 0.01) return;
+        Random random = new Random(seed ^ 0x3D6E18AAL);
+        Stroke oldStroke = g2.getStroke();
+        for (int i = 0; i < 3; i++) {
+            double orbit = radius * (1.34 + i * 0.16);
+            float dash = (float) Math.max(8.0, radius * 0.05);
+            g2.setStroke(new BasicStroke(1.0f + i * 0.35f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{dash, dash * 1.7f}, i * 6f));
+            g2.setColor(new Color(124, 214, 255, MathUtil.clamp((int) Math.round(16 + 54 * spec.trafficDensity), 0, 108)));
+            g2.draw(new Ellipse2D.Double(cx - orbit * 1.10, cy - orbit * 0.24, orbit * 2.20, orbit * 0.48));
+        }
+        int freighters = 4 + random.nextInt(4);
+        g2.setStroke(oldStroke);
+        for (int i = 0; i < freighters; i++) {
+            double orbit = radius * (1.35 + random.nextDouble() * 0.32);
+            double ang = random.nextDouble() * Math.PI * 2.0 + blend * 0.65;
+            double x = cx + Math.cos(ang) * orbit;
+            double y = cy + Math.sin(ang) * orbit * 0.24;
+            double dx = Math.cos(ang) * 10.0;
+            double dy = Math.sin(ang) * 2.4;
+            g2.setColor(new Color(255, 244, 188, MathUtil.clamp((int) Math.round(42 + 44 * spec.trafficDensity), 0, 156)));
+            g2.draw(new java.awt.geom.Line2D.Double(x - dx, y - dy, x + dx, y + dy));
+        }
+        if (spec.trafficDensity >= 0.45) {
+            g2.setColor(new Color(170, 222, 255, MathUtil.clamp((int) Math.round(18 + 62 * spec.trafficDensity), 0, 128)));
+            g2.setStroke(new BasicStroke(1.1f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10f, new float[]{7f, 14f}, 0f));
+            g2.draw(new java.awt.geom.Line2D.Double(cx - radius * 1.45, cy + radius * 0.18, cx + radius * 1.54, cy - radius * 0.62));
+            g2.draw(new java.awt.geom.Line2D.Double(cx - radius * 1.30, cy - radius * 0.06, cx + radius * 1.44, cy + radius * 0.46));
+        }
+    }
+
+    private static void drawBackdropArcBand(Graphics2D g2, double x, double y, double w, double h, double start, double extent) {
+        g2.draw(new java.awt.geom.Arc2D.Double(x, y, w, h, start, extent, java.awt.geom.Arc2D.OPEN));
+    }
+
+    private static void drawBackdropStationGlyph(Graphics2D g2, double x, double y, double size, int alpha) {
+        double w = size;
+        double h = size * 0.48;
+        g2.setColor(new Color(220, 242, 255, MathUtil.clamp(alpha, 0, 180)));
+        g2.fill(new Rectangle2D.Double(x - w / 2.0, y - h / 2.0, w, h));
+        g2.setColor(new Color(122, 198, 255, MathUtil.clamp(alpha / 2, 0, 120)));
+        g2.draw(new java.awt.geom.Line2D.Double(x - w * 0.72, y, x + w * 0.72, y));
+        g2.draw(new java.awt.geom.Line2D.Double(x, y - h * 1.3, x, y + h * 1.3));
+    }
+
+    private static void drawBackdropCityCluster(Graphics2D g2, double x, double y, double size, double blend, Random random) {
+        int blocks = 3 + random.nextInt(3);
+        for (int i = 0; i < blocks; i++) {
+            double bx = x - size * 0.5 + random.nextDouble() * size;
+            double by = y - size * 0.35 + random.nextDouble() * size * 0.7;
+            double bw = size * (0.20 + random.nextDouble() * 0.22);
+            double bh = size * (0.08 + random.nextDouble() * 0.14);
+            int alpha = MathUtil.clamp((int) Math.round(24 + 58 * (0.35 + blend)), 0, 132);
+            g2.setColor(new Color(255, 210, 132, alpha));
+            g2.fill(new Rectangle2D.Double(bx, by, bw, bh));
+        }
+        g2.setColor(new Color(255, 236, 182, MathUtil.clamp((int) Math.round(18 + 34 * blend), 0, 120)));
+        g2.draw(new java.awt.geom.Line2D.Double(x - size * 0.6, y, x + size * 0.6, y));
+        g2.draw(new java.awt.geom.Line2D.Double(x, y - size * 0.38, x, y + size * 0.38));
+    }
+
+    private static CampaignBackdropSpec resolveCampaignBackdropSpec(GameContext ctx) {
+        if (ctx == null || !CampaignSystem.isCampaignActive(ctx)) return null;
+        int sector = CampaignSystem.activeSector(ctx);
+        int stage = CampaignSystem.objectiveStage(ctx);
+        double progress = CampaignSystem.objectiveProgressRatio(ctx);
+        double elapsed = CampaignSystem.sectorElapsedRatio(ctx);
+
+        return switch (sector) {
+            case 1 -> new CampaignBackdropSpec(
+                    "trade_hub_colony",
+                    elapsed * 0.35,
+                    new Color(10, 20, 26, 28),
+                    BackdropFieldMode.COLONY_ARCOLOGY,
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 1.05, 0.96, 370.0, 0.018,
+                            new Color(58, 106, 122, 255), new Color(170, 202, 208, 255),
+                            new Color(156, 224, 232, 168), new Color(72, 160, 196, 74),
+                            true, true, true, true, 0.90, 0.75),
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.24, -0.08, 120.0, 0.010,
+                            new Color(98, 112, 132, 255), new Color(188, 198, 214, 255),
+                            new Color(180, 206, 255, 90), new Color(124, 146, 210, 28),
+                            false, false, false, false, 0.15, 0.0));
+            case 2 -> new CampaignBackdropSpec(
+                    "jump_ring_frontier",
+                    elapsed * 0.30,
+                    new Color(12, 18, 30, 22),
+                    BackdropFieldMode.COLONY_ARCOLOGY,
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 1.12, 0.82, 300.0, 0.022,
+                            new Color(72, 78, 98, 255), new Color(182, 190, 222, 255),
+                            new Color(154, 188, 236, 148), new Color(92, 118, 182, 54),
+                            true, true, true, false, 0.58, 0.48),
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.18, 0.10, 96.0, 0.012,
+                            new Color(128, 102, 82, 255), new Color(220, 186, 154, 255),
+                            new Color(220, 190, 170, 92), new Color(184, 142, 120, 32),
+                            false, false, false, false, 0.0, 0.0));
+            case 3 -> new CampaignBackdropSpec(
+                    "relay_halo_moon",
+                    0.0,
+                    new Color(8, 18, 32, 18),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 1.08, 0.20, 240.0, 0.014,
+                            new Color(82, 106, 126, 255), new Color(190, 216, 230, 255),
+                            new Color(170, 220, 255, 124), new Color(94, 154, 192, 34),
+                            true, false, false, false, 0.72, 0.52),
+                    null);
+            case 4 -> new CampaignBackdropSpec(
+                    "burning_debris_wake",
+                    elapsed * 0.25,
+                    new Color(34, 12, 10, 34),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 1.18, 0.96, 330.0, 0.020,
+                            new Color(92, 58, 52, 255), new Color(212, 144, 118, 255),
+                            new Color(226, 138, 98, 110), new Color(204, 106, 74, 64),
+                            false, false, false, false, 0.14, 0.10),
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, -0.10, -0.14, 150.0, 0.008,
+                            new Color(52, 52, 68, 255), new Color(142, 148, 178, 255),
+                            new Color(160, 168, 220, 84), new Color(122, 126, 180, 22),
+                            false, false, false, false, 0.0, 0.0));
+            case 5 -> new CampaignBackdropSpec(
+                    "exodus_gas_giant",
+                    progress,
+                    new Color(12, 18, 22, 20),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.GAS_GIANT, 1.05, 0.82, 430.0, 0.016,
+                            new Color(76, 118, 108, 255), new Color(190, 220, 184, 255),
+                            new Color(174, 232, 210, 120), new Color(98, 186, 160, 56),
+                            true, false, true, false, 0.38, 0.42),
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.24, 0.14, 102.0, 0.010,
+                            new Color(128, 146, 154, 255), new Color(220, 232, 232, 255),
+                            new Color(210, 228, 255, 88), new Color(132, 168, 186, 22),
+                            false, false, false, false, 0.0, 0.0));
+            case 6 -> new CampaignBackdropSpec(
+                    "trade_spine_industrial_orbit",
+                    elapsed * 0.28,
+                    new Color(18, 18, 26, 24),
+                    BackdropFieldMode.INDUSTRIAL_YARDS,
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 1.10, 0.90, 340.0, 0.019,
+                            new Color(80, 92, 104, 255), new Color(198, 206, 220, 255),
+                            new Color(186, 210, 244, 124), new Color(124, 148, 196, 46),
+                            true, true, true, false, 0.88, 0.68),
+                    null);
+            case 7 -> {
+                double blend = (stage <= 0) ? 0.0 : MathUtil.clamp(0.28 + progress * 0.72, 0.0, 1.0);
+                yield new CampaignBackdropSpec(
+                        "contract_world_array",
+                        blend,
+                        new Color(8, 26, 20, 24 + (int) Math.round(18 * blend)),
+                        BackdropFieldMode.COLONY_ARCOLOGY,
+                        new CelestialBackdropSpec(BackdropBodyKind.PLANET, 1.02 - blend * 0.06, 0.84 - blend * 0.03, 360.0 + blend * 20.0, 0.017,
+                                new Color(68, 116, 96, 255), new Color(198, 234, 222, 255),
+                                new Color(156, 232, 210, 136), new Color(76, 180, 128, 60),
+                                true, true, true, true, 0.62 + blend * 0.34, 0.42 + blend * 0.28),
+                        new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.18 + blend * 0.06, 0.08, 112.0, 0.011,
+                                new Color(96, 132, 128, 255), new Color(206, 234, 226, 255),
+                                new Color(184, 238, 230, 96), new Color(112, 182, 170, 26),
+                                false, false, false, false, 0.0, 0.0));
+            }
+            case 8 -> new CampaignBackdropSpec(
+                    "ash_gate_gas_giant",
+                    elapsed * 0.22,
+                    new Color(26, 14, 10, 32),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.GAS_GIANT, 1.06, 0.84, 410.0, 0.015,
+                            new Color(104, 82, 68, 255), new Color(224, 182, 124, 255),
+                            new Color(232, 170, 114, 118), new Color(214, 122, 82, 58),
+                            true, false, true, false, 0.44, 0.30),
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.22, 0.14, 118.0, 0.010,
+                            new Color(122, 92, 76, 255), new Color(216, 166, 126, 255),
+                            new Color(220, 176, 130, 82), new Color(196, 134, 84, 22),
+                            false, false, false, false, 0.0, 0.0));
+            case 9 -> new CampaignBackdropSpec(
+                    "outer_sol_starline",
+                    progress,
+                    new Color(30, 20, 6, 34),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.STAR, 1.24, -0.18, 330.0, 0.006,
+                            new Color(255, 206, 120, 255), new Color(255, 246, 214, 255),
+                            new Color(255, 206, 122, 120), new Color(255, 168, 82, 120),
+                            false, false, false, false, 0.0, 0.0),
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 0.08, 1.12, 210.0, 0.014,
+                            new Color(48, 66, 90, 255), new Color(140, 180, 220, 255),
+                            new Color(156, 206, 240, 96), new Color(98, 146, 202, 24),
+                            false, false, true, false, 0.0, 0.0));
+            case 10 -> new CampaignBackdropSpec(
+                    "liberation_moon_orbit",
+                    progress,
+                    new Color(20, 18, 12, 24),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 1.00, 0.90, 320.0, 0.018,
+                            new Color(112, 118, 90, 255), new Color(226, 228, 176, 255),
+                            new Color(244, 228, 158, 110), new Color(210, 182, 92, 42),
+                            true, false, false, false, 0.54, 0.58),
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 0.10, -0.10, 140.0, 0.009,
+                            new Color(78, 96, 120, 255), new Color(182, 200, 228, 255),
+                            new Color(188, 212, 244, 78), new Color(122, 146, 198, 24),
+                            false, false, false, false, 0.0, 0.0));
+            case 11 -> {
+                double blend = (stage <= 0) ? 0.0 : MathUtil.clamp(0.18 + progress * 0.82, 0.0, 1.0);
+                yield new CampaignBackdropSpec(
+                        "luna_earthrise_approach",
+                        blend,
+                        new Color(18, 20, 28, 20 + (int) Math.round(14 * blend)),
+                        BackdropFieldMode.LUNAR_INSTALLATION,
+                        new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.96 - blend * 0.18, 0.70 - blend * 0.10, 260.0 - blend * 36.0, 0.014,
+                                new Color(168, 174, 180, 255), new Color(242, 244, 248, 255),
+                                new Color(220, 228, 255, 96), new Color(186, 194, 224, 26),
+                                false, false, false, false, 0.46 + blend * 0.12, 0.18),
+                        new CelestialBackdropSpec(BackdropBodyKind.PLANET, 1.18 - blend * 0.28, 1.06 - blend * 0.20, 220.0 + blend * 125.0, 0.010,
+                                new Color(58, 92, 132, 255), new Color(182, 220, 246, 255),
+                                new Color(164, 214, 248, 142), new Color(92, 154, 212, 56),
+                                false, true, true, true, 0.68 + blend * 0.20, 0.36 + blend * 0.18));
+            }
+            case 12 -> new CampaignBackdropSpec(
+                    "earth_high_orbit",
+                    1.0,
+                    new Color(16, 24, 32, 26),
+                    BackdropFieldMode.HOMEWORLD_CITYLIGHTS,
+                    new CelestialBackdropSpec(BackdropBodyKind.PLANET, 0.92, 0.86, 420.0, 0.012,
+                            new Color(62, 100, 136, 255), new Color(196, 232, 250, 255),
+                            new Color(170, 220, 252, 148), new Color(92, 162, 220, 64),
+                            true, true, true, true, 0.96, 0.70),
+                    new CelestialBackdropSpec(BackdropBodyKind.MOON, 0.18, 0.18, 120.0, 0.008,
+                            new Color(180, 184, 192, 255), new Color(246, 248, 252, 255),
+                            new Color(226, 232, 255, 84), new Color(194, 202, 228, 24),
+                            false, false, false, false, 0.08, 0.0));
+            default -> null;
+        };
+    }
+
+    private static Color scaleAlpha(Color color, double factor) {
+        if (color == null) return new Color(255, 255, 255, 0);
+        return new Color(color.getRed(), color.getGreen(), color.getBlue(),
+                MathUtil.clamp((int) Math.round(color.getAlpha() * factor), 0, 255));
+    }
+
+    private static Color darken(Color color, double factor) {
+        if (color == null) return Color.BLACK;
+        return new Color(
+                MathUtil.clamp((int) Math.round(color.getRed() * factor), 0, 255),
+                MathUtil.clamp((int) Math.round(color.getGreen() * factor), 0, 255),
+                MathUtil.clamp((int) Math.round(color.getBlue() * factor), 0, 255),
+                color.getAlpha());
+    }
+
+    private static Color blend(Color a, Color b, double t) {
+        if (a == null) return (b == null) ? Color.WHITE : b;
+        if (b == null) return a;
+        double clamped = MathUtil.clamp(t, 0.0, 1.0);
+        return new Color(
+                MathUtil.clamp((int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * clamped), 0, 255),
+                MathUtil.clamp((int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * clamped), 0, 255),
+                MathUtil.clamp((int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * clamped), 0, 255),
+                MathUtil.clamp((int) Math.round(a.getAlpha() + (b.getAlpha() - a.getAlpha()) * clamped), 0, 255));
     }
 
     private static void drawAsteroidSprite(Graphics2D g2, Asteroid a, BufferedImage skin) {
@@ -3916,7 +4888,10 @@ public class Renderer {
                 : (campaignShop && !mobileStationOk)
                 ? "Needs Mobile Station Titan"
                 : (campaignShop && eliteCost > 0 && eliteCapacity <= 0)
-                ? "Needs elite command titan"
+                ? ((offer.role == ShipRole.SUPERSHIP)
+                    ? ("Needs sector " + CampaignSystem.campaignMinSectorForRole(offer.role)
+                        + " + T" + CampaignSystem.campaignRequiredTier(offer.role, offer.requiredTier))
+                    : "Needs elite command titan")
                 : (campaignShop && !eliteCommandOk)
                 ? ("Elite grid " + eliteUsed + "/" + eliteCapacity + " committed")
                 : (campaignShop && !standardCommandOk)
@@ -6691,16 +7666,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static final class EnvironmentSkinLibrary {
         private static final String BG_DIR = "assets/environment_overhaul_dropzone/background";
         private static final String AST_DIR = "assets/environment_overhaul_dropzone/asteroids";
+        private static final String CAMPAIGN_BG_DIR = "assets/environment_overhaul_dropzone/campaign_backgrounds";
         private static final String BG_RESOURCE_DIR = "environment_overhaul_dropzone/background";
         private static final String AST_RESOURCE_DIR = "environment_overhaul_dropzone/asteroids";
+        private static final String CAMPAIGN_BG_RESOURCE_DIR = "environment_overhaul_dropzone/campaign_backgrounds";
         private static final List<File> BG_ROOTS = resolveRoots(BG_DIR);
         private static final List<File> AST_ROOTS = resolveRoots(AST_DIR);
+        private static final List<File> CAMPAIGN_BG_ROOTS = resolveRoots(CAMPAIGN_BG_DIR);
 
         private static boolean bgLoaded = false;
         private static BufferedImage bgBase;
         private static BufferedImage bgNebula;
         private static BufferedImage bgStars;
         private static BufferedImage bgDust;
+        private static boolean campaignBgLoaded = false;
+        private static final Map<String, BufferedImage> CAMPAIGN_BG = new HashMap<>();
 
         private static boolean astLoaded = false;
         private static final Map<String, List<BufferedImage>> AST_NORMAL = new HashMap<>();
@@ -6724,6 +7704,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         static BufferedImage backgroundDust() {
             ensureBackgroundLoaded();
             return bgDust;
+        }
+
+        static BufferedImage campaignBackdrop(String key) {
+            if (key == null || key.isBlank()) return null;
+            ensureCampaignBackgroundsLoaded();
+            return CAMPAIGN_BG.get(normalizeCampaignKey(key));
         }
 
         static BufferedImage pickAsteroidSprite(Asteroid a) {
@@ -6821,6 +7807,37 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
         }
 
+        private static void ensureCampaignBackgroundsLoaded() {
+            if (campaignBgLoaded) return;
+            campaignBgLoaded = true;
+            CAMPAIGN_BG.clear();
+
+            for (File root : CAMPAIGN_BG_ROOTS) {
+                File[] files = root.listFiles((dir, name) -> {
+                    if (name == null) return false;
+                    String lower = name.toLowerCase(Locale.ROOT);
+                    return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+                });
+                if (files == null || files.length == 0) continue;
+                java.util.Arrays.sort(files, Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER));
+                for (File f : files) {
+                    String stem = fileStem(f.getName());
+                    String key = normalizeCampaignKey(stem);
+                    if (key.isBlank() || CAMPAIGN_BG.containsKey(key)) continue;
+                    try {
+                        BufferedImage img = ImageIO.read(f);
+                        if (img != null) {
+                            CAMPAIGN_BG.put(key, img);
+                        }
+                    } catch (IOException ex) {
+                        System.err.println("[renderer] campaign_bg_read_failed "
+                                + f.getAbsolutePath() + " :: " + ex.getMessage());
+                    }
+                }
+                if (!CAMPAIGN_BG.isEmpty()) break;
+            }
+        }
+
         private static String normalizeAstSize(String raw) {
             if (raw == null) return null;
             String s = raw.toLowerCase(Locale.ROOT);
@@ -6834,6 +7851,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (radius <= 30.0) return "small";
             if (radius <= 46.0) return "med";
             return "large";
+        }
+
+        private static String normalizeCampaignKey(String raw) {
+            if (raw == null) return "";
+            String s = raw.trim().toLowerCase(Locale.ROOT);
+            s = s.replace(' ', '_').replace('-', '_');
+            return s;
+        }
+
+        private static String fileStem(String name) {
+            if (name == null || name.isBlank()) return "";
+            int dot = name.lastIndexOf('.');
+            return (dot <= 0) ? name : name.substring(0, dot);
         }
 
         private static int stableVariantIndex(Asteroid a, int modulo) {

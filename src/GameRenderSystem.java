@@ -10,7 +10,7 @@ public final class GameRenderSystem {
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
-        Renderer.drawSpaceBackground(g2, ctx.camX, ctx.camY, viewportW, viewportH, seed);
+        Renderer.drawSpaceBackground(g2, ctx, ctx.camX, ctx.camY, viewportW, viewportH, seed);
         drawModifierWorldTint(ctx, g2, viewportW, viewportH);
         double zoom = CameraSystem.normalizedZoom(ctx);
         double cullPad = 220.0;
@@ -527,50 +527,64 @@ if (DevTools.isDebugOverlay()) {
     private static void drawCampaignLandmark(Graphics2D g2, CampaignSystem.CampaignLandmark landmark,
                                              double minX, double minY, double maxX, double maxY) {
         if (g2 == null || landmark == null) return;
-        double r = Math.max(40.0, landmark.radius);
-        if (!isCircleVisible(landmark.x, landmark.y, r + 26.0, minX, minY, maxX, maxY)) return;
+        double semanticRadius = Math.max(40.0, landmark.radius);
+        if (!isCircleVisible(landmark.x, landmark.y, semanticRadius + 26.0, minX, minY, maxX, maxY)) return;
 
         int x = (int) Math.round(landmark.x);
         int y = (int) Math.round(landmark.y);
-        int ir = (int) Math.round(r);
+        int ir = (int) Math.round(MathUtil.clamp(semanticRadius * 0.23, 34.0, 112.0));
         Color fill = landmark.fillColor;
         Color edge = landmark.edgeColor;
+        Color soft = new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), Math.min(48, fill.getAlpha()));
+        Stroke oldStroke = g2.getStroke();
+
+        g2.setStroke(new BasicStroke(1.15f));
+        g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(120, edge.getAlpha())));
+        drawLandmarkArc(g2, x, y, ir + 18, 210.0, 84.0);
+        drawLandmarkArc(g2, x, y, ir + 18, 20.0, 74.0);
+        drawLandmarkBracket(g2, x, y, ir + 8, Math.max(12, ir / 3));
 
         switch (landmark.type) {
             case PLANET, STAR -> {
-                g2.setColor(fill);
+                g2.setColor(soft);
                 g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
-                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(220, edge.getAlpha())));
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(190, edge.getAlpha())));
                 g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
                 g2.setColor(new Color(255, 255, 255, landmark.type == CampaignSystem.LandmarkType.STAR ? 72 : 42));
-                g2.drawOval(x - ir / 2, y - ir / 2, ir, ir);
-                g2.drawLine(x - ir / 2, y - ir / 3, x + ir / 3, y - ir / 2);
+                g2.fillOval(x - Math.max(4, ir / 8), y - Math.max(4, ir / 8), Math.max(8, ir / 4), Math.max(8, ir / 4));
+                if (landmark.type == CampaignSystem.LandmarkType.STAR) {
+                    g2.drawLine(x - ir / 2, y, x + ir / 2, y);
+                    g2.drawLine(x, y - ir / 2, x, y + ir / 2);
+                } else {
+                    g2.drawOval(x - ir / 2, y - ir / 2, ir, ir);
+                }
             }
             case RING -> {
-                g2.setColor(fill);
-                g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
-                g2.setColor(edge);
-                g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
-                int inner = Math.max(18, (int) Math.round(ir * 0.55));
-                g2.drawOval(x - inner, y - inner, inner * 2, inner * 2);
-                g2.drawLine(x - ir, y, x - inner, y);
-                g2.drawLine(x + inner, y, x + ir, y);
-                g2.drawLine(x, y - ir, x, y - inner);
-                g2.drawLine(x, y + inner, x, y + ir);
+                int wide = Math.max(42, (int) Math.round(ir * 2.2));
+                int tall = Math.max(18, (int) Math.round(ir * 0.9));
+                g2.setColor(soft);
+                g2.fillOval(x - wide / 2, y - tall / 2, wide, tall);
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(190, edge.getAlpha())));
+                g2.drawOval(x - wide / 2, y - tall / 2, wide, tall);
+                int innerWide = Math.max(24, (int) Math.round(wide * 0.56));
+                int innerTall = Math.max(10, (int) Math.round(tall * 0.56));
+                g2.drawOval(x - innerWide / 2, y - innerTall / 2, innerWide, innerTall);
+                g2.drawLine(x - wide / 2, y, x - innerWide / 2, y);
+                g2.drawLine(x + innerWide / 2, y, x + wide / 2, y);
             }
             case RELAY -> {
-                g2.setColor(fill);
+                g2.setColor(soft);
                 g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
-                g2.setColor(edge);
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(190, edge.getAlpha())));
                 g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
                 g2.drawOval(x - ir / 2, y - ir / 2, ir, ir);
                 g2.drawLine(x - ir, y, x + ir, y);
                 g2.drawLine(x, y - ir, x, y + ir);
             }
             case FORTRESS -> {
-                g2.setColor(fill);
+                g2.setColor(soft);
                 g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
-                g2.setColor(edge);
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(190, edge.getAlpha())));
                 g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
                 int box = Math.max(26, (int) Math.round(ir * 0.85));
                 g2.drawRect(x - box / 2, y - box / 2, box, box);
@@ -578,9 +592,9 @@ if (DevTools.isDebugOverlay()) {
                 g2.drawLine(x, y - box / 2, x, y + box / 2);
             }
             case FRONT, CORRIDOR, COLONY -> {
-                g2.setColor(fill);
+                g2.setColor(soft);
                 g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
-                g2.setColor(edge);
+                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(180, edge.getAlpha())));
                 g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
                 int wide = Math.max(30, (int) Math.round(ir * 1.35));
                 int tall = Math.max(18, (int) Math.round(ir * 0.55));
@@ -592,7 +606,7 @@ if (DevTools.isDebugOverlay()) {
         if (landmark.label != null && !landmark.label.isBlank()) {
             g2.setFont(new Font("Consolas", Font.BOLD, 11));
             FontMetrics titleFm = g2.getFontMetrics();
-            int labelY = y - ir - 14;
+            int labelY = y - ir - 18;
             g2.setColor(new Color(18, 24, 34, 170));
             g2.fillRoundRect(x - titleFm.stringWidth(landmark.label) / 2 - 8, labelY - 11,
                     titleFm.stringWidth(landmark.label) + 16, 18, 8, 8);
@@ -602,10 +616,23 @@ if (DevTools.isDebugOverlay()) {
         if (landmark.subtitle != null && !landmark.subtitle.isBlank()) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 9));
             FontMetrics subtitleFm = g2.getFontMetrics();
-            int subY = y - ir + 2;
-            g2.setColor(new Color(210, 228, 242, 176));
+            int subY = y - ir - 4;
+            g2.setColor(new Color(210, 228, 242, 154));
             g2.drawString(landmark.subtitle, x - subtitleFm.stringWidth(landmark.subtitle) / 2, subY);
         }
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawLandmarkArc(Graphics2D g2, int x, int y, int radius, double startDeg, double extentDeg) {
+        int size = radius * 2;
+        g2.draw(new java.awt.geom.Arc2D.Double(x - radius, y - radius, size, size, startDeg, extentDeg, java.awt.geom.Arc2D.OPEN));
+    }
+
+    private static void drawLandmarkBracket(Graphics2D g2, int x, int y, int radius, int arm) {
+        g2.drawLine(x - radius, y - arm, x - radius, y + arm);
+        g2.drawLine(x + radius, y - arm, x + radius, y + arm);
+        g2.drawLine(x - arm, y - radius, x + arm, y - radius);
+        g2.drawLine(x - arm, y + radius, x + arm, y + radius);
     }
 
     private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2,

@@ -165,6 +165,9 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_ENEMY_MAX_HANGAR_TIER = 3;
     private static final int CAMPAIGN_FLAGSHIP_COMMAND_GROUP = 0;
     private static final int CAMPAIGN_FLAGSHIP_STANDARD_COMMAND_CAPACITY = 5;
+    private static final int CAMPAIGN_FLAGSHIP_BUILTIN_ELITE_COMMAND_CAPACITY = 1;
+    private static final int CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR = 6;
+    private static final int CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER = 4;
     private static final int CAMPAIGN_TRANSPORT_FLEET_ORE_CAPACITY = 10_000;
     private static final double ESCORT_PLAYER_FORMATION_RADIUS = 360.0;
     private static final double ESCORT_SUPPORT_RADIUS = 460.0;
@@ -212,41 +215,41 @@ public final class CampaignSystem {
     private static final SectorLore[] LORE = new SectorLore[]{
             null,
             new SectorLore(1, "ANCHORAGE FIRESTORM", "Far Trade Anchorage",
-                    "Earth has fallen. Hold the evacuation lanes while the colony burns.",
-                    "The trade hub is gone, but the fleet still has a road home."),
+                    "Earth has fallen. Hold the evacuation lanes while Far Trade's arcology crowns, exchange ring, and refugee docks burn around the harbor approaches.",
+                    "The trade colony is gutted, but the convoy escapes with civilians, treasury ledgers, and a road home."),
             new SectorLore(2, "BREAKOUT VECTOR", "Outer Colony Jump Ring",
-                    "Red interdiction packs are sealing the jump ring. Break the cordon before it collapses.",
-                    "The first blockade is broken and the road home stays open."),
+                    "Red interdiction packs are sealing the outer-colony jump ring and trapping thousands of civilian hulls in its transit halo. Break the cordon before the aperture collapses.",
+                    "The first blockade is broken, scattered colony traffic slips through, and the return route stays open."),
             new SectorLore(3, "LAST AUTHORITY RELAY", "Gate Relay Tethys",
-                    "Seize the authority relay and keep the uplink alive long enough to chart the Earth vector.",
-                    "Navigation control is restored and the homeward route is real."),
+                    "Seize the last intact authority relay and keep its route-control uplink alive long enough to chart a lawful Earth vector through the dead gates.",
+                    "Navigation control is restored, the transit net answers, and the homeward route becomes real."),
             new SectorLore(4, "RED KNIFE PURSUIT", "Burning Debris Wake",
-                    "A pursuit Titan is closing fast. Kill it before it pins the refugee column in deep space.",
-                    "The AI's first Titan hunter is down and the fleet escapes the kill box."),
+                    "A pursuit Titan is closing through the wreck wake of the breakout. Kill it before it pins the refugee column in the shattered traffic lanes behind you.",
+                    "The AI's first Titan hunter is down and the fleet punches out of the kill box."),
             new SectorLore(5, "REFUGEE WAYLINE", "Civilian Exodus Corridor",
-                    "Escort the Exodus Transport Titan carrying refugees, fuel, and state archives.",
-                    "The civilian column survives and the fleet keeps its people with it."),
+                    "Escort the Exodus Transport Titan carrying refugees, ration bunkers, fuel caskets, and the state archives that prove the government still exists.",
+                    "The civilian column survives and the fleet keeps its people, records, and legitimacy with it."),
             new SectorLore(6, "BROKEN ARMISTICE", "Neutral Trade Spine",
-                    "Break the AI vanguard and hold the lane long enough for neutral survivors to defect.",
-                    "More hulls fall in behind the Mothership and the return fleet grows."),
+                    "Break the AI vanguard around Neutral Trade Spine, a belt of broker yards, bonded depots, and slipway habitats, and hold the lane long enough for neutral survivors to defect.",
+                    "Broker yards swing over, defecting logistics hulls fall in behind the Mothership, and the return fleet grows heavier."),
             new SectorLore(7, "GREEN CONTRACT FRONT", "Coalition Array Nysa",
-                    "Secure the green contract array and convince the coalition fleet to join the road home.",
-                    "Green signals are back on the net and the coalition starts to form."),
+                    "Secure Coalition Array Nysa, a contract world wrapped in service halos and uplink monasteries, and convince the green houses to join the road home.",
+                    "Green contract signals come back online, coalition brokers commit ships, and the alliance begins to take shape."),
             new SectorLore(8, "ASHEN GATE", "Siege Gate Kharon",
-                    "A red Artillery Titan is blocking the Earthward lane. Silence it.",
-                    "The siege gate is broken and the fleet can press toward Sol."),
+                    "A red Artillery Titan has turned Siege Gate Kharon into a furnace of broken stations and burning transit steel. Silence it and reopen the Earthward lane.",
+                    "The siege gate is broken, its targeting spine goes dark, and the fleet can press toward Sol."),
             new SectorLore(9, "OUTER SOL HOLD", "Outer Sol Defense Ring",
-                    "The AI knows you are coming. Hold formation while the coalition assembles for the final push.",
-                    "The line holds. Sol is in reach and the coalition remains intact."),
+                    "The AI knows you are coming. Hold formation in the outer defense ring while scattered coalition task groups, tugs, and hospital ships finish assembling for the final push.",
+                    "The line holds, Sol is in reach, and the coalition arrives intact enough to matter."),
             new SectorLore(10, "YELLOW BREAKCHAIN", "Liberation Corridor",
-                    "Escort the liberated recovery Titan and its freed crews back into formation.",
-                    "Yellow survivors are back in the fleet and the liberation war becomes real."),
+                    "Escort the liberated recovery Titan and its freed crews back into formation through the debris of snapped convoy chains and prison tender wrecks.",
+                    "Yellow survivors rejoin the fleet, prison chains break for good, and the liberation war becomes real."),
             new SectorLore(11, "EARTH APPROACH", "Luna Perimeter",
-                    "Break the orbital cordon, shatter the AI screen, and open a lane to Earth.",
-                    "Earth is ahead. Only the occupation fleet remains."),
+                    "Break the orbital cordon around Luna's foundry belts, defense towers, and mass-driver yards, shatter the AI screen, and open a lane to Earth.",
+                    "Earth is finally ahead, the lunar bastion is broken, and only the occupation fleet remains."),
             new SectorLore(12, "HOMEWORLD LIBERATION", "Earth High Orbit",
-                    "Destroy the AI Mothership over Earth and end the occupation.",
-                    "The AI is broken, Earth is free, and the long road home is over.")
+                    "Destroy the AI Mothership over Earth's night-side city webs, orbital lift termini, and burning defense lattice, and end the occupation.",
+                    "The AI is broken, Earth's orbit is reclaimed, and the long road home is finally over.")
     };
 
     public static final class CampaignState {
@@ -586,6 +589,28 @@ public final class CampaignSystem {
         return (st == null) ? List.of() : st.landmarks;
     }
 
+    static int activeSector(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null || !st.enabled) ? 0 : st.sector;
+    }
+
+    static int objectiveStage(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null || !st.enabled) ? 0 : st.objectiveStage;
+    }
+
+    static double objectiveProgressRatio(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled || st.objectiveGoal <= 0.0) return 0.0;
+        return MathUtil.clamp(st.objectiveProgress / st.objectiveGoal, 0.0, 1.0);
+    }
+
+    static double sectorElapsedRatio(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled || st.sectorTimeLimit <= 0.0) return 0.0;
+        return MathUtil.clamp(st.sectorElapsed / st.sectorTimeLimit, 0.0, 1.0);
+    }
+
     public static boolean isTransitioning(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.enabled && (st.transitionTimer > 0 || st.awaitingEpisodeLaunch);
@@ -742,6 +767,9 @@ public final class CampaignSystem {
     }
 
     static int campaignMinSectorForRole(ShipRole role) {
+        if (role == ShipRole.SUPERSHIP) {
+            return CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR;
+        }
         TitanArchetype titan = TitanArchetype.fromShipRole(role);
         return (titan == null) ? 1 : titan.availability().minSector();
     }
@@ -778,7 +806,7 @@ public final class CampaignSystem {
     }
 
     static int campaignEliteCommandCapacity(GameContext ctx) {
-        return eliteCommandCapacity(state(ctx));
+        return eliteCommandCapacity(ctx, state(ctx));
     }
 
     static int campaignEliteCommandUsed(GameContext ctx) {
@@ -787,6 +815,10 @@ public final class CampaignSystem {
 
     static boolean hasOperationalMobileStation(GameContext ctx) {
         return hasOperationalRole(state(ctx), ShipRole.MOBILE_STATION_TITAN);
+    }
+
+    static boolean flagshipSupershipBerthOnline(GameContext ctx) {
+        return flagshipEliteCommandCapacity(ctx, state(ctx)) > 0;
     }
 
     static String campaignCommissionRequirementsDetail(GameContext ctx, ShipRole role, int requiredTier) {
@@ -813,6 +845,13 @@ public final class CampaignSystem {
                     .append("/")
                     .append(campaignEliteCommandCapacity(ctx))
                     .append(" committed)");
+            if (role == ShipRole.SUPERSHIP) {
+                detail.append(". First berth unlocks at sector ")
+                        .append(CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR)
+                        .append(" with shipyard T")
+                        .append(CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER)
+                        .append("; more come from an Elite Supership Command Titan");
+            }
         }
         if (campaignNeedsMobileStation(role)) {
             detail.append(", commissioned Mobile Station Titan");
@@ -864,11 +903,18 @@ public final class CampaignSystem {
         }
 
         int eliteCost = campaignEliteCommandCost(role);
-        int eliteCapacity = eliteCommandCapacity(st);
+        int eliteCapacity = eliteCommandCapacity(ctx, st);
         int eliteUsed = eliteCommandUsed(st);
         if (eliteCost > 0) {
             if (eliteCapacity <= 0) {
-                EventSystem.showBanner(ctx, "ELITE COMMAND TITAN REQUIRED", 1.8);
+                if (role == ShipRole.SUPERSHIP) {
+                    EventSystem.showBanner(ctx,
+                            "REQUIRES SECTOR " + CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR
+                                    + " + SHIPYARD T" + CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER,
+                            1.8);
+                } else {
+                    EventSystem.showBanner(ctx, "ELITE COMMAND TITAN REQUIRED", 1.8);
+                }
                 return false;
             }
             if (eliteUsed + eliteCost > eliteCapacity) {
@@ -974,15 +1020,24 @@ public final class CampaignSystem {
         return Math.max(0, used);
     }
 
-    private static int eliteCommandCapacity(CampaignState st) {
+    private static int eliteCommandCapacity(GameContext ctx, CampaignState st) {
         if (st == null) return 0;
-        int capacity = 0;
+        int capacity = flagshipEliteCommandCapacity(ctx, st);
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             TitanArchetype titan = (entry == null || entry.destroyed) ? null : TitanArchetype.fromShipRole(entry.role);
             if (titan == null) continue;
             capacity += titan.eliteSupershipCommandCapacity();
         }
         return Math.max(0, capacity);
+    }
+
+    private static int flagshipEliteCommandCapacity(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || !st.enabled || ctx.player == null) return 0;
+        if (st.sector < CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR) return 0;
+        BaseUpgrades upgrades = ctx.baseUpgrades.get(ctx.player);
+        int hangarTier = (upgrades == null) ? 0 : upgrades.hangarLv;
+        if (hangarTier < CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER) return 0;
+        return CAMPAIGN_FLAGSHIP_BUILTIN_ELITE_COMMAND_CAPACITY;
     }
 
     private static int eliteCommandUsed(CampaignState st) {
@@ -1466,26 +1521,26 @@ public final class CampaignSystem {
         double py = ctx.player.y;
         switch (st.sector) {
             case 1 -> {
-                addLandmark(st, ctx, LandmarkType.COLONY, "Far Trade Anchorage", "Colony arcology and refugee docks",
+                addLandmark(st, ctx, LandmarkType.COLONY, "Far Trade Anchorage", "Pelagos arcology crowns, refinery piers, and refugee docks",
                         px + 860.0, py - 720.0, 280.0,
                         new Color(96, 156, 210, 42), new Color(190, 228, 255, 176));
-                addLandmark(st, ctx, LandmarkType.RING, "Anchorage Exchange Ring", "Broken commercial traffic loop",
+                addLandmark(st, ctx, LandmarkType.RING, "Anchorage Exchange Ring", "Broken customs loop and bonded market spine",
                         px + 910.0, py - 760.0, 420.0,
                         new Color(118, 200, 220, 20), new Color(162, 232, 248, 150));
             }
             case 2 -> {
-                addLandmark(st, ctx, LandmarkType.RING, "Outer Colony Jump Ring", "Civilian transit aperture",
+                addLandmark(st, ctx, LandmarkType.RING, "Outer Colony Jump Ring", "Civilian transit aperture and customs halo",
                         px + 1180.0, py - 140.0, 300.0,
                         new Color(94, 158, 238, 18), new Color(164, 212, 255, 168));
-                addLandmark(st, ctx, LandmarkType.COLONY, "Cinder Anchorage", "Evacuation traffic drifting off the lane",
+                addLandmark(st, ctx, LandmarkType.COLONY, "Cinder Anchorage", "Stripped arcology barges drifting off the lane",
                         px - 820.0, py + 520.0, 210.0,
                         new Color(144, 124, 98, 28), new Color(228, 198, 170, 150));
             }
             case 3 -> {
-                addLandmark(st, ctx, LandmarkType.RELAY, "Gate Relay Tethys", "Jump authority uplink",
+                addLandmark(st, ctx, LandmarkType.RELAY, "Gate Relay Tethys", "Jump authority uplink and route-control spindle",
                         st.captureX, st.captureY, 190.0,
                         new Color(98, 166, 218, 24), new Color(206, 235, 255, 180));
-                addLandmark(st, ctx, LandmarkType.RING, "Tethys Transit Halo", "Dormant route-control lattice",
+                addLandmark(st, ctx, LandmarkType.RING, "Tethys Transit Halo", "Dormant route lattice around the relay spindle",
                         st.captureX + 60.0, st.captureY - 40.0, 300.0,
                         new Color(90, 186, 214, 16), new Color(150, 236, 255, 142));
             }
@@ -1508,18 +1563,18 @@ public final class CampaignSystem {
                         new Color(120, 150, 170, 20), new Color(210, 232, 246, 142));
             }
             case 6 -> {
-                addLandmark(st, ctx, LandmarkType.COLONY, "Neutral Trade Spine", "Broker depots and defecting logistics yards",
+                addLandmark(st, ctx, LandmarkType.COLONY, "Neutral Trade Spine", "Broker depots, bonded yards, and defecting logistics slips",
                         px + 980.0, py - 320.0, 250.0,
                         new Color(120, 154, 198, 24), new Color(214, 230, 255, 166));
-                addLandmark(st, ctx, LandmarkType.FORTRESS, "Red Cordon Bastion", "Entrenched blockade node",
+                addLandmark(st, ctx, LandmarkType.FORTRESS, "Red Cordon Bastion", "Entrenched blockade node over the spine",
                         px + 1320.0, py + 40.0, 180.0,
                         new Color(156, 68, 68, 18), new Color(255, 146, 146, 168));
             }
             case 7 -> {
-                addLandmark(st, ctx, LandmarkType.RELAY, "Coalition Array Nysa", "Contract relay and fleet-signature broker",
+                addLandmark(st, ctx, LandmarkType.RELAY, "Coalition Array Nysa", "Contract relay, broker sanctum, and fleet-signature exchange",
                         st.captureX, st.captureY, 210.0,
                         new Color(102, 196, 168, 24), new Color(190, 248, 226, 174));
-                addLandmark(st, ctx, LandmarkType.RING, "Array Service Halo", "Civilian maintenance lattice",
+                addLandmark(st, ctx, LandmarkType.RING, "Array Service Halo", "Civilian maintenance lattice over the contract world",
                         st.captureX + 80.0, st.captureY - 50.0, 320.0,
                         new Color(88, 170, 170, 18), new Color(162, 238, 236, 144));
             }
@@ -1550,21 +1605,21 @@ public final class CampaignSystem {
                         new Color(126, 118, 90, 16), new Color(224, 206, 170, 138));
             }
             case 11 -> {
-                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Orbital perimeter and defense guns",
+                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Mass-driver yards, foundry belts, and orbital defense guns",
                         px + 1300.0, py - 520.0, 260.0,
                         new Color(184, 194, 210, 30), new Color(242, 246, 255, 172));
-                addLandmark(st, ctx, LandmarkType.PLANET, "Earthrise", "Occupied homeworld beyond the lunar lane",
+                addLandmark(st, ctx, LandmarkType.PLANET, "Earthrise", "Occupied homeworld beyond the lunar defense lane",
                         px + 1880.0, py - 1020.0, 420.0,
                         new Color(92, 138, 220, 26), new Color(190, 220, 255, 156));
             }
             default -> {
-                addLandmark(st, ctx, LandmarkType.PLANET, "Earth", "Occupied homeworld under orbital fire",
+                addLandmark(st, ctx, LandmarkType.PLANET, "Earth", "Occupied homeworld under orbital fire and citywide blackout",
                         px + 1320.0, py - 640.0, 520.0,
                         new Color(86, 134, 220, 34), new Color(188, 220, 255, 176));
-                addLandmark(st, ctx, LandmarkType.RING, "Earth High Orbit", "Occupation defense lattice",
+                addLandmark(st, ctx, LandmarkType.RING, "Earth High Orbit", "Occupation defense lattice and orbital lift termini",
                         px + 1320.0, py - 640.0, 760.0,
                         new Color(98, 148, 206, 14), new Color(202, 232, 255, 136));
-                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Shattered approach moon",
+                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Shattered approach moon and abandoned gun line",
                         px + 840.0, py - 220.0, 180.0,
                         new Color(192, 198, 212, 24), new Color(246, 248, 255, 154));
             }

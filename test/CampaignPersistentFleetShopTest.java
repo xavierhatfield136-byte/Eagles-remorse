@@ -63,6 +63,20 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
+    void standardSupershipUnlocksWithMidCampaignFlagshipEliteBerth() {
+        GameContext earlyCtx = campaignShopContext(250_000, 25_000, 4, 5);
+        assertEquals(0, CampaignSystem.campaignEliteCommandCapacity(earlyCtx));
+        assertFalse(CampaignSystem.purchasePersistentBlueShip(earlyCtx, ShipRole.SUPERSHIP, 3600, 3));
+
+        GameContext midCtx = campaignShopContext(250_000, 25_000, 4, 6);
+        assertEquals(1, CampaignSystem.campaignEliteCommandCapacity(midCtx));
+        assertTrue(CampaignSystem.flagshipSupershipBerthOnline(midCtx));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(midCtx, ShipRole.SUPERSHIP, 3600, 3));
+        assertEquals(1, CampaignSystem.livePersistentFleetCount(midCtx, ShopHullCategory.CAPITAL));
+        assertEquals(1, CampaignSystem.campaignEliteCommandUsed(midCtx));
+    }
+
+    @Test
     void eliteReinforcementsTitanAddsHonorGuardTaskGroup() {
         GameContext ctx = campaignShopContext(250_000, 25_000, 5, 10);
 
