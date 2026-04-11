@@ -1,0 +1,32 @@
+﻿{
+    "faction":  "team_d",
+    "staged_folder":  "missile_team_d",
+    "filename":  "base_team_d_albedo.png",
+    "status":  "passed",
+    "attempts":  2,
+    "seed":  910034,
+    "score":  100,
+    "issues":  [
+
+               ],
+    "output_path":  "assets\\base_station_generation\\missile_team_d\\base_team_d_albedo.png",
+    "raw_path":  "build\\base_station_generation\\20260410_214828_base_team_d_albedo_2.raw.png",
+    "negative_prompt":  "",
+    "reference_image":  "",
+    "reference_source":  "",
+    "reference_denoise":  1,
+    "coverage":  0.3746,
+    "width_height_ratio":  1.0204,
+    "largest_component_share":  1,
+    "components":  1,
+    "padding":  {
+                    "left":  0.14322916666666666,
+                    "right":  0.14192708333333334,
+                    "bottom":  0.14322916666666666,
+                    "top":  0.15625
+                },
+    "center_offset":  {
+                          "y":  0.006510416666666667,
+                          "x":  0.00065104166666666663
+                      }
+}

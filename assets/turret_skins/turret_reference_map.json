@@ -1,0 +1,26 @@
+{
+  "twin_gun.png": {
+    "reference": "twin_gun.png",
+    "denoise": 0.68
+  },
+  "missile_pod.png": {
+    "reference": "missile_pod.png",
+    "denoise": 0.82
+  },
+  "heavy_triple.png": {
+    "reference": "heavy_triple.png",
+    "denoise": 0.72
+  },
+  "stealth_flush.png": {
+    "reference": "stealth_flush.png",
+    "denoise": 0.68
+  },
+  "beam_emitter.png": {
+    "reference": "beam_emitter.png",
+    "denoise": 0.72
+  },
+  "ciws.png": {
+    "reference": "CIWS.png",
+    "denoise": 0.76
+  }
+}
