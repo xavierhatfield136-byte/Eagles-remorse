@@ -1,3 +1,7 @@
+param(
+    [string[]]$Stems = @()
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -6,6 +10,25 @@ Add-Type -AssemblyName System.Drawing
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sourceDir = Join-Path $repoRoot "assets\ship_skins"
 $outputDir = Join-Path $repoRoot "assets\ship_parts"
+
+$titanMultipartProfile = @(
+    @((0.01,0.26),(0.14,0.18),(0.22,0.30),(0.18,0.86),(0.03,0.78)),
+    @((0.12,0.18),(0.28,0.14),(0.36,0.30),(0.30,0.90),(0.10,0.82)),
+    @((0.26,0.14),(0.46,0.12),(0.54,0.34),(0.44,0.94),(0.24,0.76)),
+    @((0.42,0.14),(0.62,0.14),(0.68,0.36),(0.58,0.92),(0.38,0.62)),
+    @((0.58,0.16),(0.80,0.16),(0.84,0.40),(0.72,0.88),(0.54,0.58)),
+    @((0.76,0.18),(0.99,0.24),(0.96,0.60),(0.84,0.80),(0.68,0.46))
+)
+
+$mothershipMultipartProfile = @(
+    @((0.01,0.24),(0.12,0.14),(0.22,0.28),(0.18,0.88),(0.02,0.80)),
+    @((0.10,0.16),(0.24,0.10),(0.34,0.28),(0.30,0.92),(0.08,0.84)),
+    @((0.22,0.12),(0.38,0.10),(0.46,0.30),(0.40,0.94),(0.18,0.82)),
+    @((0.36,0.12),(0.54,0.10),(0.60,0.34),(0.52,0.96),(0.32,0.74)),
+    @((0.52,0.12),(0.70,0.14),(0.76,0.36),(0.66,0.92),(0.46,0.64)),
+    @((0.68,0.16),(0.86,0.18),(0.90,0.42),(0.80,0.88),(0.62,0.56)),
+    @((0.84,0.18),(0.99,0.24),(0.96,0.58),(0.88,0.76),(0.76,0.42))
+)
 
 function New-TransparentBitmap {
     param([int]$Width, [int]$Height)
@@ -75,10 +98,11 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 $profiles = @{
     "base" = @(
-        @((0.02,0.18),(0.24,0.10),(0.34,0.34),(0.20,0.84),(0.04,0.76)),
-        @((0.20,0.10),(0.46,0.08),(0.50,0.36),(0.38,0.92),(0.14,0.78)),
-        @((0.44,0.08),(0.74,0.10),(0.76,0.40),(0.60,0.92),(0.34,0.58)),
-        @((0.70,0.16),(0.98,0.22),(0.94,0.84),(0.76,0.92),(0.54,0.48))
+        @((0.01,0.16),(0.24,0.06),(0.34,0.34),(0.28,0.72),(0.03,0.78)),
+        @((0.18,0.09),(0.42,0.07),(0.48,0.36),(0.38,0.92),(0.14,0.84)),
+        @((0.36,0.08),(0.64,0.10),(0.60,0.46),(0.46,0.76),(0.30,0.34)),
+        @((0.52,0.10),(0.84,0.12),(0.80,0.58),(0.62,0.94),(0.46,0.54)),
+        @((0.70,0.18),(0.99,0.28),(0.94,0.86),(0.70,0.94),(0.58,0.50))
     )
     "miner" = @(
         @((0.02,0.26),(0.26,0.14),(0.38,0.34),(0.24,0.80),(0.04,0.72)),
@@ -195,18 +219,62 @@ $profiles = @{
     )
 }
 
-$skinFiles = foreach ($roleKey in $profiles.Keys) {
-    Get-ChildItem $sourceDir -File ($roleKey + "*_albedo.png")
+foreach ($roleKey in @(
+    "transport_titan",
+    "bulwark_titan",
+    "carrier_support_titan",
+    "vanguard_titan",
+    "interdiction_titan",
+    "command_intel_titan",
+    "boarding_recovery_titan",
+    "artillery_titan",
+    "shield_bastion_titan",
+    "fleet_teleporter_titan",
+    "elite_supership_command_titan",
+    "elite_reinforcements_titan",
+    "mobile_station_titan",
+    "hyperweapon_titan"
+)) {
+    $profiles[$roleKey] = $titanMultipartProfile
 }
-$skinFiles = $skinFiles | Sort-Object Name
-$manifest = New-Object 'System.Collections.Generic.List[string]'
+$profiles["mothership"] = $mothershipMultipartProfile
+
+$requestedStems = @{}
+foreach ($stemEntry in @($Stems)) {
+    if ([string]::IsNullOrWhiteSpace($stemEntry)) { continue }
+    foreach ($stem in $stemEntry.Split(',')) {
+        if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+        $requestedStems[$stem.Trim().ToLowerInvariant()] = $true
+    }
+}
+
+$skinFiles = @()
+if ($requestedStems.Count -gt 0) {
+    $seen = @{}
+    foreach ($stem in ($requestedStems.Keys | Sort-Object)) {
+        foreach ($candidateName in @("${stem}_albedo.png", "${stem}.png")) {
+            $candidatePath = Join-Path $sourceDir $candidateName
+            if (-not (Test-Path $candidatePath)) { continue }
+            $item = Get-Item $candidatePath
+            if ($null -eq $item -or $seen.ContainsKey($item.FullName)) { break }
+            $skinFiles += $item
+            $seen[$item.FullName] = $true
+            break
+        }
+    }
+} else {
+    $skinFiles = foreach ($roleKey in $profiles.Keys) {
+        Get-ChildItem -Path $sourceDir -File ($roleKey + "*_albedo.png")
+    }
+}
+$skinFiles = @($skinFiles | Sort-Object Name)
 $generated = 0
 
 foreach ($file in $skinFiles) {
     $stem = $file.BaseName -replace "_albedo$", ""
     $roleKey = $null
     foreach ($candidate in ($profiles.Keys | Sort-Object Length -Descending)) {
-        if ($stem.StartsWith($candidate + "_")) {
+        if ($stem -eq $candidate -or $stem.StartsWith($candidate + "_")) {
             $roleKey = $candidate
             break
         }
@@ -220,7 +288,6 @@ foreach ($file in $skinFiles) {
             try {
                 $target = Join-Path $outputDir ("{0}_part_{1:D2}.png" -f $stem, ($i + 1))
                 Save-Png -Bitmap $part -Path $target
-                $manifest.Add((Split-Path -Leaf $target))
                 $generated++
             } finally {
                 $part.Dispose()
@@ -232,6 +299,7 @@ foreach ($file in $skinFiles) {
 }
 
 $manifestPath = Join-Path $outputDir "manifest.txt"
+[string[]]$manifest = @(Get-ChildItem -Path $outputDir -Filter *.png -File | Sort-Object Name | ForEach-Object { $_.Name })
 [System.IO.File]::WriteAllLines($manifestPath, $manifest)
 
-Write-Output ("[ship-part-gen] skins={0} generated={1} out={2}" -f $skinFiles.Count, $generated, $outputDir)
+Write-Output ("[ship-part-gen] skins={0} generated={1} out={2}" -f @($skinFiles).Count, $generated, $outputDir)

@@ -85,8 +85,8 @@ public final class SpawnSystem {
         ctx.teamBases.put(Faction.ALLY, ctx.allyBase);
         ctx.teamBases.put(Faction.ENEMY, ctx.enemyBase);
 
-        ctx.baseUpgrades.put(ctx.allyBase, new BaseUpgrades());
-        ctx.baseUpgrades.put(ctx.enemyBase, new BaseUpgrades());
+        ctx.baseUpgrades.put(ctx.allyBase, new BaseUpgrades().bindTo(ctx.allyBase));
+        ctx.baseUpgrades.put(ctx.enemyBase, new BaseUpgrades().bindTo(ctx.enemyBase));
 
         // Player spawns near selected team base for team-select modes.
         Faction playerFaction = configuredPlayerFaction(ctx);
@@ -94,7 +94,9 @@ public final class SpawnSystem {
         double[] spawn = inwardSpawnNearBase(ctx, playerAnchor);
         double px = spawn[0];
         double py = spawn[1];
-        ShipRole playerRole = (ctx.config.mode == GameMode.CAMPAIGN_OPS) ? ShipRole.MOTHERSHIP : ShipRole.FRIGATE;
+        ShipRole playerRole = (ctx.config.mode == GameMode.CAMPAIGN_OPS || ctx.config.mode == GameMode.FLEET)
+                ? ShipRole.MOTHERSHIP
+                : ShipRole.FRIGATE;
         ctx.player = new Player(playerRole, px, py);
         ctx.player.faction = playerFaction;
         ctx.ships.add(ctx.player);
@@ -545,7 +547,7 @@ public final class SpawnSystem {
 
             ctx.ships.add(base);
             ctx.teamBases.put(team, base);
-            ctx.baseUpgrades.put(base, new BaseUpgrades());
+            ctx.baseUpgrades.put(base, new BaseUpgrades().bindTo(base));
         }
 
         ctx.allyBase = ctx.teamBases.get(Faction.ALLY);
@@ -737,7 +739,7 @@ public final class SpawnSystem {
                     if (faction == Faction.ENEMY) ctx.enemyBase = s;
                     else if (faction == Faction.ALLY) ctx.allyBase = s;
                     ctx.teamBases.put(faction, s);
-                    ctx.baseUpgrades.put(s, new BaseUpgrades());
+            ctx.baseUpgrades.put(s, new BaseUpgrades().bindTo(s));
                 }
             }
         }

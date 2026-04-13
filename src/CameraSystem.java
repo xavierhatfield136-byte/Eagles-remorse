@@ -7,8 +7,14 @@ public final class CameraSystem {
         if (ctx.player == null) return;
         double viewW = worldViewWidth(ctx, viewportW);
         double viewH = worldViewHeight(ctx, viewportH);
-        double focusX = CampaignSystem.hasCinematicFocus(ctx) ? CampaignSystem.cinematicFocusX(ctx) : ctx.player.x + ctx.cameraOffsetX;
-        double focusY = CampaignSystem.hasCinematicFocus(ctx) ? CampaignSystem.cinematicFocusY(ctx) : ctx.player.y + ctx.cameraOffsetY;
+        Ship fleetFocus = CampaignSystem.isFleetHubSession(ctx) ? CampaignSystem.fleetSelectedShip(ctx) : null;
+        Ship baseFocus = (fleetFocus != null) ? fleetFocus : ctx.player;
+        double focusX = CampaignSystem.hasCinematicFocus(ctx)
+                ? CampaignSystem.cinematicFocusX(ctx)
+                : baseFocus.x + ctx.cameraOffsetX;
+        double focusY = CampaignSystem.hasCinematicFocus(ctx)
+                ? CampaignSystem.cinematicFocusY(ctx)
+                : baseFocus.y + ctx.cameraOffsetY;
         ctx.camX = focusX - viewW / 2.0;
         ctx.camY = focusY - viewH / 2.0;
     }

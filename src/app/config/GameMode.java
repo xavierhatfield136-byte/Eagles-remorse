@@ -6,6 +6,7 @@ package app.config;
 public enum GameMode {
     TUTORIAL("Tutorial"),
     CAMPAIGN_OPS("Campaign Ops"),
+    FLEET("Fleet"),
     LAST_STAND("Last Stand"),
     RESOURCE_RUSH("Resource Rush"),
     FOUR_TEAM_DOMINATION("4 Team Domination"),

@@ -1,3 +1,8 @@
+param(
+    [string[]]$Stems = @(),
+    [switch]$Overwrite
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -189,11 +194,12 @@ public static class DestroyedPartMaskHelper
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sourceDir = Join-Path $repoRoot "assets\ship_parts"
 $outputDir = $sourceDir
-$overwrite = $false
 
-foreach ($arg in $args) {
-    if ($null -ne $arg -and $arg.ToString().Trim().ToLowerInvariant() -eq "--overwrite") {
-        $overwrite = $true
+foreach ($arg in @($args)) {
+    if ($null -eq $arg) { continue }
+    $argText = $arg.ToString().Trim()
+    if ($argText.ToLowerInvariant() -eq "--overwrite") {
+        $Overwrite = $true
     }
 }
 
@@ -988,13 +994,36 @@ if (-not (Test-Path $sourceDir)) {
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
-$sourceFiles = Get-ChildItem $sourceDir -File "*_part_*.png" |
+$requestedStems = @{}
+foreach ($stemEntry in @($Stems)) {
+    if ([string]::IsNullOrWhiteSpace($stemEntry)) { continue }
+    foreach ($stem in $stemEntry.Split(',')) {
+        if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+        $requestedStems[$stem.Trim().ToLowerInvariant()] = $true
+    }
+}
+
+$sourceFiles = @(Get-ChildItem -Path $sourceDir -File "*_part_*.png" |
     Where-Object { $_.BaseName -notmatch "_(damaged|critical|destroyed|wreck)_part_" } |
-    Sort-Object Name
+    Where-Object {
+        if ($requestedStems.Count -eq 0) { return $true }
+        $stem = $_.BaseName -replace "_part_\d+$", ""
+        return $requestedStems.ContainsKey($stem.ToLowerInvariant())
+    } |
+    Sort-Object Name)
 
 $created = 0
 $skipped = 0
-$focusManifest = New-Object 'System.Collections.Generic.List[string]'
+$focusManifestMap = @{}
+$focusManifestPath = Join-Path $outputDir "damage_focus_manifest.txt"
+if (Test-Path $focusManifestPath) {
+    foreach ($line in Get-Content -Path $focusManifestPath) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = $line.Split('|')
+        if ($parts.Length -lt 3) { continue }
+        $focusManifestMap[$parts[0]] = $line
+    }
+}
 
 foreach ($file in $sourceFiles) {
     $bitmap = [System.Drawing.Bitmap]::FromFile($file.FullName)
@@ -1004,7 +1033,7 @@ foreach ($file in $sourceFiles) {
             foreach ($profile in $variantProfiles) {
                 $targetName = $file.Name -replace "_part_(\d+)\.png$", ("_" + $profile.Suffix + "_part_`$1.png")
                 $targetPath = Join-Path $outputDir $targetName
-                if ((Test-Path $targetPath) -and -not $overwrite) {
+                if ((Test-Path $targetPath) -and -not $Overwrite) {
                     $skipped++
                     continue
                 }
@@ -1012,7 +1041,10 @@ foreach ($file in $sourceFiles) {
                 $variantResult = Bake-PartVariant -Source $argbBitmap -SeedText $file.BaseName -Profile $profile
                 try {
                     Save-Png -Bitmap $variantResult.Bitmap -Path $targetPath
-                    $focusManifest.Add(("{0}|{1}|{2}" -f $targetName, ([double]$variantResult.FocusXNorm).ToString("0.0000", [System.Globalization.CultureInfo]::InvariantCulture), ([double]$variantResult.FocusYNorm).ToString("0.0000", [System.Globalization.CultureInfo]::InvariantCulture)))
+                    $focusManifestMap[$targetName] = ("{0}|{1}|{2}" -f
+                        $targetName,
+                        ([double]$variantResult.FocusXNorm).ToString("0.0000", [System.Globalization.CultureInfo]::InvariantCulture),
+                        ([double]$variantResult.FocusYNorm).ToString("0.0000", [System.Globalization.CultureInfo]::InvariantCulture))
                     $created++
                 } finally {
                     if ($null -ne $variantResult -and $null -ne $variantResult.Bitmap) {
@@ -1029,10 +1061,10 @@ foreach ($file in $sourceFiles) {
 }
 
 $manifestPath = Join-Path $outputDir "manifest.txt"
-$manifest = Get-ChildItem $outputDir -File "*.png" | Sort-Object Name | Select-Object -ExpandProperty Name
+[string[]]$manifest = @(Get-ChildItem -Path $outputDir -Filter *.png -File | Sort-Object Name | Select-Object -ExpandProperty Name)
 [System.IO.File]::WriteAllLines($manifestPath, $manifest)
 
-$focusManifestPath = Join-Path $outputDir "damage_focus_manifest.txt"
+[string[]]$focusManifest = @($focusManifestMap.Keys | Sort-Object | ForEach-Object { $focusManifestMap[$_] })
 [System.IO.File]::WriteAllLines($focusManifestPath, $focusManifest)
 
-Write-Output ("[destroyed-ship-part-gen] source={0} variants={1} created={2} skipped={3} out={4}" -f $sourceFiles.Count, $variantProfiles.Count, $created, $skipped, $outputDir)
+Write-Output ("[destroyed-ship-part-gen] source={0} variants={1} created={2} skipped={3} out={4}" -f @($sourceFiles).Count, $variantProfiles.Count, $created, $skipped, $outputDir)

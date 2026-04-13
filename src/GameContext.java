@@ -211,7 +211,7 @@ public class GameContext {
         this.WORLD_H = this.config.worldH;
         this.rng = new Random(this.config.seed);
         ui.initAudioPreferences();
-        if (this.config.mode == GameMode.CAMPAIGN_OPS) {
+        if (this.config.mode == GameMode.CAMPAIGN_OPS || this.config.mode == GameMode.FLEET) {
             this.campaignUnlockProfile = CampaignUnlockProfile.load();
         }
     }
@@ -236,5 +236,4 @@ public class GameContext {
         ui.decayPortraitExpressions(dt);
     }
 }
-
 

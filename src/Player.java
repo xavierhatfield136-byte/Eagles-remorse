@@ -387,6 +387,10 @@ public class Player extends Ship {
         baseMissileMounts = countTurrets(Turret.Kind.MISSILE);
     }
 
+    public void resyncShopUpgradeTrackers() {
+        resetShopUpgradeTrackers();
+    }
+
     public List<Projectile> firePrimary(double targetX, double targetY, double dt) {
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;

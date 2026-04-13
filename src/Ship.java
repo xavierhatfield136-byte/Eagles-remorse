@@ -333,6 +333,7 @@ public abstract class Ship {
     // Base / capture
     public boolean isBase = false;
     public Faction baseOwner = null;
+    public BaseUpgrades stationUpgrades = null;
     public double captureProgress = 1.0; // 0..1 (0 = belongs to ENEMY, 1 = belongs to ALLY)
     public double captureRadius = 360;
     public double captureTime = 10.0; // seconds with advantage to flip
@@ -1240,7 +1241,7 @@ public abstract class Ship {
     }
 
     private double destructionSpinForRole(ShipRole shipRole) {
-        boolean multipart = ShipPartLibrary.hasParts(shipRole, faction);
+        boolean multipart = ShipPartLibrary.hasDestroyedParts(shipRole, faction);
         if (multipart) {
             if (shipRole != null && shipRole.isTitanOrMothership()) {
                 return (randomUnit() - 0.5) * (shipRole.isMothership() ? 0.10 : 0.13);

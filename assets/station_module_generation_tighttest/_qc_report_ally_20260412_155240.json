@@ -1,0 +1,32 @@
+﻿{
+    "faction":  "ally",
+    "staged_folder":  "blue_ally",
+    "filename":  "hull_fortification.png",
+    "status":  "passed",
+    "attempts":  1,
+    "seed":  910017,
+    "score":  100,
+    "issues":  [
+
+               ],
+    "output_path":  "assets\\station_module_generation_tighttest\\blue_ally\\hull_fortification.png",
+    "raw_path":  "build\\station_module_generation_tighttest\\20260412_155240_hull_fortification_1.raw.png",
+    "negative_prompt":  "full station body, radial station, circular hub, symmetric base, scene, background, white backdrop, stars, planet, perspective view, isometric, side view, text, logo, watermark",
+    "reference_image":  "",
+    "reference_source":  "",
+    "reference_denoise":  1,
+    "coverage":  0.3248,
+    "width_height_ratio":  1.9592,
+    "largest_component_share":  1,
+    "components":  1,
+    "padding":  {
+                    "left":  0.125,
+                    "right":  0.125,
+                    "bottom":  0.15972222222222221,
+                    "top":  0.15972222222222221
+                },
+    "center_offset":  {
+                          "y":  0,
+                          "x":  0
+                      }
+}

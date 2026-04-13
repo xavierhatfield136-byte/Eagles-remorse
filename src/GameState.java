@@ -1,5 +1,6 @@
 public enum GameState {
     RUNNING,
+    FLEET,
     SHOP,
     BASE_MENU,
     MAP,

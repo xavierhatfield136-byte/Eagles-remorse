@@ -358,6 +358,18 @@ public class Renderer {
         return -1;
     }
 
+    private static String coreMenuLabel(GameContext ctx, int index) {
+        if (index < 0 || index >= CORE_MENU_LABELS.length) return "";
+        if (CampaignSystem.isCampaignActive(ctx)) {
+            return switch (index) {
+                case 0 -> "FLEET";
+                case 1 -> "UPGRADE";
+                default -> CORE_MENU_LABELS[index];
+            };
+        }
+        return CORE_MENU_LABELS[index];
+    }
+
     public static HoverTooltip hoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.ui == null) return null;
         HoverTooltip tooltip = null;
@@ -435,15 +447,25 @@ public class Renderer {
     private static HoverTooltip coreMenuHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         int index = coreMenuButtonAt(viewW, viewH, mouseX, mouseY);
         if (index < 0) return null;
+        boolean campaign = CampaignSystem.isCampaignActive(ctx);
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
         String body = switch (index) {
-            case 0 -> "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
-            case 1 -> "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
+            case 0 -> campaign
+                    ? (fleetHub
+                        ? "Fleet hangar. Commission hulls, refit the roster, and prepare the next mission. Hotkey: TAB."
+                        : "Fleet hangar locked during missions. Open the Fleet tab to commission hulls and refit the roster. Hotkey: TAB.")
+                    : "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
+            case 1 -> campaign
+                    ? (fleetHub
+                        ? "Fleet upgrade console. Edit the selected hull, its turrets, and its upgrade track. Hotkey: B."
+                        : "Fleet upgrades are locked during missions. Open the Fleet tab to edit the selected hull. Hotkey: B.")
+                    : "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
             case 4 -> "Crew stations. Review Captain, Helm, Tactical, Engineering, and Science automation plus voice mix. Hotkey: H.";
             default -> "";
         };
-        return body.isBlank() ? null : new HoverTooltip("core:" + index, CORE_MENU_LABELS[index], body);
+        return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
     }
 
     private static HoverTooltip objectiveCardHoverTooltipAt(GameContext ctx, int mouseX, int mouseY) {
@@ -642,6 +664,7 @@ public class Renderer {
         double wy = ctx.cursorWorldY;
         for (Ship ship : ctx.ships) {
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (CampaignSystem.isFleetHubSession(ctx) && ship == ctx.enemyBase) continue;
             double radius = Math.max(38.0, ship.radius * 1.6 + 12.0);
             double d2 = GameMath.dist2(wx, wy, ship.x, ship.y);
             if (d2 > radius * radius || d2 >= bestDist2) continue;
@@ -661,6 +684,14 @@ public class Renderer {
                 + ". Hull " + hull
                 + ", shield " + shield
                 + ", crew order " + best.crewOrder + ".";
+        if (CampaignSystem.isFleetHubSession(ctx)) {
+            Ship selected = CampaignSystem.fleetSelectedShip(ctx);
+            if (best == selected) {
+                body += " Selected for Fleet editing.";
+            } else if (best.faction != null && ctx.player.faction != null && best.faction.isFriendlyTo(ctx.player.faction)) {
+                body += " Click to select this hull for Fleet editing.";
+            }
+        }
         return new HoverTooltip("ship:" + best.id, title, body);
     }
 
@@ -723,7 +754,9 @@ public class Renderer {
                 ctx.ui.powerManagementOpen,
                 ctx.ui.crewStationsOpen
         };
-        boolean baseAvailable = CampaignSystem.currentBaseUpgradeAnchor(ctx) != null;
+        boolean campaignActive = CampaignSystem.isCampaignActive(ctx);
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+        boolean baseAvailable = campaignActive ? fleetHub : CampaignSystem.currentBaseUpgradeAnchor(ctx) != null;
         boolean controlsDisabled = ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER;
 
         Font oldFont = g2.getFont();
@@ -732,8 +765,11 @@ public class Renderer {
 
         for (int i = 0; i < CORE_MENU_LABELS.length; i++) {
             Rectangle br = getCoreMenuButtonRect(viewW, viewH, i);
-            boolean disabled = controlsDisabled || (i == 1 && !baseAvailable);
+            boolean disabled = controlsDisabled
+                    || (campaignActive && !fleetHub && (i == 0 || i == 1))
+                    || (!campaignActive && i == 1 && !baseAvailable);
             boolean active = open[i];
+            String menuLabel = coreMenuLabel(ctx, i);
 
             Color fill;
             if (disabled) fill = new Color(60, 60, 65, 160);
@@ -748,9 +784,9 @@ public class Renderer {
             g2.drawRoundRect(br.x, br.y, br.width, br.height, 10, 10);
 
             String label;
-            if (br.width < 64) label = CORE_MENU_LABELS[i].substring(0, Math.min(2, CORE_MENU_LABELS[i].length()));
-            else if (br.width < 96) label = CORE_MENU_LABELS[i];
-            else label = CORE_MENU_LABELS[i] + " [" + CORE_MENU_HOTKEYS[i] + "]";
+            if (br.width < 64) label = menuLabel.substring(0, Math.min(2, menuLabel.length()));
+            else if (br.width < 96) label = menuLabel;
+            else label = menuLabel + " [" + CORE_MENU_HOTKEYS[i] + "]";
             int tx = br.x + (br.width - fm.stringWidth(label)) / 2;
             int ty = br.y + (br.height + fm.getAscent() - fm.getDescent()) / 2;
             if (disabled) g2.setColor(new Color(170, 170, 176, 155));
@@ -6227,9 +6263,9 @@ public class Renderer {
         return ShipRoomLayout.symbol(roomId);
     }
 
-    public static void drawBaseUpgradeOverlay(Graphics2D g2, String baseName, int credits, int baseOre,
+    public static void drawBaseUpgradeOverlay(Graphics2D g2, Ship selectedShip, String baseName, int credits, int baseOre,
                                               int hullLv, int shieldLv, int turretLv, int miningLv, int hangarLv,
-                                              int maxHangarTier) {
+                                              int maxHangarTier, boolean fleetHub) {
         // "B" style: a diegetic sci-fi console panel (glow edges, grid, bars, subtle scanline).
         int w = 520;
         int h = 284;
@@ -6266,7 +6302,7 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         g2.setColor(new Color(230, 250, 255, 230));
-        g2.drawString("BASE UPGRADE CONSOLE  (ESC)", x + 18, y + 28);
+        g2.drawString(fleetHub ? "FLEET UPGRADE CONSOLE  (ESC)" : "BASE UPGRADE CONSOLE  (ESC)", x + 18, y + 28);
 
         // Scanline sweep
         int sweepY = y + 42 + (int) Math.round(((Math.sin(t * 0.9) * 0.5 + 0.5)) * (h - 70));
@@ -6274,13 +6310,26 @@ public class Renderer {
         g2.fillRect(x + 10, sweepY, w - 20, 12);
 
         // Info
-        if (baseName == null) baseName = "Base";
+        if (baseName == null || baseName.isBlank()) {
+            baseName = fleetHub ? "Selected hull" : "Base";
+        }
         g2.setFont(new Font("Consolas", Font.PLAIN, 13));
 
         int ty = y + 58;
         g2.setColor(new Color(255, 255, 255, 210));
-        g2.drawString("Base: " + baseName, x + 18, ty);
-        ty += 18;
+        if (fleetHub) {
+            g2.drawString("Selected hull: " + baseName, x + 18, ty);
+            ty += 18;
+            if (selectedShip != null) {
+                String role = (selectedShip.role == null) ? "UNKNOWN" : shopRoleTitle(selectedShip.role);
+                String faction = (selectedShip.faction == null) ? "Unknown" : selectedShip.faction.name().replace('_', ' ');
+                g2.drawString("Role: " + role + "   Faction: " + faction, x + 18, ty);
+                ty += 18;
+            }
+        } else {
+            g2.drawString("Base: " + baseName, x + 18, ty);
+            ty += 18;
+        }
 
         // Resource readouts (with small pills)
         drawPill(g2, x + 18, ty - 12, 150, "CREDITS", String.valueOf(credits));
@@ -6289,7 +6338,7 @@ public class Renderer {
         ty += 30;
 
         g2.setColor(new Color(255, 255, 255, 180));
-        g2.drawString("Press 1-5 to purchase:", x + 18, ty);
+        g2.drawString(fleetHub ? "Press 1-5 to upgrade the selected hull:" : "Press 1-5 to purchase:", x + 18, ty);
         ty += 18;
 
         // Costs mirror GamePanel (keep in sync)
@@ -6318,7 +6367,9 @@ public class Renderer {
 
         g2.setColor(new Color(255, 255, 255, 130));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.drawString("Mining Ops boosts mining rate + ore sell value.", x + 18, y + h - 16);
+        g2.drawString(fleetHub
+                ? "Fleet edits apply to the selected hull. Launch with Enter when ready."
+                : "Mining Ops boosts mining rate + ore sell value.", x + 18, y + h - 16);
     }
 
     private static void drawPill(Graphics2D g2, int x, int y, int w, String label, String value) {
@@ -6627,7 +6678,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         static void drawShip(Graphics2D g2, Ship ship) {
             if (!ship.alive) return;
-            boolean multipartDying = ship.dying && ShipPartLibrary.hasParts(ship.role, ship.faction);
+            boolean multipartDying = ship.dying && ShipPartLibrary.hasDestroyedParts(ship.role, ship.faction);
             if (multipartDying) {
                 int wx = (int) Math.round(ship.x);
                 int wy = (int) Math.round(ship.y);
@@ -6988,6 +7039,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             } else {
                 drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
             }
+            drawStationUpgradeModules(g, ship, hullArea);
             boolean hasAuxLayers = skinSet.panel != null || skinSet.ao != null
                     || skinSet.emissive != null || skinSet.damage != null;
             if (!hasAuxLayers) return;
@@ -7022,6 +7074,88 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
             g.setClip(oldClip);
+        }
+
+        private static void drawStationUpgradeModules(Graphics2D g, Ship ship, Area hullArea) {
+            if (g == null || ship == null || hullArea == null) return;
+            if (ship.role != ShipRole.BASE) return;
+            BaseUpgrades upgrades = ship.stationUpgrades;
+            if (upgrades == null) return;
+
+            drawStationModuleSeries(g, ship, hullArea, "hull_fortification", upgrades.hullLv,
+                    new double[]{Math.toRadians(-45.0), Math.toRadians(45.0), Math.toRadians(135.0), Math.toRadians(225.0), Math.toRadians(180.0)},
+                    0.96, 0.08);
+            drawStationModuleSeries(g, ship, hullArea, "shield_array", upgrades.shieldLv,
+                    new double[]{Math.toRadians(90.0), Math.toRadians(270.0), Math.toRadians(20.0), Math.toRadians(160.0), Math.toRadians(340.0)},
+                    0.82, 0.10);
+            drawStationModuleSeries(g, ship, hullArea, "turret_systems", upgrades.turretLv,
+                    new double[]{Math.toRadians(0.0), Math.toRadians(180.0), Math.toRadians(60.0), Math.toRadians(300.0), Math.toRadians(240.0)},
+                    0.80, 0.12);
+            drawStationModuleSeries(g, ship, hullArea, "mining_ops", upgrades.miningLv,
+                    new double[]{Math.toRadians(150.0), Math.toRadians(210.0), Math.toRadians(30.0), Math.toRadians(330.0), Math.toRadians(270.0)},
+                    0.88, 0.10);
+            drawStationModuleSeries(g, ship, hullArea, "hangar_expansion", upgrades.hangarLv,
+                    new double[]{Math.toRadians(0.0), Math.toRadians(180.0), Math.toRadians(270.0)},
+                    1.08, 0.14);
+        }
+
+        private static void drawStationModuleSeries(Graphics2D g,
+                                                    Ship ship,
+                                                    Area hullArea,
+                                                    String moduleKey,
+                                                    int level,
+                                                    double[] angles,
+                                                    double sizeFactor,
+                                                    double outwardBias) {
+            if (level <= 0 || angles == null || angles.length == 0) return;
+            BufferedImage module = StationModuleLibrary.getModuleSkin(moduleKey, ship.faction);
+            if (module == null) return;
+
+            int count = Math.min(level, angles.length);
+            double maxProbeRadius = Math.max(ship.radius * 2.35, ship.radius * ShipHullSilhouette.skinRenderScale());
+            int drawW = Math.max(12, (int) Math.round(ship.radius * sizeFactor));
+            int drawH = Math.max(12, (int) Math.round(drawW * (module.getHeight() / (double) Math.max(1, module.getWidth()))));
+            double majorSpan = Math.max(drawW, drawH);
+            double outward = majorSpan * outwardBias;
+
+            for (int i = 0; i < count; i++) {
+                double angle = angles[i];
+                Point2D.Double anchor = stationHullBoundaryPoint(hullArea, angle, maxProbeRadius);
+                if (anchor == null) continue;
+                double dx = Math.cos(angle);
+                double dy = Math.sin(angle);
+                double cx = anchor.x + dx * outward;
+                double cy = anchor.y + dy * outward;
+
+                Graphics2D gm = (Graphics2D) g.create();
+                gm.translate(cx, cy);
+                gm.rotate(angle);
+                gm.drawImage(module, -drawW / 2, -drawH / 2, drawW, drawH, null);
+                gm.dispose();
+            }
+        }
+
+        private static Point2D.Double stationHullBoundaryPoint(Area hullArea, double angle, double maxRadius) {
+            if (hullArea == null) return null;
+            double dx = Math.cos(angle);
+            double dy = Math.sin(angle);
+            double lastInsideX = 0.0;
+            double lastInsideY = 0.0;
+            boolean foundInside = false;
+            double step = 1.2;
+            for (double dist = 0.0; dist <= maxRadius; dist += step) {
+                double x = dx * dist;
+                double y = dy * dist;
+                if (hullArea.contains(x, y)) {
+                    lastInsideX = x;
+                    lastInsideY = y;
+                    foundInside = true;
+                } else if (foundInside) {
+                    break;
+                }
+            }
+            if (!foundInside) return new Point2D.Double(dx * maxRadius * 0.45, dy * maxRadius * 0.45);
+            return new Point2D.Double(lastInsideX, lastInsideY);
         }
 
         private static boolean drawMultipartDamageStage(Graphics2D g, Ship ship, int sw, int sh) {
@@ -7619,6 +7753,91 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (role == null) return "frigate";
             if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
             return role.name().toLowerCase(Locale.ROOT);
+        }
+
+        private static String keyForFaction(Faction faction) {
+            if (faction == null) return "ally";
+            return switch (faction) {
+                case PLAYER, ALLY -> "ally";
+                case ENEMY -> "enemy";
+                case TEAM_C -> "team_c";
+                case TEAM_D -> "team_d";
+            };
+        }
+
+        private static List<File> resolveSkinRoots(String relativeDir) {
+            List<File> roots = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+
+            addRootCandidate(new File(relativeDir), roots, seen);
+            addAncestorCandidates(new File(System.getProperty("user.dir", ".")), relativeDir, 8, roots, seen);
+
+            try {
+                File codeSource = new File(Renderer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                File start = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+                addAncestorCandidates(start, relativeDir, 8, roots, seen);
+            } catch (Exception ignored) {}
+
+            return roots;
+        }
+
+        private static void addAncestorCandidates(File start, String relativeDir, int maxDepth,
+                                                  List<File> roots, Set<String> seen) {
+            File current = start;
+            for (int i = 0; i <= maxDepth && current != null; i++) {
+                addRootCandidate(new File(current, relativeDir), roots, seen);
+                current = current.getParentFile();
+            }
+        }
+
+        private static void addRootCandidate(File dir, List<File> roots, Set<String> seen) {
+            if (dir == null || !dir.isDirectory()) return;
+            try {
+                String canonical = dir.getCanonicalPath();
+                if (seen.add(canonical)) roots.add(dir);
+            } catch (IOException ignored) {}
+        }
+    }
+
+    private static final class StationModuleLibrary {
+        private static final String MODULE_DIR = "assets/station_modules";
+        private static final String MODULE_RESOURCE_DIR = "station_modules";
+        private static final List<File> MODULE_ROOTS = resolveSkinRoots(MODULE_DIR);
+        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final Set<String> MISS = new HashSet<>();
+
+        static BufferedImage getModuleSkin(String moduleKey, Faction faction) {
+            String safeKey = (moduleKey == null || moduleKey.isBlank()) ? "hull_fortification" : moduleKey.toLowerCase(Locale.ROOT);
+            String factionKey = keyForFaction(faction);
+            String cacheKey = factionKey + "|" + safeKey;
+            if (CACHE.containsKey(cacheKey)) return CACHE.get(cacheKey);
+            if (MISS.contains(cacheKey)) return null;
+
+            BufferedImage img = loadModule(factionKey + "/" + safeKey);
+            if (img == null) img = loadModule(safeKey + "_" + factionKey);
+            if (img == null) img = loadModule("default_" + factionKey + "_" + safeKey);
+            if (img == null) img = loadModule(safeKey);
+            if (img == null) img = loadModule("default_" + safeKey);
+
+            if (img != null) {
+                CACHE.put(cacheKey, img);
+                return img;
+            }
+
+            MISS.add(cacheKey);
+            return null;
+        }
+
+        private static BufferedImage loadModule(String key) {
+            BufferedImage resource = loadBundledImage(Renderer.class, MODULE_RESOURCE_DIR, MODULE_DIR, key);
+            if (resource != null) return resource;
+            for (File root : MODULE_ROOTS) {
+                File f = new File(root, key + ".png");
+                try {
+                    if (f.isFile()) return ImageIO.read(f);
+                } catch (IOException ignored) {}
+            }
+            return null;
         }
 
         private static String keyForFaction(Faction faction) {

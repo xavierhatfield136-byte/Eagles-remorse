@@ -33,14 +33,24 @@ final class ShipPartLibrary {
         return getSet(role, faction, Variant.NORMAL).hasParts();
     }
 
+    static boolean hasDestroyedParts(ShipRole role, Faction faction) {
+        return getSet(role, faction, Variant.DESTROYED).hasParts();
+    }
+
     static PartSet getSet(ShipRole role, Faction faction) {
         return getSet(role, faction, Variant.NORMAL);
     }
 
     static PartSet getSet(ShipRole role, Faction faction, Variant variant) {
+        Variant resolvedVariant = (variant == null) ? Variant.NORMAL : variant;
+        if (usesDeathOnlyMultipart(role)
+                && resolvedVariant != Variant.DESTROYED) {
+            // Stations and titan-scale hulls stay on the authored ship skin path while alive.
+            // Their multipart section sprites are reserved for the death handoff only.
+            return new PartSet(List.of(), (variant == null) ? Variant.NORMAL : variant);
+        }
         String roleKey = keyForRole(role);
         String factionKey = keyForFaction(faction);
-        Variant resolvedVariant = (variant == null) ? Variant.NORMAL : variant;
         String cacheKey = roleKey + "|" + factionKey + "|" + resolvedVariant.name();
         PartSet cached = CACHE.get(cacheKey);
         if (cached != null) return cached;
@@ -238,8 +248,16 @@ final class ShipPartLibrary {
     private static String keyForRole(ShipRole role) {
         if (role == null) return "frigate";
         if (role == ShipRole.ARTILLERY_SHIP) return "patrol";
+        if (role == ShipRole.STATIC_TURRET) return "base";
         if (role == ShipRole.ELITE_REINFORCEMENTS_TITAN) return "elite_supership_command_titan";
         return role.name().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean usesDeathOnlyMultipart(ShipRole role) {
+        if (role == null) return false;
+        return role == ShipRole.BASE
+                || role == ShipRole.STATIC_TURRET
+                || role.isTitanOrMothership();
     }
 
     private static String keyForFaction(Faction faction) {

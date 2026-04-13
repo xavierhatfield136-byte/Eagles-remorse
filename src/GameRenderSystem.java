@@ -31,17 +31,19 @@ public final class GameRenderSystem {
             updateDamageVfx(ctx);
         }
 
+        java.util.List<Ship> renderShips = fleetHubRenderShips(ctx);
+
         ctx.perf.drawnAsteroids = Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
         ctx.perf.drawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        ctx.perf.drawnShips = Renderer.drawShips(worldG, ctx.ships, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnShips = Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
         WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         ctx.perf.drawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
         Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-        Renderer.drawNpcSuperweaponAimCues(worldG, ctx.ships, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
 
         ctx.perf.totalVfx = VFX.activeCount();
         try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
@@ -69,8 +71,11 @@ public final class GameRenderSystem {
             }
         } catch (Throwable ignored) {}
 
-        Renderer.drawWorldMarkers(worldG, ctx.ships, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
+        Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
                 viewMinX, viewMinY, viewMaxX, viewMaxY);
+        if (CampaignSystem.isFleetHubSession(ctx)) {
+            drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
+        }
         Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
@@ -152,13 +157,13 @@ public final class GameRenderSystem {
         drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
-        Renderer.drawMinimap(g2, ctx.ships, ctx.player, viewportW, viewportH, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings);
+        Renderer.drawMinimap(g2, renderShips, ctx.player, viewportW, viewportH, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings);
         TutorialSystem.drawMinimapOverlay(ctx, g2, viewportW, viewportH);
 
         if (ctx.ui.mapOpen) {
             Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
-                    ctx.ships, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings, ctx.eventBanner);
+                    renderShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings, ctx.eventBanner);
             TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
         }
 
@@ -167,9 +172,9 @@ public final class GameRenderSystem {
             if (base != null) {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
                 int baseOre = (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) ? ctx.player.cargo : base.oreStockpile;
-                Renderer.drawBaseUpgradeOverlay(g2, base.name, ctx.credits, baseOre,
+                Renderer.drawBaseUpgradeOverlay(g2, base, base.name, ctx.credits, baseOre,
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
-                        maxHangarTier);
+                        maxHangarTier, CampaignSystem.isFleetHubSession(ctx));
             }
         }
 
@@ -235,8 +240,9 @@ if (DevTools.isDebugOverlay()) {
 
     private static String activeOverlayLabel(GameContext ctx) {
         if (ctx == null) return "";
-        if (ctx.ui.shopOpen) return "OVERLAY: SHOP/LOADOUT";
-        if (ctx.ui.baseMenuOpen) return "OVERLAY: BASE UPGRADES";
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+        if (ctx.ui.shopOpen) return fleetHub ? "OVERLAY: FLEET HANGAR" : "OVERLAY: SHOP/LOADOUT";
+        if (ctx.ui.baseMenuOpen) return fleetHub ? "OVERLAY: FLEET UPGRADE CONSOLE" : "OVERLAY: BASE UPGRADES";
         if (ctx.ui.powerManagementOpen) return "OVERLAY: POWER MANAGEMENT";
         if (ctx.ui.crewStationsOpen) return "OVERLAY: CREW STATIONS";
         if (ctx.ui.flightDeckOpen) return "OVERLAY: FLIGHT DECK";
@@ -256,6 +262,17 @@ if (DevTools.isDebugOverlay()) {
         }
         if (!p.alive || p.dying || p.hp <= 0) {
             return "";
+        }
+        if (CampaignSystem.isFleetHubSession(ctx)) {
+            Ship selected = CampaignSystem.fleetSelectedShip(ctx);
+            String selectedName = (selected == null || selected.name == null || selected.name.isBlank())
+                    ? "none"
+                    : selected.name;
+            String selectedRole = (selected == null || selected.role == null)
+                    ? "UNKNOWN"
+                    : selected.role.name();
+            return "Fleet hub: click a ship to select it, use FLEET to commission hulls, UPGRADE to edit the selected hull, and Enter to launch. Selected: "
+                    + selectedName + " / " + selectedRole + ". Mouse wheel zooms.";
         }
         if (ctx.command.playerTeleportCharging) {
             double t = Math.max(0.0, ctx.command.playerTeleportChargeRemaining);
@@ -340,6 +357,42 @@ if (DevTools.isDebugOverlay()) {
         int tx = x + (w - fm.stringWidth(text)) / 2;
         int ty = y + (h + fm.getAscent() - fm.getDescent()) / 2;
         g2.drawString(text, tx, ty);
+    }
+
+    private static void drawFleetSelectionMarker(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || !ship.alive || ship.dying || ship.hp <= 0) return;
+        double radius = Math.max(46.0, ship.radius * 1.9);
+        int x = (int) Math.round(ship.x - radius);
+        int y = (int) Math.round(ship.y - radius);
+        int d = (int) Math.round(radius * 2.0);
+
+        java.awt.Stroke oldStroke = g2.getStroke();
+        java.awt.Font oldFont = g2.getFont();
+        g2.setStroke(new BasicStroke(2.6f));
+        g2.setColor(new Color(120, 240, 255, 210));
+        g2.drawOval(x, y, d, d);
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.setColor(new Color(255, 255, 255, 130));
+        g2.drawOval((int) Math.round(ship.x - radius * 1.25), (int) Math.round(ship.y - radius * 1.25),
+                (int) Math.round(radius * 2.5), (int) Math.round(radius * 2.5));
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        String label = "SELECTED";
+        g2.drawString(label, (int) Math.round(ship.x + radius + 8), (int) Math.round(ship.y - radius - 6));
+        g2.setFont(oldFont);
+        g2.setStroke(oldStroke);
+    }
+
+    private static java.util.List<Ship> fleetHubRenderShips(GameContext ctx) {
+        if (ctx == null || ctx.ships == null || ctx.ships.isEmpty()) return ctx == null ? java.util.List.of() : ctx.ships;
+        if (!CampaignSystem.isFleetHubSession(ctx)) return ctx.ships;
+        Ship hiddenBase = ctx.enemyBase;
+        if (hiddenBase == null) return ctx.ships;
+        java.util.ArrayList<Ship> out = new java.util.ArrayList<>(ctx.ships.size());
+        for (Ship ship : ctx.ships) {
+            if (ship == hiddenBase) continue;
+            out.add(ship);
+        }
+        return out;
     }
 
     private static void drawFleetNetOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {

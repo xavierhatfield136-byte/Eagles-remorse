@@ -39,8 +39,15 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.state == GameState.PAUSED) return;
-                    if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.powerManagementOpen
-                            || ctx.ui.crewStationsOpen || ctx.ui.flightDeckOpen) return;
+                if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.powerManagementOpen
+                        || ctx.ui.crewStationsOpen || ctx.ui.flightDeckOpen) return;
+
+                if (ctx.state == GameState.FLEET) {
+                    if (SwingUtilities.isLeftMouseButton(e)) {
+                        CampaignSystem.selectFleetShipAtCursor(ctx, e.getX(), e.getY());
+                    }
+                    return;
+                }
 
                 if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
                 if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;

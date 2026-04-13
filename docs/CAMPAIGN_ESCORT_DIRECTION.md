@@ -474,6 +474,13 @@ Sector loop:
 
 This loop should produce a campaign rhythm built around protection, attrition, and recovery instead of isolated arena wins.
 
+## Mission Variety Notes
+
+Standing campaign direction:
+- Replace the current escort missions with other mission types when we revisit the campaign structure.
+- Replace the stationary capture-ring objectives with more active, less repetitive mission types.
+- Keep the campaign beats and pressure, but vary the objectives so the player is not asked to do the same kind of hold-and-wait mission over and over.
+
 ## Narrative Tone
 
 This campaign should feel like:

@@ -170,6 +170,7 @@ public final class TutorialSystem {
         tutorialUpgrades.turretLv = 1;
         tutorialUpgrades.miningLv = 1;
         tutorialUpgrades.hangarLv = 2;
+        tutorialUpgrades.bindTo(homeBase);
         ctx.baseUpgrades.put(homeBase, tutorialUpgrades);
         st.homeBaseId = homeBase.id;
         if (st.playerFaction == Faction.ALLY) ctx.allyBase = homeBase;

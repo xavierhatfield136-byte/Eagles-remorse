@@ -77,6 +77,8 @@ public final class CampaignCheckpointStore {
         public int cargoMax = 120;
         public double miningRate = 10.0;
         public double miningRange = 56.0;
+        public double orePriceBaseMul = 1.0;
+        public double miningBaseMul = 1.0;
         public boolean hasCIWS = false;
         public double ciwsRange = 200.0;
         public double ciwsCooldown = 0.12;
@@ -147,6 +149,8 @@ public final class CampaignCheckpointStore {
             cargoMax = Math.max(0, cargoMax);
             miningRate = Math.max(0.0, finiteOr(miningRate, 10.0));
             miningRange = Math.max(0.0, finiteOr(miningRange, 56.0));
+            orePriceBaseMul = Math.max(0.0, finiteOr(orePriceBaseMul, 1.0));
+            miningBaseMul = Math.max(0.0, finiteOr(miningBaseMul, 1.0));
             ciwsRange = Math.max(0.0, finiteOr(ciwsRange, 200.0));
             ciwsCooldown = Math.max(0.02, finiteOr(ciwsCooldown, 0.12));
             ciwsQuality = clamp(finiteOr(ciwsQuality, 0.35), 0.0, 1.0);
@@ -191,7 +195,7 @@ public final class CampaignCheckpointStore {
         }
 
         public GameConfig toGameConfig() {
-            return new GameConfig(GameMode.CAMPAIGN_OPS, worldW, worldH, randomEvents, seed, false, 0, true);
+            return new GameConfig(GameMode.FLEET, worldW, worldH, randomEvents, seed, false, 0, true);
         }
     }
 
@@ -235,6 +239,8 @@ public final class CampaignCheckpointStore {
                 cp.cargoMax = parseInt(props, "cargoMax", cp.cargoMax);
                 cp.miningRate = parseDouble(props, "miningRate", cp.miningRate);
                 cp.miningRange = parseDouble(props, "miningRange", cp.miningRange);
+                cp.orePriceBaseMul = parseDouble(props, "orePriceBaseMul", cp.orePriceBaseMul);
+                cp.miningBaseMul = parseDouble(props, "miningBaseMul", cp.miningBaseMul);
                 cp.hasCIWS = parseBoolean(props, "hasCIWS", cp.hasCIWS);
                 cp.ciwsRange = parseDouble(props, "ciwsRange", cp.ciwsRange);
                 cp.ciwsCooldown = parseDouble(props, "ciwsCooldown", cp.ciwsCooldown);
@@ -327,6 +333,8 @@ public final class CampaignCheckpointStore {
             props.setProperty("cargoMax", String.valueOf(cp.cargoMax));
             props.setProperty("miningRate", String.valueOf(cp.miningRate));
             props.setProperty("miningRange", String.valueOf(cp.miningRange));
+            props.setProperty("orePriceBaseMul", String.valueOf(cp.orePriceBaseMul));
+            props.setProperty("miningBaseMul", String.valueOf(cp.miningBaseMul));
             props.setProperty("hasCIWS", String.valueOf(cp.hasCIWS));
             props.setProperty("ciwsRange", String.valueOf(cp.ciwsRange));
             props.setProperty("ciwsCooldown", String.valueOf(cp.ciwsCooldown));

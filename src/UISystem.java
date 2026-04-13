@@ -8,6 +8,14 @@ import javax.swing.SwingUtilities;
 public final class UISystem {
     private UISystem(){}
 
+    private static boolean fleetHubEditingLocked(GameContext ctx) {
+        return CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isFleetHubSession(ctx);
+    }
+
+    private static GameState stateAfterOverlayClose(GameContext ctx) {
+        return CampaignSystem.isFleetHubSession(ctx) ? GameState.FLEET : GameState.RUNNING;
+    }
+
     public static void closeAllOverlays(GameContext ctx) {
         if (ctx == null) return;
         boolean hadOverlay = ctx.ui.hasBlockingOverlay();
@@ -18,13 +26,17 @@ public final class UISystem {
         ctx.ui.crewStationsOpen = false;
         ctx.ui.flightDeckOpen = false;
         clearManualCombatInputs(ctx);
-        if (!ctx.gameOver) ctx.state = GameState.RUNNING;
+        if (!ctx.gameOver) ctx.state = stateAfterOverlayClose(ctx);
         if (hadOverlay) AudioSystem.onUiClose(ctx);
     }
 
     public static void toggleShop(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        if (fleetHubEditingLocked(ctx)) {
+            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO COMMISSION SHIPS", 1.8);
+            return;
+        }
         ctx.ui.shopOpen = !ctx.ui.shopOpen;
         if (ctx.ui.shopOpen) {
             ctx.ui.baseMenuOpen = false;
@@ -37,7 +49,7 @@ public final class UISystem {
             ctx.state = GameState.SHOP;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -56,7 +68,7 @@ public final class UISystem {
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -64,6 +76,10 @@ public final class UISystem {
     public static void toggleBaseMenu(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        if (fleetHubEditingLocked(ctx)) {
+            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO EDIT SHIPS", 1.8);
+            return;
+        }
         Ship dock = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         if (dock == null) {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE TO UPGRADE", 2.0);
@@ -80,7 +96,7 @@ public final class UISystem {
             ctx.state = GameState.BASE_MENU;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -101,7 +117,7 @@ public final class UISystem {
             ctx.state = GameState.POWER_MANAGEMENT;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -122,7 +138,7 @@ public final class UISystem {
             ctx.state = GameState.CREW_STATIONS;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -143,7 +159,7 @@ public final class UISystem {
             ctx.state = GameState.FLIGHT_DECK;
             AudioSystem.onUiOpen(ctx);
         } else {
-            ctx.state = GameState.RUNNING;
+            ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
     }
@@ -547,6 +563,7 @@ public final class UISystem {
 
     public static void performShopUpgradeById(GameContext ctx, int upgradeId) {
         if (ctx == null || !ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         switch (upgradeId) {
             case 1 -> tryEquipEnergyBolt(ctx);
             case 2 -> tryBuyBeamBolt(ctx);
@@ -590,6 +607,7 @@ public final class UISystem {
 
     public static void performHullSwapByRole(GameContext ctx, ShipRole role) {
         if (ctx == null || role == null || !ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         focusShopHullRole(ctx, role);
         if (CampaignSystem.usesPersistentFleetShop(ctx)) {
             switch (role) {
@@ -673,6 +691,7 @@ public final class UISystem {
     public static void tryBuyBeamBolt(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
 
         Player player = ctx.player;
         int cost = 220;
@@ -695,6 +714,7 @@ public final class UISystem {
     public static void tryEquipEnergyBolt(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
 
         Player player = ctx.player;
         if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT) {
@@ -710,6 +730,7 @@ public final class UISystem {
     public static void tryBuyHullPlating(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         if (!ctx.player.canBuyHullPlatingUpgrade()) {
             EventSystem.showBanner(ctx, "HULL PLATING AT CAP", 1.2);
             return;
@@ -731,6 +752,7 @@ public final class UISystem {
     public static void tryBuyShieldArray(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         Player p = ctx.player;
         if (!p.shieldActive || p.shieldMax <= 0) {
             EventSystem.showBanner(ctx, "NO SHIELD SYSTEM", 1.4);
@@ -757,6 +779,7 @@ public final class UISystem {
     public static void tryAddGunTurret(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         if (!ctx.player.canAddGunTurretUpgrade()) {
             EventSystem.showBanner(ctx, "GUN HARDPOINTS FULL", 1.2);
             return;
@@ -778,6 +801,7 @@ public final class UISystem {
     public static void tryAddMissileRack(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         if (!ctx.player.canAddMissileRackUpgrade()) {
             EventSystem.showBanner(ctx, "MISSILE HARDPOINTS FULL", 1.2);
             return;
@@ -799,6 +823,7 @@ public final class UISystem {
     public static void tryUpgradeCIWS(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         if (!ctx.player.hasCIWS) {
             EventSystem.showBanner(ctx, "NO CIWS SYSTEM", 1.4);
             return;
@@ -922,6 +947,7 @@ public final class UISystem {
     public static void trySwapHull(GameContext ctx, ShipRole role, int cost, int requiredTier) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.ui.shopOpen) return;
+        if (fleetHubEditingLocked(ctx)) return;
         if (ctx.player.role == role) {
             EventSystem.showBanner(ctx, "HULL ALREADY EQUIPPED", 1.2);
             return;
@@ -946,13 +972,17 @@ public final class UISystem {
     public static void tryUpgradeBase(GameContext ctx, int which) {
         if (ctx == null) return;
         if (!ctx.ui.baseMenuOpen) return;
+        if (fleetHubEditingLocked(ctx)) {
+            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO EDIT SHIPS", 1.8);
+            return;
+        }
         if (which < 1 || which > 5) return;
         Ship base = CampaignSystem.currentBaseUpgradeAnchor(ctx);
         if (base == null) {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE", 1.4);
             return;
         }
-        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades().bindTo(base));
 
         int max = switch (which) {
             case 5 -> CampaignSystem.isCampaignActive(ctx) ? CampaignSystem.campaignMaxHangarTier(ctx) : 3;

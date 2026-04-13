@@ -43,6 +43,8 @@ public final class UiState {
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
+    public int fleetSelectedShipId = -1;
+    public int fleetSelectedTurretIndex = -1;
     public int powerManagementFocus = 0;
     public int flightDeckFocus = 0;
 

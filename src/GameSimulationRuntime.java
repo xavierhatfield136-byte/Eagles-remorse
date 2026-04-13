@@ -80,6 +80,18 @@ public final class GameSimulationRuntime {
         }
 
         applyPlayerInput(dt, input);
+
+        if (CampaignSystem.isFleetHubSession(ctx)) {
+            ctx.entityQuery.rebuild(ctx);
+            CampaignSystem.update(ctx, dt);
+            UISystem.updatePings(ctx, dt);
+            EventSystem.update(ctx, dt);
+            AudioSystem.update(ctx, dt);
+            CameraSystem.update(ctx, viewportW, viewportH);
+            syncPlayerWarpHudState();
+            return;
+        }
+
         applyPlayerRepairOrderInstantHeal();
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
@@ -170,7 +182,7 @@ public final class GameSimulationRuntime {
     private boolean supportsPlayerRespawn() {
         if (ctx == null || ctx.config == null) return false;
         return switch (ctx.config.mode) {
-            case CAMPAIGN_OPS, LAST_STAND -> false;
+            case CAMPAIGN_OPS, LAST_STAND, FLEET -> false;
             default -> true;
         };
     }
@@ -257,6 +269,14 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
+        if (CampaignSystem.isFleetHubSession(ctx)) {
+            if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
+                CameraSystem.updateManualPan(ctx, dt);
+            }
+            p.vx = 0.0;
+            p.vy = 0.0;
+            return;
+        }
         if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
             CameraSystem.updateManualPan(ctx, dt);
         }

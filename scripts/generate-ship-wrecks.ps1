@@ -1,3 +1,7 @@
+param(
+    [string[]]$Stems = @()
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -27,6 +31,8 @@ function Get-RoleKey {
 
 function Get-ProfileName {
     param([string]$RoleKey)
+    if ($RoleKey -eq "base") { return "station" }
+
     $small = @(
         "fighter", "bomber", "drone", "patrol", "picket", "missile_boat",
         "ciws_corvette", "pd_craft", "miner", "hauler", "transport", "static_turret"
@@ -62,6 +68,21 @@ function Get-ChunkProfiles {
                 )
                 Breaches = @(
                     @{ X = 0.56; Y = 0.44; W = 0.18; H = 0.18; Angle = -12.0 }
+                )
+            }
+        }
+        "station" {
+            return @{
+                Chunks = @(
+                    @((0.01,0.16),(0.24,0.06),(0.34,0.34),(0.28,0.72),(0.03,0.78)),
+                    @((0.18,0.09),(0.42,0.07),(0.48,0.36),(0.38,0.92),(0.14,0.84)),
+                    @((0.36,0.08),(0.64,0.10),(0.60,0.46),(0.46,0.76),(0.30,0.34)),
+                    @((0.52,0.10),(0.84,0.12),(0.80,0.58),(0.62,0.94),(0.46,0.54)),
+                    @((0.70,0.18),(0.99,0.28),(0.94,0.86),(0.70,0.94),(0.58,0.50))
+                )
+                Breaches = @(
+                    @{ X = 0.32; Y = 0.42; W = 0.18; H = 0.18; Angle = -18.0 },
+                    @{ X = 0.66; Y = 0.56; W = 0.24; H = 0.20; Angle = 14.0 }
                 )
             }
         }
@@ -261,12 +282,23 @@ if (-not (Test-Path $sourceDir)) {
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
-$skinFiles = Get-ChildItem $sourceDir -File *.png |
-    Where-Object { $_.BaseName -notmatch $layerSuffixPattern } |
-    Sort-Object Name
+$requestedStems = @{}
+foreach ($stemEntry in @($Stems)) {
+    if ([string]::IsNullOrWhiteSpace($stemEntry)) { continue }
+    foreach ($stem in $stemEntry.Split(',')) {
+        if ([string]::IsNullOrWhiteSpace($stem)) { continue }
+        $requestedStems[$stem.Trim().ToLowerInvariant()] = $true
+    }
+}
+
+$skinFiles = @(Get-ChildItem -Path $sourceDir -Filter *.png -File |
+    Where-Object {
+        $_.BaseName -notmatch $layerSuffixPattern -and
+        ($requestedStems.Count -eq 0 -or $requestedStems.ContainsKey($_.BaseName.ToLowerInvariant()))
+    } |
+    Sort-Object Name)
 
 $generated = 0
-$manifest = New-Object 'System.Collections.Generic.List[string]'
 
 foreach ($file in $skinFiles) {
     $stem = $file.BaseName
@@ -281,7 +313,6 @@ foreach ($file in $skinFiles) {
             try {
                 $target = Join-Path $outputDir ("{0}_chunk_{1:D2}.png" -f $stem, ($i + 1))
                 Save-Png -Bitmap $chunk -Path $target
-                $manifest.Add((Split-Path -Leaf $target))
                 $generated++
             } finally {
                 $chunk.Dispose()
@@ -293,7 +324,6 @@ foreach ($file in $skinFiles) {
             try {
                 $target = Join-Path $outputDir ("{0}_breach_{1:D2}.png" -f $stem, ($i + 1))
                 Save-Png -Bitmap $breach -Path $target
-                $manifest.Add((Split-Path -Leaf $target))
                 $generated++
             } finally {
                 $breach.Dispose()
@@ -305,6 +335,7 @@ foreach ($file in $skinFiles) {
 }
 
 $manifestPath = Join-Path $outputDir "manifest.txt"
+$manifest = @(Get-ChildItem -Path $outputDir -Filter *.png -File | Sort-Object Name | ForEach-Object { $_.Name })
 [System.IO.File]::WriteAllLines($manifestPath, $manifest)
 
-Write-Output ("[ship-wreck-gen] skins={0} generated={1} out={2}" -f $skinFiles.Count, $generated, $outputDir)
+Write-Output ("[ship-wreck-gen] skins={0} generated={1} out={2}" -f @($skinFiles).Count, $generated, $outputDir)

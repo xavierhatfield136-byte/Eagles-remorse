@@ -5,4 +5,9 @@ public class BaseUpgrades {
     public int turretLv = 0;
     public int miningLv = 0;
     public int hangarLv = 0;
+
+    public BaseUpgrades bindTo(Ship ship) {
+        if (ship != null) ship.stationUpgrades = this;
+        return this;
+    }
 }

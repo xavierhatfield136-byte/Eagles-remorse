@@ -143,10 +143,17 @@ public final class CampaignSystem {
     private static final class PersistentFleetEntry {
         final int slotId;
         final ShipRole role;
-        final String name;
+        String name;
         boolean destroyed = false;
         int activeShipId = -1;
         int commandGroupId = 0;
+        int hullLv = 0;
+        int shieldLv = 0;
+        int turretLv = 0;
+        int miningLv = 0;
+        int hangarLv = 0;
+        String turretData = "";
+        String primaryWeaponFamilyName = Ship.PrimaryWeaponFamily.ENERGY_BOLT.name();
 
         PersistentFleetEntry(int slotId, ShipRole role, String name) {
             this.slotId = Math.max(1, slotId);
@@ -390,7 +397,7 @@ public final class CampaignSystem {
 
     public static void init(GameContext ctx) {
         if (ctx == null || ctx.config == null) return;
-        if (ctx.config.mode != GameMode.CAMPAIGN_OPS) return;
+        if (ctx.config.mode != GameMode.CAMPAIGN_OPS && ctx.config.mode != GameMode.FLEET) return;
 
         CampaignState st = new CampaignState();
         st.enabled = true;
@@ -399,8 +406,12 @@ public final class CampaignSystem {
         CampaignCheckpointStore.Checkpoint checkpoint = ctx.config.resumeCampaign ? CampaignCheckpointStore.load() : null;
         if (checkpoint != null && checkpoint.isUsable() && applyCheckpoint(ctx, st, checkpoint)) {
             configureCampaignSession(ctx, st);
-            EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: " + loreFor(checkpoint.nextSector).title, 2.2);
-            startSector(ctx, checkpoint.nextSector);
+            if (ctx.config.mode == GameMode.FLEET) {
+                enterFleetHub(ctx, st);
+            } else {
+                EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: " + loreFor(checkpoint.nextSector).title, 2.2);
+                startSector(ctx, checkpoint.nextSector);
+            }
             return;
         }
 
@@ -410,8 +421,12 @@ public final class CampaignSystem {
         seedStartingBlueFleet(st);
         persistRunStart(ctx);
 
-        EventSystem.showBanner(ctx, "CAMPAIGN START: ACT I - " + actTitleFor(1), 2.2);
-        startSector(ctx, 1);
+        if (ctx.config.mode == GameMode.FLEET) {
+            enterFleetHub(ctx, st);
+        } else {
+            EventSystem.showBanner(ctx, "CAMPAIGN START: ACT I - " + actTitleFor(1), 2.2);
+            startSector(ctx, 1);
+        }
     }
 
     public static void update(GameContext ctx, double dt) {
@@ -663,12 +678,22 @@ public final class CampaignSystem {
     }
 
     public static boolean usesPersistentFleetShop(GameContext ctx) {
-        return isCampaignActive(ctx);
+        return isFleetHubSession(ctx);
     }
 
     public static boolean isPlayerControlLocked(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.enabled && st.introSequenceActive;
+    }
+
+    public static boolean isFleetHubSession(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return ctx != null
+                && ctx.config != null
+                && ctx.config.mode == GameMode.FLEET
+                && st != null
+                && st.enabled
+                && st.awaitingEpisodeLaunch;
     }
 
     public static boolean hasCinematicFocus(GameContext ctx) {
@@ -694,10 +719,171 @@ public final class CampaignSystem {
 
     public static Ship currentBaseUpgradeAnchor(GameContext ctx) {
         if (ctx == null) return null;
+        if (isFleetHubSession(ctx)) {
+            Ship selected = fleetSelectedShip(ctx);
+            if (selected != null) return selected;
+            return ctx.player;
+        }
         if (isCampaignActive(ctx)) {
             return ctx.player;
         }
         return EconomySystem.getDockedFriendlyBase(ctx);
+    }
+
+    public static Ship fleetSelectedShip(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || ctx.ships == null) return null;
+        int selectedId = ctx.ui.fleetSelectedShipId;
+        if (selectedId <= 0) return null;
+        return findShipById(ctx, selectedId);
+    }
+
+    public static Ship selectFleetShipAtCursor(GameContext ctx, int screenX, int screenY) {
+        if (ctx == null || ctx.ui == null || ctx.player == null) return null;
+        if (!isFleetHubSession(ctx)) return null;
+
+        double wx = CameraSystem.screenToWorldX(ctx, screenX);
+        double wy = CameraSystem.screenToWorldY(ctx, screenY);
+        Ship best = null;
+        double bestDist2 = Double.POSITIVE_INFINITY;
+        for (Ship ship : ctx.ships) {
+            if (!isFleetSelectionCandidate(ship)) continue;
+            double radius = Math.max(38.0, ship.radius * 1.6 + 12.0);
+            double d2 = GameMath.dist2(wx, wy, ship.x, ship.y);
+            if (d2 > radius * radius || d2 >= bestDist2) continue;
+            best = ship;
+            bestDist2 = d2;
+        }
+        if (best == null) return null;
+
+        ctx.ui.fleetSelectedShipId = best.id;
+        ctx.ui.fleetSelectedTurretIndex = 0;
+        ctx.lockedTarget = best;
+        EventSystem.showBanner(ctx, "SELECTED: " + ((best.name == null || best.name.isBlank()) ? best.role.name() : best.name), 0.9);
+        return best;
+    }
+
+    private static void enterFleetHub(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        if (st.pendingEpisodeSector <= 0) {
+            st.pendingEpisodeSector = Math.max(1, st.sector > 0 ? st.sector : 1);
+        }
+        st.awaitingEpisodeLaunch = true;
+        st.transitionTimer = 0.0;
+        if (st.transitionLabel == null || st.transitionLabel.isBlank()) st.transitionLabel = "FLEET HANGAR";
+        if (st.transitionSummaryTop == null || st.transitionSummaryTop.isBlank()) {
+            st.transitionSummaryTop = "Click a ship to inspect, refit, and re-arm the fleet.";
+        }
+        if (st.transitionSummaryBottom == null || st.transitionSummaryBottom.isBlank()) {
+            st.transitionSummaryBottom = "ENTER launches the current mission.";
+        }
+        st.introSequenceActive = false;
+        st.introPhase = 0;
+        st.introTimer = 0.0;
+        st.cinematicFocusX = Double.NaN;
+        st.cinematicFocusY = Double.NaN;
+        quietEpisodeInterlude(ctx, st);
+        resetPersistentFleetSpawnHandles(st);
+        spawnPersistentBlueFleet(ctx, st);
+        arrangeFleetHubFormation(ctx, st);
+        if (ctx.player != null) {
+            ctx.player.vx = 0.0;
+            ctx.player.vy = 0.0;
+        }
+        ctx.cameraOffsetX = 0.0;
+        ctx.cameraOffsetY = 0.0;
+        ctx.firingPrimaryManual = false;
+        ctx.firingSecondaryManual = false;
+        ctx.firingPrimaryAuto = false;
+        ctx.firingSecondaryAuto = false;
+        ctx.miningKeyDown = false;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
+        ctx.ui.fleetSelectedShipId = (ctx.player == null) ? -1 : ctx.player.id;
+        ctx.ui.fleetSelectedTurretIndex = 0;
+        ctx.lockedTarget = ctx.player;
+        ctx.state = GameState.FLEET;
+    }
+
+    private static boolean isFleetSelectionCandidate(Ship ship) {
+        if (ship == null || ship.faction == null) return false;
+        if (ship.faction.teamId() != Faction.ALLY.teamId()) return false;
+        return ship.alive && !ship.dying && ship.hp > 0;
+    }
+
+    private static void arrangeFleetHubFormation(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+
+        double centerX = GameMath.clamp(ctx.WORLD_W * 0.5, 280.0, ctx.WORLD_W - 280.0);
+        double centerY = GameMath.clamp(ctx.WORLD_H * 0.5, 280.0, ctx.WORLD_H - 280.0);
+        ctx.player.x = centerX;
+        ctx.player.y = centerY;
+        ctx.player.vx = 0.0;
+        ctx.player.vy = 0.0;
+        ctx.player.angle = -Math.PI / 2.0;
+
+        java.util.List<Ship> titans = new ArrayList<>();
+        java.util.List<Ship> others = new ArrayList<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
+            Ship ship = findShipById(ctx, entry.activeShipId);
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (isTitanPersistentEntry(entry)) {
+                titans.add(ship);
+            } else {
+                others.add(ship);
+            }
+        }
+
+        double titanRing = Math.max(260.0, ctx.player.radius + 240.0);
+        for (int i = 0; i < titans.size(); i++) {
+            Ship titan = titans.get(i);
+            double angle = -Math.PI / 2.0 + (Math.PI * 2.0 * i / Math.max(1, titans.size()));
+            titan.x = centerX + Math.cos(angle) * titanRing;
+            titan.y = centerY + Math.sin(angle) * titanRing;
+            titan.vx = 0.0;
+            titan.vy = 0.0;
+            titan.angle = angle + Math.PI / 2.0;
+        }
+
+        double outerRing = titanRing + 260.0;
+        for (int i = 0; i < others.size(); i++) {
+            Ship ship = others.get(i);
+            double angle = -Math.PI / 2.0 + (Math.PI * 2.0 * i / Math.max(1, others.size()));
+            ship.x = centerX + Math.cos(angle) * outerRing;
+            ship.y = centerY + Math.sin(angle) * outerRing;
+            ship.vx = 0.0;
+            ship.vy = 0.0;
+            ship.angle = angle + Math.PI / 2.0;
+        }
+    }
+
+    private static void syncPersistentFleetEntrySnapshots(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.persistentBlueFleet.isEmpty()) return;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
+            Ship ship = findShipById(ctx, entry.activeShipId);
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) {
+                entry.destroyed = true;
+                entry.activeShipId = -1;
+                continue;
+            }
+            snapshotPersistentFleetEntry(ctx, st, entry, ship);
+        }
+    }
+
+    private static void snapshotPersistentFleetEntry(GameContext ctx, CampaignState st, PersistentFleetEntry entry, Ship ship) {
+        if (entry == null || ship == null) return;
+        entry.name = (ship.name == null || ship.name.isBlank()) ? entry.name : ship.name;
+        BaseUpgrades up = (ctx == null) ? null : ctx.baseUpgrades.get(ship);
+        entry.hullLv = (up == null) ? 0 : Math.max(0, up.hullLv);
+        entry.shieldLv = (up == null) ? 0 : Math.max(0, up.shieldLv);
+        entry.turretLv = (up == null) ? 0 : Math.max(0, up.turretLv);
+        entry.miningLv = (up == null) ? 0 : Math.max(0, up.miningLv);
+        entry.hangarLv = (up == null) ? 0 : Math.max(0, up.hangarLv);
+        entry.turretData = serializeTurrets(ship);
+        entry.primaryWeaponFamilyName = (ship.primaryWeaponFamily == null)
+                ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
+                : ship.primaryWeaponFamily.name();
     }
 
     public static int campaignOreCost(ShipRole role, int creditCost, int requiredTier) {
@@ -881,7 +1067,7 @@ public final class CampaignSystem {
         }
 
         int hangarTier = 0;
-        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades().bindTo(ctx.player));
         if (up != null) {
             up.hangarLv = Math.max(up.hangarLv, CAMPAIGN_PLAYER_STARTING_HANGAR_TIER);
             hangarTier = up.hangarLv;
@@ -957,6 +1143,9 @@ public final class CampaignSystem {
         for (PersistentFleetEntry supportEntry : spawnedPackage) {
             spawnPurchasedPersistentBlueShip(ctx, st, supportEntry);
         }
+        if (isFleetHubSession(ctx)) {
+            arrangeFleetHubFormation(ctx, st);
+        }
         EventSystem.showBanner(ctx, "BLUE HULL COMMISSIONED: " + entry.name, 1.8);
         return true;
     }
@@ -964,7 +1153,11 @@ public final class CampaignSystem {
     public static boolean launchPendingEpisode(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.awaitingEpisodeLaunch || st.pendingEpisodeSector <= 0) return false;
+        syncPersistentFleetEntrySnapshots(ctx, st);
+        saveCheckpoint(ctx, st, st.pendingEpisodeSector);
         UISystem.closeAllOverlays(ctx);
+        ctx.lockedTarget = null;
+        ctx.state = GameState.RUNNING;
         startSector(ctx, st.pendingEpisodeSector);
         return true;
     }
@@ -1119,7 +1312,7 @@ public final class CampaignSystem {
         ctx.allyBase = null;
         ctx.teamBases.remove(Faction.ALLY);
 
-        BaseUpgrades mothershipUpgrades = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades());
+        BaseUpgrades mothershipUpgrades = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades().bindTo(ctx.player));
         mothershipUpgrades.hangarLv = Math.max(mothershipUpgrades.hangarLv, CAMPAIGN_PLAYER_STARTING_HANGAR_TIER);
         refreshCampaignAlliances(st);
     }
@@ -1296,6 +1489,13 @@ public final class CampaignSystem {
                 && !persistentIds.contains(s.id));
         ctx.player.vx = 0.0;
         ctx.player.vy = 0.0;
+        ctx.firingPrimaryManual = false;
+        ctx.firingSecondaryManual = false;
+        ctx.firingPrimaryAuto = false;
+        ctx.firingSecondaryAuto = false;
+        ctx.miningKeyDown = false;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
         healAndRefitPlayer(ctx);
         for (Ship s : ctx.ships) {
             if (s == null || s == ctx.player) continue;
@@ -1314,7 +1514,7 @@ public final class CampaignSystem {
                 GameMath.clamp(y, 40.0, ctx.WORLD_H - 40.0));
         if (name != null && !name.isBlank()) base.name = name;
         ctx.ships.add(base);
-        ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
+        ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades().bindTo(base));
         if (!ctx.teamBases.containsKey(faction)) ctx.teamBases.put(faction, base);
         if (faction == Faction.ENEMY) ctx.enemyBase = base;
         return base;
@@ -1342,6 +1542,7 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (st == null) return;
 
+        if (ctx != null) ctx.state = GameState.RUNNING;
         st.sector = sector;
         st.act = actForSector(sector);
         st.transitionTimer = 0.0;
@@ -2764,7 +2965,7 @@ public final class CampaignSystem {
                 + (unlock.isBlank() ? "" : "   |   " + unlock)
                 + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "")
                 + (st.awaitingEpisodeLaunch ? "   |   PRESS ENTER TO LAUNCH" : "");
-        quietEpisodeInterlude(ctx, st);
+        enterFleetHub(ctx, st);
         EventSystem.showBanner(ctx,
                 clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
@@ -3202,7 +3403,7 @@ public final class CampaignSystem {
 
     private static void ensureCampaignHangarTier(GameContext ctx, Ship base) {
         if (ctx == null || base == null || base.role != ShipRole.BASE) return;
-        BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades());
+        BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(base, ignored -> new BaseUpgrades().bindTo(base));
         upgrades.hangarLv = Math.max(upgrades.hangarLv, CAMPAIGN_ENEMY_MAX_HANGAR_TIER);
     }
 
@@ -3574,12 +3775,15 @@ public final class CampaignSystem {
         cp.bossDropFlagCore = st.bossDropFlagCore;
         cp.bossDropsCollected = st.bossDropsCollected;
         cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
+        syncPersistentFleetEntrySnapshots(ctx, st);
         cp.persistentBlueFleet = serializePersistentBlueFleet(st.persistentBlueFleet);
         cp.campaignBlueYellowAlliance = st.campaignBlueYellowAlliance;
         cp.greenContractFleetJoined = st.greenContractFleetJoined;
         cp.yellowLiberationFleetJoined = st.yellowLiberationFleetJoined;
         cp.greenContractFavor = st.greenContractFavor;
         cp.yellowLiberationFavor = st.yellowLiberationFavor;
+        cp.miningBaseMul = ctx.miningBaseMul;
+        cp.orePriceBaseMul = ctx.orePriceBaseMul;
 
         Player player = ctx.player;
         cp.playerFactionName = (player.faction == null) ? Faction.PLAYER.name() : player.faction.name();
@@ -3618,7 +3822,7 @@ public final class CampaignSystem {
         cp.carrierAutoLaunch = player.carrierAutoLaunch;
         cp.flightDeckLoadout = serializeFlightDeck(player);
 
-        Ship anchor = currentBaseUpgradeAnchor(ctx);
+        Ship anchor = ctx.player;
         copyBaseCheckpoint(anchor, ctx.baseUpgrades.get(anchor), true, cp);
         copyBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase), false, cp);
         cp.normalize();
@@ -3653,10 +3857,11 @@ public final class CampaignSystem {
         st.greenContractFavor = cp.greenContractFavor;
         st.yellowLiberationFavor = cp.yellowLiberationFavor;
         restorePersistentBlueFleet(st, cp.persistentBlueFleet);
+        ctx.miningBaseMul = Math.max(0.0, cp.miningBaseMul);
+        ctx.orePriceBaseMul = Math.max(0.0, cp.orePriceBaseMul);
 
         restorePlayerFromCheckpoint(ctx.player, cp);
-        Ship anchor = currentBaseUpgradeAnchor(ctx);
-        restoreBaseCheckpoint(anchor, ctx.baseUpgrades.get(anchor),
+        restoreBaseCheckpoint(ctx.player, ctx.baseUpgrades.get(ctx.player),
                 cp.allyOreStockpile, cp.allyHullLv, cp.allyShieldLv, cp.allyTurretLv, cp.allyMiningLv, cp.allyHangarLv);
         restoreBaseCheckpoint(ctx.enemyBase, ctx.baseUpgrades.get(ctx.enemyBase),
                 cp.enemyOreStockpile, cp.enemyHullLv, cp.enemyShieldLv, cp.enemyTurretLv, cp.enemyMiningLv, cp.enemyHangarLv);
@@ -3699,6 +3904,7 @@ public final class CampaignSystem {
         player.setOverloadBus(parseEnum(cp.overloadBusName, Ship.PowerBus.TACTICAL));
         player.setOverloadMode(false);
         restoreTurrets(player, cp.turretData);
+        player.resyncShopUpgradeTrackers();
         player.primaryWeaponFamily = parseEnum(cp.primaryWeaponFamilyName, Ship.PrimaryWeaponFamily.ENERGY_BOLT);
         player.applyPrimaryWeaponFamily();
         player.isCarrier = cp.isCarrier;
@@ -3741,6 +3947,7 @@ public final class CampaignSystem {
             base.oreStockpile = Math.max(0, oreStockpile);
         }
         if (upgrades != null) {
+            upgrades.bindTo(base);
             int maxHangarLv = (base != null && base.role == ShipRole.MOTHERSHIP)
                     ? CAMPAIGN_PLAYER_MAX_HANGAR_TIER
                     : CAMPAIGN_ENEMY_MAX_HANGAR_TIER;
@@ -3779,9 +3986,13 @@ public final class CampaignSystem {
     }
 
     private static String serializeTurrets(Player player) {
-        if (player == null || player.turrets.isEmpty()) return "";
+        return serializeTurrets((Ship) player);
+    }
+
+    private static String serializeTurrets(Ship ship) {
+        if (ship == null || ship.turrets.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
-        for (Turret turret : player.turrets) {
+        for (Turret turret : ship.turrets) {
             if (turret == null) continue;
             if (sb.length() > 0) sb.append(';');
             sb.append(turret.kind.name()).append('|')
@@ -3803,8 +4014,15 @@ public final class CampaignSystem {
     }
 
     private static void restoreTurrets(Player player, String raw) {
-        if (player == null || raw == null || raw.isBlank()) return;
-        player.turrets.clear();
+        restoreTurrets((Ship) player, raw);
+        if (player != null) {
+            player.resyncShopUpgradeTrackers();
+        }
+    }
+
+    private static void restoreTurrets(Ship ship, String raw) {
+        if (ship == null || raw == null || raw.isBlank()) return;
+        ship.turrets.clear();
         String[] entries = raw.split(";");
         for (String entry : entries) {
             if (entry == null || entry.isBlank()) continue;
@@ -3826,7 +4044,7 @@ public final class CampaignSystem {
                 turret.radius = Double.parseDouble(parts[11]);
                 turret.barrelLen = Double.parseDouble(parts[12]);
                 turret.primary = Boolean.parseBoolean(parts[13]);
-                player.addTurret(turret);
+                ship.addTurret(turret);
             } catch (Exception ignored) {
                 // Skip malformed turret entries and keep the rest.
             }
@@ -3863,6 +4081,24 @@ public final class CampaignSystem {
         long sectorMix = 0x9E3779B97F4A7C15L * Math.max(1L, nextSector);
         long branchMix = 0xC2B2AE3D27D4EB4FL * Math.max(0L, (ctx != null && ctx.campaign != null) ? ctx.campaign.branchScore + 7L : 7L);
         return baseSeed ^ sectorMix ^ branchMix;
+    }
+
+    private static int parseInt(String raw, int fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private static double parseDouble(String raw, double fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return Double.parseDouble(raw.trim());
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     private static <E extends Enum<E>> E parseEnum(String name, E fallback) {
@@ -4036,10 +4272,57 @@ public final class CampaignSystem {
         ship.vy = vy;
         ship.minerHomeBase = ctx.player;
         ctx.ships.add(ship);
+        BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(ship, ignored -> new BaseUpgrades().bindTo(ship));
+        upgrades.hullLv = MathUtil.clamp(entry.hullLv, 0, 5);
+        upgrades.shieldLv = MathUtil.clamp(entry.shieldLv, 0, 5);
+        upgrades.turretLv = MathUtil.clamp(entry.turretLv, 0, 5);
+        upgrades.miningLv = MathUtil.clamp(entry.miningLv, 0, 5);
+        upgrades.hangarLv = MathUtil.clamp(entry.hangarLv, 0, 5);
+        restoreTurrets(ship, entry.turretData);
+        ship.primaryWeaponFamily = parseEnum(entry.primaryWeaponFamilyName, Ship.PrimaryWeaponFamily.ENERGY_BOLT);
+        ship.applyPrimaryWeaponFamily();
         try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
+        applyPersistentShipUpgradeLevels(ctx, ship, upgrades);
         applyPersistentCampaignShipBonuses(state(ctx), entry, ship);
+        ship.fullyRepairHull();
+        ship.resetShieldState();
+        if (ship.shieldActive && ship.shieldMax > 0.0) {
+            ship.shield = ship.shieldMax;
+        }
         entry.activeShipId = ship.id;
         return ship;
+    }
+
+    private static void applyPersistentShipUpgradeLevels(GameContext ctx, Ship ship, BaseUpgrades upgrades) {
+        if (ctx == null || ship == null || upgrades == null) return;
+
+        int hullLv = Math.max(0, upgrades.hullLv);
+        if (hullLv > 0) {
+            ship.hpMax = Math.max(1, ship.hpMax + 40 * hullLv);
+        }
+
+        int shieldLv = Math.max(0, upgrades.shieldLv);
+        if (shieldLv > 0) {
+            ship.shieldActive = true;
+            ship.shieldMax = Math.max(0.0, ship.shieldMax + 30.0 * shieldLv);
+            ship.shieldRegen = Math.max(0.0, ship.shieldRegen + 0.8 * shieldLv);
+        }
+
+        int turretLv = Math.max(0, upgrades.turretLv);
+        if (turretLv > 0) {
+            UISystem.applyTurretSystemsUpgrade(ship, turretLv);
+        }
+
+        int miningLv = Math.max(0, upgrades.miningLv);
+        if (miningLv > 0) {
+            ship.miningRate = Math.max(0.0, ship.miningRate + 1.4 * miningLv);
+            ship.cargoMax = Math.max(0, ship.cargoMax + 20 * miningLv);
+        }
+
+        int hangarLv = Math.max(0, upgrades.hangarLv);
+        if (hangarLv > 0 && ship.isCarrier) {
+            ship.maxFighters = Math.max(0, ship.maxFighters + hangarLv);
+        }
     }
 
     private static void applyCampaignFleetBonuses(GameContext ctx, CampaignState st) {
@@ -4190,12 +4473,22 @@ public final class CampaignSystem {
         for (PersistentFleetEntry entry : fleet) {
             if (entry == null || entry.role == null) continue;
             if (sb.length() > 0) sb.append(';');
-            String encodedName = encoder.encodeToString(entry.name.getBytes(StandardCharsets.UTF_8));
+            String encodedName = encoder.encodeToString(((entry.name == null) ? "" : entry.name).getBytes(StandardCharsets.UTF_8));
+            String encodedTurrets = encoder.encodeToString(((entry.turretData == null) ? "" : entry.turretData).getBytes(StandardCharsets.UTF_8));
             sb.append(entry.slotId).append(',')
                     .append(entry.role.name()).append(',')
                     .append(entry.destroyed).append(',')
                     .append(encodedName).append(',')
-                    .append(entry.commandGroupId);
+                    .append(entry.commandGroupId).append(',')
+                    .append(MathUtil.clamp(entry.hullLv, 0, 5)).append(',')
+                    .append(MathUtil.clamp(entry.shieldLv, 0, 5)).append(',')
+                    .append(MathUtil.clamp(entry.turretLv, 0, 5)).append(',')
+                    .append(MathUtil.clamp(entry.miningLv, 0, 5)).append(',')
+                    .append(MathUtil.clamp(entry.hangarLv, 0, 5)).append(',')
+                    .append(encodedTurrets).append(',')
+                    .append((entry.primaryWeaponFamilyName == null || entry.primaryWeaponFamilyName.isBlank())
+                            ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
+                            : entry.primaryWeaponFamilyName.trim());
         }
         return sb.toString();
     }
@@ -4208,17 +4501,28 @@ public final class CampaignSystem {
         Base64.Decoder decoder = Base64.getUrlDecoder();
         for (String entryRaw : raw.split(";")) {
             if (entryRaw == null || entryRaw.isBlank()) continue;
-            String[] parts = entryRaw.split(",", 5);
+            String[] parts = entryRaw.split(",", 12);
             if (parts.length < 4) continue;
             try {
-                int slotId = Math.max(1, Integer.parseInt(parts[0].trim()));
+                int slotId = Math.max(1, parseInt(parts[0], 1));
                 ShipRole role = parseEnum(parts[1], ShipRole.FRIGATE);
                 boolean destroyed = Boolean.parseBoolean(parts[2].trim());
                 String name = new String(decoder.decode(parts[3].trim()), StandardCharsets.UTF_8);
                 PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, name);
                 entry.destroyed = destroyed;
-                if (parts.length >= 5) {
-                    entry.commandGroupId = Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, Integer.parseInt(parts[4].trim()));
+                entry.commandGroupId = (parts.length >= 5)
+                        ? Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, parseInt(parts[4], CAMPAIGN_FLAGSHIP_COMMAND_GROUP))
+                        : CAMPAIGN_FLAGSHIP_COMMAND_GROUP;
+                entry.hullLv = (parts.length >= 6) ? MathUtil.clamp(parseInt(parts[5], 0), 0, 5) : 0;
+                entry.shieldLv = (parts.length >= 7) ? MathUtil.clamp(parseInt(parts[6], 0), 0, 5) : 0;
+                entry.turretLv = (parts.length >= 8) ? MathUtil.clamp(parseInt(parts[7], 0), 0, 5) : 0;
+                entry.miningLv = (parts.length >= 9) ? MathUtil.clamp(parseInt(parts[8], 0), 0, 5) : 0;
+                entry.hangarLv = (parts.length >= 10) ? MathUtil.clamp(parseInt(parts[9], 0), 0, 5) : 0;
+                if (parts.length >= 11 && parts[10] != null && !parts[10].isBlank()) {
+                    entry.turretData = new String(decoder.decode(parts[10].trim()), StandardCharsets.UTF_8);
+                }
+                if (parts.length >= 12 && parts[11] != null && !parts[11].isBlank()) {
+                    entry.primaryWeaponFamilyName = parts[11].trim();
                 }
                 st.persistentBlueFleet.add(entry);
                 st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);

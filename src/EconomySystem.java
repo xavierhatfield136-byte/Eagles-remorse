@@ -941,7 +941,7 @@ public final class EconomySystem {
         if (!base.alive || base.dying || base.hp <= 0) return false;
         if (base.faction == null || base.faction.teamId() != team.teamId()) return false;
 
-        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
+        BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades().bindTo(base));
         int oreBudget = Math.max(0, base.oreStockpile - npcOreReserveForBase(base, up));
         if (oreBudget <= 0) return false;
 

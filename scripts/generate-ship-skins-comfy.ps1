@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("enemy", "team_c", "team_d", "all")]
+    [ValidateSet("ally", "enemy", "team_c", "team_d", "all")]
     [string]$Faction = "team_c",
     [string]$ComfyApiUrl = "http://127.0.0.1:8188",
     [string]$PromptFile = "assets/ship_skins/dropbox/HULL_PROMPTS.md",
@@ -262,6 +262,12 @@ function Join-NonEmpty {
 
 function Get-FactionConfigs {
     return @{
+        ally = [pscustomobject]@{
+            Key = "ally"
+            Header = "Blue Faction / Team A / *_ally_albedo.png"
+            Folder = "blue_ally"
+            FilenameSuffix = "_ally_albedo.png"
+        }
         enemy = [pscustomobject]@{
             Key = "enemy"
             Header = "Red Faction / Team B / *_enemy_albedo.png"
