@@ -180,7 +180,7 @@ public final class MainMenuPanel extends JPanel {
             ResumeCampaignState checkpoint = loadResumeCampaignState();
             persistSettings.accept(GameMode.FLEET);
             if (checkpoint.available() && checkpoint.config() != null) {
-                onStart.accept(checkpoint.config());
+                onStart.accept(toFleetResumeConfig(checkpoint.config()));
                 return;
             }
             startWithMode.accept(GameMode.FLEET);
@@ -507,6 +507,19 @@ public final class MainMenuPanel extends JPanel {
             return ResumeCampaignState.unavailable(NO_CHECKPOINT_MESSAGE);
         }
         return checkpoint;
+    }
+
+    private static GameConfig toFleetResumeConfig(GameConfig config) {
+        if (config == null) return null;
+        return new GameConfig(
+                GameMode.FLEET,
+                config.worldW,
+                config.worldH,
+                config.randomEvents,
+                config.seed,
+                config.fullscreen,
+                config.playerTeamId,
+                true);
     }
 
     private static void scaleCombo(JComboBox<?> combo, double scale) {

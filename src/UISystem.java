@@ -34,7 +34,7 @@ public final class UISystem {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (fleetHubEditingLocked(ctx)) {
-            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO COMMISSION SHIPS", 1.8);
+            EventSystem.showBanner(ctx, "FLEET HANGAR OPENS BETWEEN SECTORS", 1.8);
             return;
         }
         ctx.ui.shopOpen = !ctx.ui.shopOpen;
@@ -73,11 +73,17 @@ public final class UISystem {
         }
     }
 
+    public static void toggleTacticalView(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.ui.tacticalViewEnabled = !ctx.ui.tacticalViewEnabled;
+        EventSystem.showBanner(ctx, "TACTICAL VIEW: " + (ctx.ui.tacticalViewEnabled ? "ON" : "OFF"), 1.0);
+    }
+
     public static void toggleBaseMenu(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (fleetHubEditingLocked(ctx)) {
-            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO EDIT SHIPS", 1.8);
+            EventSystem.showBanner(ctx, "FLEET UPGRADES OPEN BETWEEN SECTORS", 1.8);
             return;
         }
         Ship dock = CampaignSystem.currentBaseUpgradeAnchor(ctx);
@@ -973,7 +979,7 @@ public final class UISystem {
         if (ctx == null) return;
         if (!ctx.ui.baseMenuOpen) return;
         if (fleetHubEditingLocked(ctx)) {
-            EventSystem.showBanner(ctx, "OPEN THE FLEET HANGAR TO EDIT SHIPS", 1.8);
+            EventSystem.showBanner(ctx, "FLEET UPGRADES OPEN BETWEEN SECTORS", 1.8);
             return;
         }
         if (which < 1 || which > 5) return;

@@ -453,12 +453,12 @@ public class Renderer {
             case 0 -> campaign
                     ? (fleetHub
                         ? "Fleet hangar. Commission hulls, refit the roster, and prepare the next mission. Hotkey: TAB."
-                        : "Fleet hangar locked during missions. Open the Fleet tab to commission hulls and refit the roster. Hotkey: TAB.")
+                        : "Fleet hangar opens between sectors. Clear the current mission or snapshot to menu before refitting. Hotkey: TAB.")
                     : "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
             case 1 -> campaign
                     ? (fleetHub
                         ? "Fleet upgrade console. Edit the selected hull, its turrets, and its upgrade track. Hotkey: B."
-                        : "Fleet upgrades are locked during missions. Open the Fleet tab to edit the selected hull. Hotkey: B.")
+                        : "Fleet upgrades open between sectors. Clear the current mission or snapshot to menu before editing hulls. Hotkey: B.")
                     : "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
@@ -1455,6 +1455,11 @@ public class Renderer {
     }
 
     public static void drawSpaceBackground(Graphics2D g2, GameContext ctx, double camX, double camY, int viewW, int viewH, long seed) {
+        if (ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled) {
+            g2.setColor(Color.BLACK);
+            g2.fillRect(0, 0, viewW, viewH);
+            return;
+        }
         CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
         BufferedImage campaignImage = EnvironmentSkinLibrary.campaignBackdrop(campaignBackdropImageKey(ctx));
         if (campaignImage == null) {
@@ -1509,6 +1514,19 @@ public class Renderer {
         for (Ship s : ships) {
             if (s.alive && isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) {
                 drawShip(g2, s);
+                drawn++;
+            }
+        }
+        return drawn;
+    }
+
+    static int drawTacticalShips(Graphics2D g2, List<Ship> ships,
+                                 double minX, double minY, double maxX, double maxY) {
+        if (ships == null) return 0;
+        int drawn = 0;
+        for (Ship s : ships) {
+            if (s.alive && isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) {
+                drawTacticalShip(g2, s);
                 drawn++;
             }
         }
@@ -1583,6 +1601,21 @@ public class Renderer {
                 g2.setColor(new Color(255, 255, 255, 18));
                 g2.drawOval(x - rr2, y - rr2, rr2 * 2, rr2 * 2);
             }
+            drawn++;
+        }
+        drawAsteroidMinePrompt(g2, promptAsteroid);
+        return drawn;
+    }
+
+    static int drawTacticalAsteroids(Graphics2D g2, List<Asteroid> asteroids, Player player,
+                                     double minX, double minY, double maxX, double maxY) {
+        if (asteroids == null) return 0;
+        Asteroid promptAsteroid = findNearbyAsteroidPromptTarget(asteroids, player);
+        int drawn = 0;
+        for (Asteroid a : asteroids) {
+            if (a == null) continue;
+            if (!isWorldCircleVisible(a.x, a.y, a.collisionRadius() + 24.0, minX, minY, maxX, maxY)) continue;
+            drawTacticalAsteroid(g2, a);
             drawn++;
         }
         drawAsteroidMinePrompt(g2, promptAsteroid);
@@ -2365,7 +2398,7 @@ public class Renderer {
                             new Color(98, 112, 132, 255), new Color(188, 198, 214, 255),
                             new Color(180, 206, 255, 90), new Color(124, 146, 210, 28),
                             false, false, false, false, 0.15, 0.0));
-            case 2 -> new CampaignBackdropSpec(
+            case 2, 3 -> new CampaignBackdropSpec(
                     "jump_ring_frontier",
                     elapsed * 0.30,
                     new Color(12, 18, 30, 22),
@@ -2378,7 +2411,7 @@ public class Renderer {
                             new Color(128, 102, 82, 255), new Color(220, 186, 154, 255),
                             new Color(220, 190, 170, 92), new Color(184, 142, 120, 32),
                             false, false, false, false, 0.0, 0.0));
-            case 3 -> new CampaignBackdropSpec(
+            case 4, 5 -> new CampaignBackdropSpec(
                     "relay_halo_moon",
                     0.0,
                     new Color(8, 18, 32, 18),
@@ -2388,7 +2421,7 @@ public class Renderer {
                             new Color(170, 220, 255, 124), new Color(94, 154, 192, 34),
                             true, false, false, false, 0.72, 0.52),
                     null);
-            case 4 -> new CampaignBackdropSpec(
+            case 6, 7 -> new CampaignBackdropSpec(
                     "burning_debris_wake",
                     elapsed * 0.25,
                     new Color(34, 12, 10, 34),
@@ -2401,7 +2434,7 @@ public class Renderer {
                             new Color(52, 52, 68, 255), new Color(142, 148, 178, 255),
                             new Color(160, 168, 220, 84), new Color(122, 126, 180, 22),
                             false, false, false, false, 0.0, 0.0));
-            case 5 -> new CampaignBackdropSpec(
+            case 8 -> new CampaignBackdropSpec(
                     "exodus_gas_giant",
                     progress,
                     new Color(12, 18, 22, 20),
@@ -2414,7 +2447,7 @@ public class Renderer {
                             new Color(128, 146, 154, 255), new Color(220, 232, 232, 255),
                             new Color(210, 228, 255, 88), new Color(132, 168, 186, 22),
                             false, false, false, false, 0.0, 0.0));
-            case 6 -> new CampaignBackdropSpec(
+            case 9, 10, 11 -> new CampaignBackdropSpec(
                     "trade_spine_industrial_orbit",
                     elapsed * 0.28,
                     new Color(18, 18, 26, 24),
@@ -2424,7 +2457,7 @@ public class Renderer {
                             new Color(186, 210, 244, 124), new Color(124, 148, 196, 46),
                             true, true, true, false, 0.88, 0.68),
                     null);
-            case 7 -> {
+            case 12, 13, 14 -> {
                 double blend = (stage <= 0) ? 0.0 : MathUtil.clamp(0.28 + progress * 0.72, 0.0, 1.0);
                 yield new CampaignBackdropSpec(
                         "contract_world_array",
@@ -2440,7 +2473,7 @@ public class Renderer {
                                 new Color(184, 238, 230, 96), new Color(112, 182, 170, 26),
                                 false, false, false, false, 0.0, 0.0));
             }
-            case 8 -> new CampaignBackdropSpec(
+            case 15, 16 -> new CampaignBackdropSpec(
                     "ash_gate_gas_giant",
                     elapsed * 0.22,
                     new Color(26, 14, 10, 32),
@@ -2453,7 +2486,7 @@ public class Renderer {
                             new Color(122, 92, 76, 255), new Color(216, 166, 126, 255),
                             new Color(220, 176, 130, 82), new Color(196, 134, 84, 22),
                             false, false, false, false, 0.0, 0.0));
-            case 9 -> new CampaignBackdropSpec(
+            case 17, 18 -> new CampaignBackdropSpec(
                     "outer_sol_starline",
                     progress,
                     new Color(30, 20, 6, 34),
@@ -2466,7 +2499,7 @@ public class Renderer {
                             new Color(48, 66, 90, 255), new Color(140, 180, 220, 255),
                             new Color(156, 206, 240, 96), new Color(98, 146, 202, 24),
                             false, false, true, false, 0.0, 0.0));
-            case 10 -> new CampaignBackdropSpec(
+            case 19, 20 -> new CampaignBackdropSpec(
                     "liberation_moon_orbit",
                     progress,
                     new Color(20, 18, 12, 24),
@@ -2479,7 +2512,7 @@ public class Renderer {
                             new Color(78, 96, 120, 255), new Color(182, 200, 228, 255),
                             new Color(188, 212, 244, 78), new Color(122, 146, 198, 24),
                             false, false, false, false, 0.0, 0.0));
-            case 11 -> {
+            case 21, 22 -> {
                 double blend = (stage <= 0) ? 0.0 : MathUtil.clamp(0.18 + progress * 0.82, 0.0, 1.0);
                 yield new CampaignBackdropSpec(
                         "luna_earthrise_approach",
@@ -2495,7 +2528,7 @@ public class Renderer {
                                 new Color(164, 214, 248, 142), new Color(92, 154, 212, 56),
                                 false, true, true, true, 0.68 + blend * 0.20, 0.36 + blend * 0.18));
             }
-            case 12 -> new CampaignBackdropSpec(
+            case 23, 24 -> new CampaignBackdropSpec(
                     "earth_high_orbit",
                     1.0,
                     new Color(16, 24, 32, 26),
@@ -2865,6 +2898,19 @@ public class Renderer {
                 g2.fillOval(x - r, y - r, r * 2, r * 2);
                 drawn++;
             }
+        }
+        return drawn;
+    }
+
+    static int drawTacticalProjectiles(Graphics2D g2, List<Projectile> projectiles,
+                                       double minX, double minY, double maxX, double maxY) {
+        if (projectiles == null) return 0;
+        int drawn = 0;
+        for (Projectile p : projectiles) {
+            if (p == null || !p.alive) continue;
+            if (!isProjectileVisible(p, minX, minY, maxX, maxY)) continue;
+            drawTacticalProjectile(g2, p);
+            drawn++;
         }
         return drawn;
     }
@@ -6665,6 +6711,166 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     // IMPORTANT: This is the method that was likely stubbed/empty in your current project.
     public static void drawShip(Graphics2D g2, Ship ship) {
         ShipRenderer.drawShip(g2, ship);
+    }
+
+    private static void drawTacticalAsteroid(Graphics2D g2, Asteroid a) {
+        if (g2 == null || a == null) return;
+        int r = Math.max(4, (int) Math.round(a.radius));
+        int x = (int) Math.round(a.x);
+        int y = (int) Math.round(a.y);
+        double frac = (a.oreMax <= 0) ? 0.0 : MathUtil.clamp((double) a.ore / (double) a.oreMax, 0.0, 1.0);
+        int shade = (int) Math.round(72 + 70 * (0.25 + 0.75 * frac));
+        g2.setColor(new Color(shade, shade, shade, 175));
+        g2.fillOval(x - r, y - r, r * 2, r * 2);
+        g2.setColor(new Color(210, 220, 230, 70));
+        g2.drawOval(x - r, y - r, r * 2, r * 2);
+        if (a.ore > 0) {
+            int ir = Math.max(4, (int) Math.round(r * 0.48));
+            g2.setColor(new Color(255, 214, 132, MathUtil.clamp((int) Math.round(42 + 110 * frac), 0, 185)));
+            g2.drawOval(x - ir, y - ir, ir * 2, ir * 2);
+        }
+        if (a.rich) {
+            int rr = (int) Math.round(r * 1.28);
+            g2.setColor(new Color(255, 230, 165, 64));
+            g2.drawOval(x - rr, y - rr, rr * 2, rr * 2);
+        }
+    }
+
+    private static void drawTacticalProjectile(Graphics2D g2, Projectile p) {
+        if (g2 == null || p == null) return;
+        if (p instanceof PhaserBeam beam) {
+            Stroke old = g2.getStroke();
+            g2.setStroke(new BasicStroke((float) Math.max(1.4, beam.width * 0.42), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(withAlpha(beamColorForFaction(beam.faction), 210));
+            g2.drawLine((int) Math.round(beam.startX()), (int) Math.round(beam.startY()),
+                    (int) Math.round(beam.endX()), (int) Math.round(beam.endY()));
+            g2.setStroke(old);
+            return;
+        }
+        if (p instanceof PointDefenseLaser laser) {
+            Stroke old = g2.getStroke();
+            g2.setStroke(new BasicStroke((float) Math.max(1.1, laser.width * 0.45), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(withAlpha(mixColor(beamColorForFaction(laser.faction), Color.WHITE, 0.30), 220));
+            g2.drawLine((int) Math.round(laser.startX()), (int) Math.round(laser.startY()),
+                    (int) Math.round(laser.endX), (int) Math.round(laser.endY));
+            g2.setStroke(old);
+            return;
+        }
+
+        double ux;
+        double uy;
+        double len = Math.hypot(p.vx, p.vy);
+        if (len > 1e-6) {
+            ux = p.vx / len;
+            uy = p.vy / len;
+        } else if (p instanceof Missile m) {
+            ux = Math.cos(m.angle);
+            uy = Math.sin(m.angle);
+        } else if (p instanceof SuperweaponShot ws) {
+            ux = Math.cos(ws.angle);
+            uy = Math.sin(ws.angle);
+        } else if (p instanceof EnergyBolt eb) {
+            ux = Math.cos(eb.angle);
+            uy = Math.sin(eb.angle);
+        } else if (p instanceof DisruptorSlug slug) {
+            ux = Math.cos(slug.angle);
+            uy = Math.sin(slug.angle);
+        } else if (p instanceof DestabilizerPulse pulse) {
+            ux = Math.cos(pulse.angle);
+            uy = Math.sin(pulse.angle);
+        } else {
+            ux = 1.0;
+            uy = 0.0;
+        }
+
+        Color core = (p instanceof SuperweaponShot)
+                ? mixColor(beamColorForFaction(p.faction), Color.WHITE, 0.20)
+                : projectileCoreColor(p.faction);
+        int x = (int) Math.round(p.x);
+        int y = (int) Math.round(p.y);
+        int r = Math.max(2, (int) Math.round(p.radius * ((p instanceof SuperweaponShot) ? 0.85 : 0.65)));
+        double trailLen = Math.max(8.0, Math.min(30.0, p.radius * ((p instanceof SuperweaponShot) ? 4.8 : 3.0) + 8.0));
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke((float) Math.max(1.1, r * 0.8), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(core, (p instanceof SuperweaponShot) ? 220 : 190));
+        g2.drawLine(x, y,
+                (int) Math.round(p.x - ux * trailLen),
+                (int) Math.round(p.y - uy * trailLen));
+        g2.setStroke(old);
+        g2.setColor(withAlpha(mixColor(core, Color.WHITE, 0.22), (p instanceof SuperweaponShot) ? 236 : 214));
+        g2.fillOval(x - r, y - r, r * 2, r * 2);
+    }
+
+    private static void drawTacticalShip(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || !ship.alive) return;
+        boolean multipartDying = ship.dying && ShipPartLibrary.hasDestroyedParts(ship.role, ship.faction);
+        int wx = (int) Math.round(ship.x);
+        int wy = (int) Math.round(ship.y);
+        if (multipartDying) {
+            if (!isTinyStrikeCraft(ship.role)) {
+                g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+                g2.setColor(new Color(255, 255, 255, 92));
+                g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+            }
+            return;
+        }
+
+        Color hull = mixColor(factionHullColor(ship.faction), Color.BLACK, 0.18);
+        Color trim = mixColor(factionTrimColor(ship.faction), Color.WHITE, 0.08);
+        Graphics2D g = (Graphics2D) g2.create();
+        g.translate(wx, wy);
+        g.rotate(ship.angle);
+        double roleScale = ShipRenderer.roleVisualScale(ship.role);
+        if (Math.abs(roleScale - 1.0) > 1e-6) {
+            g.scale(roleScale, roleScale);
+        }
+
+        double sig = ship.effectiveSignature();
+        if (ship.isStealth && sig < 0.99) {
+            float a = (float) (0.22 + 0.78 * sig);
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+        }
+
+        ShipVisual visual = ShipRenderer.getVisual(ship);
+        for (Polygon poly : visual.hullPolys) {
+            g.setColor(withAlpha(hull, 188));
+            g.fillPolygon(poly);
+        }
+        for (Polygon poly : visual.superPolys) {
+            g.setColor(withAlpha(trim, 58));
+            g.fillPolygon(poly);
+        }
+
+        Stroke old = g.getStroke();
+        g.setStroke(new BasicStroke((float) Math.max(1.0, Math.min(2.5, ship.radius * 0.04)),
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(withAlpha(trim, 228));
+        for (Polygon poly : visual.hullPolys) {
+            g.drawPolygon(poly);
+        }
+        g.setColor(withAlpha(trim, 140));
+        for (Polygon poly : visual.superPolys) {
+            g.drawPolygon(poly);
+        }
+        for (Polygon poly : visual.fins) {
+            g.drawPolygon(poly);
+        }
+        g.setStroke(old);
+
+        double shieldMax = ship.effectiveShieldCapacityMax();
+        if (ship.shieldActive && shieldMax > 0.0 && ship.shield > 0.0) {
+            int sr = Math.max(8, (int) Math.round((ship.radius + 12.0) * 1.08));
+            int alpha = MathUtil.clamp((int) Math.round(48 + 118 * (ship.shield / shieldMax)), 0, 190);
+            g.setColor(new Color(120, 220, 255, alpha));
+            g.drawOval(-sr, -sr, sr * 2, sr * 2);
+        }
+        g.dispose();
+
+        if (!isTinyStrikeCraft(ship.role)) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+            g2.setColor(new Color(235, 240, 255, 112));
+            g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+        }
     }
 
     /**

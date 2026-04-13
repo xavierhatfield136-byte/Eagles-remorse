@@ -10,8 +10,11 @@ public final class GameRenderSystem {
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
+        boolean tacticalView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
         Renderer.drawSpaceBackground(g2, ctx, ctx.camX, ctx.camY, viewportW, viewportH, seed);
-        drawModifierWorldTint(ctx, g2, viewportW, viewportH);
+        if (!tacticalView) {
+            drawModifierWorldTint(ctx, g2, viewportW, viewportH);
+        }
         double zoom = CameraSystem.normalizedZoom(ctx);
         double cullPad = 220.0;
         double viewMinX = ctx.camX - cullPad;
@@ -24,52 +27,67 @@ public final class GameRenderSystem {
         worldG.scale(zoom, zoom);
         worldG.translate(-ctx.camX, -ctx.camY);
 
-        worldG.setColor(new Color(255, 255, 255, 28));
+        worldG.setColor(tacticalView ? new Color(130, 180, 220, 28) : new Color(255, 255, 255, 28));
         worldG.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
 
-        if (DevTools.isFancyVfxEnabled()) {
+        if (!tacticalView && DevTools.isFancyVfxEnabled()) {
             updateDamageVfx(ctx);
         }
 
         java.util.List<Ship> renderShips = fleetHubRenderShips(ctx);
 
-        ctx.perf.drawnAsteroids = Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnAsteroids = tacticalView
+                ? Renderer.drawTacticalAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY)
+                : Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
         ctx.perf.drawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        ctx.perf.drawnShips = Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        ctx.perf.drawnProjectiles = Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        if (!tacticalView) {
+            drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        }
+        ctx.perf.drawnShips = tacticalView
+                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY)
+                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        if (!tacticalView) {
+            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        }
+        ctx.perf.drawnProjectiles = tacticalView
+                ? Renderer.drawTacticalProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY)
+                : Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
         Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
         Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
 
         ctx.perf.totalVfx = VFX.activeCount();
-        try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
-
         ctx.perf.totalExplosions = Explosion.active.size();
-        ctx.perf.drawnExplosions = 0;
-        try {
-            for (Explosion e : Explosion.active) {
-                if (e == null) continue;
-                if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
-                ctx.perf.drawnExplosions++;
-                if (e.kind == Explosion.Kind.SHIELD_HIT) {
-                    drawShieldImpactExplosion(worldG, e);
-                } else if (e.kind == Explosion.Kind.DESTABILIZER_PULSE) {
-                    drawDestabilizerPulseExplosion(worldG, e);
-                } else if (e.kind == Explosion.Kind.SUPERWEAPON_BLAST) {
-                    drawSuperweaponBlastExplosion(worldG, e);
-                } else if (e.kind == Explosion.Kind.STASIS_FIELD) {
-                    drawStasisFieldExplosion(worldG, e);
-                } else if (e.kind == Explosion.Kind.FINAL_DETONATION) {
-                    drawFinalDetonationExplosion(worldG, e);
-                } else {
-                    drawDeathExplosion(worldG, e);
+        if (!tacticalView) {
+            try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
+
+            ctx.perf.drawnExplosions = 0;
+            try {
+                for (Explosion e : Explosion.active) {
+                    if (e == null) continue;
+                    if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
+                    ctx.perf.drawnExplosions++;
+                    if (e.kind == Explosion.Kind.SHIELD_HIT) {
+                        drawShieldImpactExplosion(worldG, e);
+                    } else if (e.kind == Explosion.Kind.DESTABILIZER_PULSE) {
+                        drawDestabilizerPulseExplosion(worldG, e);
+                    } else if (e.kind == Explosion.Kind.SUPERWEAPON_BLAST) {
+                        drawSuperweaponBlastExplosion(worldG, e);
+                    } else if (e.kind == Explosion.Kind.STASIS_FIELD) {
+                        drawStasisFieldExplosion(worldG, e);
+                    } else if (e.kind == Explosion.Kind.FINAL_DETONATION) {
+                        drawFinalDetonationExplosion(worldG, e);
+                    } else {
+                        drawDeathExplosion(worldG, e);
+                    }
                 }
-            }
-        } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {}
+        } else {
+            ctx.perf.drawnVfx = 0;
+            ctx.perf.drawnExplosions = 0;
+        }
 
         Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
                 viewMinX, viewMinY, viewMaxX, viewMaxY);
@@ -318,7 +336,7 @@ if (DevTools.isDebugOverlay()) {
                 return "Carrier wing idle: press / to set 5 squad pairs, C to launch a 2-ship squad, V to set wing behavior.";
             }
         }
-        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL).";
+        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL). Press J to toggle Tactical View.";
     }
 
     private static boolean hasHostileNearPlayer(GameContext ctx, double radius) {

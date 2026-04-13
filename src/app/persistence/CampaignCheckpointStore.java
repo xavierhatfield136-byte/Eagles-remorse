@@ -36,6 +36,7 @@ public final class CampaignCheckpointStore {
     private CampaignCheckpointStore() {}
 
     private static final int CURRENT_VERSION = 1;
+    private static final int MAX_CAMPAIGN_SECTORS = 24;
     private static final Path SAVE_DIR = Paths.get("save");
     private static final Path CHECKPOINT_FILE = SAVE_DIR.resolve("campaign_checkpoint.properties");
     private static final Object IO_LOCK = new Object();
@@ -124,9 +125,9 @@ public final class CampaignCheckpointStore {
             version = CURRENT_VERSION;
             worldW = Math.max(2000, worldW);
             worldH = Math.max(2000, worldH);
-            nextSector = clamp(nextSector, 1, 12);
+            nextSector = clamp(nextSector, 1, MAX_CAMPAIGN_SECTORS);
             credits = Math.max(0, credits);
-            sectorsCleared = clamp(sectorsCleared, 0, 12);
+            sectorsCleared = clamp(sectorsCleared, 0, MAX_CAMPAIGN_SECTORS);
             campaignKills = Math.max(0, campaignKills);
             bossDropsCollected = Math.max(0, bossDropsCollected);
             unlockMissileTierGranted = clamp(unlockMissileTierGranted, 0, 2);
@@ -182,7 +183,7 @@ public final class CampaignCheckpointStore {
         }
 
         public boolean isUsable() {
-            return nextSector >= 1 && nextSector <= 12;
+            return nextSector >= 1 && nextSector <= MAX_CAMPAIGN_SECTORS;
         }
 
         public String menuSummary() {
@@ -195,7 +196,12 @@ public final class CampaignCheckpointStore {
         }
 
         public GameConfig toGameConfig() {
-            return new GameConfig(GameMode.FLEET, worldW, worldH, randomEvents, seed, false, 0, true);
+            return toGameConfig(GameMode.CAMPAIGN_OPS);
+        }
+
+        public GameConfig toGameConfig(GameMode mode) {
+            GameMode resumeMode = (mode == GameMode.FLEET) ? GameMode.FLEET : GameMode.CAMPAIGN_OPS;
+            return new GameConfig(resumeMode, worldW, worldH, randomEvents, seed, false, 0, true);
         }
     }
 

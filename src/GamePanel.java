@@ -45,7 +45,7 @@ public class GamePanel extends JPanel implements ActionListener {
         SpawnSystem.initWorld(ctx);
 
         // Input
-        controls = InputSystem.install(this, ctx, exitToMenu, toggleFullscreen);
+        controls = InputSystem.install(this, ctx, this::exitToMenu, toggleFullscreen);
 
         // Higher-frequency scheduler + fixed-timestep simulation smooths frame pacing.
         timer = new Timer(5, this);
@@ -101,6 +101,11 @@ public class GamePanel extends JPanel implements ActionListener {
         super.removeNotify();
     }
 
+    private void exitToMenu() {
+        CampaignSystem.persistCheckpointForMenuExit(ctx);
+        if (exitToMenu != null) exitToMenu.run();
+    }
+
     // Key bindings live here so Swing can bind to this component, but the logic is in systems.
     void installBindings(GameContext ctx, PlayerControl controls, Runnable exitToMenu, Runnable toggleFullscreen) {
         InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -122,6 +127,7 @@ public class GamePanel extends JPanel implements ActionListener {
 
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_M, 0, false), "toggleMap", () -> GameplayActions.toggleMap(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_N, 0, false), "cycleHudDetail", () -> GameplayActions.cycleHudDetail(ctx));
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_J, 0, false), "toggleTacticalView", () -> GameplayActions.toggleTacticalView(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_BACK_QUOTE, 0, false), "cycleXrayFilter", () -> GameplayActions.cycleXrayFilter(ctx, +1));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_QUOTE, 0, false), "clearXrayFocus", () -> GameplayActions.clearXrayFocus(ctx));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
@@ -188,7 +194,7 @@ public class GamePanel extends JPanel implements ActionListener {
         });
 
         // Menu
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", () -> { if (exitToMenu != null) exitToMenu.run(); });
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", this::exitToMenu);
 
         // Primary/secondary fire
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimaryManual = true);

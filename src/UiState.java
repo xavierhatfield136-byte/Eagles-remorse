@@ -49,6 +49,7 @@ public final class UiState {
     public int flightDeckFocus = 0;
 
     public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
+    public boolean tacticalViewEnabled = false;
     public GameContext.XrayFilterMode xrayFilterMode = GameContext.XrayFilterMode.ALL;
     public ShipRoomLayout.RoomId xrayFocusedRoom = null;
     public ShipRoomLayout.RoomId xrayHoveredRoom = null;

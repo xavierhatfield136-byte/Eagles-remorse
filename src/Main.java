@@ -44,7 +44,9 @@ public class Main {
             return MainMenuPanel.ResumeCampaignState.unavailable(
                     "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.");
         }
-        return MainMenuPanel.ResumeCampaignState.available(checkpoint.menuSummary(), checkpoint.toGameConfig());
+        return MainMenuPanel.ResumeCampaignState.available(
+                checkpoint.menuSummary(),
+                checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS));
     }
 
     private void paintMenuSpaceBackground(Graphics2D g2, double camX, double camY, int width, int height, long seed) {

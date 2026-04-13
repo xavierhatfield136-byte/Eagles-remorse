@@ -115,4 +115,35 @@ class RendererHoverTooltipTest {
         assertTrue(tooltip.body.contains(objectiveTitle));
         assertTrue(tooltip.body.contains("warp corridor stabilizes"));
     }
+
+    @Test
+    void tacticalViewUsesBlackBackgroundAndGeometricShipSilhouettes() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        ctx.ui.tacticalViewEnabled = true;
+
+        Ship ship = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 110.0, 110.0);
+        ship.name = "Blue Spear";
+
+        BufferedImage canvas = new BufferedImage(220, 220, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            Renderer.drawSpaceBackground(g2, ctx, 0.0, 0.0, 220, 220, 1234L);
+            Renderer.drawTacticalShips(g2, java.util.List.of(ship), 0.0, 0.0, 220.0, 220.0);
+        } finally {
+            g2.dispose();
+        }
+
+        assertTrue((canvas.getRGB(5, 5) & 0x00FFFFFF) == 0, "tactical view should black out the background");
+
+        boolean foundShipPixel = false;
+        for (int y = 70; y <= 150 && !foundShipPixel; y++) {
+            for (int x = 70; x <= 150; x++) {
+                if ((canvas.getRGB(x, y) & 0x00FFFFFF) != 0) {
+                    foundShipPixel = true;
+                    break;
+                }
+            }
+        }
+        assertTrue(foundShipPixel, "tactical ship rendering should still draw a visible geometric silhouette");
+    }
 }

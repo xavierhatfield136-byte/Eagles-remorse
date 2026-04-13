@@ -13,7 +13,7 @@ import java.util.Set;
 
 /**
  * Campaign progression layer for a 2-hour run:
- * - 12 sectors
+ * - 24 sectors
  * - objective per sector
  * - act breaks
  * - paced unlock grants
@@ -162,7 +162,7 @@ public final class CampaignSystem {
         }
     }
 
-    private static final int AUTHORED_VERTICAL_SLICE_LAST_SECTOR = 3;
+    private static final int AUTHORED_VERTICAL_SLICE_LAST_SECTOR = 2;
     private static final int CAMPAIGN_STARTING_CREDITS = 1000;
     private static final int CAMPAIGN_BLUE_ESCORT_CAP = 15;
     private static final int CAMPAIGN_BLUE_LINE_CAP = 11;
@@ -180,6 +180,10 @@ public final class CampaignSystem {
     private static final double ESCORT_SUPPORT_RADIUS = 460.0;
     private static final double ESCORT_THREAT_RADIUS = 620.0;
     private static final double ESCORT_PROGRESS_THRESHOLD = 0.58;
+    private static final double ESCORT_TIGHT_SLOT_MARGIN = 18.0;
+    private static final double ESCORT_TIGHT_HOLD_RADIUS = 44.0;
+    private static final double ESCORT_TIGHT_CATCHUP_RADIUS = 260.0;
+    private static final double ESCORT_TIGHT_CATCHUP_SPEED_MUL = 1.08;
     private static final String[] ACT_TITLES = {
             "",
             "TRADE HUB COLLAPSE",
@@ -190,33 +194,57 @@ public final class CampaignSystem {
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
             new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 360, 630, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(2, ObjectiveType.DESTROY, "Break the red interdiction cordon", 8, 720, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(3, ObjectiveType.CAPTURE, "Seize the authority relay, then hold the uplink", 120, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(4, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
-            new SectorScript(5, ObjectiveType.ESCORT, "Escort the Exodus Transport Titan", 210, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(6, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 12, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(7, ObjectiveType.CAPTURE, "Secure the green contract array", 120, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(8, ObjectiveType.BOSS, "Destroy the Ash Gate Artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
-            new SectorScript(9, ObjectiveType.SURVIVE, "Hold the outer-Sol arrival corridor", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(10, ObjectiveType.ESCORT, "Escort the liberated recovery Titan", 220, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(11, ObjectiveType.DESTROY, "Break the Luna orbital cordon", 14, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(12, ObjectiveType.FINAL_BOSS, "Destroy the AI Mothership over Earth", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
+            new SectorScript(2, ObjectiveType.DESTROY, "Destroy customs-halo gunships before they seal the civilian aperture", 6, 690, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 8, 720, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 6, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(6, ObjectiveType.SURVIVE, "Recover the debris-wake caches before demolition ships erase them", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(7, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(8, ObjectiveType.ESCORT, "Keep the Exodus Transport Titan inside the Mothership's screen", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(9, ObjectiveType.SURVIVE, "Cover the neutral broker hulls as they defect into the fleet", 100, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(10, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 12, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(11, ObjectiveType.SURVIVE, "Secure depot ledgers and fuel stores before demolition charges fire", 115, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(12, ObjectiveType.SURVIVE, "Keep the green signatory couriers alive until the pact is signed", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(13, ObjectiveType.DESTROY, "Destroy the jammer triad around Coalition Array Nysa", 3, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(14, ObjectiveType.DESTROY, "Destroy the relief wing trying to re-isolate Nysa", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(15, ObjectiveType.DESTROY, "Silence Kharon's spotter towers and anchor guns", 4, 800, BossKind.NONE, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(16, ObjectiveType.BOSS, "Destroy the red Artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(17, ObjectiveType.DESTROY, "Destroy recon groups before they mark the coalition corridor", 6, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(18, ObjectiveType.SURVIVE, "Hold the outer-Sol arrival corridor", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(19, ObjectiveType.DESTROY, "Destroy prison tenders and break the convoy clamps", 4, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(20, ObjectiveType.ESCORT, "Keep the liberated recovery Titan close behind the Mothership", 100, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(21, ObjectiveType.DESTROY, "Destroy the Luna orbital defense anchors", 3, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(22, ObjectiveType.DESTROY, "Break the Luna reserve cordon and clear the Earth lane", 10, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(23, ObjectiveType.DESTROY, "Destroy occupation uplink towers and cover the resistance launches", 4, 900, BossKind.NONE, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(24, ObjectiveType.FINAL_BOSS, "Destroy the AI Mothership over Earth", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
     };
 
     private static final SideObjectiveScript[] SIDE_SCRIPTS = new SideObjectiveScript[]{
             null,
             new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Mothership pristine for 120s", 120, 160),
-            new SideObjectiveScript(2, SideObjectiveType.KILL_COUNT, "Destroy 6 interdiction ships", 6, 200),
-            new SideObjectiveScript(3, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the relay in 660s", 660, 240),
-            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the pursuit Titan in 600s", 600, 220),
-            new SideObjectiveScript(5, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Exodus Titan undamaged for 120s", 120, 210),
-            new SideObjectiveScript(6, SideObjectiveType.KILL_COUNT, "Destroy 10 vanguard escorts", 10, 230),
-            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the contract array in 600s", 600, 250),
-            new SideObjectiveScript(8, SideObjectiveType.KILL_COUNT, "Destroy 6 siege escorts", 6, 280),
-            new SideObjectiveScript(9, SideObjectiveType.KILL_COUNT, "Destroy 14 attackers during the hold", 14, 300),
-            new SideObjectiveScript(10, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep liberated crews secure for 150s", 150, 320),
-            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the orbital cordon in 620s", 620, 350),
-            new SideObjectiveScript(12, SideObjectiveType.CLEAR_BEFORE_TIME, "End the occupation in 720s", 720, 400)
+            new SideObjectiveScript(2, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the customs halo in 540s", 540, 180),
+            new SideObjectiveScript(3, SideObjectiveType.KILL_COUNT, "Destroy 8 interdiction ships", 8, 220),
+            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Open the relay in 600s", 600, 240),
+            new SideObjectiveScript(5, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the relay relief wing in 620s", 620, 260),
+            new SideObjectiveScript(6, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the caches in 540s", 540, 220),
+            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the pursuit Titan in 600s", 600, 240),
+            new SideObjectiveScript(8, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Exodus Titan undamaged for 90s", 90, 210),
+            new SideObjectiveScript(9, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep three defectors alive for 90s", 90, 240),
+            new SideObjectiveScript(10, SideObjectiveType.KILL_COUNT, "Destroy 10 vanguard escorts", 10, 230),
+            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the depot shelf in 560s", 560, 240),
+            new SideObjectiveScript(12, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the lead signatory ship pristine for 80s", 80, 260),
+            new SideObjectiveScript(13, SideObjectiveType.CLEAR_BEFORE_TIME, "Bring the Nysa array online in 600s", 600, 250),
+            new SideObjectiveScript(14, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the Nysa relief wing in 620s", 620, 280),
+            new SideObjectiveScript(15, SideObjectiveType.KILL_COUNT, "Destroy 6 counterbattery escorts", 6, 260),
+            new SideObjectiveScript(16, SideObjectiveType.KILL_COUNT, "Destroy 6 siege escorts", 6, 280),
+            new SideObjectiveScript(17, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the recon screen in 560s", 560, 260),
+            new SideObjectiveScript(18, SideObjectiveType.KILL_COUNT, "Destroy 14 attackers during the hold", 14, 300),
+            new SideObjectiveScript(19, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the recovery Titan intact for 90s", 90, 320),
+            new SideObjectiveScript(20, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep liberated crews secure for 100s", 100, 320),
+            new SideObjectiveScript(21, SideObjectiveType.CLEAR_BEFORE_TIME, "Silence Luna's anchors in 620s", 620, 350),
+            new SideObjectiveScript(22, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the Luna cordon in 620s", 620, 360),
+            new SideObjectiveScript(23, SideObjectiveType.CLEAR_BEFORE_TIME, "Blind the occupation uplinks in 660s", 660, 380),
+            new SideObjectiveScript(24, SideObjectiveType.CLEAR_BEFORE_TIME, "End the occupation in 720s", 720, 400)
     };
 
     private static final SectorLore[] LORE = new SectorLore[]{
@@ -224,37 +252,73 @@ public final class CampaignSystem {
             new SectorLore(1, "ANCHORAGE FIRESTORM", "Far Trade Anchorage",
                     "Earth has fallen. Hold the evacuation lanes while Far Trade's arcology crowns, exchange ring, and refugee docks burn around the harbor approaches.",
                     "The trade colony is gutted, but the convoy escapes with civilians, treasury ledgers, and a road home."),
-            new SectorLore(2, "BREAKOUT VECTOR", "Outer Colony Jump Ring",
-                    "Red interdiction packs are sealing the outer-colony jump ring and trapping thousands of civilian hulls in its transit halo. Break the cordon before the aperture collapses.",
-                    "The first blockade is broken, scattered colony traffic slips through, and the return route stays open."),
-            new SectorLore(3, "LAST AUTHORITY RELAY", "Gate Relay Tethys",
-                    "Seize the last intact authority relay and keep its route-control uplink alive long enough to chart a lawful Earth vector through the dead gates.",
-                    "Navigation control is restored, the transit net answers, and the homeward route becomes real."),
-            new SectorLore(4, "RED KNIFE PURSUIT", "Burning Debris Wake",
-                    "A pursuit Titan is closing through the wreck wake of the breakout. Kill it before it pins the refugee column in the shattered traffic lanes behind you.",
-                    "The AI's first Titan hunter is down and the fleet punches out of the kill box."),
-            new SectorLore(5, "REFUGEE WAYLINE", "Civilian Exodus Corridor",
-                    "Escort the Exodus Transport Titan carrying refugees, ration bunkers, fuel caskets, and the state archives that prove the government still exists.",
-                    "The civilian column survives and the fleet keeps its people, records, and legitimacy with it."),
-            new SectorLore(6, "BROKEN ARMISTICE", "Neutral Trade Spine",
-                    "Break the AI vanguard around Neutral Trade Spine, a belt of broker yards, bonded depots, and slipway habitats, and hold the lane long enough for neutral survivors to defect.",
-                    "Broker yards swing over, defecting logistics hulls fall in behind the Mothership, and the return fleet grows heavier."),
-            new SectorLore(7, "GREEN CONTRACT FRONT", "Coalition Array Nysa",
-                    "Secure Coalition Array Nysa, a contract world wrapped in service halos and uplink monasteries, and convince the green houses to join the road home.",
-                    "Green contract signals come back online, coalition brokers commit ships, and the alliance begins to take shape."),
-            new SectorLore(8, "ASHEN GATE", "Siege Gate Kharon",
-                    "A red Artillery Titan has turned Siege Gate Kharon into a furnace of broken stations and burning transit steel. Silence it and reopen the Earthward lane.",
-                    "The siege gate is broken, its targeting spine goes dark, and the fleet can press toward Sol."),
-            new SectorLore(9, "OUTER SOL HOLD", "Outer Sol Defense Ring",
-                    "The AI knows you are coming. Hold formation in the outer defense ring while scattered coalition task groups, tugs, and hospital ships finish assembling for the final push.",
+            new SectorLore(2, "CUSTOMS HALO COLLAPSE", "Outer Colony Jump Ring Approach",
+                    "Destroy customs-halo gunships and interdiction cutters before they seal the civilian aperture and trap the convoy outside the ring.",
+                    "The halo screen cracks, frightened civilian traffic slips through, and the jump approach stays open."),
+            new SectorLore(3, "BREAKOUT VECTOR", "Outer Colony Jump Ring",
+                    "Break the red interdiction cordon at the aperture itself before the outer-colony jump ring collapses into a kill box.",
+                    "The first true blockade is broken and the return route opens into deep space."),
+            new SectorLore(4, "LAST AUTHORITY RELAY", "Gate Relay Tethys",
+                    "Destroy the route-control blockers pinning the last intact authority relay so the fleet can restore a lawful Earthward vector.",
+                    "Route control breaks open, the transit net answers, and the homeward route becomes real."),
+            new SectorLore(5, "RELAY RELIEF BREAK", "Tethys Relay Hinterlane",
+                    "Destroy the reserve wing racing in behind Tethys before it can shut the Earth vector a second time.",
+                    "The relief wing is shattered and the relay corridor stays open behind the fleet."),
+            new SectorLore(6, "DEBRIS WAKE RECOVERY", "Burning Debris Wake",
+                    "Recover state archives, fuel caskets, and convoy stragglers from the burning debris wake before demolition ships erase the evidence of survival.",
+                    "The fleet pulls people, fuel, and legitimacy out of the fire before the wreck field goes dark."),
+            new SectorLore(7, "RED KNIFE PURSUIT", "Shattered Traffic Lanes",
+                    "A pursuit Titan is closing through the wreck wake of the breakout. Kill it before it catches the refugee column in the shattered lanes behind you.",
+                    "The AI's first Titan hunter is down and the convoy punches out of the kill box."),
+            new SectorLore(8, "REFUGEE WAYLINE", "Civilian Exodus Corridor",
+                    "Keep the Exodus Transport Titan tight under the Mothership's screen through a short breakout window while hunter packs claw at the convoy flanks.",
+                    "The civilian column survives the breakout and the fleet keeps its people, records, and legitimacy with it."),
+            new SectorLore(9, "NEUTRAL TRADE SPINE", "Broker Yards And Slipway Habitats",
+                    "Cover neutral broker hulls and defecting yard ships as they cross from the trade spine into coalition protection.",
+                    "Neutral survivors choose the road home and the fleet grows because people still believe in it."),
+            new SectorLore(10, "BROKEN ARMISTICE", "Trade Spine Defense Belt",
+                    "Break the AI vanguard around the trade spine and keep the homeward lane open through the broker yards and bonded depots.",
+                    "The vanguard breaks and the trade spine defects behind the Blue fleet."),
+            new SectorLore(11, "LEDGER AND LOX", "Bonded Depot Shelf",
+                    "Secure the bonded ledgers, refit stores, and fuel depots that keep the road home alive before demolition teams can burn them out.",
+                    "The fleet keeps its fuel, books, and repair stores, and the journey home stays logistically possible."),
+            new SectorLore(12, "SIGNATORY RUN", "Coalition Service Halos",
+                    "Keep green courier and command hulls alive long enough to formalize the first coalition commitment under fire.",
+                    "The pact is signed in motion and the green houses commit ships to the road home."),
+            new SectorLore(13, "GREEN CONTRACT FRONT", "Coalition Array Nysa",
+                    "Destroy the jammer triad around Coalition Array Nysa and let the green houses hear the coalition call again.",
+                    "Nysa comes back online and the green contract front swings toward the fleet."),
+            new SectorLore(14, "NYSA RELIEF BREAK", "Contract Array Rear Orbit",
+                    "Destroy the reserve wing and command ship trying to re-isolate Nysa before the contract world is cut off again.",
+                    "The counterattack breaks and the green alliance holds under pressure."),
+            new SectorLore(15, "KHARON OUTER SCREEN", "Siege Gate Kharon",
+                    "Silence Kharon's spotter towers, anchor guns, and siege beacons before the artillery Titan can fully range the lane.",
+                    "The outer screen collapses and the gate's targeting spine starts to fail."),
+            new SectorLore(16, "ASHEN GATE", "Siege Gate Furnace",
+                    "A red Artillery Titan has turned Siege Gate Kharon into a furnace of burning transit steel. Silence it and reopen the Solward lane.",
+                    "The siege gate is broken, its guns go dark, and the fleet can press into Sol."),
+            new SectorLore(17, "OUTER SOL PROBE WAR", "Outer Sol Defense Fringe",
+                    "Destroy recon groups and marker ships before they can vector the entire Sol defense ring onto the coalition corridor.",
+                    "The probe war is won and the coalition stays hidden just long enough to form the final line."),
+            new SectorLore(18, "OUTER SOL HOLD", "Coalition Assembly Ring",
+                    "Hold the arrival corridor while scattered coalition task groups, tugs, and hospital ships finish assembling for the final push.",
                     "The line holds, Sol is in reach, and the coalition arrives intact enough to matter."),
-            new SectorLore(10, "YELLOW BREAKCHAIN", "Liberation Corridor",
-                    "Escort the liberated recovery Titan and its freed crews back into formation through the debris of snapped convoy chains and prison tender wrecks.",
-                    "Yellow survivors rejoin the fleet, prison chains break for good, and the liberation war becomes real."),
-            new SectorLore(11, "EARTH APPROACH", "Luna Perimeter",
-                    "Break the orbital cordon around Luna's foundry belts, defense towers, and mass-driver yards, shatter the AI screen, and open a lane to Earth.",
-                    "Earth is finally ahead, the lunar bastion is broken, and only the occupation fleet remains."),
-            new SectorLore(12, "HOMEWORLD LIBERATION", "Earth High Orbit",
+            new SectorLore(19, "YELLOW BREAKCHAIN", "Liberation Corridor",
+                    "Destroy prison tenders, tractor nodes, and clamp escorts holding liberated yellow crews inside the breakchain.",
+                    "The prison chain breaks and liberated yellow crews begin to fall back under fleet protection."),
+            new SectorLore(20, "YELLOW REJOIN", "Breakchain Debris Run",
+                    "Keep the liberated recovery Titan close behind the Mothership while the fleet cuts through the breakchain debris run.",
+                    "Yellow survivors rejoin the fleet in force and the liberation war becomes real."),
+            new SectorLore(21, "LUNA ANCHOR SWEEP", "Luna Perimeter",
+                    "Destroy the orbital defense anchors, foundry guns, and mass-driver batteries screening the lunar perimeter.",
+                    "Luna's anchor grid goes dark and the Earth lane starts to crack open."),
+            new SectorLore(22, "LUNA CORDON BREAK", "Earth Approach Lane",
+                    "Break the reserve cordon around the Earth approach and force open the last lane to home.",
+                    "The lunar cordon shatters and Earth finally lies ahead."),
+            new SectorLore(23, "EARTHRISE INSURRECTION", "Earth Lift Terminus Belt",
+                    "Destroy occupation uplink towers and keep resistance launches alive long enough to blind the AI over Earth.",
+                    "Earth's resistance rises into orbit and the occupation finally starts to lose its grip."),
+            new SectorLore(24, "HOMEWORLD LIBERATION", "Earth High Orbit",
                     "Destroy the AI Mothership over Earth's night-side city webs, orbital lift termini, and burning defense lattice, and end the occupation.",
                     "The AI is broken, Earth's orbit is reclaimed, and the long road home is finally over.")
     };
@@ -262,7 +326,7 @@ public final class CampaignSystem {
     public static final class CampaignState {
         public boolean enabled;
         public int sector = 1;
-        public final int totalSectors = 12;
+        public final int totalSectors = 24;
         public int act = 1;
 
         public ObjectiveType objectiveType = ObjectiveType.SURVIVE;
@@ -295,6 +359,8 @@ public final class CampaignSystem {
         public int objectiveAssetTotal = 0;
         public int objectiveAssetLosses = 0;
         public String objectiveAssetLabel = "";
+        public int objectiveAssetRequiredSurvivors = 0;
+        public String objectiveAssetFailureText = "";
 
         public double transitionTimer = 0.0;
         public String transitionLabel = "";
@@ -483,6 +549,7 @@ public final class CampaignSystem {
         detectHostileKills(ctx);
         detectObjectiveAssetLosses(ctx);
         updateAuthoredSectorScript(ctx, st);
+        updateEscortFormationBehavior(ctx, st, dt);
         updateSideObjective(ctx, dt);
         updateObjective(ctx, dt);
     }
@@ -513,7 +580,7 @@ public final class CampaignSystem {
     public static int groupsPerWave(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null || !st.enabled) return 1;
-        int base = (st.sector >= 10) ? 3 : (st.sector >= 5 ? 2 : 1);
+        int base = (st.sector >= 18) ? 3 : (st.sector >= 9 ? 2 : 1);
         return Math.max(1, (int) Math.round(base * st.enemyWaveGroupMul));
     }
 
@@ -575,8 +642,11 @@ public final class CampaignSystem {
     private static String objectiveAssetHud(CampaignState st) {
         if (st == null || st.objectiveAssetTotal <= 0) return "";
         if (st.objectiveAssetLabel == null || st.objectiveAssetLabel.isBlank()) return "";
-        int alive = Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
-        return "   ASSETS: " + st.objectiveAssetLabel + " " + alive + "/" + st.objectiveAssetTotal;
+        int alive = liveObjectiveAssets(st);
+        String quota = (st.objectiveAssetRequiredSurvivors > 0)
+                ? ("  SAFE>=" + st.objectiveAssetRequiredSurvivors)
+                : "";
+        return "   ASSETS: " + st.objectiveAssetLabel + " " + alive + "/" + st.objectiveAssetTotal + quota;
     }
 
     public static boolean hasCapturePoint(GameContext ctx) {
@@ -689,11 +759,21 @@ public final class CampaignSystem {
     public static boolean isFleetHubSession(GameContext ctx) {
         CampaignState st = state(ctx);
         return ctx != null
-                && ctx.config != null
-                && ctx.config.mode == GameMode.FLEET
                 && st != null
                 && st.enabled
                 && st.awaitingEpisodeLaunch;
+    }
+
+    public static boolean persistCheckpointForMenuExit(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled || ctx.player == null) return false;
+        if (ctx.gameOver || ctx.state == GameState.GAME_OVER) return false;
+
+        int resumeSector = st.awaitingEpisodeLaunch
+                ? Math.max(1, st.pendingEpisodeSector > 0 ? st.pendingEpisodeSector : st.sector)
+                : Math.max(1, st.sector);
+        if (resumeSector > st.totalSectors) return false;
+        return saveCheckpoint(ctx, st, resumeSector);
     }
 
     public static boolean hasCinematicFocus(GameContext ctx) {
@@ -1330,7 +1410,7 @@ public final class CampaignSystem {
             Faction.clearCampaignAlliances();
             return;
         }
-        boolean yellowAlliance = st.campaignBlueYellowAlliance || st.sector >= 10;
+        boolean yellowAlliance = st.campaignBlueYellowAlliance || st.sector >= 20;
         st.campaignBlueYellowAlliance = yellowAlliance;
         Faction.configureCampaignAlliances(st.campaignBlueGreenAlliance, yellowAlliance);
     }
@@ -1563,6 +1643,8 @@ public final class CampaignSystem {
         st.objectiveAssetTotal = 0;
         st.objectiveAssetLosses = 0;
         st.objectiveAssetLabel = "";
+        st.objectiveAssetRequiredSurvivors = 0;
+        st.objectiveAssetFailureText = "";
         st.captureArmed = false;
         st.bossTargetId = -1;
         st.bossKind = BossKind.NONE;
@@ -1660,17 +1742,29 @@ public final class CampaignSystem {
         if (st == null) return "";
         return switch (st.sector) {
             case 1 -> "PHASE: Screen the anchorage while civilian lanes stay open";
-            case 2 -> "PHASE: Break the jump-ring blockade before the route collapses";
-            case 3 -> "PHASE: Sweep the relay perimeter and seize the authority core";
-            case 4 -> "PHASE: Hold formation until the pursuit Titan commits";
-            case 5 -> "PHASE: Keep the refugee titan screened and moving";
-            case 6 -> "PHASE: Shatter the first cordon before reserves entrench";
-            case 7 -> "PHASE: Push into the contract array and hold the uplink";
-            case 8 -> "PHASE: Close through the siege lane and silence the gate gun";
-            case 9 -> "PHASE: Hold the coalition mustering corridor under pressure";
-            case 10 -> "PHASE: Cover the liberated crews and rejoin the column";
-            case 11 -> "PHASE: Crack the Luna perimeter and clear an Earth lane";
-            case 12 -> "PHASE: Collapse the orbital defense ring and kill the AI flagship";
+            case 2 -> "PHASE: Intercept the customs-halo gunships before the aperture seals";
+            case 3 -> "PHASE: Break the aperture cordon before the jump ring becomes a kill box";
+            case 4 -> "PHASE: Sweep the relay blockers off the authority spindle";
+            case 5 -> "PHASE: Break the reserve wing chasing the relay";
+            case 6 -> "PHASE: Hold the debris field long enough to pull the caches free";
+            case 7 -> "PHASE: Hold formation until the pursuit Titan commits";
+            case 8 -> "PHASE: Keep the refugee titan screened and moving";
+            case 9 -> "PHASE: Keep the broker defectors alive while they cross into formation";
+            case 10 -> "PHASE: Shatter the trade-spine cordon before reserves entrench";
+            case 11 -> "PHASE: Hold the depot shelf while the logistics teams recover stores";
+            case 12 -> "PHASE: Keep the signatory run alive until the pact is sealed";
+            case 13 -> "PHASE: Sweep the Nysa perimeter and cut the jammer triad";
+            case 14 -> "PHASE: Break the Nysa relief wing before the array is isolated again";
+            case 15 -> "PHASE: Silence the outer batteries feeding Kharon's fire-control net";
+            case 16 -> "PHASE: Close through the siege lane and silence the artillery titan";
+            case 17 -> "PHASE: Kill the probe war screen before it marks the coalition";
+            case 18 -> "PHASE: Hold the coalition mustering corridor under pressure";
+            case 19 -> "PHASE: Break the prison chain and free the yellow convoy";
+            case 20 -> "PHASE: Keep the liberated recovery titan screened and moving";
+            case 21 -> "PHASE: Silence Luna's anchor grid and foundry guns";
+            case 22 -> "PHASE: Break the lunar reserve cordon and force the Earth lane";
+            case 23 -> "PHASE: Blind the occupation uplinks and cover the resistance launches";
+            case 24 -> "PHASE: Collapse the orbital defense ring and kill the AI flagship";
             default -> "PHASE: Advance the campaign objective";
         };
     }
@@ -1679,17 +1773,29 @@ public final class CampaignSystem {
         if (st == null) return "";
         return switch (st.sector) {
             case 1 -> "THREAT: Raider probes and panic around the colony docks";
-            case 2 -> "THREAT: Interdiction packs covering the jump ring";
-            case 3 -> "THREAT: Relay defenders and response lances";
-            case 4 -> "THREAT: Titan pursuit group closing from the wake";
-            case 5 -> "THREAT: Vanguard hunters probing the convoy flanks";
-            case 6 -> "THREAT: Cordon reserves ready to counter-punch";
-            case 7 -> "THREAT: Contract-array defenders and jammer relief";
-            case 8 -> "THREAT: Siege escorts feeding the artillery gate";
-            case 9 -> "THREAT: Sol pickets converging on the corridor";
-            case 10 -> "THREAT: Breakchain raiders hunting the recovery line";
-            case 11 -> "THREAT: Orbital defense groups screening Luna";
-            case 12 -> "THREAT: Full occupation fleet over Earth";
+            case 2 -> "THREAT: Customs-halo gunships locking down the civilian aperture";
+            case 3 -> "THREAT: Interdiction packs covering the jump ring";
+            case 4 -> "THREAT: Relay defenders and route-control lances";
+            case 5 -> "THREAT: Relay reserves racing the vector from the hinterlane";
+            case 6 -> "THREAT: Demolition ships erasing the convoy's political and fuel reserves";
+            case 7 -> "THREAT: Titan pursuit group closing from the wake";
+            case 8 -> "THREAT: Vanguard hunters probing the convoy flanks";
+            case 9 -> "THREAT: Red raiders trying to kill the defectors before they switch sides";
+            case 10 -> "THREAT: Cordon reserves ready to counter-punch";
+            case 11 -> "THREAT: Demolition detachments burning ledgers and depot stores";
+            case 12 -> "THREAT: Interceptors hunting the signatory run";
+            case 13 -> "THREAT: Contract-array defenders and jammer escorts";
+            case 14 -> "THREAT: Red relief wings trying to re-isolate Nysa";
+            case 15 -> "THREAT: Spotter towers and anchor guns feeding Kharon's artillery";
+            case 16 -> "THREAT: Siege escorts feeding the artillery gate";
+            case 17 -> "THREAT: Probe groups and marker ships painting the coalition lane";
+            case 18 -> "THREAT: Sol pickets converging on the corridor";
+            case 19 -> "THREAT: Prison tenders and clamp escorts holding the yellow chain together";
+            case 20 -> "THREAT: Breakchain raiders hunting the recovery line";
+            case 21 -> "THREAT: Orbital defense groups screening Luna";
+            case 22 -> "THREAT: Lunar reserve capitals protecting the Earth approach";
+            case 23 -> "THREAT: Occupation uplinks and kill teams suppressing resistance launches";
+            case 24 -> "THREAT: Full occupation fleet over Earth";
             default -> "THREAT: Hostile fleet contact expected";
         };
     }
@@ -1710,7 +1816,19 @@ public final class CampaignSystem {
             case 9 -> spawnSector9(ctx, st);
             case 10 -> spawnSector10(ctx, st);
             case 11 -> spawnSector11(ctx, st);
-            default -> spawnSector12(ctx, st);
+            case 12 -> spawnSector12(ctx, st);
+            case 13 -> spawnSector13(ctx, st);
+            case 14 -> spawnSector14(ctx, st);
+            case 15 -> spawnSector15(ctx, st);
+            case 16 -> spawnSector16(ctx, st);
+            case 17 -> spawnSector17(ctx, st);
+            case 18 -> spawnSector18(ctx, st);
+            case 19 -> spawnSector19(ctx, st);
+            case 20 -> spawnSector20(ctx, st);
+            case 21 -> spawnSector21(ctx, st);
+            case 22 -> spawnSector22(ctx, st);
+            case 23 -> spawnSector23(ctx, st);
+            default -> spawnSector24(ctx, st);
         }
     }
 
@@ -1730,7 +1848,7 @@ public final class CampaignSystem {
                         new Color(118, 200, 220, 20), new Color(162, 232, 248, 150));
             }
             case 2 -> {
-                addLandmark(st, ctx, LandmarkType.RING, "Outer Colony Jump Ring", "Civilian transit aperture and customs halo",
+                addLandmark(st, ctx, LandmarkType.RING, "Customs Halo", "Civilian aperture and outer-ring customs loop",
                         px + 1180.0, py - 140.0, 300.0,
                         new Color(94, 158, 238, 18), new Color(164, 212, 255, 168));
                 addLandmark(st, ctx, LandmarkType.COLONY, "Cinder Anchorage", "Stripped arcology barges drifting off the lane",
@@ -1738,6 +1856,14 @@ public final class CampaignSystem {
                         new Color(144, 124, 98, 28), new Color(228, 198, 170, 150));
             }
             case 3 -> {
+                addLandmark(st, ctx, LandmarkType.RING, "Outer Colony Jump Ring", "Civilian transit aperture and interdiction cordon",
+                        px + 1160.0, py - 120.0, 320.0,
+                        new Color(94, 158, 238, 18), new Color(164, 212, 255, 168));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Breakout Aperture", "The only safe vector out of the colony halo",
+                        px + 860.0, py + 10.0, 180.0,
+                        new Color(120, 176, 220, 18), new Color(200, 234, 255, 150));
+            }
+            case 4 -> {
                 addLandmark(st, ctx, LandmarkType.RELAY, "Gate Relay Tethys", "Jump authority uplink and route-control spindle",
                         st.captureX, st.captureY, 190.0,
                         new Color(98, 166, 218, 24), new Color(206, 235, 255, 180));
@@ -1745,15 +1871,31 @@ public final class CampaignSystem {
                         st.captureX + 60.0, st.captureY - 40.0, 300.0,
                         new Color(90, 186, 214, 16), new Color(150, 236, 255, 142));
             }
-            case 4 -> {
+            case 5 -> {
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Tethys Relay Hinterlane", "Reserve approach lane feeding the relay",
+                        st.captureX + 320.0, st.captureY - 20.0, 220.0,
+                        new Color(120, 188, 126, 18), new Color(190, 245, 196, 155));
+                addLandmark(st, ctx, LandmarkType.RELAY, "Authority Vector", "Green navigation handoff zone behind the relay",
+                        st.captureX - 280.0, st.captureY + 80.0, 160.0,
+                        new Color(120, 150, 170, 20), new Color(210, 232, 246, 142));
+            }
+            case 6 -> {
                 addLandmark(st, ctx, LandmarkType.FRONT, "Burning Debris Wake", "Wreck belt from the breakout",
+                        px + 980.0, py - 280.0, 260.0,
+                        new Color(168, 116, 84, 22), new Color(236, 178, 146, 160));
+                addLandmark(st, ctx, LandmarkType.COLONY, "Recovery Drift", "Archive barges and fuel caskets still afloat in the wake",
+                        px + 1260.0, py - 60.0, 180.0,
+                        new Color(158, 72, 72, 18), new Color(255, 144, 144, 154));
+            }
+            case 7 -> {
+                addLandmark(st, ctx, LandmarkType.FRONT, "Shattered Traffic Lanes", "Wreck-choked pursuit lane behind the breakout",
                         px + 980.0, py - 280.0, 260.0,
                         new Color(168, 116, 84, 22), new Color(236, 178, 146, 160));
                 addLandmark(st, ctx, LandmarkType.FRONT, "Pursuit Vector", "Red kill-box approach lane",
                         px + 1260.0, py - 60.0, 180.0,
                         new Color(158, 72, 72, 18), new Color(255, 144, 144, 154));
             }
-            case 5 -> {
+            case 8 -> {
                 double ex = (st.escortShip != null) ? st.escortShip.x : px + 520.0;
                 double ey = (st.escortShip != null) ? st.escortShip.y : py - 40.0;
                 addLandmark(st, ctx, LandmarkType.CORRIDOR, "Exodus Corridor", "Refugee wayline toward the spine",
@@ -1763,15 +1905,39 @@ public final class CampaignSystem {
                         ex - 420.0, ey + 260.0, 170.0,
                         new Color(120, 150, 170, 20), new Color(210, 232, 246, 142));
             }
-            case 6 -> {
+            case 9 -> {
                 addLandmark(st, ctx, LandmarkType.COLONY, "Neutral Trade Spine", "Broker depots, bonded yards, and defecting logistics slips",
+                        px + 980.0, py - 320.0, 250.0,
+                        new Color(120, 154, 198, 24), new Color(214, 230, 255, 166));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Broker Slipways", "Neutral defectors crossing into Blue protection",
+                        px + 1320.0, py + 40.0, 180.0,
+                        new Color(156, 68, 68, 18), new Color(255, 146, 146, 168));
+            }
+            case 10 -> {
+                addLandmark(st, ctx, LandmarkType.COLONY, "Trade Spine Defense Belt", "Broker yards under hard military cordon",
                         px + 980.0, py - 320.0, 250.0,
                         new Color(120, 154, 198, 24), new Color(214, 230, 255, 166));
                 addLandmark(st, ctx, LandmarkType.FORTRESS, "Red Cordon Bastion", "Entrenched blockade node over the spine",
                         px + 1320.0, py + 40.0, 180.0,
                         new Color(156, 68, 68, 18), new Color(255, 146, 146, 168));
             }
-            case 7 -> {
+            case 11 -> {
+                addLandmark(st, ctx, LandmarkType.COLONY, "Bonded Depot Shelf", "Fuel trains, ledger vaults, and refit locks",
+                        px + 980.0, py - 320.0, 250.0,
+                        new Color(120, 154, 198, 24), new Color(214, 230, 255, 166));
+                addLandmark(st, ctx, LandmarkType.COLONY, "Refit Shelf", "Stores and bonded cargo still salvageable under fire",
+                        px + 1320.0, py + 40.0, 180.0,
+                        new Color(156, 68, 68, 18), new Color(255, 146, 146, 168));
+            }
+            case 12 -> {
+                addLandmark(st, ctx, LandmarkType.RING, "Coalition Service Halos", "Courier lanes and broker sanctums around the pact route",
+                        px + 960.0, py - 180.0, 300.0,
+                        new Color(102, 196, 168, 24), new Color(190, 248, 226, 174));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Signatory Corridor", "Green command hulls crossing into open coalition protection",
+                        px + 1260.0, py + 50.0, 180.0,
+                        new Color(88, 170, 170, 18), new Color(162, 238, 236, 144));
+            }
+            case 13 -> {
                 addLandmark(st, ctx, LandmarkType.RELAY, "Coalition Array Nysa", "Contract relay, broker sanctum, and fleet-signature exchange",
                         st.captureX, st.captureY, 210.0,
                         new Color(102, 196, 168, 24), new Color(190, 248, 226, 174));
@@ -1779,39 +1945,87 @@ public final class CampaignSystem {
                         st.captureX + 80.0, st.captureY - 50.0, 320.0,
                         new Color(88, 170, 170, 18), new Color(162, 238, 236, 144));
             }
-            case 8 -> {
-                addLandmark(st, ctx, LandmarkType.FORTRESS, "Siege Gate Kharon", "Artillery gatehouse and targeting spine",
+            case 14 -> {
+                addLandmark(st, ctx, LandmarkType.RELAY, "Coalition Array Nysa", "Contract relay and green command anchor",
+                        st.captureX, st.captureY, 210.0,
+                        new Color(102, 196, 168, 24), new Color(190, 248, 226, 174));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Rear-Orbit Relief Lane", "Reserve approach route trying to re-isolate the array",
+                        st.captureX + 360.0, st.captureY - 40.0, 220.0,
+                        new Color(88, 170, 170, 18), new Color(162, 238, 236, 144));
+            }
+            case 15 -> {
+                addLandmark(st, ctx, LandmarkType.FORTRESS, "Siege Gate Kharon", "Spotter towers, anchor guns, and siege beacons",
+                        st.captureX, st.captureY, 240.0,
+                        new Color(170, 88, 72, 20), new Color(248, 174, 152, 176));
+                addLandmark(st, ctx, LandmarkType.RING, "Outer Siege Spine", "Targeting architecture feeding the artillery gate",
+                        st.captureX + 160.0, st.captureY - 40.0, 360.0,
+                        new Color(176, 118, 90, 16), new Color(240, 202, 168, 138));
+            }
+            case 16 -> {
+                addLandmark(st, ctx, LandmarkType.FORTRESS, "Siege Gate Furnace", "Artillery gatehouse and burning transit steel",
                         px + 1080.0, py - 120.0, 240.0,
                         new Color(170, 88, 72, 20), new Color(248, 174, 152, 176));
                 addLandmark(st, ctx, LandmarkType.RING, "Ash Gate Spine", "Collapsed transit architecture under bombardment",
                         px + 1210.0, py - 60.0, 360.0,
                         new Color(176, 118, 90, 16), new Color(240, 202, 168, 138));
             }
-            case 9 -> {
-                addLandmark(st, ctx, LandmarkType.STAR, "Sol", "The home star beyond the defense ring",
+            case 17 -> {
+                addLandmark(st, ctx, LandmarkType.STAR, "Sol", "The home star just beyond the defense fringe",
                         px + 1540.0, py - 980.0, 460.0,
                         new Color(255, 198, 116, 40), new Color(255, 236, 178, 164));
-                addLandmark(st, ctx, LandmarkType.RING, "Outer Sol Defense Ring", "Coalition arrival corridor",
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Probe Marker Belt", "Recon line trying to paint the coalition corridor",
                         px + 860.0, py + 60.0, 320.0,
                         new Color(142, 194, 244, 16), new Color(192, 226, 255, 146));
             }
-            case 10 -> {
+            case 18 -> {
+                addLandmark(st, ctx, LandmarkType.STAR, "Sol", "The home star beyond the defense ring",
+                        px + 1540.0, py - 980.0, 460.0,
+                        new Color(255, 198, 116, 40), new Color(255, 236, 178, 164));
+                addLandmark(st, ctx, LandmarkType.RING, "Coalition Assembly Ring", "Arrival corridor for the final push",
+                        px + 860.0, py + 60.0, 320.0,
+                        new Color(142, 194, 244, 16), new Color(192, 226, 255, 146));
+            }
+            case 19 -> {
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Liberation Corridor", "Recovery line for freed yellow crews",
+                        px + 420.0, py - 20.0, 230.0,
+                        new Color(188, 174, 104, 18), new Color(255, 232, 152, 160));
+                addLandmark(st, ctx, LandmarkType.FRONT, "Breakchain Clamp Field", "Prison tenders and chain nodes still holding the convoy",
+                        px + 860.0, py + 140.0, 180.0,
+                        new Color(126, 118, 90, 16), new Color(224, 206, 170, 138));
+            }
+            case 20 -> {
                 double ex = (st.escortShip != null) ? st.escortShip.x : px + 520.0;
                 double ey = (st.escortShip != null) ? st.escortShip.y : py - 40.0;
-                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Liberation Corridor", "Recovery line for freed yellow crews",
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Breakchain Debris Run", "Recovery route for the liberated yellow crews",
                         ex + 420.0, ey - 20.0, 230.0,
                         new Color(188, 174, 104, 18), new Color(255, 232, 152, 160));
                 addLandmark(st, ctx, LandmarkType.FRONT, "Breakchain Wreck Line", "Debris from snapped convoy chains",
                         ex - 420.0, ey + 250.0, 180.0,
                         new Color(126, 118, 90, 16), new Color(224, 206, 170, 138));
             }
-            case 11 -> {
+            case 21 -> {
                 addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Mass-driver yards, foundry belts, and orbital defense guns",
                         px + 1300.0, py - 520.0, 260.0,
                         new Color(184, 194, 210, 30), new Color(242, 246, 255, 172));
                 addLandmark(st, ctx, LandmarkType.PLANET, "Earthrise", "Occupied homeworld beyond the lunar defense lane",
                         px + 1880.0, py - 1020.0, 420.0,
                         new Color(92, 138, 220, 26), new Color(190, 220, 255, 156));
+            }
+            case 22 -> {
+                addLandmark(st, ctx, LandmarkType.PLANET, "Luna", "Broken anchor grid and shattered foundry guns",
+                        px + 1180.0, py - 420.0, 240.0,
+                        new Color(184, 194, 210, 30), new Color(242, 246, 255, 172));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Earth Approach Lane", "Last reserve cordon between the fleet and home",
+                        px + 1580.0, py - 160.0, 300.0,
+                        new Color(92, 138, 220, 26), new Color(190, 220, 255, 156));
+            }
+            case 23 -> {
+                addLandmark(st, ctx, LandmarkType.PLANET, "Earthrise", "Occupied homeworld under orbital blackout",
+                        px + 1540.0, py - 920.0, 420.0,
+                        new Color(92, 138, 220, 26), new Color(190, 220, 255, 156));
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "Lift Terminus Belt", "Resistance launches rising through the orbital lift lanes",
+                        st.captureX, st.captureY, 240.0,
+                        new Color(98, 148, 206, 14), new Color(202, 232, 255, 136));
             }
             default -> {
                 addLandmark(st, ctx, LandmarkType.PLANET, "Earth", "Occupied homeworld under orbital fire and citywide blackout",
@@ -1860,18 +2074,42 @@ public final class CampaignSystem {
     }
 
     private static void spawnSector2(GameContext ctx, CampaignState st) {
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.VANGUARD_TITAN, 760, -80);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 860, -160);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.CIWS_CORVETTE, 900, -40);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 980, 60);
-        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 1020, 140);
+        Ship convoyA = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -360, -120, "Cinder Refugee Tender");
+        Ship convoyB = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -420, 40, "Ledger Lighter");
+        Ship convoyC = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -500, 160, "Customs Survivor One");
+        if (convoyA != null) convoyA.desiredSpeed = Math.min(convoyA.desiredSpeed, 34.0);
+        if (convoyB != null) convoyB.desiredSpeed = Math.min(convoyB.desiredSpeed, 32.0);
+        if (convoyC != null) convoyC.desiredSpeed = Math.min(convoyC.desiredSpeed, 34.0);
+        st.objectiveAssetLabel = "CONVOYS";
+        registerObjectiveAsset(st, convoyA);
+        registerObjectiveAsset(st, convoyB);
+        registerObjectiveAsset(st, convoyC);
+        registerObjectiveAssetQuota(st, 2, "DEFEAT: CIVILIAN APERTURE SEALED");
+
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 760, -180);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.CIWS_CORVETTE, 850, -70);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 930, 40);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 1010, 150);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 840, 180);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 920, -220);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -300, 20, "Green Broker Shield");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 80, "Green Aperture Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -40, "Green Aperture Flak");
+    }
+
+    private static void spawnSector3(GameContext ctx, CampaignState st) {
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, 760, -80);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 860, -160);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 900, -40);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 980, 60);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 1020, 140);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 900, 200);
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -360, 60, "Green Bulwark Titan Broker Shield");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Green Escort Spear");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -200, -50, "Green Screen Lance");
     }
 
-    private static void spawnSector3(GameContext ctx, CampaignState st) {
-        st.captureArmed = false;
+    private static void spawnSector4(GameContext ctx, CampaignState st) {
         st.captureX = GameMath.clamp(ctx.player.x + 700, 220, ctx.WORLD_W - 220);
         st.captureY = GameMath.clamp(ctx.player.y + 220, 220, ctx.WORLD_H - 220);
         st.captureRadius = 200.0;
@@ -1884,15 +2122,51 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -170, -40, "Green Relay Screen");
     }
 
-    private static void spawnSector4(GameContext ctx, CampaignState st) {
+    private static void spawnSector5(GameContext ctx, CampaignState st) {
+        st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
+        st.captureY = GameMath.clamp(ctx.player.y + 160, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 220, st.captureY - 120);
+        spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 260, st.captureY + 40);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY - 10);
+        spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 250, st.captureY - 150);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY + 10);
+        spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 210, st.captureY + 150);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT_TITAN, Faction.TEAM_C, -340, 70, "Green Navigation Titan Atlas Memory");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Uplink Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Uplink Flak");
+    }
+
+    private static void spawnSector6(GameContext ctx, CampaignState st) {
+        Ship archive = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -360, -80, "State Archive Barge");
+        Ship fuelTender = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -420, 70, "Fuel Casket Tender");
+        Ship straggler = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -500, 170, "Wake Straggler");
+        if (archive != null) archive.desiredSpeed = Math.min(archive.desiredSpeed, 28.0);
+        if (fuelTender != null) fuelTender.desiredSpeed = Math.min(fuelTender.desiredSpeed, 26.0);
+        if (straggler != null) straggler.desiredSpeed = Math.min(straggler.desiredSpeed, 30.0);
+        st.objectiveAssetLabel = "CACHES";
+        registerObjectiveAsset(st, archive);
+        registerObjectiveAsset(st, fuelTender);
+        registerObjectiveAsset(st, straggler);
+        registerObjectiveAssetQuota(st, 2, "DEFEAT: RECOVERY LINE SHATTERED");
+
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 620, -140);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 760, -200);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 860, 40);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 940, 140);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Wake Recovery Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -40, "Wake Recovery Flak");
+    }
+
+    private static void spawnSector7(GameContext ctx, CampaignState st) {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -320, 40, "Green Bulwark Titan Vigilant Home");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Pursuit Screen");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Pursuit Flak");
         st.bossTargetId = spawnBoss(ctx, ShipRole.INTERDICTION_TITAN, "AI PURSUIT TITAN RED KNIFE", 1.55, 1.65);
     }
 
-    private static void spawnSector5(GameContext ctx, CampaignState st) {
-        st.escortShip = spawnEscortTitan(ctx, ShipRole.TRANSPORT_TITAN, Faction.TEAM_C, "Green Exodus Transport Titan");
+    private static void spawnSector8(GameContext ctx, CampaignState st) {
+        st.escortShip = spawnEscortTitan(ctx, ShipRole.TRANSPORT_TITAN, "Green Exodus Transport Titan");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_C, -340, -120, "Green Carrier Support Titan Hearthwing");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 560, -120);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 760, -200);
@@ -1902,7 +2176,32 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Refugee Flak");
     }
 
-    private static void spawnSector6(GameContext ctx, CampaignState st) {
+    private static void spawnSector9(GameContext ctx, CampaignState st) {
+        Ship brokerA = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -360, -120, "Broker Defector One");
+        Ship brokerB = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -440, 30, "Slipway Tender");
+        Ship brokerC = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -520, 160, "Broker Defector Two");
+        Ship brokerD = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MINER, Faction.TEAM_C, -420, 220, "Yard Miner Turncoat");
+        if (brokerA != null) brokerA.desiredSpeed = Math.min(brokerA.desiredSpeed, 32.0);
+        if (brokerB != null) brokerB.desiredSpeed = Math.min(brokerB.desiredSpeed, 30.0);
+        if (brokerC != null) brokerC.desiredSpeed = Math.min(brokerC.desiredSpeed, 32.0);
+        if (brokerD != null) brokerD.desiredSpeed = Math.min(brokerD.desiredSpeed, 34.0);
+        st.objectiveAssetLabel = "DEFECTORS";
+        registerObjectiveAsset(st, brokerA);
+        registerObjectiveAsset(st, brokerB);
+        registerObjectiveAsset(st, brokerC);
+        registerObjectiveAsset(st, brokerD);
+        registerObjectiveAssetQuota(st, 3, "DEFEAT: DEFECTION CORRIDOR COLLAPSED");
+
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 580, -180);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 700, 170);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 860, -40);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 910, 90);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 1040, -20);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Broker Lane Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -210, -60, "Broker Lane Flak");
+    }
+
+    private static void spawnSector10(GameContext ctx, CampaignState st) {
         spawnEnemyAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, 760, -60);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 560, -140);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 720, -240);
@@ -1914,12 +2213,51 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Lane Flak");
     }
 
-    private static void spawnSector7(GameContext ctx, CampaignState st) {
-        st.objectiveStage = 0;
-        st.captureArmed = false;
-        st.objectiveLabel = "Destroy the red jamming pylons around the contract array";
-        st.objectiveGoal = 3.0;
-        st.objectiveProgress = 0.0;
+    private static void spawnSector11(GameContext ctx, CampaignState st) {
+        Ship depotA = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -360, -120, "Bonded Fuel Train");
+        Ship depotB = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -430, 20, "Ledger Vault Tender");
+        Ship depotC = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -500, 170, "Refit Shelf Hauler");
+        if (depotA != null) depotA.desiredSpeed = Math.min(depotA.desiredSpeed, 28.0);
+        if (depotB != null) depotB.desiredSpeed = Math.min(depotB.desiredSpeed, 28.0);
+        if (depotC != null) depotC.desiredSpeed = Math.min(depotC.desiredSpeed, 30.0);
+        st.objectiveAssetLabel = "DEPOTS";
+        registerObjectiveAsset(st, depotA);
+        registerObjectiveAsset(st, depotB);
+        registerObjectiveAsset(st, depotC);
+        registerObjectiveAssetQuota(st, 2, "DEFEAT: DEPOT SHELF LOST");
+
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 620, -180);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 760, -40);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 880, 110);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 980, -100);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Depot Recovery Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -40, "Depot Recovery Flak");
+    }
+
+    private static void spawnSector12(GameContext ctx, CampaignState st) {
+        Ship courierA = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -360, -120, "Green Pact Courier One");
+        Ship courierB = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_C, -430, 10, "Green Pact Courier Two");
+        Ship courierC = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -500, 150, "Green Signatory Vault");
+        Ship courierD = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -310, 210, "Green Signatory Escort");
+        if (courierA != null) courierA.desiredSpeed = Math.min(courierA.desiredSpeed, 34.0);
+        if (courierB != null) courierB.desiredSpeed = Math.min(courierB.desiredSpeed, 34.0);
+        if (courierC != null) courierC.desiredSpeed = Math.min(courierC.desiredSpeed, 30.0);
+        st.objectiveAssetLabel = "SIGNATORIES";
+        registerObjectiveAsset(st, courierA);
+        registerObjectiveAsset(st, courierB);
+        registerObjectiveAsset(st, courierC);
+        registerObjectiveAsset(st, courierD);
+        registerObjectiveAssetQuota(st, 3, "DEFEAT: SIGNATORY RUN SHATTERED");
+
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 640, -140);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 740, 110);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 880, 200);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 840, -220);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -280, 20, "Green Contract Command Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -60, "Green Signatory Flak");
+    }
+
+    private static void spawnSector13(GameContext ctx, CampaignState st) {
         st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
         st.captureY = GameMath.clamp(ctx.player.y + 140, 220, ctx.WORLD_H - 220);
         st.captureRadius = 210.0;
@@ -1942,7 +2280,41 @@ public final class CampaignSystem {
         registerObjectiveAsset(st, uplinkBeta);
     }
 
-    private static void spawnSector8(GameContext ctx, CampaignState st) {
+    private static void spawnSector14(GameContext ctx, CampaignState st) {
+        st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
+        st.captureY = GameMath.clamp(ctx.player.y + 140, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 350, st.captureY - 120);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 390, st.captureY + 40);
+        spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 310, st.captureY + 170);
+        spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 360, st.captureY - 40);
+        spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 260, st.captureY + 190);
+        spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 420, st.captureY + 140);
+        spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 410, st.captureY + 30);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 460, st.captureY - 130);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -340, 90, "Green Contract Command Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Nysa Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Nysa Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -250, 90, "Green Nysa Cruiser");
+    }
+
+    private static void spawnSector15(GameContext ctx, CampaignState st) {
+        st.captureX = GameMath.clamp(ctx.player.x + 820, 220, ctx.WORLD_W - 220);
+        st.captureY = GameMath.clamp(ctx.player.y + 100, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 240, st.captureY - 150);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 320, st.captureY - 20);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 260, st.captureY + 140);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 120, st.captureY + 210);
+        spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 180, st.captureY - 130);
+        spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 260, st.captureY + 20);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 230, st.captureY + 80);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -340, 90, "Green Siege Command Titan");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Siege Scout");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Siege Flak");
+    }
+
+    private static void spawnSector16(GameContext ctx, CampaignState st) {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -340, 90, "Green Contract Command Titan");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120, 70, "Green Siege Scout");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, -60, "Green Siege Flak");
@@ -1950,7 +2322,30 @@ public final class CampaignSystem {
         st.bossTargetId = spawnBoss(ctx, ShipRole.ARTILLERY_TITAN, "ASH GATE ARTILLERY TITAN", 1.60, 1.75);
     }
 
-    private static void spawnSector9(GameContext ctx, CampaignState st) {
+    private static void spawnSector17(GameContext ctx, CampaignState st) {
+        Ship assemblyA = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.TRANSPORT, -360, -120, "Coalition Tug One");
+        Ship assemblyB = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.HAULER, -440, 20, "Hospital Stores Hauler");
+        Ship assemblyC = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.TRANSPORT, -520, 170, "Refugee Clinic Tender");
+        if (assemblyA != null) assemblyA.desiredSpeed = Math.min(assemblyA.desiredSpeed, 32.0);
+        if (assemblyB != null) assemblyB.desiredSpeed = Math.min(assemblyB.desiredSpeed, 28.0);
+        if (assemblyC != null) assemblyC.desiredSpeed = Math.min(assemblyC.desiredSpeed, 30.0);
+        st.objectiveAssetLabel = "ASSEMBLY";
+        registerObjectiveAsset(st, assemblyA);
+        registerObjectiveAsset(st, assemblyB);
+        registerObjectiveAsset(st, assemblyC);
+        registerObjectiveAssetQuota(st, 2, "DEFEAT: COALITION CORRIDOR EXPOSED");
+
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 780, -180);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 860, -60);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 930, 40);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.CIWS_CORVETTE, 1010, 140);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 920, 220);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 1080, -40);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Coalition Screen Guard");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -220, -40, "Coalition Screen Flak");
+    }
+
+    private static void spawnSector18(GameContext ctx, CampaignState st) {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.SHIELD_BASTION_TITAN, Faction.TEAM_C, -360, -80, "Green Shield Bastion Titan Solward");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -440, 120, "Green Bulwark Titan Aegis Return");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 580, -180);
@@ -1962,25 +2357,40 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -210, -60, "Green Sol Flak");
     }
 
-    private static void spawnSector10(GameContext ctx, CampaignState st) {
-        st.escortShip = spawnEscortTitan(ctx, ShipRole.BOARDING_RECOVERY_TITAN, Faction.TEAM_D, "Liberated Yellow Recovery Titan");
+    private static void spawnSector19(GameContext ctx, CampaignState st) {
+        Ship recoveryTitan = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.BOARDING_RECOVERY_TITAN, -300, 30, "Liberated Yellow Recovery Titan");
+        Ship cutter = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -420, 120, "Yellow Breakchain Cutter");
+        if (recoveryTitan != null) recoveryTitan.desiredSpeed = Math.min(recoveryTitan.desiredSpeed, 24.0);
+        if (cutter != null) cutter.desiredSpeed = Math.min(cutter.desiredSpeed, 28.0);
+        st.objectiveAssetLabel = "LIBERATED HULLS";
+        registerObjectiveAsset(st, recoveryTitan);
+        registerObjectiveAsset(st, cutter);
+        registerObjectiveAssetQuota(st, 1, "DEFEAT: LIBERATION TARGET LOST");
+
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 760, -200);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 930, 20);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.INTERDICTION_TITAN, 820, 220);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.VANGUARD_TITAN, 980, -80);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 910, 200);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 860, -240);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 1020, 70);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Liberation Cruiser");
+    }
+
+    private static void spawnSector20(GameContext ctx, CampaignState st) {
+        st.escortShip = spawnEscortTitan(ctx, ShipRole.BOARDING_RECOVERY_TITAN, "Yellow Recovery Titan Renewal");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_C, -360, -110, "Green Carrier Support Titan");
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 640, -140);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 740, 110);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, 990, -20);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 880, 200);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 840, -220);
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 70, "Yellow Breakchain Guard");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -210, -60, "Yellow Breakchain Flak");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 70, "Yellow Rejoin Guard");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -210, -60, "Yellow Rejoin Flak");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -300, 60, "Green Liberation Cruiser");
     }
 
-    private static void spawnSector11(GameContext ctx, CampaignState st) {
-        st.objectiveStage = 0;
-        st.objectiveKillBaseline = 0;
-        st.objectiveLabel = "Destroy the Luna orbital defense anchors";
-        st.objectiveGoal = 3.0;
-        st.objectiveProgress = 0.0;
+    private static void spawnSector21(GameContext ctx, CampaignState st) {
         spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 760, -200);
         spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 930, 20);
         spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.STATIC_TURRET, 820, 220);
@@ -1991,28 +2401,65 @@ public final class CampaignSystem {
         spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 860, -240);
         spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 1020, 70);
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.ARTILLERY_TITAN, Faction.TEAM_C, -380, -40, "Green Artillery Titan Homebound");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 80, "Yellow Return Guard");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -220, -70, "Yellow Return Flak");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80, "Yellow Return Guard");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -70, "Yellow Return Flak");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Earthway Cruiser");
-        Ship evacTender = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.TRANSPORT, Faction.TEAM_D, -320, 170, "Yellow Evac Tender");
-        Ship hospitalHauler = spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_D, -390, -130, "Yellow Hospital Hauler");
-        if (evacTender != null) {
-            evacTender.desiredSpeed = Math.min(evacTender.desiredSpeed, 38.0);
-        }
-        if (hospitalHauler != null) {
-            hospitalHauler.desiredSpeed = Math.min(hospitalHauler.desiredSpeed, 34.0);
-        }
+        Ship evacTender = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.TRANSPORT, -320, 170, "Yellow Evac Tender");
+        Ship hospitalHauler = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.HAULER, -390, -130, "Yellow Hospital Hauler");
+        if (evacTender != null) evacTender.desiredSpeed = Math.min(evacTender.desiredSpeed, 38.0);
+        if (hospitalHauler != null) hospitalHauler.desiredSpeed = Math.min(hospitalHauler.desiredSpeed, 34.0);
         st.objectiveAssetLabel = "EVAC SHIPS";
         registerObjectiveAsset(st, evacTender);
         registerObjectiveAsset(st, hospitalHauler);
     }
 
-    private static void spawnSector12(GameContext ctx, CampaignState st) {
+    private static void spawnSector22(GameContext ctx, CampaignState st) {
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.INTERDICTION_TITAN, 760, -120);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, 920, 80);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, 790, 150);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 910, 200);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 860, -240);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 1020, 70);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, 1080, -40);
+        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 1140, 180);
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.ARTILLERY_TITAN, Faction.TEAM_C, -380, -40, "Green Artillery Titan Homebound");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80, "Yellow Return Guard");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -70, "Yellow Return Flak");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Earthway Cruiser");
+    }
+
+    private static void spawnSector23(GameContext ctx, CampaignState st) {
+        st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
+        st.captureY = GameMath.clamp(ctx.player.y + 140, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 240, st.captureY - 150);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 300, st.captureY + 20);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 180, st.captureY + 170);
+        spawnAuthoredObjectiveEnemyAtPoint(ctx, st, ShipRole.STATIC_TURRET, st.captureX + 80, st.captureY - 10);
+        spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 180, st.captureY - 130);
+        spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 260, st.captureY + 20);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 230, st.captureY + 80);
+        spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX - 200, st.captureY - 10);
+        Ship liftA = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.TRANSPORT, -340, 120, "Earthrise Lift One");
+        Ship liftB = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.TRANSPORT, -420, 10, "Earthrise Lift Two");
+        Ship liftC = spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.HAULER, -500, 170, "Resistance Vault Ship");
+        if (liftA != null) liftA.desiredSpeed = Math.min(liftA.desiredSpeed, 34.0);
+        if (liftB != null) liftB.desiredSpeed = Math.min(liftB.desiredSpeed, 34.0);
+        if (liftC != null) liftC.desiredSpeed = Math.min(liftC.desiredSpeed, 30.0);
+        st.objectiveAssetLabel = "LIFTS";
+        registerObjectiveAsset(st, liftA);
+        registerObjectiveAsset(st, liftB);
+        registerObjectiveAsset(st, liftC);
+        registerObjectiveAssetQuota(st, 2, "DEFEAT: INSURRECTION LAUNCHES LOST");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -280, -30, "Green Homefront Bulwark");
+    }
+
+    private static void spawnSector24(GameContext ctx, CampaignState st) {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -420, -120, "Green Bulwark Titan Aegis Return");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.ARTILLERY_TITAN, Faction.TEAM_C, -500, 40, "Green Artillery Titan Homebound");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, Faction.TEAM_D, -540, 180, "Yellow Carrier Support Titan Renewal");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -140, 80, "Yellow Earthfall Guard");
-        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -220, -70, "Yellow Earthfall Flak");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.CARRIER_SUPPORT_TITAN, -540, 180, "Yellow Carrier Support Titan Renewal");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.FRIGATE, -140, 80, "Yellow Earthfall Guard");
+        spawnCampaignAllyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, -220, -70, "Yellow Earthfall Flak");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -320, 20, "Green Homefront Cruiser");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BATTLECRUISER, Faction.TEAM_C, -420, -40, "Green Breakthrough Battlecruiser");
         st.bossTargetId = spawnFinalBoss(ctx);
@@ -2024,26 +2471,11 @@ public final class CampaignSystem {
             switch (st.sector) {
                 case 1 -> updateSector1Script(ctx, st);
                 case 2 -> updateSector2Script(ctx, st);
-                case 3 -> updateSector3Script(ctx, st);
                 default -> {
                     // No-op.
                 }
             }
             return;
-        }
-
-        switch (st.sector) {
-            case 7 -> {
-                updateSector7Script(ctx, st);
-                return;
-            }
-            case 11 -> {
-                updateSector11Script(ctx, st);
-                return;
-            }
-            default -> {
-                // Fall through.
-            }
         }
         updateLateCampaignPressure(ctx, st);
     }
@@ -2115,44 +2547,53 @@ public final class CampaignSystem {
     }
 
     private static void updateSector3Script(GameContext ctx, CampaignState st) {
-        if (!st.captureArmed) {
-            if (st.authoredObjectiveHostiles.isEmpty()) {
+        if (st.objectiveStage == 0) {
+            int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
+            st.objectivePhaseLabel = "PHASE: Break the relay interdiction screen (" + remaining + " blockers remaining)";
+            st.threatStateLabel = "THREAT: Route-control guns and raiders are pinning the authority relay";
+            if (remaining == 0) {
                 st.captureArmed = true;
-                st.objectiveLabel = "Hold the relay uplink while jump authority is restored";
-                st.authoredWaveCursor = 0;
-                EventSystem.showBanner(ctx, "RELAY SECURED: HOLD THE UPLINK", 2.2);
-                logTelemetry("sector_script", "sector=3 capture_armed t=" + Math.round(st.sectorElapsed));
+                st.objectiveStage = 1;
+                st.objectiveKillBaseline = st.kills;
+                st.objectiveLabel = "Destroy the relay relief wing and cover the Earth vector";
+                st.objectiveGoal = 6.0;
+                st.objectiveProgress = 0.0;
+                st.authoredWaveCursor = 1;
+                st.objectivePhaseLabel = "PHASE: Break the relief wing while green navigation hands off jump authority";
+                st.threatStateLabel = "THREAT: Red reserve ships are racing the relay to shut the route again";
+                spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 220, st.captureY - 120);
+                spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 260, st.captureY + 40);
+                spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY - 10);
+                EventSystem.showBanner(ctx, "RELAY SECURED: BREAK THE RELIEF WING", 2.2);
+                logTelemetry("sector_script", "sector=3 stage=relief_break t=" + Math.round(st.sectorElapsed));
             }
             return;
         }
 
-        if (st.authoredWaveCursor == 0 && st.objectiveProgress >= 20.0) {
-            spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 220, st.captureY - 120);
-            spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 260, st.captureY + 40);
-            st.authoredWaveCursor++;
-            logTelemetry("sector_script", "sector=3 wave=1 p=" + Math.round(st.objectiveProgress));
-            return;
-        }
-        if (st.authoredWaveCursor == 1 && st.objectiveProgress >= 65.0) {
+        int contactsToBreak = (int) Math.ceil(Math.max(0.0, st.objectiveGoal - st.objectiveProgress));
+        st.objectivePhaseLabel = "PHASE: Break the relief wing and cover the route-control handoff (" + contactsToBreak + " contacts to shatter)";
+        st.threatStateLabel = "THREAT: Relay reserves are converging to shut the Earth vector";
+        if (st.authoredWaveCursor == 1 && st.objectiveProgress >= 2.0) {
             spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 250, st.captureY - 150);
             spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY + 10);
             spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 210, st.captureY + 150);
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -240, 120, "Green Uplink Guard");
             st.authoredWaveCursor++;
+            EventSystem.showBanner(ctx, "RELAY SCREEN COLLAPSING", 1.8);
             logTelemetry("sector_script", "sector=3 wave=2 p=" + Math.round(st.objectiveProgress));
             return;
         }
-        if (st.authoredWaveCursor == 2 && st.objectiveProgress >= 95.0) {
+        if (st.authoredWaveCursor == 2 && st.objectiveProgress >= 4.0) {
             spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX - 280, st.captureY - 40);
             spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 320, st.captureY + 70);
             st.authoredWaveCursor++;
-            EventSystem.showBanner(ctx, "HOLD THE EARTH VECTOR", 2.0);
+            EventSystem.showBanner(ctx, "EARTH VECTOR OPENING", 2.0);
             logTelemetry("sector_script", "sector=3 wave=3 p=" + Math.round(st.objectiveProgress));
         }
     }
 
     private static void updateSector7Script(GameContext ctx, CampaignState st) {
-        if (!st.captureArmed) {
+        if (st.objectiveStage == 0) {
             int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
             st.objectivePhaseLabel = "PHASE: Sweep the array perimeter and cut the jammer triad (" + remaining + " remaining)";
             st.threatStateLabel = "THREAT: Interdiction escorts are masking the uplink approach";
@@ -2176,18 +2617,40 @@ public final class CampaignSystem {
             if (remaining == 0) {
                 st.captureArmed = true;
                 st.objectiveStage = 1;
-                st.objectiveLabel = "Hold the contract uplink while green command syncs the coalition net";
-                st.objectiveGoal = 120.0;
+                st.objectiveKillBaseline = st.kills;
+                st.objectiveLabel = "Destroy the red relief wing and bring the green contract net online";
+                st.objectiveGoal = 8.0;
                 st.objectiveProgress = 0.0;
-                st.authoredWaveCursor = 0;
-                st.objectivePhaseLabel = "PHASE: Hold the uplink until coalition command handshakes complete";
-                st.threatStateLabel = "THREAT: Red relief wings are converging to retake the array";
-                EventSystem.showBanner(ctx, "JAMMERS DOWN: HOLD THE CONTRACT ARRAY", 2.2);
-                logTelemetry("sector_script", "sector=7 capture_armed t=" + Math.round(st.sectorElapsed));
+                st.authoredWaveCursor = 1;
+                st.objectivePhaseLabel = "PHASE: Break the relief wing while green command handshakes the coalition net";
+                st.threatStateLabel = "THREAT: Red reserves are trying to re-jam the array before the houses commit";
+                spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 350, st.captureY - 120);
+                spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 390, st.captureY + 40);
+                spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 310, st.captureY + 170);
+                EventSystem.showBanner(ctx, "JAMMERS DOWN: BREAK THE RELIEF WING", 2.2);
+                logTelemetry("sector_script", "sector=7 stage=relief_break t=" + Math.round(st.sectorElapsed));
             }
             return;
         }
-        updateLateCapturePressure(ctx, st);
+        int contactsToBreak = (int) Math.ceil(Math.max(0.0, st.objectiveGoal - st.objectiveProgress));
+        st.objectivePhaseLabel = "PHASE: Break the relief wing and secure the coalition handshake (" + contactsToBreak + " contacts to shatter)";
+        st.threatStateLabel = "THREAT: Red reserve groups are counterattacking to keep the green houses isolated";
+        if (st.authoredWaveCursor == 1 && st.objectiveProgress >= 3.0) {
+            spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 360, st.captureY - 40);
+            spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 260, st.captureY + 190);
+            spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 420, st.captureY + 140);
+            st.authoredWaveCursor++;
+            EventSystem.showBanner(ctx, "SECOND ARRAY SCREEN DEPLOYING", 1.8);
+            logTelemetry("sector_script", "sector=7 wave=3 p=" + Math.round(st.objectiveProgress));
+            return;
+        }
+        if (st.authoredWaveCursor == 2 && st.objectiveProgress >= 6.0) {
+            spawnEnemyAtPoint(ctx, ShipRole.INTERDICTION_TITAN, st.captureX + 410, st.captureY + 30);
+            spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 460, st.captureY - 130);
+            st.authoredWaveCursor++;
+            EventSystem.showBanner(ctx, "FINAL CONTRACT COUNTERATTACK", 2.0);
+            logTelemetry("sector_script", "sector=7 wave=4 p=" + Math.round(st.objectiveProgress));
+        }
     }
 
     private static void updateSector11Script(GameContext ctx, CampaignState st) {
@@ -2238,6 +2701,50 @@ public final class CampaignSystem {
             case CAPTURE -> updateLateCapturePressure(ctx, st);
             case BOSS, FINAL_BOSS -> updateLateBossPressure(ctx, st);
         }
+    }
+
+    private static void updateEscortFormationBehavior(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || dt <= 0.0 || ctx.player == null) return;
+        if (st.objectiveType != ObjectiveType.ESCORT) return;
+        Ship escort = st.escortShip;
+        if (escort == null || !escort.alive || escort.dying || escort.hp <= 0) return;
+
+        double slotBack = ctx.player.radius + escort.radius + ESCORT_TIGHT_SLOT_MARGIN;
+        double targetX = ctx.player.x - Math.cos(ctx.player.angle) * slotBack;
+        double targetY = ctx.player.y - Math.sin(ctx.player.angle) * slotBack;
+        double dx = targetX - escort.x;
+        double dy = targetY - escort.y;
+        double dist = Math.hypot(dx, dy);
+        double playerVxPerSec = ctx.player.vx / dt;
+        double playerVyPerSec = ctx.player.vy / dt;
+        if (dist <= ESCORT_TIGHT_HOLD_RADIUS) {
+            boolean thrusting = Math.hypot(playerVxPerSec, playerVyPerSec) > 1e-4;
+            MovementModel.applyDesiredVelocity(escort, playerVxPerSec, playerVyPerSec, dt, thrusting);
+            rotateShipToward(escort, ctx.player.angle, dt);
+            return;
+        }
+
+        double correctionMul = (dist > ESCORT_TIGHT_CATCHUP_RADIUS) ? 2.8 : 1.7;
+        double correctionSpeed = Math.min(
+                Math.max(60.0, MovementModel.speedCeiling(escort) * ESCORT_TIGHT_CATCHUP_SPEED_MUL),
+                dist * correctionMul);
+        double ux = dx / Math.max(1e-6, dist);
+        double uy = dy / Math.max(1e-6, dist);
+        MovementModel.applyDesiredVelocity(
+                escort,
+                playerVxPerSec + ux * correctionSpeed,
+                playerVyPerSec + uy * correctionSpeed,
+                dt,
+                true);
+        rotateShipToward(escort, Math.atan2(ctx.player.y - escort.y, ctx.player.x - escort.x), dt);
+    }
+
+    private static void rotateShipToward(Ship ship, double desiredAngle, double dt) {
+        if (ship == null || dt <= 0.0) return;
+        double delta = MathUtil.normalizeAngle(desiredAngle - ship.angle);
+        double maxDelta = MovementModel.turnRateRadPerSec(ship) * dt;
+        delta = MathUtil.clamp(delta, -maxDelta, maxDelta);
+        ship.angle = MathUtil.normalizeAngle(ship.angle + delta);
     }
 
     private static void updateLateSurvivePressure(GameContext ctx, CampaignState st) {
@@ -2366,6 +2873,31 @@ public final class CampaignSystem {
         return MathUtil.clamp(st.objectiveProgress / st.objectiveGoal, 0.0, 1.0);
     }
 
+    private static boolean usesAuthoredDestroyProgress(CampaignState st) {
+        if (st == null || st.objectiveType != ObjectiveType.DESTROY) return false;
+        return switch (st.sector) {
+            case 2, 4, 13, 15, 17, 19, 21, 23 -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean objectiveAssetQuotaFailed(CampaignState st) {
+        if (st == null || st.objectiveAssetRequiredSurvivors <= 0) return false;
+        return liveObjectiveAssets(st) < st.objectiveAssetRequiredSurvivors;
+    }
+
+    private static int liveObjectiveAssets(CampaignState st) {
+        if (st == null) return 0;
+        return Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
+    }
+
+    private static String objectiveAssetFailureText(CampaignState st) {
+        if (st == null || st.objectiveAssetFailureText == null || st.objectiveAssetFailureText.isBlank()) {
+            return "DEFEAT: OBJECTIVE ASSETS LOST";
+        }
+        return st.objectiveAssetFailureText;
+    }
+
     private static void launchPressureStage(GameContext ctx, CampaignState st, String banner,
                                             String phaseLabel, String threatLabel, ShipRole... roles) {
         if (ctx == null || st == null || roles == null || roles.length == 0) return;
@@ -2425,8 +2957,8 @@ public final class CampaignSystem {
 
     private static ShipRole[] pressureRolesFor(CampaignState st, int stage) {
         if (st == null) return new ShipRole[]{ShipRole.FRIGATE};
-        boolean late = st.sector >= 9;
-        boolean endgame = st.sector >= 11;
+        boolean late = st.sector >= 13;
+        boolean endgame = st.sector >= 21;
         return switch (st.objectiveType) {
             case SURVIVE -> switch (stage) {
                 case 0 -> late
@@ -2520,12 +3052,12 @@ public final class CampaignSystem {
     }
 
     private static SectorScript scriptFor(int sector) {
-        int idx = Math.max(1, Math.min(12, sector));
+        int idx = Math.max(1, Math.min(SCRIPTS.length - 1, sector));
         return SCRIPTS[idx];
     }
 
     private static SectorLore loreFor(int sector) {
-        int idx = Math.max(1, Math.min(12, sector));
+        int idx = Math.max(1, Math.min(LORE.length - 1, sector));
         SectorLore lore = LORE[idx];
         if (lore != null) return lore;
         return new SectorLore(idx, "UNTITLED SECTOR", "Unknown Theater", "Push the fleet onward.", "The fleet keeps moving.");
@@ -2537,7 +3069,7 @@ public final class CampaignSystem {
     }
 
     private static SideObjectiveScript sideScriptFor(int sector) {
-        int idx = Math.max(1, Math.min(12, sector));
+        int idx = Math.max(1, Math.min(SIDE_SCRIPTS.length - 1, sector));
         SideObjectiveScript s = SIDE_SCRIPTS[idx];
         if (s == null) return new SideObjectiveScript(idx, SideObjectiveType.NONE, "", 0.0, 0);
         return s;
@@ -2596,6 +3128,12 @@ public final class CampaignSystem {
         }
     }
 
+    private static void registerObjectiveAssetQuota(CampaignState st, int requiredSurvivors, String failureText) {
+        if (st == null) return;
+        st.objectiveAssetRequiredSurvivors = Math.max(0, requiredSurvivors);
+        st.objectiveAssetFailureText = (failureText == null) ? "" : failureText;
+    }
+
     private static Ship spawnConvoy(GameContext ctx, String name) {
         Ship base = TeamSystem.getBaseForTeam(ctx, Faction.ALLY);
         double sx = (base != null) ? base.x + 80 : ctx.player.x - 120;
@@ -2620,29 +3158,29 @@ public final class CampaignSystem {
     private static void spawnCoalitionSupportFleet(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null || ctx.player == null) return;
         int greenTier = greenContractTier(st);
-        if (greenTier >= 1 && st.sector >= 8) {
+        if (greenTier >= 1 && st.sector >= 13) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.LIGHT_CRUISER, Faction.TEAM_C, -260, 220, "Green Contract Cruiser");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -180, 300, "Green Contract Flak");
         }
-        if (greenTier >= 2 && st.sector >= 8) {
+        if (greenTier >= 2 && st.sector >= 13) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -380, 180, "Green Contract Frigate");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.HAULER, Faction.TEAM_C, -420, 280, "Green Contract Tender");
         }
-        if (greenTier >= 3 && st.sector >= 9) {
+        if (greenTier >= 3 && st.sector >= 14) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.COMMAND_INTEL_TITAN, Faction.TEAM_C, -520, 70, "Green Contract Relay Titan");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -450, 360, "Green Contract Screen Two");
         }
 
         int yellowTier = yellowLiberationTier(st);
-        if (yellowTier >= 1 && st.sector >= 11) {
+        if (yellowTier >= 1 && st.sector >= 20) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, Faction.TEAM_D, -340, 250, "Yellow Liberation Missile Boat");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_D, -260, 330, "Yellow Liberation Flak");
         }
-        if (yellowTier >= 2 && st.sector >= 11) {
+        if (yellowTier >= 2 && st.sector >= 20) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_D, -430, 180, "Yellow Liberation Frigate");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_D, -380, 340, "Yellow Liberation Screen");
         }
-        if (yellowTier >= 3 && st.sector >= 12) {
+        if (yellowTier >= 3 && st.sector >= 21) {
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BOARDING_RECOVERY_TITAN, Faction.TEAM_D, -560, 120, "Yellow Liberation Recovery Titan");
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, Faction.TEAM_D, -500, 300, "Yellow Liberation Cutter");
         }
@@ -2726,8 +3264,8 @@ public final class CampaignSystem {
         int sectorIndex = Math.max(0, st.sector - 1);
         st.enemyWaveGroupMul *= 1.0 + sectorIndex * 0.05;
         st.enemyWaveDelayMul *= Math.max(0.72, 1.0 - sectorIndex * 0.025);
-        if (st.sector >= 8) st.enemyWaveGroupMul *= 1.10;
-        if (st.sector >= 11) st.enemyWaveDelayMul *= 0.92;
+        if (st.sector >= 15) st.enemyWaveGroupMul *= 1.10;
+        if (st.sector >= 21) st.enemyWaveDelayMul *= 0.92;
     }
 
     private static void applyFleetPressureScaling(CampaignState st) {
@@ -2761,10 +3299,8 @@ public final class CampaignSystem {
         switch (st.objectiveType) {
             case SURVIVE -> st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + dt);
             case DESTROY -> {
-                if (st.sector == 2 || (st.sector == 11 && st.objectiveStage == 0)) {
+                if (usesAuthoredDestroyProgress(st)) {
                     st.objectiveProgress = Math.min(st.objectiveGoal, st.authoredObjectiveKills);
-                } else if (st.sector == 11 && st.objectiveStage >= 1) {
-                    st.objectiveProgress = Math.min(st.objectiveGoal, Math.max(0, st.kills - st.objectiveKillBaseline));
                 } else {
                     st.objectiveProgress = Math.min(st.objectiveGoal, st.kills);
                 }
@@ -2795,11 +3331,7 @@ public final class CampaignSystem {
             }
             case CAPTURE -> {
                 if (!st.captureArmed) {
-                    if (st.sector == 7) {
-                        st.objectiveProgress = Math.min(st.objectiveGoal, st.authoredObjectiveKills);
-                    } else if (st.sector == 3) {
-                        st.objectiveProgress = 0.0;
-                    }
+                    st.objectiveProgress = 0.0;
                     break;
                 }
                 boolean playerInside = false;
@@ -2814,6 +3346,11 @@ public final class CampaignSystem {
                     st.objectiveProgress = Math.max(0.0, st.objectiveProgress - dt * 0.5);
                 }
             }
+        }
+
+        if (objectiveAssetQuotaFailed(st)) {
+            failRun(ctx, objectiveAssetFailureText(st));
+            return;
         }
 
         if (st.objectiveProgress >= st.objectiveGoal) {
@@ -2997,13 +3534,13 @@ public final class CampaignSystem {
         if (st.objectiveAssetTotal <= 0) return "";
         int survivors = Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
         return switch (st.sector) {
-            case 7 -> resolveSector7Outcome(ctx, st, survivors);
-            case 11 -> resolveSector11Outcome(ctx, st, survivors);
+            case 13 -> resolveSector13Outcome(ctx, st, survivors);
+            case 21 -> resolveSector21Outcome(ctx, st, survivors);
             default -> "";
         };
     }
 
-    private static String resolveSector7Outcome(GameContext ctx, CampaignState st, int survivors) {
+    private static String resolveSector13Outcome(GameContext ctx, CampaignState st, int survivors) {
         if (survivors >= st.objectiveAssetTotal) {
             int credits = GameContext.scaleCreditEarnings(140);
             ctx.credits += credits;
@@ -3024,7 +3561,7 @@ public final class CampaignSystem {
         return "Contract array mauled";
     }
 
-    private static String resolveSector11Outcome(GameContext ctx, CampaignState st, int survivors) {
+    private static String resolveSector21Outcome(GameContext ctx, CampaignState st, int survivors) {
         if (survivors >= st.objectiveAssetTotal) {
             int credits = GameContext.scaleCreditEarnings(180);
             ctx.credits += credits;
@@ -3114,9 +3651,9 @@ public final class CampaignSystem {
     private static String grantStoryFleetReward(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return "";
         return switch (st.sector) {
-            case 4 -> grantStoryResources(ctx, 220, 70, "ESCAPE CACHE RECOVERED");
-            case 7 -> grantGreenContractPackage(ctx, st);
-            case 10 -> grantYellowLiberationPackage(ctx, st);
+            case 6 -> grantStoryResources(ctx, 220, 70, "WAKE CACHE RECOVERED");
+            case 12 -> grantGreenContractPackage(ctx, st);
+            case 20 -> grantYellowLiberationPackage(ctx, st);
             default -> "";
         };
     }
@@ -3141,10 +3678,10 @@ public final class CampaignSystem {
     private static void advanceCoalitionMomentumOnSectorClear(CampaignState st) {
         if (st == null) return;
         int momentumGain = st.sideObjectiveCompleted ? 2 : 1;
-        if (st.greenContractFleetJoined && st.sector >= 8 && st.sector <= 9) {
+        if (st.greenContractFleetJoined && st.sector >= 13 && st.sector <= 18) {
             st.greenContractFavor += momentumGain;
         }
-        if (st.yellowLiberationFleetJoined && st.sector >= 11 && st.sector <= 12) {
+        if (st.yellowLiberationFleetJoined && st.sector >= 21 && st.sector <= 24) {
             st.yellowLiberationFavor += momentumGain;
         }
     }
@@ -3192,9 +3729,9 @@ public final class CampaignSystem {
         if (st.objectiveType != ObjectiveType.BOSS && st.objectiveType != ObjectiveType.FINAL_BOSS) return "";
 
         return switch (st.sector) {
-            case 4 -> grantBossDropAegisArray(ctx, st);
-            case 8 -> grantBossDropMissileCore(ctx, st);
-            case 12 -> grantBossDropFlagCore(ctx, st);
+            case 7 -> grantBossDropAegisArray(ctx, st);
+            case 16 -> grantBossDropMissileCore(ctx, st);
+            case 24 -> grantBossDropFlagCore(ctx, st);
             default -> "";
         };
     }
@@ -3214,7 +3751,7 @@ public final class CampaignSystem {
 
         String drop = "Aegis Array (+hull/shield regen)";
         EventSystem.showBanner(ctx, "BOSS DROP: " + drop, 3.0);
-        logTelemetry("boss_drop", "sector=4 drop=AegisArray");
+        logTelemetry("boss_drop", "sector=" + st.sector + " drop=AegisArray");
         return drop;
     }
 
@@ -3239,7 +3776,7 @@ public final class CampaignSystem {
 
         String drop = "Missile Core (+missile alpha/tracking)";
         EventSystem.showBanner(ctx, "BOSS DROP: " + drop, 3.0);
-        logTelemetry("boss_drop", "sector=8 drop=MissileCore turrets=" + Math.max(1, missileTurrets));
+        logTelemetry("boss_drop", "sector=" + st.sector + " drop=MissileCore turrets=" + Math.max(1, missileTurrets));
         return drop;
     }
 
@@ -3266,7 +3803,7 @@ public final class CampaignSystem {
 
         String drop = "Flag Core (+core durability/CIWS)";
         EventSystem.showBanner(ctx, "BOSS DROP: " + drop, 3.4);
-        logTelemetry("boss_drop", "sector=12 drop=FlagCore");
+        logTelemetry("boss_drop", "sector=" + st.sector + " drop=FlagCore");
         return drop;
     }
 
@@ -3546,13 +4083,13 @@ public final class CampaignSystem {
     }
 
     private static int actForSector(int sector) {
-        if (sector <= 4) return 1;
-        if (sector <= 8) return 2;
+        if (sector <= 8) return 1;
+        if (sector <= 16) return 2;
         return 3;
     }
 
     private static boolean isActBreakAfter(int sector) {
-        return sector == 4 || sector == 8;
+        return sector == 8 || sector == 16;
     }
 
     private static String formatProgress(double progress, double goal) {

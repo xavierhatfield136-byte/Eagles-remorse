@@ -90,6 +90,11 @@ public final class GameplayActions {
         EventSystem.showBanner(ctx, "HUD: " + ctx.ui.hudDetail.name(), 0.8);
     }
 
+    public static void toggleTacticalView(GameContext ctx) {
+        if (ctx == null) return;
+        UISystem.toggleTacticalView(ctx);
+    }
+
     public static void cycleXrayFilter(GameContext ctx, int dir) {
         if (!canIssueCombatAction(ctx)) return;
         UISystem.cycleXrayFilterMode(ctx, dir);

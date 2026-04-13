@@ -41,37 +41,39 @@ class CampaignLoreOverhaulTest {
     void escortSectorsUseTitanFlagships() throws Exception {
         GameContext ctx = initializedCampaignContext();
 
-        startSector(ctx, 5);
+        startSector(ctx, 8);
         assertNotNull(ctx.campaign.escortShip);
         assertEquals(ShipRole.TRANSPORT_TITAN, ctx.campaign.escortShip.role);
         assertEquals("Green Exodus Transport Titan", ctx.campaign.escortShip.name);
+        assertTrue(ctx.campaign.objectiveGoal <= 100.0, "escort sectors should now resolve inside the 100-second window");
 
-        startSector(ctx, 10);
+        startSector(ctx, 20);
         assertNotNull(ctx.campaign.escortShip);
         assertEquals(ShipRole.BOARDING_RECOVERY_TITAN, ctx.campaign.escortShip.role);
-        assertEquals("Liberated Yellow Recovery Titan", ctx.campaign.escortShip.name);
+        assertEquals("Yellow Recovery Titan Renewal", ctx.campaign.escortShip.name);
+        assertTrue(ctx.campaign.objectiveGoal <= 100.0, "escort sectors should now resolve inside the 100-second window");
     }
 
     @Test
     void bossSectorsEscalateToTitanAndMothershipFlagships() throws Exception {
         GameContext ctx = initializedCampaignContext();
 
-        assertBossRole(ctx, 4, ShipRole.INTERDICTION_TITAN, "AI PURSUIT TITAN RED KNIFE");
-        assertBossRole(ctx, 8, ShipRole.ARTILLERY_TITAN, "ASH GATE ARTILLERY TITAN");
-        assertBossRole(ctx, 12, ShipRole.MOTHERSHIP, "AI MOTHERSHIP EARTHFALL");
+        assertBossRole(ctx, 7, ShipRole.INTERDICTION_TITAN, "AI PURSUIT TITAN RED KNIFE");
+        assertBossRole(ctx, 16, ShipRole.ARTILLERY_TITAN, "ASH GATE ARTILLERY TITAN");
+        assertBossRole(ctx, 24, ShipRole.MOTHERSHIP, "AI MOTHERSHIP EARTHFALL");
     }
 
     @Test
     void lateCampaignSectorsExposePlanetaryLandmarksInHud() throws Exception {
         GameContext ctx = initializedCampaignContext();
 
-        startSector(ctx, 11);
+        startSector(ctx, 21);
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Luna".equals(l.label)));
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earthrise".equals(l.label)));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Luna / Earthrise"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("foundry belts"));
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("foundry guns"));
 
-        startSector(ctx, 12);
+        startSector(ctx, 24);
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earth".equals(l.label)));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Earth / Earth High Orbit"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("city webs"));
@@ -89,14 +91,14 @@ class CampaignLoreOverhaulTest {
         assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
         assertEquals(0.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
 
-        startSector(ctx, 5);
+        startSector(ctx, 8);
         assertEquals("exodus_gas_giant", Renderer.campaignBackdropDebugName(ctx));
         assertEquals("exodus_gas_giant", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
         assertEquals("space_nebula", Renderer.campaignBackdropFieldModeDebugName(ctx));
         assertTrue(!Renderer.campaignBackdropReplacesNebula(ctx));
 
-        startSector(ctx, 7);
+        startSector(ctx, 13);
         assertEquals("contract_world_array", Renderer.campaignBackdropDebugName(ctx));
         assertEquals("contract_world_array", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
@@ -106,12 +108,12 @@ class CampaignLoreOverhaulTest {
 
         ctx.campaign.objectiveStage = 1;
         ctx.campaign.captureArmed = true;
-        ctx.campaign.objectiveProgress = 60.0;
-        ctx.campaign.objectiveGoal = 120.0;
+        ctx.campaign.objectiveProgress = 2.0;
+        ctx.campaign.objectiveGoal = 3.0;
         assertEquals("contract_world_array_phase1", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropPhaseBlend(ctx) > 0.5);
 
-        startSector(ctx, 11);
+        startSector(ctx, 21);
         assertEquals("luna_earthrise_approach", Renderer.campaignBackdropDebugName(ctx));
         assertEquals("luna_earthrise_approach", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
@@ -120,12 +122,12 @@ class CampaignLoreOverhaulTest {
         assertEquals(0.0, Renderer.campaignBackdropPhaseBlend(ctx), 0.0001);
 
         ctx.campaign.objectiveStage = 1;
-        ctx.campaign.objectiveProgress = 5.0;
-        ctx.campaign.objectiveGoal = 10.0;
+        ctx.campaign.objectiveProgress = 2.0;
+        ctx.campaign.objectiveGoal = 3.0;
         assertEquals("luna_earthrise_approach_phase1", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropPhaseBlend(ctx) > 0.5);
 
-        startSector(ctx, 12);
+        startSector(ctx, 24);
         assertEquals("earth_high_orbit", Renderer.campaignBackdropDebugName(ctx));
         assertEquals("earth_high_orbit", Renderer.campaignBackdropImageKey(ctx));
         assertTrue(Renderer.campaignBackdropImageAvailable(Renderer.campaignBackdropImageKey(ctx)));
@@ -144,18 +146,30 @@ class CampaignLoreOverhaulTest {
         String[] keys = {
                 "trade_hub_colony",
                 "jump_ring_frontier",
+                "jump_ring_frontier",
                 "relay_halo_moon",
+                "relay_halo_moon",
+                "burning_debris_wake",
                 "burning_debris_wake",
                 "exodus_gas_giant",
                 "trade_spine_industrial_orbit",
+                "trade_spine_industrial_orbit",
+                "trade_spine_industrial_orbit",
+                "contract_world_array",
+                "contract_world_array",
                 "contract_world_array",
                 "ash_gate_gas_giant",
+                "ash_gate_gas_giant",
+                "outer_sol_starline",
                 "outer_sol_starline",
                 "liberation_moon_orbit",
+                "liberation_moon_orbit",
                 "luna_earthrise_approach",
+                "luna_earthrise_approach",
+                "earth_high_orbit",
                 "earth_high_orbit"
         };
-        for (int sector = 1; sector <= 12; sector++) {
+        for (int sector = 1; sector <= 24; sector++) {
             startSector(ctx, sector);
             assertEquals(keys[sector - 1], Renderer.campaignBackdropBaseImageKey(ctx));
             assertTrue(Renderer.campaignBackdropImageAvailable(keys[sector - 1]),

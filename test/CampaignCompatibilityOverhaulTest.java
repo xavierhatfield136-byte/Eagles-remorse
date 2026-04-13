@@ -21,7 +21,7 @@ class CampaignCompatibilityOverhaulTest {
     @Test
     void escortSideObjectiveProtectsEscortTitanInsteadOfPlayerHull() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 5);
+        startSector(ctx, 8);
 
         Ship escort = ctx.campaign.escortShip;
         assertNotNull(escort);
@@ -39,7 +39,7 @@ class CampaignCompatibilityOverhaulTest {
     @Test
     void escortObjectiveNeedsFormationPresenceToAdvance() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 5);
+        startSector(ctx, 8);
 
         ctx.ships.removeIf(ship -> ship != null && ship.faction == Faction.ENEMY);
         Ship escort = ctx.campaign.escortShip;
@@ -58,35 +58,37 @@ class CampaignCompatibilityOverhaulTest {
                 "escort progress should resume once the flagship reforms on the protected titan");
         assertTrue(ctx.campaign.escortFormationIntegrity > 0.55,
                 "formation integrity should recover when the flagship and support screen stay nearby");
+        assertTrue(Math.hypot(ctx.player.x - escort.x, ctx.player.y - escort.y) < ctx.player.radius + escort.radius + 90.0,
+                "the escorted titan should tuck back into the Mothership's shadow once formation is restored");
     }
 
     @Test
     void coalitionTaskGroupsUnlockForLaterSectorsAndSurviveCheckpointRestore() throws Exception {
         GameContext ctx = initializedCampaignContext();
 
-        startSector(ctx, 7);
+        startSector(ctx, 12);
         ctx.campaign.sideObjectiveCompleted = true;
         grantStoryFleetReward(ctx);
-        startSector(ctx, 8);
+        startSector(ctx, 13);
         assertTrue(hasNamedShip(ctx, ShipRole.LIGHT_CRUISER, "Green Contract Cruiser"));
         assertTrue(hasNamedShip(ctx, ShipRole.CIWS_CORVETTE, "Green Contract Flak"));
         assertTrue(hasNamedShip(ctx, ShipRole.FRIGATE, "Green Contract Frigate"));
         assertEquals(2, coalitionTier(ctx.campaign, "greenContractTier"));
 
-        startSector(ctx, 10);
+        startSector(ctx, 20);
         ctx.campaign.sideObjectiveCompleted = true;
         grantStoryFleetReward(ctx);
-        startSector(ctx, 11);
+        startSector(ctx, 21);
         assertTrue(hasNamedShip(ctx, ShipRole.MISSILE_BOAT, "Yellow Liberation Missile Boat"));
         assertTrue(hasNamedShip(ctx, ShipRole.CIWS_CORVETTE, "Yellow Liberation Flak"));
         assertTrue(hasNamedShip(ctx, ShipRole.FRIGATE, "Yellow Liberation Frigate"));
         assertEquals(2, coalitionTier(ctx.campaign, "yellowLiberationTier"));
 
-        CampaignCheckpointStore.Checkpoint cp = captureCheckpoint(ctx, 12);
+        CampaignCheckpointStore.Checkpoint cp = captureCheckpoint(ctx, 22);
 
         GameContext restored = initializedCampaignContext();
         assertTrue(applyCheckpoint(restored, cp));
-        startSector(restored, 11);
+        startSector(restored, 22);
 
         assertTrue(restored.campaign.greenContractFleetJoined);
         assertTrue(restored.campaign.yellowLiberationFleetJoined);
@@ -122,7 +124,7 @@ class CampaignCompatibilityOverhaulTest {
     @Test
     void lateDestroySectorsAccumulatePressureReinforcements() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 6);
+        startSector(ctx, 15);
 
         long enemiesBefore = ctx.ships.stream()
                 .filter(ship -> ship != null && ship.faction == Faction.ENEMY)
@@ -141,65 +143,74 @@ class CampaignCompatibilityOverhaulTest {
     }
 
     @Test
-    void sectorSevenRequiresJammerSweepBeforeUplinkHold() throws Exception {
+    void sectorFourUsesAuthoredDestroyProgressInsteadOfCaptureHold() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 7);
+        startSector(ctx, 4);
 
-        ctx.player.x = ctx.campaign.captureX;
-        ctx.player.y = ctx.campaign.captureY;
-        ctx.ships.removeIf(ship -> ship != null
-                && ship.faction == Faction.ENEMY
-                && !ctx.campaign.authoredObjectiveHostiles.contains(ship.id));
-        runCampaignTicks(ctx, 90);
+        assertFalse(CampaignSystem.hasCapturePoint(ctx), "sector 4 should no longer expose a capture ring");
+        assertEquals(4.0, ctx.campaign.objectiveGoal, 0.01);
+        assertTrue(ctx.campaign.objectiveLabel.contains("route-control blockers"));
 
-        assertFalse(ctx.campaign.captureArmed, "sector 7 should stay in the jammer-sweep phase until the pylons are destroyed");
-        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01, "capture progress should not start while jammers remain online");
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("ASSETS: UPLINKS 2/2"));
+        ctx.campaign.kills = 4;
+        CampaignSystem.update(ctx, GameContext.DT);
+        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
+                "sector 4 should advance off authored blocker kills, not generic kill count");
 
         clearAuthoredObjectiveHostiles(ctx);
         CampaignSystem.update(ctx, GameContext.DT);
 
-        assertTrue(ctx.campaign.captureArmed, "destroying the jammer pylons should arm the uplink hold");
-        assertEquals(120.0, ctx.campaign.objectiveGoal, 0.01);
-        assertTrue(ctx.campaign.objectiveLabel.contains("contract uplink"));
-
-        ctx.ships.removeIf(ship -> ship != null && ship.faction == Faction.ENEMY);
-        runCampaignTicks(ctx, 120);
-        assertTrue(ctx.campaign.objectiveProgress > 0.0, "once the jammers are down, holding the array should advance the objective");
+        assertEquals(4.0, ctx.campaign.objectiveProgress, 0.01);
+        assertTrue(ctx.campaign.awaitingEpisodeLaunch, "clearing the relay blockers should resolve into the next episode");
     }
 
     @Test
-    void sectorElevenRequiresOrbitalAnchorsBeforeCordonBreak() throws Exception {
+    void sectorThirteenRequiresJammerTriadKillsInsteadOfScreenKills() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 11);
+        startSector(ctx, 13);
 
-        Ship nonAnchor = removeFirstStandardEnemy(ctx);
-        assertNotNull(nonAnchor, "sector 11 should still field screen ships around the orbital anchors");
+        Ship nonJammer = removeFirstStandardEnemy(ctx);
+        assertNotNull(nonJammer, "sector 13 should still field screen ships around the jammer triad");
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
-                "killing screen ships should not advance the sector-11 objective before the anchors are down");
+                "killing screen ships should not advance the jammer-sweep objective");
+        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("ASSETS: UPLINKS 2/2"));
+        assertFalse(CampaignSystem.hasCapturePoint(ctx), "sector 13 should no longer expose a capture ring");
+        assertTrue(ctx.campaign.objectiveLabel.contains("jammer triad"));
+
+        clearAuthoredObjectiveHostiles(ctx);
+        CampaignSystem.update(ctx, GameContext.DT);
+
+        assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);
+        assertTrue(ctx.campaign.awaitingEpisodeLaunch, "destroying the jammer triad should finish the sector and move to the relief-break episode");
+    }
+
+    @Test
+    void sectorTwentyOneRequiresOrbitalAnchorsBeforeLunaSweepResolves() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 21);
+
+        Ship nonAnchor = removeFirstStandardEnemy(ctx);
+        assertNotNull(nonAnchor, "sector 21 should still field screen ships around the orbital anchors");
+        CampaignSystem.update(ctx, GameContext.DT);
+
+        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
+                "killing screen ships should not advance the sector-21 objective before the anchors are down");
         assertTrue(ctx.campaign.objectiveLabel.contains("orbital defense anchors"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("ASSETS: EVAC SHIPS 2/2"));
 
         clearAuthoredObjectiveHostiles(ctx);
         CampaignSystem.update(ctx, GameContext.DT);
 
-        assertEquals(1, ctx.campaign.objectiveStage, "clearing the anchors should transition to the cordon-break phase");
-        assertEquals(10.0, ctx.campaign.objectiveGoal, 0.01);
-        assertTrue(ctx.campaign.objectiveLabel.contains("cordon"));
-
-        Ship postTransitionEnemy = removeFirstStandardEnemy(ctx);
-        assertNotNull(postTransitionEnemy, "sector 11 should still have ships left to clear after the anchors fall");
-        CampaignSystem.update(ctx, GameContext.DT);
-        assertTrue(ctx.campaign.objectiveProgress > 0.0,
-                "after the anchors fall, further kills should count toward breaking the orbital cordon");
+        assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);
+        assertTrue(ctx.campaign.awaitingEpisodeLaunch,
+                "clearing Luna's orbital anchors should finish the sweep and open the cordon-break episode");
     }
 
     @Test
     void protectedAssetLossesShapeSectorOutcomeRewards() throws Exception {
         GameContext ctx = initializedCampaignContext();
-        startSector(ctx, 11);
+        startSector(ctx, 21);
         ctx.campaign.yellowLiberationFleetJoined = true;
         ctx.campaign.yellowLiberationFavor = 2;
         ctx.campaign.branchScore = 0;
