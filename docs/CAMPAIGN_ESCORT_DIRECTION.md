@@ -531,19 +531,210 @@ Still backlog:
 - Yellow liberation is primarily boarding/recovery and disablement based, with liberated hulls joining the fleet later in the campaign.
 - Fleet expansion is a mix of direct hull buys, persistent fleet caps, and contract-style reinforcement packages.
 
-## Open Gripe Notes
+## Open Gripe Checklist
 
-- F10 to leave campaign and enter the fleet tab should not erase ore or cargo on board; preserve ship inventory through that handoff.
-- The fleet tab should let the player click any individual ship and edit the full loadout, including weapon swaps per slot and missile subtype selection.
-- Missile variants should be editable by role, including intercept, anti-light, anti-medium, and anti-heavy profiles.
-- The ship editor layout should feel closer to the supplied mockup: a clear ship config panel, visible slot-based loadout, and less buried text.
-- Fogged sectors should still exist in simulation, but they should be fully unrendered when out of sight so we gain performance without losing world state.
-- Blue-team fighters should keep the older projectile skin instead of the newer blue beam skin, since their misses make the screen too noisy.
-- Green missiles should read more like green photon torpedoes.
-- Blue missiles can also become a sidegrade torpedo option: much higher warhead yield, but much lower guidance time, so slow targets are the best match.
-- The largest map size still lags too hard and should be profiled for render and simulation culling improvements.
-- When a campaign mission ends successfully, do not instantly force the player into the fleet tab. Offer the choice, but auto-advance after about 10 seconds so the player cannot stall indefinitely.
+This section replaces the raw gripe dump with a working checklist.
 
+Use rules:
+- Work from top to bottom unless a blocker forces a different order.
+- Do not mix major balance, performance, UI, and content work in the same pass unless one item directly depends on another.
+- Before checking an item off, add or extend a regression test if the behavior is testable.
+- For tuning-heavy items, do one live campaign validation pass in addition to code review.
+- After finishing an item, append a short note with files touched, tuning values changed, and any follow-up work still open.
+- Do not add new freeform gripe paragraphs below this point. Add new issues as checklist items inside the correct phase.
+
+Definition of done for every phase:
+- The intended player-facing behavior is implemented.
+- The most likely regression path is covered by a test or a documented manual validation step.
+- Any balancing numbers changed during the phase are written down in a short completion note.
+- Performance-sensitive changes include a before/after sanity check on the largest campaign maps.
+
+### Phase 1: Campaign Flow And Persistence
+
+Goal:
+- Fix the issues that break campaign continuity, hide important UI, or make the campaign handoff feel bad.
+
+Checklist:
+- [ ] Preserve ore, cargo, and ship inventory when the player presses `F10` to leave a campaign mission for the fleet tab.
+  Instructions:
+  Treat the two separate `F10` complaints as one persistence bug.
+  Validate both in-mission `F10` exit and between-sector fleet-hub handoff.
+  Confirm the saved checkpoint captures current ore, cargo, fleet state, and resume sector correctly.
+- [ ] Do not force the fleet tab immediately on mission success; offer the choice first, then auto-advance after about `10` seconds.
+  Instructions:
+  The player should be able to opt in immediately, ignore it, or let the timeout carry them forward.
+  The timeout should prevent indefinite stalling.
+- [ ] Move or restyle the mission-end / next-episode banner so it does not block the shop or other centered menus.
+  Instructions:
+  Treat this as a layout and readability fix, not just a cosmetic tweak.
+  The mission-end UI must never hide the controls needed for the next action.
+
+Validation:
+- Extend checkpoint and fleet-hub regression coverage.
+- Manually test mission end, `F10` exit, resume from checkpoint, and next-episode launch flow.
+
+### Phase 2: Mission Balance And Economy
+
+Goal:
+- Fix the sectors that either end too fast to support ore collection or spike too hard to feel fair.
+
+Checklist:
+- [ ] Rework missions `3`, `4`, and `5` so the base Mothership cannot finish them in under a second.
+  Instructions:
+  These sectors must leave enough combat time for ore gathering and progression.
+  Keep them fast-moving, but no longer trivial.
+- [ ] Retune episode `9` so it remains a serious challenge but does not obliterate an otherwise healthy run.
+  Instructions:
+  Start by reducing the existing red spawn count to about `2/3`, then retest before making further changes.
+- [ ] Retune episode `10` so it cannot be cleared in under a second.
+  Instructions:
+  Preserve the intended campaign beat, but force at least one meaningful exchange.
+- [ ] Recheck episode `11` enemy count and pacing so it stops reading like a pure meat grinder.
+  Instructions:
+  Keep pressure high, but remove the sense that the mission is unwinnable without perfect pre-builds.
+
+Balancing rules:
+- Early and mid-campaign sectors must allow resource gain, not just survival.
+- Hard sectors should reward preparation, not require perfection.
+- If a sector becomes slower, make sure it becomes more readable, not more repetitive.
+
+Validation:
+- Run quick live checks on sectors `3`, `4`, `5`, `9`, `10`, and `11`.
+- Record final enemy-count, timer, and wave changes in completion notes.
+
+### Phase 3: Performance And Render Culling
+
+Goal:
+- Improve frame rate on the largest maps without losing simulation state or campaign readability.
+
+Checklist:
+- [ ] Keep fogged sectors fully simulated but fully unrendered when out of sight.
+  Instructions:
+  This is a render-culling task, not a world-state deletion task.
+  Fogged ships, projectiles, and sectors should continue to exist logically while hidden.
+- [ ] Profile the largest map size and identify the biggest render and simulation costs.
+  Instructions:
+  Measure before changing behavior so later performance wins are easy to verify.
+- [ ] Remove the explosion visual effects from small shots hitting hulls.
+  Instructions:
+  Keep important impact readability, but strip low-value effect spam that causes lag.
+- [ ] Remove or heavily simplify CIWS visuals in fleet battles.
+  Instructions:
+  Prioritize frame rate and combat clarity over spectacle here.
+
+Performance rules:
+- Do not ship a culling change unless simulation integrity survives.
+- Prefer removing repeated low-value effects before cutting major readability cues.
+- Any fog-of-war optimization must preserve ghost contacts and strategic knowledge rules.
+
+Validation:
+- Compare largest-map performance before and after the phase.
+- Sanity-check fog behavior, hidden-contact behavior, and projectile visibility after culling changes.
+
+### Phase 4: Fleet Editor And Loadout UX
+
+Goal:
+- Turn the fleet tab into a real ship-by-ship outfitting tool instead of a shallow hull picker.
+
+Checklist:
+- [ ] Let the player click any individual ship in the fleet tab and edit that ship directly.
+- [ ] Support full loadout editing, including weapon swaps per slot.
+- [ ] Support missile subtype selection per relevant slot.
+- [ ] Support missile-role editing for `intercept`, `anti-light`, `anti-medium`, and `anti-heavy` profiles.
+- [ ] Rebuild the ship editor layout so it matches the supplied mockup direction more closely.
+  Instructions:
+  The panel should clearly show the selected ship, visible slot loadout, editable choices, and key stats without burying information in text.
+
+Implementation rules:
+- Treat this phase as one cohesive data-model and UI pass.
+- Do not bolt missile-role editing on top of a UI that still hides slots.
+- Persist loadout changes per ship so the fleet editor becomes a real campaign management tool.
+
+Validation:
+- Manual test with multiple fleet ships, different hulls, weapon swaps, and missile-role changes.
+- Add tests around any new per-ship persistence or serialization path.
+
+### Phase 5: Weapon Identity And Combat Behavior
+
+Goal:
+- Make blue and green weapons feel distinct, readable, and tactically intentional.
+
+Checklist:
+- [ ] Restore the older blue-team fighter projectile skin instead of the newer noisy blue beam look.
+- [ ] Make green missiles read more like green photon torpedoes.
+- [ ] Add a blue torpedo sidegrade: higher warhead yield, lower guidance time, best against slower targets.
+- [ ] Make friendly Superships and other special-weapon ships use their superweapons more aggressively.
+  Instructions:
+  If they see a `medium cruiser` or larger and the superweapon is charged, they should prefer the largest valid target and fire, then return to normal AI.
+- [ ] Make blue-team non-missile turrets keep their target until the last projectile they fired hits or despawns.
+- [ ] Make blue-team non-missile turrets wait for their prior projectile to resolve before firing again.
+- [ ] Add flight-distance damage growth for those blue non-missile projectiles so slower cadence still pays off.
+- [ ] Split blue energy-bolt and beam-bolt barrel behavior.
+  Instructions:
+  `ENERGY_BOLT`: stagger barrels one at a time over about `0.5` seconds total, without merging beams.
+  `BEAM_BOLT`: fire all barrels together as one joined beam.
+  Two-barrel weapons should still stagger, but with both barrels active during the overlap window.
+  Initial target stagger interval: about `0.25` seconds.
+- [ ] Add new blue and green launcher/turret content, including photon torpedoes, interceptor missiles, and related variants.
+
+Combat-behavior rules:
+- Missile turrets are excluded from the "wait for prior projectile to resolve" rule unless explicitly stated otherwise.
+- Any visual upgrade must be checked against the performance goals from Phase 3.
+- Weapon feel changes should support faction identity, not just add noise.
+
+Validation:
+- Live-fire tests for blue gun behavior, stagger timing, sidegrade missile feel, and special-weapon AI targeting.
+- Record final weapon timing and damage values after tuning.
+
+### Phase 6: Audio, Voice, And Bridge Atmosphere
+
+Goal:
+- Make the Mothership feel crewed, alive, and tactically readable through voice and ambience.
+
+Checklist:
+- [ ] Improve voice acting quality and give crew members more personality.
+- [ ] Remove the `"stand down from combat alert"` line.
+- [ ] Add banter between crew members.
+- [ ] Add ambient bridge/station audio for fleet organizer, weaponry, engineering, main interactable crew, small-craft director, and XO.
+  Instructions:
+  These lines should sit under direct player-callout volume: quieter, still hearable, never masking important commands.
+- [ ] Raise engine background SFX loudness to better support the Mothership environment.
+
+Audio rules:
+- Treat code and content as separate subtracks inside the same phase.
+- Direct tactical callouts must stay clearer and louder than bridge chatter.
+- Ambient loops should create presence without exhausting the player over long sessions.
+
+Validation:
+- Do a mix pass in quiet combat, heavy combat, and menu-heavy fleet-hub situations.
+- Track missing assets and line coverage in completion notes.
+
+### Phase 7: Fleet Growth And Titan Command Extensions
+
+Goal:
+- Expand long-term progression and give Titan hulls stronger tactical identity.
+
+Checklist:
+- [ ] Let the player increase unit cap with ore and money for each ship type.
+  Instructions:
+  Tie this to fleet growth and campaign economy, not just a flat unlock ladder.
+- [ ] Give every Titan ship a special active combat ability that fits its theme.
+  Instructions:
+  Each ability should reinforce the Titan's role in the command ladder and escort fantasy.
+  Avoid generic "big damage button" duplication across all Titans.
+
+Design rules:
+- New progression systems should reinforce escort tension, fleet growth, and formation command.
+- New Titan actives should deepen battlefield decision-making, not replace escort play.
+
+Validation:
+- Check economy pacing after cap upgrades are added.
+- Test each Titan active for role clarity, cooldown feel, and abuse cases.
+
+### Parking Lot Notes
+
+Use this only for discoveries made while implementing the checklist above.
+Any note added here should immediately be promoted into a checkbox item in one of the phases if it becomes real work.
 ## Working North Star
 
 The campaign should make the player care about a growing fleet, a clear chain of command, one long route home, and the coalition that survives around it. If a feature does not strengthen escort tension, fleet growth, formation command, alliance-building, liberation, or the final return to Earth, it is probably not part of this campaign's core identity.
