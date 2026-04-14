@@ -652,7 +652,7 @@ public final class TutorialSystem {
     private static String lessonSummary(LessonId lesson) {
         return switch (lesson) {
             case FLIGHT_BASICS ->
-                    "Learn the ship's movement model, waypoint flow, and how the minimap supports a simple navigation run.";
+                    "Learn the ship's movement model, waypoint flow, and how the tactical view supports a simple navigation run.";
             case TARGETING_AND_SENSORS ->
                     "Practice tactical pings, target locking, live-fire damage confirmation, and the x-ray room inspection tools.";
             case LOGISTICS_AND_REFIT ->
@@ -680,7 +680,7 @@ public final class TutorialSystem {
                         st.betaWaypointSet));
                 items.add(new ChecklistItem(
                         "[Waypoint] Fly to NAV BETA.",
-                        "Follow the waypoint ring or minimap cue until you reach NAV BETA.",
+                        "Follow the waypoint ring or on-screen nav cue until you reach NAV BETA.",
                         st.reachedBeta));
             }
             case TARGETING_AND_SENSORS -> {

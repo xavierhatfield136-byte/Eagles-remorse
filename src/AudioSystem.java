@@ -33,7 +33,8 @@ public final class AudioSystem {
         return t;
     });
     private static final List<Clip> ACTIVE_CLIPS = Collections.synchronizedList(new ArrayList<>());
-    private static volatile boolean TELEMETRY_ONLY = false;
+    private static final boolean AUDIO_DISABLED = Boolean.getBoolean("codex.disableAudio");
+    private static volatile boolean TELEMETRY_ONLY = AUDIO_DISABLED;
 
     private static volatile Clip ambientClip;
 
@@ -467,9 +468,9 @@ public final class AudioSystem {
     }
 
     public static synchronized void setTelemetryOnly(boolean telemetryOnly) {
-        TELEMETRY_ONLY = telemetryOnly;
+        TELEMETRY_ONLY = AUDIO_DISABLED || telemetryOnly;
         Clip clip = ambientClip;
-        if (telemetryOnly && clip != null) {
+        if (TELEMETRY_ONLY && clip != null) {
             try {
                 clip.stop();
                 clip.close();

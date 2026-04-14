@@ -351,11 +351,6 @@ public final class GameplayActions {
                 else if (keyCode == java.awt.event.KeyEvent.VK_8) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.REPAIR);
                 else if (keyCode == java.awt.event.KeyEvent.VK_9) UISystem.applyCaptainDirective(ctx, GameContext.CaptainDirective.RTB);
                 else if (keyCode == java.awt.event.KeyEvent.VK_0) UISystem.cycleAlliedFleetFormation(ctx);
-                else if (keyCode == java.awt.event.KeyEvent.VK_Q) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.ATTACK);
-                else if (keyCode == java.awt.event.KeyEvent.VK_W) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.DEFEND);
-                else if (keyCode == java.awt.event.KeyEvent.VK_E) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.REPAIR);
-                else if (keyCode == java.awt.event.KeyEvent.VK_R) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.RTB);
-                else if (keyCode == java.awt.event.KeyEvent.VK_T) UISystem.assignNearestFriendlyShipFleetOverride(ctx, GameContext.FleetCommand.AUTO);
                 else if (keyCode == java.awt.event.KeyEvent.VK_MINUS || keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
                     tryTeleportToBase(ctx);
                 }

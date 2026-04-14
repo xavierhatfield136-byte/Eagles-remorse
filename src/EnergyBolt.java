@@ -3,7 +3,9 @@
  *
  * This is NOT a hitscan beam: it's a visible projectile with medium speed
  * and a chunky impact. Visual styling is handled in Renderer.drawProjectiles
- * (via instanceof EnergyBolt).
+ * (via instanceof EnergyBolt). The spawn point is retained so the renderer
+ * can braid the three lance strands from muzzle to impact, and the source
+ * turret offsets let the bolt reattach to the firing mount if the ship moves.
  */
 public class EnergyBolt extends Projectile {
 
@@ -11,6 +13,12 @@ public class EnergyBolt extends Projectile {
     public final double angle;
     /** True for the heavier BEAM_BOLT family (visual + tuning). */
     public final boolean beamBolt;
+    /** Launch point used for the triple-lance spiral effect. */
+    public final double spawnX;
+    public final double spawnY;
+    /** Local turret mount used to re-anchor the beam while the ship moves. */
+    public final double sourceTurretLocalX;
+    public final double sourceTurretLocalY;
 
     public EnergyBolt(
             double x,
@@ -21,6 +29,22 @@ public class EnergyBolt extends Projectile {
             int damage,
             int life,
             double radius,
+            Faction faction
+    ) {
+        this(x, y, angle, dt, speed, damage, life, radius, Double.NaN, Double.NaN, faction);
+    }
+
+    public EnergyBolt(
+            double x,
+            double y,
+            double angle,
+            double dt,
+            double speed,
+            int damage,
+            int life,
+            double radius,
+            double sourceTurretLocalX,
+            double sourceTurretLocalY,
             Faction faction
     ) {
         super(
@@ -35,6 +59,10 @@ public class EnergyBolt extends Projectile {
         );
         this.angle = angle;
         this.beamBolt = isBeamBoltSpeed(speed);
+        this.spawnX = x;
+        this.spawnY = y;
+        this.sourceTurretLocalX = sourceTurretLocalX;
+        this.sourceTurretLocalY = sourceTurretLocalY;
     }
 
     public EnergyBolt(double x, double y, double angle, double dt, Faction faction) {

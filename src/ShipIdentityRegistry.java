@@ -264,7 +264,7 @@ public final class ShipIdentityRegistry {
                     spec(IdentityStat.SENSOR_RANGE, 1.14, "Transit Plotting"));
             case ELITE_SUPERSHIP_COMMAND_TITAN -> matrixBonus(key, role,
                     spec(IdentityStat.WEAPON_DAMAGE, 1.18, "Supership Command Net"),
-                    spec(IdentityStat.WEAPON_DAMAGE, 1.18, "Kill Chain Bridge"),
+                    spec(IdentityStat.SUPPORT_FIELD, 1.18, "Kill Chain Bridge"),
                     spec(IdentityStat.SENSOR_RANGE, 1.16, "Aegis Target Choir"),
                     spec(IdentityStat.WARP_CHARGE, 1.16, "Viper Spearhead"));
             case ELITE_REINFORCEMENTS_TITAN -> matrixBonus(key, role,

@@ -494,7 +494,21 @@ public final class UISystem {
     public static void clearXrayRoomFocus(GameContext ctx) {
         if (ctx == null) return;
         ctx.ui.xrayFocusedRoom = null;
+        if (ctx.player != null) {
+            ctx.player.clearIntegrityFocus();
+        }
         EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
+    }
+
+    private static Ship.EngineeringPriority engineeringPriorityForRoom(ShipRoomLayout.RoomDef room) {
+        if (room == null || room.primarySystem == null) return Ship.EngineeringPriority.BALANCED;
+        return switch (room.primarySystem) {
+            case ENGINES, WARP_ENGINES -> Ship.EngineeringPriority.PROPULSION;
+            case SHIELDS -> Ship.EngineeringPriority.SHIELDS;
+            case WEAPONS, MAGAZINES -> Ship.EngineeringPriority.WEAPONS;
+            case SENSORS, BRIDGE -> Ship.EngineeringPriority.SENSORS;
+            case REACTOR_CORE -> Ship.EngineeringPriority.REACTOR;
+        };
     }
 
     public static boolean handleXrayClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
@@ -506,19 +520,32 @@ public final class UISystem {
         if (roomId == null) return false;
 
         if (SwingUtilities.isRightMouseButton(e)) {
-            ctx.ui.xrayFocusedRoom = null;
-            EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
+            clearXrayRoomFocus(ctx);
             return true;
         }
         if (!SwingUtilities.isLeftMouseButton(e)) return true;
 
-        if (ctx.ui.xrayFocusedRoom == roomId) {
-            ctx.ui.xrayFocusedRoom = null;
-            EventSystem.showBanner(ctx, "X-RAY FOCUS CLEARED", 0.8);
-            return true;
-        }
         ctx.ui.xrayFocusedRoom = roomId;
-        EventSystem.showBanner(ctx, "X-RAY FOCUS: " + xrayRoomLabel(roomId), 0.9);
+        ShipRoomLayout.RoomDef room = ShipRoomLayout.roomForId(ctx.player.role, ctx.player.faction, roomId);
+        Ship.EngineeringPriority focus = engineeringPriorityForRoom(room);
+        ctx.player.setIntegrityFocus(roomId, 8.0);
+        ctx.command.engineeringAutomation = false;
+        if (focus != null) {
+            ctx.player.setEngineeringPriority(focus);
+        }
+
+        boolean damaged = ctx.player.roomHealthFraction(roomId) < 0.999
+                || ctx.player.isRoomDisrupted(roomId)
+                || ctx.player.roomFireIntensity(roomId) > 0.01;
+        if (damaged) {
+            ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
+            ctx.player.suppressFireInRoom(roomId);
+        }
+
+        StringBuilder banner = new StringBuilder("X-RAY FOCUS: ").append(xrayRoomLabel(roomId));
+        banner.append("   FIELD ").append(focus.name());
+        if (damaged) banner.append("   DAMAGE CONTROL");
+        EventSystem.showBanner(ctx, banner.toString(), 0.9);
         return true;
     }
 
@@ -1261,42 +1288,6 @@ public final class UISystem {
         EventSystem.showBanner(ctx, "FLEET FORMATION: " + ctx.command.alliedFleetFormation.name(), 1.0);
     }
 
-    public static void assignNearestFriendlyShipFleetOverride(GameContext ctx, GameContext.FleetCommand command) {
-        if (ctx == null || ctx.player == null) return;
-        if (command == null) command = GameContext.FleetCommand.AUTO;
-        Ship target = nearestFriendlyShipForOverride(ctx);
-        if (target == null) {
-            EventSystem.showBanner(ctx, "NO FRIENDLY SHIP NEARBY", 1.1);
-            return;
-        }
-        if (command == GameContext.FleetCommand.AUTO) {
-            ctx.command.shipFleetCommandOverrides.remove(target.id);
-            AudioSystem.onCommandShipShipOrder(ctx, ctx.player, GameContext.FleetCommand.AUTO, target);
-            EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER CLEARED", 1.1);
-            return;
-        }
-        ctx.command.shipFleetCommandOverrides.put(target.id, command);
-        AudioSystem.onCommandShipShipOrder(ctx, ctx.player, command, target);
-        EventSystem.showBanner(ctx, "SHIP " + target.id + " ORDER: " + command.name(), 1.1);
-    }
-
-    private static Ship nearestFriendlyShipForOverride(GameContext ctx) {
-        Ship best = null;
-        double bestD2 = 850.0 * 850.0;
-        for (Ship s : ctx.ships) {
-            if (s == null || s == ctx.player) continue;
-            if (!s.alive || s.dying || s.hp <= 0) continue;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
-            if (s.faction == null || !s.faction.isFriendlyTo(ctx.player.faction)) continue;
-            double d2 = GameMath.dist2(ctx.player.x, ctx.player.y, s.x, s.y);
-            if (d2 < bestD2) {
-                bestD2 = d2;
-                best = s;
-            }
-        }
-        return best;
-    }
-
     public static void scienceLockNearest(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
         double range = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
@@ -1341,7 +1332,9 @@ public final class UISystem {
     private static void clearManualCombatInputs(GameContext ctx) {
         if (ctx == null) return;
         ctx.firingPrimaryManual = false;
+        ctx.firingPrimaryManualLatched = false;
         ctx.firingSecondaryManual = false;
+        ctx.firingSecondaryManualLatched = false;
     }
 
     private static void persistVoicePreferences(GameContext ctx) {

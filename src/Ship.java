@@ -233,6 +233,8 @@ public abstract class Ship {
     private double stasisFieldTimer = 0.0;
     private double destabilizedTimer = 0.0;
     private double kineticMomentumTimer = 0.0;
+    private ShipRoomLayout.RoomId integrityFocusRoom = null;
+    private double integrityFocusTimer = 0.0;
     private static final double DESTABILIZED_SYSTEM_MULTIPLIER = 0.80;
     private static final double KINETIC_MOMENTUM_WINDOW_SECONDS = 2.4;
     private static final double ROOM_DISRUPTION_FULL_SHIP_MULTIPLIER = 0.42;
@@ -245,12 +247,12 @@ public abstract class Ship {
         BEAM_BOLT
     }
 
-    public static final double BEAM_BOLT_SPEED = 650.0;
-    public static final double BEAM_BOLT_FIRE_RATE_MULT = 0.30;
-    public static final double BEAM_BOLT_DPS_MULT = 1.20;
-    // 4.0 * 0.30 = 1.20x DPS target versus baseline guns.
-    public static final double BEAM_BOLT_DAMAGE_MULT = 4.0;
-    public static final int BEAM_BOLT_LIFE = 120; // frames (~1200px at 650 px/s)
+    public static final double BLUE_MAIN_BATTERY_MIN_RELOAD_SECONDS = 1.0;
+    public static final double MISSILE_MIN_RELOAD_SECONDS = 1.0;
+    public static final double BEAM_BOLT_SPEED = 780.0;
+    public static final double BEAM_BOLT_RELOAD_SECONDS = 1.0;
+    public static final double BEAM_BOLT_DAMAGE_RELOAD_FACTOR = 1.12;
+    public static final int BEAM_BOLT_LIFE = 150; // frames (~1950px at 780 px/s)
 
     public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
 
@@ -738,6 +740,12 @@ public abstract class Ship {
         x += vx;
         y += vy;
         if (dt > 0.0) noDamageTimerSeconds += dt;
+        if (integrityFocusTimer > 0.0) {
+            integrityFocusTimer -= dt;
+            if (integrityFocusTimer <= 0.0) {
+                clearIntegrityFocus();
+            }
+        }
         if (kineticMomentumTimer > 0.0) {
             kineticMomentumTimer -= dt;
             if (kineticMomentumTimer < 0.0) kineticMomentumTimer = 0.0;
@@ -847,9 +855,11 @@ public abstract class Ship {
             }
 
             if (primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT) {
-                t.damage = Math.max(1, (int) Math.round(base.damage * BEAM_BOLT_DAMAGE_MULT));
-                t.cooldown = base.cooldown / BEAM_BOLT_FIRE_RATE_MULT;
-                t.bulletSpeed = BEAM_BOLT_SPEED;
+                double reloadCompensation = BEAM_BOLT_DAMAGE_RELOAD_FACTOR / Math.max(0.10, base.cooldown);
+                t.damage = Math.max(1, (int) Math.round(base.damage * reloadCompensation));
+                t.cooldown = BEAM_BOLT_RELOAD_SECONDS;
+                // Store the pre-multiplied speed so Turret.fire() lands on the actual beam-bolt speed.
+                t.bulletSpeed = BEAM_BOLT_SPEED / Turret.GUN_PROJECTILE_SPEED_MULT;
                 t.bulletLife = BEAM_BOLT_LIFE;
             } else {
                 t.damage = base.damage;
@@ -948,6 +958,7 @@ public abstract class Ship {
             }
         }
         hullRegenBuffer = 0.0;
+        clearIntegrityFocus();
         enforceRoomSystemAvailability();
         syncHullFromRoomIntegrity();
     }
@@ -1799,6 +1810,7 @@ public abstract class Ship {
         roomDisabledSystems.clear();
         roomDamageEvents.clear();
         lastRoomDamageResult = RoomDamageResult.NONE;
+        clearIntegrityFocus();
         hullRegenBuffer = 0.0;
         noDamageTimerSeconds = 0.0;
         instantRepairConsumed = false;
@@ -2022,6 +2034,30 @@ public abstract class Ship {
         if (!alive || dying || roomId == null) return false;
         double effort = 0.16 + 0.20 * engineeringPowerMultiplier() + 0.12 * crewReadiness();
         return applyFireSuppression(roomId, effort, true) > 1e-4;
+    }
+
+    public ShipRoomLayout.RoomId integrityFocusRoom() {
+        return (integrityFocusTimer > 1e-6) ? integrityFocusRoom : null;
+    }
+
+    public double integrityFocusRemaining() {
+        return Math.max(0.0, integrityFocusTimer);
+    }
+
+    public boolean setIntegrityFocus(ShipRoomLayout.RoomId roomId, double seconds) {
+        if (!alive || dying) return false;
+        if (roomId == null || seconds <= 0.0) {
+            clearIntegrityFocus();
+            return true;
+        }
+        integrityFocusRoom = roomId;
+        integrityFocusTimer = Math.max(0.0, seconds);
+        return true;
+    }
+
+    public void clearIntegrityFocus() {
+        integrityFocusRoom = null;
+        integrityFocusTimer = 0.0;
     }
 
     /**
@@ -3072,6 +3108,10 @@ public abstract class Ship {
 
         double max = roomHpMax.getOrDefault(room.id, 0.0);
         if (max <= 0.0) return;
+        if (integrityFocusTimer > 1e-6 && integrityFocusRoom == room.id) {
+            // Manual integrity focus soaks most of the damage landing on that room.
+            damage *= 0.25;
+        }
         double before = roomHp.getOrDefault(room.id, max);
         int hullBefore = hp;
         int hazardRolls = 0;

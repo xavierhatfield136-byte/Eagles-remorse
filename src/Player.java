@@ -139,7 +139,7 @@ public class Player extends Ship {
 
         Turret rack = new Turret(Turret.Kind.MISSILE, sx, sy);
         rack.primary = false;
-        rack.cooldown = 1.0;
+        rack.cooldown = Ship.MISSILE_MIN_RELOAD_SECONDS;
         rack.damage = 3;
         rack.missileSpeed = 240;
         rack.missileTurnRate = Math.toRadians(220);

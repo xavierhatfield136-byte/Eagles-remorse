@@ -46,17 +46,6 @@ public final class GameRenderSystem {
         if (!tacticalView) {
             drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
-        ctx.perf.drawnShips = tacticalView
-                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY)
-                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        if (!tacticalView) {
-            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        }
-        ctx.perf.drawnProjectiles = tacticalView
-                ? Renderer.drawTacticalProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY)
-                : Renderer.drawProjectiles(worldG, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-        Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
 
         ctx.perf.totalVfx = VFX.activeCount();
         ctx.perf.totalExplosions = Explosion.active.size();
@@ -89,12 +78,29 @@ public final class GameRenderSystem {
             ctx.perf.drawnExplosions = 0;
         }
 
+        if (!tacticalView) {
+            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        }
+
+        Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, ctx.fogOfWar,
+                viewMinX, viewMinY, viewMaxX, viewMaxY, tacticalView);
+
+        Faction perspective = (ctx.player == null) ? null : ctx.player.faction;
+        ctx.perf.drawnShips = tacticalView
+                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
+                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+        ctx.perf.drawnProjectiles = tacticalView
+                ? Renderer.drawTacticalProjectiles(worldG, renderShips, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
+                : Renderer.drawProjectiles(worldG, renderShips, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+        Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
+        Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
+
         Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
-                viewMinX, viewMinY, viewMaxX, viewMaxY);
+                viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
         if (CampaignSystem.isFleetHubSession(ctx)) {
             drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
         }
-        Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
         drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         TutorialSystem.drawWorldMarkers(ctx, worldG);
@@ -172,16 +178,17 @@ public final class GameRenderSystem {
         );
         TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
         drawVoiceCaption(ctx, g2, viewportW, viewportH);
-        drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
         drawModifierChips(ctx, g2, viewportW);
 
-        Renderer.drawMinimap(g2, renderShips, ctx.player, viewportW, viewportH, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings);
-        TutorialSystem.drawMinimapOverlay(ctx, g2, viewportW, viewportH);
+        if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
+            drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
+        }
 
         if (ctx.ui.mapOpen) {
             Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
-                    renderShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings, ctx.eventBanner);
+                    renderShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
+                    CampaignSystem.isCampaignActive(ctx) ? ctx.fogOfWar : null, ctx.eventBanner);
             TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
         }
 
@@ -416,16 +423,20 @@ if (DevTools.isDebugOverlay()) {
     private static void drawFleetNetOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
 
+        String sensorSummary = FogOfWarSystem.isCombatFogEnabled(ctx) ? FogOfWarSystem.coverageSummary(ctx) : "";
         java.util.List<String> squadLines = activeSquadSummaryLines(ctx);
         java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 4);
-        if (squadLines.isEmpty() && messages.isEmpty()) return;
+        java.util.List<String> sensorLines = sensorSummary.isBlank()
+                ? java.util.List.of()
+                : wrapLines(g2.getFontMetrics(new Font("Consolas", Font.PLAIN, 12)), sensorSummary, Math.min(300, Math.max(240, viewportW / 4)) - 24);
+        if (squadLines.isEmpty() && messages.isEmpty() && sensorLines.isEmpty()) return;
 
         Font titleFont = new Font("Consolas", Font.BOLD, 13);
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
         int w = Math.min(300, Math.max(240, viewportW / 4));
         int x = viewportW - w - 16;
         int y = 16;
-        int h = 42 + squadLines.size() * 15;
+        int h = 42 + sensorLines.size() * 15 + squadLines.size() * 15;
         for (GameContext.FleetCommMessage msg : messages) {
             h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
         }
@@ -438,10 +449,20 @@ if (DevTools.isDebugOverlay()) {
         int rowY = y + 22;
         g2.setFont(titleFont);
         g2.setColor(new Color(236, 244, 255, 230));
-        g2.drawString("FLEET NET", x + 12, rowY);
+        g2.drawString("SENSOR NET", x + 12, rowY);
         rowY += 16;
 
         g2.setFont(bodyFont);
+        for (String line : sensorLines) {
+            g2.setColor(new Color(120, 236, 255, 220));
+            g2.drawString(line, x + 12, rowY);
+            rowY += 15;
+        }
+        if (!sensorLines.isEmpty() && (!squadLines.isEmpty() || !messages.isEmpty())) {
+            g2.setColor(new Color(255, 255, 255, 58));
+            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            rowY += 14;
+        }
         for (String line : squadLines) {
             g2.setColor(new Color(168, 212, 255, 214));
             g2.drawString(line, x + 12, rowY);
@@ -762,41 +783,50 @@ if (DevTools.isDebugOverlay()) {
         String top = CampaignSystem.transitionSummaryTop(ctx);
         String bottom = CampaignSystem.transitionSummaryBottom(ctx);
 
-        int w = Math.min(620, viewportW - 80);
-        int h = 148;
+        int w = Math.min(880, viewportW - 60);
+        g2.setFont(new Font("Consolas", Font.BOLD, 22));
+        FontMetrics titleFm = g2.getFontMetrics();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 16));
+        FontMetrics timerFm = g2.getFontMetrics();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+        FontMetrics bodyFm = g2.getFontMetrics();
+        int textW = Math.max(260, w - 40);
+        java.util.List<String> topLines = wrapLines(bodyFm, top, textW);
+        java.util.List<String> bottomLines = wrapLines(bodyFm, bottom, textW);
+        int h = 40 + 28 + 18 + Math.max(1, topLines.size()) * 18 + Math.max(1, bottomLines.size()) * 18;
         int x = (viewportW - w) / 2;
-        int y = viewportH - h - 36;
+        int y = (viewportH - h) / 2;
 
-        g2.setColor(new Color(0, 0, 0, 170));
+        g2.setColor(new Color(0, 0, 0, 190));
         g2.fillRoundRect(x, y, w, h, 16, 16);
         g2.setColor(new Color(255, 255, 255, 180));
         g2.drawRoundRect(x, y, w, h, 16, 16);
 
-        g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        g2.setFont(new Font("Consolas", Font.BOLD, 22));
         g2.setColor(new Color(255, 230, 150, 230));
-        FontMetrics fm1 = g2.getFontMetrics();
-        int tx1 = x + (w - fm1.stringWidth(label)) / 2;
-        g2.drawString(label, tx1, y + 42);
+        int tx1 = x + (w - titleFm.stringWidth(label)) / 2;
+        g2.drawString(label, tx1, y + 40);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 16));
         g2.setColor(new Color(255, 255, 255, 220));
-        FontMetrics fm2 = g2.getFontMetrics();
-        int tx2 = x + (w - fm2.stringWidth(timer)) / 2;
-        g2.drawString(timer, tx2, y + 72);
+        int tx2 = x + (w - timerFm.stringWidth(timer)) / 2;
+        g2.drawString(timer, tx2, y + 66);
 
-        if (top != null && !top.isBlank()) {
-            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+        int rowY = y + 94;
+        if (!topLines.isEmpty()) {
             g2.setColor(new Color(220, 235, 255, 220));
-            FontMetrics fm3 = g2.getFontMetrics();
-            int tx3 = x + (w - fm3.stringWidth(top)) / 2;
-            g2.drawString(top, tx3, y + 98);
+            for (String line : topLines) {
+                g2.drawString(line, x + 20, rowY);
+                rowY += 18;
+            }
         }
-        if (bottom != null && !bottom.isBlank()) {
-            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+        rowY += 4;
+        if (!bottomLines.isEmpty()) {
             g2.setColor(new Color(255, 230, 170, 225));
-            FontMetrics fm4 = g2.getFontMetrics();
-            int tx4 = x + (w - fm4.stringWidth(bottom)) / 2;
-            g2.drawString(bottom, tx4, y + 120);
+            for (String line : bottomLines) {
+                g2.drawString(line, x + 20, rowY);
+                rowY += 18;
+            }
         }
     }
 

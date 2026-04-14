@@ -98,6 +98,7 @@ tasks.named("jar") {
 
 test {
     useJUnitPlatform()
+    systemProperty "codex.disableAudio", "true"
 }
 
 tasks.named("compileJava") {

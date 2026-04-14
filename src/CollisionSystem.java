@@ -1012,8 +1012,9 @@ public class CollisionSystem {
             BeamHitCandidate first = hits.get(0);
             BeamImpactResult impact = resolveBeamImpactResult(first.ship(), sx, sy, ex, ey, first.t(), dirX, dirY);
             beam.clampImpactFraction(impact.impactFraction());
-            if (damage <= 0) return;
-            applyBeamHit(ctx, beam, first.ship(), damage, dirX, dirY, impact.hitX(), impact.hitY());
+            int scaledDamage = scaleBeamDamage(beam, damage, impact.impactFraction());
+            if (scaledDamage <= 0) return;
+            applyBeamHit(ctx, beam, first.ship(), scaledDamage, dirX, dirY, impact.hitX(), impact.hitY());
             return;
         }
 
@@ -1021,7 +1022,9 @@ public class CollisionSystem {
         if (damage <= 0) return;
         for (BeamHitCandidate hit : hits) {
             BeamImpactResult impact = resolveBeamImpactResult(hit.ship(), sx, sy, ex, ey, hit.t(), dirX, dirY);
-            applyBeamHit(ctx, beam, hit.ship(), damage, dirX, dirY, impact.hitX(), impact.hitY());
+            int scaledDamage = scaleBeamDamage(beam, damage, impact.impactFraction());
+            if (scaledDamage <= 0) continue;
+            applyBeamHit(ctx, beam, hit.ship(), scaledDamage, dirX, dirY, impact.hitX(), impact.hitY());
         }
     }
 
@@ -1085,6 +1088,24 @@ public class CollisionSystem {
             impactFraction = segmentParamForPoint(sx, sy, ex, ey, hitX, hitY);
         }
         return new BeamImpactResult(hitX, hitY, impactFraction);
+    }
+
+    private static int scaleBeamDamage(PhaserBeam beam, int damage, double impactFraction) {
+        if (beam == null || damage <= 0) return 0;
+
+        double frac = MathUtil.clamp(impactFraction, 0.0, 1.0);
+        double falloff;
+        if (beam.penetratesTargets()) {
+            // Long-range phaser fire still reaches across the field, but the impact weakens
+            // the farther the target is from the emitter.
+            falloff = 1.0 - (0.58 * Math.pow(frac, 1.12));
+        } else {
+            // Team C regular beams should feel like true artillery lines: powerful up close,
+            // but less oppressive at the edge of their enormous reach.
+            falloff = 1.0 - (0.68 * Math.pow(frac, 1.20));
+        }
+        falloff = MathUtil.clamp(falloff, 0.34, 1.0);
+        return Math.max(1, (int) Math.round(damage * falloff));
     }
 
     private static ImpactVisualPoints resolveImpactVisualPoints(Ship ship,

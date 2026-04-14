@@ -87,8 +87,14 @@ public final class PhysicsSystem {
             boolean manualAllowed = !ctx.ui.shopOpen && !ctx.ui.baseMenuOpen && !ctx.ui.mapOpen
                     && !ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen
                     && !CampaignSystem.isPlayerControlLocked(ctx);
-            boolean firePrimary = (manualAllowed && ctx.firingPrimaryManual) || ctx.firingPrimaryAuto;
-            boolean fireSecondary = (manualAllowed && ctx.firingSecondaryManual) || ctx.firingSecondaryAuto;
+            boolean manualPrimaryRequested = manualAllowed && ctx.firingPrimaryManual;
+            boolean manualPrimaryMissileVolley = manualPrimaryRequested
+                    && hasPrimaryMissileTurrets(ctx.player);
+            if (!manualAllowed || !ctx.firingPrimaryManual || !manualPrimaryMissileVolley) {
+                ctx.firingPrimaryManualLatched = false;
+            }
+            boolean firePrimary = ctx.firingPrimaryAuto
+                    || (manualPrimaryRequested && (!manualPrimaryMissileVolley || !ctx.firingPrimaryManualLatched));
 
             if (ctx.autoLockTurrets && !autoLockSuppressed) {
                 // Prefer explicit lock if valid, otherwise closest enemy near player.
@@ -134,10 +140,19 @@ public final class PhysicsSystem {
                 }
                 if (ctx.projectiles.size() > beforePrimary) {
                     AudioSystem.onWeaponPrimary(ctx, ctx.player);
+                    if (manualPrimaryMissileVolley) {
+                        ctx.firingPrimaryManualLatched = true;
+                    }
                 }
             }
 
-            if (fireSecondary) {
+            boolean manualSecondaryRequested = manualAllowed
+                    && ctx.firingSecondaryManual
+                    && !ctx.firingSecondaryManualLatched;
+            if (!manualAllowed || !ctx.firingSecondaryManual) {
+                ctx.firingSecondaryManualLatched = false;
+            }
+            if (ctx.firingSecondaryAuto || manualSecondaryRequested) {
                 Ship target = (isAlive(ctx.lockedTarget)
                         && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                         && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
@@ -149,6 +164,9 @@ public final class PhysicsSystem {
                     if (ctx.projectiles.size() > beforeSecondary) {
                         AudioSystem.onWeaponSecondary(ctx, ctx.player);
                     }
+                }
+                if (manualSecondaryRequested) {
+                    ctx.firingSecondaryManualLatched = true;
                 }
             }
         }
@@ -217,6 +235,16 @@ public final class PhysicsSystem {
 
     private static Ship findClosestEnemyToPoint(GameContext ctx, double x, double y, double maxDist) {
         return TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, x, y, maxDist);
+    }
+
+    private static boolean hasPrimaryMissileTurrets(Ship ship) {
+        if (ship == null || ship.turrets == null) return false;
+        for (Turret turret : ship.turrets) {
+            if (turret == null) continue;
+            if (!turret.primary) continue;
+            if (turret.kind == Turret.Kind.MISSILE) return true;
+        }
+        return false;
     }
 
     private static void awardPlayerKillAssistCredits(GameContext ctx) {

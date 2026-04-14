@@ -496,17 +496,23 @@ It should not feel like:
 
 The ending should restore peace, not set up a forever-war as the only possible outcome.
 
-## Implementation Priorities
+## Current Build Status
 
-Recommended order:
-1. Lock the four ship hierarchies and map current hulls into them.
-2. Define the fleet command ladder: Mothership -> Titan -> Standard Ships -> Small Craft.
-3. Define the Titan ship class and the minimum escort loss/win rules.
-4. Build the economy rules for fleet expansion through earned money.
-5. Reshape the campaign map flow around a return-to-Earth structure.
-6. Add green reinforcement contracts and yellow liberation conversion.
-7. Build a small set of escort-specific missions around protecting command ships.
-8. Script the final Earth battle, including whether the AI's endgame asset is a Mothership.
+Already in the build:
+- [x] The campaign is already structured as a 24-sector return-to-Earth arc.
+- [x] The four ship hierarchies are present: Small Craft, Standard Ships, Titans, and Motherships.
+- [x] The Titan command ladder and escort pressure are already present in campaign logic.
+- [x] Green support exists as contract fleets and persistent allied survivors.
+- [x] Yellow liberation exists as a boarding/recovery arc with liberated fleets rejoining later sectors.
+- [x] Fog of war exists in strategic and combat rendering, including ghost contacts and hidden sectors.
+- [x] Cargo and ore persist through campaign saves and restores.
+- [x] The final Earth battle is already scripted as the closing sector.
+
+Still backlog:
+- [ ] Fleet-tab ship-by-ship editing.
+- [ ] Slot-level weapon swapping and missile subtype editing.
+- [ ] Mission-complete handoff delay before the fleet tab.
+- [ ] Additional map-performance work for the largest maps.
 
 ## Open Design Questions
 
@@ -518,6 +524,25 @@ Recommended order:
 - How is fleet expansion purchased: direct hull buys, contract slots, deployment capacity, or all three?
 - What is the mechanical method for freeing yellow ships: boarding, EMP, objective completion, or command-core destruction?
 - Does green support arrive as temporary contracts, permanent allied survivors, or both?
+
+## Current Answers
+
+- Green support is both temporary contract fleets and persistent allied survivors.
+- Yellow liberation is primarily boarding/recovery and disablement based, with liberated hulls joining the fleet later in the campaign.
+- Fleet expansion is a mix of direct hull buys, persistent fleet caps, and contract-style reinforcement packages.
+
+## Open Gripe Notes
+
+- F10 to leave campaign and enter the fleet tab should not erase ore or cargo on board; preserve ship inventory through that handoff.
+- The fleet tab should let the player click any individual ship and edit the full loadout, including weapon swaps per slot and missile subtype selection.
+- Missile variants should be editable by role, including intercept, anti-light, anti-medium, and anti-heavy profiles.
+- The ship editor layout should feel closer to the supplied mockup: a clear ship config panel, visible slot-based loadout, and less buried text.
+- Fogged sectors should still exist in simulation, but they should be fully unrendered when out of sight so we gain performance without losing world state.
+- Blue-team fighters should keep the older projectile skin instead of the newer blue beam skin, since their misses make the screen too noisy.
+- Green missiles should read more like green photon torpedoes.
+- Blue missiles can also become a sidegrade torpedo option: much higher warhead yield, but much lower guidance time, so slow targets are the best match.
+- The largest map size still lags too hard and should be profiled for render and simulation culling improvements.
+- When a campaign mission ends successfully, do not instantly force the player into the fleet tab. Offer the choice, but auto-advance after about 10 seconds so the player cannot stall indefinitely.
 
 ## Working North Star
 

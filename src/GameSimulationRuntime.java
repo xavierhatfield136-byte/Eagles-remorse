@@ -88,6 +88,9 @@ public final class GameSimulationRuntime {
             EventSystem.update(ctx, dt);
             AudioSystem.update(ctx, dt);
             CameraSystem.update(ctx, viewportW, viewportH);
+            if (FogOfWarSystem.isCombatFogEnabled(ctx)) {
+                FogOfWarSystem.update(ctx);
+            }
             syncPlayerWarpHudState();
             return;
         }
@@ -124,6 +127,9 @@ public final class GameSimulationRuntime {
         EventSystem.update(ctx, dt);
         AudioSystem.update(ctx, dt);
         CameraSystem.update(ctx, viewportW, viewportH);
+        if (FogOfWarSystem.isCombatFogEnabled(ctx)) {
+            FogOfWarSystem.update(ctx);
+        }
         syncPlayerWarpHudState();
     }
 

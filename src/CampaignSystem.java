@@ -474,6 +474,7 @@ public final class CampaignSystem {
             configureCampaignSession(ctx, st);
             if (ctx.config.mode == GameMode.FLEET) {
                 enterFleetHub(ctx, st);
+                FogOfWarSystem.update(ctx);
             } else {
                 EventSystem.showBanner(ctx, "CAMPAIGN RESUMED: " + loreFor(checkpoint.nextSector).title, 2.2);
                 startSector(ctx, checkpoint.nextSector);
@@ -588,10 +589,12 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (st == null || !st.enabled) return "";
         SectorLore lore = loreFor(st.sector);
-        return "ACT " + st.act + ": " + actTitleFor(st.act)
-                + "   SECTOR " + st.sector + "/" + st.totalSectors
-                + "   DOCTRINE " + st.branchRoute
-                + "   " + lore.title;
+        String objective = (st.objectiveLabel == null || st.objectiveLabel.isBlank())
+                ? ""
+                : st.objectiveLabel.trim();
+        String episode = actTitleFor(st.act) + " / " + lore.title;
+        if (objective.isEmpty()) return episode;
+        return objective + "  |  " + episode;
     }
 
     public static String hudObjectiveDetail(GameContext ctx) {
@@ -599,31 +602,34 @@ public final class CampaignSystem {
         if (st == null || !st.enabled) return "";
         int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
-        String mods = modifiersSummary(st.activeModifiers);
         SectorLore lore = loreFor(st.sector);
-        String escort = (st.objectiveType == ObjectiveType.ESCORT)
-                ? ("   FORMATION " + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%")
-                : "";
-        String phase = (st.objectivePhaseLabel == null || st.objectivePhaseLabel.isBlank()) ? "" : ("   " + st.objectivePhaseLabel);
-        String threat = (st.threatStateLabel == null || st.threatStateLabel.isBlank()) ? "" : ("   " + st.threatStateLabel);
-        String assets = objectiveAssetHud(st);
-        String ao = landmarkHud(st);
-        String coalition = coalitionSupportHud(st);
-        String base = lore.location + "   " + lore.hudLead
-                + ao
-                + phase
-                + threat
-                + "   OBJ: " + st.objectiveLabel
-                + "   [" + p + "]" + escort
-                + assets
-                + "   MOD: " + mods
-                + coalition
-                + "   " + failureHint(st.objectiveType)
-                + "   T-" + left + "s";
+        StringBuilder brief = new StringBuilder();
+        appendObjectiveBriefPart(brief, lore.hudLead);
+        appendObjectiveBriefPart(brief, st.objectiveLabel);
+        appendObjectiveBriefPart(brief, lore.location);
+        appendObjectiveBriefPart(brief, landmarkHud(st));
+        appendObjectiveBriefPart(brief, st.objectivePhaseLabel);
+        appendObjectiveBriefPart(brief, st.threatStateLabel);
+        appendObjectiveBriefPart(brief, "OBJ " + p);
+        if (st.objectiveType == ObjectiveType.ESCORT) {
+            appendObjectiveBriefPart(brief, "FORMATION "
+                    + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%");
+        }
+        appendObjectiveBriefPart(brief, objectiveAssetHud(st));
+        appendObjectiveBriefPart(brief, "T-" + left + "s");
         String side = sideObjectiveHud(st);
+        if (!side.isBlank()) appendObjectiveBriefPart(brief, "SIDE " + side);
         String drop = bossDropHud(st);
-        String withSide = side.isBlank() ? base : (base + "   SIDE: " + side);
-        return drop.isBlank() ? withSide : (withSide + "   DROP: " + drop);
+        if (!drop.isBlank()) appendObjectiveBriefPart(brief, "DROP " + drop);
+        return brief.toString();
+    }
+
+    private static void appendObjectiveBriefPart(StringBuilder brief, String part) {
+        if (brief == null || part == null) return;
+        String text = part.trim();
+        if (text.isEmpty()) return;
+        if (brief.length() > 0) brief.append("   ");
+        brief.append(text);
     }
 
     private static String landmarkHud(CampaignState st) {
@@ -872,7 +878,9 @@ public final class CampaignSystem {
         ctx.cameraOffsetX = 0.0;
         ctx.cameraOffsetY = 0.0;
         ctx.firingPrimaryManual = false;
+        ctx.firingPrimaryManualLatched = false;
         ctx.firingSecondaryManual = false;
+        ctx.firingSecondaryManualLatched = false;
         ctx.firingPrimaryAuto = false;
         ctx.firingSecondaryAuto = false;
         ctx.miningKeyDown = false;
@@ -1570,7 +1578,9 @@ public final class CampaignSystem {
         ctx.player.vx = 0.0;
         ctx.player.vy = 0.0;
         ctx.firingPrimaryManual = false;
+        ctx.firingPrimaryManualLatched = false;
         ctx.firingSecondaryManual = false;
+        ctx.firingSecondaryManualLatched = false;
         ctx.firingPrimaryAuto = false;
         ctx.firingSecondaryAuto = false;
         ctx.miningKeyDown = false;
@@ -1668,6 +1678,7 @@ public final class CampaignSystem {
         rebalancePersistentCommandGroups(st);
         resetPersistentFleetSpawnHandles(st);
         pruneTransientUnits(ctx);
+        FogOfWarSystem.reset(ctx);
         regroupPlayerAtAlliedBase(ctx);
         SpawnSystem.spawnAsteroidField(ctx);
         applyCampaignFleetBonuses(ctx, st);
@@ -1685,6 +1696,7 @@ public final class CampaignSystem {
         snapshotHostiles(ctx, st.knownHostiles);
 
         ctx.enemyWaveTimer = nextWaveDelay(ctx);
+        FogOfWarSystem.update(ctx);
 
         SectorLore lore = loreFor(st.sector);
         String msg = "SECTOR " + st.sector + "/" + st.totalSectors

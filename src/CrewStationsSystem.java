@@ -295,7 +295,12 @@ public final class CrewStationsSystem {
         p.setPowerPreset(policy.preset);
         p.crewOrder = policy.crewOrder;
         p.setEngineeringPriority(policy.priority);
-        p.setOverloadMode(policy.overload && ctx.command.tacticalMode == GameContext.TacticalMode.AGGRESSIVE);
+        double closeRange = 600.0 * CampaignSystem.targetingRangeMul(ctx) * (ctx.command.scienceJamming ? 0.9 : 1.0);
+        Ship closeTarget = TargetingSystem.findClosestEngagementTarget(ctx, p, p.x, p.y, closeRange);
+        boolean shouldOverload = policy.overload
+                && closeTarget != null
+                && ctx.command.tacticalMode != GameContext.TacticalMode.HOLD_FIRE;
+        p.setOverloadMode(shouldOverload);
     }
 
     private static void applyTacticalAutomation(GameContext ctx, boolean captainNavPriority,

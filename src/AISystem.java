@@ -2481,11 +2481,11 @@ public final class AISystem {
             double gunRange;
             double missileRange;
             if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
-                gunRange = 900.0;
-                missileRange = 1400.0;
+                gunRange = 1100.0;
+                missileRange = 1850.0;
             } else {
-                gunRange = 520.0;
-                missileRange = 900.0;
+                gunRange = 720.0;
+                missileRange = 1300.0;
             }
             gunRange *= gunRangeRoleMul(s.role);
             missileRange *= missileRangeRoleMul(s.role);
@@ -2819,18 +2819,18 @@ public final class AISystem {
         Double titanMul = titanGunRangeMul(role);
         if (titanMul != null) return titanMul;
         return switch (role) {
-            case PICKET -> 1.38;
-            case ARTILLERY_SHIP -> 1.32;
-            case BATTLESHIP -> 1.32;
-            case DREADNOUGHT -> 1.36;
-            case SUPERSHIP -> 1.42;
-            case BATTLECRUISER -> 1.18;
-            case LIGHT_CRUISER -> 1.12;
-            case MEDIUM_CRUISER, CRUISER -> 1.16;
-            case CARRIER, DRONE_CARRIER -> 1.04;
-            case FRIGATE -> 1.00;
-            case MISSILE_BOAT -> 0.90;
-            case CIWS_CORVETTE -> 0.86;
+            case PICKET -> 1.44;
+            case ARTILLERY_SHIP -> 1.46;
+            case BATTLESHIP -> 1.38;
+            case DREADNOUGHT -> 1.42;
+            case SUPERSHIP -> 1.48;
+            case BATTLECRUISER -> 1.22;
+            case LIGHT_CRUISER -> 1.16;
+            case MEDIUM_CRUISER, CRUISER -> 1.20;
+            case CARRIER, DRONE_CARRIER -> 1.08;
+            case FRIGATE -> 1.04;
+            case MISSILE_BOAT -> 0.96;
+            case CIWS_CORVETTE -> 0.90;
             case PATROL -> 0.92;
             case STEALTH_SHIP -> 0.94;
             case FIGHTER, DRONE, PD_CRAFT, BOMBER -> 0.82;
@@ -2844,18 +2844,18 @@ public final class AISystem {
         Double titanMul = titanMissileRangeMul(role);
         if (titanMul != null) return titanMul;
         return switch (role) {
-            case MISSILE_BOAT -> 1.28;
-            case BOMBER -> 1.20;
-            case CARRIER -> 1.18;
-            case DRONE_CARRIER -> 1.14;
-            case DREADNOUGHT -> 1.16;
-            case SUPERSHIP -> 1.22;
-            case BATTLESHIP -> 1.14;
-            case BATTLECRUISER -> 1.08;
-            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1.05;
-            case STEALTH_SHIP -> 1.02;
-            case ARTILLERY_SHIP -> 1.00;
-            case FRIGATE -> 1.00;
+            case MISSILE_BOAT -> 1.42;
+            case BOMBER -> 1.26;
+            case CARRIER -> 1.22;
+            case DRONE_CARRIER -> 1.18;
+            case DREADNOUGHT -> 1.22;
+            case SUPERSHIP -> 1.28;
+            case BATTLESHIP -> 1.18;
+            case BATTLECRUISER -> 1.12;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER -> 1.08;
+            case STEALTH_SHIP -> 1.04;
+            case ARTILLERY_SHIP -> 1.02;
+            case FRIGATE -> 1.02;
             case CIWS_CORVETTE -> 0.92;
             case PICKET, PATROL -> 0.90;
             case FIGHTER, DRONE, PD_CRAFT -> 0.80;
@@ -3342,8 +3342,8 @@ public final class AISystem {
         if (observer == null || target == null) return 0.0;
         double sensor = Math.max(0.20, observer.sensorRangeMultiplier());
         double sensorNorm = Math.max(0.20, Math.min(1.20, sensor));
-        double rangeBudget = 1650.0 * sensorNorm;
-        double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(420.0, rangeBudget)));
+        double rangeBudget = 2400.0 * sensorNorm;
+        double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(520.0, rangeBudget)));
         double ewFactor = 1.0;
         if (ctx != null && ctx.command.scienceJamming && ctx.player != null && observer.faction != null && target.faction != null) {
             boolean observerFriendlyToPlayer = observer.faction.isFriendlyTo(ctx.player.faction);

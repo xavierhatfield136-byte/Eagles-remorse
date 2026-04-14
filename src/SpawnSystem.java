@@ -50,6 +50,7 @@ public final class SpawnSystem {
 
     public static void initWorld(GameContext ctx) {
         Faction.clearCampaignAlliances();
+        FogOfWarSystem.reset(ctx);
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             initShowcase(ctx);

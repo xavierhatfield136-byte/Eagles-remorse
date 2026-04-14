@@ -55,6 +55,7 @@ public class GameContext {
     public Ship allyBase;
     public Ship enemyBase;
     public final java.util.EnumMap<Faction, Ship> teamBases = new java.util.EnumMap<>(Faction.class);
+    public final FogOfWarSystem.State fogOfWar;
 
     // Camera
     public double camX = 0;
@@ -77,7 +78,9 @@ public class GameContext {
 // Input-derived actions
     // Manual fire input (mouse / keyboard). These are blocked by overlays.
     public boolean firingPrimaryManual = false;
+    public boolean firingPrimaryManualLatched = false;
     public boolean firingSecondaryManual = false;
+    public boolean firingSecondaryManualLatched = false;
     // Tactical station automation fire requests. These continue while overlays are open.
     public boolean firingPrimaryAuto = false;
     public boolean firingSecondaryAuto = false;
@@ -210,6 +213,8 @@ public class GameContext {
         this.WORLD_W = this.config.worldW;
         this.WORLD_H = this.config.worldH;
         this.rng = new Random(this.config.seed);
+        this.fogOfWar = new FogOfWarSystem.State(this.WORLD_W, this.WORLD_H);
+        Faction.clearCampaignAlliances();
         ui.initAudioPreferences();
         if (this.config.mode == GameMode.CAMPAIGN_OPS || this.config.mode == GameMode.FLEET) {
             this.campaignUnlockProfile = CampaignUnlockProfile.load();
@@ -236,4 +241,3 @@ public class GameContext {
         ui.decayPortraitExpressions(dt);
     }
 }
-
