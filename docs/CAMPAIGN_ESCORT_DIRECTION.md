@@ -543,6 +543,15 @@ Still backlog:
 - Blue missiles can also become a sidegrade torpedo option: much higher warhead yield, but much lower guidance time, so slow targets are the best match.
 - The largest map size still lags too hard and should be profiled for render and simulation culling improvements.
 - When a campaign mission ends successfully, do not instantly force the player into the fleet tab. Offer the choice, but auto-advance after about 10 seconds so the player cannot stall indefinitely.
+- missions 3,4, and 5 can be completed in less than a second with even the base mothership, this makes getting ore super hard for the player and makes the rest of the campaign very hard. this needs to be changed
+- the mission end / end of mission/ next episode bar that appears in the middle of the screen when a campaign episode is over blocks the view of the shop and all other menues that appear in the middle of the screen
+- Improve voice acting, give crew members personality, remove "stand down from combat alert" voiceline, have banter between crew members
+- create audio that simulates the bridge of the mothership and all stations that would be there like fleet organizer, weaponry, engineering, all the main interactable crew, small craft director, XO, and have their audio be quieter but still hearable when not talking directly to the player.
+- make engine sxf for background noise louder
+- make it so the player can increase the unit cap with ore and money for each type of ship
+- make it so that the blue team turrets will not turn towards a new target until the last projectile they fired hit the target or despawns, this does not include missile turrets. this is to avoid the beam going one way and the turrets another way.
+- make it so that the blue team non missile turrets will not fire until any other projectiles that turret has previously shot has either despawned or has hit a target. make it so that the shots gradually gain damage the longer they fly to make up for a lower rate of fire. this also makes it feel like the gunners are switching between high power long range shots and rapid emergency low power close range shots
+- make it so that the blue team turrets, depending on weather or not they are the energy bolt or beam bolt, will behave differently. I want the energy bolt turrets to fire one barrel at a time in a pattern so that within half a second, barrels 1, 2, and 3 will fire in a staggered manner, and the three lasers will not join together. However, if the beam bolt primary is selected, all three barrels will fire at the same time and join up into one laser. If the weapon only has two barrels, then those two barrels will fire in a staggered manner, but in a way that both barrels will be actively shooting at the same time. I think the time between staggered shots should be 0.25 seconds.
 
 ## Working North Star
 
