@@ -558,7 +558,9 @@ Still backlog:
 - make it so that the blue team turrets will not turn towards a new target until the last projectile they fired hit the target or despawns, this does not include missile turrets. this is to avoid the beam going one way and the turrets another way.
 - make it so that the blue team non missile turrets will not fire until any other projectiles that turret has previously shot has either despawned or has hit a target. make it so that the shots gradually gain damage the longer they fly to make up for a lower rate of fire. this also makes it feel like the gunners are switching between high power long range shots and rapid emergency low power close range shots
 - make it so that the blue team turrets, depending on weather or not they are the energy bolt or beam bolt, will behave differently. I want the energy bolt turrets to fire one barrel at a time in a pattern so that within half a second, barrels 1, 2, and 3 will fire in a staggered manner, and the three lasers will not join together. However, if the beam bolt primary is selected, all three barrels will fire at the same time and join up into one laser. If the weapon only has two barrels, then those two barrels will fire in a staggered manner, but in a way that both barrels will be actively shooting at the same time. I think the time between staggered shots should be 0.25 seconds.
-
+- need to make new torpedo launchers and other turrets for green and blue (photon torpedoes, interceptor missiles, etc)
+- make it so that if the player hits f10 during a campaign mission and goes to the fleet tab, their ore count is actually saved
+- give every titan ship a special ACTIVE ability it can use in combat that fits its theme.
 ## Working North Star
 
 The campaign should make the player care about a growing fleet, a clear chain of command, one long route home, and the coalition that survives around it. If a feature does not strengthen escort tension, fleet growth, formation command, alliance-building, liberation, or the final return to Earth, it is probably not part of this campaign's core identity.
