@@ -637,6 +637,7 @@ Goal:
 - Turn the fleet tab into a real ship-by-ship outfitting tool instead of a shallow hull picker.
 
 Checklist:
+
 - [ ] Let the player click any individual ship in the fleet tab and edit that ship directly.
 - [ ] Support full loadout editing, including weapon swaps per slot.
 - [ ] Support missile subtype selection per relevant slot.
