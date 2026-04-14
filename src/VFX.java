@@ -22,6 +22,7 @@ public final class VFX {
     // Keep this tighter during fleet-heavy modes (Resource Rush, late waves).
     private static final int MAX = 1100;
     private static final List<Particle> active = new ArrayList<>();
+    private static final List<Particle> pool = new ArrayList<>();
     private static final Random RNG = new Random();
 
     public enum ImpactStyle {
@@ -46,12 +47,36 @@ public final class VFX {
             if (p.type == Type.SMOKE) p.size += 0.12;
             if (p.type == Type.FIRE) p.size += 0.08;
             p.life--;
-            if (p.life <= 0) it.remove();
+            if (p.life <= 0) {
+                it.remove();
+                releaseParticle(p);
+            }
         }
     }
 
     public static int activeCount() {
         return active.size();
+    }
+
+    /**
+     * Allocate a particle from the pool or create a new one.
+     * Performance optimization: reuses objects to reduce garbage collection pressure.
+     */
+    private static Particle allocParticle() {
+        if (pool.isEmpty()) {
+            return new Particle();
+        }
+        return pool.remove(pool.size() - 1);
+    }
+
+    /**
+     * Release a particle back to the pool for reuse.
+     * Called when particles die to avoid garbage collection.
+     */
+    private static void releaseParticle(Particle p) {
+        if (pool.size() < MAX * 2) {  // Keep reasonable pool size
+            pool.add(p);
+        }
     }
 
     /** Draw all particles in world space. */
@@ -203,7 +228,7 @@ public final class VFX {
             double a = RNG.nextDouble() * Math.PI * 2.0;
             double sp = 80 + RNG.nextDouble() * 300;
 
-            Particle p = new Particle();
+            Particle p = allocParticle();
             p.type = Type.DEBRIS;
             p.x = x + (RNG.nextDouble() - 0.5) * 6.0;
             p.y = y + (RNG.nextDouble() - 0.5) * 6.0;
@@ -229,7 +254,7 @@ public final class VFX {
             double a = RNG.nextDouble() * Math.PI * 2.0;
             double sp = 60 + RNG.nextDouble() * 180;
 
-            Particle p = new Particle();
+            Particle p = allocParticle();
             p.type = Type.SALVAGE;
             p.x = x + (RNG.nextDouble() - 0.5) * 6.0;
             p.y = y + (RNG.nextDouble() - 0.5) * 6.0;
@@ -248,7 +273,7 @@ public final class VFX {
     }
 
     public static void spawnMuzzleFlash(double x, double y, double angle, boolean missile) {
-        Particle p = new Particle();
+        Particle p = allocParticle();
         p.type = Type.MUZZLE;
         p.x = x;
         p.y = y;
@@ -263,7 +288,7 @@ public final class VFX {
 
         if (!DevTools.isFancyVfxEnabled()) return;
 
-        Particle bloom = new Particle();
+        Particle bloom = allocParticle();
         bloom.type = Type.MUZZLE_BLOOM;
         bloom.x = x;
         bloom.y = y;
@@ -368,7 +393,7 @@ public final class VFX {
             double sp = Math.max(1.0, speedMin + RNG.nextDouble() * Math.max(1.0, speedRange));
             int life = Math.max(4, lifeMin + RNG.nextInt(Math.max(1, lifeRange)));
 
-            Particle p = new Particle();
+            Particle p = allocParticle();
             p.type = Type.SPARK;
             p.x = x;
             p.y = y;
@@ -387,7 +412,7 @@ public final class VFX {
     }
 
     private static void spawnImpactBloom(double x, double y, double size, Color color, int life, int alpha) {
-        Particle p = new Particle();
+        Particle p = allocParticle();
         p.type = Type.IMPACT_BLOOM;
         p.x = x;
         p.y = y;
@@ -404,7 +429,7 @@ public final class VFX {
     private static void spawnSmokeBurst(double x, double y, int count, Color color, double sizeMin, double sizeRange) {
         int n = MathUtil.clamp(count, 1, 10);
         for (int i = 0; i < n; i++) {
-            Particle p = new Particle();
+            Particle p = allocParticle();
             p.type = Type.SMOKE;
             p.x = x + (RNG.nextDouble() - 0.5) * 6.0;
             p.y = y + (RNG.nextDouble() - 0.5) * 6.0;
@@ -422,7 +447,7 @@ public final class VFX {
     }
 
     public static void spawnShieldRipple(double x, double y, double radius, Color color) {
-        Particle p = new Particle();
+        Particle p = allocParticle();
         p.type = Type.SHIELD;
         p.x = x;
         p.y = y;
@@ -497,7 +522,7 @@ public final class VFX {
             double a = angle + (RNG.nextDouble() - 0.5) * Math.toRadians(50);
             double sp = 140 + RNG.nextDouble() * 220;
 
-            Particle p = new Particle();
+            Particle p = allocParticle();
             p.type = Type.SPARK;
             p.x = x + Math.cos(a) * 2.0;
             p.y = y + Math.sin(a) * 2.0;
@@ -514,7 +539,7 @@ public final class VFX {
     }
 
     public static void spawnMissileSmoke(double x, double y) {
-        Particle p = new Particle();
+        Particle p = allocParticle();
         p.type = Type.SMOKE;
         p.x = x + (RNG.nextDouble() - 0.5) * 4.0;
         p.y = y + (RNG.nextDouble() - 0.5) * 4.0;
@@ -536,7 +561,7 @@ public final class VFX {
     public static void spawnEngineWisp(double x, double y, double angle, double intensity) {
         if (intensity <= 0.01) return;
 
-        Particle p = new Particle();
+        Particle p = allocParticle();
         p.type = Type.ENGINE;
         p.x = x;
         p.y = y;

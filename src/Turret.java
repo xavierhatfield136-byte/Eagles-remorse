@@ -176,8 +176,11 @@ public class Turret {
         double mx = worldX(host) + Math.cos(angle) * (radius + 4);
         double my = worldY(host) + Math.sin(angle) * (radius + 4);
 
-        // Cosmetic muzzle flash
-        VFX.spawnMuzzleFlash(mx, my, angle, kind == Kind.MISSILE);
+        // Cosmetic muzzle flash (skip for CIWS pellet spam - performance optimization)
+        boolean isCiwsFiring = kind == Kind.GUN && usesCiwsPelletsAgainst(host, this, missileTarget);
+        if (!isCiwsFiring) {
+            VFX.spawnMuzzleFlash(mx, my, angle, kind == Kind.MISSILE);
+        }
 
         if (kind == Kind.GUN) {
             double baseReloadSeconds = cooldown / cycleMul;

@@ -56,7 +56,9 @@ public class CollisionSystem {
 
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
-                if (!HullGeometry.projectileIntersectsShip(p, s)) continue;
+                // CIWS pellets use simple circle collision (performance optimization for high-volume fire)
+                // Only apply expensive hull geometry check for larger/more important projectiles
+                if (!(p instanceof CIWSPellet) && !HullGeometry.projectileIntersectsShip(p, s)) continue;
                 if (disruptorSlug) {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     if (!slug.canAffect(s)) continue;
@@ -179,20 +181,23 @@ public class CollisionSystem {
 
                 boolean shieldHit = s.shield < shieldBefore - 1e-6;
                 boolean hullHit = s.hp < hpBefore;
+                // CIWS pellets skip VFX (performance optimization for high-volume point-defense fire)
+                boolean isCiwsPellet = p instanceof CIWSPellet;
+                boolean showCiwsVfx = showImpactVfx && !isCiwsPellet;
                 if (shieldHit) {
-                    if (showImpactVfx) {
+                    if (showCiwsVfx) {
                         VFX.spawnShieldImpact(shieldX, shieldY, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
                     AudioSystem.onShieldImpact(ctx, impactStyle, shieldX, shieldY);
                 }
                 if (hullHit) {
-                    if (showImpactVfx) {
+                    if (showCiwsVfx) {
                         VFX.spawnHullImpact(hullX, hullY, dirX, dirY, Math.max(1, p.damage), impactStyle);
                     }
                     AudioSystem.onHullImpact(ctx, impactStyle, hullX, hullY);
                 }
                 if (!shieldHit && !hullHit) {
-                    if (showImpactVfx) {
+                    if (showCiwsVfx) {
                         VFX.spawnImpactSparks(hullX, hullY, dirX, dirY, Math.max(1, p.damage));
                     }
                     // Preserve audible feedback for glancing/mitigated hull contacts.

@@ -11,6 +11,7 @@
 - `TURRET_SKINS.md`
 - `sfx_ai_generation_guide.md`
 - `sfx_generation_jobs.csv`
+- `PERFORMANCE_BOTTLENECKS.md`
 
 ## Asset Workflow And Dropzones
 - `../assets/audio/README.md`
