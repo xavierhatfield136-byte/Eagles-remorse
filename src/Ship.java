@@ -520,6 +520,8 @@ public abstract class Ship {
 
     private static final int MAX_HULL_IMPACT_MARKS = 64;
     private static final double HULL_IMPACT_DECAY_IDLE_SECONDS = 10.0;
+    // Projectile damage threshold below which shield hit effects are suppressed for performance
+    private static final int MINIMUM_DAMAGE_FOR_EFFECT_SPAWN = 3;
     private final List<HullImpactMark> hullImpactMarks = new ArrayList<>();
     private final List<HullImpactMark> hullImpactMarksView = Collections.unmodifiableList(hullImpactMarks);
     private double hullImpactNoDamageTimer = HULL_IMPACT_DECAY_IDLE_SECONDS;
@@ -1094,7 +1096,9 @@ public abstract class Ship {
                 }
                 double fx = Double.isFinite(hitX) ? hitX : x;
                 double fy = Double.isFinite(hitY) ? hitY : y;
-                Explosion.spawnShieldHit(fx, fy);
+                if (dmg >= MINIMUM_DAMAGE_FOR_EFFECT_SPAWN) {
+                    Explosion.spawnShieldHit(fx, fy);
+                }
                 return;
             }
             double absorbedDamage = Math.min(shieldBefore, Math.max(0.0, dmg));
@@ -1107,7 +1111,9 @@ public abstract class Ship {
             }
             double fx = Double.isFinite(hitX) ? hitX : x;
             double fy = Double.isFinite(hitY) ? hitY : y;
-            Explosion.spawnShieldHit(fx, fy);
+            if (dmg >= MINIMUM_DAMAGE_FOR_EFFECT_SPAWN) {
+                Explosion.spawnShieldHit(fx, fy);
+            }
 
             double overflow = Math.max(0.0, dmg - shieldBefore);
             if (overflow <= 1e-6) {

@@ -19,6 +19,13 @@ public class Turret {
         MISSILE
     }
 
+    public enum MissileRole {
+        INTERCEPT,      // Anti-missile, light interceptor role
+        ANTI_LIGHT,     // Against fighters and small craft
+        ANTI_MEDIUM,    // Against frigates and corvettes
+        ANTI_HEAVY      // Against cruisers and capital ships
+    }
+
     // Local offset from ship center (in ship-local coordinates)
     public final double localX;
     public final double localY;
@@ -32,6 +39,15 @@ public class Turret {
     // Fire control
     public double cooldown = 0.15;      // seconds between shots
     private double coolLeft = 0;
+    
+    // Phase 5.5: Targeting persistence - track last fired projectile for blue guns
+    public int lastFiredProjectileId = -1;
+    // Phase 5.6: Fire timing - store world position we're currently targeting (for persistent aim after firing)
+    public double persistentTargetX = Double.NaN;
+    public double persistentTargetY = Double.NaN;
+    // Phase 5.8: Barrel stagger timing
+    public double barrelStaggerTimer = 0.0;
+    public int barrelStaggerIndex = 0;
 
     // Weapon stats
     public Kind kind;
@@ -42,6 +58,9 @@ public class Turret {
     public double missileSpeed = 220;
     public double missileTurnRate = Math.toRadians(180);
     public int missileLife = 180;
+    public MissileRole missileRole = MissileRole.ANTI_MEDIUM;  // Default missile role for loadout editing
+    // Phase 5.7: Damage growth support flag
+    public boolean enablesDamageGrowth = false;
 
     // Render
     public double radius = 6;
@@ -143,6 +162,16 @@ public class Turret {
     public boolean canFire() {
         return coolLeft <= 0;
     }
+    
+    /**
+     * Phase 5.6: Check if this turret should wait for its last projectile to resolve.
+     * Blue non-missile turrets wait for their projectile to hit/despawn before firing again.
+     */
+    public boolean shouldWaitForLastProjectile(DoctrineProfile prof) {
+        if (kind != Kind.GUN) return false;  // Missiles don't have this behavior
+        if (prof == null || prof.doctrine != Doctrine.ENERGY_NAVY) return false;
+        return true;
+    }
 
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
         if (!canFire()) return null;
@@ -237,6 +266,10 @@ public class Turret {
                 Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5,
                         localX, localY, host.faction);
                 p.sourceShipId = host.id;
+                // Phase 5.7: Blue non-missile projectiles gain damage with flight distance
+                // Growth is 0.5% per 100 units traveled, allowing slower cadence to still deal meaningful damage
+                p.damageGrowthPerUnit = 0.005 / 100.0;
+                enablesDamageGrowth = true;
                 return p;
             }
             double bulletRadius = 3.0;
@@ -245,6 +278,11 @@ public class Turret {
             }
             Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
             p.sourceShipId = host.id;
+            // Phase 5.7: Blue bullets also get damage growth
+            if (prof.doctrine == Doctrine.ENERGY_NAVY || host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
+                p.damageGrowthPerUnit = 0.003 / 100.0;
+                enablesDamageGrowth = true;
+            }
             return p;
         } else {
             double missileBaseDamage = damage * damageMul;
@@ -270,7 +308,29 @@ public class Turret {
                 missileLifetime = Math.max(missileLifetime, (int) Math.round(missileLife * 1.40));
             }
             double missileRadius = Math.max(6.0, radius);
-            Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd, missileTurn, missileDamage, missileLifetime, missileRadius, host.faction);
+            double missileSpd_final = missileSpd;
+            double missileTurn_final = missileTurn;
+            int missileDamage_final = missileDamage;
+            int missileLifetime_final = missileLifetime;
+            
+            // Phase 5.3: Blue torpedo sidegrade
+            // Anti-heavy torpedoes have higher yield but lower guidance time (less agile)
+            // Best against slower targets like cruisers and capital ships
+            if (host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
+                if (missileRole == MissileRole.ANTI_HEAVY) {
+                    // High-yield torpedo: +35% damage, but -40% turn rate (less responsive guidance)
+                    missileDamage_final = (int) Math.round(missileDamage * 1.35);
+                    missileTurn_final = missileTurn * 0.60;  // Slower, less agile turn
+                    missileSpd_final = missileSpd * 0.92;  // Slightly slower for better hit chance
+                } else if (missileRole == MissileRole.INTERCEPT) {
+                    // Interceptor variant: lighter, faster, turns harder
+                    missileDamage_final = (int) Math.round(missileDamage * 0.75);
+                    missileTurn_final = missileTurn * 1.25;
+                    missileSpd_final = missileSpd * 1.18;
+                }
+            }
+            
+            Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
             p.sourceShipId = host.id;
             return p;
         }

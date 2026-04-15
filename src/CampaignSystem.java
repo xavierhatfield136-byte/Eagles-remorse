@@ -21,6 +21,9 @@ import java.util.Set;
 public final class CampaignSystem {
     private CampaignSystem() {}
 
+    // Fleet hub auto-open delay when player completes a sector
+    private static final double FLEET_HUB_AUTO_OPEN_DELAY = 10.0;
+
     private enum BossKind {
         NONE,
         MID_ALPHA,
@@ -195,15 +198,15 @@ public final class CampaignSystem {
             null,
             new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 360, 630, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(2, ObjectiveType.DESTROY, "Destroy customs-halo gunships before they seal the civilian aperture", 6, 690, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 8, 720, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 6, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 12, 720, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 7, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
             new SectorScript(6, ObjectiveType.SURVIVE, "Recover the debris-wake caches before demolition ships erase them", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(7, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
             new SectorScript(8, ObjectiveType.ESCORT, "Keep the Exodus Transport Titan inside the Mothership's screen", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(9, ObjectiveType.SURVIVE, "Cover the neutral broker hulls as they defect into the fleet", 100, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(10, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 12, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(11, ObjectiveType.SURVIVE, "Secure depot ledgers and fuel stores before demolition charges fire", 115, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(9, ObjectiveType.SURVIVE, "Cover the neutral broker hulls as they defect into the fleet", 65, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(10, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 16, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(11, ObjectiveType.SURVIVE, "Secure depot ledgers and fuel stores before demolition charges fire", 85, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(12, ObjectiveType.SURVIVE, "Keep the green signatory couriers alive until the pact is signed", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
             new SectorScript(13, ObjectiveType.DESTROY, "Destroy the jammer triad around Coalition Array Nysa", 3, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
             new SectorScript(14, ObjectiveType.DESTROY, "Destroy the relief wing trying to re-isolate Nysa", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
@@ -419,6 +422,10 @@ public final class CampaignSystem {
         public int greenContractFavor = 0;
         public int yellowLiberationFavor = 0;
 
+        // Fleet hub choice timeout: When mission completes, let player choose to open fleet tab or wait for auto-open
+        public boolean awaitingFleetHubChoice = false;
+        public double fleetHubChoiceTimer = 0.0;
+
         public boolean unlockAuxGunGranted = false;
         public int unlockMissileTierGranted = 0;
         public boolean unlockCiwsGranted = false;
@@ -506,6 +513,17 @@ public final class CampaignSystem {
         }
 
         refreshCampaignAlliances(st);
+
+        // Handle fleet hub choice timeout: auto-open after ~10 seconds
+        if (st.awaitingFleetHubChoice) {
+            st.fleetHubChoiceTimer -= dt;
+            if (st.fleetHubChoiceTimer <= 0) {
+                enterFleetHub(ctx, st);
+                st.awaitingFleetHubChoice = false;
+            }
+            syncPersistentFleetCasualties(ctx, st);
+            return;
+        }
 
         if (st.awaitingEpisodeLaunch) {
             syncPersistentFleetCasualties(ctx, st);
@@ -775,7 +793,9 @@ public final class CampaignSystem {
         if (ctx == null || st == null || !st.enabled || ctx.player == null) return false;
         if (ctx.gameOver || ctx.state == GameState.GAME_OVER) return false;
 
-        int resumeSector = st.awaitingEpisodeLaunch
+        // When exiting via F10 (whether in mission or fleet hub), save the current checkpoint
+        // This preserves ore, cargo, and ship inventory state
+        int resumeSector = (st.awaitingFleetHubChoice || st.awaitingEpisodeLaunch)
                 ? Math.max(1, st.pendingEpisodeSector > 0 ? st.pendingEpisodeSector : st.sector)
                 : Math.max(1, st.sector);
         if (resumeSector > st.totalSectors) return false;
@@ -846,6 +866,17 @@ public final class CampaignSystem {
         ctx.lockedTarget = best;
         EventSystem.showBanner(ctx, "SELECTED: " + ((best.name == null || best.name.isBlank()) ? best.role.name() : best.name), 0.9);
         return best;
+    }
+
+    public static boolean tryEnterFleetHubImmediately(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.awaitingFleetHubChoice) return false;
+        // Player pressed TAB to open fleet hub immediately instead of waiting
+        enterFleetHub(ctx, st);
+        st.awaitingFleetHubChoice = false;
+        st.fleetHubChoiceTimer = 0.0;
+        EventSystem.showBanner(ctx, "FLEET HANGAR OPENED", 1.5);
+        return true;
     }
 
     private static void enterFleetHub(GameContext ctx, CampaignState st) {
@@ -3513,8 +3544,14 @@ public final class CampaignSystem {
                 + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
                 + (unlock.isBlank() ? "" : "   |   " + unlock)
                 + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "")
-                + (st.awaitingEpisodeLaunch ? "   |   PRESS ENTER TO LAUNCH" : "");
-        enterFleetHub(ctx, st);
+                + (st.awaitingEpisodeLaunch ? "   |   TAB: Open Fleet Hangar (auto in 10s)" : "");
+        // Instead of immediately entering fleet hub, wait for player choice or timeout
+        st.awaitingFleetHubChoice = st.awaitingEpisodeLaunch;
+        st.fleetHubChoiceTimer = st.awaitingEpisodeLaunch ? FLEET_HUB_AUTO_OPEN_DELAY : 0.0;
+        if (!st.awaitingEpisodeLaunch) {
+            // If no next episode (campaign over), enter fleet hub immediately for results screen
+            enterFleetHub(ctx, st);
+        }
         EventSystem.showBanner(ctx,
                 clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")

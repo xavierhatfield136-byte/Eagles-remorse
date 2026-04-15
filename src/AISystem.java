@@ -2438,10 +2438,18 @@ public final class AISystem {
                 boolean superShip = (s.role == ShipRole.SUPERSHIP || s.role == ShipRole.HYPERWEAPON_TITAN);
                 boolean allowSuperweapon;
                 if (superShip) {
-                    // Supership ultimates should be visible threats; do not over-throttle them.
-                    double confGate = isCapitalRole(target.role) ? 0.38 : 0.46;
-                    double hullGate = isCapitalRole(target.role) ? 0.12 : 0.18;
-                    allowSuperweapon = confidence >= confGate && targetHull > hullGate && !killConfirm;
+                    // Phase 5.4: Superships are more aggressive with superweapons
+                    // If charged and target is medium-cruiser or larger, fire at largest valid target
+                    boolean isChargedAndReady = s.isSuperweaponCharging() || s.superweaponTimer <= 0.1;
+                    boolean targetIsCapital = isCapitalRole(target.role);
+                    if (isChargedAndReady && targetIsCapital && confidence >= 0.32) {
+                        allowSuperweapon = true;  // Much more aggressive when weapon is ready
+                    } else {
+                        // Normal aggression rules
+                        double confGate = isCapitalRole(target.role) ? 0.38 : 0.46;
+                        double hullGate = isCapitalRole(target.role) ? 0.12 : 0.18;
+                        allowSuperweapon = confidence >= confGate && targetHull > hullGate && !killConfirm;
+                    }
                 } else {
                     allowSuperweapon = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
                 }

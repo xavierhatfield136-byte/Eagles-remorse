@@ -88,8 +88,9 @@ public class CollisionSystem {
                     ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, p.x, p.y, p.vx, p.vy);
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
-                    s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
-                    logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
+                    int effectiveDamage = p.getEffectiveDamage();
+                    s.takeDamage(effectiveDamage, p.x, p.y, p.vx, p.vy);
+                    logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), effectiveDamage, impactStyle, s, p.x, p.y);
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
                     double shieldX = impactPoints.shieldX();

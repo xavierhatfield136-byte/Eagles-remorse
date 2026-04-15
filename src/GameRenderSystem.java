@@ -52,11 +52,15 @@ public final class GameRenderSystem {
         if (!tacticalView) {
             try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
 
+            // Fog-based VFX culling: skip effect rendering in completely fogged regions
+            boolean fogCullEnabled = FogOfWarSystem.isCombatFogEnabled(ctx);
             ctx.perf.drawnExplosions = 0;
             try {
                 for (Explosion e : Explosion.active) {
                     if (e == null) continue;
                     if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
+                    // Additional culling: skip drawing if explosion is in fogged area
+                    if (fogCullEnabled && !ctx.fogOfWar.isVisibleAtWorld(e.x, e.y)) continue;
                     ctx.perf.drawnExplosions++;
                     if (e.kind == Explosion.Kind.SHIELD_HIT) {
                         drawShieldImpactExplosion(worldG, e);

@@ -33,6 +33,10 @@ public final class UISystem {
     public static void toggleShop(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        // If awaiting fleet hub choice after sector complete, TAB opens it immediately
+        if (CampaignSystem.tryEnterFleetHubImmediately(ctx)) {
+            return;
+        }
         if (fleetHubEditingLocked(ctx)) {
             EventSystem.showBanner(ctx, "FLEET HANGAR OPENS BETWEEN SECTORS", 1.8);
             return;
@@ -216,6 +220,44 @@ public final class UISystem {
             return true;
         }
         return false;
+    }
+
+    public static void selectFleetShip(GameContext ctx, int shipId) {
+        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        ctx.ui.fleetSelectedShipId = shipId;
+        ctx.ui.fleetSelectedTurretIndex = -1;  // Reset turret selection when changing ships
+    }
+
+    public static void selectFleetTurret(GameContext ctx, int turretIndex) {
+        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx.ui.fleetSelectedShipId < 0) return;  // Must have a ship selected first
+        Ship selected = findShipInFleet(ctx, ctx.ui.fleetSelectedShipId);
+        if (selected == null || turretIndex < 0 || turretIndex >= selected.turrets.size()) {
+            ctx.ui.fleetSelectedTurretIndex = -1;
+            return;
+        }
+        ctx.ui.fleetSelectedTurretIndex = turretIndex;
+    }
+
+    public static void setMissileRoleForSelectedTurret(GameContext ctx, Turret.MissileRole role) {
+        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx.ui.fleetSelectedShipId < 0 || ctx.ui.fleetSelectedTurretIndex < 0) return;
+        Ship selected = findShipInFleet(ctx, ctx.ui.fleetSelectedShipId);
+        if (selected == null || selected.turrets.size() <= ctx.ui.fleetSelectedTurretIndex) return;
+        Turret turret = selected.turrets.get(ctx.ui.fleetSelectedTurretIndex);
+        if (turret != null && turret.kind == Turret.Kind.MISSILE) {
+            turret.missileRole = role;
+        }
+    }
+
+    private static Ship findShipInFleet(GameContext ctx, int shipId) {
+        if (ctx == null || ctx.ships == null) return null;
+        for (Ship s : ctx.ships) {
+            if (s.id == shipId && s.faction == Faction.PLAYER) {
+                return s;
+            }
+        }
+        return null;
     }
 
     public static void selectPowerManagementSlot(GameContext ctx, int idx) {

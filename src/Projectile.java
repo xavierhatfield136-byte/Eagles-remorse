@@ -18,6 +18,10 @@ public abstract class Projectile {
     public int sourceShipId = -1;
 
     public boolean alive = true;
+    
+    // Phase 5.7: Damage growth - accumulate distance traveled, scale damage accordingly
+    public double distanceTraveled = 0.0;
+    public double damageGrowthPerUnit = 0.0;  // damage multiplier per unit of distance
 
     protected Projectile(double x, double y, double vx, double vy, double radius, int damage, int life, Faction faction) {
         this.x = x;
@@ -38,8 +42,21 @@ public abstract class Projectile {
     public void update(double dt) {
         x += vx;
         y += vy;
+        
+        // Phase 5.7: Track distance traveled for damage growth
+        if (damageGrowthPerUnit > 1e-6) {
+            double dist = Math.hypot(vx, vy);
+            distanceTraveled += dist;
+        }
 
         life--;
         if (life <= 0) alive = false;
+    }
+    
+    /** Return effective damage accounting for growth. Used during impact calculations. */
+    public int getEffectiveDamage() {
+        if (damageGrowthPerUnit <= 1e-6) return damage;
+        double growth = 1.0 + (distanceTraveled * damageGrowthPerUnit);
+        return (int) Math.round(damage * growth);
     }
 }

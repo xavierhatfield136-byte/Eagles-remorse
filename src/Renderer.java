@@ -2742,6 +2742,14 @@ public class Renderer {
                                       double minX, double minY, double maxX, double maxY,
                                       FogOfWarSystem.State fog, Faction perspective) {
         if (projectiles == null) return 0;
+        
+        // Count CIWS pellets to determine if we should use simplified rendering in heavy combat
+        int ciwsPelletCount = 0;
+        for (Projectile p : projectiles) {
+            if (p instanceof CIWSPellet) ciwsPelletCount++;
+        }
+        boolean heavyCombatwithCIWS = ciwsPelletCount > 80;
+        
         int drawn = 0;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
@@ -2752,6 +2760,15 @@ public class Renderer {
                 int x = (int) Math.round(pellet.x);
                 int y = (int) Math.round(pellet.y);
                 Color core = mixColor(projectileCoreColor(pellet.faction), Color.WHITE, 0.42);
+                
+                // In heavy CIWS combat, use simplified rendering (just solid dots)
+                if (heavyCombatwithCIWS) {
+                    g2.setColor(withAlpha(core, 200));
+                    g2.fillOval(x - r, y - r, r * 2, r * 2);
+                    drawn++;
+                    continue;
+                }
+                
                 Color trail = projectileTrailColor(pellet.faction);
                 double speed = Math.hypot(pellet.vx, pellet.vy);
                 double trailLen = Math.max(8.0, Math.min(22.0, 8.0 + speed * 0.16));
@@ -3498,12 +3515,12 @@ public class Renderer {
         if (lockedTarget != null && lockedTarget.alive) {
             drawOffscreenTargetIndicator(g2, lockedTarget, camX, camY, viewW, viewH, zoom);
         }
-        // Top-center event banner
+        // Top-center event banner (moved to top-right to avoid blocking centered menus)
         if (eventBanner != null && !eventBanner.isBlank() && eventBannerT > 0) {
             int bw = 720;
             int bh = 34;
             int bx = (g2.getClipBounds().width - bw) / 2;
-            int by = 10;
+            int by = 60;  // Moved down from y=10 to avoid blocking menus
 
             int a = (int) Math.round(60 + 140 * Math.max(0.0, Math.min(1.0, eventBannerT / 3.0)));
             g2.setColor(new Color(0, 0, 0, MathUtil.clamp(a, 0, 190)));
@@ -3524,10 +3541,17 @@ public class Renderer {
         drawBottomCombatVitals(g2, player, lockedTarget, xrayLayout, viewW, viewH);
         drawCursorWeaponHints(g2, ctx, player, camX, camY, zoom, viewW, viewH);
 
-
+        // Performance metrics display for Phase 3.2 (largest map profiling)
+        if (DevTools.isDebugOverlay() && ctx != null && ctx.perf != null) {
+            drawPerformanceMetrics(g2, ctx, viewW, viewH);
+        }
 
         if (shopOpen) {
-            drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
+            if (CampaignSystem.isFleetHubSession(ctx)) {
+                drawFleetEditorOverlay(g2, ctx, ctx.ui, viewW, viewH);
+            } else {
+                drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
+            }
         }
     }
 
@@ -4063,6 +4087,40 @@ public class Renderer {
             out.add("C LAUNCH / R RECALL / V MODE / Z AUTO-LAUNCH");
         }
         return out;
+    }
+
+    private static void drawPerformanceMetrics(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.perf == null) return;
+        
+        int x = 12;
+        int y = viewH - 120;
+        int lineHeight = 14;
+        
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(100, 200, 100, 200));
+        
+        // Draw performance header
+        g2.drawString("PERFORMANCE (DEBUG)", x, y);
+        y += lineHeight;
+        
+        // Draw key metrics for largest map profiling
+        g2.setColor(new Color(180, 220, 180, 200));
+        g2.drawString(String.format("Ships: %d / Proj: %d / VFX: %d / Expl: %d",
+                ctx.perf.drawnShips, ctx.perf.drawnProjectiles, ctx.perf.drawnVfx, ctx.perf.drawnExplosions),
+                x, y);
+        y += lineHeight;
+        
+        g2.drawString(String.format("Total VFX: %d / Asteroids: %d / Salvage: %d",
+                ctx.perf.totalVfx, ctx.perf.drawnAsteroids, ctx.perf.drawnSalvage),
+                x, y);
+        y += lineHeight;
+        
+        if (ctx.perf.renderMs > 0.1) {
+            g2.setColor(ctx.perf.renderMs > 20.0 ? new Color(255, 100, 100, 200) : new Color(180, 220, 180, 200));
+            g2.drawString(String.format("Render: %.1f ms | Update: %.1f ms | FPS: %.1f",
+                    ctx.perf.renderMs, ctx.perf.updateMs, ctx.perf.fps),
+                    x, y);
+        }
     }
 
     private static void drawHudPanelFrame(Graphics2D g2, int x, int y, int w, int h, String title, Color accent) {
@@ -4784,7 +4842,150 @@ public class Renderer {
         g2.drawString(label, tx, ty);
     }
 
+    private static void drawFleetEditorOverlay(Graphics2D g2, GameContext ctx, UiState ui, int viewW, int viewH) {
+        if (ctx == null || ctx.ships == null || ui == null) return;
+        
+        Rectangle clip = g2.getClipBounds();
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        Graphics2D gx = (Graphics2D) g2.create();
+        
+        // Draw panel background
+        GradientPaint panelFill = new GradientPaint(
+                panel.x, panel.y, new Color(7, 10, 16, 236),
+                panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
+        gx.setPaint(panelFill);
+        gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+        gx.setColor(new Color(255, 255, 255, 78));
+        gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+        gx.setColor(new Color(118, 180, 255, 42));
+        gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+        
+        // Title
+        gx.setFont(new Font("Consolas", Font.BOLD, 18));
+        gx.setColor(new Color(245, 248, 255, 230));
+        gx.drawString("FLEET COMMISSIONING", panel.x + 22, panel.y + 28);
+        gx.setFont(new Font("Consolas", Font.PLAIN, 12));
+        gx.setColor(new Color(192, 210, 232, 180));
+        gx.drawString("Select ships and configure weapon loadouts. TAB/ESC closes.",
+                panel.x + 22, panel.y + 48);
+        
+        // Get player fleet
+        List<Ship> playerFleet = new ArrayList<>();
+        for (Ship s : ctx.ships) {
+            if (s.faction == Faction.PLAYER && s != ctx.player) {
+                playerFleet.add(s);
+            }
+        }
+        
+        // Left panel: Fleet list
+        int fleetListX = panel.x + 22;
+        int fleetListY = panel.y + 72;
+        int fleetListW = 220;
+        int fleetListH = panel.height - 100;
+        
+        gx.setColor(new Color(20, 28, 42, 160));
+        gx.fillRect(fleetListX, fleetListY, fleetListW, fleetListH);
+        gx.setColor(new Color(118, 180, 255, 78));
+        gx.drawRect(fleetListX, fleetListY, fleetListW, fleetListH);
+        
+        gx.setFont(new Font("Consolas", Font.BOLD, 11));
+        gx.setColor(new Color(192, 210, 232, 200));
+        gx.drawString("FLEET SHIPS", fleetListX + 8, fleetListY + 14);
+        
+        // Draw ship list
+        int shipY = fleetListY + 22;
+        for (Ship ship : playerFleet) {
+            boolean selected = (ui.fleetSelectedShipId == ship.id);
+            if (selected) {
+                gx.setColor(new Color(118, 180, 255, 64));
+                gx.fillRect(fleetListX, shipY - 12, fleetListW, 16);
+            }
+            gx.setColor(selected ? new Color(255, 255, 255, 230) : new Color(180, 200, 220, 200));
+            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+            String label = ship.name + " (" + ship.role.name() + ")";
+            gx.drawString(label, fleetListX + 4, shipY);
+            shipY += 18;
+            if (shipY > fleetListY + fleetListH - 20) break;  // Prevent overflow
+        }
+        
+        // Right panel: Loadout editor
+        int loadoutX = fleetListX + fleetListW + 20;
+        int loadoutY = fleetListY;
+        int loadoutW = panel.width - loadoutX - 22;
+        int loadoutH = fleetListH;
+        
+        gx.setColor(new Color(20, 28, 42, 160));
+        gx.fillRect(loadoutX, loadoutY, loadoutW, loadoutH);
+        gx.setColor(new Color(255, 206, 122, 78));
+        gx.drawRect(loadoutX, loadoutY, loadoutW, loadoutH);
+        
+        gx.setFont(new Font("Consolas", Font.BOLD, 11));
+        gx.setColor(new Color(255, 206, 122, 200));
+        gx.drawString("LOADOUT", loadoutX + 8, loadoutY + 14);
+        
+        // Display selected ship's loadout
+        if (ui.fleetSelectedShipId >= 0) {
+            Ship selectedShip = null;
+            for (Ship s : playerFleet) {
+                if (s.id == ui.fleetSelectedShipId) {
+                    selectedShip = s;
+                    break;
+                }
+            }
+            
+            if (selectedShip != null) {
+                int detailY = loadoutY + 24;
+                gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+                gx.setColor(new Color(200, 220, 240, 220));
+                gx.drawString("SHIP: " + selectedShip.name, loadoutX + 8, detailY);
+                detailY += 14;
+                gx.drawString("HULL: " + selectedShip.role.name(), loadoutX + 8, detailY);
+                detailY += 14;
+                gx.drawString("HP: " + selectedShip.hp + "/" + selectedShip.hpMax, loadoutX + 8, detailY);
+                detailY += 16;
+                
+                gx.setColor(new Color(255, 206, 122, 200));
+                gx.setFont(new Font("Consolas", Font.BOLD, 10));
+                gx.drawString("WEAPONS", loadoutX + 8, detailY);
+                detailY += 12;
+                
+                // Show turrets
+                gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+                gx.setColor(new Color(200, 220, 240, 200));
+                for (int i = 0; i < selectedShip.turrets.size() && detailY < loadoutY + loadoutH - 20; i++) {
+                    Turret t = selectedShip.turrets.get(i);
+                    boolean turretSelected = (ui.fleetSelectedTurretIndex == i);
+                    
+                    if (turretSelected) {
+                        gx.setColor(new Color(255, 206, 122, 64));
+                        gx.fillRect(loadoutX + 4, detailY - 8, loadoutW - 12, 12);
+                    }
+                    
+                    gx.setColor(turretSelected ? new Color(255, 240, 200, 230) : new Color(180, 200, 220, 200));
+                    if (t.kind == Turret.Kind.GUN) {
+                        gx.drawString("[" + i + "] GUN - DMG:" + t.damage + " CYC:" + String.format("%.2f", t.cooldown) + "s",
+                                loadoutX + 8, detailY);
+                    } else {
+                        String roleStr = t.missileRole != null ? t.missileRole.name() : "ANTI_MEDIUM";
+                        gx.drawString("[" + i + "] MSL (" + roleStr + ") - DMG:" + t.damage,
+                                loadoutX + 8, detailY);
+                    }
+                    detailY += 12;
+                }
+            }
+        }
+        
+        // Bottom info
+        gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+        gx.setColor(new Color(180, 200, 220, 160));
+        gx.drawString("Click ship to select | Selected turret shows role (missiles) | Roles: INTERCEPT / ANTI_LIGHT / ANTI_MEDIUM / ANTI_HEAVY",
+                loadoutX, panel.y + panel.height - 8);
+        
+        gx.dispose();
+    }
+
     private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
+        Color base = (accent == null) ? new Color(150, 205, 255) : accent;
         Color base = (accent == null) ? new Color(150, 205, 255) : accent;
         g2.setColor(new Color(16, 22, 34, 188));
         g2.fillRoundRect(x, y, w, 46, 16, 16);
