@@ -3547,11 +3547,7 @@ public class Renderer {
         }
 
         if (shopOpen) {
-            if (CampaignSystem.isFleetHubSession(ctx)) {
-                drawFleetEditorOverlay(g2, ctx, ctx.ui, viewW, viewH);
-            } else {
-                drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
-            }
+            drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
         }
     }
 
@@ -4869,11 +4865,11 @@ public class Renderer {
         gx.drawString("Select ships and configure weapon loadouts. TAB/ESC closes.",
                 panel.x + 22, panel.y + 48);
         
-        // Get player fleet
-        List<Ship> playerFleet = new ArrayList<>();
+        // Get fleet ships eligible for commissioning
+        List<Ship> fleetShips = new ArrayList<>();
         for (Ship s : ctx.ships) {
-            if (s.faction == Faction.PLAYER && s != ctx.player) {
-                playerFleet.add(s);
+            if (s != ctx.player && CampaignSystem.isFleetSelectionCandidate(s)) {
+                fleetShips.add(s);
             }
         }
         
@@ -4894,7 +4890,7 @@ public class Renderer {
         
         // Draw ship list
         int shipY = fleetListY + 22;
-        for (Ship ship : playerFleet) {
+        for (Ship ship : fleetShips) {
             boolean selected = (ui.fleetSelectedShipId == ship.id);
             if (selected) {
                 gx.setColor(new Color(118, 180, 255, 64));
@@ -4926,8 +4922,8 @@ public class Renderer {
         // Display selected ship's loadout
         if (ui.fleetSelectedShipId >= 0) {
             Ship selectedShip = null;
-            for (Ship s : playerFleet) {
-                if (s.id == ui.fleetSelectedShipId) {
+            for (Ship s : ctx.ships) {
+                if (s.id == ui.fleetSelectedShipId && CampaignSystem.isFleetSelectionCandidate(s)) {
                     selectedShip = s;
                     break;
                 }
@@ -4985,7 +4981,6 @@ public class Renderer {
     }
 
     private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
-        Color base = (accent == null) ? new Color(150, 205, 255) : accent;
         Color base = (accent == null) ? new Color(150, 205, 255) : accent;
         g2.setColor(new Color(16, 22, 34, 188));
         g2.fillRoundRect(x, y, w, 46, 16, 16);
@@ -6614,11 +6609,29 @@ public class Renderer {
         // Resource readouts (with small pills)
         drawPill(g2, x + 18, ty - 12, 150, "CREDITS", String.valueOf(credits));
         drawPill(g2, x + 178, ty - 12, 150, "BASE ORE", String.valueOf(baseOre));
-        drawPill(g2, x + 338, ty - 12, 160, "HANGAR", hangarLv + " / " + maxHangarTier);
+        String focusLabel = "SYSTEMS";
+        String focusValue = turretLv + " / 5";
+        if (fleetHub && selectedShip != null) {
+            ShipRole role = selectedShip.role;
+            if (CampaignSystem.campaignShipUpgradeAvailable(selectedShip, 5)) {
+                focusLabel = "HANGAR";
+                focusValue = hangarLv + " / " + maxHangarTier;
+            } else if (CampaignSystem.campaignShipUpgradeAvailable(selectedShip, 4)) {
+                if (role == ShipRole.MINER) {
+                    focusLabel = "MINING";
+                } else if (role == ShipRole.HAULER || role == ShipRole.TRANSPORT || role == ShipRole.TRANSPORT_TITAN) {
+                    focusLabel = "CARGO";
+                } else {
+                    focusLabel = "LOGISTICS";
+                }
+                focusValue = miningLv + " / 5";
+            }
+        }
+        drawPill(g2, x + 338, ty - 12, 160, focusLabel, focusValue);
         ty += 30;
 
         g2.setColor(new Color(255, 255, 255, 180));
-        g2.drawString(fleetHub ? "Press 1-5 to upgrade the selected hull:" : "Press 1-5 to purchase:", x + 18, ty);
+        g2.drawString(fleetHub ? "Press the numbered slots shown below to upgrade the selected hull:" : "Press 1-5 to purchase:", x + 18, ty);
         ty += 18;
 
         // Costs mirror GamePanel (keep in sync)
@@ -6641,14 +6654,27 @@ public class Renderer {
 
         ty = drawUpgradeLineConsole(g2, x + 18, ty, 1, "Hull Fortification", hullLv, 5, new Color(120, 255, 170, 220), cCost, oCost);
         ty = drawUpgradeLineConsole(g2, x + 18, ty, 2, "Shield Array",      shieldLv, 5, new Color(120, 200, 255, 220), cCost, oCost);
-        ty = drawUpgradeLineConsole(g2, x + 18, ty, 3, "Turret Systems",    turretLv, 5, new Color(255, 210, 130, 220), cCost, oCost);
-        ty = drawUpgradeLineConsole(g2, x + 18, ty, 4, "Mining Ops",        miningLv, 5, new Color(255, 230, 120, 220), cCost, oCost);
-        ty = drawUpgradeLineConsole(g2, x + 18, ty, 5, "Hangar Expansion",  hangarLv, maxHangarTier, new Color(210, 170, 255, 220), cCost, oCost);
+        if (!fleetHub || CampaignSystem.campaignShipUpgradeAvailable(selectedShip, 3)) {
+            ty = drawUpgradeLineConsole(g2, x + 18, ty, 3, "Turret Systems", turretLv, 5, new Color(255, 210, 130, 220), cCost, oCost);
+        }
+        if (!fleetHub) {
+            ty = drawUpgradeLineConsole(g2, x + 18, ty, 4, "Mining Ops",       miningLv, 5, new Color(255, 230, 120, 220), cCost, oCost);
+            ty = drawUpgradeLineConsole(g2, x + 18, ty, 5, "Hangar Expansion", hangarLv, maxHangarTier, new Color(210, 170, 255, 220), cCost, oCost);
+        } else {
+            String logisticsTitle = CampaignSystem.campaignShipUpgradeTitle(selectedShip, 4);
+            if (logisticsTitle != null) {
+                ty = drawUpgradeLineConsole(g2, x + 18, ty, 4, logisticsTitle, miningLv, 5, new Color(255, 230, 120, 220), cCost, oCost);
+            }
+            String hangarTitle = CampaignSystem.campaignShipUpgradeTitle(selectedShip, 5);
+            if (hangarTitle != null) {
+                ty = drawUpgradeLineConsole(g2, x + 18, ty, 5, hangarTitle, hangarLv, maxHangarTier, new Color(210, 170, 255, 220), cCost, oCost);
+            }
+        }
 
         g2.setColor(new Color(255, 255, 255, 130));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.drawString(fleetHub
-                ? "Fleet edits apply to the selected hull. Launch with Enter when ready."
+                ? CampaignSystem.campaignShipUpgradeFooter(selectedShip) + " Launch with Enter when ready."
                 : "Mining Ops boosts mining rate + ore sell value.", x + 18, y + h - 16);
     }
 

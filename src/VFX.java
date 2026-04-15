@@ -66,7 +66,9 @@ public final class VFX {
         if (pool.isEmpty()) {
             return new Particle();
         }
-        return pool.remove(pool.size() - 1);
+        Particle p = pool.remove(pool.size() - 1);
+        resetParticle(p);
+        return p;
     }
 
     /**
@@ -74,9 +76,27 @@ public final class VFX {
      * Called when particles die to avoid garbage collection.
      */
     private static void releaseParticle(Particle p) {
+        if (p == null) return;
+        resetParticle(p);
         if (pool.size() < MAX * 2) {  // Keep reasonable pool size
             pool.add(p);
         }
+    }
+
+    private static void resetParticle(Particle p) {
+        if (p == null) return;
+        p.type = null;
+        p.x = 0.0;
+        p.y = 0.0;
+        p.vx = 0.0;
+        p.vy = 0.0;
+        p.angle = 0.0;
+        p.angleVel = 0.0;
+        p.size = 0.0;
+        p.life = 0;
+        p.maxLife = 0;
+        p.baseAlpha = 0;
+        p.color = null;
     }
 
     /** Draw all particles in world space. */

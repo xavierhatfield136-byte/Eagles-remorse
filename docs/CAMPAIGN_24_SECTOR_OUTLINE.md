@@ -84,7 +84,7 @@ Act split:
 `LAST AUTHORITY RELAY`
 - Location: `Gate Relay Tethys`
 - Family: `Counterbattery / Breakthrough`
-- Objective: Destroy the route-control blockers pinning the relay.
+- Objective: Destroy the four route-control blockers pinning the relay.
 - Purpose: Opens the legal Earthward route without asking the player to sit in a ring.
 
 ### Sector 5

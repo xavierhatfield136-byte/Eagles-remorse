@@ -253,7 +253,7 @@ public final class UISystem {
     private static Ship findShipInFleet(GameContext ctx, int shipId) {
         if (ctx == null || ctx.ships == null) return null;
         for (Ship s : ctx.ships) {
-            if (s.id == shipId && s.faction == Faction.PLAYER) {
+            if (s.id == shipId && CampaignSystem.isFleetSelectionCandidate(s)) {
                 return s;
             }
         }
@@ -1057,7 +1057,12 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "DOCK AT A FRIENDLY BASE", 1.4);
             return;
         }
+        if (!CampaignSystem.campaignShipUpgradeAvailable(base, which)) {
+            EventSystem.showBanner(ctx, CampaignSystem.campaignShipUpgradeUnavailableReason(base, which), 1.4);
+            return;
+        }
         BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades().bindTo(base));
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
 
         int max = switch (which) {
             case 5 -> CampaignSystem.isCampaignActive(ctx) ? CampaignSystem.campaignMaxHangarTier(ctx) : 3;
@@ -1133,12 +1138,20 @@ public final class UISystem {
             }
             case 4 -> {
                 up.miningLv++;
-                ctx.miningBaseMul = Math.min(2.0, ctx.miningBaseMul + 0.06);
-                ctx.orePriceBaseMul = Math.min(2.0, ctx.orePriceBaseMul + 0.05);
-                EventSystem.showBanner(ctx, "MINING OPS UPGRADED", 1.2);
+                if (fleetHub) {
+                    CampaignSystem.applyCampaignShipUpgradeDelta(ctx, base, 4, 1);
+                } else {
+                    ctx.miningBaseMul = Math.min(2.0, ctx.miningBaseMul + 0.06);
+                    ctx.orePriceBaseMul = Math.min(2.0, ctx.orePriceBaseMul + 0.05);
+                }
+                String label = fleetHub ? CampaignSystem.campaignShipUpgradeTitle(base, 4) : "MINING OPS";
+                EventSystem.showBanner(ctx, ((label == null) ? "LOGISTICS OPS" : label.toUpperCase()) + " UPGRADED", 1.2);
             }
             case 5 -> {
                 up.hangarLv++;
+                if (fleetHub) {
+                    CampaignSystem.applyCampaignShipUpgradeDelta(ctx, base, 5, 1);
+                }
                 EventSystem.showBanner(ctx, "HANGAR EXPANDED", 1.2);
             }
             default -> {

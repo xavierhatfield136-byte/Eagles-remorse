@@ -4,6 +4,11 @@
 
 This document outlines the primary performance bottlenecks identified in large fleet battles and provides a prioritized action plan aligned with Phase 3 of the Gripe Checklist.
 
+Current implementation status:
+- Implemented: CIWS pellets skip impact VFX, turret muzzle flashes are suppressed for CIWS pellet spam, and CIWS ship hits use circle-only collision instead of hull geometry.
+- Implemented: `Particle` instances are pooled and reset before reuse to reduce garbage collection pressure.
+- Still open: off-screen projectile culling, dynamic CIWS fire-rate tuning, and room-hazard batching.
+
 ---
 
 ## 🔴 Critical Bottlenecks
@@ -22,10 +27,11 @@ This document outlines the primary performance bottlenecks identified in large f
 - Active CIWS projectiles at any time: ~100-300
 - Each projectile tested against 20+ enemy ships = **6,000+ collision checks/frame**
 
-**Solution:** Remove visual effects from CIWS pellets and optionally use culled/simplified collision for small pellets.
+**Implemented:** CIWS pellets now skip muzzle flashes and impact VFX, and CIWS ship hits use circle-only collision before the expensive hull test.
 
 **Files:**
 - `src/Ship.java` (`fireCiwsPellets` method)
+- `src/Turret.java` (CIWS muzzle flash suppression)
 - `src/VFX.java` (impact effect spawning)
 - `src/CollisionSystem.java` (collision detection)
 
@@ -48,7 +54,7 @@ This document outlines the primary performance bottlenecks identified in large f
 - Each explosion calculates multiple ring radii, stroke widths, corona effects
 - Visibility culling helps but doesn't eliminate the iteration cost
 
-**Solution:** Remove explosion effects from small shots (CIWS, light projectiles), simplify effect spawning.
+**Implemented:** Small-shot impact VFX are simplified, and particle pooling now reuses `Particle` objects to reduce garbage collection pressure.
 
 **Files:**
 - `src/VFX.java` (all spawn methods)
@@ -69,7 +75,7 @@ This document outlines the primary performance bottlenecks identified in large f
 - If hit: expensive `HullGeometry.projectileIntersectsShip()` geometry check
 - Broad-phase query helps but doesn't scale linearly with projectile count
 
-**Solution:** Cull CIWS projectiles from collision detection or use cheaper collision predicates.
+**Implemented:** CIWS vs ships uses circle-only collision and skips the expensive hull-geometry check.
 
 **Files:**
 - `src/CollisionSystem.java` (main collision loop)
@@ -126,18 +132,16 @@ This document outlines the primary performance bottlenecks identified in large f
 ### Immediate (Quick Wins) — Phase 3, Step 1
 
 **1. Disable explosion effects on CIWS pellets**
-- CIWS pellets are tiny; visual feedback is low-value
+- Implemented: CIWS pellets skip impact VFX and muzzle flashes in the hot path.
 - Expected savings: **30-40% VFX overhead reduction**
-- Implementation: Add flag to `spawnHullImpact()` to skip CIWS effect spawning
 
 **2. Optionally simplify or remove CIWS visuals**
-- Current: muzzle flashes, bloom effects for each burst
+- Implemented: CIWS firing now omits muzzle flash spam and the remaining visuals are already simplified.
 - Phase 3 explicitly recommends: "Remove or heavily simplify CIWS visuals"
 - Expected savings: **10-20% rendering overhead**
 
 **3. Object pooling for particles**
-- Currently creating new `Particle` objects on every spawn
-- Reuse from a pool to reduce garbage collection
+- Implemented: `Particle` objects are pooled and reset before reuse.
 - Expected savings: **5-10% GC pressure**
 
 ### Medium-term — Phase 3, Step 2
@@ -152,7 +156,7 @@ This document outlines the primary performance bottlenecks identified in large f
 - Expected savings: **10-15% rendering overhead**
 
 **6. Cheaper collision for small projectiles**
-- CIWS vs ships: use circle-only collision (skip hull geometry)
+- Implemented: CIWS vs ships now uses circle-only collision (skip hull geometry).
 - Small projectiles rarely need exact geometry checks
 - Expected savings: **20-30% collision detection overhead**
 
@@ -170,9 +174,9 @@ This document outlines the primary performance bottlenecks identified in large f
 
 ## Implementation Checklist
 
-- [ ] Disable VFX on CIWS impacts
-- [ ] Remove CIWS muzzle flash effects
-- [ ] Implement particle object pooling
+- [x] Disable VFX on CIWS impacts
+- [x] Remove CIWS muzzle flash effects
+- [x] Implement particle object pooling
 - [ ] Profile and validate improvements
 - [ ] Measure largest-map FPS before and after
 - [ ] Document performance gains

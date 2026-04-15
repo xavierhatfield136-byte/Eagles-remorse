@@ -142,6 +142,61 @@ class CampaignPersistentFleetShopTest {
         assertEquals(2, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN));
     }
 
+    @Test
+    void fleetHubUpgradeSlotsAreRoleSpecificAndApplyImmediately() {
+        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
+        ctx.campaign.awaitingEpisodeLaunch = true;
+        ctx.state = GameState.FLEET;
+        ctx.ui.baseMenuOpen = true;
+
+        FleetShip picket = new FleetShip(ShipRole.PICKET, Faction.ALLY, 2400.0, 2400.0);
+        ctx.ships.add(picket);
+        BaseUpgrades picketUp = new BaseUpgrades().bindTo(picket);
+        ctx.baseUpgrades.put(picket, picketUp);
+        ctx.ui.fleetSelectedShipId = picket.id;
+
+        assertFalse(CampaignSystem.campaignShipUpgradeAvailable(picket, 4));
+        assertFalse(CampaignSystem.campaignShipUpgradeAvailable(picket, 5));
+        int creditsBefore = ctx.credits;
+        int oreBefore = ctx.player.cargo;
+        UISystem.tryUpgradeBase(ctx, 4);
+        UISystem.tryUpgradeBase(ctx, 5);
+        assertEquals(0, picketUp.miningLv);
+        assertEquals(0, picketUp.hangarLv);
+        assertEquals(creditsBefore, ctx.credits);
+        assertEquals(oreBefore, ctx.player.cargo);
+
+        FleetShip miner = new FleetShip(ShipRole.MINER, Faction.ALLY, 2450.0, 2450.0);
+        ctx.ships.add(miner);
+        BaseUpgrades minerUp = new BaseUpgrades().bindTo(miner);
+        ctx.baseUpgrades.put(miner, minerUp);
+        ctx.ui.fleetSelectedShipId = miner.id;
+        double miningBefore = miner.miningRate;
+        int cargoBefore = miner.cargoMax;
+        creditsBefore = ctx.credits;
+        oreBefore = ctx.player.cargo;
+        UISystem.tryUpgradeBase(ctx, 4);
+        assertTrue(CampaignSystem.campaignShipUpgradeAvailable(miner, 4));
+        assertEquals(miningBefore + 1.4, miner.miningRate, 1e-9);
+        assertEquals(cargoBefore + 20, miner.cargoMax);
+        assertEquals(creditsBefore - 310, ctx.credits);
+        assertEquals(oreBefore - 150, ctx.player.cargo);
+
+        FleetShip carrier = new FleetShip(ShipRole.CARRIER, Faction.ALLY, 2500.0, 2500.0);
+        ctx.ships.add(carrier);
+        BaseUpgrades carrierUp = new BaseUpgrades().bindTo(carrier);
+        ctx.baseUpgrades.put(carrier, carrierUp);
+        ctx.ui.fleetSelectedShipId = carrier.id;
+        int fightersBefore = carrier.maxFighters;
+        creditsBefore = ctx.credits;
+        oreBefore = ctx.player.cargo;
+        UISystem.tryUpgradeBase(ctx, 5);
+        assertTrue(CampaignSystem.campaignShipUpgradeAvailable(carrier, 5));
+        assertEquals(fightersBefore + 1, carrier.maxFighters);
+        assertEquals(creditsBefore - 800, ctx.credits);
+        assertEquals(oreBefore - 270, ctx.player.cargo);
+    }
+
     private static GameContext campaignShopContext(int credits, int ore, int hangarTier, int sector) {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();

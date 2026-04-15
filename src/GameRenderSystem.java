@@ -300,7 +300,7 @@ if (DevTools.isDebugOverlay()) {
             String selectedRole = (selected == null || selected.role == null)
                     ? "UNKNOWN"
                     : selected.role.name();
-            return "Fleet hub: click a ship to select it, use FLEET to commission hulls, UPGRADE to edit the selected hull, and Enter to launch. Selected: "
+            return "Fleet hub: click a ship to select it, TAB opens the fleet shop, B edits the selected hull, and Enter launches. Selected: "
                     + selectedName + " / " + selectedRole + ". Mouse wheel zooms.";
         }
         if (ctx.command.playerTeleportCharging) {
@@ -783,23 +783,28 @@ if (DevTools.isDebugOverlay()) {
 
         String label = CampaignSystem.transitionLabel(ctx);
         int secs = (int) Math.ceil(CampaignSystem.transitionSeconds(ctx));
-        String timer = "Next sector in " + Math.max(0, secs) + "s";
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+        String timer = fleetHub ? "Fleet hub open" : "Next sector in " + Math.max(0, secs) + "s";
         String top = CampaignSystem.transitionSummaryTop(ctx);
         String bottom = CampaignSystem.transitionSummaryBottom(ctx);
 
-        int w = Math.min(880, viewportW - 60);
+        int w = Math.min(1080, viewportW - 24);
+        int x = (viewportW - w) / 2;
+        int y = 10;
+
         g2.setFont(new Font("Consolas", Font.BOLD, 22));
         FontMetrics titleFm = g2.getFontMetrics();
         g2.setFont(new Font("Consolas", Font.PLAIN, 16));
         FontMetrics timerFm = g2.getFontMetrics();
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
         FontMetrics bodyFm = g2.getFontMetrics();
+        if (label == null || label.isBlank()) label = "FLEET HANGAR";
         int textW = Math.max(260, w - 40);
         java.util.List<String> topLines = wrapLines(bodyFm, top, textW);
         java.util.List<String> bottomLines = wrapLines(bodyFm, bottom, textW);
-        int h = 40 + 28 + 18 + Math.max(1, topLines.size()) * 18 + Math.max(1, bottomLines.size()) * 18;
-        int x = (viewportW - w) / 2;
-        int y = (viewportH - h) / 2;
+        int bodyLineH = Math.max(16, bodyFm.getHeight());
+        int bodyLines = topLines.size() + bottomLines.size();
+        int h = 18 + titleFm.getHeight() + 4 + timerFm.getHeight() + 10 + Math.max(1, bodyLines) * bodyLineH + 12;
 
         g2.setColor(new Color(0, 0, 0, 190));
         g2.fillRoundRect(x, y, w, h, 16, 16);
@@ -808,28 +813,31 @@ if (DevTools.isDebugOverlay()) {
 
         g2.setFont(new Font("Consolas", Font.BOLD, 22));
         g2.setColor(new Color(255, 230, 150, 230));
-        int tx1 = x + (w - titleFm.stringWidth(label)) / 2;
-        g2.drawString(label, tx1, y + 40);
+        int ty = y + 30;
+        int tx1 = x + 20;
+        g2.drawString(label, tx1, ty);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 16));
         g2.setColor(new Color(255, 255, 255, 220));
-        int tx2 = x + (w - timerFm.stringWidth(timer)) / 2;
-        g2.drawString(timer, tx2, y + 66);
+        int tx2 = x + w - 20 - timerFm.stringWidth(timer);
+        g2.drawString(timer, tx2, ty);
 
-        int rowY = y + 94;
+        int rowY = y + 56;
         if (!topLines.isEmpty()) {
-            g2.setColor(new Color(220, 235, 255, 220));
+            g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+            g2.setColor(new Color(224, 236, 248, 220));
             for (String line : topLines) {
                 g2.drawString(line, x + 20, rowY);
-                rowY += 18;
+                rowY += bodyLineH;
             }
         }
         rowY += 4;
         if (!bottomLines.isEmpty()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 13));
             g2.setColor(new Color(255, 230, 170, 225));
             for (String line : bottomLines) {
                 g2.drawString(line, x + 20, rowY);
-                rowY += 18;
+                rowY += bodyLineH;
             }
         }
     }

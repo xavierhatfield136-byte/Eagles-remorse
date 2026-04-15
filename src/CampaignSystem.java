@@ -199,7 +199,7 @@ public final class CampaignSystem {
             new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 360, 630, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(2, ObjectiveType.DESTROY, "Destroy customs-halo gunships before they seal the civilian aperture", 6, 690, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 12, 720, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 7, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
             new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
             new SectorScript(6, ObjectiveType.SURVIVE, "Recover the debris-wake caches before demolition ships erase them", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(7, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
@@ -888,10 +888,10 @@ public final class CampaignSystem {
         st.transitionTimer = 0.0;
         if (st.transitionLabel == null || st.transitionLabel.isBlank()) st.transitionLabel = "FLEET HANGAR";
         if (st.transitionSummaryTop == null || st.transitionSummaryTop.isBlank()) {
-            st.transitionSummaryTop = "Click a ship to inspect, refit, and re-arm the fleet.";
+            st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it.";
         }
         if (st.transitionSummaryBottom == null || st.transitionSummaryBottom.isBlank()) {
-            st.transitionSummaryBottom = "ENTER launches the current mission.";
+            st.transitionSummaryBottom = "TAB: Fleet shop   |   B: Upgrade selected hull   |   ENTER launches";
         }
         st.introSequenceActive = false;
         st.introPhase = 0;
@@ -923,7 +923,7 @@ public final class CampaignSystem {
         ctx.state = GameState.FLEET;
     }
 
-    private static boolean isFleetSelectionCandidate(Ship ship) {
+    public static boolean isFleetSelectionCandidate(Ship ship) {
         if (ship == null || ship.faction == null) return false;
         if (ship.faction.teamId() != Faction.ALLY.teamId()) return false;
         return ship.alive && !ship.dying && ship.hp > 0;
@@ -994,6 +994,7 @@ public final class CampaignSystem {
         if (entry == null || ship == null) return;
         entry.name = (ship.name == null || ship.name.isBlank()) ? entry.name : ship.name;
         BaseUpgrades up = (ctx == null) ? null : ctx.baseUpgrades.get(ship);
+        normalizeCampaignShipUpgrades(ship, up);
         entry.hullLv = (up == null) ? 0 : Math.max(0, up.hullLv);
         entry.shieldLv = (up == null) ? 0 : Math.max(0, up.shieldLv);
         entry.turretLv = (up == null) ? 0 : Math.max(0, up.turretLv);
@@ -1069,6 +1070,133 @@ public final class CampaignSystem {
 
     static int campaignMaxHangarTier(GameContext ctx) {
         return isCampaignActive(ctx) ? CAMPAIGN_PLAYER_MAX_HANGAR_TIER : CAMPAIGN_ENEMY_MAX_HANGAR_TIER;
+    }
+
+    public static boolean campaignShipUpgradeAvailable(Ship ship, int which) {
+        if (ship == null || ship.role == null) return false;
+        return switch (which) {
+            case 1, 2 -> true;
+            case 3 -> ship.turrets != null && !ship.turrets.isEmpty();
+            case 4 -> campaignShipSupportsLogisticsUpgrade(ship);
+            case 5 -> campaignShipSupportsHangarUpgrade(ship);
+            default -> false;
+        };
+    }
+
+    public static String campaignShipUpgradeTitle(Ship ship, int which) {
+        if (ship == null || ship.role == null) return null;
+        return switch (which) {
+            case 1 -> "Hull Fortification";
+            case 2 -> "Shield Array";
+            case 3 -> campaignShipUpgradeAvailable(ship, 3) ? "Turret Systems" : null;
+            case 4 -> campaignShipLogisticsUpgradeTitle(ship);
+            case 5 -> campaignShipSupportsHangarUpgrade(ship) ? "Hangar Expansion" : null;
+            default -> null;
+        };
+    }
+
+    public static String campaignShipUpgradeFooter(Ship ship) {
+        if (ship == null || ship.role == null) {
+            return "Fleet edits apply to the selected hull.";
+        }
+        boolean logistics = campaignShipSupportsLogisticsUpgrade(ship);
+        boolean hangar = campaignShipSupportsHangarUpgrade(ship);
+        if (logistics && hangar) {
+            return "This hull supports both logistics and hangar systems.";
+        }
+        if (logistics) {
+            return "This hull supports logistics systems but no hangar bay.";
+        }
+        if (hangar) {
+            return "This hull supports a hangar bay but no logistics slot.";
+        }
+        return "This hull only exposes combat systems.";
+    }
+
+    static void applyCampaignShipUpgradeDelta(GameContext ctx, Ship ship, int which, int levels) {
+        if (ctx == null || ship == null) return;
+        int n = Math.max(0, levels);
+        if (n <= 0) return;
+        switch (which) {
+            case 1 -> {
+                ship.hpMax = Math.max(1, ship.hpMax + 40 * n);
+                ship.healHull(40 * n);
+            }
+            case 2 -> {
+                ship.shieldActive = true;
+                ship.shieldMax = Math.max(0.0, ship.shieldMax + 30.0 * n);
+                ship.shieldRegen = Math.max(0.0, ship.shieldRegen + 0.8 * n);
+                ship.shield = Math.min(ship.shieldMax, ship.shield + 30.0 * n);
+            }
+            case 3 -> UISystem.applyTurretSystemsUpgrade(ship, n);
+            case 4 -> {
+                if (campaignShipSupportsLogisticsUpgrade(ship)) {
+                    ship.miningRate = Math.max(0.0, ship.miningRate + 1.4 * n);
+                    ship.cargoMax = Math.max(0, ship.cargoMax + 20 * n);
+                }
+            }
+            case 5 -> {
+                if (campaignShipSupportsHangarUpgrade(ship) && ship.isCarrier) {
+                    ship.maxFighters = Math.max(0, ship.maxFighters + n);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    static void applyCampaignShipUpgrades(GameContext ctx, Ship ship, BaseUpgrades upgrades) {
+        if (ctx == null || ship == null || upgrades == null) return;
+        normalizeCampaignShipUpgrades(ship, upgrades);
+        applyCampaignShipUpgradeDelta(ctx, ship, 1, upgrades.hullLv);
+        applyCampaignShipUpgradeDelta(ctx, ship, 2, upgrades.shieldLv);
+        applyCampaignShipUpgradeDelta(ctx, ship, 3, upgrades.turretLv);
+        applyCampaignShipUpgradeDelta(ctx, ship, 4, upgrades.miningLv);
+        applyCampaignShipUpgradeDelta(ctx, ship, 5, upgrades.hangarLv);
+    }
+
+    static String campaignShipUpgradeUnavailableReason(Ship ship, int which) {
+        if (ship == null || ship.role == null) return "UPGRADE NOT AVAILABLE";
+        return switch (which) {
+            case 3 -> "THIS HULL HAS NO TURRETS";
+            case 4 -> "THIS HULL HAS NO LOGISTICS SLOT";
+            case 5 -> "THIS HULL HAS NO HANGAR BAY";
+            default -> "UPGRADE NOT AVAILABLE";
+        };
+    }
+
+    private static boolean campaignShipSupportsLogisticsUpgrade(Ship ship) {
+        if (ship == null || ship.role == null) return false;
+        return switch (ship.role) {
+            case BASE, MOTHERSHIP, MINER, HAULER, TRANSPORT, TRANSPORT_TITAN -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean campaignShipSupportsHangarUpgrade(Ship ship) {
+        if (ship == null || ship.role == null) return false;
+        if (ship.role == ShipRole.BASE || ship.role == ShipRole.MOTHERSHIP) return true;
+        return ship.isCarrier;
+    }
+
+    private static String campaignShipLogisticsUpgradeTitle(Ship ship) {
+        if (!campaignShipSupportsLogisticsUpgrade(ship)) return null;
+        return switch (ship.role) {
+            case MINER -> "Mining Ops";
+            case HAULER, TRANSPORT, TRANSPORT_TITAN -> "Cargo Ops";
+            case BASE -> "Station Logistics";
+            case MOTHERSHIP -> "Fleet Logistics";
+            default -> "Logistics Ops";
+        };
+    }
+
+    private static void normalizeCampaignShipUpgrades(Ship ship, BaseUpgrades upgrades) {
+        if (ship == null || upgrades == null) return;
+        upgrades.hullLv = MathUtil.clamp(upgrades.hullLv, 0, 5);
+        upgrades.shieldLv = MathUtil.clamp(upgrades.shieldLv, 0, 5);
+        upgrades.turretLv = campaignShipUpgradeAvailable(ship, 3) ? MathUtil.clamp(upgrades.turretLv, 0, 5) : 0;
+        upgrades.miningLv = campaignShipSupportsLogisticsUpgrade(ship) ? MathUtil.clamp(upgrades.miningLv, 0, 5) : 0;
+        upgrades.hangarLv = campaignShipSupportsHangarUpgrade(ship) ? MathUtil.clamp(upgrades.hangarLv, 0, 5) : 0;
     }
 
     static int campaignMinSectorForRole(ShipRole role) {
@@ -3535,23 +3663,12 @@ public final class CampaignSystem {
                 ? ("ACT " + (st.act + 1) + ": " + actTitleFor(st.act + 1))
                 : ("JUMP TO " + nextLore.title));
         st.transitionSummaryTop = clearedLore.title + " secure. " + clearedLore.completionLead;
-        st.transitionSummaryBottom = "+" + bonus + " credits   |   DOCTRINE: " + st.branchRoute
-                + "   |   MOD: " + modifiersSummary(st.activeModifiers)
-                + coalitionSupportSummary(st)
-                + sideRewardSummary(st, sideBonus)
-                + (storyReward.isBlank() ? "" : "   |   " + storyReward)
-                + (sectorOutcome.isBlank() ? "" : "   |   " + sectorOutcome)
-                + (bossDrop.isBlank() ? "" : "   |   DROP: " + bossDrop)
-                + (unlock.isBlank() ? "" : "   |   " + unlock)
-                + (checkpointSaved ? "   |   CHECKPOINT SAVED" : "")
-                + (st.awaitingEpisodeLaunch ? "   |   TAB: Open Fleet Hangar (auto in 10s)" : "");
-        // Instead of immediately entering fleet hub, wait for player choice or timeout
-        st.awaitingFleetHubChoice = st.awaitingEpisodeLaunch;
-        st.fleetHubChoiceTimer = st.awaitingEpisodeLaunch ? FLEET_HUB_AUTO_OPEN_DELAY : 0.0;
-        if (!st.awaitingEpisodeLaunch) {
-            // If no next episode (campaign over), enter fleet hub immediately for results screen
-            enterFleetHub(ctx, st);
-        }
+        st.transitionSummaryBottom = "Click a ship to focus it   |   TAB: Fleet shop   |   B: Upgrade selected hull"
+                + "   |   ENTER: Launch next mission";
+        // Open the fleet hub immediately so the intermission stays interactive.
+        st.awaitingFleetHubChoice = false;
+        st.fleetHubChoiceTimer = 0.0;
+        enterFleetHub(ctx, st);
         EventSystem.showBanner(ctx,
                 clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
@@ -4881,34 +4998,7 @@ public final class CampaignSystem {
 
     private static void applyPersistentShipUpgradeLevels(GameContext ctx, Ship ship, BaseUpgrades upgrades) {
         if (ctx == null || ship == null || upgrades == null) return;
-
-        int hullLv = Math.max(0, upgrades.hullLv);
-        if (hullLv > 0) {
-            ship.hpMax = Math.max(1, ship.hpMax + 40 * hullLv);
-        }
-
-        int shieldLv = Math.max(0, upgrades.shieldLv);
-        if (shieldLv > 0) {
-            ship.shieldActive = true;
-            ship.shieldMax = Math.max(0.0, ship.shieldMax + 30.0 * shieldLv);
-            ship.shieldRegen = Math.max(0.0, ship.shieldRegen + 0.8 * shieldLv);
-        }
-
-        int turretLv = Math.max(0, upgrades.turretLv);
-        if (turretLv > 0) {
-            UISystem.applyTurretSystemsUpgrade(ship, turretLv);
-        }
-
-        int miningLv = Math.max(0, upgrades.miningLv);
-        if (miningLv > 0) {
-            ship.miningRate = Math.max(0.0, ship.miningRate + 1.4 * miningLv);
-            ship.cargoMax = Math.max(0, ship.cargoMax + 20 * miningLv);
-        }
-
-        int hangarLv = Math.max(0, upgrades.hangarLv);
-        if (hangarLv > 0 && ship.isCarrier) {
-            ship.maxFighters = Math.max(0, ship.maxFighters + hangarLv);
-        }
+        applyCampaignShipUpgrades(ctx, ship, upgrades);
     }
 
     private static void applyCampaignFleetBonuses(GameContext ctx, CampaignState st) {

@@ -2440,7 +2440,7 @@ public final class AISystem {
                 if (superShip) {
                     // Phase 5.4: Superships are more aggressive with superweapons
                     // If charged and target is medium-cruiser or larger, fire at largest valid target
-                    boolean isChargedAndReady = s.isSuperweaponCharging() || s.superweaponTimer <= 0.1;
+                    boolean isChargedAndReady = s.isSuperweaponCharging() || s.getSuperweaponRemaining() <= 0.1;
                     boolean targetIsCapital = isCapitalRole(target.role);
                     if (isChargedAndReady && targetIsCapital && confidence >= 0.32) {
                         allowSuperweapon = true;  // Much more aggressive when weapon is ready

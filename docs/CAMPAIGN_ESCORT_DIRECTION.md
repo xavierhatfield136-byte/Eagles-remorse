@@ -573,6 +573,7 @@ Goal:
 
 Checklist:
 - [x] Rework missions `3`, `4`, and `5` so the base Mothership cannot finish them in under a second.
+  **Note:** Sector 4 now stays at four authored blockers in the live campaign data, and authored destroy progress is used for completion.
   **Completion:** Files modified: `CampaignSystem.java`. Sector 3: adjusted objectives 8→12 targets; Sector 4: 4→7 targets; Sector 5: 6→10 targets. Changes provide sufficient combat duration for ore collection while maintaining fast pacing.
 - [x] Retune episode `9` so it remains a serious challenge but does not obliterate an otherwise healthy run.
   **Completion:** Files modified: `CampaignSystem.java`. Reduced red spawn count to ~65% of original (100→65). Mission remains intense but no longer punitive to healthy runs.
