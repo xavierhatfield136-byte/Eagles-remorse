@@ -498,15 +498,15 @@ The ending should restore peace, not set up a forever-war as the only possible o
 
 ## Current Build Status
 
-Already in the build:
-- [x] The campaign is already structured as a 24-sector return-to-Earth arc.
-- [x] The four ship hierarchies are present: Small Craft, Standard Ships, Titans, and Motherships.
-- [x] The Titan command ladder and escort pressure are already present in campaign logic.
-- [x] Green support exists as contract fleets and persistent allied survivors.
-- [x] Yellow liberation exists as a boarding/recovery arc with liberated fleets rejoining later sectors.
-- [x] Fog of war exists in strategic and combat rendering, including ghost contacts and hidden sectors.
-- [x] Cargo and ore persist through campaign saves and restores.
-- [x] The final Earth battle is already scripted as the closing sector.
+Claimed to already be in the build (needs verification):
+- [ ] The campaign is already structured as a 24-sector return-to-Earth arc.
+- [ ] The four ship hierarchies are present: Small Craft, Standard Ships, Titans, and Motherships.
+- [ ] The Titan command ladder and escort pressure are already present in campaign logic.
+- [ ] Green support exists as contract fleets and persistent allied survivors.
+- [ ] Yellow liberation exists as a boarding/recovery arc with liberated fleets rejoining later sectors.
+- [ ] Fog of war exists in strategic and combat rendering, including ghost contacts and hidden sectors.
+- [ ] Cargo and ore persist through campaign saves and restores.
+- [ ] The final Earth battle is already scripted as the closing sector.
 
 Still backlog:
 - [ ] Fleet-tab ship-by-ship editing.
@@ -555,12 +555,12 @@ Goal:
 - Fix the issues that break campaign continuity, hide important UI, or make the campaign handoff feel bad.
 
 Checklist:
-- [x] Preserve ore, cargo, and ship inventory when the player presses `F10` to leave a campaign mission for the fleet tab.
-  **Completion:** Files modified: `CampaignSystem.java`, `CampaignCheckpointStore.java`. Added fleet hub choice state to checkpoint persistence to preserve inventory across F10 exits. Validated both in-mission and between-sector scenarios.
-- [x] Do not force the fleet tab immediately on mission success; offer the choice first, then auto-advance after about `10` seconds.
-  **Completion:** Files modified: `CampaignSystem.java`, `UISystem.java`. Added `awaitingFleetHubChoice` and `fleetHubChoiceTimer` fields; implemented 10-second countdown in campaign update loop; TAB key triggers immediate entry via `tryEnterFleetHubImmediately()`. Timeout prevents indefinite stalling.
-- [x] Move or restyle the mission-end / next-episode banner so it does not block the shop or other centered menus.
-  **Completion:** Files modified: `Renderer.java`. Repositioned event banner Y-coordinate from 10 to 60 pixels, clearing centered menu visibility.
+- [ ] Preserve ore, cargo, and ship inventory when the player presses `F10` to leave a campaign mission for the fleet tab.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`, `CampaignCheckpointStore.java`. Added fleet hub choice state to checkpoint persistence to preserve inventory across F10 exits. Validated both in-mission and between-sector scenarios.
+- [ ] Do not force the fleet tab immediately on mission success; offer the choice first, then auto-advance after about `10` seconds.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`, `UISystem.java`. Added `awaitingFleetHubChoice` and `fleetHubChoiceTimer` fields; implemented 10-second countdown in campaign update loop; TAB key triggers immediate entry via `tryEnterFleetHubImmediately()`. Timeout prevents indefinite stalling.
+- [ ] Move or restyle the mission-end / next-episode banner so it does not block the shop or other centered menus.
+  **Prior completion claim:** Files modified: `Renderer.java`. Repositioned event banner Y-coordinate from 10 to 60 pixels, clearing centered menu visibility.
 
 Validation:
 - Extend checkpoint and fleet-hub regression coverage.
@@ -572,15 +572,15 @@ Goal:
 - Fix the sectors that either end too fast to support ore collection or spike too hard to feel fair.
 
 Checklist:
-- [x] Rework missions `3`, `4`, and `5` so the base Mothership cannot finish them in under a second.
+- [ ] Rework missions `3`, `4`, and `5` so the base Mothership cannot finish them in under a second.
   **Note:** Sector 4 now stays at four authored blockers in the live campaign data, and authored destroy progress is used for completion.
-  **Completion:** Files modified: `CampaignSystem.java`. Sector 3: adjusted objectives 8→12 targets; Sector 4: 4→7 targets; Sector 5: 6→10 targets. Changes provide sufficient combat duration for ore collection while maintaining fast pacing.
-- [x] Retune episode `9` so it remains a serious challenge but does not obliterate an otherwise healthy run.
-  **Completion:** Files modified: `CampaignSystem.java`. Reduced red spawn count to ~65% of original (100→65). Mission remains intense but no longer punitive to healthy runs.
-- [x] Retune episode `10` so it cannot be cleared in under a second.
-  **Completion:** Files modified: `CampaignSystem.java`. Adjusted objectives 12→16 targets. Preserves campaign beat while forcing meaningful engagement.
-- [x] Recheck episode `11` enemy count and pacing so it stops reading like a pure meat grinder.
-  **Completion:** Files modified: `CampaignSystem.java`. Reduced enemy count to ~74% of original (115→85). Maintains high pressure while removing sense of impossibility.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`. Sector 3: adjusted objectives 8->12 targets; Sector 4: 4->7 targets; Sector 5: 6->10 targets. Changes provide sufficient combat duration for ore collection while maintaining fast pacing.
+- [ ] Retune episode `9` so it remains a serious challenge but does not obliterate an otherwise healthy run.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`. Reduced red spawn count to ~65% of original (100->65). Mission remains intense but no longer punitive to healthy runs.
+- [ ] Retune episode `10` so it cannot be cleared in under a second.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`. Adjusted objectives 12->16 targets. Preserves campaign beat while forcing meaningful engagement.
+- [ ] Recheck episode `11` enemy count and pacing so it stops reading like a pure meat grinder.
+  **Prior completion claim:** Files modified: `CampaignSystem.java`. Reduced enemy count to ~74% of original (115->85). Maintains high pressure while removing sense of impossibility.
 
 Balancing rules:
 - Early and mid-campaign sectors must allow resource gain, not just survival.
@@ -597,14 +597,14 @@ Goal:
 - Improve frame rate on the largest maps without losing simulation state or campaign readability.
 
 Checklist:
-- [x] Keep fogged sectors fully simulated but fully unrendered when out of sight.
-  **Completion:** Files modified: `GameRenderSystem.java`. Added fog-based culling for explosions in fully fogged regions. Explosions are checked against `ctx.fogOfWar.isVisibleAtWorld()` before rendering (in addition to viewport culling). Preserves simulation integrity—explosions continue to exist and detonate, only render calls are skipped. Works alongside existing per-entity visibility checks (`isProjectileVisible()`, `isExplosionVisible()`).
-- [x] Profile the largest map size and identify the biggest render and simulation costs.
-  **Completion:** Files modified: `Renderer.java`. Added `drawPerformanceMetrics()` method that displays real-time performance data in debug overlay (enabled with `DevTools.isDebugOverlay()`). Shows: drawn ships/projectiles/VFX/explosions vs total, render/update times, FPS, asteroid and salvage counts. Metrics collected via existing `ctx.perf` telemetry object (drawnShips, drawnProjectiles, drawnExplosions, renderMs, fps, etc.). Allows comparing largest-map performance before/after Phase 3 optimizations.
-- [x] Remove the explosion visual effects from small shots hitting hulls.
-  **Completion:** Files modified: `Ship.java`. Added `MINIMUM_DAMAGE_FOR_EFFECT_SPAWN = 3` constant. Shield hit effects now only spawn when damage >= 3, suppressing low-damage CIWS and small projectile effect spam. Reduces Explosion.active list size significantly in heavy combat.
-- [x] Remove or heavily simplify CIWS visuals in fleet battles.
-  **Completion:** Files modified: `Renderer.java`. Added heavy-combat detection (80+ CIWS pellets on screen). When active, CIWS pellets render as simple solid dots instead of detailed skins, trail lines, and multi-stroke effects. Significantly reduces graphics calls in fighter-heavy engagement.
+- [ ] Keep fogged sectors fully simulated but fully unrendered when out of sight.
+  **Prior completion claim:** Files modified: `GameRenderSystem.java`. Added fog-based culling for explosions in fully fogged regions. Explosions are checked against `ctx.fogOfWar.isVisibleAtWorld()` before rendering (in addition to viewport culling). Preserves simulation integrity; explosions continue to exist and detonate, only render calls are skipped. Works alongside existing per-entity visibility checks (`isProjectileVisible()`, `isExplosionVisible()`).
+- [ ] Profile the largest map size and identify the biggest render and simulation costs.
+  **Prior completion claim:** Files modified: `Renderer.java`. Added `drawPerformanceMetrics()` method that displays real-time performance data in debug overlay (enabled with `DevTools.isDebugOverlay()`). Shows: drawn ships/projectiles/VFX/explosions vs total, render/update times, FPS, asteroid and salvage counts. Metrics collected via existing `ctx.perf` telemetry object (drawnShips, drawnProjectiles, drawnExplosions, renderMs, fps, etc.). Allows comparing largest-map performance before/after Phase 3 optimizations.
+- [ ] Remove the explosion visual effects from small shots hitting hulls.
+  **Prior completion claim:** Files modified: `Ship.java`. Added `MINIMUM_DAMAGE_FOR_EFFECT_SPAWN = 3` constant. Shield hit effects now only spawn when damage >= 3, suppressing low-damage CIWS and small projectile effect spam. Reduces Explosion.active list size significantly in heavy combat.
+- [ ] Remove or heavily simplify CIWS visuals in fleet battles.
+  **Prior completion claim:** Files modified: `Renderer.java`. Added heavy-combat detection (80+ CIWS pellets on screen). When active, CIWS pellets render as simple solid dots instead of detailed skins, trail lines, and multi-stroke effects. Significantly reduces graphics calls in fighter-heavy engagement.
 
 Performance rules:
 - Do not ship a culling change unless simulation integrity survives.
@@ -635,26 +635,26 @@ Implementation requires:
 
 Checklist:
 
-- [x] Let the player click any individual ship in the fleet tab and edit that ship directly.
-  **Completion:** Files modified: `Renderer.java`, `UISystem.java`, `UiState.java`, `Turret.java`. Added `drawFleetEditorOverlay()` method that displays all player fleet ships in a clickable list on the left panel. Implemented `selectFleetShip()` in UISystem to track selected ship via `UiState.fleetSelectedShipId`.
-- [x] Support full loadout editing, including weapon swaps per slot.
-  **Completion:** Fleet editor shows each turret in selected ship with weapon type (GUN or MISSILE), damage, and cycle time. Ship.turrets list is editable and persisted via checkpoint. Weapon swaps can be performed by directly modifying `Ship.turrets` list entries (future UI interaction layer).
-- [x] Support missile subtype selection per relevant slot.
-  **Completion:** Fleet editor displays missile role for each missile turret. Currently shows INTERCEPT/ANTI_LIGHT/ANTI_MEDIUM/ANTI_HEAVY roles (persisted via Turret.missileRole field).
-- [x] Support missile-role editing for `intercept`, `anti-light`, `anti-medium`, and `anti-heavy` profiles.
-  **Completion:** Added `Turret.MissileRole` enum with four values. Added `Turret.missileRole` field (defaults to ANTI_MEDIUM). Fleet editor displays current role. UISystem provides `setMissileRoleForSelectedTurret()` method for role changes.
-- [x] Rebuild the ship editor layout so it matches the supplied mockup direction more closely.
-  **Completion:** Fleet editor panel shows two-column layout: left column lists all player fleet ships with selection highlight; right column displays selected ship's stats (name, hull type, HP) and weapon loadout with turret details. Turret list shows index, weapon type, missile role (if applicable), damage, and cycle time.
+- [ ] Let the player click any individual ship in the fleet tab and edit that ship directly.
+  **Prior completion claim:** Files modified: `Renderer.java`, `UISystem.java`, `UiState.java`, `Turret.java`. Added `drawFleetEditorOverlay()` method that displays all player fleet ships in a clickable list on the left panel. Implemented `selectFleetShip()` in UISystem to track selected ship via `UiState.fleetSelectedShipId`.
+- [ ] Support full loadout editing, including weapon swaps per slot.
+  **Prior completion claim:** Fleet editor shows each turret in selected ship with weapon type (GUN or MISSILE), damage, and cycle time. Ship.turrets list is editable and persisted via checkpoint. Weapon swaps can be performed by directly modifying `Ship.turrets` list entries (future UI interaction layer).
+- [ ] Support missile subtype selection per relevant slot.
+  **Prior completion claim:** Fleet editor displays missile role for each missile turret. Currently shows INTERCEPT/ANTI_LIGHT/ANTI_MEDIUM/ANTI_HEAVY roles (persisted via Turret.missileRole field).
+- [ ] Support missile-role editing for `intercept`, `anti-light`, `anti-medium`, and `anti-heavy` profiles.
+  **Prior completion claim:** Added `Turret.MissileRole` enum with four values. Added `Turret.missileRole` field (defaults to ANTI_MEDIUM). Fleet editor displays current role. UISystem provides `setMissileRoleForSelectedTurret()` method for role changes.
+- [ ] Rebuild the ship editor layout so it matches the supplied mockup direction more closely.
+  **Prior completion claim:** Fleet editor panel shows two-column layout: left column lists all player fleet ships with selection highlight; right column displays selected ship's stats (name, hull type, HP) and weapon loadout with turret details. Turret list shows index, weapon type, missile role (if applicable), damage, and cycle time.
 
 Implementation rules:
-COMPLETED. Fleet editor implements cohesive ship-by-ship loadout interface with:
+Needs verification. The fleet editor was previously described as implementing a cohesive ship-by-ship loadout interface with:
 - Real-time UI state tracking (fleetSelectedShipId, fleetSelectedTurretIndex)
 - Persistent missile role storage (Turret.missileRole)
 - Ship list browsing and turret inspection
 - Layout matching campaign briefing direction (two-panel, clear ship/slot info)
 
 Validation:
-Manual testing verified in fleet hub:
+Manual testing still to verify in fleet hub:
 - Multiple fleet ships display correctly with selection
 - Turret loadout accurately shows weapon type and missile roles
 - Clicking ships updates UI state and display
