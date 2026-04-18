@@ -17,7 +17,6 @@ public class Main {
                 this::paintMenuSpaceBackground,
                 () -> System.exit(0));
     }
-
     private AppShell.GameView createGameView(GameConfig config, Runnable showMenu, Runnable toggleFullscreen) {
         GamePanel panel = new GamePanel(config, showMenu, toggleFullscreen);
         return new AppShell.GameView() {
