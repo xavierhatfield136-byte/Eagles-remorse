@@ -160,7 +160,9 @@ class CampaignCompatibilityOverhaulTest {
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(4.0, ctx.campaign.objectiveProgress, 0.01);
-        assertTrue(ctx.campaign.awaitingEpisodeLaunch, "clearing the relay blockers should resolve into the next episode");
+        assertTrue(ctx.campaign.awaitingFleetHubChoice, "clearing the relay blockers should queue the next episode without forcing the fleet hub immediately");
+        assertEquals(5, ctx.campaign.pendingEpisodeSector);
+        assertEquals(10.0, ctx.campaign.fleetHubChoiceTimer, 1e-6);
     }
 
     @Test
@@ -182,7 +184,9 @@ class CampaignCompatibilityOverhaulTest {
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);
-        assertTrue(ctx.campaign.awaitingEpisodeLaunch, "destroying the jammer triad should finish the sector and move to the relief-break episode");
+        assertTrue(ctx.campaign.awaitingFleetHubChoice, "destroying the jammer triad should queue the relief-break episode without forcing the fleet hub immediately");
+        assertEquals(14, ctx.campaign.pendingEpisodeSector);
+        assertEquals(10.0, ctx.campaign.fleetHubChoiceTimer, 1e-6);
     }
 
     @Test
@@ -203,8 +207,10 @@ class CampaignCompatibilityOverhaulTest {
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);
-        assertTrue(ctx.campaign.awaitingEpisodeLaunch,
-                "clearing Luna's orbital anchors should finish the sweep and open the cordon-break episode");
+        assertTrue(ctx.campaign.awaitingFleetHubChoice,
+                "clearing Luna's orbital anchors should queue the cordon-break episode without forcing the fleet hub immediately");
+        assertEquals(22, ctx.campaign.pendingEpisodeSector);
+        assertEquals(10.0, ctx.campaign.fleetHubChoiceTimer, 1e-6);
     }
 
     @Test

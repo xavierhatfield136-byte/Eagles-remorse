@@ -45,6 +45,9 @@ public final class UiState {
     public boolean flightDeckOpen = false;
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
+    // Fleet hub: when the campaign shop is open (TAB), toggle between "commission" (buy hulls) and "refit"
+    // (ship-by-ship loadout editing) views.
+    public boolean fleetRefitMode = true;
     public int powerManagementFocus = 0;
     public int flightDeckFocus = 0;
 

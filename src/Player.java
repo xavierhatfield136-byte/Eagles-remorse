@@ -24,6 +24,16 @@ public class Player extends Ship {
     private int baseGunMounts = 0;
     private int baseMissileMounts = 0;
 
+    // Phase 5: Primary gun burst sequencing.
+    // The default blue doctrine is staggered beam-bolt fire: one fire command should trigger a short
+    // per-barrel sequence instead of requiring repeated clicks.
+    private transient boolean primaryGunBurstActive = false;
+    private transient boolean primaryGunBurstUsesShipTarget = false;
+    private transient Ship primaryGunBurstTargetShip = null;
+    private transient double primaryGunBurstTargetX = 0.0;
+    private transient double primaryGunBurstTargetY = 0.0;
+    private transient int primaryGunBurstShotsRemaining = 0;
+
     public Player(double x, double y) {
         this(ShipRole.FRIGATE, x, y);
     }
@@ -45,6 +55,12 @@ public class Player extends Ship {
         Faction templateFaction = (preservedFaction == Faction.PLAYER) ? Faction.ALLY : preservedFaction;
         FleetShip template = new FleetShip(role, templateFaction, x, y);
         try { DoctrineRegistry.applyToShip(template); } catch (Throwable ignored) {}
+
+        // `FleetShip` construction may have already applied a primary-weapon family (ex: heavy Energy Navy hulls
+        // default to the synchronized volley package). For the player we want to copy the baseline staggered stats first,
+        // then re-apply the player's selected family after the swap.
+        template.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;
+        template.applyPrimaryWeaponFamily();
         copyFrom(template);
 
         // Give the player a baseline mining module on any combat hull.
@@ -392,23 +408,96 @@ public class Player extends Ship {
     }
 
     public List<Projectile> firePrimary(double targetX, double targetY, double dt) {
+        return firePrimary(targetX, targetY, dt, true);
+    }
+
+    /**
+     * Fire primary weapons using manual cursor aim.
+     * When {@code fireCommand} is false, this will only continue an in-progress staggered beam-bolt sequence
+     * (so a quick tap still finishes firing across the ship's barrels).
+     */
+    public List<Projectile> firePrimary(double targetX, double targetY, double dt, boolean fireCommand) {
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
         aimPrimaryTurretsAt(targetX, targetY, dt);
+
+        ArrayList<Turret> guns = new ArrayList<>();
         for (Turret t : turrets) {
-            if (!t.primary) continue;
-            Projectile p;
-            if (t.kind == Turret.Kind.GUN) {
-                p = t.fire(this, null, dt);
-            } else if (t.kind == Turret.Kind.MISSILE) {
+            if (t == null || !t.primary) continue;
+            if (t.kind == Turret.Kind.GUN) guns.add(t);
+        }
+
+        boolean energyBoltMultiGun = usesStaggeredPrimaryFire() && guns.size() > 1;
+        if (!energyBoltMultiGun) {
+            primaryGunStaggerBurstRemaining = 0;
+        }
+        boolean continueEnergyBurst = energyBoltMultiGun && primaryGunStaggerBurstRemaining > 0;
+        if (!fireCommand && !continueEnergyBurst) {
+            return out;
+        }
+
+        // Primary missiles fire only on explicit command (barrel coordination applies to guns only).
+        if (fireCommand) {
+            for (Turret t : turrets) {
+                if (t == null || !t.primary) continue;
+                if (t.kind != Turret.Kind.MISSILE) continue;
                 // Manual primary missile fire uses turret/cursor aim and launches unguided when no lock is provided.
-                p = t.fire(this, null, dt);
-            } else {
-                continue;
+                Projectile p = t.fire(this, null, dt);
+                if (p != null) {
+                    out.add(p);
+                    fired = true;
+                }
             }
-            if (p != null) {
-                out.add(p);
-                fired = true;
+        }
+
+        if (usesVolleyPrimaryFire() && guns.size() > 1) {
+            if (!fireCommand) return out;
+            primaryGunStaggerBurstRemaining = 0;
+            boolean allReady = true;
+            for (Turret g : guns) {
+                if (g == null || !g.canFire()) { allReady = false; break; }
+            }
+            if (allReady) {
+                for (Turret g : guns) {
+                    if (g == null) continue;
+                    Projectile p = g.fire(this, null, dt);
+                    if (p != null) {
+                        out.add(p);
+                        fired = true;
+                    }
+                }
+            }
+        } else if (energyBoltMultiGun) {
+            if (fireCommand && primaryGunStaggerBurstRemaining <= 0) {
+                primaryGunStaggerBurstRemaining = guns.size();
+            }
+            if (primaryGunStaggerBurstRemaining > 0 && primaryGunStaggerTimer <= 0.0) {
+                int start = Math.floorMod(primaryGunStaggerCursor, guns.size());
+                for (int i = 0; i < guns.size(); i++) {
+                    int idx = (start + i) % guns.size();
+                    Turret g = guns.get(idx);
+                    if (g == null || !g.canFire()) continue;
+                    Projectile p = g.fire(this, null, dt);
+                    if (p != null) {
+                        out.add(p);
+                        fired = true;
+                        primaryGunStaggerCursor = idx + 1;
+                        primaryGunStaggerTimer = Ship.ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS;
+                        primaryGunStaggerBurstRemaining = Math.max(0, primaryGunStaggerBurstRemaining - 1);
+                        break;
+                    }
+                }
+            }
+        } else {
+            primaryGunStaggerBurstRemaining = 0;
+            if (!fireCommand) return out;
+            for (Turret g : guns) {
+                if (g == null) continue;
+                Projectile p = g.fire(this, null, dt);
+                if (p != null) {
+                    out.add(p);
+                    fired = true;
+                }
             }
         }
         if (fired) onFiredWeapon();
@@ -420,23 +509,98 @@ public class Player extends Ship {
      * This is used for player auto-aim / target lock.
      */
     public List<Projectile> firePrimary(Ship target, double dt) {
-        if (target == null) return new ArrayList<>();
+        return firePrimary(target, dt, true);
+    }
+
+    /**
+     * Primary fire using predictive leading on a moving target.
+     * When {@code fireCommand} is false, this will only continue an in-progress staggered beam-bolt sequence.
+     */
+    public List<Projectile> firePrimary(Ship target, double dt, boolean fireCommand) {
+        if (target == null) {
+            primaryGunStaggerBurstRemaining = 0;
+            return new ArrayList<>();
+        }
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
         aimPrimaryTurretsAtTarget(target, dt);
+
+        ArrayList<Turret> guns = new ArrayList<>();
         for (Turret t : turrets) {
-            if (!t.primary) continue;
-            Projectile p;
-            if (t.kind == Turret.Kind.GUN) {
-                p = t.fire(this, target, dt);
-            } else if (t.kind == Turret.Kind.MISSILE) {
-                p = t.fire(this, target, dt);
-            } else {
-                continue;
+            if (t == null || !t.primary) continue;
+            if (t.kind == Turret.Kind.GUN) guns.add(t);
+        }
+
+        boolean energyBoltMultiGun = usesStaggeredPrimaryFire() && guns.size() > 1;
+        if (!energyBoltMultiGun) {
+            primaryGunStaggerBurstRemaining = 0;
+        }
+        boolean continueEnergyBurst = energyBoltMultiGun && primaryGunStaggerBurstRemaining > 0;
+        if (!fireCommand && !continueEnergyBurst) {
+            return out;
+        }
+
+        // Primary missiles fire only on explicit command (barrel coordination applies to guns only).
+        if (fireCommand) {
+            for (Turret t : turrets) {
+                if (t == null || !t.primary) continue;
+                if (t.kind != Turret.Kind.MISSILE) continue;
+                Projectile p = t.fire(this, target, dt);
+                if (p != null) {
+                    out.add(p);
+                    fired = true;
+                }
             }
-            if (p != null) {
-                out.add(p);
-                fired = true;
+        }
+
+        if (usesVolleyPrimaryFire() && guns.size() > 1) {
+            if (!fireCommand) return out;
+            primaryGunStaggerBurstRemaining = 0;
+            boolean allReady = true;
+            for (Turret g : guns) {
+                if (g == null || !g.canFire()) { allReady = false; break; }
+            }
+            if (allReady) {
+                for (Turret g : guns) {
+                    if (g == null) continue;
+                    Projectile p = g.fire(this, target, dt);
+                    if (p != null) {
+                        out.add(p);
+                        fired = true;
+                    }
+                }
+            }
+        } else if (energyBoltMultiGun) {
+            if (fireCommand && primaryGunStaggerBurstRemaining <= 0) {
+                primaryGunStaggerBurstRemaining = guns.size();
+            }
+            if (primaryGunStaggerBurstRemaining > 0 && primaryGunStaggerTimer <= 0.0) {
+                int start = Math.floorMod(primaryGunStaggerCursor, guns.size());
+                for (int i = 0; i < guns.size(); i++) {
+                    int idx = (start + i) % guns.size();
+                    Turret g = guns.get(idx);
+                    if (g == null || !g.canFire()) continue;
+                    Projectile p = g.fire(this, target, dt);
+                    if (p != null) {
+                        out.add(p);
+                        fired = true;
+                        primaryGunStaggerCursor = idx + 1;
+                        primaryGunStaggerTimer = Ship.ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS;
+                        primaryGunStaggerBurstRemaining = Math.max(0, primaryGunStaggerBurstRemaining - 1);
+                        break;
+                    }
+                }
+            }
+        } else {
+            primaryGunStaggerBurstRemaining = 0;
+            if (!fireCommand) return out;
+            for (Turret g : guns) {
+                if (g == null) continue;
+                Projectile p = g.fire(this, target, dt);
+                if (p != null) {
+                    out.add(p);
+                    fired = true;
+                }
             }
         }
         if (fired) onFiredWeapon();

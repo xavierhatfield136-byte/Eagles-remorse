@@ -25,8 +25,54 @@ public class FleetShip extends Ship {
         conformTurretsToHull();
         standardizeCiwsLoadout();
         finalizeCapitalLethalityProfile();
+        assignDefaultMissileRoles();
         resetFlightDeckLoadout();
         applyCustomFlightDeckLoadout();
+    }
+
+    private void assignDefaultMissileRoles() {
+        if (turrets == null || turrets.isEmpty()) return;
+        int missileCount = 0;
+        for (Turret t : turrets) {
+            if (t != null && t.kind == Turret.Kind.MISSILE) missileCount++;
+        }
+        if (missileCount <= 0) return;
+
+        int missileIdx = 0;
+        for (Turret t : turrets) {
+            if (t == null || t.kind != Turret.Kind.MISSILE) continue;
+            t.missileRole = defaultMissileRoleForSlot(role, faction, missileIdx, missileCount);
+            missileIdx++;
+        }
+    }
+
+    private static Turret.MissileRole defaultMissileRoleForSlot(ShipRole role, Faction faction, int missileIdx, int missileCount) {
+        if (role == null) return Turret.MissileRole.ANTI_MEDIUM;
+        if (faction == Faction.TEAM_C) {
+            // Green reads best as photon/torpedo salvos: bias to heavier missiles by default.
+            if (missileCount >= 2 && missileIdx == 0) return Turret.MissileRole.ANTI_MEDIUM;
+            return Turret.MissileRole.ANTI_HEAVY;
+        }
+        if (role == ShipRole.CARRIER || role == ShipRole.DRONE_CARRIER) {
+            return Turret.MissileRole.ANTI_LIGHT;
+        }
+        if (role == ShipRole.CIWS_CORVETTE || role == ShipRole.PD_CRAFT) {
+            return Turret.MissileRole.INTERCEPT;
+        }
+        if (role == ShipRole.MISSILE_BOAT
+                || role == ShipRole.LIGHT_CRUISER
+                || role == ShipRole.MEDIUM_CRUISER
+                || role == ShipRole.CRUISER
+                || role == ShipRole.ARTILLERY_SHIP
+                || role == ShipRole.STEALTH_SHIP
+                || role == ShipRole.BATTLECRUISER
+                || role == ShipRole.BATTLESHIP
+                || role == ShipRole.DREADNOUGHT
+                || role == ShipRole.SUPERSHIP
+                || role.isTitanOrMothership()) {
+            return Turret.MissileRole.ANTI_HEAVY;
+        }
+        return Turret.MissileRole.ANTI_MEDIUM;
     }
 
     private void standardizeCiwsLoadout() {

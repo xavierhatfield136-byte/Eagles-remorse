@@ -93,6 +93,33 @@ public class Renderer {
         }
     }
 
+    public static final class FleetOverlayClickTarget {
+        public enum Kind {
+            MODE_COMMISSION,
+            MODE_REFIT,
+            CAP_UP_ESCORT,
+            CAP_UP_LINE,
+            CAP_UP_CAPITAL,
+            SELECT_SHIP,
+            SELECT_TURRET,
+            SWAP_TO_GUN,
+            SWAP_TO_MISSILE,
+            SET_MISSILE_ROLE
+        }
+
+        public final Kind kind;
+        public final int shipId;
+        public final int turretIndex;
+        public final Turret.MissileRole missileRole;
+
+        public FleetOverlayClickTarget(Kind kind, int shipId, int turretIndex, Turret.MissileRole missileRole) {
+            this.kind = kind;
+            this.shipId = shipId;
+            this.turretIndex = turretIndex;
+            this.missileRole = missileRole;
+        }
+    }
+
     public static final class HoverTooltip {
         public final String key;
         public final String title;
@@ -325,6 +352,213 @@ public class Renderer {
         return null;
     }
 
+    private static Rectangle getFleetOverlayModeTabRect(Rectangle panel, boolean refitTab) {
+        if (panel == null) return new Rectangle();
+        int w = 124;
+        int h = 22;
+        int gap = 8;
+        int y = panel.y + 10;
+        int refitX = panel.x + panel.width - 22 - w;
+        int commissionX = refitX - gap - w;
+        int x = refitTab ? refitX : commissionX;
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static void drawFleetOverlayModeTabs(Graphics2D g2, Rectangle panel, boolean refitActive) {
+        if (g2 == null || panel == null) return;
+        Rectangle commission = getFleetOverlayModeTabRect(panel, false);
+        Rectangle refit = getFleetOverlayModeTabRect(panel, true);
+        drawFleetOverlayModeTab(g2, commission, "COMMISSION", !refitActive, new Color(118, 180, 255));
+        drawFleetOverlayModeTab(g2, refit, "REFIT", refitActive, new Color(255, 206, 122));
+    }
+
+    private static void drawFleetOverlayModeTab(Graphics2D g2, Rectangle rect, String label, boolean active, Color accent) {
+        if (g2 == null || rect == null || label == null) return;
+        Color base = (accent == null) ? new Color(118, 180, 255) : accent;
+        g2.setColor(active ? new Color(22, 28, 42, 220) : new Color(18, 22, 34, 188));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), active ? 170 : 78));
+        g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics fm = g2.getFontMetrics();
+        int tx = rect.x + (rect.width - fm.stringWidth(label)) / 2;
+        int ty = rect.y + (rect.height + fm.getAscent() - fm.getDescent()) / 2 - 1;
+        g2.setColor(active ? new Color(248, 250, 255, 238) : new Color(188, 204, 224, 192));
+        g2.drawString(label, tx, ty);
+    }
+
+    private static Rectangle getFleetCapUpgradeButtonRect(Rectangle panel, int idx) {
+        if (panel == null) return new Rectangle();
+        int buttonW = 240;
+        int buttonH = 28;
+        int gap = 16;
+        int x = panel.x + 22 + idx * (buttonW + gap);
+        int y = panel.y + 116;
+        return new Rectangle(x, y, buttonW, buttonH);
+    }
+
+    private static Rectangle getFleetEditorShipListRect(Rectangle panel) {
+        if (panel == null) return new Rectangle();
+        int x = panel.x + 22;
+        int y = panel.y + 72;
+        int w = 260;
+        int h = panel.height - 120;
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle getFleetEditorEditorRect(Rectangle panel, Rectangle shipList) {
+        if (panel == null || shipList == null) return new Rectangle();
+        int x = shipList.x + shipList.width + 18;
+        int y = shipList.y;
+        int w = (panel.x + panel.width - 22) - x;
+        int h = shipList.height;
+        return new Rectangle(x, y, Math.max(240, w), h);
+    }
+
+    private static List<Ship> fleetEditorShips(GameContext ctx) {
+        ArrayList<Ship> out = new ArrayList<>();
+        if (ctx == null || ctx.ships == null) return out;
+        for (Ship s : ctx.ships) {
+            if (!CampaignSystem.isFleetSelectionCandidate(s)) continue;
+            out.add(s);
+        }
+        // Stable ordering: flagship first, then by role + id.
+        out.sort((a, b) -> {
+            if (a == ctx.player && b != ctx.player) return -1;
+            if (b == ctx.player && a != ctx.player) return 1;
+            int ra = (a == null || a.role == null) ? 0 : a.role.ordinal();
+            int rb = (b == null || b.role == null) ? 0 : b.role.ordinal();
+            if (ra != rb) return Integer.compare(ra, rb);
+            int ia = (a == null) ? 0 : a.id;
+            int ib = (b == null) ? 0 : b.id;
+            return Integer.compare(ia, ib);
+        });
+        return out;
+    }
+
+    public static FleetOverlayClickTarget fleetOverlayClickTargetAt(GameContext ctx, UiState ui,
+                                                                    int viewW, int viewH, int mouseX, int mouseY) {
+        Rectangle panel = getShopOverlayRect(viewW, viewH);
+        if (!panel.contains(mouseX, mouseY)) return null;
+
+        Rectangle commissionTab = getFleetOverlayModeTabRect(panel, false);
+        Rectangle refitTab = getFleetOverlayModeTabRect(panel, true);
+        if (commissionTab.contains(mouseX, mouseY)) {
+            return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.MODE_COMMISSION, -1, -1, null);
+        }
+        if (refitTab.contains(mouseX, mouseY)) {
+            return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.MODE_REFIT, -1, -1, null);
+        }
+
+        if (ui != null && !ui.fleetRefitMode) {
+            Rectangle escort = getFleetCapUpgradeButtonRect(panel, 0);
+            Rectangle line = getFleetCapUpgradeButtonRect(panel, 1);
+            Rectangle capital = getFleetCapUpgradeButtonRect(panel, 2);
+            if (escort.contains(mouseX, mouseY)) {
+                return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.CAP_UP_ESCORT, -1, -1, null);
+            }
+            if (line.contains(mouseX, mouseY)) {
+                return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.CAP_UP_LINE, -1, -1, null);
+            }
+            if (capital.contains(mouseX, mouseY)) {
+                return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.CAP_UP_CAPITAL, -1, -1, null);
+            }
+        }
+
+        if (ui == null || !ui.fleetRefitMode) return null;
+        if (ctx == null || ctx.ships == null) return null;
+
+        Rectangle shipList = getFleetEditorShipListRect(panel);
+        Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+
+        // Ship selection list (left)
+        List<Ship> ships = fleetEditorShips(ctx);
+        int headerH = 22;
+        int rowH = 18;
+        int startY = shipList.y + headerH + 4;
+        int maxRows = Math.max(0, (shipList.height - headerH - 10) / rowH);
+        for (int i = 0; i < ships.size() && i < maxRows; i++) {
+            int ry = startY + i * rowH;
+            Rectangle row = new Rectangle(shipList.x + 6, ry - rowH + 4, shipList.width - 12, rowH);
+            if (row.contains(mouseX, mouseY)) {
+                Ship s = ships.get(i);
+                if (s != null) return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SELECT_SHIP, s.id, -1, null);
+            }
+        }
+
+        // Selected ship context for turret clicks (right)
+        Ship selected = null;
+        if (ui.fleetSelectedShipId > 0) {
+            for (Ship s : ships) {
+                if (s != null && s.id == ui.fleetSelectedShipId) {
+                    selected = s;
+                    break;
+                }
+            }
+        }
+        if (selected == null && !ships.isEmpty()) selected = ships.get(0);
+        if (selected == null) return null;
+
+        int editorHeaderH = 72;
+        int controlsH = 92;
+        int turretRowH = 18;
+        Rectangle turretList = new Rectangle(
+                editor.x + 6,
+                editor.y + editorHeaderH,
+                editor.width - 12,
+                Math.max(80, editor.height - editorHeaderH - controlsH - 8));
+        Rectangle controls = new Rectangle(
+                editor.x + 6,
+                turretList.y + turretList.height + 8,
+                editor.width - 12,
+                Math.max(60, editor.y + editor.height - (turretList.y + turretList.height + 8)));
+
+        // Turret row selection
+        if (turretList.contains(mouseX, mouseY)) {
+            int idx = (mouseY - (turretList.y + 16)) / turretRowH;
+            if (idx >= 0 && idx < selected.turrets.size()) {
+                return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SELECT_TURRET, selected.id, idx, null);
+            }
+        }
+
+        // Controls (swap + missile role buttons)
+        int ti = ui.fleetSelectedTurretIndex;
+        if (ti >= 0 && ti < selected.turrets.size()) {
+            Turret t = selected.turrets.get(ti);
+            if (t != null && controls.contains(mouseX, mouseY)) {
+                Rectangle swap = new Rectangle(controls.x + 8, controls.y + 24, 136, 24);
+                if (swap.contains(mouseX, mouseY)) {
+                    boolean toMissile = (t.kind == Turret.Kind.GUN);
+                    return new FleetOverlayClickTarget(
+                            toMissile ? FleetOverlayClickTarget.Kind.SWAP_TO_MISSILE : FleetOverlayClickTarget.Kind.SWAP_TO_GUN,
+                            selected.id, ti, null);
+                }
+
+                if (t.kind == Turret.Kind.MISSILE) {
+                    int bx = controls.x + 158;
+                    int by = controls.y + 24;
+                    int bw = 110;
+                    int bh = 24;
+                    int gap = 8;
+                    Turret.MissileRole[] roles = new Turret.MissileRole[]{
+                            Turret.MissileRole.INTERCEPT,
+                            Turret.MissileRole.ANTI_LIGHT,
+                            Turret.MissileRole.ANTI_MEDIUM,
+                            Turret.MissileRole.ANTI_HEAVY
+                    };
+                    for (int i = 0; i < roles.length; i++) {
+                        Rectangle b = new Rectangle(bx + i * (bw + gap), by, bw, bh);
+                        if (b.contains(mouseX, mouseY)) {
+                            return new FleetOverlayClickTarget(FleetOverlayClickTarget.Kind.SET_MISSILE_ROLE, selected.id, ti, roles[i]);
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public static Rectangle getCoreMenuBarRect(int viewW, int viewH) {
         int margin = 10;
         int h = 42;
@@ -492,10 +726,10 @@ public class Renderer {
             Rectangle card = getShopUpgradeCardRect(panel, i);
             if (!card.contains(mouseX, mouseY)) continue;
             return switch (i + 1) {
-                case 1 -> new HoverTooltip("shop:upgrade:1", "Energy Bolt Primary",
-                        "Standard bolt primary. Balanced cadence, no credit cost, and the safe baseline if you want to reset the flagship weapon package.");
-                case 2 -> new HoverTooltip("shop:upgrade:2", "Beam Bolt Primary",
-                        "Heavy direct-energy bolt package. Slower cadence, stronger punch, and a clean way to push the flagship toward longer-range alpha damage.");
+                case 1 -> new HoverTooltip("shop:upgrade:1", "Beam Bolt Primary (Stagger)",
+                        "Standard beam-bolt battery with barrels cycling in sequence. Keeps the blue-team beam look while spreading shots across the gun mounts.");
+                case 2 -> new HoverTooltip("shop:upgrade:2", "Beam Bolt Primary (Volley)",
+                        "Synchronized beam-bolt package. All barrels fire together for heavier alpha strikes and longer-range pressure.");
                 case 3 -> new HoverTooltip("shop:upgrade:3", "Hull Plating",
                         "Permanent plating upgrade for the current hull. Raises flagship hull integrity by 10 per level until that chassis reaches its plating cap.");
                 case 4 -> new HoverTooltip("shop:upgrade:4", "Shield Array",
@@ -3320,8 +3554,31 @@ public class Renderer {
         int y2 = (int) Math.round(m.y - ny * (tailOffset + trailLen));
 
         Color trail = missileExhaustColor(m.faction);
-        g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 120));
-        g2.drawLine(x1, y1, x2, y2);
+        if (m.faction == Faction.TEAM_C) {
+            // Green missiles should read more like photon torpedoes: brighter glow head + thicker, softer trail.
+            Stroke old = g2.getStroke();
+            try {
+                int glowR = Math.max(6, (int) Math.round(m.radius * 1.85));
+                int gx = (int) Math.round(m.x);
+                int gy = (int) Math.round(m.y);
+                g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 72));
+                g2.fillOval(gx - glowR, gy - glowR, glowR * 2, glowR * 2);
+
+                g2.setStroke(new BasicStroke((float) Math.max(3.0, m.radius * 0.90), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 88));
+                g2.drawLine(x1, y1, x2, y2);
+
+                g2.setStroke(new BasicStroke((float) Math.max(1.6, m.radius * 0.55), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                Color hot = mixColor(trail, Color.WHITE, 0.55);
+                g2.setColor(new Color(hot.getRed(), hot.getGreen(), hot.getBlue(), 150));
+                g2.drawLine(x1, y1, x2, y2);
+            } finally {
+                g2.setStroke(old);
+            }
+        } else {
+            g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 120));
+            g2.drawLine(x1, y1, x2, y2);
+        }
     }
 
     private static void drawMissileSkin(Graphics2D g2, Missile m, BufferedImage skin) {
@@ -3724,10 +3981,10 @@ public class Renderer {
             int standardUsed = CampaignSystem.campaignStandardCommandUsed(ctx);
             int eliteCommand = CampaignSystem.campaignEliteCommandCapacity(ctx);
             int eliteUsed = CampaignSystem.campaignEliteCommandUsed(ctx);
-            String fleetLine = "Fleet: E " + escortCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT)
-                    + "   L " + lineCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.LINE)
-                    + "   C " + capitalCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL)
-                    + "   T " + titanHullCount + "/" + CampaignSystem.persistentFleetCap(ShopHullCategory.TITAN);
+            String fleetLine = "Fleet: E " + escortCount + "/" + CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.ESCORT)
+                    + "   L " + lineCount + "/" + CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.LINE)
+                    + "   C " + capitalCount + "/" + CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.CAPITAL)
+                    + "   T " + titanHullCount + "/" + CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.TITAN);
             statusLines.add(fleetLine);
             String commandLine = "Command: Grid " + titanHullCount + "/" + TitanFleetSystem.mothershipTitanCap()
                     + "   Std " + standardUsed + "/" + standardCommand
@@ -4714,13 +4971,20 @@ public class Renderer {
         int viewW = clip.width;
         int viewH = clip.height;
         Rectangle panel = getShopOverlayRect(viewW, viewH);
+        boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+
+        if (campaignShop && fleetHub && ui != null && ui.fleetRefitMode) {
+            drawFleetEditorOverlay(g2, ctx, ui, viewW, viewH);
+            return;
+        }
+
         Graphics2D gx = (Graphics2D) g2.create();
         ShopHullCategory category = (ui == null || ui.shopHullCategory == null)
                 ? ShopHullCategory.forRole(player.role)
                 : ui.shopHullCategory;
         int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
         int pageCount = shopHullPageCount(category);
-        boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
 
         GradientPaint panelFill = new GradientPaint(
                 panel.x, panel.y, new Color(7, 10, 16, 236),
@@ -4732,13 +4996,17 @@ public class Renderer {
         gx.setColor(new Color(118, 180, 255, 42));
         gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
 
+        if (campaignShop && fleetHub) {
+            drawFleetOverlayModeTabs(gx, panel, false);
+        }
+
         gx.setFont(new Font("Consolas", Font.BOLD, 18));
         gx.setColor(new Color(245, 248, 255, 230));
         gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", panel.x + 22, panel.y + 28);
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(192, 210, 232, 180));
         gx.drawString(campaignShop
-                        ? "Upgrade the Mothership on the left and commission persistent blue hulls on the right. TAB/ESC closes."
+                        ? "Upgrade the Mothership on the left, expand filled fleet bands with ore and credits, and commission persistent blue hulls on the right. TAB/ESC closes."
                         : "Buy capped upgrades on the left and browse hull classes on the right. TAB/ESC closes.",
                 panel.x + 22, panel.y + 48);
 
@@ -4755,6 +5023,10 @@ public class Renderer {
                 campaignShop ? "FLEET CAPS" : "SUPERWEAPON",
                 campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
                 new Color(156, 224, 255));
+
+        if (campaignShop && fleetHub) {
+            drawFleetCapUpgradeButtons(gx, ctx, panel);
+        }
 
         Rectangle upgradesArea = getShopUpgradeArea(panel);
         Rectangle hullArea = getShopHullArea(panel);
@@ -4783,6 +5055,71 @@ public class Renderer {
                         : "Hull tabs: [1] Escort  [2] Line  [3] Capital  [4] Titan   Page: [Left/Right] or [ / ]. Tier-locked hulls need a stronger base hangar.",
                 panel.x + 22, panel.y + panel.height - 18);
         gx.dispose();
+    }
+
+    private static void drawFleetCapUpgradeButtons(Graphics2D g2, GameContext ctx, Rectangle panel) {
+        if (g2 == null || panel == null || ctx == null) return;
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(204, 220, 238, 190));
+        g2.drawString("FLEET GROWTH", panel.x + 22, panel.y + 108);
+
+        ShopHullCategory[] categories = {
+                ShopHullCategory.ESCORT,
+                ShopHullCategory.LINE,
+                ShopHullCategory.CAPITAL
+        };
+        Color[] accents = {
+                new Color(118, 214, 255),
+                new Color(255, 206, 122),
+                new Color(255, 150, 126)
+        };
+
+        for (int i = 0; i < categories.length; i++) {
+            ShopHullCategory category = categories[i];
+            Rectangle rect = getFleetCapUpgradeButtonRect(panel, i);
+            int liveCount = CampaignSystem.livePersistentFleetCount(ctx, category);
+            int currentCap = CampaignSystem.persistentFleetCap(ctx, category);
+            int maxLevel = CampaignSystem.persistentFleetCapUpgradeMaxLevel(category);
+            int level = CampaignSystem.persistentFleetCapUpgradeLevel(ctx, category);
+            int nextStep = CampaignSystem.persistentFleetCapUpgradeStep(category);
+            boolean maxed = level >= maxLevel;
+            boolean filled = liveCount >= currentCap;
+            int creditCost = CampaignSystem.persistentFleetCapUpgradeCreditCost(ctx, category);
+            int oreCost = CampaignSystem.persistentFleetCapUpgradeOreCost(ctx, category);
+            boolean affordable = ctx.credits >= creditCost && ctx.player != null && ctx.player.cargo >= oreCost;
+            boolean enabled = !maxed && filled && affordable;
+
+            Color accent = accents[i];
+            g2.setColor(new Color(16, 22, 34, 216));
+            g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), enabled ? 150 : 78));
+            g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            g2.setColor(new Color(246, 248, 255, 228));
+            g2.drawString(category.label(), rect.x + 10, rect.y + 12);
+
+            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setColor(new Color(196, 210, 226, 184));
+            String growthLine = "Cap " + currentCap + " -> " + (currentCap + nextStep) + "   Full " + liveCount + "/" + currentCap;
+            g2.drawString(growthLine, rect.x + 10, rect.y + 24);
+
+            String footer;
+            if (maxed) {
+                footer = "Expansion maxed";
+            } else if (!filled) {
+                footer = "Fill this band before expanding";
+            } else {
+                footer = "$" + creditCost + " + " + oreCost + " ore";
+            }
+            g2.setColor(new Color(176, 194, 214, 168));
+            g2.drawString(footer, rect.x + 10, rect.y + 36);
+
+            Rectangle button = new Rectangle(rect.x + rect.width - 98, rect.y + 6, 88, 18);
+            String label = maxed ? "MAXED"
+                    : (!filled ? "NEED FULL" : (affordable ? "EXPAND" : "NEED RES"));
+            drawShopActionButton(g2, button, label, enabled, accent, false);
+        }
     }
 
     private static void drawShopHullTabs(Graphics2D g2, Rectangle panel, ShopHullCategory current, int page, int pageCount) {
@@ -4840,144 +5177,197 @@ public class Renderer {
 
     private static void drawFleetEditorOverlay(Graphics2D g2, GameContext ctx, UiState ui, int viewW, int viewH) {
         if (ctx == null || ctx.ships == null || ui == null) return;
-        
-        Rectangle clip = g2.getClipBounds();
+
         Rectangle panel = getShopOverlayRect(viewW, viewH);
         Graphics2D gx = (Graphics2D) g2.create();
-        
-        // Draw panel background
-        GradientPaint panelFill = new GradientPaint(
-                panel.x, panel.y, new Color(7, 10, 16, 236),
-                panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
-        gx.setPaint(panelFill);
-        gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-        gx.setColor(new Color(255, 255, 255, 78));
-        gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-        gx.setColor(new Color(118, 180, 255, 42));
-        gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
-        
-        // Title
-        gx.setFont(new Font("Consolas", Font.BOLD, 18));
-        gx.setColor(new Color(245, 248, 255, 230));
-        gx.drawString("FLEET COMMISSIONING", panel.x + 22, panel.y + 28);
-        gx.setFont(new Font("Consolas", Font.PLAIN, 12));
-        gx.setColor(new Color(192, 210, 232, 180));
-        gx.drawString("Select ships and configure weapon loadouts. TAB/ESC closes.",
-                panel.x + 22, panel.y + 48);
-        
-        // Get fleet ships eligible for commissioning
-        List<Ship> fleetShips = new ArrayList<>();
-        for (Ship s : ctx.ships) {
-            if (s != ctx.player && CampaignSystem.isFleetSelectionCandidate(s)) {
-                fleetShips.add(s);
-            }
-        }
-        
-        // Left panel: Fleet list
-        int fleetListX = panel.x + 22;
-        int fleetListY = panel.y + 72;
-        int fleetListW = 220;
-        int fleetListH = panel.height - 100;
-        
-        gx.setColor(new Color(20, 28, 42, 160));
-        gx.fillRect(fleetListX, fleetListY, fleetListW, fleetListH);
-        gx.setColor(new Color(118, 180, 255, 78));
-        gx.drawRect(fleetListX, fleetListY, fleetListW, fleetListH);
-        
-        gx.setFont(new Font("Consolas", Font.BOLD, 11));
-        gx.setColor(new Color(192, 210, 232, 200));
-        gx.drawString("FLEET SHIPS", fleetListX + 8, fleetListY + 14);
-        
-        // Draw ship list
-        int shipY = fleetListY + 22;
-        for (Ship ship : fleetShips) {
-            boolean selected = (ui.fleetSelectedShipId == ship.id);
-            if (selected) {
-                gx.setColor(new Color(118, 180, 255, 64));
-                gx.fillRect(fleetListX, shipY - 12, fleetListW, 16);
-            }
-            gx.setColor(selected ? new Color(255, 255, 255, 230) : new Color(180, 200, 220, 200));
+        try {
+            // Panel background
+            GradientPaint panelFill = new GradientPaint(
+                    panel.x, panel.y, new Color(7, 10, 16, 236),
+                    panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
+            gx.setPaint(panelFill);
+            gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+            gx.setColor(new Color(255, 255, 255, 78));
+            gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+            gx.setColor(new Color(118, 180, 255, 42));
+            gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+
+            drawFleetOverlayModeTabs(gx, panel, true);
+
+            // Title
+            gx.setFont(new Font("Consolas", Font.BOLD, 18));
+            gx.setColor(new Color(245, 248, 255, 230));
+            gx.drawString("FLEET REFIT", panel.x + 22, panel.y + 28);
+            gx.setFont(new Font("Consolas", Font.PLAIN, 12));
+            gx.setColor(new Color(192, 210, 232, 180));
+            gx.drawString("Select a hull, then swap a slot between GUN/MSL and set missile roles. TAB/ESC closes.",
+                    panel.x + 22, panel.y + 48);
+
+            Rectangle shipList = getFleetEditorShipListRect(panel);
+            Rectangle editor = getFleetEditorEditorRect(panel, shipList);
+
+            // Ship list (left)
+            gx.setColor(new Color(20, 28, 42, 160));
+            gx.fillRect(shipList.x, shipList.y, shipList.width, shipList.height);
+            gx.setColor(new Color(118, 180, 255, 78));
+            gx.drawRect(shipList.x, shipList.y, shipList.width, shipList.height);
+            gx.setFont(new Font("Consolas", Font.BOLD, 11));
+            gx.setColor(new Color(192, 210, 232, 200));
+            gx.drawString("FLEET HULLS", shipList.x + 8, shipList.y + 14);
+
+            List<Ship> ships = fleetEditorShips(ctx);
+            int headerH = 22;
+            int rowH = 18;
+            int startY = shipList.y + headerH + 4;
+            int maxRows = Math.max(0, (shipList.height - headerH - 10) / rowH);
             gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-            String label = ship.name + " (" + ship.role.name() + ")";
-            gx.drawString(label, fleetListX + 4, shipY);
-            shipY += 18;
-            if (shipY > fleetListY + fleetListH - 20) break;  // Prevent overflow
-        }
-        
-        // Right panel: Loadout editor
-        int loadoutX = fleetListX + fleetListW + 20;
-        int loadoutY = fleetListY;
-        int loadoutW = panel.width - loadoutX - 22;
-        int loadoutH = fleetListH;
-        
-        gx.setColor(new Color(20, 28, 42, 160));
-        gx.fillRect(loadoutX, loadoutY, loadoutW, loadoutH);
-        gx.setColor(new Color(255, 206, 122, 78));
-        gx.drawRect(loadoutX, loadoutY, loadoutW, loadoutH);
-        
-        gx.setFont(new Font("Consolas", Font.BOLD, 11));
-        gx.setColor(new Color(255, 206, 122, 200));
-        gx.drawString("LOADOUT", loadoutX + 8, loadoutY + 14);
-        
-        // Display selected ship's loadout
-        if (ui.fleetSelectedShipId >= 0) {
+            for (int i = 0; i < ships.size() && i < maxRows; i++) {
+                Ship s = ships.get(i);
+                if (s == null) continue;
+                int ry = startY + i * rowH;
+                boolean selected = ui.fleetSelectedShipId == s.id;
+                if (selected) {
+                    gx.setColor(new Color(118, 180, 255, 64));
+                    gx.fillRect(shipList.x + 2, ry - rowH + 4, shipList.width - 4, rowH);
+                }
+                gx.setColor(selected ? new Color(255, 255, 255, 232) : new Color(180, 200, 220, 208));
+                String prefix = (ctx.player != null && s == ctx.player) ? "FLAGSHIP" : "HULL";
+                String label = prefix + ": " + ((s.name == null || s.name.isBlank()) ? s.role.name() : s.name)
+                        + "  [" + s.role.name() + "]";
+                if (label.length() > 44) label = label.substring(0, 44);
+                gx.drawString(label, shipList.x + 8, ry);
+            }
+
+            // Editor panel (right)
+            gx.setColor(new Color(20, 28, 42, 160));
+            gx.fillRect(editor.x, editor.y, editor.width, editor.height);
+            gx.setColor(new Color(255, 206, 122, 78));
+            gx.drawRect(editor.x, editor.y, editor.width, editor.height);
+
             Ship selectedShip = null;
-            for (Ship s : ctx.ships) {
-                if (s.id == ui.fleetSelectedShipId && CampaignSystem.isFleetSelectionCandidate(s)) {
-                    selectedShip = s;
-                    break;
+            if (ui.fleetSelectedShipId > 0) {
+                for (Ship s : ships) {
+                    if (s != null && s.id == ui.fleetSelectedShipId) {
+                        selectedShip = s;
+                        break;
+                    }
                 }
             }
-            
-            if (selectedShip != null) {
-                int detailY = loadoutY + 24;
-                gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-                gx.setColor(new Color(200, 220, 240, 220));
-                gx.drawString("SHIP: " + selectedShip.name, loadoutX + 8, detailY);
-                detailY += 14;
-                gx.drawString("HULL: " + selectedShip.role.name(), loadoutX + 8, detailY);
-                detailY += 14;
-                gx.drawString("HP: " + selectedShip.hp + "/" + selectedShip.hpMax, loadoutX + 8, detailY);
-                detailY += 16;
-                
-                gx.setColor(new Color(255, 206, 122, 200));
-                gx.setFont(new Font("Consolas", Font.BOLD, 10));
-                gx.drawString("WEAPONS", loadoutX + 8, detailY);
-                detailY += 12;
-                
-                // Show turrets
-                gx.setFont(new Font("Consolas", Font.PLAIN, 9));
-                gx.setColor(new Color(200, 220, 240, 200));
-                for (int i = 0; i < selectedShip.turrets.size() && detailY < loadoutY + loadoutH - 20; i++) {
-                    Turret t = selectedShip.turrets.get(i);
-                    boolean turretSelected = (ui.fleetSelectedTurretIndex == i);
-                    
-                    if (turretSelected) {
-                        gx.setColor(new Color(255, 206, 122, 64));
-                        gx.fillRect(loadoutX + 4, detailY - 8, loadoutW - 12, 12);
+            if (selectedShip == null && !ships.isEmpty()) selectedShip = ships.get(0);
+
+            int pad = 10;
+            int hx = editor.x + pad;
+            int hy = editor.y + 18;
+            gx.setFont(new Font("Consolas", Font.BOLD, 11));
+            gx.setColor(new Color(255, 206, 122, 210));
+            gx.drawString("LOADOUT", hx, editor.y + 14);
+
+            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+            gx.setColor(new Color(200, 220, 240, 220));
+            if (selectedShip == null) {
+                gx.drawString("No fleet hull selected.", hx, hy);
+                return;
+            }
+
+            String shipName = (selectedShip.name == null || selectedShip.name.isBlank()) ? selectedShip.role.name() : selectedShip.name;
+            gx.drawString("SHIP: " + shipName, hx, hy);
+            hy += 14;
+            gx.drawString("HULL: " + selectedShip.role.name() + "    HP " + selectedShip.hp + "/" + selectedShip.hpMax,
+                    hx, hy);
+
+            int editorHeaderH = 72;
+            int controlsH = 92;
+            int turretRowH = 18;
+            Rectangle turretList = new Rectangle(
+                    editor.x + 6,
+                    editor.y + editorHeaderH,
+                    editor.width - 12,
+                    Math.max(80, editor.height - editorHeaderH - controlsH - 8));
+            Rectangle controls = new Rectangle(
+                    editor.x + 6,
+                    turretList.y + turretList.height + 8,
+                    editor.width - 12,
+                    Math.max(60, editor.y + editor.height - (turretList.y + turretList.height + 8)));
+
+            // Turret list
+            gx.setColor(new Color(12, 16, 26, 160));
+            gx.fillRect(turretList.x, turretList.y, turretList.width, turretList.height);
+            gx.setColor(new Color(255, 206, 122, 68));
+            gx.drawRect(turretList.x, turretList.y, turretList.width, turretList.height);
+            gx.setFont(new Font("Consolas", Font.BOLD, 10));
+            gx.setColor(new Color(255, 206, 122, 200));
+            gx.drawString("SLOTS", turretList.x + 8, turretList.y + 14);
+
+            gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+            int listY0 = turretList.y + 28;
+            int maxTurrets = Math.max(0, (turretList.height - 34) / turretRowH);
+            for (int i = 0; i < selectedShip.turrets.size() && i < maxTurrets; i++) {
+                Turret t = selectedShip.turrets.get(i);
+                if (t == null) continue;
+                int rowY = listY0 + i * turretRowH;
+                boolean turretSelected = (ui.fleetSelectedTurretIndex == i);
+                if (turretSelected) {
+                    gx.setColor(new Color(255, 206, 122, 64));
+                    gx.fillRect(turretList.x + 2, rowY - 12, turretList.width - 4, turretRowH);
+                }
+                gx.setColor(turretSelected ? new Color(255, 240, 200, 235) : new Color(180, 200, 220, 205));
+                String kind = (t.kind == Turret.Kind.MISSILE) ? "MSL" : "GUN";
+                String role = (t.kind == Turret.Kind.MISSILE && t.missileRole != null) ? (" " + t.missileRole.name()) : "";
+                String row = String.format(Locale.US, "[%02d] %s%s   DMG %d   CYC %.2fs",
+                        i, kind, role, t.damage, t.cooldown);
+                gx.drawString(row, turretList.x + 8, rowY);
+            }
+
+            // Controls
+            gx.setColor(new Color(12, 16, 26, 160));
+            gx.fillRect(controls.x, controls.y, controls.width, controls.height);
+            gx.setColor(new Color(118, 180, 255, 58));
+            gx.drawRect(controls.x, controls.y, controls.width, controls.height);
+
+            int ti = ui.fleetSelectedTurretIndex;
+            Turret selectedTurret = (ti >= 0 && ti < selectedShip.turrets.size()) ? selectedShip.turrets.get(ti) : null;
+            gx.setFont(new Font("Consolas", Font.BOLD, 10));
+            gx.setColor(new Color(192, 210, 232, 200));
+            gx.drawString((selectedTurret == null) ? "Select a slot to edit." : ("EDIT SLOT [" + ti + "]"),
+                    controls.x + 8, controls.y + 16);
+
+            if (selectedTurret != null) {
+                Rectangle swap = new Rectangle(controls.x + 8, controls.y + 24, 136, 24);
+                boolean toMissile = selectedTurret.kind == Turret.Kind.GUN;
+                drawFleetOverlayModeTab(gx, swap, toMissile ? "SWAP TO MSL" : "SWAP TO GUN", true, new Color(158, 196, 255));
+
+                if (selectedTurret.kind == Turret.Kind.MISSILE) {
+                    int bx = controls.x + 158;
+                    int by = controls.y + 24;
+                    int bw = 110;
+                    int bh = 24;
+                    int gap = 8;
+                    Turret.MissileRole[] roles = new Turret.MissileRole[]{
+                            Turret.MissileRole.INTERCEPT,
+                            Turret.MissileRole.ANTI_LIGHT,
+                            Turret.MissileRole.ANTI_MEDIUM,
+                            Turret.MissileRole.ANTI_HEAVY
+                    };
+                    for (int i = 0; i < roles.length; i++) {
+                        Turret.MissileRole role = roles[i];
+                        boolean active = (selectedTurret.missileRole == role);
+                        Rectangle b = new Rectangle(bx + i * (bw + gap), by, bw, bh);
+                        drawFleetOverlayModeTab(gx, b, role.name(), active, new Color(255, 206, 122));
                     }
-                    
-                    gx.setColor(turretSelected ? new Color(255, 240, 200, 230) : new Color(180, 200, 220, 200));
-                    if (t.kind == Turret.Kind.GUN) {
-                        gx.drawString("[" + i + "] GUN - DMG:" + t.damage + " CYC:" + String.format("%.2f", t.cooldown) + "s",
-                                loadoutX + 8, detailY);
-                    } else {
-                        String roleStr = t.missileRole != null ? t.missileRole.name() : "ANTI_MEDIUM";
-                        gx.drawString("[" + i + "] MSL (" + roleStr + ") - DMG:" + t.damage,
-                                loadoutX + 8, detailY);
-                    }
-                    detailY += 12;
+                    gx.setFont(new Font("Consolas", Font.PLAIN, 9));
+                    gx.setColor(new Color(180, 200, 220, 170));
+                    gx.drawString("INTERCEPT = fast, low yield   ANTI_HEAVY = high yield torpedo (blue)",
+                            controls.x + 8, controls.y + 62);
                 }
             }
+
+            gx.setFont(new Font("Consolas", Font.PLAIN, 10));
+            gx.setColor(new Color(180, 200, 220, 160));
+            gx.drawString("Click hulls and slots. Changes persist via campaign checkpoint serialization.",
+                    panel.x + 22, panel.y + panel.height - 10);
+        } finally {
+            gx.dispose();
         }
-        
-        // Bottom info
-        gx.setFont(new Font("Consolas", Font.PLAIN, 10));
-        gx.setColor(new Color(180, 200, 220, 160));
-        gx.drawString("Click ship to select | Selected turret shows role (missiles) | Roles: INTERCEPT / ANTI_LIGHT / ANTI_MEDIUM / ANTI_HEAVY",
-                loadoutX, panel.y + panel.height - 8);
-        
-        gx.dispose();
     }
 
     private static void drawShopMetricPill(Graphics2D g2, int x, int y, int w, String label, String value, Color accent) {
@@ -5028,9 +5418,9 @@ public class Renderer {
         switch (upgradeId) {
             case SHOP_UPGRADE_ENERGY_BOLT -> {
                 boolean active = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT;
-                title = "Energy Bolt Primary";
-                line1 = active ? "Current mount: ENERGY_BOLT" : "Swap the primary weapon back to the standard bolt";
-                line2 = active ? "Balanced fire profile with no credit cost" : "Click to equip instantly";
+                title = "Beam Bolt Primary (Stagger)";
+                line1 = active ? "Current mount: staggered beam bolt" : "Cycle beam-bolt barrels one at a time";
+                line2 = active ? "Default blue-team beam doctrine" : "Click to equip instantly";
                 buttonLabel = active ? "ACTIVE" : "EQUIP";
                 enabled = !active;
                 accentStrong = active;
@@ -5038,8 +5428,8 @@ public class Renderer {
             }
             case SHOP_UPGRADE_BEAM_BOLT -> {
                 boolean active = player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT;
-                title = "Beam Bolt Primary";
-                line1 = active ? "Current mount: BEAM_BOLT" : "Heavy direct-energy bolt with slower cadence";
+                title = "Beam Bolt Primary (Volley)";
+                line1 = active ? "Current mount: synchronized beam volley" : "Fire every beam-bolt barrel together";
                 line2 = active ? "Already installed" : "Install package for $220";
                 buttonLabel = active ? "ACTIVE" : (credits >= 220 ? "BUY $220" : "NEED $220");
                 enabled = !active && credits >= 220;
@@ -5165,7 +5555,7 @@ public class Renderer {
         int oreCost = campaignShop ? CampaignSystem.campaignOreCost(offer.role, offer.cost, displayTier) : 0;
         ShopHullCategory fleetBand = ShopHullCategory.forRole(offer.role);
         int bandCount = campaignShop ? CampaignSystem.livePersistentFleetCount(ctx, fleetBand) : 0;
-        int bandCap = campaignShop ? CampaignSystem.persistentFleetCap(fleetBand) : 0;
+        int bandCap = campaignShop ? CampaignSystem.persistentFleetCap(ctx, fleetBand) : 0;
         int minSector = campaignShop ? CampaignSystem.campaignMinSectorForRole(offer.role) : 1;
         boolean sectorOk = !campaignShop || CampaignSystem.campaignSectorRequirementMet(ctx, offer.role);
         boolean mobileStationOk = !campaignShop
@@ -7099,6 +7489,45 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                        List<Ship> ships, FogOfWarSystem.State fog, Faction perspective) {
         if (g2 == null || eb == null || !eb.alive) return;
 
+        boolean beamBolt = eb.isBeamBolt();
+        if (!beamBolt) {
+            BufferedImage skin = ProjectileSkinLibrary.getEnergyBoltSkin(false);
+            if (skin != null) {
+                // Restore a cleaner "bolt projectile" look for the lighter ENERGY_BOLT family (especially important
+                // for fighter-heavy fleet battles where the braided beam visuals become noise).
+                double ux = Math.cos(eb.angle);
+                double uy = Math.sin(eb.angle);
+                double speed = Math.hypot(eb.vx, eb.vy);
+                double trailLen = Math.max(10.0, Math.min(28.0, 10.0 + speed * 8.0));
+                if (tactical) trailLen *= 0.78;
+
+                Color core = projectileCoreColor(eb.faction);
+                Color hot = mixColor(core, Color.WHITE, 0.34);
+                int x = (int) Math.round(eb.x);
+                int y = (int) Math.round(eb.y);
+
+                Stroke old = g2.getStroke();
+                try {
+                    g2.setStroke(new BasicStroke((float) Math.max(1.2, eb.radius * 0.55), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.setColor(withAlpha(core, tactical ? 132 : 170));
+                    g2.drawLine(x, y,
+                            (int) Math.round(eb.x - ux * trailLen),
+                            (int) Math.round(eb.y - uy * trailLen));
+
+                    int glowR = Math.max(3, (int) Math.round(eb.radius * (tactical ? 1.05 : 1.25)));
+                    g2.setColor(withAlpha(hot, tactical ? 170 : 200));
+                    g2.fillOval(x - glowR, y - glowR, glowR * 2, glowR * 2);
+                } finally {
+                    g2.setStroke(old);
+                }
+
+                double boltLen = Math.max(18.0, eb.radius * 5.4) * (tactical ? 0.80 : 1.0);
+                double boltW = Math.max(8.0, eb.radius * 2.6) * (tactical ? 0.80 : 1.0);
+                drawOrientedProjectileSkin(g2, skin, eb.x, eb.y, eb.angle, boltLen, boltW, tactical ? 0.82f : 0.92f);
+                return;
+            }
+        }
+
         double sx = eb.spawnX;
         double sy = eb.spawnY;
         double originAngle = eb.angle;
@@ -7141,7 +7570,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         double perpX = -dirY;
         double perpY = dirX;
-        boolean beamBolt = eb.isBeamBolt();
 
         Color base = mixColor(beamColorForFaction(eb.faction), new Color(168, 242, 255), beamBolt ? 0.58 : 0.42);
         Color hot = mixColor(base, Color.WHITE, beamBolt ? 0.80 : 0.70);
@@ -7155,24 +7583,49 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         double gap = Math.max(1.4, coreWidth * (beamBolt ? 0.96 : 0.82));
         double twist = Math.max(0.9, coreWidth * (beamBolt ? 0.74 : 0.52));
         int segments = tactical ? 8 : 16;
-        double[] laneSeeds = {-1.0, 0.0, 1.0};
+        double[] laneSeeds = beamLaneSeeds(eb);
+        boolean combinedBeam = eb.usesCombinedBeamVisual();
 
         Stroke old = g2.getStroke();
         try {
-            g2.setStroke(new BasicStroke((float) Math.max(1.4, coreWidth * (beamBolt ? 1.55 : 1.35)),
-                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g2.setColor(withAlpha(base, tactical ? 66 : (beamBolt ? 88 : 72)));
-            g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+            if (combinedBeam) {
+                g2.setStroke(new BasicStroke((float) Math.max(1.4, coreWidth * (beamBolt ? 1.55 : 1.35)),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(base, tactical ? 66 : (beamBolt ? 88 : 72)));
+                g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-            g2.setStroke(new BasicStroke((float) Math.max(1.0, coreWidth * 0.82),
-                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g2.setColor(withAlpha(hot, tactical ? 170 : (beamBolt ? 232 : 210)));
-            g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+                g2.setStroke(new BasicStroke((float) Math.max(1.0, coreWidth * 0.82),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(hot, tactical ? 170 : (beamBolt ? 232 : 210)));
+                g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-            g2.setStroke(new BasicStroke((float) Math.max(0.8, coreWidth * 0.42),
-                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g2.setColor(withAlpha(Color.WHITE, tactical ? 180 : (beamBolt ? 232 : 210)));
-            g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+                g2.setStroke(new BasicStroke((float) Math.max(0.8, coreWidth * 0.42),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(Color.WHITE, tactical ? 180 : (beamBolt ? 232 : 210)));
+                g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
+            } else {
+                double lane = laneSeeds[0];
+                double laneOffset = lane * gap;
+                double laneSx = sx + perpX * laneOffset;
+                double laneSy = sy + perpY * laneOffset;
+                double laneEx = ex + perpX * laneOffset;
+                double laneEy = ey + perpY * laneOffset;
+
+                g2.setStroke(new BasicStroke((float) Math.max(1.4, coreWidth * 1.28),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(base, tactical ? 78 : 104));
+                g2.drawLine((int) Math.round(laneSx), (int) Math.round(laneSy), (int) Math.round(laneEx), (int) Math.round(laneEy));
+
+                g2.setStroke(new BasicStroke((float) Math.max(0.95, coreWidth * 0.66),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(hot, tactical ? 176 : 228));
+                g2.drawLine((int) Math.round(laneSx), (int) Math.round(laneSy), (int) Math.round(laneEx), (int) Math.round(laneEy));
+
+                g2.setStroke(new BasicStroke((float) Math.max(0.65, coreWidth * 0.30),
+                        BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(withAlpha(Color.WHITE, tactical ? 186 : 236));
+                g2.drawLine((int) Math.round(laneSx), (int) Math.round(laneSy), (int) Math.round(laneEx), (int) Math.round(laneEy));
+            }
 
             for (int laneIndex = 0; laneIndex < laneSeeds.length; laneIndex++) {
                 double lane = laneSeeds[laneIndex];
@@ -7183,8 +7636,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     double u = (double) i / segments;
                     double launchEase = MathUtil.clamp(u / 0.20, 0.0, 1.0);
                     double taper = Math.pow(1.0 - u, beamBolt ? 1.20 : 1.38);
-                    double swirl = Math.sin(u * (beamBolt ? 11.8 : 9.0) + phaseBase + laneIndex * (Math.PI * 2.0 / 3.0))
-                            * twist * taper * launchEase;
+                    double swirl = combinedBeam
+                            ? Math.sin(u * (beamBolt ? 11.8 : 9.0) + phaseBase + laneIndex * (Math.PI * 2.0 / 3.0))
+                            * twist * taper * launchEase
+                            : 0.0;
                     double offset = (lane * gap + swirl) * taper;
                     double px = sx + dx * u + perpX * offset;
                     double py = sy + dy * u + perpY * offset;
@@ -7227,9 +7682,43 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int sparkR = Math.max(1, headR / 2);
             g2.setColor(withAlpha(spark, tactical ? 182 : (beamBolt ? 230 : 210)));
             g2.fillOval(headX - sparkR, headY - sparkR, sparkR * 2, sparkR * 2);
+
+            if (beamBolt) {
+                BufferedImage headSkin = combinedBeam
+                        ? ProjectileSkinLibrary.getEnergyBoltSkin(true)
+                        : ProjectileSkinLibrary.getBeamBoltSingleSkin();
+                if (headSkin != null) {
+                    double boltLen = Math.max(24.0, eb.radius * 5.2) * (tactical ? 0.78 : 1.0);
+                    double boltW = Math.max(combinedBeam ? 10.0 : 7.0,
+                            eb.radius * (combinedBeam ? 2.8 : 1.9)) * (tactical ? 0.78 : 1.0);
+                    drawOrientedProjectileSkin(g2, headSkin, ex, ey, pathAngle, boltLen, boltW, tactical ? 0.76f : 0.86f);
+                }
+            }
         } finally {
             g2.setStroke(old);
         }
+    }
+
+    private static double[] beamLaneSeeds(EnergyBolt eb) {
+        if (eb == null) return new double[]{0.0};
+        int laneCount = Math.max(1, eb.beamLaneCount);
+        if (eb.usesCombinedBeamVisual()) {
+            return centeredLaneSeeds(laneCount);
+        }
+        int laneIndex = Math.floorMod(eb.beamLaneIndex, laneCount);
+        double[] centered = centeredLaneSeeds(laneCount);
+        return new double[]{centered[Math.min(centered.length - 1, laneIndex)]};
+    }
+
+    private static double[] centeredLaneSeeds(int laneCount) {
+        int count = Math.max(1, laneCount);
+        if (count == 1) return new double[]{0.0};
+        double[] seeds = new double[count];
+        double mid = (count - 1) * 0.5;
+        for (int i = 0; i < count; i++) {
+            seeds[i] = i - mid;
+        }
+        return seeds;
     }
 
     private static void drawTacticalProjectile(Graphics2D g2, Projectile p) {
@@ -8967,12 +9456,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static BufferedImage missileSkin;
         private static BufferedImage energyBoltSkin;
         private static BufferedImage beamBoltSkin;
+        private static BufferedImage beamBoltSingleSkin;
         private static BufferedImage waveShotSkin;
         private static BufferedImage bulletSkin;
         private static BufferedImage ciwsPelletSkin;
         private static boolean missileSkinLoaded = false;
         private static boolean energyBoltSkinLoaded = false;
         private static boolean beamBoltSkinLoaded = false;
+        private static boolean beamBoltSingleSkinLoaded = false;
         private static boolean waveShotSkinLoaded = false;
         private static boolean bulletSkinLoaded = false;
         private static boolean ciwsPelletSkinLoaded = false;
@@ -8995,6 +9486,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             energyBoltSkinLoaded = true;
             energyBoltSkin = loadSkin("energy_bolt");
             return energyBoltSkin;
+        }
+
+        static BufferedImage getBeamBoltSingleSkin() {
+            if (beamBoltSingleSkinLoaded) return beamBoltSingleSkin;
+            beamBoltSingleSkinLoaded = true;
+            beamBoltSingleSkin = loadSkin("beam_bolt_single");
+            return beamBoltSingleSkin;
         }
 
         static BufferedImage getWaveShotSkin() {
@@ -9693,7 +10191,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     drawHeavyTripleTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
                 } else if (ship.role == ShipRole.STEALTH_SHIP) {
                     drawStealthFlushTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
-                } else if (ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
+                } else if (ship.usesBeamBoltPrimaryVisuals()) {
                     drawBeamEmitterTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
                 } else {
                     drawTwinGunTurret(tg, t, accent, fireFrac, bodyScale, barrelScale);
@@ -9716,7 +10214,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (t.kind == Turret.Kind.MISSILE) return "missile_pod";
         if (ship != null && isHeavyTurretRole(ship.role)) return "heavy_triple";
         if (ship != null && ship.role == ShipRole.STEALTH_SHIP) return "stealth_flush";
-        if (ship != null && ship.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) return "beam_emitter";
+        if (ship != null && ship.usesBeamBoltPrimaryVisuals()) return "beam_emitter";
         return "twin_gun";
     }
 

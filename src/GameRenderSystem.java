@@ -784,7 +784,10 @@ if (DevTools.isDebugOverlay()) {
         String label = CampaignSystem.transitionLabel(ctx);
         int secs = (int) Math.ceil(CampaignSystem.transitionSeconds(ctx));
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
-        String timer = fleetHub ? "Fleet hub open" : "Next sector in " + Math.max(0, secs) + "s";
+        boolean awaitingHub = CampaignSystem.isAwaitingFleetHubChoice(ctx);
+        String timer = fleetHub
+                ? "Fleet hub open"
+                : (awaitingHub ? "Fleet hub in " + Math.max(0, secs) + "s" : "Next sector in " + Math.max(0, secs) + "s");
         String top = CampaignSystem.transitionSummaryTop(ctx);
         String bottom = CampaignSystem.transitionSummaryBottom(ctx);
 

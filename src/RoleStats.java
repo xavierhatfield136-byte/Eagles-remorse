@@ -121,7 +121,7 @@ public final class RoleStats {
         if (st.miningRate >= 0) s.miningRate = st.miningRate;
         if (st.miningRange >= 0) s.miningRange = st.miningRange;
 
-        // Energy Navy heavy ships prefer the BEAM_BOLT primary.
+        // Energy Navy heavy ships prefer the synchronized beam-bolt volley package.
         try {
             DoctrineProfile prof = DoctrineRegistry.forFaction(s.faction);
             if (prof.doctrine == Doctrine.ENERGY_NAVY && !(s instanceof Player)) {

@@ -13,6 +13,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.Speech
+
 function Test-Executable {
     param([string]$ExeName, [string[]]$ProbeArgs)
     try {
@@ -67,6 +69,64 @@ function Get-RoleVoiceSpec {
     return $Config.roles.($Role)
 }
 
+function Get-SpecValue {
+    param([object]$Spec, [string]$Name, [int]$VariantNum = 1)
+    if (-not $Spec) { return $null }
+    if (-not ($Spec.PSObject.Properties.Name -contains $Name)) { return $null }
+    $value = $Spec.$Name
+    if ($null -eq $value) { return $null }
+    if ($value -is [string]) { return $value }
+    if ($value -is [System.Array]) {
+        if ($value.Count -le 0) { return $null }
+        $idx = [Math]::Abs($VariantNum - 1) % $value.Count
+        return $value[$idx]
+    }
+    return $value
+}
+
+function Resolve-RoleEngine {
+    param([object]$Spec, [int]$VariantNum)
+    $explicit = Get-SpecValue -Spec $Spec -Name "engine" -VariantNum $VariantNum
+    if ($explicit) { return $explicit.ToString().Trim().ToLowerInvariant() }
+    $voiceName = Get-SpecValue -Spec $Spec -Name "voice_name" -VariantNum $VariantNum
+    if (-not [string]::IsNullOrWhiteSpace([string]$voiceName)) { return "sapi" }
+    $modelPath = Get-SpecValue -Spec $Spec -Name "model_path" -VariantNum $VariantNum
+    if (-not [string]::IsNullOrWhiteSpace([string]$modelPath)) { return "piper" }
+    return ""
+}
+
+function Get-InstalledVoiceNames {
+    $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+    try {
+        return @($s.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name })
+    } finally {
+        $s.Dispose()
+    }
+}
+
+function Write-SapiVoice {
+    param(
+        [string]$OutFile,
+        [string]$Text,
+        [string]$VoiceName,
+        [int]$Rate,
+        [int]$Volume
+    )
+
+    $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($VoiceName)) {
+            $synth.SelectVoice($VoiceName)
+        }
+        $synth.Rate = [Math]::Max(-10, [Math]::Min(10, $Rate))
+        $synth.Volume = [Math]::Max(0, [Math]::Min(100, $Volume))
+        $synth.SetOutputToWaveFile($OutFile)
+        $synth.Speak($Text)
+    } finally {
+        $synth.Dispose()
+    }
+}
+
 if (-not (Test-Path -LiteralPath $LinesCsvPath)) {
     throw "Voice line CSV missing: $LinesCsvPath"
 }
@@ -76,20 +136,20 @@ if (-not (Test-Path -LiteralPath $VoiceConfigPath)) {
     throw "Voice config missing: $VoiceConfigPath`nCopy and edit: $examplePath"
 }
 
-$resolvedPiper = Resolve-PiperExecutable -Hint $PiperExe
-if ([string]::IsNullOrWhiteSpace($resolvedPiper)) {
-    throw "Could not locate Piper. Install piper-tts or pass -PiperExe with a full path."
-}
-
-if (-not (Test-Executable -ExeName $resolvedPiper -ProbeArgs @("--help"))) {
-    throw "Could not execute Piper binary '$resolvedPiper'."
-}
-
 $voiceConfig = Get-Content -Raw -LiteralPath $VoiceConfigPath | ConvertFrom-Json
 $rows = @(Import-Csv -LiteralPath $LinesCsvPath)
 if ($rows.Count -eq 0) {
     throw "No rows in voice line CSV: $LinesCsvPath"
 }
+
+$resolvedPiper = Resolve-PiperExecutable -Hint $PiperExe
+if (-not [string]::IsNullOrWhiteSpace($resolvedPiper)) {
+    if (-not (Test-Executable -ExeName $resolvedPiper -ProbeArgs @("--help"))) {
+        throw "Could not execute Piper binary '$resolvedPiper'."
+    }
+}
+
+$installedVoices = @(Get-InstalledVoiceNames)
 
 $sampleRate = 48000
 $targetLufs = -16.0
@@ -130,21 +190,6 @@ foreach ($row in $rows) {
         continue
     }
 
-    $modelPath = ""
-    if ($voiceSpec.model_path) {
-        $modelPath = $voiceSpec.model_path.ToString()
-    }
-    if ([string]::IsNullOrWhiteSpace($modelPath)) {
-        Write-Warning "[voice-gen] model_path missing for role '$role'"
-        $failed++
-        continue
-    }
-    if (-not (Test-Path -LiteralPath $modelPath)) {
-        Write-Warning "[voice-gen] model file not found for role '$role': $modelPath"
-        $failed++
-        continue
-    }
-
     $variantTag = "{0:D2}" -f $variantNum
     $roleDir = Join-Path $OutRoot $role
     New-Item -ItemType Directory -Path $roleDir -Force | Out-Null
@@ -163,29 +208,67 @@ foreach ($row in $rows) {
 
     $tmpFile = Join-Path ([System.IO.Path]::GetTempPath()) ("crew-voice-" + [Guid]::NewGuid().ToString("N") + ".wav")
     try {
-        $piperArgs = @("--model", $modelPath, "--output_file", $tmpFile)
-        if ($voiceSpec.PSObject.Properties.Name -contains "speaker") {
-            $speaker = $voiceSpec.speaker
-            if ($null -ne $speaker -and $speaker.ToString().Trim().Length -gt 0) {
-                $piperArgs += @("--speaker", $speaker.ToString().Trim())
+        $engine = Resolve-RoleEngine -Spec $voiceSpec -VariantNum $variantNum
+        if ($engine -eq "piper") {
+            if ([string]::IsNullOrWhiteSpace($resolvedPiper)) {
+                throw "Piper engine selected for role '$role' but Piper was not found."
             }
-        }
-        if ($voiceSpec.PSObject.Properties.Name -contains "length_scale" -and $null -ne $voiceSpec.length_scale) {
-            $piperArgs += @("--length_scale", ([double]$voiceSpec.length_scale).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-        }
-        if ($voiceSpec.PSObject.Properties.Name -contains "noise_scale" -and $null -ne $voiceSpec.noise_scale) {
-            $piperArgs += @("--noise_scale", ([double]$voiceSpec.noise_scale).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-        }
-        if ($voiceSpec.PSObject.Properties.Name -contains "noise_w" -and $null -ne $voiceSpec.noise_w) {
-            $piperArgs += @("--noise_w", ([double]$voiceSpec.noise_w).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-        }
+            $modelPath = [string](Get-SpecValue -Spec $voiceSpec -Name "model_path" -VariantNum $variantNum)
+            if ([string]::IsNullOrWhiteSpace($modelPath)) {
+                throw "model_path missing for role '$role'"
+            }
+            if (-not (Test-Path -LiteralPath $modelPath)) {
+                throw "model file not found for role '$role': $modelPath"
+            }
+            $piperArgs = @("-m", $modelPath, "-f", $tmpFile)
+            $configPath = [string](Get-SpecValue -Spec $voiceSpec -Name "config_path" -VariantNum $variantNum)
+            if (-not [string]::IsNullOrWhiteSpace($configPath)) {
+                $piperArgs += @("-c", $configPath)
+            }
+            $speaker = Get-SpecValue -Spec $voiceSpec -Name "speaker" -VariantNum $variantNum
+            if ($null -ne $speaker -and $speaker.ToString().Trim().Length -gt 0) {
+                $piperArgs += @("-s", $speaker.ToString().Trim())
+            }
+            $lengthScale = Get-SpecValue -Spec $voiceSpec -Name "length_scale" -VariantNum $variantNum
+            if ($null -ne $lengthScale) {
+                $piperArgs += @("--length_scale", ([double]$lengthScale).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+            }
+            $noiseScale = Get-SpecValue -Spec $voiceSpec -Name "noise_scale" -VariantNum $variantNum
+            if ($null -ne $noiseScale) {
+                $piperArgs += @("--noise_scale", ([double]$noiseScale).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+            }
+            $noiseWScale = Get-SpecValue -Spec $voiceSpec -Name "noise_w" -VariantNum $variantNum
+            if ($null -ne $noiseWScale) {
+                $piperArgs += @("--noise_w", ([double]$noiseWScale).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+            }
 
-        $text | & $resolvedPiper @piperArgs
-        if ($LASTEXITCODE -ne 0) {
-            throw "Piper exited with code $LASTEXITCODE"
-        }
-        if (-not (Test-Path -LiteralPath $tmpFile)) {
-            throw "Piper did not produce an output file."
+            $text | & $resolvedPiper @piperArgs
+            if ($LASTEXITCODE -ne 0) {
+                throw "Piper exited with code $LASTEXITCODE"
+            }
+            if (-not (Test-Path -LiteralPath $tmpFile)) {
+                throw "Piper did not produce an output file."
+            }
+        } elseif ($engine -eq "sapi") {
+            $voiceName = [string](Get-SpecValue -Spec $voiceSpec -Name "voice_name" -VariantNum $variantNum)
+            if ([string]::IsNullOrWhiteSpace($voiceName)) {
+                throw "voice_name missing for role '$role'"
+            }
+            if ($installedVoices -notcontains $voiceName) {
+                throw "voice '$voiceName' not installed. Installed: $($installedVoices -join ', ')"
+            }
+            $rate = 0
+            $volume = 100
+            $rateValue = Get-SpecValue -Spec $voiceSpec -Name "rate" -VariantNum $variantNum
+            if ($null -ne $rateValue) { $rate = [int]$rateValue }
+            $volumeValue = Get-SpecValue -Spec $voiceSpec -Name "volume" -VariantNum $variantNum
+            if ($null -ne $volumeValue) { $volume = [int]$volumeValue }
+            Write-SapiVoice -OutFile $tmpFile -Text $text -VoiceName $voiceName -Rate $rate -Volume $volume
+            if (-not (Test-Path -LiteralPath $tmpFile)) {
+                throw "SAPI did not produce an output file."
+            }
+        } else {
+            throw "No supported engine configured for role '$role'. Use engine='piper' or engine='sapi'."
         }
 
         if ($Normalize -and $ffmpegAvailable) {

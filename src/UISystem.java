@@ -198,6 +198,60 @@ public final class UISystem {
         if (!ctx.ui.shopOpen) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
 
+        boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
+        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+        if (campaignShop && fleetHub) {
+            Renderer.FleetOverlayClickTarget fleetTarget = Renderer.fleetOverlayClickTargetAt(
+                    ctx, ctx.ui, viewportW, viewportH, e.getX(), e.getY());
+            if (fleetTarget != null) {
+                switch (fleetTarget.kind) {
+                    case MODE_COMMISSION -> {
+                        ctx.ui.fleetRefitMode = false;
+                        return true;
+                    }
+                    case MODE_REFIT -> {
+                        ctx.ui.fleetRefitMode = true;
+                        return true;
+                    }
+                    case CAP_UP_ESCORT -> {
+                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT);
+                        return true;
+                    }
+                    case CAP_UP_LINE -> {
+                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.LINE);
+                        return true;
+                    }
+                    case CAP_UP_CAPITAL -> {
+                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.CAPITAL);
+                        return true;
+                    }
+                    case SELECT_SHIP -> {
+                        if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
+                        return true;
+                    }
+                    case SELECT_TURRET -> {
+                        if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
+                        if (fleetTarget.turretIndex >= 0) selectFleetTurret(ctx, fleetTarget.turretIndex);
+                        return true;
+                    }
+                    case SWAP_TO_GUN -> {
+                        swapFleetTurretKind(ctx, fleetTarget.shipId, fleetTarget.turretIndex, Turret.Kind.GUN);
+                        return true;
+                    }
+                    case SWAP_TO_MISSILE -> {
+                        swapFleetTurretKind(ctx, fleetTarget.shipId, fleetTarget.turretIndex, Turret.Kind.MISSILE);
+                        return true;
+                    }
+                    case SET_MISSILE_ROLE -> {
+                        if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
+                        if (fleetTarget.turretIndex >= 0) selectFleetTurret(ctx, fleetTarget.turretIndex);
+                        if (fleetTarget.missileRole != null) setMissileRoleForSelectedTurret(ctx, fleetTarget.missileRole);
+                        return true;
+                    }
+                }
+            }
+        }
+
         Renderer.ShopClickTarget target = Renderer.shopClickTargetAt(
                 ctx.player, ctx.ui, ctx.credits, getMaxHangarTierForPlayer(ctx),
                 viewportW, viewportH, e.getX(), e.getY());
@@ -248,6 +302,72 @@ public final class UISystem {
         if (turret != null && turret.kind == Turret.Kind.MISSILE) {
             turret.missileRole = role;
         }
+    }
+
+    private static void swapFleetTurretKind(GameContext ctx, int shipId, int turretIndex, Turret.Kind desired) {
+        if (ctx == null || desired == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (shipId <= 0 || turretIndex < 0) return;
+        Ship ship = findShipInFleet(ctx, shipId);
+        if (ship == null || ship.turrets == null || turretIndex >= ship.turrets.size()) return;
+        Turret old = ship.turrets.get(turretIndex);
+        if (old == null || old.kind == desired) return;
+
+        Turret reference = null;
+        for (Turret t : ship.turrets) {
+            if (t == null) continue;
+            if (t.kind == desired) {
+                reference = t;
+                break;
+            }
+        }
+
+        Turret nt = new Turret(desired, old.localX, old.localY);
+        nt.angle = old.angle;
+        nt.primary = old.primary; // preserve fire group intent
+
+        if (reference != null) {
+            nt.turnRate = reference.turnRate;
+            nt.cooldown = reference.cooldown;
+            nt.damage = reference.damage;
+            nt.bulletSpeed = reference.bulletSpeed;
+            nt.bulletLife = reference.bulletLife;
+            nt.missileSpeed = reference.missileSpeed;
+            nt.missileTurnRate = reference.missileTurnRate;
+            nt.missileLife = reference.missileLife;
+            nt.radius = reference.radius;
+            nt.barrelLen = reference.barrelLen;
+            nt.missileRole = reference.missileRole;
+            nt.enablesDamageGrowth = reference.enablesDamageGrowth;
+        } else {
+            // Keep old tuning where possible, but nudge toward sane baselines for the new weapon kind.
+            nt.turnRate = old.turnRate;
+            nt.cooldown = old.cooldown;
+            nt.damage = old.damage;
+            nt.bulletSpeed = old.bulletSpeed;
+            nt.bulletLife = old.bulletLife;
+            nt.missileSpeed = old.missileSpeed;
+            nt.missileTurnRate = old.missileTurnRate;
+            nt.missileLife = old.missileLife;
+            nt.radius = old.radius;
+            nt.barrelLen = old.barrelLen;
+            nt.missileRole = (old.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : old.missileRole;
+
+            if (desired == Turret.Kind.MISSILE) {
+                nt.cooldown = Math.max(nt.cooldown, Ship.MISSILE_MIN_RELOAD_SECONDS);
+                nt.damage = Math.max(2, nt.damage);
+                nt.radius = Math.max(nt.radius, 7.0);
+                nt.barrelLen = Math.max(nt.barrelLen, 10.0);
+            } else {
+                nt.cooldown = Math.min(nt.cooldown, 0.30);
+                nt.damage = Math.max(1, nt.damage);
+                nt.bulletSpeed = Math.max(nt.bulletSpeed, 780.0);
+                nt.bulletLife = Math.max(nt.bulletLife, 120);
+                nt.radius = Math.max(nt.radius, 6.0);
+                nt.barrelLen = Math.max(nt.barrelLen, 14.0);
+            }
+        }
+
+        ship.turrets.set(turretIndex, nt);
     }
 
     private static Ship findShipInFleet(GameContext ctx, int shipId) {
@@ -772,7 +892,7 @@ public final class UISystem {
         int cost = 220;
 
         if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) {
-            EventSystem.showBanner(ctx, "BEAM BOLT ALREADY EQUIPPED", 1.4);
+            EventSystem.showBanner(ctx, "BEAM BOLT VOLLEY ALREADY ONLINE", 1.4);
             return;
         }
         if (!canAffordCredits(ctx, cost)) {
@@ -783,7 +903,7 @@ public final class UISystem {
         spendCredits(ctx, cost);
         player.primaryWeaponFamily = Ship.PrimaryWeaponFamily.BEAM_BOLT;
         player.applyPrimaryWeaponFamily();
-        EventSystem.showBanner(ctx, "BEAM BOLT ONLINE", 1.6);
+        EventSystem.showBanner(ctx, "BEAM BOLT VOLLEY ONLINE", 1.6);
     }
 
     public static void tryEquipEnergyBolt(GameContext ctx) {
@@ -793,13 +913,13 @@ public final class UISystem {
 
         Player player = ctx.player;
         if (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.ENERGY_BOLT) {
-            EventSystem.showBanner(ctx, "ENERGY BOLT ALREADY EQUIPPED", 1.4);
+            EventSystem.showBanner(ctx, "BEAM BOLT STAGGER ALREADY ONLINE", 1.4);
             return;
         }
 
         player.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;
         player.applyPrimaryWeaponFamily();
-        EventSystem.showBanner(ctx, "ENERGY BOLT ONLINE", 1.2);
+        EventSystem.showBanner(ctx, "BEAM BOLT STAGGER ONLINE", 1.2);
     }
 
     public static void tryBuyHullPlating(GameContext ctx) {

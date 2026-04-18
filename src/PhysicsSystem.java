@@ -131,16 +131,21 @@ public final class PhysicsSystem {
                 ctx.player.aimPrimaryTurretsAt(ctx.cursorWorldX, ctx.cursorWorldY, dt);
             }
 
-            if (firePrimary) {
+            if (!manualAllowed && !ctx.firingPrimaryAuto) {
+                ctx.player.primaryGunStaggerBurstRemaining = 0;
+            }
+
+            boolean continuePrimary = firePrimary || (manualAllowed && ctx.player.primaryGunStaggerBurstRemaining > 0);
+            if (continuePrimary) {
                 int beforePrimary = ctx.projectiles.size();
                 if (autoTarget != null) {
-                    ctx.projectiles.addAll(ctx.player.firePrimary(autoTarget, dt));
+                    ctx.projectiles.addAll(ctx.player.firePrimary(autoTarget, dt, firePrimary));
                 } else {
-                    ctx.projectiles.addAll(ctx.player.firePrimary(ctx.cursorWorldX, ctx.cursorWorldY, dt));
+                    ctx.projectiles.addAll(ctx.player.firePrimary(ctx.cursorWorldX, ctx.cursorWorldY, dt, firePrimary));
                 }
                 if (ctx.projectiles.size() > beforePrimary) {
                     AudioSystem.onWeaponPrimary(ctx, ctx.player);
-                    if (manualPrimaryMissileVolley) {
+                    if (firePrimary && manualPrimaryMissileVolley) {
                         ctx.firingPrimaryManualLatched = true;
                     }
                 }

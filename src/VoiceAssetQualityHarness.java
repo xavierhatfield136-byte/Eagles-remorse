@@ -3,8 +3,10 @@ import javax.sound.sampled.AudioInputStream;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -17,6 +19,7 @@ public final class VoiceAssetQualityHarness {
 
     private static final double MIN_DURATION_SEC = 0.35;
     private static final double MAX_DURATION_SEC = 4.25;
+    private static final double MAX_AMBIENT_DURATION_SEC = 7.25;
     private static final double PEAK_WARN_DBFS = -1.0;
     private static final double RMS_MIN_DBFS = -30.0;
     private static final double RMS_MAX_DBFS = -10.0;
@@ -47,6 +50,11 @@ public final class VoiceAssetQualityHarness {
 
         List<VoiceIssue> issues = new ArrayList<>();
         int checked = 0;
+        Map<String, AudioSystem.VoiceEventSpec> matrix = new HashMap<>();
+        for (AudioSystem.VoiceEventSpec spec : AudioSystem.voiceEventMatrix()) {
+            if (spec == null) continue;
+            matrix.put(spec.role() + "/" + spec.eventId(), spec);
+        }
 
         for (String role : ROLES) {
             File dir = new File(ROOT, role);
@@ -67,6 +75,14 @@ public final class VoiceAssetQualityHarness {
                 String name = wav.getName().toLowerCase(Locale.US);
                 if (!VALID_FILE.matcher(name).matches()) {
                     issues.add(new VoiceIssue("naming", role + "/" + name + " does not match <event_id>_<nn>.wav"));
+                    continue;
+                }
+
+                String eventId = extractEventId(name);
+                AudioSystem.VoiceEventSpec spec = matrix.get(role + "/" + eventId);
+                if (spec == null) {
+                    // Ignore auxiliary or archival lines that are not part of the active runtime voice matrix.
+                    continue;
                 }
 
                 VoiceAnalysis a;
@@ -94,7 +110,8 @@ public final class VoiceAssetQualityHarness {
                 if (sr != 44100 && sr != 48000) {
                     issues.add(new VoiceIssue("sample_rate", role + "/" + name + " expected 44100 or 48000 Hz, found " + sr));
                 }
-                if (a.durationSec() < MIN_DURATION_SEC || a.durationSec() > MAX_DURATION_SEC) {
+                double maxDuration = allowedMaxDurationSec(spec);
+                if (a.durationSec() < MIN_DURATION_SEC || a.durationSec() > maxDuration) {
                     issues.add(new VoiceIssue("duration", role + "/" + name + " duration out of range: " + fmt(a.durationSec()) + "s"));
                 }
                 if (a.clippedSamples() > 0) {
@@ -203,6 +220,24 @@ public final class VoiceAssetQualityHarness {
     private static double toDbfs(double amplitude) {
         double a = Math.max(1e-9, amplitude);
         return 20.0 * Math.log10(a);
+    }
+
+    private static String extractEventId(String fileName) {
+        if (fileName == null) return "";
+        int dot = fileName.lastIndexOf('.');
+        String stem = dot >= 0 ? fileName.substring(0, dot) : fileName;
+        int us = stem.lastIndexOf('_');
+        if (us <= 0) return stem;
+        return stem.substring(0, us);
+    }
+
+    private static double allowedMaxDurationSec(AudioSystem.VoiceEventSpec spec) {
+        if (spec == null || spec.eventId() == null) return MAX_DURATION_SEC;
+        String id = spec.eventId().toLowerCase(Locale.US);
+        if ("banter".equals(id) || id.contains("ambient")) {
+            return MAX_AMBIENT_DURATION_SEC;
+        }
+        return MAX_DURATION_SEC;
     }
 
     private static String fmt(double v) {

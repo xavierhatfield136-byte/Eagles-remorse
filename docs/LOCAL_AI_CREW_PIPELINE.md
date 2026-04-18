@@ -12,6 +12,7 @@ Install and run:
 - Stable Diffusion WebUI/Forge API (for portraits) on `http://127.0.0.1:7860`
 - Piper TTS CLI (for voice)
 - ffmpeg (recommended for normalization)
+- Windows SAPI voices can be used as a fallback voice engine when Piper models are not available
 
 ## 2) Crew Bibles
 
@@ -25,7 +26,14 @@ Create your local voice config:
 
 1. Copy `assets/ai_pipeline/local_tts_voices.example.json`
 2. Save as `assets/ai_pipeline/local_tts_voices.json`
-3. Set each role `model_path` (and optional speaker id)
+3. Set each role engine:
+   - Piper: `engine = "piper"` with `model_path` and optional `speaker`
+   - Windows fallback: `engine = "sapi"` with `voice_name`, optional `rate`, and optional `volume`
+
+Distinct crew voices:
+
+- Use a different voice model or speaker per role whenever possible.
+- If your TTS engine supports multiple speakers, the generator now also accepts arrays for `model_path`, `config_path`, `speaker`, `voice_name`, `rate`, and `volume`, and rotates them by variant number.
 
 ## 3) Generate Assets (Step 3)
 
@@ -41,6 +49,8 @@ Voice:
 .\scripts\generate-local-crew-voice.ps1 `
   -VoiceConfigPath assets/ai_pipeline/local_tts_voices.json
 ```
+
+If Piper models are unavailable but you have Windows desktop voices installed, the same script can now generate WAVs via SAPI using the same role/event matrix.
 
 One-command pipeline:
 

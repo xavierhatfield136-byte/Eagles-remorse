@@ -170,6 +170,12 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_BLUE_ESCORT_CAP = 15;
     private static final int CAMPAIGN_BLUE_LINE_CAP = 11;
     private static final int CAMPAIGN_BLUE_CAPITAL_CAP = 7;
+    private static final int CAMPAIGN_ESCORT_CAP_UPGRADE_STEP = 2;
+    private static final int CAMPAIGN_LINE_CAP_UPGRADE_STEP = 1;
+    private static final int CAMPAIGN_CAPITAL_CAP_UPGRADE_STEP = 1;
+    private static final int CAMPAIGN_ESCORT_CAP_UPGRADE_MAX_LEVEL = 5;
+    private static final int CAMPAIGN_LINE_CAP_UPGRADE_MAX_LEVEL = 4;
+    private static final int CAMPAIGN_CAPITAL_CAP_UPGRADE_MAX_LEVEL = 3;
     private static final int CAMPAIGN_PLAYER_STARTING_HANGAR_TIER = 1;
     private static final int CAMPAIGN_PLAYER_MAX_HANGAR_TIER = 5;
     private static final int CAMPAIGN_ENEMY_MAX_HANGAR_TIER = 3;
@@ -406,6 +412,9 @@ public final class CampaignSystem {
         public final List<TitanArchetype> ownedTitans = new ArrayList<>();
         public final List<PersistentFleetEntry> persistentBlueFleet = new ArrayList<>();
         public int nextPersistentFleetSlotId = 1;
+        public int escortCapUpgradeLevel = 0;
+        public int lineCapUpgradeLevel = 0;
+        public int capitalCapUpgradeLevel = 0;
         public boolean awaitingEpisodeLaunch = false;
         public int pendingEpisodeSector = 0;
         public boolean introSequenceActive = false;
@@ -520,6 +529,7 @@ public final class CampaignSystem {
             if (st.fleetHubChoiceTimer <= 0) {
                 enterFleetHub(ctx, st);
                 st.awaitingFleetHubChoice = false;
+                st.fleetHubChoiceTimer = 0.0;
             }
             syncPersistentFleetCasualties(ctx, st);
             return;
@@ -722,12 +732,21 @@ public final class CampaignSystem {
 
     public static boolean isTransitioning(GameContext ctx) {
         CampaignState st = state(ctx);
-        return st != null && st.enabled && (st.transitionTimer > 0 || st.awaitingEpisodeLaunch);
+        return st != null && st.enabled
+                && (st.transitionTimer > 0 || st.awaitingEpisodeLaunch || st.awaitingFleetHubChoice);
     }
 
     public static double transitionSeconds(GameContext ctx) {
         CampaignState st = state(ctx);
-        return (st == null || st.awaitingEpisodeLaunch) ? 0.0 : st.transitionTimer;
+        if (st == null) return 0.0;
+        if (st.awaitingFleetHubChoice) return Math.max(0.0, st.fleetHubChoiceTimer);
+        if (st.awaitingEpisodeLaunch) return 0.0;
+        return Math.max(0.0, st.transitionTimer);
+    }
+
+    public static boolean isAwaitingFleetHubChoice(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled && st.awaitingFleetHubChoice;
     }
 
     public static String transitionLabel(GameContext ctx) {
@@ -890,9 +909,8 @@ public final class CampaignSystem {
         if (st.transitionSummaryTop == null || st.transitionSummaryTop.isBlank()) {
             st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it.";
         }
-        if (st.transitionSummaryBottom == null || st.transitionSummaryBottom.isBlank()) {
-            st.transitionSummaryBottom = "TAB: Fleet shop   |   B: Upgrade selected hull   |   ENTER launches";
-        }
+        // Always replace the bottom row with fleet hub controls (sector-clear screens use the same overlay).
+        st.transitionSummaryBottom = "TAB: Fleet shop   |   B: Upgrade selected hull   |   ENTER launches";
         st.introSequenceActive = false;
         st.introPhase = 0;
         st.introTimer = 0.0;
@@ -919,6 +937,7 @@ public final class CampaignSystem {
         ctx.command.playerTeleportChargeRemaining = 0.0;
         ctx.ui.fleetSelectedShipId = (ctx.player == null) ? -1 : ctx.player.id;
         ctx.ui.fleetSelectedTurretIndex = 0;
+        ctx.ui.fleetRefitMode = true;
         ctx.lockedTarget = ctx.player;
         ctx.state = GameState.FLEET;
     }
@@ -1218,6 +1237,118 @@ public final class CampaignSystem {
                 || role == ShipRole.HYPERWEAPON_TITAN;
     }
 
+    static int persistentFleetCapUpgradeStep(ShopHullCategory category) {
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> CAMPAIGN_ESCORT_CAP_UPGRADE_STEP;
+            case LINE -> CAMPAIGN_LINE_CAP_UPGRADE_STEP;
+            case CAPITAL -> CAMPAIGN_CAPITAL_CAP_UPGRADE_STEP;
+            case TITAN -> 0;
+        };
+    }
+
+    static int persistentFleetCapUpgradeMaxLevel(ShopHullCategory category) {
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> CAMPAIGN_ESCORT_CAP_UPGRADE_MAX_LEVEL;
+            case LINE -> CAMPAIGN_LINE_CAP_UPGRADE_MAX_LEVEL;
+            case CAPITAL -> CAMPAIGN_CAPITAL_CAP_UPGRADE_MAX_LEVEL;
+            case TITAN -> 0;
+        };
+    }
+
+    static int persistentFleetCapUpgradeLevel(GameContext ctx, ShopHullCategory category) {
+        return persistentFleetCapUpgradeLevel(state(ctx), category);
+    }
+
+    static int persistentFleetCapUpgradeLevel(CampaignState st, ShopHullCategory category) {
+        if (st == null) return 0;
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> Math.max(0, Math.min(CAMPAIGN_ESCORT_CAP_UPGRADE_MAX_LEVEL, st.escortCapUpgradeLevel));
+            case LINE -> Math.max(0, Math.min(CAMPAIGN_LINE_CAP_UPGRADE_MAX_LEVEL, st.lineCapUpgradeLevel));
+            case CAPITAL -> Math.max(0, Math.min(CAMPAIGN_CAPITAL_CAP_UPGRADE_MAX_LEVEL, st.capitalCapUpgradeLevel));
+            case TITAN -> 0;
+        };
+    }
+
+    static int persistentFleetCapUpgradeBonus(CampaignState st, ShopHullCategory category) {
+        return persistentFleetCapUpgradeLevel(st, category) * persistentFleetCapUpgradeStep(category);
+    }
+
+    static int persistentFleetCapUpgradeCreditCost(GameContext ctx, ShopHullCategory category) {
+        return persistentFleetCapUpgradeCreditCost(state(ctx), category);
+    }
+
+    static int persistentFleetCapUpgradeCreditCost(CampaignState st, ShopHullCategory category) {
+        int level = persistentFleetCapUpgradeLevel(st, category);
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> 900 + level * 450;
+            case LINE -> 1_600 + level * 800;
+            case CAPITAL -> 2_800 + level * 1_250;
+            case TITAN -> 0;
+        };
+    }
+
+    static int persistentFleetCapUpgradeOreCost(GameContext ctx, ShopHullCategory category) {
+        return persistentFleetCapUpgradeOreCost(state(ctx), category);
+    }
+
+    static int persistentFleetCapUpgradeOreCost(CampaignState st, ShopHullCategory category) {
+        int level = persistentFleetCapUpgradeLevel(st, category);
+        ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
+        return switch (resolved) {
+            case ESCORT -> 180 + level * 90;
+            case LINE -> 320 + level * 150;
+            case CAPITAL -> 560 + level * 240;
+            case TITAN -> 0;
+        };
+    }
+
+    public static boolean purchasePersistentFleetCapUpgrade(GameContext ctx, ShopHullCategory category) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || ctx.player == null || category == null) return false;
+        if (category == ShopHullCategory.TITAN) {
+            EventSystem.showBanner(ctx, "TITAN CAP FIXED BY MOTHERSHIP DOCTRINE", 1.8);
+            return false;
+        }
+
+        int level = persistentFleetCapUpgradeLevel(st, category);
+        int maxLevel = persistentFleetCapUpgradeMaxLevel(category);
+        if (level >= maxLevel) {
+            EventSystem.showBanner(ctx, category.label() + " EXPANSION MAXED", 1.8);
+            return false;
+        }
+
+        int currentCap = persistentFleetCap(st, category);
+        int liveCount = livePersistentFleetSlots(st, category);
+        if (liveCount < currentCap) {
+            EventSystem.showBanner(ctx, "FILL " + category.label() + " COMMAND FIRST", 1.8);
+            return false;
+        }
+
+        int creditCost = persistentFleetCapUpgradeCreditCost(st, category);
+        int oreCost = persistentFleetCapUpgradeOreCost(st, category);
+        if (ctx.credits < creditCost || ctx.player.cargo < oreCost) {
+            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS / ORE", 1.6);
+            return false;
+        }
+
+        ctx.credits -= creditCost;
+        ctx.player.cargo = Math.max(0, ctx.player.cargo - oreCost);
+        switch (category) {
+            case ESCORT -> st.escortCapUpgradeLevel = Math.min(maxLevel, st.escortCapUpgradeLevel + 1);
+            case LINE -> st.lineCapUpgradeLevel = Math.min(maxLevel, st.lineCapUpgradeLevel + 1);
+            case CAPITAL -> st.capitalCapUpgradeLevel = Math.min(maxLevel, st.capitalCapUpgradeLevel + 1);
+            case TITAN -> { return false; }
+        }
+        EventSystem.showBanner(ctx,
+                category.label() + " CAP +" + persistentFleetCapUpgradeStep(category),
+                1.8);
+        return true;
+    }
+
     static int campaignStandardCommandCost(ShipRole role) {
         if (role == null || role.isTitanOrMothership() || role == ShipRole.SUPERSHIP) return 0;
         return switch (role) {
@@ -1307,7 +1438,7 @@ public final class CampaignSystem {
         int effectiveTier = campaignRequiredTier(role, requiredTier);
         ShopHullCategory category = ShopHullCategory.forRole(role);
         int liveCount = livePersistentFleetSlots(st, category);
-        int cap = persistentFleetCap(category);
+        int cap = persistentFleetCap(st, category);
         if (liveCount >= cap) {
             EventSystem.showBanner(ctx, category.label() + " COMMAND CAP REACHED", 1.8);
             return false;
@@ -1418,7 +1549,7 @@ public final class CampaignSystem {
         return livePersistentFleetSlots(state(ctx), category);
     }
 
-    static int persistentFleetCap(ShopHullCategory category) {
+    static int persistentFleetBaseCap(ShopHullCategory category) {
         ShopHullCategory resolved = (category == null) ? ShopHullCategory.ESCORT : category;
         return switch (resolved) {
             case ESCORT -> CAMPAIGN_BLUE_ESCORT_CAP;
@@ -1428,15 +1559,27 @@ public final class CampaignSystem {
         };
     }
 
+    static int persistentFleetCap(ShopHullCategory category) {
+        return persistentFleetBaseCap(category);
+    }
+
+    static int persistentFleetCap(GameContext ctx, ShopHullCategory category) {
+        return persistentFleetCap(state(ctx), category);
+    }
+
+    static int persistentFleetCap(CampaignState st, ShopHullCategory category) {
+        return persistentFleetBaseCap(category) + persistentFleetCapUpgradeBonus(st, category);
+    }
+
     static String persistentFleetCompactSummary(GameContext ctx) {
         int escort = livePersistentFleetCount(ctx, ShopHullCategory.ESCORT);
         int line = livePersistentFleetCount(ctx, ShopHullCategory.LINE);
         int capital = livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
         int titan = livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
-        return "E" + escort + "/" + persistentFleetCap(ShopHullCategory.ESCORT)
-                + " L" + line + "/" + persistentFleetCap(ShopHullCategory.LINE)
-                + " C" + capital + "/" + persistentFleetCap(ShopHullCategory.CAPITAL)
-                + " T" + titan + "/" + persistentFleetCap(ShopHullCategory.TITAN);
+        return "E" + escort + "/" + persistentFleetCap(ctx, ShopHullCategory.ESCORT)
+                + " L" + line + "/" + persistentFleetCap(ctx, ShopHullCategory.LINE)
+                + " C" + capital + "/" + persistentFleetCap(ctx, ShopHullCategory.CAPITAL)
+                + " T" + titan + "/" + persistentFleetCap(ctx, ShopHullCategory.TITAN);
     }
 
     private static int standardCommandCapacity(CampaignState st) {
@@ -3646,7 +3789,8 @@ public final class CampaignSystem {
         advanceCoalitionMomentumOnSectorClear(st);
         String bossDrop = grantBossDrop(ctx);
         int nextSector = st.sector + 1;
-        boolean checkpointSaved = nextSector <= st.totalSectors && saveCheckpoint(ctx, st, nextSector);
+        boolean hasNextEpisode = nextSector <= st.totalSectors;
+        boolean checkpointSaved = hasNextEpisode && saveCheckpoint(ctx, st, nextSector);
         if (!checkpointSaved && nextSector > st.totalSectors) {
             CampaignCheckpointStore.clear();
         }
@@ -3655,20 +3799,18 @@ public final class CampaignSystem {
         SectorLore clearedLore = loreFor(st.sector);
         SectorLore nextLore = loreFor(Math.min(st.totalSectors, Math.max(1, nextSector)));
         st.transitionTimer = 0.0;
-        st.awaitingEpisodeLaunch = nextSector <= st.totalSectors;
-        st.pendingEpisodeSector = st.awaitingEpisodeLaunch ? nextSector : 0;
-        st.transitionLabel = st.awaitingEpisodeLaunch
+        st.awaitingEpisodeLaunch = false;
+        st.pendingEpisodeSector = hasNextEpisode ? nextSector : 0;
+        st.transitionLabel = hasNextEpisode
                 ? ("EPISODE " + nextSector + ": " + nextLore.title)
                 : (actBreak
                 ? ("ACT " + (st.act + 1) + ": " + actTitleFor(st.act + 1))
                 : ("JUMP TO " + nextLore.title));
         st.transitionSummaryTop = clearedLore.title + " secure. " + clearedLore.completionLead;
-        st.transitionSummaryBottom = "Click a ship to focus it   |   TAB: Fleet shop   |   B: Upgrade selected hull"
-                + "   |   ENTER: Launch next mission";
-        // Open the fleet hub immediately so the intermission stays interactive.
-        st.awaitingFleetHubChoice = false;
-        st.fleetHubChoiceTimer = 0.0;
-        enterFleetHub(ctx, st);
+        st.transitionSummaryBottom = "TAB: Open fleet hangar now   |   Auto-opens in ~"
+                + ((int) Math.round(FLEET_HUB_AUTO_OPEN_DELAY)) + " seconds";
+        st.awaitingFleetHubChoice = hasNextEpisode;
+        st.fleetHubChoiceTimer = hasNextEpisode ? FLEET_HUB_AUTO_OPEN_DELAY : 0.0;
         EventSystem.showBanner(ctx,
                 clearedLore.title + " SECURE  +" + bonus + " CREDITS"
                         + (sideBonus > 0 ? "  +SIDE " + sideBonus : "")
@@ -3677,9 +3819,9 @@ public final class CampaignSystem {
                         + (bossDrop.isBlank() ? "" : "  DROP ACQUIRED")
                         + "  DOCTRINE " + st.branchRoute
                         + (checkpointSaved ? "  CHECKPOINT SAVED" : "")
-                        + (st.awaitingEpisodeLaunch ? "  EPISODE READY" : "")
-                        + (!st.awaitingEpisodeLaunch && actBreak ? "  ACT BREAK" : ""),
-                st.awaitingEpisodeLaunch ? 3.2 : (actBreak ? 4.0 : 2.4));
+                        + (hasNextEpisode ? "  EPISODE READY" : "")
+                        + (!hasNextEpisode && actBreak ? "  ACT BREAK" : ""),
+                hasNextEpisode ? 3.2 : (actBreak ? 4.0 : 2.4));
         logTelemetry("sector_clear",
                 "sector=" + st.sector +
                         " elapsedSec=" + Math.round(st.sectorElapsed) +
@@ -3692,6 +3834,13 @@ public final class CampaignSystem {
                         " checkpoint=" + checkpointSaved +
                         " route=" + st.branchRoute +
                         " branchScore=" + st.branchScore);
+
+        if (!hasNextEpisode) {
+            ctx.gameOver = true;
+            ctx.state = GameState.GAME_OVER;
+            finalizeCampaignOutcome(ctx, st);
+            persistRunResult(ctx, true);
+        }
     }
 
     private static String grantSectorOutcomeReward(GameContext ctx, CampaignState st) {
@@ -4480,6 +4629,9 @@ public final class CampaignSystem {
         cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
         syncPersistentFleetEntrySnapshots(ctx, st);
         cp.persistentBlueFleet = serializePersistentBlueFleet(st.persistentBlueFleet);
+        cp.escortCapUpgradeLevel = st.escortCapUpgradeLevel;
+        cp.lineCapUpgradeLevel = st.lineCapUpgradeLevel;
+        cp.capitalCapUpgradeLevel = st.capitalCapUpgradeLevel;
         cp.campaignBlueYellowAlliance = st.campaignBlueYellowAlliance;
         cp.greenContractFleetJoined = st.greenContractFleetJoined;
         cp.yellowLiberationFleetJoined = st.yellowLiberationFleetJoined;
@@ -4559,6 +4711,9 @@ public final class CampaignSystem {
         st.yellowLiberationFleetJoined = cp.yellowLiberationFleetJoined;
         st.greenContractFavor = cp.greenContractFavor;
         st.yellowLiberationFavor = cp.yellowLiberationFavor;
+        st.escortCapUpgradeLevel = Math.max(0, Math.min(CAMPAIGN_ESCORT_CAP_UPGRADE_MAX_LEVEL, cp.escortCapUpgradeLevel));
+        st.lineCapUpgradeLevel = Math.max(0, Math.min(CAMPAIGN_LINE_CAP_UPGRADE_MAX_LEVEL, cp.lineCapUpgradeLevel));
+        st.capitalCapUpgradeLevel = Math.max(0, Math.min(CAMPAIGN_CAPITAL_CAP_UPGRADE_MAX_LEVEL, cp.capitalCapUpgradeLevel));
         restorePersistentBlueFleet(st, cp.persistentBlueFleet);
         ctx.miningBaseMul = Math.max(0.0, cp.miningBaseMul);
         ctx.orePriceBaseMul = Math.max(0.0, cp.orePriceBaseMul);
@@ -4711,7 +4866,8 @@ public final class CampaignSystem {
                     .append(turret.missileLife).append('|')
                     .append(String.format(Locale.US, "%.4f", turret.radius)).append('|')
                     .append(String.format(Locale.US, "%.4f", turret.barrelLen)).append('|')
-                    .append(turret.primary);
+                    .append(turret.primary).append('|')
+                    .append((turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM.name() : turret.missileRole.name());
         }
         return sb.toString();
     }
@@ -4747,6 +4903,11 @@ public final class CampaignSystem {
                 turret.radius = Double.parseDouble(parts[11]);
                 turret.barrelLen = Double.parseDouble(parts[12]);
                 turret.primary = Boolean.parseBoolean(parts[13]);
+                if (parts.length >= 15) {
+                    turret.missileRole = parseEnum(parts[14], Turret.MissileRole.ANTI_MEDIUM);
+                } else {
+                    turret.missileRole = Turret.MissileRole.ANTI_MEDIUM;
+                }
                 ship.addTurret(turret);
             } catch (Exception ignored) {
                 // Skip malformed turret entries and keep the rest.

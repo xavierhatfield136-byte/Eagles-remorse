@@ -1,4 +1,4 @@
-# Campaign Escort Direction
+﻿# Campaign Escort Direction
 
 Date: 2026-03-31
 Status: Active design direction
@@ -509,10 +509,10 @@ Already in the build:
 - [x] The final Earth battle is already scripted as the closing sector.
 
 Still backlog:
-- [ ] Fleet-tab ship-by-ship editing.
-- [ ] Slot-level weapon swapping and missile subtype editing.
-- [ ] Mission-complete handoff delay before the fleet tab.
-- [ ] Additional map-performance work for the largest maps.
+- [x] Fleet-tab ship-by-ship editing.
+- [x] Slot-level weapon swapping and missile subtype editing.
+- [x] Mission-complete handoff delay before the fleet tab.
+- [x] Additional map-performance work for the largest maps.
 
 ## Open Design Questions
 
@@ -531,6 +531,44 @@ Still backlog:
 - Yellow liberation is primarily boarding/recovery and disablement based, with liberated hulls joining the fleet later in the campaign.
 - Fleet expansion is a mix of direct hull buys, persistent fleet caps, and contract-style reinforcement packages.
 
+
+## gripe list raw
+Change the Blue teamâ€™s standard primary weapons so they behave visually and functionally more like the current Beam Bolt primary, not like the existing pulse-laser style.
+
+Current problem:
+The Blue teamâ€™s default primary weapons currently fire a single energy particle, then pause, then fire again. That creates a slow pulse-laser rhythm, which is not the intended weapon style.
+
+Desired behavior:
+I want the Blue teamâ€™s standard primary weapon to use the Energy Bolt style, but with firing behavior similar to the Beam Bolt primary.
+
+Important firing logic change:
+Do not treat the turret as if all barrels combine into one shared shot with a long pause between each barrel.
+I want each barrel to fire independently as part of one trigger pull / firing command.
+
+Specifically:
+
+When the player fires, or when AI orders the turret to fire, the turret should begin a short firing sequence across its barrels.
+Barrel 1 fires
+0.2 seconds later, Barrel 2 fires
+0.2 seconds later, Barrel 3 fires
+Continue this pattern for however many barrels the turret has
+
+What I do not want:
+
+Barrel 1 fires, then the whole turret pauses too long
+Barrel 2 fires, then the whole turret pauses too long
+Barrel 3 fires, then the whole turret pauses too long
+
+The firing should feel like a staggered multi-barrel volley, not isolated single shots with full cooldown pauses between barrels.
+
+Design goal:
+This keeps the weaponâ€™s damage per minute effective while matching the intended Blue faction visual identity:
+
+a visible head projectile
+an energy/beam trail following behind it
+a more continuous, flowing beam-bolt style instead of chunky pulse-laser fire
+
+In short: make the default Blue primary weapon fire per-barrel staggered Energy Bolts with 0.25 second spacing between barrels, all triggered from one firing command.
 ## Open Gripe Checklist
 
 This section replaces the raw gripe dump with a working checklist.
@@ -558,7 +596,7 @@ Checklist:
 - [x] Preserve ore, cargo, and ship inventory when the player presses `F10` to leave a campaign mission for the fleet tab.
   **Completion:** Files modified: `CampaignSystem.java`, `CampaignCheckpointStore.java`. Added fleet hub choice state to checkpoint persistence to preserve inventory across F10 exits. Validated both in-mission and between-sector scenarios.
 - [x] Do not force the fleet tab immediately on mission success; offer the choice first, then auto-advance after about `10` seconds.
-  **Completion:** Files modified: `CampaignSystem.java`, `UISystem.java`. Added `awaitingFleetHubChoice` and `fleetHubChoiceTimer` fields; implemented 10-second countdown in campaign update loop; TAB key triggers immediate entry via `tryEnterFleetHubImmediately()`. Timeout prevents indefinite stalling.
+  **Completion:** Files modified: `CampaignSystem.java`, `UISystem.java`, `GameRenderSystem.java`. Sector clear now sets `awaitingFleetHubChoice` and a ~10s timer instead of forcing the fleet hub immediately; TAB triggers immediate entry via `tryEnterFleetHubImmediately()`, otherwise it auto-opens when the timer elapses.
 - [x] Move or restyle the mission-end / next-episode banner so it does not block the shop or other centered menus.
   **Completion:** Files modified: `Renderer.java`. Repositioned event banner Y-coordinate from 10 to 60 pixels, clearing centered menu visibility.
 
@@ -574,13 +612,13 @@ Goal:
 Checklist:
 - [x] Rework missions `3`, `4`, and `5` so the base Mothership cannot finish them in under a second.
   **Note:** Sector 4 now stays at four authored blockers in the live campaign data, and authored destroy progress is used for completion.
-  **Completion:** Files modified: `CampaignSystem.java`. Sector 3: adjusted objectives 8→12 targets; Sector 4: 4→7 targets; Sector 5: 6→10 targets. Changes provide sufficient combat duration for ore collection while maintaining fast pacing.
+  **Completion:** Files modified: `CampaignSystem.java`. Sector scripts: Sector 3 DESTROY goal = `12`; Sector 4 DESTROY goal = `4`; Sector 5 DESTROY goal = `10`.
 - [x] Retune episode `9` so it remains a serious challenge but does not obliterate an otherwise healthy run.
-  **Completion:** Files modified: `CampaignSystem.java`. Reduced red spawn count to ~65% of original (100→65). Mission remains intense but no longer punitive to healthy runs.
+  **Completion:** Files modified: `CampaignSystem.java`. Sector 9 SURVIVE goal = `65` seconds.
 - [x] Retune episode `10` so it cannot be cleared in under a second.
-  **Completion:** Files modified: `CampaignSystem.java`. Adjusted objectives 12→16 targets. Preserves campaign beat while forcing meaningful engagement.
+  **Completion:** Files modified: `CampaignSystem.java`. Sector 10 DESTROY goal = `16`.
 - [x] Recheck episode `11` enemy count and pacing so it stops reading like a pure meat grinder.
-  **Completion:** Files modified: `CampaignSystem.java`. Reduced enemy count to ~74% of original (115→85). Maintains high pressure while removing sense of impossibility.
+  **Completion:** Files modified: `CampaignSystem.java`. Sector 11 SURVIVE goal = `85` seconds.
 
 Balancing rules:
 - Early and mid-campaign sectors must allow resource gain, not just survival.
@@ -598,7 +636,7 @@ Goal:
 
 Checklist:
 - [x] Keep fogged sectors fully simulated but fully unrendered when out of sight.
-  **Completion:** Files modified: `GameRenderSystem.java`. Added fog-based culling for explosions in fully fogged regions. Explosions are checked against `ctx.fogOfWar.isVisibleAtWorld()` before rendering (in addition to viewport culling). Preserves simulation integrity—explosions continue to exist and detonate, only render calls are skipped. Works alongside existing per-entity visibility checks (`isProjectileVisible()`, `isExplosionVisible()`).
+  **Completion:** Files modified: `GameRenderSystem.java`. Added fog-based culling for explosions in fully fogged regions. Explosions are checked against `ctx.fogOfWar.isVisibleAtWorld()` before rendering (in addition to viewport culling). Preserves simulation integrity: explosions continue to exist and detonate, only render calls are skipped. Works alongside existing per-entity visibility checks (`isProjectileVisible()`, `isExplosionVisible()`).
 - [x] Profile the largest map size and identify the biggest render and simulation costs.
   **Completion:** Files modified: `Renderer.java`. Added `drawPerformanceMetrics()` method that displays real-time performance data in debug overlay (enabled with `DevTools.isDebugOverlay()`). Shows: drawn ships/projectiles/VFX/explosions vs total, render/update times, FPS, asteroid and salvage counts. Metrics collected via existing `ctx.perf` telemetry object (drawnShips, drawnProjectiles, drawnExplosions, renderMs, fps, etc.). Allows comparing largest-map performance before/after Phase 3 optimizations.
 - [x] Remove the explosion visual effects from small shots hitting hulls.
@@ -666,22 +704,33 @@ Goal:
 - Make blue and green weapons feel distinct, readable, and tactically intentional.
 
 Checklist:
-- [ ] Restore the older blue-team fighter projectile skin instead of the newer noisy blue beam look.
-- [ ] Make green missiles read more like green photon torpedoes.
-- [ ] Add a blue torpedo sidegrade: higher warhead yield, lower guidance time, best against slower targets.
-- [ ] Make friendly Superships and other special-weapon ships use their superweapons more aggressively.
+- [x] Restore the older blue-team fighter projectile skin instead of the newer noisy blue beam look.
+  **Completion:** Files modified: `Renderer.java`, `assets/projectile_skins/energy_bolt.png`, `assets/projectile_skins/beam_bolt.png`. ENERGY_BOLT now renders with a clean sprite bolt (when `energy_bolt.png` is present), replacing the braided beam look that made fighter volleys visually noisy; BEAM_BOLT keeps the braided beam but overlays a heavier head sprite (`beam_bolt.png`) for readability. Ran `gradlew test`.
+- [x] Make green missiles read more like green photon torpedoes.
+  **Completion:** Files modified: `Renderer.java`. TEAM_C missile rendering now adds a brighter torpedo head glow and thicker, softer trail so green salvos read as photon torpedoes instead of generic missiles. Ran `gradlew test`.
+- [x] Add a blue torpedo sidegrade: higher warhead yield, lower guidance time, best against slower targets.
+  **Completion:** Files modified: `Turret.java`. Blue missiles now support role-based sidegrades: `ANTI_HEAVY` behaves like a high-yield torpedo (+35% damage) with reduced guidance agility (turn rate *0.60 and speed *0.92) to reward use against slower/capital targets; `INTERCEPT` is faster/higher-turn but lower damage. Ran `gradlew test`.
+- [x] Push NPC fleet combat to medium/long-range standoff (no point-blank brawls). Small craft should screen at standoff distance while firing, so missiles have a real reason to exist.
+  **Completion:** Files modified: `AISystem.java`, `CarrierSystem.java`. Raised role preferred engagement ranges (ex: Fighters 210->520, Cruisers 520->840, Missile Boats 760->1180; Titans pushed outward across the board). Reduced "push" range contraction so aggression no longer collapses into knife-fight range; added a hard standoff floor and slight per-ship range variation to reduce orbit pile-ups. Carrier-launched strike craft now maintain standoff (Fighters ~520, Bombers ~820) instead of orbiting at near-contact distances; boarding bombers still close only when a target qualifies for capture. PD escorts orbit further out to act as a screen. Ran `gradlew test`.
+- [x] Make friendly Superships and other special-weapon ships use their superweapons more aggressively.
   Instructions:
   If they see a `medium cruiser` or larger and the superweapon is charged, they should prefer the largest valid target and fire, then return to normal AI.
-- [ ] Make blue-team non-missile turrets keep their target until the last projectile they fired hits or despawns.
-- [ ] Make blue-team non-missile turrets wait for their prior projectile to resolve before firing again.
-- [ ] Add flight-distance damage growth for those blue non-missile projectiles so slower cadence still pays off.
-- [ ] Split blue energy-bolt and beam-bolt barrel behavior.
+  **Completion:** Files modified: `AISystem.java`. When a friendly-to-player superweapon ship can fire, it now searches for the largest `medium cruiser`+ target inside superweapon range (including carriers and titans), overrides the superweapon target to that ship, and fires immediately (with a low confidence gate) before returning to normal targeting. Ran `gradlew test`.
+- [x] Make blue-team non-missile turrets keep their target until the last projectile they fired hits or despawns.
+  **Completion:** Files modified: `Turret.java`. Blue main-battery gun turrets now lock onto the fired-at ship target while their last fired projectile is still alive, and turret aiming respects that lock (so target selection does not jitter mid-shot). Ran `gradlew test` (updated `WeaponDoctrineBalanceTest`).
+- [x] Make blue-team non-missile turrets wait for their prior projectile to resolve before firing again.
+  **Completion:** Files modified: `Turret.java`, `WeaponDoctrineBalanceTest.java`. Blue main-battery gun turrets now refuse to fire again until their last fired projectile resolves (hits or despawns), even if cooldown has finished. Ran `gradlew test`.
+- [x] Add flight-distance damage growth for those blue non-missile projectiles so slower cadence still pays off.
+  **Completion:** Files modified: `Projectile.java`, `Turret.java`, `WeaponDoctrineBalanceTest.java`. Blue gun projectiles now accumulate distance traveled and scale effective damage upward over flight; verified via unit test. Ran `gradlew test`.
+- [x] Split blue energy-bolt and beam-bolt barrel behavior.
   Instructions:
   `ENERGY_BOLT`: stagger barrels one at a time over about `0.5` seconds total, without merging beams.
   `BEAM_BOLT`: fire all barrels together as one joined beam.
   Two-barrel weapons should still stagger, but with both barrels active during the overlap window.
   Initial target stagger interval: about `0.25` seconds.
-- [ ] Add new blue and green launcher/turret content, including photon torpedoes, interceptor missiles, and related variants.
+  **Completion:** Files modified: `Ship.java`, `Player.java`, `Turret.java`, `Renderer.java`, `UISystem.java`, `AISystem.java`, `WeaponDoctrineBalanceTest.java`. Added ship-level barrel staggering (`ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS = 0.25`) so multi-gun ENERGY_BOLT ships fire one gun per interval (while BEAM_BOLT ships only fire when all guns are ready: volley). Added burst-latching so one fire command starts a short per-barrel firing sequence (player tap continues across barrels). Blue ENERGY_NAVY primaries now keep the beam-bolt visual identity in both modes, with shop/UI wording updated to present them as beam-bolt stagger vs beam-bolt volley instead of two unrelated projectile families. Ran `gradlew test`.
+- [x] Add new blue and green launcher/turret content, including photon torpedoes, interceptor missiles, and related variants.
+  **Completion:** Files modified: `Turret.java`, `FleetShip.java`, `DoctrineRegistry.java`, `Renderer.java`. Expanded missile-role content into distinct blue and green launcher behavior: interceptor missiles, anti-light and anti-heavy variants, and heavier green photon-torpedo style salvos. Defaults now assign missile roles by fleet doctrine and conversion logic, and faction visuals/gameplay both read the variants more clearly. Ran `gradlew test`.
 
 Combat-behavior rules:
 - Missile turrets are excluded from the "wait for prior projectile to resolve" rule unless explicitly stated otherwise.
@@ -698,13 +747,18 @@ Goal:
 - Make the Mothership feel crewed, alive, and tactically readable through voice and ambience.
 
 Checklist:
-- [ ] Improve voice acting quality and give crew members more personality.
-- [ ] Remove the `"stand down from combat alert"` line.
-- [ ] Add banter between crew members.
-- [ ] Add ambient bridge/station audio for fleet organizer, weaponry, engineering, main interactable crew, small-craft director, and XO.
+- [x] Improve voice acting quality and give crew members more personality.
+**Completion:** Files modified: `AudioSystem.java`, `VoiceAssetQualityHarness.java`, `scripts/generate-local-crew-voice.ps1`, `assets/ai_pipeline/crew_voice_lines.csv`, `assets/ai_pipeline/local_tts_voices.example.json`, `assets/ai_pipeline/local_tts_voices.json`, `assets/voice/*`. Added actual generated fleet-hub banter, ambient bridge chatter, and replacement `combat_end_clear` voice assets for captain, helm, tactical, engineering, and science. The local voice pipeline now supports distinct per-role engines/voices with Windows SAPI fallback when Piper models are unavailable, allowing the crew to sound like multiple people instead of one reused voice. Tuned fleet-hub chatter cadence upward so crew exchanges happen more reliably without overtaking tactical callouts. Ran `gradlew test`, `VoiceCoverageHarness --strict`, `VoiceAssetQualityHarness --strict`, and `VoiceRoleLineCountHarness --strict --min-lines=20`.
+- [x] Remove the `"stand down from combat alert"` line.
+  **Completion:** Files modified: `AudioSystem.java`. Rewrote the captain "combat end" cue so it no longer contains the `"stand down from combat alert"` wording, and changed the voice event id to avoid playing the legacy `combat_end` WAV (falls back to tone until replacement VO is provided as `assets/voice/captain/combat_end_clear_01.wav`). Ran `gradlew test`.
+- [x] Add banter between crew members.
+  **Completion:** Files modified: `AudioSystem.java`. Added low-priority fleet-hub banter cue pools for captain, helm, tactical, engineering, and science, including optional follow-up replies so the bridge can trade short lines without overtaking tactical callouts. Current implementation uses the existing generated/caption-backed VO pipeline and can be upgraded with additional generated assets later. Ran `gradlew test`.
+- [x] Add ambient bridge/station audio for fleet organizer, weaponry, engineering, main interactable crew, small-craft director, and XO.
   Instructions:
   These lines should sit under direct player-callout volume: quieter, still hearable, never masking important commands.
-- [ ] Raise engine background SFX loudness to better support the Mothership environment.
+  **Completion:** Files modified: `AudioSystem.java`. Added quieter fleet-hub ambient chatter cues for fleet organizer, XO, tactical/weaponry, engineering, science, and small-craft direction. Chatter only runs in fleet-hub conditions without visible hostiles, uses low-priority ducked mix levels, and stays under direct combat callouts. Ran `gradlew test`.
+- [x] Raise engine background SFX loudness to better support the Mothership environment.
+  **Completion:** Files modified: `AudioSystem.java`. Raised the ambient-loop mix targets (idle -26.0dB -> -24.0dB, combat -23.5dB -> -21.5dB) while keeping voice ducking so bridge ambience reads without masking callouts. Ran `gradlew test`.
 
 Audio rules:
 - Treat code and content as separate subtracks inside the same phase.
@@ -721,13 +775,15 @@ Goal:
 - Expand long-term progression and give Titan hulls stronger tactical identity.
 
 Checklist:
-- [ ] Let the player increase unit cap with ore and money for each ship type.
+- [x] Let the player increase unit cap with ore and money for each ship type.
   Instructions:
   Tie this to fleet growth and campaign economy, not just a flat unlock ladder.
-- [ ] Give every Titan ship a special active combat ability that fits its theme.
+  **Completion:** Files modified: `CampaignSystem.java`, `Renderer.java`, `UISystem.java`, `CampaignCheckpointStore.java`, `CampaignPersistentFleetShopTest.java`. Added persistent escort/line/capital cap-expansion purchases in the fleet hub commission view. Each band must be filled before it can be expanded, expansion costs scale per prior upgrade level, and upgrade levels persist through campaign checkpoints. Final tuning: Escort `+2` cap per purchase (`$900 + 450*level`, `180 + 90*level` ore), Line `+1` (`$1600 + 800*level`, `320 + 150*level` ore), Capital `+1` (`$2800 + 1250*level`, `560 + 240*level` ore). Titan cap remains fixed by the Mothership doctrine ceiling of `8`.
+- [x] Give every Titan ship a special active combat ability that fits its theme.
   Instructions:
   Each ability should reinforce the Titan's role in the command ladder and escort fantasy.
   Avoid generic "big damage button" duplication across all Titans.
+  **Completion:** Files modified: `TitanAbilitySystem.java`, `GameSimulationRuntime.java`, `TitanAbilitySystemTest.java`, `Ship.java`. Titan command abilities are now live in runtime and exercised by regression coverage across the roster: logistics repair/support fields, Bulwark and Shield Bastion defensive lattices, Carrier Support rearm fields, Vanguard rapid-assault buffs, Interdiction warp and missile disruption, Command/Intel fire-control boosts, Boarding/Recovery disruption and capture support, Artillery and Hyperweapon long-range offensive support, Fleet Teleporter warp-acceleration support, Elite command auras, Mobile Station service-node support, and the Mothership-wide command field. Added broader regression tests for Bulwark, Vanguard, Shield Bastion, Fleet Teleporter, Elite Command, Elite Reinforcements, Mobile Station, Hyperweapon, and Mothership support behavior. Ran `gradlew test`.
 
 Design rules:
 - New progression systems should reinforce escort tension, fleet growth, and formation command.

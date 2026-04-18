@@ -106,6 +106,48 @@ class TitanAbilitySystemTest {
     }
 
     @Test
+    void bulwarkTitanImprovesNearbyCapitalShieldNetwork() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.BULWARK_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 180.0, 0.0);
+        mothership.hasCIWS = true;
+        mothership.shield = Math.max(0.0, mothership.shieldMax * 0.35);
+
+        ctx.ships.add(titan);
+        ctx.ships.add(mothership);
+        ctx.entityQuery.rebuild(ctx);
+
+        double baseShieldRegen = mothership.shieldRegenMultiplier();
+        double baseCiws = mothership.ciwsRangeMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(mothership.shieldRegenMultiplier() > baseShieldRegen);
+        assertTrue(mothership.ciwsRangeMultiplier() > baseCiws);
+    }
+
+    @Test
+    void vanguardTitanPushesNearbyEscortsIntoFastAttackPosture() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.VANGUARD_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip ally = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 160.0, 0.0);
+
+        ctx.ships.add(titan);
+        ctx.ships.add(ally);
+        ctx.entityQuery.rebuild(ctx);
+
+        double baseDamage = ally.weaponDamageMultiplier();
+        double baseCycle = ally.weaponCycleRateMultiplier();
+        double baseWarp = ally.warpChargeRateMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(ally.weaponDamageMultiplier() > baseDamage);
+        assertTrue(ally.weaponCycleRateMultiplier() > baseCycle);
+        assertTrue(ally.warpChargeRateMultiplier() > baseWarp);
+    }
+
+    @Test
     void boardingRecoveryTitanBombersCaptureWeakIsolatedTargets() {
         GameContext ctx = testContext();
         FleetShip titan = new FleetShip(ShipRole.BOARDING_RECOVERY_TITAN, Faction.ALLY, 0.0, 0.0);
@@ -140,6 +182,50 @@ class TitanAbilitySystemTest {
     }
 
     @Test
+    void shieldBastionTitanStabilizesNearbyFormation() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.SHIELD_BASTION_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip ally = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 220.0, 0.0);
+        ally.takePenetratingInternalDamage(14, ally.x, ally.y, 1.0, 0.0);
+        ally.shield = Math.max(0.0, ally.shieldMax * 0.20);
+        int hpBefore = ally.hp;
+        double shieldBefore = ally.shield;
+
+        ctx.ships.add(titan);
+        ctx.ships.add(ally);
+        for (int i = 0; i < 180; i++) {
+            ctx.entityQuery.rebuild(ctx);
+            TitanAbilitySystem.update(ctx, GameContext.DT);
+        }
+
+        assertTrue(ally.hp > hpBefore);
+        assertTrue(ally.shield > shieldBefore);
+        assertTrue(ally.supportFieldMultiplier() > 1.0);
+    }
+
+    @Test
+    void fleetTeleporterTitanAcceleratesNearbyWarpCharge() {
+        GameContext withTitan = testContext();
+        FleetShip titan = new FleetShip(ShipRole.FLEET_TELEPORTER_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip ally = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 180.0, 0.0);
+        withTitan.ships.add(titan);
+        withTitan.ships.add(ally);
+        withTitan.entityQuery.rebuild(withTitan);
+
+        GameContext baseline = testContext();
+        FleetShip control = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 180.0, 0.0);
+        baseline.ships.add(control);
+        baseline.entityQuery.rebuild(baseline);
+
+        TitanAbilitySystem.update(withTitan, GameContext.DT);
+        assertTrue(ally.beginBattlefieldWarp(900.0, 0.0, 6.0));
+        assertTrue(control.beginBattlefieldWarp(900.0, 0.0, 6.0));
+
+        assertTrue(ally.warpChargeRateMultiplier() > control.warpChargeRateMultiplier());
+        assertTrue(ally.warpChargeDuration() < control.warpChargeDuration());
+    }
+
+    @Test
     void artilleryTitanSuperweaponDeletesSubBattleshipTargets() {
         Ship.enableDeterministicRandom(2468L);
         try {
@@ -171,6 +257,112 @@ class TitanAbilitySystemTest {
         } finally {
             Ship.disableDeterministicRandom();
         }
+    }
+
+    @Test
+    void eliteSupershipCommandTitanBuffsSupershipWing() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip supership = new FleetShip(ShipRole.SUPERSHIP, Faction.ALLY, 220.0, 0.0);
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 260.0, 0.0);
+
+        ctx.ships.add(titan);
+        ctx.ships.add(supership);
+        ctx.ships.add(escort);
+        ctx.entityQuery.rebuild(ctx);
+
+        double superDamage = supership.weaponDamageMultiplier();
+        double superCycle = supership.weaponCycleRateMultiplier();
+        double escortDamage = escort.weaponDamageMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(supership.weaponDamageMultiplier() > superDamage);
+        assertTrue(supership.weaponCycleRateMultiplier() > superCycle);
+        assertEquals(escortDamage, escort.weaponDamageMultiplier(), 1e-9);
+    }
+
+    @Test
+    void eliteReinforcementsTitanBuffsHonorGuardAndScreensDifferently() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.ELITE_REINFORCEMENTS_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip battleship = new FleetShip(ShipRole.BATTLESHIP, Faction.ALLY, 200.0, 0.0);
+        FleetShip escort = new FleetShip(ShipRole.CIWS_CORVETTE, Faction.ALLY, 240.0, 0.0);
+
+        ctx.ships.add(titan);
+        ctx.ships.add(battleship);
+        ctx.ships.add(escort);
+        ctx.entityQuery.rebuild(ctx);
+
+        double battleDamage = battleship.weaponDamageMultiplier();
+        double escortCiws = escort.ciwsRangeMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(battleship.weaponDamageMultiplier() > battleDamage);
+        assertTrue(escort.ciwsRangeMultiplier() > escortCiws);
+    }
+
+    @Test
+    void mobileStationTitanActsAsLocalServiceNode() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.MOBILE_STATION_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip carrier = new FleetShip(ShipRole.CARRIER, Faction.ALLY, 180.0, 0.0);
+        carrier.takePenetratingInternalDamage(12, carrier.x, carrier.y, 1.0, 0.0);
+        carrier.shield = Math.max(0.0, carrier.shieldMax * 0.25);
+        int hpBefore = carrier.hp;
+
+        ctx.ships.add(titan);
+        ctx.ships.add(carrier);
+        for (int i = 0; i < 180; i++) {
+            ctx.entityQuery.rebuild(ctx);
+            TitanAbilitySystem.update(ctx, GameContext.DT);
+        }
+
+        assertTrue(carrier.hp > hpBefore);
+        assertTrue(carrier.supportFieldMultiplier() > 1.0);
+        assertTrue(carrier.strikeCraftTempoMultiplier() > 1.0);
+    }
+
+    @Test
+    void hyperweaponTitanImprovesNearbyScreenControl() {
+        GameContext ctx = testContext();
+        FleetShip titan = new FleetShip(ShipRole.HYPERWEAPON_TITAN, Faction.ALLY, 0.0, 0.0);
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 180.0, 0.0);
+        escort.hasCIWS = true;
+
+        ctx.ships.add(titan);
+        ctx.ships.add(escort);
+        ctx.entityQuery.rebuild(ctx);
+
+        double baseSensor = escort.sensorRangeMultiplier();
+        double baseCiws = escort.ciwsRangeMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(escort.sensorRangeMultiplier() > baseSensor);
+        assertTrue(escort.ciwsRangeMultiplier() > baseCiws);
+    }
+
+    @Test
+    void mothershipProjectsFormationWideSupportField() {
+        GameContext ctx = testContext();
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 0.0, 0.0);
+        FleetShip ally = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 220.0, 0.0);
+
+        ctx.ships.add(mothership);
+        ctx.ships.add(ally);
+        ctx.entityQuery.rebuild(ctx);
+
+        double baseDamage = ally.weaponDamageMultiplier();
+        double baseShield = ally.shieldRegenMultiplier();
+        double baseSupport = ally.supportFieldMultiplier();
+
+        TitanAbilitySystem.update(ctx, GameContext.DT);
+
+        assertTrue(ally.weaponDamageMultiplier() > baseDamage);
+        assertTrue(ally.shieldRegenMultiplier() > baseShield);
+        assertTrue(ally.supportFieldMultiplier() > baseSupport);
     }
 
     @Test

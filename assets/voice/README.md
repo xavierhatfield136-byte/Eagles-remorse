@@ -33,4 +33,5 @@ Local AI generation:
 
 - Configure role models: `assets/ai_pipeline/local_tts_voices.json` (copy from `.example`)
 - Generate role lines with local Piper: `./scripts/generate-local-crew-voice.ps1 -VoiceConfigPath assets/ai_pipeline/local_tts_voices.json`
+- Or use Windows desktop voices by setting role `engine` to `sapi` and `voice_name` in `assets/ai_pipeline/local_tts_voices.json`
 - Full local pipeline: `./scripts/run-local-ai-crew-pipeline.ps1 -VoiceConfigPath assets/ai_pipeline/local_tts_voices.json`

@@ -1457,6 +1457,8 @@ public final class EconomySystem {
             nt.missileSpeed = turret.missileSpeed;
             nt.missileTurnRate = turret.missileTurnRate;
             nt.missileLife = turret.missileLife;
+            nt.missileRole = turret.missileRole;
+            nt.enablesDamageGrowth = turret.enablesDamageGrowth;
             nt.radius = turret.radius;
             nt.barrelLen = turret.barrelLen;
             nt.primary = turret.primary;

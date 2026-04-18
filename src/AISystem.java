@@ -185,7 +185,8 @@ public final class AISystem {
                     if (isAlive(target)) {
                         fight(ctx, s, target, dt);
                     } else {
-                        double orbitRange = Math.max(130.0, escortCarrier.radius + 95.0);
+                        // Keep PD escorts out as a screen, instead of hugging the carrier.
+                        double orbitRange = Math.max(360.0, escortCarrier.radius + 220.0);
                         double speed = Math.max(95.0, MovementModel.speedCeiling(s) * 0.92);
                         orbit(s, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
                     }
@@ -1925,6 +1926,53 @@ public final class AISystem {
         return role != null && role.isCapitalCombatant();
     }
 
+    private static boolean isMediumCruiserOrLarger(ShipRole role) {
+        if (role == null) return false;
+        if (role.isTitanOrMothership()) return true;
+        return switch (role) {
+            case MEDIUM_CRUISER, CRUISER,
+                 BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP,
+                 CARRIER, DRONE_CARRIER -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isFriendlyToPlayer(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null || ship.faction == null) return false;
+        if (ctx.player == null || ctx.player.faction == null) return false;
+        return ctx.player.faction.isFriendlyTo(ship.faction);
+    }
+
+    private static Ship selectLargestSuperweaponTarget(GameContext ctx, Ship shooter, double range) {
+        if (ctx == null || shooter == null || shooter.faction == null) return null;
+        if (range <= 1.0) return null;
+
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(shooter.faction, shooter.x, shooter.y, range, nearby);
+
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double r2 = range * range;
+        for (Ship enemy : nearby) {
+            if (!isAlive(enemy) || enemy.faction == null) continue;
+            if (shooter.faction.isFriendlyTo(enemy.faction)) continue;
+            if (!isMediumCruiserOrLarger(enemy.role)) continue;
+            if (!TargetingSystem.isDetectableToObserver(shooter, enemy)) continue;
+
+            double d2 = dist2(shooter.x, shooter.y, enemy.x, enemy.y);
+            if (d2 > r2) continue;
+
+            double score = roleWeightForFlagship(enemy.role) * 1000.0 + enemy.hpMax * 3.0 + enemy.radius * 8.0;
+            // Only a tiebreaker: we still prefer "largest", but avoid throwing shots away at extreme edge range.
+            score -= Math.sqrt(d2) * 0.18;
+            if (score > bestScore) {
+                bestScore = score;
+                best = enemy;
+            }
+        }
+        return best;
+    }
+
     private static double battlelineCoherenceScore(List<Ship> members, Ship flagship, Ship ship, Ship target) {
         if (!isAlive(flagship) || !isAlive(ship)) return 0.0;
         if (members == null || members.isEmpty()) return 0.0;
@@ -2287,8 +2335,9 @@ public final class AISystem {
             s.tryCIWS(dt, ctx);
             return;
         }
-        // Determine preferred range by role
-        double range = preferredRange(s);
+        // Determine preferred range by role (our default standoff distance)
+        double baseRange = preferredRange(s);
+        double range = baseRange;
         double aggression = roleAggressionBias(s.role) + factionAggressionBias(s.faction);
         double standoff = roleStandoffBias(s.role) + factionStandoffBias(s.faction);
         double approachMul = roleApproachSpeedMul(s.role);
@@ -2322,8 +2371,15 @@ public final class AISystem {
         if (push && supportBalance < -0.45) push = false;
         if (objective == SquadObjective.RESERVE && supportBalance < 0.25) fallBack = true;
         if (objective == SquadObjective.INTERCEPT && supportBalance > -0.30 && selfHull > 0.40) fallBack = false;
-        if (push) range *= Math.max(0.62, 0.72 - aggression * 0.06);
+        // Even when "pushing", keep battles at standoff range (missiles need space to matter).
+        if (push) range *= Math.max(0.86, 0.92 - aggression * 0.04);
         if (fallBack) range *= 1.32 + Math.max(0.0, standoff) * 0.10;
+        // Per-ship standoff variation reduces "orbit pile-ups" when many ships share a target.
+        double personalRangeMul = 0.94 + (((s.id * 97) & 7) * 0.02); // 0.94 .. 1.08
+        range *= personalRangeMul;
+        // Hard floor so fleets don't collapse into point-blank brawls.
+        double standoffFloor = Math.max(baseRange * 0.88, s.radius + target.radius + 220.0);
+        if (range < standoffFloor) range = standoffFloor;
         double d2 = dist2(s.x, s.y, target.x, target.y);
         double d = Math.sqrt(d2);
         boolean dogfightRole = isDogfightRole(s.role);
@@ -2434,32 +2490,60 @@ public final class AISystem {
                 superweaponRangeBase = Math.max(640.0, beamReach * 0.92);
             }
             double superweaponRange = superweaponRangeBase * rangeMul;
-            if (dist <= superweaponRange) {
+
+            Ship swTarget = target;
+            double swDist = dist;
+            double swConfidence = confidence;
+            boolean swKillConfirm = killConfirm;
+            boolean swOverkillLikely = overkillLikely;
+            double swHull = targetHull;
+
+            boolean friendlyToPlayer = isFriendlyToPlayer(ctx, s);
+            boolean canStartSuperweapon = s.canFireSuperweapon();
+            boolean aggressiveLargestTargeting = friendlyToPlayer && canStartSuperweapon;
+            if (aggressiveLargestTargeting) {
+                Ship largest = selectLargestSuperweaponTarget(ctx, s, superweaponRange);
+                if (isAlive(largest)) {
+                    swTarget = largest;
+                    swDist = Math.hypot(largest.x - s.x, largest.y - s.y);
+                    double swSensorConfidence = observerEWConfidence(ctx, s, swTarget, swDist);
+                    swConfidence = Math.max(0.0, Math.min(1.0, swSensorConfidence * Math.max(0.20, teamConfidence)));
+                    swKillConfirm = isKillConfirmActive(swTarget);
+                    swOverkillLikely = isOverkillLikely(ctx, s, swTarget);
+                    swHull = hullFrac(swTarget);
+                }
+            }
+
+            if (swDist <= superweaponRange) {
                 boolean superShip = (s.role == ShipRole.SUPERSHIP || s.role == ShipRole.HYPERWEAPON_TITAN);
                 boolean allowSuperweapon;
-                if (superShip) {
-                    // Phase 5.4: Superships are more aggressive with superweapons
-                    // If charged and target is medium-cruiser or larger, fire at largest valid target
-                    boolean isChargedAndReady = s.isSuperweaponCharging() || s.getSuperweaponRemaining() <= 0.1;
-                    boolean targetIsCapital = isCapitalRole(target.role);
-                    if (isChargedAndReady && targetIsCapital && confidence >= 0.32) {
-                        allowSuperweapon = true;  // Much more aggressive when weapon is ready
-                    } else {
-                        // Normal aggression rules
-                        double confGate = isCapitalRole(target.role) ? 0.38 : 0.46;
-                        double hullGate = isCapitalRole(target.role) ? 0.12 : 0.18;
-                        allowSuperweapon = confidence >= confGate && targetHull > hullGate && !killConfirm;
-                    }
+
+                if (aggressiveLargestTargeting && swTarget != null && isMediumCruiserOrLarger(swTarget.role)) {
+                    // Phase 5.4: Friendly superweapon ships should take high-impact shots as soon as they're ready.
+                    allowSuperweapon = swConfidence >= 0.32 && !swKillConfirm;
+                } else if (superShip) {
+                    // Normal supership gating (still more aggressive than non-superweapon ships).
+                    double confGate = isCapitalRole(swTarget.role) ? 0.38 : 0.46;
+                    double hullGate = isCapitalRole(swTarget.role) ? 0.12 : 0.18;
+                    allowSuperweapon = swConfidence >= confGate && swHull > hullGate && !swKillConfirm;
                 } else {
-                    allowSuperweapon = confidence >= 0.62 && targetHull > 0.30 && !killConfirm && !overkillLikely;
+                    allowSuperweapon = swConfidence >= 0.62 && swHull > 0.30 && !swKillConfirm && !swOverkillLikely;
                 }
+
                 if (objective == SquadObjective.RESERVE) {
-                    allowSuperweapon = allowSuperweapon && confidence >= (superShip ? 0.58 : 0.78) && dist <= superweaponRange * (superShip ? 0.82 : 0.70);
+                    allowSuperweapon = allowSuperweapon
+                            && swConfidence >= (superShip ? 0.58 : 0.78)
+                            && swDist <= superweaponRange * (superShip ? 0.82 : 0.70);
                 }
                 if (objective == SquadObjective.INTERCEPT) {
-                    allowSuperweapon = allowSuperweapon && confidence >= (superShip ? 0.44 : 0.56);
+                    allowSuperweapon = allowSuperweapon && swConfidence >= (superShip ? 0.44 : 0.56);
                 }
-                Projectile shot = allowSuperweapon ? s.tryFireSuperweapon(target, dt) : null;
+
+                if (allowSuperweapon && swTarget != null) {
+                    s.trackSuperweaponAim(swTarget.x, swTarget.y);
+                }
+
+                Projectile shot = allowSuperweapon ? s.tryFireSuperweapon(swTarget, dt) : null;
                 if (shot != null) {
                     ctx.projectiles.add(shot);
                     ScreenShake.kick(3.5);
@@ -2468,10 +2552,14 @@ public final class AISystem {
             }
         }
 
+        boolean blueTeam = (s.faction == Faction.PLAYER || s.faction == Faction.ALLY);
+        boolean energyBoltStagger = blueTeam && s.usesStaggeredPrimaryFire();
+        boolean beamBoltVolley = blueTeam && s.usesVolleyPrimaryFire();
+        boolean dogfightRole = isDogfightRole(s.role);
+
+        // Aim all turrets first so we can coordinate synchronized beam-bolt volleys with a single readiness check.
         for (Turret t : s.turrets) {
             if (t == null) continue;
-
-            // Always track assigned target, even when weapon is cooling down or out of range.
             if (t.kind == Turret.Kind.GUN) {
                 if (Turret.usesCiwsPelletsAgainst(s, t, target)) {
                     t.aimAtLead(dt, s, target, Turret.effectiveInterceptorProjectileSpeed(s, t));
@@ -2484,43 +2572,107 @@ public final class AISystem {
             } else {
                 t.aimAt(dt, s, target);
             }
+        }
 
-            // Rough engagement gating by weapon kind
-            double gunRange;
-            double missileRange;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
-                gunRange = 1100.0;
-                missileRange = 1850.0;
-            } else {
-                gunRange = 720.0;
-                missileRange = 1300.0;
+        // Rough engagement gating by weapon kind (shared across turrets on the same ship).
+        double gunRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 1100.0 : 720.0;
+        double missileRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 1850.0 : 1300.0;
+        gunRange = gunRange * gunRangeRoleMul(s.role) * rangeMul;
+        missileRange = missileRange * missileRangeRoleMul(s.role) * rangeMul;
+
+        ArrayList<Integer> mainGunIndices = null;
+        int mainGunCount = 0;
+        if (energyBoltStagger || beamBoltVolley) {
+            mainGunIndices = new ArrayList<>();
+            for (int i = 0; i < s.turrets.size(); i++) {
+                Turret t = s.turrets.get(i);
+                if (t == null || t.kind != Turret.Kind.GUN) continue;
+                if (Turret.usesCiwsPelletsAgainst(s, t, target)) continue;
+                mainGunIndices.add(i);
             }
-            gunRange *= gunRangeRoleMul(s.role);
-            missileRange *= missileRangeRoleMul(s.role);
-            double maxRange = (t.kind == Turret.Kind.MISSILE) ? missileRange : gunRange;
-            maxRange *= rangeMul;
-            if (dist > maxRange) continue;
+            mainGunCount = mainGunIndices.size();
+        }
 
-            // Only fire if ready and roughly aligned
+        boolean useStagger = energyBoltStagger && mainGunCount > 1;
+        boolean useVolley = beamBoltVolley && mainGunCount > 1;
+
+        boolean volleyReady = false;
+        if (useVolley) {
+            volleyReady = true;
+            for (int idx : mainGunIndices) {
+                Turret t = s.turrets.get(idx);
+                if (!isGunTurretReadyToFire(s, t, target, dist, gunRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
+                    volleyReady = false;
+                    break;
+                }
+            }
+        }
+
+        int selectedGunIndex = -1;
+        int selectedGunNextCursor = -1;
+        if (useStagger && s.primaryGunStaggerTimer <= 0.0) {
+            int start = Math.floorMod(s.primaryGunStaggerCursor, mainGunCount);
+            for (int i = 0; i < mainGunCount; i++) {
+                int ord = (start + i) % mainGunCount;
+                int idx = mainGunIndices.get(ord);
+                Turret t = s.turrets.get(idx);
+                if (!isGunTurretReadyToFire(s, t, target, dist, gunRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
+                    continue;
+                }
+                selectedGunIndex = idx;
+                selectedGunNextCursor = ord + 1;
+                break;
+            }
+        }
+
+        boolean staggerFired = false;
+        for (int i = 0; i < s.turrets.size(); i++) {
+            Turret t = s.turrets.get(i);
+            if (t == null) continue;
+
+            if (t.kind == Turret.Kind.MISSILE) {
+                if (dist > missileRange) continue;
+                if (!t.canFire()) continue;
+
+                double wx = t.worldX(s);
+                double wy = t.worldY(s);
+                double desired = Math.atan2(target.y - wy, target.x - wx);
+                double delta = Math.abs(MathUtil.normalizeAngle(desired - t.angle));
+                if (delta > Math.toRadians(28)) continue;
+
+                if (!shouldFireMissileWithDiscipline(ctx, s, target, dist, confidence, objective, killConfirm, overkillLikely)) {
+                    continue;
+                }
+
+                Projectile p = t.fire(s, target, dt);
+                if (p != null) {
+                    ctx.projectiles.add(p);
+                    firedCount++;
+                }
+                continue;
+            }
+
+            // --- GUN turrets ---
+            if (dist > gunRange) continue;
+
+            boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
+            if (!ciwsStyle) {
+                if (useVolley && !volleyReady) continue;
+                if (useStagger) {
+                    if (selectedGunIndex < 0 || i != selectedGunIndex) continue;
+                }
+            }
+
             if (!t.canFire()) continue;
 
             double wx = t.worldX(s);
             double wy = t.worldY(s);
             double desired = Math.atan2(target.y - wy, target.x - wx);
             double delta = Math.abs(MathUtil.normalizeAngle(desired - t.angle));
-
-            // Allow looser alignment for missiles
-            double tol = (t.kind == Turret.Kind.MISSILE) ? Math.toRadians(28) : Math.toRadians(14);
-            if (t.kind == Turret.Kind.GUN && isDogfightRole(s.role)) {
-                tol = Math.toRadians(24);
-            }
+            double tol = ciwsStyle ? Math.toRadians(24) : (dogfightRole ? Math.toRadians(24) : Math.toRadians(14));
             if (delta > tol) continue;
 
-            if (t.kind == Turret.Kind.MISSILE) {
-                if (!shouldFireMissileWithDiscipline(ctx, s, target, dist, confidence, objective, killConfirm, overkillLikely)) {
-                    continue;
-                }
-            } else if ((killConfirm || overkillLikely) && objective != SquadObjective.INTERCEPT) {
+            if (!ciwsStyle && (killConfirm || overkillLikely) && objective != SquadObjective.INTERCEPT) {
                 // Preserve gun cycles when target is already collapsing unless we're in dedicated intercept duty.
                 if (dist > 280.0 && targetHull < 0.18) continue;
             }
@@ -2529,9 +2681,34 @@ public final class AISystem {
             if (p != null) {
                 ctx.projectiles.add(p);
                 firedCount++;
+                if (useStagger && !staggerFired) {
+                    staggerFired = true;
+                    s.primaryGunStaggerCursor = selectedGunNextCursor;
+                    s.primaryGunStaggerTimer = Ship.ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS;
+                }
             }
         }
         return firedCount;
+    }
+
+    private static boolean isGunTurretReadyToFire(Ship host, Turret t, Ship target, double dist, double gunRange,
+                                                  boolean dogfightRole, SquadObjective objective,
+                                                  boolean killConfirm, boolean overkillLikely, double targetHull) {
+        if (host == null || t == null || target == null) return false;
+        if (dist > gunRange) return false;
+        if (!t.canFire()) return false;
+
+        double wx = t.worldX(host);
+        double wy = t.worldY(host);
+        double desired = Math.atan2(target.y - wy, target.x - wx);
+        double delta = Math.abs(MathUtil.normalizeAngle(desired - t.angle));
+        double tol = dogfightRole ? Math.toRadians(24) : Math.toRadians(14);
+        if (delta > tol) return false;
+
+        if ((killConfirm || overkillLikely) && objective != SquadObjective.INTERCEPT) {
+            if (dist > 280.0 && targetHull < 0.18) return false;
+        }
+        return true;
     }
 
     private static Turret firstGunTurret(Ship ship) {
@@ -2602,21 +2779,19 @@ public final class AISystem {
         if (s == null || target == null) return false;
 
         if (isAttackRunRole(s.role)) {
-            double runRange = range * 0.88;
-            double closeBreak = range * 0.68;
-            if (fallBack && dist < range * 0.96) {
+            // Screen and strafe at standoff range. (Old attack-pass behavior collapsed fleets into point-blank blobs.)
+            double screenRange = range * 1.02;
+            double tooClose = range * 0.88;
+            double tooFar = range * 1.22;
+            if (dist < tooClose || (fallBack && dist < screenRange * 1.02)) {
                 retreatFromTarget(ctx, s, target, speed * 1.06, dt);
                 return true;
             }
-            if (dist > runRange * 1.12) {
-                moveTowardAttackVector(s, target, speed * 1.08 * approachMul, dt, orbitDir, 110.0);
+            if (dist > tooFar) {
+                moveTowardAttackVector(s, target, speed * 1.05 * approachMul, dt, orbitDir, 160.0);
                 return true;
             }
-            if (dist < closeBreak || s.aiNoFireTimer > 0.55) {
-                executeAttackPass(s, target, speed * 1.02, dt, orbitDir, 155.0, 84.0);
-                return true;
-            }
-            moveTowardFacingTarget(s, target, speed * 1.00, dt, 1.28);
+            holdOrbitFacingTarget(s, target, screenRange, speed * 0.78 * orbitMul, dt, orbitDir, 1.18);
             return true;
         }
 
@@ -2649,13 +2824,14 @@ public final class AISystem {
         }
 
         if (isBrawlerRole(s.role)) {
-            double commitRange = range * (push ? 0.80 : 0.92);
+            // "Brawlers" still commit slightly, but never to point-blank range.
+            double commitRange = range * (push ? 0.96 : 1.00);
             double brawlSpeed = speed * (1.00 + Math.max(0.0, aggression) * 0.06);
             if (dist > commitRange * 1.06) {
                 moveTowardFacingTarget(s, target, brawlSpeed * approachMul, dt, 1.20);
                 return true;
             }
-            if (fallBack && dist < commitRange * 0.86) {
+            if (fallBack && dist < commitRange * 0.92) {
                 retreatFromTarget(ctx, s, target, speed * 0.96, dt);
                 return true;
             }
@@ -2686,26 +2862,26 @@ public final class AISystem {
         if (titanRange != null) return titanRange;
         // Keep roles feeling different
         return switch (s.role) {
-            case FIGHTER, DRONE -> 210;
-            case PD_CRAFT -> 260;
-            case BOMBER -> 560;
-            case PATROL -> 300;
-            case PICKET -> 460;
-            case FRIGATE -> 370;
-            case ARTILLERY_SHIP -> 720;
-            case CIWS_CORVETTE -> 280;
-            case MISSILE_BOAT -> 760;
-            case LIGHT_CRUISER -> 440;
-            case MEDIUM_CRUISER, CRUISER -> 520;
-            case BATTLECRUISER -> 460;
-            case BATTLESHIP -> 650;
-            case DREADNOUGHT -> 730;
-            case SUPERSHIP -> 980;
-            case CARRIER -> 920;
-            case DRONE_CARRIER -> 820;
-            case TRANSPORT, HAULER, MINER -> 760;
-            case STEALTH_SHIP -> 420;
-            default -> 380; // fallback for any roles you add later
+            case FIGHTER, DRONE -> 520;
+            case PD_CRAFT -> 640;
+            case BOMBER -> 860;
+            case PATROL -> 560;
+            case PICKET -> 860;
+            case FRIGATE -> 660;
+            case ARTILLERY_SHIP -> 980;
+            case CIWS_CORVETTE -> 620;
+            case MISSILE_BOAT -> 1180;
+            case LIGHT_CRUISER -> 760;
+            case MEDIUM_CRUISER, CRUISER -> 840;
+            case BATTLECRUISER -> 820;
+            case BATTLESHIP -> 940;
+            case DREADNOUGHT -> 1020;
+            case SUPERSHIP -> 1100;
+            case CARRIER -> 1200;
+            case DRONE_CARRIER -> 1120;
+            case TRANSPORT, HAULER, MINER -> 1100;
+            case STEALTH_SHIP -> 720;
+            default -> 520; // fallback for any roles you add later
         };
 
     }
@@ -2899,20 +3075,20 @@ public final class AISystem {
     private static Double titanPreferredRange(ShipRole role) {
         if (role == null) return null;
         return switch (role) {
-            case TRANSPORT_TITAN -> 920.0;
-            case BULWARK_TITAN -> 700.0;
-            case CARRIER_SUPPORT_TITAN -> 980.0;
-            case VANGUARD_TITAN -> 520.0;
-            case INTERDICTION_TITAN -> 620.0;
-            case COMMAND_INTEL_TITAN -> 860.0;
-            case BOARDING_RECOVERY_TITAN -> 600.0;
-            case ARTILLERY_TITAN -> 1180.0;
-            case SHIELD_BASTION_TITAN -> 760.0;
-            case FLEET_TELEPORTER_TITAN -> 900.0;
-            case ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN -> 1020.0;
-            case MOBILE_STATION_TITAN -> 980.0;
-            case HYPERWEAPON_TITAN -> 1220.0;
-            case MOTHERSHIP -> 1120.0;
+            case TRANSPORT_TITAN -> 1080.0;
+            case BULWARK_TITAN -> 900.0;
+            case CARRIER_SUPPORT_TITAN -> 1180.0;
+            case VANGUARD_TITAN -> 860.0;
+            case INTERDICTION_TITAN -> 920.0;
+            case COMMAND_INTEL_TITAN -> 1080.0;
+            case BOARDING_RECOVERY_TITAN -> 920.0;
+            case ARTILLERY_TITAN -> 1320.0;
+            case SHIELD_BASTION_TITAN -> 980.0;
+            case FLEET_TELEPORTER_TITAN -> 1120.0;
+            case ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN -> 1220.0;
+            case MOBILE_STATION_TITAN -> 1180.0;
+            case HYPERWEAPON_TITAN -> 1380.0;
+            case MOTHERSHIP -> 1280.0;
             default -> null;
         };
     }

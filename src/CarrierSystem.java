@@ -19,18 +19,18 @@ public final class CarrierSystem {
     private static final double ORPHAN_DESPAWN_SECONDS = 18.0;
     private static final double RTB_HP_FRAC = 0.35;
     private static final double RECOVERY_PAD = 10.0;
-    private static final double DEFEND_RANGE = 320.0;
-    private static final double DEFEND_ORBIT = 170.0;
+    private static final double DEFEND_RANGE = 640.0;
+    private static final double DEFEND_ORBIT = 360.0;
     private static final double ATTACK_SEARCH_RANGE = 1450.0;
     private static final double ATTACK_LEASH_RANGE = 980.0;
     private static final double PD_ESCORT_RESPAWN_SECONDS = 9.0;
     private static final double PD_ESCORT_ANCHOR_RANGE = 360.0;
     private static final int STRIKE_WING_SIZE = 2;
     private static final int STRIKE_SQUAD_SIZE = 2;
-    private static final double STRIKE_FORMATION_SPACING = 54.0;
-    private static final double STRIKE_COHESION_RANGE = 240.0;
-    private static final double BOMBER_ESCORT_RANGE = 220.0;
-    private static final double BOMBER_GUARD_REACTION_RANGE = 420.0;
+    private static final double STRIKE_FORMATION_SPACING = 120.0;
+    private static final double STRIKE_COHESION_RANGE = 420.0;
+    private static final double BOMBER_ESCORT_RANGE = 360.0;
+    private static final double BOMBER_GUARD_REACTION_RANGE = 640.0;
     private static final WeakHashMap<GameContext, Map<Integer, Double>> PD_ESCORT_COOLDOWNS = new WeakHashMap<>();
 
     public static void update(GameContext ctx, double dt) {
@@ -225,12 +225,12 @@ public final class CarrierSystem {
         // No hostile in range: hold a loose forward screen near the carrier.
         double fx = Math.cos(carrier.angle);
         double fy = Math.sin(carrier.angle);
-        double tx = carrier.x + fx * (carrier.radius + 220.0);
-        double ty = carrier.y + fy * (carrier.radius + 220.0);
+        double tx = carrier.x + fx * (carrier.radius + 420.0);
+        double ty = carrier.y + fy * (carrier.radius + 420.0);
         double side = ((craft.id & 1) == 0) ? -1.0 : 1.0;
-        tx += -fy * side * 140.0;
-        ty += fx * side * 140.0;
-        steerToward(craft, tx, ty, Math.max(120.0, craft.desiredSpeed * 0.92), dt);
+        tx += -fy * side * 260.0;
+        ty += fx * side * 260.0;
+        steerToward(craft, tx, ty, Math.max(120.0, craft.desiredSpeed * 0.94), dt);
     }
 
     private static Ship findClosestHostileToPoint(GameContext ctx, Ship carrier, double x, double y, double maxDist) {
@@ -594,16 +594,22 @@ public final class CarrierSystem {
 
         double tx = target.x;
         double ty = target.y;
+        // Keep strike craft at standoff range; otherwise they collapse into point-blank dogpiles.
         double desiredRange = switch (craft.role) {
-            case FIGHTER -> Math.max(22.0, target.radius + 18.0);
-            case BOMBER -> Math.max(72.0, target.radius + 54.0);
-            case DRONE -> Math.max(44.0, target.radius + 36.0);
-            default -> Math.max(26.0, target.radius + 22.0);
+            case FIGHTER -> 520.0;
+            case BOMBER -> 820.0;
+            case DRONE -> 560.0;
+            default -> 520.0;
         };
+        // Boarding bombers must still close to capture once a target is isolated and weak.
+        if (isBoardingBomber(craft, carrier) && carrier != null && carrier.faction != null
+                && isBoardingTarget(ctx, target, carrier.faction)) {
+            desiredRange = Math.max(42.0, target.radius + craft.radius + 18.0);
+        }
 
         double ang = Math.atan2(target.y - craft.y, target.x - craft.x);
         double tangent = ang + ((slot & 1) == 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
-        double offsetMag = Math.min(STRIKE_FORMATION_SPACING * 1.15, 16.0 + slot * 12.0);
+        double offsetMag = Math.min(STRIKE_FORMATION_SPACING * 1.15, 60.0 + slot * 90.0);
         tx += Math.cos(ang + Math.PI) * desiredRange + Math.cos(tangent) * offsetMag;
         ty += Math.sin(ang + Math.PI) * desiredRange + Math.sin(tangent) * offsetMag;
 

@@ -6,6 +6,7 @@ Optional sprite overrides for projectile rendering.
 - `missile.png` (already supported)
 - `energy_bolt.png`
 - `beam_bolt.png`
+- `beam_bolt_single.png`
 - `wave_shot.png`
 - `bullet.png`
 - `ciws_pellet.png`
@@ -18,7 +19,7 @@ If a file is missing, the game uses procedural visuals automatically.
 - Keep the sprite centered in canvas.
 - Recommended source sizes:
   - `missile`, `wave_shot`: `256x128`
-  - `energy_bolt`, `beam_bolt`: `192x96`
+  - `energy_bolt`, `beam_bolt`, `beam_bolt_single`: `192x96`
   - `bullet`, `ciws_pellet`: `96x96`
 
 ## ChatGPT prompt templates
@@ -32,6 +33,9 @@ Use these directly in ChatGPT image generation and adjust color words per factio
 
 ### `beam_bolt.png`
 "2D heavy energy slug sprite, thicker than normal plasma bolt, intense white-blue center with electric halo, transparent background, game-ready"
+
+### `beam_bolt_single.png`
+"2D narrow single-lane beam bolt sprite, white-blue lance head with slim cyan halo, designed as one beam barrel rather than a merged triple beam, transparent background, game-ready"
 
 ### `wave_shot.png`
 "2D superweapon beam projectile sprite, long narrow energy lance with layered glow bands and bright centerline, transparent background, no text"

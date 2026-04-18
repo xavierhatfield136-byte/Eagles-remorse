@@ -1,6 +1,9 @@
 import app.config.GameConfig;
 import app.config.GameMode;
+import app.persistence.CampaignCheckpointStore;
 import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -143,6 +146,59 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
+    void fleetCapUpgradeRequiresFullBandAndThenRaisesEscortLimit() {
+        GameContext ctx = campaignShopContext(250_000, 25_000, 5, 9);
+
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
+
+        assertFalse(CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT));
+
+        int baseEscortCap = CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.ESCORT);
+        for (int i = 0; i < baseEscortCap; i++) {
+            assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
+        }
+        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
+
+        int creditCost = CampaignSystem.persistentFleetCapUpgradeCreditCost(ctx, ShopHullCategory.ESCORT);
+        int oreCost = CampaignSystem.persistentFleetCapUpgradeOreCost(ctx, ShopHullCategory.ESCORT);
+        int creditsBefore = ctx.credits;
+        int oreBefore = ctx.player.cargo;
+
+        assertTrue(CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT));
+
+        assertEquals(creditsBefore - creditCost, ctx.credits);
+        assertEquals(oreBefore - oreCost, ctx.player.cargo);
+        assertEquals(baseEscortCap + CampaignSystem.persistentFleetCapUpgradeStep(ShopHullCategory.ESCORT),
+                CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.ESCORT));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
+    }
+
+    @Test
+    void fleetCapUpgradeLevelsPersistThroughCheckpointRestore() throws Exception {
+        CampaignCheckpointStore.clear();
+        GameContext ctx = campaignShopContext(50_000, 8_000, 5, 11);
+        ctx.campaign.escortCapUpgradeLevel = 2;
+        ctx.campaign.lineCapUpgradeLevel = 1;
+        ctx.campaign.capitalCapUpgradeLevel = 1;
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 12);
+
+        GameContext restored = campaignShopContext(0, 0, 1, 1);
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        assertEquals(2, restored.campaign.escortCapUpgradeLevel);
+        assertEquals(1, restored.campaign.lineCapUpgradeLevel);
+        assertEquals(1, restored.campaign.capitalCapUpgradeLevel);
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT) + 4,
+                CampaignSystem.persistentFleetCap(restored, ShopHullCategory.ESCORT));
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.LINE) + 1,
+                CampaignSystem.persistentFleetCap(restored, ShopHullCategory.LINE));
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL) + 1,
+                CampaignSystem.persistentFleetCap(restored, ShopHullCategory.CAPITAL));
+    }
+
+    @Test
     void fleetHubUpgradeSlotsAreRoleSpecificAndApplyImmediately() {
         GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
         ctx.campaign.awaitingEpisodeLaunch = true;
@@ -215,5 +271,27 @@ class CampaignPersistentFleetShopTest {
         ctx.baseUpgrades.put(ctx.player, upgrades);
         ctx.credits = credits;
         return ctx;
+    }
+
+    private static CampaignCheckpointStore.Checkpoint captureCheckpoint(GameContext ctx, int nextSector) throws Exception {
+        Method captureCheckpoint = CampaignSystem.class.getDeclaredMethod(
+                "captureCheckpoint",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                int.class
+        );
+        captureCheckpoint.setAccessible(true);
+        return (CampaignCheckpointStore.Checkpoint) captureCheckpoint.invoke(null, ctx, ctx.campaign, nextSector);
+    }
+
+    private static boolean applyCheckpoint(GameContext ctx, CampaignCheckpointStore.Checkpoint checkpoint) throws Exception {
+        Method applyCheckpoint = CampaignSystem.class.getDeclaredMethod(
+                "applyCheckpoint",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                CampaignCheckpointStore.Checkpoint.class
+        );
+        applyCheckpoint.setAccessible(true);
+        return (boolean) applyCheckpoint.invoke(null, ctx, ctx.campaign, checkpoint);
     }
 }

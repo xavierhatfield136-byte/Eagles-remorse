@@ -241,7 +241,10 @@ public abstract class Ship {
     private static final double ROOM_DISRUPTION_CURVE_EXPONENT = 0.92;
     private static final double ROOM_DISRUPTION_REPAIR_SECONDS = 1.0;
 
-    // Primary weapon family (Energy Navy only for now)
+    // Primary weapon package (Energy Navy only for now).
+    // Internal names are retained for save compatibility:
+    // - ENERGY_BOLT = staggered beam-bolt doctrine
+    // - BEAM_BOLT = synchronized beam-bolt volley doctrine
     public enum PrimaryWeaponFamily {
         ENERGY_BOLT,
         BEAM_BOLT
@@ -255,6 +258,17 @@ public abstract class Ship {
     public static final int BEAM_BOLT_LIFE = 150; // frames (~1950px at 780 px/s)
 
     public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
+
+    // Phase 5.8: Primary gun barrel coordination.
+    // ENERGY_BOLT uses staggered beam-bolt fire; BEAM_BOLT volleys all barrels together.
+    public static final double ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS = 0.25;
+    public double primaryGunStaggerTimer = 0.0;
+    public int primaryGunStaggerCursor = 0;
+    /**
+     * When non-zero, we're in the middle of a staggered beam-bolt multi-barrel sequence that should continue
+     * even if the controlling system only issued a momentary "fire" command (tap / single AI order).
+     */
+    public int primaryGunStaggerBurstRemaining = 0;
 
     private static final class GunBaseline {
         final double cooldown;
@@ -793,6 +807,11 @@ public abstract class Ship {
         syncDefenseGateState(false);
         updateShieldGateRecharge(dt);
 
+        if (primaryGunStaggerTimer > 0.0) {
+            primaryGunStaggerTimer -= dt;
+            if (primaryGunStaggerTimer < 0.0) primaryGunStaggerTimer = 0.0;
+        }
+
         for (Turret t : turrets) t.update(dt);
 
         ciwsTimer -= dt;
@@ -870,6 +889,23 @@ public abstract class Ship {
                 t.bulletLife = base.bulletLife;
             }
         }
+    }
+
+    public boolean usesBeamBoltPrimaryVisuals() {
+        try {
+            DoctrineProfile profile = DoctrineRegistry.forFaction(faction);
+            return profile != null && profile.doctrine == Doctrine.ENERGY_NAVY;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public boolean usesStaggeredPrimaryFire() {
+        return primaryWeaponFamily == PrimaryWeaponFamily.ENERGY_BOLT;
+    }
+
+    public boolean usesVolleyPrimaryFire() {
+        return primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT;
     }
 
     private GunBaseline cacheGunBaseline(Turret t) {

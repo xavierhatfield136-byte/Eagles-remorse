@@ -14,6 +14,15 @@ captain,order_escort,3,"Escort detail, tighten formation.",command,2,tactical_or
 captain,order_defend,1,"Hold the line. Defensive posture.",command,2,tactical_order
 captain,order_defend,2,"Defensive stations. Hold position.",command,2,tactical_order
 captain,order_defend,3,"Maintain defense coverage.",command,2,tactical_order
+captain,order_mine,1,"Mining group, proceed to extraction.",command,2,tactical_order
+captain,order_mine,2,"Mining detail, move on the resource pocket.",command,2,tactical_order
+captain,order_mine,3,"Cover the miners and hold the lane.",command,2,tactical_order
+captain,order_repair,1,"Damaged ships, peel off for repairs.",command,2,tactical_order
+captain,order_repair,2,"Repair group, disengage and recover.",command,2,tactical_order
+captain,order_repair,3,"Withdraw damaged hulls and begin damage control.",command,2,tactical_order
+captain,order_rtb,1,"All units, return to base.",command,2,tactical_order
+captain,order_rtb,2,"Return to base and prepare to dock.",command,2,tactical_order
+captain,order_rtb,3,"Base recovery pattern is now in effect.",command,2,tactical_order
 helm,intercept,1,"Intercept course set.",focused,1,navigation
 helm,intercept,2,"Course laid in for intercept.",focused,1,navigation
 helm,intercept,3,"Intercept vector confirmed.",focused,1,navigation
@@ -62,3 +71,59 @@ science,jammed,5,"Data integrity dropping under jamming pressure.",urgent,3,sens
 science,scan_complete,1,"Scan complete.",focused,1,sensors
 science,scan_complete,2,"Analysis package complete.",focused,1,sensors
 science,scan_complete,3,"Full scan resolved and verified.",focused,1,sensors
+captain,combat_end_clear,1,"Area secure.",relief,1,combat_close
+captain,combat_end_clear,2,"Area secure. Maintain readiness.",relief,1,combat_close
+captain,fleet_organizer_ambient,1,"Fleet roster synced. Dock crews standing by.",ambient,1,fleet_hub
+captain,fleet_organizer_ambient,2,"Hangar assignments updated.",ambient,1,fleet_hub
+captain,fleet_organizer_ambient,3,"Contract board refreshed.",ambient,1,fleet_hub
+captain,fleet_organizer_ambient,4,"Stores and hull plates accounted for.",ambient,1,fleet_hub
+captain,xo_ambient,1,"XO confirms: crews ready to launch.",ambient,1,fleet_hub
+captain,xo_ambient,2,"Maintenance rotation complete.",ambient,1,fleet_hub
+captain,xo_ambient,3,"Damage teams are rested. For now.",ambient,1,fleet_hub
+captain,xo_ambient,4,"Command net is quiet. That's a gift.",ambient,1,fleet_hub
+captain,banter,1,"Keep the formation tight. The universe hates empty space.",dry,1,fleet_hub
+captain,banter,2,"If you can hear me, you're still on the payroll.",dry,1,fleet_hub
+captain,banter,3,"Let's not make engineering earn their keep today.",dry,1,fleet_hub
+captain,banter,4,"Remember: escorts exist so we don't die heroically.",dry,1,fleet_hub
+captain,banter,5,"Someone tell Tactical to stop naming missiles.",dry,1,fleet_hub
+captain,banter,6,"If we lose this hull, we're walking home.",dry,1,fleet_hub
+helm,flight_deck_ambient,1,"Flight crews standing by.",ambient,1,fleet_hub
+helm,flight_deck_ambient,2,"Strike craft fuelled and armed.",ambient,1,fleet_hub
+helm,flight_deck_ambient,3,"Launch rails cleared.",ambient,1,fleet_hub
+helm,flight_deck_ambient,4,"Deck crew reports ready.",ambient,1,fleet_hub
+helm,banter,1,"If we could stop drifting into debris, I'd appreciate it.",light,1,fleet_hub
+helm,banter,2,"Thrusters respond... eventually.",light,1,fleet_hub
+helm,banter,3,"Next time we dock, I'm asking for a new nav console.",light,1,fleet_hub
+helm,banter,4,"I can thread this needle. Don't ask how.",light,1,fleet_hub
+helm,banter,5,"If you hear a scrape, no you didn't.",light,1,fleet_hub
+helm,banter,6,"Course is set. It's the universe that needs to cooperate.",light,1,fleet_hub
+tactical,weaponry_ambient,1,"Weapon checks green across batteries.",ambient,1,fleet_hub
+tactical,weaponry_ambient,2,"Magazines topped. Guidance links stable.",ambient,1,fleet_hub
+tactical,weaponry_ambient,3,"Fire control reports tight tracking.",ambient,1,fleet_hub
+tactical,weaponry_ambient,4,"CIWS arcs recalibrated.",ambient,1,fleet_hub
+tactical,banter,1,"I am once again requesting we shoot from farther away.",dry,1,fleet_hub
+tactical,banter,2,"Missiles are expensive. Let's pretend that matters.",dry,1,fleet_hub
+tactical,banter,3,"Targeting solution is clean. Like my conscience.",dry,1,fleet_hub
+tactical,banter,4,"If it moves, it's hostile. If it doesn't, it's salvage.",dry,1,fleet_hub
+tactical,banter,5,"Guns charged. Please refrain from ramming.",dry,1,fleet_hub
+tactical,banter,6,"Fire control is ready. Try not to blink.",dry,1,fleet_hub
+engineering,station_ambient,1,"Reactor stable. Heat sinks cycling.",ambient,1,fleet_hub
+engineering,station_ambient,2,"Cooling loops holding pressure.",ambient,1,fleet_hub
+engineering,station_ambient,3,"Power buses balanced.",ambient,1,fleet_hub
+engineering,station_ambient,4,"We've got margin. Let's keep it.",ambient,1,fleet_hub
+engineering,banter,1,"If you overload that bus again, I will find you.",dry,1,fleet_hub
+engineering,banter,2,"We can do miracles. Just not on schedule.",dry,1,fleet_hub
+engineering,banter,3,"Power is stable. Stop asking.",dry,1,fleet_hub
+engineering,banter,4,"I've got duct tape and faith. Pick one.",dry,1,fleet_hub
+engineering,banter,5,"Reactor's purring. Please don't wake it.",dry,1,fleet_hub
+engineering,banter,6,"If something sparks, it's probably fine.",dry,1,fleet_hub
+science,crew_ambient,1,"Sensor net recalibrated.",ambient,1,fleet_hub
+science,crew_ambient,2,"Comms traffic normalized.",ambient,1,fleet_hub
+science,crew_ambient,3,"New navigation solutions uploaded.",ambient,1,fleet_hub
+science,crew_ambient,4,"Fresh telemetry on the route.",ambient,1,fleet_hub
+science,banter,1,"Sensors say 'bad idea'. Again.",dry,1,fleet_hub
+science,banter,2,"I can give you probabilities. Not guarantees.",dry,1,fleet_hub
+science,banter,3,"Signal interference is... charming.",dry,1,fleet_hub
+science,banter,4,"If you want certainty, stay docked.",dry,1,fleet_hub
+science,banter,5,"We are being watched. Statistically.",dry,1,fleet_hub
+science,banter,6,"New contact. Or old contact. Hard to say.",dry,1,fleet_hub

@@ -44,8 +44,12 @@ public final class AudioSystem {
         CAPTAIN_COMBAT_START("captain", "combat_start", 6.0, 3, 2,
                 "All stations, battle posture.",
                 "All hands, combat stations."),
-        CAPTAIN_COMBAT_END("captain", "combat_end", 6.0, 2, 1,
-                "Area secure. Stand down from combat alert."),
+        // NOTE: Using a new event id here intentionally avoids playing the legacy `combat_end` voice asset
+        // (which included the removed wording). If/when new VO is recorded, drop it in as:
+        // `assets/voice/captain/combat_end_clear_01.wav` (and variants).
+        CAPTAIN_COMBAT_END("captain", "combat_end_clear", 6.0, 2, 1,
+                "Area secure.",
+                "Area secure. Maintain readiness."),
         CAPTAIN_ORDER_PUSH("captain", "order_push", 4.0, 2, 3,
                 "Press the attack now.",
                 "Advance and maintain pressure.",
@@ -62,10 +66,6 @@ public final class AudioSystem {
                 "Hold the line. Defensive posture.",
                 "Defensive stations. Hold position.",
                 "Maintain defense coverage."),
-        CAPTAIN_ORDER_FORM_UP("captain", "order_form_up", 4.0, 2, 3,
-                "Fleet, reform on command.",
-                "Form up and hold your spacing.",
-                "Maintain formation and use your discretion."),
         CAPTAIN_ORDER_MINE("captain", "order_mine", 4.5, 2, 3,
                 "Mining group, proceed to extraction.",
                 "Mining detail, move on the resource pocket.",
@@ -128,21 +128,95 @@ public final class AudioSystem {
                 "Sensors are being jammed.",
                 "Electronic interference detected."),
         SCIENCE_SCAN_COMPLETE("science", "scan_complete", 4.0, 1, 1,
-                "Scan complete.");
+                "Scan complete."),
+
+        // Phase 6: Fleet hub bridge chatter (low priority, quieter mix).
+        CAPTAIN_FLEET_ORGANIZER_AMBIENT("captain", "fleet_organizer_ambient", 20.0, 1, 4, -18.0,
+                "Fleet roster synced. Dock crews standing by.",
+                "Hangar assignments updated.",
+                "Contract board refreshed.",
+                "Stores and hull plates accounted for."),
+        CAPTAIN_XO_AMBIENT("captain", "xo_ambient", 22.0, 1, 4, -18.0,
+                "XO confirms: crews ready to launch.",
+                "Maintenance rotation complete.",
+                "Damage teams are rested. For now.",
+                "Command net is quiet. That's a gift."),
+        TACTICAL_WEAPONRY_AMBIENT("tactical", "weaponry_ambient", 20.0, 1, 4, -18.5,
+                "Weapon checks green across batteries.",
+                "Magazines topped. Guidance links stable.",
+                "Fire control reports tight tracking.",
+                "CIWS arcs recalibrated."),
+        ENGINEERING_STATION_AMBIENT("engineering", "station_ambient", 20.0, 1, 4, -18.5,
+                "Reactor stable. Heat sinks cycling.",
+                "Cooling loops holding pressure.",
+                "Power buses balanced.",
+                "We've got margin. Let's keep it."),
+        HELM_FLIGHT_DECK_AMBIENT("helm", "flight_deck_ambient", 20.0, 1, 4, -18.5,
+                "Flight crews standing by.",
+                "Strike craft fuelled and armed.",
+                "Launch rails cleared.",
+                "Deck crew reports ready."),
+        SCIENCE_CREW_AMBIENT("science", "crew_ambient", 20.0, 1, 4, -18.5,
+                "Sensor net recalibrated.",
+                "Comms traffic normalized.",
+                "New navigation solutions uploaded.",
+                "Fresh telemetry on the route."),
+
+        CAPTAIN_BANTER("captain", "banter", 34.0, 1, 6, -17.0,
+                "Keep the formation tight. The universe hates empty space.",
+                "If you can hear me, you're still on the payroll.",
+                "Let's not make engineering earn their keep today.",
+                "Remember: escorts exist so we don't die heroically.",
+                "Someone tell Tactical to stop naming missiles.",
+                "If we lose this hull, we're walking home."),
+        HELM_BANTER("helm", "banter", 34.0, 1, 6, -17.5,
+                "If we could stop drifting into debris, I'd appreciate it.",
+                "Thrusters respond... eventually.",
+                "Next time we dock, I'm asking for a new nav console.",
+                "I can thread this needle. Don't ask how.",
+                "If you hear a scrape, no you didn't.",
+                "Course is set. It's the universe that needs to cooperate."),
+        TACTICAL_BANTER("tactical", "banter", 34.0, 1, 6, -17.5,
+                "I am once again requesting we shoot from farther away.",
+                "Missiles are expensive. Let's pretend that matters.",
+                "Targeting solution is clean. Like my conscience.",
+                "If it moves, it's hostile. If it doesn't, it's salvage.",
+                "Guns charged. Please refrain from ramming.",
+                "Fire control is ready. Try not to blink."),
+        ENGINEERING_BANTER("engineering", "banter", 34.0, 1, 6, -17.5,
+                "If you overload that bus again, I will find you.",
+                "We can do miracles. Just not on schedule.",
+                "Power is stable. Stop asking.",
+                "I've got duct tape and faith. Pick one.",
+                "Reactor's purring. Please don't wake it.",
+                "If something sparks, it's probably fine."),
+        SCIENCE_BANTER("science", "banter", 34.0, 1, 6, -17.5,
+                "Sensors say 'bad idea'. Again.",
+                "I can give you probabilities. Not guarantees.",
+                "Signal interference is... charming.",
+                "If you want certainty, stay docked.",
+                "We are being watched. Statistically.",
+                "New contact. Or old contact. Hard to say.");
 
         final String role;
         final String eventId;
         final String cooldownKey;
         final String[] captions;
         final double cooldownSec;
+        final double gainDb;
         final int priority;
         final int requiredVariants;
 
         VoiceCue(String role, String eventId, double cooldownSec, int priority, int requiredVariants, String... captions) {
+            this(role, eventId, cooldownSec, priority, requiredVariants, -12.0, captions);
+        }
+
+        VoiceCue(String role, String eventId, double cooldownSec, int priority, int requiredVariants, double gainDb, String... captions) {
             this.role = role;
             this.eventId = eventId;
             this.cooldownKey = role + "." + eventId;
             this.cooldownSec = cooldownSec;
+            this.gainDb = gainDb;
             this.priority = priority;
             this.requiredVariants = Math.max(1, requiredVariants);
             if (captions == null || captions.length == 0) {
@@ -201,6 +275,11 @@ public final class AudioSystem {
         int lastFriendlyCommandShipId = -1;
         GameContext.FleetCommand lastFriendlyFleetCommand = null;
         GameContext.FleetFormation lastFriendlyFleetFormation = null;
+
+        // Phase 6: Low-priority bridge chatter / banter in fleet hub.
+        double fleetHubChatterNextSec = 0.0;
+        VoiceCue fleetHubChatterFollowupCue = null;
+        double fleetHubChatterFollowupAtSec = 0.0;
 
         final EnumMap<VoiceCue, Double> voiceCooldownUntil = new EnumMap<>(VoiceCue.class);
         final Map<String, Double> sfxCooldownUntil = new HashMap<>();
@@ -450,11 +529,7 @@ public final class AudioSystem {
     }
 
     public static void onCommandShipFormationOrder(GameContext ctx, Ship commander, GameContext.FleetFormation formation) {
-        if (ctx == null || commander == null || formation == null) return;
-        if (commander != ctx.player || !isPlayerFleetCommandShip(ctx)) return;
-        RuntimeState st = stateFor(ctx);
-        emitCommandVoice(ctx, st, VoiceCue.CAPTAIN_ORDER_FORM_UP, nowSec(), commander,
-                formationCaption(formation, null));
+        // Intentionally silent: formation changes were spamming "form up" callouts and became noise.
     }
 
     public static void onCommandShipShipOrder(GameContext ctx, Ship commander, GameContext.FleetCommand command, Ship target) {
@@ -645,6 +720,7 @@ public final class AudioSystem {
             emitVoiceForCaptainDirective(ctx, st, ctx.command.captainDirective, now);
         }
         processFriendlyCommandShipBroadcast(ctx, st, now);
+        processFleetHubChatter(ctx, st, now, hostiles);
 
         st.hadCombatContact = hostiles > 0;
         st.hostileContactCount = hostiles;
@@ -677,10 +753,73 @@ public final class AudioSystem {
 
         if (st.lastFriendlyCommandShipId != commandShip.id) return;
         if (command == st.lastFriendlyFleetCommand) return;
-
         VoiceCue cue = voiceCueForFleetCommand(command);
+        VoiceCue priorCue = voiceCueForFleetCommand(st.lastFriendlyFleetCommand);
+        if (cue != null && cue == priorCue) return;
         if (cue == null) return;
         emitCommandVoice(ctx, st, cue, now, commandShip, null);
+    }
+
+    private static void processFleetHubChatter(GameContext ctx, RuntimeState st, double now, int visibleHostiles) {
+        if (ctx == null || st == null) return;
+
+        if (!CampaignSystem.isFleetHubSession(ctx)) {
+            st.fleetHubChatterFollowupCue = null;
+            st.fleetHubChatterFollowupAtSec = 0.0;
+            st.fleetHubChatterNextSec = 0.0;
+            return;
+        }
+        if (visibleHostiles > 0) return;
+
+        if (st.fleetHubChatterFollowupCue != null && now >= st.fleetHubChatterFollowupAtSec) {
+            VoiceCue cue = st.fleetHubChatterFollowupCue;
+            st.fleetHubChatterFollowupCue = null;
+            st.fleetHubChatterFollowupAtSec = 0.0;
+            emitVoice(ctx, st, cue, now);
+        }
+
+        if (now < st.fleetHubChatterNextSec) return;
+        if (ctx.ui == null) return;
+        // Keep chatter out of the player's way: if captions are off, deprioritize chatter entirely.
+        if (!ctx.ui.voiceCaptionsEnabled && RNG.nextDouble() < 0.80) {
+            st.fleetHubChatterNextSec = now + 16.0 + RNG.nextDouble() * 12.0;
+            return;
+        }
+
+        VoiceCue[] ambientPool = new VoiceCue[]{
+                VoiceCue.CAPTAIN_FLEET_ORGANIZER_AMBIENT,
+                VoiceCue.CAPTAIN_XO_AMBIENT,
+                VoiceCue.TACTICAL_WEAPONRY_AMBIENT,
+                VoiceCue.ENGINEERING_STATION_AMBIENT,
+                VoiceCue.HELM_FLIGHT_DECK_AMBIENT,
+                VoiceCue.SCIENCE_CREW_AMBIENT
+        };
+        VoiceCue[] banterPool = new VoiceCue[]{
+                VoiceCue.CAPTAIN_BANTER,
+                VoiceCue.HELM_BANTER,
+                VoiceCue.TACTICAL_BANTER,
+                VoiceCue.ENGINEERING_BANTER,
+                VoiceCue.SCIENCE_BANTER
+        };
+
+        boolean doBanter = RNG.nextDouble() < 0.42;
+        VoiceCue cue = doBanter
+                ? banterPool[RNG.nextInt(banterPool.length)]
+                : ambientPool[RNG.nextInt(ambientPool.length)];
+        emitVoice(ctx, st, cue, now);
+
+        if (doBanter && RNG.nextDouble() < 0.72) {
+            VoiceCue reply = banterPool[RNG.nextInt(banterPool.length)];
+            int guard = 0;
+            while (reply != null && cue != null && reply.role != null && cue.role != null
+                    && reply.role.equals(cue.role) && guard++ < 8) {
+                reply = banterPool[RNG.nextInt(banterPool.length)];
+            }
+            st.fleetHubChatterFollowupCue = reply;
+            st.fleetHubChatterFollowupAtSec = now + 2.0 + RNG.nextDouble() * 1.8;
+        }
+
+        st.fleetHubChatterNextSec = now + 14.0 + RNG.nextDouble() * 12.0;
     }
 
     private static void emitVoiceForCaptainDirective(GameContext ctx, RuntimeState st,
@@ -703,7 +842,7 @@ public final class AudioSystem {
     private static VoiceCue voiceCueForCaptainDirective(GameContext.CaptainDirective directive, boolean commandAuthority) {
         if (directive == null) return null;
         return switch (directive) {
-            case BALANCED -> commandAuthority ? VoiceCue.CAPTAIN_ORDER_FORM_UP : null;
+            case BALANCED -> null;
             case ATTACK -> VoiceCue.CAPTAIN_ORDER_PUSH;
             case DEFENSE, DEFEND -> VoiceCue.CAPTAIN_ORDER_DEFEND;
             case EMERGENCY -> VoiceCue.CAPTAIN_ORDER_RETREAT;
@@ -717,7 +856,7 @@ public final class AudioSystem {
     private static VoiceCue voiceCueForFleetCommand(GameContext.FleetCommand command) {
         if (command == null) return null;
         return switch (command) {
-            case AUTO, FORM_UP -> VoiceCue.CAPTAIN_ORDER_FORM_UP;
+            case AUTO, FORM_UP -> null;
             case ATTACK -> VoiceCue.CAPTAIN_ORDER_PUSH;
             case DEFEND -> VoiceCue.CAPTAIN_ORDER_DEFEND;
             case ESCORT -> VoiceCue.CAPTAIN_ORDER_ESCORT;
@@ -740,15 +879,6 @@ public final class AudioSystem {
             case RETREAT -> shipLabel + ", break contact and fall back.";
             case MINE -> shipLabel + ", move to the mining pocket.";
             case AUTO, FORM_UP -> shipLabel + ", resume command formation.";
-        };
-    }
-
-    private static String formationCaption(GameContext.FleetFormation formation, String fallback) {
-        if (formation == null) return fallback;
-        return switch (formation) {
-            case WEDGE -> "Set wedge formation. Hold on command.";
-            case LINE -> "Reform line formation.";
-            case SCREEN -> "Screen formation. Maintain separation.";
         };
     }
 
@@ -898,7 +1028,7 @@ public final class AudioSystem {
         AssetLibrary.VoicePick voicePick = AssetLibrary.pickVoice(cue.role, cue.eventId, variantIndex);
         if (voicePick != null && (voicePick.file() != null || voicePick.resourcePath() != null)) {
             variantIndex = voicePick.variantIndex();
-            playAssetAsync(voicePick.file(), voicePick.resourcePath(), false, -12.0 + roleVolGainDb);
+            playAssetAsync(voicePick.file(), voicePick.resourcePath(), false, cue.gainDb + roleVolGainDb);
         } else {
             double roleTone = switch (cue.role) {
                 case "captain" -> 230.0;
@@ -910,7 +1040,7 @@ public final class AudioSystem {
             };
             double variantTone = roleTone + variantIndex * 16.0 + RNG.nextDouble() * 4.0;
             int variantMs = 90 + variantIndex * 24;
-            playToneAsync(variantTone, variantMs, -20.0 + roleVolGainDb, false);
+            playToneAsync(variantTone, variantMs, (cue.gainDb - 8.0) + roleVolGainDb, false);
         }
         st.lastVariantByKey.put(cue.cooldownKey, variantIndex);
         applyPortraitExpression(ctx, cue, variantIndex);
@@ -1034,8 +1164,9 @@ public final class AudioSystem {
     private static synchronized void applyAmbientMix(GameContext ctx) {
         Clip clip = ambientClip;
         if (clip == null || !clip.isOpen()) return;
-        double target = -26.0;
-        if (countHostiles(ctx) > 0) target = -23.5;
+        // Slightly louder ambience to better support the "crewed bridge" feel.
+        double target = -24.0;
+        if (countHostiles(ctx) > 0) target = -21.5;
         if (ctx.ui.voiceCaptionT > 0.0) target -= 4.5;
         applyGain(clip, target);
     }

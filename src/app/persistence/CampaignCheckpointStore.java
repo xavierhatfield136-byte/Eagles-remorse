@@ -102,6 +102,9 @@ public final class CampaignCheckpointStore {
         public String flightDeckLoadout = "";
         public String ownedTitans = DEFAULT_OWNED_TITANS;
         public String persistentBlueFleet = DEFAULT_PERSISTENT_BLUE_FLEET;
+        public int escortCapUpgradeLevel = 0;
+        public int lineCapUpgradeLevel = 0;
+        public int capitalCapUpgradeLevel = 0;
         public boolean campaignBlueYellowAlliance = false;
         public boolean greenContractFleetJoined = false;
         public boolean yellowLiberationFleetJoined = false;
@@ -166,6 +169,9 @@ public final class CampaignCheckpointStore {
             flightDeckLoadout = (flightDeckLoadout == null) ? "" : flightDeckLoadout.trim();
             ownedTitans = (ownedTitans == null) ? DEFAULT_OWNED_TITANS : ownedTitans.trim();
             persistentBlueFleet = (persistentBlueFleet == null) ? DEFAULT_PERSISTENT_BLUE_FLEET : persistentBlueFleet.trim();
+            escortCapUpgradeLevel = clamp(escortCapUpgradeLevel, 0, 5);
+            lineCapUpgradeLevel = clamp(lineCapUpgradeLevel, 0, 4);
+            capitalCapUpgradeLevel = clamp(capitalCapUpgradeLevel, 0, 3);
             greenContractFavor = Math.max(0, greenContractFavor);
             yellowLiberationFavor = Math.max(0, yellowLiberationFavor);
             allyOreStockpile = Math.max(0, allyOreStockpile);
@@ -269,6 +275,9 @@ public final class CampaignCheckpointStore {
                 cp.flightDeckLoadout = props.getProperty("flightDeckLoadout", cp.flightDeckLoadout);
                 cp.ownedTitans = props.getProperty("ownedTitans", cp.ownedTitans);
                 cp.persistentBlueFleet = props.getProperty("persistentBlueFleet", cp.persistentBlueFleet);
+                cp.escortCapUpgradeLevel = parseInt(props, "escortCapUpgradeLevel", cp.escortCapUpgradeLevel);
+                cp.lineCapUpgradeLevel = parseInt(props, "lineCapUpgradeLevel", cp.lineCapUpgradeLevel);
+                cp.capitalCapUpgradeLevel = parseInt(props, "capitalCapUpgradeLevel", cp.capitalCapUpgradeLevel);
                 cp.campaignBlueYellowAlliance = parseBoolean(props, "campaignBlueYellowAlliance", cp.campaignBlueYellowAlliance);
                 cp.greenContractFleetJoined = parseBoolean(props, "greenContractFleetJoined", cp.greenContractFleetJoined);
                 cp.yellowLiberationFleetJoined = parseBoolean(props, "yellowLiberationFleetJoined", cp.yellowLiberationFleetJoined);
@@ -363,6 +372,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("flightDeckLoadout", cp.flightDeckLoadout);
             props.setProperty("ownedTitans", cp.ownedTitans);
             props.setProperty("persistentBlueFleet", cp.persistentBlueFleet);
+            props.setProperty("escortCapUpgradeLevel", String.valueOf(cp.escortCapUpgradeLevel));
+            props.setProperty("lineCapUpgradeLevel", String.valueOf(cp.lineCapUpgradeLevel));
+            props.setProperty("capitalCapUpgradeLevel", String.valueOf(cp.capitalCapUpgradeLevel));
             props.setProperty("campaignBlueYellowAlliance", String.valueOf(cp.campaignBlueYellowAlliance));
             props.setProperty("greenContractFleetJoined", String.valueOf(cp.greenContractFleetJoined));
             props.setProperty("yellowLiberationFleetJoined", String.valueOf(cp.yellowLiberationFleetJoined));

@@ -213,6 +213,7 @@ public final class DoctrineRegistry {
         rack.missileSpeed = MathUtil.clamp(gun.bulletSpeed * 0.92, 520.0, 960.0);
         rack.missileTurnRate = Math.toRadians(260);
         rack.missileLife = Math.max(170, (int) Math.round(gun.bulletLife * 1.55));
+        rack.missileRole = Turret.MissileRole.ANTI_LIGHT;
         rack.radius = Math.max(6.8, gun.radius + 0.8);
         rack.barrelLen = Math.max(10.0, gun.barrelLen * 0.92);
         return rack;
