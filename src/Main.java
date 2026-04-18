@@ -37,7 +37,6 @@ public class Main {
             }
         };
     }
-
     private MainMenuPanel.ResumeCampaignState loadResumeCampaignState() {
         CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
         if (checkpoint == null) {
