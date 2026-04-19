@@ -5184,10 +5184,10 @@ public abstract class Ship {
 
     public void tryCIWS(double dt, GameContext ctx) {
         if (ctx == null) {
-            tryCIWS(dt, null, null, null);
+            tryCIWS(dt, null, null, null, null);
             return;
         }
-        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery);
+        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery, ctx);
     }
 
     /**
@@ -5198,10 +5198,14 @@ public abstract class Ship {
      * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
-        tryCIWS(dt, projectiles, ships, null);
+        tryCIWS(dt, projectiles, ships, null, null);
     }
 
     private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query) {
+        tryCIWS(dt, projectiles, ships, query, null);
+    }
+
+    private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query, GameContext ctx) {
         if (!alive || !hasCIWS || !canUseCombatSystems()) return;
         if (ciwsTimer > 0) return;
         if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
@@ -5218,20 +5222,20 @@ public abstract class Ship {
         }
 
         // Fire!
-        ciwsTimer = ciwsCooldown;
+        ciwsTimer = effectiveCiwsCooldown(ctx);
 
         if (targetMissile) {
             double aim = computeCiwsLeadAim(dt, closestMissile.x, closestMissile.y, closestMissile.vx, closestMissile.vy);
             if (faction == Faction.TEAM_C) {
-                firePointDefenseLaser(dt, projectiles, closestMissile, aim);
+                firePointDefenseLaser(dt, projectiles, closestMissile, aim, ctx);
             } else {
-                fireCiwsPellets(dt, projectiles, aim);
+                fireCiwsPellets(dt, projectiles, aim, ctx);
             }
             return;
         }
 
         double aim = computeCiwsLeadAim(dt, closestSmallCraft.x, closestSmallCraft.y, closestSmallCraft.vx, closestSmallCraft.vy);
-        fireCiwsPellets(dt, projectiles, aim);
+        fireCiwsPellets(dt, projectiles, aim, ctx);
     }
 
     private Missile findClosestCiwsMissile(List<Projectile> projectiles, EntityQueryIndex query) {
@@ -5297,9 +5301,11 @@ public abstract class Ship {
         return Math.atan2(intercept[1] - y, intercept[0] - x);
     }
 
-    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim) {
+    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim, GameContext ctx) {
         if (projectiles == null) return;
-        int pellets = Math.max(1, ciwsPelletsPerBurst);
+        int pellets = effectiveCiwsBurstPellets(ctx);
+        int pelletDamage = effectiveCiwsPelletDamage(ctx);
+        int pelletLife = effectiveCiwsPelletLife(ctx);
         double muzzleForward = radius + 8.0;
         double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));
         double lateralStep = (pellets <= 1) ? 0.0 : (maxLateral * 2.0) / (pellets - 1);
@@ -5317,8 +5323,8 @@ public abstract class Ship {
                     aim,
                     dt,
                     ciwsPelletSpeed,
-                    ciwsPelletDamage,
-                    ciwsPelletLife,
+                    pelletDamage,
+                    pelletLife,
                     ciwsPelletRadius,
                     faction
             );
@@ -5327,11 +5333,11 @@ public abstract class Ship {
         }
     }
 
-    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim) {
+    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim, GameContext ctx) {
         if (projectiles == null || target == null || !target.alive) return;
 
-        int pulses = Math.max(1, ciwsPelletsPerBurst);
-        int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletDamage * 0.75)));
+        int pulses = effectiveCiwsBurstPellets(ctx);
+        int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(effectiveCiwsPelletDamage(ctx) * 0.75)));
         int pulseLife = 2;
         double beamWidth = Math.max(1.0, ciwsPelletRadius * 0.85);
         double muzzleForward = radius + 8.0;
@@ -5357,6 +5363,53 @@ public abstract class Ship {
             laser.sourceShipId = id;
             projectiles.add(laser);
         }
+    }
+
+    private double effectiveCiwsCooldown(GameContext ctx) {
+        double load = ciwsPerformanceLoad(ctx);
+        if (load <= 0.01) return ciwsCooldown;
+        return ciwsCooldown * (1.0 + load * 0.55);
+    }
+
+    private int effectiveCiwsBurstPellets(GameContext ctx) {
+        int base = Math.max(1, ciwsPelletsPerBurst);
+        double load = ciwsPerformanceLoad(ctx);
+        if (base <= 1) return 1;
+        if (load >= 0.38) return 1;
+        return base;
+    }
+
+    private int effectiveCiwsPelletDamage(GameContext ctx) {
+        int base = Math.max(1, ciwsPelletDamage);
+        double load = ciwsPerformanceLoad(ctx);
+        if (load >= 0.38 && ciwsPelletsPerBurst > 1) {
+            return Math.min(2, base + 1);
+        }
+        return base;
+    }
+
+    private int effectiveCiwsPelletLife(GameContext ctx) {
+        int base = Math.max(6, ciwsPelletLife);
+        double load = ciwsPerformanceLoad(ctx);
+        if (load >= 0.55) return Math.max(8, (int) Math.round(base * 0.72));
+        if (load >= 0.32) return Math.max(10, (int) Math.round(base * 0.82));
+        return base;
+    }
+
+    private double ciwsPerformanceLoad(GameContext ctx) {
+        if (ctx == null) return 0.0;
+        int projectileCount = (ctx.projectiles == null) ? 0 : ctx.projectiles.size();
+        int activeShips = 0;
+        if (ctx.ships != null) {
+            for (Ship ship : ctx.ships) {
+                if (ship == null || !ship.alive || ship.dying) continue;
+                activeShips++;
+            }
+        }
+        double projectilePressure = Math.max(0.0, projectileCount - 140.0) / 320.0;
+        double shipPressure = Math.max(0.0, activeShips - 14.0) / 18.0;
+        double vfxPressure = Math.max(0.0, VFX.activeCount() - 520.0) / 520.0;
+        return MathUtil.clamp(projectilePressure * 0.55 + shipPressure * 0.30 + vfxPressure * 0.15, 0.0, 1.0);
     }
 
     public boolean canLaunchFighter() {

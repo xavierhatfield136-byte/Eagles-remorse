@@ -244,15 +244,8 @@ public class CollisionSystem {
                     laser.alive = false;
                     boolean killed = m.applyInterceptHit(Math.max(1, laser.damage));
                     if (killed) {
-                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
-                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.BEAM);
-                            Explosion.spawnShieldHit(m.x, m.y);
-                        }
                         AudioSystem.onExplosion(ctx, m.x, m.y);
                     } else {
-                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
-                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.BEAM);
-                        }
                         AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.BEAM, m.x, m.y);
                     }
                 }
@@ -274,15 +267,8 @@ public class CollisionSystem {
                     pellet.alive = false;
                     boolean killed = m.applyInterceptHit(1);
                     if (killed) {
-                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
-                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 2, VFX.ImpactStyle.KINETIC);
-                            Explosion.spawnShieldHit(m.x, m.y);
-                        }
                         AudioSystem.onExplosion(ctx, m.x, m.y);
                     } else {
-                        if (shouldRenderDamageVfx(ctx, null, m.x, m.y)) {
-                            VFX.spawnHullImpact(m.x, m.y, 0.0, 0.0, 1, VFX.ImpactStyle.KINETIC);
-                        }
                         AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.KINETIC, m.x, m.y);
                     }
                     break;
