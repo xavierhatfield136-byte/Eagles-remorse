@@ -54,11 +54,20 @@ public class CollisionSystem {
                 if (s.faction.isFriendlyTo(p.faction)) continue;
                 if (!canProjectileDamageShip(shooter, p, s)) continue;
 
+                Missile interceptorMissile = (p instanceof Missile missile
+                        && missile.role == Turret.MissileRole.INTERCEPT)
+                        ? missile
+                        : null;
+                boolean interceptorFuse = interceptorMissile != null
+                        && s.isSmallCraft();
                 double shipHitRadius = HullGeometry.broadPhaseRadius(s);
+                if (interceptorFuse) {
+                    shipHitRadius += Math.max(18.0, interceptorMissile.blastRadius * 0.32);
+                }
                 if (!circleHit(p.x, p.y, p.radius, s.x, s.y, shipHitRadius)) continue;
                 // CIWS pellets use simple circle collision (performance optimization for high-volume fire)
                 // Only apply expensive hull geometry check for larger/more important projectiles
-                if (!(p instanceof CIWSPellet) && !HullGeometry.projectileIntersectsShip(p, s)) continue;
+                if (!(p instanceof CIWSPellet) && !interceptorFuse && !HullGeometry.projectileIntersectsShip(p, s)) continue;
                 if (disruptorSlug) {
                     DisruptorSlug slug = (DisruptorSlug) p;
                     if (!slug.canAffect(s)) continue;
@@ -1236,13 +1245,15 @@ public class CollisionSystem {
         if (projectile == null || target == null) return false;
         Faction sourceFaction = (shooter != null && shooter.faction != null) ? shooter.faction : projectile.faction;
         if (sourceFaction != null && target.faction != null && sourceFaction.isFriendlyTo(target.faction)) return false;
+        boolean interceptorMissile = projectile instanceof Missile missile
+                && missile.role == Turret.MissileRole.INTERCEPT;
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {
             return target.isSmallCraft();
         }
-        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target) && !interceptorMissile) return false;
 
         if (shooter == null || shooter.role == null) return true;
-        if (isCapitalShip(shooter.role) && target.isSmallCraft()) return false;
+        if (isCapitalShip(shooter.role) && target.isSmallCraft() && !interceptorMissile) return false;
         return true;
     }
 

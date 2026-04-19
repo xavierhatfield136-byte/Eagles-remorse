@@ -166,11 +166,7 @@ public final class PhysicsSystem {
             }
             if (ctx.firingSecondaryAuto || manualSecondaryRequested) {
                 double secondarySearchRange = playerSecondarySearchRange(ctx);
-                Ship target = (isAlive(ctx.lockedTarget)
-                        && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
-                        && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
-                        ? ctx.lockedTarget
-                        : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, secondarySearchRange * rangeMul);
+                Ship target = preferredSecondaryTarget(ctx, secondarySearchRange * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
                     int beforeSecondary = ctx.projectiles.size();
                     ctx.projectiles.addAll(ctx.player.fireSecondary(ctx, target, dt));
@@ -277,6 +273,31 @@ public final class PhysicsSystem {
             }
         }
         return range;
+    }
+
+    private static Ship preferredSecondaryTarget(GameContext ctx, double searchRange) {
+        if (ctx == null || ctx.player == null) return null;
+        if (isAlive(ctx.lockedTarget)
+                && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)
+                && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)) {
+            return ctx.lockedTarget;
+        }
+        if (playerHasSecondaryInterceptMissiles(ctx)) {
+            Ship smallCraft = TargetingSystem.findClosestHostileSmallCraft(
+                    ctx, ctx.player, ctx.player.x, ctx.player.y, searchRange);
+            if (smallCraft != null) return smallCraft;
+        }
+        return findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, searchRange);
+    }
+
+    private static boolean playerHasSecondaryInterceptMissiles(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.turrets == null) return false;
+        for (Turret turret : ctx.player.turrets) {
+            if (turret == null || turret.kind != Turret.Kind.MISSILE || turret.primary) continue;
+            Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+            if (role == Turret.MissileRole.INTERCEPT) return true;
+        }
+        return false;
     }
 
     private static void updateMissileTargeting(GameContext ctx, Missile missile) {

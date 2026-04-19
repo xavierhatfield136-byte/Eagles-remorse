@@ -314,15 +314,18 @@ public final class CrewStationsSystem {
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
         double searchRange = 1600.0 * rangeMul * (ctx.player.hasActiveEcm() ? 0.9 : 1.0);
         Ship target = preferredTarget(ctx, searchRange);
-        if (target == null) {
+        Ship secondaryTarget = preferredSecondaryTarget(ctx, searchRange);
+        if (target == null && secondaryTarget == null) {
             ctx.firingPrimaryAuto = false;
             ctx.firingSecondaryAuto = false;
             return;
         }
-        double d = Math.hypot(target.x - p.x, target.y - p.y);
+        double d = (target == null) ? Double.POSITIVE_INFINITY : Math.hypot(target.x - p.x, target.y - p.y);
+        double secondaryDist = (secondaryTarget == null) ? Double.POSITIVE_INFINITY
+                : Math.hypot(secondaryTarget.x - p.x, secondaryTarget.y - p.y);
         boolean lockForHelm = !captainNavPriority || directive == GameContext.CaptainDirective.ATTACK
                 || directive == GameContext.CaptainDirective.EMERGENCY;
-        if (lockForHelm && ctx.command.tacticalMode != GameContext.TacticalMode.HOLD_FIRE) {
+        if (target != null && lockForHelm && ctx.command.tacticalMode != GameContext.TacticalMode.HOLD_FIRE) {
             ctx.lockedTarget = target;
         }
 
@@ -335,13 +338,13 @@ public final class CrewStationsSystem {
                 double primaryRange = captainNavPriority ? 620.0 * rangeMul : 900.0 * rangeMul;
                 double secondaryRange = captainNavPriority ? 520.0 * rangeMul : 760.0 * rangeMul;
                 ctx.firingPrimaryAuto = d <= primaryRange;
-                ctx.firingSecondaryAuto = d <= secondaryRange;
+                ctx.firingSecondaryAuto = secondaryDist <= secondaryRange;
             }
             case AGGRESSIVE -> {
                 double primaryRange = captainNavPriority ? 920.0 * rangeMul : 1500.0 * rangeMul;
                 double secondaryRange = captainNavPriority ? 760.0 * rangeMul : 1120.0 * rangeMul;
                 ctx.firingPrimaryAuto = d <= primaryRange;
-                ctx.firingSecondaryAuto = d <= secondaryRange;
+                ctx.firingSecondaryAuto = secondaryDist <= secondaryRange;
             }
         }
     }
@@ -513,6 +516,26 @@ public final class CrewStationsSystem {
         if (ctx == null || ctx.player == null) return null;
         if (isValidTarget(ctx, ctx.lockedTarget)) return ctx.lockedTarget;
         return TargetingSystem.findClosestEngagementTarget(ctx, ctx.player, ctx.player.x, ctx.player.y, range);
+    }
+
+    private static Ship preferredSecondaryTarget(GameContext ctx, double range) {
+        if (ctx == null || ctx.player == null) return null;
+        if (playerHasSecondaryInterceptMissiles(ctx)) {
+            Ship smallCraft = TargetingSystem.findClosestHostileSmallCraft(
+                    ctx, ctx.player, ctx.player.x, ctx.player.y, range);
+            if (smallCraft != null) return smallCraft;
+        }
+        return preferredTarget(ctx, range);
+    }
+
+    private static boolean playerHasSecondaryInterceptMissiles(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.turrets == null) return false;
+        for (Turret turret : ctx.player.turrets) {
+            if (turret == null || turret.kind != Turret.Kind.MISSILE || turret.primary) continue;
+            Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+            if (role == Turret.MissileRole.INTERCEPT) return true;
+        }
+        return false;
     }
 
     private static boolean isValidTarget(GameContext ctx, Ship target) {

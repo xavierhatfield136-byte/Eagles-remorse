@@ -1292,6 +1292,12 @@ public abstract class Ship {
         if (shipRole == null) return 1.5 + r * 0.8;
         if (shipRole.isTitan()) return 2.15 + r * 1.20;
         if (shipRole.isMothership()) return 2.80 + r * 1.40;
+        if (shipRole == ShipRole.FIGHTER
+                || shipRole == ShipRole.BOMBER
+                || shipRole == ShipRole.DRONE
+                || shipRole == ShipRole.PD_CRAFT) {
+            return 0.04 + r * 0.04;
+        }
         return switch (shipRole) {
             case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
                     PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.45 + r * 0.35;
