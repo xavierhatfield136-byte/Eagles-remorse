@@ -25,6 +25,7 @@ import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 public class Renderer {
+    private static final File HUD_PANEL_DIR = new File("assets/hud_panels");
     private static final double IMPACT_DECAL_SCALE = 0.25;
     private static final double HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN = 72.0;
     private static final double SHIELD_FX_MIN_SCREEN_SPAN = 56.0;
@@ -129,6 +130,123 @@ public class Renderer {
             this.key = (key == null) ? "" : key;
             this.title = (title == null) ? "" : title;
             this.body = (body == null) ? "" : body;
+        }
+    }
+
+    public static final class HudPanelClickTarget {
+        public enum Kind {
+            BEAM_RAPID,
+            BEAM_CONCENTRATED,
+            MISSILE_HEAVY,
+            MISSILE_FAST,
+            MISSILE_AAA,
+            ECM_PRIMED,
+            ECM_ACTIVE
+        }
+
+        public final Kind kind;
+
+        public HudPanelClickTarget(Kind kind) {
+            this.kind = kind;
+        }
+    }
+
+    private enum CombatHudPanelImageKey {
+        BEAM_RAPID,
+        BEAM_CONCENTRATED,
+        MISSILE_HEAVY,
+        MISSILE_FAST,
+        MISSILE_AAA,
+        ECM_PRIMED,
+        ECM_ACTIVE
+    }
+
+    private static final class CombatHudPanelLayout {
+        final Rectangle beamRect;
+        final Rectangle missileRect;
+        final Rectangle ecmRect;
+
+        CombatHudPanelLayout(Rectangle beamRect, Rectangle missileRect, Rectangle ecmRect) {
+            this.beamRect = beamRect;
+            this.missileRect = missileRect;
+            this.ecmRect = ecmRect;
+        }
+    }
+
+    private static final class HudPanelVisual {
+        final Rectangle drawRect;
+        final BufferedImage image;
+
+        HudPanelVisual(Rectangle drawRect, BufferedImage image) {
+            this.drawRect = drawRect;
+            this.image = image;
+        }
+    }
+
+    private static final class HudPanelSkinLibrary {
+        private static final Map<CombatHudPanelImageKey, BufferedImage> CACHE = new HashMap<>();
+        private static final Set<CombatHudPanelImageKey> FAILED = new HashSet<>();
+
+        private static BufferedImage get(CombatHudPanelImageKey key) {
+            if (key == null) return null;
+            BufferedImage cached = CACHE.get(key);
+            if (cached != null) return cached;
+            if (FAILED.contains(key)) return null;
+            BufferedImage loaded = load(key);
+            if (loaded != null) {
+                CACHE.put(key, loaded);
+                return loaded;
+            }
+            FAILED.add(key);
+            return null;
+        }
+
+        private static BufferedImage load(CombatHudPanelImageKey key) {
+            String[] candidates = switch (key) {
+                case BEAM_RAPID -> new String[]{
+                        "beam_mode_rapid.png",
+                        "beam_mode_rapid_fire.png",
+                        "beam mode rapid fire.png",
+                        "beam_mode_rapidfire.png",
+                        "beam mode rapid.png"
+                };
+                case BEAM_CONCENTRATED -> new String[]{
+                        "beam_mode_concentrated.png",
+                        "beam mode concentrated.png",
+                        "beam_mode_focus.png"
+                };
+                case MISSILE_HEAVY -> new String[]{
+                        "missile_mode_heavy.png",
+                        "missile mode heavy.png"
+                };
+                case MISSILE_FAST -> new String[]{
+                        "missile_mode_fast.png",
+                        "missile mode fast.png"
+                };
+                case MISSILE_AAA -> new String[]{
+                        "missile_mode_aaa.png",
+                        "missile mode aaa.png",
+                        "missile_mode_aa.png",
+                        "missile mode aa.png"
+                };
+                case ECM_PRIMED -> new String[]{
+                        "ecm_mode_primed.png",
+                        "ecm mode primed.png"
+                };
+                case ECM_ACTIVE -> new String[]{
+                        "ecm_mode_active.png",
+                        "ecm mode active.png"
+                };
+            };
+            for (String candidate : candidates) {
+                File file = new File(HUD_PANEL_DIR, candidate);
+                if (!file.isFile()) continue;
+                try {
+                    return ImageIO.read(file);
+                } catch (IOException ignored) {
+                }
+            }
+            return null;
         }
     }
 
@@ -3545,15 +3663,15 @@ public class Renderer {
 
         double nx = Math.cos(m.angle);
         double ny = Math.sin(m.angle);
-        double tailOffset = m.radius * 1.1;
-        double trailLen = Math.max(12.0, m.radius * 4.8);
+        double tailOffset = missileBodyLength(m) * 0.34;
+        double trailLen = missileTrailLength(m);
 
         int x1 = (int) Math.round(m.x - nx * tailOffset);
         int y1 = (int) Math.round(m.y - ny * tailOffset);
         int x2 = (int) Math.round(m.x - nx * (tailOffset + trailLen));
         int y2 = (int) Math.round(m.y - ny * (tailOffset + trailLen));
 
-        Color trail = missileExhaustColor(m.faction);
+        Color trail = missileExhaustColor(m);
         if (m.faction == Faction.TEAM_C) {
             // Green missiles should read more like photon torpedoes: brighter glow head + thicker, softer trail.
             Stroke old = g2.getStroke();
@@ -3564,11 +3682,11 @@ public class Renderer {
                 g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 72));
                 g2.fillOval(gx - glowR, gy - glowR, glowR * 2, glowR * 2);
 
-                g2.setStroke(new BasicStroke((float) Math.max(3.0, m.radius * 0.90), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setStroke(new BasicStroke((float) Math.max(3.0, missileTrailWidth(m) * 1.15), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 88));
                 g2.drawLine(x1, y1, x2, y2);
 
-                g2.setStroke(new BasicStroke((float) Math.max(1.6, m.radius * 0.55), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setStroke(new BasicStroke((float) Math.max(1.6, missileTrailWidth(m) * 0.68), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 Color hot = mixColor(trail, Color.WHITE, 0.55);
                 g2.setColor(new Color(hot.getRed(), hot.getGreen(), hot.getBlue(), 150));
                 g2.drawLine(x1, y1, x2, y2);
@@ -3576,14 +3694,24 @@ public class Renderer {
                 g2.setStroke(old);
             }
         } else {
-            g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 120));
-            g2.drawLine(x1, y1, x2, y2);
+            Stroke old = g2.getStroke();
+            try {
+                g2.setStroke(new BasicStroke((float) missileTrailWidth(m), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.setColor(new Color(trail.getRed(), trail.getGreen(), trail.getBlue(), 120));
+                g2.drawLine(x1, y1, x2, y2);
+                g2.setStroke(new BasicStroke((float) Math.max(1.1, missileTrailWidth(m) * 0.46), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                Color hot = mixColor(trail, Color.WHITE, 0.45);
+                g2.setColor(new Color(hot.getRed(), hot.getGreen(), hot.getBlue(), 150));
+                g2.drawLine(x1, y1, x2, y2);
+            } finally {
+                g2.setStroke(old);
+            }
         }
     }
 
     private static void drawMissileSkin(Graphics2D g2, Missile m, BufferedImage skin) {
-        double len = Math.max(16.0, m.radius * 3.8);
-        double width = Math.max(6.0, m.radius * 1.8);
+        double len = missileBodyLength(m);
+        double width = missileBodyWidth(m);
         int drawW = (int) Math.round(len);
         int drawH = (int) Math.round(width);
 
@@ -3592,7 +3720,7 @@ public class Renderer {
         gx.rotate(m.angle);
         gx.drawImage(skin, -drawW / 2, -drawH / 2, drawW, drawH, null);
 
-        Color stripe = missileStripeColor(m.faction);
+        Color stripe = missileStripeColor(m);
         int bandW = Math.max(2, (int) Math.round(drawW * 0.12));
         int bandH = Math.max(3, (int) Math.round(drawH * 0.64));
         int bandX = (int) Math.round(-drawW * 0.10);
@@ -3607,8 +3735,8 @@ public class Renderer {
     }
 
     private static void drawMissileFallback(Graphics2D g2, Missile m) {
-        double len = Math.max(16.0, m.radius * 3.8);
-        double width = Math.max(6.0, m.radius * 1.8);
+        double len = missileBodyLength(m);
+        double width = missileBodyWidth(m);
         int hw = (int) Math.round(width * 0.5);
         int hl = (int) Math.round(len * 0.5);
         int nose = (int) Math.round(len * 0.22);
@@ -3631,33 +3759,95 @@ public class Renderer {
         gx.setColor(new Color(255, 255, 255, 70));
         gx.drawPolygon(body);
 
-        Color stripe = missileStripeColor(m.faction);
+        Color stripe = missileStripeColor(m);
         int bandW = Math.max(2, (int) Math.round(len * 0.12));
         int bandH = Math.max(3, (int) Math.round(width * 0.64));
         int bandX = (int) Math.round(-len * 0.08);
         gx.setColor(new Color(stripe.getRed(), stripe.getGreen(), stripe.getBlue(), 170));
         gx.fillRoundRect(bandX, -bandH / 2, bandW, bandH, bandW, bandW);
 
+        if (m.role == Turret.MissileRole.INTERCEPT) {
+            gx.setColor(new Color(255, 245, 225, 180));
+            int finLen = Math.max(4, (int) Math.round(len * 0.16));
+            int finOff = Math.max(2, (int) Math.round(width * 0.42));
+            gx.drawLine(-hl + tail, -finOff, -hl - finLen / 2, -hw - 1);
+            gx.drawLine(-hl + tail, finOff, -hl - finLen / 2, hw + 1);
+        }
+
         gx.dispose();
     }
 
-    private static Color missileStripeColor(Faction faction) {
-        if (faction == null) return new Color(110, 220, 255);
-        return switch (faction) {
+    private static double missileBodyLength(Missile missile) {
+        if (missile == null) return 18.0;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> Math.max(26.0, missile.radius * 5.8);
+            case ANTI_LIGHT -> Math.max(18.0, missile.radius * 4.0);
+            case ANTI_MEDIUM -> Math.max(16.0, missile.radius * 3.8);
+            case INTERCEPT -> Math.max(14.0, missile.radius * 3.1);
+        };
+    }
+
+    private static double missileBodyWidth(Missile missile) {
+        if (missile == null) return 8.0;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> Math.max(9.0, missile.radius * 2.25);
+            case ANTI_LIGHT -> Math.max(6.0, missile.radius * 1.55);
+            case ANTI_MEDIUM -> Math.max(6.0, missile.radius * 1.8);
+            case INTERCEPT -> Math.max(4.0, missile.radius * 1.2);
+        };
+    }
+
+    private static double missileTrailLength(Missile missile) {
+        if (missile == null) return 16.0;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> Math.max(14.0, missile.radius * 3.6);
+            case ANTI_LIGHT -> Math.max(24.0, missile.radius * 6.2);
+            case ANTI_MEDIUM -> Math.max(12.0, missile.radius * 4.8);
+            case INTERCEPT -> Math.max(18.0, missile.radius * 7.0);
+        };
+    }
+
+    private static double missileTrailWidth(Missile missile) {
+        if (missile == null) return 2.0;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> Math.max(2.4, missile.radius * 0.40);
+            case ANTI_LIGHT -> Math.max(2.0, missile.radius * 0.34);
+            case ANTI_MEDIUM -> Math.max(2.0, missile.radius * 0.36);
+            case INTERCEPT -> Math.max(1.4, missile.radius * 0.24);
+        };
+    }
+
+    private static Color missileStripeColor(Missile missile) {
+        Faction faction = (missile == null) ? null : missile.faction;
+        Color base = (faction == null) ? new Color(110, 220, 255) : switch (faction) {
             case PLAYER, ALLY -> new Color(110, 220, 255);
             case ENEMY -> new Color(255, 122, 94);
             case TEAM_C -> new Color(146, 255, 118);
             case TEAM_D -> new Color(255, 186, 92);
         };
+        if (missile == null) return base;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> mixColor(base, new Color(255, 240, 180), 0.28);
+            case ANTI_LIGHT -> mixColor(base, Color.WHITE, 0.12);
+            case ANTI_MEDIUM -> base;
+            case INTERCEPT -> mixColor(base, new Color(255, 242, 196), 0.40);
+        };
     }
 
-    private static Color missileExhaustColor(Faction faction) {
-        if (faction == null) return new Color(255, 186, 120);
-        return switch (faction) {
+    private static Color missileExhaustColor(Missile missile) {
+        Faction faction = (missile == null) ? null : missile.faction;
+        Color base = (faction == null) ? new Color(255, 186, 120) : switch (faction) {
             case PLAYER, ALLY -> new Color(130, 226, 255);
             case ENEMY -> new Color(255, 170, 112);
             case TEAM_C -> new Color(164, 255, 140);
             case TEAM_D -> new Color(255, 210, 128);
+        };
+        if (missile == null) return base;
+        return switch (missile.role) {
+            case ANTI_HEAVY -> mixColor(base, new Color(255, 192, 110), 0.30);
+            case ANTI_LIGHT -> mixColor(base, Color.WHITE, 0.18);
+            case ANTI_MEDIUM -> base;
+            case INTERCEPT -> mixColor(base, new Color(255, 248, 228), 0.52);
         };
     }
 
@@ -3757,6 +3947,7 @@ public class Renderer {
         cardY += 10;
         drawShipSystemsCard(g2, player, lockedTarget, autoLock, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail);
+        drawCombatHudPanels(g2, ctx, player, viewW, viewH, detail);
 
         if (!resourceRush && gameOverText != null && !gameOverText.isBlank()) {
             String msg = gameOverText;
@@ -3806,6 +3997,202 @@ public class Renderer {
         if (shopOpen) {
             drawShopOverlay(g2, ctx, player, credits, hangarTier, ctx.ui);
         }
+    }
+
+    private static CombatHudPanelLayout combatHudPanelLayout(int viewW, int viewH) {
+        Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
+        int beamW = 336;
+        int beamH = 150;
+        int missileW = 336;
+        int missileH = 166;
+        int ecmW = 336;
+        int ecmH = 124;
+        int gap = 14;
+        int x = Math.max(14, viewW - beamW - 18);
+        int totalH = beamH + gap + missileH + gap + ecmH;
+        int y = Math.max(18, coreMenu.y - totalH - 22);
+        Rectangle beamRect = new Rectangle(x, y, beamW, beamH);
+        Rectangle missileRect = new Rectangle(x, beamRect.y + beamRect.height + gap, missileW, missileH);
+        Rectangle ecmRect = new Rectangle(x, missileRect.y + missileRect.height + gap, ecmW, ecmH);
+        return new CombatHudPanelLayout(beamRect, missileRect, ecmRect);
+    }
+
+    public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.player == null) return null;
+        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH);
+        Rectangle beamRapid = beamRapidRect(layout.beamRect);
+        if (beamRapid.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.BEAM_RAPID);
+        Rectangle beamConcentrated = beamConcentratedRect(layout.beamRect);
+        if (beamConcentrated.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.BEAM_CONCENTRATED);
+        Rectangle beamToggle = beamToggleRect(layout.beamRect);
+        if (beamToggle.contains(mouseX, mouseY)) {
+            return new HudPanelClickTarget(
+                    ctx.player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT
+                            ? HudPanelClickTarget.Kind.BEAM_RAPID
+                            : HudPanelClickTarget.Kind.BEAM_CONCENTRATED
+            );
+        }
+
+        Rectangle missileHeavy = missileRowRect(layout.missileRect, 0);
+        if (missileHeavy.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.MISSILE_HEAVY);
+        Rectangle missileFast = missileRowRect(layout.missileRect, 1);
+        if (missileFast.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.MISSILE_FAST);
+        Rectangle missileAaa = missileRowRect(layout.missileRect, 2);
+        if (missileAaa.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.MISSILE_AAA);
+
+        Rectangle ecmPrimed = ecmPrimedRect(layout.ecmRect);
+        if (ecmPrimed.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_PRIMED);
+        Rectangle ecmActive = ecmActiveRect(layout.ecmRect);
+        if (ecmActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_ACTIVE);
+        return null;
+    }
+
+    private static Rectangle beamRapidRect(Rectangle panel) {
+        return new Rectangle(panel.x + 14, panel.y + 26, panel.width / 2 - 20, panel.height - 34);
+    }
+
+    private static Rectangle beamConcentratedRect(Rectangle panel) {
+        return new Rectangle(panel.x + panel.width / 2 + 4, panel.y + 26, panel.width / 2 - 18, panel.height - 34);
+    }
+
+    private static Rectangle beamToggleRect(Rectangle panel) {
+        int cx = panel.x + panel.width / 2;
+        int cy = panel.y + panel.height / 2 + 10;
+        int r = Math.max(28, Math.min(panel.width, panel.height) / 8);
+        return new Rectangle(cx - r, cy - r, r * 2, r * 2);
+    }
+
+    private static Rectangle missileRowRect(Rectangle panel, int row) {
+        int contentY = panel.y + 28;
+        int rowGap = 6;
+        int rowH = (panel.height - 40 - rowGap * 2) / 3;
+        int y = contentY + row * (rowH + rowGap);
+        return new Rectangle(panel.x + 12, y, panel.width - 24, rowH);
+    }
+
+    private static Rectangle ecmPrimedRect(Rectangle panel) {
+        return new Rectangle(panel.x + panel.width / 2, panel.y + 24, panel.width / 2 - 14, panel.height / 2 - 10);
+    }
+
+    private static Rectangle ecmActiveRect(Rectangle panel) {
+        return new Rectangle(panel.x + panel.width / 2, panel.y + panel.height / 2 + 2, panel.width / 2 - 14, panel.height / 2 - 14);
+    }
+
+    private static void drawCombatHudPanels(Graphics2D g2, GameContext ctx, Player player, int viewW, int viewH,
+                                            GameContext.HudDetail detail) {
+        if (g2 == null || ctx == null || player == null) return;
+        if (detail == GameContext.HudDetail.MINIMAL) return;
+        if (ctx.ui != null && ctx.ui.hasBlockingOverlay()) return;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+
+        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH);
+        drawBeamModePanel(g2, player, layout.beamRect);
+        drawMissileModePanel(g2, player, layout.missileRect);
+        drawEcmModePanel(g2, ctx, layout.ecmRect);
+    }
+
+    private static void drawBeamModePanel(Graphics2D g2, Player player, Rectangle rect) {
+        if (g2 == null || player == null || rect == null) return;
+        CombatHudPanelImageKey key = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT)
+                ? CombatHudPanelImageKey.BEAM_CONCENTRATED
+                : CombatHudPanelImageKey.BEAM_RAPID;
+        HudPanelVisual visual = panelVisual(key, rect);
+        if (visual != null) {
+            drawHudPanelImage(g2, visual);
+            return;
+        }
+        String active = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) ? "CONCENTRATED" : "RAPID FIRE";
+        drawFallbackPanel(g2, rect, "BEAM MODE", active,
+                "Click left for rapid fire", "Click right for concentrated", new Color(255, 182, 92, 220));
+    }
+
+    private static void drawMissileModePanel(Graphics2D g2, Player player, Rectangle rect) {
+        if (g2 == null || player == null || rect == null) return;
+        Turret.MissileRole role = currentPlayerMissileRole(player);
+        CombatHudPanelImageKey key = switch (role) {
+            case ANTI_HEAVY -> CombatHudPanelImageKey.MISSILE_HEAVY;
+            case INTERCEPT -> CombatHudPanelImageKey.MISSILE_AAA;
+            case ANTI_LIGHT, ANTI_MEDIUM -> CombatHudPanelImageKey.MISSILE_FAST;
+        };
+        HudPanelVisual visual = panelVisual(key, rect);
+        if (visual != null) {
+            drawHudPanelImage(g2, visual);
+            return;
+        }
+        String active = switch (role) {
+            case ANTI_HEAVY -> "HEAVY";
+            case INTERCEPT -> "AAA";
+            case ANTI_LIGHT, ANTI_MEDIUM -> "FAST";
+        };
+        drawFallbackPanel(g2, rect, "MISSILE MODE", active,
+                "Top: heavy payload", "Mid: fast / Bottom: AAA", new Color(255, 156, 92, 220));
+    }
+
+    private static void drawEcmModePanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
+        if (g2 == null || ctx == null || rect == null) return;
+        boolean activeNow = ctx.player != null && ctx.player.hasActiveEcm();
+        CombatHudPanelImageKey key = activeNow
+                ? CombatHudPanelImageKey.ECM_ACTIVE
+                : CombatHudPanelImageKey.ECM_PRIMED;
+        HudPanelVisual visual = panelVisual(key, rect);
+        if (visual != null) {
+            drawHudPanelImage(g2, visual);
+            return;
+        }
+        String active = activeNow ? "ACTIVE"
+                : ((ctx.player != null && !ctx.player.ecmReady())
+                ? String.format("RECHARGING %.0FS", Math.ceil(ctx.player.ecmCooldownRemaining()))
+                : "PRIMED");
+        drawFallbackPanel(g2, rect, "ECM MODE", active,
+                "Top: primed", "Bottom: active", new Color(255, 170, 90, 220));
+    }
+
+    private static Turret.MissileRole currentPlayerMissileRole(Player player) {
+        if (player == null || player.turrets == null) return Turret.MissileRole.ANTI_LIGHT;
+        for (Turret turret : player.turrets) {
+            if (turret != null && turret.kind == Turret.Kind.MISSILE) {
+                return (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+            }
+        }
+        return Turret.MissileRole.ANTI_MEDIUM;
+    }
+
+    private static void drawFallbackPanel(Graphics2D g2, Rectangle rect, String title, String active,
+                                          String hintA, String hintB, Color accent) {
+        if (g2 == null || rect == null) return;
+        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, title, accent);
+        g2.setFont(new Font("Consolas", Font.BOLD, 16));
+        g2.setColor(new Color(248, 242, 232, 232));
+        g2.drawString(active, rect.x + 14, rect.y + 48);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(218, 228, 240, 196));
+        g2.drawString(hintA, rect.x + 14, rect.y + rect.height - 28);
+        g2.drawString(hintB, rect.x + 14, rect.y + rect.height - 12);
+    }
+
+    private static HudPanelVisual panelVisual(CombatHudPanelImageKey key, Rectangle slot) {
+        BufferedImage image = HudPanelSkinLibrary.get(key);
+        if (image == null || slot == null) return null;
+        int srcW = Math.max(1, image.getWidth());
+        int srcH = Math.max(1, image.getHeight());
+        double scale = Math.min(slot.width / (double) srcW, slot.height / (double) srcH);
+        scale = Math.max(0.05, scale);
+        int drawW = Math.max(1, (int) Math.round(srcW * scale));
+        int drawH = Math.max(1, (int) Math.round(srcH * scale));
+        int drawX = slot.x + (slot.width - drawW) / 2;
+        int drawY = slot.y + (slot.height - drawH) / 2;
+        return new HudPanelVisual(new Rectangle(drawX, drawY, drawW, drawH), image);
+    }
+
+    private static void drawHudPanelImage(Graphics2D g2, HudPanelVisual visual) {
+        if (g2 == null || visual == null || visual.image == null || visual.drawRect == null) return;
+        Rectangle r = visual.drawRect;
+        Composite oldComposite = g2.getComposite();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.30f));
+        g2.setColor(Color.BLACK);
+        g2.fillRoundRect(r.x + 6, r.y + 8, r.width - 2, r.height - 2, 18, 18);
+        g2.setComposite(oldComposite);
+        g2.drawImage(visual.image, r.x, r.y, r.width, r.height, null);
     }
 
     private static int drawObjectiveCard(Graphics2D g2, String objectiveTitle, String objectiveDetail,
@@ -7435,7 +7822,24 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     // IMPORTANT: This is the method that was likely stubbed/empty in your current project.
     public static void drawShip(Graphics2D g2, Ship ship) {
+        drawEcmIllusions(g2, ship);
         ShipRenderer.drawShip(g2, ship);
+    }
+
+    private static void drawEcmIllusions(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || !ship.hasActiveEcm() || ship.dying || !ship.alive) return;
+        double t = Ship.ECM_ACTIVE_SECONDS - Math.max(0.0, ship.ecmActiveTimer);
+        double baseRadius = Math.max(16.0, ship.radius * 0.90);
+        for (int i = 0; i < 3; i++) {
+            double phase = t * (1.6 + i * 0.25) + ship.id * (0.19 + i * 0.07);
+            double ox = Math.cos(phase * 4.2 + i) * baseRadius + Math.sin(phase * 2.3 + i * 0.8) * baseRadius * 0.35;
+            double oy = Math.sin(phase * 3.8 + i * 0.6) * baseRadius + Math.cos(phase * 2.1 + i) * baseRadius * 0.30;
+            Graphics2D ghost = (Graphics2D) g2.create();
+            ghost.translate(ox, oy);
+            ghost.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.20f));
+            ShipRenderer.drawShip(ghost, ship);
+            ghost.dispose();
+        }
     }
 
     private static void drawTacticalAsteroid(Graphics2D g2, Asteroid a) {

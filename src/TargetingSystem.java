@@ -124,6 +124,28 @@ public final class TargetingSystem {
         return best;
     }
 
+    public static Ship findClosestHostileSmallCraft(GameContext ctx, Ship observer, double x, double y, double maxDist) {
+        if (ctx == null) return null;
+        Ship best = null;
+        double bestD2 = maxDist * maxDist;
+        Faction perspective = (observer == null) ? ((ctx.player == null) ? null : ctx.player.faction) : observer.faction;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(perspective, x, y, maxDist, nearby);
+        for (Ship s : nearby) {
+            if (s == null) continue;
+            if (!isAlive(s)) continue;
+            if (!s.isSmallCraft()) continue;
+            if (perspective != null && s.faction != null && perspective.isFriendlyTo(s.faction)) continue;
+            if (!isDetectableToObserver(observer, s)) continue;
+            double d2 = GameMath.dist2(x, y, s.x, s.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = s;
+            }
+        }
+        return best;
+    }
+
     public static Ship findClosestEngagementTarget(GameContext ctx, Ship observer, double x, double y, double maxDist) {
         if (ctx == null) return null;
         Ship best = null;
@@ -149,6 +171,7 @@ public final class TargetingSystem {
 
     public static boolean isDetectableToObserver(Ship observer, Ship target) {
         if (target == null) return false;
+        if (observer != null && target.hiddenByEcmAt(observer.x, observer.y)) return false;
         if (!target.isStealth) return true;
         if (!target.isCloaked()) return true;
         if (target.revealTimer > 0.0) return true;

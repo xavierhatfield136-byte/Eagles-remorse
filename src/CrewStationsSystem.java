@@ -270,8 +270,12 @@ public final class CrewStationsSystem {
 
     private static void applyScienceAutomation(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
+        if (ctx.player.ecmReady() && hostileMissileThreatNear(ctx, ctx.player, Math.max(340.0, ctx.player.radius * 10.0))) {
+            ctx.player.tryActivateEcm();
+        }
+        ctx.command.scienceJamming = ctx.player.hasActiveEcm();
         double scanRange = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
-        if (ctx.command.scienceJamming) scanRange *= 0.85;
+        if (ctx.player.hasActiveEcm()) scanRange *= 0.85;
         // Science station continuously refreshes lock to the nearest viable contact.
         ctx.lockedTarget = TargetingSystem.findClosestEngagementTarget(
                 ctx, ctx.player, ctx.player.x, ctx.player.y, scanRange
@@ -295,7 +299,7 @@ public final class CrewStationsSystem {
         p.setPowerPreset(policy.preset);
         p.crewOrder = policy.crewOrder;
         p.setEngineeringPriority(policy.priority);
-        double closeRange = 600.0 * CampaignSystem.targetingRangeMul(ctx) * (ctx.command.scienceJamming ? 0.9 : 1.0);
+        double closeRange = 600.0 * CampaignSystem.targetingRangeMul(ctx) * (ctx.player.hasActiveEcm() ? 0.9 : 1.0);
         Ship closeTarget = TargetingSystem.findClosestEngagementTarget(ctx, p, p.x, p.y, closeRange);
         boolean shouldOverload = policy.overload
                 && closeTarget != null
@@ -308,7 +312,7 @@ public final class CrewStationsSystem {
         if (ctx == null || ctx.player == null) return;
         Player p = ctx.player;
         double rangeMul = CampaignSystem.targetingRangeMul(ctx);
-        double searchRange = 1600.0 * rangeMul * (ctx.command.scienceJamming ? 0.9 : 1.0);
+        double searchRange = 1600.0 * rangeMul * (ctx.player.hasActiveEcm() ? 0.9 : 1.0);
         Ship target = preferredTarget(ctx, searchRange);
         if (target == null) {
             ctx.firingPrimaryAuto = false;
@@ -518,6 +522,19 @@ public final class CrewStationsSystem {
         if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
         if (TargetingSystem.isMainBatteryScreenTarget(ctx.player, target)) return false;
         return TargetingSystem.isDetectableToObserver(ctx.player, target);
+    }
+
+    private static boolean hostileMissileThreatNear(GameContext ctx, Ship ship, double radius) {
+        if (ctx == null || ship == null || radius <= 0.0) return false;
+        java.util.ArrayList<Missile> missiles = new java.util.ArrayList<>();
+        ctx.entityQuery.collectMissilesNear(ship.x, ship.y, radius, missiles);
+        for (Missile missile : missiles) {
+            if (missile == null || !missile.alive || missile.faction == null) continue;
+            if (ship.faction != null && ship.faction.isFriendlyTo(missile.faction)) continue;
+            if (missile.target == ship) return true;
+            if (GameMath.dist2(missile.x, missile.y, ship.x, ship.y) <= radius * radius) return true;
+        }
+        return false;
     }
 
     private static void setVelPerSec(Ship ship, double vxPerSec, double vyPerSec, double dt) {

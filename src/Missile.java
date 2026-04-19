@@ -1,15 +1,21 @@
 public class Missile extends Projectile {
     public static final int BASE_INTERCEPT_HP = 3;
     public static final int HEAVY_INTERCEPT_HP = 4;
+    public static final int INFINITE_GUIDANCE_TICKS = Integer.MAX_VALUE;
 
     public double angle;
     public double speed = 300;                   // units/sec
     public double turnRate = Math.toRadians(280);// rad/sec
 
     public Ship target;
+    public Turret.MissileRole role = Turret.MissileRole.ANTI_MEDIUM;
     public int interceptHp = 2;
     public double blastRadius = 56.0;
     public double splashDamageMul = 0.60;
+    public int guidanceTicksRemaining = INFINITE_GUIDANCE_TICKS;
+    public boolean canRetarget = false;
+    public boolean preferSmallCraft = false;
+    public double retargetRange = 900.0;
 
     public Missile(double x, double y, double angle, Ship target, double dt) {
         this(x, y, angle, target, dt, 300, Math.toRadians(280), 5, 240, 7.0, Faction.PLAYER);
@@ -46,6 +52,22 @@ public class Missile extends Projectile {
         vy = Math.sin(angle) * this.speed * dt;
     }
 
+    public boolean hasGuidance() {
+        return guidanceTicksRemaining > 0;
+    }
+
+    public void copyBehaviorFrom(Missile other) {
+        if (other == null) return;
+        role = other.role;
+        interceptHp = other.interceptHp;
+        blastRadius = other.blastRadius;
+        splashDamageMul = other.splashDamageMul;
+        guidanceTicksRemaining = other.guidanceTicksRemaining;
+        canRetarget = other.canRetarget;
+        preferSmallCraft = other.preferSmallCraft;
+        retargetRange = other.retargetRange;
+    }
+
     public boolean applyInterceptHit(int damage) {
         int d = Math.max(1, damage);
         interceptHp -= d;
@@ -58,7 +80,13 @@ public class Missile extends Projectile {
 
     @Override
     public void update(double dt) {
-        if (target != null && target.alive) {
+        if (guidanceTicksRemaining != INFINITE_GUIDANCE_TICKS) {
+            guidanceTicksRemaining = Math.max(0, guidanceTicksRemaining - 1);
+        }
+
+        if (!hasGuidance()) {
+            target = null;
+        } else if (target != null && target.alive) {
             double desired = Math.atan2(target.y - y, target.x - x);
             double delta = MathUtil.normalizeAngle(desired - angle);
             delta = MathUtil.clamp(delta, -turnRate * dt, turnRate * dt);

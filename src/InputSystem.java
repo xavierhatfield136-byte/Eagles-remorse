@@ -28,6 +28,9 @@ public final class InputSystem {
                 if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
+                if (UISystem.handleHudPanelClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (UISystem.handleShopClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }

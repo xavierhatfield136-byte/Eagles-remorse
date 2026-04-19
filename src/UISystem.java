@@ -711,6 +711,30 @@ public final class UISystem {
         return true;
     }
 
+    public static boolean handleHudPanelClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.player == null || e == null) return false;
+        if (ctx.ui.hasBlockingOverlay()) return false;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+
+        Renderer.HudPanelClickTarget target = Renderer.hudPanelClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
+        if (target == null) return false;
+
+        switch (target.kind) {
+            case BEAM_RAPID -> setPlayerBeamMode(ctx, Ship.PrimaryWeaponFamily.ENERGY_BOLT);
+            case BEAM_CONCENTRATED -> setPlayerBeamMode(ctx, Ship.PrimaryWeaponFamily.BEAM_BOLT);
+            case MISSILE_HEAVY -> setPlayerMissileRole(ctx, Turret.MissileRole.ANTI_HEAVY, "MISSILE MODE: HEAVY");
+            case MISSILE_FAST -> setPlayerMissileRole(ctx, Turret.MissileRole.ANTI_LIGHT, "MISSILE MODE: FAST");
+            case MISSILE_AAA -> setPlayerMissileRole(ctx, Turret.MissileRole.INTERCEPT, "MISSILE MODE: AAA");
+            case ECM_PRIMED -> setScienceJamming(ctx, false);
+            case ECM_ACTIVE -> setScienceJamming(ctx, true);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         Rectangle rect = Renderer.getStrategicMapRect(viewportW, viewportH);
         if (!rect.contains(e.getPoint())) return;
@@ -1477,7 +1501,58 @@ public final class UISystem {
 
     public static void toggleScienceJamming(GameContext ctx) {
         if (ctx == null) return;
-        ctx.command.scienceJamming = !ctx.command.scienceJamming;
+        activatePlayerEcm(ctx);
+    }
+
+    private static void setPlayerBeamMode(GameContext ctx, Ship.PrimaryWeaponFamily family) {
+        if (ctx == null || ctx.player == null || family == null) return;
+        if (ctx.player.primaryWeaponFamily == family) return;
+        ctx.player.primaryWeaponFamily = family;
+        ctx.player.applyPrimaryWeaponFamily();
+        String label = (family == Ship.PrimaryWeaponFamily.BEAM_BOLT)
+                ? "BEAM MODE: CONCENTRATED"
+                : "BEAM MODE: RAPID FIRE";
+        EventSystem.showBanner(ctx, label, 0.9);
+    }
+
+    private static void setPlayerMissileRole(GameContext ctx, Turret.MissileRole role, String banner) {
+        if (ctx == null || ctx.player == null || role == null) return;
+        boolean changed = false;
+        boolean foundRack = false;
+        for (Turret turret : ctx.player.turrets) {
+            if (turret == null || turret.kind != Turret.Kind.MISSILE) continue;
+            foundRack = true;
+            if (turret.missileRole != role) {
+                turret.missileRole = role;
+                changed = true;
+            }
+        }
+        if (!foundRack) {
+            EventSystem.showBanner(ctx, "NO MISSILE RACKS INSTALLED", 1.0);
+            return;
+        }
+        if (changed) {
+            EventSystem.showBanner(ctx, banner, 0.9);
+        }
+    }
+
+    private static void setScienceJamming(GameContext ctx, boolean active) {
+        if (ctx == null) return;
+        activatePlayerEcm(ctx);
+    }
+
+    private static void activatePlayerEcm(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (ctx.player.tryActivateEcm()) {
+            ctx.command.scienceJamming = true;
+            EventSystem.showBanner(ctx, "ECM MODE: ACTIVE", 0.9);
+            return;
+        }
+        if (ctx.player.hasActiveEcm()) {
+            EventSystem.showBanner(ctx, "ECM ALREADY ACTIVE", 0.9);
+            return;
+        }
+        EventSystem.showBanner(ctx, String.format("ECM RECHARGING: %.1FS", ctx.player.ecmCooldownRemaining()), 1.0);
     }
 
     private static int pingCodeForFaction(Faction faction) {

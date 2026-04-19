@@ -607,25 +607,55 @@ public class Player extends Ship {
         return out;
     }
 
-    public List<Projectile> fireSecondary(Ship target, double dt) {
+    public List<Projectile> fireSecondary(GameContext ctx, Ship target, double dt) {
         List<Projectile> out = new ArrayList<>();
         boolean fired = false;
-        aimMissileTurretsAtTarget(target, dt);
         for (Turret t : turrets) {
+            if (t == null) continue;
             if (t.primary) continue;
             if (t.kind != Turret.Kind.MISSILE) continue;
-            if (target == null) continue;
-            Projectile p = t.fire(this, target, dt);
+            Ship missileTarget = selectSecondaryMissileTarget(ctx, t, target);
+            if (missileTarget == null) continue;
+            t.aimAt(dt, this, missileTarget);
+            Projectile p = t.fire(this, missileTarget, dt);
             if (p != null) {
                 out.add(p);
                 if (p instanceof Missile missile) {
-                    spawnSecondaryBurstFollowers(out, missile, target, dt);
+                    spawnSecondaryBurstFollowers(out, missile, missileTarget, dt);
                 }
                 fired = true;
             }
         }
         if (fired) onFiredWeapon();
         return out;
+    }
+
+    private Ship selectSecondaryMissileTarget(GameContext ctx, Turret turret, Ship fallback) {
+        if (turret == null) return null;
+        Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+        if (ctx == null) return fallback;
+
+        if (role == Turret.MissileRole.INTERCEPT) {
+            return TargetingSystem.findClosestHostileSmallCraft(ctx, this, x, y, 820.0);
+        }
+
+        if (isAliveMissileTarget(fallback) && !fallback.blocksMissileLocksFrom(x, y)) {
+            return fallback;
+        }
+
+        double searchRange = switch (role) {
+            case ANTI_HEAVY -> 1100.0;
+            case ANTI_LIGHT -> Math.hypot(ctx.WORLD_W, ctx.WORLD_H);
+            case ANTI_MEDIUM -> 1600.0;
+            case INTERCEPT -> 820.0;
+        };
+        Ship target = TargetingSystem.findClosestEnemyToPoint(ctx, this, x, y, searchRange);
+        if (target != null && target.blocksMissileLocksFrom(x, y)) return null;
+        return target;
+    }
+
+    private boolean isAliveMissileTarget(Ship target) {
+        return target != null && target.alive && !target.dying && target.hp > 0;
     }
 
     public void aimPrimaryTurretsAt(double targetX, double targetY, double dt) {
@@ -708,6 +738,7 @@ public class Player extends Ship {
                     leader.radius,
                     faction
             );
+            burst.copyBehaviorFrom(leader);
             burst.sourceShipId = id;
             out.add(burst);
         }

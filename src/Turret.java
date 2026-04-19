@@ -117,7 +117,9 @@ public class Turret {
     public void aimAt(double dt, Ship host, Ship target) {
         Ship effective = resolvePersistentTarget(target);
         if (effective == null) return;
-        aimAt(dt, host, effective.x, effective.y);
+        double ox = effective.ecmObservedX(worldX(host), worldY(host));
+        double oy = effective.ecmObservedY(worldX(host), worldY(host));
+        aimAt(dt, host, ox, oy);
     }
 
     /**
@@ -137,10 +139,12 @@ public class Turret {
         double wx = worldX(host);
         double wy = worldY(host);
 
+        double ex = effective.ecmObservedX(wx, wy);
+        double ey = effective.ecmObservedY(wx, wy);
         double tvx = effective.vx / dt;
         double tvy = effective.vy / dt;
 
-        double[] ip = MathUtil.interceptPoint(wx, wy, effective.x, effective.y, tvx, tvy, projectileSpeed);
+        double[] ip = MathUtil.interceptPoint(wx, wy, ex, ey, tvx, tvy, projectileSpeed);
         aimAt(dt, host, ip[0], ip[1]);
     }
 
@@ -364,28 +368,50 @@ public class Turret {
             double dmgMul = 1.0;
             double lifeMul = 1.0;
             double radMul = 1.0;
+            double blastMul = 1.0;
+            double splashMul = 0.60;
+            int guidanceTicks = Missile.INFINITE_GUIDANCE_TICKS;
+            boolean canRetarget = false;
+            boolean preferSmallCraft = false;
+            double retargetRange = 900.0;
+            int interceptHpBonus = 0;
 
             switch (role) {
                 case INTERCEPT -> {
-                    dmgMul *= 0.75;
-                    turnMul *= 1.25;
-                    spdMul *= 1.18;
-                    lifeMul *= 0.92;
-                    radMul *= 0.92;
+                    dmgMul *= 0.72;
+                    turnMul *= 2.35;
+                    spdMul *= 1.52;
+                    radMul *= 0.66;
+                    blastMul *= 1.05;
+                    splashMul = 0.28;
+                    guidanceTicks = Math.max(1, (int) Math.round(7.0 / GameContext.DT));
+                    canRetarget = true;
+                    preferSmallCraft = true;
+                    retargetRange = 980.0;
                 }
                 case ANTI_LIGHT -> {
-                    dmgMul *= 0.90;
-                    turnMul *= 1.15;
-                    spdMul *= 1.08;
+                    dmgMul *= 0.74;
+                    turnMul *= 1.18;
+                    spdMul *= 1.42;
+                    lifeMul *= 2.80;
+                    radMul *= 0.92;
+                    blastMul *= 0.84;
+                    splashMul = 0.38;
+                    canRetarget = true;
+                    retargetRange = 12000.0;
                 }
                 case ANTI_MEDIUM -> {
                 }
                 case ANTI_HEAVY -> {
-                    dmgMul *= 1.35;
-                    turnMul *= 0.60;
-                    spdMul *= 0.92;
-                    lifeMul *= 1.10;
-                    radMul *= 1.12;
+                    dmgMul *= 4.30;
+                    turnMul *= 0.58;
+                    spdMul *= 0.68;
+                    lifeMul *= 0.92;
+                    radMul *= 1.68;
+                    blastMul *= 1.95;
+                    splashMul = 0.95;
+                    guidanceTicks = Math.max(1, (int) Math.round(2.8 / GameContext.DT));
+                    interceptHpBonus = 2;
                 }
             }
 
@@ -403,9 +429,20 @@ public class Turret {
             missileDamage_final = (int) Math.round(missileDamage * dmgMul);
             missileDamage_final = Math.max(1, missileDamage_final);
             missileLifetime_final = Math.max(1, (int) Math.round(missileLifetime * lifeMul));
+            if (role == MissileRole.INTERCEPT) {
+                missileLifetime_final = Math.max(1, (int) Math.round(7.0 / GameContext.DT));
+            }
             missileRadius = Math.max(6.0, missileRadius * radMul);
             
-            Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
+            Missile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
+            p.role = role;
+            p.canRetarget = canRetarget;
+            p.preferSmallCraft = preferSmallCraft;
+            p.retargetRange = retargetRange;
+            p.guidanceTicksRemaining = Math.min(guidanceTicks, missileLifetime_final);
+            p.interceptHp += interceptHpBonus;
+            p.blastRadius = Math.max(32.0, p.blastRadius * blastMul);
+            p.splashDamageMul = Math.max(0.0, splashMul);
             p.sourceShipId = host.id;
             return p;
         }

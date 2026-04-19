@@ -22,6 +22,13 @@ public final class PhysicsSystem {
             s.update(dt);
         }
         for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying) continue;
+            if (!s.hasActiveEcm()) continue;
+            s.x = GameMath.clamp(s.x + s.ecmMoveOffsetX(dt), 0, ctx.WORLD_W);
+            s.y = GameMath.clamp(s.y + s.ecmMoveOffsetY(dt), 0, ctx.WORLD_H);
+        }
+        syncPlayerEcmFlag(ctx);
+        for (Ship s : ctx.ships) {
             if (s == null) continue;
             boolean superFired = false;
             boolean hyperLanceBeam = false;
@@ -158,14 +165,15 @@ public final class PhysicsSystem {
                 ctx.firingSecondaryManualLatched = false;
             }
             if (ctx.firingSecondaryAuto || manualSecondaryRequested) {
+                double secondarySearchRange = playerSecondarySearchRange(ctx);
                 Ship target = (isAlive(ctx.lockedTarget)
                         && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                         && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget))
                         ? ctx.lockedTarget
-                        : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, 1100 * rangeMul);
+                        : findClosestEnemyToPoint(ctx, ctx.player.x, ctx.player.y, secondarySearchRange * rangeMul);
                 if (target != null && TeamSystem.isHostileToPlayer(ctx, target.faction)) {
                     int beforeSecondary = ctx.projectiles.size();
-                    ctx.projectiles.addAll(ctx.player.fireSecondary(target, dt));
+                    ctx.projectiles.addAll(ctx.player.fireSecondary(ctx, target, dt));
                     if (ctx.projectiles.size() > beforeSecondary) {
                         AudioSystem.onWeaponSecondary(ctx, ctx.player);
                     }
@@ -189,6 +197,9 @@ public final class PhysicsSystem {
             if (p == null) {
                 it.remove();
                 continue;
+            }
+            if (p instanceof Missile missile) {
+                updateMissileTargeting(ctx, missile);
             }
             p.update(dt);
             if (!p.alive) it.remove();
@@ -250,6 +261,63 @@ public final class PhysicsSystem {
             if (turret.kind == Turret.Kind.MISSILE) return true;
         }
         return false;
+    }
+
+    private static double playerSecondarySearchRange(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.player.turrets == null) return 1100.0;
+        double range = 1100.0;
+        for (Turret turret : ctx.player.turrets) {
+            if (turret == null || turret.kind != Turret.Kind.MISSILE || turret.primary) continue;
+            Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+            switch (role) {
+                case ANTI_HEAVY -> range = Math.max(range, 1100.0);
+                case ANTI_LIGHT -> range = Math.max(range, Math.hypot(ctx.WORLD_W, ctx.WORLD_H));
+                case ANTI_MEDIUM -> range = Math.max(range, 1600.0);
+                case INTERCEPT -> range = Math.max(range, 820.0);
+            }
+        }
+        return range;
+    }
+
+    private static void updateMissileTargeting(GameContext ctx, Missile missile) {
+        if (ctx == null || missile == null || !missile.alive || !missile.hasGuidance()) return;
+        if (missile.target != null && missile.target.blocksMissileLocksFrom(missile.x, missile.y)) {
+            missile.target = null;
+        }
+        if (missile.target != null
+                && missile.target.alive
+                && !missile.target.dying
+                && missile.target.hp > 0
+                && (!missile.preferSmallCraft || missile.target.isSmallCraft())) {
+            return;
+        }
+        if (!missile.canRetarget) return;
+        missile.target = findMissileRetarget(ctx, missile);
+    }
+
+    private static Ship findMissileRetarget(GameContext ctx, Missile missile) {
+        if (ctx == null || missile == null || missile.faction == null) return null;
+        double maxRange = Math.max(120.0, missile.retargetRange);
+        Ship best = null;
+        double bestD2 = maxRange * maxRange;
+        java.util.ArrayList<Ship> nearby = new java.util.ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(missile.faction, missile.x, missile.y, maxRange, nearby);
+        for (Ship ship : nearby) {
+            if (!isAlive(ship)) continue;
+            if (missile.preferSmallCraft && !ship.isSmallCraft()) continue;
+            if (ship.blocksMissileLocksFrom(missile.x, missile.y)) continue;
+            double d2 = GameMath.dist2(missile.x, missile.y, ship.x, ship.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = ship;
+            }
+        }
+        return best;
+    }
+
+    private static void syncPlayerEcmFlag(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.command.scienceJamming = ctx.player != null && ctx.player.hasActiveEcm();
     }
 
     private static void awardPlayerKillAssistCredits(GameContext ctx) {

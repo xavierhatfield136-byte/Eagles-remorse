@@ -132,6 +132,7 @@ public final class AISystem {
                 s.tryCIWS(dt, ctx);
                 continue;
             }
+            maybeActivateEcm(ctx, s);
             tickClosestWeaponRetarget(ctx, s, dt);
             if (s.aiBadApproachTimer > 0.0) {
                 s.aiBadApproachTimer = Math.max(0.0, s.aiBadApproachTimer - Math.max(0.0, dt));
@@ -2631,20 +2632,29 @@ public final class AISystem {
             if (t == null) continue;
 
             if (t.kind == Turret.Kind.MISSILE) {
-                if (dist > missileRange) continue;
+                Ship missileTarget = resolveMissileTarget(ctx, s, t, target, missileRange);
+                if (!isAlive(missileTarget)) continue;
+                double missileDist = Math.hypot(missileTarget.x - s.x, missileTarget.y - s.y);
+                double allowedMissileRange = missileRangeForTurret(t, missileRange);
+                if (missileDist > allowedMissileRange) continue;
                 if (!t.canFire()) continue;
 
                 double wx = t.worldX(s);
                 double wy = t.worldY(s);
-                double desired = Math.atan2(target.y - wy, target.x - wx);
+                double desired = Math.atan2(missileTarget.y - wy, missileTarget.x - wx);
                 double delta = Math.abs(MathUtil.normalizeAngle(desired - t.angle));
-                if (delta > Math.toRadians(28)) continue;
+                double missileTolerance = (t.missileRole == Turret.MissileRole.INTERCEPT)
+                        ? Math.toRadians(46)
+                        : Math.toRadians(28);
+                if (delta > missileTolerance) continue;
 
-                if (!shouldFireMissileWithDiscipline(ctx, s, target, dist, confidence, objective, killConfirm, overkillLikely)) {
+                if (!shouldFireMissileWithDiscipline(
+                        ctx, s, missileTarget, missileDist, confidence, objective,
+                        isKillConfirmActive(missileTarget), isOverkillLikely(ctx, s, missileTarget))) {
                     continue;
                 }
 
-                Projectile p = t.fire(s, target, dt);
+                Projectile p = t.fire(s, missileTarget, dt);
                 if (p != null) {
                     ctx.projectiles.add(p);
                     firedCount++;
@@ -2689,6 +2699,27 @@ public final class AISystem {
             }
         }
         return firedCount;
+    }
+
+    private static Ship resolveMissileTarget(GameContext ctx, Ship shooter, Turret turret, Ship fallback, double baseMissileRange) {
+        if (ctx == null || shooter == null || turret == null) return fallback;
+        Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+        if (role == Turret.MissileRole.INTERCEPT) {
+            return TargetingSystem.findClosestHostileSmallCraft(ctx, shooter, shooter.x, shooter.y, missileRangeForTurret(turret, baseMissileRange));
+        }
+        if (fallback != null && fallback.blocksMissileLocksFrom(shooter.x, shooter.y)) return null;
+        return fallback;
+    }
+
+    private static double missileRangeForTurret(Turret turret, double baseMissileRange) {
+        if (turret == null) return baseMissileRange;
+        Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+        return switch (role) {
+            case ANTI_HEAVY -> Math.max(520.0, baseMissileRange * 0.72);
+            case ANTI_LIGHT -> Math.max(baseMissileRange, baseMissileRange * 2.5);
+            case ANTI_MEDIUM -> baseMissileRange;
+            case INTERCEPT -> Math.min(baseMissileRange, 820.0);
+        };
     }
 
     private static boolean isGunTurretReadyToFire(Ship host, Turret t, Ship target, double dist, double gunRange,
@@ -3529,6 +3560,10 @@ public final class AISystem {
         double rangeBudget = 2400.0 * sensorNorm;
         double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(520.0, rangeBudget)));
         double ewFactor = 1.0;
+        if (target.hasActiveEcm()) {
+            if (target.hiddenByEcmAt(observer.x, observer.y)) return 0.0;
+            if (target.distortedByEcmAt(observer.x, observer.y)) ewFactor *= 0.34;
+        }
         if (ctx != null && ctx.command.scienceJamming && ctx.player != null && observer.faction != null && target.faction != null) {
             boolean observerFriendlyToPlayer = observer.faction.isFriendlyTo(ctx.player.faction);
             boolean targetFriendlyToPlayer = target.faction.isFriendlyTo(ctx.player.faction);
@@ -3537,6 +3572,26 @@ public final class AISystem {
         }
         double conf = (sensorNorm * 0.62 + distConf * 0.38) * ewFactor;
         return Math.max(0.05, Math.min(1.0, conf));
+    }
+
+    private static void maybeActivateEcm(GameContext ctx, Ship ship) {
+        if (!isAlive(ship) || ctx == null) return;
+        if (!ship.ecmReady()) return;
+        if (!incomingMissileThreatNear(ctx, ship, Math.max(340.0, ship.radius * 10.0))) return;
+        ship.tryActivateEcm();
+    }
+
+    private static boolean incomingMissileThreatNear(GameContext ctx, Ship ship, double radius) {
+        if (ctx == null || ship == null || radius <= 0.0) return false;
+        List<Missile> missiles = new ArrayList<>();
+        ctx.entityQuery.collectMissilesNear(ship.x, ship.y, radius, missiles);
+        for (Missile missile : missiles) {
+            if (missile == null || !missile.alive || missile.faction == null) continue;
+            if (ship.faction != null && ship.faction.isFriendlyTo(missile.faction)) continue;
+            if (missile.target == ship) return true;
+            if (GameMath.dist2(missile.x, missile.y, ship.x, ship.y) <= radius * radius) return true;
+        }
+        return false;
     }
 
     private static void decayKillConfirmTimers(double dt) {
