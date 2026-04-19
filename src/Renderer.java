@@ -141,7 +141,9 @@ public class Renderer {
             MISSILE_FAST,
             MISSILE_AAA,
             ECM_PRIMED,
-            ECM_ACTIVE
+            ECM_ACTIVE,
+            CLOAK_CHARGE,
+            CLOAK_ACTIVE
         }
 
         public final Kind kind;
@@ -158,18 +160,22 @@ public class Renderer {
         MISSILE_FAST,
         MISSILE_AAA,
         ECM_PRIMED,
-        ECM_ACTIVE
+        ECM_ACTIVE,
+        CLOAK_CHARGE,
+        CLOAK_ACTIVE
     }
 
     private static final class CombatHudPanelLayout {
         final Rectangle beamRect;
         final Rectangle missileRect;
         final Rectangle ecmRect;
+        final Rectangle cloakRect;
 
-        CombatHudPanelLayout(Rectangle beamRect, Rectangle missileRect, Rectangle ecmRect) {
+        CombatHudPanelLayout(Rectangle beamRect, Rectangle missileRect, Rectangle ecmRect, Rectangle cloakRect) {
             this.beamRect = beamRect;
             this.missileRect = missileRect;
             this.ecmRect = ecmRect;
+            this.cloakRect = cloakRect;
         }
     }
 
@@ -236,6 +242,18 @@ public class Renderer {
                 case ECM_ACTIVE -> new String[]{
                         "ecm_mode_active.png",
                         "ecm mode active.png"
+                };
+                case CLOAK_CHARGE -> new String[]{
+                        "cloak_mode_charge.png",
+                        "cloak mode charge.png",
+                        "cloak_charge.png",
+                        "cloak charge.png"
+                };
+                case CLOAK_ACTIVE -> new String[]{
+                        "cloak_mode_active.png",
+                        "cloak mode active.png",
+                        "cloak_active.png",
+                        "cloak active.png"
                 };
             };
             for (String candidate : candidates) {
@@ -3999,7 +4017,7 @@ public class Renderer {
         }
     }
 
-    private static CombatHudPanelLayout combatHudPanelLayout(int viewW, int viewH) {
+    private static CombatHudPanelLayout combatHudPanelLayout(int viewW, int viewH, boolean includeCloak) {
         Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
         int beamW = 336;
         int beamH = 150;
@@ -4007,19 +4025,24 @@ public class Renderer {
         int missileH = 166;
         int ecmW = 336;
         int ecmH = 124;
+        int cloakW = 336;
+        int cloakH = 124;
         int gap = 14;
         int x = Math.max(14, viewW - beamW - 18);
-        int totalH = beamH + gap + missileH + gap + ecmH;
+        int totalH = beamH + gap + missileH + gap + ecmH + (includeCloak ? gap + cloakH : 0);
         int y = Math.max(18, coreMenu.y - totalH - 22);
         Rectangle beamRect = new Rectangle(x, y, beamW, beamH);
         Rectangle missileRect = new Rectangle(x, beamRect.y + beamRect.height + gap, missileW, missileH);
         Rectangle ecmRect = new Rectangle(x, missileRect.y + missileRect.height + gap, ecmW, ecmH);
-        return new CombatHudPanelLayout(beamRect, missileRect, ecmRect);
+        Rectangle cloakRect = includeCloak
+                ? new Rectangle(x, ecmRect.y + ecmRect.height + gap, cloakW, cloakH)
+                : new Rectangle(x, ecmRect.y + ecmRect.height, 0, 0);
+        return new CombatHudPanelLayout(beamRect, missileRect, ecmRect, cloakRect);
     }
 
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH);
+        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);
         Rectangle beamRapid = beamRapidRect(layout.beamRect);
         if (beamRapid.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.BEAM_RAPID);
         Rectangle beamConcentrated = beamConcentratedRect(layout.beamRect);
@@ -4044,6 +4067,13 @@ public class Renderer {
         if (ecmPrimed.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_PRIMED);
         Rectangle ecmActive = ecmActiveRect(layout.ecmRect);
         if (ecmActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_ACTIVE);
+
+        if (ctx.player.isStealth) {
+            Rectangle cloakCharge = cloakChargeRect(layout.cloakRect);
+            if (cloakCharge.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.CLOAK_CHARGE);
+            Rectangle cloakActive = cloakActiveRect(layout.cloakRect);
+            if (cloakActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.CLOAK_ACTIVE);
+        }
         return null;
     }
 
@@ -4078,6 +4108,14 @@ public class Renderer {
         return new Rectangle(panel.x + panel.width / 2, panel.y + panel.height / 2 + 2, panel.width / 2 - 14, panel.height / 2 - 14);
     }
 
+    private static Rectangle cloakChargeRect(Rectangle panel) {
+        return new Rectangle(panel.x + 8, panel.y + 12, panel.width - 16, panel.height / 2 - 4);
+    }
+
+    private static Rectangle cloakActiveRect(Rectangle panel) {
+        return new Rectangle(panel.x + 8, panel.y + panel.height / 2 - 4, panel.width - 16, panel.height / 2 + 2);
+    }
+
     private static void drawCombatHudPanels(Graphics2D g2, GameContext ctx, Player player, int viewW, int viewH,
                                             GameContext.HudDetail detail) {
         if (g2 == null || ctx == null || player == null) return;
@@ -4085,10 +4123,13 @@ public class Renderer {
         if (ctx.ui != null && ctx.ui.hasBlockingOverlay()) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
 
-        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH);
+        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, player.isStealth);
         drawBeamModePanel(g2, player, layout.beamRect);
         drawMissileModePanel(g2, player, layout.missileRect);
         drawEcmModePanel(g2, ctx, layout.ecmRect);
+        if (player.isStealth) {
+            drawCloakModePanel(g2, player, layout.cloakRect);
+        }
     }
 
     private static void drawBeamModePanel(Graphics2D g2, Player player, Rectangle rect) {
@@ -4145,6 +4186,26 @@ public class Renderer {
                 : "PRIMED");
         drawFallbackPanel(g2, rect, "ECM MODE", active,
                 "Top: primed", "Bottom: active", new Color(255, 170, 90, 220));
+    }
+
+    private static void drawCloakModePanel(Graphics2D g2, Player player, Rectangle rect) {
+        if (g2 == null || player == null || rect == null) return;
+        CombatHudPanelImageKey key = player.cloakWantsActive()
+                ? CombatHudPanelImageKey.CLOAK_ACTIVE
+                : CombatHudPanelImageKey.CLOAK_CHARGE;
+        HudPanelVisual visual = panelVisual(key, rect);
+        if (visual != null) {
+            drawHudPanelImage(g2, visual);
+            return;
+        }
+        int pct = (int) Math.round(player.cloakEnergyFrac() * 100.0);
+        String active = player.cloakWantsActive()
+                ? String.format("ACTIVE %d%%", pct)
+                : String.format("CHARGE %d%%", pct);
+        drawFallbackPanel(g2, rect, "CLOAK MODE", active,
+                "Top: preserve charge", "Bottom: cloak active", player.cloakWantsActive()
+                        ? new Color(122, 255, 116, 220)
+                        : new Color(108, 194, 255, 220));
     }
 
     private static Turret.MissileRole currentPlayerMissileRole(Player player) {
@@ -5075,7 +5136,9 @@ public class Renderer {
 
         if (ship.isStealth) {
             int pct = (int) Math.round(ship.cloakEnergyFrac() * 100.0);
-            String state = ship.isCloaked() ? "ACTIVE" : "RECHARGE";
+            String state = ship.isCloaked()
+                    ? "ACTIVE"
+                    : (ship.cloakWantsActive() ? "SPOOL" : "CHARGE");
             drawVitalsMeter(
                     g2,
                     meterX,

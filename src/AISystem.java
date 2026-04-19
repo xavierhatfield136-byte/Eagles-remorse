@@ -136,6 +136,7 @@ public final class AISystem {
                 continue;
             }
             maybeActivateEcm(ctx, s);
+            updateStealthCloakIntent(ctx, s);
             tickClosestWeaponRetarget(ctx, s, dt);
             maybeFireAutonomousInterceptMissiles(ctx, s, dt);
             if (s.aiBadApproachTimer > 0.0) {
@@ -3634,6 +3635,39 @@ public final class AISystem {
         ship.tryActivateEcm();
     }
 
+    private static void updateStealthCloakIntent(GameContext ctx, Ship ship) {
+        if (!isAlive(ship) || ctx == null) return;
+        if (!ship.isStealth) return;
+
+        double energyFrac = ship.cloakEnergyFrac();
+        double preferred = Math.max(260.0, preferredRange(ship));
+        double nearestEnemy = nearestDetectableHostileDistance(ctx, ship, Math.max(1400.0, preferred * 2.2));
+        boolean missilesClose = incomingMissileThreatNear(ctx, ship, Math.max(420.0, ship.radius * 13.0));
+        boolean underPressure = missilesClose
+                || ship.cloakThreatTimer > 0.0
+                || hullFrac(ship) < 0.72
+                || shieldFrac(ship) < 0.40;
+        boolean nearFight = nearestEnemy < Math.max(760.0, preferred * 1.45);
+        boolean attackRunWindow = nearestEnemy > Math.max(180.0, preferred * 0.55)
+                && nearestEnemy < Math.max(980.0, preferred * 1.85);
+        boolean conserve = energyFrac < 0.34 && !missilesClose && ship.cloakThreatTimer <= 0.0;
+
+        Ship.CloakControlMode desired = Ship.CloakControlMode.CHARGE;
+        if (ship.revealTimer > 0.15) {
+            desired = Ship.CloakControlMode.CHARGE;
+        } else if (missilesClose) {
+            desired = Ship.CloakControlMode.ACTIVE;
+        } else if (conserve) {
+            desired = Ship.CloakControlMode.CHARGE;
+        } else if (underPressure && nearFight) {
+            desired = Ship.CloakControlMode.ACTIVE;
+        } else if (attackRunWindow && energyFrac >= 0.60) {
+            desired = Ship.CloakControlMode.ACTIVE;
+        }
+
+        ship.setCloakControlMode(desired);
+    }
+
     private static boolean incomingMissileThreatNear(GameContext ctx, Ship ship, double radius) {
         if (ctx == null || ship == null || radius <= 0.0) return false;
         List<Missile> missiles = new ArrayList<>();
@@ -3645,6 +3679,21 @@ public final class AISystem {
             if (GameMath.dist2(missile.x, missile.y, ship.x, ship.y) <= radius * radius) return true;
         }
         return false;
+    }
+
+    private static double nearestDetectableHostileDistance(GameContext ctx, Ship ship, double radius) {
+        if (ctx == null || ship == null || ship.faction == null || radius <= 0.0) return Double.POSITIVE_INFINITY;
+        double best = Double.POSITIVE_INFINITY;
+        List<Ship> nearby = new ArrayList<>();
+        ctx.entityQuery.collectHostileShipsNear(ship.faction, ship.x, ship.y, radius, nearby);
+        for (Ship enemy : nearby) {
+            if (!isAlive(enemy) || enemy.faction == null) continue;
+            if (ship.faction.isFriendlyTo(enemy.faction)) continue;
+            if (!TargetingSystem.isDetectableToObserver(ship, enemy)) continue;
+            double d = Math.hypot(enemy.x - ship.x, enemy.y - ship.y);
+            if (d < best) best = d;
+        }
+        return best;
     }
 
     private static void decayKillConfirmTimers(double dt) {

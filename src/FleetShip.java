@@ -278,7 +278,8 @@ public class FleetShip extends Ship {
                 signature = 0.35;
                 revealTimer = 0;
                 cloakEnabled = true;
-                cloakActive = true;
+                cloakActive = false;
+                cloakControlMode = CloakControlMode.CHARGE;
                 cloakEnergyMax = 20.0;
                 cloakEnergy = cloakEnergyMax;
                 cloakDrainPerSec = 1.05;

@@ -319,12 +319,14 @@ public class Player extends Ship {
         this.revealTimer = t.revealTimer;
         this.cloakEnabled = t.cloakEnabled;
         this.cloakActive = t.cloakActive;
+        this.cloakControlMode = t.cloakControlMode;
         this.cloakEnergyMax = t.cloakEnergyMax;
         this.cloakEnergy = t.cloakEnergy;
         this.cloakDrainPerSec = t.cloakDrainPerSec;
         this.cloakRechargePerSec = t.cloakRechargePerSec;
         this.cloakMinEnergyToEngage = t.cloakMinEnergyToEngage;
         this.cloakSignature = t.cloakSignature;
+        this.cloakThreatTimer = t.cloakThreatTimer;
         this.resetInternalSystems();
 
         this.hasCIWS = t.hasCIWS;

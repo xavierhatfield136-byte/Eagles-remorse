@@ -657,6 +657,11 @@ public abstract class Ship {
     }
 
     // Stealth
+    public enum CloakControlMode {
+        CHARGE,
+        ACTIVE
+    }
+
     /** If true, this ship is harder to target/lock unless revealed or very close. */
     public boolean isStealth = false;
     /** 0..1 (1 = fully visible). Stealth ships usually sit around ~0.35 while cloaked. */
@@ -665,6 +670,8 @@ public abstract class Ship {
     public double revealTimer = 0.0;
     /** Active cloak state for stealth ships. */
     public boolean cloakActive = false;
+    /** Desired cloak state for stealth ships. */
+    public CloakControlMode cloakControlMode = CloakControlMode.CHARGE;
     /** If false, stealth ships will not engage cloak (debug/gameplay toggle hook). */
     public boolean cloakEnabled = true;
     /** Cloak resource model. */
@@ -674,6 +681,7 @@ public abstract class Ship {
     public double cloakRechargePerSec = 0.95;
     public double cloakMinEnergyToEngage = 1.0;
     public double cloakSignature = 0.08;
+    public double cloakThreatTimer = 0.0;
     public static final double ECM_ACTIVE_SECONDS = 5.0;
     public static final double ECM_COOLDOWN_SECONDS = 20.0;
     public static final double ECM_CLOSE_RANGE = 260.0;
@@ -781,6 +789,10 @@ public abstract class Ship {
         if (revealTimer > 0) {
             revealTimer -= dt;
             if (revealTimer < 0) revealTimer = 0;
+        }
+        if (cloakThreatTimer > 0.0) {
+            cloakThreatTimer -= dt;
+            if (cloakThreatTimer < 0.0) cloakThreatTimer = 0.0;
         }
         if (recentShieldImpactTimer > 0.0) {
             recentShieldImpactTimer -= dt;
@@ -1060,7 +1072,9 @@ public abstract class Ship {
         cargo = Math.max(0, cargo);
         revealTimer = 0.0;
         cloakActive = false;
+        cloakControlMode = CloakControlMode.CHARGE;
         cloakEnergy = cloakEnergyMax;
+        cloakThreatTimer = 0.0;
         bountyClaimed = false;
         playerTaggedForKillCredit = false;
         playerKillCreditPaid = false;
@@ -1569,6 +1583,7 @@ public abstract class Ship {
         if (!isStealth) return;
         revealTimer = Math.max(revealTimer, seconds);
         cloakActive = false;
+        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(1.2, seconds + 0.75));
     }
 
     /** Called when this ship fires a weapon; helps prevent perma-cloaking while shooting. */
@@ -1901,29 +1916,59 @@ public abstract class Ship {
         return Math.max(0.0, Math.min(1.0, cloakEnergy / cloakEnergyMax));
     }
 
+    public boolean cloakWantsActive() {
+        return cloakControlMode == CloakControlMode.ACTIVE;
+    }
+
+    public void setCloakControlMode(CloakControlMode mode) {
+        cloakControlMode = (mode == null) ? CloakControlMode.CHARGE : mode;
+        if (cloakControlMode != CloakControlMode.ACTIVE) {
+            cloakActive = false;
+        }
+    }
+
+    public void noteCloakThreat(double seconds) {
+        if (!isStealth) return;
+        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(0.0, seconds));
+    }
+
+    private double cloakEngageThreshold() {
+        return Math.max(cloakMinEnergyToEngage, cloakEnergyMax * 0.55);
+    }
+
+    private double cloakReserveThreshold() {
+        return Math.max(cloakMinEnergyToEngage * 0.45, cloakEnergyMax * 0.16);
+    }
+
     private void updateStealthCloak(double dt) {
         if (!isStealth || dt <= 0.0) return;
 
         if (cloakEnergyMax <= 0.01) cloakEnergyMax = 0.01;
         cloakEnergy = Math.max(0.0, Math.min(cloakEnergyMax, cloakEnergy));
 
-        if (!cloakEnabled || revealTimer > 0.0) {
+        if (!cloakEnabled) {
+            cloakActive = false;
+            cloakControlMode = CloakControlMode.CHARGE;
+            cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
+            return;
+        }
+
+        if (revealTimer > 0.0 || cloakControlMode != CloakControlMode.ACTIVE) {
             cloakActive = false;
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
             return;
         }
 
-        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage) {
+        if (!cloakActive && cloakEnergy >= cloakEngageThreshold()) {
             cloakActive = true;
         }
 
         if (cloakActive) {
             cloakEnergy -= cloakDrainPerSec * dt;
-            if (cloakEnergy <= 0.0) {
-                cloakEnergy = 0.0;
+            if (cloakEnergy <= cloakReserveThreshold()) {
+                cloakEnergy = Math.max(0.0, cloakEnergy);
                 cloakActive = false;
-                // Briefly expose after cloak burnout.
-                revealTimer = Math.max(revealTimer, 1.0);
+                cloakControlMode = CloakControlMode.CHARGE;
             }
         } else {
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);

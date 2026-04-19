@@ -1385,12 +1385,14 @@ public final class EconomySystem {
         dst.revealTimer = src.revealTimer;
         dst.cloakEnabled = src.cloakEnabled;
         dst.cloakActive = src.cloakActive;
+        dst.cloakControlMode = src.cloakControlMode;
         dst.cloakEnergyMax = src.cloakEnergyMax;
         dst.cloakEnergy = src.cloakEnergy;
         dst.cloakDrainPerSec = src.cloakDrainPerSec;
         dst.cloakRechargePerSec = src.cloakRechargePerSec;
         dst.cloakMinEnergyToEngage = src.cloakMinEnergyToEngage;
         dst.cloakSignature = src.cloakSignature;
+        dst.cloakThreatTimer = src.cloakThreatTimer;
 
         dst.hasCIWS = src.hasCIWS;
         dst.ciwsRange = src.ciwsRange;

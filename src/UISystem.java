@@ -728,6 +728,8 @@ public final class UISystem {
             case MISSILE_AAA -> setPlayerMissileRole(ctx, Turret.MissileRole.INTERCEPT, "MISSILE MODE: AAA");
             case ECM_PRIMED -> setScienceJamming(ctx, false);
             case ECM_ACTIVE -> setScienceJamming(ctx, true);
+            case CLOAK_CHARGE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.CHARGE);
+            case CLOAK_ACTIVE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.ACTIVE);
             default -> {
                 return false;
             }
@@ -1539,6 +1541,20 @@ public final class UISystem {
     private static void setScienceJamming(GameContext ctx, boolean active) {
         if (ctx == null) return;
         activatePlayerEcm(ctx);
+    }
+
+    private static void setPlayerCloakMode(GameContext ctx, Ship.CloakControlMode mode) {
+        if (ctx == null || ctx.player == null) return;
+        if (!ctx.player.isStealth) {
+            EventSystem.showBanner(ctx, "NO CLOAK SYSTEM INSTALLED", 1.0);
+            return;
+        }
+        if (ctx.player.cloakControlMode == mode) return;
+        ctx.player.setCloakControlMode(mode);
+        String label = (mode == Ship.CloakControlMode.ACTIVE)
+                ? "CLOAK MODE: ACTIVE"
+                : "CLOAK MODE: CHARGE";
+        EventSystem.showBanner(ctx, label, 0.9);
     }
 
     private static void activatePlayerEcm(GameContext ctx) {
