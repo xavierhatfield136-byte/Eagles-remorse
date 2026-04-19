@@ -60,6 +60,9 @@ public final class AISystem {
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
     private static final double BATTLEFIELD_WARP_TRIGGER_RANGE = 1700.0;
     private static final double BATTLEFIELD_WARP_SAFE_RADIUS = 640.0;
+    private static final double HOSTILE_STARBASE_WARP_EXCLUSION_RADIUS = 1100.0;
+    private static final double MODE_OPENING_WARP_DISCIPLINE_SECONDS = 30.0;
+    private static final double MODE_HOSTILE_BASE_WARP_BUFFER = 520.0;
     private static final double ESCORT_WARP_SUPPORT_RANGE = 320.0;
     private static final double FLEET_REJOIN_WARP_RANGE = 1500.0;
     private static final double FLEET_REJOIN_ANCHOR_RANGE = 900.0;
@@ -3938,6 +3941,7 @@ public final class AISystem {
 
     private static boolean maybeStartBattlefieldWarp(GameContext ctx, Ship s, Ship target, double desiredOffset) {
         if (!isAlive(target)) return false;
+        if (isModeWarpBaseDiveSuppressed(ctx, s, target)) return false;
         double dx = target.x - s.x;
         double dy = target.y - s.y;
         double len = Math.hypot(dx, dy);
@@ -3965,8 +3969,75 @@ public final class AISystem {
         double exitY = GameMath.clamp(targetY, 36.0, ctx.WORLD_H - 36.0);
         double exitDist = Math.hypot(exitX - s.x, exitY - s.y);
         if (exitDist < BATTLEFIELD_WARP_TRIGGER_RANGE * 0.48) return false;
+        if (isInsideHostileStarbaseWarpExclusion(ctx, s, exitX, exitY)) return false;
+        if (isModeWarpDestinationTooDeep(ctx, s, exitX, exitY)) return false;
 
         return s.beginBattlefieldWarp(exitX, exitY, 10.0);
+    }
+
+    private static boolean isInsideHostileStarbaseWarpExclusion(GameContext ctx, Ship ship, double x, double y) {
+        if (ctx == null || ship == null || ship.faction == null) return false;
+        for (Ship base : ctx.teamBases.values()) {
+            if (!isAlive(base) || base.faction == null) continue;
+            if (ship.faction.isFriendlyTo(base.faction)) continue;
+            double exclusion = Math.max(HOSTILE_STARBASE_WARP_EXCLUSION_RADIUS, base.radius + 260.0);
+            if (Math.hypot(x - base.x, y - base.y) < exclusion) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isModeWarpBaseDiveSuppressed(GameContext ctx, Ship ship, Ship target) {
+        if (ctx == null || ship == null || target == null) return false;
+        if (!isDisciplinedWarpMode(ctx)) return false;
+        if (ctx.battleElapsed > MODE_OPENING_WARP_DISCIPLINE_SECONDS) return false;
+        return target.role == ShipRole.BASE;
+    }
+
+    private static boolean isModeWarpDestinationTooDeep(GameContext ctx, Ship ship, double exitX, double exitY) {
+        if (ctx == null || ship == null || ship.faction == null) return false;
+        if (!isDisciplinedWarpMode(ctx)) return false;
+
+        Ship friendlyBase = TeamSystem.getBaseForTeam(ctx, ship.faction);
+        double friendlyDist = isAlive(friendlyBase)
+                ? Math.hypot(exitX - friendlyBase.x, exitY - friendlyBase.y)
+                : Double.POSITIVE_INFINITY;
+        double nearestHostileBaseDist = Double.POSITIVE_INFINITY;
+        Ship nearestHostileBase = null;
+        for (Ship base : ctx.teamBases.values()) {
+            if (!isAlive(base) || base.faction == null) continue;
+            if (ship.faction.isFriendlyTo(base.faction)) continue;
+            double d = Math.hypot(exitX - base.x, exitY - base.y);
+            if (d < nearestHostileBaseDist) {
+                nearestHostileBaseDist = d;
+                nearestHostileBase = base;
+            }
+        }
+        if (!isAlive(nearestHostileBase)) return false;
+
+        double hostileSafe = nearestHostileBase.radius
+                + Math.max(320.0, preferredRange(nearestHostileBase) * 0.88)
+                + MODE_HOSTILE_BASE_WARP_BUFFER;
+        if (nearestHostileBaseDist < hostileSafe) return true;
+
+        if (ctx.battleElapsed <= MODE_OPENING_WARP_DISCIPLINE_SECONDS) {
+            if (nearestHostileBaseDist < friendlyDist * 0.95) return true;
+            if (isAlive(friendlyBase)) {
+                double currentFriendlyDist = Math.hypot(ship.x - friendlyBase.x, ship.y - friendlyBase.y);
+                double maxOpeningAdvance = Math.max(currentFriendlyDist + 520.0, BATTLEFIELD_WARP_TRIGGER_RANGE * 0.78);
+                if (friendlyDist > maxOpeningAdvance && nearestHostileBaseDist < friendlyDist + 260.0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isDisciplinedWarpMode(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return false;
+        return ctx.config.mode == GameMode.RESOURCE_RUSH
+                || ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION;
     }
 
     private static boolean maybeStartFleetRejoinWarp(GameContext ctx, Ship s, Ship flagship,

@@ -14,6 +14,7 @@ public final class PhysicsSystem {
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
+        ctx.battleElapsed += Math.max(0.0, dt);
         TargetingSystem.enforceCloakLockRules(ctx);
 
         // --- Ship movement / regen / turret cooldowns ---

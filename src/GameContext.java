@@ -192,6 +192,7 @@ public class GameContext {
     // Waves
     public double enemyWaveTimer = 2.0;
     public double minerReinforcementTimer = 20.0;
+    public double battleElapsed = 0.0;
 
     // Campaign progression (CAMPAIGN_OPS)
     public CampaignSystem.CampaignState campaign = null;
