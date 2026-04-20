@@ -189,7 +189,7 @@ public final class GameRenderSystem {
         }
 
         if (ctx.ui.mapOpen) {
-            Renderer.drawStrategicMap(g2, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
+            Renderer.drawStrategicMap(g2, ctx, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
                     renderShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
                     CampaignSystem.isCampaignActive(ctx) ? ctx.fogOfWar : null, ctx.eventBanner);

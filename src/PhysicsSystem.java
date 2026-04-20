@@ -22,6 +22,7 @@ public final class PhysicsSystem {
             if (s == null) continue;
             s.update(dt);
         }
+        constrainPlayerToLoadedSector(ctx);
         for (Ship s : ctx.ships) {
             if (s == null || !s.alive || s.dying) continue;
             if (!s.hasActiveEcm()) continue;
@@ -238,6 +239,22 @@ public final class PhysicsSystem {
         }
 
         ctx.entityQuery.rebuild(ctx);
+    }
+
+    private static void constrainPlayerToLoadedSector(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return;
+        if (!BattlefieldSectorSystem.isEnabled(ctx)) return;
+        if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
+        if (ctx.player.isWarpCharging()) return;
+
+        BattlefieldSectorSystem.ensureLoadedSector(ctx);
+        BattlefieldSectorSystem.SectorDefinition loaded = BattlefieldSectorSystem.loadedSector(ctx);
+        if (loaded == null) return;
+        double[] clamped = BattlefieldSectorSystem.clampToLoadedSectorBounds(
+                ctx, loaded, ctx.ui.tacticalSectorScalePreset, ctx.player.x, ctx.player.y);
+        if (clamped == null || clamped.length < 2) return;
+        ctx.player.x = clamped[0];
+        ctx.player.y = clamped[1];
     }
 
     private static boolean isAlive(Ship s) {

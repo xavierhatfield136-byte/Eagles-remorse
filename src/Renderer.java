@@ -407,6 +407,12 @@ public class Renderer {
         return new Rectangle(x, y, w, h);
     }
 
+    public static Rectangle getStrategicMapInnerRect(int viewW, int viewH) {
+        Rectangle r = getStrategicMapRect(viewW, viewH);
+        int pad = 18;
+        return new Rectangle(r.x + pad, r.y + 44, r.width - pad * 2, r.height - 60);
+    }
+
     public static Rectangle getShopOverlayRect(int viewW, int viewH) {
         int padX = 36;
         int padY = 44;
@@ -4417,6 +4423,10 @@ public class Renderer {
         ArrayList<String> statusLines = new ArrayList<>();
         String modeName = ((ctx == null || ctx.config == null) ? "Unknown" : ctx.config.mode.toString());
         statusLines.add("Mode: " + modeName + "   Tier: " + hangarTier);
+        String sectorLine = BattlefieldSectorSystem.currentSectorLine(ctx);
+        if (!sectorLine.isBlank()) {
+            statusLines.add(sectorLine);
+        }
         if (CampaignSystem.isCampaignActive(ctx)) {
             int escortCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT);
             int lineCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE);
@@ -7661,6 +7671,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
 
     public static void drawStrategicMap(Graphics2D g2,
+                                        GameContext ctx,
                                         int viewW, int viewH,
                                         int worldW, int worldH,
                                         double camX, double camY,
@@ -7675,6 +7686,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                         String bannerTopLine) {
 
         Rectangle r = getStrategicMapRect(viewW, viewH);
+        boolean sectorized = BattlefieldSectorSystem.isEnabled(ctx);
+        List<BattlefieldSectorSystem.SectorSnapshot> sectorSnapshots = sectorized
+                ? BattlefieldSectorSystem.snapshots(ctx)
+                : List.of();
+        BattlefieldSectorSystem.SectorDefinition currentSector = sectorized
+                ? BattlefieldSectorSystem.currentSector(ctx)
+                : null;
+        BattlefieldSectorSystem.SectorDefinition loadedSector = sectorized
+                ? BattlefieldSectorSystem.loadedSector(ctx)
+                : null;
+        BattlefieldSectorSystem.SectorDefinition selectedSector = sectorized
+                ? BattlefieldSectorSystem.selectedSector(ctx)
+                : null;
 
         // Backdrop + glow border (Style B)
         g2.setColor(new Color(0, 0, 0, 205));
@@ -7685,9 +7709,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(new Color(255, 255, 255, 95));
         g2.drawRoundRect(r.x, r.y, r.width, r.height, 22, 22);
 
-        // Inner map area
-        int pad = 18;
-        Rectangle m = new Rectangle(r.x + pad, r.y + 44, r.width - pad * 2, r.height - 60);
+        Rectangle m = getStrategicMapInnerRect(viewW, viewH);
 
         g2.setColor(new Color(255, 255, 255, 22));
         g2.fillRoundRect(m.x, m.y, m.width, m.height, 16, 16);
@@ -7707,12 +7729,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 170));
-        g2.drawString("LMB: waypoint   RMB: ping   Gray: mapped   Black: unknown   M/ESC: close",
+        g2.drawString(sectorized
+                        ? "LMB: route warp   RMB: sector ping   1/2/3: compact/standard/expanded   White: loaded   Amber: selected"
+                        : "LMB: waypoint   RMB: ping   Gray: mapped   Black: unknown   M/ESC: close",
                 r.x + 18, r.y + r.height - 16);
 
-        if (bannerTopLine != null && !bannerTopLine.isBlank()) {
+        String mapHeader = sectorized
+                ? buildSectorMapHeader(loadedSector, currentSector, selectedSector,
+                (ctx == null || ctx.ui == null) ? null : ctx.ui.tacticalSectorScalePreset)
+                : bannerTopLine;
+        if (mapHeader != null && !mapHeader.isBlank()) {
             g2.setColor(new Color(140, 200, 255, 200));
-            g2.drawString(bannerTopLine, r.x + 190, r.y + 28);
+            g2.drawString(mapHeader, r.x + 190, r.y + 28);
         }
 
         // Helpers: world -> map
@@ -7721,6 +7749,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int py = m.y + (int) Math.round((wy / Math.max(1.0, worldH)) * m.height);
             return new Point(px, py);
         };
+
+        if (sectorized) {
+            drawBattlefieldSectorsOnMap(g2, m, ctx, sectorSnapshots, currentSector, selectedSector);
+        }
 
         // Asteroids
         if (asteroids != null) {
@@ -7808,6 +7840,122 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         g2.setColor(new Color(255, 255, 255, 120));
         g2.drawRect(rx, ry, rw, rh);
+    }
+
+    private static String buildSectorMapHeader(BattlefieldSectorSystem.SectorDefinition loadedSector,
+                                               BattlefieldSectorSystem.SectorDefinition currentSector,
+                                               BattlefieldSectorSystem.SectorDefinition selectedSector,
+                                               UiState.TacticalSectorScalePreset scalePreset) {
+        UiState.TacticalSectorScalePreset preset =
+                (scalePreset == null) ? UiState.TacticalSectorScalePreset.STANDARD : scalePreset;
+        StringBuilder out = new StringBuilder();
+        BattlefieldSectorSystem.SectorDefinition focus = (loadedSector != null) ? loadedSector : currentSector;
+        if (focus != null) {
+            out.append("Loaded: ").append(focus.label);
+        }
+        if (selectedSector != null && (focus == null || !selectedSector.id.equalsIgnoreCase(focus.id))) {
+            if (out.length() > 0) out.append("   ");
+            out.append("Target: ").append(selectedSector.label);
+        }
+        if (out.length() == 0 && currentSector != null) {
+            out.append("Current: ").append(currentSector.label);
+        }
+        if (out.length() > 0) {
+            out.append("   ");
+        }
+        out.append("Scale: ").append(preset.label().toUpperCase(Locale.US));
+        return out.toString();
+    }
+
+    private static void drawBattlefieldSectorsOnMap(Graphics2D g2,
+                                                    Rectangle mapRect,
+                                                    GameContext ctx,
+                                                    List<BattlefieldSectorSystem.SectorSnapshot> sectorSnapshots,
+                                                    BattlefieldSectorSystem.SectorDefinition currentSector,
+                                                    BattlefieldSectorSystem.SectorDefinition selectedSector) {
+        if (g2 == null || mapRect == null || sectorSnapshots == null || sectorSnapshots.isEmpty()) return;
+
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        for (BattlefieldSectorSystem.SectorSnapshot snapshot : sectorSnapshots) {
+            if (snapshot == null || snapshot.sector == null) continue;
+            Rectangle sectorRect = sectorMapRect(mapRect, snapshot.sector);
+            if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
+
+            Color fill = sectorFillColor(snapshot);
+            Color border = sectorBorderColor(snapshot);
+            g2.setColor(fill);
+            g2.fillRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+
+            g2.setColor(border);
+            g2.drawRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+
+            if (currentSector != null && currentSector.id.equalsIgnoreCase(snapshot.sector.id)) {
+                g2.setStroke(new BasicStroke(2.2f));
+                g2.setColor(new Color(240, 248, 255, 190));
+                g2.drawRect(sectorRect.x + 1, sectorRect.y + 1,
+                        Math.max(0, sectorRect.width - 2), Math.max(0, sectorRect.height - 2));
+            }
+            if (selectedSector != null && selectedSector.id.equalsIgnoreCase(snapshot.sector.id)) {
+                g2.setStroke(new BasicStroke(2.6f));
+                g2.setColor(new Color(255, 208, 96, 210));
+                g2.drawRect(sectorRect.x + 4, sectorRect.y + 4,
+                        Math.max(0, sectorRect.width - 8), Math.max(0, sectorRect.height - 8));
+            }
+            g2.setStroke(oldStroke);
+
+            int labelX = sectorRect.x + 8;
+            int labelY = sectorRect.y + 18;
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            g2.setColor(new Color(255, 255, 255, 225));
+            g2.drawString(snapshot.sector.label, labelX, labelY);
+
+            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setColor(new Color(220, 230, 240, 190));
+            g2.drawString(BattlefieldSectorSystem.absoluteStatusLabel(snapshot), labelX, labelY + 13);
+            if (ctx != null && ctx.player != null) {
+                String relativeStatus = BattlefieldSectorSystem.relativeStatusLabel(ctx, snapshot);
+                if (!relativeStatus.isBlank()) {
+                    g2.drawString(relativeStatus, labelX, labelY + 26);
+                }
+            }
+        }
+        g2.setFont(oldFont);
+        g2.setStroke(oldStroke);
+    }
+
+    private static Rectangle sectorMapRect(Rectangle mapRect, BattlefieldSectorSystem.SectorDefinition sector) {
+        int x0 = mapRect.x + (int) Math.round(sector.minXFrac * mapRect.width);
+        int y0 = mapRect.y + (int) Math.round(sector.minYFrac * mapRect.height);
+        int x1 = mapRect.x + (int) Math.round(sector.maxXFrac * mapRect.width);
+        int y1 = mapRect.y + (int) Math.round(sector.maxYFrac * mapRect.height);
+        return new Rectangle(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+    }
+
+    private static Color sectorFillColor(BattlefieldSectorSystem.SectorSnapshot snapshot) {
+        if (snapshot == null) return new Color(255, 255, 255, 18);
+        if (snapshot.controlState == BattlefieldSectorSystem.ControlState.EMPTY) {
+            return new Color(255, 255, 255, 12);
+        }
+        if (snapshot.controlState == BattlefieldSectorSystem.ControlState.CONTESTED) {
+            return new Color(255, 186, 92, 28);
+        }
+        if (snapshot.dominantFaction == null) {
+            return new Color(160, 200, 255, 24);
+        }
+        Color tint = factionMapColor(snapshot.dominantFaction, false, 30);
+        return new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 28);
+    }
+
+    private static Color sectorBorderColor(BattlefieldSectorSystem.SectorSnapshot snapshot) {
+        if (snapshot == null) return new Color(255, 255, 255, 60);
+        if (snapshot.controlState == BattlefieldSectorSystem.ControlState.CONTESTED) {
+            return new Color(255, 206, 120, 110);
+        }
+        if (snapshot.dominantFaction == null) {
+            return new Color(255, 255, 255, 60);
+        }
+        return factionMapColor(snapshot.dominantFaction, false, 96);
     }
 
     private static void drawStrategicFogOverlay(Graphics2D g2, Rectangle mapRect, int worldW, int worldH, FogOfWarSystem.State fog) {

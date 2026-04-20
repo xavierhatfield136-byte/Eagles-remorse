@@ -1,0 +1,59 @@
+I want the zone system changed so zones are not touching each other anymore.
+
+Right now the zones behave like they are just separated by an invisible line or wall. I do NOT want that. I want each zone to be physically/logically separated by a meaningful distance, so warping feels like traveling from one area to another, not just stepping across a border.
+
+Core behavior I want:
+1. Zones must be spaced apart instead of directly adjacent.
+2. Ships cannot fly normally from one zone into another.
+3. The only way to move between zones is by warp.
+4. When a ship warps, it must arrive at the closest valid edge of the destination zone, not somewhere deep inside it and not at a random point.
+5. If the destination zone is diagonally related, the ship should arrive near the closest corner of that zone.
+6. Warp movement should feel like a true transfer between separate combat spaces, not crossing an imaginary wall.
+
+Implementation goals:
+- Treat each zone as its own play area with empty space / non-playable distance between zones.
+- Keep zone adjacency rules for which zones can warp to which other zones.
+- Add a configurable gap value, something like `ZONE_GAP_DISTANCE`, so zones are meaningfully separated.
+- A ship should never cross that gap with standard movement/thrust.
+- Warping should be the only way to transfer zones.
+
+Warp entry/arrival rules:
+- Determine the direction from source zone to target zone.
+- Spawn the ship on the destination zone’s nearest perimeter relative to the source zone.
+- Use a small inward offset so the ship is just inside the playable area and not exactly on the border.
+
+Examples:
+- If warping from a zone on the left to a zone on the right, arrive on the LEFT edge of the destination zone.
+- If warping from a zone on the right to a zone on the left, arrive on the RIGHT edge of the destination zone.
+- If warping from a zone above to a zone below, arrive on the TOP edge of the destination zone.
+- If warping from a zone below to a zone above, arrive on the BOTTOM edge of the destination zone.
+- If warping diagonally from top-left into a destination zone, arrive near that destination zone’s TOP-LEFT corner.
+- If warping diagonally from bottom-right into a destination zone, arrive near that destination zone’s BOTTOM-RIGHT corner.
+
+Design intent:
+I want players to feel like they are warping between separate battlefields, not just passing over a hidden border. The space between zones should matter conceptually, even if it is not fully playable.
+
+Technical preference:
+- If the current system uses touching rectangles, refactor it so zones either:
+  A) exist in the same world but are placed far apart with inaccessible void between them, or
+  B) exist as separate logical maps/instances with warp transitions between them.
+Either approach is fine as long as the gameplay result matches the requirements above.
+
+Please implement this cleanly and update any code that handles:
+- zone layout
+- warp validation
+- warp destination calculation
+- ship spawn/arrival point after warp
+- any minimap or zone visualization if needed
+
+Add helper logic like:
+- `canWarpBetweenZones(source, target)`
+- `getWarpArrivalPoint(sourceZone, targetZone)`
+- `getClosestDestinationEdgeOrCorner(sourceZone, targetZone)`
+
+Acceptance criteria:
+- Zones are no longer effectively touching.
+- Ships cannot cross between zones by normal movement.
+- Warping only works to allowed adjacent zones.
+- Arrival points are always on the nearest valid edge/corner of the target zone.
+- The result feels like true zone-to-zone travel rather than crossing an invisible wall.

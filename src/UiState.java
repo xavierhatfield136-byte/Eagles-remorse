@@ -10,6 +10,28 @@ import java.util.List;
  * UI, overlay, and presentation state that does not belong in the core simulation bucket.
  */
 public final class UiState {
+    public enum TacticalSectorScalePreset {
+        COMPACT("Compact", 1.28),
+        STANDARD("Standard", 1.0),
+        EXPANDED("Expanded", 0.82);
+
+        private final String label;
+        private final double zoomMultiplier;
+
+        TacticalSectorScalePreset(String label, double zoomMultiplier) {
+            this.label = (label == null || label.isBlank()) ? name() : label;
+            this.zoomMultiplier = Math.max(0.35, zoomMultiplier);
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public double zoomMultiplier() {
+            return zoomMultiplier;
+        }
+    }
+
     public static final class CombatCallout {
         public double x;
         public double y;
@@ -59,6 +81,9 @@ public final class UiState {
 
     public double waypointX = Double.NaN;
     public double waypointY = Double.NaN;
+    public String selectedSectorId = "";
+    public String loadedSectorId = "";
+    public TacticalSectorScalePreset tacticalSectorScalePreset = TacticalSectorScalePreset.STANDARD;
     public final List<Renderer.MapPing> mapPings = new ArrayList<>();
 
     public String voiceCaption = "";

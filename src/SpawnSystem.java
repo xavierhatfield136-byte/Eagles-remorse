@@ -483,6 +483,19 @@ public final class SpawnSystem {
 
     public static void spawnTeamGroup(GameContext ctx, Faction faction, double x, double y) {
         if (ctx == null || faction == null) return;
+        OffSectorSimulationSystem.ReinforcementDirective directive =
+                OffSectorSimulationSystem.reinforcementDirective(ctx, faction);
+        OffSectorSimulationSystem.ReinforcementProfile profile =
+                (directive == null) ? OffSectorSimulationSystem.ReinforcementProfile.BALANCED : directive.profile;
+        switch (profile) {
+            case DEFENSE -> spawnDefenseGroup(ctx, faction, x, y);
+            case SPEARHEAD -> spawnSpearheadGroup(ctx, faction, x, y);
+            case FIRE_SUPPORT -> spawnFireSupportGroup(ctx, faction, x, y);
+            default -> spawnBalancedGroup(ctx, faction, x, y);
+        }
+    }
+
+    private static void spawnBalancedGroup(GameContext ctx, Faction faction, double x, double y) {
         spawnTeamShip(ctx, ShipRole.PATROL, faction, x + 0, y + 0);
         spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 70, y + 50);
         spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x - 90, y + 70);
@@ -490,6 +503,36 @@ public final class SpawnSystem {
         if (ctx.rng.nextDouble() < 0.18) spawnTeamShip(ctx, ShipRole.CRUISER, faction, x - 40, y - 120);
         if (ctx.rng.nextDouble() < 0.35) spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 110, y - 80);
         if (ctx.rng.nextDouble() < 0.08) spawnTeamShip(ctx, ShipRole.SUPERSHIP, faction, x + 180, y - 40);
+    }
+
+    private static void spawnDefenseGroup(GameContext ctx, Faction faction, double x, double y) {
+        spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 0, y + 0);
+        spawnTeamShip(ctx, ShipRole.CIWS_CORVETTE, faction, x + 70, y + 45);
+        spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x - 80, y + 60);
+        spawnTeamShip(ctx, ShipRole.PATROL, faction, x + 90, y - 70);
+        if (ctx.rng.nextDouble() < 0.42) spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x - 130, y - 40);
+        if (ctx.rng.nextDouble() < 0.24) spawnTeamShip(ctx, ShipRole.LIGHT_CRUISER, faction, x + 140, y + 120);
+        if (ctx.rng.nextDouble() < 0.08) spawnTeamShip(ctx, ShipRole.BATTLECRUISER, faction, x - 170, y + 20);
+    }
+
+    private static void spawnSpearheadGroup(GameContext ctx, Faction faction, double x, double y) {
+        spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x + 0, y + 0);
+        spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 80, y - 50);
+        spawnTeamShip(ctx, ShipRole.ARTILLERY_SHIP, faction, x - 90, y + 70);
+        spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 90, y + 65);
+        if (ctx.rng.nextDouble() < 0.38) spawnTeamShip(ctx, ShipRole.CRUISER, faction, x - 150, y - 90);
+        if (ctx.rng.nextDouble() < 0.20) spawnTeamShip(ctx, ShipRole.BATTLECRUISER, faction, x + 150, y + 110);
+        if (ctx.rng.nextDouble() < 0.10) spawnTeamShip(ctx, ShipRole.SUPERSHIP, faction, x + 210, y + 10);
+    }
+
+    private static void spawnFireSupportGroup(GameContext ctx, Faction faction, double x, double y) {
+        spawnTeamShip(ctx, ShipRole.PICKET, faction, x + 0, y + 0);
+        spawnTeamShip(ctx, ShipRole.FRIGATE, faction, x - 80, y + 55);
+        spawnTeamShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 90, y - 70);
+        spawnTeamShip(ctx, ShipRole.ARTILLERY_SHIP, faction, x + 130, y + 95);
+        if (ctx.rng.nextDouble() < 0.34) spawnTeamShip(ctx, ShipRole.CRUISER, faction, x - 130, y - 105);
+        if (ctx.rng.nextDouble() < 0.20) spawnTeamShip(ctx, ShipRole.CIWS_CORVETTE, faction, x + 55, y + 130);
+        if (ctx.rng.nextDouble() < 0.06) spawnTeamShip(ctx, ShipRole.BATTLESHIP, faction, x - 200, y + 20);
     }
 
     public static void spawnAsteroidField(GameContext ctx) {

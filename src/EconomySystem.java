@@ -113,6 +113,9 @@ public final class EconomySystem {
         applyTransportSupportAuras(ctx, dt);
         updateNpcBaseUpgradePrograms(ctx, dt);
         updateNpcRefitPrograms(ctx, dt);
+        if (OffSectorSimulationSystem.update(ctx, dt)) {
+            ctx.entityQuery.rebuild(ctx);
+        }
 
         // Periodic miner reinforcements for teams still in the match.
         updatePeriodicMinerReinforcements(ctx, dt);
@@ -724,8 +727,9 @@ public final class EconomySystem {
             if (base.role != ShipRole.BASE) continue;
             if (!base.canSpawnDefender()) continue;
 
+            int reinforcementBudget = OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, base.faction);
             int combatNear = countCombatShipsForBase(ctx, base);
-            int shipCapFromBase = Math.max(2, Math.min(12, base.maxDefenders));
+            int shipCapFromBase = Math.max(2, Math.min(14, base.maxDefenders + reinforcementBudget * 2));
             if (combatNear < shipCapFromBase) {
                 Ship deployed = spawnCombatShipAtBase(ctx, base, combatNear, shipCapFromBase);
                 if (deployed != null) {
@@ -735,7 +739,7 @@ public final class EconomySystem {
             }
 
             int current = countStationTurretsForBase(ctx, base);
-            int capFromBase = Math.max(1, Math.min(MAX_STATION_TURRETS_PER_BASE, base.maxDefenders / 2));
+            int capFromBase = Math.max(1, Math.min(MAX_STATION_TURRETS_PER_BASE, base.maxDefenders / 2 + Math.max(0, reinforcementBudget)));
             if (current >= capFromBase) continue;
 
             Ship turret = spawnStationTurretAtBase(ctx, base);
@@ -836,11 +840,17 @@ public final class EconomySystem {
         int liveSuperships = (base.faction == null) ? 0 : countAliveRoleForTeam(ctx, base.faction, ShipRole.SUPERSHIP);
         EnumMap<CombatBucket, Integer> desired = desiredBucketsForTeam(teamCombat, personality);
         CombatBucket neededBucket = chooseNeededBucket(personality, counts, desired);
+        OffSectorSimulationSystem.ReinforcementDirective directive =
+                OffSectorSimulationSystem.reinforcementDirective(ctx, base.faction);
 
         double pressure = (shipCapFromBase <= 0) ? 1.0 : (combatNear / (double) shipCapFromBase);
         // Tier-3 teams should field flagship supers in a timely way instead of waiting for rare refit windows.
         if (hangarTier >= 3 && liveSuperships <= 0 && teamCombat >= Math.max(5, shipCapFromBase / 2) && pressure < 0.95) {
             if (ctx.rng.nextDouble() < 0.50) return ShipRole.SUPERSHIP;
+        }
+        ShipRole directiveRole = chooseDirectivePressureRole(ctx, directive, pressure);
+        if (directiveRole != null) {
+            return directiveRole;
         }
         if (pressure >= 0.82 && ctx.rng.nextDouble() < 0.72) {
             return chooseEscortPressureRole(ctx);
@@ -849,6 +859,38 @@ public final class EconomySystem {
         ShipRole role = chooseRoleForBucket(ctx, base, personality, neededBucket, pressure);
         if (role == null) role = ShipRole.FRIGATE;
         return role;
+    }
+
+    private static ShipRole chooseDirectivePressureRole(GameContext ctx,
+                                                        OffSectorSimulationSystem.ReinforcementDirective directive,
+                                                        double pressure) {
+        if (ctx == null || directive == null || directive.profile == null) return null;
+        double roll = ctx.rng.nextDouble();
+        switch (directive.profile) {
+            case DEFENSE -> {
+                if (pressure >= 0.95) return chooseEscortPressureRole(ctx);
+                if (roll < 0.30) return ShipRole.CIWS_CORVETTE;
+                if (roll < 0.62) return ShipRole.PICKET;
+                if (roll < 0.88) return ShipRole.FRIGATE;
+                return ShipRole.LIGHT_CRUISER;
+            }
+            case SPEARHEAD -> {
+                if (roll < 0.28) return ShipRole.MISSILE_BOAT;
+                if (roll < 0.54) return ShipRole.ARTILLERY_SHIP;
+                if (roll < 0.78) return ShipRole.CRUISER;
+                if (roll < 0.93) return ShipRole.BATTLECRUISER;
+                return ShipRole.FRIGATE;
+            }
+            case FIRE_SUPPORT -> {
+                if (roll < 0.34) return ShipRole.ARTILLERY_SHIP;
+                if (roll < 0.66) return ShipRole.MISSILE_BOAT;
+                if (roll < 0.86) return ShipRole.CRUISER;
+                return ShipRole.PICKET;
+            }
+            default -> {
+                return null;
+            }
+        }
     }
 
     private static void applyFriendlyBaseRepairAuras(GameContext ctx, double dt) {
@@ -2043,20 +2085,81 @@ public final class EconomySystem {
         return best;
     }
 
-    private static Asteroid findBestAsteroidForMiner(GameContext ctx, Ship miner, double maxDist) {
+    static Asteroid findBestAsteroidForMiner(GameContext ctx, Ship miner, double maxDist) {
         Asteroid best = null;
-        double bestD2 = maxDist * maxDist;
+        double bestScore = Double.POSITIVE_INFINITY;
         if (ctx.asteroids == null || ctx.asteroids.isEmpty()) return null;
+        double maxDist2 = maxDist * maxDist;
+        BattlefieldSectorSystem.SectorDefinition homeSector = minerHomeSector(ctx, miner);
+        BattlefieldSectorSystem.SectorDefinition currentSector =
+                (ctx == null || miner == null) ? null : BattlefieldSectorSystem.sectorAt(ctx, miner.x, miner.y);
         for (Asteroid a : ctx.asteroids) {
             double ore = getAsteroidOre(a);
             if (ore <= 0.01) continue;
             double d2 = GameMath.dist2(miner.x, miner.y, a.x, a.y);
-            if (d2 < bestD2) {
-                bestD2 = d2;
+            if (d2 > maxDist2) continue;
+            double score = minerAsteroidScore(ctx, miner, a, d2, ore, homeSector, currentSector);
+            if (score < bestScore) {
+                bestScore = score;
                 best = a;
             }
         }
         return best;
+    }
+
+    private static BattlefieldSectorSystem.SectorDefinition minerHomeSector(GameContext ctx, Ship miner) {
+        if (ctx == null || miner == null) return null;
+        if (miner.minerHomeBase != null && miner.minerHomeBase.alive && miner.minerHomeBase.hp > 0) {
+            BattlefieldSectorSystem.SectorDefinition baseSector =
+                    BattlefieldSectorSystem.sectorAt(ctx, miner.minerHomeBase.x, miner.minerHomeBase.y);
+            if (baseSector != null) return baseSector;
+        }
+        return BattlefieldSectorSystem.homeSector(ctx, miner.faction);
+    }
+
+    private static double minerAsteroidScore(GameContext ctx,
+                                             Ship miner,
+                                             Asteroid asteroid,
+                                             double d2,
+                                             double ore,
+                                             BattlefieldSectorSystem.SectorDefinition homeSector,
+                                             BattlefieldSectorSystem.SectorDefinition currentSector) {
+        double score = d2 - Math.min(1800.0, Math.max(0.0, ore)) * 240.0;
+        if (!BattlefieldSectorSystem.isEnabled(ctx) || miner == null || miner.faction == null || asteroid == null) {
+            return score;
+        }
+
+        BattlefieldSectorSystem.SectorDefinition asteroidSector = BattlefieldSectorSystem.sectorAt(ctx, asteroid.x, asteroid.y);
+        if (asteroidSector == null) {
+            return score + 180000.0;
+        }
+
+        if (currentSector != null && asteroidSector.id.equalsIgnoreCase(currentSector.id)) {
+            score *= 0.78;
+        }
+
+        int homeHops = BattlefieldSectorSystem.hopDistance(ctx, homeSector, asteroidSector);
+        if (homeHops == 0) {
+            score *= 0.40;
+        } else if (homeHops == 1) {
+            score *= 0.82;
+        } else if (homeHops >= 2) {
+            score *= 1.22 + 0.12 * Math.max(0, homeHops - 2);
+        }
+
+        BattlefieldSectorSystem.SectorSnapshot snapshot = BattlefieldSectorSystem.snapshotForSector(ctx, asteroidSector.id);
+        if (BattlefieldSectorSystem.isThreatenedForFaction(snapshot, miner.faction)
+                && (homeSector == null || !asteroidSector.id.equalsIgnoreCase(homeSector.id))) {
+            score *= 1.65;
+        } else if (snapshot != null
+                && snapshot.occupiedTeams > 0
+                && !BattlefieldSectorSystem.isFriendlyControl(snapshot, miner.faction)) {
+            score *= 1.85;
+        } else if (snapshot != null && snapshot.controlState == BattlefieldSectorSystem.ControlState.EMPTY) {
+            score *= 0.94;
+        }
+
+        return score;
     }
 
     private static String findNoAsteroidReason(GameContext ctx) {

@@ -80,6 +80,7 @@ public final class GameSimulationRuntime {
         }
 
         applyPlayerInput(dt, input);
+        BattlefieldSectorSystem.ensureLoadedSector(ctx);
 
         if (CampaignSystem.isFleetHubSession(ctx)) {
             ctx.entityQuery.rebuild(ctx);
@@ -233,10 +234,29 @@ public final class GameSimulationRuntime {
         ship.vx = 0.0;
         ship.vy = 0.0;
         ship.cancelBattlefieldWarp();
+        BattlefieldSectorSystem.SectorDefinition arrivedSector = BattlefieldSectorSystem.sectorAt(ctx, tx, ty);
         if (isPlayer) {
             ctx.ui.waypointX = tx;
             ctx.ui.waypointY = ty;
-            EventSystem.showBanner(ctx, "BATTLEFIELD WARP COMPLETE", 1.1);
+            if (arrivedSector != null) {
+                BattlefieldSectorSystem.setLoadedSector(ctx, arrivedSector.id);
+                CameraSystem.setZoom(ctx, BattlefieldSectorSystem.sectorTravelZoom(ctx.ui.tacticalSectorScalePreset));
+                CameraSystem.resetManualOffset(ctx);
+                BattlefieldSectorSystem.SectorDefinition selectedSector = BattlefieldSectorSystem.selectedSector(ctx);
+                if (selectedSector != null && !selectedSector.id.equalsIgnoreCase(arrivedSector.id)) {
+                    BattlefieldSectorSystem.SectorDefinition nextHop =
+                            BattlefieldSectorSystem.nextWarpHop(ctx, arrivedSector, selectedSector);
+                    double[] routePoint = BattlefieldSectorSystem.warpArrivalPoint(
+                            ctx, arrivedSector, nextHop, ctx.ui.tacticalSectorScalePreset);
+                    if (routePoint != null) {
+                        ctx.ui.waypointX = routePoint[0];
+                        ctx.ui.waypointY = routePoint[1];
+                    }
+                }
+            }
+            String label = (arrivedSector == null) ? "BATTLEFIELD WARP COMPLETE"
+                    : "BATTLEFIELD WARP COMPLETE: " + arrivedSector.label;
+            EventSystem.showBanner(ctx, label, 1.1);
         }
     }
 

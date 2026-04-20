@@ -89,6 +89,8 @@ public final class AISystem {
                 int groups = CampaignSystem.groupsPerWave(ctx);
                 int enemyGroups = groups;
                 int allyGroups = Math.max(1, groups - 1);
+                enemyGroups = Math.max(1, enemyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ENEMY));
+                allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
 
                 if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
                     // Resource Rush should not snowball into red-only pressure.
@@ -99,6 +101,8 @@ public final class AISystem {
                     if (deficit >= 3) {
                         allyGroups += Math.min(2, deficit / 3);
                     }
+                    allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
+                    enemyGroups = Math.max(1, enemyGroups);
                 }
                 if (CampaignSystem.isCampaignActive(ctx)) {
                     allyGroups = 0;
@@ -230,6 +234,18 @@ public final class AISystem {
             }
 
             if (handleStandaloneStrikeCraftRearm(ctx, s, dt)) {
+                applyAsteroidAvoidance(ctx, s, dt);
+                applyProjectileLaneAvoidance(ctx, s, dt);
+                continue;
+            }
+
+            if (OffSectorSimulationSystem.shouldUseAbstractShipBehavior(ctx, s)) {
+                Ship immediate = findImmediateThreat(ctx, s, Math.max(180.0, preferredRange(s) * 0.56));
+                if (immediate != null && immediate.alive && !immediate.dying) {
+                    fight(ctx, s, immediate, dt);
+                } else {
+                    wander(ctx, s, dt);
+                }
                 applyAsteroidAvoidance(ctx, s, dt);
                 applyProjectileLaneAvoidance(ctx, s, dt);
                 continue;
@@ -395,6 +411,7 @@ public final class AISystem {
             score += Math.max(0.0, 1200.0 - d) * 0.15;
             score += retreatIntentBonus(enemy, cx, cy, hpFrac);
             score += confidence * 110.0;
+            score += sectorTargetPriorityBias(ctx, anchor, enemy);
             if (confidence < 0.32) score -= (0.32 - confidence) * 340.0;
             score -= killConfirmTargetPenalty(enemy, hpFrac);
             if (enemy == ctx.lockedTarget) score += 260.0;
@@ -1698,6 +1715,7 @@ public final class AISystem {
             score += targetVulnerabilityScore(seeker, enemy);
             score += targetAngleAdvantageScore(seeker, enemy);
             score -= hostileBasePressurePenalty(ctx, seeker, enemy);
+            score += sectorTargetPriorityBias(ctx, seeker, enemy);
             double fightMargin = canTakeFightMargin(ctx, seeker, enemy);
             score += fightMargin * 165.0;
             if (fightMargin < 0.0 && combinedDurabilityFrac(enemy) > 0.32) {
@@ -1726,6 +1744,51 @@ public final class AISystem {
             }
         }
         return best;
+    }
+
+    static double sectorTargetPriorityBias(GameContext ctx, Ship seeker, Ship target) {
+        if (!BattlefieldSectorSystem.isEnabled(ctx) || seeker == null || target == null) return 0.0;
+        if (seeker.faction == null || target.faction == null) return 0.0;
+
+        BattlefieldSectorSystem.SectorDefinition targetSector = BattlefieldSectorSystem.sectorAt(ctx, target.x, target.y);
+        if (targetSector == null) return 0.0;
+        BattlefieldSectorSystem.SectorDefinition seekerSector = BattlefieldSectorSystem.sectorAt(ctx, seeker.x, seeker.y);
+        BattlefieldSectorSystem.SectorDefinition objectiveSector =
+                BattlefieldSectorSystem.objectiveSector(ctx, seeker.faction, seeker.x, seeker.y);
+        BattlefieldSectorSystem.SectorDefinition homeSector = BattlefieldSectorSystem.homeSector(ctx, seeker.faction);
+        BattlefieldSectorSystem.SectorSnapshot targetSnapshot =
+                BattlefieldSectorSystem.snapshotForSector(ctx, targetSector.id);
+
+        double score = 0.0;
+        if (seekerSector != null && targetSector.id.equalsIgnoreCase(seekerSector.id)) {
+            score += 86.0;
+        }
+        if (objectiveSector != null && targetSector.id.equalsIgnoreCase(objectiveSector.id)) {
+            score += 228.0;
+        }
+        if (homeSector != null && targetSector.id.equalsIgnoreCase(homeSector.id)) {
+            score += BattlefieldSectorSystem.isThreatenedForFaction(targetSnapshot, seeker.faction) ? 280.0 : 48.0;
+        }
+        if (targetSnapshot != null && targetSnapshot.controlState == BattlefieldSectorSystem.ControlState.CONTESTED) {
+            score += 92.0;
+        }
+        if (targetSnapshot != null && BattlefieldSectorSystem.isFriendlyControl(targetSnapshot, seeker.faction)) {
+            score += 58.0;
+        }
+        if (targetSnapshot != null && BattlefieldSectorSystem.isThreatenedForFaction(targetSnapshot, seeker.faction)) {
+            score += 112.0;
+        }
+
+        int hopsFromSeeker = BattlefieldSectorSystem.hopDistance(ctx, seekerSector, targetSector);
+        if (hopsFromSeeker > 1) {
+            score -= (hopsFromSeeker - 1) * 54.0;
+        }
+
+        int hopsToObjective = BattlefieldSectorSystem.hopDistance(ctx, targetSector, objectiveSector);
+        if (hopsToObjective > 0) {
+            score -= hopsToObjective * 44.0;
+        }
+        return score;
     }
 
     private static boolean canShipThreatenTarget(GameContext ctx, Ship seeker, Ship target) {
@@ -2467,9 +2530,18 @@ public final class AISystem {
     }
 
     private static void wander(GameContext ctx, Ship s, double dt) {
-        // Simple wander: drift toward the player's general area, but loosely.
-        double tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
-        double ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
+        double tx;
+        double ty;
+        double[] sectorPoint = BattlefieldSectorSystem.navigationPoint(ctx, s == null ? null : s.faction,
+                s == null ? 0.0 : s.x, s == null ? 0.0 : s.y, s == null ? 0 : s.id);
+        if (sectorPoint != null) {
+            tx = sectorPoint[0];
+            ty = sectorPoint[1];
+        } else {
+            // Simple wander: drift toward the player's general area, but loosely.
+            tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
+            ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
+        }
         if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
             s.tryCIWS(dt, ctx);
             return;
@@ -4231,6 +4303,10 @@ public final class AISystem {
     }
 
     private static double[] teamWaveStagingPoint(GameContext ctx, Faction faction) {
+        double[] sectorPoint = BattlefieldSectorSystem.stagingPoint(ctx, faction);
+        if (sectorPoint != null) {
+            return sectorPoint;
+        }
         Ship base = TeamSystem.getBaseForTeam(ctx, faction);
         if (isAlive(base)) {
             double side = (base.x <= ctx.WORLD_W * 0.5) ? 1.0 : -1.0;

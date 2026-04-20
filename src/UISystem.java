@@ -69,6 +69,8 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
+            BattlefieldSectorSystem.ensureSelection(ctx);
+            BattlefieldSectorSystem.ensureLoadedSector(ctx);
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
         } else {
@@ -738,15 +740,58 @@ public final class UISystem {
     }
 
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
-        Rectangle rect = Renderer.getStrategicMapRect(viewportW, viewportH);
+        Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH);
         if (!rect.contains(e.getPoint())) return;
 
         double nx = (e.getX() - rect.x) / (double) rect.width;
         double ny = (e.getY() - rect.y) / (double) rect.height;
+        if (BattlefieldSectorSystem.isEnabled(ctx)) {
+            BattlefieldSectorSystem.SectorDefinition sector = BattlefieldSectorSystem.sectorAtNormalized(ctx, nx, ny);
+            if (sector != null) {
+                BattlefieldSectorSystem.selectSector(ctx, sector.id);
+                BattlefieldSectorSystem.ensureLoadedSector(ctx);
+                BattlefieldSectorSystem.SectorDefinition loaded = BattlefieldSectorSystem.loadedSector(ctx);
+                BattlefieldSectorSystem.SectorDefinition hop =
+                        BattlefieldSectorSystem.nextWarpHop(ctx, loaded, sector);
+                BattlefieldSectorSystem.SectorDefinition waypointSector = (hop == null) ? sector : hop;
+                double[] arrival = BattlefieldSectorSystem.warpArrivalPoint(
+                        ctx, loaded, waypointSector, ctx.ui.tacticalSectorScalePreset);
+                double targetX = (arrival == null) ? sector.centerX(ctx) : arrival[0];
+                double targetY = (arrival == null) ? sector.centerY(ctx) : arrival[1];
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    addPing(ctx, targetX, targetY, 2.2);
+                    EventSystem.showBanner(ctx, "SECTOR PING: " + sector.label, 1.2);
+                    return;
+                }
+                ctx.ui.waypointX = GameMath.clamp(targetX, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(targetY, 0, ctx.WORLD_H);
+                addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+                BattlefieldSectorSystem.SectorSnapshot snapshot =
+                        BattlefieldSectorSystem.snapshotForSector(ctx, sector.id);
+                String status = BattlefieldSectorSystem.relativeStatusLabel(ctx, snapshot);
+                String route = (waypointSector != null && sector != null
+                        && !waypointSector.id.equalsIgnoreCase(sector.id))
+                        ? "  VIA " + waypointSector.label
+                        : "";
+                EventSystem.showBanner(ctx,
+                        "COURSE SET: " + sector.label + route
+                                + "  " + ctx.ui.tacticalSectorScalePreset.label().toUpperCase()
+                                + (status.isBlank() ? "" : "  " + status.toUpperCase()),
+                        1.2);
+                return;
+            }
+        }
 
-        ctx.ui.waypointX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
-        ctx.ui.waypointY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        double worldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
+        double worldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        if (SwingUtilities.isRightMouseButton(e)) {
+            addPing(ctx, worldX, worldY, 2.2);
+            EventSystem.showBanner(ctx, "PING MARKED", 1.0);
+            return;
+        }
 
+        ctx.ui.waypointX = worldX;
+        ctx.ui.waypointY = worldY;
         addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.2);
     }
@@ -772,6 +817,12 @@ public final class UISystem {
             factionCode = pingCodeForFaction(ctx.player.faction);
         }
         ctx.ui.mapPings.add(new Renderer.MapPing(x, y, seconds, factionCode));
+    }
+
+    public static void setTacticalSectorScale(GameContext ctx, UiState.TacticalSectorScalePreset preset) {
+        if (ctx == null || ctx.ui == null || preset == null) return;
+        ctx.ui.tacticalSectorScalePreset = preset;
+        EventSystem.showBanner(ctx, "TACTICAL SCALE: " + preset.label().toUpperCase(), 1.0);
     }
 
     public static void updatePings(GameContext ctx, double dt) {

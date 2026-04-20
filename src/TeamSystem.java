@@ -47,6 +47,9 @@ public final class TeamSystem {
             break;
         }
 
+        if (!hasShips && OffSectorSimulationSystem.collapsedShipCount(ctx, team) > 0) {
+            hasShips = true;
+        }
         return baseAlive || hasShips;
     }
 
@@ -79,6 +82,7 @@ public final class TeamSystem {
             if (s.role == ShipRole.BASE) continue;
             count++;
         }
+        count += OffSectorSimulationSystem.collapsedShipCount(ctx, team);
         return count;
     }
 

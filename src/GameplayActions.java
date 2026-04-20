@@ -177,12 +177,30 @@ public final class GameplayActions {
             EventSystem.showBanner(ctx, "WARP UNAVAILABLE", 1.2);
             return;
         }
+        BattlefieldSectorSystem.ensureLoadedSector(ctx);
         Ship base = TeamSystem.getBaseForTeam(ctx, player.faction);
         boolean hasWaypoint = Double.isFinite(ctx.ui.waypointX) && Double.isFinite(ctx.ui.waypointY);
         double targetX;
         double targetY;
         String destinationLabel;
-        if (hasWaypoint) {
+        BattlefieldSectorSystem.SectorDefinition loadedSector = BattlefieldSectorSystem.loadedSector(ctx);
+        BattlefieldSectorSystem.SectorDefinition selectedSector = BattlefieldSectorSystem.selectedSector(ctx);
+        if (BattlefieldSectorSystem.isEnabled(ctx)
+                && loadedSector != null
+                && selectedSector != null
+                && !selectedSector.id.equalsIgnoreCase(loadedSector.id)) {
+            BattlefieldSectorSystem.SectorDefinition hop =
+                    BattlefieldSectorSystem.nextWarpHop(ctx, loadedSector, selectedSector);
+            double[] arrival = BattlefieldSectorSystem.warpArrivalPoint(
+                    ctx, loadedSector, hop, ctx.ui.tacticalSectorScalePreset);
+            if (hop == null || arrival == null) {
+                EventSystem.showBanner(ctx, "WARP ROUTE UNAVAILABLE", 1.4);
+                return;
+            }
+            targetX = arrival[0];
+            targetY = arrival[1];
+            destinationLabel = hop.label;
+        } else if (hasWaypoint) {
             targetX = ctx.ui.waypointX;
             targetY = ctx.ui.waypointY;
             destinationLabel = "WAYPOINT";
@@ -209,7 +227,11 @@ public final class GameplayActions {
         }
         ctx.command.playerTeleportCharging = true;
         ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();
-        EventSystem.showBanner(ctx, "BATTLEFIELD WARP TO " + destinationLabel + " (10.0S)", 1.2);
+        EventSystem.showBanner(ctx,
+                "BATTLEFIELD WARP TO " + destinationLabel + "  "
+                        + ctx.ui.tacticalSectorScalePreset.label().toUpperCase()
+                        + " (10.0S)",
+                1.2);
     }
 
     public static void rotateShieldFacing(GameContext ctx, int dir) {
@@ -234,6 +256,22 @@ public final class GameplayActions {
                     java.awt.event.KeyEvent.VK_CLOSE_BRACKET,
                     java.awt.event.KeyEvent.VK_EQUALS,
                     java.awt.event.KeyEvent.VK_ADD -> UISystem.stepShopHullPage(ctx, +1);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean tryHandleMapHotkey(GameContext ctx, int keyCode) {
+        if (ctx == null || !ctx.ui.mapOpen) return false;
+        switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_1 ->
+                    UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.COMPACT);
+            case java.awt.event.KeyEvent.VK_2 ->
+                    UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.STANDARD);
+            case java.awt.event.KeyEvent.VK_3 ->
+                    UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.EXPANDED);
             default -> {
                 return false;
             }
