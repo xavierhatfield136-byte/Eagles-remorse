@@ -1822,8 +1822,7 @@ public abstract class Ship {
         if (isCloaked()) {
             return Math.max(0.03, Math.min(0.30, Math.min(signature, cloakSignature)));
         }
-        if (revealTimer > 0) return 1.0;
-        return Math.max(0.20, Math.min(1.0, signature));
+        return 1.0;
     }
 
     public boolean isCloaked() {

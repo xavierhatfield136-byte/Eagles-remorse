@@ -191,19 +191,16 @@ public class Renderer {
 
     private static final class HudPanelSkinLibrary {
         private static final Map<CombatHudPanelImageKey, BufferedImage> CACHE = new HashMap<>();
-        private static final Set<CombatHudPanelImageKey> FAILED = new HashSet<>();
 
         private static BufferedImage get(CombatHudPanelImageKey key) {
             if (key == null) return null;
             BufferedImage cached = CACHE.get(key);
             if (cached != null) return cached;
-            if (FAILED.contains(key)) return null;
             BufferedImage loaded = load(key);
             if (loaded != null) {
                 CACHE.put(key, loaded);
                 return loaded;
             }
-            FAILED.add(key);
             return null;
         }
 
@@ -8287,7 +8284,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         double sig = ship.effectiveSignature();
-        if (ship.isStealth && sig < 0.99) {
+        if (ship.isCloaked() && sig < 0.99) {
             float a = (float) (0.22 + 0.78 * sig);
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
         }
@@ -8374,7 +8371,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
 
             double sig = ship.effectiveSignature();
-            if (ship.isStealth && sig < 0.99) {
+            if (ship.isCloaked() && sig < 0.99) {
                 float a = (float) (0.22 + 0.78 * sig);
                 g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
             }
@@ -8404,7 +8401,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 drawRoomDebugOverlay(g, ship);
             }
 
-            if (ship.isStealth && sig < 0.99 && !visual.hullPolys.isEmpty()) {
+            if (ship.isCloaked() && sig < 0.99 && !visual.hullPolys.isEmpty()) {
                 g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
                 g.setColor(new Color(120, 220, 255, 110));
                 g.draw(visual.hullPolys.get(0));
@@ -10029,7 +10026,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         // Stealth rendering: fade when not revealed.
         double sig = ship.effectiveSignature();
-        if (ship.isStealth && sig < 0.99) {
+        if (ship.isCloaked() && sig < 0.99) {
             float a = (float) (0.22 + 0.78 * sig);
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
         }
@@ -10100,7 +10097,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawDamageDecals(g, ship, hullPoly);
 
         // Stealth shimmer outline
-        if (ship.isStealth && sig < 0.99) {
+        if (ship.isCloaked() && sig < 0.99) {
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
             g.setColor(new Color(120, 220, 255, 110));
             g.drawPolygon(hullPoly);
