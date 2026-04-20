@@ -49,6 +49,12 @@ public final class CampaignSystem {
         }
     }
 
+    // Zone layout constants
+    private static final double ZONE_WIDTH = 4000.0;
+    private static final double ZONE_HEIGHT = 3000.0;
+    private static final double ZONE_GAP_DISTANCE = 2000.0;
+    private static final int ZONES_PER_ROW = 8;
+
     private static final class SectorScript {
         final int sector;
         final ObjectiveType objectiveType;
@@ -193,6 +199,91 @@ public final class CampaignSystem {
             "THE LONG ROAD HOME",
             "RETURN TO EARTH"
     };
+
+    // Zone layout methods
+    private static double getZoneX(int sector) {
+        int col = (sector - 1) % ZONES_PER_ROW;
+        return col * (ZONE_WIDTH + ZONE_GAP_DISTANCE);
+    }
+
+    private static double getZoneY(int sector) {
+        int row = (sector - 1) / ZONES_PER_ROW;
+        return row * (ZONE_HEIGHT + ZONE_GAP_DISTANCE);
+    }
+
+    private static double getZoneCenterX(int sector) {
+        return getZoneX(sector) + ZONE_WIDTH / 2;
+    }
+
+    private static double getZoneCenterY(int sector) {
+        return getZoneY(sector) + ZONE_HEIGHT / 2;
+    }
+
+    private static boolean canWarpBetweenZones(int sourceSector, int targetSector) {
+        if (sourceSector == targetSector) return false;
+        int sourceRow = (sourceSector - 1) / ZONES_PER_ROW;
+        int sourceCol = (sourceSector - 1) % ZONES_PER_ROW;
+        int targetRow = (targetSector - 1) / ZONES_PER_ROW;
+        int targetCol = (targetSector - 1) % ZONES_PER_ROW;
+        int dRow = Math.abs(sourceRow - targetRow);
+        int dCol = Math.abs(sourceCol - targetCol);
+        return (dRow <= 1 && dCol <= 1) && (dRow + dCol > 0);
+    }
+
+    private static double[] getWarpArrivalPoint(int sourceSector, int targetSector) {
+        double sourceX = getZoneCenterX(sourceSector);
+        double sourceY = getZoneCenterY(sourceSector);
+        double targetX = getZoneCenterX(targetSector);
+        double targetY = getZoneCenterY(targetSector);
+        double dx = targetX - sourceX;
+        double dy = targetY - sourceY;
+
+        double arrivalX, arrivalY;
+        double offset = 200.0; // inward offset
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // Horizontal dominant
+            if (dx > 0) {
+                // Source left of target, arrive on left edge
+                arrivalX = getZoneX(targetSector) + offset;
+            } else {
+                // Source right of target, arrive on right edge
+                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
+            }
+            arrivalY = getZoneCenterY(targetSector);
+        } else if (Math.abs(dy) > Math.abs(dx)) {
+            // Vertical dominant
+            if (dy > 0) {
+                // Source above target, arrive on top edge
+                arrivalY = getZoneY(targetSector) + offset;
+            } else {
+                // Source below target, arrive on bottom edge
+                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
+            }
+            arrivalX = getZoneCenterX(targetSector);
+        } else {
+            // Diagonal, arrive at corner
+            if (dx > 0 && dy > 0) {
+                // Source top-left of target, arrive top-left corner
+                arrivalX = getZoneX(targetSector) + offset;
+                arrivalY = getZoneY(targetSector) + offset;
+            } else if (dx > 0 && dy < 0) {
+                // Source bottom-left, arrive bottom-left
+                arrivalX = getZoneX(targetSector) + offset;
+                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
+            } else if (dx < 0 && dy > 0) {
+                // Source top-right, arrive top-right
+                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
+                arrivalY = getZoneY(targetSector) + offset;
+            } else {
+                // Source bottom-right, arrive bottom-right
+                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
+                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
+            }
+        }
+
+        return new double[]{arrivalX, arrivalY};
+    }
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
@@ -1666,6 +1757,19 @@ public final class CampaignSystem {
         if (ctx != null) ctx.state = GameState.RUNNING;
         st.sector = sector;
         st.act = actForSector(sector);
+
+        // Set player position to warp arrival point
+        if (ctx != null && ctx.player != null) {
+            double[] arrival = (sector == 1) 
+                ? new double[]{getZoneCenterX(sector), getZoneCenterY(sector)}
+                : getWarpArrivalPoint(sector - 1, sector);
+            ctx.player.x = arrival[0];
+            ctx.player.y = arrival[1];
+            ctx.player.vx = 0.0;
+            ctx.player.vy = 0.0;
+            ctx.player.angle = -Math.PI / 2.0; // facing up
+        }
+
         st.transitionTimer = 0.0;
         st.awaitingEpisodeLaunch = false;
         st.pendingEpisodeSector = 0;

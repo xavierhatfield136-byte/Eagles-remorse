@@ -42,6 +42,7 @@ public class Turret {
     
     // Phase 5.5: Targeting persistence - track last fired projectile for blue guns
     public int lastFiredProjectileId = -1;
+    public Projectile lastFiredProjectile = null;  // For waiting logic
     // Phase 5.6: Fire timing - store world position we're currently targeting (for persistent aim after firing)
     public double persistentTargetX = Double.NaN;
     public double persistentTargetY = Double.NaN;
@@ -180,6 +181,11 @@ public class Turret {
         if (!host.hasStrikeCraftMunitionsFor(this)) return null;
 
         DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
+        
+        // Phase 5.6: Blue non-missile turrets wait for their prior projectile to resolve
+        if (shouldWaitForLastProjectile(prof) && lastFiredProjectile != null && lastFiredProjectile.alive) {
+            return null;
+        }
         double cycleMul = host.weaponCycleRateMultiplier();
         double damageMul = host.weaponDamageMultiplier();
         if (kind == Kind.MISSILE) {
@@ -263,8 +269,8 @@ public class Turret {
                 return p;
             }
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
-                Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5,
-                        localX, localY, host.faction);
+                double bulletRadius = 4.5;
+                Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
                 p.sourceShipId = host.id;
                 // Phase 5.7: Blue non-missile projectiles gain damage with flight distance
                 // Growth is 0.5% per 100 units traveled, allowing slower cadence to still deal meaningful damage
@@ -283,6 +289,7 @@ public class Turret {
                 p.damageGrowthPerUnit = 0.003 / 100.0;
                 enablesDamageGrowth = true;
             }
+            lastFiredProjectile = p;
             return p;
         } else {
             double missileBaseDamage = damage * damageMul;

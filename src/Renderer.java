@@ -3346,6 +3346,14 @@ public class Renderer {
         int flareX = (int) Math.round(drawW * 0.30);
         gx.setColor(new Color(255, 250, 220, 170));
         gx.fillOval(flareX, -flare / 2, flare, flare);
+        
+        // Phase 5.2: Make green missiles read more like green photon torpedoes
+        if (m.faction == Faction.TEAM_C) {
+            int glowRadius = Math.max(8, (int) Math.round(Math.max(len, width) * 1.5));
+            gx.setColor(new Color(146, 255, 118, 80)); // Green glow
+            gx.fillOval(-glowRadius / 2, -glowRadius / 2, glowRadius, glowRadius);
+        }
+        
         gx.dispose();
     }
 

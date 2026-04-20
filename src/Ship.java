@@ -1787,7 +1787,7 @@ public abstract class Ship {
             return;
         }
 
-        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage) {
+        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage && cloakControlMode == CloakControlMode.ACTIVE) {
             cloakActive = true;
         }
 
