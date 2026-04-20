@@ -39,16 +39,16 @@ public class Turret {
     // Fire control
     public double cooldown = 0.15;      // seconds between shots
     private double coolLeft = 0;
-
-    // Phase 5.5 + 5.6: Blue main-battery guns lock their target and wait for the prior shot to resolve.
-    // Runtime-only state (do not persist to campaign saves).
-    private transient Projectile pendingBlueProjectile = null;
-    private transient Ship pendingBlueTarget = null;
-
+    
+    // Phase 5.5: Targeting persistence - track last fired projectile for blue guns
+    public int lastFiredProjectileId = -1;
+    public Projectile lastFiredProjectile = null;  // For waiting logic
+    // Phase 5.6: Fire timing - store world position we're currently targeting (for persistent aim after firing)
+    public double persistentTargetX = Double.NaN;
+    public double persistentTargetY = Double.NaN;
     // Phase 5.8: Barrel stagger timing
     public double barrelStaggerTimer = 0.0;
     public int barrelStaggerIndex = 0;
-    private transient int beamVisualLaneCursor = 0;
 
     // Weapon stats
     public Kind kind;
@@ -80,14 +80,6 @@ public class Turret {
             coolLeft -= dt;
             if (coolLeft < 0) coolLeft = 0;
         }
-        // Clear target lock once the last shot has resolved (hit or despawned).
-        if (pendingBlueProjectile != null && !pendingBlueProjectile.alive) {
-            pendingBlueProjectile = null;
-            pendingBlueTarget = null;
-        }
-        if (pendingBlueTarget != null && (!pendingBlueTarget.alive || pendingBlueTarget.dying || pendingBlueTarget.hp <= 0)) {
-            pendingBlueTarget = null;
-        }
     }
 
     /** Useful for transports/resupply: reduce current cooldown timer. */
@@ -115,11 +107,8 @@ public class Turret {
 
     /** Aim the turret toward a target ship. */
     public void aimAt(double dt, Ship host, Ship target) {
-        Ship effective = resolvePersistentTarget(target);
-        if (effective == null) return;
-        double ox = effective.ecmObservedX(worldX(host), worldY(host));
-        double oy = effective.ecmObservedY(worldX(host), worldY(host));
-        aimAt(dt, host, ox, oy);
+        if (target == null) return;
+        aimAt(dt, host, target.x, target.y);
     }
 
     /**
@@ -129,22 +118,19 @@ public class Turret {
      * We convert back to per-second velocity by dividing by dt.
      */
     public void aimAtLead(double dt, Ship host, Ship target, double projectileSpeed) {
-        Ship effective = resolvePersistentTarget(target);
-        if (effective == null) return;
+        if (target == null) return;
         if (dt <= 0) {
-            aimAt(dt, host, effective);
+            aimAt(dt, host, target);
             return;
         }
 
         double wx = worldX(host);
         double wy = worldY(host);
 
-        double ex = effective.ecmObservedX(wx, wy);
-        double ey = effective.ecmObservedY(wx, wy);
-        double tvx = effective.vx / dt;
-        double tvy = effective.vy / dt;
+        double tvx = target.vx / dt;
+        double tvy = target.vy / dt;
 
-        double[] ip = MathUtil.interceptPoint(wx, wy, ex, ey, tvx, tvy, projectileSpeed);
+        double[] ip = MathUtil.interceptPoint(wx, wy, target.x, target.y, tvx, tvy, projectileSpeed);
         aimAt(dt, host, ip[0], ip[1]);
     }
 
@@ -175,23 +161,7 @@ public class Turret {
     }
 
     public boolean canFire() {
-        if (pendingBlueProjectile != null) {
-            if (!pendingBlueProjectile.alive) {
-                pendingBlueProjectile = null;
-                pendingBlueTarget = null;
-            } else {
-                return false;
-            }
-        }
         return coolLeft <= 0;
-    }
-
-    private Ship resolvePersistentTarget(Ship requested) {
-        if (pendingBlueProjectile == null || !pendingBlueProjectile.alive) return requested;
-        if (pendingBlueTarget != null && pendingBlueTarget.alive && !pendingBlueTarget.dying && pendingBlueTarget.hp > 0) {
-            return pendingBlueTarget;
-        }
-        return requested;
     }
     
     /**
@@ -211,6 +181,11 @@ public class Turret {
         if (!host.hasStrikeCraftMunitionsFor(this)) return null;
 
         DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
+        
+        // Phase 5.6: Blue non-missile turrets wait for their prior projectile to resolve
+        if (shouldWaitForLastProjectile(prof) && lastFiredProjectile != null && lastFiredProjectile.alive) {
+            return null;
+        }
         double cycleMul = host.weaponCycleRateMultiplier();
         double damageMul = host.weaponDamageMultiplier();
         if (kind == Kind.MISSILE) {
@@ -244,8 +219,7 @@ public class Turret {
 
         if (kind == Kind.GUN) {
             double baseReloadSeconds = cooldown / cycleMul;
-            boolean blueMainBattery = (host.faction == Faction.PLAYER || host.faction == Faction.ALLY)
-                    && prof.doctrine == Doctrine.ENERGY_NAVY
+            boolean blueMainBattery = prof.doctrine == Doctrine.ENERGY_NAVY
                     && !usesCiwsPelletsAgainst(host, this, missileTarget);
             if (blueMainBattery) {
                 double flooredReload = Math.max(baseReloadSeconds, Ship.BLUE_MAIN_BATTERY_MIN_RELOAD_SECONDS);
@@ -266,7 +240,7 @@ public class Turret {
                 return pellet;
             }
             // Doctrine-based main projectile style.
-            // ENERGY_NAVY always uses the beam-bolt visual identity, with fire doctrine handled separately.
+            // ENERGY_NAVY uses a Yamato 2199-style heavy energy bolt (visible, medium speed).
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.
             double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
             if (prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
@@ -295,24 +269,13 @@ public class Turret {
                 return p;
             }
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
-                boolean beamBoltVisual = host.usesBeamBoltPrimaryVisuals();
-                int beamLaneCount = visualBeamLaneCount(host, this);
-                int beamLaneIndex = (beamBoltVisual && host.usesStaggeredPrimaryFire() && beamLaneCount > 1)
-                        ? nextBeamVisualLane(beamLaneCount)
-                        : -1;
-                Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5,
-                        beamBoltVisual, beamLaneIndex, beamLaneCount, localX, localY, host.faction);
+                double bulletRadius = 4.5;
+                Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
                 p.sourceShipId = host.id;
                 // Phase 5.7: Blue non-missile projectiles gain damage with flight distance
                 // Growth is 0.5% per 100 units traveled, allowing slower cadence to still deal meaningful damage
-                if (host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
-                    p.damageGrowthPerUnit = 0.005 / 100.0;
-                    enablesDamageGrowth = true;
-                }
-                if (blueMainBattery) {
-                    pendingBlueProjectile = p;
-                    pendingBlueTarget = missileTarget;
-                }
+                p.damageGrowthPerUnit = 0.005 / 100.0;
+                enablesDamageGrowth = true;
                 return p;
             }
             double bulletRadius = 3.0;
@@ -322,10 +285,11 @@ public class Turret {
             Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
             p.sourceShipId = host.id;
             // Phase 5.7: Blue bullets also get damage growth
-            if (host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
+            if (prof.doctrine == Doctrine.ENERGY_NAVY || host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
                 p.damageGrowthPerUnit = 0.003 / 100.0;
                 enablesDamageGrowth = true;
             }
+            lastFiredProjectile = p;
             return p;
         } else {
             double missileBaseDamage = damage * damageMul;
@@ -355,94 +319,25 @@ public class Turret {
             double missileTurn_final = missileTurn;
             int missileDamage_final = missileDamage;
             int missileLifetime_final = missileLifetime;
-
-            // Phase 5: Missile subtypes (per turret slot).
-            // These roles are tuned so missiles have a real place in medium/long-range standoff fights:
-            // - INTERCEPT: fast, agile, low yield
-            // - ANTI_LIGHT: fast-ish, good turn
-            // - ANTI_MEDIUM: baseline
-            // - ANTI_HEAVY: photon/torpedo feel, high yield, lower guidance agility
-            MissileRole role = (missileRole == null) ? MissileRole.ANTI_MEDIUM : missileRole;
-            double spdMul = 1.0;
-            double turnMul = 1.0;
-            double dmgMul = 1.0;
-            double lifeMul = 1.0;
-            double radMul = 1.0;
-            double blastMul = 1.0;
-            double splashMul = 0.60;
-            int guidanceTicks = Missile.INFINITE_GUIDANCE_TICKS;
-            boolean canRetarget = false;
-            boolean preferSmallCraft = false;
-            double retargetRange = 900.0;
-            int interceptHpBonus = 0;
-
-            switch (role) {
-                case INTERCEPT -> {
-                    dmgMul *= 0.72;
-                    turnMul *= 2.35;
-                    spdMul *= 1.52;
-                    radMul *= 0.66;
-                    blastMul *= 1.05;
-                    splashMul = 0.28;
-                    guidanceTicks = Math.max(1, (int) Math.round(7.0 / GameContext.DT));
-                    canRetarget = true;
-                    preferSmallCraft = true;
-                    retargetRange = 980.0;
-                }
-                case ANTI_LIGHT -> {
-                    dmgMul *= 0.74;
-                    turnMul *= 1.18;
-                    spdMul *= 1.42;
-                    lifeMul *= 2.80;
-                    radMul *= 0.92;
-                    blastMul *= 0.84;
-                    splashMul = 0.38;
-                    canRetarget = true;
-                    retargetRange = 12000.0;
-                }
-                case ANTI_MEDIUM -> {
-                }
-                case ANTI_HEAVY -> {
-                    dmgMul *= 4.30;
-                    turnMul *= 0.58;
-                    spdMul *= 0.68;
-                    lifeMul *= 0.92;
-                    radMul *= 1.68;
-                    blastMul *= 1.95;
-                    splashMul = 0.95;
-                    guidanceTicks = Math.max(1, (int) Math.round(2.8 / GameContext.DT));
-                    interceptHpBonus = 2;
-                }
-            }
-
-            if (host.faction == Faction.TEAM_C) {
-                // Green missiles should feel like photon torpedoes: a little heavier, larger, and less twitchy.
-                spdMul *= 0.97;
-                turnMul *= 0.95;
-                lifeMul *= 1.08;
-                radMul *= 1.15;
-                dmgMul *= 1.05;
-            }
-
-            missileSpd_final = missileSpd * spdMul;
-            missileTurn_final = missileTurn * turnMul;
-            missileDamage_final = (int) Math.round(missileDamage * dmgMul);
-            missileDamage_final = Math.max(1, missileDamage_final);
-            missileLifetime_final = Math.max(1, (int) Math.round(missileLifetime * lifeMul));
-            if (role == MissileRole.INTERCEPT) {
-                missileLifetime_final = Math.max(1, (int) Math.round(7.0 / GameContext.DT));
-            }
-            missileRadius = Math.max(6.0, missileRadius * radMul);
             
-            Missile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
-            p.role = role;
-            p.canRetarget = canRetarget;
-            p.preferSmallCraft = preferSmallCraft;
-            p.retargetRange = retargetRange;
-            p.guidanceTicksRemaining = Math.min(guidanceTicks, missileLifetime_final);
-            p.interceptHp += interceptHpBonus;
-            p.blastRadius = Math.max(32.0, p.blastRadius * blastMul);
-            p.splashDamageMul = Math.max(0.0, splashMul);
+            // Phase 5.3: Blue torpedo sidegrade
+            // Anti-heavy torpedoes have higher yield but lower guidance time (less agile)
+            // Best against slower targets like cruisers and capital ships
+            if (host.faction == Faction.PLAYER || host.faction == Faction.ALLY) {
+                if (missileRole == MissileRole.ANTI_HEAVY) {
+                    // High-yield torpedo: +35% damage, but -40% turn rate (less responsive guidance)
+                    missileDamage_final = (int) Math.round(missileDamage * 1.35);
+                    missileTurn_final = missileTurn * 0.60;  // Slower, less agile turn
+                    missileSpd_final = missileSpd * 0.92;  // Slightly slower for better hit chance
+                } else if (missileRole == MissileRole.INTERCEPT) {
+                    // Interceptor variant: lighter, faster, turns harder
+                    missileDamage_final = (int) Math.round(missileDamage * 0.75);
+                    missileTurn_final = missileTurn * 1.25;
+                    missileSpd_final = missileSpd * 1.18;
+                }
+            }
+            
+            Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
             p.sourceShipId = host.id;
             return p;
         }
@@ -458,20 +353,5 @@ public class Turret {
         double ca = Math.cos(host.angle);
         double sa = Math.sin(host.angle);
         return host.y + localX * sa + localY * ca;
-    }
-
-    private int nextBeamVisualLane(int laneCount) {
-        int safeCount = Math.max(1, laneCount);
-        int lane = Math.floorMod(beamVisualLaneCursor, safeCount);
-        beamVisualLaneCursor = lane + 1;
-        return lane;
-    }
-
-    private static int visualBeamLaneCount(Ship host, Turret turret) {
-        if (host == null || turret == null) return 1;
-        if (turret.kind != Kind.GUN) return 1;
-        if (!host.usesBeamBoltPrimaryVisuals()) return 1;
-        if (host.role == ShipRole.STEALTH_SHIP) return 1;
-        return 3;
     }
 }

@@ -241,10 +241,7 @@ public abstract class Ship {
     private static final double ROOM_DISRUPTION_CURVE_EXPONENT = 0.92;
     private static final double ROOM_DISRUPTION_REPAIR_SECONDS = 1.0;
 
-    // Primary weapon package (Energy Navy only for now).
-    // Internal names are retained for save compatibility:
-    // - ENERGY_BOLT = staggered beam-bolt doctrine
-    // - BEAM_BOLT = synchronized beam-bolt volley doctrine
+    // Primary weapon family (Energy Navy only for now)
     public enum PrimaryWeaponFamily {
         ENERGY_BOLT,
         BEAM_BOLT
@@ -258,17 +255,6 @@ public abstract class Ship {
     public static final int BEAM_BOLT_LIFE = 150; // frames (~1950px at 780 px/s)
 
     public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
-
-    // Phase 5.8: Primary gun barrel coordination.
-    // ENERGY_BOLT uses staggered beam-bolt fire; BEAM_BOLT volleys all barrels together.
-    public static final double ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS = 0.25;
-    public double primaryGunStaggerTimer = 0.0;
-    public int primaryGunStaggerCursor = 0;
-    /**
-     * When non-zero, we're in the middle of a staggered beam-bolt multi-barrel sequence that should continue
-     * even if the controlling system only issued a momentary "fire" command (tap / single AI order).
-     */
-    public int primaryGunStaggerBurstRemaining = 0;
 
     private static final class GunBaseline {
         final double cooldown;
@@ -657,11 +643,6 @@ public abstract class Ship {
     }
 
     // Stealth
-    public enum CloakControlMode {
-        CHARGE,
-        ACTIVE
-    }
-
     /** If true, this ship is harder to target/lock unless revealed or very close. */
     public boolean isStealth = false;
     /** 0..1 (1 = fully visible). Stealth ships usually sit around ~0.35 while cloaked. */
@@ -670,8 +651,6 @@ public abstract class Ship {
     public double revealTimer = 0.0;
     /** Active cloak state for stealth ships. */
     public boolean cloakActive = false;
-    /** Desired cloak state for stealth ships. */
-    public CloakControlMode cloakControlMode = CloakControlMode.CHARGE;
     /** If false, stealth ships will not engage cloak (debug/gameplay toggle hook). */
     public boolean cloakEnabled = true;
     /** Cloak resource model. */
@@ -681,14 +660,6 @@ public abstract class Ship {
     public double cloakRechargePerSec = 0.95;
     public double cloakMinEnergyToEngage = 1.0;
     public double cloakSignature = 0.08;
-    public double cloakThreatTimer = 0.0;
-    public static final double ECM_ACTIVE_SECONDS = 5.0;
-    public static final double ECM_COOLDOWN_SECONDS = 20.0;
-    public static final double ECM_CLOSE_RANGE = 260.0;
-    public static final double ECM_MEDIUM_RANGE = 620.0;
-    public static final double ECM_LONG_RANGE = 980.0;
-    public double ecmActiveTimer = 0.0;
-    public double ecmCooldownTimer = 0.0;
 
     public void addTurret(Turret t) {
         if (t != null) {
@@ -790,10 +761,6 @@ public abstract class Ship {
             revealTimer -= dt;
             if (revealTimer < 0) revealTimer = 0;
         }
-        if (cloakThreatTimer > 0.0) {
-            cloakThreatTimer -= dt;
-            if (cloakThreatTimer < 0.0) cloakThreatTimer = 0.0;
-        }
         if (recentShieldImpactTimer > 0.0) {
             recentShieldImpactTimer -= dt;
             if (recentShieldImpactTimer < 0.0) {
@@ -813,7 +780,6 @@ public abstract class Ship {
         updateRoomHazards(dt);
         updateShieldFacing(dt);
         updateStealthCloak(dt);
-        updateEcmState(dt);
         ensureShieldFacesSynced();
 
         if (shieldOfflineTimer > 0.0) {
@@ -826,11 +792,6 @@ public abstract class Ship {
         }
         syncDefenseGateState(false);
         updateShieldGateRecharge(dt);
-
-        if (primaryGunStaggerTimer > 0.0) {
-            primaryGunStaggerTimer -= dt;
-            if (primaryGunStaggerTimer < 0.0) primaryGunStaggerTimer = 0.0;
-        }
 
         for (Turret t : turrets) t.update(dt);
 
@@ -909,23 +870,6 @@ public abstract class Ship {
                 t.bulletLife = base.bulletLife;
             }
         }
-    }
-
-    public boolean usesBeamBoltPrimaryVisuals() {
-        try {
-            DoctrineProfile profile = DoctrineRegistry.forFaction(faction);
-            return profile != null && profile.doctrine == Doctrine.ENERGY_NAVY;
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    public boolean usesStaggeredPrimaryFire() {
-        return primaryWeaponFamily == PrimaryWeaponFamily.ENERGY_BOLT;
-    }
-
-    public boolean usesVolleyPrimaryFire() {
-        return primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT;
     }
 
     private GunBaseline cacheGunBaseline(Turret t) {
@@ -1072,9 +1016,7 @@ public abstract class Ship {
         cargo = Math.max(0, cargo);
         revealTimer = 0.0;
         cloakActive = false;
-        cloakControlMode = CloakControlMode.CHARGE;
         cloakEnergy = cloakEnergyMax;
-        cloakThreatTimer = 0.0;
         bountyClaimed = false;
         playerTaggedForKillCredit = false;
         playerKillCreditPaid = false;
@@ -1306,12 +1248,6 @@ public abstract class Ship {
         if (shipRole == null) return 1.5 + r * 0.8;
         if (shipRole.isTitan()) return 2.15 + r * 1.20;
         if (shipRole.isMothership()) return 2.80 + r * 1.40;
-        if (shipRole == ShipRole.FIGHTER
-                || shipRole == ShipRole.BOMBER
-                || shipRole == ShipRole.DRONE
-                || shipRole == ShipRole.PD_CRAFT) {
-            return 0.04 + r * 0.04;
-        }
         return switch (shipRole) {
             case FIGHTER, BOMBER, DRONE, PATROL, PICKET, MISSILE_BOAT, CIWS_CORVETTE,
                     PD_CRAFT, MINER, HAULER, TRANSPORT, STATIC_TURRET -> 0.45 + r * 0.35;
@@ -1583,7 +1519,6 @@ public abstract class Ship {
         if (!isStealth) return;
         revealTimer = Math.max(revealTimer, seconds);
         cloakActive = false;
-        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(1.2, seconds + 0.75));
     }
 
     /** Called when this ship fires a weapon; helps prevent perma-cloaking while shooting. */
@@ -1822,7 +1757,8 @@ public abstract class Ship {
         if (isCloaked()) {
             return Math.max(0.03, Math.min(0.30, Math.min(signature, cloakSignature)));
         }
-        return 1.0;
+        if (revealTimer > 0) return 1.0;
+        return Math.max(0.20, Math.min(1.0, signature));
     }
 
     public boolean isCloaked() {
@@ -1833,110 +1769,10 @@ public abstract class Ship {
         return cloakEnergy > 0.01;
     }
 
-    public boolean hasActiveEcm() {
-        return ecmActiveTimer > 1e-4;
-    }
-
-    public boolean ecmReady() {
-        return !hasActiveEcm() && ecmCooldownTimer <= 1e-4;
-    }
-
-    public double ecmCooldownRemaining() {
-        return Math.max(0.0, ecmCooldownTimer);
-    }
-
-    public boolean tryActivateEcm() {
-        if (!alive || dying || hp <= 0) return false;
-        if (!ecmReady()) return false;
-        ecmActiveTimer = ECM_ACTIVE_SECONDS;
-        ecmCooldownTimer = ECM_COOLDOWN_SECONDS;
-        return true;
-    }
-
-    public boolean blocksMissileLocksFrom(double sourceX, double sourceY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(sourceX - x, sourceY - y);
-        return dist <= ECM_CLOSE_RANGE;
-    }
-
-    public boolean hiddenByEcmAt(double observerX, double observerY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        return dist >= ECM_MEDIUM_RANGE && dist <= ECM_LONG_RANGE * 1.35;
-    }
-
-    public boolean distortedByEcmAt(double observerX, double observerY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        return dist > ECM_CLOSE_RANGE && dist < ECM_MEDIUM_RANGE;
-    }
-
-    public double ecmObservedX(double observerX, double observerY) {
-        return x + ecmIllusionOffsetX(observerX, observerY);
-    }
-
-    public double ecmObservedY(double observerX, double observerY) {
-        return y + ecmIllusionOffsetY(observerX, observerY);
-    }
-
-    public double ecmIllusionOffsetX(double observerX, double observerY) {
-        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.173;
-        double amp = 12.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.10;
-        return Math.sin(t * 7.9) * amp + Math.cos(t * 4.1) * amp * 0.45;
-    }
-
-    public double ecmIllusionOffsetY(double observerX, double observerY) {
-        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.219;
-        double amp = 10.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.09;
-        return Math.cos(t * 6.7) * amp + Math.sin(t * 4.8) * amp * 0.40;
-    }
-
-    public double ecmMoveOffsetX(double dt) {
-        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.131;
-        double speed = 28.0 + Math.min(44.0, radius * 0.6);
-        return (Math.sin(t * 9.3) + Math.cos(t * 5.2) * 0.55) * speed * dt;
-    }
-
-    public double ecmMoveOffsetY(double dt) {
-        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.167;
-        double speed = 24.0 + Math.min(40.0, radius * 0.55);
-        return (Math.cos(t * 8.6) + Math.sin(t * 6.1) * 0.50) * speed * dt;
-    }
-
     public double cloakEnergyFrac() {
         if (!isStealth) return 0.0;
         if (cloakEnergyMax <= 0.0) return 0.0;
         return Math.max(0.0, Math.min(1.0, cloakEnergy / cloakEnergyMax));
-    }
-
-    public boolean cloakWantsActive() {
-        return cloakControlMode == CloakControlMode.ACTIVE;
-    }
-
-    public void setCloakControlMode(CloakControlMode mode) {
-        cloakControlMode = (mode == null) ? CloakControlMode.CHARGE : mode;
-        if (cloakControlMode != CloakControlMode.ACTIVE) {
-            cloakActive = false;
-        }
-    }
-
-    public void noteCloakThreat(double seconds) {
-        if (!isStealth) return;
-        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(0.0, seconds));
-    }
-
-    private double cloakEngageThreshold() {
-        return Math.max(cloakMinEnergyToEngage, cloakEnergyMax * 0.55);
-    }
-
-    private double cloakReserveThreshold() {
-        return Math.max(cloakMinEnergyToEngage * 0.45, cloakEnergyMax * 0.16);
     }
 
     private void updateStealthCloak(double dt) {
@@ -1945,44 +1781,26 @@ public abstract class Ship {
         if (cloakEnergyMax <= 0.01) cloakEnergyMax = 0.01;
         cloakEnergy = Math.max(0.0, Math.min(cloakEnergyMax, cloakEnergy));
 
-        if (!cloakEnabled) {
-            cloakActive = false;
-            cloakControlMode = CloakControlMode.CHARGE;
-            cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
-            return;
-        }
-
-        if (revealTimer > 0.0 || cloakControlMode != CloakControlMode.ACTIVE) {
+        if (!cloakEnabled || revealTimer > 0.0) {
             cloakActive = false;
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
             return;
         }
 
-        if (!cloakActive && cloakEnergy >= cloakEngageThreshold()) {
+        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage && cloakControlMode == CloakControlMode.ACTIVE) {
             cloakActive = true;
         }
 
         if (cloakActive) {
             cloakEnergy -= cloakDrainPerSec * dt;
-            if (cloakEnergy <= cloakReserveThreshold()) {
-                cloakEnergy = Math.max(0.0, cloakEnergy);
+            if (cloakEnergy <= 0.0) {
+                cloakEnergy = 0.0;
                 cloakActive = false;
-                cloakControlMode = CloakControlMode.CHARGE;
+                // Briefly expose after cloak burnout.
+                revealTimer = Math.max(revealTimer, 1.0);
             }
         } else {
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
-        }
-    }
-
-    private void updateEcmState(double dt) {
-        if (dt <= 0.0) return;
-        if (ecmActiveTimer > 0.0) {
-            ecmActiveTimer -= dt;
-            if (ecmActiveTimer < 0.0) ecmActiveTimer = 0.0;
-        }
-        if (ecmCooldownTimer > 0.0) {
-            ecmCooldownTimer -= dt;
-            if (ecmCooldownTimer < 0.0) ecmCooldownTimer = 0.0;
         }
     }
 
@@ -5228,10 +5046,10 @@ public abstract class Ship {
 
     public void tryCIWS(double dt, GameContext ctx) {
         if (ctx == null) {
-            tryCIWS(dt, null, null, null, null);
+            tryCIWS(dt, null, null, null);
             return;
         }
-        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery, ctx);
+        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery);
     }
 
     /**
@@ -5242,14 +5060,10 @@ public abstract class Ship {
      * - Team C keeps laser PD against missiles; all other CIWS fire visible pellets.
      */
     public void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships) {
-        tryCIWS(dt, projectiles, ships, null, null);
+        tryCIWS(dt, projectiles, ships, null);
     }
 
     private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query) {
-        tryCIWS(dt, projectiles, ships, query, null);
-    }
-
-    private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query, GameContext ctx) {
         if (!alive || !hasCIWS || !canUseCombatSystems()) return;
         if (ciwsTimer > 0) return;
         if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
@@ -5266,20 +5080,20 @@ public abstract class Ship {
         }
 
         // Fire!
-        ciwsTimer = effectiveCiwsCooldown(ctx);
+        ciwsTimer = ciwsCooldown;
 
         if (targetMissile) {
             double aim = computeCiwsLeadAim(dt, closestMissile.x, closestMissile.y, closestMissile.vx, closestMissile.vy);
             if (faction == Faction.TEAM_C) {
-                firePointDefenseLaser(dt, projectiles, closestMissile, aim, ctx);
+                firePointDefenseLaser(dt, projectiles, closestMissile, aim);
             } else {
-                fireCiwsPellets(dt, projectiles, aim, ctx);
+                fireCiwsPellets(dt, projectiles, aim);
             }
             return;
         }
 
         double aim = computeCiwsLeadAim(dt, closestSmallCraft.x, closestSmallCraft.y, closestSmallCraft.vx, closestSmallCraft.vy);
-        fireCiwsPellets(dt, projectiles, aim, ctx);
+        fireCiwsPellets(dt, projectiles, aim);
     }
 
     private Missile findClosestCiwsMissile(List<Projectile> projectiles, EntityQueryIndex query) {
@@ -5345,11 +5159,9 @@ public abstract class Ship {
         return Math.atan2(intercept[1] - y, intercept[0] - x);
     }
 
-    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim, GameContext ctx) {
+    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim) {
         if (projectiles == null) return;
-        int pellets = effectiveCiwsBurstPellets(ctx);
-        int pelletDamage = effectiveCiwsPelletDamage(ctx);
-        int pelletLife = effectiveCiwsPelletLife(ctx);
+        int pellets = Math.max(1, ciwsPelletsPerBurst);
         double muzzleForward = radius + 8.0;
         double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));
         double lateralStep = (pellets <= 1) ? 0.0 : (maxLateral * 2.0) / (pellets - 1);
@@ -5367,8 +5179,8 @@ public abstract class Ship {
                     aim,
                     dt,
                     ciwsPelletSpeed,
-                    pelletDamage,
-                    pelletLife,
+                    ciwsPelletDamage,
+                    ciwsPelletLife,
                     ciwsPelletRadius,
                     faction
             );
@@ -5377,11 +5189,11 @@ public abstract class Ship {
         }
     }
 
-    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim, GameContext ctx) {
+    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim) {
         if (projectiles == null || target == null || !target.alive) return;
 
-        int pulses = effectiveCiwsBurstPellets(ctx);
-        int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(effectiveCiwsPelletDamage(ctx) * 0.75)));
+        int pulses = Math.max(1, ciwsPelletsPerBurst);
+        int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletDamage * 0.75)));
         int pulseLife = 2;
         double beamWidth = Math.max(1.0, ciwsPelletRadius * 0.85);
         double muzzleForward = radius + 8.0;
@@ -5407,53 +5219,6 @@ public abstract class Ship {
             laser.sourceShipId = id;
             projectiles.add(laser);
         }
-    }
-
-    private double effectiveCiwsCooldown(GameContext ctx) {
-        double load = ciwsPerformanceLoad(ctx);
-        if (load <= 0.01) return ciwsCooldown;
-        return ciwsCooldown * (1.0 + load * 0.55);
-    }
-
-    private int effectiveCiwsBurstPellets(GameContext ctx) {
-        int base = Math.max(1, ciwsPelletsPerBurst);
-        double load = ciwsPerformanceLoad(ctx);
-        if (base <= 1) return 1;
-        if (load >= 0.38) return 1;
-        return base;
-    }
-
-    private int effectiveCiwsPelletDamage(GameContext ctx) {
-        int base = Math.max(1, ciwsPelletDamage);
-        double load = ciwsPerformanceLoad(ctx);
-        if (load >= 0.38 && ciwsPelletsPerBurst > 1) {
-            return Math.min(2, base + 1);
-        }
-        return base;
-    }
-
-    private int effectiveCiwsPelletLife(GameContext ctx) {
-        int base = Math.max(6, ciwsPelletLife);
-        double load = ciwsPerformanceLoad(ctx);
-        if (load >= 0.55) return Math.max(8, (int) Math.round(base * 0.72));
-        if (load >= 0.32) return Math.max(10, (int) Math.round(base * 0.82));
-        return base;
-    }
-
-    private double ciwsPerformanceLoad(GameContext ctx) {
-        if (ctx == null) return 0.0;
-        int projectileCount = (ctx.projectiles == null) ? 0 : ctx.projectiles.size();
-        int activeShips = 0;
-        if (ctx.ships != null) {
-            for (Ship ship : ctx.ships) {
-                if (ship == null || !ship.alive || ship.dying) continue;
-                activeShips++;
-            }
-        }
-        double projectilePressure = Math.max(0.0, projectileCount - 140.0) / 320.0;
-        double shipPressure = Math.max(0.0, activeShips - 14.0) / 18.0;
-        double vfxPressure = Math.max(0.0, VFX.activeCount() - 520.0) / 520.0;
-        return MathUtil.clamp(projectilePressure * 0.55 + shipPressure * 0.30 + vfxPressure * 0.15, 0.0, 1.0);
     }
 
     public boolean canLaunchFighter() {
