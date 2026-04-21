@@ -46,9 +46,12 @@ public class Turret {
     // Phase 5.6: Fire timing - store world position we're currently targeting (for persistent aim after firing)
     public double persistentTargetX = Double.NaN;
     public double persistentTargetY = Double.NaN;
+    private transient Projectile pendingBlueProjectile = null;
+    private transient Ship pendingBlueTarget = null;
     // Phase 5.8: Barrel stagger timing
     public double barrelStaggerTimer = 0.0;
     public int barrelStaggerIndex = 0;
+    private transient int beamVisualLaneCursor = 0;
 
     // Weapon stats
     public Kind kind;
@@ -80,6 +83,13 @@ public class Turret {
             coolLeft -= dt;
             if (coolLeft < 0) coolLeft = 0;
         }
+        if (pendingBlueProjectile != null && !pendingBlueProjectile.alive) {
+            pendingBlueProjectile = null;
+            pendingBlueTarget = null;
+        }
+        if (pendingBlueTarget != null && (!pendingBlueTarget.alive || pendingBlueTarget.dying || pendingBlueTarget.hp <= 0)) {
+            pendingBlueTarget = null;
+        }
     }
 
     /** Useful for transports/resupply: reduce current cooldown timer. */
@@ -107,8 +117,9 @@ public class Turret {
 
     /** Aim the turret toward a target ship. */
     public void aimAt(double dt, Ship host, Ship target) {
-        if (target == null) return;
-        aimAt(dt, host, target.x, target.y);
+        Ship effective = resolvePersistentTarget(target);
+        if (effective == null) return;
+        aimAt(dt, host, effective.x, effective.y);
     }
 
     /**
@@ -118,19 +129,20 @@ public class Turret {
      * We convert back to per-second velocity by dividing by dt.
      */
     public void aimAtLead(double dt, Ship host, Ship target, double projectileSpeed) {
-        if (target == null) return;
+        Ship effective = resolvePersistentTarget(target);
+        if (effective == null) return;
         if (dt <= 0) {
-            aimAt(dt, host, target);
+            aimAt(dt, host, effective);
             return;
         }
 
         double wx = worldX(host);
         double wy = worldY(host);
 
-        double tvx = target.vx / dt;
-        double tvy = target.vy / dt;
+        double tvx = effective.vx / dt;
+        double tvy = effective.vy / dt;
 
-        double[] ip = MathUtil.interceptPoint(wx, wy, target.x, target.y, tvx, tvy, projectileSpeed);
+        double[] ip = MathUtil.interceptPoint(wx, wy, effective.x, effective.y, tvx, tvy, projectileSpeed);
         aimAt(dt, host, ip[0], ip[1]);
     }
 
@@ -161,7 +173,23 @@ public class Turret {
     }
 
     public boolean canFire() {
+        if (pendingBlueProjectile != null) {
+            if (!pendingBlueProjectile.alive) {
+                pendingBlueProjectile = null;
+                pendingBlueTarget = null;
+            } else {
+                return false;
+            }
+        }
         return coolLeft <= 0;
+    }
+
+    private Ship resolvePersistentTarget(Ship requested) {
+        if (pendingBlueProjectile == null || !pendingBlueProjectile.alive) return requested;
+        if (pendingBlueTarget != null && pendingBlueTarget.alive && !pendingBlueTarget.dying && pendingBlueTarget.hp > 0) {
+            return pendingBlueTarget;
+        }
+        return requested;
     }
     
     /**
@@ -269,13 +297,20 @@ public class Turret {
                 return p;
             }
             if (prof.doctrine == Doctrine.ENERGY_NAVY) {
-                double bulletRadius = 4.5;
-                Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
+                boolean beamBoltVisual = host.usesBeamBoltPrimaryVisuals();
+                int beamLaneCount = visualBeamLaneCount(host, this);
+                int beamLaneIndex = (beamBoltVisual && host.usesStaggeredPrimaryFire() && beamLaneCount > 1)
+                        ? nextBeamVisualLane(beamLaneCount)
+                        : -1;
+                Projectile p = new EnergyBolt(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, 4.5,
+                        beamBoltVisual, beamLaneIndex, beamLaneCount, localX, localY, host.faction);
                 p.sourceShipId = host.id;
                 // Phase 5.7: Blue non-missile projectiles gain damage with flight distance
                 // Growth is 0.5% per 100 units traveled, allowing slower cadence to still deal meaningful damage
                 p.damageGrowthPerUnit = 0.005 / 100.0;
                 enablesDamageGrowth = true;
+                pendingBlueProjectile = p;
+                pendingBlueTarget = missileTarget;
                 return p;
             }
             double bulletRadius = 3.0;
@@ -341,6 +376,21 @@ public class Turret {
             p.sourceShipId = host.id;
             return p;
         }
+    }
+
+    private int nextBeamVisualLane(int laneCount) {
+        int safeCount = Math.max(1, laneCount);
+        int lane = Math.floorMod(beamVisualLaneCursor, safeCount);
+        beamVisualLaneCursor = lane + 1;
+        return lane;
+    }
+
+    private static int visualBeamLaneCount(Ship host, Turret turret) {
+        if (host == null || turret == null) return 1;
+        if (turret.kind != Kind.GUN) return 1;
+        if (!host.usesBeamBoltPrimaryVisuals()) return 1;
+        if (host.role == ShipRole.STEALTH_SHIP) return 1;
+        return 3;
     }
 
     public double worldX(Ship host) {

@@ -255,6 +255,10 @@ public abstract class Ship {
     public static final int BEAM_BOLT_LIFE = 150; // frames (~1950px at 780 px/s)
 
     public PrimaryWeaponFamily primaryWeaponFamily = PrimaryWeaponFamily.ENERGY_BOLT;
+    public static final double ENERGY_BOLT_BARREL_STAGGER_INTERVAL_SECONDS = 0.25;
+    public double primaryGunStaggerTimer = 0.0;
+    public int primaryGunStaggerCursor = 0;
+    public int primaryGunStaggerBurstRemaining = 0;
 
     private static final class GunBaseline {
         final double cooldown;
@@ -643,6 +647,11 @@ public abstract class Ship {
     }
 
     // Stealth
+    public enum CloakControlMode {
+        CHARGE,
+        ACTIVE
+    }
+
     /** If true, this ship is harder to target/lock unless revealed or very close. */
     public boolean isStealth = false;
     /** 0..1 (1 = fully visible). Stealth ships usually sit around ~0.35 while cloaked. */
@@ -651,6 +660,8 @@ public abstract class Ship {
     public double revealTimer = 0.0;
     /** Active cloak state for stealth ships. */
     public boolean cloakActive = false;
+    /** Desired cloak state for stealth ships. */
+    public CloakControlMode cloakControlMode = CloakControlMode.CHARGE;
     /** If false, stealth ships will not engage cloak (debug/gameplay toggle hook). */
     public boolean cloakEnabled = true;
     /** Cloak resource model. */
@@ -660,6 +671,14 @@ public abstract class Ship {
     public double cloakRechargePerSec = 0.95;
     public double cloakMinEnergyToEngage = 1.0;
     public double cloakSignature = 0.08;
+    public double cloakThreatTimer = 0.0;
+    public static final double ECM_ACTIVE_SECONDS = 5.0;
+    public static final double ECM_COOLDOWN_SECONDS = 20.0;
+    public static final double ECM_CLOSE_RANGE = 260.0;
+    public static final double ECM_MEDIUM_RANGE = 620.0;
+    public static final double ECM_LONG_RANGE = 980.0;
+    public double ecmActiveTimer = 0.0;
+    public double ecmCooldownTimer = 0.0;
 
     public void addTurret(Turret t) {
         if (t != null) {
@@ -761,6 +780,10 @@ public abstract class Ship {
             revealTimer -= dt;
             if (revealTimer < 0) revealTimer = 0;
         }
+        if (cloakThreatTimer > 0.0) {
+            cloakThreatTimer -= dt;
+            if (cloakThreatTimer < 0.0) cloakThreatTimer = 0.0;
+        }
         if (recentShieldImpactTimer > 0.0) {
             recentShieldImpactTimer -= dt;
             if (recentShieldImpactTimer < 0.0) {
@@ -780,6 +803,7 @@ public abstract class Ship {
         updateRoomHazards(dt);
         updateShieldFacing(dt);
         updateStealthCloak(dt);
+        updateEcmState(dt);
         ensureShieldFacesSynced();
 
         if (shieldOfflineTimer > 0.0) {
@@ -792,6 +816,11 @@ public abstract class Ship {
         }
         syncDefenseGateState(false);
         updateShieldGateRecharge(dt);
+
+        if (primaryGunStaggerTimer > 0.0) {
+            primaryGunStaggerTimer -= dt;
+            if (primaryGunStaggerTimer < 0.0) primaryGunStaggerTimer = 0.0;
+        }
 
         for (Turret t : turrets) t.update(dt);
 
@@ -870,6 +899,23 @@ public abstract class Ship {
                 t.bulletLife = base.bulletLife;
             }
         }
+    }
+
+    public boolean usesBeamBoltPrimaryVisuals() {
+        try {
+            DoctrineProfile profile = DoctrineRegistry.forFaction(faction);
+            return profile != null && profile.doctrine == Doctrine.ENERGY_NAVY;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public boolean usesStaggeredPrimaryFire() {
+        return primaryWeaponFamily == PrimaryWeaponFamily.ENERGY_BOLT;
+    }
+
+    public boolean usesVolleyPrimaryFire() {
+        return primaryWeaponFamily == PrimaryWeaponFamily.BEAM_BOLT;
     }
 
     private GunBaseline cacheGunBaseline(Turret t) {
@@ -1016,7 +1062,14 @@ public abstract class Ship {
         cargo = Math.max(0, cargo);
         revealTimer = 0.0;
         cloakActive = false;
+        cloakControlMode = CloakControlMode.CHARGE;
         cloakEnergy = cloakEnergyMax;
+        cloakThreatTimer = 0.0;
+        ecmActiveTimer = 0.0;
+        ecmCooldownTimer = 0.0;
+        primaryGunStaggerTimer = 0.0;
+        primaryGunStaggerCursor = 0;
+        primaryGunStaggerBurstRemaining = 0;
         bountyClaimed = false;
         playerTaggedForKillCredit = false;
         playerKillCreditPaid = false;
@@ -1519,6 +1572,7 @@ public abstract class Ship {
         if (!isStealth) return;
         revealTimer = Math.max(revealTimer, seconds);
         cloakActive = false;
+        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(1.2, seconds + 0.75));
     }
 
     /** Called when this ship fires a weapon; helps prevent perma-cloaking while shooting. */
@@ -1769,10 +1823,110 @@ public abstract class Ship {
         return cloakEnergy > 0.01;
     }
 
+    public boolean hasActiveEcm() {
+        return ecmActiveTimer > 1e-4;
+    }
+
+    public boolean ecmReady() {
+        return !hasActiveEcm() && ecmCooldownTimer <= 1e-4;
+    }
+
+    public double ecmCooldownRemaining() {
+        return Math.max(0.0, ecmCooldownTimer);
+    }
+
+    public boolean tryActivateEcm() {
+        if (!alive || dying || hp <= 0) return false;
+        if (!ecmReady()) return false;
+        ecmActiveTimer = ECM_ACTIVE_SECONDS;
+        ecmCooldownTimer = ECM_COOLDOWN_SECONDS;
+        return true;
+    }
+
+    public boolean blocksMissileLocksFrom(double sourceX, double sourceY) {
+        if (!hasActiveEcm()) return false;
+        double dist = Math.hypot(sourceX - x, sourceY - y);
+        return dist <= ECM_CLOSE_RANGE;
+    }
+
+    public boolean hiddenByEcmAt(double observerX, double observerY) {
+        if (!hasActiveEcm()) return false;
+        double dist = Math.hypot(observerX - x, observerY - y);
+        return dist >= ECM_MEDIUM_RANGE && dist <= ECM_LONG_RANGE * 1.35;
+    }
+
+    public boolean distortedByEcmAt(double observerX, double observerY) {
+        if (!hasActiveEcm()) return false;
+        double dist = Math.hypot(observerX - x, observerY - y);
+        return dist > ECM_CLOSE_RANGE && dist < ECM_MEDIUM_RANGE;
+    }
+
+    public double ecmObservedX(double observerX, double observerY) {
+        return x + ecmIllusionOffsetX(observerX, observerY);
+    }
+
+    public double ecmObservedY(double observerX, double observerY) {
+        return y + ecmIllusionOffsetY(observerX, observerY);
+    }
+
+    public double ecmIllusionOffsetX(double observerX, double observerY) {
+        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
+        double dist = Math.hypot(observerX - x, observerY - y);
+        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.173;
+        double amp = 12.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.10;
+        return Math.sin(t * 7.9) * amp + Math.cos(t * 4.1) * amp * 0.45;
+    }
+
+    public double ecmIllusionOffsetY(double observerX, double observerY) {
+        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
+        double dist = Math.hypot(observerX - x, observerY - y);
+        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.219;
+        double amp = 10.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.09;
+        return Math.cos(t * 6.7) * amp + Math.sin(t * 4.8) * amp * 0.40;
+    }
+
+    public double ecmMoveOffsetX(double dt) {
+        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
+        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.131;
+        double speed = 28.0 + Math.min(44.0, radius * 0.6);
+        return (Math.sin(t * 9.3) + Math.cos(t * 5.2) * 0.55) * speed * dt;
+    }
+
+    public double ecmMoveOffsetY(double dt) {
+        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
+        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.167;
+        double speed = 24.0 + Math.min(40.0, radius * 0.55);
+        return (Math.cos(t * 8.6) + Math.sin(t * 6.1) * 0.50) * speed * dt;
+    }
+
     public double cloakEnergyFrac() {
         if (!isStealth) return 0.0;
         if (cloakEnergyMax <= 0.0) return 0.0;
         return Math.max(0.0, Math.min(1.0, cloakEnergy / cloakEnergyMax));
+    }
+
+    public boolean cloakWantsActive() {
+        return cloakControlMode == CloakControlMode.ACTIVE;
+    }
+
+    public void setCloakControlMode(CloakControlMode mode) {
+        cloakControlMode = (mode == null) ? CloakControlMode.CHARGE : mode;
+        if (cloakControlMode != CloakControlMode.ACTIVE) {
+            cloakActive = false;
+        }
+    }
+
+    public void noteCloakThreat(double seconds) {
+        if (!isStealth) return;
+        cloakThreatTimer = Math.max(cloakThreatTimer, Math.max(0.0, seconds));
+    }
+
+    private double cloakEngageThreshold() {
+        return Math.max(cloakMinEnergyToEngage, cloakEnergyMax * 0.55);
+    }
+
+    private double cloakReserveThreshold() {
+        return Math.max(cloakMinEnergyToEngage * 0.45, cloakEnergyMax * 0.16);
     }
 
     private void updateStealthCloak(double dt) {
@@ -1781,26 +1935,44 @@ public abstract class Ship {
         if (cloakEnergyMax <= 0.01) cloakEnergyMax = 0.01;
         cloakEnergy = Math.max(0.0, Math.min(cloakEnergyMax, cloakEnergy));
 
-        if (!cloakEnabled || revealTimer > 0.0) {
+        if (!cloakEnabled) {
+            cloakActive = false;
+            cloakControlMode = CloakControlMode.CHARGE;
+            cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
+            return;
+        }
+
+        if (revealTimer > 0.0 || cloakControlMode != CloakControlMode.ACTIVE) {
             cloakActive = false;
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
             return;
         }
 
-        if (!cloakActive && cloakEnergy >= cloakMinEnergyToEngage && cloakControlMode == CloakControlMode.ACTIVE) {
+        if (!cloakActive && cloakEnergy >= cloakEngageThreshold()) {
             cloakActive = true;
         }
 
         if (cloakActive) {
             cloakEnergy -= cloakDrainPerSec * dt;
-            if (cloakEnergy <= 0.0) {
-                cloakEnergy = 0.0;
+            if (cloakEnergy <= cloakReserveThreshold()) {
+                cloakEnergy = Math.max(0.0, cloakEnergy);
                 cloakActive = false;
-                // Briefly expose after cloak burnout.
-                revealTimer = Math.max(revealTimer, 1.0);
+                cloakControlMode = CloakControlMode.CHARGE;
             }
         } else {
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
+        }
+    }
+
+    private void updateEcmState(double dt) {
+        if (dt <= 0.0) return;
+        if (ecmActiveTimer > 0.0) {
+            ecmActiveTimer -= dt;
+            if (ecmActiveTimer < 0.0) ecmActiveTimer = 0.0;
+        }
+        if (ecmCooldownTimer > 0.0) {
+            ecmCooldownTimer -= dt;
+            if (ecmCooldownTimer < 0.0) ecmCooldownTimer = 0.0;
         }
     }
 

@@ -1619,7 +1619,7 @@ public final class UISystem {
             EventSystem.showBanner(ctx, "ECM ALREADY ACTIVE", 0.9);
             return;
         }
-        EventSystem.showBanner(ctx, String.format("ECM RECHARGING: %.1FS", ctx.player.ecmCooldownRemaining()), 1.0);
+        EventSystem.showBanner(ctx, String.format("ECM RECHARGING: %.1fS", ctx.player.ecmCooldownRemaining()), 1.0);
     }
 
     private static int pingCodeForFaction(Faction faction) {
