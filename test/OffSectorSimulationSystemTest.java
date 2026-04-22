@@ -39,8 +39,8 @@ class OffSectorSimulationSystemTest {
         ctx.ships.add(ctx.player);
         BattlefieldSectorSystem.selectSector(ctx, "red-home");
 
-        Ship seeker = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 4500, 3000);
-        Ship redHomeTarget = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 8200, 3000);
+        Ship seeker = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 14000, 3000);
+        Ship redHomeTarget = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 27000, 3000);
         Ship blueHomeThreat = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 900, 3000);
 
         double attackBias = AISystem.sectorTargetPriorityBias(ctx, seeker, redHomeTarget);
@@ -92,8 +92,8 @@ class OffSectorSimulationSystemTest {
         ctx.player.faction = Faction.ALLY;
         ctx.ships.add(ctx.player);
 
-        Ship remoteEnemyA = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 8100, 8100);
-        Ship remoteEnemyB = new FleetShip(ShipRole.CRUISER, Faction.TEAM_D, 8350, 8350);
+        Ship remoteEnemyA = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 27000, 27000);
+        Ship remoteEnemyB = new FleetShip(ShipRole.CRUISER, Faction.TEAM_D, 27350, 27350);
         ctx.ships.add(remoteEnemyA);
         ctx.ships.add(remoteEnemyB);
         ctx.battleElapsed = 1.0;
@@ -117,8 +117,8 @@ class OffSectorSimulationSystemTest {
         ctx.player.faction = Faction.ALLY;
         ctx.ships.add(ctx.player);
 
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 8100, 8100));
-        ctx.ships.add(new FleetShip(ShipRole.CRUISER, Faction.TEAM_D, 8350, 8350));
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 27000, 27000));
+        ctx.ships.add(new FleetShip(ShipRole.CRUISER, Faction.TEAM_D, 27350, 27350));
         ctx.battleElapsed = 1.0;
 
         OffSectorSimulationSystem.update(ctx, 0.2);
@@ -134,24 +134,39 @@ class OffSectorSimulationSystemTest {
     }
 
     @Test
-    void unloadedCollapsedSectorStillTakesLossesOverTime() {
+    void resourceRushDoesNotCollapseRemoteForcesIntoHiddenSummaries() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
         ctx.player = new Player(ShipRole.FRIGATE, 700, 3000);
         ctx.player.faction = Faction.ALLY;
         ctx.ships.add(ctx.player);
 
-        ctx.ships.add(new FleetShip(ShipRole.CRUISER, Faction.ALLY, 7900, 2800));
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 8200, 3200));
+        Ship remoteAlly = new FleetShip(ShipRole.CRUISER, Faction.ALLY, 26800, 2800);
+        Ship remoteEnemy = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 27000, 3200);
+        ctx.ships.add(remoteAlly);
+        ctx.ships.add(remoteEnemy);
         ctx.battleElapsed = 1.0;
 
-        assertTrue(OffSectorSimulationSystem.update(ctx, 0.2));
-        double enemyIntegrityBefore = OffSectorSimulationSystem.collapsedIntegrityFraction(ctx, "red-home", Faction.ENEMY);
-
         OffSectorSimulationSystem.update(ctx, 1.3);
-        double enemyIntegrityAfter = OffSectorSimulationSystem.collapsedIntegrityFraction(ctx, "red-home", Faction.ENEMY);
 
-        assertTrue(enemyIntegrityBefore > 0.0);
-        assertTrue(enemyIntegrityAfter < enemyIntegrityBefore);
+        assertTrue(ctx.ships.contains(remoteAlly));
+        assertTrue(ctx.ships.contains(remoteEnemy));
+        assertEquals(0.0, OffSectorSimulationSystem.collapsedIntegrityFraction(ctx, "red-home", Faction.ENEMY), 0.0001);
+    }
+
+    @Test
+    void resourceRushKeepsAdjacentSectorsLiveInsteadOfAbstractingThem() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 700, 3000);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+        ctx.battleElapsed = 1.0;
+
+        OffSectorSimulationSystem.update(ctx, 0.2);
+
+        assertFalse(OffSectorSimulationSystem.isSectorAbstracted(
+                ctx, BattlefieldSectorSystem.findSector(ctx, "central-front")));
+        assertFalse(OffSectorSimulationSystem.isSectorAbstracted(
+                ctx, BattlefieldSectorSystem.findSector(ctx, "red-home")));
     }
 
     private static int countLiveShips(GameContext ctx, Faction faction) {

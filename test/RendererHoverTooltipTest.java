@@ -7,6 +7,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RendererHoverTooltipTest {
@@ -145,5 +146,35 @@ class RendererHoverTooltipTest {
             }
         }
         assertTrue(foundShipPixel, "tactical ship rendering should still draw a visible geometric silhouette");
+    }
+
+    @Test
+    void tacticalViewSkipsHeavyWorldLayersToPreserveFps() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        ctx.ui.tacticalViewEnabled = true;
+        ctx.player = new Player(ShipRole.FRIGATE, 2400.0, 2400.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+
+        Ship enemy = new FleetShip(ShipRole.BATTLECRUISER, Faction.ENEMY, 2520.0, 2400.0);
+        ctx.ships.add(enemy);
+        ctx.asteroids.add(new Asteroid(2450.0, 2380.0, 90.0, 400));
+        ctx.salvage.add(new Salvage(2460.0, 2420.0, 25, 12, 20.0));
+        ctx.projectiles.add(new Bullet(2440.0, 2400.0, 0.0, 1.0 / 60.0, Faction.ENEMY));
+        ctx.camX = 2100.0;
+        ctx.camY = 2040.0;
+
+        BufferedImage canvas = new BufferedImage(1280, 720, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            GameRenderSystem.render(ctx, g2, 1280, 720);
+        } finally {
+            g2.dispose();
+        }
+
+        assertTrue(ctx.perf.drawnShips > 0, "tactical view should still render ship silhouettes");
+        assertEquals(0, ctx.perf.drawnAsteroids, "tactical view should skip asteroid rendering for FPS");
+        assertEquals(0, ctx.perf.drawnSalvage, "tactical view should skip salvage rendering for FPS");
+        assertEquals(0, ctx.perf.drawnProjectiles, "tactical view should skip projectile rendering for FPS");
     }
 }

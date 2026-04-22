@@ -211,8 +211,8 @@ public class GameContext {
         this.config = (config == null)
                 ? new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, System.nanoTime(), false)
                 : config;
-        this.WORLD_W = this.config.worldW;
-        this.WORLD_H = this.config.worldH;
+        this.WORLD_W = resolvedWorldWidth(this.config);
+        this.WORLD_H = resolvedWorldHeight(this.config);
         this.rng = new Random(this.config.seed);
         this.fogOfWar = new FogOfWarSystem.State(this.WORLD_W, this.WORLD_H);
         Faction.clearCampaignAlliances();
@@ -220,6 +220,14 @@ public class GameContext {
         if (this.config.mode == GameMode.CAMPAIGN_OPS || this.config.mode == GameMode.FLEET) {
             this.campaignUnlockProfile = CampaignUnlockProfile.load();
         }
+    }
+
+    private static int resolvedWorldWidth(GameConfig config) {
+        return BattlefieldSectorSystem.recommendedWorldWidth(config);
+    }
+
+    private static int resolvedWorldHeight(GameConfig config) {
+        return BattlefieldSectorSystem.recommendedWorldHeight(config);
     }
 
     public double voiceRoleVolume(CrewStation station) {

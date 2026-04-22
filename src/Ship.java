@@ -359,6 +359,7 @@ public abstract class Ship {
     private double warpExitX = Double.NaN;
     private double warpExitY = Double.NaN;
     private int warpFormationLeaderId = -1;
+    private String warpSourceSectorId = "";
 
     // Movement
     public double desiredSpeed = 110;
@@ -1674,6 +1675,14 @@ public abstract class Ship {
         return warpFormationLeaderId;
     }
 
+    public String warpSourceSectorId() {
+        return warpSourceSectorId;
+    }
+
+    public void setWarpSourceSectorId(String sectorId) {
+        warpSourceSectorId = (sectorId == null) ? "" : sectorId.trim();
+    }
+
     public boolean beginBattlefieldWarp(double targetX, double targetY, double spoolSeconds) {
         warpFormationLeaderId = -1;
         return beginBattlefieldWarpInternal(targetX, targetY, spoolSeconds);
@@ -1702,6 +1711,7 @@ public abstract class Ship {
         warpExitX = Double.NaN;
         warpExitY = Double.NaN;
         warpFormationLeaderId = -1;
+        warpSourceSectorId = "";
     }
 
     public void tickBattlefieldWarp(double dt) {

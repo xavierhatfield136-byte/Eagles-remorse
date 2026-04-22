@@ -23,6 +23,7 @@ public final class PhysicsSystem {
             s.update(dt);
         }
         constrainPlayerToLoadedSector(ctx);
+        constrainWarpChargingShipsToSourceSector(ctx);
         for (Ship s : ctx.ships) {
             if (s == null || !s.alive || s.dying) continue;
             if (!s.hasActiveEcm()) continue;
@@ -255,6 +256,26 @@ public final class PhysicsSystem {
         if (clamped == null || clamped.length < 2) return;
         ctx.player.x = clamped[0];
         ctx.player.y = clamped[1];
+    }
+
+    private static void constrainWarpChargingShipsToSourceSector(GameContext ctx) {
+        if (ctx == null || !BattlefieldSectorSystem.isEnabled(ctx) || ctx.ships == null) return;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (!ship.isWarpCharging()) continue;
+            BattlefieldSectorSystem.SectorDefinition sector =
+                    BattlefieldSectorSystem.findSector(ctx, ship.warpSourceSectorId());
+            if (sector == null) {
+                sector = BattlefieldSectorSystem.sectorAt(ctx, ship.x, ship.y);
+                ship.setWarpSourceSectorId(sector == null ? "" : sector.id);
+            }
+            if (sector == null) continue;
+            double[] clamped = BattlefieldSectorSystem.clampToLoadedSectorBounds(
+                    ctx, sector, ctx.ui.tacticalSectorScalePreset, ship.x, ship.y);
+            if (clamped == null || clamped.length < 2) continue;
+            ship.x = clamped[0];
+            ship.y = clamped[1];
+        }
     }
 
     private static boolean isAlive(Ship s) {

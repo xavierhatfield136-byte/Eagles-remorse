@@ -1,4 +1,5 @@
 import app.config.GameMode;
+import app.config.GameConfig;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,25 +10,28 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 public final class BattlefieldSectorSystem {
-    private static final double ONE_THIRD = 1.0 / 3.0;
-    private static final double TWO_THIRDS = 2.0 / 3.0;
+    private static final int RESOURCE_RUSH_COLUMNS = 3;
+    private static final int RESOURCE_RUSH_ROWS = 1;
+    private static final int FOUR_TEAM_GRID_COLUMNS = 3;
+    private static final int FOUR_TEAM_GRID_ROWS = 3;
+    private static final int INTER_SECTOR_GAP = 2200;
 
     private static final List<SectorDefinition> RESOURCE_RUSH_SECTORS = List.of(
-            new SectorDefinition("blue-home", "BLUE HOME", 0.0, 0.0, 0.34, 1.0, Faction.ALLY),
-            new SectorDefinition("central-front", "CENTRAL FRONT", 0.34, 0.0, 0.67, 1.0, null),
-            new SectorDefinition("red-home", "RED HOME", 0.67, 0.0, 1.0, 1.0, Faction.ENEMY)
+            new SectorDefinition("blue-home", "BLUE HOME", 0, 0, 1, 1, Faction.ALLY),
+            new SectorDefinition("central-front", "CENTRAL FRONT", 1, 0, 1, 1, null),
+            new SectorDefinition("red-home", "RED HOME", 2, 0, 1, 1, Faction.ENEMY)
     );
 
     private static final List<SectorDefinition> FOUR_TEAM_SECTORS = List.of(
-            new SectorDefinition("blue-orbit", "BLUE ORBIT", 0.0, 0.0, ONE_THIRD, ONE_THIRD, Faction.ALLY),
-            new SectorDefinition("north-link", "NORTH LINK", ONE_THIRD, 0.0, TWO_THIRDS, ONE_THIRD, null),
-            new SectorDefinition("red-orbit", "RED ORBIT", TWO_THIRDS, 0.0, 1.0, ONE_THIRD, Faction.ENEMY),
-            new SectorDefinition("west-link", "WEST LINK", 0.0, ONE_THIRD, ONE_THIRD, TWO_THIRDS, null),
-            new SectorDefinition("central-warzone", "CENTRAL WARZONE", ONE_THIRD, ONE_THIRD, TWO_THIRDS, TWO_THIRDS, null),
-            new SectorDefinition("east-link", "EAST LINK", TWO_THIRDS, ONE_THIRD, 1.0, TWO_THIRDS, null),
-            new SectorDefinition("green-orbit", "GREEN ORBIT", 0.0, TWO_THIRDS, ONE_THIRD, 1.0, Faction.TEAM_C),
-            new SectorDefinition("south-link", "SOUTH LINK", ONE_THIRD, TWO_THIRDS, TWO_THIRDS, 1.0, null),
-            new SectorDefinition("yellow-orbit", "YELLOW ORBIT", TWO_THIRDS, TWO_THIRDS, 1.0, 1.0, Faction.TEAM_D)
+            new SectorDefinition("blue-orbit", "BLUE ORBIT", 0, 0, 1, 1, Faction.ALLY),
+            new SectorDefinition("north-link", "NORTH LINK", 1, 0, 1, 1, null),
+            new SectorDefinition("red-orbit", "RED ORBIT", 2, 0, 1, 1, Faction.ENEMY),
+            new SectorDefinition("west-link", "WEST LINK", 0, 1, 1, 1, null),
+            new SectorDefinition("central-warzone", "CENTRAL WARZONE", 1, 1, 1, 1, null),
+            new SectorDefinition("east-link", "EAST LINK", 2, 1, 1, 1, null),
+            new SectorDefinition("green-orbit", "GREEN ORBIT", 0, 2, 1, 1, Faction.TEAM_C),
+            new SectorDefinition("south-link", "SOUTH LINK", 1, 2, 1, 1, null),
+            new SectorDefinition("yellow-orbit", "YELLOW ORBIT", 2, 2, 1, 1, Faction.TEAM_D)
     );
     private static final Map<String, List<String>> RESOURCE_RUSH_ADJACENCY = Map.of(
             "blue-home", List.of("central-front"),
@@ -70,42 +74,109 @@ public final class BattlefieldSectorSystem {
         public final double maxXFrac;
         public final double maxYFrac;
         public final Faction anchorFaction;
+        public final int gridColumn;
+        public final int gridRow;
+        public final int columnSpan;
+        public final int rowSpan;
 
         SectorDefinition(String id,
                          String label,
-                         double minXFrac,
-                         double minYFrac,
-                         double maxXFrac,
-                         double maxYFrac,
+                         int gridColumn,
+                         int gridRow,
+                         int columnSpan,
+                         int rowSpan,
                          Faction anchorFaction) {
             this.id = (id == null || id.isBlank()) ? "sector" : id.trim();
             this.label = (label == null || label.isBlank()) ? this.id.toUpperCase(Locale.US) : label.trim();
-            this.minXFrac = Math.max(0.0, Math.min(1.0, minXFrac));
-            this.minYFrac = Math.max(0.0, Math.min(1.0, minYFrac));
-            this.maxXFrac = Math.max(this.minXFrac, Math.min(1.0, maxXFrac));
-            this.maxYFrac = Math.max(this.minYFrac, Math.min(1.0, maxYFrac));
+            this.gridColumn = Math.max(0, gridColumn);
+            this.gridRow = Math.max(0, gridRow);
+            this.columnSpan = Math.max(1, columnSpan);
+            this.rowSpan = Math.max(1, rowSpan);
+            int cols = Math.max(1, defaultGridColumns(anchorFaction, this.id));
+            int rows = Math.max(1, defaultGridRows(anchorFaction, this.id));
+            this.minXFrac = Math.max(0.0, Math.min(1.0, this.gridColumn / (double) cols));
+            this.minYFrac = Math.max(0.0, Math.min(1.0, this.gridRow / (double) rows));
+            this.maxXFrac = Math.max(this.minXFrac, Math.min(1.0, (this.gridColumn + this.columnSpan) / (double) cols));
+            this.maxYFrac = Math.max(this.minYFrac, Math.min(1.0, (this.gridRow + this.rowSpan) / (double) rows));
             this.anchorFaction = anchorFaction;
         }
 
         public boolean containsNormalized(double nx, double ny) {
-            if (!Double.isFinite(nx) || !Double.isFinite(ny)) return false;
-            boolean xInside = nx >= minXFrac && (nx < maxXFrac || maxXFrac >= 0.999999);
-            boolean yInside = ny >= minYFrac && (ny < maxYFrac || maxYFrac >= 0.999999);
-            return xInside && yInside;
+            return false;
         }
 
         public boolean containsWorld(GameContext ctx, double wx, double wy) {
             if (ctx == null || ctx.WORLD_W <= 0 || ctx.WORLD_H <= 0) return false;
-            return containsNormalized(wx / Math.max(1.0, ctx.WORLD_W), wy / Math.max(1.0, ctx.WORLD_H));
+            double minX = minWorldX(ctx);
+            double minY = minWorldY(ctx);
+            double maxX = maxWorldX(ctx);
+            double maxY = maxWorldY(ctx);
+            boolean xInside = wx >= minX && (wx < maxX || maxX >= ctx.WORLD_W - 1e-6);
+            boolean yInside = wy >= minY && (wy < maxY || maxY >= ctx.WORLD_H - 1e-6);
+            return xInside && yInside;
         }
 
         public double centerX(GameContext ctx) {
-            return ((minXFrac + maxXFrac) * 0.5) * Math.max(1.0, ctx == null ? 1.0 : ctx.WORLD_W);
+            return (minWorldX(ctx) + maxWorldX(ctx)) * 0.5;
         }
 
         public double centerY(GameContext ctx) {
-            return ((minYFrac + maxYFrac) * 0.5) * Math.max(1.0, ctx == null ? 1.0 : ctx.WORLD_H);
+            return (minWorldY(ctx) + maxWorldY(ctx)) * 0.5;
         }
+
+        public double minWorldX(GameContext ctx) {
+            double width = sectorWidth(ctx);
+            double gap = interSectorGap(ctx);
+            return gridColumn * (width + gap);
+        }
+
+        public double minWorldY(GameContext ctx) {
+            double height = sectorHeight(ctx);
+            double gap = interSectorGap(ctx);
+            return gridRow * (height + gap);
+        }
+
+        public double maxWorldX(GameContext ctx) {
+            double width = sectorWidth(ctx);
+            double gap = interSectorGap(ctx);
+            return minWorldX(ctx) + columnSpan * width + Math.max(0, columnSpan - 1) * gap;
+        }
+
+        public double maxWorldY(GameContext ctx) {
+            double height = sectorHeight(ctx);
+            double gap = interSectorGap(ctx);
+            return minWorldY(ctx) + rowSpan * height + Math.max(0, rowSpan - 1) * gap;
+        }
+
+        public double widthWorld(GameContext ctx) {
+            return Math.max(1.0, maxWorldX(ctx) - minWorldX(ctx));
+        }
+
+        public double heightWorld(GameContext ctx) {
+            return Math.max(1.0, maxWorldY(ctx) - minWorldY(ctx));
+        }
+    }
+
+    public static int recommendedWorldWidth(GameConfig config) {
+        if (config == null) return 5000;
+        long sectorWidth = Math.max(1, config.worldW);
+        return switch (config.mode) {
+            case RESOURCE_RUSH -> safeDimension(sectorWidth * RESOURCE_RUSH_COLUMNS
+                    + (long) interSectorGap(config) * (RESOURCE_RUSH_COLUMNS - 1L));
+            case FOUR_TEAM_DOMINATION -> safeDimension(sectorWidth * FOUR_TEAM_GRID_COLUMNS
+                    + (long) interSectorGap(config) * (FOUR_TEAM_GRID_COLUMNS - 1L));
+            default -> safeDimension(sectorWidth);
+        };
+    }
+
+    public static int recommendedWorldHeight(GameConfig config) {
+        if (config == null) return 5000;
+        long sectorHeight = Math.max(1, config.worldH);
+        return switch (config.mode) {
+            case FOUR_TEAM_DOMINATION -> safeDimension(sectorHeight * FOUR_TEAM_GRID_ROWS
+                    + (long) interSectorGap(config) * (FOUR_TEAM_GRID_ROWS - 1L));
+            default -> safeDimension(sectorHeight);
+        };
     }
 
     public static final class SectorSnapshot {
@@ -179,8 +250,11 @@ public final class BattlefieldSectorSystem {
     }
 
     public static SectorDefinition sectorAtNormalized(GameContext ctx, double nx, double ny) {
+        if (ctx == null || !Double.isFinite(nx) || !Double.isFinite(ny)) return null;
+        double worldX = nx * Math.max(1.0, ctx.WORLD_W);
+        double worldY = ny * Math.max(1.0, ctx.WORLD_H);
         for (SectorDefinition sector : definitions(ctx)) {
-            if (sector.containsNormalized(nx, ny)) {
+            if (sector.containsWorld(ctx, worldX, worldY)) {
                 return sector;
             }
         }
@@ -493,8 +567,8 @@ public final class BattlefieldSectorSystem {
     static double[] navigationPoint(GameContext ctx, Faction faction, double fromX, double fromY, int seed) {
         SectorDefinition sector = navigationSector(ctx, faction, fromX, fromY);
         if (ctx == null || sector == null) return null;
-        double spanX = (sector.maxXFrac - sector.minXFrac) * Math.max(1.0, ctx.WORLD_W);
-        double spanY = (sector.maxYFrac - sector.minYFrac) * Math.max(1.0, ctx.WORLD_H);
+        double spanX = sector.widthWorld(ctx);
+        double spanY = sector.heightWorld(ctx);
         double jitterX = Math.max(70.0, Math.min(280.0, spanX * 0.14));
         double jitterY = Math.max(70.0, Math.min(280.0, spanY * 0.14));
         long bucket = (long) Math.floor(Math.max(0.0, ctx.battleElapsed) * 1.25);
@@ -530,8 +604,8 @@ public final class BattlefieldSectorSystem {
 
         double nx = dx / len;
         double ny = dy / len;
-        double spanX = (to.maxXFrac - to.minXFrac) * Math.max(1.0, ctx.WORLD_W);
-        double spanY = (to.maxYFrac - to.minYFrac) * Math.max(1.0, ctx.WORLD_H);
+        double spanX = to.widthWorld(ctx);
+        double spanY = to.heightWorld(ctx);
         double offsetX = Math.max(0.0, spanX * 0.5 - padding);
         double offsetY = Math.max(0.0, spanY * 0.5 - padding);
         double arrivalX = to.centerX(ctx) - nx * offsetX;
@@ -572,8 +646,8 @@ public final class BattlefieldSectorSystem {
             len = Math.hypot(dx, dy);
         }
 
-        double spanX = (home.maxXFrac - home.minXFrac) * Math.max(1.0, ctx.WORLD_W);
-        double spanY = (home.maxYFrac - home.minYFrac) * Math.max(1.0, ctx.WORLD_H);
+        double spanX = home.widthWorld(ctx);
+        double spanY = home.heightWorld(ctx);
         double forward = Math.min(360.0, Math.max(180.0, Math.min(spanX, spanY) * 0.24));
         double lateral = Math.min(180.0, Math.max(70.0, Math.min(spanX, spanY) * 0.10));
         double nx = dx / len;
@@ -704,8 +778,8 @@ public final class BattlefieldSectorSystem {
         if (ctx == null || sector == null) return 80.0;
         UiState.TacticalSectorScalePreset preset =
                 (scalePreset == null) ? UiState.TacticalSectorScalePreset.STANDARD : scalePreset;
-        double spanX = (sector.maxXFrac - sector.minXFrac) * Math.max(1.0, ctx.WORLD_W);
-        double spanY = (sector.maxYFrac - sector.minYFrac) * Math.max(1.0, ctx.WORLD_H);
+        double spanX = sector.widthWorld(ctx);
+        double spanY = sector.heightWorld(ctx);
         double minSpan = Math.max(120.0, Math.min(spanX, spanY));
         return switch (preset) {
             case COMPACT -> Math.max(70.0, minSpan * 0.26);
@@ -719,15 +793,15 @@ public final class BattlefieldSectorSystem {
                                               UiState.TacticalSectorScalePreset scalePreset,
                                               double x,
                                               double y) {
-        return clampPointToSector(ctx, sector, x, y, sectorWarpPadding(ctx, sector, scalePreset));
+        return clampPointToSector(ctx, sector, x, y, 0.0);
     }
 
     private static double[] clampPointToSector(GameContext ctx, SectorDefinition sector, double x, double y, double padding) {
         if (ctx == null || sector == null) return new double[]{x, y};
-        double minX = sector.minXFrac * Math.max(1.0, ctx.WORLD_W) + padding;
-        double maxX = sector.maxXFrac * Math.max(1.0, ctx.WORLD_W) - padding;
-        double minY = sector.minYFrac * Math.max(1.0, ctx.WORLD_H) + padding;
-        double maxY = sector.maxYFrac * Math.max(1.0, ctx.WORLD_H) - padding;
+        double minX = sector.minWorldX(ctx) + padding;
+        double maxX = sector.maxWorldX(ctx) - padding;
+        double minY = sector.minWorldY(ctx) + padding;
+        double maxY = sector.maxWorldY(ctx) - padding;
         if (maxX < minX) {
             double midX = sector.centerX(ctx);
             minX = midX;
@@ -747,5 +821,41 @@ public final class BattlefieldSectorSystem {
     private static double stableNoise(long seed) {
         double value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453123;
         return value - Math.floor(value);
+    }
+
+    private static int interSectorGap(GameContext ctx) {
+        return interSectorGap((ctx == null) ? null : ctx.config);
+    }
+
+    static int interSectorGap(GameConfig config) {
+        return INTER_SECTOR_GAP;
+    }
+
+    private static double sectorWidth(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return 1.0;
+        return Math.max(1.0, ctx.config.worldW);
+    }
+
+    private static double sectorHeight(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return 1.0;
+        return Math.max(1.0, ctx.config.worldH);
+    }
+
+    private static int defaultGridColumns(Faction anchorFaction, String sectorId) {
+        if (sectorId != null && (sectorId.contains("home") || sectorId.contains("front"))) {
+            return RESOURCE_RUSH_COLUMNS;
+        }
+        return FOUR_TEAM_GRID_COLUMNS;
+    }
+
+    private static int defaultGridRows(Faction anchorFaction, String sectorId) {
+        if (sectorId != null && (sectorId.contains("home") || sectorId.contains("front"))) {
+            return RESOURCE_RUSH_ROWS;
+        }
+        return FOUR_TEAM_GRID_ROWS;
+    }
+
+    private static int safeDimension(long value) {
+        return (int) Math.max(1L, Math.min(Integer.MAX_VALUE, value));
     }
 }

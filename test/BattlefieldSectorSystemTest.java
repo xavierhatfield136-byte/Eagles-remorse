@@ -12,10 +12,12 @@ class BattlefieldSectorSystemTest {
     @Test
     void resourceRushLayoutSplitsWorldIntoHomeAndCenterZones() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
+        assertEquals(31400, ctx.WORLD_W);
+        assertEquals(6000, ctx.WORLD_H);
 
         BattlefieldSectorSystem.SectorDefinition blueHome = BattlefieldSectorSystem.sectorAt(ctx, 600, 3000);
-        BattlefieldSectorSystem.SectorDefinition central = BattlefieldSectorSystem.sectorAt(ctx, 4500, 3000);
-        BattlefieldSectorSystem.SectorDefinition redHome = BattlefieldSectorSystem.sectorAt(ctx, 8600, 3000);
+        BattlefieldSectorSystem.SectorDefinition central = BattlefieldSectorSystem.sectorAt(ctx, 14000, 3000);
+        BattlefieldSectorSystem.SectorDefinition redHome = BattlefieldSectorSystem.sectorAt(ctx, 27000, 3000);
 
         assertNotNull(blueHome);
         assertNotNull(central);
@@ -28,10 +30,12 @@ class BattlefieldSectorSystemTest {
     @Test
     void fourTeamDominationLayoutUsesCornersLinksAndCenter() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.FOUR_TEAM_DOMINATION, 9000, 9000, true, 1234L, false));
+        assertEquals(31400, ctx.WORLD_W);
+        assertEquals(31400, ctx.WORLD_H);
 
         BattlefieldSectorSystem.SectorDefinition blueOrbit = BattlefieldSectorSystem.sectorAt(ctx, 400, 400);
-        BattlefieldSectorSystem.SectorDefinition center = BattlefieldSectorSystem.sectorAt(ctx, 4500, 4500);
-        BattlefieldSectorSystem.SectorDefinition yellowOrbit = BattlefieldSectorSystem.sectorAt(ctx, 8600, 8600);
+        BattlefieldSectorSystem.SectorDefinition center = BattlefieldSectorSystem.sectorAt(ctx, 14000, 14000);
+        BattlefieldSectorSystem.SectorDefinition yellowOrbit = BattlefieldSectorSystem.sectorAt(ctx, 27000, 27000);
 
         assertNotNull(blueOrbit);
         assertNotNull(center);
@@ -48,9 +52,9 @@ class BattlefieldSectorSystemTest {
         ctx.player.faction = Faction.ALLY;
 
         ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 800, 800));
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 8200, 800));
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 4400, 4400));
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 4600, 4600));
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 27200, 800));
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 13800, 13800));
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 14200, 14200));
 
         BattlefieldSectorSystem.SectorSnapshot blueSnapshot =
                 BattlefieldSectorSystem.snapshotForSector(ctx, "blue-orbit");
@@ -85,11 +89,11 @@ class BattlefieldSectorSystemTest {
         assertNotNull(openingRoute);
         assertEquals("central-front", openingRoute.id);
 
-        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 4500, 3000));
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 14000, 3000));
         ctx.battleElapsed = 1.0;
 
         BattlefieldSectorSystem.SectorDefinition followThrough =
-                BattlefieldSectorSystem.navigationSector(ctx, Faction.ALLY, 4500, 3000);
+                BattlefieldSectorSystem.navigationSector(ctx, Faction.ALLY, 14000, 3000);
         assertNotNull(followThrough);
         assertEquals("red-home", followThrough.id);
     }
@@ -124,11 +128,25 @@ class BattlefieldSectorSystemTest {
         GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
         Ship miner = new FleetShip(ShipRole.MINER, Faction.ALLY, 2500, 3000);
         Asteroid homeField = new Asteroid(1500, 3000, 42.0, 400);
-        Asteroid frontierField = new Asteroid(3200, 3000, 42.0, 400);
+        Asteroid frontierField = new Asteroid(12000, 3000, 42.0, 400);
         ctx.asteroids.add(homeField);
         ctx.asteroids.add(frontierField);
 
         Asteroid choice = EconomySystem.findBestAsteroidForMiner(ctx, miner, 2400.0);
         assertSame(homeField, choice);
+    }
+
+    @Test
+    void interSectorGapIsNotPlayableSpace() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
+        assertEquals(null, BattlefieldSectorSystem.sectorAt(ctx, 10000, 3000));
+        assertEquals("central-front", BattlefieldSectorSystem.sectorAt(ctx, 12000, 3000).id);
+    }
+
+    @Test
+    void resourceRushGroupCapPreventsInfiniteWaveStacking() {
+        assertEquals(1, AISystem.resourceRushCappedGroupCount(12, 2));
+        assertEquals(0, AISystem.resourceRushCappedGroupCount(18, 2));
+        assertEquals(0, AISystem.resourceRushCappedGroupCount(22, 3));
     }
 }

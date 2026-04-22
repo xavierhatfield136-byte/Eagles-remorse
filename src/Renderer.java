@@ -7887,7 +7887,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Font oldFont = g2.getFont();
         for (BattlefieldSectorSystem.SectorSnapshot snapshot : sectorSnapshots) {
             if (snapshot == null || snapshot.sector == null) continue;
-            Rectangle sectorRect = sectorMapRect(mapRect, snapshot.sector);
+            Rectangle sectorRect = sectorMapRect(mapRect, ctx, snapshot.sector);
             if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
 
             Color fill = sectorFillColor(snapshot);
@@ -7932,11 +7932,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setStroke(oldStroke);
     }
 
-    private static Rectangle sectorMapRect(Rectangle mapRect, BattlefieldSectorSystem.SectorDefinition sector) {
-        int x0 = mapRect.x + (int) Math.round(sector.minXFrac * mapRect.width);
-        int y0 = mapRect.y + (int) Math.round(sector.minYFrac * mapRect.height);
-        int x1 = mapRect.x + (int) Math.round(sector.maxXFrac * mapRect.width);
-        int y1 = mapRect.y + (int) Math.round(sector.maxYFrac * mapRect.height);
+    private static Rectangle sectorMapRect(Rectangle mapRect,
+                                           GameContext ctx,
+                                           BattlefieldSectorSystem.SectorDefinition sector) {
+        if (mapRect == null || ctx == null || sector == null) return new Rectangle();
+        double worldW = Math.max(1.0, ctx.WORLD_W);
+        double worldH = Math.max(1.0, ctx.WORLD_H);
+        int x0 = mapRect.x + (int) Math.round((sector.minWorldX(ctx) / worldW) * mapRect.width);
+        int y0 = mapRect.y + (int) Math.round((sector.minWorldY(ctx) / worldH) * mapRect.height);
+        int x1 = mapRect.x + (int) Math.round((sector.maxWorldX(ctx) / worldW) * mapRect.width);
+        int y1 = mapRect.y + (int) Math.round((sector.maxWorldY(ctx) / worldH) * mapRect.height);
         return new Rectangle(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
     }
 

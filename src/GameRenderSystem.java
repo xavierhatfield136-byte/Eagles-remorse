@@ -37,12 +37,14 @@ public final class GameRenderSystem {
         java.util.List<Ship> renderShips = fleetHubRenderShips(ctx);
 
         ctx.perf.drawnAsteroids = tacticalView
-                ? Renderer.drawTacticalAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY)
+                ? 0
                 : Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        if (DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
+        if (!tacticalView && DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
-        ctx.perf.drawnSalvage = Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        ctx.perf.drawnSalvage = tacticalView
+                ? 0
+                : Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (!tacticalView) {
             drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
@@ -86,28 +88,32 @@ public final class GameRenderSystem {
             WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
 
-        Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, ctx.fogOfWar,
-                viewMinX, viewMinY, viewMaxX, viewMaxY, tacticalView);
+        if (!tacticalView) {
+            Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, ctx.fogOfWar,
+                    viewMinX, viewMinY, viewMaxX, viewMaxY, false);
+        }
 
         Faction perspective = (ctx.player == null) ? null : ctx.player.faction;
         ctx.perf.drawnShips = tacticalView
                 ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
                 : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
         ctx.perf.drawnProjectiles = tacticalView
-                ? Renderer.drawTacticalProjectiles(worldG, renderShips, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
+                ? 0
                 : Renderer.drawProjectiles(worldG, renderShips, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
-        Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-        Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
+        if (!tacticalView) {
+            Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
+            Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
 
-        Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
-                viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
-        if (CampaignSystem.isFleetHubSession(ctx)) {
-            drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
+            Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
+                    viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+            if (CampaignSystem.isFleetHubSession(ctx)) {
+                drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
+            }
+            Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
+            drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            TutorialSystem.drawWorldMarkers(ctx, worldG);
         }
-        Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
-        drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        TutorialSystem.drawWorldMarkers(ctx, worldG);
         worldG.dispose();
 
         int allyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ALLY);
@@ -142,50 +148,54 @@ public final class GameRenderSystem {
         String overlayStatus = activeOverlayLabel(ctx);
         String contextHint = buildContextHint(ctx, docked);
 
-        Renderer.drawHUD(
-                g2,
-                ctx.player,
-                ctx.credits,
-                hangarTier,
-                (docked != null),
-                ctx.ui.shopOpen,
-                ctx.autoLockTurrets,
-                ctx.lockedTarget,
-                playerWingActive,
-                playerWingCap,
-                lockedWingActive,
-                lockedWingCap,
-                resRush,
-                allyOre,
-                enemyOre,
-                ctx.resourceGoal,
-                ctx.gameOverText,
-                objectiveTitle,
-                objectiveDetail,
-                ctx.eventBanner,
-                ctx.eventBannerT,
-                ctx.orePriceMul,
-                ctx.orePriceT,
-                ctx.miningMul,
-                ctx.miningT,
-                ctx.camX,
-                ctx.camY,
-                viewportW,
-                viewportH,
-                zoom,
-                stationStatus,
-                ctx,
-                ctx.ui.hudDetail,
-                contextHint,
-                overlayStatus
+        if (tacticalView) {
+            drawTacticalStatusOverlay(ctx, g2, viewportW, viewportH, zoom, stationStatus, overlayStatus);
+        } else {
+            Renderer.drawHUD(
+                    g2,
+                    ctx.player,
+                    ctx.credits,
+                    hangarTier,
+                    (docked != null),
+                    ctx.ui.shopOpen,
+                    ctx.autoLockTurrets,
+                    ctx.lockedTarget,
+                    playerWingActive,
+                    playerWingCap,
+                    lockedWingActive,
+                    lockedWingCap,
+                    resRush,
+                    allyOre,
+                    enemyOre,
+                    ctx.resourceGoal,
+                    ctx.gameOverText,
+                    objectiveTitle,
+                    objectiveDetail,
+                    ctx.eventBanner,
+                    ctx.eventBannerT,
+                    ctx.orePriceMul,
+                    ctx.orePriceT,
+                    ctx.miningMul,
+                    ctx.miningT,
+                    ctx.camX,
+                    ctx.camY,
+                    viewportW,
+                    viewportH,
+                    zoom,
+                    stationStatus,
+                    ctx,
+                    ctx.ui.hudDetail,
+                    contextHint,
+                    overlayStatus
 
-        );
-        TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
-        drawVoiceCaption(ctx, g2, viewportW, viewportH);
-        drawModifierChips(ctx, g2, viewportW);
+            );
+            TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
+            drawVoiceCaption(ctx, g2, viewportW, viewportH);
+            drawModifierChips(ctx, g2, viewportW);
 
-        if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
-            drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
+            if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
+                drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
+            }
         }
 
         if (ctx.ui.mapOpen) {
@@ -347,7 +357,54 @@ if (DevTools.isDebugOverlay()) {
                 return "Carrier wing idle: press / to set 5 squad pairs, C to launch a 2-ship squad, V to set wing behavior.";
             }
         }
-        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL). Press J to toggle Tactical View.";
+        return "Use N to cycle HUD detail (FULL/COMPACT/MINIMAL). Press J to toggle Tactical FPS View.";
+    }
+
+    private static void drawTacticalStatusOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH,
+                                                  double zoom, String stationStatus, String overlayStatus) {
+        if (ctx == null || g2 == null) return;
+
+        Graphics2D hud = (Graphics2D) g2.create();
+        try {
+            int x = 16;
+            int y = 16;
+            int w = Math.min(390, Math.max(280, viewportW / 3));
+            int h = 118;
+            int lineH = 18;
+
+            hud.setColor(new Color(0, 0, 0, 180));
+            hud.fillRoundRect(x, y, w, h, 16, 16);
+            hud.setColor(new Color(118, 182, 242, 168));
+            hud.drawRoundRect(x, y, w, h, 16, 16);
+
+            hud.setFont(new Font("Consolas", Font.BOLD, 16));
+            hud.setColor(new Color(224, 236, 255, 230));
+            hud.drawString("TACTICAL FPS VIEW", x + 14, y + 24);
+
+            hud.setFont(new Font("Consolas", Font.PLAIN, 13));
+            hud.setColor(new Color(196, 214, 234, 214));
+            int textY = y + 46;
+            String hull = (ctx.player == null)
+                    ? "Hull: N/A"
+                    : "Hull: " + Math.max(0, (int) Math.ceil(ctx.player.hp)) + "/" + Math.max(0, (int) Math.ceil(ctx.player.hpMax));
+            double shieldMax = (ctx.player == null) ? 0.0 : ctx.player.effectiveShieldCapacityMax();
+            String shield = (ctx.player == null)
+                    ? "Shield: N/A"
+                    : "Shield: " + Math.max(0, (int) Math.ceil(ctx.player.shield)) + "/" + Math.max(0, (int) Math.ceil(shieldMax));
+            hud.drawString(hull, x + 14, textY);
+            hud.drawString(shield, x + 14, textY + lineH);
+            hud.drawString("Visible ships: " + ctx.perf.drawnShips + "    Zoom: " + String.format(java.util.Locale.US, "%.2fx", zoom),
+                    x + 14, textY + lineH * 2);
+            hud.drawString("Projectiles, fog, salvage, and markers hidden for FPS.", x + 14, textY + lineH * 3);
+
+            String footer = (stationStatus != null && !stationStatus.isBlank()) ? stationStatus : overlayStatus;
+            if (footer != null && !footer.isBlank()) {
+                hud.setColor(new Color(153, 192, 230, 186));
+                hud.drawString(footer, x + 14, textY + lineH * 4);
+            }
+        } finally {
+            hud.dispose();
+        }
     }
 
     private static boolean hasHostileNearPlayer(GameContext ctx, double radius) {

@@ -470,8 +470,8 @@ public final class OffSectorSimulationSystem {
     private static double clampToSectorX(GameContext ctx, BattlefieldSectorSystem.SectorDefinition sector, double x) {
         if (ctx == null) return 0.0;
         if (sector == null) return GameMath.clamp(x, 30.0, ctx.WORLD_W - 30.0);
-        double minX = sector.minXFrac * ctx.WORLD_W + 30.0;
-        double maxX = sector.maxXFrac * ctx.WORLD_W - 30.0;
+        double minX = sector.minWorldX(ctx) + 30.0;
+        double maxX = sector.maxWorldX(ctx) - 30.0;
         if (maxX < minX) {
             double mid = sector.centerX(ctx);
             minX = mid - 10.0;
@@ -483,8 +483,8 @@ public final class OffSectorSimulationSystem {
     private static double clampToSectorY(GameContext ctx, BattlefieldSectorSystem.SectorDefinition sector, double y) {
         if (ctx == null) return 0.0;
         if (sector == null) return GameMath.clamp(y, 30.0, ctx.WORLD_H - 30.0);
-        double minY = sector.minYFrac * ctx.WORLD_H + 30.0;
-        double maxY = sector.maxYFrac * ctx.WORLD_H - 30.0;
+        double minY = sector.minWorldY(ctx) + 30.0;
+        double maxY = sector.maxWorldY(ctx) - 30.0;
         if (maxY < minY) {
             double mid = sector.centerY(ctx);
             minY = mid - 10.0;
@@ -806,6 +806,7 @@ public final class OffSectorSimulationSystem {
                                                 BattlefieldSectorSystem.SectorDefinition selectedSector,
                                                 Map<Integer, BattlefieldSectorSystem.SectorDefinition> objectiveByTeam) {
         if (ctx == null || snapshot == null || snapshot.sector == null) return false;
+        if (ctx.config != null && ctx.config.mode == app.config.GameMode.RESOURCE_RUSH) return false;
         BattlefieldSectorSystem.SectorDefinition sector = snapshot.sector;
         if (singleLoadedSectorMode(ctx)) {
             return loadedSector != null && !sector.id.equalsIgnoreCase(loadedSector.id);

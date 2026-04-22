@@ -540,13 +540,23 @@ public final class SpawnSystem {
         int baseCount = (ctx.WORLD_W <= 6000) ? 120 : (ctx.WORLD_W <= 12000 ? 220 : 380);
         int n = Math.max(18, (int) Math.round(baseCount * ASTEROID_DENSITY_SCALE));
         Random rng = ctx.rng;
+        java.util.List<BattlefieldSectorSystem.SectorDefinition> sectors = BattlefieldSectorSystem.definitions(ctx);
+        boolean sectorized = !sectors.isEmpty();
         for (int i = 0; i < n; i++) {
             double x = 0;
             double y = 0;
             boolean ok = false;
             for (int tries = 0; tries < 25; tries++) {
-                x = 200 + rng.nextDouble() * (ctx.WORLD_W - 400);
-                y = 200 + rng.nextDouble() * (ctx.WORLD_H - 400);
+                if (sectorized) {
+                    BattlefieldSectorSystem.SectorDefinition sector = sectors.get(rng.nextInt(sectors.size()));
+                    double marginX = Math.min(200.0, Math.max(40.0, sector.widthWorld(ctx) * 0.08));
+                    double marginY = Math.min(200.0, Math.max(40.0, sector.heightWorld(ctx) * 0.08));
+                    x = sector.minWorldX(ctx) + marginX + rng.nextDouble() * Math.max(1.0, sector.widthWorld(ctx) - marginX * 2.0);
+                    y = sector.minWorldY(ctx) + marginY + rng.nextDouble() * Math.max(1.0, sector.heightWorld(ctx) - marginY * 2.0);
+                } else {
+                    x = 200 + rng.nextDouble() * (ctx.WORLD_W - 400);
+                    y = 200 + rng.nextDouble() * (ctx.WORLD_H - 400);
+                }
                 if (isClearOfBases(ctx, x, y, 220)) { ok = true; break; }
             }
             if (!ok) continue;
@@ -571,20 +581,12 @@ public final class SpawnSystem {
     private static void initFourTeamDomination(GameContext ctx) {
         ctx.teamBases.clear();
 
-        double margin = Math.max(200.0, Math.min(ctx.WORLD_W, ctx.WORLD_H) * 0.05);
-
-        double[][] corners = new double[][]{
-                {margin, margin},
-                {ctx.WORLD_W - margin, margin},
-                {margin, ctx.WORLD_H - margin},
-                {ctx.WORLD_W - margin, ctx.WORLD_H - margin}
-        };
-
         Faction[] teams = Faction.fourTeamFactions();
         for (int i = 0; i < teams.length; i++) {
             Faction team = teams[i];
-            double bx = corners[i][0];
-            double by = corners[i][1];
+            BattlefieldSectorSystem.SectorDefinition homeSector = BattlefieldSectorSystem.homeSector(ctx, team);
+            double bx = (homeSector == null) ? 0.0 : homeSector.centerX(ctx);
+            double by = (homeSector == null) ? 0.0 : homeSector.centerY(ctx);
 
             Ship base = new FleetShip(ShipRole.BASE, team, bx, by);
             clampBaseToBounds(ctx, base);
@@ -730,6 +732,8 @@ public final class SpawnSystem {
         ctx.salvage.clear();
         ctx.teamBases.clear();
         ctx.baseUpgrades.clear();
+        ctx.allyBase = null;
+        ctx.enemyBase = null;
 
         ShipRole[] roles = ShipRole.values();
         Faction[] factions = Faction.fourTeamFactions();
@@ -779,12 +783,6 @@ public final class SpawnSystem {
 
                 ctx.ships.add(s);
                 if (sy > maxShowcaseY) maxShowcaseY = sy;
-                if (role == ShipRole.BASE) {
-                    if (faction == Faction.ENEMY) ctx.enemyBase = s;
-                    else if (faction == Faction.ALLY) ctx.allyBase = s;
-                    ctx.teamBases.put(faction, s);
-            ctx.baseUpgrades.put(s, new BaseUpgrades().bindTo(s));
-                }
             }
         }
 
@@ -809,7 +807,7 @@ public final class SpawnSystem {
         ctx.credits = 100;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
-        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF  -  TL BLUE / TR RED / BL GREEN / BR YELLOW";
+        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF  -  FULL FLEET DISPLAY";
         ctx.eventBannerT = 9999.0;
     }
 

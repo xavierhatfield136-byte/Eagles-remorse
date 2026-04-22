@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ShowcaseSpawnLayoutTest {
@@ -16,9 +17,9 @@ class ShowcaseSpawnLayoutTest {
 
         assertNotNull(ctx.player);
         assertEquals("Showcase Camera", ctx.player.name);
-        assertEquals(4, ctx.teamBases.size());
-        assertNotNull(ctx.allyBase);
-        assertNotNull(ctx.enemyBase);
+        assertEquals(0, ctx.teamBases.size());
+        assertNull(ctx.allyBase);
+        assertNull(ctx.enemyBase);
 
         int expectedPerFaction = ShipRole.values().length;
         for (Faction faction : Faction.fourTeamFactions()) {

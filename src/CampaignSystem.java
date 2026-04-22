@@ -52,7 +52,7 @@ public final class CampaignSystem {
     // Zone layout constants
     private static final double ZONE_WIDTH = 4000.0;
     private static final double ZONE_HEIGHT = 3000.0;
-    private static final double ZONE_GAP_DISTANCE = 2000.0;
+    private static final double ZONE_GAP_DISTANCE = 5000.0;
     private static final int ZONES_PER_ROW = 8;
 
     private static final class SectorScript {

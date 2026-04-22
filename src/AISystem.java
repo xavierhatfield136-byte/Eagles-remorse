@@ -67,6 +67,8 @@ public final class AISystem {
     private static final double FLEET_REJOIN_WARP_RANGE = 1500.0;
     private static final double FLEET_REJOIN_ANCHOR_RANGE = 900.0;
     private static final int MAX_FLEET_COMM_LOG = 8;
+    private static final int RESOURCE_RUSH_TEAM_SHIP_CAP = 18;
+    private static final int RESOURCE_RUSH_ESTIMATED_SHIPS_PER_GROUP = 4;
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -103,6 +105,8 @@ public final class AISystem {
                     }
                     allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
                     enemyGroups = Math.max(1, enemyGroups);
+                    enemyGroups = resourceRushCappedGroupCount(enemyAlive, enemyGroups);
+                    allyGroups = resourceRushCappedGroupCount(allyAlive, allyGroups);
                 }
                 if (CampaignSystem.isCampaignActive(ctx)) {
                     allyGroups = 0;
@@ -276,6 +280,18 @@ public final class AISystem {
             s.x = GameMath.clamp(s.x, 0, ctx.WORLD_W);
             s.y = GameMath.clamp(s.y, 0, ctx.WORLD_H);
         }
+    }
+
+    static int resourceRushCappedGroupCount(int aliveShips, int requestedGroups) {
+        int desired = Math.max(0, requestedGroups);
+        int shipsAlive = Math.max(0, aliveShips);
+        int remainingBudget = Math.max(0, RESOURCE_RUSH_TEAM_SHIP_CAP - shipsAlive);
+        if (desired <= 0 || remainingBudget <= 0) return 0;
+        int maxGroups = Math.max(0, remainingBudget / RESOURCE_RUSH_ESTIMATED_SHIPS_PER_GROUP);
+        if (maxGroups <= 0 && remainingBudget > 0 && shipsAlive <= RESOURCE_RUSH_TEAM_SHIP_CAP - 2) {
+            maxGroups = 1;
+        }
+        return Math.min(desired, maxGroups);
     }
 
     private static FleetState buildFleetState(GameContext ctx, double dt) {
@@ -2395,6 +2411,13 @@ public final class AISystem {
                         cmd);
                 boolean wasCharging = member.isWarpCharging();
                 boolean started = member.beginBattlefieldWarpFollowing(exit[0], exit[1], remaining, flagship.id);
+                if (started && BattlefieldSectorSystem.isEnabled(ctx)) {
+                    BattlefieldSectorSystem.SectorDefinition sourceSector = BattlefieldSectorSystem.sectorAt(ctx, member.x, member.y);
+                    if (sourceSector == null) {
+                        sourceSector = BattlefieldSectorSystem.sectorAt(ctx, flagship.x, flagship.y);
+                    }
+                    member.setWarpSourceSectorId(sourceSector == null ? "" : sourceSector.id);
+                }
                 if (started && !wasCharging && ctx.player != null && member.faction != null
                         && ctx.player.faction != null
                         && member.faction.teamId() == ctx.player.faction.teamId()) {
@@ -4093,7 +4116,12 @@ public final class AISystem {
         if (isInsideHostileStarbaseWarpExclusion(ctx, s, exitX, exitY)) return false;
         if (isModeWarpDestinationTooDeep(ctx, s, exitX, exitY)) return false;
 
-        return s.beginBattlefieldWarp(exitX, exitY, 10.0);
+        boolean started = s.beginBattlefieldWarp(exitX, exitY, 10.0);
+        if (started && BattlefieldSectorSystem.isEnabled(ctx)) {
+            BattlefieldSectorSystem.SectorDefinition currentSector = BattlefieldSectorSystem.sectorAt(ctx, s.x, s.y);
+            s.setWarpSourceSectorId(currentSector == null ? "" : currentSector.id);
+        }
+        return started;
     }
 
     private static boolean isInsideHostileStarbaseWarpExclusion(GameContext ctx, Ship ship, double x, double y) {
