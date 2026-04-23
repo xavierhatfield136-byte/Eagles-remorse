@@ -30,7 +30,8 @@ class CampaignLoreOverhaulTest {
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("arcology crowns"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Hold the trade-hub evacuation lanes"));
         assertTrue(ctx.campaign.introSequenceActive);
-        assertEquals(3, ctx.campaign.persistentBlueFleet.size());
+        assertEquals(4, ctx.campaign.persistentBlueFleet.size());
+        assertTrue(hasNamedShip(ctx, ShipRole.MINER, "Blue Prospector One"));
         assertTrue(hasNamedShip(ctx, ShipRole.MOBILE_STATION_TITAN, "Green Harbor Forge"));
         assertTrue(hasNamedShip(ctx, ShipRole.TRANSPORT_TITAN, "Green Ledger Titan"));
         assertTrue(hasNamedShip(ctx, ShipRole.BASE, "Green Exchange Spire"));

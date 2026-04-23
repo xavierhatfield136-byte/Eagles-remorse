@@ -225,6 +225,15 @@ public final class CampaignSystem {
         return getZoneY(sector) + ZONE_HEIGHT / 2;
     }
 
+    public static int recommendedWorldWidth() {
+        return (int) Math.ceil(ZONES_PER_ROW * ZONE_WIDTH + (ZONES_PER_ROW - 1) * ZONE_GAP_DISTANCE);
+    }
+
+    public static int recommendedWorldHeight() {
+        int rows = (int) Math.ceil((SCRIPTS.length - 1) / (double) ZONES_PER_ROW);
+        return (int) Math.ceil(rows * ZONE_HEIGHT + Math.max(0, rows - 1) * ZONE_GAP_DISTANCE);
+    }
+
     private static boolean canWarpBetweenZones(int sourceSector, int targetSector) {
         if (sourceSector == targetSector) return false;
         int sourceRow = (sourceSector - 1) / ZONES_PER_ROW;
@@ -1803,6 +1812,7 @@ public final class CampaignSystem {
         addPersistentFleetEntry(st, ShipRole.PICKET, "Blue Screen One");
         addPersistentFleetEntry(st, ShipRole.FRIGATE, "Blue Guard One");
         addPersistentFleetEntry(st, ShipRole.CIWS_CORVETTE, "Blue Guard Two");
+        addPersistentFleetEntry(st, ShipRole.MINER, "Blue Prospector One");
         rebalancePersistentCommandGroups(st);
     }
 

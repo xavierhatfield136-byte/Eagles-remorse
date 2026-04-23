@@ -223,10 +223,16 @@ public class GameContext {
     }
 
     private static int resolvedWorldWidth(GameConfig config) {
+        if (config != null && (config.mode == GameMode.CAMPAIGN_OPS || config.mode == GameMode.FLEET)) {
+            return Math.max(Math.max(1, config.worldW), CampaignSystem.recommendedWorldWidth());
+        }
         return BattlefieldSectorSystem.recommendedWorldWidth(config);
     }
 
     private static int resolvedWorldHeight(GameConfig config) {
+        if (config != null && (config.mode == GameMode.CAMPAIGN_OPS || config.mode == GameMode.FLEET)) {
+            return Math.max(Math.max(1, config.worldH), CampaignSystem.recommendedWorldHeight());
+        }
         return BattlefieldSectorSystem.recommendedWorldHeight(config);
     }
 
