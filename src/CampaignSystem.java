@@ -149,6 +149,38 @@ public final class CampaignSystem {
         }
     }
 
+    public enum CampaignRouteKind {
+        MAIN,
+        SALVAGE,
+        DEEP_STRIKE
+    }
+
+    public static final class CampaignRouteChoice {
+        public final CampaignRouteKind kind;
+        public final int targetSector;
+        public final String title;
+        public final String detail;
+        public final int creditBonus;
+        public final int oreBonus;
+        public final int branchScoreDelta;
+
+        CampaignRouteChoice(CampaignRouteKind kind,
+                            int targetSector,
+                            String title,
+                            String detail,
+                            int creditBonus,
+                            int oreBonus,
+                            int branchScoreDelta) {
+            this.kind = (kind == null) ? CampaignRouteKind.MAIN : kind;
+            this.targetSector = Math.max(1, targetSector);
+            this.title = (title == null || title.isBlank()) ? "Route" : title;
+            this.detail = (detail == null) ? "" : detail;
+            this.creditBonus = Math.max(0, creditBonus);
+            this.oreBonus = Math.max(0, oreBonus);
+            this.branchScoreDelta = branchScoreDelta;
+        }
+    }
+
     private static final class PersistentFleetEntry {
         final int slotId;
         final ShipRole role;
@@ -517,6 +549,9 @@ public final class CampaignSystem {
         public int capitalCapUpgradeLevel = 0;
         public boolean awaitingEpisodeLaunch = false;
         public int pendingEpisodeSector = 0;
+        public int routeArrivalSourceSector = 0;
+        public final List<CampaignRouteChoice> routeChoices = new ArrayList<>();
+        public int selectedRouteChoice = 0;
         public boolean introSequenceActive = false;
         public int introPhase = 0;
         public double introTimer = 0.0;
@@ -867,6 +902,37 @@ public final class CampaignSystem {
         return st.transitionSummaryBottom == null ? "" : st.transitionSummaryBottom;
     }
 
+    public static List<CampaignRouteChoice> routeChoices(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.routeChoices.isEmpty()) return List.of();
+        return List.copyOf(st.routeChoices);
+    }
+
+    public static int selectedRouteChoiceIndex(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.routeChoices.isEmpty()) return -1;
+        return MathUtil.clamp(st.selectedRouteChoice, 0, st.routeChoices.size() - 1);
+    }
+
+    public static CampaignRouteChoice selectedRouteChoice(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.routeChoices.isEmpty()) return null;
+        int idx = MathUtil.clamp(st.selectedRouteChoice, 0, st.routeChoices.size() - 1);
+        return st.routeChoices.get(idx);
+    }
+
+    public static boolean selectRouteChoice(GameContext ctx, int index) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled || st.routeChoices.isEmpty()) return false;
+        if (!st.awaitingEpisodeLaunch && !st.awaitingFleetHubChoice) return false;
+        int idx = MathUtil.clamp(index, 0, st.routeChoices.size() - 1);
+        st.selectedRouteChoice = idx;
+        applySelectedRouteChoice(ctx, st, false);
+        CampaignRouteChoice choice = st.routeChoices.get(idx);
+        EventSystem.showBanner(ctx, "ROUTE SELECTED: " + choice.title.toUpperCase(Locale.US), 1.4);
+        return true;
+    }
+
     public static double targetingRangeMul(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null || !st.enabled) return 1.0;
@@ -1010,7 +1076,8 @@ public final class CampaignSystem {
             st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it.";
         }
         // Always replace the bottom row with fleet hub controls (sector-clear screens use the same overlay).
-        st.transitionSummaryBottom = "TAB: Fleet shop   |   B: Upgrade selected hull   |   ENTER launches";
+        st.transitionSummaryBottom = routeChoiceSummary(st)
+                + "   |   1-3 select route   |   TAB shop   |   B upgrades   |   ENTER launches";
         st.introSequenceActive = false;
         st.introPhase = 0;
         st.introTimer = 0.0;
@@ -1631,6 +1698,8 @@ public final class CampaignSystem {
     public static boolean launchPendingEpisode(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.awaitingEpisodeLaunch || st.pendingEpisodeSector <= 0) return false;
+        applySelectedRouteChoice(ctx, st, true);
+        grantSelectedRouteReward(ctx, st);
         syncPersistentFleetEntrySnapshots(ctx, st);
         saveCheckpoint(ctx, st, st.pendingEpisodeSector);
         UISystem.closeAllOverlays(ctx);
@@ -2041,9 +2110,10 @@ public final class CampaignSystem {
 
         // Set player position to warp arrival point
         if (ctx != null && ctx.player != null) {
+            int arrivalSourceSector = st.routeArrivalSourceSector > 0 ? st.routeArrivalSourceSector : sector - 1;
             double[] arrival = (sector == 1) 
                 ? new double[]{getZoneCenterX(sector), getZoneCenterY(sector)}
-                : getWarpArrivalPoint(sector - 1, sector);
+                : getWarpArrivalPoint(arrivalSourceSector, sector);
             ctx.player.x = arrival[0];
             ctx.player.y = arrival[1];
             ctx.player.vx = 0.0;
@@ -2054,6 +2124,9 @@ public final class CampaignSystem {
         st.transitionTimer = 0.0;
         st.awaitingEpisodeLaunch = false;
         st.pendingEpisodeSector = 0;
+        st.routeArrivalSourceSector = 0;
+        st.routeChoices.clear();
+        st.selectedRouteChoice = 0;
         st.sectorElapsed = 0.0;
         st.kills = 0;
         st.knownHostiles.clear();
@@ -3886,6 +3959,116 @@ public final class CampaignSystem {
         logTelemetry("boss_phase", "sector=" + st.sector + " phase=2 boss=" + boss.name);
     }
 
+    private static void buildRouteChoices(GameContext ctx, CampaignState st, int mainSector) {
+        if (st == null) return;
+        st.routeChoices.clear();
+        st.selectedRouteChoice = 0;
+        st.routeArrivalSourceSector = st.sector;
+        if (mainSector > st.totalSectors) {
+            st.pendingEpisodeSector = 0;
+            return;
+        }
+
+        SectorLore mainLore = loreFor(mainSector);
+        st.routeChoices.add(new CampaignRouteChoice(
+                CampaignRouteKind.MAIN,
+                mainSector,
+                "Main Route",
+                "Continue to " + mainLore.location + ". " + mainLore.hudLead,
+                0,
+                0,
+                0));
+
+        int salvageSector = mainSector + 1;
+        if (salvageSector <= st.totalSectors) {
+            SectorLore lore = loreFor(salvageSector);
+            int credits = GameContext.scaleCreditEarnings(120 + st.sector * 18);
+            int ore = 45 + st.sector * 5;
+            st.routeChoices.add(new CampaignRouteChoice(
+                    CampaignRouteKind.SALVAGE,
+                    salvageSector,
+                    "Off-Path Salvage",
+                    "Follow a sensor detour toward " + lore.location + ". Richer stores, longer road.",
+                    credits,
+                    ore,
+                    1));
+        }
+
+        int strikeSector = mainSector + 2;
+        if (strikeSector <= st.totalSectors && st.sector >= 3) {
+            SectorLore lore = loreFor(strikeSector);
+            int credits = GameContext.scaleCreditEarnings(210 + st.sector * 26);
+            st.routeChoices.add(new CampaignRouteChoice(
+                    CampaignRouteKind.DEEP_STRIKE,
+                    strikeSector,
+                    "Deep Strike",
+                    "Jump past the lane into " + lore.location + ". Harder strategic tempo, stronger doctrine gain.",
+                    credits,
+                    0,
+                    2));
+        }
+
+        applySelectedRouteChoice(ctx, st, true);
+    }
+
+    private static void applySelectedRouteChoice(GameContext ctx, CampaignState st, boolean quiet) {
+        if (st == null || st.routeChoices.isEmpty()) return;
+        int idx = MathUtil.clamp(st.selectedRouteChoice, 0, st.routeChoices.size() - 1);
+        st.selectedRouteChoice = idx;
+        CampaignRouteChoice choice = st.routeChoices.get(idx);
+        st.pendingEpisodeSector = choice.targetSector;
+        SectorLore lore = loreFor(choice.targetSector);
+        st.transitionLabel = "EPISODE " + choice.targetSector + ": " + lore.title;
+        if (st.awaitingEpisodeLaunch) {
+            st.transitionSummaryBottom = routeChoiceSummary(st)
+                    + "   |   1-3 select route   |   ENTER launches";
+        } else if (st.awaitingFleetHubChoice) {
+            st.transitionSummaryBottom = routeChoiceSummary(st)
+                    + "   |   TAB: fleet hangar   |   Auto-opens in ~"
+                    + ((int) Math.round(Math.max(0.0, st.fleetHubChoiceTimer))) + "s";
+        }
+        if (!quiet && ctx != null) {
+            saveCheckpoint(ctx, st, st.pendingEpisodeSector);
+        }
+    }
+
+    private static String routeChoiceSummary(CampaignState st) {
+        if (st == null || st.routeChoices.isEmpty()) return "Route: main path";
+        StringBuilder sb = new StringBuilder("Routes:");
+        for (int i = 0; i < st.routeChoices.size(); i++) {
+            CampaignRouteChoice choice = st.routeChoices.get(i);
+            if (choice == null) continue;
+            sb.append(' ');
+            if (i == st.selectedRouteChoice) sb.append('[');
+            sb.append(i + 1).append(' ').append(choice.title).append(" -> S").append(choice.targetSector);
+            if (choice.creditBonus > 0 || choice.oreBonus > 0) {
+                sb.append(" +");
+                if (choice.creditBonus > 0) sb.append(choice.creditBonus).append('c');
+                if (choice.creditBonus > 0 && choice.oreBonus > 0) sb.append('/');
+                if (choice.oreBonus > 0) sb.append(choice.oreBonus).append(" ore");
+            }
+            if (i == st.selectedRouteChoice) sb.append(']');
+        }
+        return sb.toString();
+    }
+
+    private static void grantSelectedRouteReward(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.routeChoices.isEmpty()) return;
+        CampaignRouteChoice choice = st.routeChoices.get(MathUtil.clamp(st.selectedRouteChoice, 0, st.routeChoices.size() - 1));
+        if (choice == null || choice.kind == CampaignRouteKind.MAIN) return;
+        if (choice.creditBonus > 0) ctx.credits += choice.creditBonus;
+        if (choice.oreBonus > 0 && ctx.player != null) {
+            ctx.player.cargo = Math.min(ctx.player.cargoMax, ctx.player.cargo + choice.oreBonus);
+        }
+        st.branchScore += choice.branchScoreDelta;
+        st.branchRoute = branchRouteLabel(st.branchScore);
+        EventSystem.showBanner(ctx,
+                "ROUTE COMMITTED: " + choice.title.toUpperCase(Locale.US)
+                        + (choice.creditBonus > 0 ? "  +" + choice.creditBonus + "C" : "")
+                        + (choice.oreBonus > 0 ? "  +" + choice.oreBonus + " ORE" : ""),
+                1.8);
+    }
+
     private static void onSectorComplete(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null) return;
@@ -3904,6 +4087,17 @@ public final class CampaignSystem {
         String bossDrop = grantBossDrop(ctx);
         int nextSector = st.sector + 1;
         boolean hasNextEpisode = nextSector <= st.totalSectors;
+        if (hasNextEpisode) {
+            buildRouteChoices(ctx, st, nextSector);
+            applySelectedRouteChoice(ctx, st, true);
+            nextSector = Math.max(1, st.pendingEpisodeSector);
+            hasNextEpisode = nextSector <= st.totalSectors;
+        } else {
+            st.routeChoices.clear();
+            st.selectedRouteChoice = 0;
+            st.routeArrivalSourceSector = 0;
+            st.pendingEpisodeSector = 0;
+        }
         boolean checkpointSaved = hasNextEpisode && saveCheckpoint(ctx, st, nextSector);
         if (!checkpointSaved && nextSector > st.totalSectors) {
             CampaignCheckpointStore.clear();
@@ -3921,8 +4115,9 @@ public final class CampaignSystem {
                 ? ("ACT " + (st.act + 1) + ": " + actTitleFor(st.act + 1))
                 : ("JUMP TO " + nextLore.title));
         st.transitionSummaryTop = clearedLore.title + " secure. " + clearedLore.completionLead;
-        st.transitionSummaryBottom = "TAB: Open fleet hangar now   |   Auto-opens in ~"
-                + ((int) Math.round(FLEET_HUB_AUTO_OPEN_DELAY)) + " seconds";
+        st.transitionSummaryBottom = routeChoiceSummary(st)
+                + "   |   TAB: fleet hangar   |   Auto-opens in ~"
+                + ((int) Math.round(FLEET_HUB_AUTO_OPEN_DELAY)) + "s";
         st.awaitingFleetHubChoice = hasNextEpisode;
         st.fleetHubChoiceTimer = hasNextEpisode ? FLEET_HUB_AUTO_OPEN_DELAY : 0.0;
         EventSystem.showBanner(ctx,

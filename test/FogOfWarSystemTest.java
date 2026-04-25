@@ -75,4 +75,40 @@ class FogOfWarSystemTest {
         FogOfWarSystem.reset(ctx);
         assertTrue(ctx.fogOfWar.contactGhost(enemy.id) == null, "reset should clear ghost contacts");
     }
+
+    @Test
+    void highSensorPowerFindsUnexploredOreSignals() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 13579L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 2500.0, 2500.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.player.setPowerBusAllocation(0.10, 0.10, 0.10, 0.36, 0.18, 0.16);
+        ctx.ships.add(ctx.player);
+        ctx.asteroids.add(new Asteroid(4900.0, 2500.0, 52.0, 1200));
+        ctx.asteroids.add(new Asteroid(4960.0, 2560.0, 44.0, 900));
+
+        FogOfWarSystem.reset(ctx);
+        FogOfWarSystem.update(ctx);
+
+        assertFalse(ctx.fogOfWar.isExploredAtWorld(4900.0, 2500.0), "ore should remain unrevealed as terrain");
+        assertTrue(FogOfWarSystem.sensorInterestSignals(ctx).stream()
+                        .anyMatch(signal -> signal.kind == FogOfWarSystem.SensorInterestKind.ORE_VEIN),
+                "high sensor allocation should mark unexplored rich ore as an anomaly");
+        assertTrue(FogOfWarSystem.coverageSummary(ctx).contains("anomal"),
+                "sensor summary should include anomaly count once points of interest are detected");
+    }
+
+    @Test
+    void balancedSensorsDoNotMarkFarUnexploredInterests() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 97531L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 2500.0, 2500.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+        ctx.asteroids.add(new Asteroid(4050.0, 2500.0, 52.0, 1200));
+
+        FogOfWarSystem.reset(ctx);
+        FogOfWarSystem.update(ctx);
+
+        assertTrue(FogOfWarSystem.sensorInterestSignals(ctx).isEmpty(),
+                "balanced routing should not provide long-range points-of-interest intel");
+    }
 }

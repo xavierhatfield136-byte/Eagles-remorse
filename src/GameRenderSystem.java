@@ -691,11 +691,13 @@ if (DevTools.isDebugOverlay()) {
         Color soft = new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), Math.min(48, fill.getAlpha()));
         Stroke oldStroke = g2.getStroke();
 
-        g2.setStroke(new BasicStroke(1.15f));
-        g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(120, edge.getAlpha())));
-        drawLandmarkArc(g2, x, y, ir + 18, 210.0, 84.0);
-        drawLandmarkArc(g2, x, y, ir + 18, 20.0, 74.0);
-        drawLandmarkBracket(g2, x, y, ir + 8, Math.max(12, ir / 3));
+        if (landmark.type != CampaignSystem.LandmarkType.COLONY && landmark.type != CampaignSystem.LandmarkType.RING) {
+            g2.setStroke(new BasicStroke(1.15f));
+            g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(120, edge.getAlpha())));
+            drawLandmarkArc(g2, x, y, ir + 18, 210.0, 84.0);
+            drawLandmarkArc(g2, x, y, ir + 18, 20.0, 74.0);
+            drawLandmarkBracket(g2, x, y, ir + 8, Math.max(12, ir / 3));
+        }
 
         switch (landmark.type) {
             case PLANET, STAR -> {
@@ -713,17 +715,7 @@ if (DevTools.isDebugOverlay()) {
                 }
             }
             case RING -> {
-                int wide = Math.max(42, (int) Math.round(ir * 2.2));
-                int tall = Math.max(18, (int) Math.round(ir * 0.9));
-                g2.setColor(soft);
-                g2.fillOval(x - wide / 2, y - tall / 2, wide, tall);
-                g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(190, edge.getAlpha())));
-                g2.drawOval(x - wide / 2, y - tall / 2, wide, tall);
-                int innerWide = Math.max(24, (int) Math.round(wide * 0.56));
-                int innerTall = Math.max(10, (int) Math.round(tall * 0.56));
-                g2.drawOval(x - innerWide / 2, y - innerTall / 2, innerWide, innerTall);
-                g2.drawLine(x - wide / 2, y, x - innerWide / 2, y);
-                g2.drawLine(x + innerWide / 2, y, x + wide / 2, y);
+                drawOrbitalExchangeStructure(g2, x, y, ir, fill, edge);
             }
             case RELAY -> {
                 g2.setColor(soft);
@@ -744,7 +736,8 @@ if (DevTools.isDebugOverlay()) {
                 g2.drawLine(x - box / 2, y, x + box / 2, y);
                 g2.drawLine(x, y - box / 2, x, y + box / 2);
             }
-            case FRONT, CORRIDOR, COLONY -> {
+            case COLONY -> drawArcologyLandmark(g2, x, y, ir, fill, edge);
+            case FRONT, CORRIDOR -> {
                 g2.setColor(soft);
                 g2.fillOval(x - ir, y - ir, ir * 2, ir * 2);
                 g2.setColor(new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(180, edge.getAlpha())));
@@ -774,6 +767,119 @@ if (DevTools.isDebugOverlay()) {
             g2.drawString(landmark.subtitle, x - subtitleFm.stringWidth(landmark.subtitle) / 2, subY);
         }
         g2.setStroke(oldStroke);
+    }
+
+    private static void drawOrbitalExchangeStructure(Graphics2D g2, int x, int y, int ir, Color fill, Color edge) {
+        Color haze = new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), Math.min(30, fill.getAlpha() + 8));
+        Color line = new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(170, edge.getAlpha()));
+        Color faint = new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(74, edge.getAlpha()));
+        Stroke oldStroke = g2.getStroke();
+
+        int iconR = MathUtil.clamp(ir, 28, 42);
+        int wide = iconR * 3;
+        int tall = Math.max(24, iconR);
+        g2.setColor(haze);
+        g2.fillOval(x - wide / 2, y - tall / 2, wide, tall);
+
+        g2.setStroke(new BasicStroke(1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(faint);
+        g2.drawLine(x - wide / 2 + 6, y, x + wide / 2 - 6, y);
+        g2.drawLine(x - iconR, y + tall / 3, x + iconR, y + tall / 3);
+
+        drawSmallStationNode(g2, x - iconR, y + 1, iconR / 3, line, faint, true);
+        drawSmallStationNode(g2, x, y - iconR / 5, iconR / 2, line, faint, false);
+        drawSmallStationNode(g2, x + iconR, y + 2, iconR / 3, line, faint, true);
+
+        int turretR = Math.max(5, iconR / 6);
+        drawTinyDefenseTurret(g2, x - iconR / 2, y + tall / 3, turretR, line);
+        drawTinyDefenseTurret(g2, x + iconR / 2, y + tall / 3, turretR, line);
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawSmallStationNode(Graphics2D g2, int x, int y, int r, Color line, Color faint, boolean compact) {
+        int coreW = compact ? Math.max(12, r * 2) : Math.max(18, r * 2);
+        int coreH = compact ? Math.max(10, r + 5) : Math.max(16, r * 2);
+        g2.setColor(new Color(10, 18, 28, 78));
+        g2.fillRoundRect(x - coreW / 2, y - coreH / 2, coreW, coreH, 5, 5);
+        g2.setColor(line);
+        g2.drawRoundRect(x - coreW / 2, y - coreH / 2, coreW, coreH, 5, 5);
+        g2.setColor(faint);
+        g2.drawLine(x - coreW / 2 - r, y, x - coreW / 2, y);
+        g2.drawLine(x + coreW / 2, y, x + coreW / 2 + r, y);
+        g2.drawLine(x, y - coreH / 2 - r, x, y - coreH / 2);
+        if (!compact) {
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
+        }
+    }
+
+    private static void drawTinyDefenseTurret(Graphics2D g2, int x, int y, int r, Color line) {
+        g2.setColor(new Color(10, 18, 28, 92));
+        g2.fillOval(x - r, y - r, r * 2, r * 2);
+        g2.setColor(line);
+        g2.drawOval(x - r, y - r, r * 2, r * 2);
+        g2.drawLine(x, y, x + r + 5, y - r / 2);
+    }
+
+    private static void drawArcologyLandmark(Graphics2D g2, int x, int y, int ir, Color fill, Color edge) {
+        Color haze = new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), Math.min(30, fill.getAlpha() + 8));
+        Color line = new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(168, edge.getAlpha()));
+        Color faint = new Color(edge.getRed(), edge.getGreen(), edge.getBlue(), Math.min(78, edge.getAlpha()));
+        Stroke oldStroke = g2.getStroke();
+
+        int iconR = MathUtil.clamp(ir, 28, 42);
+        int wide = iconR * 3;
+        int deckY = y + iconR / 3;
+        g2.setColor(haze);
+        g2.fillRoundRect(x - wide / 2, deckY - iconR, wide, iconR + 14, 18, 18);
+
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(line);
+        g2.drawLine(x - wide / 2, deckY, x + wide / 2, deckY);
+        g2.drawLine(x - wide / 3, deckY + 7, x + wide / 3, deckY + 7);
+
+        int towers = 4;
+        for (int i = 0; i < towers; i++) {
+            double t = (towers == 1) ? 0.5 : i / (double) (towers - 1);
+            int tx = (int) Math.round(x - wide * 0.36 + t * wide * 0.72);
+            int tw = Math.max(8, (int) Math.round(iconR * (0.16 + 0.05 * (i % 2))));
+            int th = Math.max(18, (int) Math.round(iconR * (0.42 + 0.18 * Math.sin((i + 1) * 1.2))));
+            g2.setColor(new Color(fill.getRed(), fill.getGreen(), fill.getBlue(), Math.min(62, fill.getAlpha() + 24)));
+            Polygon tower = new Polygon();
+            tower.addPoint(tx - tw, deckY);
+            tower.addPoint(tx - tw / 2, deckY - th);
+            tower.addPoint(tx, deckY - th - Math.max(4, th / 6));
+            tower.addPoint(tx + tw / 2, deckY - th);
+            tower.addPoint(tx + tw, deckY);
+            g2.fillPolygon(tower);
+            g2.setColor(line);
+            g2.drawPolygon(tower);
+            g2.setColor(new Color(244, 252, 255, 48));
+            g2.drawLine(tx, deckY - th - Math.max(4, th / 6), tx, deckY - 4);
+        }
+
+        drawSmallStationNode(g2, x - wide / 2 + iconR / 3, deckY - iconR / 5, iconR / 5, line, faint, true);
+        drawSmallStationNode(g2, x + wide / 2 - iconR / 3, deckY - iconR / 5, iconR / 5, line, faint, true);
+        drawTinyDefenseTurret(g2, x, deckY + 7, Math.max(5, iconR / 7), line);
+
+        g2.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(faint);
+        for (int i = 0; i < 4; i++) {
+            int px = x - wide / 2 + (i + 1) * wide / 5;
+            g2.drawLine(px, deckY + 2, px - iconR / 6, deckY + Math.max(14, iconR / 2));
+        }
+        g2.setStroke(oldStroke);
+    }
+
+    private static void drawTiltedArc(Graphics2D g2, int x, int y, int wide, int tall,
+                                      double tiltDeg, double startDeg, double extentDeg) {
+        Graphics2D gx = (Graphics2D) g2.create();
+        try {
+            gx.rotate(Math.toRadians(tiltDeg), x, y);
+            gx.draw(new java.awt.geom.Arc2D.Double(x - wide / 2.0, y - tall / 2.0,
+                    wide, tall, startDeg, extentDeg, java.awt.geom.Arc2D.OPEN));
+        } finally {
+            gx.dispose();
+        }
     }
 
     private static void drawLandmarkArc(Graphics2D g2, int x, int y, int radius, double startDeg, double extentDeg) {

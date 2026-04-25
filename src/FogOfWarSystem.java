@@ -3,6 +3,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Coarse fog-of-war state for long-range sensor coverage.
@@ -14,6 +15,7 @@ public final class FogOfWarSystem {
     private static final double CONTACT_GHOST_TTL_SECONDS = 5.5;
     private static final double CONTACT_GHOST_SAMPLE_DISTANCE = 28.0;
     private static final int CONTACT_GHOST_MAX_TRAIL_POINTS = 10;
+    private static final int SENSOR_INTEREST_MAX_SIGNALS = 18;
     private FogOfWarSystem() {}
 
     public static final class State {
@@ -235,12 +237,167 @@ public final class FogOfWarSystem {
         int contacts = countVisibleHostiles(ctx);
         int ghosts = countLostContactGhosts(ctx);
         int sources = countFriendlySensorSources(ctx);
+        int signals = countSensorInterestSignals(ctx);
         int mapped = (int) Math.round(ctx.fogOfWar.exploredFraction() * 100.0);
         String contactText = contacts + (contacts == 1 ? " live contact" : " live contacts");
         if (ghosts > 0) {
             contactText += " | " + ghosts + (ghosts == 1 ? " ghost trace" : " ghost traces");
         }
+        if (signals > 0) {
+            contactText += " | " + signals + (signals == 1 ? " anomaly" : " anomalies");
+        }
         return "SENSOR NET: " + contactText + " | " + sources + " sources | " + mapped + "% mapped";
+    }
+
+    public static int countSensorInterestSignals(GameContext ctx) {
+        return sensorInterestSignals(ctx).size();
+    }
+
+    public static List<SensorInterestSignal> sensorInterestSignals(GameContext ctx) {
+        if (ctx == null || ctx.fogOfWar == null || ctx.player == null || ctx.ships == null) return List.of();
+        double sweep = sensorInterestSweepStrength(ctx.player);
+        if (sweep <= 0.0) return List.of();
+
+        ArrayList<SensorInterestSignal> out = new ArrayList<>();
+        addOreInterestSignals(ctx, sweep, out);
+        addSalvageInterestSignals(ctx, sweep, out);
+        addShipInterestSignals(ctx, sweep, out);
+        out.sort((a, b) -> Double.compare(b.strength, a.strength));
+        if (out.size() <= SENSOR_INTEREST_MAX_SIGNALS) return out;
+        return List.copyOf(out.subList(0, SENSOR_INTEREST_MAX_SIGNALS));
+    }
+
+    private static double sensorInterestSweepStrength(Player player) {
+        if (player == null) return 0.0;
+        double sensorFraction = player.powerBusFraction(Ship.PowerBus.SENSOR);
+        double fractionSignal = (sensorFraction - 0.18) / 0.14;
+        double effectSignal = (player.powerBusEffect(Ship.PowerBus.SENSOR) - 1.04) / 0.34;
+        double overloadSignal = (player.isOverloadActive() && player.overloadBus() == Ship.PowerBus.SENSOR) ? 0.35 : 0.0;
+        return clamp01(Math.max(fractionSignal, effectSignal) + overloadSignal);
+    }
+
+    private static void addOreInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        if (ctx.asteroids == null || ctx.asteroids.isEmpty()) return;
+        double clusterSize = Math.max(420.0, 700.0 - 220.0 * sweep);
+        LinkedHashMap<Long, OreCluster> clusters = new LinkedHashMap<>();
+        for (Asteroid asteroid : ctx.asteroids) {
+            if (asteroid == null || asteroid.ore <= 0) continue;
+            if (ctx.fogOfWar.isExploredAtWorld(asteroid.x, asteroid.y)) continue;
+            double weight = asteroid.ore + Math.max(0.0, asteroid.radius - 18.0) * 8.0;
+            if (asteroid.rich || asteroid.oreMax >= 650) weight *= 1.35;
+            if (weight < 360.0) continue;
+            long cx = (long) Math.floor(asteroid.x / clusterSize);
+            long cy = (long) Math.floor(asteroid.y / clusterSize);
+            long key = (cx << 32) ^ (cy & 0xffffffffL);
+            clusters.computeIfAbsent(key, ignored -> new OreCluster()).add(asteroid.x, asteroid.y, weight);
+        }
+        for (OreCluster cluster : clusters.values()) {
+            if (cluster == null || cluster.weight < 650.0) continue;
+            double strength = clamp01(0.22 + sweep * 0.50 + Math.min(0.28, cluster.weight / 3600.0));
+            addSignalIfCovered(ctx, out, SensorInterestKind.ORE_VEIN, "Ore vein", cluster.x(), cluster.y(),
+                    strength, 260.0 - 90.0 * sweep);
+        }
+    }
+
+    private static void addSalvageInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        if (ctx.salvage == null || ctx.salvage.isEmpty()) return;
+        for (Salvage salvage : ctx.salvage) {
+            if (salvage == null || !salvage.alive()) continue;
+            if (ctx.fogOfWar.isExploredAtWorld(salvage.x, salvage.y)) continue;
+            double value = salvage.credits * 0.45 + salvage.ore * 3.0 + Math.max(0.0, salvage.life) * 0.12;
+            if (value < 26.0 && sweep < 0.55) continue;
+            double strength = clamp01(0.26 + sweep * 0.48 + Math.min(0.22, value / 420.0));
+            addSignalIfCovered(ctx, out, SensorInterestKind.WRECKAGE, "Wreckage", salvage.x, salvage.y,
+                    strength, 220.0 - 75.0 * sweep);
+        }
+    }
+
+    private static void addShipInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        Faction perspective = ctx.player.faction;
+        if (perspective == null) return;
+        for (Ship ship : ctx.ships) {
+            if (!isTrackableHostile(ship, perspective)) continue;
+            if (ctx.fogOfWar.isExploredAtWorld(ship.x, ship.y)) continue;
+            boolean installation = ship.role == ShipRole.BASE || ship.role == ShipRole.MOTHERSHIP;
+            boolean capital = ship.radius >= 42.0 || (ship.role != null && ship.role.isTitan());
+            if (!installation && !capital && sweep < 0.72) continue;
+            SensorInterestKind kind = installation ? SensorInterestKind.INSTALLATION : SensorInterestKind.MASS_SIGNATURE;
+            String label = installation ? "Installation" : "Mass signature";
+            double sizeSignal = clamp01((Math.max(10.0, ship.radius) - 28.0) / 80.0);
+            double strength = clamp01(0.24 + sweep * 0.52 + sizeSignal * 0.22);
+            addSignalIfCovered(ctx, out, kind, label, ship.x, ship.y, strength, installation ? 320.0 : 280.0);
+        }
+    }
+
+    private static void addSignalIfCovered(GameContext ctx, ArrayList<SensorInterestSignal> out,
+                                           SensorInterestKind kind, String label, double x, double y,
+                                           double strength, double uncertaintyRadius) {
+        if (out == null || ctx == null || ctx.player == null) return;
+        if (!isWithinFriendlySweep(ctx, x, y, strength)) return;
+        double jitter = Math.max(28.0, uncertaintyRadius) * (1.0 - strength * 0.45);
+        long salt = kind.ordinal() * 0x9E3779B97F4A7C15L;
+        double jx = deterministicNoise(ctx.config.seed, x, y, salt) * jitter;
+        double jy = deterministicNoise(ctx.config.seed, y, x, salt ^ 0xC2B2AE3D27D4EB4FL) * jitter;
+        double sx = clamp(x + jx, 0.0, Math.max(1.0, ctx.WORLD_W));
+        double sy = clamp(y + jy, 0.0, Math.max(1.0, ctx.WORLD_H));
+        out.add(new SensorInterestSignal(kind, label, sx, sy, strength, Math.max(80.0, uncertaintyRadius)));
+    }
+
+    private static boolean isWithinFriendlySweep(GameContext ctx, double x, double y, double strength) {
+        Faction perspective = ctx.player.faction;
+        if (perspective == null) return false;
+        double baseBoost = 1.30 + 1.80 * clamp01(strength);
+        for (Ship ship : ctx.ships) {
+            if (!isRevealSource(ship, perspective)) continue;
+            double range = SENSOR_BASE_RANGE * Math.max(0.16, ship.sensorRangeMultiplier()) * baseBoost;
+            double dx = ship.x - x;
+            double dy = ship.y - y;
+            if (dx * dx + dy * dy <= range * range) return true;
+        }
+        return false;
+    }
+
+    private static double deterministicNoise(long seed, double x, double y, long salt) {
+        long hx = Math.round(x * 13.0);
+        long hy = Math.round(y * 17.0);
+        long h = seed ^ salt ^ (hx * 0xBF58476D1CE4E5B9L) ^ (hy * 0x94D049BB133111EBL);
+        h ^= (h >>> 30);
+        h *= 0xBF58476D1CE4E5B9L;
+        h ^= (h >>> 27);
+        h *= 0x94D049BB133111EBL;
+        h ^= (h >>> 31);
+        double unit = ((h >>> 11) & ((1L << 53) - 1)) / (double) (1L << 53);
+        return unit * 2.0 - 1.0;
+    }
+
+    private static double clamp01(double value) {
+        return clamp(value, 0.0, 1.0);
+    }
+
+    private static double clamp(double value, double min, double max) {
+        if (!Double.isFinite(value)) return min;
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static final class OreCluster {
+        double weightedX;
+        double weightedY;
+        double weight;
+
+        void add(double x, double y, double w) {
+            double safeW = Math.max(0.0, w);
+            weightedX += x * safeW;
+            weightedY += y * safeW;
+            weight += safeW;
+        }
+
+        double x() {
+            return weight <= 1e-6 ? 0.0 : weightedX / weight;
+        }
+
+        double y() {
+            return weight <= 1e-6 ? 0.0 : weightedY / weight;
+        }
     }
 
     public static boolean isVisibleToPerspective(State fog, Faction perspective, Ship ship) {
@@ -344,6 +501,36 @@ public final class FogOfWarSystem {
         public GhostTrailPoint(double x, double y) {
             this.x = x;
             this.y = y;
+        }
+    }
+
+    public enum SensorInterestKind {
+        ORE_VEIN,
+        WRECKAGE,
+        INSTALLATION,
+        MASS_SIGNATURE;
+
+        public String displayName() {
+            return name().toLowerCase(Locale.US).replace('_', ' ');
+        }
+    }
+
+    public static final class SensorInterestSignal {
+        public final SensorInterestKind kind;
+        public final String label;
+        public final double x;
+        public final double y;
+        public final double strength;
+        public final double uncertaintyRadius;
+
+        public SensorInterestSignal(SensorInterestKind kind, String label, double x, double y,
+                                    double strength, double uncertaintyRadius) {
+            this.kind = kind == null ? SensorInterestKind.MASS_SIGNATURE : kind;
+            this.label = (label == null || label.isBlank()) ? this.kind.displayName() : label;
+            this.x = x;
+            this.y = y;
+            this.strength = clamp01(strength);
+            this.uncertaintyRadius = Math.max(20.0, uncertaintyRadius);
         }
     }
 

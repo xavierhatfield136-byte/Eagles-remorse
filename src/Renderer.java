@@ -4453,6 +4453,11 @@ public class Renderer {
                     + "   Std " + standardUsed + "/" + standardCommand
                     + "   Elite " + eliteUsed + "/" + eliteCommand;
             statusLines.add(commandLine);
+            CampaignSystem.CampaignRouteChoice route = CampaignSystem.selectedRouteChoice(ctx);
+            if (route != null) {
+                int routeIndex = CampaignSystem.selectedRouteChoiceIndex(ctx) + 1;
+                statusLines.add("Route: [" + routeIndex + "] " + route.title + " -> Sector " + route.targetSector);
+            }
             if (detail == GameContext.HudDetail.FULL) {
                 TitanArchetype nextTitan = TitanFleetSystem.nextLockedArchetype(ctx);
                 if (nextTitan != null) {
@@ -7739,7 +7744,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString(sectorized
                         ? "LMB: route warp   RMB: sector ping   1/2/3: compact/standard/expanded   White: loaded   Amber: selected"
-                        : "LMB: waypoint   RMB: ping   Gray: mapped   Black: unknown   M/ESC: close",
+                        : "LMB: waypoint   RMB: ping   Sensor power reveals anomalies   M/ESC: close",
                 r.x + 18, r.y + r.height - 16);
 
         String mapHeader = sectorized
@@ -7798,6 +7803,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         if (fog != null) {
             drawStrategicFogOverlay(g2, m, worldW, worldH, fog);
+            drawSensorInterestSignals(g2, ctx, m, worldW, worldH);
         }
 
         // Waypoint
@@ -7975,10 +7981,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (g2 == null || mapRect == null || fog == null || fog.totalCells() <= 0) return;
 
         java.awt.Shape oldClip = g2.getClip();
+        Stroke oldStroke = g2.getStroke();
         g2.setClip(mapRect.x, mapRect.y, mapRect.width, mapRect.height);
 
-        Color exploredFog = new Color(16, 26, 38, 128);
-        Color unseenFog = new Color(0, 0, 0, 208);
+        Color exploredFog = new Color(20, 38, 54, 84);
+        Color unseenFog = new Color(6, 14, 26, 148);
+        Color exploredTrace = new Color(126, 190, 255, 30);
+        Color unseenTrace = new Color(90, 155, 230, 34);
         int cols = fog.cols();
         int rows = fog.rows();
         double mapW = Math.max(1.0, mapRect.width);
@@ -7998,12 +8007,131 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                         ? mapRect.x + mapRect.width
                         : mapRect.x + (int) Math.floor(((col + 1) / (double) cols) * mapW);
                 int w = Math.max(1, x1 - x0);
-                g2.setColor(fog.isExploredCell(col, row) ? exploredFog : unseenFog);
+                boolean explored = fog.isExploredCell(col, row);
+                g2.setColor(explored ? exploredFog : unseenFog);
                 g2.fillRect(x0, y0, w, h);
+                int hash = (col * 37 + row * 61) & 7;
+                if (!explored && hash <= 2) {
+                    g2.setColor(unseenTrace);
+                    g2.drawLine(x0 + 1, y1 - 2, Math.min(x1, x0 + w / 2 + 3), y0 + 1);
+                } else if (explored && hash == 0) {
+                    g2.setColor(exploredTrace);
+                    g2.drawLine(x0 + 2, y0 + 2, x1 - 2, y1 - 2);
+                }
             }
         }
 
+        g2.setStroke(new BasicStroke(1.0f));
+        g2.setColor(new Color(125, 196, 255, 45));
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                if (!fog.isVisibleCell(col, row)) continue;
+                int x0 = mapRect.x + (int) Math.floor((col / (double) cols) * mapW);
+                int y0 = mapRect.y + (int) Math.floor((row / (double) rows) * mapH);
+                int x1 = (col == cols - 1)
+                        ? mapRect.x + mapRect.width
+                        : mapRect.x + (int) Math.floor(((col + 1) / (double) cols) * mapW);
+                int y1 = (row == rows - 1)
+                        ? mapRect.y + mapRect.height
+                        : mapRect.y + (int) Math.floor(((row + 1) / (double) rows) * mapH);
+                if ((col + row) % 3 == 0) {
+                    g2.drawRect(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
+                }
+            }
+        }
+
+        g2.setStroke(oldStroke);
         g2.setClip(oldClip);
+    }
+
+    private static void drawSensorInterestSignals(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
+        if (signals.isEmpty()) return;
+
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        java.awt.Shape oldClip = g2.getClip();
+        g2.setClip(mapRect.x, mapRect.y, mapRect.width, mapRect.height);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+
+        for (FogOfWarSystem.SensorInterestSignal signal : signals) {
+            if (signal == null) continue;
+            int px = mapRect.x + (int) Math.round((signal.x / Math.max(1.0, worldW)) * mapRect.width);
+            int py = mapRect.y + (int) Math.round((signal.y / Math.max(1.0, worldH)) * mapRect.height);
+            Color color = sensorInterestColor(signal.kind);
+            int alpha = MathUtil.clamp((int) Math.round(120 + signal.strength * 105), 0, 235);
+            int radius = MathUtil.clamp((int) Math.round(4 + signal.strength * 5), 4, 9);
+            int uncertainty = MathUtil.clamp((int) Math.round((signal.uncertaintyRadius / Math.max(1.0, worldW)) * mapRect.width),
+                    radius + 7, 34);
+
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.32f));
+            g2.setColor(withAlpha(color, Math.min(160, alpha)));
+            g2.setStroke(new BasicStroke(1.2f));
+            g2.drawOval(px - uncertainty, py - uncertainty, uncertainty * 2, uncertainty * 2);
+            g2.drawOval(px - uncertainty / 2, py - uncertainty / 2, uncertainty, uncertainty);
+
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.82f));
+            g2.setColor(withAlpha(color, alpha));
+            drawSensorInterestGlyph(g2, signal.kind, px, py, radius);
+
+            if (signal.strength >= 0.54) {
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.72f));
+                g2.setColor(new Color(218, 236, 255, 185));
+                String text = sensorInterestShortLabel(signal.kind);
+                g2.drawString(text, px + radius + 4, py - radius - 2);
+            }
+        }
+
+        g2.setComposite(oldComposite);
+        g2.setClip(oldClip);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static Color sensorInterestColor(FogOfWarSystem.SensorInterestKind kind) {
+        if (kind == null) return new Color(128, 218, 255);
+        return switch (kind) {
+            case ORE_VEIN -> new Color(255, 204, 92);
+            case WRECKAGE -> new Color(206, 218, 232);
+            case INSTALLATION -> new Color(255, 126, 106);
+            case MASS_SIGNATURE -> new Color(155, 232, 255);
+        };
+    }
+
+    private static String sensorInterestShortLabel(FogOfWarSystem.SensorInterestKind kind) {
+        if (kind == null) return "SIG";
+        return switch (kind) {
+            case ORE_VEIN -> "ORE";
+            case WRECKAGE -> "WRK";
+            case INSTALLATION -> "SITE";
+            case MASS_SIGNATURE -> "MASS";
+        };
+    }
+
+    private static void drawSensorInterestGlyph(Graphics2D g2, FogOfWarSystem.SensorInterestKind kind, int x, int y, int r) {
+        if (kind == FogOfWarSystem.SensorInterestKind.ORE_VEIN) {
+            Polygon p = new Polygon(
+                    new int[]{x, x + r, x + Math.max(2, r / 2), x - Math.max(2, r / 2), x - r},
+                    new int[]{y - r, y - 2, y + r, y + r, y - 2},
+                    5);
+            g2.fillPolygon(p);
+        } else if (kind == FogOfWarSystem.SensorInterestKind.WRECKAGE) {
+            g2.setStroke(new BasicStroke(1.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.drawLine(x - r, y - r, x + r, y + r);
+            g2.drawLine(x - r, y + r, x + r, y - r);
+            g2.fillOval(x - 2, y - 2, 4, 4);
+        } else if (kind == FogOfWarSystem.SensorInterestKind.INSTALLATION) {
+            g2.fillRect(x - r, y - r, r * 2, r * 2);
+            g2.setColor(new Color(0, 0, 0, 130));
+            g2.drawLine(x - r, y, x + r, y);
+            g2.drawLine(x, y - r, x, y + r);
+        } else {
+            g2.setStroke(new BasicStroke(1.8f));
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
+            g2.fillOval(x - 2, y - 2, 4, 4);
+        }
     }
 
     public static void drawCombatFogOverlay(Graphics2D g2, int worldW, int worldH, FogOfWarSystem.State fog,

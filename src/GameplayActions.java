@@ -282,8 +282,17 @@ public final class GameplayActions {
     public static boolean tryHandleCampaignEpisodeHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
         if (ctx == null || e == null) return false;
         int keyCode = e.getKeyCode();
-        if (keyCode != java.awt.event.KeyEvent.VK_ENTER && keyCode != java.awt.event.KeyEvent.VK_SPACE) return false;
-        return CampaignSystem.launchPendingEpisode(ctx);
+        if (keyCode == java.awt.event.KeyEvent.VK_ENTER || keyCode == java.awt.event.KeyEvent.VK_SPACE) {
+            return CampaignSystem.launchPendingEpisode(ctx);
+        }
+        if (ctx.ui != null && ctx.ui.hasBlockingOverlay()) return false;
+        int routeIndex = switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_1 -> 0;
+            case java.awt.event.KeyEvent.VK_2 -> 1;
+            case java.awt.event.KeyEvent.VK_3 -> 2;
+            default -> -1;
+        };
+        return routeIndex >= 0 && CampaignSystem.selectRouteChoice(ctx, routeIndex);
     }
 
     public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {

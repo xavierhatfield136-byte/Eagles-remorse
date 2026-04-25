@@ -71,6 +71,30 @@ class CampaignFleetHubMenuRegressionTest {
         assertTrue(checkpoint.toGameConfig(GameMode.FLEET).resumeCampaign);
     }
 
+    @Test
+    void routeChoiceUpdatesPendingSectorBeforeLaunch() {
+        GameContext ctx = campaignContext(GameMode.CAMPAIGN_OPS);
+        ctx.campaign.sector = 4;
+        ctx.campaign.awaitingEpisodeLaunch = true;
+        ctx.campaign.pendingEpisodeSector = 5;
+        ctx.campaign.routeArrivalSourceSector = 4;
+        ctx.campaign.routeChoices.add(new CampaignSystem.CampaignRouteChoice(
+                CampaignSystem.CampaignRouteKind.MAIN, 5, "Main Route", "Continue", 0, 0, 0));
+        ctx.campaign.routeChoices.add(new CampaignSystem.CampaignRouteChoice(
+                CampaignSystem.CampaignRouteKind.SALVAGE, 6, "Off-Path Salvage", "Detour", 120, 45, 1));
+        ctx.state = GameState.FLEET;
+
+        assertTrue(CampaignSystem.selectRouteChoice(ctx, 1));
+        assertEquals(6, ctx.campaign.pendingEpisodeSector);
+        assertEquals(1, CampaignSystem.selectedRouteChoiceIndex(ctx));
+        assertTrue(CampaignSystem.transitionSummaryBottom(ctx).contains("Off-Path Salvage"));
+
+        assertTrue(CampaignSystem.launchPendingEpisode(ctx));
+        assertEquals(6, ctx.campaign.sector);
+        assertTrue(ctx.credits >= 120, "detour route should grant its credit bonus on launch");
+        assertTrue(ctx.player.cargo >= 45, "detour route should grant ore on launch");
+    }
+
     private static GameContext campaignContext(GameMode mode) {
         GameContext ctx = new GameContext(new GameConfig(mode, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
