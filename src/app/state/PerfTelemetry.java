@@ -9,6 +9,16 @@ public final class PerfTelemetry {
     public double frameJitterMs = 0.0;
     public double updateMs = 0.0;
     public double renderMs = 0.0;
+    public double aiMaintenanceMs = 0.0;
+    public double aiFleetStateMs = 0.0;
+    public double aiShipUtilityMs = 0.0;
+    public double aiShipCombatMs = 0.0;
+    public double aiShipCombatTargetMs = 0.0;
+    public double aiShipCombatFightMs = 0.0;
+    public double aiShipCombatFireMs = 0.0;
+    public double aiAvoidanceMs = 0.0;
+    public double aiFormationSyncMs = 0.0;
+    public double aiBoundsMs = 0.0;
     public int updateSteps = 0;
     public int droppedUpdates = 0;
     public int drawnShips = 0;

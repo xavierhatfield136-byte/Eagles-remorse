@@ -25,7 +25,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 18 + minerLines;
+        int lineCount = 21 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -82,6 +82,18 @@ public final class DevOverlay {
                 + "  Render: " + fmt2(perfValue(perf, "renderMs")) + "ms"
                 + "  Steps: " + perfInt(perf, "updateSteps")
                 + "  Drop: " + perfInt(perf, "droppedUpdates"));
+
+        y += lineH;
+        drawLine(g2, x, y, "AI: Maint " + fmt2(perfValue(perf, "aiMaintenanceMs")) + "  Fleet " + fmt2(perfValue(perf, "aiFleetStateMs"))
+                + "  Util " + fmt2(perfValue(perf, "aiShipUtilityMs")) + "  Combat " + fmt2(perfValue(perf, "aiShipCombatMs")));
+
+        y += lineH;
+        drawLine(g2, x, y, "AI2: Target " + fmt2(perfValue(perf, "aiShipCombatTargetMs")) + "  Fight " + fmt2(perfValue(perf, "aiShipCombatFightMs"))
+                + "  Fire " + fmt2(perfValue(perf, "aiShipCombatFireMs")));
+
+        y += lineH;
+        drawLine(g2, x, y, "AI3: Avoid " + fmt2(perfValue(perf, "aiAvoidanceMs")) + "  Sync " + fmt2(perfValue(perf, "aiFormationSyncMs"))
+                + "  Bounds " + fmt2(perfValue(perf, "aiBoundsMs")));
 
         y += lineH;
         drawLine(g2, x, y, "Drawn: Ships " + perfInt(perf, "drawnShips") + "/" + sizeOf(ctx, "ships")

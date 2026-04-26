@@ -68,6 +68,16 @@ public final class Phase9TelemetryHarness {
                 + " drops=" + result.voiceDropCount);
         System.out.println("[phase9-telemetry] avg frame ms=" + fmt3(result.avgFrameMs)
                 + " avg update ms=" + fmt3(result.avgUpdateMs));
+        System.out.println("[phase9-telemetry] ai phases ms maint=" + fmt3(result.aiPhaseCostMs.getOrDefault("maintenance", 0.0))
+                + " fleet=" + fmt3(result.aiPhaseCostMs.getOrDefault("fleetState", 0.0))
+                + " util=" + fmt3(result.aiPhaseCostMs.getOrDefault("shipUtility", 0.0))
+                + " combat=" + fmt3(result.aiPhaseCostMs.getOrDefault("shipCombat", 0.0))
+                + " avoid=" + fmt3(result.aiPhaseCostMs.getOrDefault("avoidance", 0.0))
+                + " sync=" + fmt3(result.aiPhaseCostMs.getOrDefault("formationSync", 0.0))
+                + " bounds=" + fmt3(result.aiPhaseCostMs.getOrDefault("bounds", 0.0)));
+        System.out.println("[phase9-telemetry] combat detail ms target=" + fmt3(result.aiPhaseCostMs.getOrDefault("shipCombatTarget", 0.0))
+                + " fight=" + fmt3(result.aiPhaseCostMs.getOrDefault("shipCombatFight", 0.0))
+                + " fire=" + fmt3(result.aiPhaseCostMs.getOrDefault("shipCombatFire", 0.0)));
 
         boolean pass = result.roomHitEvents > 0
                 && !result.roomHitDistribution.isEmpty()
@@ -115,6 +125,16 @@ public final class Phase9TelemetryHarness {
         long audioNs = 0L;
         long uiNs = 0L;
         long tickNs = 0L;
+        long aiMaintenanceNs = 0L;
+        long aiFleetStateNs = 0L;
+        long aiShipUtilityNs = 0L;
+        long aiShipCombatNs = 0L;
+        long aiShipCombatTargetNs = 0L;
+        long aiShipCombatFightNs = 0L;
+        long aiShipCombatFireNs = 0L;
+        long aiAvoidanceNs = 0L;
+        long aiFormationSyncNs = 0L;
+        long aiBoundsNs = 0L;
 
         for (int tick = 0; tick < ticks; tick++) {
             long tickStart = System.nanoTime();
@@ -127,6 +147,16 @@ public final class Phase9TelemetryHarness {
             t0 = System.nanoTime();
             AISystem.update(ctx, GameContext.DT);
             aiNs += System.nanoTime() - t0;
+            aiMaintenanceNs += (long) Math.round(ctx.perf.aiMaintenanceMs * 1_000_000.0);
+            aiFleetStateNs += (long) Math.round(ctx.perf.aiFleetStateMs * 1_000_000.0);
+            aiShipUtilityNs += (long) Math.round(ctx.perf.aiShipUtilityMs * 1_000_000.0);
+            aiShipCombatNs += (long) Math.round(ctx.perf.aiShipCombatMs * 1_000_000.0);
+            aiShipCombatTargetNs += (long) Math.round(ctx.perf.aiShipCombatTargetMs * 1_000_000.0);
+            aiShipCombatFightNs += (long) Math.round(ctx.perf.aiShipCombatFightMs * 1_000_000.0);
+            aiShipCombatFireNs += (long) Math.round(ctx.perf.aiShipCombatFireMs * 1_000_000.0);
+            aiAvoidanceNs += (long) Math.round(ctx.perf.aiAvoidanceMs * 1_000_000.0);
+            aiFormationSyncNs += (long) Math.round(ctx.perf.aiFormationSyncMs * 1_000_000.0);
+            aiBoundsNs += (long) Math.round(ctx.perf.aiBoundsMs * 1_000_000.0);
 
             t0 = System.nanoTime();
             CarrierSystem.update(ctx, GameContext.DT);
@@ -221,6 +251,16 @@ public final class Phase9TelemetryHarness {
         out.systemCostMs.put("event", eventNs / (double) ticks / 1_000_000.0);
         out.systemCostMs.put("audio", audioNs / (double) ticks / 1_000_000.0);
         out.systemCostMs.put("ui", uiNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("maintenance", aiMaintenanceNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("fleetState", aiFleetStateNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("shipUtility", aiShipUtilityNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("shipCombat", aiShipCombatNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("shipCombatTarget", aiShipCombatTargetNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("shipCombatFight", aiShipCombatFightNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("shipCombatFire", aiShipCombatFireNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("avoidance", aiAvoidanceNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("formationSync", aiFormationSyncNs / (double) ticks / 1_000_000.0);
+        out.aiPhaseCostMs.put("bounds", aiBoundsNs / (double) ticks / 1_000_000.0);
         out.runtimeSec = elapsedNs / 1_000_000_000.0;
         return out;
     }
@@ -298,7 +338,8 @@ public final class Phase9TelemetryHarness {
         sb.append("  \"performance\": {\n");
         sb.append("    \"avgFrameMs\": ").append(fmt6(r.avgFrameMs)).append(",\n");
         sb.append("    \"avgUpdateMs\": ").append(fmt6(r.avgUpdateMs)).append(",\n");
-        sb.append("    \"systemCostMs\": ").append(mapToJsonDouble(r.systemCostMs)).append("\n");
+        sb.append("    \"systemCostMs\": ").append(mapToJsonDouble(r.systemCostMs)).append(",\n");
+        sb.append("    \"aiPhaseCostMs\": ").append(mapToJsonDouble(r.aiPhaseCostMs)).append("\n");
         sb.append("  }\n");
         sb.append("}\n");
         return sb.toString();
@@ -373,5 +414,6 @@ public final class Phase9TelemetryHarness {
         final Map<String, Integer> voiceDispatchByEvent = new LinkedHashMap<>();
         final Map<String, Integer> voiceDropsByReason = new LinkedHashMap<>();
         final Map<String, Double> systemCostMs = new LinkedHashMap<>();
+        final Map<String, Double> aiPhaseCostMs = new LinkedHashMap<>();
     }
 }

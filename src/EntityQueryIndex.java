@@ -42,49 +42,81 @@ public final class EntityQueryIndex {
     }
 
     public List<Ship> collectAliveShipsNear(double x, double y, double radius, List<Ship> out) {
-        collect(shipCells, SHIP_CELL_SIZE, x, y, radius, out);
+        out.clear();
+        if (shipCells.isEmpty()) return out;
+        double r = Math.max(0.0, radius);
+        double r2 = r * r;
+        int minCellX = cell(x - r, SHIP_CELL_SIZE);
+        int maxCellX = cell(x + r, SHIP_CELL_SIZE);
+        int minCellY = cell(y - r, SHIP_CELL_SIZE);
+        int maxCellY = cell(y + r, SHIP_CELL_SIZE);
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                ArrayList<Ship> bucket = shipCells.get(key(cx, cy));
+                if (bucket == null || bucket.isEmpty()) continue;
+                for (Ship ship : bucket) {
+                    if (ship == null) continue;
+                    if (GameMath.dist2(ship.x, ship.y, x, y) <= r2) {
+                        out.add(ship);
+                    }
+                }
+            }
+        }
         return out;
     }
 
     public List<Ship> collectHostileShipsNear(Faction perspective, double x, double y, double radius, List<Ship> out) {
-        collect(shipCells, SHIP_CELL_SIZE, x, y, radius, out);
-        if (perspective == null) {
-            out.clear();
-            return out;
+        out.clear();
+        if (shipCells.isEmpty() || perspective == null) return out;
+        double r = Math.max(0.0, radius);
+        double r2 = r * r;
+        int minCellX = cell(x - r, SHIP_CELL_SIZE);
+        int maxCellX = cell(x + r, SHIP_CELL_SIZE);
+        int minCellY = cell(y - r, SHIP_CELL_SIZE);
+        int maxCellY = cell(y + r, SHIP_CELL_SIZE);
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                ArrayList<Ship> bucket = shipCells.get(key(cx, cy));
+                if (bucket == null || bucket.isEmpty()) continue;
+                for (Ship ship : bucket) {
+                    if (ship == null || ship.faction == null) continue;
+                    if (perspective.isFriendlyTo(ship.faction)) continue;
+                    if (GameMath.dist2(ship.x, ship.y, x, y) <= r2) {
+                        out.add(ship);
+                    }
+                }
+            }
         }
-        out.removeIf(ship -> ship == null || ship.faction == null || perspective.isFriendlyTo(ship.faction));
         return out;
     }
 
     public List<Missile> collectMissilesNear(double x, double y, double radius, List<Missile> out) {
-        collect(missileCells, MISSILE_CELL_SIZE, x, y, radius, out);
+        out.clear();
+        if (missileCells.isEmpty()) return out;
+        double r = Math.max(0.0, radius);
+        double r2 = r * r;
+        int minCellX = cell(x - r, MISSILE_CELL_SIZE);
+        int maxCellX = cell(x + r, MISSILE_CELL_SIZE);
+        int minCellY = cell(y - r, MISSILE_CELL_SIZE);
+        int maxCellY = cell(y + r, MISSILE_CELL_SIZE);
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                ArrayList<Missile> bucket = missileCells.get(key(cx, cy));
+                if (bucket == null || bucket.isEmpty()) continue;
+                for (Missile missile : bucket) {
+                    if (missile == null) continue;
+                    if (GameMath.dist2(missile.x, missile.y, x, y) <= r2) {
+                        out.add(missile);
+                    }
+                }
+            }
+        }
         return out;
     }
 
     private static <T> ArrayList<T> bucket(Map<Long, ArrayList<T>> buckets, double cellSize, double x, double y) {
         long key = key(cell(x, cellSize), cell(y, cellSize));
         return buckets.computeIfAbsent(key, ignored -> new ArrayList<>());
-    }
-
-    private static <T> void collect(Map<Long, ArrayList<T>> buckets, double cellSize,
-                                    double x, double y, double radius, List<T> out) {
-        out.clear();
-        if (buckets.isEmpty()) return;
-
-        double r = Math.max(0.0, radius);
-        int minCellX = cell(x - r, cellSize);
-        int maxCellX = cell(x + r, cellSize);
-        int minCellY = cell(y - r, cellSize);
-        int maxCellY = cell(y + r, cellSize);
-
-        for (int cy = minCellY; cy <= maxCellY; cy++) {
-            for (int cx = minCellX; cx <= maxCellX; cx++) {
-                ArrayList<T> bucket = buckets.get(key(cx, cy));
-                if (bucket != null && !bucket.isEmpty()) {
-                    out.addAll(bucket);
-                }
-            }
-        }
     }
 
     private static int cell(double value, double cellSize) {
