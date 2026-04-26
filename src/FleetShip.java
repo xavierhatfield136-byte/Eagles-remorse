@@ -24,6 +24,7 @@ public class FleetShip extends Ship {
         setup(role);
         conformTurretsToHull();
         standardizeCiwsLoadout();
+        nerfGeneralistCiwsLoadout();
         finalizeCapitalLethalityProfile();
         assignDefaultMissileRoles();
         resetFlightDeckLoadout();
@@ -79,12 +80,61 @@ public class FleetShip extends Ship {
         if (!hasCIWS) return;
         if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return;
         ciwsQuality = 1.0;
-        ciwsPelletsPerBurst = switch (SpawnSystem.requiredHangarTierForRole(role)) {
-            case 0 -> 2;
-            case 1 -> 3;
-            case 2 -> 5;
-            default -> 8;
+        ciwsPelletsPerBurst = dedicatedPointDefenseRole(role)
+                ? Math.max(ciwsPelletsPerBurst, switch (SpawnSystem.requiredHangarTierForRole(role)) {
+                    case 0 -> 2;
+                    case 1 -> 3;
+                    case 2 -> 5;
+                    default -> 8;
+                })
+                : 1;
+    }
+
+    private static boolean dedicatedPointDefenseRole(ShipRole role) {
+        return role == ShipRole.PD_CRAFT || role == ShipRole.CIWS_CORVETTE;
+    }
+
+    private void nerfGeneralistCiwsLoadout() {
+        if (!hasCIWS) return;
+        if (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET) return;
+        if (dedicatedPointDefenseRole(role)) return;
+
+        double rangeClamp = switch (role) {
+            case PATROL, PICKET -> 205.0;
+            case FRIGATE, MISSILE_BOAT, STEALTH_SHIP -> 190.0;
+            case FIGHTER, BOMBER, DRONE, ARTILLERY_SHIP -> 165.0;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 180.0;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 170.0;
+            case CARRIER, DRONE_CARRIER, MINER, HAULER, TRANSPORT -> 175.0;
+            default -> role != null && role.isTitanOrMothership() ? 185.0 : 180.0;
         };
+        double cooldownFloor = switch (role) {
+            case PATROL, PICKET -> 0.18;
+            case FRIGATE, MISSILE_BOAT, STEALTH_SHIP -> 0.20;
+            case FIGHTER, BOMBER, DRONE, ARTILLERY_SHIP -> 0.22;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.22;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 0.24;
+            case CARRIER, DRONE_CARRIER, MINER, HAULER, TRANSPORT -> 0.23;
+            default -> role != null && role.isTitanOrMothership() ? 0.26 : 0.22;
+        };
+        double qualityClamp = switch (role) {
+            case PATROL, PICKET -> 0.24;
+            case FRIGATE, MISSILE_BOAT, STEALTH_SHIP -> 0.16;
+            case FIGHTER, BOMBER, DRONE, ARTILLERY_SHIP -> 0.10;
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER -> 0.14;
+            case BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 0.10;
+            case CARRIER, DRONE_CARRIER, MINER, HAULER, TRANSPORT -> 0.12;
+            default -> role != null && role.isTitanOrMothership() ? 0.12 : 0.14;
+        };
+
+        ciwsQuality = Math.min(ciwsQuality, qualityClamp);
+        ciwsRange = Math.min(ciwsRange, rangeClamp);
+        ciwsCooldown = Math.max(ciwsCooldown, cooldownFloor);
+        ciwsPelletsPerBurst = 1;
+        ciwsPelletDamage = 1;
+        ciwsPelletLife = Math.min(ciwsPelletLife, role != null && role.isTitanOrMothership() ? 14 : 16);
+        ciwsPelletSpeed = Math.min(ciwsPelletSpeed, role != null && role.isTitanOrMothership() ? 860.0 : 900.0);
+        ciwsPelletRadius = Math.min(ciwsPelletRadius, 1.8);
     }
 
     private void finalizeCapitalLethalityProfile() {

@@ -64,6 +64,16 @@ public final class GameplayActions {
         TargetingSystem.cycleLockedTarget(ctx, dir);
     }
 
+    public static void hailCurrentContact(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        CommSystem.tryHailCurrentContact(ctx);
+    }
+
+    public static void cycleCommIntent(GameContext ctx, int dir) {
+        if (!canIssueCombatAction(ctx)) return;
+        CommSystem.cycleIntent(ctx, dir);
+    }
+
     public static void pingAtCursor(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
         UISystem.pingAtCursor(ctx, controls);
@@ -183,6 +193,37 @@ public final class GameplayActions {
         double targetX;
         double targetY;
         String destinationLabel;
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+            if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+            int targetSubzone = -1;
+            if (hasWaypoint) {
+                targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ctx.ui.waypointX, ctx.ui.waypointY);
+            } else if (base != null && base.alive && !base.dying && base.hp > 0) {
+                targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, base.x, base.y);
+            }
+            if (targetSubzone >= 0) {
+                int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
+                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
+                if (arrival == null) {
+                    EventSystem.showBanner(ctx, "WARP ROUTE UNAVAILABLE", 1.4);
+                    return;
+                }
+                targetX = arrival[0];
+                targetY = arrival[1];
+                destinationLabel = CampaignSystem.missionSubzoneLabel(hopSubzone);
+            } else if (hasWaypoint) {
+                EventSystem.showBanner(ctx, "WARP UNAVAILABLE: INVALID SECTOR", 1.4);
+                return;
+            } else if (base != null && base.alive && !base.dying && base.hp > 0) {
+                targetX = base.x;
+                targetY = base.y;
+                destinationLabel = "BASE";
+            } else {
+                EventSystem.showBanner(ctx, "WARP UNAVAILABLE: SET WAYPOINT OR FIND BASE", 1.4);
+                return;
+            }
+        } else {
         BattlefieldSectorSystem.SectorDefinition loadedSector = BattlefieldSectorSystem.loadedSector(ctx);
         BattlefieldSectorSystem.SectorDefinition selectedSector = BattlefieldSectorSystem.selectedSector(ctx);
         if (BattlefieldSectorSystem.isEnabled(ctx)
@@ -212,6 +253,7 @@ public final class GameplayActions {
             EventSystem.showBanner(ctx, "WARP UNAVAILABLE: SET WAYPOINT OR FIND BASE", 1.4);
             return;
         }
+        }
 
         if (player.isWarpCharging()) {
             player.cancelBattlefieldWarp();
@@ -224,6 +266,11 @@ public final class GameplayActions {
         if (!player.beginBattlefieldWarp(targetX, targetY, 10.0)) {
             EventSystem.showBanner(ctx, "WARP UNAVAILABLE", 1.2);
             return;
+        }
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+            if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+            player.campaignWarpSourceSubzone = loadedSubzone;
         }
         ctx.command.playerTeleportCharging = true;
         ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();

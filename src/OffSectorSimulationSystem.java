@@ -401,6 +401,15 @@ public final class OffSectorSimulationSystem {
         double integrity = summary.restoredShipIntegrity();
         double centerX = summary.averageX(ctx, sector);
         double centerY = summary.averageY(ctx, sector);
+        if (ctx.config != null
+                && ctx.config.mode == app.config.GameMode.FOUR_TEAM_DOMINATION
+                && sector != null
+                && sector.anchorFaction != null
+                && summary.faction != null
+                && sector.anchorFaction.isFriendlyTo(summary.faction)) {
+            centerX = centerX * 0.35 + sector.centerX(ctx) * 0.65;
+            centerY = centerY * 0.35 + sector.centerY(ctx) * 0.65;
+        }
         int ordinal = ordinalStart;
 
         for (Map.Entry<ShipRole, Integer> entry : roleCounts.entrySet()) {

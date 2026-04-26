@@ -12,12 +12,18 @@ public class GameContext {
         public final Faction faction;
         public final String channel;
         public final String text;
+        public final boolean external;
         public double ttl;
 
         public FleetCommMessage(Faction faction, String channel, String text, double ttl) {
+            this(faction, channel, text, ttl, false);
+        }
+
+        public FleetCommMessage(Faction faction, String channel, String text, double ttl, boolean external) {
             this.faction = faction;
             this.channel = (channel == null || channel.isBlank()) ? "FLEET" : channel;
             this.text = (text == null || text.isBlank()) ? "Traffic spike." : text;
+            this.external = external;
             this.ttl = Math.max(0.2, ttl);
         }
     }
@@ -224,14 +230,14 @@ public class GameContext {
 
     private static int resolvedWorldWidth(GameConfig config) {
         if (config != null && (config.mode == GameMode.CAMPAIGN_OPS || config.mode == GameMode.FLEET)) {
-            return Math.max(Math.max(1, config.worldW), CampaignSystem.recommendedWorldWidth());
+            return Math.max(Math.max(1, config.worldW), CampaignSystem.recommendedWorldWidth(config));
         }
         return BattlefieldSectorSystem.recommendedWorldWidth(config);
     }
 
     private static int resolvedWorldHeight(GameConfig config) {
         if (config != null && (config.mode == GameMode.CAMPAIGN_OPS || config.mode == GameMode.FLEET)) {
-            return Math.max(Math.max(1, config.worldH), CampaignSystem.recommendedWorldHeight());
+            return Math.max(Math.max(1, config.worldH), CampaignSystem.recommendedWorldHeight(config));
         }
         return BattlefieldSectorSystem.recommendedWorldHeight(config);
     }

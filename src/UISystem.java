@@ -784,6 +784,31 @@ public final class UISystem {
 
         double worldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
         double worldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, worldX, worldY);
+            if (targetSubzone >= 0) {
+                int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+                if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+                int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
+                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
+                double targetX = (arrival == null) ? worldX : arrival[0];
+                double targetY = (arrival == null) ? worldY : arrival[1];
+                String sectorLabel = CampaignSystem.missionSubzoneLabel(targetSubzone);
+                String route = (hopSubzone >= 0 && hopSubzone != targetSubzone)
+                        ? "  VIA " + CampaignSystem.missionSubzoneLabel(hopSubzone)
+                        : "";
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    addPing(ctx, targetX, targetY, 2.2);
+                    EventSystem.showBanner(ctx, "SECTOR PING: " + sectorLabel, 1.2);
+                    return;
+                }
+                ctx.ui.waypointX = GameMath.clamp(targetX, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(targetY, 0, ctx.WORLD_H);
+                addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+                EventSystem.showBanner(ctx, "COURSE SET: " + sectorLabel + route, 1.2);
+                return;
+            }
+        }
         if (SwingUtilities.isRightMouseButton(e)) {
             addPing(ctx, worldX, worldY, 2.2);
             EventSystem.showBanner(ctx, "PING MARKED", 1.0);
@@ -1570,11 +1595,20 @@ public final class UISystem {
 
     private static void setPlayerMissileRole(GameContext ctx, Turret.MissileRole role, String banner) {
         if (ctx == null || ctx.player == null || role == null) return;
+        boolean dynamicAaaAllowed = playerSupportsDynamicAaaMode(ctx.player);
+        if (role == Turret.MissileRole.INTERCEPT && !dynamicAaaAllowed) {
+            EventSystem.showBanner(ctx, "AAA LOADOUT VIA FLEET HUB", 1.0);
+            return;
+        }
         boolean changed = false;
         boolean foundRack = false;
         for (Turret turret : ctx.player.turrets) {
             if (turret == null || turret.kind != Turret.Kind.MISSILE) continue;
             foundRack = true;
+            if (!dynamicAaaAllowed && turret.missileRole == Turret.MissileRole.INTERCEPT) {
+                // Preserve campaign-installed AAA launchers on general hulls.
+                continue;
+            }
             if (turret.missileRole != role) {
                 turret.missileRole = role;
                 changed = true;
@@ -1587,6 +1621,14 @@ public final class UISystem {
         if (changed) {
             EventSystem.showBanner(ctx, banner, 0.9);
         }
+    }
+
+    private static boolean playerSupportsDynamicAaaMode(Ship ship) {
+        if (ship == null || ship.role == null) return false;
+        return switch (ship.role) {
+            case CIWS_CORVETTE, PD_CRAFT, STATIC_TURRET -> true;
+            default -> false;
+        };
     }
 
     private static void setScienceJamming(GameContext ctx, boolean active) {

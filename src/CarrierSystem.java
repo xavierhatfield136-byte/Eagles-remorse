@@ -15,6 +15,9 @@ public final class CarrierSystem {
     private CarrierSystem() {}
 
     private static final int MAX_GLOBAL_LAUNCHED_CRAFT = 220;
+    private static final int FOUR_TEAM_MAX_GLOBAL_LAUNCHED_CRAFT = 96;
+    private static final int FOUR_TEAM_MAX_TEAM_LAUNCHED_CRAFT = 18;
+    private static final int FOUR_TEAM_MAX_TEAM_BOMBERS = 6;
     private static final int MAX_GLOBAL_PD_ESCORTS = 40;
     private static final double ORPHAN_DESPAWN_SECONDS = 18.0;
     private static final double RTB_HP_FRAC = 0.35;
@@ -46,9 +49,10 @@ public final class CarrierSystem {
         updateCarrierPdEscorts(ctx, dt, carriers);
 
         int globalCraft = countGlobalLaunchedCraft(ctx);
+        int globalCap = globalLaunchedCraftCap(ctx);
 
         for (Ship carrier : carriers) {
-            if (globalCraft >= MAX_GLOBAL_LAUNCHED_CRAFT) break;
+            if (globalCraft >= globalCap) break;
             if (!carrier.carrierAutoLaunch) continue;
 
             // Don't auto-launch from player while in overlays.
@@ -65,7 +69,7 @@ public final class CarrierSystem {
         if (!carrier.alive || carrier.dying || carrier.hp <= 0) return 0;
         if (!carrier.isCarrier) return 0;
         if (!carrier.canLaunchFighter()) return 0;
-        if (countGlobalLaunchedCraft(ctx) >= MAX_GLOBAL_LAUNCHED_CRAFT) return 0;
+        if (countGlobalLaunchedCraft(ctx) >= globalLaunchedCraftCap(ctx)) return 0;
         return launchFlight(ctx, carrier, GameContext.DT);
     }
 
@@ -134,6 +138,14 @@ public final class CarrierSystem {
 
             Ship carrier = carriersById.get(s.carrierOwnerId);
             if (carrier == null) continue;
+            if (CampaignSystem.usesMissionSubzones(ctx)
+                    && s.isSmallCraft()
+                    && CampaignSystem.missionSubzoneForShip(ctx, s) >= 0
+                    && CampaignSystem.missionSubzoneForShip(ctx, carrier) >= 0
+                    && CampaignSystem.missionSubzoneForShip(ctx, s) != CampaignSystem.missionSubzoneForShip(ctx, carrier)) {
+                retireCraft(s);
+                continue;
+            }
 
             if (s.needsStrikeCraftRearm()) {
                 s.wingState = Ship.WingState.RTB;
@@ -291,10 +303,11 @@ public final class CarrierSystem {
         if (ctx == null || carrier == null) return 0;
         int activeWing = countActiveWingByCarrier(ctx, carrier.id);
         int deckRoom = Math.max(0, carrier.maxFighters - activeWing);
-        int globalRoom = Math.max(0, MAX_GLOBAL_LAUNCHED_CRAFT - countGlobalLaunchedCraft(ctx));
-        int toLaunch = Math.min(STRIKE_SQUAD_SIZE, Math.min(deckRoom, globalRoom));
+        int globalRoom = Math.max(0, globalLaunchedCraftCap(ctx) - countGlobalLaunchedCraft(ctx));
+        int teamRoom = Math.max(0, teamLaunchedCraftCap(ctx, carrier.faction) - countActiveWingByFaction(ctx, carrier.faction));
+        int toLaunch = Math.min(STRIKE_SQUAD_SIZE, Math.min(deckRoom, Math.min(globalRoom, teamRoom)));
         if (toLaunch <= 0) return 0;
-        ShipRole squadRole = chooseLaunchRole(carrier);
+        ShipRole squadRole = chooseLaunchRole(ctx, carrier);
         int launched = 0;
         for (int i = 0; i < toLaunch; i++) {
             int slotIndex = activeWing + launched;
@@ -336,13 +349,60 @@ public final class CarrierSystem {
         return craft;
     }
 
-    private static ShipRole chooseLaunchRole(Ship carrier) {
+    private static ShipRole chooseLaunchRole(GameContext ctx, Ship carrier) {
         if (carrier == null) return ShipRole.FIGHTER;
         if (!carrier.isCarrier) return ShipRole.FIGHTER;
         int slot = Math.floorMod(carrier.flightDeckLaunchCursor, Math.max(1, carrier.flightDeckLoadout.length));
         ShipRole role = carrier.flightDeckRoleAt(slot);
         if (role == null) return (carrier.role == ShipRole.DRONE_CARRIER) ? ShipRole.DRONE : ShipRole.FIGHTER;
+        if (ctx != null
+                && ctx.config != null
+                && ctx.config.mode == app.config.GameMode.FOUR_TEAM_DOMINATION
+                && carrier.faction != null
+                && role == ShipRole.BOMBER
+                && countWingRoleByFaction(ctx, carrier.faction, ShipRole.BOMBER) >= FOUR_TEAM_MAX_TEAM_BOMBERS) {
+            return ShipRole.FIGHTER;
+        }
         return role;
+    }
+
+    private static int globalLaunchedCraftCap(GameContext ctx) {
+        if (ctx != null && ctx.config != null && ctx.config.mode == app.config.GameMode.FOUR_TEAM_DOMINATION) {
+            return FOUR_TEAM_MAX_GLOBAL_LAUNCHED_CRAFT;
+        }
+        return MAX_GLOBAL_LAUNCHED_CRAFT;
+    }
+
+    private static int teamLaunchedCraftCap(GameContext ctx, Faction faction) {
+        if (ctx != null && ctx.config != null && ctx.config.mode == app.config.GameMode.FOUR_TEAM_DOMINATION) {
+            return FOUR_TEAM_MAX_TEAM_LAUNCHED_CRAFT;
+        }
+        return MAX_GLOBAL_LAUNCHED_CRAFT;
+    }
+
+    private static int countActiveWingByFaction(GameContext ctx, Faction faction) {
+        int count = 0;
+        if (ctx == null || faction == null) return 0;
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.carrierOwnerId < 0) continue;
+            if (s.faction == null || s.faction.teamId() != faction.teamId()) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static int countWingRoleByFaction(GameContext ctx, Faction faction, ShipRole role) {
+        int count = 0;
+        if (ctx == null || faction == null || role == null) return 0;
+        for (Ship s : ctx.ships) {
+            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
+            if (s.carrierOwnerId < 0) continue;
+            if (s.role != role) continue;
+            if (s.faction == null || s.faction.teamId() != faction.teamId()) continue;
+            count++;
+        }
+        return count;
     }
 
     public static Ship preferredTargetForCraft(GameContext ctx, Ship craft, Ship carrierHint) {

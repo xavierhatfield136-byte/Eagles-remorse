@@ -29,4 +29,21 @@ class AISystemSmallCraftRangeTest {
 
         assertEquals(baseGunRange, allowed, 0.001, "non-dogfight gun engagements should keep their normal range gate");
     }
+
+    @Test
+    void sustainedEngagementRangeUsesSensorContactForCapitals() {
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 0.0, 0.0);
+        FleetShip enemyCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 1000.0, 0.0);
+
+        double sustainedRange = AISystem.sustainedEngagementRangeForTarget(null, mothership, enemyCruiser);
+        double baseGunRange = 720.0;
+        double practicalGunRange = AISystem.effectivePrimaryGunRangeAgainstTarget(mothership, enemyCruiser, baseGunRange);
+
+        assertTrue(TargetingSystem.isDetectableToObserver(mothership, enemyCruiser),
+                "the hostile should be inside the mothership's sensor envelope");
+        assertTrue(sustainedRange >= 1000.0,
+                "sensor contact should keep the target in the sustained engagement envelope");
+        assertTrue(sustainedRange > practicalGunRange,
+                "the sustained engagement envelope should extend beyond the coarse gun range gate");
+    }
 }

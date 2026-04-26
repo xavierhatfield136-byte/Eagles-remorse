@@ -229,15 +229,34 @@ public final class GameSimulationRuntime {
 
         double tx = GameMath.clamp(ship.warpExitX(), 0, ctx.WORLD_W);
         double ty = GameMath.clamp(ship.warpExitY(), 0, ctx.WORLD_H);
+        int arrivedCampaignSubzone = -1;
+        if (CampaignSystem.usesMissionSubzones(ctx) && ctx.campaign != null) {
+            arrivedCampaignSubzone = CampaignSystem.missionSubzoneForPoint(ctx, ctx.campaign.sector, tx, ty);
+            if (arrivedCampaignSubzone < 0) {
+                arrivedCampaignSubzone = CampaignSystem.nearestMissionSubzone(ctx, ctx.campaign.sector, tx, ty);
+            }
+            double[] clamped = CampaignSystem.clampToMissionSubzone(
+                    ctx, ctx.campaign.sector, arrivedCampaignSubzone, tx, ty);
+            if (clamped != null && clamped.length >= 2) {
+                tx = clamped[0];
+                ty = clamped[1];
+            }
+        }
         ship.x = tx;
         ship.y = ty;
         ship.vx = 0.0;
         ship.vy = 0.0;
         ship.cancelBattlefieldWarp();
+        ship.campaignMissionSubzone = arrivedCampaignSubzone;
+        ship.campaignWarpSourceSubzone = -1;
         BattlefieldSectorSystem.SectorDefinition arrivedSector = BattlefieldSectorSystem.sectorAt(ctx, tx, ty);
+        relocateOwnedSmallCraftAfterWarp(ship, tx, ty, arrivedSector, arrivedCampaignSubzone);
         if (isPlayer) {
             ctx.ui.waypointX = tx;
             ctx.ui.waypointY = ty;
+            if (arrivedCampaignSubzone >= 0) {
+                CampaignSystem.setLoadedMissionSubzone(ctx, arrivedCampaignSubzone);
+            }
             if (arrivedSector != null) {
                 BattlefieldSectorSystem.setLoadedSector(ctx, arrivedSector.id);
                 CameraSystem.setZoom(ctx, BattlefieldSectorSystem.sectorTravelZoom(ctx.ui.tacticalSectorScalePreset));
@@ -257,6 +276,52 @@ public final class GameSimulationRuntime {
             String label = (arrivedSector == null) ? "BATTLEFIELD WARP COMPLETE"
                     : "BATTLEFIELD WARP COMPLETE: " + arrivedSector.label;
             EventSystem.showBanner(ctx, label, 1.1);
+        }
+    }
+
+    private void relocateOwnedSmallCraftAfterWarp(Ship carrier, double centerX, double centerY,
+                                                  BattlefieldSectorSystem.SectorDefinition arrivedSector,
+                                                  int arrivedCampaignSubzone) {
+        if (ctx == null || carrier == null || ctx.ships == null) return;
+        int slot = 0;
+        for (Ship craft : ctx.ships) {
+            if (craft == null || craft == carrier) continue;
+            if (!craft.alive || craft.dying || craft.hp <= 0) continue;
+            if (craft.carrierOwnerId != carrier.id) continue;
+            if (!craft.isSmallCraft()) continue;
+
+            double side = ((slot & 1) == 0) ? -1.0 : 1.0;
+            double row = slot / 2;
+            double lateral = side * (carrier.radius + 70.0 + row * 26.0);
+            double trail = carrier.radius + 120.0 + row * 38.0;
+            double ca = Math.cos(carrier.angle);
+            double sa = Math.sin(carrier.angle);
+            double craftX = centerX - ca * trail - sa * lateral;
+            double craftY = centerY - sa * trail + ca * lateral;
+            if (arrivedSector != null) {
+                double[] clamped = BattlefieldSectorSystem.clampToLoadedSectorBounds(
+                        ctx, arrivedSector, ctx.ui.tacticalSectorScalePreset, craftX, craftY);
+                if (clamped != null && clamped.length >= 2) {
+                    craftX = clamped[0];
+                    craftY = clamped[1];
+                }
+            }
+            if (CampaignSystem.usesMissionSubzones(ctx) && ctx.campaign != null && arrivedCampaignSubzone >= 0) {
+                double[] clamped = CampaignSystem.clampToMissionSubzone(
+                        ctx, ctx.campaign.sector, arrivedCampaignSubzone, craftX, craftY);
+                if (clamped != null && clamped.length >= 2) {
+                    craftX = clamped[0];
+                    craftY = clamped[1];
+                }
+                craft.campaignMissionSubzone = arrivedCampaignSubzone;
+                craft.campaignWarpSourceSubzone = -1;
+            }
+            craft.x = craftX;
+            craft.y = craftY;
+            craft.angle = carrier.angle;
+            craft.vx = carrier.vx;
+            craft.vy = carrier.vy;
+            slot++;
         }
     }
 

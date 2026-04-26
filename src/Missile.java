@@ -8,6 +8,7 @@ public class Missile extends Projectile {
     public double turnRate = Math.toRadians(280);// rad/sec
 
     public Ship target;
+    public Projectile projectileTarget;
     public Turret.MissileRole role = Turret.MissileRole.ANTI_MEDIUM;
     public int interceptHp = 2;
     public double blastRadius = 56.0;
@@ -16,6 +17,7 @@ public class Missile extends Projectile {
     public boolean canRetarget = false;
     public boolean preferSmallCraft = false;
     public double retargetRange = 900.0;
+    public double visualScale = 1.0;
 
     public Missile(double x, double y, double angle, Ship target, double dt) {
         this(x, y, angle, target, dt, 300, Math.toRadians(280), 5, 240, 7.0, Faction.PLAYER);
@@ -58,6 +60,7 @@ public class Missile extends Projectile {
 
     public void copyBehaviorFrom(Missile other) {
         if (other == null) return;
+        projectileTarget = other.projectileTarget;
         role = other.role;
         interceptHp = other.interceptHp;
         blastRadius = other.blastRadius;
@@ -66,6 +69,7 @@ public class Missile extends Projectile {
         canRetarget = other.canRetarget;
         preferSmallCraft = other.preferSmallCraft;
         retargetRange = other.retargetRange;
+        visualScale = other.visualScale;
     }
 
     public boolean applyInterceptHit(int damage) {
@@ -86,7 +90,13 @@ public class Missile extends Projectile {
 
         if (!hasGuidance()) {
             target = null;
-        } else if (target != null && target.alive) {
+            projectileTarget = null;
+        } else if (projectileTarget != null && projectileTarget.alive) {
+            double desired = Math.atan2(projectileTarget.y - y, projectileTarget.x - x);
+            double delta = MathUtil.normalizeAngle(desired - angle);
+            delta = MathUtil.clamp(delta, -turnRate * dt, turnRate * dt);
+            angle = MathUtil.normalizeAngle(angle + delta);
+        } else if (target != null && target.alive && !target.dying && target.hp > 0) {
             double desired = Math.atan2(target.y - y, target.x - x);
             double delta = MathUtil.normalizeAngle(desired - angle);
             delta = MathUtil.clamp(delta, -turnRate * dt, turnRate * dt);

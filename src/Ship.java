@@ -315,6 +315,10 @@ public abstract class Ship {
     public boolean carrierAutoLaunch = true;
     /** If this is a launched strike craft, the owning carrier ship id; otherwise -1. */
     public int carrierOwnerId = -1;
+    /** Mission subzone anchor used by campaign missions with separated void gaps. */
+    public int campaignMissionSubzone = -1;
+    /** Source mission subzone held while the ship charges a warp jump in campaign. */
+    public int campaignWarpSourceSubzone = -1;
     /** Seconds until orphaned craft despawns; -1 while not orphaned. */
     public double carrierOrphanTimer = -1.0;
     /** Active strike-craft behavior state. */
@@ -1075,6 +1079,8 @@ public abstract class Ship {
         playerTaggedForKillCredit = false;
         playerKillCreditPaid = false;
         carrierOwnerId = -1;
+        campaignMissionSubzone = -1;
+        campaignWarpSourceSubzone = -1;
         carrierOrphanTimer = -1.0;
         wingState = WingState.ATTACK;
         strikePrimaryMunitions = strikePrimaryMunitionsMax;
@@ -1095,6 +1101,16 @@ public abstract class Ship {
         clearHullImpactMarks();
         clearShieldImpactMarks();
         resetSuperweaponCooldown();
+    }
+
+    public void resetWeaponCycleState() {
+        primaryGunStaggerTimer = 0.0;
+        primaryGunStaggerCursor = 0;
+        primaryGunStaggerBurstRemaining = 0;
+        ciwsTimer = 0.0;
+        for (Turret turret : turrets) {
+            if (turret != null) turret.resetFireState();
+        }
     }
 
     public void healShield(double amount) {
@@ -1268,6 +1284,11 @@ public abstract class Ship {
         // Preserve final motion for drift.
         wreckVx = vx;
         wreckVy = vy;
+
+        if (isSmallCraft()) {
+            explodeIntoFireball(wreckVx, wreckVy);
+            return;
+        }
 
         // Burn duration is role-scaled so small craft split quickly while heavy hulls
         // spend more time in the breach / breakup phase before the final blast.

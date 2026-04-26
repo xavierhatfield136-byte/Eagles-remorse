@@ -10,6 +10,32 @@ import java.util.List;
  * UI, overlay, and presentation state that does not belong in the core simulation bucket.
  */
 public final class UiState {
+    public enum CommIntent {
+        IDENTIFY("Identify"),
+        STATE_INTENT("State Intent"),
+        REQUEST_SUPPORT("Request Support"),
+        REQUEST_TRADE("Request Trade"),
+        WARN_OFF("Warn Off"),
+        DEMAND_SURRENDER("Demand Surrender");
+
+        private final String label;
+
+        CommIntent(String label) {
+            this.label = (label == null || label.isBlank()) ? name() : label;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public CommIntent step(int dir) {
+            CommIntent[] values = values();
+            int delta = (dir < 0) ? -1 : 1;
+            int next = Math.floorMod(ordinal() + delta, values.length);
+            return values[next];
+        }
+    }
+
     public enum TacticalSectorScalePreset {
         COMPACT("Compact", 1.28),
         STANDARD("Standard", 1.0),
@@ -83,6 +109,7 @@ public final class UiState {
     public double waypointY = Double.NaN;
     public String selectedSectorId = "";
     public String loadedSectorId = "";
+    public CommIntent commIntent = CommIntent.IDENTIFY;
     public TacticalSectorScalePreset tacticalSectorScalePreset = TacticalSectorScalePreset.STANDARD;
     public final List<Renderer.MapPing> mapPings = new ArrayList<>();
 

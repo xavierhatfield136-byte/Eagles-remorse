@@ -275,6 +275,41 @@ public class CollisionSystem {
                 }
             }
         }
+
+        for (Projectile p : projectiles) {
+            if (!(p instanceof Missile interceptor) || !interceptor.alive) continue;
+            if (interceptor.role != Turret.MissileRole.INTERCEPT) continue;
+
+            Iterable<? extends Projectile> candidates = projectiles;
+            if (ctx != null) {
+                double queryRadius = Math.max(48.0, interceptor.blastRadius * 0.38);
+                ctx.entityQuery.collectMissilesNear(interceptor.x, interceptor.y, queryRadius, nearbyMissiles);
+                candidates = nearbyMissiles;
+            }
+
+            for (Projectile q : candidates) {
+                if (q == interceptor || !q.alive) continue;
+                if (!(q instanceof Missile hostileMissile)) continue;
+                if (interceptor.faction != null && hostileMissile.faction != null
+                        && interceptor.faction.isFriendlyTo(hostileMissile.faction)) {
+                    continue;
+                }
+
+                double hitRadius = hostileMissile.radius + Math.max(interceptor.radius, interceptor.blastRadius * 0.18);
+                if (!circleHit(interceptor.x, interceptor.y, interceptor.radius, hostileMissile.x, hostileMissile.y, hitRadius)) {
+                    continue;
+                }
+
+                interceptor.alive = false;
+                boolean killed = hostileMissile.applyInterceptHit(Math.max(1, interceptor.damage));
+                if (killed) {
+                    AudioSystem.onExplosion(ctx, hostileMissile.x, hostileMissile.y);
+                } else {
+                    AudioSystem.onHullImpact(ctx, VFX.ImpactStyle.KINETIC, hostileMissile.x, hostileMissile.y);
+                }
+                break;
+            }
+        }
     }
 
     /** Solid asteroids push ships out (no damage). */

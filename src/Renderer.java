@@ -3808,42 +3808,46 @@ public class Renderer {
 
     private static double missileBodyLength(Missile missile) {
         if (missile == null) return 18.0;
-        return switch (missile.role) {
+        double base = switch (missile.role) {
             case ANTI_HEAVY -> Math.max(26.0, missile.radius * 5.8);
             case ANTI_LIGHT -> Math.max(18.0, missile.radius * 4.0);
             case ANTI_MEDIUM -> Math.max(16.0, missile.radius * 3.8);
             case INTERCEPT -> Math.max(14.0, missile.radius * 3.1);
         };
+        return base * Math.max(0.1, missile.visualScale);
     }
 
     private static double missileBodyWidth(Missile missile) {
         if (missile == null) return 8.0;
-        return switch (missile.role) {
+        double base = switch (missile.role) {
             case ANTI_HEAVY -> Math.max(9.0, missile.radius * 2.25);
             case ANTI_LIGHT -> Math.max(6.0, missile.radius * 1.55);
             case ANTI_MEDIUM -> Math.max(6.0, missile.radius * 1.8);
             case INTERCEPT -> Math.max(4.0, missile.radius * 1.2);
         };
+        return base * Math.max(0.1, missile.visualScale);
     }
 
     private static double missileTrailLength(Missile missile) {
         if (missile == null) return 16.0;
-        return switch (missile.role) {
+        double base = switch (missile.role) {
             case ANTI_HEAVY -> Math.max(14.0, missile.radius * 3.6);
             case ANTI_LIGHT -> Math.max(24.0, missile.radius * 6.2);
             case ANTI_MEDIUM -> Math.max(12.0, missile.radius * 4.8);
             case INTERCEPT -> Math.max(18.0, missile.radius * 7.0);
         };
+        return base * Math.max(0.1, missile.visualScale);
     }
 
     private static double missileTrailWidth(Missile missile) {
         if (missile == null) return 2.0;
-        return switch (missile.role) {
+        double base = switch (missile.role) {
             case ANTI_HEAVY -> Math.max(2.4, missile.radius * 0.40);
             case ANTI_LIGHT -> Math.max(2.0, missile.radius * 0.34);
             case ANTI_MEDIUM -> Math.max(2.0, missile.radius * 0.36);
             case INTERCEPT -> Math.max(1.4, missile.radius * 0.24);
         };
+        return base * Math.max(0.1, missile.visualScale);
     }
 
     private static Color missileStripeColor(Missile missile) {
@@ -3952,7 +3956,7 @@ public class Renderer {
                 gameOverText, leftW, detail, ctx);
         int actionH = (detail != GameContext.HudDetail.MINIMAL) ? computeActionStripCardHeight(player, detail, leftW) : 0;
         int shipH = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
-                stationStatus, overlayStatus, contextHint, leftW, detail);
+                stationStatus, overlayStatus, contextHint, leftW, detail, ctx);
 
         int totalH = commandH + 10 + shipH + (actionH > 0 ? actionH + 10 : 0) + (objectiveH > 0 ? objectiveH + 10 : 0);
         int cardY = Math.max(16, coreMenu.y - 12 - totalH);
@@ -3975,7 +3979,7 @@ public class Renderer {
         }
         cardY += 10;
         drawShipSystemsCard(g2, player, lockedTarget, autoLock, playerWingActive, playerWingCap,
-                stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail);
+                stationStatus, overlayStatus, contextHint, leftX, cardY, leftW, detail, ctx);
         drawCombatHudPanels(g2, ctx, player, viewW, viewH, detail);
 
         if (!resourceRush && gameOverText != null && !gameOverText.isBlank()) {
@@ -4415,7 +4419,7 @@ public class Renderer {
 
     private static List<String> buildObjectiveDetailLines(FontMetrics bodyFm, String objectiveDetail, int contentW,
                                                           GameContext.HudDetail detail) {
-        List<String> lines = wrapHudText(bodyFm, objectiveDetail, contentW);
+        List<String> lines = wrapHudMultilineText(bodyFm, objectiveDetail, contentW);
         int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
             case MINIMAL -> 1;
             case COMPACT -> 2;
@@ -4569,7 +4573,7 @@ public class Renderer {
     private static int drawShipSystemsCard(Graphics2D g2, Player player, Ship lockedTarget, boolean autoLock,
                                            int playerWingActive, int playerWingCap, String stationStatus,
                                            String overlayStatus, String contextHint,
-                                           int x, int y, int w, GameContext.HudDetail detail) {
+                                           int x, int y, int w, GameContext.HudDetail detail, GameContext ctx) {
         if (g2 == null || player == null) return 0;
 
         Font oldFont = g2.getFont();
@@ -4579,7 +4583,7 @@ public class Renderer {
         int contentW = Math.max(220, w - 24);
 
         List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
-                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW);
+                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW, ctx);
         HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
 
         Font chipFont = new Font("Consolas", Font.BOLD, 11);
@@ -4590,7 +4594,7 @@ public class Renderer {
         boolean showPowerLegend = detail == GameContext.HudDetail.FULL;
         int powerBlockH = showPowerStrip ? (showPowerLegend ? 62 : 18) : 0;
         int h = computeShipSystemsCardHeight(player, lockedTarget, autoLock, playerWingActive, playerWingCap,
-                stationStatus, overlayStatus, contextHint, w, detail);
+                stationStatus, overlayStatus, contextHint, w, detail, ctx);
 
         drawHudPanelFrame(g2, x, y, w, h, "SHIP", factionHudColor(player.faction, 210));
 
@@ -4634,7 +4638,7 @@ public class Renderer {
     private static int computeShipSystemsCardHeight(Player player, Ship lockedTarget, boolean autoLock,
                                                     int playerWingActive, int playerWingCap, String stationStatus,
                                                     String overlayStatus, String contextHint,
-                                                    int w, GameContext.HudDetail detail) {
+                                                    int w, GameContext.HudDetail detail, GameContext ctx) {
         if (player == null) return 0;
         Canvas metricsCanvas = new Canvas();
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
@@ -4643,7 +4647,7 @@ public class Renderer {
         FontMetrics chipFm = metricsCanvas.getFontMetrics(chipFont);
         int contentW = Math.max(220, w - 24);
         List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
-                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW);
+                stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW, ctx);
         HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
         int chipRows = computeHudChipRows(chips.texts, chipFm, w);
         boolean showPowerStrip = detail != GameContext.HudDetail.MINIMAL;
@@ -4654,7 +4658,8 @@ public class Renderer {
     private static List<String> buildShipSystemNoteLines(Player player, Ship lockedTarget,
                                                          int playerWingActive, int playerWingCap,
                                                          String stationStatus, String overlayStatus, String contextHint,
-                                                         GameContext.HudDetail detail, FontMetrics bodyFm, int contentW) {
+                                                         GameContext.HudDetail detail, FontMetrics bodyFm, int contentW,
+                                                         GameContext ctx) {
         ArrayList<String> noteLines = new ArrayList<>();
         GameContext.HudDetail mode = (detail == null) ? GameContext.HudDetail.COMPACT : detail;
 
@@ -4665,6 +4670,10 @@ public class Renderer {
             if (mode == GameContext.HudDetail.FULL && counter != null && !counter.isBlank()) {
                 noteLines.addAll(wrapHudText(bodyFm, "Counter: " + counter, contentW));
             }
+        }
+        if (mode != GameContext.HudDetail.MINIMAL) {
+            noteLines.add("Comm: I cycle intent   K hail target");
+            noteLines.add("Intent: " + CommSystem.currentIntentLabel(ctx));
         }
 
         String systemsLine = compactSystemsLine(player);
@@ -5035,6 +5044,21 @@ public class Renderer {
             }
         }
         if (!line.isEmpty()) out.add(line);
+        return out;
+    }
+
+    private static java.util.List<String> wrapHudMultilineText(FontMetrics fm, String text, int maxWidth) {
+        java.util.List<String> out = new ArrayList<>();
+        if (fm == null || text == null || text.isBlank() || maxWidth <= 0) return out;
+        String[] paragraphs = text.replace("\r", "").split("\n");
+        for (String paragraph : paragraphs) {
+            java.util.List<String> wrapped = wrapHudText(fm, paragraph, maxWidth);
+            if (wrapped.isEmpty() && !paragraph.isBlank()) {
+                out.add(paragraph.trim());
+            } else {
+                out.addAll(wrapped);
+            }
+        }
         return out;
     }
 
@@ -7744,7 +7768,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString(sectorized
                         ? "LMB: route warp   RMB: sector ping   1/2/3: compact/standard/expanded   White: loaded   Amber: selected"
-                        : "LMB: waypoint   RMB: ping   Sensor power reveals anomalies   M/ESC: close",
+                        : (CampaignSystem.usesMissionSubzones(ctx)
+                        ? "LMB: waypoint   RMB: ping   White: current sector   Cyan grid: campaign sectors   M/ESC: close"
+                        : "LMB: waypoint   RMB: ping   Sensor power reveals anomalies   M/ESC: close"),
                 r.x + 18, r.y + r.height - 16);
 
         String mapHeader = sectorized
@@ -7804,6 +7830,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (fog != null) {
             drawStrategicFogOverlay(g2, m, worldW, worldH, fog);
             drawSensorInterestSignals(g2, ctx, m, worldW, worldH);
+        }
+        if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
+            drawCampaignSectorsOnMap(g2, m, ctx);
         }
 
         // Waypoint
@@ -7977,6 +8006,57 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return factionMapColor(snapshot.dominantFaction, false, 96);
     }
 
+    private static void drawCampaignSectorsOnMap(Graphics2D g2, Rectangle mapRect, GameContext ctx) {
+        if (g2 == null || mapRect == null || ctx == null || !CampaignSystem.usesMissionSubzones(ctx)) return;
+        int cols = CampaignSystem.missionSubzoneColumns();
+        int rows = CampaignSystem.missionSubzoneRows();
+        int loaded = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                int subzone = CampaignSystem.missionSubzoneIndex(col, row);
+                Rectangle sectorRect = campaignSectorMapRect(mapRect, ctx, ctx.campaign.sector, subzone);
+                if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
+
+                boolean active = subzone == loaded;
+                g2.setColor(active ? new Color(180, 235, 255, 40) : new Color(96, 188, 225, 18));
+                g2.fillRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+
+                g2.setStroke(new BasicStroke(active ? 2.4f : 1.4f));
+                g2.setColor(active ? new Color(236, 247, 255, 205) : new Color(118, 218, 255, 150));
+                g2.drawRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+
+                g2.setFont(new Font("Consolas", Font.BOLD, 10));
+                g2.setColor(active ? new Color(244, 252, 255, 220) : new Color(182, 230, 244, 150));
+                String label = campaignSectorLabel(col, row);
+                g2.drawString(label, sectorRect.x + 6, sectorRect.y + 14);
+            }
+        }
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static Rectangle campaignSectorMapRect(Rectangle mapRect, GameContext ctx, int sector, int subzone) {
+        if (mapRect == null || ctx == null || subzone < 0) return new Rectangle();
+        double worldW = Math.max(1.0, ctx.WORLD_W);
+        double worldH = Math.max(1.0, ctx.WORLD_H);
+        double minX = CampaignSystem.missionSubzoneMinX(ctx, sector, subzone);
+        double minY = CampaignSystem.missionSubzoneMinY(ctx, sector, subzone);
+        double maxX = minX + CampaignSystem.missionSubzoneWidth(ctx);
+        double maxY = minY + CampaignSystem.missionSubzoneHeight(ctx);
+        int x0 = mapRect.x + (int) Math.round((minX / worldW) * mapRect.width);
+        int y0 = mapRect.y + (int) Math.round((minY / worldH) * mapRect.height);
+        int x1 = mapRect.x + (int) Math.round((maxX / worldW) * mapRect.width);
+        int y1 = mapRect.y + (int) Math.round((maxY / worldH) * mapRect.height);
+        return new Rectangle(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
+    }
+
+    private static String campaignSectorLabel(int col, int row) {
+        char rowTag = (char) ('A' + Math.max(0, row));
+        return rowTag + Integer.toString(col + 1);
+    }
+
     private static void drawStrategicFogOverlay(Graphics2D g2, Rectangle mapRect, int worldW, int worldH, FogOfWarSystem.State fog) {
         if (g2 == null || mapRect == null || fog == null || fog.totalCells() <= 0) return;
 
@@ -8097,6 +8177,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case WRECKAGE -> new Color(206, 218, 232);
             case INSTALLATION -> new Color(255, 126, 106);
             case MASS_SIGNATURE -> new Color(155, 232, 255);
+            case ANOMALY -> new Color(167, 118, 255);
         };
     }
 
@@ -8107,6 +8188,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case WRECKAGE -> "WRK";
             case INSTALLATION -> "SITE";
             case MASS_SIGNATURE -> "MASS";
+            case ANOMALY -> "ANOM";
         };
     }
 
@@ -8127,6 +8209,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setColor(new Color(0, 0, 0, 130));
             g2.drawLine(x - r, y, x + r, y);
             g2.drawLine(x, y - r, x, y + r);
+        } else if (kind == FogOfWarSystem.SensorInterestKind.ANOMALY) {
+            Polygon p = new Polygon(
+                    new int[]{x, x + r, x, x - r},
+                    new int[]{y - r, y, y + r, y},
+                    4);
+            g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.drawPolygon(p);
+            g2.drawLine(x - Math.max(2, r / 2), y, x + Math.max(2, r / 2), y);
+            g2.drawLine(x, y - Math.max(2, r / 2), x, y + Math.max(2, r / 2));
         } else {
             g2.setStroke(new BasicStroke(1.8f));
             g2.drawOval(x - r, y - r, r * 2, r * 2);

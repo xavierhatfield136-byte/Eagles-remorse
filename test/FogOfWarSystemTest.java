@@ -111,4 +111,57 @@ class FogOfWarSystemTest {
         assertTrue(FogOfWarSystem.sensorInterestSignals(ctx).isEmpty(),
                 "balanced routing should not provide long-range points-of-interest intel");
     }
+
+    @Test
+    void highSensorPowerMarksCampaignAnomalySites() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 24681357L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 10);
+        Object anomaly = null;
+        for (Object site : ctx.campaign.discoverySites) {
+            if (kindName(site).equals("ANOMALY")) {
+                anomaly = site;
+                break;
+            }
+        }
+        assertTrue(anomaly != null, "campaign mission should seed at least one anomaly site");
+        double anomalyX = getDoubleField(anomaly, "x");
+        double anomalyY = getDoubleField(anomaly, "y");
+        ctx.player.x = Math.max(200.0, anomalyX - 2200.0);
+        ctx.player.y = anomalyY;
+        ctx.player.setPowerBusAllocation(0.10, 0.10, 0.10, 0.36, 0.18, 0.16);
+        FogOfWarSystem.reset(ctx);
+        FogOfWarSystem.update(ctx);
+
+        assertTrue(FogOfWarSystem.sensorInterestSignals(ctx).stream()
+                        .anyMatch(signal -> signal.kind == FogOfWarSystem.SensorInterestKind.ANOMALY),
+                "campaign anomaly discovery sites should surface on the strategic map like ore");
+    }
+
+    private static void startSector(GameContext ctx, int sector) throws Exception {
+        java.lang.reflect.Method startSector = CampaignSystem.class.getDeclaredMethod("startSector", GameContext.class, int.class);
+        startSector.setAccessible(true);
+        startSector.invoke(null, ctx, sector);
+    }
+
+    private static String kindName(Object site) {
+        try {
+            java.lang.reflect.Field field = site.getClass().getDeclaredField("kind");
+            field.setAccessible(true);
+            return String.valueOf(field.get(site));
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private static double getDoubleField(Object target, String fieldName) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.getDouble(target);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
 }

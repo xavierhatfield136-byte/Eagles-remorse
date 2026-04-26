@@ -103,6 +103,22 @@ public class Turret {
         coolLeft = 0;
     }
 
+    /**
+     * Clears transient fire-lock state so a carried-over turret can start a new mission cleanly.
+     */
+    public void resetFireState() {
+        coolLeft = 0;
+        lastFiredProjectileId = -1;
+        lastFiredProjectile = null;
+        persistentTargetX = Double.NaN;
+        persistentTargetY = Double.NaN;
+        pendingBlueProjectile = null;
+        pendingBlueTarget = null;
+        barrelStaggerTimer = 0.0;
+        barrelStaggerIndex = 0;
+        beamVisualLaneCursor = 0;
+    }
+
     public double getCooldownRemaining() {
         return coolLeft;
     }
@@ -203,6 +219,10 @@ public class Turret {
     }
 
     public Projectile fire(Ship host, Ship missileTarget, double dt) {
+        return fire(host, missileTarget, null, dt);
+    }
+
+    public Projectile fire(Ship host, Ship missileTarget, Projectile projectileTarget, double dt) {
         if (!canFire()) return null;
         if (host == null) return null;
         if (!host.canUseCombatSystems()) return null;
@@ -336,6 +356,9 @@ public class Turret {
             }
             double baseReloadSeconds = cooldown / cycleMul;
             double flooredReload = Math.max(baseReloadSeconds, Ship.MISSILE_MIN_RELOAD_SECONDS);
+            if (missileRole == MissileRole.INTERCEPT) {
+                flooredReload = Math.max(Ship.MISSILE_MIN_RELOAD_SECONDS / 3.0, flooredReload / 3.0);
+            }
             if (baseReloadSeconds > 1e-6) {
                 damageMul *= flooredReload / baseReloadSeconds;
             }
@@ -354,6 +377,7 @@ public class Turret {
             double missileTurn_final = missileTurn;
             int missileDamage_final = missileDamage;
             int missileLifetime_final = missileLifetime;
+            double missileVisualScale = 1.0;
             
             // Phase 5.3: Blue torpedo sidegrade
             // Anti-heavy torpedoes have higher yield but lower guidance time (less agile)
@@ -371,9 +395,32 @@ public class Turret {
                     missileSpd_final = missileSpd * 1.18;
                 }
             }
-            
+
+            if (missileRole == MissileRole.ANTI_LIGHT) {
+                missileLifetime_final = Math.max(missileLifetime_final, (int) Math.round(missileLifetime * 3.0));
+            } else if (missileRole == MissileRole.ANTI_HEAVY) {
+                missileLifetime_final = Math.max(missileLifetime_final, (int) Math.round(missileLifetime * 2.0));
+                missileVisualScale = 0.5;
+            } else if (missileRole == MissileRole.INTERCEPT) {
+                missileLifetime_final = Math.max(missileLifetime_final, (int) Math.round(missileLifetime * 1.5));
+                missileVisualScale = 0.5;
+            }
+
             Projectile p = new Missile(mx, my, angle, missileTarget, dt, missileSpd_final, missileTurn_final, missileDamage_final, missileLifetime_final, missileRadius, host.faction);
             p.sourceShipId = host.id;
+            if (p instanceof Missile missile) {
+                missile.role = (missileRole == null) ? MissileRole.ANTI_MEDIUM : missileRole;
+                missile.projectileTarget = projectileTarget;
+                missile.visualScale = missileVisualScale;
+                if (missile.role == MissileRole.ANTI_LIGHT) {
+                    missile.canRetarget = true;
+                    missile.retargetRange = Math.max(missile.retargetRange, 2200.0);
+                } else if (missile.role == MissileRole.INTERCEPT) {
+                    missile.canRetarget = true;
+                    missile.preferSmallCraft = true;
+                    missile.retargetRange = Math.max(missile.retargetRange, 1400.0);
+                }
+            }
             return p;
         }
     }

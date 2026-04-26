@@ -149,4 +149,35 @@ class BattlefieldSectorSystemTest {
         assertEquals(0, AISystem.resourceRushCappedGroupCount(18, 2));
         assertEquals(0, AISystem.resourceRushCappedGroupCount(22, 3));
     }
+
+    @Test
+    void fourTeamInitializationSeedsForwardPressureOutsideHomeSectors() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.FOUR_TEAM_DOMINATION, 9000, 9000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+
+        long nonHomeCombatants = ctx.ships.stream()
+                .filter(s -> s != null && s.alive && !s.dying && s.hp > 0)
+                .filter(s -> s.role != ShipRole.BASE && !s.isSmallCraft())
+                .filter(s -> {
+                    BattlefieldSectorSystem.SectorDefinition sector = BattlefieldSectorSystem.sectorAt(ctx, s.x, s.y);
+                    return sector != null && sector.anchorFaction == null;
+                })
+                .count();
+
+        assertTrue(nonHomeCombatants >= 8, "expected meaningful starting pressure in link/center sectors");
+    }
+
+    @Test
+    void fourTeamBasesSpawnTowardRearOfHomeSectorsInsteadOfExactCenters() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.FOUR_TEAM_DOMINATION, 9000, 9000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+
+        Ship blueBase = ctx.teamBases.get(Faction.ALLY);
+        BattlefieldSectorSystem.SectorDefinition blueHome = BattlefieldSectorSystem.homeSector(ctx, Faction.ALLY);
+        assertNotNull(blueBase);
+        assertNotNull(blueHome);
+        assertTrue(Math.abs(blueBase.x - blueHome.centerX(ctx)) > 400.0
+                        || Math.abs(blueBase.y - blueHome.centerY(ctx)) > 400.0,
+                "home bases should sit toward the rear edge of their sectors to leave room for sector fighting");
+    }
 }

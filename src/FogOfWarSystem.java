@@ -262,7 +262,12 @@ public final class FogOfWarSystem {
         addOreInterestSignals(ctx, sweep, out);
         addSalvageInterestSignals(ctx, sweep, out);
         addShipInterestSignals(ctx, sweep, out);
-        out.sort((a, b) -> Double.compare(b.strength, a.strength));
+        addCampaignAnomalySignals(ctx, sweep, out);
+        out.sort((a, b) -> {
+            int anomalyBias = Integer.compare(sensorInterestPriority(b), sensorInterestPriority(a));
+            if (anomalyBias != 0) return anomalyBias;
+            return Double.compare(b.strength, a.strength);
+        });
         if (out.size() <= SENSOR_INTEREST_MAX_SIGNALS) return out;
         return List.copyOf(out.subList(0, SENSOR_INTEREST_MAX_SIGNALS));
     }
@@ -327,6 +332,27 @@ public final class FogOfWarSystem {
             double strength = clamp01(0.24 + sweep * 0.52 + sizeSignal * 0.22);
             addSignalIfCovered(ctx, out, kind, label, ship.x, ship.y, strength, installation ? 320.0 : 280.0);
         }
+    }
+
+    private static void addCampaignAnomalySignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        if (!CampaignSystem.usesMissionSubzones(ctx)) return;
+        for (CampaignSystem.DiscoverySignalSite site : CampaignSystem.anomalySignalSites(ctx)) {
+            if (site == null) continue;
+            double radiusSignal = clamp01((site.radius - 120.0) / 180.0);
+            double strength = clamp01(0.56 + sweep * 0.34 + radiusSignal * 0.16);
+            addSignalIfCovered(ctx, out, SensorInterestKind.ANOMALY, site.label, site.x, site.y,
+                    strength, Math.max(150.0, site.radius * (1.05 + (1.0 - sweep) * 0.35)));
+        }
+    }
+
+    private static int sensorInterestPriority(SensorInterestSignal signal) {
+        if (signal == null || signal.kind == null) return 0;
+        return switch (signal.kind) {
+            case ANOMALY -> 3;
+            case ORE_VEIN -> 2;
+            case INSTALLATION -> 1;
+            default -> 0;
+        };
     }
 
     private static void addSignalIfCovered(GameContext ctx, ArrayList<SensorInterestSignal> out,
@@ -508,7 +534,8 @@ public final class FogOfWarSystem {
         ORE_VEIN,
         WRECKAGE,
         INSTALLATION,
-        MASS_SIGNATURE;
+        MASS_SIGNATURE,
+        ANOMALY;
 
         public String displayName() {
             return name().toLowerCase(Locale.US).replace('_', ' ');

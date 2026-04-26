@@ -381,6 +381,7 @@ public final class AISystem {
     private static FleetState buildFleetState(GameContext ctx, double dt) {
         FleetState out = new FleetState();
         if (ctx == null || ctx.ships == null) return out;
+        decayCommCommandOverrides(ctx, dt);
         if (ctx.command.shipFleetCommandOverrides != null && !ctx.command.shipFleetCommandOverrides.isEmpty()) {
             ctx.command.shipFleetCommandOverrides.entrySet().removeIf(e -> !hasLiveShipId(ctx.ships, e.getKey()));
         }
@@ -452,6 +453,46 @@ public final class AISystem {
         }
         syncFleetPresentation(ctx, out);
         return out;
+    }
+
+    private static void decayCommCommandOverrides(GameContext ctx, double dt) {
+        if (ctx == null || ctx.command == null) return;
+        double step = Math.max(0.0, dt);
+        if (ctx.command.shipFleetCommandOverrideTimers != null && !ctx.command.shipFleetCommandOverrideTimers.isEmpty()) {
+            List<Integer> expired = new ArrayList<>();
+            for (Map.Entry<Integer, Double> e : ctx.command.shipFleetCommandOverrideTimers.entrySet()) {
+                if (e == null || e.getKey() == null) continue;
+                double remain = Math.max(0.0, e.getValue() - step);
+                if (remain <= 0.0 || !hasLiveShipId(ctx.ships, e.getKey())) {
+                    expired.add(e.getKey());
+                } else {
+                    e.setValue(remain);
+                }
+            }
+            for (Integer id : expired) {
+                if (id == null) continue;
+                ctx.command.shipFleetCommandOverrideTimers.remove(id);
+                if (ctx.command.shipFleetCommandOverrides != null) {
+                    ctx.command.shipFleetCommandOverrides.remove(id);
+                }
+            }
+        }
+        if (ctx.command.shipCommActionCooldowns != null && !ctx.command.shipCommActionCooldowns.isEmpty()) {
+            List<Integer> cooled = new ArrayList<>();
+            for (Map.Entry<Integer, Double> e : ctx.command.shipCommActionCooldowns.entrySet()) {
+                if (e == null || e.getKey() == null) continue;
+                double remain = Math.max(0.0, e.getValue() - step);
+                if (remain <= 0.0 || !hasLiveShipId(ctx.ships, e.getKey())) {
+                    cooled.add(e.getKey());
+                } else {
+                    e.setValue(remain);
+                }
+            }
+            for (Integer id : cooled) {
+                if (id == null) continue;
+                ctx.command.shipCommActionCooldowns.remove(id);
+            }
+        }
     }
 
     private static SharedTargetChoice selectSharedTargetForTeam(GameContext ctx, List<Ship> members, Ship flagship) {
@@ -1215,7 +1256,9 @@ public final class AISystem {
                     }
                     if (target != null) {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
-                        if (d <= 380.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                        if (shouldAttemptFireOnSensorContact(s, target, d, objective)) {
+                            fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                        }
                     }
                     s.tryCIWS(dt, ctx);
                     return true;
@@ -1250,7 +1293,9 @@ public final class AISystem {
                     else if (base != null) moveToward(s, base.x, base.y, speed * 0.8, dt);
                     if (target != null) {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
-                        if (d <= 360.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                        if (shouldAttemptFireOnSensorContact(s, target, d, objective)) {
+                            fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                        }
                     }
                     s.tryCIWS(dt, ctx);
                     return true;
@@ -1350,7 +1395,7 @@ public final class AISystem {
                 }
                 if (target != null) {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
-                    if (d <= 320.0 && objective != SquadObjective.RESERVE) {
+                    if (shouldAttemptFireOnSensorContact(s, target, d, objective)) {
                         fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
                 }
@@ -1366,7 +1411,7 @@ public final class AISystem {
                 }
                 if (target != null) {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
-                    if (d <= preferredRange(s) * 1.5 && objective != SquadObjective.RESERVE) {
+                    if (shouldAttemptFireOnSensorContact(s, target, d, objective)) {
                         fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
                     }
                 }
@@ -1381,7 +1426,9 @@ public final class AISystem {
                 }
                 if (target != null) {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
-                    if (d <= 360.0) fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                    if (shouldAttemptFireOnSensorContact(s, target, d, objective)) {
+                        fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                    }
                 }
             }
             case ATTACK -> {
@@ -1932,6 +1979,7 @@ public final class AISystem {
         if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return false;
         double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
         if (d <= 240.0) return true;
+        if (d <= sustainedEngagementRangeForTarget(ctx, seeker, target)) return true;
 
         if (seeker.hasSuperweapon && d <= 2200.0 * rangeMul) return true;
         for (Turret t : seeker.turrets) {
@@ -1946,6 +1994,11 @@ public final class AISystem {
             if (d <= maxRange * 1.12) return true;
         }
         return false;
+    }
+
+    private static boolean shouldAttemptFireOnSensorContact(Ship seeker, Ship target, double dist, SquadObjective objective) {
+        if (objective == SquadObjective.RESERVE) return false;
+        return dist <= sustainedEngagementRangeForTarget(null, seeker, target);
     }
 
     private static boolean shouldCommitToSharedTarget(FleetState state, Ship s, Ship target) {
@@ -2689,9 +2742,9 @@ public final class AISystem {
             tx = sectorPoint[0];
             ty = sectorPoint[1];
         } else {
-            // Simple wander: drift toward the player's general area, but loosely.
-            tx = ctx.player.x + (ctx.rng.nextDouble() - 0.5) * 800.0;
-            ty = ctx.player.y + (ctx.rng.nextDouble() - 0.5) * 800.0;
+            double[] idleAnchor = idleNavigationAnchor(ctx, s);
+            tx = idleAnchor[0];
+            ty = idleAnchor[1];
         }
         if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
             s.tryCIWS(dt, ctx);
@@ -2700,6 +2753,47 @@ public final class AISystem {
         moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
         s.tryCIWS(dt, ctx);
+    }
+
+    private static double[] idleNavigationAnchor(GameContext ctx, Ship s) {
+        double sx = (s == null) ? 0.0 : s.x;
+        double sy = (s == null) ? 0.0 : s.y;
+        if (ctx == null || s == null) return new double[]{sx, sy};
+
+        double anchorX = sx;
+        double anchorY = sy;
+        Ship ownBase = (s.faction == null) ? null : TeamSystem.getBaseForTeam(ctx, s.faction);
+        if (isAlive(ownBase)) {
+            anchorX = ownBase.x;
+            anchorY = ownBase.y;
+        } else {
+            Ship flagship = findFlagshipForFaction(ctx, s.faction, s);
+            if (isAlive(flagship)) {
+                anchorX = flagship.x;
+                anchorY = flagship.y;
+            }
+        }
+
+        double jitterRadius = isSkirmishRole(s.role) ? 520.0 : (isCapitalRole(s.role) ? 340.0 : 430.0);
+        double jx = ((ctx.rng == null) ? Math.random() : ctx.rng.nextDouble()) - 0.5;
+        double jy = ((ctx.rng == null) ? Math.random() : ctx.rng.nextDouble()) - 0.5;
+        return new double[]{anchorX + jx * jitterRadius, anchorY + jy * jitterRadius};
+    }
+
+    private static Ship findFlagshipForFaction(GameContext ctx, Faction faction, Ship fallback) {
+        if (ctx == null || faction == null || ctx.ships == null) return fallback;
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (Ship ship : ctx.ships) {
+            if (!isAlive(ship) || ship.faction == null) continue;
+            if (ship.faction.teamId() != faction.teamId()) continue;
+            double score = flagshipScore(ship);
+            if (score > bestScore) {
+                bestScore = score;
+                best = ship;
+            }
+        }
+        return isAlive(best) ? best : fallback;
     }
 
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist) {
@@ -2830,6 +2924,7 @@ public final class AISystem {
         double missileRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 1850.0 : 1300.0;
         gunRange = gunRange * gunRangeRoleMul(s.role) * rangeMul;
         missileRange = missileRange * missileRangeRoleMul(s.role) * rangeMul;
+        double sustainedRange = sustainedEngagementRangeForTarget(ctx, s, target);
 
         ArrayList<Integer> mainGunIndices = null;
         int mainGunCount = 0;
@@ -2886,7 +2981,7 @@ public final class AISystem {
                     Ship missileTarget = resolveMissileTarget(ctx, s, t, target, missileRange);
                     if (!isAlive(missileTarget)) continue;
                     double missileDist = Math.hypot(missileTarget.x - s.x, missileTarget.y - s.y);
-                    double allowedMissileRange = missileRangeForTurret(t, missileRange);
+                    double allowedMissileRange = Math.max(missileRangeForTurret(t, missileRange), sustainedRange);
                     if (missileDist > allowedMissileRange) continue;
                     if (!t.canFire()) continue;
 
@@ -2915,7 +3010,9 @@ public final class AISystem {
 
                 // --- GUN turrets ---
                 boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
-                double allowedGunRange = effectiveGunRangeForTarget(s, t, target, gunRange);
+                double allowedGunRange = ciwsStyle
+                        ? effectiveGunRangeForTarget(s, t, target, gunRange)
+                        : Math.max(effectiveGunRangeForTarget(s, t, target, gunRange), sustainedRange);
                 if (dist > allowedGunRange) continue;
                 if (!ciwsStyle) {
                     if (useVolley && !volleyReady) continue;
@@ -3089,6 +3186,13 @@ public final class AISystem {
             best = Math.max(best, effectiveGunRangeForTarget(host, turret, target, baseGunRange));
         }
         return (best > 0.0) ? best : Math.max(0.0, baseGunRange);
+    }
+
+    static double sustainedEngagementRangeForTarget(GameContext ctx, Ship observer, Ship target) {
+        if (observer == null || target == null) return 0.0;
+        double range = TargetingSystem.detectionRangeForObserver(observer, target);
+        if (ctx != null) range *= CampaignSystem.targetingRangeMul(ctx);
+        return Math.max(0.0, range);
     }
 
     private static Turret firstGunTurret(Ship ship) {
@@ -3906,7 +4010,7 @@ public final class AISystem {
         if (observer == null || target == null) return 0.0;
         double sensor = Math.max(0.20, observer.sensorRangeMultiplier());
         double sensorNorm = Math.max(0.20, Math.min(1.20, sensor));
-        double rangeBudget = 2400.0 * sensorNorm;
+        double rangeBudget = TargetingSystem.detectionRangeForObserver(observer, target);
         double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(520.0, rangeBudget)));
         double ewFactor = 1.0;
         if (target.hasActiveEcm()) {

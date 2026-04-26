@@ -24,6 +24,7 @@ public final class PhysicsSystem {
         }
         constrainPlayerToLoadedSector(ctx);
         constrainWarpChargingShipsToSourceSector(ctx);
+        constrainShipsToCampaignSubzones(ctx);
         for (Ship s : ctx.ships) {
             if (s == null || !s.alive || s.dying) continue;
             if (!s.hasActiveEcm()) continue;
@@ -244,9 +245,24 @@ public final class PhysicsSystem {
 
     private static void constrainPlayerToLoadedSector(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        if (!BattlefieldSectorSystem.isEnabled(ctx)) return;
         if (!ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
         if (ctx.player.isWarpCharging()) return;
+
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int subzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+            if (subzone < 0) {
+                subzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+            }
+            double[] clamped = CampaignSystem.clampToMissionSubzone(
+                    ctx, ctx.campaign.sector, subzone, ctx.player.x, ctx.player.y);
+            if (clamped.length >= 2) {
+                ctx.player.x = clamped[0];
+                ctx.player.y = clamped[1];
+                CampaignSystem.setLoadedMissionSubzone(ctx, subzone);
+            }
+            return;
+        }
+        if (!BattlefieldSectorSystem.isEnabled(ctx)) return;
 
         BattlefieldSectorSystem.ensureLoadedSector(ctx);
         BattlefieldSectorSystem.SectorDefinition loaded = BattlefieldSectorSystem.loadedSector(ctx);
@@ -259,10 +275,25 @@ public final class PhysicsSystem {
     }
 
     private static void constrainWarpChargingShipsToSourceSector(GameContext ctx) {
-        if (ctx == null || !BattlefieldSectorSystem.isEnabled(ctx) || ctx.ships == null) return;
+        if (ctx == null || ctx.ships == null) return;
         for (Ship ship : ctx.ships) {
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
             if (!ship.isWarpCharging()) continue;
+            if (CampaignSystem.usesMissionSubzones(ctx)) {
+                int subzone = ship.campaignWarpSourceSubzone;
+                if (subzone < 0) {
+                    subzone = CampaignSystem.ensureShipMissionSubzone(ctx, ship);
+                    ship.campaignWarpSourceSubzone = subzone;
+                }
+                double[] clamped = CampaignSystem.clampToMissionSubzone(
+                        ctx, ctx.campaign.sector, subzone, ship.x, ship.y);
+                if (clamped.length >= 2) {
+                    ship.x = clamped[0];
+                    ship.y = clamped[1];
+                }
+                continue;
+            }
+            if (!BattlefieldSectorSystem.isEnabled(ctx)) continue;
             BattlefieldSectorSystem.SectorDefinition sector =
                     BattlefieldSectorSystem.findSector(ctx, ship.warpSourceSectorId());
             if (sector == null) {
@@ -273,6 +304,21 @@ public final class PhysicsSystem {
             double[] clamped = BattlefieldSectorSystem.clampToLoadedSectorBounds(
                     ctx, sector, ctx.ui.tacticalSectorScalePreset, ship.x, ship.y);
             if (clamped == null || clamped.length < 2) continue;
+            ship.x = clamped[0];
+            ship.y = clamped[1];
+        }
+    }
+
+    private static void constrainShipsToCampaignSubzones(GameContext ctx) {
+        if (!CampaignSystem.usesMissionSubzones(ctx) || ctx.ships == null || ctx.campaign == null) return;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.isWarpCharging()) continue;
+            int subzone = CampaignSystem.ensureShipMissionSubzone(ctx, ship);
+            if (subzone < 0) continue;
+            double[] clamped = CampaignSystem.clampToMissionSubzone(
+                    ctx, ctx.campaign.sector, subzone, ship.x, ship.y);
+            if (clamped.length < 2) continue;
             ship.x = clamped[0];
             ship.y = clamped[1];
         }
@@ -341,8 +387,19 @@ public final class PhysicsSystem {
 
     private static void updateMissileTargeting(GameContext ctx, Missile missile) {
         if (ctx == null || missile == null || !missile.alive || !missile.hasGuidance()) return;
+        if (missile.projectileTarget != null && !missile.projectileTarget.alive) {
+            missile.projectileTarget = null;
+        }
+        if (missile.projectileTarget != null && missile.projectileTarget.faction != null
+                && missile.faction != null
+                && missile.faction.isFriendlyTo(missile.projectileTarget.faction)) {
+            missile.projectileTarget = null;
+        }
         if (missile.target != null && missile.target.blocksMissileLocksFrom(missile.x, missile.y)) {
             missile.target = null;
+        }
+        if (missile.projectileTarget != null) {
+            return;
         }
         if (missile.target != null
                 && missile.target.alive
@@ -358,6 +415,10 @@ public final class PhysicsSystem {
     private static Ship findMissileRetarget(GameContext ctx, Missile missile) {
         if (ctx == null || missile == null || missile.faction == null) return null;
         double maxRange = Math.max(120.0, missile.retargetRange);
+        if (missile.role == Turret.MissileRole.INTERCEPT) {
+            missile.projectileTarget = TargetingSystem.findClosestHostileMissile(ctx, missile.faction, missile.x, missile.y, maxRange);
+            if (missile.projectileTarget != null) return null;
+        }
         Ship best = null;
         double bestD2 = maxRange * maxRange;
         java.util.ArrayList<Ship> nearby = new java.util.ArrayList<>();

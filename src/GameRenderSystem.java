@@ -577,7 +577,8 @@ if (DevTools.isDebugOverlay()) {
         int teamId = ctx.player.faction.teamId();
         for (int i = ctx.fleetCommLog.size() - 1; i >= 0 && out.size() < Math.max(0, maxCount); i--) {
             GameContext.FleetCommMessage msg = ctx.fleetCommLog.get(i);
-            if (msg == null || msg.faction == null || msg.faction.teamId() != teamId) continue;
+            if (msg == null) continue;
+            if (!msg.external && (msg.faction == null || msg.faction.teamId() != teamId)) continue;
             out.add(0, msg);
         }
         return out;

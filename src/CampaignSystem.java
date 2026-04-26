@@ -1,4 +1,5 @@
 import app.config.GameMode;
+import app.config.GameConfig;
 import app.persistence.CampaignCheckpointStore;
 import app.persistence.CampaignUnlockProfile;
 import java.awt.Color;
@@ -49,11 +50,31 @@ public final class CampaignSystem {
         }
     }
 
-    // Zone layout constants
-    private static final double ZONE_WIDTH = 4000.0;
-    private static final double ZONE_HEIGHT = 3000.0;
-    private static final double ZONE_GAP_DISTANCE = 5000.0;
+    // Mission zone layout constants
+    private static final int MISSION_ZONE_COLUMNS = 6;
+    private static final int MISSION_ZONE_ROWS = 3;
+    private static final double MISSION_SUBZONE_CLAMP_MARGIN = 180.0;
+    private static final double DEFAULT_MISSION_SUBZONE_WIDTH = 5000.0;
+    private static final double DEFAULT_MISSION_SUBZONE_HEIGHT = 5000.0;
     private static final int ZONES_PER_ROW = 8;
+
+    private static final class MissionLayout {
+        final double subzoneWidth;
+        final double subzoneHeight;
+        final double subzoneGap;
+        final double zoneWidth;
+        final double zoneHeight;
+
+        MissionLayout(double subzoneWidth, double subzoneHeight, double subzoneGap) {
+            this.subzoneWidth = Math.max(600.0, subzoneWidth);
+            this.subzoneHeight = Math.max(600.0, subzoneHeight);
+            this.subzoneGap = Math.max(800.0, subzoneGap);
+            this.zoneWidth = MISSION_ZONE_COLUMNS * this.subzoneWidth
+                    + Math.max(0, MISSION_ZONE_COLUMNS - 1) * this.subzoneGap;
+            this.zoneHeight = MISSION_ZONE_ROWS * this.subzoneHeight
+                    + Math.max(0, MISSION_ZONE_ROWS - 1) * this.subzoneGap;
+        }
+    }
 
     private static final class SectorScript {
         final int sector;
@@ -149,6 +170,72 @@ public final class CampaignSystem {
         }
     }
 
+    private static final class MissionSection {
+        final String label;
+        final double x;
+        final double y;
+        final double radius;
+
+        MissionSection(String label, double x, double y, double radius) {
+            this.label = (label == null || label.isBlank()) ? "MISSION SITE" : label.trim();
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(120.0, radius);
+        }
+    }
+
+    private enum DiscoveryKind {
+        CACHE,
+        ORE,
+        REINFORCEMENT,
+        AMBUSH,
+        SALVAGE_HULK,
+        SUPPLY_CACHE,
+        DATA_RELAY,
+        WRECK_FIELD,
+        MINEFIELD,
+        DRIFTING_TURRET,
+        NEUTRAL_TRADER,
+        PRISON_BARGE,
+        ANOMALY,
+        FLEET_ASSET
+    }
+
+    private static final class DiscoverySite {
+        final String label;
+        final String subtitle;
+        final DiscoveryKind kind;
+        final double x;
+        final double y;
+        final double radius;
+        boolean discovered;
+
+        DiscoverySite(String label, String subtitle, DiscoveryKind kind, double x, double y, double radius) {
+            this.label = (label == null || label.isBlank()) ? "UNKNOWN CONTACT" : label.trim();
+            this.subtitle = (subtitle == null) ? "" : subtitle.trim();
+            this.kind = (kind == null) ? DiscoveryKind.CACHE : kind;
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(110.0, radius);
+        }
+    }
+
+    public static final class DiscoverySignalSite {
+        public final String label;
+        public final String subtitle;
+        public final double x;
+        public final double y;
+        public final double radius;
+
+        DiscoverySignalSite(String label, String subtitle, double x, double y, double radius) {
+            this.label = (label == null || label.isBlank()) ? "UNKNOWN CONTACT" : label.trim();
+            this.subtitle = (subtitle == null) ? "" : subtitle.trim();
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(80.0, radius);
+        }
+    }
+
     public enum CampaignRouteKind {
         MAIN,
         SALVAGE,
@@ -223,6 +310,7 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR = 6;
     private static final int CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER = 4;
     private static final int CAMPAIGN_TRANSPORT_FLEET_ORE_CAPACITY = 10_000;
+    private static final double CAMPAIGN_POCKET_MARGIN = 220.0;
     private static final double ESCORT_PLAYER_FORMATION_RADIUS = 360.0;
     private static final double ESCORT_SUPPORT_RADIUS = 460.0;
     private static final double ESCORT_THREAT_RADIUS = 620.0;
@@ -239,97 +327,347 @@ public final class CampaignSystem {
     };
 
     // Zone layout methods
+    private static int routeGridColumn(int sector) {
+        return Math.max(0, (sector - 1) % ZONES_PER_ROW);
+    }
+
+    private static int routeGridRow(int sector) {
+        return Math.max(0, (sector - 1) / ZONES_PER_ROW);
+    }
+
+    private static MissionLayout missionLayout(GameConfig config) {
+        double sectorWidth = (config == null) ? DEFAULT_MISSION_SUBZONE_WIDTH : Math.max(1.0, config.worldW);
+        double sectorHeight = (config == null) ? DEFAULT_MISSION_SUBZONE_HEIGHT : Math.max(1.0, config.worldH);
+        double span = Math.max(sectorWidth, sectorHeight);
+        double gap = (span >= 5000.0)
+                ? 5000.0
+                : Math.max(1800.0, Math.round(span * 0.55));
+        return new MissionLayout(sectorWidth, sectorHeight, gap);
+    }
+
+    private static MissionLayout missionLayout(GameContext ctx) {
+        return missionLayout((ctx == null) ? null : ctx.config);
+    }
+
     private static double getZoneX(int sector) {
-        int col = (sector - 1) % ZONES_PER_ROW;
-        return col * (ZONE_WIDTH + ZONE_GAP_DISTANCE);
+        return 0.0;
     }
 
     private static double getZoneY(int sector) {
-        int row = (sector - 1) / ZONES_PER_ROW;
-        return row * (ZONE_HEIGHT + ZONE_GAP_DISTANCE);
+        return 0.0;
     }
 
     private static double getZoneCenterX(int sector) {
-        return getZoneX(sector) + ZONE_WIDTH / 2;
+        return getZoneX(sector) + missionLayout((GameConfig) null).zoneWidth / 2;
     }
 
     private static double getZoneCenterY(int sector) {
-        return getZoneY(sector) + ZONE_HEIGHT / 2;
+        return getZoneY(sector) + missionLayout((GameConfig) null).zoneHeight / 2;
+    }
+
+    static boolean usesMissionSubzones(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled && ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS;
+    }
+
+    static int missionSubzoneCount() {
+        return MISSION_ZONE_COLUMNS * MISSION_ZONE_ROWS;
+    }
+
+    static int missionSubzoneColumns() {
+        return MISSION_ZONE_COLUMNS;
+    }
+
+    static int missionSubzoneRows() {
+        return MISSION_ZONE_ROWS;
+    }
+
+    static double missionSubzoneWidth() {
+        return missionLayout((GameConfig) null).subzoneWidth;
+    }
+
+    static double missionSubzoneWidth(GameContext ctx) {
+        return missionLayout(ctx).subzoneWidth;
+    }
+
+    static double missionSubzoneHeight() {
+        return missionLayout((GameConfig) null).subzoneHeight;
+    }
+
+    static double missionSubzoneHeight(GameContext ctx) {
+        return missionLayout(ctx).subzoneHeight;
+    }
+
+    static int missionSubzoneIndex(int col, int row) {
+        if (col < 0 || col >= MISSION_ZONE_COLUMNS || row < 0 || row >= MISSION_ZONE_ROWS) return -1;
+        return row * MISSION_ZONE_COLUMNS + col;
+    }
+
+    static int missionSubzoneColumn(int subzoneIndex) {
+        if (subzoneIndex < 0) return -1;
+        return subzoneIndex % MISSION_ZONE_COLUMNS;
+    }
+
+    static int missionSubzoneRow(int subzoneIndex) {
+        if (subzoneIndex < 0) return -1;
+        return subzoneIndex / MISSION_ZONE_COLUMNS;
+    }
+
+    static String missionSubzoneLabel(int subzoneIndex) {
+        int col = missionSubzoneColumn(subzoneIndex);
+        int row = missionSubzoneRow(subzoneIndex);
+        if (col < 0 || row < 0) return "SECTOR";
+        char rowTag = (char) ('A' + row);
+        return rowTag + Integer.toString(col + 1);
+    }
+
+    static List<DiscoverySignalSite> anomalySignalSites(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.discoverySites.isEmpty()) return List.of();
+        ArrayList<DiscoverySignalSite> out = new ArrayList<>();
+        for (DiscoverySite site : st.discoverySites) {
+            if (site == null || site.discovered || site.kind != DiscoveryKind.ANOMALY) continue;
+            out.add(new DiscoverySignalSite(site.label, site.subtitle, site.x, site.y, site.radius));
+        }
+        return out;
+    }
+
+    static double missionSubzoneMinX(int sector, int subzoneIndex) {
+        return missionSubzoneMinX(null, sector, subzoneIndex);
+    }
+
+    static double missionSubzoneMinX(GameContext ctx, int sector, int subzoneIndex) {
+        MissionLayout layout = missionLayout(ctx);
+        int col = missionSubzoneColumn(subzoneIndex);
+        return getZoneX(sector) + col * (layout.subzoneWidth + layout.subzoneGap);
+    }
+
+    static double missionSubzoneMinY(int sector, int subzoneIndex) {
+        return missionSubzoneMinY(null, sector, subzoneIndex);
+    }
+
+    static double missionSubzoneMinY(GameContext ctx, int sector, int subzoneIndex) {
+        MissionLayout layout = missionLayout(ctx);
+        int row = missionSubzoneRow(subzoneIndex);
+        return getZoneY(sector) + row * (layout.subzoneHeight + layout.subzoneGap);
+    }
+
+    static double missionSubzoneCenterX(int sector, int subzoneIndex) {
+        return missionSubzoneCenterX(null, sector, subzoneIndex);
+    }
+
+    static double missionSubzoneCenterX(GameContext ctx, int sector, int subzoneIndex) {
+        return missionSubzoneMinX(ctx, sector, subzoneIndex) + missionLayout(ctx).subzoneWidth * 0.5;
+    }
+
+    static double missionSubzoneCenterY(int sector, int subzoneIndex) {
+        return missionSubzoneCenterY(null, sector, subzoneIndex);
+    }
+
+    static double missionSubzoneCenterY(GameContext ctx, int sector, int subzoneIndex) {
+        return missionSubzoneMinY(ctx, sector, subzoneIndex) + missionLayout(ctx).subzoneHeight * 0.5;
+    }
+
+    static int missionSubzoneForPoint(int sector, double x, double y) {
+        return missionSubzoneForPoint(null, sector, x, y);
+    }
+
+    static int missionSubzoneForPoint(GameContext ctx, int sector, double x, double y) {
+        MissionLayout layout = missionLayout(ctx);
+        double localX = x - getZoneX(sector);
+        double localY = y - getZoneY(sector);
+        if (localX < 0.0 || localY < 0.0 || localX > layout.zoneWidth || localY > layout.zoneHeight) return -1;
+        double strideX = layout.subzoneWidth + layout.subzoneGap;
+        double strideY = layout.subzoneHeight + layout.subzoneGap;
+        int col = (int) Math.floor(localX / strideX);
+        int row = (int) Math.floor(localY / strideY);
+        if (col < 0 || col >= MISSION_ZONE_COLUMNS || row < 0 || row >= MISSION_ZONE_ROWS) return -1;
+        double withinX = localX - col * strideX;
+        double withinY = localY - row * strideY;
+        if (withinX < 0.0 || withinX > layout.subzoneWidth) return -1;
+        if (withinY < 0.0 || withinY > layout.subzoneHeight) return -1;
+        return missionSubzoneIndex(col, row);
+    }
+
+    static int nearestMissionSubzone(int sector, double x, double y) {
+        return nearestMissionSubzone(null, sector, x, y);
+    }
+
+    static int nearestMissionSubzone(GameContext ctx, int sector, double x, double y) {
+        double bestDist2 = Double.POSITIVE_INFINITY;
+        int best = -1;
+        for (int row = 0; row < MISSION_ZONE_ROWS; row++) {
+            for (int col = 0; col < MISSION_ZONE_COLUMNS; col++) {
+                int subzone = missionSubzoneIndex(col, row);
+                double cx = missionSubzoneCenterX(ctx, sector, subzone);
+                double cy = missionSubzoneCenterY(ctx, sector, subzone);
+                double dx = cx - x;
+                double dy = cy - y;
+                double dist2 = dx * dx + dy * dy;
+                if (dist2 < bestDist2) {
+                    bestDist2 = dist2;
+                    best = subzone;
+                }
+            }
+        }
+        return best;
+    }
+
+    static double[] clampToMissionSubzone(GameContext ctx, int sector, int subzoneIndex, double x, double y) {
+        if (subzoneIndex < 0) return new double[]{x, y};
+        MissionLayout layout = missionLayout(ctx);
+        double minX = missionSubzoneMinX(ctx, sector, subzoneIndex) + MISSION_SUBZONE_CLAMP_MARGIN;
+        double maxX = missionSubzoneMinX(ctx, sector, subzoneIndex) + layout.subzoneWidth - MISSION_SUBZONE_CLAMP_MARGIN;
+        double minY = missionSubzoneMinY(ctx, sector, subzoneIndex) + MISSION_SUBZONE_CLAMP_MARGIN;
+        double maxY = missionSubzoneMinY(ctx, sector, subzoneIndex) + layout.subzoneHeight - MISSION_SUBZONE_CLAMP_MARGIN;
+        if (ctx != null) {
+            minX = Math.max(minX, MISSION_SUBZONE_CLAMP_MARGIN);
+            minY = Math.max(minY, MISSION_SUBZONE_CLAMP_MARGIN);
+            maxX = Math.min(maxX, ctx.WORLD_W - MISSION_SUBZONE_CLAMP_MARGIN);
+            maxY = Math.min(maxY, ctx.WORLD_H - MISSION_SUBZONE_CLAMP_MARGIN);
+        }
+        return new double[]{
+                GameMath.clamp(x, minX, Math.max(minX, maxX)),
+                GameMath.clamp(y, minY, Math.max(minY, maxY))
+        };
+    }
+
+    static int currentLoadedMissionSubzone(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return -1;
+        return st.loadedMissionSubzone;
+    }
+
+    static int ensureShipMissionSubzone(GameContext ctx, Ship ship) {
+        CampaignState st = state(ctx);
+        if (st == null || ship == null) return -1;
+        if (ship == ctx.player) {
+            if (st.loadedMissionSubzone >= 0) {
+                ship.campaignMissionSubzone = st.loadedMissionSubzone;
+                return st.loadedMissionSubzone;
+            }
+        }
+        int resolved = ship.campaignMissionSubzone;
+        if (resolved >= 0) return resolved;
+        resolved = missionSubzoneForPoint(ctx, st.sector, ship.x, ship.y);
+        if (resolved < 0 && ship == ctx.player) {
+            resolved = nearestMissionSubzone(ctx, st.sector, ship.x, ship.y);
+        }
+        if (resolved < 0 && st.loadedMissionSubzone >= 0) {
+            resolved = st.loadedMissionSubzone;
+        }
+        ship.campaignMissionSubzone = resolved;
+        return resolved;
+    }
+
+    static void setLoadedMissionSubzone(GameContext ctx, int subzoneIndex) {
+        CampaignState st = state(ctx);
+        if (st == null) return;
+        if (subzoneIndex < 0) subzoneIndex = 0;
+        st.loadedMissionSubzone = subzoneIndex;
+        if (ctx != null && ctx.player != null) {
+            ctx.player.campaignMissionSubzone = subzoneIndex;
+        }
+    }
+
+    static int syncLoadedMissionSubzoneFromPlayer(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || ctx == null || ctx.player == null) return -1;
+        int subzone = missionSubzoneForPoint(ctx, st.sector, ctx.player.x, ctx.player.y);
+        if (subzone < 0) subzone = nearestMissionSubzone(ctx, st.sector, ctx.player.x, ctx.player.y);
+        setLoadedMissionSubzone(ctx, subzone);
+        return subzone;
+    }
+
+    static int missionSubzoneForShip(GameContext ctx, Ship ship) {
+        if (ship == null) return -1;
+        int subzone = ship.campaignMissionSubzone;
+        if (subzone >= 0) return subzone;
+        CampaignState st = state(ctx);
+        if (st == null) return -1;
+        return missionSubzoneForPoint(ctx, st.sector, ship.x, ship.y);
+    }
+
+    static int campaignMapSubzoneAtPoint(GameContext ctx, double x, double y) {
+        CampaignState st = state(ctx);
+        if (st == null) return -1;
+        int subzone = missionSubzoneForPoint(ctx, st.sector, x, y);
+        if (subzone >= 0) return subzone;
+        return nearestMissionSubzone(ctx, st.sector, x, y);
+    }
+
+    static int nextCampaignWarpHop(int sourceSubzone, int targetSubzone) {
+        if (sourceSubzone < 0 || targetSubzone < 0) return -1;
+        int sourceCol = missionSubzoneColumn(sourceSubzone);
+        int sourceRow = missionSubzoneRow(sourceSubzone);
+        int targetCol = missionSubzoneColumn(targetSubzone);
+        int targetRow = missionSubzoneRow(targetSubzone);
+        if (sourceCol < 0 || sourceRow < 0 || targetCol < 0 || targetRow < 0) return -1;
+        int dCol = Integer.compare(targetCol, sourceCol);
+        int dRow = Integer.compare(targetRow, sourceRow);
+        if (dCol == 0 && dRow == 0) return sourceSubzone;
+        return missionSubzoneIndex(sourceCol + dCol, sourceRow + dRow);
+    }
+
+    static double[] campaignWarpArrivalPoint(GameContext ctx, int subzoneIndex) {
+        CampaignState st = state(ctx);
+        if (st == null || subzoneIndex < 0) return null;
+        return new double[]{
+                missionSubzoneCenterX(ctx, st.sector, subzoneIndex),
+                missionSubzoneCenterY(ctx, st.sector, subzoneIndex)
+        };
+    }
+
+    private static int missionEntrySubzone(int sourceSector, int targetSector) {
+        if (targetSector <= 0) return missionSubzoneIndex(0, 1);
+        double dx = routeGridColumn(targetSector) - routeGridColumn(Math.max(1, sourceSector));
+        double dy = routeGridRow(targetSector) - routeGridRow(Math.max(1, sourceSector));
+        int col = MISSION_ZONE_COLUMNS / 2;
+        int row = MISSION_ZONE_ROWS / 2;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            col = (dx >= 0.0) ? 0 : (MISSION_ZONE_COLUMNS - 1);
+        } else if (Math.abs(dy) > Math.abs(dx)) {
+            row = (dy >= 0.0) ? 0 : (MISSION_ZONE_ROWS - 1);
+        } else {
+            col = (dx >= 0.0) ? 0 : (MISSION_ZONE_COLUMNS - 1);
+            row = (dy >= 0.0) ? 0 : (MISSION_ZONE_ROWS - 1);
+        }
+        return missionSubzoneIndex(col, row);
     }
 
     public static int recommendedWorldWidth() {
-        return (int) Math.ceil(ZONES_PER_ROW * ZONE_WIDTH + (ZONES_PER_ROW - 1) * ZONE_GAP_DISTANCE);
+        return recommendedWorldWidth(null);
+    }
+
+    public static int recommendedWorldWidth(GameConfig config) {
+        return (int) Math.ceil(missionLayout(config).zoneWidth);
     }
 
     public static int recommendedWorldHeight() {
-        int rows = (int) Math.ceil((SCRIPTS.length - 1) / (double) ZONES_PER_ROW);
-        return (int) Math.ceil(rows * ZONE_HEIGHT + Math.max(0, rows - 1) * ZONE_GAP_DISTANCE);
+        return recommendedWorldHeight(null);
+    }
+
+    public static int recommendedWorldHeight(GameConfig config) {
+        return (int) Math.ceil(missionLayout(config).zoneHeight);
     }
 
     private static boolean canWarpBetweenZones(int sourceSector, int targetSector) {
         if (sourceSector == targetSector) return false;
-        int sourceRow = (sourceSector - 1) / ZONES_PER_ROW;
-        int sourceCol = (sourceSector - 1) % ZONES_PER_ROW;
-        int targetRow = (targetSector - 1) / ZONES_PER_ROW;
-        int targetCol = (targetSector - 1) % ZONES_PER_ROW;
+        int sourceRow = routeGridRow(sourceSector);
+        int sourceCol = routeGridColumn(sourceSector);
+        int targetRow = routeGridRow(targetSector);
+        int targetCol = routeGridColumn(targetSector);
         int dRow = Math.abs(sourceRow - targetRow);
         int dCol = Math.abs(sourceCol - targetCol);
         return (dRow <= 1 && dCol <= 1) && (dRow + dCol > 0);
     }
 
-    private static double[] getWarpArrivalPoint(int sourceSector, int targetSector) {
-        double sourceX = getZoneCenterX(sourceSector);
-        double sourceY = getZoneCenterY(sourceSector);
-        double targetX = getZoneCenterX(targetSector);
-        double targetY = getZoneCenterY(targetSector);
-        double dx = targetX - sourceX;
-        double dy = targetY - sourceY;
-
-        double arrivalX, arrivalY;
-        double offset = 200.0; // inward offset
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal dominant
-            if (dx > 0) {
-                // Source left of target, arrive on left edge
-                arrivalX = getZoneX(targetSector) + offset;
-            } else {
-                // Source right of target, arrive on right edge
-                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
-            }
-            arrivalY = getZoneCenterY(targetSector);
-        } else if (Math.abs(dy) > Math.abs(dx)) {
-            // Vertical dominant
-            if (dy > 0) {
-                // Source above target, arrive on top edge
-                arrivalY = getZoneY(targetSector) + offset;
-            } else {
-                // Source below target, arrive on bottom edge
-                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
-            }
-            arrivalX = getZoneCenterX(targetSector);
-        } else {
-            // Diagonal, arrive at corner
-            if (dx > 0 && dy > 0) {
-                // Source top-left of target, arrive top-left corner
-                arrivalX = getZoneX(targetSector) + offset;
-                arrivalY = getZoneY(targetSector) + offset;
-            } else if (dx > 0 && dy < 0) {
-                // Source bottom-left, arrive bottom-left
-                arrivalX = getZoneX(targetSector) + offset;
-                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
-            } else if (dx < 0 && dy > 0) {
-                // Source top-right, arrive top-right
-                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
-                arrivalY = getZoneY(targetSector) + offset;
-            } else {
-                // Source bottom-right, arrive bottom-right
-                arrivalX = getZoneX(targetSector) + ZONE_WIDTH - offset;
-                arrivalY = getZoneY(targetSector) + ZONE_HEIGHT - offset;
-            }
-        }
-
-        return new double[]{arrivalX, arrivalY};
+    private static double[] getWarpArrivalPoint(GameContext ctx, int sourceSector, int targetSector) {
+        int entrySubzone = missionEntrySubzone(sourceSector, targetSector);
+        return new double[]{
+                missionSubzoneCenterX(ctx, targetSector, entrySubzone),
+                missionSubzoneCenterY(ctx, targetSector, entrySubzone)
+        };
     }
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
@@ -491,10 +829,17 @@ public final class CampaignSystem {
         public final Set<Integer> authoredObjectiveHostiles = new HashSet<>();
         public int authoredObjectiveKills = 0;
         public int authoredWaveCursor = 0;
+        public int loadedMissionSubzone = missionSubzoneIndex(0, 1);
         public final List<CampaignLandmark> landmarks = new ArrayList<>();
+        public final List<MissionSection> missionSections = new ArrayList<>();
+        public int activeMissionSection = 0;
+        public boolean missionSectionTravelLocked = false;
+        public final List<DiscoverySite> discoverySites = new ArrayList<>();
+        public int discoveriesFound = 0;
         public String objectivePhaseLabel = "";
         public String threatStateLabel = "";
         public int objectiveStage = 0;
+        public int mapPressureStage = 0;
         public int objectiveKillBaseline = 0;
         public final Set<Integer> objectiveAssetIds = new HashSet<>();
         public int objectiveAssetTotal = 0;
@@ -713,7 +1058,9 @@ public final class CampaignSystem {
         detectHostileKills(ctx);
         detectObjectiveAssetLosses(ctx);
         updateAuthoredSectorScript(ctx, st);
+        updateDistributedMapPressure(ctx, st);
         updateEscortFormationBehavior(ctx, st, dt);
+        updatePocketDiscoveries(ctx, st);
         updateSideObjective(ctx, dt);
         updateObjective(ctx, dt);
     }
@@ -766,25 +1113,12 @@ public final class CampaignSystem {
         int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
         SectorLore lore = loreFor(st.sector);
-        StringBuilder brief = new StringBuilder();
-        appendObjectiveBriefPart(brief, lore.hudLead);
-        appendObjectiveBriefPart(brief, st.objectiveLabel);
-        appendObjectiveBriefPart(brief, lore.location);
-        appendObjectiveBriefPart(brief, landmarkHud(st));
-        appendObjectiveBriefPart(brief, st.objectivePhaseLabel);
-        appendObjectiveBriefPart(brief, st.threatStateLabel);
-        appendObjectiveBriefPart(brief, "OBJ " + p);
-        if (st.objectiveType == ObjectiveType.ESCORT) {
-            appendObjectiveBriefPart(brief, "FORMATION "
-                    + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%");
-        }
-        appendObjectiveBriefPart(brief, objectiveAssetHud(st));
-        appendObjectiveBriefPart(brief, "T-" + left + "s");
-        String side = sideObjectiveHud(st);
-        if (!side.isBlank()) appendObjectiveBriefPart(brief, "SIDE " + side);
-        String drop = bossDropHud(st);
-        if (!drop.isBlank()) appendObjectiveBriefPart(brief, "DROP " + drop);
-        return brief.toString();
+        ArrayList<String> lines = new ArrayList<>();
+        addObjectiveLine(lines, objectiveWinLine(st, p, left));
+        addObjectiveLine(lines, objectiveRouteLine(st, lore));
+        addObjectiveLine(lines, objectiveThreatLine(st));
+        addObjectiveLine(lines, objectiveProgressLine(st, p, left));
+        return String.join("\n", lines);
     }
 
     private static void appendObjectiveBriefPart(StringBuilder brief, String part) {
@@ -793,6 +1127,105 @@ public final class CampaignSystem {
         if (text.isEmpty()) return;
         if (brief.length() > 0) brief.append("   ");
         brief.append(text);
+    }
+
+    private static void addObjectiveLine(List<String> lines, String line) {
+        if (lines == null || line == null) return;
+        String trimmed = line.trim();
+        if (!trimmed.isEmpty()) lines.add(trimmed);
+    }
+
+    private static String objectiveWinLine(CampaignState st, String progress, int leftSeconds) {
+        if (st == null) return "";
+        return switch (st.objectiveType) {
+            case SURVIVE -> "Win: Hold until T-" + leftSeconds + "s. You do not need to wipe every red ship.";
+            case DESTROY -> "Win: Destroy mission targets. Objective " + progress + ".";
+            case ESCORT -> "Win: Keep the escort alive and inside your screen until T-" + leftSeconds + "s.";
+            case CAPTURE -> "Win: Clear the defenders and secure the capture point.";
+            case BOSS -> "Win: Break the boss hull before time runs out.";
+            case FINAL_BOSS -> "Win: Destroy the AI Mothership.";
+        };
+    }
+
+    private static String objectiveRouteLine(CampaignState st, SectorLore lore) {
+        if (st == null) return "";
+        String section = cleanHudClause(missionSectionHud(st));
+        String travelHint = st.missionSectionTravelLocked
+                ? " Reach the next pocket to resume objective progress."
+                : " Sweep side pockets if you need ore, support, or salvage.";
+        if (!section.isEmpty()) {
+            return "Route: " + section + "." + travelHint;
+        }
+        if (lore != null && lore.location != null && !lore.location.isBlank()) {
+            return "Area: " + lore.location.trim() + ".";
+        }
+        return "";
+    }
+
+    private static String objectiveThreatLine(CampaignState st) {
+        if (st == null) return "";
+        String threat = firstHudClause(st.threatStateLabel, "THREAT:", "CONTACTS:", "RESERVES:", "VECTOR:", "DISCOVERY:");
+        if (!threat.isEmpty()) return "Threat: " + threat;
+        String phase = firstHudClause(st.objectivePhaseLabel, "PHASE:", "MAP:", "SECTION:", "TRANSIT:");
+        if (!phase.isEmpty()) return "Now: " + phase;
+        return "";
+    }
+
+    private static String objectiveProgressLine(CampaignState st, String progress, int leftSeconds) {
+        if (st == null) return "";
+        ArrayList<String> parts = new ArrayList<>();
+        parts.add("Progress " + progress);
+        parts.add("T-" + leftSeconds + "s");
+        String side = sideObjectiveHud(st);
+        if (!side.isBlank()) parts.add("Side " + cleanHudClause(side));
+        String discoveries = discoveryHud(st);
+        if (!discoveries.isBlank()) parts.add(cleanHudClause(discoveries));
+        if (st.objectiveType == ObjectiveType.ESCORT) {
+            parts.add("Formation "
+                    + (int) Math.round(MathUtil.clamp(st.escortFormationIntegrity, 0.0, 1.0) * 100.0) + "%");
+        }
+        String assets = objectiveAssetHud(st);
+        if (!assets.isBlank()) parts.add(cleanHudClause(assets));
+        return "Status: " + String.join("  |  ", parts);
+    }
+
+    private static String firstHudClause(String text, String... preferredPrefixes) {
+        if (text == null || text.isBlank()) return "";
+        if (preferredPrefixes != null) {
+            for (String prefix : preferredPrefixes) {
+                String match = hudClause(text, prefix);
+                if (!match.isEmpty()) return cleanHudClause(match);
+            }
+        }
+        for (String part : text.split("\\s{3,}")) {
+            String trimmed = cleanHudClause(part);
+            if (!trimmed.isEmpty()) return trimmed;
+        }
+        return "";
+    }
+
+    private static String hudClause(String text, String prefix) {
+        if (text == null || text.isBlank() || prefix == null || prefix.isBlank()) return "";
+        for (String part : text.split("\\s{3,}")) {
+            String trimmed = part.trim();
+            if (trimmed.startsWith(prefix)) return trimmed;
+        }
+        return "";
+    }
+
+    private static String cleanHudClause(String text) {
+        if (text == null) return "";
+        String out = text.trim();
+        if (out.startsWith("AO:")) out = out.substring(3).trim();
+        if (out.startsWith("ASSETS:")) out = out.substring(7).trim();
+        if (out.startsWith("PHASE:")) out = out.substring(6).trim();
+        if (out.startsWith("THREAT:")) out = out.substring(7).trim();
+        if (out.startsWith("MAP:")) out = out.substring(4).trim();
+        if (out.startsWith("CONTACTS:")) out = out.substring(9).trim();
+        if (out.startsWith("RESERVES:")) out = out.substring(9).trim();
+        if (out.startsWith("VECTOR:")) out = out.substring(7).trim();
+        if (out.startsWith("DISCOVERY:")) out = out.substring(10).trim();
+        return out.trim();
     }
 
     private static String landmarkHud(CampaignState st) {
@@ -816,6 +1249,20 @@ public final class CampaignSystem {
                 ? ("  SAFE>=" + st.objectiveAssetRequiredSurvivors)
                 : "";
         return "   ASSETS: " + st.objectiveAssetLabel + " " + alive + "/" + st.objectiveAssetTotal + quota;
+    }
+
+    private static String missionSectionHud(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return "";
+        int total = st.missionSections.size();
+        int index = Math.max(0, Math.min(total - 1, st.activeMissionSection));
+        MissionSection section = st.missionSections.get(index);
+        String mode = st.missionSectionTravelLocked ? "TRANSIT" : "SITE";
+        return mode + " " + (index + 1) + "/" + total + " " + section.label;
+    }
+
+    private static String discoveryHud(CampaignState st) {
+        if (st == null || st.discoverySites.isEmpty()) return "";
+        return "DISC " + st.discoveriesFound + "/" + st.discoverySites.size();
     }
 
     public static boolean hasCapturePoint(GameContext ctx) {
@@ -2062,6 +2509,7 @@ public final class CampaignSystem {
         for (Ship s : ctx.ships) {
             if (s == null || s == ctx.player) continue;
             if (!persistentIds.contains(s.id)) continue;
+            s.resetWeaponCycleState();
             s.fullyRepairHull();
             if (s.shieldActive && s.shieldMax > 0.0) s.shield = s.shieldMax;
             s.vx = 0.0;
@@ -2112,13 +2560,18 @@ public final class CampaignSystem {
         if (ctx != null && ctx.player != null) {
             int arrivalSourceSector = st.routeArrivalSourceSector > 0 ? st.routeArrivalSourceSector : sector - 1;
             double[] arrival = (sector == 1) 
-                ? new double[]{getZoneCenterX(sector), getZoneCenterY(sector)}
-                : getWarpArrivalPoint(arrivalSourceSector, sector);
+                ? new double[]{missionSubzoneCenterX(ctx, sector, missionSubzoneIndex(0, 1)),
+                        missionSubzoneCenterY(ctx, sector, missionSubzoneIndex(0, 1))}
+                : getWarpArrivalPoint(ctx, arrivalSourceSector, sector);
             ctx.player.x = arrival[0];
             ctx.player.y = arrival[1];
             ctx.player.vx = 0.0;
             ctx.player.vy = 0.0;
             ctx.player.angle = -Math.PI / 2.0; // facing up
+            int arrivalSubzone = missionSubzoneForPoint(ctx, sector, arrival[0], arrival[1]);
+            if (arrivalSubzone < 0) arrivalSubzone = nearestMissionSubzone(ctx, sector, arrival[0], arrival[1]);
+            setLoadedMissionSubzone(ctx, arrivalSubzone);
+            ctx.player.campaignWarpSourceSubzone = -1;
         }
 
         st.transitionTimer = 0.0;
@@ -2137,6 +2590,7 @@ public final class CampaignSystem {
         st.objectivePhaseLabel = "";
         st.threatStateLabel = "";
         st.objectiveStage = 0;
+        st.mapPressureStage = 0;
         st.objectiveKillBaseline = 0;
         st.objectiveAssetIds.clear();
         st.objectiveAssetTotal = 0;
@@ -2144,6 +2598,11 @@ public final class CampaignSystem {
         st.objectiveAssetLabel = "";
         st.objectiveAssetRequiredSurvivors = 0;
         st.objectiveAssetFailureText = "";
+        st.missionSections.clear();
+        st.activeMissionSection = 0;
+        st.missionSectionTravelLocked = false;
+        st.discoverySites.clear();
+        st.discoveriesFound = 0;
         st.captureArmed = false;
         st.bossTargetId = -1;
         st.bossKind = BossKind.NONE;
@@ -2178,6 +2637,7 @@ public final class CampaignSystem {
         applySectorModifiers(ctx, st, script);
         spawnSectorForces(ctx);
         populateSectorLandmarks(ctx, st);
+        enrichSectorMissionSpace(ctx, st);
         spawnPersistentBlueFleet(ctx, st);
         spawnCoalitionSupportFleet(ctx, st);
         captureSideObjectiveProtectedShip(ctx, st);
@@ -2548,6 +3008,354 @@ public final class CampaignSystem {
         double clampedX = GameMath.clamp(x, radius + 120.0, ctx.WORLD_W - radius - 120.0);
         double clampedY = GameMath.clamp(y, radius + 120.0, ctx.WORLD_H - radius - 120.0);
         st.landmarks.add(new CampaignLandmark(type, label, subtitle, clampedX, clampedY, radius, fill, edge));
+    }
+
+    private static void enrichSectorMissionSpace(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null) return;
+
+        boolean enteredFromRight = missionSubzoneColumn(st.loadedMissionSubzone) >= (MISSION_ZONE_COLUMNS / 2);
+        int laneNearZone = missionSubzoneIndex(enteredFromRight ? 4 : 1, 1);
+        int laneMidZone = missionSubzoneIndex(2, 1);
+        int laneFarZone = missionSubzoneIndex(enteredFromRight ? 5 : 0, 1);
+        int resourceZone = missionSubzoneIndex(enteredFromRight ? 3 : 2, 0);
+        int supportZone = missionSubzoneIndex(enteredFromRight ? 2 : 3, 2);
+        int reserveZone = missionSubzoneIndex(enteredFromRight ? 1 : 4, 1);
+
+        double laneXNear = missionSubzoneCenterX(ctx, st.sector, laneNearZone);
+        double laneY = missionSubzoneCenterY(ctx, st.sector, laneNearZone);
+        double laneXMid = missionSubzoneCenterX(ctx, st.sector, laneMidZone);
+        double laneXFar = missionSubzoneCenterX(ctx, st.sector, laneFarZone);
+        double resourceX = missionSubzoneCenterX(ctx, st.sector, resourceZone);
+        double resourceY = missionSubzoneCenterY(ctx, st.sector, resourceZone);
+        double supportX = missionSubzoneCenterX(ctx, st.sector, supportZone);
+        double supportY = missionSubzoneCenterY(ctx, st.sector, supportZone);
+        double reserveX = missionSubzoneCenterX(ctx, st.sector, reserveZone);
+        double reserveY = missionSubzoneCenterY(ctx, st.sector, reserveZone);
+
+        addLandmark(st, ctx, LandmarkType.CORRIDOR, "FORWARD SCREEN", "Main assault lane where the enemy pickets the route",
+                laneXMid, laneY, 320.0, new Color(108, 164, 232, 16), new Color(188, 220, 255, 136));
+        addLandmark(st, ctx, LandmarkType.COLONY, "RESOURCE POCKET", "Rich ore and salvage off the main lane",
+                resourceX, resourceY, 260.0, new Color(214, 190, 114, 20), new Color(255, 232, 170, 152));
+        addLandmark(st, ctx, LandmarkType.RELAY, "SUPPORT RELAY", "Fleet tenders and wounded ships regroup here",
+                supportX, supportY, 250.0, new Color(116, 198, 172, 18), new Color(186, 248, 228, 160));
+        addLandmark(st, ctx, LandmarkType.FRONT, "RESERVE STAGING", "Enemy reserve ships waiting to counterattack",
+                reserveX, reserveY, 330.0, new Color(170, 88, 88, 18), new Color(248, 170, 170, 158));
+        addLandmark(st, ctx, LandmarkType.COLONY, "FAINT TRANSPONDER", "Broken ships and drifting manifests may hide something useful",
+                laneXFar, laneY, 220.0, new Color(122, 132, 168, 14), new Color(216, 226, 255, 120));
+        addLandmark(st, ctx, LandmarkType.RELAY, "DISTRESS ECHO", "A weak coalition ping flickers beyond the relay lane",
+                supportX, supportY - 110.0, 210.0,
+                new Color(120, 164, 142, 14), new Color(196, 244, 228, 128));
+        addLandmark(st, ctx, LandmarkType.FRONT, "DARK PICKET", "A silent contact sits just off the reserve lane",
+                reserveX + (enteredFromRight ? -120.0 : 120.0), reserveY + 90.0, 210.0,
+                new Color(154, 110, 110, 12), new Color(242, 184, 184, 124));
+
+        spawnCampaignAsteroidPocket(ctx, resourceX, resourceY, 10 + Math.min(4, st.sector / 6), 1.45, true);
+        spawnCampaignAsteroidPocket(ctx, laneXFar, laneY, 4 + Math.min(3, st.sector / 8), 0.75, false);
+        spawnCampaignSalvagePocket(ctx, resourceX + 110.0, resourceY + 80.0, 4);
+        spawnCampaignSalvagePocket(ctx, supportX - 90.0, supportY - 70.0, 2);
+
+        spawnCampaignPatrolBand(ctx, st, laneXNear, laneY, 0);
+        spawnCampaignPatrolBand(ctx, st, laneXMid, laneY + 110.0 * (((st.sector & 1) == 0) ? -1.0 : 1.0), 1);
+        spawnCampaignReserveNode(ctx, st, reserveX, reserveY);
+        spawnCampaignSupportPocket(ctx, st, supportX, supportY);
+        configureMissionSections(st, laneXNear, laneY, laneXMid, resourceX, resourceY, supportX, supportY, reserveX, reserveY);
+        configureDiscoveries(ctx, st, enteredFromRight);
+        seedAmbientDiscoveryPresence(ctx, st);
+
+        st.objectivePhaseLabel = appendHudClause(st.objectivePhaseLabel, "MAP: Each mission is split into separated warp pockets; push the lane, then branch into side sectors.");
+        st.threatStateLabel = appendHudClause(st.threatStateLabel,
+                "CONTACTS: Route lane, support relay, reserve staging, and optional discoveries are all active.");
+    }
+
+    private static void configureMissionSections(CampaignState st,
+                                                 double laneXNear, double laneY, double laneXMid,
+                                                 double resourceX, double resourceY,
+                                                 double supportX, double supportY,
+                                                 double reserveX, double reserveY) {
+        if (st == null) return;
+        st.missionSections.clear();
+        st.activeMissionSection = 0;
+        st.missionSectionTravelLocked = false;
+
+        switch (st.objectiveType) {
+            case SURVIVE -> {
+                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXNear, laneY, 300.0));
+                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
+            }
+            case DESTROY -> {
+                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXMid, laneY, 300.0));
+                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
+                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+            }
+            case ESCORT -> {
+                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXNear, laneY, 300.0));
+                st.missionSections.add(new MissionSection("RESOURCE POCKET", resourceX, resourceY, 270.0));
+                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+            }
+            case CAPTURE -> {
+                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXMid, laneY, 300.0));
+                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
+            }
+            case BOSS, FINAL_BOSS -> { }
+        }
+    }
+
+    private static void configureDiscoveries(GameContext ctx, CampaignState st, boolean enteredFromRight) {
+        if (ctx == null || st == null) return;
+        st.discoverySites.clear();
+        st.discoveriesFound = 0;
+        addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 0.0, -210.0, 170.0,
+                "Debris Cache",
+                "Black-boxes and salvage pods are tumbling off the route lane",
+                DiscoveryKind.CACHE);
+        addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0,
+                "Abandoned Hulk",
+                "A torn support hull is drifting with power flickers and open cargo bays",
+                DiscoveryKind.SALVAGE_HULK);
+        addDiscoverySite(ctx, st, enteredFromRight, 0, 2, 90.0, 120.0, 165.0,
+                "Emergency Cache",
+                "Fleet-grade fuel, repair foam, and missile pallets are tucked into the pocket",
+                DiscoveryKind.SUPPLY_CACHE);
+        addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 130.0, 110.0, 185.0,
+                "Prospector Bloom",
+                "Ore fragments and clipped cargo pods glitter around the pocket",
+                DiscoveryKind.ORE);
+        addDiscoverySite(ctx, st, enteredFromRight, 2, 2, -180.0, -150.0, 165.0,
+                "Coalition Distress Echo",
+                "A support transponder is flickering near the relay fringe",
+                DiscoveryKind.REINFORCEMENT);
+        addDiscoverySite(ctx, st, enteredFromRight, 3, 0, 80.0, -120.0, 165.0,
+                "Ghost Relay",
+                "A half-dead data spine is still pushing tactical telemetry into the dark",
+                DiscoveryKind.DATA_RELAY);
+        addDiscoverySite(ctx, st, enteredFromRight, 3, 2, 130.0, 70.0, 180.0,
+                "Broker Caravan",
+                "Neutral traffic is coasting under blackout discipline with its holds still intact",
+                DiscoveryKind.NEUTRAL_TRADER);
+        addDiscoverySite(ctx, st, enteredFromRight, 4, 0, -110.0, 90.0, 195.0,
+                "Wreck Field",
+                "Hull plates, dead drives, and lost cargo are rotating through a cold debris cloud",
+                DiscoveryKind.WRECK_FIELD);
+        addDiscoverySite(ctx, st, enteredFromRight, 4, 2, 150.0, -90.0, 175.0,
+                "Prison Barge",
+                "A detention transport is venting atmosphere and bleeding escape beacons",
+                DiscoveryKind.PRISON_BARGE);
+        addDiscoverySite(ctx, st, enteredFromRight, 5, 1, 210.0, 170.0, 175.0,
+                "Dark Picket Shadow",
+                "A silent contact is lurking beyond reserve staging",
+                DiscoveryKind.AMBUSH);
+        addDiscoverySite(ctx, st, enteredFromRight, 1, 1, 190.0, 140.0, 170.0,
+                "Drift Mine Cluster",
+                "Inactive signatures are nested along the lane like a snap-trap",
+                DiscoveryKind.MINEFIELD);
+        addDiscoverySite(ctx, st, enteredFromRight, 4, 1, -200.0, -150.0, 170.0,
+                "Drifting Weapon Platform",
+                "An old defense buoy is still rotating with dormant barrels and a weak beacon",
+                DiscoveryKind.DRIFTING_TURRET);
+        addDiscoverySite(ctx, st, enteredFromRight, 5, 0, -130.0, -140.0, 185.0,
+                "Warp-Shear Anomaly",
+                "Sensor ghosts, gravity shimmer, and charge echoes are knotting together here",
+                DiscoveryKind.ANOMALY);
+        addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0,
+                "Prototype Fleet Cradle",
+                "A sealed war crate and emergency dock frame are hanging beyond the route",
+                DiscoveryKind.FLEET_ASSET);
+    }
+
+    private static void addDiscoverySite(GameContext ctx, CampaignState st, boolean enteredFromRight,
+                                         int column, int row, double dx, double dy, double radius,
+                                         String label, String subtitle, DiscoveryKind kind) {
+        if (ctx == null || st == null) return;
+        int col = Math.max(0, Math.min(MISSION_ZONE_COLUMNS - 1,
+                enteredFromRight ? (MISSION_ZONE_COLUMNS - 1 - column) : column));
+        int subzone = missionSubzoneIndex(col, Math.max(0, Math.min(MISSION_ZONE_ROWS - 1, row)));
+        double centerX = missionSubzoneCenterX(ctx, st.sector, subzone);
+        double centerY = missionSubzoneCenterY(ctx, st.sector, subzone);
+        double offsetX = enteredFromRight ? -dx : dx;
+        st.discoverySites.add(new DiscoverySite(label, subtitle, kind, centerX + offsetX, centerY + dy, radius));
+    }
+
+    private static void seedAmbientDiscoveryPresence(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.discoverySites.isEmpty()) return;
+        for (DiscoverySite site : st.discoverySites) {
+            if (site == null) continue;
+            seedAmbientDiscoveryPresence(ctx, st, site);
+        }
+    }
+
+    private static void seedAmbientDiscoveryPresence(GameContext ctx, CampaignState st, DiscoverySite site) {
+        if (ctx == null || st == null || site == null) return;
+        switch (site.kind) {
+            case CACHE -> {
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 3);
+                spawnCampaignAsteroidPocket(ctx, site.x + 80.0, site.y - 50.0, 2, 0.55, false);
+            }
+            case ORE -> spawnCampaignAsteroidPocket(ctx, site.x, site.y, 7, 1.15, true);
+            case REINFORCEMENT -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x + 70.0, site.y - 30.0, "Echo Scout");
+                spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x - 90.0, site.y + 70.0, "Echo Escort");
+            }
+            case AMBUSH -> {
+                spawnEnemyAtPoint(ctx, ShipRole.PATROL, site.x + 90.0, site.y - 50.0);
+                spawnEnemyAtPoint(ctx, ShipRole.PICKET, site.x - 110.0, site.y + 80.0);
+            }
+            case SALVAGE_HULK -> {
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 6);
+                spawnCampaignAsteroidPocket(ctx, site.x - 100.0, site.y + 60.0, 2, 0.45, false);
+            }
+            case SUPPLY_CACHE -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 3);
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, site.x - 60.0, site.y + 40.0, "Supply Runner");
+            }
+            case DATA_RELAY -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, site.x, site.y, "Ghost Relay Node");
+                spawnCampaignShip(ctx, ShipRole.PICKET, faction, site.x + 120.0, site.y - 80.0, "Relay Scout");
+            }
+            case WRECK_FIELD -> {
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 8);
+                spawnCampaignAsteroidPocket(ctx, site.x + 90.0, site.y - 40.0, 4, 0.8, false);
+            }
+            case MINEFIELD -> {
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, site.x - 120.0, site.y - 70.0, "Mine Anchor");
+                spawnEnemyAtPoint(ctx, ShipRole.PICKET, site.x + 130.0, site.y + 90.0);
+            }
+            case DRIFTING_TURRET -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, site.x, site.y, "Dormant Defense Buoy");
+            }
+            case NEUTRAL_TRADER -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, site.x - 40.0, site.y, "Broker Spine");
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, site.x - 140.0, site.y + 90.0, "Ledger Tender");
+                spawnCampaignShip(ctx, ShipRole.MINER, faction, site.x + 120.0, site.y - 80.0, "Prospector Drift");
+            }
+            case PRISON_BARGE -> {
+                Faction faction = yellowSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, site.x - 30.0, site.y + 20.0, "Detention Barge");
+                spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x + 100.0, site.y - 70.0, "Escape Screen");
+            }
+            case ANOMALY -> {
+                spawnCampaignAsteroidPocket(ctx, site.x, site.y, 3, 0.95, true);
+                spawnCampaignSalvagePocket(ctx, site.x + 70.0, site.y - 50.0, 2);
+            }
+            case FLEET_ASSET -> {
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 4);
+                Faction faction = Faction.ALLY;
+                if (st.sector >= 16) {
+                    spawnCampaignShip(ctx, ShipRole.LIGHT_CRUISER, faction, site.x + 20.0, site.y - 10.0, "Cradle Escort");
+                } else {
+                    spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x + 20.0, site.y - 10.0, "Cradle Escort");
+                }
+            }
+        }
+    }
+
+    private static String appendHudClause(String base, String addition) {
+        if (addition == null || addition.isBlank()) return (base == null) ? "" : base;
+        if (base == null || base.isBlank()) return addition;
+        return base + "   " + addition;
+    }
+
+    private static double zonePocketX(double zoneX, double fraction) {
+        double zoneWidth = missionLayout((GameConfig) null).zoneWidth;
+        return GameMath.clamp(zoneX + zoneWidth * fraction,
+                zoneX + CAMPAIGN_POCKET_MARGIN,
+                zoneX + zoneWidth - CAMPAIGN_POCKET_MARGIN);
+    }
+
+    private static double zonePocketY(double zoneY, double fraction) {
+        double zoneHeight = missionLayout((GameConfig) null).zoneHeight;
+        return GameMath.clamp(zoneY + zoneHeight * fraction,
+                zoneY + CAMPAIGN_POCKET_MARGIN,
+                zoneY + zoneHeight - CAMPAIGN_POCKET_MARGIN);
+    }
+
+    private static void spawnCampaignAsteroidPocket(GameContext ctx, double cx, double cy, int count, double oreMul, boolean forceRich) {
+        if (ctx == null || count <= 0) return;
+        for (int i = 0; i < count; i++) {
+            double angle = (Math.PI * 2.0 * i / Math.max(1, count)) + ctx.rng.nextDouble() * 0.35;
+            double dist = 70.0 + ctx.rng.nextDouble() * 180.0;
+            double x = GameMath.clamp(cx + Math.cos(angle) * dist, 80.0, ctx.WORLD_W - 80.0);
+            double y = GameMath.clamp(cy + Math.sin(angle) * dist, 80.0, ctx.WORLD_H - 80.0);
+            double radius = 20.0 + ctx.rng.nextDouble() * 36.0;
+            int ore = Math.max(120, (int) Math.round((220.0 + ctx.rng.nextDouble() * 520.0) * oreMul));
+            Asteroid asteroid = new Asteroid(x, y, radius, ore);
+            if (forceRich || ore >= 520) {
+                asteroid.rich = true;
+                asteroid.richness = Math.max(asteroid.richness, 1.9);
+            }
+            ctx.asteroids.add(asteroid);
+        }
+    }
+
+    private static void spawnCampaignSalvagePocket(GameContext ctx, double cx, double cy, int count) {
+        if (ctx == null || count <= 0) return;
+        for (int i = 0; i < count; i++) {
+            double ox = (ctx.rng.nextDouble() - 0.5) * 120.0;
+            double oy = (ctx.rng.nextDouble() - 0.5) * 120.0;
+            ctx.salvage.add(new Salvage(
+                    GameMath.clamp(cx + ox, 40.0, ctx.WORLD_W - 40.0),
+                    GameMath.clamp(cy + oy, 40.0, ctx.WORLD_H - 40.0),
+                    40 + ctx.rng.nextInt(90),
+                    18 + ctx.rng.nextInt(70),
+                    240.0
+            ));
+        }
+    }
+
+    private static void spawnCampaignPatrolBand(GameContext ctx, CampaignState st, double x, double y, int intensity) {
+        ShipRole[] roles = campaignPatrolRoles(st, intensity);
+        double[][] offsets = {
+                {0.0, 0.0},
+                {-120.0, -90.0},
+                {110.0, 80.0},
+                {220.0, -30.0},
+                {-220.0, 50.0}
+        };
+        for (int i = 0; i < roles.length && i < offsets.length; i++) {
+            spawnEnemyAtPoint(ctx, roles[i], x + offsets[i][0], y + offsets[i][1]);
+        }
+    }
+
+    private static ShipRole[] campaignPatrolRoles(CampaignState st, int intensity) {
+        boolean late = st != null && st.sector >= 12;
+        boolean endgame = st != null && st.sector >= 20;
+        return switch (intensity) {
+            case 0 -> late
+                    ? new ShipRole[]{ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.MISSILE_BOAT}
+                    : new ShipRole[]{ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.PICKET};
+            case 1 -> endgame
+                    ? new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                    : new ShipRole[]{ShipRole.FRIGATE, ShipRole.LIGHT_CRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE};
+            default -> endgame
+                    ? new ShipRole[]{ShipRole.BULWARK_TITAN, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT}
+                    : new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE};
+        };
+    }
+
+    private static void spawnCampaignReserveNode(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, x + 120.0, y - 110.0, "Reserve Turret Alpha");
+        spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, x - 110.0, y + 90.0, "Reserve Turret Beta");
+        spawnCampaignPatrolBand(ctx, st, x, y, 2);
+    }
+
+    private static void spawnCampaignSupportPocket(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        Faction supportFaction = (st.sector >= 12) ? Faction.TEAM_C : Faction.ALLY;
+        spawnCampaignShip(ctx, ShipRole.HAULER, supportFaction, x, y, "Blue Route Tender");
+        spawnCampaignShip(ctx, ShipRole.MINER, supportFaction, x - 130.0, y + 70.0, "Forward Prospector");
+        if (st.sector >= 8) {
+            spawnCampaignShip(ctx, ShipRole.FRIGATE, supportFaction, x + 140.0, y - 90.0, "Relay Guard");
+        }
+        if (st.sector >= 16) {
+            spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, supportFaction, x + 40.0, y + 140.0, "Relay Flak");
+        }
     }
 
     private static void spawnSector1(GameContext ctx, CampaignState st) {
@@ -3374,6 +4182,353 @@ public final class CampaignSystem {
         return MathUtil.clamp(st.objectiveProgress / st.objectiveGoal, 0.0, 1.0);
     }
 
+    private static void updatePocketDiscoveries(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null || st.discoverySites.isEmpty()) return;
+        for (DiscoverySite site : st.discoverySites) {
+            if (site == null || site.discovered) continue;
+            if (!isPlayerInsideRadius(ctx.player, site.x, site.y, site.radius)) continue;
+            site.discovered = true;
+            st.discoveriesFound++;
+            resolveDiscoverySite(ctx, st, site);
+        }
+    }
+
+    private static void resolveDiscoverySite(GameContext ctx, CampaignState st, DiscoverySite site) {
+        if (ctx == null || st == null || site == null) return;
+        switch (site.kind) {
+            case CACHE -> {
+                grantStoryResources(ctx, 120 + st.sector * 6, 18 + st.sector * 2, site.label);
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 4);
+            }
+            case ORE -> {
+                grantStoryResources(ctx, 60 + st.sector * 4, 42 + st.sector * 3, site.label);
+                spawnCampaignAsteroidPocket(ctx, site.x, site.y, 5, 1.2, false);
+            }
+            case REINFORCEMENT -> {
+                grantStoryResources(ctx, 90 + st.sector * 5, 16 + st.sector, site.label);
+                addCoalitionFavor(st, 1, 0);
+                spawnDiscoverySupportWing(ctx, st, site.x, site.y, "Relay Guard Detachment");
+                EventSystem.showBanner(ctx, "DISCOVERY: COALITION SUPPORT ANSWERS THE CALL", 2.2);
+            }
+            case AMBUSH -> {
+                spawnDiscoveryAmbush(ctx, st, site.x, site.y);
+                EventSystem.showBanner(ctx, "DISCOVERY: RESERVE PICKET SPRINGS AN AMBUSH", 2.2);
+            }
+            case SALVAGE_HULK -> {
+                grantStoryResources(ctx, 150 + st.sector * 7, 20 + st.sector, site.label);
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 8);
+                spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), site.x + 60.0, site.y - 40.0, "Recovered Tender");
+                EventSystem.showBanner(ctx, "DISCOVERY: SALVAGE HULK CRACKED OPEN", 2.2);
+            }
+            case SUPPLY_CACHE -> {
+                grantStoryResources(ctx, 80 + st.sector * 4, 12 + st.sector, site.label);
+                applyLocalizedFleetRefit(ctx, site.x, site.y, 480.0, 22.0, 32.0);
+                EventSystem.showBanner(ctx, "DISCOVERY: FIELD SUPPLY CACHE RESTORES THE SCREEN", 2.2);
+            }
+            case DATA_RELAY -> {
+                grantStoryResources(ctx, 140 + st.sector * 8, 0, site.label);
+                shiftBranchScore(st, 1);
+                addCoalitionFavor(st, 1, 0);
+                EventSystem.showBanner(ctx, "DISCOVERY: GHOST RELAY REVEALS FLEET INTEL", 2.2);
+            }
+            case WRECK_FIELD -> {
+                grantStoryResources(ctx, 90 + st.sector * 5, 16 + st.sector * 2, site.label);
+                spawnCampaignSalvagePocket(ctx, site.x, site.y, 10);
+                spawnCampaignAsteroidPocket(ctx, site.x + 90.0, site.y - 60.0, 4, 0.8, false);
+                EventSystem.showBanner(ctx, "DISCOVERY: WRECK FIELD YIELDS PARTS AND DRIFT ORE", 2.2);
+            }
+            case MINEFIELD -> {
+                spawnDiscoveryMinefield(ctx, st, site.x, site.y);
+                EventSystem.showBanner(ctx, "DISCOVERY: DRIFT MINE CLUSTER ARMS AROUND THE FLEET", 2.2);
+            }
+            case DRIFTING_TURRET -> {
+                grantStoryResources(ctx, 70 + st.sector * 4, 6 + st.sector, site.label);
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, site.x, site.y, "Recovered Defense Buoy");
+                if (st.sector >= 10) {
+                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, site.x + 120.0, site.y + 50.0, "Buoy Screen");
+                }
+                EventSystem.showBanner(ctx, "DISCOVERY: DRIFTING WEAPON PLATFORM REACTIVATED", 2.2);
+            }
+            case NEUTRAL_TRADER -> {
+                grantStoryResources(ctx, 110 + st.sector * 6, 14 + st.sector, site.label);
+                addCoalitionFavor(st, 1, 0);
+                spawnDiscoveryTraderConvoy(ctx, st, site.x, site.y);
+                EventSystem.showBanner(ctx, "DISCOVERY: BROKER CARAVAN TRADES THROUGH THE BLACKOUT", 2.2);
+            }
+            case PRISON_BARGE -> {
+                grantStoryResources(ctx, 100 + st.sector * 5, 18 + st.sector, site.label);
+                addCoalitionFavor(st, 0, 1);
+                spawnDiscoveryRescueWing(ctx, st, site.x, site.y);
+                EventSystem.showBanner(ctx, "DISCOVERY: PRISON BARGE SURVIVORS JOIN THE COLUMN", 2.2);
+            }
+            case ANOMALY -> resolveAnomalySite(ctx, st, site);
+            case FLEET_ASSET -> {
+                grantStoryResources(ctx, 130 + st.sector * 7, 10 + st.sector, site.label);
+                applyLocalizedFleetRefit(ctx, site.x, site.y, 520.0, 16.0, 22.0);
+                spawnDiscoveryFleetAsset(ctx, st, site.x, site.y);
+                shiftBranchScore(st, 1);
+                EventSystem.showBanner(ctx, "DISCOVERY: PROTOTYPE FLEET ASSET BROUGHT ONLINE", 2.2);
+            }
+        }
+    }
+
+    private static void spawnDiscoverySupportWing(GameContext ctx, CampaignState st, double x, double y, String prefix) {
+        if (ctx == null || st == null) return;
+        Faction faction = greenSupportFaction(st);
+        spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x + 70.0, y - 40.0, prefix);
+        spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, x - 70.0, y + 40.0, "Relay Flak Detachment");
+        if (st.sector >= 14) {
+            spawnCampaignShip(ctx, ShipRole.MISSILE_BOAT, faction, x + 130.0, y + 110.0, "Relay Spear Detachment");
+        }
+    }
+
+    private static void spawnDiscoveryAmbush(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        spawnEnemyAtPoint(ctx, ShipRole.PATROL, x + 80.0, y - 30.0);
+        spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, x + 150.0, y + 55.0);
+        spawnEnemyAtPoint(ctx, ShipRole.PICKET, x - 90.0, y + 80.0);
+        if (st.sector >= 12) {
+            spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, x - 160.0, y - 70.0);
+        }
+    }
+
+    private static void spawnDiscoveryMinefield(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, x - 120.0, y - 60.0, "Mine Anchor Alpha");
+        spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, x + 140.0, y + 70.0, "Mine Anchor Beta");
+        spawnEnemyAtPoint(ctx, ShipRole.PICKET, x + 40.0, y - 120.0);
+        if (st.sector >= 10) {
+            spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, x - 150.0, y + 130.0);
+        }
+    }
+
+    private static void spawnDiscoveryTraderConvoy(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        Faction faction = greenSupportFaction(st);
+        spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, x - 40.0, y, "Broker Spine");
+        spawnCampaignShip(ctx, ShipRole.HAULER, faction, x - 130.0, y + 90.0, "Ledger Tender");
+        if (st.sector >= 12) {
+            spawnCampaignShip(ctx, ShipRole.MINER, faction, x + 110.0, y - 80.0, "Prospector Escort");
+        }
+    }
+
+    private static void spawnDiscoveryRescueWing(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        Faction faction = yellowSupportFaction(st);
+        spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, x - 60.0, y + 30.0, "Liberation Tender");
+        spawnCampaignShip(ctx, ShipRole.PATROL, faction, x + 80.0, y - 40.0, "Escape Screen One");
+        if (st.sector >= 13) {
+            spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x + 150.0, y + 90.0, "Escape Screen Two");
+        }
+    }
+
+    private static void spawnDiscoveryFleetAsset(GameContext ctx, CampaignState st, double x, double y) {
+        if (ctx == null || st == null) return;
+        Faction faction = Faction.ALLY;
+        if (st.sector >= 18) {
+            spawnCampaignShip(ctx, ShipRole.BATTLECRUISER, faction, x, y, "Recovered Fleet Spine");
+            spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, x - 120.0, y + 120.0, "Fleet Spine Screen");
+        } else if (st.sector >= 10) {
+            spawnCampaignShip(ctx, ShipRole.LIGHT_CRUISER, faction, x, y, "Recovered Strike Hull");
+            spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x - 120.0, y + 100.0, "Strike Hull Screen");
+        } else {
+            spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x, y, "Recovered Escort Hull");
+            spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, x - 110.0, y + 80.0, "Escort Hull Screen");
+        }
+    }
+
+    private static void resolveAnomalySite(GameContext ctx, CampaignState st, DiscoverySite site) {
+        if (ctx == null || st == null || site == null) return;
+        int roll = Math.max(0, Math.floorMod(st.sector + st.discoveriesFound + (int) Math.round(site.x + site.y), 4));
+        switch (roll) {
+            case 0 -> {
+                applyLocalizedFleetRefit(ctx, site.x, site.y, 540.0, 18.0, 28.0);
+                EventSystem.showBanner(ctx, "DISCOVERY: ANOMALY UNWINDS INTO A REPAIR MIST", 2.2);
+            }
+            case 1 -> {
+                grantStoryResources(ctx, 90 + st.sector * 5, 10 + st.sector, site.label);
+                shiftBranchScore(st, 1);
+                EventSystem.showBanner(ctx, "DISCOVERY: SENSOR GHOSTS EXPOSE NEW FLEET VECTORS", 2.2);
+            }
+            case 2 -> {
+                spawnCampaignAsteroidPocket(ctx, site.x, site.y, 4, 1.05, true);
+                grantStoryResources(ctx, 40 + st.sector * 3, 26 + st.sector * 2, site.label);
+                EventSystem.showBanner(ctx, "DISCOVERY: WARP ECHO CONDENSES INTO RARE ORE", 2.2);
+            }
+            default -> {
+                spawnDiscoveryAmbush(ctx, st, site.x, site.y);
+                EventSystem.showBanner(ctx, "DISCOVERY: GRAVITY SHEAR HIDES A HOSTILE SCREEN", 2.2);
+            }
+        }
+    }
+
+    private static void applyLocalizedFleetRefit(GameContext ctx, double x, double y, double radius, double hullRepair, double shieldRepair) {
+        if (ctx == null || ctx.ships == null) return;
+        double rr = Math.max(120.0, radius);
+        double rr2 = rr * rr;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction == null || !ship.faction.isFriendlyTo(Faction.ALLY)) continue;
+            if (GameMath.dist2(ship.x, ship.y, x, y) > rr2) continue;
+            ship.healHull(hullRepair);
+            ship.healShield(shieldRepair);
+        }
+    }
+
+    private static void addCoalitionFavor(CampaignState st, int greenDelta, int yellowDelta) {
+        if (st == null) return;
+        st.greenContractFavor = Math.max(0, st.greenContractFavor + Math.max(0, greenDelta));
+        st.yellowLiberationFavor = Math.max(0, st.yellowLiberationFavor + Math.max(0, yellowDelta));
+    }
+
+    private static void shiftBranchScore(CampaignState st, int delta) {
+        if (st == null || delta == 0) return;
+        st.branchScore += delta;
+        st.branchRoute = branchRouteLabel(st.branchScore);
+    }
+
+    private static Faction greenSupportFaction(CampaignState st) {
+        if (st != null && st.campaignBlueGreenAlliance) return Faction.TEAM_C;
+        return Faction.ALLY;
+    }
+
+    private static Faction yellowSupportFaction(CampaignState st) {
+        if (st != null && st.campaignBlueYellowAlliance) return Faction.TEAM_D;
+        return Faction.ALLY;
+    }
+
+    private static void updateMissionSectionFlow(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.missionSections.isEmpty()) return;
+
+        int sectionCount = st.missionSections.size();
+        int currentIndex = Math.max(0, Math.min(sectionCount - 1, st.activeMissionSection));
+        if (st.missionSectionTravelLocked) {
+            MissionSection target = st.missionSections.get(currentIndex);
+            if (ctx.player != null && isPlayerInsideRadius(ctx.player, target.x, target.y, target.radius)) {
+                st.missionSectionTravelLocked = false;
+                EventSystem.showBanner(ctx, "MISSION SECTION REACHED: " + target.label, 2.0);
+                spawnMissionSectionArrivalWave(ctx, st, currentIndex, target);
+            }
+        }
+
+        int lastUnlockedIndex = st.missionSectionTravelLocked ? Math.max(0, currentIndex - 1) : currentIndex;
+        double unlockedCap = missionSectionProgressCap(sectionCount, lastUnlockedIndex);
+        st.objectiveProgress = Math.min(st.objectiveProgress, unlockedCap);
+
+        if (!st.missionSectionTravelLocked && currentIndex < sectionCount - 1) {
+            double stageCap = missionSectionProgressCap(sectionCount, currentIndex);
+            if (st.objectiveProgress >= stageCap - 1e-6) {
+                st.objectiveProgress = Math.min(st.objectiveProgress, stageCap);
+                st.activeMissionSection = Math.min(sectionCount - 1, currentIndex + 1);
+                st.missionSectionTravelLocked = true;
+                MissionSection next = st.missionSections.get(st.activeMissionSection);
+                EventSystem.showBanner(ctx, "REPOSITION TO " + next.label, 2.1);
+            }
+        }
+
+        decorateMissionSectionHud(st);
+    }
+
+    private static void decorateMissionSectionHud(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return;
+        int index = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+        MissionSection section = st.missionSections.get(index);
+        String phaseClause = st.missionSectionTravelLocked
+                ? "TRANSIT: Fleet-jump toward " + section.label
+                : "SECTION: Fight in " + section.label;
+        String threatClause = st.missionSectionTravelLocked
+                ? "VECTOR: The next fight will not progress until the flagship reaches the new pocket"
+                : "DISCOVERY: Sweep side pockets for caches, ore, support, or hidden ambushes";
+        st.objectivePhaseLabel = appendHudClause(stripDynamicHudClauses(st.objectivePhaseLabel), phaseClause);
+        st.threatStateLabel = appendHudClause(stripDynamicHudClauses(st.threatStateLabel), threatClause);
+    }
+
+    private static String stripDynamicHudClauses(String text) {
+        if (text == null || text.isBlank()) return "";
+        StringBuilder out = new StringBuilder();
+        for (String part : text.split("\\s{3,}")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) continue;
+            if (trimmed.startsWith("SECTION:")
+                    || trimmed.startsWith("TRANSIT:")
+                    || trimmed.startsWith("VECTOR:")
+                    || trimmed.startsWith("DISCOVERY:")) {
+                continue;
+            }
+            if (out.length() > 0) out.append("   ");
+            out.append(trimmed);
+        }
+        return out.toString();
+    }
+
+    private static double missionSectionProgressCap(int sectionCount, int sectionIndex) {
+        if (sectionCount <= 0) return 1.0;
+        int clampedIndex = Math.max(0, Math.min(sectionCount - 1, sectionIndex));
+        return (clampedIndex + 1) / (double) sectionCount;
+    }
+
+    private static boolean isPlayerInsideRadius(Player player, double x, double y, double radius) {
+        if (player == null) return false;
+        double range = Math.max(20.0, radius + player.radius);
+        return GameMath.dist2(player.x, player.y, x, y) <= range * range;
+    }
+
+    private static void spawnMissionSectionArrivalWave(GameContext ctx, CampaignState st, int sectionIndex, MissionSection section) {
+        if (ctx == null || st == null || section == null) return;
+        ShipRole lead = (st.objectiveType == ObjectiveType.SURVIVE || st.objectiveType == ObjectiveType.ESCORT)
+                ? ShipRole.FRIGATE
+                : ShipRole.MISSILE_BOAT;
+        ShipRole escort = (sectionIndex >= 2 || st.sector >= 16) ? ShipRole.LIGHT_CRUISER : ShipRole.PATROL;
+        spawnEnemyAtPoint(ctx, lead, section.x + 140.0, section.y - 70.0);
+        spawnEnemyAtPoint(ctx, escort, section.x + 220.0, section.y + 90.0);
+        if (sectionIndex >= 1) {
+            spawnEnemyAtPoint(ctx, ShipRole.PICKET, section.x - 120.0, section.y + 110.0);
+        }
+    }
+
+    private static void updateDistributedMapPressure(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        double[] thresholds = {35.0, 80.0, 140.0};
+        while (st.mapPressureStage < thresholds.length && st.sectorElapsed >= thresholds[st.mapPressureStage]) {
+            int stage = st.mapPressureStage;
+            st.mapPressureStage++;
+            boolean enteredFromRight = missionSubzoneColumn(st.loadedMissionSubzone) >= (MISSION_ZONE_COLUMNS / 2);
+            int reserveZone = missionSubzoneIndex(enteredFromRight ? 1 : 4, 1);
+            double reserveX = missionSubzoneCenterX(ctx, st.sector, reserveZone);
+            double reserveY = missionSubzoneCenterY(ctx, st.sector, reserveZone);
+            ShipRole[] roles = distributedPressureRoles(st, stage);
+            double[][] offsets = {
+                    {0.0, 0.0},
+                    {120.0, -120.0},
+                    {-110.0, 100.0},
+                    {220.0, 40.0},
+                    {-220.0, -20.0}
+            };
+            for (int i = 0; i < roles.length && i < offsets.length; i++) {
+                spawnEnemyAtPoint(ctx, roles[i], reserveX + offsets[i][0], reserveY + offsets[i][1]);
+            }
+            EventSystem.showBanner(ctx, "ENEMY RESERVES COMMITTING FROM RESERVE STAGING", 1.8);
+            st.threatStateLabel = appendHudClause(st.threatStateLabel, "RESERVES: Fresh contacts are entering from the far pocket.");
+        }
+    }
+
+    private static ShipRole[] distributedPressureRoles(CampaignState st, int stage) {
+        boolean late = st != null && st.sector >= 12;
+        boolean endgame = st != null && st.sector >= 20;
+        return switch (stage) {
+            case 0 -> late
+                    ? new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                    : new ShipRole[]{ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.PICKET};
+            case 1 -> endgame
+                    ? new ShipRole[]{ShipRole.BATTLECRUISER, ShipRole.LIGHT_CRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                    : new ShipRole[]{ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE, ShipRole.MISSILE_BOAT};
+            default -> endgame
+                    ? new ShipRole[]{ShipRole.INTERDICTION_TITAN, ShipRole.BATTLECRUISER, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE}
+                    : new ShipRole[]{ShipRole.BULWARK_TITAN, ShipRole.LIGHT_CRUISER, ShipRole.FRIGATE};
+        };
+    }
+
     private static boolean usesAuthoredDestroyProgress(CampaignState st) {
         if (st == null || st.objectiveType != ObjectiveType.DESTROY) return false;
         return switch (st.sector) {
@@ -3434,6 +4589,13 @@ public final class CampaignSystem {
 
     private static double objectiveAnchorX(GameContext ctx, CampaignState st) {
         if (st != null) {
+            if (!st.missionSections.isEmpty()
+                    && st.objectiveType != ObjectiveType.ESCORT
+                    && st.objectiveType != ObjectiveType.BOSS
+                    && st.objectiveType != ObjectiveType.FINAL_BOSS) {
+                int sectionIndex = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+                return st.missionSections.get(sectionIndex).x;
+            }
             if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureX;
             if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) return st.escortShip.x;
             if ((st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS)) {
@@ -3446,6 +4608,13 @@ public final class CampaignSystem {
 
     private static double objectiveAnchorY(GameContext ctx, CampaignState st) {
         if (st != null) {
+            if (!st.missionSections.isEmpty()
+                    && st.objectiveType != ObjectiveType.ESCORT
+                    && st.objectiveType != ObjectiveType.BOSS
+                    && st.objectiveType != ObjectiveType.FINAL_BOSS) {
+                int sectionIndex = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+                return st.missionSections.get(sectionIndex).y;
+            }
             if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureY;
             if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) return st.escortShip.y;
             if ((st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS)) {
@@ -3848,6 +5017,8 @@ public final class CampaignSystem {
                 }
             }
         }
+
+        updateMissionSectionFlow(ctx, st);
 
         if (objectiveAssetQuotaFailed(st)) {
             failRun(ctx, objectiveAssetFailureText(st));
@@ -4502,6 +5673,9 @@ public final class CampaignSystem {
         ctx.salvage.clear();
         ctx.lockedTarget = null;
         ctx.ships.removeIf(s -> s != null && s != ctx.player && s != ctx.enemyBase);
+        for (Ship ship : ctx.ships) {
+            if (ship != null) ship.resetWeaponCycleState();
+        }
         ctx.allyBase = null;
         ctx.teamBases.clear();
         if (ctx.enemyBase != null) {
@@ -4527,6 +5701,7 @@ public final class CampaignSystem {
         if (ctx.player.shieldActive && ctx.player.shieldMax > 0) {
             ctx.player.shield = ctx.player.shieldMax;
         }
+        ctx.player.resetWeaponCycleState();
     }
 
     private static void ensureCampaignTitanInfrastructure(GameContext ctx) {

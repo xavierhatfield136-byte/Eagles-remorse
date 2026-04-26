@@ -22,6 +22,8 @@ public final class CommandState {
     public GameContext.FleetCommand alliedFleetCommand = GameContext.FleetCommand.AUTO;
     public GameContext.FleetFormation alliedFleetFormation = GameContext.FleetFormation.WEDGE;
     public final Map<Integer, GameContext.FleetCommand> shipFleetCommandOverrides = new HashMap<>();
+    public final Map<Integer, Double> shipFleetCommandOverrideTimers = new HashMap<>();
+    public final Map<Integer, Double> shipCommActionCooldowns = new HashMap<>();
     public final EnumMap<Faction, Ship> fleetCommandShips = new EnumMap<>(Faction.class);
     public final EnumMap<Faction, Ship> fleetSharedTargets = new EnumMap<>(Faction.class);
     public final EnumMap<Faction, GameContext.FleetCommand> fleetResolvedCommands =

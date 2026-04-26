@@ -585,8 +585,9 @@ public final class SpawnSystem {
         for (int i = 0; i < teams.length; i++) {
             Faction team = teams[i];
             BattlefieldSectorSystem.SectorDefinition homeSector = BattlefieldSectorSystem.homeSector(ctx, team);
-            double bx = (homeSector == null) ? 0.0 : homeSector.centerX(ctx);
-            double by = (homeSector == null) ? 0.0 : homeSector.centerY(ctx);
+            double[] basePoint = fourTeamHomeBaseAnchor(ctx, homeSector);
+            double bx = basePoint[0];
+            double by = basePoint[1];
 
             Ship base = new FleetShip(ShipRole.BASE, team, bx, by);
             clampBaseToBounds(ctx, base);
@@ -620,11 +621,85 @@ public final class SpawnSystem {
             if (base == null) continue;
             spawnTeamStart(ctx, team, base);
         }
+        seedFourTeamFrontlines(ctx, teams);
 
         logBaseSpawns(ctx, teams);
 
         // Apply doctrine tuning (Step 5B/5C) if present
         tryApplyDoctrine(ctx);
+    }
+
+    private static double[] fourTeamHomeBaseAnchor(GameContext ctx, BattlefieldSectorSystem.SectorDefinition homeSector) {
+        if (ctx == null || homeSector == null) return new double[]{0.0, 0.0};
+        double sectorCx = homeSector.centerX(ctx);
+        double sectorCy = homeSector.centerY(ctx);
+        double dirX = Math.signum(sectorCx - ctx.WORLD_W * 0.5);
+        double dirY = Math.signum(sectorCy - ctx.WORLD_H * 0.5);
+        if (Math.abs(dirX) < 1e-6) dirX = 1.0;
+        if (Math.abs(dirY) < 1e-6) dirY = 1.0;
+        double offsetX = homeSector.widthWorld(ctx) * 0.22 * dirX;
+        double offsetY = homeSector.heightWorld(ctx) * 0.22 * dirY;
+        double marginX = Math.max(260.0, homeSector.widthWorld(ctx) * 0.14);
+        double marginY = Math.max(260.0, homeSector.heightWorld(ctx) * 0.14);
+        double bx = GameMath.clamp(sectorCx + offsetX,
+                homeSector.minWorldX(ctx) + marginX, homeSector.maxWorldX(ctx) - marginX);
+        double by = GameMath.clamp(sectorCy + offsetY,
+                homeSector.minWorldY(ctx) + marginY, homeSector.maxWorldY(ctx) - marginY);
+        return new double[]{bx, by};
+    }
+
+    private static void seedFourTeamFrontlines(GameContext ctx, Faction[] teams) {
+        if (ctx == null || teams == null) return;
+        BattlefieldSectorSystem.SectorDefinition center = BattlefieldSectorSystem.findSector(ctx, "central-warzone");
+        for (Faction team : teams) {
+            if (team == null) continue;
+            BattlefieldSectorSystem.SectorDefinition home = BattlefieldSectorSystem.homeSector(ctx, team);
+            if (home == null) continue;
+
+            for (BattlefieldSectorSystem.SectorDefinition adjacent : BattlefieldSectorSystem.adjacentSectors(ctx, home)) {
+                if (adjacent == null || adjacent.anchorFaction != null) continue;
+                double[] point = fourTeamFrontlinePoint(ctx, adjacent, home, team.teamId());
+                spawnTeamShip(ctx, ShipRole.PATROL, team, point[0], point[1]);
+                spawnTeamShip(ctx, ShipRole.PICKET, team, point[0] + 52.0, point[1] - 34.0);
+                if (ctx.rng.nextDouble() < 0.85) {
+                    spawnTeamShip(ctx, ShipRole.FRIGATE, team, point[0] - 68.0, point[1] + 42.0);
+                }
+            }
+
+            if (center != null) {
+                double[] point = fourTeamFrontlinePoint(ctx, center, home, team.teamId());
+                spawnTeamShip(ctx, ShipRole.PICKET, team, point[0], point[1]);
+                if (ctx.rng.nextDouble() < 0.55) {
+                    spawnTeamShip(ctx, ShipRole.PATROL, team, point[0] + 44.0, point[1] + 36.0);
+                }
+            }
+        }
+    }
+
+    private static double[] fourTeamFrontlinePoint(GameContext ctx,
+                                                   BattlefieldSectorSystem.SectorDefinition sector,
+                                                   BattlefieldSectorSystem.SectorDefinition home,
+                                                   int ordinal) {
+        if (ctx == null || sector == null) return new double[]{0.0, 0.0};
+        double x = sector.centerX(ctx);
+        double y = sector.centerY(ctx);
+        if (home != null) {
+            double dx = home.centerX(ctx) - sector.centerX(ctx);
+            double dy = home.centerY(ctx) - sector.centerY(ctx);
+            double len = Math.hypot(dx, dy);
+            if (len > 1e-6) {
+                double nx = dx / len;
+                double ny = dy / len;
+                x += nx * sector.widthWorld(ctx) * 0.18;
+                y += ny * sector.heightWorld(ctx) * 0.18;
+            }
+        }
+        double jitter = 70.0 + (ordinal % 3) * 18.0;
+        x += (ctx.rng.nextDouble() - 0.5) * jitter;
+        y += (ctx.rng.nextDouble() - 0.5) * jitter;
+        x = GameMath.clamp(x, sector.minWorldX(ctx) + 120.0, sector.maxWorldX(ctx) - 120.0);
+        y = GameMath.clamp(y, sector.minWorldY(ctx) + 120.0, sector.maxWorldY(ctx) - 120.0);
+        return new double[]{x, y};
     }
 
     private static void clampBaseToBounds(GameContext ctx, Ship base) {
