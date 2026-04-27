@@ -204,13 +204,16 @@ public final class GameplayActions {
             }
             if (targetSubzone >= 0) {
                 int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
-                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
-                if (arrival == null) {
+                boolean sameSubzoneSelection = hasWaypoint
+                        && hopSubzone == targetSubzone
+                        && targetSubzone == loadedSubzone;
+                double[] arrival = sameSubzoneSelection ? null : CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
+                if (!sameSubzoneSelection && arrival == null) {
                     EventSystem.showBanner(ctx, "WARP ROUTE UNAVAILABLE", 1.4);
                     return;
                 }
-                targetX = arrival[0];
-                targetY = arrival[1];
+                targetX = sameSubzoneSelection ? ctx.ui.waypointX : arrival[0];
+                targetY = sameSubzoneSelection ? ctx.ui.waypointY : arrival[1];
                 destinationLabel = CampaignSystem.missionSubzoneLabel(hopSubzone);
             } else if (hasWaypoint) {
                 EventSystem.showBanner(ctx, "WARP UNAVAILABLE: INVALID SECTOR", 1.4);

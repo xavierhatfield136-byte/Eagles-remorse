@@ -1,3 +1,5 @@
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -114,6 +116,80 @@ public final class RoomHitResolver {
         return false;
     }
 
+    public static List<ShipRoomLayout.RoomDef> roomsIntersectingSegment(ShipRole role,
+                                                                        Faction faction,
+                                                                        double startX,
+                                                                        double startY,
+                                                                        double endX,
+                                                                        double endY,
+                                                                        double halfWidth) {
+        if (!Double.isFinite(startX) || !Double.isFinite(startY)
+                || !Double.isFinite(endX) || !Double.isFinite(endY)) {
+            return List.of();
+        }
+        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(role, faction);
+        if (rooms == null || rooms.isEmpty()) return List.of();
+
+        double hw = Math.max(0.0, halfWidth);
+        double minX = Math.min(startX, endX) - hw;
+        double maxX = Math.max(startX, endX) + hw;
+        double minY = Math.min(startY, endY) - hw;
+        double maxY = Math.max(startY, endY) + hw;
+        ArrayList<SegmentRoomHit> hits = new ArrayList<>();
+
+        for (ShipRoomLayout.RoomDef room : rooms) {
+            if (room == null || room.id == null) continue;
+            if (!roomOverlapsAabb(room, minX, minY, maxX, maxY)) continue;
+            double t = segmentEntryParam(room, startX, startY, endX, endY, hw);
+            if (Double.isFinite(t)) hits.add(new SegmentRoomHit(room, t));
+        }
+
+        if (hits.isEmpty()) return List.of();
+        hits.sort(Comparator
+                .comparingDouble((SegmentRoomHit hit) -> hit.t)
+                .thenComparingInt(hit -> hit.room.id.ordinal()));
+
+        ArrayList<ShipRoomLayout.RoomDef> out = new ArrayList<>(hits.size());
+        ShipRoomLayout.RoomId lastId = null;
+        for (SegmentRoomHit hit : hits) {
+            if (hit.room.id == lastId) continue;
+            out.add(hit.room);
+            lastId = hit.room.id;
+        }
+        return out;
+    }
+
+    public static List<ShipRoomLayout.RoomDef> roomsWithinRadius(ShipRole role,
+                                                                 Faction faction,
+                                                                 double centerX,
+                                                                 double centerY,
+                                                                 double radius) {
+        if (!Double.isFinite(centerX) || !Double.isFinite(centerY)) return List.of();
+        List<ShipRoomLayout.RoomDef> rooms = ShipRoomLayout.profileFor(role, faction);
+        if (rooms == null || rooms.isEmpty()) return List.of();
+
+        double rr = Math.max(0.0, radius);
+        double minX = centerX - rr;
+        double maxX = centerX + rr;
+        double minY = centerY - rr;
+        double maxY = centerY + rr;
+        double rrSq = rr * rr;
+        ArrayList<ShipRoomLayout.RoomDef> out = new ArrayList<>();
+
+        for (ShipRoomLayout.RoomDef room : rooms) {
+            if (room == null || room.id == null) continue;
+            if (!roomOverlapsAabb(room, minX, minY, maxX, maxY)) continue;
+            if (room.contains(centerX, centerY) || room.distanceSqToBoundary(centerX, centerY) <= rrSq) {
+                out.add(room);
+            }
+        }
+
+        out.sort(Comparator
+                .comparingDouble((ShipRoomLayout.RoomDef room) -> room.distanceSqToCentroid(centerX, centerY))
+                .thenComparingInt(room -> room.id.ordinal()));
+        return out;
+    }
+
     private static int compareRoomId(ShipRoomLayout.RoomDef a, ShipRoomLayout.RoomDef b) {
         if (a == b) return 0;
         if (a == null) return 1;
@@ -186,5 +262,35 @@ public final class RoomHitResolver {
         double dx = px - cx;
         double dy = py - cy;
         return dx * dx + dy * dy;
+    }
+
+    private static double segmentEntryParam(ShipRoomLayout.RoomDef room,
+                                            double startX,
+                                            double startY,
+                                            double endX,
+                                            double endY,
+                                            double halfWidth) {
+        if (room == null) return Double.NaN;
+        double rrSq = halfWidth * halfWidth;
+        int steps = 56;
+        for (int i = 0; i <= steps; i++) {
+            double t = i / (double) steps;
+            double x = startX + (endX - startX) * t;
+            double y = startY + (endY - startY) * t;
+            if (room.contains(x, y) || room.distanceSqToBoundary(x, y) <= rrSq) {
+                return t;
+            }
+        }
+        return Double.NaN;
+    }
+
+    private static final class SegmentRoomHit {
+        final ShipRoomLayout.RoomDef room;
+        final double t;
+
+        SegmentRoomHit(ShipRoomLayout.RoomDef room, double t) {
+            this.room = room;
+            this.t = t;
+        }
     }
 }

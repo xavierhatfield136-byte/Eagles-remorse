@@ -672,7 +672,7 @@ public final class CampaignSystem {
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
-            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 360, 630, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(2, ObjectiveType.DESTROY, "Destroy customs-halo gunships before they seal the civilian aperture", 6, 690, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 12, 720, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
@@ -1050,6 +1050,11 @@ public final class CampaignSystem {
 
         st.sectorElapsed += dt;
         if (st.sectorElapsed >= st.sectorTimeLimit) {
+            if (st.sector == 1) {
+                st.objectiveProgress = st.objectiveGoal;
+                onSectorComplete(ctx);
+                return;
+            }
             failRun(ctx, "DEFEAT: SECTOR TIMEOUT");
             return;
         }

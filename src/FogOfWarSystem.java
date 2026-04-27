@@ -126,6 +126,16 @@ public final class FogOfWarSystem {
             contactGhosts.entrySet().removeIf(e -> e == null || e.getValue() == null || e.getValue().isExpired());
         }
 
+        private void pruneInvalidGhostContacts(List<Ship> ships, Faction perspective) {
+            if (contactGhosts.isEmpty() || ships == null || perspective == null) return;
+            contactGhosts.entrySet().removeIf(e -> {
+                if (e == null || e.getValue() == null) return true;
+                Ship live = findShipById(ships, e.getKey());
+                if (live == null) return false;
+                return !isTrackableGhostSource(live, perspective);
+            });
+        }
+
         private void refreshGhostContact(Ship ship) {
             if (ship == null) return;
             ContactGhost ghost = contactGhosts.get(ship.id);
@@ -180,6 +190,7 @@ public final class FogOfWarSystem {
                 fog.refreshGhostContact(ship);
             }
         }
+        fog.pruneInvalidGhostContacts(ctx.ships, perspective);
         fog.pruneExpiredGhostContacts();
     }
 
@@ -427,7 +438,8 @@ public final class FogOfWarSystem {
     }
 
     public static boolean isVisibleToPerspective(State fog, Faction perspective, Ship ship) {
-        if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) return false;
+        if (ship == null || !ship.alive) return false;
+        if (!ship.dying && ship.hp <= 0) return false;
         if (fog == null || perspective == null || ship.faction == null) return true;
         if (ship.faction.isFriendlyTo(perspective)) return true;
         return fog.isVisibleAtWorld(ship.x, ship.y);
@@ -444,6 +456,16 @@ public final class FogOfWarSystem {
     }
 
     private static boolean isTrackableHostile(Ship ship, Faction perspective) {
+        return ship != null
+                && ship.alive
+                && !ship.dying
+                && ship.hp > 0
+                && ship.faction != null
+                && perspective != null
+                && !ship.faction.isFriendlyTo(perspective);
+    }
+
+    private static boolean isTrackableGhostSource(Ship ship, Faction perspective) {
         return ship != null
                 && ship.alive
                 && !ship.dying

@@ -98,7 +98,14 @@ public class CollisionSystem {
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
                     int effectiveDamage = p.getEffectiveDamage();
-                    s.takeDamage(effectiveDamage, p.x, p.y, p.vx, p.vy);
+                    s.takeDamage(
+                            effectiveDamage,
+                            p.x,
+                            p.y,
+                            p.vx,
+                            p.vy,
+                            interiorHitProfileForProjectile(shooter, p)
+                    );
                     logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), effectiveDamage, impactStyle, s, p.x, p.y);
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
@@ -183,7 +190,14 @@ public class CollisionSystem {
                     else if (p.damage >= 3) ScreenShake.kick(1.8);
                 }
 
-                s.takeDamage(p.damage, p.x, p.y, p.vx, p.vy);
+                s.takeDamage(
+                        p.damage,
+                        p.x,
+                        p.y,
+                        p.vx,
+                        p.vy,
+                        interiorHitProfileForProjectile(shooter, p)
+                );
                 logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
@@ -1077,7 +1091,7 @@ public class CollisionSystem {
         markPlayerHitContribution(ctx, beam, target);
         double shieldBefore = target.shield;
         int hpBefore = target.hp;
-        target.takeDamage(damage, hitX, hitY, dirX, dirY);
+        target.takeDamage(damage, hitX, hitY, dirX, dirY, Ship.InteriorHitProfile.LASER_LINE);
         logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, target, hitX, hitY);
 
         boolean shieldHit = target.shield < shieldBefore - 1e-6;
@@ -1320,6 +1334,20 @@ public class CollisionSystem {
         double wx = sx + (ex - sx) * MathUtil.clamp(fallbackT, 0.0, 1.0);
         double wy = sy + (ey - sy) * MathUtil.clamp(fallbackT, 0.0, 1.0);
         return HullGeometry.sampleImpact(ship, wx, wy, true);
+    }
+
+    private static Ship.InteriorHitProfile interiorHitProfileForProjectile(Ship shooter, Projectile projectile) {
+        if (projectile == null) return Ship.InteriorHitProfile.DEFAULT;
+        if (projectile instanceof EnergyBolt) return Ship.InteriorHitProfile.BLUE_PIERCE;
+        if (projectile instanceof Missile) return Ship.InteriorHitProfile.MISSILE_BLAST;
+        if (projectile instanceof PhaserBeam) return Ship.InteriorHitProfile.LASER_LINE;
+        if (projectile instanceof Bullet && shooter != null) {
+            DoctrineProfile profile = DoctrineRegistry.forFaction(shooter.faction);
+            if (profile != null && profile.doctrine == Doctrine.KINETIC_CONSORTIUM) {
+                return Ship.InteriorHitProfile.RED_EXPLOSIVE;
+            }
+        }
+        return Ship.InteriorHitProfile.DEFAULT;
     }
 
     private static Ship resolveSourceShip(GameContext ctx, List<Ship> ships, Projectile projectile) {

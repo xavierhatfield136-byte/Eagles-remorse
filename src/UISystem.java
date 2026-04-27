@@ -751,13 +751,20 @@ public final class UISystem {
                 BattlefieldSectorSystem.selectSector(ctx, sector.id);
                 BattlefieldSectorSystem.ensureLoadedSector(ctx);
                 BattlefieldSectorSystem.SectorDefinition loaded = BattlefieldSectorSystem.loadedSector(ctx);
+                double clickedWorldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
+                double clickedWorldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
                 BattlefieldSectorSystem.SectorDefinition hop =
                         BattlefieldSectorSystem.nextWarpHop(ctx, loaded, sector);
                 BattlefieldSectorSystem.SectorDefinition waypointSector = (hop == null) ? sector : hop;
-                double[] arrival = BattlefieldSectorSystem.warpArrivalPoint(
+                boolean sameSectorSelection = loaded != null && loaded.id.equalsIgnoreCase(sector.id);
+                double[] arrival = sameSectorSelection ? null : BattlefieldSectorSystem.warpArrivalPoint(
                         ctx, loaded, waypointSector, ctx.ui.tacticalSectorScalePreset);
-                double targetX = (arrival == null) ? sector.centerX(ctx) : arrival[0];
-                double targetY = (arrival == null) ? sector.centerY(ctx) : arrival[1];
+                double targetX = sameSectorSelection
+                        ? clickedWorldX
+                        : (arrival == null ? sector.centerX(ctx) : arrival[0]);
+                double targetY = sameSectorSelection
+                        ? clickedWorldY
+                        : (arrival == null ? sector.centerY(ctx) : arrival[1]);
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, targetX, targetY, 2.2);
                     EventSystem.showBanner(ctx, "SECTOR PING: " + sector.label, 1.2);
@@ -790,9 +797,10 @@ public final class UISystem {
                 int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
                 if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
                 int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
-                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
-                double targetX = (arrival == null) ? worldX : arrival[0];
-                double targetY = (arrival == null) ? worldY : arrival[1];
+                boolean sameSubzoneSelection = hopSubzone == targetSubzone && targetSubzone == loadedSubzone;
+                double[] arrival = sameSubzoneSelection ? null : CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
+                double targetX = sameSubzoneSelection ? worldX : ((arrival == null) ? worldX : arrival[0]);
+                double targetY = sameSubzoneSelection ? worldY : ((arrival == null) ? worldY : arrival[1]);
                 String sectorLabel = CampaignSystem.missionSubzoneLabel(targetSubzone);
                 String route = (hopSubzone >= 0 && hopSubzone != targetSubzone)
                         ? "  VIA " + CampaignSystem.missionSubzoneLabel(hopSubzone)

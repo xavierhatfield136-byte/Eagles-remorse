@@ -77,6 +77,32 @@ class FogOfWarSystemTest {
     }
 
     @Test
+    void dyingHostilesDropGhostsImmediatelyButRemainVisibleInRevealedSpace() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 112233L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 2500.0, 2500.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+
+        FleetShip enemy = new FleetShip(ShipRole.BATTLESHIP, Faction.ENEMY, 2625.0, 2500.0);
+        ctx.ships.add(enemy);
+
+        FogOfWarSystem.reset(ctx);
+        FogOfWarSystem.update(ctx);
+        assertNotNull(ctx.fogOfWar.contactGhost(enemy.id), "visible hostile should seed a ghost contact before sensors lose it");
+        assertTrue(FogOfWarSystem.isVisibleToPerspective(ctx.fogOfWar, ctx.player.faction, enemy),
+                "hostile in revealed space should be visible before the death sequence");
+
+        enemy.dying = true;
+        enemy.hp = 0;
+        FogOfWarSystem.update(ctx);
+
+        assertTrue(ctx.fogOfWar.contactGhost(enemy.id) == null,
+                "ghost contact should be removed as soon as the hostile enters the death sequence");
+        assertTrue(FogOfWarSystem.isVisibleToPerspective(ctx.fogOfWar, ctx.player.faction, enemy),
+                "dying hostile should stay visible while its wreck animation plays in revealed space");
+    }
+
+    @Test
     void highSensorPowerFindsUnexploredOreSignals() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 13579L, false));
         ctx.player = new Player(ShipRole.FRIGATE, 2500.0, 2500.0);
