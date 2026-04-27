@@ -12,6 +12,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiPredicate;
 
 final class WreckChunk {
     private static final int MAX_ACTIVE = 500;
@@ -316,6 +317,11 @@ final class WreckChunk {
     }
 
     static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY) {
+        return drawAll(g2, minX, minY, maxX, maxY, null);
+    }
+
+    static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY,
+                       BiPredicate<Double, Double> worldFilter) {
         if (g2 == null || ACTIVE.isEmpty()) return 0;
         int drawn = 0;
         Graphics2D g = (Graphics2D) g2.create();
@@ -328,6 +334,7 @@ final class WreckChunk {
                         && ShipPartLibrary.hasParts(c.parent.role, c.parent.faction)
                         && !c.parent.dying) continue;
                 if (c.attached) c.syncWithParent();
+                if (worldFilter != null && !worldFilter.test(c.x, c.y)) continue;
                 if (!c.isVisible(minX, minY, maxX, maxY)) continue;
                 c.draw(g);
                 drawn++;

@@ -3,6 +3,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.function.BiPredicate;
 
 /**
  * Lightweight visual effects system (world-space).
@@ -105,11 +106,17 @@ public final class VFX {
     }
 
     public static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY) {
+        return drawAll(g2, minX, minY, maxX, maxY, null);
+    }
+
+    public static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY,
+                              BiPredicate<Double, Double> worldFilter) {
         if (active.isEmpty()) return 0;
         int drawn = 0;
 
         for (Particle p : active) {
             if (!isVisible(p, minX, minY, maxX, maxY)) continue;
+            if (worldFilter != null && !worldFilter.test(p.x, p.y)) continue;
             drawn++;
             double f = (p.maxLife <= 0) ? 0 : Math.max(0.0, Math.min(1.0, p.life / (double) p.maxLife));
             int alpha = (int) MathUtil.clamp(p.baseAlpha * f, 0, 255);

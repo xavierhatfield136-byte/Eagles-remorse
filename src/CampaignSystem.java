@@ -1061,12 +1061,17 @@ public final class CampaignSystem {
 
         syncPersistentFleetCasualties(ctx, st);
         detectHostileKills(ctx);
-        detectObjectiveAssetLosses(ctx);
-        updateAuthoredSectorScript(ctx, st);
-        updateDistributedMapPressure(ctx, st);
+        boolean missionPocketActive = isMissionPocketObjectiveActive(st);
+        if (missionPocketActive) {
+            detectObjectiveAssetLosses(ctx);
+            updateAuthoredSectorScript(ctx, st);
+            updateDistributedMapPressure(ctx, st);
+        }
         updateEscortFormationBehavior(ctx, st, dt);
         updatePocketDiscoveries(ctx, st);
-        updateSideObjective(ctx, dt);
+        if (missionPocketActive) {
+            updateSideObjective(ctx, dt);
+        }
         updateObjective(ctx, dt);
     }
 
@@ -3115,6 +3120,10 @@ public final class CampaignSystem {
                 "Debris Cache",
                 "Black-boxes and salvage pods are tumbling off the route lane",
                 DiscoveryKind.CACHE);
+        addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -80.0, 130.0, 180.0,
+                "Mute Beacon Trap",
+                "A distress ping keeps repeating from a pocket that should already be dark",
+                DiscoveryKind.AMBUSH);
         addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0,
                 "Abandoned Hulk",
                 "A torn support hull is drifting with power flickers and open cargo bays",
@@ -3123,10 +3132,18 @@ public final class CampaignSystem {
                 "Emergency Cache",
                 "Fleet-grade fuel, repair foam, and missile pallets are tucked into the pocket",
                 DiscoveryKind.SUPPLY_CACHE);
+        addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -150.0, 110.0, 170.0,
+                "Signal Fires",
+                "Friendly burst traffic and shield blooms flicker through the debris haze",
+                DiscoveryKind.REINFORCEMENT);
         addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 130.0, 110.0, 185.0,
                 "Prospector Bloom",
                 "Ore fragments and clipped cargo pods glitter around the pocket",
                 DiscoveryKind.ORE);
+        addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -140.0, 60.0, 175.0,
+                "Broker Waystation",
+                "Neutral logistics craft are ghosting through the lane under sealed running lights",
+                DiscoveryKind.NEUTRAL_TRADER);
         addDiscoverySite(ctx, st, enteredFromRight, 2, 2, -180.0, -150.0, 165.0,
                 "Coalition Distress Echo",
                 "A support transponder is flickering near the relay fringe",
@@ -3135,6 +3152,10 @@ public final class CampaignSystem {
                 "Ghost Relay",
                 "A half-dead data spine is still pushing tactical telemetry into the dark",
                 DiscoveryKind.DATA_RELAY);
+        addDiscoverySite(ctx, st, enteredFromRight, 3, 1, 140.0, -150.0, 175.0,
+                "Kill-Web Nodes",
+                "Dormant mine-control hardware is suspended in a tight interdiction knot",
+                DiscoveryKind.MINEFIELD);
         addDiscoverySite(ctx, st, enteredFromRight, 3, 2, 130.0, 70.0, 180.0,
                 "Broker Caravan",
                 "Neutral traffic is coasting under blackout discipline with its holds still intact",
@@ -3202,10 +3223,16 @@ public final class CampaignSystem {
                 Faction faction = greenSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x + 70.0, site.y - 30.0, "Echo Scout");
                 spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x - 90.0, site.y + 70.0, "Echo Escort");
+                if (st.sector >= 8) {
+                    spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, site.x + 150.0, site.y + 35.0, "Echo Flak Screen");
+                }
             }
             case AMBUSH -> {
                 spawnEnemyAtPoint(ctx, ShipRole.PATROL, site.x + 90.0, site.y - 50.0);
                 spawnEnemyAtPoint(ctx, ShipRole.PICKET, site.x - 110.0, site.y + 80.0);
+                if (st.sector >= 8) {
+                    spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, site.x + 170.0, site.y + 20.0);
+                }
             }
             case SALVAGE_HULK -> {
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 6);
@@ -3220,6 +3247,9 @@ public final class CampaignSystem {
                 Faction faction = greenSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, site.x, site.y, "Ghost Relay Node");
                 spawnCampaignShip(ctx, ShipRole.PICKET, faction, site.x + 120.0, site.y - 80.0, "Relay Scout");
+                if (st.sector >= 10) {
+                    spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x - 130.0, site.y + 60.0, "Relay Guard");
+                }
             }
             case WRECK_FIELD -> {
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 8);
@@ -3227,22 +3257,31 @@ public final class CampaignSystem {
             }
             case MINEFIELD -> {
                 spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, site.x - 120.0, site.y - 70.0, "Mine Anchor");
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, site.x + 110.0, site.y + 55.0, "Mine Anchor");
                 spawnEnemyAtPoint(ctx, ShipRole.PICKET, site.x + 130.0, site.y + 90.0);
+                if (st.sector >= 10) {
+                    spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, site.x - 150.0, site.y + 120.0);
+                }
             }
             case DRIFTING_TURRET -> {
                 Faction faction = greenSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, site.x, site.y, "Dormant Defense Buoy");
+                spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x - 95.0, site.y + 75.0, "Buoy Skirmisher");
             }
             case NEUTRAL_TRADER -> {
                 Faction faction = greenSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, site.x - 40.0, site.y, "Broker Spine");
                 spawnCampaignShip(ctx, ShipRole.HAULER, faction, site.x - 140.0, site.y + 90.0, "Ledger Tender");
                 spawnCampaignShip(ctx, ShipRole.MINER, faction, site.x + 120.0, site.y - 80.0, "Prospector Drift");
+                spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x + 80.0, site.y + 100.0, "Broker Screen");
             }
             case PRISON_BARGE -> {
                 Faction faction = yellowSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, site.x - 30.0, site.y + 20.0, "Detention Barge");
                 spawnCampaignShip(ctx, ShipRole.PATROL, faction, site.x + 100.0, site.y - 70.0, "Escape Screen");
+                if (st.sector >= 12) {
+                    spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x + 160.0, site.y + 85.0, "Liberation Guard");
+                }
             }
             case ANOMALY -> {
                 spawnCampaignAsteroidPocket(ctx, site.x, site.y, 3, 0.95, true);
@@ -4598,7 +4637,7 @@ public final class CampaignSystem {
                     && st.objectiveType != ObjectiveType.ESCORT
                     && st.objectiveType != ObjectiveType.BOSS
                     && st.objectiveType != ObjectiveType.FINAL_BOSS) {
-                int sectionIndex = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+                int sectionIndex = resolvedObjectiveSectionIndex(st);
                 return st.missionSections.get(sectionIndex).x;
             }
             if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureX;
@@ -4617,7 +4656,7 @@ public final class CampaignSystem {
                     && st.objectiveType != ObjectiveType.ESCORT
                     && st.objectiveType != ObjectiveType.BOSS
                     && st.objectiveType != ObjectiveType.FINAL_BOSS) {
-                int sectionIndex = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+                int sectionIndex = resolvedObjectiveSectionIndex(st);
                 return st.missionSections.get(sectionIndex).y;
             }
             if (st.objectiveType == ObjectiveType.CAPTURE) return st.captureY;
@@ -5025,7 +5064,7 @@ public final class CampaignSystem {
 
         updateMissionSectionFlow(ctx, st);
 
-        if (objectiveAssetQuotaFailed(st)) {
+        if (!st.missionSectionTravelLocked && objectiveAssetQuotaFailed(st)) {
             failRun(ctx, objectiveAssetFailureText(st));
             return;
         }
@@ -6015,6 +6054,19 @@ public final class CampaignSystem {
             case BOSS, FINAL_BOSS -> "FAIL: timeout / player death";
             default -> "FAIL: timeout";
         };
+    }
+
+    private static boolean isMissionPocketObjectiveActive(CampaignState st) {
+        return st == null || st.missionSections.isEmpty() || !st.missionSectionTravelLocked;
+    }
+
+    private static int resolvedObjectiveSectionIndex(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return 0;
+        int index = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+        if (st.missionSectionTravelLocked && index > 0) {
+            index--;
+        }
+        return index;
     }
 
     private static Ship findShipById(GameContext ctx, int id) {

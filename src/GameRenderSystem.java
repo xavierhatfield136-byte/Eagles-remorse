@@ -34,25 +34,32 @@ public final class GameRenderSystem {
             updateDamageVfx(ctx);
         }
 
-        java.util.List<Ship> renderShips = fleetHubRenderShips(ctx);
+        java.util.List<Ship> mapShips = fleetHubRenderShips(ctx);
+        java.util.List<Ship> renderShips = renderScopedShips(ctx, mapShips);
+        java.util.List<Asteroid> renderAsteroids = renderScopedAsteroids(ctx, ctx.asteroids);
+        java.util.List<Salvage> renderSalvage = renderScopedSalvage(ctx, ctx.salvage);
+        java.util.List<Projectile> renderProjectiles = renderScopedProjectiles(ctx, ctx.projectiles);
 
         ctx.perf.drawnAsteroids = tacticalView
                 ? 0
-                : Renderer.drawAsteroids(worldG, ctx.asteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
+                : Renderer.drawAsteroids(worldG, renderAsteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (!tacticalView && DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
-            Renderer.drawAsteroidDangerHeatmap(worldG, ctx.asteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            Renderer.drawAsteroidDangerHeatmap(worldG, renderAsteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
         ctx.perf.drawnSalvage = tacticalView
                 ? 0
-                : Renderer.drawSalvage(worldG, ctx.salvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
+                : Renderer.drawSalvage(worldG, renderSalvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
         if (!tacticalView) {
-            drawTransportSupportAuras(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            drawTransportSupportAuras(ctx, worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
 
         ctx.perf.totalVfx = VFX.activeCount();
         ctx.perf.totalExplosions = Explosion.active.size();
         if (!tacticalView) {
-            try { ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY); } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
+            try {
+                ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
+                        (x, y) -> isInLoadedRenderZone(ctx, x, y));
+            } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
 
             // Fog-based VFX culling: skip effect rendering in completely fogged regions
             boolean fogCullEnabled = FogOfWarSystem.isCombatFogEnabled(ctx);
@@ -60,6 +67,7 @@ public final class GameRenderSystem {
             try {
                 for (Explosion e : Explosion.active) {
                     if (e == null) continue;
+                    if (!isInLoadedRenderZone(ctx, e.x, e.y)) continue;
                     if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
                     // Additional culling: skip drawing if explosion is in fogged area
                     if (fogCullEnabled && !ctx.fogOfWar.isVisibleAtWorld(e.x, e.y)) continue;
@@ -85,7 +93,8 @@ public final class GameRenderSystem {
         }
 
         if (!tacticalView) {
-            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
+                    (x, y) -> isInLoadedRenderZone(ctx, x, y));
         }
 
         if (!tacticalView) {
@@ -99,7 +108,7 @@ public final class GameRenderSystem {
                 : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
         ctx.perf.drawnProjectiles = tacticalView
                 ? 0
-                : Renderer.drawProjectiles(worldG, renderShips, ctx.projectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+                : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
         if (!tacticalView) {
             Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
             Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
@@ -110,7 +119,7 @@ public final class GameRenderSystem {
                 drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
             }
             Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
-            drawFleetSquadMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
+            drawFleetSquadMarkers(ctx, worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
             drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
             TutorialSystem.drawWorldMarkers(ctx, worldG);
         }
@@ -201,7 +210,7 @@ public final class GameRenderSystem {
         if (ctx.ui.mapOpen) {
             Renderer.drawStrategicMap(g2, ctx, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
-                    renderShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
+                    mapShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
                     CampaignSystem.isCampaignActive(ctx) ? ctx.fogOfWar : null, ctx.eventBanner);
             TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
         }
@@ -481,6 +490,88 @@ if (DevTools.isDebugOverlay()) {
         return out;
     }
 
+    static java.util.List<Ship> renderScopedShips(GameContext ctx, java.util.List<Ship> ships) {
+        if (ships == null || ships.isEmpty() || !hasLoadedRenderScope(ctx)) return ships;
+        java.util.ArrayList<Ship> out = new java.util.ArrayList<>(ships.size());
+        for (Ship ship : ships) {
+            if (shouldRenderShipInLoadedZone(ctx, ship)) out.add(ship);
+        }
+        return out;
+    }
+
+    static java.util.List<Projectile> renderScopedProjectiles(GameContext ctx, java.util.List<Projectile> projectiles) {
+        if (projectiles == null || projectiles.isEmpty() || !hasLoadedRenderScope(ctx)) return projectiles;
+        java.util.ArrayList<Projectile> out = new java.util.ArrayList<>(projectiles.size());
+        for (Projectile projectile : projectiles) {
+            if (projectile != null && isInLoadedRenderZone(ctx, projectile.x, projectile.y)) out.add(projectile);
+        }
+        return out;
+    }
+
+    static java.util.List<Asteroid> renderScopedAsteroids(GameContext ctx, java.util.List<Asteroid> asteroids) {
+        if (asteroids == null || asteroids.isEmpty() || !hasLoadedRenderScope(ctx)) return asteroids;
+        java.util.ArrayList<Asteroid> out = new java.util.ArrayList<>(asteroids.size());
+        for (Asteroid asteroid : asteroids) {
+            if (asteroid != null && isInLoadedRenderZone(ctx, asteroid.x, asteroid.y)) out.add(asteroid);
+        }
+        return out;
+    }
+
+    static java.util.List<Salvage> renderScopedSalvage(GameContext ctx, java.util.List<Salvage> salvage) {
+        if (salvage == null || salvage.isEmpty() || !hasLoadedRenderScope(ctx)) return salvage;
+        java.util.ArrayList<Salvage> out = new java.util.ArrayList<>(salvage.size());
+        for (Salvage drop : salvage) {
+            if (drop != null && isInLoadedRenderZone(ctx, drop.x, drop.y)) out.add(drop);
+        }
+        return out;
+    }
+
+    static boolean shouldRenderShipInLoadedZone(GameContext ctx, Ship ship) {
+        if (ship == null) return false;
+        if (!hasLoadedRenderScope(ctx)) return true;
+        if (ctx != null && ship == ctx.player) return true;
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int loadedSubzone = loadedMissionRenderSubzone(ctx);
+            if (loadedSubzone < 0) return true;
+            return CampaignSystem.missionSubzoneForShip(ctx, ship) == loadedSubzone;
+        }
+        BattlefieldSectorSystem.SectorDefinition loadedSector = loadedBattlefieldRenderSector(ctx);
+        if (loadedSector == null) return true;
+        BattlefieldSectorSystem.SectorDefinition shipSector = BattlefieldSectorSystem.sectorAt(ctx, ship.x, ship.y);
+        return shipSector != null && loadedSector.id.equals(shipSector.id);
+    }
+
+    static boolean isInLoadedRenderZone(GameContext ctx, double x, double y) {
+        if (!hasLoadedRenderScope(ctx)) return true;
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int loadedSubzone = loadedMissionRenderSubzone(ctx);
+            if (loadedSubzone < 0) return true;
+            return CampaignSystem.campaignMapSubzoneAtPoint(ctx, x, y) == loadedSubzone;
+        }
+        BattlefieldSectorSystem.SectorDefinition loadedSector = loadedBattlefieldRenderSector(ctx);
+        if (loadedSector == null) return true;
+        BattlefieldSectorSystem.SectorDefinition pointSector = BattlefieldSectorSystem.sectorAt(ctx, x, y);
+        return pointSector != null && loadedSector.id.equals(pointSector.id);
+    }
+
+    private static boolean hasLoadedRenderScope(GameContext ctx) {
+        return CampaignSystem.usesMissionSubzones(ctx) || BattlefieldSectorSystem.isEnabled(ctx);
+    }
+
+    private static int loadedMissionRenderSubzone(GameContext ctx) {
+        int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        if (loadedSubzone < 0 && ctx != null && ctx.player != null) {
+            loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+        }
+        return loadedSubzone;
+    }
+
+    private static BattlefieldSectorSystem.SectorDefinition loadedBattlefieldRenderSector(GameContext ctx) {
+        if (!BattlefieldSectorSystem.isEnabled(ctx)) return null;
+        BattlefieldSectorSystem.ensureLoadedSector(ctx);
+        return BattlefieldSectorSystem.loadedSector(ctx);
+    }
+
     private static void drawFleetNetOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
 
@@ -604,12 +695,13 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static void drawFleetSquadMarkers(GameContext ctx, Graphics2D g2,
+                                              java.util.List<Ship> ships,
                                               double minX, double minY, double maxX, double maxY) {
-        if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null || ctx.ships == null) return;
+        if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null || ships == null) return;
         int playerTeamId = ctx.player.faction.teamId();
         Font oldFont = g2.getFont();
         java.util.List<Ship> leaders = new java.util.ArrayList<>();
-        for (Ship s : ctx.ships) {
+        for (Ship s : ships) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.teamId() != playerTeamId) continue;
             Integer leaderId = ctx.command.fleetSquadLeaderByShip.get(s.id);
@@ -656,6 +748,7 @@ if (DevTools.isDebugOverlay()) {
         if (ctx == null || g2 == null) return;
         Font oldFont = g2.getFont();
         for (CampaignSystem.CampaignLandmark landmark : CampaignSystem.landmarks(ctx)) {
+            if (!isInLoadedRenderZone(ctx, landmark.x, landmark.y)) continue;
             drawCampaignLandmark(g2, landmark, minX, minY, maxX, maxY);
         }
         g2.setFont(oldFont);
@@ -664,6 +757,7 @@ if (DevTools.isDebugOverlay()) {
         double x = CampaignSystem.captureX(ctx);
         double y = CampaignSystem.captureY(ctx);
         double r = CampaignSystem.captureRadius(ctx);
+        if (!isInLoadedRenderZone(ctx, x, y)) return;
         if (!isCircleVisible(x, y, r + 18.0, minX, minY, maxX, maxY)) return;
 
         int ix = (int) Math.round(x);
@@ -896,9 +990,10 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static void drawTransportSupportAuras(GameContext ctx, Graphics2D g2,
+                                                  java.util.List<Ship> ships,
                                                   double minX, double minY, double maxX, double maxY) {
-        if (ctx == null || g2 == null || ctx.ships == null) return;
-        for (Ship s : ctx.ships) {
+        if (ctx == null || g2 == null || ships == null) return;
+        for (Ship s : ships) {
             if (s == null) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             if (s.role != ShipRole.TRANSPORT && s.role != ShipRole.TRANSPORT_TITAN) continue;

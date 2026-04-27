@@ -23,7 +23,7 @@ class CampaignMissionSectionsTest {
         startSector(ctx, 10);
 
         assertTrue(ctx.campaign.missionSections.size() >= 3, "campaign sectors should expose multiple mission sections");
-        assertTrue(ctx.campaign.discoverySites.size() >= 4, "campaign sectors should expose optional discovery pockets");
+        assertEquals(18, ctx.campaign.discoverySites.size(), "campaign sectors should now seed all subzones with optional pockets");
     }
 
     @Test
@@ -46,6 +46,8 @@ class CampaignMissionSectionsTest {
         assertTrue(kinds.contains("WRECK_FIELD"));
         assertTrue(kinds.contains("MINEFIELD"));
         assertTrue(kinds.contains("DRIFTING_TURRET"));
+        assertTrue(kinds.contains("AMBUSH"));
+        assertTrue(kinds.contains("REINFORCEMENT"));
         assertTrue(kinds.contains("NEUTRAL_TRADER"));
         assertTrue(kinds.contains("PRISON_BARGE"));
         assertTrue(kinds.contains("ANOMALY"));
@@ -72,8 +74,8 @@ class CampaignMissionSectionsTest {
 
         assertTrue(ctx.asteroids.size() >= 20, "campaign pockets should place ambient ore/anomaly fields across the mission");
         assertTrue(ctx.salvage.size() >= 12, "campaign pockets should place ambient salvage/wreckage across the mission");
-        assertTrue(supportOrTraderCount >= 4, "campaign pockets should include traders, barges, or support ships before discovery");
-        assertTrue(turretCount >= 2, "campaign pockets should include seeded defense or mine anchors in side zones");
+        assertTrue(supportOrTraderCount >= 6, "campaign pockets should include traders, barges, or support ships before discovery");
+        assertTrue(turretCount >= 4, "campaign pockets should include seeded defense or mine anchors in side zones");
     }
 
     @Test
