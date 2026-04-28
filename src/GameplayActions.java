@@ -284,6 +284,74 @@ public final class GameplayActions {
                 1.2);
     }
 
+    public static boolean trySafeMissionExit(GameContext ctx) {
+        if (ctx == null || !CampaignSystem.isCampaignActive(ctx) || CampaignSystem.isFleetHubSession(ctx)) return false;
+        if (!canIssueCombatAction(ctx)) return false;
+        if (CampaignSystem.isTransitioning(ctx)) {
+            EventSystem.showBanner(ctx, "SAFE EXIT UNAVAILABLE DURING TRANSITION", 1.3);
+            return true;
+        }
+
+        Player player = ctx.player;
+        if (player == null) return false;
+
+        if (ctx.command.safeMissionExitPending) {
+            cancelSafeMissionExit(ctx, "SAFE EXIT CANCELLED", 1.0);
+            return true;
+        }
+
+        double heading = Double.isFinite(player.angle) ? player.angle : 0.0;
+        double warpDistance = Math.max(ctx.WORLD_W, ctx.WORLD_H) * 2.0;
+        double targetX = player.x + Math.cos(heading) * warpDistance;
+        double targetY = player.y + Math.sin(heading) * warpDistance;
+        double spoolSeconds = 7.5;
+        if (!player.beginBattlefieldWarp(targetX, targetY, spoolSeconds)) {
+            EventSystem.showBanner(ctx, "SAFE EXIT UNAVAILABLE", 1.2);
+            return true;
+        }
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+            if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
+            player.campaignWarpSourceSubzone = loadedSubzone;
+        }
+
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == player) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction == null || player.faction == null || !ship.faction.isFriendlyTo(player.faction)) continue;
+            if (!ship.canUseBattlefieldWarp()) continue;
+            ship.beginBattlefieldWarpFollowing(targetX, targetY, spoolSeconds, player.id);
+        }
+
+        ctx.command.safeMissionExitPending = true;
+        ctx.command.safeMissionExitReady = false;
+        ctx.command.playerTeleportCharging = true;
+        ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();
+        EventSystem.showBanner(ctx, "SAFE EXIT MISSION WARP CHARGING (7.5S)", 1.4);
+        return true;
+    }
+
+    static void cancelSafeMissionExit(GameContext ctx, String banner, double seconds) {
+        if (ctx == null || ctx.player == null) return;
+        Player player = ctx.player;
+        if (player.isWarpCharging()) {
+            player.cancelBattlefieldWarp();
+        }
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == player) continue;
+            if (!ship.isWarpCharging()) continue;
+            if (ship.warpFormationLeaderId() != player.id) continue;
+            ship.cancelBattlefieldWarp();
+        }
+        ctx.command.safeMissionExitPending = false;
+        ctx.command.safeMissionExitReady = false;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
+        if (banner != null && !banner.isBlank()) {
+            EventSystem.showBanner(ctx, banner, Math.max(0.1, seconds));
+        }
+    }
+
     public static void rotateShieldFacing(GameContext ctx, int dir) {
         if (!canIssueCombatAction(ctx)) return;
         int step = (dir < 0) ? -1 : 1;

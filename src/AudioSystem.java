@@ -1294,7 +1294,7 @@ public final class AudioSystem {
         Ship t = ctx.lockedTarget;
         if (!t.alive || t.dying || t.hp <= 0) return false;
         if (t.faction == null || t.faction.isFriendlyTo(ctx.player.faction)) return false;
-        return TargetingSystem.isDetectableToObserver(ctx.player, t);
+        return TargetingSystem.isDetectableToObserver(ctx, ctx.player, t);
     }
 
     private static int countHostiles(GameContext ctx) {
@@ -1310,7 +1310,7 @@ public final class AudioSystem {
             if (s == null || s == ctx.player) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.isFriendlyTo(ctx.player.faction)) continue;
-            if (!TargetingSystem.isDetectableToObserver(ctx.player, s)) continue;
+            if (!TargetingSystem.isDetectableToObserver(ctx, ctx.player, s)) continue;
             double d2 = GameMath.dist2(s.x, s.y, ctx.player.x, ctx.player.y);
             if (d2 <= maxRange2) out.add(s);
         }

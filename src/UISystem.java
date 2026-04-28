@@ -188,6 +188,7 @@ public final class UISystem {
             case 2 -> toggleMap(ctx);
             case 3 -> togglePowerManagement(ctx);
             case 4 -> toggleCrewStations(ctx);
+            case 5 -> GameplayActions.trySafeMissionExit(ctx);
             default -> {
                 return false;
             }

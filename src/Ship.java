@@ -672,6 +672,8 @@ public abstract class Ship {
     public double signature = 1.0;
     /** Seconds remaining that this ship is "revealed" (shots/hits make you easier to see). */
     public double revealTimer = 0.0;
+    /** Short-lived weapons bloom used for zone-wide hostile contact sharing. */
+    public double weaponsHotTimer = 0.0;
     /** Active cloak state for stealth ships. */
     public boolean cloakActive = false;
     /** Desired cloak state for stealth ships. */
@@ -793,6 +795,10 @@ public abstract class Ship {
         if (revealTimer > 0) {
             revealTimer -= dt;
             if (revealTimer < 0) revealTimer = 0;
+        }
+        if (weaponsHotTimer > 0.0) {
+            weaponsHotTimer -= dt;
+            if (weaponsHotTimer < 0.0) weaponsHotTimer = 0.0;
         }
         if (cloakThreatTimer > 0.0) {
             cloakThreatTimer -= dt;
@@ -1622,6 +1628,7 @@ public abstract class Ship {
 
     /** Called when this ship fires a weapon; helps prevent perma-cloaking while shooting. */
     public void onFiredWeapon() {
+        weaponsHotTimer = Math.max(weaponsHotTimer, 1.6);
         reveal(1.4);
         crewCombatStress = Math.max(crewCombatStress, 1.0);
         if (factionTrait().id == ShipIdentityRegistry.FactionTraitId.KINETIC_MOMENTUM) {
@@ -2299,17 +2306,7 @@ public abstract class Ship {
     private ShipRoomLayout.RoomId activeIntegrityProtectionRoom(ShipRoomLayout.RoomId candidateRoom) {
         if (hasManualIntegrityFocus()) return integrityFocusRoom;
         if (!integrityContainmentAvailable()) return null;
-
-        ShipRoomLayout.RoomId protectedRoom = null;
-        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
-            if (def == null || def.id == null) continue;
-            if (ShipRoomLayout.isArmorRoom(def.id)) continue;
-            boolean includeCandidate = def.id == candidateRoom;
-            if (!roomNeedsIntegrityContainment(def.id, includeCandidate)) continue;
-            if (protectedRoom != null && protectedRoom != def.id) return null;
-            protectedRoom = def.id;
-        }
-        return protectedRoom;
+        return bestAutomaticIntegrityProtectionRoom(candidateRoom);
     }
 
     private boolean integrityContainmentAvailable() {
@@ -2324,6 +2321,54 @@ public abstract class Ship {
         if (roomHealthFraction(roomId) < 0.999) return true;
         if (roomFireIntensity(roomId) > 0.05) return true;
         return isRoomDisrupted(roomId);
+    }
+
+    private ShipRoomLayout.RoomId bestAutomaticIntegrityProtectionRoom(ShipRoomLayout.RoomId candidateRoom) {
+        ShipRoomLayout.RoomId bestRoom = null;
+        double bestScore = 0.08;
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null) continue;
+            if (ShipRoomLayout.isArmorRoom(def.id)) continue;
+            boolean includeCandidate = def.id == candidateRoom;
+            if (!roomNeedsIntegrityContainment(def.id, includeCandidate)) continue;
+
+            double score = integrityContainmentPriorityScore(def, includeCandidate);
+            if (score > bestScore) {
+                bestScore = score;
+                bestRoom = def.id;
+            }
+        }
+        return bestRoom;
+    }
+
+    private double integrityContainmentPriorityScore(ShipRoomLayout.RoomDef def, boolean includeCandidate) {
+        if (def == null || def.id == null) return 0.0;
+        double hpFrac = roomHealthFraction(def.id);
+        double fire = roomFireIntensity(def.id);
+        boolean disrupted = isRoomDisrupted(def.id);
+
+        double score = includeCandidate ? 5.2 : 0.0;
+        score += (1.0 - hpFrac) * 4.8;
+        score += Math.min(3.0, fire * 2.2);
+        if (disrupted) score += 1.8;
+        if (def.critical) score += 1.0;
+        if (def.primarySystem != null) score += 0.5;
+        if (def.primarySystem != null && engineeringPriorityMatches(def.primarySystem)) score += 0.8;
+        if (crewOrder == CrewOrder.DAMAGE_CONTROL) score += 0.7;
+        if (crewOrder == CrewOrder.ENGINEERING) score += 0.35;
+        return score;
+    }
+
+    private boolean engineeringPriorityMatches(InternalSystem system) {
+        if (system == null) return false;
+        return switch (engineeringPriority()) {
+            case PROPULSION -> system == InternalSystem.ENGINES || system == InternalSystem.WARP_ENGINES;
+            case SHIELDS -> system == InternalSystem.SHIELDS;
+            case WEAPONS -> system == InternalSystem.WEAPONS || system == InternalSystem.MAGAZINES;
+            case SENSORS -> system == InternalSystem.SENSORS || system == InternalSystem.BRIDGE;
+            case REACTOR -> system == InternalSystem.REACTOR_CORE;
+            case BALANCED -> false;
+        };
     }
 
     /**

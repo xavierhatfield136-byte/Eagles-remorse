@@ -73,6 +73,12 @@ public final class GameSimulationRuntime {
         ctx.perf.renderMs = emaRenderMs;
     }
 
+    public boolean consumeSafeMissionExitReady() {
+        if (ctx == null || ctx.command == null || !ctx.command.safeMissionExitReady) return false;
+        ctx.command.safeMissionExitReady = false;
+        return true;
+    }
+
     private void tick(double dt, InputSnapshot input, int viewportW, int viewportH) {
         if (ctx.state == GameState.PAUSED) {
             if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
@@ -179,6 +185,8 @@ public final class GameSimulationRuntime {
         ctx.lockedTarget = null;
         ctx.command.playerTeleportCharging = false;
         ctx.command.playerTeleportChargeRemaining = 0.0;
+        ctx.command.safeMissionExitPending = false;
+        ctx.command.safeMissionExitReady = false;
         ctx.firingPrimaryAuto = false;
         ctx.firingSecondaryAuto = false;
         ctx.miningKeyDown = false;
@@ -227,6 +235,11 @@ public final class GameSimulationRuntime {
         ship.tickBattlefieldWarp(dt);
         if (!ship.isBattlefieldWarpReady()) return;
 
+        if (isPlayer && ctx.command.safeMissionExitPending) {
+            completeSafeMissionExit(ship);
+            return;
+        }
+
         double tx = GameMath.clamp(ship.warpExitX(), 0, ctx.WORLD_W);
         double ty = GameMath.clamp(ship.warpExitY(), 0, ctx.WORLD_H);
         int arrivedCampaignSubzone = -1;
@@ -252,6 +265,7 @@ public final class GameSimulationRuntime {
         BattlefieldSectorSystem.SectorDefinition arrivedSector = BattlefieldSectorSystem.sectorAt(ctx, tx, ty);
         relocateOwnedSmallCraftAfterWarp(ship, tx, ty, arrivedSector, arrivedCampaignSubzone);
         if (isPlayer) {
+            CampaignSystem.warpPersistentFleetMinersWithPlayer(ctx, arrivedCampaignSubzone);
             ctx.ui.waypointX = tx;
             ctx.ui.waypointY = ty;
             if (arrivedCampaignSubzone >= 0) {
@@ -328,14 +342,36 @@ public final class GameSimulationRuntime {
     private void cancelBattlefieldWarp(Ship ship, String banner, double seconds) {
         if (ship == null || !ship.isWarpCharging()) return;
         boolean isPlayer = (ship == ctx.player);
+        if (isPlayer && ctx.command.safeMissionExitPending) {
+            GameplayActions.cancelSafeMissionExit(ctx, banner, seconds);
+            return;
+        }
         ship.cancelBattlefieldWarp();
         if (isPlayer && banner != null && !banner.isBlank()) {
             EventSystem.showBanner(ctx, banner, Math.max(0.1, seconds));
         }
     }
 
+    private void completeSafeMissionExit(Ship ship) {
+        if (ship == null) return;
+        ship.cancelBattlefieldWarp();
+        for (Ship ally : ctx.ships) {
+            if (ally == null || ally == ship) continue;
+            if (!ally.isWarpCharging()) continue;
+            if (ally.warpFormationLeaderId() != ship.id) continue;
+            ally.cancelBattlefieldWarp();
+        }
+        ctx.command.safeMissionExitPending = false;
+        ctx.command.safeMissionExitReady = true;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
+    }
+
     private void syncPlayerWarpHudState() {
         if (ctx == null || ctx.player == null) return;
+        if (ctx.command.safeMissionExitPending && !ctx.player.isWarpCharging()) {
+            ctx.command.safeMissionExitPending = false;
+        }
         ctx.command.playerTeleportCharging = ctx.player.isWarpCharging();
         ctx.command.playerTeleportChargeRemaining = ctx.player.warpChargeRemaining();
     }

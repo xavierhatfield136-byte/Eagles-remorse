@@ -72,6 +72,10 @@ public class GamePanel extends JPanel implements ActionListener {
                 viewportW(),
                 viewportH(),
                 Math.max(0.0, DevTools.getTimeScale()));
+        if (runtime.consumeSafeMissionExitReady()) {
+            exitToMenu();
+            return;
+        }
         if (shouldRepaint) {
             repaint();
         }

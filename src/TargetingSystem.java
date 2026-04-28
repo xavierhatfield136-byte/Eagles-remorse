@@ -43,7 +43,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
-            if (!isDetectableToObserver(ctx.player, s)) continue;
+            if (!isDetectableToObserver(ctx, ctx.player, s)) continue;
             enemies.add(s);
         }
         if (enemies.isEmpty()) {
@@ -73,7 +73,7 @@ public final class TargetingSystem {
                 && seeker.faction.isFriendlyTo(ctx.player.faction)
                 && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)
                 && !isCiwsOnlyTarget(ctx.lockedTarget)
-                && isDetectableToObserver(seeker, ctx.lockedTarget)) {
+                && isDetectableToObserver(ctx, seeker, ctx.lockedTarget)) {
             return ctx.lockedTarget;
         }
 
@@ -88,7 +88,7 @@ public final class TargetingSystem {
             if (isCiwsOnlyTarget(s)) continue;
 
             if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
-                if (!isDetectableToObserver(seeker, s)) continue;
+                if (!isDetectableToObserver(ctx, seeker, s)) continue;
                 double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);
                 if (d2 < bestD2) { bestD2 = d2; best = s; }
             }
@@ -114,7 +114,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (isCiwsOnlyTarget(s)) continue;
-            if (!isDetectableToObserver(observer, s)) continue;
+            if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -136,7 +136,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!s.isSmallCraft()) continue;
             if (perspective != null && s.faction != null && perspective.isFriendlyTo(s.faction)) continue;
-            if (!isDetectableToObserver(observer, s)) continue;
+            if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -161,7 +161,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (perspective != null && s.faction != null && perspective.isFriendlyTo(s.faction)) continue;
             if (!sourceSector.containsWorld(ctx, s.x, s.y)) continue;
-            if (!isDetectableToObserver(observer, s)) continue;
+            if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -202,7 +202,7 @@ public final class TargetingSystem {
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (isMainBatteryScreenTarget(observer, s)) continue;
-            if (!isDetectableToObserver(observer, s)) continue;
+            if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -213,6 +213,10 @@ public final class TargetingSystem {
     }
 
     public static boolean isDetectableToObserver(Ship observer, Ship target) {
+        return isDetectableToObserver(null, observer, target);
+    }
+
+    public static boolean isDetectableToObserver(GameContext ctx, Ship observer, Ship target) {
         if (target == null) return false;
         if (observer == target) return true;
         if (observer == null) {
@@ -221,6 +225,8 @@ public final class TargetingSystem {
             return target.revealTimer > 0.0;
         }
         if (!isAlive(observer)) return false;
+        if (sharesWeaponsHotContact(ctx, observer, target)) return true;
+        if (formationRelayDetectsTarget(ctx, observer, target)) return true;
         if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
         double range = detectionRangeForObserver(observer, target);
         double dx = target.x - observer.x;
@@ -230,6 +236,65 @@ public final class TargetingSystem {
         if (!target.isCloaked()) return true;
         if (target.revealTimer > 0.0) return true;
         return false;
+    }
+
+    private static boolean sharesWeaponsHotContact(GameContext ctx, Ship observer, Ship target) {
+        if (ctx == null || observer == null || target == null) return false;
+        if (target.weaponsHotTimer <= 1e-6) return false;
+        if (target.hasActiveEcm()) return false;
+        boolean cloakCoverActive = target.isStealth
+                && target.cloakEnabled
+                && target.cloakControlMode == Ship.CloakControlMode.ACTIVE
+                && target.cloakEnergy > 0.01;
+        if (cloakCoverActive) return false;
+        if (observer.faction == null || target.faction == null || observer.faction.isFriendlyTo(target.faction)) return false;
+        return inSameDetectionZone(ctx, observer, target);
+    }
+
+    private static boolean formationRelayDetectsTarget(GameContext ctx, Ship observer, Ship target) {
+        if (ctx == null || observer == null || target == null) return false;
+        if (observer.role != ShipRole.MOTHERSHIP) return false;
+        if (observer.faction == null || target.faction == null || observer.faction.isFriendlyTo(target.faction)) return false;
+        if (!inSameDetectionZone(ctx, observer, target)) return false;
+        for (Ship ally : ctx.ships) {
+            if (ally == null || ally == observer || ally == target) continue;
+            if (!isAlive(ally)) continue;
+            if (ally.faction == null || !ally.faction.isFriendlyTo(observer.faction)) continue;
+            if (!inSameDetectionZone(ctx, observer, ally) || !inSameDetectionZone(ctx, ally, target)) continue;
+            if (isDetectableToObserverLocal(ctx, ally, target)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isDetectableToObserverLocal(GameContext ctx, Ship observer, Ship target) {
+        if (target == null) return false;
+        if (observer == target) return true;
+        if (observer == null) return !target.isStealth || !target.isCloaked() || target.revealTimer > 0.0;
+        if (!isAlive(observer)) return false;
+        if (sharesWeaponsHotContact(ctx, observer, target)) return true;
+        if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
+        double range = detectionRangeForObserver(observer, target);
+        double dx = target.x - observer.x;
+        double dy = target.y - observer.y;
+        if (dx * dx + dy * dy > range * range) return false;
+        if (!target.isStealth) return true;
+        if (!target.isCloaked()) return true;
+        return target.revealTimer > 0.0;
+    }
+
+    private static boolean inSameDetectionZone(GameContext ctx, Ship a, Ship b) {
+        if (ctx == null || a == null || b == null) return false;
+        if (CampaignSystem.usesMissionSubzones(ctx)) {
+            int aZone = CampaignSystem.ensureShipMissionSubzone(ctx, a);
+            int bZone = CampaignSystem.ensureShipMissionSubzone(ctx, b);
+            if (aZone >= 0 && bZone >= 0) return aZone == bZone;
+        }
+        BattlefieldSectorSystem.SectorDefinition aSector = BattlefieldSectorSystem.sectorAt(ctx, a.x, a.y);
+        BattlefieldSectorSystem.SectorDefinition bSector = BattlefieldSectorSystem.sectorAt(ctx, b.x, b.y);
+        if (aSector != null && bSector != null) {
+            return aSector.id != null && aSector.id.equalsIgnoreCase(bSector.id);
+        }
+        return true;
     }
 
     public static double detectionRangeForObserver(Ship observer, Ship target) {

@@ -45,6 +45,8 @@ public final class CommandState {
     public final Map<String, String> fleetSquadStatusMemory = new HashMap<>();
     public boolean playerTeleportCharging = false;
     public double playerTeleportChargeRemaining = 0.0;
+    public boolean safeMissionExitPending = false;
+    public boolean safeMissionExitReady = false;
     public Faction shootingRangeTargetFaction = Faction.ENEMY;
     public TitanArchetype shootingRangeTitanArchetype = null;
     public double shootingRangeOriginX = Double.NaN;

@@ -88,7 +88,7 @@ public final class PhysicsSystem {
         // --- Player weapons ---
         if (ctx.player != null && ctx.player.alive) {
             if (ctx.lockedTarget != null
-                    && (!TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)
+                    && (!TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)
                     || TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget))) {
                 ctx.lockedTarget = null;
             }
@@ -113,7 +113,7 @@ public final class PhysicsSystem {
                         && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
                         && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                         && !TargetingSystem.isMainBatteryScreenTarget(ctx.player, ctx.lockedTarget)
-                        && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
+                        && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)) {
                     autoTarget = ctx.lockedTarget;
                 } else {
                     autoTarget = TargetingSystem.findClosestEngagementTarget(
@@ -125,13 +125,13 @@ public final class PhysicsSystem {
             Ship aimTarget = null;
             if (isAlive(autoTarget)
                     && TeamSystem.isHostileToPlayer(ctx, autoTarget.faction)
-                    && TargetingSystem.isDetectableToObserver(ctx.player, autoTarget)) {
+                    && TargetingSystem.isDetectableToObserver(ctx, ctx.player, autoTarget)) {
                 aimTarget = autoTarget;
             } else if (isAlive(ctx.lockedTarget)
                     && TeamSystem.isHostileToPlayer(ctx, ctx.lockedTarget.faction)
                     && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)
                     && !TargetingSystem.isMainBatteryScreenTarget(ctx.player, ctx.lockedTarget)
-                    && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)) {
+                    && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)) {
                 aimTarget = ctx.lockedTarget;
             }
 
@@ -363,7 +363,7 @@ public final class PhysicsSystem {
     private static Ship preferredSecondaryTarget(GameContext ctx, double searchRange) {
         if (ctx == null || ctx.player == null) return null;
         if (isAlive(ctx.lockedTarget)
-                && TargetingSystem.isDetectableToObserver(ctx.player, ctx.lockedTarget)
+                && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)
                 && !TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget)) {
             return ctx.lockedTarget;
         }

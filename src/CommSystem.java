@@ -88,7 +88,7 @@ public final class CommSystem {
         if (ship == ctx.player) return false;
         if (!ship.alive || ship.dying || ship.hp <= 0) return false;
         if (ship.faction == null) return false;
-        return TargetingSystem.isDetectableToObserver(ctx.player, ship);
+        return TargetingSystem.isDetectableToObserver(ctx, ctx.player, ship);
     }
 
     private static CommOutcome responseFor(GameContext ctx, Ship target, UiState.CommIntent intent) {

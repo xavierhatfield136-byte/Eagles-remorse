@@ -31,8 +31,8 @@ public class Renderer {
     private static final double SHIELD_FX_MIN_SCREEN_SPAN = 56.0;
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
 
-    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW"};
-    private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H"};
+    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT"};
+    private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H", ""};
     private static final long XRAY_PERCENT_REFRESH_NS = 180_000_000L;
     private static final Font XRAY_TITLE_FONT = new Font("Consolas", Font.BOLD, 13);
     private static final Font XRAY_SUBTITLE_FONT = new Font("Consolas", Font.PLAIN, 11);
@@ -54,6 +54,14 @@ public class Renderer {
     private static final Stroke XRAY_FOCUS_STROKE = new BasicStroke(2.1f);
     private static final Font HOVER_TOOLTIP_TITLE_FONT = new Font("Consolas", Font.BOLD, 12);
     private static final Font HOVER_TOOLTIP_BODY_FONT = new Font("Consolas", Font.PLAIN, 11);
+    private static final Font STRATEGIC_MAP_ZONE_FONT = new Font("Consolas", Font.BOLD, 10);
+    private static final Font STRATEGIC_MAP_ZONE_TAG_FONT = new Font("Consolas", Font.BOLD, 9);
+    private static final Font STRATEGIC_MAP_OBJECTIVE_FONT = new Font("Consolas", Font.BOLD, 10);
+    private static final Stroke STRATEGIC_MAP_ZONE_STROKE = new BasicStroke(1.4f);
+    private static final Stroke STRATEGIC_MAP_ZONE_ACTIVE_STROKE = new BasicStroke(2.2f);
+    private static final Stroke STRATEGIC_MAP_ZONE_OBJECTIVE_STROKE = new BasicStroke(2.6f);
+    private static final Stroke STRATEGIC_MAP_OBJECTIVE_STROKE =
+            new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
 
     // ------------------------------------------------------------
     // Option 8: Strategic map / waypoints / pings
@@ -737,6 +745,7 @@ public class Renderer {
             return switch (index) {
                 case 0 -> "FLEET";
                 case 1 -> "UPGRADE";
+                case 5 -> "SAFE EXIT";
                 default -> CORE_MENU_LABELS[index];
             };
         }
@@ -836,6 +845,11 @@ public class Renderer {
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
             case 4 -> "Crew stations. Review Captain, Helm, Tactical, Engineering, and Science automation plus voice mix. Hotkey: H.";
+            case 5 -> campaign
+                    ? (fleetHub
+                        ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
+                        : "Safely exit mission. Orders the flagship and escorting fleet to spool a warp, then returns to menu after the extraction snapshot saves ore and cargo.")
+                    : "Safe campaign extraction is only available during Campaign Ops missions.";
             default -> "";
         };
         return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
@@ -1125,7 +1139,8 @@ public class Renderer {
                 ctx.ui.baseMenuOpen,
                 ctx.ui.mapOpen,
                 ctx.ui.powerManagementOpen,
-                ctx.ui.crewStationsOpen
+                ctx.ui.crewStationsOpen,
+                false
         };
         boolean campaignActive = CampaignSystem.isCampaignActive(ctx);
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
@@ -1140,8 +1155,9 @@ public class Renderer {
             Rectangle br = getCoreMenuButtonRect(viewW, viewH, i);
             boolean disabled = controlsDisabled
                     || (campaignActive && !fleetHub && (i == 0 || i == 1))
-                    || (!campaignActive && i == 1 && !baseAvailable);
-            boolean active = open[i];
+                    || (!campaignActive && i == 1 && !baseAvailable)
+                    || (i == 5 && (!campaignActive || fleetHub || ctx.ui.hasBlockingOverlay() || CampaignSystem.isTransitioning(ctx)));
+            boolean active = i < open.length && open[i];
             String menuLabel = coreMenuLabel(ctx, i);
 
             Color fill;
@@ -1159,6 +1175,7 @@ public class Renderer {
             String label;
             if (br.width < 64) label = menuLabel.substring(0, Math.min(2, menuLabel.length()));
             else if (br.width < 96) label = menuLabel;
+            else if (CORE_MENU_HOTKEYS[i] == null || CORE_MENU_HOTKEYS[i].isBlank()) label = menuLabel;
             else label = menuLabel + " [" + CORE_MENU_HOTKEYS[i] + "]";
             int tx = br.x + (br.width - fm.stringWidth(label)) / 2;
             int ty = br.y + (br.height + fm.getAscent() - fm.getDescent()) / 2;
@@ -4809,6 +4826,7 @@ public class Renderer {
         out.add("M MAP / N HUD / H CREW");
         out.add("F1-F5 STATIONS");
         out.add("O POWER / B BASE");
+        out.add("SAFE EXIT BUTTON");
         out.add("P PING / G WAYPOINT");
         out.add("CTRL +/-/0 ZOOM");
         out.add("-/BKSP WARP");
@@ -7892,6 +7910,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
             drawCampaignSectorsOnMap(g2, m, ctx);
         }
+        drawStrategicObjectiveMarker(g2, ctx, m, worldW, worldH);
 
         // Waypoint
         if (!Double.isNaN(waypointX) && !Double.isNaN(waypointY)) {
@@ -8119,6 +8138,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int cols = CampaignSystem.missionSubzoneColumns();
         int rows = CampaignSystem.missionSubzoneRows();
         int loaded = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        int objectiveSubzone = -1;
+        if (CampaignSystem.hasStrategicObjectiveMarker(ctx)) {
+            objectiveSubzone = CampaignSystem.missionSubzoneForPoint(
+                    ctx,
+                    ctx.campaign.sector,
+                    CampaignSystem.strategicObjectiveMarkerX(ctx),
+                    CampaignSystem.strategicObjectiveMarkerY(ctx));
+        }
         Stroke oldStroke = g2.getStroke();
         Font oldFont = g2.getFont();
         for (int row = 0; row < rows; row++) {
@@ -8128,19 +8155,91 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
 
                 boolean active = subzone == loaded;
-                g2.setColor(active ? new Color(180, 235, 255, 40) : new Color(96, 188, 225, 18));
-                g2.fillRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+                boolean objective = subzone == objectiveSubzone;
+                if (objective) {
+                    g2.setColor(new Color(255, 210, 120, active ? 34 : 24));
+                    g2.fillRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+                } else if (active) {
+                    g2.setColor(new Color(180, 235, 255, 18));
+                    g2.fillRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
+                }
 
-                g2.setStroke(new BasicStroke(active ? 2.4f : 1.4f));
-                g2.setColor(active ? new Color(236, 247, 255, 205) : new Color(118, 218, 255, 150));
+                g2.setStroke(objective
+                        ? STRATEGIC_MAP_ZONE_OBJECTIVE_STROKE
+                        : (active ? STRATEGIC_MAP_ZONE_ACTIVE_STROKE : STRATEGIC_MAP_ZONE_STROKE));
+                g2.setColor(objective
+                        ? new Color(255, 224, 164, 218)
+                        : (active ? new Color(236, 247, 255, 205) : new Color(118, 218, 255, 118)));
                 g2.drawRect(sectorRect.x, sectorRect.y, sectorRect.width, sectorRect.height);
 
-                g2.setFont(new Font("Consolas", Font.BOLD, 10));
-                g2.setColor(active ? new Color(244, 252, 255, 220) : new Color(182, 230, 244, 150));
+                g2.setFont(STRATEGIC_MAP_ZONE_FONT);
+                g2.setColor(objective
+                        ? new Color(255, 236, 192, 235)
+                        : (active ? new Color(244, 252, 255, 220) : new Color(182, 230, 244, 132)));
                 String label = campaignSectorLabel(col, row);
                 g2.drawString(label, sectorRect.x + 6, sectorRect.y + 14);
+                if (objective) {
+                    g2.setFont(STRATEGIC_MAP_ZONE_TAG_FONT);
+                    g2.setColor(new Color(255, 214, 142, 220));
+                    g2.drawString("OBJ", sectorRect.x + 6, sectorRect.y + 28);
+                }
             }
         }
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawStrategicObjectiveMarker(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        if (!CampaignSystem.hasStrategicObjectiveMarker(ctx)) return;
+
+        double wx = CampaignSystem.strategicObjectiveMarkerX(ctx);
+        double wy = CampaignSystem.strategicObjectiveMarkerY(ctx);
+        int px = mapRect.x + (int) Math.round((wx / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round((wy / Math.max(1.0, worldH)) * mapRect.height);
+        String label = CampaignSystem.strategicObjectiveMarkerLabel(ctx);
+        px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
+        py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
+
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.92f));
+        g2.setColor(new Color(255, 192, 110, 28));
+        g2.fillOval(px - 15, py - 15, 30, 30);
+
+        g2.setStroke(STRATEGIC_MAP_OBJECTIVE_STROKE);
+        g2.setColor(new Color(255, 220, 166, 232));
+        g2.drawOval(px - 12, py - 12, 24, 24);
+        g2.drawOval(px - 5, py - 5, 10, 10);
+        g2.drawLine(px - 18, py, px - 7, py);
+        g2.drawLine(px + 7, py, px + 18, py);
+        g2.drawLine(px, py - 18, px, py - 7);
+        g2.drawLine(px, py + 7, px, py + 18);
+
+        if (label != null && !label.isBlank()) {
+            g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
+            FontMetrics fm = g2.getFontMetrics();
+            String shortLabel = label.trim().toUpperCase(Locale.US);
+            int maxWidth = Math.max(96, mapRect.width / 5);
+            while (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 18) {
+                shortLabel = shortLabel.substring(0, shortLabel.length() - 1).trim();
+            }
+            if (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 3) {
+                shortLabel = shortLabel.substring(0, Math.max(3, shortLabel.length() - 3)).trim() + "...";
+            }
+            int tw = fm.stringWidth(shortLabel);
+            int tx = Math.max(mapRect.x + 6, Math.min(mapRect.x + mapRect.width - tw - 6, px - tw / 2));
+            int ty = Math.max(mapRect.y + 16, py - 16);
+            g2.setColor(new Color(0, 0, 0, 170));
+            g2.fillRoundRect(tx - 5, ty - 11, tw + 10, 16, 10, 10);
+            g2.setColor(new Color(255, 230, 184, 235));
+            g2.drawRoundRect(tx - 5, ty - 11, tw + 10, 16, 10, 10);
+            g2.drawString(shortLabel, tx, ty + 1);
+        }
+
+        g2.setComposite(oldComposite);
         g2.setStroke(oldStroke);
         g2.setFont(oldFont);
     }
