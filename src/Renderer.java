@@ -3965,7 +3965,7 @@ public class Renderer {
                 ctx.ui.setObjectiveHover(
                         new Rectangle(leftX, cardY, leftW, objectiveH),
                         "OBJECTIVE",
-                        buildObjectiveHoverBody(objectiveTitle, objectiveDetail));
+                        buildObjectiveHoverBody(ctx, objectiveTitle, objectiveDetail));
             }
             cardY += drawObjectiveCard(g2, objectiveTitle, objectiveDetail, leftX, cardY, leftW, detail);
             cardY += 10;
@@ -4019,7 +4019,7 @@ public class Renderer {
         }
 
         drawLockedTargetXrayHud(g2, ctx, player, lockedTarget, shopOpen, viewW, viewH);
-        drawBottomCombatVitals(g2, player, lockedTarget, xrayLayout, viewW, viewH);
+        drawBottomCombatVitals(g2, ctx, player, lockedTarget, xrayLayout, viewW, viewH);
         drawCursorWeaponHints(g2, ctx, player, camX, camY, zoom, viewW, viewH);
 
         // Performance metrics display for Phase 3.2 (largest map profiling)
@@ -4333,7 +4333,11 @@ public class Renderer {
         return Math.max(66, h);
     }
 
-    private static String buildObjectiveHoverBody(String objectiveTitle, String objectiveDetail) {
+    private static String buildObjectiveHoverBody(GameContext ctx, String objectiveTitle, String objectiveDetail) {
+        String expanded = CampaignSystem.hudObjectiveExpandedDetail(ctx);
+        if (expanded != null && !expanded.isBlank()) {
+            return expanded;
+        }
         StringBuilder body = new StringBuilder();
         if (objectiveTitle != null && !objectiveTitle.isBlank()) {
             body.append(objectiveTitle.trim());
@@ -4422,8 +4426,8 @@ public class Renderer {
         List<String> lines = wrapHudMultilineText(bodyFm, objectiveDetail, contentW);
         int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
             case MINIMAL -> 1;
-            case COMPACT -> 2;
-            case FULL -> 4;
+            case COMPACT -> 4;
+            case FULL -> 7;
         };
         return limitHudLines(lines, maxLines);
     }
@@ -5062,7 +5066,7 @@ public class Renderer {
         return out;
     }
 
-    private static void drawBottomCombatVitals(Graphics2D g2, Player player, Ship lockedTarget,
+    private static void drawBottomCombatVitals(Graphics2D g2, GameContext ctx, Player player, Ship lockedTarget,
                                                XrayStackLayout layout, int viewW, int viewH) {
         if (g2 == null || player == null) return;
 
@@ -5108,7 +5112,59 @@ public class Renderer {
                     factionHudColor(lockedTarget.faction, 220),
                     false
             );
+            drawCommResultCard(g2, ctx, lockedTarget, targetX, targetY + cardH + 8, cardW);
         }
+    }
+
+    private static void drawCommResultCard(Graphics2D g2, GameContext ctx, Ship lockedTarget, int x, int y, int w) {
+        if (g2 == null || ctx == null || ctx.ui == null || lockedTarget == null) return;
+        if (ctx.ui.commResultT <= 0.0) return;
+        if (ctx.ui.commResultTargetId != lockedTarget.id) return;
+
+        String title = (ctx.ui.commResultTitle == null || ctx.ui.commResultTitle.isBlank())
+                ? "COMM RESULT"
+                : ctx.ui.commResultTitle.trim();
+        String body = (ctx.ui.commResultBody == null) ? "" : ctx.ui.commResultBody.trim();
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        FontMetrics titleFm = g2.getFontMetrics();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        FontMetrics bodyFm = g2.getFontMetrics();
+
+        int contentW = Math.max(110, w - 18);
+        java.util.List<String> bodyLines = limitHudLines(wrapHudText(bodyFm, body, contentW), 2);
+        int lineH = Math.max(13, bodyFm.getHeight());
+        int h = 28 + Math.max(1, bodyLines.size()) * lineH + 8;
+
+        Color accent = factionHudColor(lockedTarget.faction, 220);
+        int alpha = (int) Math.round(150 + 70 * MathUtil.clamp(ctx.ui.commResultT / 4.5, 0.0, 1.0));
+
+        g2.setColor(new Color(0, 0, 0, 168));
+        g2.fillRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(withAlpha(accent, alpha));
+        g2.drawRoundRect(x, y, w, h, 12, 12);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(withAlpha(accent, 228));
+        g2.drawString(title, x + 9, y + 15);
+
+        int baseline = y + 31;
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(236, 242, 248, 220));
+        if (bodyLines.isEmpty()) {
+            g2.drawString("Channel clear.", x + 9, baseline);
+        } else {
+            for (String line : bodyLines) {
+                g2.drawString(line, x + 9, baseline);
+                baseline += lineH;
+            }
+        }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
     }
 
     private static void drawShipVitalsCard(Graphics2D g2, Ship ship, String title,
@@ -7782,6 +7838,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.drawString(mapHeader, r.x + 190, r.y + 28);
         }
 
+        drawStrategicObjectivePanel(g2, ctx, r);
+
         // Helpers: world -> map
         java.util.function.BiFunction<Double, Double, Point> W2M = (wx, wy) -> {
             int px = m.x + (int) Math.round((wx / Math.max(1.0, worldW)) * m.width);
@@ -7883,6 +7941,56 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         g2.setColor(new Color(255, 255, 255, 120));
         g2.drawRect(rx, ry, rw, rh);
+    }
+
+    private static void drawStrategicObjectivePanel(Graphics2D g2, GameContext ctx, Rectangle outerRect) {
+        if (g2 == null || ctx == null || outerRect == null) return;
+        String title = CampaignSystem.hudObjectiveTitle(ctx);
+        String body = CampaignSystem.hudObjectiveExpandedDetail(ctx);
+        if ((title == null || title.isBlank()) && (body == null || body.isBlank())) return;
+
+        int w = Math.min(420, Math.max(280, outerRect.width / 3));
+        int x = outerRect.x + outerRect.width - w - 18;
+        int y = outerRect.y + 44;
+
+        Font titleFont = new Font("Consolas", Font.BOLD, 13);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 11);
+        FontMetrics titleFm = g2.getFontMetrics(titleFont);
+        FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
+        int contentW = w - 20;
+        List<String> titleLines = limitHudLines(wrapHudText(titleFm, title, contentW), 2);
+        List<String> bodyLines = limitHudLines(wrapHudMultilineText(bodyFm, body, contentW), 11);
+        int h = 30 + titleLines.size() * 16 + Math.max(1, bodyLines.size()) * 14 + 12;
+
+        Color oldColor = g2.getColor();
+        Font oldFont = g2.getFont();
+
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRoundRect(x, y, w, h, 16, 16);
+        g2.setColor(new Color(255, 214, 132, 210));
+        g2.drawRoundRect(x, y, w, h, 16, 16);
+
+        int rowY = y + 18;
+        g2.setFont(titleFont);
+        g2.setColor(new Color(255, 232, 170, 230));
+        for (String line : titleLines) {
+            g2.drawString(line, x + 10, rowY);
+            rowY += 16;
+        }
+        rowY += 4;
+        g2.setFont(bodyFont);
+        g2.setColor(new Color(224, 236, 248, 220));
+        if (bodyLines.isEmpty()) {
+            g2.drawString("No objective data.", x + 10, rowY);
+        } else {
+            for (String line : bodyLines) {
+                g2.drawString(line, x + 10, rowY);
+                rowY += 14;
+            }
+        }
+
+        g2.setColor(oldColor);
+        g2.setFont(oldFont);
     }
 
     private static String buildSectorMapHeader(BattlefieldSectorSystem.SectorDefinition loadedSector,

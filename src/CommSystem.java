@@ -43,6 +43,13 @@ public final class CommSystem {
         if (banner == null || banner.isBlank()) {
             banner = "HAIL " + intent.label().toUpperCase(Locale.US) + ": " + speaker.toUpperCase(Locale.US);
         }
+        if (ctx.ui != null) {
+            String panelTitle = (outcome.banner() == null || outcome.banner().isBlank())
+                    ? "COMM " + intent.label().toUpperCase(Locale.US)
+                    : outcome.banner();
+            ctx.ui.showCommResult(panelTitle, outcome.response(), target.id, 4.5);
+        }
+        applyFactionMemoryFromHail(ctx, target, intent, outcome);
         EventSystem.showBanner(ctx, banner, 0.9);
     }
 
@@ -104,6 +111,7 @@ public final class CommSystem {
     }
 
     private static CommOutcome friendlyResponse(GameContext ctx, Ship target, double hullFrac, UiState.CommIntent intent) {
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target == null ? null : target.faction);
         return switch (intent) {
             case IDENTIFY -> outcome(identifyFriendlyResponse(target, hullFrac));
             case STATE_INTENT -> stateIntentOutcome(ctx, target,
@@ -114,6 +122,10 @@ public final class CommSystem {
                 if (target.role != null && (target.role.isCarrierHull() || target.role.isCapitalCombatant())) {
                     yield outcome("Support request received. We can lean into the lane and pressure anything you flush out.",
                             "SUPPORT ACKNOWLEDGED");
+                }
+                if (memory.cooperation > 0.24) {
+                    yield outcome("Support request received. We are warping back toward your screen and will focus your marked target.",
+                            "SUPPORT VECTOR LOCKED");
                 }
                 yield outcome("Support request received. We will tighten formation and screen this sector with you.",
                         "ESCORT MOVING TO SUPPORT");
@@ -129,6 +141,7 @@ public final class CommSystem {
     }
 
     private static CommOutcome alliedResponse(GameContext ctx, Ship target, double hullFrac, UiState.CommIntent intent) {
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target == null ? null : target.faction);
         return switch (intent) {
             case IDENTIFY -> outcome(identifyAlliedResponse(target, hullFrac));
             case STATE_INTENT -> alliedStateIntentOutcome(ctx, target);
@@ -136,10 +149,18 @@ public final class CommSystem {
                 if (hullFrac < 0.45) yield outcome("We hear you, but we are already bleeding. We can screen lightly, not spearhead.");
                 applySupportOrder(ctx, target);
                 if (target.faction == Faction.TEAM_D) {
+                    if (memory.cooperation > 0.18) {
+                        yield outcome("Yellow flight copies. We are warping toward your hull, taking escort posture, and marking your target for the squadron.",
+                                "YELLOW SUPPORT WARPING IN");
+                    }
                     yield outcome("Yellow flight copies. We can scout ahead and draw the heavier reds onto a bad angle.",
                             "YELLOW SCOUTS MOVING TO SUPPORT");
                 }
                 if (target.faction == Faction.TEAM_C) {
+                    if (memory.cooperation > 0.18) {
+                        yield outcome("Green channel copies. We are vectoring a support wing onto your position and will pressure whatever you have painted.",
+                                "GREEN SUPPORT VECTOR LOCKED");
+                    }
                     yield outcome("Green channel copies. We can reinforce if the lane stays profitable enough to survive.",
                             "GREEN SUPPORT VECTORING IN");
                 }
@@ -172,12 +193,13 @@ public final class CommSystem {
                 }
                 yield outcome("No trade. Only terms of engagement.");
             }
-            case WARN_OFF -> hostileWarnOutcome(target, hullFrac);
+            case WARN_OFF -> hostileWarnOutcome(ctx, target, hullFrac);
             case DEMAND_SURRENDER -> surrenderOutcome(ctx, target, hullFrac);
         };
     }
 
     private static CommOutcome neutralResponse(GameContext ctx, Ship target, double hullFrac, UiState.CommIntent intent) {
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target == null ? null : target.faction);
         return switch (intent) {
             case IDENTIFY -> outcome(identifyNeutralResponse(target, hullFrac));
             case STATE_INTENT -> stateIntentOutcome(ctx, target,
@@ -195,6 +217,10 @@ public final class CommSystem {
                 applyWarnOffOrder(ctx, target);
                 if (hullFrac < 0.55) yield outcome("Understood. We are damaged already and happy to clear the lane.",
                         "NEUTRAL CONTACT WITHDRAWING");
+                if (memory.trust > 0.14) {
+                    yield outcome("Acknowledged. We will clear the lane and stay off your weapon line until this burns past.",
+                            "NEUTRAL CONTACT CLEARING LANE");
+                }
                 yield outcome("Acknowledged. We will keep distance and drift clear of the fighting.",
                         "NEUTRAL CONTACT CLEARING LANE");
             }
@@ -224,14 +250,30 @@ public final class CommSystem {
         if (!isTradeCapable(target)) {
             return outcome("No cargo exchange available on this signal.");
         }
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target == null ? null : target.faction);
+        boolean underFire = isUnderFirePressure(ctx, target, 820.0);
+        if (underFire && memory.trust < 0.12) {
+            return outcome("Negative. We are under fire and not opening our holds for an unknown warship right now.",
+                    "TRADE REFUSED UNDER FIRE");
+        }
+        double priceMul = underFire
+                ? MathUtil.clamp(0.72 + memory.trust * 0.35, 0.72, 0.92)
+                : MathUtil.clamp(1.0 + memory.trust * 0.10, 1.0, 1.10);
         return executeTrade(ctx, target,
-                "Trade channel open. Keep your escorts steady and we can do business.",
-                "Exchange complete. Stay clear of any incoming firing lane.");
+                underFire
+                        ? "Trade channel open, but hazard premiums apply while rounds are still crossing the lane."
+                        : "Trade channel open. Keep your escorts steady and we can do business.",
+                underFire
+                        ? "Exchange complete. We kept our margin and you kept the lane from collapsing."
+                        : "Exchange complete. Stay clear of any incoming firing lane.",
+                priceMul);
     }
 
-    private static CommOutcome hostileWarnOutcome(Ship target, double hullFrac) {
+    private static CommOutcome hostileWarnOutcome(GameContext ctx, Ship target, double hullFrac) {
         if (target == null) return outcome("We are not yielding the lane. Move or burn.");
-        if ((target.role == ShipRole.PATROL || target.role == ShipRole.PICKET || target.isSmallCraft()) && hullFrac < 0.42) {
+        boolean pressured = isUnderFirePressure(ctx, target, 760.0);
+        if ((target.role == ShipRole.PATROL || target.role == ShipRole.PICKET || target.isSmallCraft())
+                && (hullFrac < 0.58 || pressured)) {
             target.aiCommittedTargetId = -1;
             target.aiTargetCommitTimer = 0.0;
             return outcome("Warning received. We are breaking contact for now, but not leaving the sector to you.",
@@ -275,11 +317,26 @@ public final class CommSystem {
     private static CommOutcome stateIntentOutcome(GameContext ctx, Ship target, String baseReply) {
         Ship intel = nearestHostileToTarget(ctx, target, 2200.0);
         if (!isAliveHostileTo(target, intel)) {
+            DiscoveryIntelHint discoveryHint = nearestDiscoveryHint(ctx, target, 2600.0);
+            if (discoveryHint != null) {
+                pushIntelPing(ctx, discoveryHint.x, discoveryHint.y, teamCodeFor(target));
+                EventSystem.showWorldCallout(ctx, discoveryHint.x, discoveryHint.y, discoveryHint.label, new java.awt.Color(150, 220, 255), 2.6);
+                return outcome(baseReply + " We are reading a weak discovery pocket near " + discoveryHint.label + ".",
+                        "DISCOVERY POCKET REVEALED");
+            }
+            MissionSectionHint reserveHint = reserveSectionHint(ctx);
+            if (reserveHint != null) {
+                pushIntelPing(ctx, reserveHint.x, reserveHint.y, teamCodeFor(target));
+                EventSystem.showWorldCallout(ctx, reserveHint.x, reserveHint.y, reserveHint.label, new java.awt.Color(255, 204, 132), 2.4);
+                return outcome(baseReply + " We are seeing reserve traffic building near " + reserveHint.label + ".",
+                        "RESERVE VECTOR HINT");
+            }
             return outcome(baseReply);
         }
         if (ctx != null) {
             ctx.lockedTarget = intel;
         }
+        pushIntelPing(ctx, intel.x, intel.y, teamCodeFor(target));
         applySupportOrder(ctx, target);
         return outcome(baseReply + " We are reading hostile contact " + speakerFor(intel) + " close to our lane.",
                 "INTEL SHARED: " + speakerFor(intel).toUpperCase(Locale.US));
@@ -294,11 +351,13 @@ public final class CommSystem {
                     "SURRENDER CHANNEL COOLDOWN");
         }
 
-        if (canForceRetreatViaSurrender(target, hullFrac)) {
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target.faction);
+        boolean pressured = isUnderFirePressure(ctx, target, 700.0);
+        if (canForceRetreatViaSurrender(target, hullFrac) || ((target.isSmallCraft() || target.role == ShipRole.PATROL || target.role == ShipRole.PICKET) && pressured && memory.fear > 0.10)) {
             applyWarnOffOrder(ctx, target);
             putCommActionCooldown(ctx, target, SURRENDER_COOLDOWN_SECONDS);
             return outcome("Negative. We are hurt, not finished, but we are breaking away from your guns.",
-                    "HOSTILE WITHDRAWAL FORCED");
+                    "PANIC RETREAT TRIGGERED");
         }
 
         if (canAcceptSurrender(ctx, target, hullFrac)) {
@@ -306,6 +365,20 @@ public final class CommSystem {
             putCommActionCooldown(ctx, target, SURRENDER_COOLDOWN_SECONDS);
             return outcome("We are done. Cutting drives and yielding the hull. Do not fire on us as we cross over.",
                     "SURRENDER ACCEPTED");
+        }
+
+        if ((hullFrac < 0.24 || memory.fear > 0.26) && !target.isSmallCraft() && target.role != ShipRole.BASE && target.role != ShipRole.STATIC_TURRET) {
+            target.applyTemporaryDisable(5.0);
+            putCommActionCooldown(ctx, target, SURRENDER_COOLDOWN_SECONDS * 0.85);
+            return outcome("We are killing weapons power and trying to drift out of this lane. Do not press closer.",
+                    "WEAPON SHUTDOWN");
+        }
+
+        if ((hullFrac < 0.32 || memory.fear > 0.18) && target.role != ShipRole.BASE && target.role != ShipRole.STATIC_TURRET) {
+            applyTemporaryCeasefire(ctx, target, 4.5);
+            putCommActionCooldown(ctx, target, SURRENDER_COOLDOWN_SECONDS * 0.75);
+            return outcome("Temporary ceasefire. We are cooling weapons and falling off the line for a few seconds.",
+                    "TEMPORARY CEASEFIRE");
         }
 
         if (hullFrac < 0.14) return outcome("Red hull failing. We are dumping telemetry and going dead. Take the wreck if you earn it.");
@@ -321,11 +394,18 @@ public final class CommSystem {
                 ? GameContext.FleetCommand.DEFEND
                 : GameContext.FleetCommand.ESCORT;
         ctx.command.shipFleetCommandOverrides.put(target.id, cmd);
-        ctx.command.shipFleetCommandOverrideTimers.put(target.id, SUPPORT_ORDER_SECONDS);
+        double duration = SUPPORT_ORDER_SECONDS + memoryFor(ctx, target.faction).cooperation * 10.0;
+        ctx.command.shipFleetCommandOverrideTimers.put(target.id, duration);
         Ship playerTarget = (ctx.lockedTarget != null && isAliveHostileTo(target, ctx.lockedTarget)) ? ctx.lockedTarget : null;
+        if (cmd == GameContext.FleetCommand.ESCORT && ctx.player != null) {
+            target.escortAnchorId = ctx.player.id;
+        }
         if (playerTarget != null) {
             target.aiCommittedTargetId = playerTarget.id;
-            target.aiTargetCommitTimer = Math.max(target.aiTargetCommitTimer, Math.min(SUPPORT_ORDER_SECONDS, 9.0));
+            target.aiTargetCommitTimer = Math.max(target.aiTargetCommitTimer, Math.min(duration, 10.0));
+            if (target.faction != null) {
+                ctx.command.fleetSharedTargets.put(target.faction, playerTarget);
+            }
         }
     }
 
@@ -340,6 +420,10 @@ public final class CommSystem {
     }
 
     private static CommOutcome executeTrade(GameContext ctx, Ship target, String baseReply, String successReply) {
+        return executeTrade(ctx, target, baseReply, successReply, 1.0);
+    }
+
+    private static CommOutcome executeTrade(GameContext ctx, Ship target, String baseReply, String successReply, double payoutMul) {
         if (ctx == null || ctx.player == null || target == null) return outcome(baseReply);
         if (commActionCoolingDown(ctx, target)) {
             return outcome("Trade channel is still settling from the last exchange. Call back in a few seconds.",
@@ -352,7 +436,8 @@ public final class CommSystem {
         int moved = Math.min(TRADE_ORE_BATCH, Math.max(0, ctx.player.cargo));
         if (moved <= 0) return outcome(baseReply);
         ctx.player.cargo = Math.max(0, ctx.player.cargo - moved);
-        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx) * TRADE_PRICE_BONUS;
+        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx)
+                * TRADE_PRICE_BONUS * MathUtil.clamp(payoutMul, 0.55, 1.25);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
         ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
         putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
@@ -398,7 +483,7 @@ public final class CommSystem {
     private static boolean canForceRetreatViaSurrender(Ship target, double hullFrac) {
         if (target == null) return false;
         if (target.role == ShipRole.BASE || target.role == ShipRole.STATIC_TURRET) return false;
-        return hullFrac < 0.30 && (target.isSmallCraft() || target.role == ShipRole.PATROL || target.role == ShipRole.PICKET);
+        return hullFrac < 0.34 && (target.isSmallCraft() || target.role == ShipRole.PATROL || target.role == ShipRole.PICKET);
     }
 
     private static boolean canAcceptSurrender(GameContext ctx, Ship target, double hullFrac) {
@@ -508,6 +593,111 @@ public final class CommSystem {
         log.add(new GameContext.FleetCommMessage(faction, channel, text, ttl, true));
     }
 
+    private static void applyTemporaryCeasefire(GameContext ctx, Ship target, double seconds) {
+        if (ctx == null || target == null) return;
+        target.applyTemporaryDisable(Math.max(2.0, seconds));
+        applyWarnOffOrder(ctx, target);
+        ctx.command.shipCommCeasefireTimers.put(target.id, Math.max(2.0, seconds));
+    }
+
+    private static boolean isUnderFirePressure(GameContext ctx, Ship target, double radius) {
+        if (ctx == null || target == null || target.faction == null) return false;
+        double hullFrac = (target.hpMax <= 0) ? 1.0 : (target.hp / (double) target.hpMax);
+        if (hullFrac < 0.62) return true;
+        if (target.totalFireIntensity() >= 1.2 || target.activeFireRoomCount() > 0) return true;
+        int hostiles = 0;
+        double rr2 = Math.max(260.0, radius) * Math.max(260.0, radius);
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == target) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction == null || target.faction.isFriendlyTo(ship.faction)) continue;
+            if (GameMath.dist2(target.x, target.y, ship.x, ship.y) <= rr2) {
+                hostiles++;
+                if (hostiles >= 2) return true;
+            }
+        }
+        return false;
+    }
+
+    private static void applyFactionMemoryFromHail(GameContext ctx, Ship target, UiState.CommIntent intent, CommOutcome outcome) {
+        if (ctx == null || target == null || target.faction == null || intent == null || outcome == null) return;
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target.faction);
+        switch (intent) {
+            case IDENTIFY -> memory.trust += 0.03;
+            case STATE_INTENT -> {
+                memory.trust += 0.04;
+                memory.cooperation += 0.04;
+            }
+            case REQUEST_SUPPORT -> {
+                if (outcome.banner() != null && (outcome.banner().contains("SUPPORT") || outcome.banner().contains("ESCORT"))) {
+                    memory.cooperation += 0.10;
+                } else {
+                    memory.cooperation -= 0.02;
+                }
+            }
+            case REQUEST_TRADE -> {
+                if (outcome.banner() != null && outcome.banner().startsWith("TRADE COMPLETE")) {
+                    memory.trust += 0.08;
+                    memory.cooperation += 0.05;
+                } else if (outcome.banner() != null && outcome.banner().contains("REFUSED")) {
+                    memory.trust -= 0.03;
+                }
+            }
+            case WARN_OFF -> {
+                memory.fear += 0.10;
+                memory.trust += 0.02;
+            }
+            case DEMAND_SURRENDER -> {
+                memory.fear += 0.18;
+                memory.trust -= 0.04;
+            }
+        }
+        memory.trust = MathUtil.clamp(memory.trust, -0.35, 0.95);
+        memory.fear = MathUtil.clamp(memory.fear, 0.0, 0.95);
+        memory.cooperation = MathUtil.clamp(memory.cooperation, -0.20, 0.95);
+    }
+
+    private static CommandState.CommFactionMemory memoryFor(GameContext ctx, Faction faction) {
+        CommandState.CommFactionMemory fallback = new CommandState.CommFactionMemory();
+        if (ctx == null || ctx.command == null || faction == null) return fallback;
+        return ctx.command.commFactionMemory.computeIfAbsent(faction, key -> new CommandState.CommFactionMemory());
+    }
+
+    private static DiscoveryIntelHint nearestDiscoveryHint(GameContext ctx, Ship source, double maxDist) {
+        if (ctx == null || source == null) return null;
+        CampaignSystem.DiscoverySignalSite site =
+                CampaignSystem.nearestDiscoverySignalSite(ctx, source.x, source.y, maxDist);
+        if (site == null) return null;
+        return new DiscoveryIntelHint(site.label, site.x, site.y);
+    }
+
+    private static MissionSectionHint reserveSectionHint(GameContext ctx) {
+        if (ctx == null) return null;
+        double[] point = CampaignSystem.reserveSectionPoint(ctx);
+        String label = CampaignSystem.reserveSectionLabel(ctx);
+        if (point == null || label == null || label.isBlank()) return null;
+        return new MissionSectionHint(label, point[0], point[1]);
+    }
+
+    private static void pushIntelPing(GameContext ctx, double x, double y, int factionCode) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.mapPings.add(new Renderer.MapPing(x, y, 6.0, factionCode));
+        while (ctx.ui.mapPings.size() > 14) {
+            ctx.ui.mapPings.remove(0);
+        }
+    }
+
+    private static int teamCodeFor(Ship target) {
+        if (target == null || target.faction == null) return 0;
+        return switch (target.faction.teamId()) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 3;
+            case 4 -> 4;
+            default -> 0;
+        };
+    }
+
     private static CommOutcome outcome(String response) {
         return new CommOutcome(response, null);
     }
@@ -517,4 +707,6 @@ public final class CommSystem {
     }
 
     private record CommOutcome(String response, String banner) {}
+    private record DiscoveryIntelHint(String label, double x, double y) {}
+    private record MissionSectionHint(String label, double x, double y) {}
 }

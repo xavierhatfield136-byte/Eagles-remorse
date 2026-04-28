@@ -6,6 +6,12 @@ import java.util.Map;
  * Command, automation, and fleet-control state shared across UI and simulation systems.
  */
 public final class CommandState {
+    public static final class CommFactionMemory {
+        public double trust = 0.0;
+        public double fear = 0.0;
+        public double cooperation = 0.0;
+    }
+
     public GameContext.CrewStation activeCrewStation = GameContext.CrewStation.CAPTAIN;
     public GameContext.HelmMode helmMode = GameContext.HelmMode.INTERCEPT;
     public GameContext.TacticalMode tacticalMode = GameContext.TacticalMode.DEFENSIVE;
@@ -24,6 +30,8 @@ public final class CommandState {
     public final Map<Integer, GameContext.FleetCommand> shipFleetCommandOverrides = new HashMap<>();
     public final Map<Integer, Double> shipFleetCommandOverrideTimers = new HashMap<>();
     public final Map<Integer, Double> shipCommActionCooldowns = new HashMap<>();
+    public final Map<Integer, Double> shipCommCeasefireTimers = new HashMap<>();
+    public final EnumMap<Faction, CommFactionMemory> commFactionMemory = new EnumMap<>(Faction.class);
     public final EnumMap<Faction, Ship> fleetCommandShips = new EnumMap<>(Faction.class);
     public final EnumMap<Faction, Ship> fleetSharedTargets = new EnumMap<>(Faction.class);
     public final EnumMap<Faction, GameContext.FleetCommand> fleetResolvedCommands =

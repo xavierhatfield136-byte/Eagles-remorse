@@ -116,6 +116,10 @@ public final class UiState {
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
     public boolean voiceCaptionsEnabled = true;
+    public String commResultTitle = "";
+    public String commResultBody = "";
+    public int commResultTargetId = -1;
+    public double commResultT = 0.0;
     public GameContext.CrewStation voiceMixFocus = GameContext.CrewStation.CAPTAIN;
     public final EnumMap<GameContext.CrewStation, Double> voiceRoleVolumes =
             new EnumMap<>(GameContext.CrewStation.class);
@@ -142,6 +146,28 @@ public final class UiState {
     public void clearVoiceCaption() {
         voiceCaption = "";
         voiceCaptionT = 0.0;
+    }
+
+    public void showCommResult(String title, String body, int targetId, double ttl) {
+        commResultTitle = (title == null || title.isBlank()) ? "COMM RESULT" : title.trim();
+        commResultBody = (body == null) ? "" : body.trim();
+        commResultTargetId = targetId;
+        commResultT = Math.max(0.0, ttl);
+    }
+
+    public void clearCommResult() {
+        commResultTitle = "";
+        commResultBody = "";
+        commResultTargetId = -1;
+        commResultT = 0.0;
+    }
+
+    public void updateCommResult(double dt) {
+        if (commResultT <= 0.0) return;
+        commResultT = Math.max(0.0, commResultT - Math.max(0.0, dt));
+        if (commResultT <= 0.0) {
+            clearCommResult();
+        }
     }
 
     public void updateHoverTooltip(String key, String title, String body,

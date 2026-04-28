@@ -432,6 +432,49 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static DiscoverySignalSite nearestDiscoverySignalSite(GameContext ctx, double x, double y, double maxDist) {
+        CampaignState st = state(ctx);
+        if (st == null || st.discoverySites.isEmpty()) return null;
+        DiscoverySite best = null;
+        double bestD2 = Math.max(1.0, maxDist) * Math.max(1.0, maxDist);
+        for (DiscoverySite site : st.discoverySites) {
+            if (site == null || site.discovered) continue;
+            double d2 = GameMath.dist2(x, y, site.x, site.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = site;
+            }
+        }
+        if (best == null) return null;
+        return new DiscoverySignalSite(best.label, best.subtitle, best.x, best.y, best.radius);
+    }
+
+    public static double[] reserveSectionPoint(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.missionSections.isEmpty()) return null;
+        for (MissionSection section : st.missionSections) {
+            if (section == null || section.label == null) continue;
+            String label = section.label.toUpperCase(Locale.US);
+            if (label.contains("RESERVE") || label.contains("STAGING")) {
+                return new double[]{section.x, section.y};
+            }
+        }
+        return null;
+    }
+
+    public static String reserveSectionLabel(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.missionSections.isEmpty()) return "";
+        for (MissionSection section : st.missionSections) {
+            if (section == null || section.label == null) continue;
+            String label = section.label.toUpperCase(Locale.US);
+            if (label.contains("RESERVE") || label.contains("STAGING")) {
+                return section.label;
+            }
+        }
+        return "";
+    }
+
     static double missionSubzoneMinX(int sector, int subzoneIndex) {
         return missionSubzoneMinX(null, sector, subzoneIndex);
     }
@@ -853,6 +896,7 @@ public final class CampaignSystem {
         public long sectorStartMillis = 0L;
         public String transitionSummaryTop = "";
         public String transitionSummaryBottom = "";
+        public double missionIntroTimer = 0.0;
 
         public BossKind bossKind = BossKind.NONE;
         public boolean bossPhaseOneTriggered = false;
@@ -1002,6 +1046,7 @@ public final class CampaignSystem {
         }
 
         refreshCampaignAlliances(st);
+        st.missionIntroTimer = Math.max(0.0, st.missionIntroTimer - Math.max(0.0, dt));
 
         // Handle fleet hub choice timeout: auto-open after ~10 seconds
         if (st.awaitingFleetHubChoice) {
@@ -1124,10 +1169,72 @@ public final class CampaignSystem {
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
         SectorLore lore = loreFor(st.sector);
         ArrayList<String> lines = new ArrayList<>();
-        addObjectiveLine(lines, objectiveWinLine(st, p, left));
-        addObjectiveLine(lines, objectiveRouteLine(st, lore));
+        addObjectiveLine(lines, objectiveActionLine(st));
+        addObjectiveLine(lines, objectiveAreaLine(st, lore));
+        addObjectiveLine(lines, objectiveLoreLeadLine(lore));
+        addObjectiveLine(lines, objectivePocketLine(st));
+        addObjectiveLine(lines, objectiveTransitLine(st));
         addObjectiveLine(lines, objectiveThreatLine(st));
         addObjectiveLine(lines, objectiveProgressLine(st, p, left));
+        return String.join("\n", lines);
+    }
+
+    public static String hudObjectiveExpandedDetail(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled) return "";
+        SectorLore lore = loreFor(st.sector);
+        int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
+        String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
+        ArrayList<String> lines = new ArrayList<>();
+        addObjectiveLine(lines, "Action: " + trimmedOrFallback(st.objectiveLabel, "Advance the campaign objective"));
+        addObjectiveLine(lines, objectiveWinLine(st, p, left));
+        addObjectiveLine(lines, objectiveFailureLine(st));
+        addObjectiveLine(lines, objectivePocketLine(st));
+        addObjectiveLine(lines, objectiveTransitLine(st));
+        addObjectiveLine(lines, objectiveSuggestedMoveLine(st));
+        addObjectiveLine(lines, objectiveThreatLine(st));
+        addObjectiveLine(lines, objectiveProgressLine(st, p, left));
+        if (lore != null) {
+            addObjectiveLine(lines, "Theater: " + lore.title + " / " + lore.location);
+            addObjectiveLine(lines, "Why: " + lore.completionLead);
+        }
+        return String.join("\n", lines);
+    }
+
+    public static boolean shouldShowMissionIntro(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled && st.missionIntroTimer > 0.0;
+    }
+
+    public static double missionIntroAlpha(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return 0.0;
+        return MathUtil.clamp(st.missionIntroTimer / ((st.sector == 1) ? 14.0 : 8.5), 0.0, 1.0);
+    }
+
+    public static String missionIntroTitle(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled) return "";
+        SectorLore lore = loreFor(st.sector);
+        return "SECTOR " + st.sector + "/" + st.totalSectors + "  " + lore.title;
+    }
+
+    public static String missionIntroBody(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled) return "";
+        SectorLore lore = loreFor(st.sector);
+        int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
+        String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
+        ArrayList<String> lines = new ArrayList<>();
+        if (lore != null && lore.location != null && !lore.location.isBlank()) {
+            addObjectiveLine(lines, "Location: " + lore.location);
+        }
+        addObjectiveLine(lines, "Win condition: " + stripPrefix(objectiveWinLine(st, p, left), "Win:"));
+        addObjectiveLine(lines, "Failure condition: " + objectiveFailureLine(st));
+        if (lore != null) {
+            addObjectiveLine(lines, "Why this matters: " + lore.completionLead);
+        }
+        addObjectiveLine(lines, "Suggested first move: " + stripPrefix(objectiveSuggestedMoveLine(st), "First move:"));
         return String.join("\n", lines);
     }
 
@@ -1145,31 +1252,85 @@ public final class CampaignSystem {
         if (!trimmed.isEmpty()) lines.add(trimmed);
     }
 
+    private static String objectiveActionLine(CampaignState st) {
+        if (st == null) return "";
+        return "Action: " + trimmedOrFallback(st.objectiveLabel, "Advance the campaign objective");
+    }
+
     private static String objectiveWinLine(CampaignState st, String progress, int leftSeconds) {
         if (st == null) return "";
         return switch (st.objectiveType) {
-            case SURVIVE -> "Win: Hold until T-" + leftSeconds + "s. You do not need to wipe every red ship.";
-            case DESTROY -> "Win: Destroy mission targets. Objective " + progress + ".";
-            case ESCORT -> "Win: Keep the escort alive and inside your screen until T-" + leftSeconds + "s.";
+            case SURVIVE -> "Win: Hold until T-" + leftSeconds + "s.";
+            case DESTROY -> "Win: Break the marked targets. Progress " + progress + ".";
+            case ESCORT -> "Win: Keep the escort alive until T-" + leftSeconds + "s.";
             case CAPTURE -> "Win: Clear the defenders and secure the capture point.";
             case BOSS -> "Win: Break the boss hull before time runs out.";
             case FINAL_BOSS -> "Win: Destroy the AI Mothership.";
         };
     }
 
-    private static String objectiveRouteLine(CampaignState st, SectorLore lore) {
-        if (st == null) return "";
-        String section = cleanHudClause(missionSectionHud(st));
-        String travelHint = st.missionSectionTravelLocked
-                ? " Reach the next pocket to resume objective progress."
-                : " Sweep side pockets if you need ore, support, or salvage.";
-        if (!section.isEmpty()) {
-            return "Route: " + section + "." + travelHint;
+    private static String objectiveFailureLine(CampaignState st) {
+        if (st == null) return "Run lost.";
+        if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) {
+            return "Lose the escort ship and the mission fails.";
         }
+        if (st.objectiveAssetRequiredSurvivors > 0) {
+            return objectiveAssetFailureText(st).replace("DEFEAT: ", "");
+        }
+        return switch (st.objectiveType) {
+            case SURVIVE -> "The timer expires if the flagship is destroyed.";
+            case DESTROY, CAPTURE, BOSS, FINAL_BOSS -> "The timer or flagship loss ends the run.";
+            case ESCORT -> "The escort or flagship loss ends the run.";
+        };
+    }
+
+    private static String objectiveAreaLine(CampaignState st, SectorLore lore) {
+        String landmarks = landmarkHud(st);
+        if (!landmarks.isBlank()) return landmarks.trim();
         if (lore != null && lore.location != null && !lore.location.isBlank()) {
-            return "Area: " + lore.location.trim() + ".";
+            return "AO: " + lore.location.trim();
         }
         return "";
+    }
+
+    private static String objectiveLoreLeadLine(SectorLore lore) {
+        if (lore == null || lore.hudLead == null || lore.hudLead.isBlank()) return "";
+        return lore.hudLead.trim();
+    }
+
+    private static String objectivePocketLine(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return "";
+        int total = st.missionSections.size();
+        int index = Math.max(0, Math.min(total - 1, st.activeMissionSection));
+        MissionSection current = st.missionSections.get(index);
+        StringBuilder line = new StringBuilder("Hint: Current pocket ");
+        line.append(current.label);
+        if (index + 1 < total) {
+            MissionSection next = st.missionSections.get(index + 1);
+            line.append("  |  Next pocket ").append(next.label);
+        }
+        return line.toString();
+    }
+
+    private static String objectiveTransitLine(CampaignState st) {
+        if (st == null) return "";
+        if (st.missionSectionTravelLocked) {
+            return "Status: Progress paused until arrival in " + currentMissionSectionLabel(st) + ".";
+        }
+        return objectiveSuggestedMoveLine(st);
+    }
+
+    private static String objectiveSuggestedMoveLine(CampaignState st) {
+        if (st == null) return "";
+        String current = currentMissionSectionLabel(st);
+        String next = nextMissionSectionLabel(st);
+        if (!next.isBlank()) {
+            return "First move: Stabilize " + current + ", then reposition toward " + next + ".";
+        }
+        if (!current.isBlank()) {
+            return "First move: Stabilize " + current + " and keep the lane clean.";
+        }
+        return "First move: Build a clean screen, then sweep side pockets for support and salvage.";
     }
 
     private static String objectiveThreatLine(CampaignState st) {
@@ -1197,6 +1358,31 @@ public final class CampaignSystem {
         String assets = objectiveAssetHud(st);
         if (!assets.isBlank()) parts.add(cleanHudClause(assets));
         return "Status: " + String.join("  |  ", parts);
+    }
+
+    private static String currentMissionSectionLabel(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return "";
+        int index = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+        return st.missionSections.get(index).label;
+    }
+
+    private static String nextMissionSectionLabel(CampaignState st) {
+        if (st == null || st.missionSections.isEmpty()) return "";
+        int index = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection + 1));
+        if (index <= st.activeMissionSection || index >= st.missionSections.size()) return "";
+        return st.missionSections.get(index).label;
+    }
+
+    private static String trimmedOrFallback(String text, String fallback) {
+        if (text == null || text.isBlank()) return fallback;
+        return text.trim();
+    }
+
+    private static String stripPrefix(String text, String prefix) {
+        if (text == null) return "";
+        if (prefix == null || prefix.isBlank()) return text.trim();
+        String trimmed = text.trim();
+        return trimmed.startsWith(prefix) ? trimmed.substring(prefix.length()).trim() : trimmed;
     }
 
     private static String firstHudClause(String text, String... preferredPrefixes) {
@@ -2622,6 +2808,7 @@ public final class CampaignSystem {
         st.transitionLabel = "";
         st.transitionSummaryTop = "";
         st.transitionSummaryBottom = "";
+        st.missionIntroTimer = 0.0;
         st.sectorStartMillis = System.currentTimeMillis();
         st.introSequenceActive = false;
         st.introPhase = 0;
@@ -2662,6 +2849,7 @@ public final class CampaignSystem {
                 + "  " + lore.title
                 + "  |  " + st.objectiveLabel;
         EventSystem.showBanner(ctx, msg, 3.2);
+        st.missionIntroTimer = (st.sector == 1) ? 14.0 : 8.5;
         logTelemetry("sector_start",
                 "sector=" + st.sector +
                         " act=" + st.act +
@@ -3417,6 +3605,7 @@ public final class CampaignSystem {
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, 180, -120, "Green Screen One");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, 340, -80, "Green Guard One");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, 360, 110, "Green Guard Two");
+        spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -40, 260, "Green Harbor Screen");
         st.introSequenceActive = true;
         st.introPhase = 0;
         st.introTimer = 0.0;
@@ -3835,29 +4024,32 @@ public final class CampaignSystem {
 
     private static void updateSector1Script(GameContext ctx, CampaignState st) {
         double t = st.sectorElapsed;
-        if (st.authoredWaveCursor == 0 && t >= 45.0) {
+        if (st.authoredWaveCursor == 0 && t >= 52.0) {
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 820, -220);
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 900, 90);
+            EventSystem.showBanner(ctx, "RAIDER PROBES INBOUND", 1.5);
             st.authoredWaveCursor++;
             logTelemetry("sector_script", "sector=1 wave=1 t=" + Math.round(t));
             return;
         }
-        if (st.authoredWaveCursor == 1 && t >= 130.0) {
+        if (st.authoredWaveCursor == 1 && t >= 98.0) {
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 860, -170);
-            spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 980, 20);
+            spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 980, 20);
+            EventSystem.showBanner(ctx, "SECOND RAIDER PUSH", 1.5);
             st.authoredWaveCursor++;
             logTelemetry("sector_script", "sector=1 wave=2 t=" + Math.round(t));
             return;
         }
-        if (st.authoredWaveCursor == 2 && t >= 220.0) {
-            spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 980, -50);
+        if (st.authoredWaveCursor == 2 && t >= 142.0) {
+            spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 960, -60);
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 1020, 150);
             spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.PICKET, Faction.TEAM_C, -240, 90, "Green Relief Screen");
+            EventSystem.showBanner(ctx, "GREEN RELIEF SCREEN ARRIVES", 1.8);
             st.authoredWaveCursor++;
             logTelemetry("sector_script", "sector=1 wave=3 t=" + Math.round(t));
             return;
         }
-        if (st.authoredWaveCursor == 3 && t >= 300.0) {
+        if (st.authoredWaveCursor == 3 && t >= 174.0) {
             spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 920, -230);
             spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 980, 190);
             spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 1080, -40);
@@ -4553,7 +4745,7 @@ public final class CampaignSystem {
                 spawnEnemyAtPoint(ctx, roles[i], reserveX + offsets[i][0], reserveY + offsets[i][1]);
             }
             EventSystem.showBanner(ctx, "ENEMY RESERVES COMMITTING FROM RESERVE STAGING", 1.8);
-            st.threatStateLabel = appendHudClause(st.threatStateLabel, "RESERVES: Fresh contacts are entering from the far pocket.");
+            st.threatStateLabel = appendHudClause(st.threatStateLabel, "RESERVES: Reserve staging is spilling into the next pocket.");
         }
     }
 

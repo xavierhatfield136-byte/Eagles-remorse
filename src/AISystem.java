@@ -493,6 +493,22 @@ public final class AISystem {
                 ctx.command.shipCommActionCooldowns.remove(id);
             }
         }
+        if (ctx.command.shipCommCeasefireTimers != null && !ctx.command.shipCommCeasefireTimers.isEmpty()) {
+            List<Integer> expired = new ArrayList<>();
+            for (Map.Entry<Integer, Double> e : ctx.command.shipCommCeasefireTimers.entrySet()) {
+                if (e == null || e.getKey() == null) continue;
+                double remain = Math.max(0.0, e.getValue() - step);
+                if (remain <= 0.0 || !hasLiveShipId(ctx.ships, e.getKey())) {
+                    expired.add(e.getKey());
+                } else {
+                    e.setValue(remain);
+                }
+            }
+            for (Integer id : expired) {
+                if (id == null) continue;
+                ctx.command.shipCommCeasefireTimers.remove(id);
+            }
+        }
     }
 
     private static SharedTargetChoice selectSharedTargetForTeam(GameContext ctx, List<Ship> members, Ship flagship) {
@@ -1226,6 +1242,7 @@ public final class AISystem {
         Ship target = selectEngagementTarget(ctx, state, s, dt);
         shipCombatTargetNs += System.nanoTime() - targetStart;
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
+        Ship escortAnchor = escortAnchorForCommand(ctx, s, cmd);
         target = constrainTargetForCommand(ctx, s, flagship, base, cmd, target);
         double speed = MovementModel.speedCeiling(s);
         SquadObjective objective = (state.squadObjectives == null)
@@ -1264,14 +1281,15 @@ public final class AISystem {
                     return true;
                 }
                 case DEFEND, FORM_UP, ESCORT -> {
-                    double keep = (base == null) ? Math.max(260.0, preferredRange(s) * 0.90)
-                            : Math.max(260.0, base.radius + 150.0);
-                    double defendPerimeter = (base == null) ? Math.max(780.0, preferredRange(s) * 1.8)
-                            : Math.max(860.0, base.radius + 560.0);
+                    Ship defendAnchor = (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null) ? escortAnchor : base;
+                    double keep = (defendAnchor == null) ? Math.max(260.0, preferredRange(s) * 0.90)
+                            : Math.max(260.0, defendAnchor.radius + 150.0);
+                    double defendPerimeter = (defendAnchor == null) ? Math.max(780.0, preferredRange(s) * 1.8)
+                            : Math.max(860.0, defendAnchor.radius + 560.0);
                     boolean targetInPerimeter = target != null
-                            && (base == null
+                            && (defendAnchor == null
                             ? Math.hypot(target.x - s.x, target.y - s.y) <= defendPerimeter
-                            : Math.hypot(target.x - base.x, target.y - base.y) <= defendPerimeter);
+                            : Math.hypot(target.x - defendAnchor.x, target.y - defendAnchor.y) <= defendPerimeter);
                     if (target != null && target.alive && !target.dying && targetInPerimeter) {
                         double d = Math.hypot(target.x - s.x, target.y - s.y);
                         if (d > preferredRange(s) * 1.12) {
@@ -1279,8 +1297,12 @@ public final class AISystem {
                         } else {
                             fight(ctx, s, target, dt, teamConfidence, SquadObjective.HOLD);
                         }
-                    } else if (base != null) {
-                        orbit(s, base.x, base.y, keep, speed * 0.84, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
+                    } else if (defendAnchor != null) {
+                        if (cmd == GameContext.FleetCommand.ESCORT && maybeStartEscortAnchorWarp(ctx, s, defendAnchor)) {
+                            s.tryCIWS(dt, ctx);
+                            return true;
+                        }
+                        orbit(s, defendAnchor.x, defendAnchor.y, keep, speed * 0.84, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
                     } else {
                         wander(ctx, s, dt);
                     }
@@ -1314,8 +1336,9 @@ public final class AISystem {
                 ? ctx.command.alliedFleetFormation
                 : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
         double spacingMul = state.autoFormationSpacing.getOrDefault(teamId, 1.0);
+        Ship commandAnchor = (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null) ? escortAnchor : flagship;
         double[] anchor = formationAnchor(
-                flagship, slot, wingCount, s.radius, preferredRange(s) * 0.35 * spacingMul, desiredFormation, cmd);
+                commandAnchor, slot, wingCount, s.radius, preferredRange(s) * 0.35 * spacingMul, desiredFormation, cmd);
         Ship threatFocus = state.missileThreatFocus.get(teamId);
         if (isPointDefenseRole(s) && isAlive(threatFocus) && threatFocus != s) {
             anchor[0] = anchor[0] * 0.48 + threatFocus.x * 0.52;
@@ -1381,6 +1404,10 @@ public final class AISystem {
             anchor[1] = anchor[1] * 0.82 + target.y * 0.18;
         }
         double coherenceSpeedMul = (coherence < -0.18) ? 0.86 : (coherence > 0.32 ? 1.04 : 1.0);
+        if (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null && maybeStartEscortAnchorWarp(ctx, s, escortAnchor)) {
+            s.tryCIWS(dt, ctx);
+            return true;
+        }
         if (maybeStartFleetRejoinWarp(ctx, s, flagship, anchor[0], anchor[1], cmd, objective, target)) {
             s.tryCIWS(dt, ctx);
             return true;
@@ -1406,8 +1433,9 @@ public final class AISystem {
                     double spdMul = (objective == SquadObjective.INTERCEPT) ? 1.06 : (objective == SquadObjective.RESERVE ? 0.82 : 0.92);
                     moveToward(s, anchor[0], anchor[1], speed * spdMul * coherenceSpeedMul, dt);
                 } else {
-                    setVelPerSec(s, flagship.vx / Math.max(1e-9, dt), flagship.vy / Math.max(1e-9, dt), dt);
-                    rotateShipToward(s, flagship.angle, dt);
+                    Ship followAnchor = (commandAnchor == null) ? flagship : commandAnchor;
+                    setVelPerSec(s, followAnchor.vx / Math.max(1e-9, dt), followAnchor.vy / Math.max(1e-9, dt), dt);
+                    rotateShipToward(s, followAnchor.angle, dt);
                 }
                 if (target != null) {
                     double d = Math.hypot(target.x - s.x, target.y - s.y);
@@ -1580,6 +1608,17 @@ public final class AISystem {
         GameContext.FleetCommand override = ctx.command.shipFleetCommandOverrides.get(flagship.id);
         if (override == GameContext.FleetCommand.RTB) return true;
         return flagship == ctx.player && ctx.command.alliedFleetCommand == GameContext.FleetCommand.RTB;
+    }
+
+    private static Ship escortAnchorForCommand(GameContext ctx, Ship ship, GameContext.FleetCommand cmd) {
+        if (ctx == null || ship == null || cmd != GameContext.FleetCommand.ESCORT) return null;
+        if (ship.escortAnchorId <= 0) return null;
+        Ship anchor = findLiveShipById(ctx.ships, ship.escortAnchorId);
+        if (!isAlive(anchor)) {
+            ship.escortAnchorId = -1;
+            return null;
+        }
+        return anchor;
     }
 
     private static Ship sharedTargetForTeam(FleetState state, Ship s) {
@@ -4598,6 +4637,17 @@ public final class AISystem {
             postFleetComm(ctx, s.faction, label, "warping back into formation");
         }
         return started;
+    }
+
+    private static boolean maybeStartEscortAnchorWarp(GameContext ctx, Ship s, Ship anchor) {
+        if (ctx == null || s == null || anchor == null) return false;
+        if (s == anchor || s == ctx.player) return false;
+        if (!s.canUseBattlefieldWarp() || s.isWarpCharging()) return s.isWarpCharging();
+        if (isHeavilyDamagedForWarp(s)) return false;
+        double dist = Math.hypot(anchor.x - s.x, anchor.y - s.y);
+        if (dist < Math.max(720.0, anchor.radius + 320.0)) return false;
+        double desiredOffset = Math.max(180.0, Math.min(320.0, s.radius + anchor.radius * 0.6));
+        return maybeStartBattlefieldWarp(ctx, s, anchor.x, anchor.y, desiredOffset);
     }
 
     private static boolean shouldJoinFlagshipWarp(GameContext ctx, Ship ship, Ship flagship) {

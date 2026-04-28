@@ -238,6 +238,7 @@ public final class GameRenderSystem {
             Renderer.drawFlightDeckOverlay(g2, ctx.player, ctx.ui.flightDeckFocus);
         }
 
+        drawCampaignMissionIntro(ctx, g2, viewportW, viewportH);
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
 
         if (ctx.state == GameState.PAUSED) {
@@ -1102,6 +1103,77 @@ if (DevTools.isDebugOverlay()) {
                 rowY += bodyLineH;
             }
         }
+    }
+
+    private static void drawCampaignMissionIntro(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        if (!CampaignSystem.shouldShowMissionIntro(ctx)) return;
+
+        String title = CampaignSystem.missionIntroTitle(ctx);
+        String body = CampaignSystem.missionIntroBody(ctx);
+        double alphaFrac = CampaignSystem.missionIntroAlpha(ctx);
+        int frameAlpha = (int) Math.round(170 + 45 * alphaFrac);
+
+        int w = Math.min(860, viewportW - 60);
+        int x = (viewportW - w) / 2;
+        int y = 54;
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        FontMetrics titleFm = g2.getFontMetrics();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+        FontMetrics bodyFm = g2.getFontMetrics();
+
+        java.util.List<String> bodyLines = wrapMissionIntroBody(bodyFm, body, w - 34);
+        int h = 24 + titleFm.getHeight() + 8 + Math.max(1, bodyLines.size()) * Math.max(16, bodyFm.getHeight()) + 18;
+
+        g2.setColor(new Color(0, 0, 0, frameAlpha));
+        g2.fillRoundRect(x, y, w, h, 18, 18);
+        g2.setColor(new Color(255, 214, 132, 210));
+        g2.drawRoundRect(x, y, w, h, 18, 18);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        g2.setColor(new Color(255, 236, 180, 230));
+        g2.drawString(title, x + 18, y + 30);
+
+        int rowY = y + 58;
+        g2.setFont(new Font("Consolas", Font.PLAIN, 14));
+        g2.setColor(new Color(232, 240, 248, 225));
+        for (String line : bodyLines) {
+            g2.drawString(line, x + 18, rowY);
+            rowY += Math.max(16, bodyFm.getHeight());
+        }
+    }
+
+    private static java.util.List<String> wrapMissionIntroBody(FontMetrics fm, String body, int maxWidth) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        if (body == null || body.isBlank()) return out;
+        for (String paragraph : body.split("\\R")) {
+            String trimmed = paragraph.trim();
+            if (trimmed.isEmpty()) continue;
+            out.addAll(wrapMissionIntroLine(fm, trimmed, maxWidth));
+        }
+        return out;
+    }
+
+    private static java.util.List<String> wrapMissionIntroLine(FontMetrics fm, String text, int maxWidth) {
+        java.util.ArrayList<String> lines = new java.util.ArrayList<>();
+        if (text == null || text.isBlank()) return lines;
+        String[] words = text.trim().split("\\s+");
+        StringBuilder current = new StringBuilder();
+        for (String word : words) {
+            String candidate = current.isEmpty() ? word : current + " " + word;
+            if (!current.isEmpty() && fm.stringWidth(candidate) > maxWidth) {
+                lines.add(current.toString());
+                current.setLength(0);
+                current.append(word);
+            } else {
+                current.setLength(0);
+                current.append(candidate);
+            }
+        }
+        if (!current.isEmpty()) {
+            lines.add(current.toString());
+        }
+        return lines;
     }
 
     private static void drawModifierWorldTint(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {

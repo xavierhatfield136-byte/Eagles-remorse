@@ -24,7 +24,10 @@ public final class EventSystem {
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
         if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
-        if (ctx.ui != null) ctx.ui.updateCombatCallouts(dt);
+        if (ctx.ui != null) {
+            ctx.ui.updateCombatCallouts(dt);
+            ctx.ui.updateCommResult(dt);
+        }
         if (ctx.hazardHintCooldown > 0.0) ctx.hazardHintCooldown -= dt;
         if (ctx.hazardCriticalCooldown > 0.0) ctx.hazardCriticalCooldown -= dt;
         updateHazardWarnings(ctx);
