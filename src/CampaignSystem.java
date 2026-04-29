@@ -716,7 +716,7 @@ public final class CampaignSystem {
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
             new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(2, ObjectiveType.DESTROY, "Destroy customs-halo gunships before they seal the civilian aperture", 6, 690, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(2, ObjectiveType.DESTROY, "Destroy 6 customs-halo strike ships and keep 2 convoys alive before the civilian aperture seals", 6, 840, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 12, 720, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
             new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
@@ -744,7 +744,7 @@ public final class CampaignSystem {
     private static final SideObjectiveScript[] SIDE_SCRIPTS = new SideObjectiveScript[]{
             null,
             new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Mothership pristine for 120s", 120, 160),
-            new SideObjectiveScript(2, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the customs halo in 540s", 540, 180),
+            new SideObjectiveScript(2, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the customs halo in 660s", 660, 180),
             new SideObjectiveScript(3, SideObjectiveType.KILL_COUNT, "Destroy 8 interdiction ships", 8, 220),
             new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Open the relay in 600s", 600, 240),
             new SideObjectiveScript(5, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the relay relief wing in 620s", 620, 260),
@@ -775,7 +775,7 @@ public final class CampaignSystem {
                     "Earth has fallen. Hold the evacuation lanes while Far Trade's arcology crowns, exchange ring, and refugee docks burn around the harbor approaches.",
                     "The trade colony is gutted, but the convoy escapes with civilians, treasury ledgers, and a road home."),
             new SectorLore(2, "CUSTOMS HALO COLLAPSE", "Outer Colony Jump Ring Approach",
-                    "Destroy customs-halo gunships and interdiction cutters before they seal the civilian aperture and trap the convoy outside the ring.",
+                    "Destroy all 6 customs-halo strike ships across the marked pockets while keeping at least 2 convoy hulls alive before the aperture closes and traps the convoy outside the ring.",
                     "The halo screen cracks, frightened civilian traffic slips through, and the jump approach stays open."),
             new SectorLore(3, "BREAKOUT VECTOR", "Outer Colony Jump Ring",
                     "Break the red interdiction cordon at the aperture itself before the outer-colony jump ring collapses into a kill box.",
@@ -1262,7 +1262,31 @@ public final class CampaignSystem {
         if (st == null) return "";
         return switch (st.objectiveType) {
             case SURVIVE -> "Win: Hold until T-" + leftSeconds + "s.";
-            case DESTROY -> "Win: Break the marked targets. Progress " + progress + ".";
+            case DESTROY -> {
+                StringBuilder line = new StringBuilder("Win: Destroy the marked targets.");
+                if (!usesAuthoredDestroyProgress(st) && st.objectiveGoal > 1.0) {
+                    line = new StringBuilder("Win: Destroy ")
+                            .append((int) Math.ceil(st.objectiveGoal))
+                            .append(" marked targets.");
+                }
+                if (usesAuthoredDestroyProgress(st)) {
+                    line = new StringBuilder("Win: Destroy ")
+                            .append((int) Math.ceil(st.objectiveGoal))
+                            .append(" marked targets across the active pockets.");
+                }
+                if (st.objectiveAssetRequiredSurvivors > 0 && st.objectiveAssetTotal > 0) {
+                    line.append(" Keep at least ")
+                            .append(st.objectiveAssetRequiredSurvivors)
+                            .append(" of ")
+                            .append(st.objectiveAssetTotal)
+                            .append(" objective assets alive.");
+                }
+                if (!st.missionSections.isEmpty()) {
+                    line.append(" Reach each new pocket to unlock the next contact group.");
+                }
+                line.append(" Progress ").append(progress).append(".");
+                yield line.toString();
+            }
             case ESCORT -> "Win: Keep the escort alive until T-" + leftSeconds + "s.";
             case CAPTURE -> "Win: Clear the defenders and secure the capture point.";
             case BOSS -> "Win: Break the boss hull before time runs out.";
@@ -1275,14 +1299,15 @@ public final class CampaignSystem {
         if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) {
             return "Lose the escort ship and the mission fails.";
         }
-        if (st.objectiveAssetRequiredSurvivors > 0) {
-            return objectiveAssetFailureText(st).replace("DEFEAT: ", "");
-        }
-        return switch (st.objectiveType) {
-            case SURVIVE -> "The timer expires if the flagship is destroyed.";
-            case DESTROY, CAPTURE, BOSS, FINAL_BOSS -> "The timer or flagship loss ends the run.";
-            case ESCORT -> "The escort or flagship loss ends the run.";
+        String timerFailure = switch (st.objectiveType) {
+            case SURVIVE -> "Flagship loss ends the run before the timer does.";
+            case DESTROY, CAPTURE, BOSS, FINAL_BOSS -> "Timeout or flagship loss ends the run.";
+            case ESCORT -> "Escort or flagship loss ends the run.";
         };
+        if (st.objectiveAssetRequiredSurvivors > 0) {
+            return objectiveAssetFailureText(st).replace("DEFEAT: ", "") + " " + timerFailure;
+        }
+        return timerFailure;
     }
 
     private static String objectiveAreaLine(CampaignState st, SectorLore lore) {
@@ -1304,11 +1329,12 @@ public final class CampaignSystem {
         int total = st.missionSections.size();
         int index = Math.max(0, Math.min(total - 1, st.activeMissionSection));
         MissionSection current = st.missionSections.get(index);
-        StringBuilder line = new StringBuilder("Hint: Scan contact in ");
+        StringBuilder line = new StringBuilder("Route: Clear ");
         line.append(current.label);
+        line.append(" to unlock the next pocket");
         if (index + 1 < total) {
             MissionSection next = st.missionSections.get(index + 1);
-            line.append("  |  Next contact ").append(next.label);
+            line.append("  |  Then move the flagship to ").append(next.label);
         }
         String discoveries = discoveryHud(st);
         if (!discoveries.isBlank()) line.append("  |  ").append(cleanHudClause(discoveries)).append(" anomalous returns");
@@ -1328,10 +1354,10 @@ public final class CampaignSystem {
         String current = currentMissionSectionLabel(st);
         String next = nextMissionSectionLabel(st);
         if (!next.isBlank()) {
-            return "First move: Investigate the " + current + " contact, then reposition toward " + next + ".";
+            return "First move: Clear " + current + ", then fly the flagship into " + next + " to unlock the next wave.";
         }
         if (!current.isBlank()) {
-            return "First move: Clear the " + current + " contact and sweep nearby scanner returns.";
+            return "First move: Clear " + current + " and sweep nearby scanner returns once the lane is stable.";
         }
         return "First move: Build a clean screen, then chase down long-range scanner contacts across the side pockets.";
     }
@@ -4182,6 +4208,13 @@ public final class CampaignSystem {
 
     private static void updateSector2Script(GameContext ctx, CampaignState st) {
         double t = st.sectorElapsed;
+        int remainingTargets = Math.max(0, (int) Math.ceil(st.objectiveGoal - st.objectiveProgress));
+        int convoyAlive = liveObjectiveAssets(st);
+        st.objectivePhaseLabel = "PHASE: Destroy the customs-halo strike ships across the marked pockets ("
+                + remainingTargets + " remaining)";
+        st.threatStateLabel = "THREAT: The civilian aperture seals if fewer than "
+                + Math.max(1, st.objectiveAssetRequiredSurvivors)
+                + " convoy hulls survive (" + convoyAlive + "/" + Math.max(0, st.objectiveAssetTotal) + " holding)";
         if (st.authoredWaveCursor == 0 && t >= 55.0) {
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 860, -160);
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 930, -80);
