@@ -156,6 +156,11 @@ public final class EventSystem {
             ctx.asteroids.add(new Asteroid(x, y, 26 + ctx.rng.nextDouble() * 36, (int)Math.round(800 + ctx.rng.nextDouble() * 1600)));
         }
         showBanner(ctx, "RICH VEIN DETECTED", 3.0);
+        showWorldCallout(ctx, cx, cy, "RICH VEIN", new Color(178, 230, 255), 4.0);
+        AudioSystem.playContextBanter(ctx, "science", "rich_vein_detected",
+                "SCIENCE",
+                "Dense ore return on scanners. Marking the vein now.",
+                2.2, 9.0, 2);
     }
 
     private static void triggerSalvageDrift(GameContext ctx) {
@@ -173,6 +178,10 @@ public final class EventSystem {
         }
         showBanner(ctx, "SALVAGE DRIFT ON SCANNERS", 3.0);
         showWorldCallout(ctx, center[0], center[1], "SALVAGE DRIFT", new Color(255, 218, 124), 4.0);
+        AudioSystem.playContextBanter(ctx, "science", "salvage_drift_detected",
+                "SCIENCE",
+                "Salvage drift on the board. Could be useful if we have room to peel off.",
+                2.4, 9.0, 2);
     }
 
     private static void triggerReliefConvoy(GameContext ctx) {
@@ -226,6 +235,10 @@ public final class EventSystem {
         }
         showBanner(ctx, faction.teamName().toUpperCase() + " DISTRESS RESPONSE", 3.0);
         showWorldCallout(ctx, point[0], point[1], "RESPONSE WING", new Color(138, 232, 190), 4.0);
+        AudioSystem.playContextBanter(ctx, "captain", "distress_response",
+                "CAPTAIN",
+                faction.teamName() + " response wing is arriving on our side of the lane.",
+                2.3, 10.0, 2);
     }
 
     private static void triggerScoutContact(GameContext ctx) {

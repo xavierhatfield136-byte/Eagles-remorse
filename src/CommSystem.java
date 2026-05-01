@@ -1,3 +1,4 @@
+import app.config.GameMode;
 import java.util.List;
 import java.util.Locale;
 
@@ -119,6 +120,10 @@ public final class CommSystem {
             case REQUEST_SUPPORT -> {
                 if (hullFrac < 0.35) yield outcome("We copy your support request, but our hull is in bad shape. We need cover before we can push.");
                 applySupportOrder(ctx, target);
+                CommOutcome vector = objectiveSupportOutcome(ctx, target,
+                        "Blue command copies. We are pushing toward ",
+                        "SUPPORT VECTOR LOCKED");
+                if (vector != null) yield vector;
                 if (target.role != null && (target.role.isCarrierHull() || target.role.isCapitalCombatant())) {
                     yield outcome("Support request received. We can lean into the lane and pressure anything you flush out.",
                             "SUPPORT ACKNOWLEDGED");
@@ -148,6 +153,14 @@ public final class CommSystem {
             case REQUEST_SUPPORT -> {
                 if (hullFrac < 0.45) yield outcome("We hear you, but we are already bleeding. We can screen lightly, not spearhead.");
                 applySupportOrder(ctx, target);
+                CommOutcome vector = objectiveSupportOutcome(ctx, target,
+                        (target.faction == Faction.TEAM_D)
+                                ? "Yellow flight copies. We are vectoring on "
+                                : "Green channel copies. We are vectoring on ",
+                        (target.faction == Faction.TEAM_D)
+                                ? "YELLOW SUPPORT VECTOR LOCKED"
+                                : "GREEN SUPPORT VECTOR LOCKED");
+                if (vector != null && memory.cooperation > 0.10) yield vector;
                 if (target.faction == Faction.TEAM_D) {
                     if (memory.cooperation > 0.18) {
                         yield outcome("Yellow flight copies. We are warping toward your hull, taking escort posture, and marking your target for the squadron.",
@@ -232,12 +245,25 @@ public final class CommSystem {
         if (!isTradeCapable(target)) {
             return outcome("We are fleet-local, not a merchant hull. No trade ledger available on this channel.");
         }
+        CommOutcome intelOutcome = intelTradeOutcome(ctx, target, 120,
+                "Blue logistics can sell you a quick intel package if you need route data more than ore settlement.",
+                "BLUE INTEL PACKAGE SOLD");
+        if (intelOutcome != null) return intelOutcome;
         return executeTrade(ctx, target,
                 "Trade channel is open. Bring salvage or ore when the shooting eases.",
                 "Trade complete. Clearing cargo and crediting your account now.");
     }
 
     private static CommOutcome alliedTradeOutcome(GameContext ctx, Ship target) {
+        CommOutcome contractOutcome = alliedContractHireOutcome(ctx, target);
+        if (contractOutcome != null) {
+            return contractOutcome;
+        }
+        CommOutcome intelOutcome = intelTradeOutcome(ctx, target,
+                (target.faction == Faction.TEAM_D) ? 180 : 160,
+                "We can move a paid intel packet if you need target vectors more than ore settlement.",
+                (target.faction == Faction.TEAM_D) ? "YELLOW INTEL PACKAGE SOLD" : "GREEN INTEL PACKAGE SOLD");
+        if (intelOutcome != null) return intelOutcome;
         if (isTradeCapable(target) || target.faction == Faction.TEAM_C) {
             return executeTrade(ctx, target,
                     "Trade window available. Keep your weapons cool and we can talk terms.",
@@ -256,6 +282,13 @@ public final class CommSystem {
             return outcome("Negative. We are under fire and not opening our holds for an unknown warship right now.",
                     "TRADE REFUSED UNDER FIRE");
         }
+        int intelCost = underFire ? 220 : 180;
+        CommOutcome intelOutcome = intelTradeOutcome(ctx, target, intelCost,
+                underFire
+                        ? "We can sell you a hazard-priced intel packet if you need vectors more than cargo exchange."
+                        : "We can sell you route and contact intel if that is more useful than moving ore right now.",
+                underFire ? "HAZARD INTEL PACKAGE SOLD" : "INTEL PACKAGE SOLD");
+        if (intelOutcome != null) return intelOutcome;
         double priceMul = underFire
                 ? MathUtil.clamp(0.72 + memory.trust * 0.35, 0.72, 0.92)
                 : MathUtil.clamp(1.0 + memory.trust * 0.10, 1.0, 1.10);
@@ -267,6 +300,65 @@ public final class CommSystem {
                         ? "Exchange complete. We kept our margin and you kept the lane from collapsing."
                         : "Exchange complete. Stay clear of any incoming firing lane.",
                 priceMul);
+    }
+
+    private static CommOutcome alliedContractHireOutcome(GameContext ctx, Ship target) {
+        if (!canOfferContractHire(ctx, target)) return null;
+        if (commActionCoolingDown(ctx, target)) {
+            return outcome("Contract channel is still settling from the last exchange. Call again in a few seconds.",
+                    "CONTRACT CHANNEL COOLDOWN");
+        }
+        CommandState.CommFactionMemory memory = memoryFor(ctx, target.faction);
+        if (isUnderFirePressure(ctx, target, 760.0) && memory.cooperation < 0.10) {
+            return outcome("Negative. We are too busy surviving this lane to sign onto a new contract right now.",
+                    "CONTRACT REFUSED UNDER FIRE");
+        }
+        if (target.hpMax > 0 && (target.hp / (double) target.hpMax) < 0.32) {
+            return outcome("Negative. This hull is too damaged to promise reliable escort service until we patch it together.",
+                    "CONTRACT REFUSED DAMAGED HULL");
+        }
+
+        int contractCost = contractHireCreditCost(target.role);
+        if (contractCost <= 0) {
+            return outcome("No contract ledger is available for this hull class.");
+        }
+        if (ctx.credits < contractCost) {
+            return outcome("We can join your squad for " + contractCost + " credits, but your account is light.",
+                    "CONTRACT COST " + contractCost + "C");
+        }
+
+        ctx.credits -= contractCost;
+        convertShipToContractEscort(ctx, target);
+        putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS * 1.5);
+        String speaker = speakerFor(target);
+        return outcome("Contract accepted. " + speaker + " is joining your squad and will screen your flagship now.",
+                "CONTRACT ACCEPTED -" + contractCost + "C");
+    }
+
+    private static CommOutcome intelTradeOutcome(GameContext ctx, Ship target, int creditCost,
+                                                 String offerReply, String successBanner) {
+        if (ctx == null || ctx.player == null || target == null) return null;
+        if (ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return null;
+        if (ctx.player.cargo > 0) return null;
+        if (commActionCoolingDown(ctx, target)) {
+            return outcome("Trade channel is still settling from the last exchange. Call back in a few seconds.",
+                    "TRADE CHANNEL COOLDOWN");
+        }
+        IntelSalePackage intel = bestIntelSalePackage(ctx, target);
+        if (intel == null) {
+            return outcome(offerReply + " We have nothing actionable to sell you on this channel right now.");
+        }
+        if (ctx.credits < Math.max(0, creditCost)) {
+            return outcome(offerReply + " Price is " + creditCost + " credits and your ledger is short.",
+                    "INTEL COST " + creditCost + "C");
+        }
+        ctx.credits -= Math.max(0, creditCost);
+        pushIntelPing(ctx, intel.x, intel.y, teamCodeFor(target));
+        EventSystem.showWorldCallout(ctx, intel.x, intel.y, intel.label, intel.color, 2.9);
+        putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
+        return outcome("Intel package sold for " + creditCost + " credits. Vectoring you toward " + intel.label + ". "
+                        + intel.subtitle,
+                successBanner + " -" + creditCost + "C");
     }
 
     private static CommOutcome hostileWarnOutcome(GameContext ctx, Ship target, double hullFrac) {
@@ -323,6 +415,14 @@ public final class CommSystem {
                 EventSystem.showWorldCallout(ctx, discoveryHint.x, discoveryHint.y, discoveryHint.label, new java.awt.Color(150, 220, 255), 2.6);
                 return outcome(baseReply + " We are reading a weak discovery pocket near " + discoveryHint.label + ".",
                         "DISCOVERY POCKET REVEALED");
+            }
+            ObjectiveIntelHint objectiveHint = highestPriorityObjectiveHint(ctx, target, 4200.0);
+            if (objectiveHint != null) {
+                pushIntelPing(ctx, objectiveHint.x, objectiveHint.y, teamCodeFor(target));
+                EventSystem.showWorldCallout(ctx, objectiveHint.x, objectiveHint.y, objectiveHint.label,
+                        objectiveHint.color, 2.6);
+                return outcome(baseReply + " Primary traffic says push toward " + objectiveHint.label + ". " + objectiveHint.subtitle,
+                        objectiveHint.banner);
             }
             MissionSectionHint reserveHint = reserveSectionHint(ctx);
             if (reserveHint != null) {
@@ -496,6 +596,126 @@ public final class CommSystem {
         return hullFrac < 0.18;
     }
 
+    private static CommOutcome objectiveSupportOutcome(GameContext ctx, Ship target, String prefix, String bannerFallback) {
+        ObjectiveIntelHint hint = highestPriorityObjectiveHint(ctx, target, 4200.0);
+        if (hint == null) return null;
+        pushIntelPing(ctx, hint.x, hint.y, teamCodeFor(target));
+        EventSystem.showWorldCallout(ctx, hint.x, hint.y, hint.label, hint.color, 2.8);
+        String response = prefix + hint.label + " and will hold pressure there.";
+        if (hint.subtitle != null && !hint.subtitle.isBlank()) {
+            response += " " + hint.subtitle;
+        }
+        String banner = (hint.banner == null || hint.banner.isBlank()) ? bannerFallback : hint.banner;
+        return outcome(response, banner);
+    }
+
+    private static ObjectiveIntelHint highestPriorityObjectiveHint(GameContext ctx, Ship source, double maxDist) {
+        if (ctx == null || source == null) return null;
+        List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        if (markers.isEmpty()) return null;
+        CampaignSystem.CampaignObjectiveMarker best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        double limit = Math.max(240.0, maxDist);
+        for (CampaignSystem.CampaignObjectiveMarker marker : markers) {
+            if (marker == null) continue;
+            double dist = Math.hypot(marker.x - source.x, marker.y - source.y);
+            if (dist > limit) continue;
+            double score = marker.priority - dist / 180.0;
+            if (best == null || score > bestScore) {
+                best = marker;
+                bestScore = score;
+            }
+        }
+        if (best == null) return null;
+        return objectiveHintForMarker(best);
+    }
+
+    private static IntelSalePackage bestIntelSalePackage(GameContext ctx, Ship source) {
+        if (ctx == null || source == null) return null;
+        ObjectiveIntelHint objective = highestPriorityObjectiveHint(ctx, source, 5200.0);
+        if (objective != null) {
+            return new IntelSalePackage(objective.label, objective.subtitle, objective.x, objective.y, objective.color);
+        }
+        DiscoveryIntelHint discovery = nearestDiscoveryHint(ctx, source, 4200.0);
+        if (discovery != null) {
+            return new IntelSalePackage(discovery.label,
+                    "Weak signal pocket. Could be salvage, anomaly debris, or a side-route advantage.",
+                    discovery.x, discovery.y,
+                    new java.awt.Color(150, 220, 255));
+        }
+        MissionSectionHint reserve = reserveSectionHint(ctx);
+        if (reserve != null) {
+            return new IntelSalePackage(reserve.label,
+                    "Reserve traffic is massing here. Expect reinforcements or route pressure.",
+                    reserve.x, reserve.y,
+                    new java.awt.Color(255, 204, 132));
+        }
+        return null;
+    }
+
+    private static ObjectiveIntelHint objectiveHintForMarker(CampaignSystem.CampaignObjectiveMarker marker) {
+        if (marker == null) return null;
+        return switch (marker.type) {
+            case DESTROY_TARGET -> new ObjectiveIntelHint(marker.label,
+                    "Marked kill remains live on the board.",
+                    marker.x, marker.y,
+                    "MARKED TARGET VECTORED",
+                    new java.awt.Color(255, 146, 146));
+            case ESCORT_TARGET -> new ObjectiveIntelHint(marker.label,
+                    "Keep the escort inside your screen or the run collapses.",
+                    marker.x, marker.y,
+                    "ESCORT TARGET VECTORED",
+                    new java.awt.Color(196, 240, 176));
+            case PROTECTED_ASSET -> new ObjectiveIntelHint(marker.label,
+                    "This asset still needs cover to keep the mission alive.",
+                    marker.x, marker.y,
+                    "PROTECTED ASSET VECTORED",
+                    new java.awt.Color(188, 228, 255));
+            case CAPTURE_ZONE -> new ObjectiveIntelHint(marker.label,
+                    "Clear the defenders and hold the zone to progress.",
+                    marker.x, marker.y,
+                    "CAPTURE ZONE VECTORED",
+                    new java.awt.Color(140, 224, 196));
+            case BOSS_TARGET -> new ObjectiveIntelHint(marker.label,
+                    "The command hull is still the decisive break point.",
+                    marker.x, marker.y,
+                    "BOSS TARGET VECTORED",
+                    new java.awt.Color(255, 186, 132));
+            case NEXT_ROUTE, PRIMARY_OBJECTIVE -> new ObjectiveIntelHint(marker.label,
+                    "That pocket is the route that advances the mission.",
+                    marker.x, marker.y,
+                    "MISSION ROUTE VECTORED",
+                    new java.awt.Color(150, 220, 255));
+            case OPTIONAL_OBJECTIVE -> new ObjectiveIntelHint(marker.label,
+                    "Optional contact if you have time to peel off.",
+                    marker.x, marker.y,
+                    "OPTIONAL CONTACT VECTORED",
+                    new java.awt.Color(214, 204, 132));
+        };
+    }
+
+    private static boolean canOfferContractHire(GameContext ctx, Ship target) {
+        if (ctx == null || ctx.player == null || target == null || target.role == null || target.faction == null) return false;
+        if (ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return false;
+        if (target.faction != Faction.TEAM_C && target.faction != Faction.TEAM_D) return false;
+        if (!target.alive || target.dying || target.hp <= 0) return false;
+        return switch (target.role) {
+            case BASE, STATIC_TURRET, MOTHERSHIP,
+                    TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                    INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                    ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                    MOBILE_STATION_TITAN, HYPERWEAPON_TITAN -> false;
+            default -> true;
+        };
+    }
+
+    private static int contractHireCreditCost(ShipRole role) {
+        int baseCost = CampaignSystem.marketCreditCostForRole(role);
+        if (baseCost <= 0) return 0;
+        return Math.max(120, (int) Math.round(baseCost * 1.5));
+    }
+
     private static void convertShipToPlayerSide(GameContext ctx, Ship target) {
         if (ctx == null || ctx.player == null || target == null) return;
         Faction newFaction = Faction.forTeamId(ctx.player.faction.teamId());
@@ -509,6 +729,22 @@ public final class CommSystem {
         target.escortAnchorId = ctx.player.id;
         if (target.name != null && !target.name.startsWith("Defector ")) {
             target.name = "Defector " + target.name;
+        }
+        applySupportOrder(ctx, target);
+    }
+
+    private static void convertShipToContractEscort(GameContext ctx, Ship target) {
+        if (ctx == null || ctx.player == null || target == null) return;
+        target.faction = Faction.forTeamId(ctx.player.faction.teamId());
+        target.aiCommittedTargetId = -1;
+        target.aiTargetCommitTimer = 0.0;
+        target.cancelBattlefieldWarp();
+        target.reveal(3.0);
+        target.crewOrder = Ship.CrewOrder.ENGINEERING;
+        target.minerHomeBase = ctx.player;
+        target.escortAnchorId = ctx.player.id;
+        if (target.name != null && !target.name.startsWith("Contract ")) {
+            target.name = "Contract " + target.name;
         }
         applySupportOrder(ctx, target);
     }
@@ -639,6 +875,9 @@ public final class CommSystem {
                 if (outcome.banner() != null && outcome.banner().startsWith("TRADE COMPLETE")) {
                     memory.trust += 0.08;
                     memory.cooperation += 0.05;
+                } else if (outcome.banner() != null && outcome.banner().startsWith("CONTRACT ACCEPTED")) {
+                    memory.trust += 0.12;
+                    memory.cooperation += 0.14;
                 } else if (outcome.banner() != null && outcome.banner().contains("REFUSED")) {
                     memory.trust -= 0.03;
                 }
@@ -709,4 +948,7 @@ public final class CommSystem {
     private record CommOutcome(String response, String banner) {}
     private record DiscoveryIntelHint(String label, double x, double y) {}
     private record MissionSectionHint(String label, double x, double y) {}
+    private record ObjectiveIntelHint(String label, String subtitle, double x, double y,
+                                      String banner, java.awt.Color color) {}
+    private record IntelSalePackage(String label, String subtitle, double x, double y, java.awt.Color color) {}
 }

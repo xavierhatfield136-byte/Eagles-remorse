@@ -3,6 +3,8 @@ import app.config.PlayerTeamChoice;
 import app.persistence.MenuSettingsStore;
 import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Locale;
 import javax.swing.SwingUtilities;
 
 public final class UISystem {
@@ -74,6 +76,8 @@ public final class UISystem {
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
         } else {
+            ctx.ui.strategicMapFocusX = Double.NaN;
+            ctx.ui.strategicMapFocusY = Double.NaN;
             ctx.state = stateAfterOverlayClose(ctx);
             AudioSystem.onUiClose(ctx);
         }
@@ -740,20 +744,80 @@ public final class UISystem {
         return true;
     }
 
+    public static boolean handleFleetNetClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.player == null || e == null) return false;
+        if (ctx.ui.hasBlockingOverlay()) return false;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return false;
+        if (ctx.ui.mapOpen) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+
+        Rectangle panel = fleetNetPanelRect(viewportW, viewportH);
+        if (!panel.contains(e.getPoint())) return false;
+
+        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = sensorNetSignals(ctx);
+        if (signals.isEmpty()) return false;
+
+        FontMetricsLike fm = new FontMetricsLike(12);
+        java.util.List<String> sensorLines = FogOfWarSystem.isCombatFogEnabled(ctx)
+                ? wrapUiLines(FogOfWarSystem.coverageSummary(ctx), panel.width - 24, fm.charWidth)
+                : java.util.List.of();
+        int rowY = panel.y + 22 + 16 + sensorLines.size() * 15;
+        if (!sensorLines.isEmpty()) rowY += 14;
+        rowY += 14; // SIGNALS header row
+
+        for (FogOfWarSystem.SensorInterestSignal signal : signals) {
+            Rectangle rowRect = new Rectangle(panel.x + 10, rowY - 11, panel.width - 20, 16);
+            if (rowRect.contains(e.getPoint())) {
+                ctx.ui.waypointX = GameMath.clamp(signal.x, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(signal.y, 0, ctx.WORLD_H);
+                openStrategicMapFocusedAt(ctx, signal.x, signal.y);
+                addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+                EventSystem.showBanner(ctx,
+                        "SENSOR TRACK SET: " + sensorSignalTitle(signal).toUpperCase(Locale.US),
+                        1.3);
+                return true;
+            }
+            rowY += 16;
+        }
+        return false;
+    }
+
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH);
         if (!rect.contains(e.getPoint())) return;
 
         double nx = (e.getX() - rect.x) / (double) rect.width;
         double ny = (e.getY() - rect.y) / (double) rect.height;
+        double worldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
+        double worldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        CampaignSystem.CampaignObjectiveMarker clickedMarker =
+                CampaignSystem.nearestObjectiveMarker(ctx, worldX, worldY, 280.0);
+        if (clickedMarker != null) {
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, clickedMarker.x, clickedMarker.y, 2.2);
+                EventSystem.showBanner(ctx, "OBJECTIVE PING: " + clickedMarker.label.toUpperCase(), 1.2);
+                return;
+            }
+            ctx.ui.waypointX = GameMath.clamp(clickedMarker.x, 0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(clickedMarker.y, 0, ctx.WORLD_H);
+            addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+            String subtitle = (clickedMarker.subtitle == null || clickedMarker.subtitle.isBlank())
+                    ? ""
+                    : "  " + clickedMarker.subtitle.toUpperCase();
+            EventSystem.showBanner(ctx,
+                    "OBJECTIVE SET: " + clickedMarker.label.toUpperCase() + subtitle,
+                    1.4);
+            return;
+        }
+
         if (BattlefieldSectorSystem.isEnabled(ctx)) {
             BattlefieldSectorSystem.SectorDefinition sector = BattlefieldSectorSystem.sectorAtNormalized(ctx, nx, ny);
             if (sector != null) {
                 BattlefieldSectorSystem.selectSector(ctx, sector.id);
                 BattlefieldSectorSystem.ensureLoadedSector(ctx);
                 BattlefieldSectorSystem.SectorDefinition loaded = BattlefieldSectorSystem.loadedSector(ctx);
-                double clickedWorldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
-                double clickedWorldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+                double clickedWorldX = worldX;
+                double clickedWorldY = worldY;
                 BattlefieldSectorSystem.SectorDefinition hop =
                         BattlefieldSectorSystem.nextWarpHop(ctx, loaded, sector);
                 BattlefieldSectorSystem.SectorDefinition waypointSector = (hop == null) ? sector : hop;
@@ -790,8 +854,6 @@ public final class UISystem {
             }
         }
 
-        double worldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
-        double worldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
         if (CampaignSystem.usesMissionSubzones(ctx)) {
             int targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, worldX, worldY);
             if (targetSubzone >= 0) {
@@ -828,6 +890,83 @@ public final class UISystem {
         ctx.ui.waypointY = worldY;
         addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.2);
+    }
+
+    private static Rectangle fleetNetPanelRect(int viewportW, int viewportH) {
+        int w = Math.min(300, Math.max(240, viewportW / 4));
+        return new Rectangle(viewportW - w - 16, 16, w, Math.max(120, viewportH / 5));
+    }
+
+    private static void openStrategicMapFocusedAt(GameContext ctx, double x, double y) {
+        if (ctx == null || ctx.ui == null) return;
+        if (!ctx.ui.mapOpen) {
+            ctx.ui.mapOpen = true;
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
+            clearManualCombatInputs(ctx);
+            BattlefieldSectorSystem.ensureSelection(ctx);
+            BattlefieldSectorSystem.ensureLoadedSector(ctx);
+            ctx.state = GameState.MAP;
+            AudioSystem.onUiOpen(ctx);
+        }
+        ctx.ui.strategicMapFocusX = GameMath.clamp(x, 0, ctx.WORLD_W);
+        ctx.ui.strategicMapFocusY = GameMath.clamp(y, 0, ctx.WORLD_H);
+    }
+
+    private static java.util.List<FogOfWarSystem.SensorInterestSignal> sensorNetSignals(GameContext ctx) {
+        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
+        if (signals.isEmpty()) return java.util.List.of();
+        int max = Math.min(5, signals.size());
+        return new ArrayList<>(signals.subList(0, max));
+    }
+
+    private static String sensorSignalTitle(FogOfWarSystem.SensorInterestSignal signal) {
+        if (signal == null) return "Signal";
+        String kind = (signal.kind == null) ? "Signal" : switch (signal.kind) {
+            case ANOMALY -> "Anomaly";
+            case ORE_VEIN -> "Ore";
+            case WRECKAGE -> "Wreck";
+            case CACHE -> "Cache";
+            case CONTACT -> "Contact";
+            case HAZARD -> "Hazard";
+            case INTEL -> "Intel";
+            case FLEET_ASSET -> "Asset";
+            case INSTALLATION -> "Site";
+            case MASS_SIGNATURE -> "Mass";
+        };
+        String label = (signal.label == null || signal.label.isBlank()) ? kind : signal.label.trim();
+        return kind.equalsIgnoreCase(label) ? label : (kind + " " + label);
+    }
+
+    private static java.util.List<String> wrapUiLines(String text, int maxWidth, int charWidth) {
+        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        if (text == null || text.isBlank() || maxWidth <= 0) return out;
+        int width = Math.max(6, maxWidth / Math.max(1, charWidth));
+        String[] words = text.trim().split("\\s+");
+        String line = "";
+        for (String word : words) {
+            if (word == null || word.isBlank()) continue;
+            String candidate = line.isEmpty() ? word : line + " " + word;
+            if (!line.isEmpty() && candidate.length() > width) {
+                out.add(line);
+                line = word;
+            } else {
+                line = candidate;
+            }
+        }
+        if (!line.isEmpty()) out.add(line);
+        return out;
+    }
+
+    private static final class FontMetricsLike {
+        final int charWidth;
+
+        FontMetricsLike(int charWidth) {
+            this.charWidth = Math.max(6, charWidth);
+        }
     }
 
     public static void setWaypointAtCursor(GameContext ctx, PlayerControl controls) {

@@ -577,19 +577,24 @@ if (DevTools.isDebugOverlay()) {
         if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
 
         String sensorSummary = FogOfWarSystem.isCombatFogEnabled(ctx) ? FogOfWarSystem.coverageSummary(ctx) : "";
+        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = sensorNetSignals(ctx, 5);
         java.util.List<String> squadLines = activeSquadSummaryLines(ctx);
         java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 4);
         java.util.List<String> sensorLines = sensorSummary.isBlank()
                 ? java.util.List.of()
                 : wrapLines(g2.getFontMetrics(new Font("Consolas", Font.PLAIN, 12)), sensorSummary, Math.min(300, Math.max(240, viewportW / 4)) - 24);
-        if (squadLines.isEmpty() && messages.isEmpty() && sensorLines.isEmpty()) return;
+        if (squadLines.isEmpty() && messages.isEmpty() && sensorLines.isEmpty() && signals.isEmpty()) return;
 
         Font titleFont = new Font("Consolas", Font.BOLD, 13);
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
+        Font signalFont = new Font("Consolas", Font.PLAIN, 11);
         int w = Math.min(300, Math.max(240, viewportW / 4));
         int x = viewportW - w - 16;
         int y = 16;
         int h = 42 + sensorLines.size() * 15 + squadLines.size() * 15;
+        if (!signals.isEmpty()) {
+            h += 18 + signals.size() * 16;
+        }
         for (GameContext.FleetCommMessage msg : messages) {
             h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
         }
@@ -611,7 +616,26 @@ if (DevTools.isDebugOverlay()) {
             g2.drawString(line, x + 12, rowY);
             rowY += 15;
         }
-        if (!sensorLines.isEmpty() && (!squadLines.isEmpty() || !messages.isEmpty())) {
+        if (!signals.isEmpty()) {
+            g2.setColor(new Color(255, 255, 255, 58));
+            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            rowY += 14;
+            g2.setFont(signalFont);
+            g2.setColor(new Color(255, 220, 164, 220));
+            g2.drawString("SIGNALS  (CLICK TO TRACK)", x + 12, rowY);
+            rowY += 14;
+            for (FogOfWarSystem.SensorInterestSignal signal : signals) {
+                String line = sensorSignalRow(ctx, signal);
+                Color accent = sensorSignalAccent(signal);
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 56));
+                g2.fillRoundRect(x + 10, rowY - 11, w - 20, 16, 8, 8);
+                g2.setColor(new Color(238, 246, 255, 220));
+                g2.drawString(line, x + 16, rowY);
+                rowY += 16;
+            }
+            g2.setFont(bodyFont);
+        }
+        if ((!sensorLines.isEmpty() || !signals.isEmpty()) && (!squadLines.isEmpty() || !messages.isEmpty())) {
             g2.setColor(new Color(255, 255, 255, 58));
             g2.drawLine(x + 12, rowY, x + w - 12, rowY);
             rowY += 14;
@@ -638,6 +662,52 @@ if (DevTools.isDebugOverlay()) {
             }
             rowY += 8;
         }
+    }
+
+    private static java.util.List<FogOfWarSystem.SensorInterestSignal> sensorNetSignals(GameContext ctx, int maxCount) {
+        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
+        if (signals.isEmpty()) return java.util.List.of();
+        return java.util.List.copyOf(signals.subList(0, Math.min(Math.max(0, maxCount), signals.size())));
+    }
+
+    private static String sensorSignalRow(GameContext ctx, FogOfWarSystem.SensorInterestSignal signal) {
+        if (signal == null) return "UNKNOWN SIGNAL";
+        int dist = (ctx == null || ctx.player == null)
+                ? 0
+                : (int) Math.round(Math.hypot(signal.x - ctx.player.x, signal.y - ctx.player.y));
+        String kind = switch (signal.kind) {
+            case ANOMALY -> "ANOM";
+            case ORE_VEIN -> "ORE";
+            case WRECKAGE -> "WRK";
+            case CACHE -> "CACHE";
+            case CONTACT -> "CNT";
+            case HAZARD -> "HAZ";
+            case INTEL -> "INTEL";
+            case FLEET_ASSET -> "ASSET";
+            case INSTALLATION -> "SITE";
+            case MASS_SIGNATURE -> "MASS";
+        };
+        String label = (signal.label == null || signal.label.isBlank()) ? signal.kind.displayName() : signal.label.trim();
+        if (label.length() > 15) {
+            label = label.substring(0, 15).trim() + "...";
+        }
+        return kind + "  " + label.toUpperCase(java.util.Locale.US) + "  " + dist + "M";
+    }
+
+    private static Color sensorSignalAccent(FogOfWarSystem.SensorInterestSignal signal) {
+        if (signal == null || signal.kind == null) return new Color(132, 224, 255);
+        return switch (signal.kind) {
+            case ANOMALY -> new Color(180, 132, 255);
+            case ORE_VEIN -> new Color(255, 210, 118);
+            case WRECKAGE -> new Color(214, 224, 236);
+            case CACHE -> new Color(245, 210, 126);
+            case CONTACT -> new Color(140, 224, 196);
+            case HAZARD -> new Color(255, 136, 126);
+            case INTEL -> new Color(120, 196, 255);
+            case FLEET_ASSET -> new Color(196, 255, 164);
+            case INSTALLATION -> new Color(255, 146, 124);
+            case MASS_SIGNATURE -> new Color(132, 224, 255);
+        };
     }
 
     private static java.util.List<String> activeSquadSummaryLines(GameContext ctx) {

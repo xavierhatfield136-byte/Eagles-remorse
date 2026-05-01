@@ -220,19 +220,82 @@ public final class CampaignSystem {
         }
     }
 
+    private static final class RecoverableWreckSite {
+        final String label;
+        final String subtitle;
+        final ShipRole role;
+        final double x;
+        final double y;
+        final double radius;
+        boolean claimed;
+        double lastThreatWarnAtSec = -1000.0;
+
+        RecoverableWreckSite(String label, String subtitle, ShipRole role, double x, double y, double radius) {
+            this.label = (label == null || label.isBlank()) ? "Recoverable Wreck" : label.trim();
+            this.subtitle = (subtitle == null) ? "" : subtitle.trim();
+            this.role = (role == null) ? ShipRole.FRIGATE : role;
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(120.0, radius);
+        }
+    }
+
     public static final class DiscoverySignalSite {
         public final String label;
         public final String subtitle;
+        public final String kindTag;
         public final double x;
         public final double y;
         public final double radius;
 
         DiscoverySignalSite(String label, String subtitle, double x, double y, double radius) {
+            this(label, subtitle, "UNKNOWN", x, y, radius);
+        }
+
+        DiscoverySignalSite(String label, String subtitle, String kindTag, double x, double y, double radius) {
             this.label = (label == null || label.isBlank()) ? "UNKNOWN CONTACT" : label.trim();
             this.subtitle = (subtitle == null) ? "" : subtitle.trim();
+            this.kindTag = (kindTag == null || kindTag.isBlank()) ? "UNKNOWN" : kindTag.trim();
             this.x = x;
             this.y = y;
             this.radius = Math.max(80.0, radius);
+        }
+    }
+
+    public enum ObjectiveMarkerType {
+        PRIMARY_OBJECTIVE,
+        NEXT_ROUTE,
+        ESCORT_TARGET,
+        PROTECTED_ASSET,
+        DESTROY_TARGET,
+        CAPTURE_ZONE,
+        BOSS_TARGET,
+        OPTIONAL_OBJECTIVE
+    }
+
+    public static final class CampaignObjectiveMarker {
+        public final ObjectiveMarkerType type;
+        public final String label;
+        public final String subtitle;
+        public final double x;
+        public final double y;
+        public final double radius;
+        public final int priority;
+
+        CampaignObjectiveMarker(ObjectiveMarkerType type,
+                                String label,
+                                String subtitle,
+                                double x,
+                                double y,
+                                double radius,
+                                int priority) {
+            this.type = (type == null) ? ObjectiveMarkerType.PRIMARY_OBJECTIVE : type;
+            this.label = (label == null || label.isBlank()) ? "OBJECTIVE" : label.trim();
+            this.subtitle = (subtitle == null) ? "" : subtitle.trim();
+            this.x = x;
+            this.y = y;
+            this.radius = Math.max(60.0, radius);
+            this.priority = Math.max(0, priority);
         }
     }
 
@@ -427,8 +490,133 @@ public final class CampaignSystem {
         ArrayList<DiscoverySignalSite> out = new ArrayList<>();
         for (DiscoverySite site : st.discoverySites) {
             if (site == null || site.discovered || site.kind != DiscoveryKind.ANOMALY) continue;
-            out.add(new DiscoverySignalSite(site.label, site.subtitle, site.x, site.y, site.radius));
+            out.add(new DiscoverySignalSite(site.label, site.subtitle, site.kind.name(), site.x, site.y, site.radius));
         }
+        return out;
+    }
+
+    static List<DiscoverySignalSite> discoverySignalSites(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.discoverySites.isEmpty()) return List.of();
+        ArrayList<DiscoverySignalSite> out = new ArrayList<>();
+        for (DiscoverySite site : st.discoverySites) {
+            if (site == null || site.discovered || site.kind == null) continue;
+            out.add(new DiscoverySignalSite(site.label, site.subtitle, site.kind.name(), site.x, site.y, site.radius));
+        }
+        return out;
+    }
+
+    static List<DiscoverySignalSite> recoverableWreckSignalSites(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.recoverableWreckSites.isEmpty()) return List.of();
+        ArrayList<DiscoverySignalSite> out = new ArrayList<>();
+        for (RecoverableWreckSite site : st.recoverableWreckSites) {
+            if (site == null || site.claimed) continue;
+            out.add(new DiscoverySignalSite(site.label, site.subtitle, "RECOVERABLE_WRECK", site.x, site.y, site.radius));
+        }
+        return out;
+    }
+
+    static List<CampaignObjectiveMarker> activeObjectiveMarkers(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled) return List.of();
+
+        ArrayList<CampaignObjectiveMarker> out = new ArrayList<>();
+
+        if (!st.missionSections.isEmpty()) {
+            int activeIndex = Math.max(0, Math.min(st.missionSections.size() - 1, st.activeMissionSection));
+            MissionSection active = st.missionSections.get(activeIndex);
+            if (active != null) {
+                out.add(new CampaignObjectiveMarker(
+                        st.missionSectionTravelLocked ? ObjectiveMarkerType.NEXT_ROUTE : ObjectiveMarkerType.PRIMARY_OBJECTIVE,
+                        active.label,
+                        st.missionSectionTravelLocked
+                                ? "Fly the flagship here to resume mission progress"
+                                : "Clear this pocket to unlock the next objective route",
+                        active.x, active.y, active.radius,
+                        st.missionSectionTravelLocked ? 100 : 95));
+            }
+            if (!st.missionSectionTravelLocked && activeIndex + 1 < st.missionSections.size()) {
+                MissionSection next = st.missionSections.get(activeIndex + 1);
+                if (next != null) {
+                    out.add(new CampaignObjectiveMarker(
+                            ObjectiveMarkerType.NEXT_ROUTE,
+                            next.label,
+                            "Next route after the current pocket is secured",
+                            next.x, next.y, next.radius,
+                            70));
+                }
+            }
+        }
+
+        if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null
+                && st.escortShip.alive && !st.escortShip.dying && st.escortShip.hp > 0) {
+            out.add(new CampaignObjectiveMarker(
+                    ObjectiveMarkerType.ESCORT_TARGET,
+                    displayShipName(st.escortShip, "Escort Target"),
+                    "Keep this ship alive",
+                    st.escortShip.x, st.escortShip.y,
+                    Math.max(180.0, st.escortShip.radius * 2.5),
+                    96));
+        }
+
+        if (st.objectiveType == ObjectiveType.CAPTURE) {
+            out.add(new CampaignObjectiveMarker(
+                    ObjectiveMarkerType.CAPTURE_ZONE,
+                    "Capture Zone",
+                    "Clear defenders and secure this area",
+                    st.captureX, st.captureY, st.captureRadius,
+                    94));
+        }
+
+        if (st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS) {
+            Ship boss = findShipById(ctx, st.bossTargetId);
+            if (boss != null && boss.alive && !boss.dying && boss.hp > 0) {
+                out.add(new CampaignObjectiveMarker(
+                        ObjectiveMarkerType.BOSS_TARGET,
+                        displayShipName(boss, "Boss Target"),
+                        "Break the flagship before time runs out",
+                        boss.x, boss.y,
+                        Math.max(220.0, boss.radius * 3.0),
+                        98));
+            }
+        }
+
+        for (Integer id : st.objectiveAssetIds) {
+            Ship asset = findShipById(ctx, id == null ? -1 : id);
+            if (asset == null || !asset.alive || asset.dying || asset.hp <= 0) continue;
+            out.add(new CampaignObjectiveMarker(
+                    ObjectiveMarkerType.PROTECTED_ASSET,
+                    displayShipName(asset, trimmedOrFallback(st.objectiveAssetLabel, "Protected Asset")),
+                    "Must survive for mission success",
+                    asset.x, asset.y,
+                    Math.max(150.0, asset.radius * 2.4),
+                    88));
+        }
+
+        for (Integer id : st.authoredObjectiveHostiles) {
+            Ship hostile = findShipById(ctx, id == null ? -1 : id);
+            if (hostile == null || !hostile.alive || hostile.dying || hostile.hp <= 0) continue;
+            out.add(new CampaignObjectiveMarker(
+                    ObjectiveMarkerType.DESTROY_TARGET,
+                    displayShipName(hostile, "Marked Target"),
+                    "Required kill for mission completion",
+                    hostile.x, hostile.y,
+                    Math.max(150.0, hostile.radius * 2.5),
+                    90));
+        }
+
+        for (RecoverableWreckSite wreck : st.recoverableWreckSites) {
+            if (wreck == null || wreck.claimed) continue;
+            out.add(new CampaignObjectiveMarker(
+                    ObjectiveMarkerType.OPTIONAL_OBJECTIVE,
+                    wreck.label,
+                    wreck.subtitle.isBlank() ? "Optional fleet recovery opportunity" : wreck.subtitle,
+                    wreck.x, wreck.y,
+                    wreck.radius,
+                    58));
+        }
+
         return out;
     }
 
@@ -446,7 +634,26 @@ public final class CampaignSystem {
             }
         }
         if (best == null) return null;
-        return new DiscoverySignalSite(best.label, best.subtitle, best.x, best.y, best.radius);
+        return new DiscoverySignalSite(best.label, best.subtitle, best.kind == null ? "UNKNOWN" : best.kind.name(),
+                best.x, best.y, best.radius);
+    }
+
+    public static CampaignObjectiveMarker nearestObjectiveMarker(GameContext ctx, double x, double y, double maxDist) {
+        List<CampaignObjectiveMarker> markers = activeObjectiveMarkers(ctx);
+        if (markers.isEmpty()) return null;
+        CampaignObjectiveMarker best = null;
+        double bestD2 = Math.max(1.0, maxDist) * Math.max(1.0, maxDist);
+        for (CampaignObjectiveMarker marker : markers) {
+            if (marker == null) continue;
+            double range = Math.max(maxDist, marker.radius);
+            double d2 = GameMath.dist2(x, y, marker.x, marker.y);
+            if (d2 > range * range) continue;
+            if (best == null || d2 < bestD2 || (Math.abs(d2 - bestD2) < 1e-6 && marker.priority > best.priority)) {
+                best = marker;
+                bestD2 = d2;
+            }
+        }
+        return best;
     }
 
     public static double[] reserveSectionPoint(GameContext ctx) {
@@ -871,6 +1078,7 @@ public final class CampaignSystem {
 
         public final Set<Integer> authoredObjectiveHostiles = new HashSet<>();
         public int authoredObjectiveKills = 0;
+        public int lastAnnouncedAuthoredObjectiveKills = 0;
         public int authoredWaveCursor = 0;
         public int loadedMissionSubzone = missionSubzoneIndex(0, 1);
         public final List<CampaignLandmark> landmarks = new ArrayList<>();
@@ -879,6 +1087,8 @@ public final class CampaignSystem {
         public boolean missionSectionTravelLocked = false;
         public final List<DiscoverySite> discoverySites = new ArrayList<>();
         public int discoveriesFound = 0;
+        public final List<RecoverableWreckSite> recoverableWreckSites = new ArrayList<>();
+        public int recoverableWrecksClaimed = 0;
         public String objectivePhaseLabel = "";
         public String threatStateLabel = "";
         public int objectiveStage = 0;
@@ -887,6 +1097,7 @@ public final class CampaignSystem {
         public final Set<Integer> objectiveAssetIds = new HashSet<>();
         public int objectiveAssetTotal = 0;
         public int objectiveAssetLosses = 0;
+        public int lastAnnouncedObjectiveAssetLosses = 0;
         public String objectiveAssetLabel = "";
         public int objectiveAssetRequiredSurvivors = 0;
         public String objectiveAssetFailureText = "";
@@ -1114,6 +1325,7 @@ public final class CampaignSystem {
         }
         updateEscortFormationBehavior(ctx, st, dt);
         updatePocketDiscoveries(ctx, st);
+        updateRecoverableWreckSites(ctx, st);
         if (missionPocketActive) {
             updateSideObjective(ctx, dt);
         }
@@ -1167,13 +1379,11 @@ public final class CampaignSystem {
         if (st == null || !st.enabled) return "";
         int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
-        SectorLore lore = loreFor(st.sector);
         ArrayList<String> lines = new ArrayList<>();
-        addObjectiveLine(lines, objectiveActionLine(st));
-        addObjectiveLine(lines, objectiveAreaLine(st, lore));
-        addObjectiveLine(lines, objectiveLoreLeadLine(lore));
-        addObjectiveLine(lines, objectivePocketLine(st));
+        addObjectiveLine(lines, objectiveMainLine(st));
+        addObjectiveLine(lines, objectiveFailureRiskLine(st));
         addObjectiveLine(lines, objectiveTransitLine(st));
+        addObjectiveLine(lines, objectiveOptionalLine(st));
         addObjectiveLine(lines, objectiveThreatLine(st));
         addObjectiveLine(lines, objectiveProgressLine(st, p, left));
         return String.join("\n", lines);
@@ -1186,14 +1396,13 @@ public final class CampaignSystem {
         int left = (int) Math.ceil(Math.max(0.0, st.sectorTimeLimit - st.sectorElapsed));
         String p = formatProgress(st.objectiveProgress, st.objectiveGoal);
         ArrayList<String> lines = new ArrayList<>();
-        addObjectiveLine(lines, "Action: " + trimmedOrFallback(st.objectiveLabel, "Advance the campaign objective"));
-        addObjectiveLine(lines, objectiveWinLine(st, p, left));
-        addObjectiveLine(lines, objectiveFailureLine(st));
-        addObjectiveLine(lines, objectivePocketLine(st));
+        addObjectiveLine(lines, objectiveMainLine(st));
+        addObjectiveLine(lines, objectiveFailureRiskLine(st));
         addObjectiveLine(lines, objectiveTransitLine(st));
-        addObjectiveLine(lines, objectiveSuggestedMoveLine(st));
+        addObjectiveLine(lines, objectiveOptionalLine(st));
         addObjectiveLine(lines, objectiveThreatLine(st));
         addObjectiveLine(lines, objectiveProgressLine(st, p, left));
+        addObjectiveLine(lines, objectivePocketLine(st));
         if (lore != null) {
             addObjectiveLine(lines, "Theater: " + lore.title + " / " + lore.location);
             addObjectiveLine(lines, "Why: " + lore.completionLead);
@@ -1256,6 +1465,43 @@ public final class CampaignSystem {
     private static String objectiveActionLine(CampaignState st) {
         if (st == null) return "";
         return "Action: " + trimmedOrFallback(st.objectiveLabel, "Advance the campaign objective");
+    }
+
+    private static String objectiveMainLine(CampaignState st) {
+        if (st == null) return "";
+        return "Main Objective: " + trimmedOrFallback(st.objectiveLabel, "Advance the campaign objective");
+    }
+
+    private static String objectiveFailureRiskLine(CampaignState st) {
+        if (st == null) return "";
+        if (st.objectiveAssetRequiredSurvivors > 0 && st.objectiveAssetTotal > 0) {
+            String label = trimmedOrFallback(st.objectiveAssetLabel, "objective assets");
+            return "Failure Risk: Keep at least "
+                    + st.objectiveAssetRequiredSurvivors
+                    + " of "
+                    + st.objectiveAssetTotal
+                    + " "
+                    + label
+                    + " alive";
+        }
+        if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) {
+            return "Failure Risk: Do not lose " + displayShipName(st.escortShip, "the escort target");
+        }
+        return "Failure Risk: " + objectiveFailureSummary(st);
+    }
+
+    private static String objectiveOptionalLine(CampaignState st) {
+        if (st == null) return "";
+        ArrayList<String> parts = new ArrayList<>();
+        if (st.sideObjectiveType != SideObjectiveType.NONE && st.sideObjectiveLabel != null && !st.sideObjectiveLabel.isBlank()) {
+            parts.add(st.sideObjectiveLabel.trim());
+        }
+        String discovery = discoveryHud(st);
+        if (!discovery.isBlank()) {
+            parts.add("Investigate " + cleanHudClause(discovery) + " scanner contacts");
+        }
+        if (parts.isEmpty()) return "";
+        return "Optional: " + String.join("  |  ", parts);
     }
 
     private static String objectiveWinLine(CampaignState st, String progress, int leftSeconds) {
@@ -1337,16 +1583,16 @@ public final class CampaignSystem {
             line.append("  |  Then move the flagship to ").append(next.label);
         }
         String discoveries = discoveryHud(st);
-        if (!discoveries.isBlank()) line.append("  |  ").append(cleanHudClause(discoveries)).append(" anomalous returns");
+        if (!discoveries.isBlank()) line.append("  |  ").append(cleanHudClause(discoveries)).append(" scanner contacts");
         return line.toString();
     }
 
     private static String objectiveTransitLine(CampaignState st) {
         if (st == null) return "";
         if (st.missionSectionTravelLocked) {
-            return "Status: Progress paused until arrival in " + currentMissionSectionLabel(st) + ".";
+            return "Next Move: Fly the flagship to " + currentMissionSectionLabel(st) + " to resume progress";
         }
-        return objectiveSuggestedMoveLine(st);
+        return "Next Move: " + stripPrefix(objectiveSuggestedMoveLine(st), "First move:");
     }
 
     private static String objectiveSuggestedMoveLine(CampaignState st) {
@@ -1412,6 +1658,22 @@ public final class CampaignSystem {
         if (prefix == null || prefix.isBlank()) return text.trim();
         String trimmed = text.trim();
         return trimmed.startsWith(prefix) ? trimmed.substring(prefix.length()).trim() : trimmed;
+    }
+
+    private static String displayShipName(Ship ship, String fallback) {
+        if (ship == null) return fallback;
+        if (ship.name != null && !ship.name.isBlank()) return ship.name.trim();
+        if (ship.role != null) return ship.role.name().replace('_', ' ');
+        return fallback;
+    }
+
+    private static String objectiveFailureSummary(CampaignState st) {
+        if (st == null) return "Run lost if the flagship goes down";
+        return switch (st.objectiveType) {
+            case SURVIVE -> "Flagship loss ends the run before the timer does";
+            case DESTROY, CAPTURE, BOSS, FINAL_BOSS -> "Timeout or flagship loss ends the run";
+            case ESCORT -> "Escort or flagship loss ends the run";
+        };
     }
 
     private static String firstHudClause(String text, String... preferredPrefixes) {
@@ -1487,7 +1749,15 @@ public final class CampaignSystem {
 
     private static String discoveryHud(CampaignState st) {
         if (st == null || st.discoverySites.isEmpty()) return "";
-        return "DISC " + st.discoveriesFound + "/" + st.discoverySites.size();
+        String text = "DISC " + st.discoveriesFound + "/" + st.discoverySites.size();
+        int availableRecoveries = 0;
+        for (RecoverableWreckSite site : st.recoverableWreckSites) {
+            if (site != null && !site.claimed) availableRecoveries++;
+        }
+        if (availableRecoveries > 0) {
+            text += "  REC " + availableRecoveries;
+        }
+        return text;
     }
 
     public static boolean hasCapturePoint(GameContext ctx) {
@@ -1916,6 +2186,51 @@ public final class CampaignSystem {
         };
     }
 
+    public static int marketCreditCostForRole(ShipRole role) {
+        if (role == null) return 0;
+        return switch (role) {
+            case PATROL -> 140;
+            case PICKET -> 180;
+            case FRIGATE -> 220;
+            case ARTILLERY_SHIP -> 320;
+            case MISSILE_BOAT -> 300;
+            case CIWS_CORVETTE -> 250;
+            case MINER -> 160;
+
+            case LIGHT_CRUISER -> 700;
+            case MEDIUM_CRUISER -> 950;
+            case CRUISER -> 1100;
+            case BATTLECRUISER -> 1600;
+            case BATTLESHIP -> 2200;
+            case STEALTH_SHIP -> 1200;
+            case TRANSPORT -> 460;
+            case HAULER -> 260;
+
+            case DREADNOUGHT -> 3200;
+            case CARRIER -> 2800;
+            case DRONE_CARRIER -> 3000;
+            case SUPERSHIP -> 5200;
+
+            case TRANSPORT_TITAN -> TitanArchetype.TRANSPORT.costCredits();
+            case BULWARK_TITAN -> TitanArchetype.BULWARK.costCredits();
+            case CARRIER_SUPPORT_TITAN -> TitanArchetype.CARRIER_SUPPORT.costCredits();
+            case VANGUARD_TITAN -> TitanArchetype.VANGUARD.costCredits();
+            case INTERDICTION_TITAN -> TitanArchetype.INTERDICTION.costCredits();
+            case COMMAND_INTEL_TITAN -> TitanArchetype.COMMAND_INTEL.costCredits();
+            case BOARDING_RECOVERY_TITAN -> TitanArchetype.BOARDING_RECOVERY.costCredits();
+            case ARTILLERY_TITAN -> TitanArchetype.ARTILLERY.costCredits();
+            case SHIELD_BASTION_TITAN -> TitanArchetype.SHIELD_BASTION.costCredits();
+            case FLEET_TELEPORTER_TITAN -> TitanArchetype.FLEET_TELEPORTER.costCredits();
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> TitanArchetype.ELITE_SUPERSHIP_COMMAND.costCredits();
+            case ELITE_REINFORCEMENTS_TITAN -> TitanArchetype.ELITE_REINFORCEMENTS.costCredits();
+            case MOBILE_STATION_TITAN -> TitanArchetype.MOBILE_STATION.costCredits();
+            case HYPERWEAPON_TITAN -> TitanArchetype.HYPERWEAPON.costCredits();
+            case MOTHERSHIP -> 7200;
+
+            default -> 0;
+        };
+    }
+
     static int campaignRequiredTier(ShipRole role, int requiredTier) {
         ShipRole resolved = (role == null) ? ShipRole.FRIGATE : role;
         return switch (resolved) {
@@ -2150,43 +2465,7 @@ public final class CampaignSystem {
     public static boolean purchasePersistentFleetCapUpgrade(GameContext ctx, ShopHullCategory category) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || ctx.player == null || category == null) return false;
-        if (category == ShopHullCategory.TITAN) {
-            EventSystem.showBanner(ctx, "TITAN CAP FIXED BY MOTHERSHIP DOCTRINE", 1.8);
-            return false;
-        }
-
-        int level = persistentFleetCapUpgradeLevel(st, category);
-        int maxLevel = persistentFleetCapUpgradeMaxLevel(category);
-        if (level >= maxLevel) {
-            EventSystem.showBanner(ctx, category.label() + " EXPANSION MAXED", 1.8);
-            return false;
-        }
-
-        int currentCap = persistentFleetCap(st, category);
-        int liveCount = livePersistentFleetSlots(st, category);
-        if (liveCount < currentCap) {
-            EventSystem.showBanner(ctx, "FILL " + category.label() + " COMMAND FIRST", 1.8);
-            return false;
-        }
-
-        int creditCost = persistentFleetCapUpgradeCreditCost(st, category);
-        int oreCost = persistentFleetCapUpgradeOreCost(st, category);
-        if (ctx.credits < creditCost || ctx.player.cargo < oreCost) {
-            EventSystem.showBanner(ctx, "NOT ENOUGH CREDITS / ORE", 1.6);
-            return false;
-        }
-
-        ctx.credits -= creditCost;
-        ctx.player.cargo = Math.max(0, ctx.player.cargo - oreCost);
-        switch (category) {
-            case ESCORT -> st.escortCapUpgradeLevel = Math.min(maxLevel, st.escortCapUpgradeLevel + 1);
-            case LINE -> st.lineCapUpgradeLevel = Math.min(maxLevel, st.lineCapUpgradeLevel + 1);
-            case CAPITAL -> st.capitalCapUpgradeLevel = Math.min(maxLevel, st.capitalCapUpgradeLevel + 1);
-            case TITAN -> { return false; }
-        }
-        EventSystem.showBanner(ctx,
-                category.label() + " CAP +" + persistentFleetCapUpgradeStep(category),
-                1.8);
+        EventSystem.showBanner(ctx, "CAMPAIGN UNIT CAPS REMOVED - GROWTH NOW LIMITED BY COMMAND, COST, AND ATTRITION", 2.2);
         return true;
     }
 
@@ -2278,12 +2557,6 @@ public final class CampaignSystem {
         }
         int effectiveTier = campaignRequiredTier(role, requiredTier);
         ShopHullCategory category = ShopHullCategory.forRole(role);
-        int liveCount = livePersistentFleetSlots(st, category);
-        int cap = persistentFleetCap(st, category);
-        if (liveCount >= cap) {
-            EventSystem.showBanner(ctx, category.label() + " COMMAND CAP REACHED", 1.8);
-            return false;
-        }
 
         int hangarTier = 0;
         BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(ctx.player, ignored -> new BaseUpgrades().bindTo(ctx.player));
@@ -2419,9 +2692,9 @@ public final class CampaignSystem {
         int line = livePersistentFleetCount(ctx, ShopHullCategory.LINE);
         int capital = livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
         int titan = livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
-        return "E" + escort + "/" + persistentFleetCap(ctx, ShopHullCategory.ESCORT)
-                + " L" + line + "/" + persistentFleetCap(ctx, ShopHullCategory.LINE)
-                + " C" + capital + "/" + persistentFleetCap(ctx, ShopHullCategory.CAPITAL)
+        return "E" + escort
+                + " L" + line
+                + " C" + capital
                 + " T" + titan + "/" + persistentFleetCap(ctx, ShopHullCategory.TITAN);
     }
 
@@ -2812,6 +3085,7 @@ public final class CampaignSystem {
         st.knownHostiles.clear();
         st.authoredObjectiveHostiles.clear();
         st.authoredObjectiveKills = 0;
+        st.lastAnnouncedAuthoredObjectiveKills = 0;
         st.authoredWaveCursor = 0;
         st.landmarks.clear();
         st.objectivePhaseLabel = "";
@@ -2822,6 +3096,7 @@ public final class CampaignSystem {
         st.objectiveAssetIds.clear();
         st.objectiveAssetTotal = 0;
         st.objectiveAssetLosses = 0;
+        st.lastAnnouncedObjectiveAssetLosses = 0;
         st.objectiveAssetLabel = "";
         st.objectiveAssetRequiredSurvivors = 0;
         st.objectiveAssetFailureText = "";
@@ -2830,6 +3105,8 @@ public final class CampaignSystem {
         st.missionSectionTravelLocked = false;
         st.discoverySites.clear();
         st.discoveriesFound = 0;
+        st.recoverableWreckSites.clear();
+        st.recoverableWrecksClaimed = 0;
         st.captureArmed = false;
         st.bossTargetId = -1;
         st.bossKind = BossKind.NONE;
@@ -2881,6 +3158,7 @@ public final class CampaignSystem {
                 + "  |  " + st.objectiveLabel;
         EventSystem.showBanner(ctx, msg, 3.2);
         st.missionIntroTimer = (st.sector == 1) ? 14.0 : 8.5;
+        seedWaypointFromObjectives(ctx, st, false);
         logTelemetry("sector_start",
                 "sector=" + st.sector +
                         " act=" + st.act +
@@ -3335,6 +3613,8 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return;
         st.discoverySites.clear();
         st.discoveriesFound = 0;
+        st.recoverableWreckSites.clear();
+        st.recoverableWrecksClaimed = 0;
         addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 0.0, -210.0, 170.0,
                 "Debris Cache",
                 "Black-boxes and salvage pods are tumbling off the route lane",
@@ -3413,7 +3693,7 @@ public final class CampaignSystem {
 
     private static void trimDiscoverySitesToSectorBudget(CampaignState st) {
         if (st == null || st.discoverySites.isEmpty()) return;
-        int targetCount = Math.max(1, Math.min(5, 2 + (Math.max(1, st.sector) / 6)));
+        int targetCount = Math.max(3, Math.min(6, 3 + (Math.max(1, st.sector) / 5)));
         if (st.discoverySites.size() <= targetCount) return;
 
         ArrayList<DiscoverySite> ordered = new ArrayList<>(st.discoverySites);
@@ -3563,6 +3843,10 @@ public final class CampaignSystem {
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 6);
                 spawnCampaignAsteroidPocket(ctx, site.x - 100.0, site.y + 60.0, 2, 0.45, false);
                 spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), site.x + 100.0, site.y - 50.0, "Hulk Tender");
+                addRecoverableWreckSite(st, site.x - 35.0, site.y + 25.0,
+                        salvageRecoveryRoleForSector(st, site.kind),
+                        site.label + " Recovery Frame",
+                        "Recoverable hull scaffold hidden in the debris.");
             }
             case SUPPLY_CACHE -> {
                 Faction faction = greenSupportFaction(st);
@@ -3583,6 +3867,10 @@ public final class CampaignSystem {
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 8);
                 spawnCampaignAsteroidPocket(ctx, site.x + 90.0, site.y - 40.0, 4, 0.8, false);
                 spawnEnemyAtPoint(ctx, ShipRole.PATROL, site.x - 140.0, site.y + 60.0);
+                addRecoverableWreckSite(st, site.x + 55.0, site.y - 35.0,
+                        salvageRecoveryRoleForSector(st, site.kind),
+                        "Recoverable Wreck Spine",
+                        "A cracked war hull here could be reclaimed for the fleet.");
             }
             case MINEFIELD -> {
                 spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, Faction.ENEMY, site.x - 120.0, site.y - 70.0, "Mine Anchor");
@@ -3620,6 +3908,10 @@ public final class CampaignSystem {
                 spawnCampaignAsteroidPocket(ctx, site.x, site.y, 3, 0.95, true);
                 spawnCampaignSalvagePocket(ctx, site.x + 70.0, site.y - 50.0, 2);
                 spawnCampaignShip(ctx, ShipRole.PATROL, greenSupportFaction(st), site.x - 120.0, site.y + 60.0, "Anomaly Scout");
+                addRecoverableWreckSite(st, site.x + 35.0, site.y + 40.0,
+                        salvageRecoveryRoleForSector(st, site.kind),
+                        "Anomaly Wreck Echo",
+                        "The anomaly is preserving a reclaimable hull shell.");
             }
             case FLEET_ASSET -> {
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 4);
@@ -3630,8 +3922,43 @@ public final class CampaignSystem {
                     spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, site.x + 20.0, site.y - 10.0, "Cradle Escort");
                 }
                 spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, site.x - 110.0, site.y + 75.0, "Cradle Screen");
+                addRecoverableWreckSite(st, site.x, site.y + 20.0,
+                        salvageRecoveryRoleForSector(st, site.kind),
+                        "Prototype Recovery Cradle",
+                        "A fleet-grade chassis can be reclaimed if the lane is secure.");
             }
         }
+    }
+
+    private static void addRecoverableWreckSite(CampaignState st, double x, double y, ShipRole role, String label, String subtitle) {
+        if (st == null || role == null) return;
+        for (RecoverableWreckSite existing : st.recoverableWreckSites) {
+            if (existing == null || existing.claimed) continue;
+            if (GameMath.dist2(existing.x, existing.y, x, y) <= 180.0 * 180.0) return;
+        }
+        st.recoverableWreckSites.add(new RecoverableWreckSite(label, subtitle, role, x, y, 175.0));
+    }
+
+    private static ShipRole salvageRecoveryRoleForSector(CampaignState st, DiscoveryKind kind) {
+        int sector = (st == null) ? 1 : Math.max(1, st.sector);
+        if (kind == DiscoveryKind.FLEET_ASSET) {
+            if (sector >= 18) return ShipRole.BATTLECRUISER;
+            if (sector >= 12) return ShipRole.LIGHT_CRUISER;
+            return ShipRole.FRIGATE;
+        }
+        if (kind == DiscoveryKind.ANOMALY) {
+            if (sector >= 16) return ShipRole.ARTILLERY_SHIP;
+            if (sector >= 10) return ShipRole.STEALTH_SHIP;
+            return ShipRole.PICKET;
+        }
+        if (kind == DiscoveryKind.WRECK_FIELD) {
+            if (sector >= 14) return ShipRole.MISSILE_BOAT;
+            if (sector >= 8) return ShipRole.CIWS_CORVETTE;
+            return ShipRole.PATROL;
+        }
+        if (sector >= 14) return ShipRole.FRIGATE;
+        if (sector >= 8) return ShipRole.PICKET;
+        return ShipRole.HAULER;
     }
 
     private static String appendHudClause(String base, String addition) {
@@ -4583,6 +4910,27 @@ public final class CampaignSystem {
         }
     }
 
+    private static void updateRecoverableWreckSites(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || ctx.player == null || st.recoverableWreckSites.isEmpty()) return;
+        double now = Math.max(0.0, st.sectorElapsed);
+        for (RecoverableWreckSite site : st.recoverableWreckSites) {
+            if (site == null || site.claimed) continue;
+            if (!isPlayerInsideRadius(ctx.player, site.x, site.y, site.radius)) continue;
+            if (hostilesNearPoint(ctx, site.x, site.y, 620.0) > 0) {
+                if (now - site.lastThreatWarnAtSec >= 2.0) {
+                    EventSystem.showBanner(ctx, "RECOVERY BLOCKED: HOSTILES TOO CLOSE TO " + site.label.toUpperCase(Locale.US), 1.8);
+                    AudioSystem.playContextBanter(ctx, "captain", "recovery_blocked",
+                            "CAPTAIN",
+                            "Too hot to recover that hull. Clear the pocket first.",
+                            2.0, 6.0, 2);
+                    site.lastThreatWarnAtSec = now;
+                }
+                continue;
+            }
+            claimRecoverableWreckSite(ctx, st, site);
+        }
+    }
+
     private static void resolveDiscoverySite(GameContext ctx, CampaignState st, DiscoverySite site) {
         if (ctx == null || st == null || site == null) return;
         switch (site.kind) {
@@ -4608,7 +4956,7 @@ public final class CampaignSystem {
                 grantStoryResources(ctx, 150 + st.sector * 7, 20 + st.sector, site.label);
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 8);
                 spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), site.x + 60.0, site.y - 40.0, "Recovered Tender");
-                EventSystem.showBanner(ctx, "DISCOVERY: SALVAGE HULK CRACKED OPEN", 2.2);
+                EventSystem.showBanner(ctx, "DISCOVERY: SALVAGE HULK CRACKED OPEN - RECOVERY SIGNAL CONFIRMED", 2.2);
             }
             case SUPPLY_CACHE -> {
                 grantStoryResources(ctx, 80 + st.sector * 4, 12 + st.sector, site.label);
@@ -4625,7 +4973,7 @@ public final class CampaignSystem {
                 grantStoryResources(ctx, 90 + st.sector * 5, 16 + st.sector * 2, site.label);
                 spawnCampaignSalvagePocket(ctx, site.x, site.y, 10);
                 spawnCampaignAsteroidPocket(ctx, site.x + 90.0, site.y - 60.0, 4, 0.8, false);
-                EventSystem.showBanner(ctx, "DISCOVERY: WRECK FIELD YIELDS PARTS AND DRIFT ORE", 2.2);
+                EventSystem.showBanner(ctx, "DISCOVERY: WRECK FIELD YIELDS PARTS, DRIFT ORE, AND A RECOVERY LEAD", 2.2);
             }
             case MINEFIELD -> {
                 spawnDiscoveryMinefield(ctx, st, site.x, site.y);
@@ -4658,7 +5006,7 @@ public final class CampaignSystem {
                 applyLocalizedFleetRefit(ctx, site.x, site.y, 520.0, 16.0, 22.0);
                 spawnDiscoveryFleetAsset(ctx, st, site.x, site.y);
                 shiftBranchScore(st, 1);
-                EventSystem.showBanner(ctx, "DISCOVERY: PROTOTYPE FLEET ASSET BROUGHT ONLINE", 2.2);
+                EventSystem.showBanner(ctx, "DISCOVERY: PROTOTYPE FLEET ASSET MARKS A RECOVERABLE HULL", 2.2);
             }
         }
     }
@@ -4739,7 +5087,11 @@ public final class CampaignSystem {
             case 1 -> {
                 grantStoryResources(ctx, 90 + st.sector * 5, 10 + st.sector, site.label);
                 shiftBranchScore(st, 1);
-                EventSystem.showBanner(ctx, "DISCOVERY: SENSOR GHOSTS EXPOSE NEW FLEET VECTORS", 2.2);
+                addRecoverableWreckSite(st, site.x + 45.0, site.y - 35.0,
+                        salvageRecoveryRoleForSector(st, site.kind),
+                        "Ghost-Chassis Echo",
+                        "An anomaly-stabilized hull frame is now recoverable.");
+                EventSystem.showBanner(ctx, "DISCOVERY: SENSOR GHOSTS EXPOSE NEW FLEET VECTORS AND A RECOVERY HULL", 2.2);
             }
             case 2 -> {
                 spawnCampaignAsteroidPocket(ctx, site.x, site.y, 4, 1.05, true);
@@ -4778,6 +5130,50 @@ public final class CampaignSystem {
         st.branchRoute = branchRouteLabel(st.branchScore);
     }
 
+    private static int hostilesNearPoint(GameContext ctx, double x, double y, double radius) {
+        if (ctx == null || ctx.ships == null || ctx.player == null || ctx.player.faction == null) return 0;
+        double rr = Math.max(120.0, radius);
+        double rr2 = rr * rr;
+        int count = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0 || ship.faction == null) continue;
+            if (ship.faction.isFriendlyTo(ctx.player.faction)) continue;
+            if (GameMath.dist2(ship.x, ship.y, x, y) <= rr2) count++;
+        }
+        return count;
+    }
+
+    private static void claimRecoverableWreckSite(GameContext ctx, CampaignState st, RecoverableWreckSite site) {
+        if (ctx == null || st == null || site == null || site.claimed || site.role == null) return;
+        PersistentFleetEntry entry = addPersistentFleetEntry(st, site.role,
+                "Recovered " + roleDisplayName(site.role), CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+        if (entry == null) return;
+        rebalancePersistentCommandGroups(st);
+        spawnPurchasedPersistentBlueShip(ctx, st, entry);
+        site.claimed = true;
+        st.recoverableWrecksClaimed++;
+        shiftBranchScore(st, 1);
+        EventSystem.showBanner(ctx, "RECOVERY COMPLETE: " + roleDisplayName(site.role).toUpperCase(Locale.US) + " JOINS THE FLEET", 2.4);
+        EventSystem.showWorldCallout(ctx, site.x, site.y, "RECOVERED HULL", new Color(186, 240, 180), 3.0);
+        AudioSystem.playContextBanter(ctx, "engineering", "recovery_complete",
+                "ENGINEERING",
+                "Recovery frame is live. We've brought that hull onto our net.",
+                2.2, 7.0, 2);
+    }
+
+    private static String roleDisplayName(ShipRole role) {
+        if (role == null) return "Hull";
+        String raw = role.name().toLowerCase(Locale.US).replace('_', ' ');
+        String[] parts = raw.split(" ");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isBlank()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return out.toString();
+    }
+
     private static Faction greenSupportFaction(CampaignState st) {
         if (st != null && st.campaignBlueGreenAlliance) return Faction.TEAM_C;
         return Faction.ALLY;
@@ -4813,6 +5209,7 @@ public final class CampaignSystem {
                 st.activeMissionSection = Math.min(sectionCount - 1, currentIndex + 1);
                 st.missionSectionTravelLocked = true;
                 MissionSection next = st.missionSections.get(st.activeMissionSection);
+                seedWaypointFromObjectives(ctx, st, true);
                 EventSystem.showBanner(ctx, "REPOSITION TO " + next.label, 2.1);
             }
         }
@@ -4856,6 +5253,23 @@ public final class CampaignSystem {
         if (sectionCount <= 0) return 1.0;
         int clampedIndex = Math.max(0, Math.min(sectionCount - 1, sectionIndex));
         return (clampedIndex + 1) / (double) sectionCount;
+    }
+
+    private static void seedWaypointFromObjectives(GameContext ctx, CampaignState st, boolean requireTravelLock) {
+        if (ctx == null || ctx.ui == null || st == null) return;
+        if (requireTravelLock && !st.missionSectionTravelLocked) return;
+        List<CampaignObjectiveMarker> markers = activeObjectiveMarkers(ctx);
+        CampaignObjectiveMarker best = null;
+        for (CampaignObjectiveMarker marker : markers) {
+            if (marker == null) continue;
+            if (requireTravelLock && marker.type != ObjectiveMarkerType.NEXT_ROUTE) continue;
+            if (best == null || marker.priority > best.priority) {
+                best = marker;
+            }
+        }
+        if (best == null) return;
+        ctx.ui.waypointX = GameMath.clamp(best.x, 0, ctx.WORLD_W);
+        ctx.ui.waypointY = GameMath.clamp(best.y, 0, ctx.WORLD_H);
     }
 
     private static boolean isPlayerInsideRadius(Player player, double x, double y, double radius) {
@@ -5016,15 +5430,7 @@ public final class CampaignSystem {
     }
 
     static boolean hasStrategicObjectiveMarker(GameContext ctx) {
-        CampaignState st = state(ctx);
-        if (st == null || !st.enabled) return false;
-        if (!st.missionSections.isEmpty()) return true;
-        if (st.objectiveType == ObjectiveType.CAPTURE) return true;
-        if (st.objectiveType == ObjectiveType.ESCORT && st.escortShip != null) return true;
-        if (st.objectiveType == ObjectiveType.BOSS || st.objectiveType == ObjectiveType.FINAL_BOSS) {
-            return findShipById(ctx, st.bossTargetId) != null;
-        }
-        return ctx != null && ctx.player != null;
+        return !activeObjectiveMarkers(ctx).isEmpty();
     }
 
     static double strategicObjectiveMarkerX(GameContext ctx) {
@@ -6054,12 +6460,16 @@ public final class CampaignSystem {
         }
 
         if (!st.authoredObjectiveHostiles.isEmpty()) {
+            int priorAuthoredKills = st.authoredObjectiveKills;
             for (Iterator<Integer> it = st.authoredObjectiveHostiles.iterator(); it.hasNext(); ) {
                 Integer id = it.next();
                 if (!aliveNow.contains(id)) {
                     st.authoredObjectiveKills++;
                     it.remove();
                 }
+            }
+            if (st.authoredObjectiveKills > priorAuthoredKills) {
+                announceAuthoredObjectiveKillProgress(ctx, st, st.authoredObjectiveKills - priorAuthoredKills);
             }
         }
 
@@ -6070,12 +6480,106 @@ public final class CampaignSystem {
     private static void detectObjectiveAssetLosses(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null || st.objectiveAssetIds.isEmpty()) return;
+        ArrayList<String> lostNames = new ArrayList<>();
         for (Iterator<Integer> it = st.objectiveAssetIds.iterator(); it.hasNext(); ) {
             Ship ship = findShipById(ctx, it.next());
             if (ship != null && ship.alive && !ship.dying && ship.hp > 0) continue;
+            lostNames.add(displayShipName(ship, trimmedOrFallback(st.objectiveAssetLabel, "Objective Asset")));
             st.objectiveAssetLosses++;
             it.remove();
         }
+        if (!lostNames.isEmpty()) {
+            announceObjectiveAssetLosses(ctx, st, lostNames);
+        }
+    }
+
+    private static void announceAuthoredObjectiveKillProgress(GameContext ctx, CampaignState st, int killsThisTick) {
+        if (ctx == null || st == null || killsThisTick <= 0) return;
+        if (!usesAuthoredDestroyProgress(st)) return;
+        int total = Math.max(1, (int) Math.ceil(st.objectiveGoal));
+        int killed = Math.max(0, st.authoredObjectiveKills);
+        int remaining = Math.max(0, total - killed);
+        String noun = (total == 1) ? "TARGET" : "TARGETS";
+        if (remaining <= 0) {
+            EventSystem.showBanner(ctx, "ALL MARKED TARGETS DESTROYED", 2.0);
+            AudioSystem.playContextBanter(ctx, "captain", "objective_destroy_complete",
+                    "CAPTAIN",
+                    "Marked targets down. Push to the next objective.",
+                    2.2, 7.5, 2);
+        } else if (killsThisTick == 1) {
+            EventSystem.showBanner(ctx,
+                    "MARKED TARGET DESTROYED  " + remaining + " " + noun + " REMAIN",
+                    1.8);
+            AudioSystem.playContextBanter(ctx, "tactical", "objective_destroy_progress",
+                    "TACTICAL",
+                    remaining + " marked " + ((remaining == 1) ? "target remains." : "targets remain."),
+                    2.0, 4.5, 2);
+        } else {
+            EventSystem.showBanner(ctx,
+                    "MARKED TARGETS DESTROYED +" + killsThisTick + "  " + remaining + " " + noun + " REMAIN",
+                    1.9);
+            AudioSystem.playContextBanter(ctx, "tactical", "objective_destroy_progress",
+                    "TACTICAL",
+                    killsThisTick + " marked targets down. " + remaining + " remain.",
+                    2.1, 4.5, 2);
+        }
+        st.lastAnnouncedAuthoredObjectiveKills = killed;
+    }
+
+    private static void announceObjectiveAssetLosses(GameContext ctx, CampaignState st, List<String> lostNames) {
+        if (ctx == null || st == null || lostNames == null || lostNames.isEmpty()) return;
+        int survivors = Math.max(0, st.objectiveAssetTotal - st.objectiveAssetLosses);
+        String label = trimmedOrFallback(st.objectiveAssetLabel, "OBJECTIVE ASSETS").toUpperCase(Locale.US);
+        String quota = (st.objectiveAssetRequiredSurvivors > 0)
+                ? "  SAFE>=" + st.objectiveAssetRequiredSurvivors
+                : "";
+        String names = summarizeBannerNames(lostNames, 2);
+        if (lostNames.size() == 1) {
+            EventSystem.showBanner(ctx,
+                    label + " LOST: " + names.toUpperCase(Locale.US)
+                            + "  " + survivors + "/" + st.objectiveAssetTotal + quota,
+                    2.0);
+            AudioSystem.playContextBanter(ctx, "captain", "objective_asset_loss",
+                    "CAPTAIN",
+                    names + " is down. Keep the rest alive.",
+                    2.3, 6.5, 3);
+        } else {
+            EventSystem.showBanner(ctx,
+                    label + " LOSSES +" + lostNames.size()
+                            + "  " + survivors + "/" + st.objectiveAssetTotal + quota,
+                    2.0);
+            AudioSystem.playContextBanter(ctx, "captain", "objective_asset_loss",
+                    "CAPTAIN",
+                    "We just lost objective assets. Hold the surviving hulls together.",
+                    2.4, 6.5, 3);
+        }
+        if (st.objectiveAssetRequiredSurvivors > 0 && survivors == st.objectiveAssetRequiredSurvivors) {
+            EventSystem.showBanner(ctx,
+                    label + " AT MINIMUM SAFE COUNT  " + survivors + "/" + st.objectiveAssetTotal,
+                    2.2);
+            AudioSystem.playContextBanter(ctx, "helm", "objective_asset_min_safe",
+                    "HELM",
+                    "We are down to the minimum safe count. No more losses.",
+                    2.3, 7.0, 3);
+        }
+        st.lastAnnouncedObjectiveAssetLosses = st.objectiveAssetLosses;
+    }
+
+    private static String summarizeBannerNames(List<String> names, int maxCount) {
+        if (names == null || names.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        int count = Math.min(Math.max(1, maxCount), names.size());
+        for (int i = 0; i < count; i++) {
+            String name = names.get(i);
+            if (name == null || name.isBlank()) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(name.trim());
+        }
+        if (names.size() > count) {
+            if (sb.length() > 0) sb.append(" +");
+            sb.append(names.size() - count).append(" MORE");
+        }
+        return sb.toString();
     }
 
     private static boolean hostileInsideCapture(GameContext ctx, double x, double y, double r) {

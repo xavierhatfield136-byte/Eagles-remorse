@@ -31,6 +31,9 @@ public final class InputSystem {
                 if (UISystem.handleHudPanelClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
+                if (UISystem.handleFleetNetClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (UISystem.handleShopClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }

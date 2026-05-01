@@ -1,6 +1,7 @@
 # Documentation Index
 
 ## Active Design Docs
+- `CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
 - `CAMPAIGN_ESCORT_DIRECTION.md`
 - `CAMPAIGN_24_SECTOR_OUTLINE.md`
 - `CAMPAIGN_TITAN_BUILD_SHEET.md`

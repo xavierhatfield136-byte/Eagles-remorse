@@ -1843,23 +1843,27 @@ public final class AISystem {
             return false;
         }
 
-        Ship threat = findEscortThreatNearAnchor(ctx, s, anchor);
+        Ship threat = designatedEscortTarget(ctx, s, anchor);
+        if (!isAlive(threat)) {
+            threat = findEscortThreatNearAnchor(ctx, s, anchor);
+        }
         if (isAlive(threat)) {
+            commitToTarget(s, threat, targetCommitDuration(s, threat, SquadObjective.INTERCEPT));
             fight(ctx, s, threat, dt, 1.0, SquadObjective.INTERCEPT);
         } else {
-            double speed = Math.max(130.0, MovementModel.speedCeiling(s) * 0.96);
+            double speed = Math.max(136.0, MovementModel.speedCeiling(s) * 0.98);
             double side = ((s.escortSlotIndex & 1) == 0) ? -1.0 : 1.0;
-            double back = 0.55 + 0.18 * Math.max(0, s.escortSlotIndex);
-            double ahead = 0.22 + 0.08 * Math.max(0, s.escortSlotIndex);
-            double tx = anchor.x - Math.cos(anchor.angle) * (anchor.radius * (0.65 + back))
-                    - Math.sin(anchor.angle) * side * (anchor.radius + 40.0);
-            double ty = anchor.y - Math.sin(anchor.angle) * (anchor.radius * (0.65 + back))
-                    + Math.cos(anchor.angle) * side * (anchor.radius + 40.0);
-            if (dist2(s.x, s.y, anchor.x, anchor.y) > ESCORT_WARP_SUPPORT_RANGE * ESCORT_WARP_SUPPORT_RANGE) {
-                tx = anchor.x + Math.cos(anchor.angle) * anchor.radius * ahead
-                        - Math.sin(anchor.angle) * side * (anchor.radius + 52.0);
-                ty = anchor.y + Math.sin(anchor.angle) * anchor.radius * ahead
-                        + Math.cos(anchor.angle) * side * (anchor.radius + 52.0);
+            double screenForward = anchor.radius + 340.0 + 110.0 * Math.max(0, s.escortSlotIndex);
+            double lateral = anchor.radius + 170.0 + 64.0 * Math.max(0, s.escortSlotIndex);
+            double tx = anchor.x + Math.cos(anchor.angle) * screenForward
+                    - Math.sin(anchor.angle) * side * lateral;
+            double ty = anchor.y + Math.sin(anchor.angle) * screenForward
+                    + Math.cos(anchor.angle) * side * lateral;
+            if (dist2(s.x, s.y, anchor.x, anchor.y) > ESCORT_WARP_SUPPORT_RANGE * ESCORT_WARP_SUPPORT_RANGE * 1.2) {
+                tx = anchor.x + Math.cos(anchor.angle) * (anchor.radius + 110.0)
+                        - Math.sin(anchor.angle) * side * (anchor.radius + 92.0);
+                ty = anchor.y + Math.sin(anchor.angle) * (anchor.radius + 110.0)
+                        + Math.cos(anchor.angle) * side * (anchor.radius + 92.0);
             }
             moveToward(s, tx, ty, speed, dt);
         }
@@ -1871,7 +1875,7 @@ public final class AISystem {
         if (ctx == null || escort == null || anchor == null || escort.faction == null) return null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
-        double maxDist = Math.max(900.0, anchor.radius + 520.0);
+        double maxDist = Math.max(1400.0, anchor.radius + 980.0);
         double maxDist2 = maxDist * maxDist;
         ArrayList<Ship> nearby = borrowShipScratch();
         try {
@@ -1902,6 +1906,26 @@ public final class AISystem {
         }
         if (isAlive(best)) return best;
         return findImmediateThreat(ctx, escort, Math.max(260.0, preferredRange(escort) * 1.2));
+    }
+
+    private static Ship designatedEscortTarget(GameContext ctx, Ship escort, Ship anchor) {
+        if (ctx == null || escort == null || anchor == null || escort.faction == null) return null;
+        Ship committed = committedTarget(ctx, escort);
+        if (isValidEscortTarget(ctx, escort, anchor, committed)) return committed;
+        Ship shared = (ctx.command == null || ctx.command.fleetSharedTargets == null) ? null
+                : ctx.command.fleetSharedTargets.get(escort.faction);
+        if (isValidEscortTarget(ctx, escort, anchor, shared)) return shared;
+        if (isValidEscortTarget(ctx, escort, anchor, ctx.lockedTarget)) return ctx.lockedTarget;
+        return null;
+    }
+
+    private static boolean isValidEscortTarget(GameContext ctx, Ship escort, Ship anchor, Ship target) {
+        if (ctx == null || escort == null || anchor == null || !isAlive(target)) return false;
+        if (escort.faction == null || target.faction == null) return false;
+        if (escort.faction.isFriendlyTo(target.faction)) return false;
+        if (!TargetingSystem.isDetectableToObserver(escort, target)) return false;
+        double dAnchor = Math.hypot(target.x - anchor.x, target.y - anchor.y);
+        return dAnchor <= Math.max(1900.0, anchor.radius + 1320.0);
     }
 
     private static Ship findBestReachableEnemyTarget(GameContext ctx, FleetState state, Ship seeker, Ship sharedHint, Ship preferredHint) {

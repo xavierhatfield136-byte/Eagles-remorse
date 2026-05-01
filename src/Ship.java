@@ -2289,6 +2289,10 @@ public abstract class Ship {
             clearIntegrityFocus();
             return true;
         }
+        if (!isIntegrityContainmentEligibleRoom(roomId)) {
+            clearIntegrityFocus();
+            return false;
+        }
         integrityFocusRoom = roomId;
         integrityFocusTimer = Math.max(0.0, seconds);
         return true;
@@ -2304,7 +2308,9 @@ public abstract class Ship {
     }
 
     private ShipRoomLayout.RoomId activeIntegrityProtectionRoom(ShipRoomLayout.RoomId candidateRoom) {
-        if (hasManualIntegrityFocus()) return integrityFocusRoom;
+        if (hasManualIntegrityFocus()) {
+            return isIntegrityContainmentEligibleRoom(integrityFocusRoom) ? integrityFocusRoom : null;
+        }
         if (!integrityContainmentAvailable()) return null;
         return bestAutomaticIntegrityProtectionRoom(candidateRoom);
     }
@@ -2316,7 +2322,7 @@ public abstract class Ship {
     }
 
     private boolean roomNeedsIntegrityContainment(ShipRoomLayout.RoomId roomId, boolean includeCandidate) {
-        if (roomId == null || ShipRoomLayout.isArmorRoom(roomId)) return false;
+        if (!isIntegrityContainmentEligibleRoom(roomId)) return false;
         if (includeCandidate) return true;
         if (roomHealthFraction(roomId) < 0.999) return true;
         if (roomFireIntensity(roomId) > 0.05) return true;
@@ -2357,6 +2363,17 @@ public abstract class Ship {
         if (crewOrder == CrewOrder.DAMAGE_CONTROL) score += 0.7;
         if (crewOrder == CrewOrder.ENGINEERING) score += 0.35;
         return score;
+    }
+
+    private boolean isIntegrityContainmentEligibleRoom(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null || ShipRoomLayout.isArmorRoom(roomId)) return false;
+        ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, faction, roomId);
+        if (def == null) return false;
+        if (def.primarySystem == InternalSystem.REACTOR_CORE) return false;
+        return roomId != ShipRoomLayout.RoomId.REACTOR
+                && roomId != ShipRoomLayout.RoomId.POWER_CONDUITS
+                && roomId != ShipRoomLayout.RoomId.PORT_POWER
+                && roomId != ShipRoomLayout.RoomId.STARBOARD_POWER;
     }
 
     private boolean engineeringPriorityMatches(InternalSystem system) {

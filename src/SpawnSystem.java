@@ -943,7 +943,7 @@ public final class SpawnSystem {
 
     static void populateShootingRangeTargets(GameContext ctx, double originX, double originY, Faction faction) {
         if (ctx == null || faction == null) return;
-        for (ShootingRangeTargetSpec spec : shootingRangeLayout(currentShootingRangeTitanLayout(ctx))) {
+        for (ShootingRangeTargetSpec spec : shootingRangeLayout(faction, currentShootingRangeTitanLayout(ctx))) {
             spawnRangeTarget(ctx,
                     spec.role,
                     faction,
@@ -1105,56 +1105,55 @@ public final class SpawnSystem {
         return s;
     }
 
-    private static java.util.List<ShootingRangeTargetSpec> shootingRangeLayout(TitanArchetype titanArchetype) {
+    private static java.util.List<ShootingRangeTargetSpec> shootingRangeLayout(Faction faction, TitanArchetype titanArchetype) {
         if (titanArchetype != null) {
             return titanShootingRangeLayout(titanArchetype);
         }
-        return defaultShootingRangeLayout();
+        return defaultShootingRangeLayout(faction);
     }
 
-    private static java.util.List<ShootingRangeTargetSpec> defaultShootingRangeLayout() {
+    private static java.util.List<ShootingRangeTargetSpec> defaultShootingRangeLayout(Faction faction) {
         java.util.List<ShootingRangeTargetSpec> out = new java.util.ArrayList<>();
-
-        // Forward screen: tiny craft and raiders.
-        out.add(spec(ShipRole.FIGHTER, 300, -320, "STRIKE SCREEN FIGHTER", false));
-        out.add(spec(ShipRole.DRONE, 380, -250, "STRIKE SCREEN DRONE", false));
-        out.add(spec(ShipRole.PD_CRAFT, 455, -340, "POINT-DEFENSE CRAFT", false));
-        out.add(spec(ShipRole.BOMBER, 540, -275, "BOMBER INTERCEPT LANE", false));
-        out.add(spec(ShipRole.PATROL, 640, -320, "PATROL PICKET MARK", false));
-        out.add(spec(ShipRole.PICKET, 735, -248, "PICKET OUTRIDER", false));
-        out.add(spec(ShipRole.STEALTH_SHIP, 845, -330, "STEALTH RAIDER GHOST", false));
-
-        // Escort and skirmish line.
-        out.add(spec(ShipRole.FRIGATE, 460, -90, "FRIGATE DUEL HULL", true));
-        out.add(spec(ShipRole.ARTILLERY_SHIP, 560, -28, "ARTILLERY SPINAL SKIFF", true));
-        out.add(spec(ShipRole.MISSILE_BOAT, 635, -130, "MISSILE BOAT SALVO", false));
-        out.add(spec(ShipRole.CIWS_CORVETTE, 785, -52, "CIWS CORVETTE SCREEN", false));
-        out.add(spec(ShipRole.LIGHT_CRUISER, 980, -120, "LIGHT CRUISER SHIELD", true));
-        out.add(spec(ShipRole.MEDIUM_CRUISER, 1160, -48, "MEDIUM CRUISER LINE", true));
-
-        // Centerline bruisers.
-        out.add(spec(ShipRole.CRUISER, 1260, 78, "CRUISER GUNLINE", true));
-        out.add(spec(ShipRole.BATTLECRUISER, 1485, 8, "BATTLECRUISER BREAKER", true));
-        out.add(spec(ShipRole.BATTLESHIP, 1715, -96, "BATTLESHIP ANCHOR", true));
-        out.add(spec(ShipRole.DREADNOUGHT, 1980, 12, "DREADNOUGHT TEST WALL", true));
-        out.add(spec(ShipRole.SUPERSHIP, 2315, -24, "SUPERSHIP FINAL EXAM", true));
-
-        // Logistics and carriers.
-        out.add(spec(ShipRole.MINER, 690, 250, "MINER WORK BARGE", false));
-        out.add(spec(ShipRole.HAULER, 860, 305, "HAULER FREIGHT HULL", false));
-        out.add(spec(ShipRole.TRANSPORT, 1040, 246, "TRANSPORT SUPPORT FRAME", false));
-        out.add(spec(ShipRole.CARRIER, 1315, 292, "CARRIER FLIGHT DECK", true));
-        out.add(spec(ShipRole.DRONE_CARRIER, 1560, 352, "DRONE CARRIER NEST", true));
-
-        // Fortress corner: structures at the far end.
-        out.add(spec(ShipRole.STATIC_TURRET, 2140, 250, "DEFENSE NODE PORT", false));
-        out.add(spec(ShipRole.STATIC_TURRET, 2140, 392, "DEFENSE NODE STARBOARD", false));
-        out.add(spec(ShipRole.BASE, 2420, 320, "RANGE FORTRESS CORE", true));
+        ShipRole[] roster = {
+                ShipRole.FIGHTER, ShipRole.DRONE, ShipRole.PD_CRAFT, ShipRole.BOMBER,
+                ShipRole.PATROL, ShipRole.PICKET, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE,
+                ShipRole.ARTILLERY_SHIP, ShipRole.MISSILE_BOAT, ShipRole.CIWS_CORVETTE, ShipRole.MINER,
+                ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER, ShipRole.HAULER,
+                ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT, ShipRole.SUPERSHIP,
+                ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.TRANSPORT,
+                ShipRole.TRANSPORT_TITAN, ShipRole.BULWARK_TITAN, ShipRole.CARRIER_SUPPORT_TITAN,
+                ShipRole.VANGUARD_TITAN, ShipRole.INTERDICTION_TITAN, ShipRole.COMMAND_INTEL_TITAN,
+                ShipRole.BOARDING_RECOVERY_TITAN, ShipRole.ARTILLERY_TITAN, ShipRole.SHIELD_BASTION_TITAN,
+                ShipRole.FLEET_TELEPORTER_TITAN, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN,
+                ShipRole.ELITE_REINFORCEMENTS_TITAN, ShipRole.MOBILE_STATION_TITAN,
+                ShipRole.HYPERWEAPON_TITAN, ShipRole.STATIC_TURRET, ShipRole.BASE, ShipRole.MOTHERSHIP
+        };
+        final int columns = 5;
+        final double startX = 420.0;
+        final double startY = -520.0;
+        final double colStep = 520.0;
+        final double rowStep = 220.0;
+        int structureIndex = 1;
+        for (int i = 0; i < roster.length; i++) {
+            ShipRole role = roster[i];
+            if (role == null) continue;
+            int col = i % columns;
+            int row = i / columns;
+            double dx = startX + col * colStep;
+            double dy = startY + row * rowStep;
+            String label;
+            if (role == ShipRole.STATIC_TURRET) {
+                label = shootingRangeRoleLabel(faction, role, structureIndex++);
+            } else {
+                label = shootingRangeRoleLabel(faction, role, 0);
+            }
+            out.add(spec(role, dx, dy, label, shootingRangeKeepShields(role)));
+        }
         return out;
     }
 
     private static java.util.List<ShootingRangeTargetSpec> titanShootingRangeLayout(TitanArchetype archetype) {
-        if (archetype == null) return defaultShootingRangeLayout();
+        if (archetype == null) return defaultShootingRangeLayout(Faction.ENEMY);
         return switch (archetype) {
             case TRANSPORT -> titanFormation(archetype, archetype.shipRole(),
                     ShipRole.LIGHT_CRUISER, ShipRole.LIGHT_CRUISER,
@@ -1302,6 +1301,30 @@ public final class SpawnSystem {
                     BATTLESHIP, DREADNOUGHT, SUPERSHIP, CARRIER, DRONE_CARRIER, BASE -> true;
             default -> false;
         };
+    }
+
+    private static boolean shootingRangeKeepShields(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case FRIGATE, ARTILLERY_SHIP, LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER,
+                    BATTLECRUISER, BATTLESHIP, DREADNOUGHT, SUPERSHIP,
+                    CARRIER, DRONE_CARRIER, TRANSPORT,
+                    TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                    INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                    ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                    MOBILE_STATION_TITAN, HYPERWEAPON_TITAN, BASE, MOTHERSHIP -> true;
+            default -> false;
+        };
+    }
+
+    private static String shootingRangeRoleLabel(Faction faction, ShipRole role, int ordinal) {
+        String factionLabel = (faction == null) ? "Unknown" : faction.teamName();
+        String roleLabel = (role == null) ? "Target" : role.name().replace('_', ' ');
+        if (ordinal > 0) {
+            return factionLabel + " " + roleLabel + " " + ordinal;
+        }
+        return factionLabel + " " + roleLabel;
     }
 
     private static ShootingRangeTargetSpec spec(ShipRole role, double dx, double dy, String label, boolean keepShields) {

@@ -24,8 +24,8 @@ public final class CarrierSystem {
     private static final double RECOVERY_PAD = 10.0;
     private static final double DEFEND_RANGE = 640.0;
     private static final double DEFEND_ORBIT = 360.0;
-    private static final double ATTACK_SEARCH_RANGE = 1450.0;
-    private static final double ATTACK_LEASH_RANGE = 980.0;
+    private static final double ATTACK_SEARCH_RANGE = 2200.0;
+    private static final double ATTACK_LEASH_RANGE = 1650.0;
     private static final double PD_ESCORT_RESPAWN_SECONDS = 9.0;
     private static final double PD_ESCORT_ANCHOR_RANGE = 360.0;
     private static final int STRIKE_WING_SIZE = 2;
@@ -234,15 +234,15 @@ public final class CarrierSystem {
             return;
         }
 
-        // No hostile in range: hold a loose forward screen near the carrier.
+        // No hostile in range: hold a looser forward screen well ahead of the carrier.
         double fx = Math.cos(carrier.angle);
         double fy = Math.sin(carrier.angle);
-        double tx = carrier.x + fx * (carrier.radius + 420.0);
-        double ty = carrier.y + fy * (carrier.radius + 420.0);
+        double tx = carrier.x + fx * (carrier.radius + 720.0);
+        double ty = carrier.y + fy * (carrier.radius + 720.0);
         double side = ((craft.id & 1) == 0) ? -1.0 : 1.0;
-        tx += -fy * side * 260.0;
-        ty += fx * side * 260.0;
-        steerToward(craft, tx, ty, Math.max(120.0, craft.desiredSpeed * 0.94), dt);
+        tx += -fy * side * 360.0;
+        ty += fx * side * 360.0;
+        steerToward(craft, tx, ty, Math.max(124.0, craft.desiredSpeed * 0.96), dt);
     }
 
     private static Ship findClosestHostileToPoint(GameContext ctx, Ship carrier, double x, double y, double maxDist) {
@@ -411,6 +411,10 @@ public final class CarrierSystem {
         if (!isAlive(carrier) && craft.carrierOwnerId >= 0) {
             carrier = findLiveShipById(ctx.ships, craft.carrierOwnerId);
         }
+        Ship designated = designatedTargetForCraft(ctx, craft, carrier);
+        if (isAlive(designated)) {
+            return designated;
+        }
         if (isBoardingBomber(craft, carrier)) {
             return preferredBoardingTarget(ctx, craft, carrier);
         }
@@ -434,6 +438,21 @@ public final class CarrierSystem {
             }
 
             score += strikeRoleTargetBias(craft.role, enemy.role);
+            if (craft.role == ShipRole.BOMBER && enemy.isSmallCraft()) {
+                score -= 240.0;
+            }
+            if (craft.role == ShipRole.DRONE && enemy.isSmallCraft()) {
+                score -= 120.0;
+            }
+            if (craft.role == ShipRole.BOMBER && isHighValueStrikeTarget(enemy)) {
+                score += 180.0;
+            }
+            if (craft.role == ShipRole.DRONE && isHighValueStrikeTarget(enemy)) {
+                score += 120.0;
+            }
+            if (carrier != null && enemy == designatedTargetForCraft(ctx, craft, carrier)) {
+                score += (craft.role == ShipRole.BOMBER) ? 360.0 : 220.0;
+            }
             if (protectedBomber != null) {
                 double dBomber = Math.hypot(enemy.x - protectedBomber.x, enemy.y - protectedBomber.y);
                 if (dBomber <= BOMBER_GUARD_REACTION_RANGE) {
@@ -472,6 +491,33 @@ public final class CarrierSystem {
             }
         }
         return best;
+    }
+
+    private static Ship designatedTargetForCraft(GameContext ctx, Ship craft, Ship carrier) {
+        if (ctx == null || craft == null || craft.faction == null) return null;
+        Ship committed = findLiveShipById(ctx.ships, craft.aiCommittedTargetId);
+        if (isValidCraftTarget(craft, committed, carrier)) return committed;
+        if (ctx.command != null && ctx.command.fleetSharedTargets != null) {
+            Ship shared = ctx.command.fleetSharedTargets.get(craft.faction);
+            if (isValidCraftTarget(craft, shared, carrier)) return shared;
+        }
+        if (craft.faction == Faction.ALLY && isValidCraftTarget(craft, ctx.lockedTarget, carrier)) {
+            return ctx.lockedTarget;
+        }
+        return null;
+    }
+
+    private static boolean isValidCraftTarget(Ship craft, Ship target, Ship carrier) {
+        if (!isAlive(target) || craft == null || craft.faction == null || target.faction == null) return false;
+        if (craft.faction.isFriendlyTo(target.faction)) return false;
+        if (!TargetingSystem.isDetectableToObserver(craft, target)) return false;
+        double dCraft = Math.hypot(target.x - craft.x, target.y - craft.y);
+        if (dCraft > ATTACK_SEARCH_RANGE * 1.45) return false;
+        if (carrier != null) {
+            double dCarrier = Math.hypot(target.x - carrier.x, target.y - carrier.y);
+            if (dCarrier > ATTACK_LEASH_RANGE * 1.8) return false;
+        }
+        return true;
     }
 
     public static int recallDefensiveStrikeCraft(GameContext ctx, Ship carrier) {
@@ -657,19 +703,23 @@ public final class CarrierSystem {
         // Keep strike craft at standoff range; otherwise they collapse into point-blank dogpiles.
         double desiredRange = switch (craft.role) {
             case FIGHTER -> 520.0;
-            case BOMBER -> 820.0;
-            case DRONE -> 560.0;
+            case BOMBER -> 940.0;
+            case DRONE -> 700.0;
             default -> 520.0;
         };
         // Boarding bombers must still close to capture once a target is isolated and weak.
         if (isBoardingBomber(craft, carrier) && carrier != null && carrier.faction != null
                 && isBoardingTarget(ctx, target, carrier.faction)) {
             desiredRange = Math.max(42.0, target.radius + craft.radius + 18.0);
+        } else if (craft.role == ShipRole.BOMBER && target.isSmallCraft()) {
+            desiredRange = 1080.0;
+        } else if (craft.role == ShipRole.DRONE && isHighValueStrikeTarget(target)) {
+            desiredRange = 620.0;
         }
 
         double ang = Math.atan2(target.y - craft.y, target.x - craft.x);
         double tangent = ang + ((slot & 1) == 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
-        double offsetMag = Math.min(STRIKE_FORMATION_SPACING * 1.15, 60.0 + slot * 90.0);
+        double offsetMag = Math.min(STRIKE_FORMATION_SPACING * 1.35, 90.0 + slot * 110.0);
         tx += Math.cos(ang + Math.PI) * desiredRange + Math.cos(tangent) * offsetMag;
         ty += Math.sin(ang + Math.PI) * desiredRange + Math.sin(tangent) * offsetMag;
 
@@ -703,6 +753,22 @@ public final class CarrierSystem {
         }
 
         steerToward(craft, tx, ty, speedPerSec, dt);
+    }
+
+    private static boolean isHighValueStrikeTarget(Ship target) {
+        if (!isAlive(target) || target.role == null) return false;
+        return switch (target.role) {
+            case MISSILE_BOAT, ARTILLERY_SHIP, TRANSPORT, HAULER, MINER,
+                    LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER,
+                    BATTLESHIP, DREADNOUGHT, SUPERSHIP,
+                    CARRIER, DRONE_CARRIER,
+                    TRANSPORT_TITAN, BULWARK_TITAN, CARRIER_SUPPORT_TITAN, VANGUARD_TITAN,
+                    INTERDICTION_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    ARTILLERY_TITAN, SHIELD_BASTION_TITAN, FLEET_TELEPORTER_TITAN,
+                    ELITE_SUPERSHIP_COMMAND_TITAN, ELITE_REINFORCEMENTS_TITAN,
+                    MOBILE_STATION_TITAN, HYPERWEAPON_TITAN, MOTHERSHIP, BASE -> true;
+            default -> false;
+        };
     }
 
     private static void holdEscortScreen(Ship fighter, Ship bomber, double dt) {

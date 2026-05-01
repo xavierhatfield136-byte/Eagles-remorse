@@ -255,7 +255,7 @@ public final class FogOfWarSystem {
             contactText += " | " + ghosts + (ghosts == 1 ? " ghost trace" : " ghost traces");
         }
         if (signals > 0) {
-            contactText += " | " + signals + (signals == 1 ? " anomaly" : " anomalies");
+            contactText += " | " + signals + (signals == 1 ? " signal" : " signals");
         }
         return "SENSOR NET: " + contactText + " | " + sources + " sources | " + mapped + "% mapped";
     }
@@ -273,7 +273,8 @@ public final class FogOfWarSystem {
         addOreInterestSignals(ctx, sweep, out);
         addSalvageInterestSignals(ctx, sweep, out);
         addShipInterestSignals(ctx, sweep, out);
-        addCampaignAnomalySignals(ctx, sweep, out);
+        addCampaignDiscoverySignals(ctx, sweep, out);
+        addRecoverableWreckSignals(ctx, sweep, out);
         out.sort((a, b) -> {
             int anomalyBias = Integer.compare(sensorInterestPriority(b), sensorInterestPriority(a));
             if (anomalyBias != 0) return anomalyBias;
@@ -345,24 +346,56 @@ public final class FogOfWarSystem {
         }
     }
 
-    private static void addCampaignAnomalySignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+    private static void addCampaignDiscoverySignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
         if (!CampaignSystem.usesMissionSubzones(ctx)) return;
-        for (CampaignSystem.DiscoverySignalSite site : CampaignSystem.anomalySignalSites(ctx)) {
+        for (CampaignSystem.DiscoverySignalSite site : CampaignSystem.discoverySignalSites(ctx)) {
             if (site == null) continue;
             double radiusSignal = clamp01((site.radius - 120.0) / 180.0);
-            double strength = clamp01(0.56 + sweep * 0.34 + radiusSignal * 0.16);
-            addSignalIfCovered(ctx, out, SensorInterestKind.ANOMALY, site.label, site.x, site.y,
+            SensorInterestKind kind = sensorKindForDiscoveryTag(site.kindTag);
+            double baseStrength = switch (kind) {
+                case ANOMALY, FLEET_ASSET, INTEL -> 0.56;
+                case HAZARD, CONTACT -> 0.48;
+                case CACHE, WRECKAGE -> 0.44;
+                default -> 0.40;
+            };
+            double strength = clamp01(baseStrength + sweep * 0.34 + radiusSignal * 0.16);
+            addSignalIfCovered(ctx, out, kind, site.label, site.x, site.y,
                     strength, Math.max(150.0, site.radius * (1.05 + (1.0 - sweep) * 0.35)));
+        }
+    }
+
+    private static void addRecoverableWreckSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        if (!CampaignSystem.usesMissionSubzones(ctx)) return;
+        for (CampaignSystem.DiscoverySignalSite site : CampaignSystem.recoverableWreckSignalSites(ctx)) {
+            if (site == null) continue;
+            double radiusSignal = clamp01((site.radius - 120.0) / 180.0);
+            double strength = clamp01(0.62 + sweep * 0.28 + radiusSignal * 0.16);
+            addSignalIfCovered(ctx, out, SensorInterestKind.FLEET_ASSET, site.label, site.x, site.y,
+                    strength, Math.max(150.0, site.radius * (1.02 + (1.0 - sweep) * 0.25)));
         }
     }
 
     private static int sensorInterestPriority(SensorInterestSignal signal) {
         if (signal == null || signal.kind == null) return 0;
         return switch (signal.kind) {
-            case ANOMALY -> 3;
-            case ORE_VEIN -> 2;
-            case INSTALLATION -> 1;
+            case ANOMALY, FLEET_ASSET, INTEL -> 3;
+            case CONTACT, HAZARD, CACHE, ORE_VEIN -> 2;
+            case INSTALLATION, WRECKAGE -> 1;
             default -> 0;
+        };
+    }
+
+    private static SensorInterestKind sensorKindForDiscoveryTag(String kindTag) {
+        String tag = (kindTag == null) ? "" : kindTag.trim().toUpperCase(Locale.US);
+        return switch (tag) {
+            case "ANOMALY" -> SensorInterestKind.ANOMALY;
+            case "CACHE", "SUPPLY_CACHE", "ORE" -> SensorInterestKind.CACHE;
+            case "SALVAGE_HULK", "WRECK_FIELD" -> SensorInterestKind.WRECKAGE;
+            case "REINFORCEMENT", "NEUTRAL_TRADER", "PRISON_BARGE" -> SensorInterestKind.CONTACT;
+            case "DATA_RELAY" -> SensorInterestKind.INTEL;
+            case "MINEFIELD", "AMBUSH", "DRIFTING_TURRET" -> SensorInterestKind.HAZARD;
+            case "FLEET_ASSET", "RECOVERABLE_WRECK" -> SensorInterestKind.FLEET_ASSET;
+            default -> SensorInterestKind.MASS_SIGNATURE;
         };
     }
 
@@ -555,6 +588,11 @@ public final class FogOfWarSystem {
     public enum SensorInterestKind {
         ORE_VEIN,
         WRECKAGE,
+        CACHE,
+        CONTACT,
+        HAZARD,
+        INTEL,
+        FLEET_ASSET,
         INSTALLATION,
         MASS_SIGNATURE,
         ANOMALY;

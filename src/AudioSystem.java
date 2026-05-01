@@ -640,6 +640,31 @@ public final class AudioSystem {
         st.voiceDispatchByEvent.put("scripted." + eventId, st.voiceDispatchByEvent.getOrDefault("scripted." + eventId, 0) + 1);
     }
 
+    public static boolean playContextBanter(GameContext ctx, String role, String eventId,
+                                            String speakerLabel, String caption, double captionSeconds,
+                                            double cooldownSec, int priority) {
+        if (ctx == null || role == null || role.isBlank() || eventId == null || eventId.isBlank()) return false;
+        RuntimeState st = stateFor(ctx);
+        double now = nowSec();
+        int clampedPriority = MathUtil.clamp(priority, 1, 3);
+        String cooldownKey = "context." + role + "." + eventId;
+
+        Double dedupe = st.voiceDedupeUntil.get(cooldownKey);
+        if (dedupe != null && now < dedupe) return false;
+        Double roleThrottle = st.roleThrottleUntil.get(role);
+        if (roleThrottle != null && now < roleThrottle && clampedPriority < 3) return false;
+        if (now < st.voicePriorityUntilSec && clampedPriority < st.activeVoicePriority) return false;
+
+        double effectiveCooldown = Math.max(0.8, cooldownSec);
+        st.voiceDedupeUntil.put(cooldownKey, now + effectiveCooldown);
+        st.roleThrottleUntil.put(role, now + roleThrottleSeconds(clampedPriority));
+        st.activeVoicePriority = clampedPriority;
+        st.voicePriorityUntilSec = now + 0.9;
+
+        playScriptedVoice(ctx, role, eventId, speakerLabel, caption, captionSeconds);
+        return true;
+    }
+
     private static RuntimeState stateFor(GameContext ctx) {
         return STATE.computeIfAbsent(ctx, RuntimeState::seed);
     }
