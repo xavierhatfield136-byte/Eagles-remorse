@@ -18,7 +18,7 @@ class CampaignZoneLayoutTest {
     }
 
     @Test
-    void missionSubzonesKeepThreeThousandUnitVoidBetweenNeighbors() throws Exception {
+    void missionSubzonesUseBoundedContiguousPocketSpacing() throws Exception {
         Method centerX = CampaignSystem.class.getDeclaredMethod("missionSubzoneCenterX", int.class, int.class);
         Method centerY = CampaignSystem.class.getDeclaredMethod("missionSubzoneCenterY", int.class, int.class);
         Method missionSubzoneIndex = CampaignSystem.class.getDeclaredMethod("missionSubzoneIndex", int.class, int.class);
@@ -35,8 +35,8 @@ class CampaignZoneLayoutTest {
         double leftY = (double) centerY.invoke(null, 1, left);
         double upperY = (double) centerY.invoke(null, 1, upper);
 
-        assertEquals(10000.0, rightX - leftX, 0.001);
-        assertEquals(10000.0, leftY - upperY, 0.001);
+        assertEquals(5000.0, rightX - leftX, 0.001);
+        assertEquals(5000.0, leftY - upperY, 0.001);
     }
 
     @Test

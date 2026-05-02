@@ -2,6 +2,26 @@ import app.config.GameMode;
 import java.awt.*;
 
 public final class GameRenderSystem {
+    static final class SensorNetEntry {
+        final String section;
+        final String title;
+        final String detail;
+        final double x;
+        final double y;
+        final Color accent;
+        final String banner;
+
+        SensorNetEntry(String section, String title, String detail, double x, double y, Color accent, String banner) {
+            this.section = (section == null || section.isBlank()) ? "CONTACTS" : section.trim();
+            this.title = (title == null || title.isBlank()) ? "Unknown Contact" : title.trim();
+            this.detail = (detail == null) ? "" : detail.trim();
+            this.x = x;
+            this.y = y;
+            this.accent = (accent == null) ? new Color(132, 224, 255) : accent;
+            this.banner = (banner == null || banner.isBlank()) ? this.title : banner.trim();
+        }
+    }
+
     private GameRenderSystem(){}
 
     private static final java.util.WeakHashMap<Ship, Integer> LAST_HP = new java.util.WeakHashMap<>();
@@ -219,7 +239,7 @@ public final class GameRenderSystem {
             Ship base = CampaignSystem.currentBaseUpgradeAnchor(ctx);
             if (base != null) {
                 BaseUpgrades up = ctx.baseUpgrades.computeIfAbsent(base, k -> new BaseUpgrades());
-                int baseOre = (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) ? ctx.player.cargo : base.oreStockpile;
+                int baseOre = CampaignSystem.isCampaignActive(ctx) ? CampaignSystem.currentCampaignOre(ctx) : base.oreStockpile;
                 Renderer.drawBaseUpgradeOverlay(g2, base, base.name, ctx.credits, baseOre,
                         up.hullLv, up.shieldLv, up.turretLv, up.miningLv, up.hangarLv,
                         maxHangarTier, CampaignSystem.isFleetHubSession(ctx));
@@ -577,13 +597,13 @@ if (DevTools.isDebugOverlay()) {
         if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
 
         String sensorSummary = FogOfWarSystem.isCombatFogEnabled(ctx) ? FogOfWarSystem.coverageSummary(ctx) : "";
-        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = sensorNetSignals(ctx, 5);
+        java.util.List<SensorNetEntry> entries = sensorNetEntries(ctx, 4, 2);
         java.util.List<String> squadLines = activeSquadSummaryLines(ctx);
         java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 4);
         java.util.List<String> sensorLines = sensorSummary.isBlank()
                 ? java.util.List.of()
                 : wrapLines(g2.getFontMetrics(new Font("Consolas", Font.PLAIN, 12)), sensorSummary, Math.min(300, Math.max(240, viewportW / 4)) - 24);
-        if (squadLines.isEmpty() && messages.isEmpty() && sensorLines.isEmpty() && signals.isEmpty()) return;
+        if (squadLines.isEmpty() && messages.isEmpty() && sensorLines.isEmpty() && entries.isEmpty()) return;
 
         Font titleFont = new Font("Consolas", Font.BOLD, 13);
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
@@ -592,8 +612,17 @@ if (DevTools.isDebugOverlay()) {
         int x = viewportW - w - 16;
         int y = 16;
         int h = 42 + sensorLines.size() * 15 + squadLines.size() * 15;
-        if (!signals.isEmpty()) {
-            h += 18 + signals.size() * 16;
+        if (!entries.isEmpty()) {
+            h += 18;
+            String currentSection = "";
+            for (SensorNetEntry entry : entries) {
+                if (entry == null) continue;
+                if (!entry.section.equals(currentSection)) {
+                    currentSection = entry.section;
+                    h += 14;
+                }
+                h += 18;
+            }
         }
         for (GameContext.FleetCommMessage msg : messages) {
             h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
@@ -616,26 +645,36 @@ if (DevTools.isDebugOverlay()) {
             g2.drawString(line, x + 12, rowY);
             rowY += 15;
         }
-        if (!signals.isEmpty()) {
+        if (!entries.isEmpty()) {
             g2.setColor(new Color(255, 255, 255, 58));
             g2.drawLine(x + 12, rowY, x + w - 12, rowY);
             rowY += 14;
             g2.setFont(signalFont);
             g2.setColor(new Color(255, 220, 164, 220));
-            g2.drawString("SIGNALS  (CLICK TO TRACK)", x + 12, rowY);
+            g2.drawString("TRACKS  (CLICK TO ROUTE)", x + 12, rowY);
             rowY += 14;
-            for (FogOfWarSystem.SensorInterestSignal signal : signals) {
-                String line = sensorSignalRow(ctx, signal);
-                Color accent = sensorSignalAccent(signal);
+            String currentSection = "";
+            for (SensorNetEntry entry : entries) {
+                if (entry == null) continue;
+                if (!entry.section.equals(currentSection)) {
+                    currentSection = entry.section;
+                    g2.setColor(new Color(255, 255, 255, 44));
+                    g2.drawLine(x + 12, rowY - 8, x + w - 12, rowY - 8);
+                    g2.setColor(new Color(150, 220, 255, 210));
+                    g2.drawString(currentSection, x + 12, rowY);
+                    rowY += 14;
+                }
+                String line = sensorNetRow(entry);
+                Color accent = entry.accent;
                 g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 56));
                 g2.fillRoundRect(x + 10, rowY - 11, w - 20, 16, 8, 8);
                 g2.setColor(new Color(238, 246, 255, 220));
                 g2.drawString(line, x + 16, rowY);
-                rowY += 16;
+                rowY += 18;
             }
             g2.setFont(bodyFont);
         }
-        if ((!sensorLines.isEmpty() || !signals.isEmpty()) && (!squadLines.isEmpty() || !messages.isEmpty())) {
+        if ((!sensorLines.isEmpty() || !entries.isEmpty()) && (!squadLines.isEmpty() || !messages.isEmpty())) {
             g2.setColor(new Color(255, 255, 255, 58));
             g2.drawLine(x + 12, rowY, x + w - 12, rowY);
             rowY += 14;
@@ -664,34 +703,196 @@ if (DevTools.isDebugOverlay()) {
         }
     }
 
-    private static java.util.List<FogOfWarSystem.SensorInterestSignal> sensorNetSignals(GameContext ctx, int maxCount) {
-        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
-        if (signals.isEmpty()) return java.util.List.of();
-        return java.util.List.copyOf(signals.subList(0, Math.min(Math.max(0, maxCount), signals.size())));
+    static java.util.List<SensorNetEntry> sensorNetEntries(GameContext ctx, int maxMissionEntries, int maxSignalsPerSection) {
+        java.util.ArrayList<SensorNetEntry> out = new java.util.ArrayList<>();
+        if (ctx == null) return out;
+
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        java.util.List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        int missionCount = 0;
+        for (CampaignSystem.CampaignObjectiveMarker marker : markers) {
+            if (marker == null) continue;
+            if (marker.type == CampaignSystem.ObjectiveMarkerType.OPTIONAL_OBJECTIVE) continue;
+            String key = "MISSION|" + marker.type + "|" + marker.label;
+            if (!seen.add(key)) continue;
+            out.add(new SensorNetEntry(
+                    "MISSION",
+                    marker.label,
+                    marker.subtitle,
+                    marker.x,
+                    marker.y,
+                    strategicObjectiveAccent(marker.type),
+                    "TRACK SET: " + marker.label.toUpperCase(java.util.Locale.US)
+            ));
+            missionCount++;
+            if (missionCount >= Math.max(0, maxMissionEntries)) break;
+        }
+
+        java.util.EnumMap<FogOfWarSystem.SensorInterestKind, Integer> countsByKind =
+                new java.util.EnumMap<>(FogOfWarSystem.SensorInterestKind.class);
+        java.util.LinkedHashMap<String, Integer> countsBySection = new java.util.LinkedHashMap<>();
+        for (FogOfWarSystem.SensorInterestSignal signal : FogOfWarSystem.sensorInterestSignals(ctx)) {
+            if (signal == null) continue;
+            String section = sensorNetSection(signal.kind);
+            int count = countsByKind.getOrDefault(signal.kind, 0);
+            if (count >= Math.max(0, maxSignalsPerSection)) continue;
+            String key = section + "|" + signal.kind + "|" + signal.label;
+            if (!seen.add(key)) continue;
+            countsByKind.put(signal.kind, count + 1);
+            out.add(new SensorNetEntry(
+                    section,
+                    sensorNetTitle(signal),
+                    sensorNetDetail(ctx, signal),
+                    signal.x,
+                    signal.y,
+                    sensorSignalAccent(signal),
+                    "SENSOR TRACK SET: " + sensorNetTitle(signal).toUpperCase(java.util.Locale.US)
+            ));
+            countsBySection.put(section, countsBySection.getOrDefault(section, 0) + 1);
+        }
+        appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
+        appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
+        return out;
     }
 
-    private static String sensorSignalRow(GameContext ctx, FogOfWarSystem.SensorInterestSignal signal) {
-        if (signal == null) return "UNKNOWN SIGNAL";
+    private static void appendCampaignSignalEntries(GameContext ctx,
+                                                    java.util.List<CampaignSystem.DiscoverySignalSite> sites,
+                                                    java.util.List<SensorNetEntry> out,
+                                                    java.util.Set<String> seen,
+                                                    java.util.Map<String, Integer> countsBySection,
+                                                    int maxSignalsPerSection) {
+        if (sites == null || sites.isEmpty()) return;
+        for (CampaignSystem.DiscoverySignalSite site : sites) {
+            if (site == null) continue;
+            String section = campaignSignalSection(site.kindTag);
+            int count = countsBySection.getOrDefault(section, 0);
+            if (count >= Math.max(0, maxSignalsPerSection)) continue;
+            String key = section + "|" + site.kindTag + "|" + site.label;
+            if (!seen.add(key)) continue;
+            out.add(new SensorNetEntry(
+                    section,
+                    campaignSignalTitle(site),
+                    campaignSignalDetail(ctx, site),
+                    site.x,
+                    site.y,
+                    campaignSignalAccent(site.kindTag),
+                    "TRACK SET: " + site.label.toUpperCase(java.util.Locale.US)
+            ));
+            countsBySection.put(section, count + 1);
+        }
+    }
+
+    private static String sensorNetRow(SensorNetEntry entry) {
+        if (entry == null) return "UNKNOWN CONTACT";
+        String title = entry.title;
+        if (title.length() > 18) {
+            title = title.substring(0, 18).trim() + "...";
+        }
+        String detail = entry.detail;
+        if (detail.length() > 20) {
+            detail = detail.substring(0, 20).trim() + "...";
+        }
+        return detail.isBlank()
+                ? title.toUpperCase(java.util.Locale.US)
+                : title.toUpperCase(java.util.Locale.US) + "  |  " + detail.toUpperCase(java.util.Locale.US);
+    }
+
+    private static String sensorNetTitle(FogOfWarSystem.SensorInterestSignal signal) {
+        if (signal == null) return "Unknown Signal";
+        String label = (signal.label == null || signal.label.isBlank()) ? signal.kind.displayName() : signal.label.trim();
+        return switch (signal.kind) {
+            case ANOMALY -> "Anomaly: " + label;
+            case ORE_VEIN -> "Ore Vein: " + label;
+            case WRECKAGE -> "Wreckage: " + label;
+            case CACHE -> "Cache: " + label;
+            case CONTACT -> "Contact: " + label;
+            case HAZARD -> "Hazard: " + label;
+            case INTEL -> "Intel: " + label;
+            case FLEET_ASSET -> "Fleet Asset: " + label;
+            case INSTALLATION -> "Installation: " + label;
+            case MASS_SIGNATURE -> "Mass Signature: " + label;
+        };
+    }
+
+    private static String sensorNetDetail(GameContext ctx, FogOfWarSystem.SensorInterestSignal signal) {
+        if (signal == null) return "";
         int dist = (ctx == null || ctx.player == null)
                 ? 0
                 : (int) Math.round(Math.hypot(signal.x - ctx.player.x, signal.y - ctx.player.y));
-        String kind = switch (signal.kind) {
-            case ANOMALY -> "ANOM";
-            case ORE_VEIN -> "ORE";
-            case WRECKAGE -> "WRK";
-            case CACHE -> "CACHE";
-            case CONTACT -> "CNT";
-            case HAZARD -> "HAZ";
-            case INTEL -> "INTEL";
-            case FLEET_ASSET -> "ASSET";
-            case INSTALLATION -> "SITE";
-            case MASS_SIGNATURE -> "MASS";
+        String confidence = "CONF " + (int) Math.round(signal.strength * 100.0) + "%";
+        return dist + "m  " + confidence;
+    }
+
+    private static String sensorNetSection(FogOfWarSystem.SensorInterestKind kind) {
+        if (kind == null) return "CONTACTS";
+        return switch (kind) {
+            case ANOMALY, HAZARD, INTEL -> "ANOMALY";
+            case WRECKAGE, CACHE, FLEET_ASSET -> "SALVAGE";
+            case ORE_VEIN, MASS_SIGNATURE -> "RESOURCE";
+            case CONTACT, INSTALLATION -> "CONTACTS";
         };
-        String label = (signal.label == null || signal.label.isBlank()) ? signal.kind.displayName() : signal.label.trim();
-        if (label.length() > 15) {
-            label = label.substring(0, 15).trim() + "...";
-        }
-        return kind + "  " + label.toUpperCase(java.util.Locale.US) + "  " + dist + "M";
+    }
+
+    private static String campaignSignalSection(String kindTag) {
+        String tag = (kindTag == null) ? "" : kindTag.trim().toUpperCase(java.util.Locale.US);
+        return switch (tag) {
+            case "ANOMALY", "DATA_RELAY", "MINEFIELD", "AMBUSH", "DRIFTING_TURRET" -> "ANOMALY";
+            case "SALVAGE_HULK", "WRECK_FIELD", "SUPPLY_CACHE", "CACHE", "RECOVERABLE_WRECK", "FLEET_ASSET" -> "SALVAGE";
+            case "ORE" -> "RESOURCE";
+            case "REINFORCEMENT", "NEUTRAL_TRADER", "PRISON_BARGE" -> "CONTACTS";
+            default -> "CONTACTS";
+        };
+    }
+
+    private static String campaignSignalTitle(CampaignSystem.DiscoverySignalSite site) {
+        if (site == null) return "Unknown Contact";
+        String label = (site.label == null || site.label.isBlank()) ? "Unknown Contact" : site.label.trim();
+        String tag = (site.kindTag == null) ? "" : site.kindTag.trim().toUpperCase(java.util.Locale.US);
+        return switch (tag) {
+            case "ANOMALY" -> "Anomaly: " + label;
+            case "DATA_RELAY" -> "Intel: " + label;
+            case "MINEFIELD", "AMBUSH", "DRIFTING_TURRET" -> "Hazard: " + label;
+            case "SALVAGE_HULK", "WRECK_FIELD", "RECOVERABLE_WRECK" -> "Wreckage: " + label;
+            case "SUPPLY_CACHE", "CACHE" -> "Cache: " + label;
+            case "ORE" -> "Ore Vein: " + label;
+            case "FLEET_ASSET" -> "Fleet Asset: " + label;
+            case "REINFORCEMENT", "NEUTRAL_TRADER", "PRISON_BARGE" -> "Contact: " + label;
+            default -> label;
+        };
+    }
+
+    private static String campaignSignalDetail(GameContext ctx, CampaignSystem.DiscoverySignalSite site) {
+        if (site == null) return "";
+        int dist = (ctx == null || ctx.player == null)
+                ? 0
+                : (int) Math.round(Math.hypot(site.x - ctx.player.x, site.y - ctx.player.y));
+        return dist + "m  AUTHORED";
+    }
+
+    private static Color campaignSignalAccent(String kindTag) {
+        String tag = (kindTag == null) ? "" : kindTag.trim().toUpperCase(java.util.Locale.US);
+        return switch (tag) {
+            case "ANOMALY" -> new Color(180, 132, 255);
+            case "DATA_RELAY" -> new Color(120, 196, 255);
+            case "MINEFIELD", "AMBUSH", "DRIFTING_TURRET" -> new Color(255, 136, 126);
+            case "SALVAGE_HULK", "WRECK_FIELD", "RECOVERABLE_WRECK" -> new Color(214, 224, 236);
+            case "SUPPLY_CACHE", "CACHE", "ORE" -> new Color(245, 210, 126);
+            case "FLEET_ASSET" -> new Color(196, 255, 164);
+            case "REINFORCEMENT", "NEUTRAL_TRADER", "PRISON_BARGE" -> new Color(140, 224, 196);
+            default -> new Color(132, 224, 255);
+        };
+    }
+
+    private static Color strategicObjectiveAccent(CampaignSystem.ObjectiveMarkerType type) {
+        if (type == null) return new Color(255, 220, 166);
+        return switch (type) {
+            case PRIMARY_OBJECTIVE, BOSS_TARGET -> new Color(255, 220, 166);
+            case NEXT_ROUTE -> new Color(132, 224, 255);
+            case ESCORT_TARGET, PROTECTED_ASSET -> new Color(132, 255, 176);
+            case DESTROY_TARGET -> new Color(255, 124, 118);
+            case CAPTURE_ZONE -> new Color(205, 170, 255);
+            case OPTIONAL_OBJECTIVE -> new Color(255, 210, 120);
+        };
     }
 
     private static Color sensorSignalAccent(FogOfWarSystem.SensorInterestSignal signal) {

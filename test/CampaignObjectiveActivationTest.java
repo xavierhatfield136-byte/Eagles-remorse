@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +60,90 @@ class CampaignObjectiveActivationTest {
         st.missionSectionTravelLocked = false;
         CampaignSystem.update(ctx, 0.0);
         assertTrue(ctx.gameOver, "once the pocket is active again, the loss condition should resolve normally");
+    }
+
+    @Test
+    void destroyObjectiveCanCompleteOnTheSameTickAsSectorTimeout() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = st.sectorTimeLimit - 0.05;
+        st.authoredObjectiveKills = (int) Math.ceil(st.objectiveGoal);
+
+        CampaignSystem.update(ctx, 0.10);
+
+        assertFalse(ctx.gameOver, "a completed destroy objective should beat a same-tick timeout fail");
+        assertTrue(st.awaitingFleetHubChoice || st.pendingEpisodeSector == 3,
+                "sector clear flow should still start when the last objective resolves on the deadline");
+    }
+
+    @Test
+    void sectorTwoTimeoutSucceedsWhenConvoyQuotaSurvives() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = st.sectorTimeLimit - 0.05;
+        st.objectiveAssetLosses = 1;
+
+        CampaignSystem.update(ctx, 0.10);
+
+        assertFalse(ctx.gameOver, "sector 2 should resolve as a success if the convoy quota survives to extraction");
+        assertTrue(st.awaitingFleetHubChoice || st.pendingEpisodeSector == 3,
+                "convoy extraction at timeout should enter the sector clear flow");
+    }
+
+    @Test
+    void sectorTwoFailureCallsOutConvoyQuotaBreak() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.objectiveAssetLosses = 2;
+
+        CampaignSystem.update(ctx, 0.10);
+
+        assertTrue(ctx.gameOver, "dropping below the sector 2 convoy quota should still fail the mission");
+        assertEquals("DEFEAT: CONVOYS BELOW SAFE COUNT", ctx.gameOverText);
+    }
+
+    @Test
+    void genericTimeoutFailureCallsOutUnfinishedObjective() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 10);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = st.sectorTimeLimit - 0.05;
+        st.objectiveProgress = 0.0;
+
+        CampaignSystem.update(ctx, 0.10);
+
+        assertTrue(ctx.gameOver, "non-extraction sectors should still fail on unresolved timeout");
+        assertEquals("DEFEAT: T-0 BEFORE OBJECTIVE COMPLETE", ctx.gameOverText);
+    }
+
+    @Test
+    void sectorStartEmitsMissionBanterDuringLivePlay() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.update(ctx, 1.1);
+
+        AudioSystem.VoiceTelemetrySnapshot telemetry = AudioSystem.voiceTelemetry(ctx);
+        Map<String, Integer> byEvent = telemetry.dispatchByEvent();
+        assertTrue(byEvent.getOrDefault("scripted.mission_destroy_start", 0) > 0,
+                "campaign sectors should trigger mission banter once combat starts");
     }
 
     private static double invokeObjectiveAnchorX(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {

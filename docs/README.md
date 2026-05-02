@@ -13,6 +13,7 @@
 - `sfx_ai_generation_guide.md`
 - `sfx_generation_jobs.csv`
 - `PERFORMANCE_BOTTLENECKS.md`
+- `LIVE_PERFORMANCE_PROFILE_AND_REMEDIATION_PLAN.md`
 
 ## Asset Workflow And Dropzones
 - `../assets/audio/README.md`

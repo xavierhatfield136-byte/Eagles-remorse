@@ -220,18 +220,6 @@ public final class UISystem {
                         ctx.ui.fleetRefitMode = true;
                         return true;
                     }
-                    case CAP_UP_ESCORT -> {
-                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT);
-                        return true;
-                    }
-                    case CAP_UP_LINE -> {
-                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.LINE);
-                        return true;
-                    }
-                    case CAP_UP_CAPITAL -> {
-                        CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.CAPITAL);
-                        return true;
-                    }
                     case SELECT_SHIP -> {
                         if (fleetTarget.shipId > 0) selectFleetShip(ctx, fleetTarget.shipId);
                         return true;
@@ -754,8 +742,8 @@ public final class UISystem {
         Rectangle panel = fleetNetPanelRect(viewportW, viewportH);
         if (!panel.contains(e.getPoint())) return false;
 
-        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = sensorNetSignals(ctx);
-        if (signals.isEmpty()) return false;
+        java.util.List<GameRenderSystem.SensorNetEntry> entries = GameRenderSystem.sensorNetEntries(ctx, 4, 2);
+        if (entries.isEmpty()) return false;
 
         FontMetricsLike fm = new FontMetricsLike(12);
         java.util.List<String> sensorLines = FogOfWarSystem.isCombatFogEnabled(ctx)
@@ -763,21 +751,25 @@ public final class UISystem {
                 : java.util.List.of();
         int rowY = panel.y + 22 + 16 + sensorLines.size() * 15;
         if (!sensorLines.isEmpty()) rowY += 14;
-        rowY += 14; // SIGNALS header row
+        rowY += 14; // TRACKS header row
 
-        for (FogOfWarSystem.SensorInterestSignal signal : signals) {
+        String currentSection = "";
+        for (GameRenderSystem.SensorNetEntry entry : entries) {
+            if (entry == null) continue;
+            if (!entry.section.equals(currentSection)) {
+                currentSection = entry.section;
+                rowY += 14;
+            }
             Rectangle rowRect = new Rectangle(panel.x + 10, rowY - 11, panel.width - 20, 16);
             if (rowRect.contains(e.getPoint())) {
-                ctx.ui.waypointX = GameMath.clamp(signal.x, 0, ctx.WORLD_W);
-                ctx.ui.waypointY = GameMath.clamp(signal.y, 0, ctx.WORLD_H);
-                openStrategicMapFocusedAt(ctx, signal.x, signal.y);
+                ctx.ui.waypointX = GameMath.clamp(entry.x, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(entry.y, 0, ctx.WORLD_H);
+                openStrategicMapFocusedAt(ctx, entry.x, entry.y);
                 addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
-                EventSystem.showBanner(ctx,
-                        "SENSOR TRACK SET: " + sensorSignalTitle(signal).toUpperCase(Locale.US),
-                        1.3);
+                EventSystem.showBanner(ctx, entry.banner, 1.3);
                 return true;
             }
-            rowY += 16;
+            rowY += 18;
         }
         return false;
     }
@@ -806,6 +798,46 @@ public final class UISystem {
                     : "  " + clickedMarker.subtitle.toUpperCase();
             EventSystem.showBanner(ctx,
                     "OBJECTIVE SET: " + clickedMarker.label.toUpperCase() + subtitle,
+                    1.4);
+            return;
+        }
+
+        CampaignSystem.CampaignSupportMarker clickedSupport =
+                CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
+        if (clickedSupport != null) {
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
+                EventSystem.showBanner(ctx, "SUPPORT PING: " + clickedSupport.label.toUpperCase(), 1.2);
+                return;
+            }
+            ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
+            addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+            String subtitle = (clickedSupport.subtitle == null || clickedSupport.subtitle.isBlank())
+                    ? ""
+                    : "  " + clickedSupport.subtitle.toUpperCase();
+            EventSystem.showBanner(ctx,
+                    "SUPPORT TRACK SET: " + clickedSupport.label.toUpperCase() + subtitle,
+                    1.4);
+            return;
+        }
+
+        CampaignSystem.CampaignLandmark clickedLandmark =
+                CampaignSystem.nearestStrategicLandmark(ctx, worldX, worldY, 220.0);
+        if (clickedLandmark != null) {
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, clickedLandmark.x, clickedLandmark.y, 2.2);
+                EventSystem.showBanner(ctx, "LANDMARK PING: " + clickedLandmark.label.toUpperCase(), 1.2);
+                return;
+            }
+            ctx.ui.waypointX = GameMath.clamp(clickedLandmark.x, 0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(clickedLandmark.y, 0, ctx.WORLD_H);
+            addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+            String subtitle = (clickedLandmark.subtitle == null || clickedLandmark.subtitle.isBlank())
+                    ? ""
+                    : "  " + clickedLandmark.subtitle.toUpperCase();
+            EventSystem.showBanner(ctx,
+                    "LANDMARK SET: " + clickedLandmark.label.toUpperCase() + subtitle,
                     1.4);
             return;
         }
@@ -914,31 +946,6 @@ public final class UISystem {
         }
         ctx.ui.strategicMapFocusX = GameMath.clamp(x, 0, ctx.WORLD_W);
         ctx.ui.strategicMapFocusY = GameMath.clamp(y, 0, ctx.WORLD_H);
-    }
-
-    private static java.util.List<FogOfWarSystem.SensorInterestSignal> sensorNetSignals(GameContext ctx) {
-        java.util.List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
-        if (signals.isEmpty()) return java.util.List.of();
-        int max = Math.min(5, signals.size());
-        return new ArrayList<>(signals.subList(0, max));
-    }
-
-    private static String sensorSignalTitle(FogOfWarSystem.SensorInterestSignal signal) {
-        if (signal == null) return "Signal";
-        String kind = (signal.kind == null) ? "Signal" : switch (signal.kind) {
-            case ANOMALY -> "Anomaly";
-            case ORE_VEIN -> "Ore";
-            case WRECKAGE -> "Wreck";
-            case CACHE -> "Cache";
-            case CONTACT -> "Contact";
-            case HAZARD -> "Hazard";
-            case INTEL -> "Intel";
-            case FLEET_ASSET -> "Asset";
-            case INSTALLATION -> "Site";
-            case MASS_SIGNATURE -> "Mass";
-        };
-        String label = (signal.label == null || signal.label.isBlank()) ? kind : signal.label.trim();
-        return kind.equalsIgnoreCase(label) ? label : (kind + " " + label);
     }
 
     private static java.util.List<String> wrapUiLines(String text, int maxWidth, int charWidth) {
@@ -1471,8 +1478,8 @@ public final class UISystem {
             default -> 0;
         };
 
-        int oreAvailable = CampaignSystem.isCampaignActive(ctx) && ctx.player != null
-                ? ctx.player.cargo
+        int oreAvailable = CampaignSystem.isCampaignActive(ctx)
+                ? CampaignSystem.currentCampaignOre(ctx)
                 : base.oreStockpile;
         if (!canAffordCredits(ctx, cCost) || oreAvailable < oCost) {
             EventSystem.showBanner(ctx, "INSUFFICIENT RESOURCES", 1.4);
@@ -1481,7 +1488,7 @@ public final class UISystem {
 
         spendCredits(ctx, cCost);
         if (CampaignSystem.isCampaignActive(ctx) && ctx.player != null) {
-            ctx.player.cargo = Math.max(0, ctx.player.cargo - oCost);
+            CampaignSystem.spendCampaignOre(ctx, oCost);
         } else {
             base.oreStockpile -= oCost;
         }

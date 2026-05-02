@@ -106,9 +106,6 @@ public class Renderer {
         public enum Kind {
             MODE_COMMISSION,
             MODE_REFIT,
-            CAP_UP_ESCORT,
-            CAP_UP_LINE,
-            CAP_UP_CAPITAL,
             SELECT_SHIP,
             SELECT_TURRET,
             SWAP_TO_GUN,
@@ -408,7 +405,7 @@ public class Renderer {
 
     public static Rectangle getStrategicMapRect(int viewW, int viewH) {
         int pad = 52;
-        int w = Math.min(860, viewW - pad * 2);
+        int w = Math.min(1120, viewW - pad * 2);
         int h = Math.min(560, viewH - pad * 2);
         int x = (viewW - w) / 2;
         int y = (viewH - h) / 2;
@@ -418,7 +415,21 @@ public class Renderer {
     public static Rectangle getStrategicMapInnerRect(int viewW, int viewH) {
         Rectangle r = getStrategicMapRect(viewW, viewH);
         int pad = 18;
-        return new Rectangle(r.x + pad, r.y + 44, r.width - pad * 2, r.height - 60);
+        int gutter = 16;
+        Rectangle sidebar = getStrategicMapSidebarRect(viewW, viewH);
+        int width = Math.max(220, sidebar.x - gutter - (r.x + pad));
+        return new Rectangle(r.x + pad, r.y + 44, width, r.height - 60);
+    }
+
+    public static Rectangle getStrategicMapSidebarRect(int viewW, int viewH) {
+        Rectangle r = getStrategicMapRect(viewW, viewH);
+        int pad = 18;
+        int gutter = 16;
+        int w = Math.min(420, Math.max(280, r.width / 3));
+        int x = r.x + r.width - pad - w;
+        int y = r.y + 44;
+        int h = r.height - 60;
+        return new Rectangle(x, y, w, h);
     }
 
     public static Rectangle getShopOverlayRect(int viewW, int viewH) {
@@ -5568,7 +5579,7 @@ public class Renderer {
         drawShopMetricPill(gx, panel.x + 22, panel.y + 64, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
         drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150,
                 campaignShop ? "ORE" : "HANGAR",
-                campaignShop ? ((ctx == null || ctx.player == null) ? "0" : String.valueOf(ctx.player.cargo)) : ("TIER " + hangarTier),
+                campaignShop ? String.valueOf(CampaignSystem.currentCampaignOre(ctx)) : ("TIER " + hangarTier),
                 new Color(158, 196, 255));
         drawShopMetricPill(gx, panel.x + 362, panel.y + 64, 250,
                 campaignShop ? "FLAGSHIP" : "CURRENT HULL",
@@ -6083,7 +6094,7 @@ public class Renderer {
         boolean current = player.role == offer.role;
         boolean tierOk = hangarTier >= displayTier;
         boolean affordable = credits >= offer.cost;
-        boolean oreAffordable = !campaignShop || (ctx != null && ctx.player != null && ctx.player.cargo >= oreCost);
+        boolean oreAffordable = !campaignShop || CampaignSystem.currentCampaignOre(ctx) >= oreCost;
         boolean commandOk = standardCommandOk && eliteCommandOk;
         boolean enabled = !current && tierOk && sectorOk && mobileStationOk && commandOk && affordable && oreAffordable;
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
@@ -7797,7 +7808,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.drawString(mapHeader, r.x + 190, r.y + 28);
         }
 
-        drawStrategicObjectivePanel(g2, ctx, r);
+        drawStrategicObjectivePanel(g2, ctx, getStrategicMapSidebarRect(viewW, viewH));
 
         // Helpers: world -> map
         java.util.function.BiFunction<Double, Double, Point> W2M = (wx, wy) -> {
@@ -7851,6 +7862,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
             drawCampaignSectorsOnMap(g2, m, ctx);
         }
+        drawStrategicLandmarkMarkers(g2, ctx, m, worldW, worldH);
+        drawStrategicSupportMarkers(g2, ctx, m, worldW, worldH);
         drawStrategicObjectiveMarkers(g2, ctx, m, worldW, worldH);
 
         // Waypoint
@@ -7910,16 +7923,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawRect(rx, ry, rw, rh);
     }
 
-    private static void drawStrategicObjectivePanel(Graphics2D g2, GameContext ctx, Rectangle outerRect) {
-        if (g2 == null || ctx == null || outerRect == null) return;
+    private static void drawStrategicObjectivePanel(Graphics2D g2, GameContext ctx, Rectangle panelRect) {
+        if (g2 == null || ctx == null || panelRect == null) return;
         String title = CampaignSystem.hudObjectiveTitle(ctx);
         String body = CampaignSystem.hudObjectiveExpandedDetail(ctx);
         List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        List<CampaignSystem.CampaignLandmark> landmarks = CampaignSystem.strategicLandmarks(ctx);
+        List<GameRenderSystem.SensorNetEntry> supportEntries = buildStrategicSupportEntryList(ctx);
         if ((title == null || title.isBlank()) && (body == null || body.isBlank())) return;
 
-        int w = Math.min(420, Math.max(280, outerRect.width / 3));
-        int x = outerRect.x + outerRect.width - w - 18;
-        int y = outerRect.y + 44;
+        int w = panelRect.width;
+        int x = panelRect.x;
+        int y = panelRect.y;
 
         Font titleFont = new Font("Consolas", Font.BOLD, 13);
         Font bodyFont = new Font("Consolas", Font.PLAIN, 11);
@@ -7931,12 +7946,24 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         List<String> titleLines = limitHudLines(wrapHudText(titleFm, title, contentW), 2);
         List<String> bodyLines = limitHudLines(wrapHudMultilineText(bodyFm, body, contentW), 9);
         List<String> markerLines = buildStrategicObjectiveMarkerLines(markers);
+        List<String> landmarkLines = buildStrategicLandmarkLines(landmarks);
         List<String> wrappedMarkerLines = new ArrayList<>();
         for (String markerLine : markerLines) {
             wrappedMarkerLines.addAll(limitHudLines(wrapHudText(markerFm, markerLine, contentW), 1));
         }
+        List<String> wrappedLandmarkLines = new ArrayList<>();
+        for (String landmarkLine : landmarkLines) {
+            wrappedLandmarkLines.addAll(limitHudLines(wrapHudText(markerFm, landmarkLine, contentW), 1));
+        }
+        List<String> supportLines = buildStrategicSupportLines(supportEntries);
+        List<String> wrappedSupportLines = new ArrayList<>();
+        for (String supportLine : supportLines) {
+            wrappedSupportLines.addAll(limitHudLines(wrapHudText(markerFm, supportLine, contentW), 1));
+        }
+        int landmarkBlockH = wrappedLandmarkLines.isEmpty() ? 0 : 10 + wrappedLandmarkLines.size() * 13;
         int markerBlockH = wrappedMarkerLines.isEmpty() ? 0 : 10 + wrappedMarkerLines.size() * 13;
-        int h = 30 + titleLines.size() * 16 + Math.max(1, bodyLines.size()) * 14 + markerBlockH + 12;
+        int supportBlockH = wrappedSupportLines.isEmpty() ? 0 : 10 + wrappedSupportLines.size() * 13;
+        int h = Math.min(panelRect.height, 30 + titleLines.size() * 16 + Math.max(1, bodyLines.size()) * 14 + landmarkBlockH + markerBlockH + supportBlockH + 12);
 
         Color oldColor = g2.getColor();
         Font oldFont = g2.getFont();
@@ -7965,6 +7992,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
         }
 
+        if (!wrappedLandmarkLines.isEmpty()) {
+            rowY += 4;
+            g2.setColor(new Color(182, 212, 236, 130));
+            g2.drawLine(x + 10, rowY, x + w - 10, rowY);
+            rowY += 12;
+            g2.setFont(markerFont);
+            g2.setColor(new Color(182, 212, 236, 210));
+            g2.drawString("LANDMARKS", x + 10, rowY);
+            rowY += 13;
+            g2.setColor(new Color(220, 236, 248, 205));
+            for (String line : wrappedLandmarkLines) {
+                g2.drawString(line, x + 10, rowY);
+                rowY += 13;
+            }
+        }
+
         if (!wrappedMarkerLines.isEmpty()) {
             rowY += 4;
             g2.setColor(new Color(255, 214, 132, 175));
@@ -7981,8 +8024,50 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
         }
 
+        if (!wrappedSupportLines.isEmpty()) {
+            rowY += 4;
+            g2.setColor(new Color(150, 220, 255, 150));
+            g2.drawLine(x + 10, rowY, x + w - 10, rowY);
+            rowY += 12;
+            g2.setFont(markerFont);
+            g2.setColor(new Color(150, 220, 255, 210));
+            g2.drawString("SUPPORT CONTACTS", x + 10, rowY);
+            rowY += 13;
+            g2.setColor(new Color(220, 236, 248, 205));
+            for (String line : wrappedSupportLines) {
+                g2.drawString(line, x + 10, rowY);
+                rowY += 13;
+            }
+        }
+
         g2.setColor(oldColor);
         g2.setFont(oldFont);
+    }
+
+    private static List<String> buildStrategicLandmarkLines(List<CampaignSystem.CampaignLandmark> landmarks) {
+        if (landmarks == null || landmarks.isEmpty()) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (CampaignSystem.CampaignLandmark landmark : landmarks) {
+            if (landmark == null) continue;
+            String label = (landmark.label == null) ? "" : landmark.label.trim();
+            if (label.isBlank()) continue;
+            String key = landmark.type + "|" + label;
+            if (!seen.add(key)) continue;
+            String prefix = switch (landmark.type) {
+                case PLANET -> "PLANET";
+                case STAR -> "STAR";
+                case RING -> "RING";
+                case COLONY -> "COLONY";
+                case RELAY -> "RELAY";
+                case FORTRESS -> "FORT";
+                case FRONT -> "FRONT";
+                case CORRIDOR -> "LANE";
+            };
+            String detail = (landmark.subtitle == null || landmark.subtitle.isBlank()) ? "" : " - " + landmark.subtitle;
+            out.add(prefix + " " + label + detail);
+        }
+        return out;
     }
 
     private static List<String> buildStrategicObjectiveMarkerLines(List<CampaignSystem.CampaignObjectiveMarker> markers) {
@@ -7999,6 +8084,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             String detail = (marker.subtitle == null || marker.subtitle.isBlank()) ? "" : " - " + marker.subtitle;
             out.add(prefix + " " + marker.label + detail);
             if (out.size() >= 6) break;
+        }
+        return out;
+    }
+
+    private static List<GameRenderSystem.SensorNetEntry> buildStrategicSupportEntryList(GameContext ctx) {
+        List<GameRenderSystem.SensorNetEntry> all = GameRenderSystem.sensorNetEntries(ctx, 4, 2);
+        if (all.isEmpty()) return List.of();
+        ArrayList<GameRenderSystem.SensorNetEntry> out = new ArrayList<>();
+        for (GameRenderSystem.SensorNetEntry entry : all) {
+            if (entry == null || "MISSION".equals(entry.section)) continue;
+            out.add(entry);
+            if (out.size() >= 4) break;
+        }
+        return out;
+    }
+
+    private static List<String> buildStrategicSupportLines(List<GameRenderSystem.SensorNetEntry> entries) {
+        if (entries == null || entries.isEmpty()) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        String currentSection = "";
+        for (GameRenderSystem.SensorNetEntry entry : entries) {
+            if (entry == null) continue;
+            if (!entry.section.equals(currentSection)) {
+                currentSection = entry.section;
+                out.add("[" + currentSection + "]");
+            }
+            String title = (entry.title == null || entry.title.isBlank()) ? "Contact" : entry.title;
+            String detail = (entry.detail == null) ? "" : entry.detail;
+            out.add("- " + title + (detail.isBlank() ? "" : " | " + detail));
         }
         return out;
     }
@@ -8227,6 +8341,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static void drawStrategicLandmarkMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignLandmark> markers = new ArrayList<>(CampaignSystem.strategicLandmarks(ctx));
+        if (markers.isEmpty()) return;
+
+        Set<String> occupiedLabels = new HashSet<>();
+        for (CampaignSystem.CampaignLandmark marker : markers) {
+            if (marker == null) continue;
+            String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
+            if (!occupiedLabels.add(key)) continue;
+            drawStrategicLandmarkMarker(g2, mapRect, worldW, worldH, marker);
+        }
+    }
+
+    private static void drawStrategicSupportMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignSupportMarker> markers = new ArrayList<>(CampaignSystem.activeSupportMarkers(ctx));
+        if (markers.isEmpty()) return;
+        markers.sort(Comparator.comparingInt((CampaignSystem.CampaignSupportMarker marker) -> marker.priority).reversed());
+
+        Set<String> occupiedLabels = new HashSet<>();
+        for (CampaignSystem.CampaignSupportMarker marker : markers) {
+            if (marker == null) continue;
+            String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
+            if (!occupiedLabels.add(key)) continue;
+            drawStrategicSupportMarker(g2, mapRect, worldW, worldH, marker);
+        }
+    }
+
     private static void drawStrategicObjectiveMarker(Graphics2D g2,
                                                      Rectangle mapRect,
                                                      int worldW,
@@ -8290,6 +8433,111 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
+    private static void drawStrategicSupportMarker(Graphics2D g2,
+                                                   Rectangle mapRect,
+                                                   int worldW,
+                                                   int worldH,
+                                                   CampaignSystem.CampaignSupportMarker marker) {
+        if (g2 == null || mapRect == null || marker == null) return;
+        int px = mapRect.x + (int) Math.round((marker.x / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round((marker.y / Math.max(1.0, worldH)) * mapRect.height);
+        px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
+        py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
+
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        Color accent = strategicSupportMarkerColor(marker.type);
+        int radius = strategicSupportMarkerRadius(marker.type);
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.56f));
+        g2.setColor(withAlpha(accent, 124));
+        g2.fillOval(px - radius - 2, py - radius - 2, (radius + 2) * 2, (radius + 2) * 2);
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
+        g2.setStroke(new BasicStroke(1.3f));
+        g2.setColor(withAlpha(accent, 210));
+        drawStrategicSupportMarkerGlyph(g2, marker.type, px, py, radius);
+
+        if (marker.label != null && !marker.label.isBlank()) {
+            g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
+            FontMetrics fm = g2.getFontMetrics();
+            String shortLabel = marker.label.trim().toUpperCase(Locale.US);
+            int maxWidth = Math.max(88, mapRect.width / 6);
+            while (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 16) {
+                shortLabel = shortLabel.substring(0, shortLabel.length() - 1).trim();
+            }
+            if (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 3) {
+                shortLabel = shortLabel.substring(0, Math.max(3, shortLabel.length() - 3)).trim() + "...";
+            }
+            int tw = fm.stringWidth(shortLabel);
+            int tx = Math.max(mapRect.x + 6, Math.min(mapRect.x + mapRect.width - tw - 6, px - tw / 2));
+            int ty = Math.min(mapRect.y + mapRect.height - 8, Math.max(mapRect.y + 16, py + 18));
+            g2.setColor(new Color(0, 0, 0, 138));
+            g2.fillRoundRect(tx - 4, ty - 10, tw + 8, 15, 8, 8);
+            g2.setColor(withAlpha(accent, 214));
+            g2.drawRoundRect(tx - 4, ty - 10, tw + 8, 15, 8, 8);
+            g2.drawString(shortLabel, tx, ty + 1);
+        }
+
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawStrategicLandmarkMarker(Graphics2D g2,
+                                                    Rectangle mapRect,
+                                                    int worldW,
+                                                    int worldH,
+                                                    CampaignSystem.CampaignLandmark marker) {
+        if (g2 == null || mapRect == null || marker == null) return;
+        int px = mapRect.x + (int) Math.round((marker.x / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round((marker.y / Math.max(1.0, worldH)) * mapRect.height);
+        px = MathUtil.clamp(px, mapRect.x + 7, mapRect.x + mapRect.width - 7);
+        py = MathUtil.clamp(py, mapRect.y + 7, mapRect.y + mapRect.height - 7);
+
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        Color accent = strategicLandmarkColor(marker);
+        int radius = strategicLandmarkRadius(marker.type);
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.36f));
+        g2.setColor(withAlpha(accent, 105));
+        g2.fillOval(px - radius - 2, py - radius - 2, (radius + 2) * 2, (radius + 2) * 2);
+
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.78f));
+        g2.setStroke(new BasicStroke(1.1f));
+        g2.setColor(withAlpha(accent, 176));
+        g2.drawOval(px - radius, py - radius, radius * 2, radius * 2);
+        drawStrategicLandmarkGlyph(g2, marker.type, px, py, radius);
+
+        if (marker.label != null && !marker.label.isBlank()) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+            FontMetrics fm = g2.getFontMetrics();
+            String shortLabel = marker.label.trim().toUpperCase(Locale.US);
+            int maxWidth = Math.max(84, mapRect.width / 7);
+            while (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 14) {
+                shortLabel = shortLabel.substring(0, shortLabel.length() - 1).trim();
+            }
+            if (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 3) {
+                shortLabel = shortLabel.substring(0, Math.max(3, shortLabel.length() - 3)).trim() + "...";
+            }
+            int tw = fm.stringWidth(shortLabel);
+            int tx = Math.max(mapRect.x + 4, Math.min(mapRect.x + mapRect.width - tw - 4, px - tw / 2));
+            int ty = Math.max(mapRect.y + 14, py - 14);
+            g2.setColor(new Color(0, 0, 0, 110));
+            g2.fillRoundRect(tx - 4, ty - 10, tw + 8, 14, 8, 8);
+            g2.setColor(withAlpha(accent, 180));
+            g2.drawRoundRect(tx - 4, ty - 10, tw + 8, 14, 8, 8);
+            g2.drawString(shortLabel, tx, ty + 1);
+        }
+
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
     private static Color strategicMarkerColor(CampaignSystem.ObjectiveMarkerType type) {
         if (type == null) return new Color(255, 220, 166);
         return switch (type) {
@@ -8299,6 +8547,44 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case DESTROY_TARGET -> new Color(255, 124, 118);
             case CAPTURE_ZONE -> new Color(205, 170, 255);
             case OPTIONAL_OBJECTIVE -> new Color(255, 210, 120);
+        };
+    }
+
+    private static Color strategicSupportMarkerColor(CampaignSystem.SupportMarkerType type) {
+        if (type == null) return new Color(150, 220, 255);
+        return switch (type) {
+            case ANOMALY -> new Color(167, 118, 255);
+            case FACTION_CONTACT -> new Color(138, 226, 194);
+            case SALVAGE -> new Color(206, 218, 232);
+            case RESOURCE -> new Color(242, 208, 118);
+            case HAZARD -> new Color(255, 132, 118);
+            case INTEL -> new Color(126, 190, 255);
+        };
+    }
+
+    private static Color strategicLandmarkColor(CampaignSystem.CampaignLandmark landmark) {
+        if (landmark == null) return new Color(182, 212, 236);
+        if (landmark.edgeColor != null) return withAlpha(landmark.edgeColor, 188);
+        return switch (landmark.type) {
+            case PLANET, STAR -> new Color(220, 230, 255);
+            case RING, RELAY -> new Color(146, 210, 255);
+            case FORTRESS, FRONT -> new Color(255, 182, 146);
+            case CORRIDOR -> new Color(164, 222, 196);
+            case COLONY -> new Color(214, 214, 190);
+        };
+    }
+
+    private static int strategicSupportMarkerRadius(CampaignSystem.SupportMarkerType type) {
+        if (type == CampaignSystem.SupportMarkerType.FACTION_CONTACT || type == CampaignSystem.SupportMarkerType.ANOMALY) return 9;
+        return 8;
+    }
+
+    private static int strategicLandmarkRadius(CampaignSystem.LandmarkType type) {
+        if (type == null) return 7;
+        return switch (type) {
+            case PLANET, STAR -> 9;
+            case FORTRESS -> 8;
+            default -> 7;
         };
     }
 
@@ -8349,6 +8635,77 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static void drawStrategicSupportMarkerGlyph(Graphics2D g2,
+                                                        CampaignSystem.SupportMarkerType type,
+                                                        int px,
+                                                        int py,
+                                                        int r) {
+        if (g2 == null || type == null) return;
+        switch (type) {
+            case ANOMALY -> {
+                Polygon p = new Polygon(
+                        new int[]{px, px + r, px, px - r},
+                        new int[]{py - r, py, py + r, py},
+                        4);
+                g2.drawPolygon(p);
+            }
+            case FACTION_CONTACT -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r - 2, py, px + r + 2, py);
+            }
+            case SALVAGE -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py - r, px + r, py + r);
+                g2.drawLine(px - r, py + r, px + r, py - r);
+            }
+            case RESOURCE -> {
+                g2.drawOval(px - r, py - r + 1, r * 2, r * 2 - 2);
+                g2.drawLine(px, py - r - 1, px, py + r + 1);
+            }
+            case HAZARD -> {
+                g2.drawLine(px - r, py + r, px, py - r);
+                g2.drawLine(px, py - r, px + r, py + r);
+                g2.drawLine(px - r + 1, py + r, px + r - 1, py + r);
+            }
+            case INTEL -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px, py - r + 2, px, py + r - 2);
+                g2.drawLine(px, py + r, px, py + r);
+            }
+        }
+    }
+
+    private static void drawStrategicLandmarkGlyph(Graphics2D g2,
+                                                   CampaignSystem.LandmarkType type,
+                                                   int px,
+                                                   int py,
+                                                   int radius) {
+        if (g2 == null || type == null) return;
+        switch (type) {
+            case PLANET -> g2.drawOval(px - radius / 2, py - radius / 2, radius, radius);
+            case STAR -> {
+                g2.drawLine(px - radius, py, px + radius, py);
+                g2.drawLine(px, py - radius, px, py + radius);
+                g2.drawOval(px - radius / 2, py - radius / 2, radius, radius);
+            }
+            case RING -> g2.drawOval(px - radius + 1, py - radius + 1, (radius - 1) * 2, (radius - 1) * 2);
+            case RELAY -> g2.drawRect(px - radius / 2, py - radius / 2, radius, radius);
+            case FORTRESS -> g2.drawPolygon(
+                    new int[]{px, px + radius, px, px - radius},
+                    new int[]{py - radius, py, py + radius, py},
+                    4);
+            case FRONT -> {
+                g2.drawLine(px - radius, py + radius / 2, px, py - radius / 2);
+                g2.drawLine(px, py - radius / 2, px + radius, py + radius / 2);
+            }
+            case CORRIDOR -> g2.drawLine(px - radius, py, px + radius, py);
+            case COLONY -> {
+                g2.drawOval(px - radius / 2, py - radius / 2, radius, radius);
+                g2.drawLine(px - radius, py, px + radius, py);
+            }
+        }
+    }
+
     private static Rectangle campaignSectorMapRect(Rectangle mapRect, GameContext ctx, int sector, int subzone) {
         if (mapRect == null || ctx == null || subzone < 0) return new Rectangle();
         double worldW = Math.max(1.0, ctx.WORLD_W);
@@ -8378,8 +8735,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         Color exploredFog = new Color(20, 38, 54, 84);
         Color unseenFog = new Color(6, 14, 26, 148);
-        Color exploredTrace = new Color(126, 190, 255, 30);
-        Color unseenTrace = new Color(90, 155, 230, 34);
         int cols = fog.cols();
         int rows = fog.rows();
         double mapW = Math.max(1.0, mapRect.width);
@@ -8402,33 +8757,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 boolean explored = fog.isExploredCell(col, row);
                 g2.setColor(explored ? exploredFog : unseenFog);
                 g2.fillRect(x0, y0, w, h);
-                int hash = (col * 37 + row * 61) & 7;
-                if (!explored && hash <= 2) {
-                    g2.setColor(unseenTrace);
-                    g2.drawLine(x0 + 1, y1 - 2, Math.min(x1, x0 + w / 2 + 3), y0 + 1);
-                } else if (explored && hash == 0) {
-                    g2.setColor(exploredTrace);
-                    g2.drawLine(x0 + 2, y0 + 2, x1 - 2, y1 - 2);
-                }
-            }
-        }
-
-        g2.setStroke(new BasicStroke(1.0f));
-        g2.setColor(new Color(125, 196, 255, 45));
-        for (int row = 0; row < rows; row++) {
-            for (int col = 0; col < cols; col++) {
-                if (!fog.isVisibleCell(col, row)) continue;
-                int x0 = mapRect.x + (int) Math.floor((col / (double) cols) * mapW);
-                int y0 = mapRect.y + (int) Math.floor((row / (double) rows) * mapH);
-                int x1 = (col == cols - 1)
-                        ? mapRect.x + mapRect.width
-                        : mapRect.x + (int) Math.floor(((col + 1) / (double) cols) * mapW);
-                int y1 = (row == rows - 1)
-                        ? mapRect.y + mapRect.height
-                        : mapRect.y + (int) Math.floor(((row + 1) / (double) rows) * mapH);
-                if ((col + row) % 3 == 0) {
-                    g2.drawRect(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0));
-                }
             }
         }
 

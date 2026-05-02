@@ -83,8 +83,13 @@ class CommSystemTest {
         CommSystem.tryHailCurrentContact(ctx);
 
         String text = ctx.fleetCommLog.get(ctx.fleetCommLog.size() - 1).text.toLowerCase();
-        assertTrue(text.contains("trade") || text.contains("terms") || text.contains("business"),
-                "trade requests should sound like an actual trade channel");
+        assertTrue(text.contains("trade")
+                        || text.contains("terms")
+                        || text.contains("business")
+                        || text.contains("intel")
+                        || text.contains("vector")
+                        || text.contains("route"),
+                "trade requests should resolve into either cargo barter or intel-sale channel language");
     }
 
     @Test

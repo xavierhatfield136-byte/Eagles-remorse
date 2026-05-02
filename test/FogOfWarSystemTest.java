@@ -119,8 +119,8 @@ class FogOfWarSystemTest {
         assertTrue(FogOfWarSystem.sensorInterestSignals(ctx).stream()
                         .anyMatch(signal -> signal.kind == FogOfWarSystem.SensorInterestKind.ORE_VEIN),
                 "high sensor allocation should mark unexplored rich ore as an anomaly");
-        assertTrue(FogOfWarSystem.coverageSummary(ctx).contains("anomal"),
-                "sensor summary should include anomaly count once points of interest are detected");
+        assertTrue(FogOfWarSystem.coverageSummary(ctx).contains("signal"),
+                "sensor summary should include detected signal count once points of interest are tracked");
     }
 
     @Test

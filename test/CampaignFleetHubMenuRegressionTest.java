@@ -4,6 +4,8 @@ import app.persistence.CampaignCheckpointStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -48,7 +50,10 @@ class CampaignFleetHubMenuRegressionTest {
         CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
         assertNotNull(checkpoint);
         assertEquals(4, checkpoint.nextSector);
+        assertEquals(137, checkpoint.campaignOre);
         assertEquals(137, checkpoint.cargo);
+        assertEquals(5000, checkpoint.worldW);
+        assertEquals(5000, checkpoint.worldH);
         assertEquals(GameMode.CAMPAIGN_OPS, checkpoint.toGameConfig().mode);
         assertEquals(GameMode.FLEET, checkpoint.toGameConfig(GameMode.FLEET).mode);
     }
@@ -67,8 +72,43 @@ class CampaignFleetHubMenuRegressionTest {
         CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
         assertNotNull(checkpoint);
         assertEquals(5, checkpoint.nextSector);
+        assertEquals(212, checkpoint.campaignOre);
         assertEquals(212, checkpoint.cargo);
         assertTrue(checkpoint.toGameConfig(GameMode.FLEET).resumeCampaign);
+    }
+
+    @Test
+    void menuExitCheckpointClampsRunawayCampaignWorldDimensionsToSubzoneCaps() {
+        GameContext ctx = campaignContext(new GameConfig(GameMode.CAMPAIGN_OPS, 30000, 15000, true, 1234L, false));
+        ctx.campaign.sector = 6;
+        ctx.player.cargo = 90;
+
+        assertTrue(CampaignSystem.persistCheckpointForMenuExit(ctx));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
+        assertNotNull(checkpoint);
+        assertEquals(5000, checkpoint.worldW);
+        assertEquals(5000, checkpoint.worldH);
+    }
+
+    @Test
+    void menuExitCheckpointAggregatesPersistentFleetOreIntoCampaignLedger() {
+        GameContext ctx = campaignContext(GameMode.CAMPAIGN_OPS);
+        ctx.campaign.sector = 7;
+        ctx.player.cargo = 125;
+
+        Object entry = addPersistentFleetEntry(ctx.campaign, ShipRole.MINER, "Blue Prospector One");
+        FleetShip miner = new FleetShip(ShipRole.MINER, Faction.ALLY, 2600.0, 2500.0);
+        miner.cargo = 80;
+        setActiveShipId(entry, miner.id);
+        ctx.ships.add(miner);
+
+        assertTrue(CampaignSystem.persistCheckpointForMenuExit(ctx));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
+        assertNotNull(checkpoint);
+        assertEquals(205, checkpoint.campaignOre);
+        assertEquals(205, checkpoint.cargo);
     }
 
     @Test
@@ -96,7 +136,11 @@ class CampaignFleetHubMenuRegressionTest {
     }
 
     private static GameContext campaignContext(GameMode mode) {
-        GameContext ctx = new GameContext(new GameConfig(mode, 5000, 5000, true, 1234L, false));
+        return campaignContext(new GameConfig(mode, 5000, 5000, true, 1234L, false));
+    }
+
+    private static GameContext campaignContext(GameConfig config) {
+        GameContext ctx = new GameContext(config);
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
         st.enabled = true;
         ctx.campaign = st;
@@ -107,5 +151,31 @@ class CampaignFleetHubMenuRegressionTest {
         ctx.ships.add(ctx.player);
         ctx.baseUpgrades.put(ctx.player, new BaseUpgrades().bindTo(ctx.player));
         return ctx;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Object addPersistentFleetEntry(CampaignSystem.CampaignState st, ShipRole role, String name) {
+        try {
+            Method method = CampaignSystem.class.getDeclaredMethod(
+                    "addPersistentFleetEntry",
+                    CampaignSystem.CampaignState.class,
+                    ShipRole.class,
+                    String.class,
+                    int.class);
+            method.setAccessible(true);
+            return method.invoke(null, st, role, name, 1);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError(ex);
+        }
+    }
+
+    private static void setActiveShipId(Object entry, int shipId) {
+        try {
+            java.lang.reflect.Field field = entry.getClass().getDeclaredField("activeShipId");
+            field.setAccessible(true);
+            field.setInt(entry, shipId);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError(ex);
+        }
     }
 }

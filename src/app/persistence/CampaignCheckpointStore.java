@@ -74,6 +74,7 @@ public final class CampaignCheckpointStore {
         public double shieldMax = 0.0;
         public double shieldRegen = 0.0;
         public boolean shieldActive = false;
+        public int campaignOre = 0;
         public int cargo = 0;
         public int cargoMax = 120;
         public double miningRate = 10.0;
@@ -150,6 +151,7 @@ public final class CampaignCheckpointStore {
             shieldMax = finiteOr(shieldMax, 0.0);
             shieldRegen = finiteOr(shieldRegen, 0.0);
             cargo = Math.max(0, cargo);
+            campaignOre = Math.max(cargo, Math.max(0, campaignOre));
             cargoMax = Math.max(0, cargoMax);
             miningRate = Math.max(0.0, finiteOr(miningRate, 10.0));
             miningRange = Math.max(0.0, finiteOr(miningRange, 56.0));
@@ -247,6 +249,7 @@ public final class CampaignCheckpointStore {
                 cp.shieldMax = parseDouble(props, "shieldMax", cp.shieldMax);
                 cp.shieldRegen = parseDouble(props, "shieldRegen", cp.shieldRegen);
                 cp.shieldActive = parseBoolean(props, "shieldActive", cp.shieldActive);
+                cp.campaignOre = parseInt(props, "campaignOre", cp.campaignOre);
                 cp.cargo = parseInt(props, "cargo", cp.cargo);
                 cp.cargoMax = parseInt(props, "cargoMax", cp.cargoMax);
                 cp.miningRate = parseDouble(props, "miningRate", cp.miningRate);
@@ -344,6 +347,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("shieldMax", String.valueOf(cp.shieldMax));
             props.setProperty("shieldRegen", String.valueOf(cp.shieldRegen));
             props.setProperty("shieldActive", String.valueOf(cp.shieldActive));
+            props.setProperty("campaignOre", String.valueOf(cp.campaignOre));
             props.setProperty("cargo", String.valueOf(cp.cargo));
             props.setProperty("cargoMax", String.valueOf(cp.cargoMax));
             props.setProperty("miningRate", String.valueOf(cp.miningRate));

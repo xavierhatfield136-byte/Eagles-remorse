@@ -125,57 +125,33 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
-    void persistentFleetCapsAreTrackedPerBandOnceCommandGridIsExpanded() {
+    void persistentFleetMixIsTrackedPerBandOnceCommandGridIsExpanded() {
         GameContext ctx = campaignShopContext(250_000, 25_000, 5, 9);
 
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
-
-        int escortCap = CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT);
-        for (int i = 0; i < escortCap; i++) {
-            assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
-        }
-        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 260, 1));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.DREADNOUGHT, 3200, 3));
 
-        assertEquals(escortCap, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
+        assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE));
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL));
         assertEquals(2, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN));
     }
 
     @Test
-    void fleetCapUpgradeRequiresFullBandAndThenRaisesEscortLimit() {
+    void legacyFleetCapUpgradePurchaseIsDisabled() {
         GameContext ctx = campaignShopContext(250_000, 25_000, 5, 9);
 
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
-
         assertFalse(CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT));
-
-        int baseEscortCap = CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.ESCORT);
-        for (int i = 0; i < baseEscortCap; i++) {
-            assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
-        }
-        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
-
-        int creditCost = CampaignSystem.persistentFleetCapUpgradeCreditCost(ctx, ShopHullCategory.ESCORT);
-        int oreCost = CampaignSystem.persistentFleetCapUpgradeOreCost(ctx, ShopHullCategory.ESCORT);
-        int creditsBefore = ctx.credits;
-        int oreBefore = ctx.player.cargo;
-
-        assertTrue(CampaignSystem.purchasePersistentFleetCapUpgrade(ctx, ShopHullCategory.ESCORT));
-
-        assertEquals(creditsBefore - creditCost, ctx.credits);
-        assertEquals(oreBefore - oreCost, ctx.player.cargo);
-        assertEquals(baseEscortCap + CampaignSystem.persistentFleetCapUpgradeStep(ShopHullCategory.ESCORT),
-                CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.ESCORT));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
+        assertEquals(0, CampaignSystem.persistentFleetCapUpgradeStep(ShopHullCategory.ESCORT));
+        assertEquals(0, CampaignSystem.persistentFleetCapUpgradeCreditCost(ctx, ShopHullCategory.ESCORT));
+        assertEquals(0, CampaignSystem.persistentFleetCapUpgradeOreCost(ctx, ShopHullCategory.ESCORT));
     }
 
     @Test
-    void fleetCapUpgradeLevelsPersistThroughCheckpointRestore() throws Exception {
+    void legacyFleetCapUpgradeLevelsAreClearedThroughCheckpointRestore() throws Exception {
         CampaignCheckpointStore.clear();
         GameContext ctx = campaignShopContext(50_000, 8_000, 5, 11);
         ctx.campaign.escortCapUpgradeLevel = 2;
@@ -187,14 +163,14 @@ class CampaignPersistentFleetShopTest {
         GameContext restored = campaignShopContext(0, 0, 1, 1);
         assertTrue(applyCheckpoint(restored, checkpoint));
 
-        assertEquals(2, restored.campaign.escortCapUpgradeLevel);
-        assertEquals(1, restored.campaign.lineCapUpgradeLevel);
-        assertEquals(1, restored.campaign.capitalCapUpgradeLevel);
-        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT) + 4,
+        assertEquals(0, restored.campaign.escortCapUpgradeLevel);
+        assertEquals(0, restored.campaign.lineCapUpgradeLevel);
+        assertEquals(0, restored.campaign.capitalCapUpgradeLevel);
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.ESCORT),
                 CampaignSystem.persistentFleetCap(restored, ShopHullCategory.ESCORT));
-        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.LINE) + 1,
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.LINE),
                 CampaignSystem.persistentFleetCap(restored, ShopHullCategory.LINE));
-        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL) + 1,
+        assertEquals(CampaignSystem.persistentFleetCap(ShopHullCategory.CAPITAL),
                 CampaignSystem.persistentFleetCap(restored, ShopHullCategory.CAPITAL));
     }
 
