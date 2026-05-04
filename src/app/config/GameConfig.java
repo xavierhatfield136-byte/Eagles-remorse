@@ -25,7 +25,7 @@ public class GameConfig {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
-        this.randomEvents = randomEvents;
+        this.randomEvents = true;
         this.seed = seed;
         this.fullscreen = fullscreen;
         this.playerTeamId = Math.max(0, Math.min(3, playerTeamId));

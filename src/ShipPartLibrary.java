@@ -9,16 +9,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 final class ShipPartLibrary {
     private static final String PART_DIR = "assets/ship_parts";
     private static final String PART_RESOURCE_DIR = "/ship_parts/";
     private static final Map<String, PartSet> CACHE = new HashMap<>();
     private static final Map<String, PartSprite> IMAGE_CACHE = new HashMap<>();
+    private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
     private static Map<String, double[]> DAMAGE_FOCUS_CACHE = null;
+    private static boolean cachesPrewarmed = false;
 
     enum Variant {
         NORMAL,
@@ -70,6 +74,24 @@ final class ShipPartLibrary {
         PartSet set = new PartSet(parts, resolvedVariant);
         CACHE.put(cacheKey, set);
         return set;
+    }
+
+    static synchronized void prewarmCaches() {
+        if (cachesPrewarmed) return;
+        damageFocusManifest();
+        for (ShipRole role : ShipRole.values()) {
+            for (Faction faction : Faction.values()) {
+                getSet(role, faction, Variant.NORMAL);
+                getSet(role, faction, Variant.DAMAGED);
+                getSet(role, faction, Variant.CRITICAL);
+                getSet(role, faction, Variant.DESTROYED);
+            }
+            getSet(role, null, Variant.NORMAL);
+            getSet(role, null, Variant.DAMAGED);
+            getSet(role, null, Variant.CRITICAL);
+            getSet(role, null, Variant.DESTROYED);
+        }
+        cachesPrewarmed = true;
     }
 
     private static PartSprite loadVariant(String roleKey, String factionKey, String idx, Variant variant) {
@@ -142,6 +164,7 @@ final class ShipPartLibrary {
         if (key == null || key.isBlank()) return null;
         PartSprite cached = IMAGE_CACHE.get(key);
         if (cached != null) return cached;
+        if (IMAGE_MISS_CACHE.contains(key)) return null;
 
         BufferedImage img = null;
         File file = new File(PART_DIR, key + ".png");
@@ -155,10 +178,17 @@ final class ShipPartLibrary {
             } catch (IOException ignored) {}
         }
 
-        if (img == null) return null;
+        if (img == null) {
+            IMAGE_MISS_CACHE.add(key);
+            return null;
+        }
 
         PartSprite sprite = trimSprite(img, key);
-        if (sprite != null) IMAGE_CACHE.put(key, sprite);
+        if (sprite != null) {
+            IMAGE_CACHE.put(key, sprite);
+        } else {
+            IMAGE_MISS_CACHE.add(key);
+        }
         return sprite;
     }
 

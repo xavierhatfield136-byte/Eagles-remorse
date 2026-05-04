@@ -10,6 +10,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignMissionSectionsTest {
@@ -111,6 +112,40 @@ class CampaignMissionSectionsTest {
         assertTrue(detail.contains("Current Task: Clear FORWARD SCREEN")
                         || detail.contains("Current Task: Hold the convoy lane"),
                 "sector 2 should tell the player both the extraction win state and the immediate pocket task");
+    }
+
+    @Test
+    void missionThreeInitialBlockersAreMarkedAndReliefRouteIsInitialized() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        startSector(ctx, 3);
+
+        assertEquals(6, CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                        .filter(marker -> marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET)
+                        .count(),
+                "mission 3 should mark the initial jump-ring blockers");
+        assertNotEquals(0.0, ctx.campaign.captureX, 0.01, "mission 3 relief-wing anchor should be initialized");
+        assertNotEquals(0.0, ctx.campaign.captureY, 0.01, "mission 3 relief-wing anchor should be initialized");
+    }
+
+    @Test
+    void destroyObjectiveTextOnlyPromisesMarkedTargetsWhenMarkersExist() throws Exception {
+        for (int sector = 1; sector <= 24; sector++) {
+            GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L + sector, false));
+            ctx.campaignUnlockProfile = null;
+            SpawnSystem.initWorld(ctx);
+            startSector(ctx, sector);
+
+            if (ctx.campaign.objectiveType != CampaignSystem.ObjectiveType.DESTROY) continue;
+            String detail = CampaignSystem.hudObjectiveDetail(ctx);
+            boolean mentionsMarked = detail.toLowerCase().contains("marked");
+            boolean hasMarkers = CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                    .anyMatch(marker -> marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET);
+            assertFalse(mentionsMarked && !hasMarkers,
+                    "sector " + sector + " should never promise marked destroy targets unless the game actually exposes them");
+        }
     }
 
     @Test
@@ -271,6 +306,42 @@ class CampaignMissionSectionsTest {
             int subzone = (int) missionSubzoneForPoint.invoke(
                     null, ctx.campaign.sector, getDoubleField(site, "x"), getDoubleField(site, "y"));
             assertTrue(subzone >= 0, "discovery site should be placed inside a playable subzone");
+        }
+    }
+
+    @Test
+    void randomizedMissionPocketsRespectArrivalSafetyBand() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        startSector(ctx, 10);
+
+        Method missionSubzoneForPoint = CampaignSystem.class.getDeclaredMethod(
+                "missionSubzoneForPoint", int.class, double.class, double.class);
+        missionSubzoneForPoint.setAccessible(true);
+
+        int entryCol = CampaignSystem.missionSubzoneColumn(ctx.campaign.loadedMissionSubzone);
+        int safeDepth = (entryCol <= 0 || entryCol >= CampaignSystem.missionSubzoneColumns() - 1) ? 2 : 1;
+
+        for (Object section : ctx.campaign.missionSections) {
+            String label = String.valueOf(getField(section, "label"));
+            if (!"FORWARD SCREEN".equals(label) && !"RESERVE STAGING".equals(label)) continue;
+            int subzone = (int) missionSubzoneForPoint.invoke(
+                    null, ctx.campaign.sector, getDoubleField(section, "x"), getDoubleField(section, "y"));
+            int col = CampaignSystem.missionSubzoneColumn(subzone);
+            assertFalse(Math.abs(col - entryCol) < safeDepth,
+                    "hostile mission pockets should stay out of the player's warp-in safety band");
+        }
+
+        for (Object site : ctx.campaign.discoverySites) {
+            String kind = String.valueOf(getField(site, "kind"));
+            if (!"AMBUSH".equals(kind) && !"MINEFIELD".equals(kind) && !"WRECK_FIELD".equals(kind)) continue;
+            int subzone = (int) missionSubzoneForPoint.invoke(
+                    null, ctx.campaign.sector, getDoubleField(site, "x"), getDoubleField(site, "y"));
+            int col = CampaignSystem.missionSubzoneColumn(subzone);
+            assertFalse(Math.abs(col - entryCol) < safeDepth,
+                    "hostile discovery pockets should stay out of the player's warp-in safety band");
         }
     }
 

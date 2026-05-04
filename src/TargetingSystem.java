@@ -217,6 +217,11 @@ public final class TargetingSystem {
     }
 
     public static boolean isDetectableToObserver(GameContext ctx, Ship observer, Ship target) {
+        return isDetectableToObserver(ctx, observer, target, Double.NaN, Double.NaN);
+    }
+
+    static boolean isDetectableToObserver(GameContext ctx, Ship observer, Ship target,
+                                          double observerSensorMul, double targetSignatureMul) {
         if (target == null) return false;
         if (observer == target) return true;
         if (observer == null) {
@@ -228,7 +233,7 @@ public final class TargetingSystem {
         if (sharesWeaponsHotContact(ctx, observer, target)) return true;
         if (formationRelayDetectsTarget(ctx, observer, target)) return true;
         if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
-        double range = detectionRangeForObserver(observer, target);
+        double range = detectionRangeForObserver(observer, target, observerSensorMul, targetSignatureMul);
         double dx = target.x - observer.x;
         double dy = target.y - observer.y;
         if (dx * dx + dy * dy > range * range) return false;
@@ -298,10 +303,19 @@ public final class TargetingSystem {
     }
 
     public static double detectionRangeForObserver(Ship observer, Ship target) {
+        return detectionRangeForObserver(observer, target, Double.NaN, Double.NaN);
+    }
+
+    static double detectionRangeForObserver(Ship observer, Ship target, double observerSensorMul,
+                                            double targetSignatureMul) {
         if (observer == null) return Double.POSITIVE_INFINITY;
         double baseRange = baseDetectionRange(observer.role);
-        double sensorMul = Math.max(0.35, Math.min(1.75, observer.sensorRangeMultiplier()));
-        double targetMul = targetSignatureMultiplier(target);
+        double sensorMul = Double.isFinite(observerSensorMul)
+                ? Math.max(0.35, Math.min(1.75, observerSensorMul))
+                : Math.max(0.35, Math.min(1.75, observer.sensorRangeMultiplier()));
+        double targetMul = Double.isFinite(targetSignatureMul)
+                ? Math.max(0.55, Math.min(1.45, targetSignatureMul))
+                : targetSignatureMultiplier(target);
         double range = baseRange * sensorMul * targetMul;
         if (observer.hasActiveEcm()) range *= 0.90;
         return Math.max(260.0, range);
@@ -325,7 +339,7 @@ public final class TargetingSystem {
         };
     }
 
-    private static double targetSignatureMultiplier(Ship target) {
+    static double targetSignatureMultiplier(Ship target) {
         if (target == null) return 1.0;
         double multiplier = target.isSmallCraft() ? 0.74 : 1.0;
         if (target.role != null) {

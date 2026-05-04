@@ -9,6 +9,7 @@
  * firing mount if the ship moves.
  */
 public class EnergyBolt extends Projectile {
+    private final int initialLife;
 
     /** Angle for rendering the bolt "capsule" shape. */
     public final double angle;
@@ -100,6 +101,7 @@ public class EnergyBolt extends Projectile {
                 life,
                 faction
         );
+        this.initialLife = Math.max(1, life);
         this.angle = angle;
         this.beamBolt = beamBolt;
         this.spawnX = x;
@@ -142,6 +144,10 @@ public class EnergyBolt extends Projectile {
 
     public boolean usesCombinedBeamVisual() {
         return beamBolt && beamLaneIndex < 0;
+    }
+
+    public int ageFrames() {
+        return Math.max(0, initialLife - life);
     }
 
     private static boolean isBeamBoltSpeed(double speed) {

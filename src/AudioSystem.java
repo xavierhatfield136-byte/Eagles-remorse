@@ -2,6 +2,7 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -12,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.sound.sampled.AudioFormat;
@@ -33,10 +35,18 @@ public final class AudioSystem {
         return t;
     });
     private static final List<Clip> ACTIVE_CLIPS = Collections.synchronizedList(new ArrayList<>());
+    private static final Map<String, Double> SFX_BURST_THROTTLE_UNTIL = new ConcurrentHashMap<>();
+    private static final Map<String, Double> ONE_SHOT_ASSET_THROTTLE_UNTIL = new ConcurrentHashMap<>();
+    private static final Map<String, byte[]> AUDIO_FILE_BYTES = new ConcurrentHashMap<>();
+    private static final Map<String, byte[]> AUDIO_RESOURCE_BYTES = new ConcurrentHashMap<>();
     private static final boolean AUDIO_DISABLED = Boolean.getBoolean("codex.disableAudio");
     private static volatile boolean TELEMETRY_ONLY = AUDIO_DISABLED;
 
     private static volatile Clip ambientClip;
+    private static final int MAX_ACTIVE_ONE_SHOTS = 16;
+    private static final int MAX_ACTIVE_LOW_PRIORITY_ONE_SHOTS = 8;
+    private static final double DUPLICATE_ONE_SHOT_SUPPRESS_SEC = 0.075;
+    private static final double HOSTILE_CONTACT_REFRESH_SEC = 0.24;
 
     private AudioSystem() {}
 
@@ -264,6 +274,8 @@ public final class AudioSystem {
         boolean lastScienceJamming;
         boolean lastRepairsActive;
         int hostileContactCount;
+        double hostileContactRefreshAtSec = 0.0;
+        List<Ship> cachedVisibleHostiles = List.of();
         double scienceContactMemoryUntilSec = 0.0;
         double lastShieldFrac;
         double lastReactorFrac;
@@ -305,6 +317,9 @@ public final class AudioSystem {
             if (ctx != null && ctx.player != null) {
                 s.lastLockedTarget = ctx.lockedTarget;
                 List<Ship> visibleHostiles = visibleHostiles(ctx);
+                double now = nowSec();
+                s.cachedVisibleHostiles = List.copyOf(visibleHostiles);
+                s.hostileContactRefreshAtSec = now + HOSTILE_CONTACT_REFRESH_SEC;
                 s.hadCombatContact = !visibleHostiles.isEmpty();
                 s.missilesInbound = hasMissilesInbound(ctx);
                 s.lastScienceJamming = ctx.command.scienceJamming;
@@ -323,7 +338,7 @@ public final class AudioSystem {
                     s.lastFriendlyFleetCommand = resolvedFleetCommand(ctx, commandShip);
                     s.lastFriendlyFleetFormation = resolvedFleetFormation(ctx, commandShip);
                 }
-                double seededUntil = nowSec() + 12.0;
+                double seededUntil = now + 12.0;
                 for (Ship hostile : visibleHostiles) {
                     if (hostile == null) continue;
                     s.scienceKnownContactsUntil.put(hostile.id, seededUntil);
@@ -344,20 +359,20 @@ public final class AudioSystem {
     private static final class AssetLibrary {
         private static final File ROOT_AUDIO = new File("assets/audio");
         private static final File ROOT_VOICE = new File("assets/voice");
-        private static final Map<String, List<File>> CACHE = new HashMap<>();
+        private static final Map<String, List<File>> FILE_CACHE = new ConcurrentHashMap<>();
+        private static final Map<String, List<String>> BUNDLED_CACHE = new ConcurrentHashMap<>();
         private static final int MAX_RESOURCE_VARIANTS = 16;
 
         private AssetLibrary() {}
 
         static VoicePick pickVoice(String role, String eventId, int preferredVariantIndex) {
             if (role == null || eventId == null) return null;
-            String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
-            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
+            List<File> files = filesFor("voice", role, eventId, new File(ROOT_VOICE, role));
             if (!files.isEmpty()) {
                 int idx = Math.floorMod(preferredVariantIndex, files.size());
-                return new VoicePick(files.get(idx), bundledVariantPath("voice", role, eventId, idx), idx, files.size());
+                return new VoicePick(files.get(idx), null, idx, files.size());
             }
-            List<String> bundled = scanBundled("voice", role, eventId);
+            List<String> bundled = bundledFor("voice", role, eventId);
             if (bundled.isEmpty()) return null;
             int idx = Math.floorMod(preferredVariantIndex, bundled.size());
             return new VoicePick(null, bundled.get(idx), idx, bundled.size());
@@ -365,26 +380,43 @@ public final class AudioSystem {
 
         static int voiceVariantCount(String role, String eventId) {
             if (role == null || eventId == null) return 0;
-            String key = "voice/" + role.toLowerCase(Locale.US) + "/" + eventId.toLowerCase(Locale.US);
-            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_VOICE, role), eventId));
+            List<File> files = filesFor("voice", role, eventId, new File(ROOT_VOICE, role));
             if (!files.isEmpty()) return files.size();
-            return scanBundled("voice", role, eventId).size();
+            return bundledFor("voice", role, eventId).size();
+        }
+
+        static int sfxVariantCount(SfxManifest.EventSpec spec) {
+            if (spec == null) return 0;
+            String folder = spec.folder();
+            String eventPrefix = spec.filePrefix();
+            List<File> files = filesFor("audio", folder, eventPrefix, new File(ROOT_AUDIO, folder));
+            if (!files.isEmpty()) return files.size();
+            return bundledFor("audio", folder, eventPrefix).size();
         }
 
         static SfxPick pickSfx(SfxManifest.EventSpec spec, int preferredVariantIndex) {
             if (spec == null) return null;
             String folder = spec.folder();
             String eventPrefix = spec.filePrefix();
-            String key = "audio/" + folder.toLowerCase(Locale.US) + "/" + eventPrefix.toLowerCase(Locale.US);
-            List<File> files = CACHE.computeIfAbsent(key, k -> scan(new File(ROOT_AUDIO, folder), eventPrefix));
+            List<File> files = filesFor("audio", folder, eventPrefix, new File(ROOT_AUDIO, folder));
             if (!files.isEmpty()) {
                 int idx = Math.floorMod(preferredVariantIndex, files.size());
-                return new SfxPick(files.get(idx), bundledVariantPath("audio", folder, eventPrefix, idx), idx, files.size());
+                return new SfxPick(files.get(idx), null, idx, files.size());
             }
-            List<String> bundled = scanBundled("audio", folder, eventPrefix);
+            List<String> bundled = bundledFor("audio", folder, eventPrefix);
             if (bundled.isEmpty()) return null;
             int idx = Math.floorMod(preferredVariantIndex, bundled.size());
             return new SfxPick(null, bundled.get(idx), idx, bundled.size());
+        }
+
+        private static List<File> filesFor(String root, String folder, String eventId, File dir) {
+            String key = cacheKey(root, folder, eventId);
+            return FILE_CACHE.computeIfAbsent(key, k -> scan(dir, eventId));
+        }
+
+        private static List<String> bundledFor(String root, String folder, String eventId) {
+            String key = cacheKey(root, folder, eventId);
+            return BUNDLED_CACHE.computeIfAbsent(key, k -> scanBundled(root, folder, eventId));
         }
 
         private static List<File> scan(File dir, String eventId) {
@@ -415,11 +447,11 @@ public final class AudioSystem {
             return out;
         }
 
-        private static String bundledVariantPath(String root, String folder, String eventId, int variantIndex) {
-            List<String> bundled = scanBundled(root, folder, eventId);
-            if (bundled.isEmpty()) return null;
-            int idx = Math.floorMod(variantIndex, bundled.size());
-            return bundled.get(idx);
+        private static String cacheKey(String root, String folder, String eventId) {
+            String a = (root == null) ? "" : root.toLowerCase(Locale.US);
+            String b = (folder == null) ? "" : folder.toLowerCase(Locale.US);
+            String c = (eventId == null) ? "" : eventId.toLowerCase(Locale.US);
+            return a + "/" + b + "/" + c;
         }
 
         private static boolean resourceExists(String path) {
@@ -670,7 +702,7 @@ public final class AudioSystem {
     }
 
     private static void processVoiceSignals(GameContext ctx, RuntimeState st, double now) {
-        List<Ship> visibleHostiles = visibleHostiles(ctx);
+        List<Ship> visibleHostiles = visibleHostilesCached(ctx, st, now);
         int hostiles = visibleHostiles.size();
         if (!st.hadCombatContact && hostiles > 0) {
             emitVoice(ctx, st, VoiceCue.CAPTAIN_COMBAT_START, now);
@@ -1130,19 +1162,20 @@ public final class AudioSystem {
         if (!shouldPlayWorldSfxAt(ctx, sourceX, sourceY)) return;
         SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
         if (spec == null) return;
+        if (isSfxBurstSuppressed(spec, now)) return;
 
         Double cd = st.sfxCooldownUntil.get(spec.eventId());
         if (cd != null && now < cd) return;
         st.sfxCooldownUntil.put(spec.eventId(), now + Math.max(0.02, spec.cooldownSec()));
 
-        int variants = Math.max(1, SfxManifest.variantCount(spec));
+        int variants = Math.max(1, AssetLibrary.sfxVariantCount(spec));
         int variant = chooseSfxVariantIndex(st, spec.eventId(), variants);
         AssetLibrary.SfxPick pick = AssetLibrary.pickSfx(spec, variant);
         boolean hasAsset = (pick != null && (pick.file() != null || pick.resourcePath() != null));
         if (hasAsset) {
             variant = pick.variantIndex();
             double gain = spec.gainDb() + sfxVoiceDuckingDb(ctx, spec.priority());
-            playAssetAsync(pick.file(), pick.resourcePath(), false, gain);
+            playAssetAsync(pick.file(), pick.resourcePath(), false, gain, spec.priority());
         }
         st.lastSfxVariantByEvent.put(spec.eventId(), variant);
 
@@ -1187,18 +1220,27 @@ public final class AudioSystem {
     }
 
     private static synchronized void applyAmbientMix(GameContext ctx) {
+        RuntimeState st = stateFor(ctx);
         Clip clip = ambientClip;
         if (clip == null || !clip.isOpen()) return;
         // Slightly louder ambience to better support the "crewed bridge" feel.
         double target = -24.0;
-        if (countHostiles(ctx) > 0) target = -21.5;
+        if (countHostiles(ctx, st, nowSec()) > 0) target = -21.5;
         if (ctx.ui.voiceCaptionT > 0.0) target -= 4.5;
         applyGain(clip, target);
     }
 
     private static void playAssetAsync(File wav, String resourcePath, boolean loop, double gainDb) {
+        playAssetAsync(wav, resourcePath, loop, gainDb, 3);
+    }
+
+    private static void playAssetAsync(File wav, String resourcePath, boolean loop, double gainDb, int priority) {
         if (TELEMETRY_ONLY) return;
         if ((wav == null || !wav.isFile()) && (resourcePath == null || resourcePath.isBlank())) return;
+        if (!loop) {
+            if (!canSpawnOneShotClip(priority)) return;
+            if (isDuplicateOneShotSuppressed(wav, resourcePath)) return;
+        }
         PLAYBACK_EXEC.execute(() -> {
             Clip clip = createClipFromAsset(wav, resourcePath, gainDb);
             if (clip == null) return;
@@ -1229,13 +1271,24 @@ public final class AudioSystem {
     }
 
     private static Clip createClipFromFile(File wav, double gainDb) {
-        try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(wav)) {
+        if (wav == null) return null;
+        try {
+            byte[] bytes = AUDIO_FILE_BYTES.computeIfAbsent(wav.getAbsolutePath(), path -> {
+                try {
+                    return Files.readAllBytes(wav.toPath());
+                } catch (Throwable ignored) {
+                    return null;
+                }
+            });
+            if (bytes == null || bytes.length == 0) return null;
+            try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(new BufferedInputStream(new ByteArrayInputStream(bytes)))) {
             Clip clip = javax.sound.sampled.AudioSystem.getClip();
             installClipLifecycle(clip);
             clip.open(stream);
             applyGain(clip, gainDb);
             ACTIVE_CLIPS.add(clip);
             return clip;
+            }
         } catch (Throwable ignored) {
             return null;
         }
@@ -1243,9 +1296,16 @@ public final class AudioSystem {
 
     private static Clip createClipFromResource(String resourcePath, double gainDb) {
         if (resourcePath == null || resourcePath.isBlank()) return null;
-        try (InputStream raw = AudioSystem.class.getResourceAsStream(resourcePath)) {
-            if (raw == null) return null;
-            try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(new BufferedInputStream(raw))) {
+        try {
+            byte[] bytes = AUDIO_RESOURCE_BYTES.computeIfAbsent(resourcePath, path -> {
+                try (InputStream raw = AudioSystem.class.getResourceAsStream(path)) {
+                    return (raw == null) ? null : raw.readAllBytes();
+                } catch (Throwable ignored) {
+                    return null;
+                }
+            });
+            if (bytes == null || bytes.length == 0) return null;
+            try (AudioInputStream stream = javax.sound.sampled.AudioSystem.getAudioInputStream(new BufferedInputStream(new ByteArrayInputStream(bytes)))) {
                 Clip clip = javax.sound.sampled.AudioSystem.getClip();
                 installClipLifecycle(clip);
                 clip.open(stream);
@@ -1302,6 +1362,55 @@ public final class AudioSystem {
         });
     }
 
+    private static boolean canSpawnOneShotClip(int priority) {
+        pruneInactiveClips();
+        int active = ACTIVE_CLIPS.size();
+        if (active >= MAX_ACTIVE_ONE_SHOTS) return false;
+        if (active >= MAX_ACTIVE_LOW_PRIORITY_ONE_SHOTS) return priority >= 3;
+        return true;
+    }
+
+    private static void pruneInactiveClips() {
+        synchronized (ACTIVE_CLIPS) {
+            ACTIVE_CLIPS.removeIf(clip -> clip == null || !clip.isOpen());
+        }
+    }
+
+    private static boolean isSfxBurstSuppressed(SfxManifest.EventSpec spec, double now) {
+        if (spec == null) return false;
+        String eventId = spec.eventId();
+        if (eventId == null || eventId.isBlank()) return false;
+        double extraCooldown = 0.0;
+        if (eventId.startsWith("impact.shield.")) {
+            extraCooldown = 0.028;
+        } else if (eventId.startsWith("impact.hull.")) {
+            extraCooldown = 0.022;
+        } else if (eventId.startsWith("impact.")) {
+            extraCooldown = 0.018;
+        }
+        if (extraCooldown <= 1e-6) return false;
+        Double until = SFX_BURST_THROTTLE_UNTIL.get(eventId);
+        if (until != null && now < until) return true;
+        SFX_BURST_THROTTLE_UNTIL.put(eventId, now + extraCooldown);
+        return false;
+    }
+
+    private static boolean isDuplicateOneShotSuppressed(File wav, String resourcePath) {
+        String key;
+        if (wav != null && wav.isFile()) {
+            key = "file:" + wav.getAbsolutePath();
+        } else if (resourcePath != null && !resourcePath.isBlank()) {
+            key = "res:" + resourcePath;
+        } else {
+            return false;
+        }
+        double now = System.nanoTime() * 1e-9;
+        Double until = ONE_SHOT_ASSET_THROTTLE_UNTIL.get(key);
+        if (until != null && now < until) return true;
+        ONE_SHOT_ASSET_THROTTLE_UNTIL.put(key, now + DUPLICATE_ONE_SHOT_SUPPRESS_SEC);
+        return false;
+    }
+
     private static void applyGain(Clip clip, double gainDb) {
         if (clip == null) return;
         try {
@@ -1322,8 +1431,8 @@ public final class AudioSystem {
         return TargetingSystem.isDetectableToObserver(ctx, ctx.player, t);
     }
 
-    private static int countHostiles(GameContext ctx) {
-        return visibleHostiles(ctx).size();
+    private static int countHostiles(GameContext ctx, RuntimeState st, double now) {
+        return visibleHostilesCached(ctx, st, now).size();
     }
 
     private static List<Ship> visibleHostiles(GameContext ctx) {
@@ -1340,6 +1449,26 @@ public final class AudioSystem {
             if (d2 <= maxRange2) out.add(s);
         }
         return out;
+    }
+
+    private static List<Ship> visibleHostilesCached(GameContext ctx, RuntimeState st, double now) {
+        if (st == null) return visibleHostiles(ctx);
+        if (ctx == null || ctx.player == null || !ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) {
+            st.cachedVisibleHostiles = List.of();
+            st.hostileContactCount = 0;
+            st.hostileContactRefreshAtSec = now + HOSTILE_CONTACT_REFRESH_SEC;
+            return st.cachedVisibleHostiles;
+        }
+        if (st.cachedVisibleHostiles != null
+                && !st.cachedVisibleHostiles.isEmpty()
+                && now < st.hostileContactRefreshAtSec) {
+            return st.cachedVisibleHostiles;
+        }
+        List<Ship> refreshed = List.copyOf(visibleHostiles(ctx));
+        st.cachedVisibleHostiles = refreshed;
+        st.hostileContactCount = refreshed.size();
+        st.hostileContactRefreshAtSec = now + HOSTILE_CONTACT_REFRESH_SEC;
+        return refreshed;
     }
 
     private static boolean hasMissilesInbound(GameContext ctx) {

@@ -31,6 +31,7 @@ public final class ShipHullSilhouette {
     private static final Map<String, BufferedImage> SKIN_CACHE = new HashMap<>();
     private static final Set<String> SKIN_MISS = new HashSet<>();
     private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
+    private static boolean cachesPrewarmed = false;
 
     private ShipHullSilhouette() {}
 
@@ -40,6 +41,18 @@ public final class ShipHullSilhouette {
 
     public static Polygon hullPolygon(ShipRole role, double radius) {
         return hullPolygon(role, radius, null);
+    }
+
+    public static synchronized void prewarmCaches() {
+        if (cachesPrewarmed) return;
+        for (ShipRole role : ShipRole.values()) {
+            double radius = Math.max(8.0, RoleStats.get(role).radius);
+            hullPolygon(role, radius, null);
+            for (Faction faction : Faction.values()) {
+                hullPolygon(role, radius, faction);
+            }
+        }
+        cachesPrewarmed = true;
     }
 
     public static Polygon hullPolygon(ShipRole role, double radius, Faction faction) {

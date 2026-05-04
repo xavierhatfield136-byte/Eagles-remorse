@@ -3,6 +3,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +59,9 @@ public final class AISystem {
     private static final Map<Integer, Integer> CLOSEST_RETARGET_TARGET_IDS = new HashMap<>();
     private static final Map<Integer, Double> IMMEDIATE_THREAT_SCAN_TIMERS = new HashMap<>();
     private static final Map<Integer, Double> ENGAGEMENT_SCAN_BACKOFF_TIMERS = new HashMap<>();
+    private static final Map<Integer, Integer> TEAM_STABLE_SHARED_TARGET_IDS = new HashMap<>();
+    private static final Map<Integer, Double> TEAM_STABLE_SHARED_TARGET_CONFIDENCE = new HashMap<>();
+    private static final Map<Integer, Double> TEAM_STABLE_SHARED_TARGET_TTL = new HashMap<>();
     private static final double REPAIR_ORDER_SAFE_SECONDS = 20.0;
     private static final double BATTLEFIELD_WARP_TRIGGER_RANGE = 1700.0;
     private static final double BATTLEFIELD_WARP_SAFE_RADIUS = 640.0;
@@ -353,6 +357,8 @@ public final class AISystem {
         boundsNs += System.nanoTime() - phaseStart;
 
         if (ctx.perf != null) {
+            ctx.perf.aiMs = (maintenanceNs + fleetStateNs + shipUtilityNs + shipCombatNs
+                    + avoidanceNs + formationSyncNs + boundsNs) / 1_000_000.0;
             ctx.perf.aiMaintenanceMs = maintenanceNs / 1_000_000.0;
             ctx.perf.aiFleetStateMs = fleetStateNs / 1_000_000.0;
             ctx.perf.aiShipUtilityMs = shipUtilityNs / 1_000_000.0;
@@ -381,6 +387,7 @@ public final class AISystem {
     private static FleetState buildFleetState(GameContext ctx, double dt) {
         FleetState out = new FleetState();
         if (ctx == null || ctx.ships == null) return out;
+        FleetStateBuildCache buildCache = new FleetStateBuildCache();
         decayCommCommandOverrides(ctx, dt);
         if (ctx.command.shipFleetCommandOverrides != null && !ctx.command.shipFleetCommandOverrides.isEmpty()) {
             ctx.command.shipFleetCommandOverrides.entrySet().removeIf(e -> !hasLiveShipId(ctx.ships, e.getKey()));
@@ -422,7 +429,11 @@ public final class AISystem {
             int teamId = e.getKey();
             List<Ship> members = e.getValue();
             Ship flagship = out.flagships.get(teamId);
-            SharedTargetChoice shared = selectSharedTargetForTeam(ctx, members, flagship);
+            SharedTargetChoice shared = reuseStableSharedTarget(ctx, teamId, members, flagship, buildCache, dt);
+            if (shared == null) {
+                shared = selectSharedTargetForTeam(ctx, members, flagship, buildCache);
+                storeStableSharedTarget(teamId, shared);
+            }
             Faction teamFaction = out.teamFactions.get(teamId);
             shared = applyCommandLatencyAndFog(ctx, teamId, teamFaction, shared, dt);
             if (shared != null && shared.target != null) {
@@ -453,6 +464,11 @@ public final class AISystem {
         }
         syncFleetPresentation(ctx, out);
         return out;
+    }
+
+    private static final class FleetStateBuildCache {
+        final Map<Ship, Double> observerSensorMul = new IdentityHashMap<>();
+        final Map<Ship, Double> targetSignatureMul = new IdentityHashMap<>();
     }
 
     private static void decayCommCommandOverrides(GameContext ctx, double dt) {
@@ -511,7 +527,8 @@ public final class AISystem {
         }
     }
 
-    private static SharedTargetChoice selectSharedTargetForTeam(GameContext ctx, List<Ship> members, Ship flagship) {
+    private static SharedTargetChoice selectSharedTargetForTeam(GameContext ctx, List<Ship> members, Ship flagship,
+                                                                FleetStateBuildCache buildCache) {
         if (ctx == null || members == null || members.isEmpty()) return null;
         Ship anchor = (flagship != null) ? flagship : members.get(0);
         if (anchor == null || anchor.faction == null) return null;
@@ -559,9 +576,9 @@ public final class AISystem {
                 double observerConfidence = 0.0;
                 for (Ship observer : members) {
                     if (!isAlive(observer)) continue;
-                    if (TargetingSystem.isDetectableToObserver(observer, enemy)) {
+                    if (isDetectableToObserverCached(ctx, observer, enemy, buildCache)) {
                         double dObs = Math.hypot(enemy.x - observer.x, enemy.y - observer.y);
-                        double ewConf = observerEWConfidence(ctx, observer, enemy, dObs);
+                        double ewConf = observerEWConfidence(ctx, observer, enemy, dObs, buildCache);
                         observers++;
                         observerPriority += threatPriority(observer.role, enemy.role) * ewConf;
                         observerConfidence += ewConf;
@@ -593,6 +610,81 @@ public final class AISystem {
             releaseShipScratch(candidates);
         }
         return (best == null) ? null : new SharedTargetChoice(best, bestConfidence);
+    }
+
+    private static boolean isDetectableToObserverCached(GameContext ctx, Ship observer, Ship target,
+                                                        FleetStateBuildCache buildCache) {
+        double sensorMul = cachedObserverSensorMultiplier(observer, buildCache);
+        double targetSigMul = cachedTargetSignatureMultiplier(target, buildCache);
+        return TargetingSystem.isDetectableToObserver(ctx, observer, target, sensorMul, targetSigMul);
+    }
+
+    private static SharedTargetChoice reuseStableSharedTarget(GameContext ctx, int teamId, List<Ship> members,
+                                                              Ship flagship, FleetStateBuildCache buildCache, double dt) {
+        if (ctx == null || members == null || members.isEmpty()) return null;
+        double ttl = Math.max(0.0, TEAM_STABLE_SHARED_TARGET_TTL.getOrDefault(teamId, 0.0) - Math.max(0.0, dt));
+        if (ttl <= 1e-6) {
+            TEAM_STABLE_SHARED_TARGET_TTL.remove(teamId);
+            return null;
+        }
+        TEAM_STABLE_SHARED_TARGET_TTL.put(teamId, ttl);
+        Integer cachedId = TEAM_STABLE_SHARED_TARGET_IDS.get(teamId);
+        if (cachedId == null) return null;
+        Ship cached = findLiveShipById(ctx.ships, cachedId);
+        if (!isAlive(cached)) return null;
+
+        Ship anchor = isAlive(flagship) ? flagship : members.get(0);
+        if (anchor == null || anchor.faction == null || cached.faction == null) return null;
+        if (anchor.faction.isFriendlyTo(cached.faction)) return null;
+
+        double cx = 0.0;
+        double cy = 0.0;
+        int n = 0;
+        double maxMemberDist = 0.0;
+        for (Ship s : members) {
+            if (!isAlive(s)) continue;
+            cx += s.x;
+            cy += s.y;
+            n++;
+        }
+        if (n <= 0) return null;
+        cx /= n;
+        cy /= n;
+        for (Ship s : members) {
+            if (!isAlive(s)) continue;
+            double d = Math.hypot(s.x - cx, s.y - cy);
+            if (d > maxMemberDist) maxMemberDist = d;
+        }
+        double queryRadius = Math.max(2200.0, maxThreatSearchRadius(ctx, anchor) + maxMemberDist + 180.0);
+        if (Math.hypot(cached.x - cx, cached.y - cy) > queryRadius) return null;
+
+        int aliveCount = 0;
+        double confidenceSum = 0.0;
+        for (Ship observer : members) {
+            if (!isAlive(observer)) continue;
+            aliveCount++;
+            if (!isDetectableToObserverCached(ctx, observer, cached, buildCache)) continue;
+            double dObs = Math.hypot(cached.x - observer.x, cached.y - observer.y);
+            confidenceSum += observerEWConfidence(ctx, observer, cached, dObs, buildCache);
+        }
+        if (aliveCount <= 0 || confidenceSum <= 0.04) return null;
+        double confidence = Math.max(0.0, Math.min(1.0, confidenceSum / Math.max(1.0, aliveCount)));
+        if (confidence < 0.22) return null;
+        return new SharedTargetChoice(cached, Math.max(confidence,
+                TEAM_STABLE_SHARED_TARGET_CONFIDENCE.getOrDefault(teamId, 0.0) * 0.92));
+    }
+
+    private static void storeStableSharedTarget(int teamId, SharedTargetChoice shared) {
+        if (shared == null || !isAlive(shared.target)) {
+            TEAM_STABLE_SHARED_TARGET_IDS.remove(teamId);
+            TEAM_STABLE_SHARED_TARGET_CONFIDENCE.remove(teamId);
+            TEAM_STABLE_SHARED_TARGET_TTL.remove(teamId);
+            return;
+        }
+        TEAM_STABLE_SHARED_TARGET_IDS.put(teamId, shared.target.id);
+        TEAM_STABLE_SHARED_TARGET_CONFIDENCE.put(teamId, shared.confidence);
+        double ttl = 0.14 + Math.max(0.0, Math.min(0.22, shared.confidence * 0.16));
+        TEAM_STABLE_SHARED_TARGET_TTL.put(teamId, ttl);
     }
 
     private static Ship selectMissileThreatFocusForTeam(GameContext ctx, List<Ship> members, Ship flagship) {
@@ -798,6 +890,9 @@ public final class AISystem {
         if (liveTeamIds == null) return;
         TEAM_COMMAND_DELAY_TIMERS.entrySet().removeIf(e -> !liveTeamIds.contains(e.getKey()));
         TEAM_DELAYED_TARGET_IDS.entrySet().removeIf(e -> !liveTeamIds.contains(e.getKey()));
+        TEAM_STABLE_SHARED_TARGET_IDS.entrySet().removeIf(e -> !liveTeamIds.contains(e.getKey()));
+        TEAM_STABLE_SHARED_TARGET_CONFIDENCE.entrySet().removeIf(e -> !liveTeamIds.contains(e.getKey()));
+        TEAM_STABLE_SHARED_TARGET_TTL.entrySet().removeIf(e -> !liveTeamIds.contains(e.getKey()));
     }
 
     private static Ship findLiveShipById(List<Ship> ships, int id) {
@@ -1330,15 +1425,17 @@ public final class AISystem {
         }
 
         List<Ship> members = state.members.get(teamId);
-        int slot = formationSlotIndex(members, flagship, s);
-        int wingCount = formationWingCount(members, flagship);
         GameContext.FleetFormation desiredFormation = playerDirected
                 ? ctx.command.alliedFleetFormation
                 : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
         double spacingMul = state.autoFormationSpacing.getOrDefault(teamId, 1.0);
         Ship commandAnchor = (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null) ? escortAnchor : flagship;
-        double[] anchor = formationAnchor(
-                commandAnchor, slot, wingCount, s.radius, preferredRange(s) * 0.35 * spacingMul, desiredFormation, cmd);
+        int slot = formationSlotIndex(members, flagship, s);
+        int wingCount = formationWingCount(members, flagship);
+        double formationSpacing = preferredRange(s) * 0.35 * spacingMul;
+        double[] anchor = (desiredFormation == GameContext.FleetFormation.ASSAULT)
+                ? assaultFormationAnchor(commandAnchor, members, flagship, s, formationSpacing, cmd)
+                : formationAnchor(commandAnchor, slot, wingCount, s.radius, formationSpacing, desiredFormation, cmd);
         Ship threatFocus = state.missileThreatFocus.get(teamId);
         if (isPointDefenseRole(s) && isAlive(threatFocus) && threatFocus != s) {
             anchor[0] = anchor[0] * 0.48 + threatFocus.x * 0.52;
@@ -2261,6 +2358,15 @@ public final class AISystem {
         return role != null && role.isCapitalCombatant();
     }
 
+    private enum AssaultLayer {
+        ESCORT,
+        LINE,
+        CAPITAL,
+        CENTRAL_TITAN,
+        MOTHERSHIP,
+        REAR_SUPPORT
+    }
+
     private static boolean isMediumCruiserOrLarger(ShipRole role) {
         if (role == null) return false;
         if (role.isTitanOrMothership()) return true;
@@ -2570,6 +2676,12 @@ public final class AISystem {
         return formationAnchorAt(flagship.x, flagship.y, flagship.angle, slot, wingCount, radius, baseSpacing, formation, command);
     }
 
+    private static double[] assaultFormationAnchor(Ship flagship, List<Ship> members, Ship teamFlagship, Ship ship,
+                                                   double baseSpacing, GameContext.FleetCommand command) {
+        if (flagship == null) return new double[]{0.0, 0.0};
+        return assaultFormationAnchorAt(flagship.x, flagship.y, flagship.angle, members, teamFlagship, ship, baseSpacing, command);
+    }
+
     private static double[] formationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
                                               int slot, int wingCount, double radius, double baseSpacing,
                                               GameContext.FleetFormation formation, GameContext.FleetCommand command) {
@@ -2615,6 +2727,165 @@ public final class AISystem {
         return new double[]{flagshipX + offX, flagshipY + offY};
     }
 
+    private static double[] assaultFormationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
+                                                     List<Ship> members, Ship flagship, Ship ship,
+                                                     double baseSpacing, GameContext.FleetCommand command) {
+        if (ship == null) return new double[]{flagshipX, flagshipY};
+        double spacing = Math.max(76.0, baseSpacing + ship.radius * 1.15);
+        double fx = Math.cos(flagshipAngle);
+        double fy = Math.sin(flagshipAngle);
+        double rx = -fy;
+        double ry = fx;
+
+        AssaultLayer shipLayer = assaultLayerForShip(ship);
+        int[] layerCounts = new int[AssaultLayer.values().length];
+        int[] layerPositions = new int[AssaultLayer.values().length];
+        int shipIndex = 0;
+
+        if (members != null) {
+            for (Ship member : members) {
+                if (!isAlive(member) || member == flagship) continue;
+                AssaultLayer layer = assaultLayerForShip(member);
+                int ordinal = layer.ordinal();
+                if (member == ship) shipIndex = layerPositions[ordinal];
+                layerPositions[ordinal]++;
+                layerCounts[ordinal]++;
+            }
+        }
+
+        double commandAdvance = switch (command) {
+            case ATTACK -> 0.55;
+            case FORM_UP -> 0.28;
+            case ESCORT -> 0.18;
+            case DEFEND -> -0.08;
+            case RETREAT, RTB, REPAIR -> -0.28;
+            default -> 0.12;
+        };
+        double layerDepth = assaultLayerDepth(shipLayer);
+        double[] layout = assaultLayerLayout(shipLayer, shipIndex, layerCounts[shipLayer.ordinal()], spacing);
+        double offForward = spacing * (layerDepth + commandAdvance) - layout[1];
+        double offSide = layout[0];
+
+        return new double[]{
+                flagshipX + fx * offForward + rx * offSide,
+                flagshipY + fy * offForward + ry * offSide
+        };
+    }
+
+    private static AssaultLayer assaultLayerForShip(Ship ship) {
+        if (ship == null || ship.role == null) return AssaultLayer.LINE;
+        ShipRole role = ship.role;
+        if (role.isMothership()) return AssaultLayer.MOTHERSHIP;
+        if (isAssaultRearSupportRole(role)) return AssaultLayer.REAR_SUPPORT;
+        if (isAssaultCentralTitanRole(role)) return AssaultLayer.CENTRAL_TITAN;
+        if (isAssaultEscortRole(ship)) return AssaultLayer.ESCORT;
+        if (isAssaultCapitalRole(role)) return AssaultLayer.CAPITAL;
+        return AssaultLayer.LINE;
+    }
+
+    private static boolean isAssaultEscortRole(Ship ship) {
+        if (ship == null || ship.role == null) return false;
+        if (isPointDefenseRole(ship)) return true;
+        return switch (ship.role) {
+            case FIGHTER, DRONE, PD_CRAFT, PICKET, PATROL, CIWS_CORVETTE -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAssaultCapitalRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case LIGHT_CRUISER, MEDIUM_CRUISER, CRUISER, BATTLECRUISER,
+                 BATTLESHIP, DREADNOUGHT, SUPERSHIP -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAssaultCentralTitanRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case TRANSPORT_TITAN,
+                 BULWARK_TITAN,
+                 VANGUARD_TITAN,
+                 INTERDICTION_TITAN,
+                 SHIELD_BASTION_TITAN,
+                 ELITE_SUPERSHIP_COMMAND_TITAN,
+                 HYPERWEAPON_TITAN -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAssaultRearSupportRole(ShipRole role) {
+        if (role == null) return false;
+        return switch (role) {
+            case MINER, HAULER, TRANSPORT,
+                 CARRIER, DRONE_CARRIER,
+                 CARRIER_SUPPORT_TITAN,
+                 COMMAND_INTEL_TITAN,
+                 BOARDING_RECOVERY_TITAN,
+                 ARTILLERY_TITAN,
+                 FLEET_TELEPORTER_TITAN,
+                 ELITE_REINFORCEMENTS_TITAN,
+                 MOBILE_STATION_TITAN -> true;
+            default -> false;
+        };
+    }
+
+    private static double assaultLayerDepth(AssaultLayer layer) {
+        return switch (layer) {
+            case ESCORT -> 2.75;
+            case LINE -> 1.65;
+            case CAPITAL -> 0.55;
+            case CENTRAL_TITAN -> -0.20;
+            case MOTHERSHIP -> -1.10;
+            case REAR_SUPPORT -> -2.10;
+        };
+    }
+
+    private static double[] assaultLayerLayout(AssaultLayer layer, int index, int count, double spacing) {
+        int safeCount = Math.max(1, count);
+        int cols = assaultLayerColumns(layer, safeCount);
+        int colIndex = Math.max(0, index) % cols;
+        int row = Math.max(0, index) / cols;
+        double center = (cols - 1) * 0.5;
+        double col = colIndex - center;
+
+        double lateralMul = switch (layer) {
+            case ESCORT -> 0.82;
+            case LINE -> 0.92;
+            case CAPITAL -> 1.02;
+            case CENTRAL_TITAN -> 0.95;
+            case MOTHERSHIP -> 0.75;
+            case REAR_SUPPORT -> 0.88;
+        };
+        double rowSpacingMul = switch (layer) {
+            case ESCORT -> 0.52;
+            case LINE -> 0.64;
+            case CAPITAL -> 0.78;
+            case CENTRAL_TITAN -> 0.84;
+            case MOTHERSHIP -> 0.72;
+            case REAR_SUPPORT -> 0.80;
+        };
+
+        double lateral = col * spacing * lateralMul;
+        double rowBack = row * spacing * rowSpacingMul;
+        return new double[]{lateral, rowBack};
+    }
+
+    private static int assaultLayerColumns(AssaultLayer layer, int count) {
+        int safeCount = Math.max(1, count);
+        int desired = switch (layer) {
+            case ESCORT -> Math.min(8, Math.max(2, safeCount));
+            case LINE -> Math.min(6, Math.max(2, safeCount));
+            case CAPITAL -> Math.min(4, Math.max(1, safeCount));
+            case CENTRAL_TITAN -> Math.min(3, Math.max(1, safeCount));
+            case MOTHERSHIP -> 1;
+            case REAR_SUPPORT -> Math.min(4, Math.max(1, safeCount));
+        };
+        if (desired > 1 && (desired & 1) == 0) desired -= 1;
+        return Math.max(1, desired);
+    }
+
     private static void synchronizeFlagshipWarpFormations(GameContext ctx, FleetState state) {
         if (ctx == null || state == null) return;
         for (Map.Entry<Integer, Ship> entry : state.flagships.entrySet()) {
@@ -2638,16 +2909,27 @@ public final class AISystem {
                 GameContext.FleetCommand cmd = resolveFleetCommand(ctx, member, flagship);
                 if (cmd == null || cmd == GameContext.FleetCommand.AUTO) cmd = GameContext.FleetCommand.FORM_UP;
                 int slot = formationSlotIndex(members, flagship, member);
-                double[] exit = formationAnchorAt(
-                        flagship.warpExitX(),
-                        flagship.warpExitY(),
-                        flagship.angle,
-                        slot,
-                        wingCount,
-                        member.radius,
-                        preferredRange(member) * 0.35 * spacingMul,
-                        desiredFormation,
-                        cmd);
+                double memberSpacing = preferredRange(member) * 0.35 * spacingMul;
+                double[] exit = (desiredFormation == GameContext.FleetFormation.ASSAULT)
+                        ? assaultFormationAnchorAt(
+                                flagship.warpExitX(),
+                                flagship.warpExitY(),
+                                flagship.angle,
+                                members,
+                                flagship,
+                                member,
+                                memberSpacing,
+                                cmd)
+                        : formationAnchorAt(
+                                flagship.warpExitX(),
+                                flagship.warpExitY(),
+                                flagship.angle,
+                                slot,
+                                wingCount,
+                                member.radius,
+                                memberSpacing,
+                                desiredFormation,
+                                cmd);
                 boolean wasCharging = member.isWarpCharging();
                 boolean started = member.beginBattlefieldWarpFollowing(exit[0], exit[1], remaining, flagship.id);
                 if (started && BattlefieldSectorSystem.isEnabled(ctx)) {
@@ -4070,10 +4352,16 @@ public final class AISystem {
     }
 
     private static double observerEWConfidence(GameContext ctx, Ship observer, Ship target, double dist) {
+        return observerEWConfidence(ctx, observer, target, dist, null);
+    }
+
+    private static double observerEWConfidence(GameContext ctx, Ship observer, Ship target, double dist,
+                                               FleetStateBuildCache buildCache) {
         if (observer == null || target == null) return 0.0;
-        double sensor = Math.max(0.20, observer.sensorRangeMultiplier());
+        double sensor = Math.max(0.20, cachedObserverSensorMultiplier(observer, buildCache));
         double sensorNorm = Math.max(0.20, Math.min(1.20, sensor));
-        double rangeBudget = TargetingSystem.detectionRangeForObserver(observer, target);
+        double targetSigMul = cachedTargetSignatureMultiplier(target, buildCache);
+        double rangeBudget = TargetingSystem.detectionRangeForObserver(observer, target, sensor, targetSigMul);
         double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(520.0, rangeBudget)));
         double ewFactor = 1.0;
         if (target.hasActiveEcm()) {
@@ -4088,6 +4376,26 @@ public final class AISystem {
         }
         double conf = (sensorNorm * 0.62 + distConf * 0.38) * ewFactor;
         return Math.max(0.05, Math.min(1.0, conf));
+    }
+
+    private static double cachedObserverSensorMultiplier(Ship observer, FleetStateBuildCache buildCache) {
+        if (observer == null) return 1.0;
+        if (buildCache == null) return observer.sensorRangeMultiplier();
+        Double cached = buildCache.observerSensorMul.get(observer);
+        if (cached != null) return cached;
+        double sensor = observer.sensorRangeMultiplier();
+        buildCache.observerSensorMul.put(observer, sensor);
+        return sensor;
+    }
+
+    private static double cachedTargetSignatureMultiplier(Ship target, FleetStateBuildCache buildCache) {
+        if (target == null) return 1.0;
+        if (buildCache == null) return TargetingSystem.targetSignatureMultiplier(target);
+        Double cached = buildCache.targetSignatureMul.get(target);
+        if (cached != null) return cached;
+        double signature = TargetingSystem.targetSignatureMultiplier(target);
+        buildCache.targetSignatureMul.put(target, signature);
+        return signature;
     }
 
     private static void maybeActivateEcm(GameContext ctx, Ship ship) {

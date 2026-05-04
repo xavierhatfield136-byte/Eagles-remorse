@@ -90,7 +90,9 @@ public final class GameSimulationRuntime {
 
         if (CampaignSystem.isFleetHubSession(ctx)) {
             ctx.entityQuery.rebuild(ctx);
+            long campaignStart = System.nanoTime();
             CampaignSystem.update(ctx, dt);
+            ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
             UISystem.updatePings(ctx, dt);
             EventSystem.update(ctx, dt);
             AudioSystem.update(ctx, dt);
@@ -128,7 +130,9 @@ public final class GameSimulationRuntime {
         CarrierSystem.update(ctx, dt);
         EconomySystem.update(ctx, dt);
         TutorialSystem.update(ctx, dt);
+        long campaignStart = System.nanoTime();
         CampaignSystem.update(ctx, dt);
+        ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
         LastStandSystem.update(ctx, dt);
         UISystem.updatePings(ctx, dt);
         EventSystem.update(ctx, dt);

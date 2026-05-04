@@ -28,6 +28,7 @@ public final class GameRenderSystem {
     private static final java.util.WeakHashMap<Ship, Double> LAST_SHIELD = new java.util.WeakHashMap<>();
 
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        Renderer.beginFramePerfCapture();
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
         boolean tacticalView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
@@ -123,9 +124,12 @@ public final class GameRenderSystem {
         }
 
         Faction perspective = (ctx.player == null) ? null : ctx.player.faction;
+        long shipRenderStart = System.nanoTime();
         ctx.perf.drawnShips = tacticalView
                 ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
                 : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+        ctx.perf.renderShipsMs = (System.nanoTime() - shipRenderStart) / 1_000_000.0;
+        ctx.perf.shieldRenderMs = Renderer.frameShieldRenderMs();
         ctx.perf.drawnProjectiles = tacticalView
                 ? 0
                 : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
@@ -178,8 +182,10 @@ public final class GameRenderSystem {
         String contextHint = buildContextHint(ctx, docked);
 
         if (tacticalView) {
+            ctx.perf.renderHudMs = 0.0;
             drawTacticalStatusOverlay(ctx, g2, viewportW, viewportH, zoom, stationStatus, overlayStatus);
         } else {
+            long hudRenderStart = System.nanoTime();
             Renderer.drawHUD(
                     g2,
                     ctx.player,
@@ -225,14 +231,19 @@ public final class GameRenderSystem {
             if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
                 drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
             }
+            ctx.perf.renderHudMs = (System.nanoTime() - hudRenderStart) / 1_000_000.0;
         }
 
         if (ctx.ui.mapOpen) {
+            long mapRenderStart = System.nanoTime();
             Renderer.drawStrategicMap(g2, ctx, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H, ctx.camX, ctx.camY,
                     CameraSystem.worldViewWidth(ctx, viewportW), CameraSystem.worldViewHeight(ctx, viewportH), ctx.player,
                     mapShips, ctx.asteroids, ctx.salvage, ctx.ui.waypointX, ctx.ui.waypointY, ctx.ui.mapPings,
                     CampaignSystem.isCampaignActive(ctx) ? ctx.fogOfWar : null, ctx.eventBanner);
             TutorialSystem.drawStrategicMapOverlay(ctx, g2, viewportW, viewportH);
+            ctx.perf.renderMapMs = (System.nanoTime() - mapRenderStart) / 1_000_000.0;
+        } else {
+            ctx.perf.renderMapMs = 0.0;
         }
 
         if (ctx.ui.baseMenuOpen) {
@@ -1265,6 +1276,8 @@ if (DevTools.isDebugOverlay()) {
                                                   java.util.List<Ship> ships,
                                                   double minX, double minY, double maxX, double maxY) {
         if (ctx == null || g2 == null || ships == null) return;
+        double zoom = Math.abs(g2.getTransform().getScaleX());
+        if (zoom < 0.28) return;
         for (Ship s : ships) {
             if (s == null) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
@@ -1272,26 +1285,23 @@ if (DevTools.isDebugOverlay()) {
 
             boolean titanTransport = s.role == ShipRole.TRANSPORT_TITAN;
             int r = (int) Math.round(Math.max(titanTransport ? 420.0 : 220.0, s.repairRange));
+            if (!titanTransport && zoom < 0.42) continue;
             if (!isCircleVisible(s.x, s.y, r + 6.0, minX, minY, maxX, maxY)) continue;
             int x = (int) Math.round(s.x);
             int y = (int) Math.round(s.y);
 
             Color ring = transportAuraColor(s.faction);
-            Color fill = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 26);
-            Color mid = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 62);
-            Color edge = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 130);
+            Color fill = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), titanTransport ? 22 : 18);
+            Color edge = new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), titanTransport ? 124 : 82);
 
             g2.setColor(fill);
             g2.fillOval(x - r, y - r, r * 2, r * 2);
-            g2.setColor(mid);
-            g2.drawOval(x - r, y - r, r * 2, r * 2);
-            int r2 = (int) Math.round(r * 0.66);
             g2.setColor(edge);
-            g2.drawOval(x - r2, y - r2, r2 * 2, r2 * 2);
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
             if (titanTransport) {
-                int r3 = (int) Math.round(r * 0.82);
-                g2.setColor(new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 170));
-                g2.drawOval(x - r3, y - r3, r3 * 2, r3 * 2);
+                int r2 = (int) Math.round(r * 0.72);
+                g2.setColor(new Color(ring.getRed(), ring.getGreen(), ring.getBlue(), 104));
+                g2.drawOval(x - r2, y - r2, r2 * 2, r2 * 2);
                 g2.drawLine(x - 14, y, x + 14, y);
                 g2.drawLine(x, y - 14, x, y + 14);
             }

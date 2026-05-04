@@ -74,9 +74,6 @@ public final class MainMenuPanel extends JPanel {
         styleCombo(teamBox);
         scaleCombo(teamBox, uiScale);
 
-        JCheckBox events = new JCheckBox("Enable Random Events");
-        styleCheckBox(events, uiScale);
-
         JTextField seedField = new JTextField("0", 12);
         styleField(seedField);
         scaleField(seedField, uiScale);
@@ -109,7 +106,6 @@ public final class MainMenuPanel extends JPanel {
         modeBox.setSelectedItem(isMissionSetupMode(persistedMode) ? persistedMode : GameMode.LAST_STAND);
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
         syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, persisted.playerTeamId);
-        events.setSelected(persisted.randomEvents);
         seedField.setText(persisted.seedText);
 
         java.util.function.Consumer<GameMode> persistSettings = (selectedMode) -> {
@@ -117,7 +113,7 @@ public final class MainMenuPanel extends JPanel {
             GameMode currentMode = (selectedMode != null) ? selectedMode : (GameMode) modeBox.getSelectedItem();
             save.modeName = (currentMode == null) ? GameMode.CAMPAIGN_OPS.name() : currentMode.name();
             save.mapIndex = mapBox.getSelectedIndex();
-            save.randomEvents = events.isSelected();
+            save.randomEvents = true;
             save.seedText = seedField.getText();
             PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
             save.playerTeamId = (choice == null) ? 0 : choice.teamId();
@@ -144,7 +140,7 @@ public final class MainMenuPanel extends JPanel {
             int playerTeamId = (choice == null) ? 0 : choice.teamId();
             persistSettings.accept(mode);
             boolean resumeCampaign = mode == GameMode.FLEET;
-            onStart.accept(new GameConfig(mode, w, h, events.isSelected(), seed, false, playerTeamId, resumeCampaign));
+            onStart.accept(new GameConfig(mode, w, h, true, seed, false, playerTeamId, resumeCampaign));
         };
 
         start.addActionListener(e -> startWithMode.accept(null));
@@ -166,7 +162,6 @@ public final class MainMenuPanel extends JPanel {
             persistSettings.accept((GameMode) modeBox.getSelectedItem());
         });
         mapBox.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
-        events.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
         seedField.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
         seedField.addFocusListener(new FocusAdapter() {
             @Override
@@ -266,14 +261,6 @@ public final class MainMenuPanel extends JPanel {
         c.fill = GridBagConstraints.HORIZONTAL;
         c.weightx = 1.0;
         missionForm.add(seedField, c);
-
-        c.gridy++;
-        c.gridx = 0;
-        c.gridwidth = 2;
-        c.anchor = GridBagConstraints.CENTER;
-        c.fill = GridBagConstraints.NONE;
-        c.weightx = 0;
-        missionForm.add(events, c);
 
         JPanel missionFormShell = createSectionPanel(new Color(52, 88, 128, 118), uiScale);
         missionFormShell.add(missionForm);

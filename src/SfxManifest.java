@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Event-to-sound manifest for gameplay SFX coverage and validation.
@@ -77,6 +78,7 @@ public final class SfxManifest {
     );
 
     private static final Map<String, EventSpec> BY_ID = indexById(EVENTS);
+    private static final Map<String, Integer> VARIANT_COUNT_BY_EVENT_ID = indexVariantCounts(EVENTS);
 
     private SfxManifest() {}
 
@@ -90,6 +92,13 @@ public final class SfxManifest {
     }
 
     public static int variantCount(EventSpec spec) {
+        if (spec == null) return 0;
+        Integer cached = VARIANT_COUNT_BY_EVENT_ID.get(spec.eventId());
+        if (cached != null) return cached;
+        return VARIANT_COUNT_BY_EVENT_ID.computeIfAbsent(spec.eventId(), k -> countVariants(spec));
+    }
+
+    private static int countVariants(EventSpec spec) {
         if (spec == null) return 0;
         File dir = new File(ROOT_AUDIO, spec.folder());
         String prefix = spec.filePrefix().toLowerCase(Locale.US);
@@ -163,5 +172,14 @@ public final class SfxManifest {
             map.put(spec.eventId(), spec);
         }
         return Collections.unmodifiableMap(map);
+    }
+
+    private static Map<String, Integer> indexVariantCounts(List<EventSpec> events) {
+        Map<String, Integer> map = new ConcurrentHashMap<>();
+        for (EventSpec spec : events) {
+            if (spec == null || spec.eventId() == null || spec.eventId().isBlank()) continue;
+            map.put(spec.eventId(), countVariants(spec));
+        }
+        return map;
     }
 }

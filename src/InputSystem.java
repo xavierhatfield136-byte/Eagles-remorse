@@ -14,8 +14,12 @@ public final class InputSystem {
         panel.addMouseWheelListener(e -> {
             int rot = e.getWheelRotation();
             if (rot == 0) return;
-            CameraSystem.stepZoom(ctx, -rot);
-            CameraSystem.update(ctx, panel.viewportW(), panel.viewportH());
+            if (ctx.ui.mapOpen) {
+                UISystem.stepStrategicMapZoom(ctx, -rot, e.getX(), e.getY(), panel.viewportW(), panel.viewportH());
+            } else {
+                CameraSystem.stepZoom(ctx, -rot);
+                CameraSystem.update(ctx, panel.viewportW(), panel.viewportH());
+            }
         });
 
         panel.installBindings(ctx, controls, exitToMenu, toggleFullscreen);

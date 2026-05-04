@@ -109,6 +109,7 @@ public final class UiState {
     public double waypointY = Double.NaN;
     public double strategicMapFocusX = Double.NaN;
     public double strategicMapFocusY = Double.NaN;
+    public double strategicMapZoom = 1.0;
     public String selectedSectorId = "";
     public String loadedSectorId = "";
     public CommIntent commIntent = CommIntent.IDENTIFY;

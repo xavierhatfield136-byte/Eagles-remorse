@@ -148,6 +148,7 @@ public class GameContext {
     public enum FleetFormation {
         WEDGE,
         LINE,
+        ASSAULT,
         SCREEN
     }
     public enum HudDetail {

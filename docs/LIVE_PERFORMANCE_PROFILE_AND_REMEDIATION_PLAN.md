@@ -1,13 +1,13 @@
 # Live Performance Profile And Remediation Plan
 
-Date: 2026-05-02  
-Status: Active investigation and implementation plan
+Date: 2026-05-03  
+Status: Active investigation, telemetry landed, multiple runtime remediations shipped, latest live rescans folded into current plan
 
 ## Goal
 
 Identify what is lagging the game during real play right now, describe the highest-cost runtime paths, and define a staged plan to reduce frame time without breaking campaign behavior or combat readability.
 
-This document is based on a live process sample of the running game, not just static code inspection.
+This document is based on repeated live process samples of the running game, not just static code inspection.
 
 ## Summary
 
@@ -15,11 +15,30 @@ The current lag problem is not primarily a garbage collection issue.
 
 The running game is being slowed mostly by:
 
-1. expensive AI fleet-state rebuild work on the main Swing game thread
-2. expensive shield-shape rendering and Java2D path work on the same thread
-3. expensive HUD panel and chip drawing when many overlay elements are visible
+1. expensive ship-spawn hull preparation on the main Swing game thread
+2. expensive Java2D render work for shield effects, warp-charge shell effects, and other path-heavy visuals
+3. expensive AI fleet-state rebuild work on the main Swing game thread
+4. audio clip churn during combat impact spam
+5. expensive HUD panel and chip drawing when many overlay elements are visible
 
 Because update and render both run on the `AWT-EventQueue-0` thread, any hot path in simulation or rendering blocks the entire frame.
+
+Telemetry support has now been added in code, so subsequent passes can be validated against live `AI`, `Campaign`, `Ships`, `HUD`, `Shield`, and `Map` timings in the dev overlay.
+
+## Recent Remediation Shipped
+
+The codebase now includes the following performance-focused fixes:
+
+- cached audio manifest/event variant lookup so combat SFX no longer hit the filesystem on the EDT
+- stricter one-shot audio throttling and duplicate suppression
+- AI shared-target reuse plus per-build sensor/signature caching
+- shield shell caching and reduced ECM illusion effect cost
+- transport-support aura simplification
+- startup/background prewarm for hull/profile/destruction caches so those assets stop faulting in during combat
+- wreck rendering fallback for tiny transformed sprites
+- ambient-audio hostile-contact caching so audio mix updates stop re-running full detectability scans every frame
+- VFX particle degradation for tiny or overloaded scenes, including antialiasing disable inside the particle pass
+- reduced background warmup scope so optional turret skin prewarm no longer burns CPU for long stretches
 
 ## Live Findings
 
@@ -52,6 +71,29 @@ Likely symptom in play:
 
 - frame drops get worse as fleet size and support traffic increase
 - campaign sectors with more allied support and reserve behavior will feel heavier than quiet sectors
+- detectability-heavy targeting logic becomes more expensive when many ships are evaluating shared targets at once
+
+Additional live sample:
+
+One later replay sample caught the EDT inside:
+
+- `ShipIdentityRegistry.roleBonusFor(...)`
+- `Ship.sensorRangeMultiplier(...)`
+- `TargetingSystem.detectionRangeForObserver(...)`
+- `TargetingSystem.isDetectableToObserver(...)`
+- `AISystem.selectSharedTargetForTeam(...)`
+
+Observed sample locations:
+
+- `src/ShipIdentityRegistry.java:140`
+- `src/Ship.java:2969`
+- `src/TargetingSystem.java:231`
+- `src/TargetingSystem.java:303`
+- `src/AISystem.java:564`
+
+What this adds:
+
+- not only is fleet-state rebuild expensive, but the shared-target path is repeatedly walking identity and sensor-range math that should be cached or reused within a frame
 
 ## 2. Shield rendering is a top render bottleneck
 
@@ -88,7 +130,111 @@ Likely symptom in play:
 - big fights with many shielded ships feel dramatically worse than sparse fights
 - visual clutter spikes frame time even if gameplay density is otherwise reasonable
 
-## 3. HUD chrome is also expensive
+Latest rescan refinement:
+
+After the first optimization pass removed the audio manifest lookup stall, the EDT was still caught inside:
+
+- `Ship.effectiveShieldCapacityMax(...)`
+- `Renderer.drawShipShieldFaces(...)`
+- `Renderer.drawEcmIllusions(...)`
+- `Renderer.drawShips(...)`
+
+Observed sample locations:
+
+- `src/Ship.java:2772`
+- `src/Renderer.java:1418`
+- `src/Renderer.java:8946`
+- `src/Renderer.java:9443`
+
+What this adds:
+
+- illusion rendering is still paying too much of the expensive ship-effect stack
+- shield checks and shell generation are still heavy enough to dominate a frame by themselves
+- skipping damage decals on illusions helped, but did not finish the job
+
+## 3. Support-aura rendering is also a top render bottleneck
+
+Later live thread samples caught the running game inside:
+
+- `GameRenderSystem.drawTransportSupportAuras(...)`
+- Java2D D3D queue flushes and Marlin tile rasterization
+
+Observed sample locations:
+
+- `src/GameRenderSystem.java:1296`
+- `src/GameRenderSystem.java:1298`
+
+The hot JVM stack showed time in:
+
+- `SunGraphics2D.fillOval(...)`
+- `SunGraphics2D.drawOval(...)`
+- `D3DRenderQueue.flushBuffer(...)`
+- `MarlinCache.touchTile(...)`
+
+What this means:
+
+- the transport-healing / support aura circles are expensive enough to become a primary render sink during busy fights
+- anti-aliased filled and stroked ovals are not cheap when drawn many times per frame
+- this cost stacks directly with shield and HUD work on the same thread
+
+Likely symptom in play:
+
+- large support fleets or sectors with many transports can hitch even when ship count is only moderately high
+- the game may feel worse when sustainment ships are clustered on screen
+
+## 4. Audio event lookup and clip churn are now confirmed hot paths
+
+The newest live replay sample caught the running game inside:
+
+- `SfxManifest.variantCount(...)`
+- `AudioSystem.triggerSfxEvent(...)`
+- `AudioSystem.onShieldImpact(...)`
+- `CollisionSystem.handleProjectilesVsShips(...)`
+
+Observed sample locations:
+
+- `src/SfxManifest.java:92`
+- `src/SfxManifest.java:97`
+- `src/SfxManifest.java:98`
+- `src/AudioSystem.java:503`
+- `src/AudioSystem.java:510`
+- `src/AudioSystem.java:1128`
+- `src/AudioSystem.java:1138`
+- `src/CollisionSystem.java:215`
+
+The hot JVM stack showed:
+
+- `File.listFiles(...)`
+- `File.isFile(...)`
+- filesystem directory scanning while shield impacts were firing
+
+What this means:
+
+- the game is doing live filesystem work during combat audio event dispatch
+- shield-hit spam can hammer the EDT with file lookup before audio playback even begins
+- audio event selection is not fully resolved/cached up front
+
+Related live observation:
+
+- there were also a very large number of `Direct Clip` threads visible in the process during combat
+
+What this likely means:
+
+- one-shot clip creation/close churn is also contributing overhead
+- even if playback runs off-thread, the event-dispatch setup path is still heavy enough to stall gameplay
+
+Likely symptom in play:
+
+- sectors with frequent shield impacts, CIWS activity, and projectile traffic can hitch badly
+- stutter may get worse exactly when lots of combat sounds should be firing
+
+Update after the first fix pass:
+
+- the live rescan no longer caught `SfxManifest.variantCount(...)` or filesystem directory scans on the EDT
+- the lookup/cache fix appears to have worked
+- `Direct Clip` proliferation is still visible and remains a secondary cleanup target
+
+## 5. HUD chrome is also expensive
 
 Another live sample caught the game inside:
 
@@ -111,7 +257,7 @@ Likely symptom in play:
 
 - the game feels heavier with more overlays, more cards, and more information surfaces open
 
-## 4. GC is not the main problem right now
+## 6. GC is not the main problem right now
 
 Live heap snapshot:
 
@@ -120,9 +266,46 @@ Live heap snapshot:
 
 This does not rule out allocation churn entirely, but the dominant observed stalls were not GC pauses. The game is mostly spending time doing active work on the main thread.
 
-## 5. Audio is not the main problem right now
+## 7. Ship spawn silhouette and hull-profile loading are now confirmed EDT hitches
 
-Audio worker threads were mostly waiting and did not appear in the hot samples as primary cost centers.
+The latest live rescan caught the EDT inside:
+
+- `ShipHullSilhouette.loadBundledSkin(...)`
+- `ShipHullSilhouette.loadRoleSkin(...)`
+- `ShipHullSilhouette.buildFromSkin(...)`
+- `HullGeometry.buildProfile(...)`
+- `HullGeometry.sampleImpact(...)`
+- `FleetShip.isTurretMountOnHull(...)`
+- `SpawnSystem.spawnTeamShip(...)`
+- `EconomySystem.spawnPeriodicMinersForAliveTeams(...)`
+
+Observed sample locations:
+
+- `src/ShipHullSilhouette.java:231`
+- `src/ShipHullSilhouette.java:211`
+- `src/ShipHullSilhouette.java:60`
+- `src/HullGeometry.java:147`
+- `src/HullGeometry.java:65`
+- `src/FleetShip.java:2029`
+- `src/SpawnSystem.java:176`
+- `src/EconomySystem.java:432`
+
+The hot JVM stack showed:
+
+- `ImageIO.read(...)`
+- PNG decode
+- `RandomAccessFile.readFully(...)`
+
+What this means:
+
+- ship spawning can still trigger skin decode and hull-profile generation on the EDT
+- turret conformance probes are forcing hull-profile construction in the same spawn path
+- even if this only happens on first use for a role/faction/radius combination, it can produce a visible hitch in live combat
+
+Likely symptom in play:
+
+- miner/reserve reinforcements or first-time spawns of a hull class can produce sudden frame spikes
+- sectors feel worse when new support craft are introduced mid-fight
 
 ## Root Cause
 
@@ -143,6 +326,8 @@ This is why the game can feel suddenly terrible in large sectors: multiple mediu
 ## Proposed Remediation Strategy
 
 ## Phase 1: Add Better Runtime Visibility
+
+Status: Implemented
 
 Before deeper fixes, make the cost visible in normal play.
 
@@ -171,9 +356,98 @@ This prevents guessing and lets later optimizations prove their value.
 - we can see which system is dominating frame time in a heavy battle
 - we can compare before/after numbers for every optimization pass
 
-## Phase 2: Reduce AI Fleet-State Rebuild Cost
+### Delivered
 
-This is the first gameplay-side optimization target.
+- `PerfTelemetry` now exposes:
+  - `aiMs`
+  - `campaignMs`
+  - `renderShipsMs`
+  - `renderHudMs`
+  - `renderMapMs`
+  - `shieldRenderMs`
+- these are now visible in the dev overlay during live play
+
+## Phase 2: Fix Audio Event Lookup And Clip Churn
+
+Status: Mostly implemented, clip churn follow-up still open
+
+### Problems to solve
+
+- `SfxManifest.variantCount(...)` is scanning directories during gameplay
+- shield-impact SFX dispatch is hitting filesystem code under combat load
+- one-shot clip creation appears to be producing excessive `Direct Clip` churn
+- audio event setup is happening in a latency-sensitive gameplay path
+
+### Work
+
+1. precompute variant counts at startup
+   - manifest scan should happen once, not during event playback
+2. cache resolved variant counts and event picks
+   - `eventId -> count`
+   - optionally `eventId -> resolved asset list`
+3. remove `File.listFiles(...)` and `File.isFile(...)` from hot gameplay paths
+4. audit `triggerSfxEvent(...)`
+   - make sure combat dispatch only does cooldown/routing logic, not asset discovery
+5. reduce clip churn
+   - consider clip reuse, line pooling, or a bounded concurrent one-shot policy
+6. add telemetry for audio event rate if needed
+   - shield-hit spam, hull-hit spam, CIWS-heavy events
+
+### Files
+
+- `src/SfxManifest.java`
+- `src/AudioSystem.java`
+- `src/CollisionSystem.java`
+
+### Success criteria
+
+- no filesystem lookup occurs on the EDT during combat audio events
+- shield-impact-heavy combat no longer stalls in `SfxManifest.variantCount(...)`
+- `Direct Clip` thread proliferation drops meaningfully during long fights
+
+## Phase 3: Remove Spawn-Time Hull/Skin Loading From Combat
+
+This is now the next highest-priority update-side target because it was caught directly during live reinforcement spawning.
+
+Status: Implemented for hull silhouettes/profiles and destruction/wreck multipart assets
+
+### Problems to solve
+
+- ship spawning can trigger bundled PNG decode on the EDT
+- hull silhouette generation is still done lazily in combat
+- hull profile generation is still done lazily when turret mounts probe the hull
+- first-use hitches are unacceptable during active sectors
+
+### Work
+
+1. prewarm ship hull skin lookups before gameplay heat
+   - role + faction silhouette images
+   - miss results as well as hits
+2. prewarm or eagerly cache hull polygons at baseline radii
+3. prewarm or eagerly cache `HullGeometry` profiles using `RoleStats` default radii
+4. keep the spawn path read-only
+   - no `ImageIO.read(...)`
+   - no disk/resource scan
+   - no first-time profile construction for standard hulls
+5. prewarm multipart destruction and wreck assets
+   - no first-time death-art PNG decode during combat
+
+### Files
+
+- `src/ShipHullSilhouette.java`
+- `src/HullGeometry.java`
+- `src/FleetShip.java`
+- `src/Main.java`
+
+### Success criteria
+
+- live rescan no longer catches `ShipHullSilhouette.loadBundledSkin(...)` on the EDT during combat
+- miner/reserve/support spawns do not cause visible one-time hitching
+- death sequences no longer trigger first-use multipart asset decode on the EDT
+
+## Phase 4: Reduce AI Fleet-State Rebuild Cost
+
+This is the next gameplay-side optimization target after audio lookup is removed from combat.
 
 ### Problems to solve
 
@@ -205,15 +479,17 @@ This is the first gameplay-side optimization target.
 - no visible loss of basic fleet coordination
 - no command regression for escort, attack, or reserve behavior
 
-## Phase 3: Reduce Shield Rendering Cost
+## Phase 5: Reduce Render Hotspots In Shields And Support Auras
 
-This is the first render-side optimization target.
+This is the next render-side optimization target.
 
 ### Problems to solve
 
 - expensive `Area` construction in `createShieldShell(...)`
 - repeated shape work per frame
 - repeated work multiplied by ECM illusions and many shielded ships
+- expensive anti-aliased aura fill/draw work in `drawTransportSupportAuras(...)`
+- support visuals stacking on top of shield visuals in the same frame
 
 ### Work
 
@@ -229,6 +505,19 @@ This is the first render-side optimization target.
    - fogged or low-visibility ships
 5. add a fallback cheap shield mode for large battles
    - ellipse or simplified silhouette instead of full path shell
+6. simplify transport support auras
+   - fewer rings
+   - lower cadence updates
+   - visibility gating by distance/zoom
+   - optional coarse filled disc instead of stroked AA rings
+7. skip support-aura drawing for ships that do not meaningfully affect the local screen read
+   - distant
+   - off-focus
+   - obscured
+   - low-strength effects
+8. cache `Area` shell shapes per visual/width instead of rebuilding them every frame
+9. make ECM illusions skip shield and warp-charge shell work entirely
+10. add a stricter screen-size gate for warp-charge shell effects
 
 ### Files
 
@@ -240,8 +529,9 @@ This is the first render-side optimization target.
 - render time in heavy shield fights drops substantially
 - shield visuals still communicate active defense clearly
 - ECM no longer multiplies render cost so aggressively
+- support-aura rendering no longer dominates render samples during logistics-heavy fights
 
-## Phase 4: Reduce HUD Render Cost
+## Phase 6: Reduce HUD Render Cost
 
 The HUD is not the only problem, but it should stop making bad frames worse.
 
@@ -271,7 +561,7 @@ The HUD is not the only problem, but it should stop making bad frames worse.
 - heavy combat with full HUD no longer incurs disproportionate extra frame cost
 - readability remains acceptable in compact mode
 
-## Phase 5: Control Expensive Multipliers
+## Phase 7: Control Expensive Multipliers
 
 Some systems may be individually acceptable but become catastrophic in combination.
 
@@ -292,17 +582,21 @@ Some systems may be individually acceptable but become catastrophic in combinati
 
 Recommended order:
 
-1. add perf instrumentation
-2. optimize AI fleet-state rebuild
-3. optimize shield rendering
-4. optimize HUD drawing
-5. add dynamic stress scaling and cleanup passes
+1. remove spawn-time hull skin/profile loading from combat
+2. cache shield and warp shell geometry, and make ECM illusions cheaper
+3. continue AI fleet-state and shared-target reductions
+4. finish audio clip churn cleanup
+5. optimize HUD drawing
+6. add dynamic stress scaling and cleanup passes
 
 This order is chosen because:
 
-- AI and shield work are the strongest live suspects
-- both are large enough to move frame time by themselves
-- HUD cleanup is useful but should not be the first lever pulled
+- repeated live sampling now shows three true first-tier costs:
+  - spawn-time hull loading
+  - path-heavy shield/warp rendering
+  - AI fleet-state/shared-target work
+- audio lookup has already been materially improved, so the remaining audio issue is mostly one-shot clip churn
+- HUD cleanup is useful but still not the first lever pulled
 
 ## New Formation Preset: `ASSAULT`
 
@@ -544,18 +838,15 @@ The formation is successful when:
 
 ## Task 1
 
-Instrument these methods with timing:
+Complete the audio cache pass:
 
-- `AISystem.update(...)`
-- `AISystem.buildFleetState(...)`
-- `GameRenderSystem.render(...)`
-- ship render block inside render
-- `Renderer.drawHUD(...)`
-- `Renderer.createShieldShell(...)`
+- precompute and cache `SfxManifest.variantCount(...)`
+- remove `File.listFiles(...)` from combat playback paths
+- validate shield-hit combat while watching for `Direct Clip` churn
 
 ## Task 2
 
-In `AISystem`, add a throttled fleet-state refresh path:
+In `AISystem`, add a throttled fleet-state refresh path and shared-target cache:
 
 - rebuild every few ticks by default
 - force immediate rebuild on:
@@ -563,14 +854,16 @@ In `AISystem`, add a throttled fleet-state refresh path:
   - ship spawned
   - fleet command changed
   - target invalidated
+- cache detectability/range inputs within the fleet-state build where possible
 
 ## Task 3
 
-In `Renderer`, prototype cached shield-shell geometry:
+In `Renderer` and `GameRenderSystem`, prototype cached shield-shell geometry and cheaper support auras:
 
 - role-based cache key
 - faction-sensitive if silhouette differs
 - invalidate only when actual shell parameters change
+- reduce anti-aliased ring count and overdraw for transport support visuals
 
 ## Task 4
 
@@ -582,6 +875,7 @@ In `Renderer`, add a combat stress mode:
 
 ## Risks
 
+- aggressive audio throttling can make combat feel flat or under-responsive
 - over-throttling AI can make fleets feel stupid or sluggish
 - aggressive shield simplification can hurt readability
 - dynamic HUD reduction can confuse the player if it hides critical information
@@ -595,6 +889,8 @@ Use one repeatable heavy scenario:
 - campaign sector with multiple allied ships
 - active reserves
 - many shielded ships
+- active transport support/healing ships
+- high projectile/shield-impact churn
 - map and HUD both exercised
 
 Track:
@@ -604,6 +900,9 @@ Track:
 - average `renderMs`
 - AI-specific ms
 - shield-render-specific ms
+- ship-render-specific ms
+- map-render-specific ms
+- whether audio-trigger stacks still appear in live thread samples
 - HUD-specific ms
 - subjective feel during 2-3 minute sustained combat
 
@@ -613,11 +912,16 @@ This performance issue is considered meaningfully addressed when:
 
 - large campaign fights no longer collapse frame time into obvious stutter
 - AI-heavy and shield-heavy sectors feel closer to normal sectors
+- shield-impact-heavy fights do not stall on audio lookup
+- logistics/support-heavy fights do not collapse due to aura rendering
 - map/HUD overlays do not noticeably worsen already bad frames
 - we have runtime telemetry that makes future regressions easy to spot
 
 ## Related Files
 
+- `src/SfxManifest.java`
+- `src/AudioSystem.java`
+- `src/CollisionSystem.java`
 - `src/AISystem.java`
 - `src/GameSimulationRuntime.java`
 - `src/GameRenderSystem.java`

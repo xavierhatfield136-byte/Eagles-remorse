@@ -71,6 +71,7 @@ public final class MenuSettingsStore {
                 s.modeName = props.getProperty("modeName", s.modeName);
                 s.mapIndex = parseInt(props, "mapIndex", s.mapIndex);
                 s.randomEvents = parseBoolean(props, "randomEvents", s.randomEvents);
+                s.randomEvents = true;
                 s.seedText = props.getProperty("seedText", s.seedText);
                 s.playerTeamId = parseInt(props, "playerTeamId", s.playerTeamId);
                 s.voiceCaptionsEnabled = parseBoolean(props, "voiceCaptionsEnabled", s.voiceCaptionsEnabled);

@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 /**
@@ -56,8 +57,8 @@ public final class CampaignSystem {
     private static final double MISSION_SUBZONE_CLAMP_MARGIN = 180.0;
     private static final double DEFAULT_MISSION_SUBZONE_WIDTH = 5000.0;
     private static final double DEFAULT_MISSION_SUBZONE_HEIGHT = 5000.0;
-    private static final double MAX_MISSION_SUBZONE_WIDTH = 5000.0;
-    private static final double MAX_MISSION_SUBZONE_HEIGHT = 5000.0;
+    private static final double MAX_MISSION_SUBZONE_WIDTH = 20000.0;
+    private static final double MAX_MISSION_SUBZONE_HEIGHT = 20000.0;
     private static final int ZONES_PER_ROW = 8;
 
     private static final class MissionLayout {
@@ -425,7 +426,10 @@ public final class CampaignSystem {
     private static final int CAMPAIGN_SUPERSHIP_UNLOCK_SECTOR = 6;
     private static final int CAMPAIGN_SUPERSHIP_FLAGSHIP_BERTH_TIER = 4;
     private static final int CAMPAIGN_TRANSPORT_FLEET_ORE_CAPACITY = 10_000;
+    private static final int MISSION_EDGE_ENTRY_SAFE_COLUMN_DEPTH = 2;
+    private static final int MISSION_INTERIOR_ENTRY_SAFE_COLUMN_DEPTH = 1;
     private static final double CAMPAIGN_POCKET_MARGIN = 220.0;
+    private static final double DISCOVERY_JITTER_MIN_SEPARATION = 260.0;
     private static final double ESCORT_PLAYER_FORMATION_RADIUS = 360.0;
     private static final double ESCORT_SUPPORT_RADIUS = 460.0;
     private static final double ESCORT_THREAT_RADIUS = 620.0;
@@ -1089,58 +1093,58 @@ public final class CampaignSystem {
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
-            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the trade-hub evacuation lanes", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(2, ObjectiveType.DESTROY, "Destroy 6 customs-halo strike ships and keep 2 convoys alive before the civilian aperture seals", 6, 840, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(3, ObjectiveType.DESTROY, "Break the red interdiction cordon at the jump ring", 12, 720, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(4, ObjectiveType.DESTROY, "Destroy the route-control blockers pinning the relay", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the reserve wing racing the relay", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(6, ObjectiveType.SURVIVE, "Recover the debris-wake caches before demolition ships erase them", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the evacuation lanes until the timer ends", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(2, ObjectiveType.DESTROY, "Destroy 6 strike ships and keep at least 2 convoy ships alive", 6, 840, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(3, ObjectiveType.DESTROY, "Destroy the ships blocking the jump ring", 6, 720, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(4, ObjectiveType.DESTROY, "Destroy 4 relay blockers", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the enemy relief force", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(6, ObjectiveType.SURVIVE, "Protect the recovery caches until the timer ends", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(7, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
-            new SectorScript(8, ObjectiveType.ESCORT, "Keep the Exodus Transport Titan inside the Mothership's screen", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(9, ObjectiveType.SURVIVE, "Cover the neutral broker hulls as they defect into the fleet", 65, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(10, ObjectiveType.DESTROY, "Break the AI vanguard guarding the homeward lane", 16, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(11, ObjectiveType.SURVIVE, "Secure depot ledgers and fuel stores before demolition charges fire", 85, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(12, ObjectiveType.SURVIVE, "Keep the green signatory couriers alive until the pact is signed", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(13, ObjectiveType.DESTROY, "Destroy the jammer triad around Coalition Array Nysa", 3, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(14, ObjectiveType.DESTROY, "Destroy the relief wing trying to re-isolate Nysa", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(15, ObjectiveType.DESTROY, "Silence Kharon's spotter towers and anchor guns", 4, 800, BossKind.NONE, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(8, ObjectiveType.ESCORT, "Escort the Exodus Transport Titan", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(9, ObjectiveType.SURVIVE, "Protect the defecting broker ships until the timer ends", 65, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(10, ObjectiveType.DESTROY, "Destroy the enemy vanguard fleet", 16, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(11, ObjectiveType.SURVIVE, "Protect the depot ships until the timer ends", 85, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(12, ObjectiveType.SURVIVE, "Protect the signatory ships until the timer ends", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(13, ObjectiveType.DESTROY, "Destroy the 3 jammer towers", 3, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(14, ObjectiveType.DESTROY, "Destroy the enemy relief force", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(15, ObjectiveType.DESTROY, "Destroy the outer defense guns", 4, 800, BossKind.NONE, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
             new SectorScript(16, ObjectiveType.BOSS, "Destroy the red Artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
-            new SectorScript(17, ObjectiveType.DESTROY, "Destroy recon groups before they mark the coalition corridor", 6, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(18, ObjectiveType.SURVIVE, "Hold the outer-Sol arrival corridor", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(19, ObjectiveType.DESTROY, "Destroy prison tenders and break the convoy clamps", 4, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(20, ObjectiveType.ESCORT, "Keep the liberated recovery Titan close behind the Mothership", 100, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(21, ObjectiveType.DESTROY, "Destroy the Luna orbital defense anchors", 3, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(22, ObjectiveType.DESTROY, "Break the Luna reserve cordon and clear the Earth lane", 10, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(23, ObjectiveType.DESTROY, "Destroy occupation uplink towers and cover the resistance launches", 4, 900, BossKind.NONE, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(17, ObjectiveType.DESTROY, "Destroy 6 recon ships before they escape", 6, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(18, ObjectiveType.SURVIVE, "Hold the corridor until the timer ends", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(19, ObjectiveType.DESTROY, "Destroy the prison ships and break the clamps", 4, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(20, ObjectiveType.ESCORT, "Escort the recovery Titan", 100, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(21, ObjectiveType.DESTROY, "Destroy the 3 orbital defense anchors", 3, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(22, ObjectiveType.DESTROY, "Destroy the enemy reserve cordon", 10, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(23, ObjectiveType.DESTROY, "Destroy the 4 uplink towers and protect the launch ships", 4, 900, BossKind.NONE, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR),
             new SectorScript(24, ObjectiveType.FINAL_BOSS, "Destroy the AI Mothership over Earth", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
     };
 
     private static final SideObjectiveScript[] SIDE_SCRIPTS = new SideObjectiveScript[]{
             null,
-            new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Mothership pristine for 120s", 120, 160),
-            new SideObjectiveScript(2, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the customs halo in 660s", 660, 180),
-            new SideObjectiveScript(3, SideObjectiveType.KILL_COUNT, "Destroy 8 interdiction ships", 8, 220),
-            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Open the relay in 600s", 600, 240),
-            new SideObjectiveScript(5, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the relay relief wing in 620s", 620, 260),
-            new SideObjectiveScript(6, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the caches in 540s", 540, 220),
-            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the pursuit Titan in 600s", 600, 240),
-            new SideObjectiveScript(8, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the Exodus Titan undamaged for 90s", 90, 210),
-            new SideObjectiveScript(9, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep three defectors alive for 90s", 90, 240),
-            new SideObjectiveScript(10, SideObjectiveType.KILL_COUNT, "Destroy 10 vanguard escorts", 10, 230),
-            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Secure the depot shelf in 560s", 560, 240),
-            new SideObjectiveScript(12, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the lead signatory ship pristine for 80s", 80, 260),
-            new SideObjectiveScript(13, SideObjectiveType.CLEAR_BEFORE_TIME, "Bring the Nysa array online in 600s", 600, 250),
-            new SideObjectiveScript(14, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the Nysa relief wing in 620s", 620, 280),
-            new SideObjectiveScript(15, SideObjectiveType.KILL_COUNT, "Destroy 6 counterbattery escorts", 6, 260),
-            new SideObjectiveScript(16, SideObjectiveType.KILL_COUNT, "Destroy 6 siege escorts", 6, 280),
-            new SideObjectiveScript(17, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the recon screen in 560s", 560, 260),
+            new SideObjectiveScript(1, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Take no hull damage for 120s", 120, 160),
+            new SideObjectiveScript(2, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 660s", 660, 180),
+            new SideObjectiveScript(3, SideObjectiveType.KILL_COUNT, "Destroy 8 enemy ships", 8, 220),
+            new SideObjectiveScript(4, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 600s", 600, 240),
+            new SideObjectiveScript(5, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 620s", 620, 260),
+            new SideObjectiveScript(6, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 540s", 540, 220),
+            new SideObjectiveScript(7, SideObjectiveType.CLEAR_BEFORE_TIME, "Kill the boss in 600s", 600, 240),
+            new SideObjectiveScript(8, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the escort undamaged for 90s", 90, 210),
+            new SideObjectiveScript(9, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep 3 defectors alive for 90s", 90, 240),
+            new SideObjectiveScript(10, SideObjectiveType.KILL_COUNT, "Destroy 10 escorts", 10, 230),
+            new SideObjectiveScript(11, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 560s", 560, 240),
+            new SideObjectiveScript(12, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the lead ship undamaged for 80s", 80, 260),
+            new SideObjectiveScript(13, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 600s", 600, 250),
+            new SideObjectiveScript(14, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 620s", 620, 280),
+            new SideObjectiveScript(15, SideObjectiveType.KILL_COUNT, "Destroy 6 escorts", 6, 260),
+            new SideObjectiveScript(16, SideObjectiveType.KILL_COUNT, "Destroy 6 escorts", 6, 280),
+            new SideObjectiveScript(17, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 560s", 560, 260),
             new SideObjectiveScript(18, SideObjectiveType.KILL_COUNT, "Destroy 14 attackers during the hold", 14, 300),
-            new SideObjectiveScript(19, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the recovery Titan intact for 90s", 90, 320),
-            new SideObjectiveScript(20, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep liberated crews secure for 100s", 100, 320),
-            new SideObjectiveScript(21, SideObjectiveType.CLEAR_BEFORE_TIME, "Silence Luna's anchors in 620s", 620, 350),
-            new SideObjectiveScript(22, SideObjectiveType.CLEAR_BEFORE_TIME, "Break the Luna cordon in 620s", 620, 360),
-            new SideObjectiveScript(23, SideObjectiveType.CLEAR_BEFORE_TIME, "Blind the occupation uplinks in 660s", 660, 380),
-            new SideObjectiveScript(24, SideObjectiveType.CLEAR_BEFORE_TIME, "End the occupation in 720s", 720, 400)
+            new SideObjectiveScript(19, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the recovery Titan undamaged for 90s", 90, 320),
+            new SideObjectiveScript(20, SideObjectiveType.NO_HULL_DAMAGE_WINDOW, "Keep the escort undamaged for 100s", 100, 320),
+            new SideObjectiveScript(21, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 620s", 620, 350),
+            new SideObjectiveScript(22, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 620s", 620, 360),
+            new SideObjectiveScript(23, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 660s", 660, 380),
+            new SideObjectiveScript(24, SideObjectiveType.CLEAR_BEFORE_TIME, "Finish the mission in 720s", 720, 400)
     };
 
     private static final SectorLore[] LORE = new SectorLore[]{
@@ -1678,7 +1682,9 @@ public final class CampaignSystem {
         }
         return switch (st.objectiveType) {
             case SURVIVE -> "Win State: Hold until T-" + leftSeconds + "s";
-            case DESTROY -> "Win State: Destroy every required marked contact before T-0";
+            case DESTROY -> destroyObjectiveUsesMarkers(st)
+                    ? "Win State: Destroy every required marked contact before T-0"
+                    : "Win State: Destroy every required enemy ship before T-0";
             case ESCORT -> "Win State: Keep the escort alive until T-" + leftSeconds + "s";
             case CAPTURE -> "Win State: Secure the capture point before T-0";
             case BOSS -> "Win State: Break the boss before T-0";
@@ -1766,16 +1772,17 @@ public final class CampaignSystem {
         return switch (st.objectiveType) {
             case SURVIVE -> "Win: Hold until T-" + leftSeconds + "s.";
             case DESTROY -> {
-                StringBuilder line = new StringBuilder("Win: Destroy the marked targets.");
-                if (!usesAuthoredDestroyProgress(st) && st.objectiveGoal > 1.0) {
-                    line = new StringBuilder("Win: Destroy ")
-                            .append((int) Math.ceil(st.objectiveGoal))
-                            .append(" marked targets.");
-                }
-                if (usesAuthoredDestroyProgress(st)) {
+                StringBuilder line;
+                if (destroyObjectiveUsesMarkers(st)) {
                     line = new StringBuilder("Win: Destroy ")
                             .append((int) Math.ceil(st.objectiveGoal))
                             .append(" marked targets across the active pockets.");
+                } else if (st.objectiveGoal > 1.0) {
+                    line = new StringBuilder("Win: Destroy ")
+                            .append((int) Math.ceil(st.objectiveGoal))
+                            .append(" enemy ships.");
+                } else {
+                    line = new StringBuilder("Win: Destroy the required enemy ship.");
                 }
                 if (st.objectiveAssetRequiredSurvivors > 0 && st.objectiveAssetTotal > 0) {
                     line.append(" Keep at least ")
@@ -3868,12 +3875,30 @@ public final class CampaignSystem {
         if (ctx == null || st == null || ctx.player == null) return;
 
         boolean enteredFromRight = missionSubzoneColumn(st.loadedMissionSubzone) >= (MISSION_ZONE_COLUMNS / 2);
-        int laneNearZone = missionSubzoneIndex(enteredFromRight ? 4 : 1, 1);
-        int laneMidZone = missionSubzoneIndex(2, 1);
-        int laneFarZone = missionSubzoneIndex(enteredFromRight ? 5 : 0, 1);
-        int resourceZone = missionSubzoneIndex(enteredFromRight ? 3 : 2, 0);
-        int supportZone = missionSubzoneIndex(enteredFromRight ? 2 : 3, 2);
-        int reserveZone = missionSubzoneIndex(enteredFromRight ? 1 : 4, 1);
+        int entryCol = missionSubzoneColumn(st.loadedMissionSubzone);
+        int[] laneColumns = missionColumnsWithArrivalSafety(
+                shuffledMissionColumns(ctx, st, enteredFromRight, "lane"),
+                entryCol,
+                true);
+        int[] topColumns = missionColumnsWithArrivalSafety(
+                shuffledMissionColumns(ctx, st, enteredFromRight, "top"),
+                entryCol,
+                true);
+        int[] bottomColumns = missionColumnsWithArrivalSafety(
+                shuffledMissionColumns(ctx, st, enteredFromRight, "bottom"),
+                entryCol,
+                true);
+        int[] rearColumns = missionColumnsWithArrivalSafety(
+                shuffledMissionColumns(ctx, st, enteredFromRight, "rear"),
+                entryCol,
+                false);
+
+        int laneNearZone = missionSubzoneIndex(laneColumns[0], 1);
+        int laneMidZone = missionSubzoneIndex(laneColumns[1], 1);
+        int laneFarZone = missionSubzoneIndex(laneColumns[2], 1);
+        int resourceZone = missionSubzoneIndex(topColumns[0], 0);
+        int supportZone = missionSubzoneIndex(bottomColumns[0], 2);
+        int reserveZone = missionSubzoneIndex(rearColumns[0], 1);
 
         double laneXNear = missionSubzoneCenterX(ctx, st.sector, laneNearZone);
         double laneY = missionSubzoneCenterY(ctx, st.sector, laneNearZone);
@@ -3919,6 +3944,105 @@ public final class CampaignSystem {
         st.objectivePhaseLabel = appendHudClause(st.objectivePhaseLabel, "MAP: Long-range scanners are tagging separate warp pockets; push the lane, then investigate the contacts.");
         st.threatStateLabel = appendHudClause(st.threatStateLabel,
                 "CONTACTS: Route lane, support relay, reserve staging, and scanner anomalies are all active.");
+    }
+
+    private static int[] shuffledMissionColumns(GameContext ctx, CampaignState st, boolean enteredFromRight, String tag) {
+        int[] cols = new int[MISSION_ZONE_COLUMNS];
+        for (int i = 0; i < MISSION_ZONE_COLUMNS; i++) cols[i] = i;
+        Random rng = missionLayoutRandom(ctx, st, tag);
+        for (int i = cols.length - 1; i > 0; i--) {
+            int j = rng.nextInt(i + 1);
+            int tmp = cols[i];
+            cols[i] = cols[j];
+            cols[j] = tmp;
+        }
+        if (enteredFromRight) {
+            for (int i = 0; i < cols.length; i++) cols[i] = MISSION_ZONE_COLUMNS - 1 - cols[i];
+        }
+        return cols;
+    }
+
+    private static int[] missionColumnsWithArrivalSafety(int[] cols, int entryCol, boolean preferNearestSafe) {
+        if (cols == null || cols.length == 0) return new int[0];
+        int[] out = cols.clone();
+        int safeDepth = missionArrivalSafeColumnDepth(entryCol);
+        int write = 0;
+        for (int col : cols) {
+            if (!isMissionArrivalSafeColumn(col, entryCol, safeDepth)) {
+                out[write++] = col;
+            }
+        }
+        int safeStart = write;
+        for (int col : cols) {
+            if (isMissionArrivalSafeColumn(col, entryCol, safeDepth)) {
+                out[write++] = col;
+            }
+        }
+        if (safeStart > 1) {
+            int preferredIndex = 0;
+            double preferredDistance = preferNearestSafe ? Double.POSITIVE_INFINITY : Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < safeStart; i++) {
+                double distance = Math.abs(out[i] - entryCol);
+                if ((preferNearestSafe && distance < preferredDistance)
+                        || (!preferNearestSafe && distance > preferredDistance)) {
+                    preferredDistance = distance;
+                    preferredIndex = i;
+                }
+            }
+            if (preferredIndex != 0) {
+                int tmp = out[0];
+                out[0] = out[preferredIndex];
+                out[preferredIndex] = tmp;
+            }
+        }
+        return out;
+    }
+
+    private static int missionArrivalSafeColumnDepth(int entryCol) {
+        if (entryCol <= 0 || entryCol >= MISSION_ZONE_COLUMNS - 1) {
+            return MISSION_EDGE_ENTRY_SAFE_COLUMN_DEPTH;
+        }
+        return MISSION_INTERIOR_ENTRY_SAFE_COLUMN_DEPTH;
+    }
+
+    private static boolean isMissionArrivalSafeColumn(int candidateCol, int entryCol, int safeDepth) {
+        if (candidateCol < 0 || entryCol < 0 || safeDepth <= 0) return false;
+        return Math.abs(candidateCol - entryCol) < safeDepth;
+    }
+
+    private static int relocateColumnAwayFromArrival(int candidateCol, int entryCol) {
+        int safeDepth = missionArrivalSafeColumnDepth(entryCol);
+        if (!isMissionArrivalSafeColumn(candidateCol, entryCol, safeDepth)) return candidateCol;
+        int best = candidateCol;
+        int bestDistance = Integer.MAX_VALUE;
+        for (int col = 0; col < MISSION_ZONE_COLUMNS; col++) {
+            if (isMissionArrivalSafeColumn(col, entryCol, safeDepth)) continue;
+            int distance = Math.abs(col - candidateCol);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = col;
+            }
+        }
+        return best;
+    }
+
+    private static boolean discoverySeedsHostilePresence(DiscoveryKind kind) {
+        if (kind == null) return false;
+        return switch (kind) {
+            case AMBUSH, MINEFIELD, WRECK_FIELD -> true;
+            default -> false;
+        };
+    }
+
+    private static Random missionLayoutRandom(GameContext ctx, CampaignState st, String tag) {
+        long seed = 0x9E3779B97F4A7C15L;
+        if (ctx != null && ctx.config != null) seed ^= ctx.config.seed;
+        if (st != null) {
+            seed ^= (long) st.sector * 0x632BE59BD9B4E019L;
+            seed ^= (long) (st.loadedMissionSubzone + 31) * 0x94D049BB133111EBL;
+        }
+        if (tag != null) seed ^= ((long) tag.hashCode() << 21);
+        return new Random(seed);
     }
 
     private static void configureMissionSections(CampaignState st,
@@ -4143,11 +4267,60 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return;
         int col = Math.max(0, Math.min(MISSION_ZONE_COLUMNS - 1,
                 enteredFromRight ? (MISSION_ZONE_COLUMNS - 1 - column) : column));
+        if (discoverySeedsHostilePresence(kind)) {
+            col = relocateColumnAwayFromArrival(col, missionSubzoneColumn(st.loadedMissionSubzone));
+        }
         int subzone = missionSubzoneIndex(col, Math.max(0, Math.min(MISSION_ZONE_ROWS - 1, row)));
         double centerX = missionSubzoneCenterX(ctx, st.sector, subzone);
         double centerY = missionSubzoneCenterY(ctx, st.sector, subzone);
         double offsetX = enteredFromRight ? -dx : dx;
-        st.discoverySites.add(new DiscoverySite(label, subtitle, kind, centerX + offsetX, centerY + dy, radius));
+        double[] jitter = jitteredDiscoveryPoint(ctx, st, label, centerX, centerY, offsetX, dy, radius);
+        st.discoverySites.add(new DiscoverySite(label, subtitle, kind, jitter[0], jitter[1], radius));
+    }
+
+    private static double[] jitteredDiscoveryPoint(GameContext ctx, CampaignState st, String label,
+                                                   double centerX, double centerY,
+                                                   double baseOffsetX, double baseOffsetY, double radius) {
+        double targetX = centerX + baseOffsetX;
+        double targetY = centerY + baseOffsetY;
+        if (ctx == null || st == null) return new double[]{targetX, targetY};
+
+        MissionLayout layout = missionLayout(ctx);
+        double limitX = Math.max(140.0, layout.subzoneWidth * 0.18);
+        double limitY = Math.max(140.0, layout.subzoneHeight * 0.18);
+        Random rng = missionLayoutRandom(ctx, st, "discovery:" + ((label == null) ? "unknown" : label));
+        double bestX = targetX;
+        double bestY = targetY;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (int attempt = 0; attempt < 6; attempt++) {
+            double jx = baseOffsetX + (rng.nextDouble() - 0.5) * 2.0 * limitX;
+            double jy = baseOffsetY + (rng.nextDouble() - 0.5) * 2.0 * limitY;
+            double x = GameMath.clamp(centerX + jx,
+                    centerX - layout.subzoneWidth * 0.5 + CAMPAIGN_POCKET_MARGIN,
+                    centerX + layout.subzoneWidth * 0.5 - CAMPAIGN_POCKET_MARGIN);
+            double y = GameMath.clamp(centerY + jy,
+                    centerY - layout.subzoneHeight * 0.5 + CAMPAIGN_POCKET_MARGIN,
+                    centerY + layout.subzoneHeight * 0.5 - CAMPAIGN_POCKET_MARGIN);
+            double score = minDiscoverySeparationScore(st, x, y);
+            if (score > bestScore) {
+                bestScore = score;
+                bestX = x;
+                bestY = y;
+            }
+            if (score >= DISCOVERY_JITTER_MIN_SEPARATION) break;
+        }
+        return new double[]{bestX, bestY};
+    }
+
+    private static double minDiscoverySeparationScore(CampaignState st, double x, double y) {
+        if (st == null || st.discoverySites.isEmpty()) return Double.POSITIVE_INFINITY;
+        double best = Double.POSITIVE_INFINITY;
+        for (DiscoverySite existing : st.discoverySites) {
+            if (existing == null) continue;
+            double dist = Math.hypot(existing.x - x, existing.y - y);
+            if (dist < best) best = dist;
+        }
+        return best;
     }
 
     private static void seedAmbientDiscoveryPresence(GameContext ctx, CampaignState st) {
@@ -4463,12 +4636,15 @@ public final class CampaignSystem {
     }
 
     private static void spawnSector3(GameContext ctx, CampaignState st) {
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.VANGUARD_TITAN, 760, -80);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 860, -160);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, 900, -40);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.MISSILE_BOAT, 980, 60);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 1020, 140);
-        spawnEnemyAtPlayerOffset(ctx, ShipRole.PATROL, 900, 200);
+        st.captureX = GameMath.clamp(ctx.player.x + 760, 220, ctx.WORLD_W - 220);
+        st.captureY = GameMath.clamp(ctx.player.y + 160, 220, ctx.WORLD_H - 220);
+        st.captureRadius = 210.0;
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.VANGUARD_TITAN, 760, -80);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 860, -160);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.CIWS_CORVETTE, 900, -40);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.MISSILE_BOAT, 980, 60);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PICKET, 1020, 140);
+        spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 900, 200);
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.BULWARK_TITAN, Faction.TEAM_C, -360, 60, "Green Bulwark Titan Broker Shield");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.FRIGATE, Faction.TEAM_C, -140, 70, "Green Escort Spear");
         spawnCampaignFactionAtPlayerOffset(ctx, ShipRole.CIWS_CORVETTE, Faction.TEAM_C, -200, -50, "Green Screen Lance");
@@ -4930,7 +5106,7 @@ public final class CampaignSystem {
                 st.captureArmed = true;
                 st.objectiveStage = 1;
                 st.objectiveKillBaseline = st.kills;
-                st.objectiveLabel = "Destroy the relay relief wing and cover the Earth vector";
+                st.objectiveLabel = "Destroy the relay relief wing";
                 st.objectiveGoal = 6.0;
                 st.objectiveProgress = 0.0;
                 st.authoredWaveCursor = 1;
@@ -5777,8 +5953,14 @@ public final class CampaignSystem {
         if (st == null || st.objectiveType != ObjectiveType.DESTROY) return false;
         return switch (st.sector) {
             case 2, 4, 13, 15, 17, 19, 21, 23 -> true;
+            case 3 -> st.objectiveStage == 0;
             default -> false;
         };
+    }
+
+    private static boolean destroyObjectiveUsesMarkers(CampaignState st) {
+        if (st == null || st.objectiveType != ObjectiveType.DESTROY) return false;
+        return usesAuthoredDestroyProgress(st) || !st.authoredObjectiveHostiles.isEmpty();
     }
 
     private static boolean timeoutCountsAsSuccess(CampaignState st) {

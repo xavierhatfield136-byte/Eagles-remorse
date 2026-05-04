@@ -25,11 +25,18 @@ import java.util.Comparator;
 import javax.imageio.ImageIO;
 
 public class Renderer {
+    private static final int BEAM_BOLT_TURRET_TETHER_FRAMES =
+            Math.max(1, (int) Math.round(0.5 / GameContext.DT));
+
     private static final File HUD_PANEL_DIR = new File("assets/hud_panels");
     private static final double IMPACT_DECAL_SCALE = 0.25;
     private static final double HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN = 72.0;
+    private static final double HULL_DAMAGE_BREACH_MIN_SCREEN_SPAN = 108.0;
+    private static final double HULL_DAMAGE_IMPACT_OVERLAY_MIN_SCREEN_SPAN = 92.0;
     private static final double SHIELD_FX_MIN_SCREEN_SPAN = 56.0;
+    private static final double WARP_FX_MIN_SCREEN_SPAN = 64.0;
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
+    private static long frameShieldRenderNs = 0L;
 
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT"};
     private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H", ""};
@@ -77,6 +84,47 @@ public class Renderer {
             this.t = t;
             this.faction = faction;
         }
+    }
+
+    public static void beginFramePerfCapture() {
+        frameShieldRenderNs = 0L;
+    }
+
+    public static double frameShieldRenderMs() {
+        return frameShieldRenderNs / 1_000_000.0;
+    }
+
+    public static void prewarmAssetCaches() {
+        for (ShipRole role : ShipRole.values()) {
+            for (Faction faction : Faction.values()) {
+                ShipSkinLibrary.getSkinSet(role, faction);
+            }
+            ShipSkinLibrary.getSkinSet(role, null);
+        }
+
+        String[] stationModules = {
+                "hull_fortification",
+                "shield_array",
+                "turret_systems",
+                "mining_ops",
+                "hangar_expansion"
+        };
+        for (Faction faction : Faction.values()) {
+            for (String key : stationModules) {
+                StationModuleLibrary.getModuleSkin(key, faction);
+            }
+        }
+        for (String key : stationModules) {
+            StationModuleLibrary.getModuleSkin(key, null);
+        }
+
+        ProjectileSkinLibrary.getMissileSkin();
+        ProjectileSkinLibrary.getEnergyBoltSkin(false);
+        ProjectileSkinLibrary.getEnergyBoltSkin(true);
+        ProjectileSkinLibrary.getBeamBoltSingleSkin();
+        ProjectileSkinLibrary.getWaveShotSkin();
+        ProjectileSkinLibrary.getBulletSkin();
+        ProjectileSkinLibrary.getCiwsPelletSkin();
     }
 
     public static final class ShopClickTarget {
@@ -1400,6 +1448,12 @@ public class Renderer {
     }
 
     private static void drawShipShieldFaces(Graphics2D g, Ship ship, Area hullArea) {
+        drawShipShieldFaces(g, ship, hullArea, null);
+    }
+
+    private static void drawShipShieldFaces(Graphics2D g, Ship ship, Area hullArea, ShipVisual visual) {
+        long shieldStart = System.nanoTime();
+        try {
         if (g == null || ship == null || hullArea == null) return;
         if (isTinyStrikeCraft(ship.role)) return;
         double effectiveShieldMax = ship.effectiveShieldCapacityMax();
@@ -1413,8 +1467,8 @@ public class Renderer {
         double wear = 1.0 - shieldFrac;
         float shellWidth = (float) Math.max(5.0, ship.radius * 0.24);
         float auraWidth = shellWidth * 1.9f;
-        Area shellBase = createShieldShell(hullArea, shellWidth);
-        Area auraBase = createShieldShell(hullArea, auraWidth);
+        Area shellBase = createShieldShell(hullArea, shellWidth, visual);
+        Area auraBase = createShieldShell(hullArea, auraWidth, visual);
         Area shell = new Area(shellBase);
         Area aura = new Area(auraBase);
         Area wearMask = createShieldWearMask(ship, shellBase, shellWidth, wear);
@@ -1491,6 +1545,9 @@ public class Renderer {
         gx.setPaint(oldPaint);
         gx.setStroke(oldStroke);
         gx.dispose();
+        } finally {
+            frameShieldRenderNs += (System.nanoTime() - shieldStart);
+        }
     }
 
     private static boolean shouldRenderShieldFx(Ship ship, Rectangle2D hullBounds, Graphics2D g) {
@@ -1515,9 +1572,21 @@ public class Renderer {
     }
 
     private static Area createShieldShell(Area hullArea, float width) {
+        return createShieldShell(hullArea, width, null);
+    }
+
+    private static Area createShieldShell(Area hullArea, float width, ShipVisual visual) {
         if (hullArea == null || width <= 0.0f) return new Area();
+        int key = Math.max(1, Math.round(width * 100.0f));
+        if (visual != null && visual.shieldShellCache != null) {
+            Area cached = visual.shieldShellCache.get(key);
+            if (cached != null) return new Area(cached);
+        }
         Area shell = new Area(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(hullArea));
         shell.subtract(new Area(hullArea));
+        if (visual != null && visual.shieldShellCache != null) {
+            visual.shieldShellCache.put(key, new Area(shell));
+        }
         return shell;
     }
 
@@ -1698,17 +1767,23 @@ public class Renderer {
     }
 
     private static void drawWarpChargeHullFx(Graphics2D g, Ship ship, Area hullArea) {
+        drawWarpChargeHullFx(g, ship, hullArea, null);
+    }
+
+    private static void drawWarpChargeHullFx(Graphics2D g, Ship ship, Area hullArea, ShipVisual visual) {
         if (g == null || ship == null || hullArea == null || !ship.isWarpCharging()) return;
         Rectangle2D bounds = hullArea.getBounds2D();
         if (bounds.getWidth() <= 0.0 || bounds.getHeight() <= 0.0) return;
+        double screenSpan = Math.max(bounds.getWidth(), bounds.getHeight()) * hullDamageDetailScale(g);
+        if (screenSpan < WARP_FX_MIN_SCREEN_SPAN) return;
 
         double charge = ship.warpChargeProgress();
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 7.2 + ship.id * 0.29);
         Color base = mixColor(factionTrimColor(ship.faction), new Color(120, 220, 255), 0.38);
         float shellWidth = (float) Math.max(3.0, ship.radius * (0.12 + charge * 0.05));
         float auraWidth = shellWidth * 2.4f;
-        Area shell = createShieldShell(hullArea, shellWidth);
-        Area aura = createShieldShell(hullArea, auraWidth);
+        Area shell = createShieldShell(hullArea, shellWidth, visual);
+        Area aura = createShieldShell(hullArea, auraWidth, visual);
         Rectangle2D auraBounds = aura.getBounds2D();
         if (auraBounds.getWidth() <= 0.0 || auraBounds.getHeight() <= 0.0) return;
 
@@ -7793,10 +7868,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 170));
         g2.drawString(sectorized
-                        ? "LMB: route warp   RMB: sector ping   1/2/3: compact/standard/expanded   White: loaded   Amber: selected"
+                        ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (CampaignSystem.usesMissionSubzones(ctx)
-                        ? "LMB: waypoint   RMB: ping   White: current sector   Cyan grid: campaign sectors   M/ESC: close"
-                        : "LMB: waypoint   RMB: ping   Sensor power reveals anomalies   M/ESC: close"),
+                        ? "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   White: current sector   Cyan grid: campaign sectors"
+                        : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies"),
                 r.x + 18, r.y + r.height - 16);
 
         String mapHeader = sectorized
@@ -7810,15 +7885,27 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         drawStrategicObjectivePanel(g2, ctx, getStrategicMapSidebarRect(viewW, viewH));
 
+        double mapZoom = UISystem.strategicMapZoom(ctx);
+        double visibleWorldW = UISystem.strategicMapViewWidth(ctx);
+        double visibleWorldH = UISystem.strategicMapViewHeight(ctx);
+        double worldMinX = UISystem.strategicMapWorldMinX(ctx);
+        double worldMinY = UISystem.strategicMapWorldMinY(ctx);
+        double worldMaxX = worldMinX + visibleWorldW;
+        double worldMaxY = worldMinY + visibleWorldH;
+
         // Helpers: world -> map
         java.util.function.BiFunction<Double, Double, Point> W2M = (wx, wy) -> {
-            int px = m.x + (int) Math.round((wx / Math.max(1.0, worldW)) * m.width);
-            int py = m.y + (int) Math.round((wy / Math.max(1.0, worldH)) * m.height);
+            int px = m.x + (int) Math.round(((wx - worldMinX) / Math.max(1.0, visibleWorldW)) * m.width);
+            int py = m.y + (int) Math.round(((wy - worldMinY) / Math.max(1.0, visibleWorldH)) * m.height);
             return new Point(px, py);
         };
 
+        java.awt.Shape oldClip = g2.getClip();
+        g2.setClip(m.x, m.y, m.width, m.height);
+
         if (sectorized) {
-            drawBattlefieldSectorsOnMap(g2, m, ctx, sectorSnapshots, currentSector, selectedSector);
+            drawBattlefieldSectorsOnMap(g2, m, ctx, sectorSnapshots, currentSector, selectedSector,
+                    worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         }
 
         // Asteroids
@@ -7826,6 +7913,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setColor(new Color(200, 200, 200, 80));
             for (Asteroid a : asteroids) {
                 if (a == null) continue;
+                if (a.x < worldMinX || a.x > worldMaxX || a.y < worldMinY || a.y > worldMaxY) continue;
                 Point p = W2M.apply(a.x, a.y);
                 g2.fillRect(p.x, p.y, 2, 2);
             }
@@ -7836,6 +7924,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setColor(new Color(255, 255, 255, 120));
             for (Salvage s : salvage) {
                 if (s == null || !s.alive()) continue;
+                if (s.x < worldMinX || s.x > worldMaxX || s.y < worldMinY || s.y > worldMaxY) continue;
                 Point p = W2M.apply(s.x, s.y);
                 g2.fillOval(p.x - 1, p.y - 1, 3, 3);
             }
@@ -7845,6 +7934,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (ships != null) {
             for (Ship s : ships) {
                 if (s == null || !s.alive) continue;
+                if (s.x < worldMinX || s.x > worldMaxX || s.y < worldMinY || s.y > worldMaxY) continue;
                 Point p = W2M.apply(s.x, s.y);
 
                 Color c = factionMapColor(s.faction, (s == player), 200);
@@ -7856,15 +7946,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         if (fog != null) {
-            drawStrategicFogOverlay(g2, m, worldW, worldH, fog);
-            drawSensorInterestSignals(g2, ctx, m, worldW, worldH);
+            drawStrategicFogOverlay(g2, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH, fog);
+            drawSensorInterestSignals(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         }
         if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
-            drawCampaignSectorsOnMap(g2, m, ctx);
+            drawCampaignSectorsOnMap(g2, m, ctx, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         }
-        drawStrategicLandmarkMarkers(g2, ctx, m, worldW, worldH);
-        drawStrategicSupportMarkers(g2, ctx, m, worldW, worldH);
-        drawStrategicObjectiveMarkers(g2, ctx, m, worldW, worldH);
+        drawStrategicLandmarkMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+        drawStrategicSupportMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+        drawStrategicObjectiveMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
 
         // Waypoint
         if (!Double.isNaN(waypointX) && !Double.isNaN(waypointY)) {
@@ -7898,6 +7988,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
         }
 
+        g2.setClip(oldClip);
+
         // Camera viewport rectangle. When the strategic map was opened from a sensor-net signal,
         // temporarily frame that signal instead of the live combat camera.
         double focusX = (ctx != null && ctx.ui != null && Double.isFinite(ctx.ui.strategicMapFocusX))
@@ -7921,6 +8013,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         g2.setColor(new Color(255, 255, 255, 120));
         g2.drawRect(rx, ry, rw, rh);
+        g2.setColor(new Color(140, 200, 255, 176));
+        g2.drawString(String.format(java.util.Locale.US, "MAP ZOOM %.2fx", mapZoom), r.x + r.width - 178, r.y + 28);
     }
 
     private static void drawStrategicObjectivePanel(Graphics2D g2, GameContext ctx, Rectangle panelRect) {
@@ -8161,14 +8255,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                     GameContext ctx,
                                                     List<BattlefieldSectorSystem.SectorSnapshot> sectorSnapshots,
                                                     BattlefieldSectorSystem.SectorDefinition currentSector,
-                                                    BattlefieldSectorSystem.SectorDefinition selectedSector) {
+                                                    BattlefieldSectorSystem.SectorDefinition selectedSector,
+                                                    double worldMinX, double worldMinY,
+                                                    double worldViewW, double worldViewH) {
         if (g2 == null || mapRect == null || sectorSnapshots == null || sectorSnapshots.isEmpty()) return;
 
         Stroke oldStroke = g2.getStroke();
         Font oldFont = g2.getFont();
         for (BattlefieldSectorSystem.SectorSnapshot snapshot : sectorSnapshots) {
             if (snapshot == null || snapshot.sector == null) continue;
-            Rectangle sectorRect = sectorMapRect(mapRect, ctx, snapshot.sector);
+            Rectangle sectorRect = sectorMapRect(mapRect, ctx, snapshot.sector, worldMinX, worldMinY, worldViewW, worldViewH);
             if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
 
             Color fill = sectorFillColor(snapshot);
@@ -8215,14 +8311,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static Rectangle sectorMapRect(Rectangle mapRect,
                                            GameContext ctx,
-                                           BattlefieldSectorSystem.SectorDefinition sector) {
+                                           BattlefieldSectorSystem.SectorDefinition sector,
+                                           double worldMinX, double worldMinY,
+                                           double worldViewW, double worldViewH) {
         if (mapRect == null || ctx == null || sector == null) return new Rectangle();
-        double worldW = Math.max(1.0, ctx.WORLD_W);
-        double worldH = Math.max(1.0, ctx.WORLD_H);
-        int x0 = mapRect.x + (int) Math.round((sector.minWorldX(ctx) / worldW) * mapRect.width);
-        int y0 = mapRect.y + (int) Math.round((sector.minWorldY(ctx) / worldH) * mapRect.height);
-        int x1 = mapRect.x + (int) Math.round((sector.maxWorldX(ctx) / worldW) * mapRect.width);
-        int y1 = mapRect.y + (int) Math.round((sector.maxWorldY(ctx) / worldH) * mapRect.height);
+        double worldW = Math.max(1.0, worldViewW);
+        double worldH = Math.max(1.0, worldViewH);
+        int x0 = mapRect.x + (int) Math.round(((sector.minWorldX(ctx) - worldMinX) / worldW) * mapRect.width);
+        int y0 = mapRect.y + (int) Math.round(((sector.minWorldY(ctx) - worldMinY) / worldH) * mapRect.height);
+        int x1 = mapRect.x + (int) Math.round(((sector.maxWorldX(ctx) - worldMinX) / worldW) * mapRect.width);
+        int y1 = mapRect.y + (int) Math.round(((sector.maxWorldY(ctx) - worldMinY) / worldH) * mapRect.height);
         return new Rectangle(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
     }
 
@@ -8252,7 +8350,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return factionMapColor(snapshot.dominantFaction, false, 96);
     }
 
-    private static void drawCampaignSectorsOnMap(Graphics2D g2, Rectangle mapRect, GameContext ctx) {
+    private static void drawCampaignSectorsOnMap(Graphics2D g2, Rectangle mapRect, GameContext ctx,
+                                                 double worldMinX, double worldMinY,
+                                                 double worldViewW, double worldViewH) {
         if (g2 == null || mapRect == null || ctx == null || !CampaignSystem.usesMissionSubzones(ctx)) return;
         int cols = CampaignSystem.missionSubzoneColumns();
         int rows = CampaignSystem.missionSubzoneRows();
@@ -8276,7 +8376,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         for (int row = 0; row < rows; row++) {
             for (int col = 0; col < cols; col++) {
                 int subzone = CampaignSystem.missionSubzoneIndex(col, row);
-                Rectangle sectorRect = campaignSectorMapRect(mapRect, ctx, ctx.campaign.sector, subzone);
+                Rectangle sectorRect = campaignSectorMapRect(mapRect, ctx, ctx.campaign.sector, subzone,
+                        worldMinX, worldMinY, worldViewW, worldViewH);
                 if (sectorRect.width <= 0 || sectorRect.height <= 0) continue;
 
                 boolean active = subzone == loaded;
@@ -8326,7 +8427,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
-    private static void drawStrategicObjectiveMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+    private static void drawStrategicObjectiveMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                      double worldMinX, double worldMinY,
+                                                      double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
         List<CampaignSystem.CampaignObjectiveMarker> markers = new ArrayList<>(CampaignSystem.activeObjectiveMarkers(ctx));
         if (markers.isEmpty()) return;
@@ -8337,11 +8440,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (marker == null) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
-            drawStrategicObjectiveMarker(g2, mapRect, worldW, worldH, marker);
+            drawStrategicObjectiveMarker(g2, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
         }
     }
 
-    private static void drawStrategicLandmarkMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+    private static void drawStrategicLandmarkMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                     double worldMinX, double worldMinY,
+                                                     double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
         List<CampaignSystem.CampaignLandmark> markers = new ArrayList<>(CampaignSystem.strategicLandmarks(ctx));
         if (markers.isEmpty()) return;
@@ -8351,11 +8456,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (marker == null) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
-            drawStrategicLandmarkMarker(g2, mapRect, worldW, worldH, marker);
+            drawStrategicLandmarkMarker(g2, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
         }
     }
 
-    private static void drawStrategicSupportMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+    private static void drawStrategicSupportMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                    double worldMinX, double worldMinY,
+                                                    double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
         List<CampaignSystem.CampaignSupportMarker> markers = new ArrayList<>(CampaignSystem.activeSupportMarkers(ctx));
         if (markers.isEmpty()) return;
@@ -8366,20 +8473,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (marker == null) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
-            drawStrategicSupportMarker(g2, mapRect, worldW, worldH, marker);
+            drawStrategicSupportMarker(g2, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
         }
     }
 
     private static void drawStrategicObjectiveMarker(Graphics2D g2,
                                                      Rectangle mapRect,
-                                                     int worldW,
-                                                     int worldH,
+                                                     double worldMinX,
+                                                     double worldMinY,
+                                                     double worldW,
+                                                     double worldH,
                                                      CampaignSystem.CampaignObjectiveMarker marker) {
         if (g2 == null || mapRect == null || marker == null) return;
         double wx = marker.x;
         double wy = marker.y;
-        int px = mapRect.x + (int) Math.round((wx / Math.max(1.0, worldW)) * mapRect.width);
-        int py = mapRect.y + (int) Math.round((wy / Math.max(1.0, worldH)) * mapRect.height);
+        int px = mapRect.x + (int) Math.round(((wx - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round(((wy - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
         String label = marker.label;
         px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
         py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
@@ -8435,12 +8544,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawStrategicSupportMarker(Graphics2D g2,
                                                    Rectangle mapRect,
-                                                   int worldW,
-                                                   int worldH,
+                                                   double worldMinX,
+                                                   double worldMinY,
+                                                   double worldW,
+                                                   double worldH,
                                                    CampaignSystem.CampaignSupportMarker marker) {
         if (g2 == null || mapRect == null || marker == null) return;
-        int px = mapRect.x + (int) Math.round((marker.x / Math.max(1.0, worldW)) * mapRect.width);
-        int py = mapRect.y + (int) Math.round((marker.y / Math.max(1.0, worldH)) * mapRect.height);
+        int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round(((marker.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
         px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
         py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
 
@@ -8487,12 +8598,14 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawStrategicLandmarkMarker(Graphics2D g2,
                                                     Rectangle mapRect,
-                                                    int worldW,
-                                                    int worldH,
+                                                    double worldMinX,
+                                                    double worldMinY,
+                                                    double worldW,
+                                                    double worldH,
                                                     CampaignSystem.CampaignLandmark marker) {
         if (g2 == null || mapRect == null || marker == null) return;
-        int px = mapRect.x + (int) Math.round((marker.x / Math.max(1.0, worldW)) * mapRect.width);
-        int py = mapRect.y + (int) Math.round((marker.y / Math.max(1.0, worldH)) * mapRect.height);
+        int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
+        int py = mapRect.y + (int) Math.round(((marker.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
         px = MathUtil.clamp(px, mapRect.x + 7, mapRect.x + mapRect.width - 7);
         py = MathUtil.clamp(py, mapRect.y + 7, mapRect.y + mapRect.height - 7);
 
@@ -8706,18 +8819,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
-    private static Rectangle campaignSectorMapRect(Rectangle mapRect, GameContext ctx, int sector, int subzone) {
+    private static Rectangle campaignSectorMapRect(Rectangle mapRect, GameContext ctx, int sector, int subzone,
+                                                   double worldMinX, double worldMinY,
+                                                   double worldViewW, double worldViewH) {
         if (mapRect == null || ctx == null || subzone < 0) return new Rectangle();
-        double worldW = Math.max(1.0, ctx.WORLD_W);
-        double worldH = Math.max(1.0, ctx.WORLD_H);
+        double worldW = Math.max(1.0, worldViewW);
+        double worldH = Math.max(1.0, worldViewH);
         double minX = CampaignSystem.missionSubzoneMinX(ctx, sector, subzone);
         double minY = CampaignSystem.missionSubzoneMinY(ctx, sector, subzone);
         double maxX = minX + CampaignSystem.missionSubzoneWidth(ctx);
         double maxY = minY + CampaignSystem.missionSubzoneHeight(ctx);
-        int x0 = mapRect.x + (int) Math.round((minX / worldW) * mapRect.width);
-        int y0 = mapRect.y + (int) Math.round((minY / worldH) * mapRect.height);
-        int x1 = mapRect.x + (int) Math.round((maxX / worldW) * mapRect.width);
-        int y1 = mapRect.y + (int) Math.round((maxY / worldH) * mapRect.height);
+        int x0 = mapRect.x + (int) Math.round(((minX - worldMinX) / worldW) * mapRect.width);
+        int y0 = mapRect.y + (int) Math.round(((minY - worldMinY) / worldH) * mapRect.height);
+        int x1 = mapRect.x + (int) Math.round(((maxX - worldMinX) / worldW) * mapRect.width);
+        int y1 = mapRect.y + (int) Math.round(((maxY - worldMinY) / worldH) * mapRect.height);
         return new Rectangle(x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0));
     }
 
@@ -8726,7 +8841,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return rowTag + Integer.toString(col + 1);
     }
 
-    private static void drawStrategicFogOverlay(Graphics2D g2, Rectangle mapRect, int worldW, int worldH, FogOfWarSystem.State fog) {
+    private static void drawStrategicFogOverlay(Graphics2D g2, Rectangle mapRect,
+                                                double worldMinX, double worldMinY,
+                                                double worldW, double worldH,
+                                                FogOfWarSystem.State fog) {
         if (g2 == null || mapRect == null || fog == null || fog.totalCells() <= 0) return;
 
         java.awt.Shape oldClip = g2.getClip();
@@ -8737,22 +8855,31 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Color unseenFog = new Color(6, 14, 26, 148);
         int cols = fog.cols();
         int rows = fog.rows();
-        double mapW = Math.max(1.0, mapRect.width);
-        double mapH = Math.max(1.0, mapRect.height);
+        double viewWorldW = Math.max(1.0, worldW);
+        double viewWorldH = Math.max(1.0, worldH);
+        double cellW = Math.max(1.0, fog.cellWorldWidth());
+        double cellH = Math.max(1.0, fog.cellWorldHeight());
+        double worldMaxX = worldMinX + viewWorldW;
+        double worldMaxY = worldMinY + viewWorldH;
 
-        for (int row = 0; row < rows; row++) {
-            int y0 = mapRect.y + (int) Math.floor((row / (double) rows) * mapH);
-            int y1 = (row == rows - 1)
-                    ? mapRect.y + mapRect.height
-                    : mapRect.y + (int) Math.floor(((row + 1) / (double) rows) * mapH);
+        int minCol = Math.max(0, (int) Math.floor(worldMinX / cellW));
+        int maxCol = Math.min(cols - 1, (int) Math.floor(Math.max(worldMinX, worldMaxX - 1.0) / cellW));
+        int minRow = Math.max(0, (int) Math.floor(worldMinY / cellH));
+        int maxRow = Math.min(rows - 1, (int) Math.floor(Math.max(worldMinY, worldMaxY - 1.0) / cellH));
+
+        for (int row = minRow; row <= maxRow; row++) {
+            double cellMinY = row * cellH;
+            double cellMaxY = (row == rows - 1) ? Math.max(cellMinY + 1.0, worldMaxY) : (row + 1) * cellH;
+            int y0 = mapRect.y + (int) Math.floor(((cellMinY - worldMinY) / viewWorldH) * mapRect.height);
+            int y1 = mapRect.y + (int) Math.ceil(((cellMaxY - worldMinY) / viewWorldH) * mapRect.height);
             int h = Math.max(1, y1 - y0);
 
-            for (int col = 0; col < cols; col++) {
+            for (int col = minCol; col <= maxCol; col++) {
                 if (fog.isVisibleCell(col, row)) continue;
-                int x0 = mapRect.x + (int) Math.floor((col / (double) cols) * mapW);
-                int x1 = (col == cols - 1)
-                        ? mapRect.x + mapRect.width
-                        : mapRect.x + (int) Math.floor(((col + 1) / (double) cols) * mapW);
+                double cellMinX = col * cellW;
+                double cellMaxX = (col == cols - 1) ? Math.max(cellMinX + 1.0, worldMaxX) : (col + 1) * cellW;
+                int x0 = mapRect.x + (int) Math.floor(((cellMinX - worldMinX) / viewWorldW) * mapRect.width);
+                int x1 = mapRect.x + (int) Math.ceil(((cellMaxX - worldMinX) / viewWorldW) * mapRect.width);
                 int w = Math.max(1, x1 - x0);
                 boolean explored = fog.isExploredCell(col, row);
                 g2.setColor(explored ? exploredFog : unseenFog);
@@ -8764,7 +8891,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setClip(oldClip);
     }
 
-    private static void drawSensorInterestSignals(Graphics2D g2, GameContext ctx, Rectangle mapRect, int worldW, int worldH) {
+    private static void drawSensorInterestSignals(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                  double worldMinX, double worldMinY,
+                                                  double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
         List<FogOfWarSystem.SensorInterestSignal> signals = FogOfWarSystem.sensorInterestSignals(ctx);
         if (signals.isEmpty()) return;
@@ -8778,8 +8907,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         for (FogOfWarSystem.SensorInterestSignal signal : signals) {
             if (signal == null) continue;
-            int px = mapRect.x + (int) Math.round((signal.x / Math.max(1.0, worldW)) * mapRect.width);
-            int py = mapRect.y + (int) Math.round((signal.y / Math.max(1.0, worldH)) * mapRect.height);
+            if (signal.x < worldMinX || signal.x > worldMinX + worldW
+                    || signal.y < worldMinY || signal.y > worldMinY + worldH) {
+                continue;
+            }
+            int px = mapRect.x + (int) Math.round(((signal.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
+            int py = mapRect.y + (int) Math.round(((signal.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
             Color color = sensorInterestColor(signal.kind);
             int alpha = MathUtil.clamp((int) Math.round(120 + signal.strength * 105), 0, 235);
             int radius = MathUtil.clamp((int) Math.round(4 + signal.strength * 5), 4, 9);
@@ -8927,7 +9060,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Graphics2D ghost = (Graphics2D) g2.create();
             ghost.translate(ox, oy);
             ghost.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.20f));
-            ShipRenderer.drawShip(ghost, ship);
+            ShipRenderer.drawShip(ghost, ship, false, false, false);
             ghost.dispose();
         }
     }
@@ -9042,6 +9175,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         double ex = eb.x;
         double ey = eb.y;
+        if (beamBolt && eb.ageFrames() >= BEAM_BOLT_TURRET_TETHER_FRAMES) {
+            double trailLen = Math.max(tactical ? 14.0 : 18.0, eb.radius * (tactical ? 2.6 : 3.2));
+            sx = ex - Math.cos(eb.angle) * trailLen;
+            sy = ey - Math.sin(eb.angle) * trailLen;
+            originAngle = eb.angle;
+        }
         double dx = ex - sx;
         double dy = ey - sy;
         double len = Math.hypot(dx, dy);
@@ -9371,12 +9510,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final Map<String, ShipVisual> CACHE = new HashMap<>();
 
         static void drawShip(Graphics2D g2, Ship ship) {
+            drawShip(g2, ship, true, true, true);
+        }
+
+        static void drawShip(Graphics2D g2, Ship ship, boolean fullDamageFx, boolean drawName) {
+            drawShip(g2, ship, fullDamageFx, drawName, true);
+        }
+
+        static void drawShip(Graphics2D g2, Ship ship, boolean fullDamageFx, boolean drawName, boolean drawEnergyFx) {
             if (!ship.alive) return;
             boolean multipartDying = ship.dying && ShipPartLibrary.hasDestroyedParts(ship.role, ship.faction);
             if (multipartDying) {
                 int wx = (int) Math.round(ship.x);
                 int wy = (int) Math.round(ship.y);
-                if (!isTinyStrikeCraft(ship.role)) {
+                if (drawName && !isTinyStrikeCraft(ship.role)) {
                     g2.setFont(new Font("Consolas", Font.PLAIN, 12));
                     g2.setColor(new Color(255, 255, 255, 120));
                     g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
@@ -9407,7 +9554,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
 
             ShipVisual visual = getVisual(ship);
-            Area hullArea = buildArea(visual.hullPolys);
+            Area hullArea = visual.hullArea;
             ShipSkinSet skinSet = ShipSkinLibrary.getSkinSet(ship.role, ship.faction);
             boolean hasAlbedoSkin = skinSet != null && skinSet.hasAlbedo();
 
@@ -9420,14 +9567,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawEngines(g, ship, visual);
             drawHardpoints(g, ship, visual);
 
-            drawShipShieldFaces(g, ship, hullArea);
-
-            if (hullArea != null) {
-                drawDamageDecals(g, ship, hullArea);
-                drawWarpChargeHullFx(g, ship, hullArea);
+            if (drawEnergyFx) {
+                drawShipShieldFaces(g, ship, hullArea, visual);
             }
 
-            if (DevTools.isDebugOverlay()) {
+            if (hullArea != null && fullDamageFx) {
+                drawDamageDecals(g, ship, hullArea);
+            }
+            if (drawEnergyFx && hullArea != null) {
+                drawWarpChargeHullFx(g, ship, hullArea, visual);
+            }
+
+            if (fullDamageFx && DevTools.isDebugOverlay()) {
                 drawRoomDebugOverlay(g, ship);
             }
 
@@ -9439,7 +9590,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             g.dispose();
 
-            if (!isTinyStrikeCraft(ship.role)) {
+            if (drawName && !isTinyStrikeCraft(ship.role)) {
                 g2.setFont(new Font("Consolas", Font.PLAIN, 12));
                 g2.setColor(new Color(255, 255, 255, 130));
                 g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
@@ -9712,6 +9863,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 }
             }
 
+            v.hullArea = buildArea(v.hullPolys);
+            v.hullBounds = (v.hullArea == null) ? null : v.hullArea.getBounds2D();
+
             return v;
         }
 
@@ -9752,7 +9906,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 return;
             }
 
-            Rectangle2D bounds = buildArea(v.hullPolys).getBounds2D();
+            Rectangle2D bounds = (v.hullBounds == null)
+                    ? new Rectangle2D.Double(-1.0, -1.0, 2.0, 2.0)
+                    : v.hullBounds;
             int backX = (int) Math.round(bounds.getMinX());
             int frontX = (int) Math.round(bounds.getMaxX());
             Color hullDark = new Color(Math.max(0, hull.getRed() - 35), Math.max(0, hull.getGreen() - 35), Math.max(0, hull.getBlue() - 35));
@@ -10245,6 +10401,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         final List<Polygon> superPolys = new ArrayList<>();
         final List<Polygon> fins = new ArrayList<>();
         final List<EnginePoint> engines = new ArrayList<>();
+        final Map<Integer, Area> shieldShellCache = new HashMap<>();
+        Area hullArea;
+        Rectangle2D hullBounds;
         boolean station = false;
         double stationOuter = 0;
         double stationInner = 0;
@@ -12003,7 +12162,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (bounds.width <= 0 || bounds.height <= 0) return;
         int span = Math.max(bounds.width, bounds.height);
         double screenScale = hullDamageDetailScale(g);
-        if (span * screenScale < HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN) return;
+        double screenSpan = span * screenScale;
+        if (screenSpan < HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN) return;
         List<Ship.HullImpactMark> marks = ship.hullImpactMarks();
 
         Shape oldClip = g.getClip();
@@ -12076,8 +12236,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
                 }
             }
-            drawDestroyedHullBreaches(g, ship, hullShape, marks, span);
-            drawImpactHoleOverlays(g, marks);
+            if (screenSpan >= HULL_DAMAGE_BREACH_MIN_SCREEN_SPAN) {
+                drawDestroyedHullBreaches(g, ship, hullShape, marks, span);
+            }
+            if (screenSpan >= HULL_DAMAGE_IMPACT_OVERLAY_MIN_SCREEN_SPAN) {
+                drawImpactHoleOverlays(g, marks);
+            }
         } finally {
             g.setStroke(oldStroke);
             g.setClip(oldClip);

@@ -55,9 +55,27 @@ public class Main {
         shell.showWindow();
     }
 
+    private static void startAssetWarmup() {
+        Thread warmup = new Thread(() -> {
+            try {
+                ShipHullSilhouette.prewarmCaches();
+                HullGeometry.prewarmCaches();
+                ShipPartLibrary.prewarmCaches();
+                ShipWreckLibrary.prewarmCaches();
+                Renderer.prewarmAssetCaches();
+            } catch (Throwable ignored) {
+                // Warmup is opportunistic. Lazy runtime loading remains as a fallback.
+            }
+        }, "asset-prewarm");
+        warmup.setDaemon(true);
+        warmup.setPriority(Thread.MIN_PRIORITY);
+        warmup.start();
+    }
+
     public static void main(String[] args) {
         SourceTreeHygiene.purgeDefaultSourceTreeArtifacts();
         ErrorLog.installGlobalHandler();
+        startAssetWarmup();
         SwingUtilities.invokeLater(() -> new Main().showWindow());
     }
 }

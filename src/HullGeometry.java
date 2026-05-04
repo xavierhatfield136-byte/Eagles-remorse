@@ -8,8 +8,21 @@ import java.awt.Polygon;
  */
 public final class HullGeometry {
     private static final Map<String, HullProfile> PROFILE_CACHE = new HashMap<>();
+    private static boolean cachesPrewarmed = false;
 
     private HullGeometry() {}
+
+    public static synchronized void prewarmCaches() {
+        if (cachesPrewarmed) return;
+        for (ShipRole role : ShipRole.values()) {
+            double radius = Math.max(8.0, RoleStats.get(role).radius);
+            warmProfile(role, null, radius);
+            for (Faction faction : Faction.values()) {
+                warmProfile(role, faction, radius);
+            }
+        }
+        cachesPrewarmed = true;
+    }
 
     public static boolean projectileIntersectsShip(Projectile projectile, Ship ship) {
         if (projectile == null || ship == null) return false;
@@ -132,6 +145,17 @@ public final class HullGeometry {
         if (cached != null) return cached;
 
         HullProfile created = buildProfile(role, ship.faction, Math.max(8.0, ship.radius));
+        PROFILE_CACHE.put(key, created);
+        return created;
+    }
+
+    private static HullProfile warmProfile(ShipRole role, Faction faction, double radius) {
+        ShipRole resolvedRole = (role == null) ? ShipRole.FRIGATE : role;
+        long r = Math.round(Math.max(8.0, radius) * 1000.0);
+        String key = resolvedRole.name() + ":" + faction + ":" + r;
+        HullProfile cached = PROFILE_CACHE.get(key);
+        if (cached != null) return cached;
+        HullProfile created = buildProfile(resolvedRole, faction, Math.max(8.0, radius));
         PROFILE_CACHE.put(key, created);
         return created;
     }

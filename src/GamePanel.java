@@ -139,16 +139,28 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_G, 0, false), "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, false), "zoomIn", () -> {
-            CameraSystem.stepZoom(ctx, +1);
-            CameraSystem.update(ctx, viewportW(), viewportH());
+            if (ctx.ui.mapOpen) {
+                UISystem.stepStrategicMapZoom(ctx, +1, viewportW() / 2, viewportH() / 2, viewportW(), viewportH());
+            } else {
+                CameraSystem.stepZoom(ctx, +1);
+                CameraSystem.update(ctx, viewportW(), viewportH());
+            }
         });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK, false), "zoomOut", () -> {
-            CameraSystem.stepZoom(ctx, -1);
-            CameraSystem.update(ctx, viewportW(), viewportH());
+            if (ctx.ui.mapOpen) {
+                UISystem.stepStrategicMapZoom(ctx, -1, viewportW() / 2, viewportH() / 2, viewportW(), viewportH());
+            } else {
+                CameraSystem.stepZoom(ctx, -1);
+                CameraSystem.update(ctx, viewportW(), viewportH());
+            }
         });
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK, false), "zoomReset", () -> {
-            CameraSystem.resetZoom(ctx);
-            CameraSystem.update(ctx, viewportW(), viewportH());
+            if (ctx.ui.mapOpen) {
+                UISystem.resetStrategicMapZoom(ctx);
+            } else {
+                CameraSystem.resetZoom(ctx);
+                CameraSystem.update(ctx, viewportW(), viewportH());
+            }
         });
 
         // Toggle turret auto-lock

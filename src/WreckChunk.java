@@ -16,6 +16,8 @@ import java.util.function.BiPredicate;
 
 final class WreckChunk {
     private static final int MAX_ACTIVE = 500;
+    private static final double WRECK_PRIMITIVE_MAX_SCREEN_SPAN = 18.0;
+    private static final double WRECK_LIGHT_FX_MAX_SCREEN_SPAN = 30.0;
     private static final List<WreckChunk> ACTIVE = new ArrayList<>();
     private static final double DEFAULT_DT = GameContext.DT;
     private static final int MAX_SECONDARY_SCARS = 8;
@@ -327,7 +329,8 @@ final class WreckChunk {
         Graphics2D g = (Graphics2D) g2.create();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            double screenScale = screenScale(g);
             for (WreckChunk c : ACTIVE) {
                 if (c == null || c.image == null) continue;
                 if (c.attached && c.parent != null
@@ -336,7 +339,7 @@ final class WreckChunk {
                 if (c.attached) c.syncWithParent();
                 if (worldFilter != null && !worldFilter.test(c.x, c.y)) continue;
                 if (!c.isVisible(minX, minY, maxX, maxY)) continue;
-                c.draw(g);
+                c.draw(g, screenScale);
                 drawn++;
             }
         } finally {
@@ -629,7 +632,7 @@ final class WreckChunk {
         };
     }
 
-    private void draw(Graphics2D g2) {
+    private void draw(Graphics2D g2, double screenScale) {
         double halfW = drawHalfWidth();
         double halfH = drawHalfHeight();
         double alpha = multipart ? 1.0 : (attached ? 1.0 : Math.max(0.0, Math.min(1.0, life / maxLife)));
@@ -637,28 +640,35 @@ final class WreckChunk {
             alpha *= attached ? 0.96 : 0.88;
         }
         if (alpha <= 0.01) return;
+        double screenSpan = Math.max(halfW, halfH) * 2.0 * Math.max(0.01, screenScale);
+        boolean primitiveFallback = screenSpan <= WRECK_PRIMITIVE_MAX_SCREEN_SPAN;
+        boolean lightFxOnly = screenSpan <= WRECK_LIGHT_FX_MAX_SCREEN_SPAN;
 
         AffineTransform old = g2.getTransform();
         java.awt.Composite oldComposite = g2.getComposite();
         try {
             g2.translate(x, y);
             g2.rotate(angle);
+            if (primitiveFallback) {
+                drawPrimitiveFallback(g2, halfW, halfH, alpha);
+                return;
+            }
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) alpha));
             if (mirrorX || mirrorY) {
                 g2.scale(mirrorX ? -1.0 : 1.0, mirrorY ? -1.0 : 1.0);
             }
             g2.drawImage(image, (int) Math.round(-halfW), (int) Math.round(-halfH),
                     (int) Math.round(halfW * 2.0), (int) Math.round(halfH * 2.0), null);
-            if (multipart && !bakedDamageVisuals) {
+            if (!lightFxOnly && multipart && !bakedDamageVisuals) {
                 if (attached) {
                     drawMultipartDamageDress(g2, halfW, halfH, alpha);
                 } else {
                     drawMultipartSecondaryScars(g2);
                 }
-            } else if (multipart && bakedDamageVisuals) {
+            } else if (!lightFxOnly && multipart && bakedDamageVisuals) {
                 drawDirectionalKillDress(g2, halfW, halfH, alpha);
             }
-            if (breach) {
+            if (!lightFxOnly && breach) {
                 g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (alpha * 0.32)));
                 g2.setColor(new Color(255, 180, 90, 100));
                 double glowR = Math.max(halfW, halfH) * 0.36;
@@ -669,6 +679,42 @@ final class WreckChunk {
             g2.setTransform(old);
             g2.setComposite(oldComposite);
         }
+    }
+
+    private void drawPrimitiveFallback(Graphics2D g2, double halfW, double halfH, double alpha) {
+        java.awt.Composite oldComposite = g2.getComposite();
+        Color oldColor = g2.getColor();
+        try {
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) alpha));
+            int w = Math.max(2, (int) Math.round(halfW * 2.0));
+            int h = Math.max(2, (int) Math.round(halfH * 2.0));
+            if (breach) {
+                g2.setColor(new Color(72, 62, 58, 210));
+                g2.fillOval(-w / 2, -h / 2, w, h);
+                g2.setColor(new Color(255, 168, 88, 110));
+                int glowW = Math.max(2, (int) Math.round(w * 0.55));
+                int glowH = Math.max(2, (int) Math.round(h * 0.55));
+                g2.fillOval(-glowW / 2, -glowH / 2, glowW, glowH);
+            } else {
+                g2.setColor(multipart ? new Color(88, 92, 98, 220) : new Color(66, 70, 78, 210));
+                g2.fillRect(-w / 2, -h / 2, w, h);
+                g2.setColor(new Color(18, 20, 24, 130));
+                g2.drawRect(-w / 2, -h / 2, w, h);
+            }
+        } finally {
+            g2.setComposite(oldComposite);
+            g2.setColor(oldColor);
+        }
+    }
+
+    private static double screenScale(Graphics2D g2) {
+        if (g2 == null) return 1.0;
+        AffineTransform tx = g2.getTransform();
+        double sx = Math.hypot(tx.getScaleX(), tx.getShearX());
+        double sy = Math.hypot(tx.getScaleY(), tx.getShearY());
+        double scale = Math.max(Math.abs(sx), Math.abs(sy));
+        if (!Double.isFinite(scale) || scale <= 1e-6) return 1.0;
+        return scale;
     }
 
     private void drawMultipartDamageDress(Graphics2D g2, double halfW, double halfH, double alpha) {

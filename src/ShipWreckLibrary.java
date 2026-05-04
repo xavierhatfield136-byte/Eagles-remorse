@@ -5,9 +5,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 final class ShipWreckLibrary {
     private static final String WRECK_DIR = "assets/ship_wrecks";
@@ -15,6 +17,8 @@ final class ShipWreckLibrary {
     private static final List<File> WRECK_ROOTS = resolveWreckRoots(WRECK_DIR);
     private static final Map<String, WreckSet> CACHE = new HashMap<>();
     private static final Map<String, BufferedImage> IMAGE_CACHE = new HashMap<>();
+    private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
+    private static boolean cachesPrewarmed = false;
 
     private ShipWreckLibrary() {}
 
@@ -30,6 +34,17 @@ final class ShipWreckLibrary {
         WreckSet set = new WreckSet(chunks, breaches);
         CACHE.put(key, set);
         return set;
+    }
+
+    static synchronized void prewarmCaches() {
+        if (cachesPrewarmed) return;
+        for (ShipRole role : ShipRole.values()) {
+            for (Faction faction : Faction.values()) {
+                getSet(role, faction);
+            }
+            getSet(role, null);
+        }
+        cachesPrewarmed = true;
     }
 
     private static List<BufferedImage> loadSeries(String roleKey, String factionKey, String seriesKey) {
@@ -61,6 +76,7 @@ final class ShipWreckLibrary {
         if (key == null || key.isBlank()) return null;
         BufferedImage cached = IMAGE_CACHE.get(key);
         if (cached != null) return cached;
+        if (IMAGE_MISS_CACHE.contains(key)) return null;
 
         BufferedImage img = null;
         File file = new File(WRECK_DIR, key + ".png");
@@ -76,7 +92,11 @@ final class ShipWreckLibrary {
             } catch (IOException ignored) {}
         }
 
-        if (img != null) IMAGE_CACHE.put(key, img);
+        if (img != null) {
+            IMAGE_CACHE.put(key, img);
+        } else {
+            IMAGE_MISS_CACHE.add(key);
+        }
         return img;
     }
 

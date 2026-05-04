@@ -1,4 +1,5 @@
 import java.awt.*;
+import java.awt.geom.AffineTransform;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -22,6 +23,12 @@ public final class VFX {
 
     // Keep this tighter during fleet-heavy modes (Resource Rush, late waves).
     private static final int MAX = 1100;
+    private static final double MIN_DRAWN_SCREEN_SPAN = 0.55;
+    private static final double TINY_SCREEN_SPAN = 2.2;
+    private static final double SIMPLE_SCREEN_SPAN = 5.2;
+    private static final double DETAIL_SCREEN_SPAN = 10.0;
+    private static final int STRESS_ACTIVE_COUNT = 520;
+    private static final int PANIC_ACTIVE_COUNT = 760;
     private static final List<Particle> active = new ArrayList<>();
     private static final List<Particle> pool = new ArrayList<>();
     private static final Random RNG = new Random();
@@ -112,127 +119,182 @@ public final class VFX {
     public static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY,
                               BiPredicate<Double, Double> worldFilter) {
         if (active.isEmpty()) return 0;
+        Object oldAA = g2.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         int drawn = 0;
+        int visibleIndex = 0;
+        double screenScale = screenScale(g2);
+        boolean stressMode = active.size() >= STRESS_ACTIVE_COUNT;
+        boolean panicMode = active.size() >= PANIC_ACTIVE_COUNT;
 
-        for (Particle p : active) {
-            if (!isVisible(p, minX, minY, maxX, maxY)) continue;
-            if (worldFilter != null && !worldFilter.test(p.x, p.y)) continue;
-            drawn++;
-            double f = (p.maxLife <= 0) ? 0 : Math.max(0.0, Math.min(1.0, p.life / (double) p.maxLife));
-            int alpha = (int) MathUtil.clamp(p.baseAlpha * f, 0, 255);
+        try {
+            for (Particle p : active) {
+                if (!isVisible(p, minX, minY, maxX, maxY)) continue;
+                if (worldFilter != null && !worldFilter.test(p.x, p.y)) continue;
+                visibleIndex++;
+                if (panicMode && isSkippableUnderPanic(p.type) && (visibleIndex & 1) == 0) continue;
 
-            switch (p.type) {
-                case MUZZLE -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 220);
-                    int w = (int) Math.round(p.size * 1.6);
-                    int h = (int) Math.round(p.size * 1.0);
+                double f = (p.maxLife <= 0) ? 0 : Math.max(0.0, Math.min(1.0, p.life / (double) p.maxLife));
+                int alpha = (int) MathUtil.clamp(p.baseAlpha * f, 0, 255);
+                double screenSpan = particleScreenSpan(p, screenScale);
+                if (alpha <= 6 || screenSpan < MIN_DRAWN_SCREEN_SPAN) continue;
+                if (screenSpan <= TINY_SCREEN_SPAN && canFallbackToPixel(p.type)) {
+                    drawTinyParticle(g2, p, alpha);
+                    drawn++;
+                    continue;
+                }
 
-                    // soft glow
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * 0.35, 0, 120)));
-                    g2.fillOval((int) Math.round(p.x - w), (int) Math.round(p.y - h), w * 2, h * 2);
+                boolean simple = screenSpan <= SIMPLE_SCREEN_SPAN || panicMode;
+                boolean reducedDetail = screenSpan <= DETAIL_SCREEN_SPAN || stressMode;
+                switch (p.type) {
+                    case MUZZLE -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 220);
+                        int w = (int) Math.max(2, Math.round(p.size * 1.6));
+                        int h = (int) Math.max(2, Math.round(p.size * 1.0));
+                        if (!simple) {
+                            g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * 0.35, 0, 120)));
+                            g2.fillOval((int) Math.round(p.x - w), (int) Math.round(p.y - h), w * 2, h * 2);
+                        }
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x - Math.max(1, w / 3.0)), (int) Math.round(p.y - Math.max(1, h / 3.0)),
+                                    Math.max(2, w / 2), Math.max(2, h / 2));
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - w / 2.0), (int) Math.round(p.y - h / 2.0), w, h);
+                        }
+                        if (!reducedDetail) {
+                            g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(alpha * 0.7, 0, 200)));
+                            int sx = (int) Math.round(p.x);
+                            int sy = (int) Math.round(p.y);
+                            int ex = (int) Math.round(p.x + Math.cos(p.angle) * (p.size * 2.0));
+                            int ey = (int) Math.round(p.y + Math.sin(p.angle) * (p.size * 2.0));
+                            g2.drawLine(sx, sy, ex, ey);
+                        }
+                    }
+                    case MUZZLE_BLOOM -> {
+                        if (screenSpan <= SIMPLE_SCREEN_SPAN && stressMode) continue;
+                        int a = (int) MathUtil.clamp(alpha, 0, 160);
+                        Stroke old = g2.getStroke();
+                        g2.setStroke(new BasicStroke((float) Math.max(1.0, p.size * 0.2)));
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                        int r = (int) Math.max(2, Math.round(p.size));
+                        g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        g2.setStroke(old);
+                    }
+                    case SPARK -> {
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), alpha));
+                        int r = (int) Math.max(1, Math.round(p.size));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x), (int) Math.round(p.y), 1, 1);
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        }
+                    }
+                    case SMOKE -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 130);
+                        Color c = (p.color != null) ? p.color : new Color(120, 200, 255);
+                        g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), a));
+                        int r = (int) Math.max(1, Math.round(p.size));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x - 1), (int) Math.round(p.y - 1), 2, 2);
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        }
+                    }
+                    case ENGINE -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 120);
+                        g2.setColor(new Color(120, 220, 255, a));
+                        int w = (int) Math.max(2, Math.round(p.size * 1.8));
+                        int h = (int) Math.max(2, Math.round(p.size * 0.9));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x - w / 3.0), (int) Math.round(p.y - h / 3.0),
+                                    Math.max(2, w / 2), Math.max(2, h / 2));
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - w / 2.0), (int) Math.round(p.y - h / 2.0), w, h);
+                        }
+                    }
+                    case FIRE -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 180);
+                        int r = (int) Math.max(1, Math.round(p.size));
+                        if (!reducedDetail) {
+                            int glowA = (int) MathUtil.clamp(a * 0.35, 0, 110);
+                            int glowR = (int) Math.max(2, Math.round(p.size * 1.9));
+                            g2.setColor(new Color(255, 160, 88, glowA));
+                            g2.fillOval((int) Math.round(p.x - glowR), (int) Math.round(p.y - glowR), glowR * 2, glowR * 2);
+                        }
 
-                    // bright core
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
-                    g2.fillOval((int) Math.round(p.x - w / 2.0), (int) Math.round(p.y - h / 2.0), w, h);
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x - 1), (int) Math.round(p.y - 1), 2, 2);
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        }
 
-                    // little streak
-                    g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(alpha * 0.7, 0, 200)));
-                    int sx = (int) Math.round(p.x);
-                    int sy = (int) Math.round(p.y);
-                    int ex = (int) Math.round(p.x + Math.cos(p.angle) * (p.size * 2.0));
-                    int ey = (int) Math.round(p.y + Math.sin(p.angle) * (p.size * 2.0));
-                    g2.drawLine(sx, sy, ex, ey);
-                }
-                case MUZZLE_BLOOM -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 160);
-                    Stroke old = g2.getStroke();
-                    g2.setStroke(new BasicStroke((float) Math.max(1.0, p.size * 0.25)));
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
-                    int r = (int) Math.round(p.size);
-                    g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
-                    g2.setStroke(old);
-                }
-                case SPARK -> {
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), alpha));
-                    int r = (int) Math.max(1, Math.round(p.size));
-                    g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
-                }
-                case SMOKE -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 130);
-                    Color c = (p.color != null) ? p.color : new Color(120, 200, 255);
-                    g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), a));
-                    int r = (int) Math.round(p.size);
-                    g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
-                }
-                case ENGINE -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 120);
-                    g2.setColor(new Color(120, 220, 255, a));
-                    int w = (int) Math.round(p.size * 1.8);
-                    int h = (int) Math.round(p.size * 0.9);
-                    g2.fillOval((int) Math.round(p.x - w / 2.0), (int) Math.round(p.y - h / 2.0), w, h);
-                }
-                case FIRE -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 180);
-                    int glowA = (int) MathUtil.clamp(a * 0.35, 0, 110);
-                    int glowR = (int) Math.max(2, Math.round(p.size * 1.9));
-                    g2.setColor(new Color(255, 160, 88, glowA));
-                    g2.fillOval((int) Math.round(p.x - glowR), (int) Math.round(p.y - glowR), glowR * 2, glowR * 2);
+                        if (!reducedDetail) {
+                            g2.setColor(new Color(255, 245, 220, (int) MathUtil.clamp(a * 0.55, 0, 140)));
+                            int r2 = (int) Math.max(1, Math.round(p.size * 0.45));
+                            g2.fillOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
+                        }
+                    }
+                    case DEBRIS -> {
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), alpha));
+                        int len = (int) Math.max(2, Math.round(p.size * (reducedDetail ? 1.8 : 2.6)));
+                        int x1 = (int) Math.round(p.x - Math.cos(p.angle) * len);
+                        int y1 = (int) Math.round(p.y - Math.sin(p.angle) * len);
+                        int x2 = (int) Math.round(p.x + Math.cos(p.angle) * len);
+                        int y2 = (int) Math.round(p.y + Math.sin(p.angle) * len);
+                        g2.drawLine(x1, y1, x2, y2);
+                    }
+                    case SALVAGE -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 200);
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                        int r = (int) Math.max(2, Math.round(p.size));
+                        int cx = (int) Math.round(p.x);
+                        int cy = (int) Math.round(p.y);
 
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
-                    int r = (int) Math.max(1, Math.round(p.size));
-                    g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        int[] xs = {cx, cx + r, cx, cx - r};
+                        int[] ys = {cy - r, cy, cy + r, cy};
+                        g2.fillPolygon(xs, ys, 4);
 
-                    // hotter core
-                    g2.setColor(new Color(255, 245, 220, (int) MathUtil.clamp(a * 0.55, 0, 140)));
-                    int r2 = (int) Math.max(1, Math.round(p.size * 0.45));
-                    g2.fillOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
+                        if (!simple) {
+                            g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.6, 0, 160)));
+                            g2.drawPolygon(xs, ys, 4);
+                        }
+                    }
+                    case SHIELD -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 190);
+                        Stroke old = g2.getStroke();
+                        g2.setStroke(new BasicStroke((float) Math.max(1.0, p.size * 0.10)));
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
+                        int r = (int) Math.max(2, Math.round(p.size));
+                        g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        if (!reducedDetail) {
+                            g2.setColor(new Color(220, 245, 255, (int) MathUtil.clamp(a * 0.55, 0, 140)));
+                            int r2 = (int) Math.max(2, Math.round(p.size * 0.68));
+                            g2.drawOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
+                        }
+                        g2.setStroke(old);
+                    }
+                    case IMPACT_BLOOM -> {
+                        int a = (int) MathUtil.clamp(alpha, 0, 180);
+                        int r = (int) Math.max(1, Math.round(p.size));
+                        g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * (reducedDetail ? 0.24 : 0.35), 0, 120)));
+                        if (simple) {
+                            g2.fillRect((int) Math.round(p.x - 1), (int) Math.round(p.y - 1), 3, 3);
+                        } else {
+                            g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
+                        }
+                        if (!reducedDetail) {
+                            g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.40, 0, 120)));
+                            int r2 = (int) Math.max(1, Math.round(p.size * 0.42));
+                            g2.fillOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
+                        }
+                    }
                 }
-                case DEBRIS -> {
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), alpha));
-                    int len = (int) Math.max(2, Math.round(p.size * 2.6));
-                    int x1 = (int) Math.round(p.x - Math.cos(p.angle) * len);
-                    int y1 = (int) Math.round(p.y - Math.sin(p.angle) * len);
-                    int x2 = (int) Math.round(p.x + Math.cos(p.angle) * len);
-                    int y2 = (int) Math.round(p.y + Math.sin(p.angle) * len);
-                    g2.drawLine(x1, y1, x2, y2);
-                }
-                case SALVAGE -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 200);
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
-                    int r = (int) Math.max(2, Math.round(p.size));
-                    int cx = (int) Math.round(p.x);
-                    int cy = (int) Math.round(p.y);
-
-                    int[] xs = {cx, cx + r, cx, cx - r};
-                    int[] ys = {cy - r, cy, cy + r, cy};
-                    g2.fillPolygon(xs, ys, 4);
-
-                    // outline
-                    g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.6, 0, 160)));
-                    g2.drawPolygon(xs, ys, 4);
-                }
-                case SHIELD -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 190);
-                    Stroke old = g2.getStroke();
-                    g2.setStroke(new BasicStroke((float) Math.max(1.2, p.size * 0.12)));
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), a));
-                    int r = (int) Math.round(p.size);
-                    g2.drawOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
-                    g2.setColor(new Color(220, 245, 255, (int) MathUtil.clamp(a * 0.55, 0, 140)));
-                    int r2 = (int) Math.max(2, Math.round(p.size * 0.68));
-                    g2.drawOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
-                    g2.setStroke(old);
-                }
-                case IMPACT_BLOOM -> {
-                    int a = (int) MathUtil.clamp(alpha, 0, 180);
-                    int r = (int) Math.max(2, Math.round(p.size));
-                    g2.setColor(new Color(p.color.getRed(), p.color.getGreen(), p.color.getBlue(), (int) MathUtil.clamp(a * 0.35, 0, 120)));
-                    g2.fillOval((int) Math.round(p.x - r), (int) Math.round(p.y - r), r * 2, r * 2);
-                    g2.setColor(new Color(255, 255, 255, (int) MathUtil.clamp(a * 0.40, 0, 120)));
-                    int r2 = (int) Math.max(1, Math.round(p.size * 0.42));
-                    g2.fillOval((int) Math.round(p.x - r2), (int) Math.round(p.y - r2), r2 * 2, r2 * 2);
-                }
+                drawn++;
             }
+        } finally {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAA);
         }
         return drawn;
     }
@@ -241,6 +303,60 @@ public final class VFX {
         if (p == null) return false;
         double radius = Math.max(4.0, p.size * 2.4);
         return p.x + radius >= minX && p.x - radius <= maxX && p.y + radius >= minY && p.y - radius <= maxY;
+    }
+
+    private static double screenScale(Graphics2D g2) {
+        if (g2 == null) return 1.0;
+        AffineTransform tx = g2.getTransform();
+        if (tx == null) return 1.0;
+        double sx = Math.hypot(tx.getScaleX(), tx.getShearX());
+        double sy = Math.hypot(tx.getScaleY(), tx.getShearY());
+        double scale = Math.max(sx, sy);
+        if (!Double.isFinite(scale) || scale <= 1e-6) return 1.0;
+        return scale;
+    }
+
+    private static double particleScreenSpan(Particle p, double screenScale) {
+        if (p == null) return 0.0;
+        double base = switch (p.type) {
+            case MUZZLE -> p.size * 3.2;
+            case MUZZLE_BLOOM -> p.size * 2.2;
+            case SPARK -> p.size * 1.6;
+            case SMOKE -> p.size * 2.0;
+            case ENGINE -> p.size * 1.8;
+            case FIRE -> p.size * 2.4;
+            case DEBRIS -> p.size * 2.6;
+            case SALVAGE -> p.size * 2.0;
+            case SHIELD -> p.size * 2.0;
+            case IMPACT_BLOOM -> p.size * 2.0;
+        };
+        return Math.max(1.0, base * Math.max(0.05, screenScale));
+    }
+
+    private static boolean canFallbackToPixel(Type type) {
+        return type == Type.SPARK
+                || type == Type.SMOKE
+                || type == Type.ENGINE
+                || type == Type.FIRE
+                || type == Type.IMPACT_BLOOM
+                || type == Type.MUZZLE;
+    }
+
+    private static boolean isSkippableUnderPanic(Type type) {
+        return type == Type.SPARK
+                || type == Type.SMOKE
+                || type == Type.ENGINE
+                || type == Type.MUZZLE_BLOOM
+                || type == Type.IMPACT_BLOOM;
+    }
+
+    private static void drawTinyParticle(Graphics2D g2, Particle p, int alpha) {
+        if (g2 == null || p == null) return;
+        Color c = (p.color != null) ? p.color : Color.WHITE;
+        g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), MathUtil.clamp(alpha, 0, 255)));
+        int px = (int) Math.round(p.x);
+        int py = (int) Math.round(p.y);
+        g2.fillRect(px, py, 1, 1);
     }
 
     /** Small flame puffs for burning wrecks. Purely cosmetic. */

@@ -129,6 +129,7 @@ public final class CampaignCheckpointStore {
             version = CURRENT_VERSION;
             worldW = Math.max(2000, worldW);
             worldH = Math.max(2000, worldH);
+            randomEvents = true;
             nextSector = clamp(nextSector, 1, MAX_CAMPAIGN_SECTORS);
             credits = Math.max(0, credits);
             sectorsCleared = clamp(sectorsCleared, 0, MAX_CAMPAIGN_SECTORS);
@@ -209,7 +210,7 @@ public final class CampaignCheckpointStore {
 
         public GameConfig toGameConfig(GameMode mode) {
             GameMode resumeMode = (mode == GameMode.FLEET) ? GameMode.FLEET : GameMode.CAMPAIGN_OPS;
-            return new GameConfig(resumeMode, worldW, worldH, randomEvents, seed, false, 0, true);
+            return new GameConfig(resumeMode, worldW, worldH, true, seed, false, 0, true);
         }
     }
 

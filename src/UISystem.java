@@ -8,6 +8,10 @@ import java.util.Locale;
 import javax.swing.SwingUtilities;
 
 public final class UISystem {
+    private static final double STRATEGIC_MAP_MIN_ZOOM = 1.0;
+    private static final double STRATEGIC_MAP_MAX_ZOOM = 8.0;
+    private static final double STRATEGIC_MAP_ZOOM_STEP = 1.22;
+
     private UISystem(){}
 
     private static boolean fleetHubEditingLocked(GameContext ctx) {
@@ -780,8 +784,13 @@ public final class UISystem {
 
         double nx = (e.getX() - rect.x) / (double) rect.width;
         double ny = (e.getY() - rect.y) / (double) rect.height;
-        double worldX = GameMath.clamp(nx * ctx.WORLD_W, 0, ctx.WORLD_W);
-        double worldY = GameMath.clamp(ny * ctx.WORLD_H, 0, ctx.WORLD_H);
+        double worldX = strategicMapWorldXAt(ctx, nx);
+        double worldY = strategicMapWorldYAt(ctx, ny);
+        if (SwingUtilities.isMiddleMouseButton(e)) {
+            focusStrategicMapAt(ctx, worldX, worldY);
+            EventSystem.showBanner(ctx, "MAP FOCUS SHIFTED", 0.9);
+            return;
+        }
         CampaignSystem.CampaignObjectiveMarker clickedMarker =
                 CampaignSystem.nearestObjectiveMarker(ctx, worldX, worldY, 280.0);
         if (clickedMarker != null) {
@@ -843,7 +852,7 @@ public final class UISystem {
         }
 
         if (BattlefieldSectorSystem.isEnabled(ctx)) {
-            BattlefieldSectorSystem.SectorDefinition sector = BattlefieldSectorSystem.sectorAtNormalized(ctx, nx, ny);
+                BattlefieldSectorSystem.SectorDefinition sector = BattlefieldSectorSystem.sectorAt(ctx, worldX, worldY);
             if (sector != null) {
                 BattlefieldSectorSystem.selectSector(ctx, sector.id);
                 BattlefieldSectorSystem.ensureLoadedSector(ctx);
@@ -944,8 +953,103 @@ public final class UISystem {
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
         }
-        ctx.ui.strategicMapFocusX = GameMath.clamp(x, 0, ctx.WORLD_W);
-        ctx.ui.strategicMapFocusY = GameMath.clamp(y, 0, ctx.WORLD_H);
+        focusStrategicMapAt(ctx, x, y);
+    }
+
+    public static void stepStrategicMapZoom(GameContext ctx, int dir, int mouseX, int mouseY, int viewportW, int viewportH) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.mapOpen || dir == 0) return;
+        Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH);
+        double nx = 0.5;
+        double ny = 0.5;
+        if (rect.width > 0 && rect.height > 0 && rect.contains(mouseX, mouseY)) {
+            nx = MathUtil.clamp((mouseX - rect.x) / (double) rect.width, 0.0, 1.0);
+            ny = MathUtil.clamp((mouseY - rect.y) / (double) rect.height, 0.0, 1.0);
+        }
+        double anchoredWorldX = strategicMapWorldXAt(ctx, nx);
+        double anchoredWorldY = strategicMapWorldYAt(ctx, ny);
+        double currentZoom = strategicMapZoom(ctx);
+        double factor = (dir > 0) ? STRATEGIC_MAP_ZOOM_STEP : (1.0 / STRATEGIC_MAP_ZOOM_STEP);
+        double nextZoom = MathUtil.clamp(currentZoom * factor, STRATEGIC_MAP_MIN_ZOOM, STRATEGIC_MAP_MAX_ZOOM);
+        applyStrategicMapZoom(ctx, nextZoom);
+        setStrategicMapFocusKeepingAnchor(ctx, anchoredWorldX, anchoredWorldY, nx, ny);
+    }
+
+    public static void resetStrategicMapZoom(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        applyStrategicMapZoom(ctx, 1.0);
+    }
+
+    private static void applyStrategicMapZoom(GameContext ctx, double zoom) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.strategicMapZoom = MathUtil.clamp(zoom, STRATEGIC_MAP_MIN_ZOOM, STRATEGIC_MAP_MAX_ZOOM);
+        focusStrategicMapAt(ctx, strategicMapFocusX(ctx), strategicMapFocusY(ctx));
+    }
+
+    static double strategicMapZoom(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 1.0;
+        return MathUtil.clamp(ctx.ui.strategicMapZoom, STRATEGIC_MAP_MIN_ZOOM, STRATEGIC_MAP_MAX_ZOOM);
+    }
+
+    static double strategicMapViewWidth(GameContext ctx) {
+        if (ctx == null) return 0.0;
+        return Math.max(1.0, ctx.WORLD_W / strategicMapZoom(ctx));
+    }
+
+    static double strategicMapViewHeight(GameContext ctx) {
+        if (ctx == null) return 0.0;
+        return Math.max(1.0, ctx.WORLD_H / strategicMapZoom(ctx));
+    }
+
+    static double strategicMapFocusX(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 0.0;
+        double viewWidth = strategicMapViewWidth(ctx);
+        double half = viewWidth * 0.5;
+        double fallback = half;
+        double focus = Double.isFinite(ctx.ui.strategicMapFocusX) ? ctx.ui.strategicMapFocusX : fallback;
+        return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_W - half));
+    }
+
+    static double strategicMapFocusY(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 0.0;
+        double viewHeight = strategicMapViewHeight(ctx);
+        double half = viewHeight * 0.5;
+        double fallback = half;
+        double focus = Double.isFinite(ctx.ui.strategicMapFocusY) ? ctx.ui.strategicMapFocusY : fallback;
+        return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_H - half));
+    }
+
+    static double strategicMapWorldMinX(GameContext ctx) {
+        return strategicMapFocusX(ctx) - strategicMapViewWidth(ctx) * 0.5;
+    }
+
+    static double strategicMapWorldMinY(GameContext ctx) {
+        return strategicMapFocusY(ctx) - strategicMapViewHeight(ctx) * 0.5;
+    }
+
+    static double strategicMapWorldXAt(GameContext ctx, double normalizedX) {
+        return GameMath.clamp(strategicMapWorldMinX(ctx) + strategicMapViewWidth(ctx) * MathUtil.clamp(normalizedX, 0.0, 1.0),
+                0.0, ctx == null ? 0.0 : ctx.WORLD_W);
+    }
+
+    static double strategicMapWorldYAt(GameContext ctx, double normalizedY) {
+        return GameMath.clamp(strategicMapWorldMinY(ctx) + strategicMapViewHeight(ctx) * MathUtil.clamp(normalizedY, 0.0, 1.0),
+                0.0, ctx == null ? 0.0 : ctx.WORLD_H);
+    }
+
+    private static void focusStrategicMapAt(GameContext ctx, double x, double y) {
+        if (ctx == null || ctx.ui == null) return;
+        double halfW = strategicMapViewWidth(ctx) * 0.5;
+        double halfH = strategicMapViewHeight(ctx) * 0.5;
+        ctx.ui.strategicMapFocusX = GameMath.clamp(x, halfW, Math.max(halfW, ctx.WORLD_W - halfW));
+        ctx.ui.strategicMapFocusY = GameMath.clamp(y, halfH, Math.max(halfH, ctx.WORLD_H - halfH));
+    }
+
+    private static void setStrategicMapFocusKeepingAnchor(GameContext ctx, double worldX, double worldY,
+                                                          double normalizedX, double normalizedY) {
+        if (ctx == null || ctx.ui == null) return;
+        double focusX = worldX - (normalizedX - 0.5) * strategicMapViewWidth(ctx);
+        double focusY = worldY - (normalizedY - 0.5) * strategicMapViewHeight(ctx);
+        focusStrategicMapAt(ctx, focusX, focusY);
     }
 
     private static java.util.List<String> wrapUiLines(String text, int maxWidth, int charWidth) {
