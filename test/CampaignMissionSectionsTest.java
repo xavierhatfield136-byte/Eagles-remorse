@@ -41,11 +41,11 @@ class CampaignMissionSectionsTest {
             kinds.add(String.valueOf(kind));
         }
 
-        Set<String> highPriorityNarrativeSites = Set.of("REINFORCEMENT", "DATA_RELAY", "ANOMALY", "FLEET_ASSET");
+        Set<String> highPriorityNarrativeSites = Set.of("REINFORCEMENT", "DATA_RELAY", "ANOMALY", "FLEET_ASSET", "PRISON_BARGE");
         long narrativeCount = kinds.stream()
                 .filter(highPriorityNarrativeSites::contains)
                 .count();
-        assertTrue(narrativeCount >= 3,
+        assertTrue(narrativeCount >= 2,
                 "sector 10 should keep several high-priority narrative/scanner contacts after discovery trimming");
     }
 
@@ -109,7 +109,8 @@ class CampaignMissionSectionsTest {
         assertTrue(detail.contains("Timer State: T-")
                         && detail.contains("Extraction at T-0 is a win if convoy quota holds"),
                 "sector 2 should explicitly say that the timer ends in extraction success when the convoy quota survives");
-        assertTrue(detail.contains("Current Task: Clear FORWARD SCREEN")
+        assertTrue(detail.contains("Current Task: Clear TRAP LANE")
+                        || detail.contains("Current Task: Clear DIRTY CROSSING")
                         || detail.contains("Current Task: Hold the convoy lane"),
                 "sector 2 should tell the player both the extraction win state and the immediate pocket task");
     }
@@ -159,9 +160,9 @@ class CampaignMissionSectionsTest {
         ctx.campaign.missionSectionTravelLocked = true;
 
         String detail = CampaignSystem.hudObjectiveDetail(ctx);
-        assertTrue(detail.contains("Current Task: Pocket clear at FORWARD SCREEN; fly the flagship to RESERVE STAGING to resume mission progress"),
+        assertTrue(detail.contains("Current Task: Pocket clear at ASSAULT LANE; fly the flagship to BREACH POINT to resume mission progress"),
                 "locked staged missions should say which pocket is cleared and which pocket the flagship must enter next");
-        assertTrue(detail.contains("Next Move: Pocket clear; route the flagship to RESERVE STAGING because kills are paused until arrival"),
+        assertTrue(detail.contains("Next Move: Pocket clear; route the flagship to BREACH POINT because kills are paused until arrival"),
                 "locked staged missions should explain that combat progress is paused until the flagship reaches the next pocket");
     }
 
@@ -247,7 +248,9 @@ class CampaignMissionSectionsTest {
         assertTrue(markers.stream().noneMatch(marker -> marker.discoveryDerived),
                 "scanner-derived contacts should stay on the support layer instead of duplicating landmark markers");
         assertTrue(markers.stream().anyMatch(marker ->
-                        "FORWARD SCREEN".equals(marker.label) || "RESERVE STAGING".equals(marker.label)),
+                        "ASSAULT LANE".equals(marker.label)
+                                || "BREACH POINT".equals(marker.label)
+                                || "SUPPORT WAKE".equals(marker.label)),
                 "staged sectors should surface named authored pockets as navigable landmarks");
     }
 

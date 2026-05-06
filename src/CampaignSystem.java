@@ -200,6 +200,15 @@ public final class CampaignSystem {
         }
     }
 
+    private enum MissionTheme {
+        BREAKTHROUGH,
+        SALVAGE_RUN,
+        RELAY_DEFENSE,
+        MINE_CORRIDOR,
+        PRISON_BREAK,
+        ANOMALY_STORM
+    }
+
     private enum DiscoveryKind {
         CACHE,
         ORE,
@@ -398,6 +407,9 @@ public final class CampaignSystem {
         int cargoMax = 0;
         String turretData = "";
         String primaryWeaponFamilyName = Ship.PrimaryWeaponFamily.ENERGY_BOLT.name();
+        double relX = Double.NaN;
+        double relY = Double.NaN;
+        double relAngle = Double.NaN;
 
         PersistentFleetEntry(int slotId, ShipRole role, String name) {
             this.slotId = Math.max(1, slotId);
@@ -1245,6 +1257,8 @@ public final class CampaignSystem {
 
         public double sectorElapsed = 0.0;
         public double sectorTimeLimit = 600.0; // 10 minutes per sector target pacing
+        public boolean objectiveSecured = false;
+        public double extractionMinHoldSeconds = 200.0;
 
         public int kills = 0;
         public final Set<Integer> knownHostiles = new HashSet<>();
@@ -1265,6 +1279,7 @@ public final class CampaignSystem {
         public final List<MissionSection> missionSections = new ArrayList<>();
         public int activeMissionSection = 0;
         public boolean missionSectionTravelLocked = false;
+        public MissionTheme missionTheme = MissionTheme.BREAKTHROUGH;
         public final List<DiscoverySite> discoverySites = new ArrayList<>();
         public int discoveriesFound = 0;
         public final List<RecoverableWreckSite> recoverableWreckSites = new ArrayList<>();
@@ -1351,6 +1366,7 @@ public final class CampaignSystem {
         // Fleet hub choice timeout: When mission completes, let player choose to open fleet tab or wait for auto-open
         public boolean awaitingFleetHubChoice = false;
         public double fleetHubChoiceTimer = 0.0;
+        public double persistentFleetHeading = Double.NaN;
 
         public boolean unlockAuxGunGranted = false;
         public int unlockMissileTierGranted = 0;
@@ -1484,7 +1500,7 @@ public final class CampaignSystem {
 
         if (st.enemyBaseWinConditionActive && isEnemyBaseDestroyed(ctx)) {
             st.objectiveProgress = st.objectiveGoal;
-            onSectorComplete(ctx);
+            secureSectorObjective(ctx, "SECTOR SECURE - EXTRACTION WINDOW OPEN");
             return;
         }
 
@@ -1510,10 +1526,13 @@ public final class CampaignSystem {
         if (ctx.gameOver || isTransitioning(ctx)) {
             return;
         }
+        if (st.objectiveSecured) {
+            return;
+        }
         if (sectorTimedOut) {
             if (timeoutCountsAsSuccess(st)) {
                 st.objectiveProgress = st.objectiveGoal;
-                onSectorComplete(ctx);
+                secureSectorObjective(ctx, "SECTOR SECURE - EXTRACTION WINDOW OPEN");
                 return;
             }
             failRun(ctx, timeoutFailureText(st), timeoutFailureBanner(st));
@@ -1636,6 +1655,10 @@ public final class CampaignSystem {
         addObjectiveLine(lines, "Win condition: " + stripPrefix(objectiveWinLine(st, p, left), "Win:"));
         addObjectiveLine(lines, "Current task: " + stripPrefix(objectiveCurrentTaskLine(st), "Current Task:"));
         addObjectiveLine(lines, "Failure condition: " + objectiveFailureLine(st));
+        String situationHint = missionSituationHint(st);
+        if (!situationHint.isBlank()) {
+            addObjectiveLine(lines, "Situation: " + situationHint);
+        }
         if (lore != null) {
             addObjectiveLine(lines, "Why this matters: " + lore.completionLead);
         }
@@ -2131,6 +2154,27 @@ public final class CampaignSystem {
                 && (st.transitionTimer > 0 || st.awaitingEpisodeLaunch || st.awaitingFleetHubChoice);
     }
 
+    public static boolean isSectorObjectiveSecured(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return st != null && st.enabled && st.objectiveSecured;
+    }
+
+    public static boolean canExtractFromCurrentSector(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled || st.awaitingEpisodeLaunch) return false;
+        if (!st.objectiveSecured) return false;
+        return st.sectorElapsed >= Math.max(0.0, st.extractionMinHoldSeconds);
+    }
+
+    public static String extractionReadinessBanner(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return "SAFE EXIT UNAVAILABLE";
+        if (!st.objectiveSecured) return "COMPLETE THE OBJECTIVE BEFORE EXTRACTION";
+        double left = Math.max(0.0, Math.ceil(st.extractionMinHoldSeconds - st.sectorElapsed));
+        if (left > 0.0) return "EXTRACTION LOCKED FOR " + (int) left + "S";
+        return "EXTRACTION READY";
+    }
+
     public static double transitionSeconds(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null) return 0.0;
@@ -2363,17 +2407,18 @@ public final class CampaignSystem {
         st.transitionTimer = 0.0;
         if (st.transitionLabel == null || st.transitionLabel.isBlank()) st.transitionLabel = "FLEET HANGAR";
         if (st.transitionSummaryTop == null || st.transitionSummaryTop.isBlank()) {
-            st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it.";
+            st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it, refit the fleet, then launch when ready.";
         }
         // Always replace the bottom row with fleet hub controls (sector-clear screens use the same overlay).
         st.transitionSummaryBottom = routeChoiceSummary(st)
-                + "   |   1-3 select route   |   TAB shop   |   B upgrades   |   ENTER launches";
+                + "   |   1-3 select route   |   TAB fleet refit   |   B upgrades   |   ENTER launches";
         st.introSequenceActive = false;
         st.introPhase = 0;
         st.introTimer = 0.0;
         st.cinematicFocusX = Double.NaN;
         st.cinematicFocusY = Double.NaN;
         quietEpisodeInterlude(ctx, st);
+        positionFleetHubPocket(ctx, st);
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
         arrangeFleetHubFormation(ctx, st);
@@ -2397,6 +2442,40 @@ public final class CampaignSystem {
         ctx.ui.fleetRefitMode = true;
         ctx.lockedTarget = ctx.player;
         ctx.state = GameState.FLEET;
+    }
+
+    private static boolean hasPersistentFleetSnapshotPoses(CampaignState st) {
+        if (st == null || st.persistentBlueFleet.isEmpty()) return false;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            if (hasPersistentEntryPose(entry)) return true;
+        }
+        return false;
+    }
+
+    private static void positionFleetHubPocket(GameContext ctx, CampaignState st) {
+        if (ctx == null || ctx.player == null) return;
+        double centerX = GameMath.clamp(ctx.WORLD_W * 0.32, 240.0, ctx.WORLD_W - 240.0);
+        double centerY = GameMath.clamp(ctx.WORLD_H * 0.64, 240.0, ctx.WORLD_H - 240.0);
+        ctx.player.x = centerX;
+        ctx.player.y = centerY;
+        ctx.player.vx = 0.0;
+        ctx.player.vy = 0.0;
+        if (Double.isFinite(st.persistentFleetHeading)) {
+            ctx.player.angle = st.persistentFleetHeading;
+        }
+        ensureFleetHubAsteroid(ctx, centerX + 320.0, centerY - 60.0);
+    }
+
+    private static void ensureFleetHubAsteroid(GameContext ctx, double x, double y) {
+        if (ctx == null || ctx.asteroids == null) return;
+        for (Asteroid asteroid : ctx.asteroids) {
+            if (asteroid == null) continue;
+            if (Math.hypot(asteroid.x - x, asteroid.y - y) <= 220.0) {
+                return;
+            }
+        }
+        ctx.asteroids.add(new Asteroid(x, y, 38.0, 360));
     }
 
     public static boolean isFleetSelectionCandidate(Ship ship) {
@@ -2454,6 +2533,9 @@ public final class CampaignSystem {
 
     private static void syncPersistentFleetEntrySnapshots(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null || st.persistentBlueFleet.isEmpty()) return;
+        if (ctx.player != null) {
+            st.persistentFleetHeading = ctx.player.angle;
+        }
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
             Ship ship = findShipById(ctx, entry.activeShipId);
@@ -2482,6 +2564,15 @@ public final class CampaignSystem {
         entry.primaryWeaponFamilyName = (ship.primaryWeaponFamily == null)
                 ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
                 : ship.primaryWeaponFamily.name();
+        if (ctx != null && ctx.player != null && ship != ctx.player && !isFleetHubSession(ctx)) {
+            double dx = ship.x - ctx.player.x;
+            double dy = ship.y - ctx.player.y;
+            double forward = Math.cos(ctx.player.angle);
+            double side = Math.sin(ctx.player.angle);
+            entry.relX = dx * forward + dy * side;
+            entry.relY = -dx * side + dy * forward;
+            entry.relAngle = MathUtil.normalizeAngle(ship.angle - ctx.player.angle);
+        }
     }
 
     public static int campaignOreCost(ShipRole role, int creditCost, int requiredTier) {
@@ -3269,7 +3360,9 @@ public final class CampaignSystem {
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed) continue;
             if (!isTitanPersistentEntry(entry)) continue;
-            Ship ship = spawnPersistentBlueShipFromFlagship(ctx, st, entry, titanIndex++, true);
+            Ship ship = hasPersistentEntryPose(entry)
+                    ? spawnPersistentBlueShipFromSavedPose(ctx, entry)
+                    : spawnPersistentBlueShipFromFlagship(ctx, st, entry, titanIndex++, true);
             if (ship != null) {
                 groupAnchors.put(entry.commandGroupId, ship);
             }
@@ -3279,7 +3372,9 @@ public final class CampaignSystem {
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed || isTitanPersistentEntry(entry)) continue;
             Ship anchor = groupAnchors.get(entry.commandGroupId);
-            if (anchor != null) {
+            if (hasPersistentEntryPose(entry)) {
+                spawnPersistentBlueShipFromSavedPose(ctx, entry);
+            } else if (anchor != null) {
                 int memberIndex = groupMemberIndices.getOrDefault(entry.commandGroupId, 0);
                 Ship ship = spawnPersistentBlueShipFromAnchor(ctx, st, entry, anchor, memberIndex);
                 if (ship != null) {
@@ -3293,6 +3388,10 @@ public final class CampaignSystem {
 
     private static void spawnPurchasedPersistentBlueShip(GameContext ctx, CampaignState st, PersistentFleetEntry entry) {
         if (ctx == null || st == null || entry == null || entry.destroyed) return;
+        if (hasPersistentEntryPose(entry)) {
+            spawnPersistentBlueShipFromSavedPose(ctx, entry);
+            return;
+        }
         if (isTitanPersistentEntry(entry)) {
             int titanIndex = 0;
             for (PersistentFleetEntry candidate : st.persistentBlueFleet) {
@@ -3329,6 +3428,23 @@ public final class CampaignSystem {
             }
         }
         spawnPersistentBlueShipFromFlagship(ctx, st, entry, reserveIndex, false);
+    }
+
+    private static boolean hasPersistentEntryPose(PersistentFleetEntry entry) {
+        return entry != null
+                && Double.isFinite(entry.relX)
+                && Double.isFinite(entry.relY)
+                && Double.isFinite(entry.relAngle);
+    }
+
+    private static Ship spawnPersistentBlueShipFromSavedPose(GameContext ctx, PersistentFleetEntry entry) {
+        if (ctx == null || ctx.player == null || !hasPersistentEntryPose(entry)) return null;
+        double forward = Math.cos(ctx.player.angle);
+        double side = Math.sin(ctx.player.angle);
+        double sx = ctx.player.x + entry.relX * forward - entry.relY * side;
+        double sy = ctx.player.y + entry.relX * side + entry.relY * forward;
+        double angle = MathUtil.normalizeAngle(ctx.player.angle + entry.relAngle);
+        return spawnPersistentBlueShipAtPose(ctx, entry, sx, sy, angle, ctx.player.vx, ctx.player.vy);
     }
 
     private static void quietEpisodeInterlude(GameContext ctx, CampaignState st) {
@@ -3419,7 +3535,7 @@ public final class CampaignSystem {
             ctx.player.y = arrival[1];
             ctx.player.vx = 0.0;
             ctx.player.vy = 0.0;
-            ctx.player.angle = -Math.PI / 2.0; // facing up
+            ctx.player.angle = Double.isFinite(st.persistentFleetHeading) ? st.persistentFleetHeading : -Math.PI / 2.0;
             int arrivalSubzone = missionSubzoneForPoint(ctx, sector, arrival[0], arrival[1]);
             if (arrivalSubzone < 0) arrivalSubzone = nearestMissionSubzone(ctx, sector, arrival[0], arrival[1]);
             setLoadedMissionSubzone(ctx, arrivalSubzone);
@@ -3455,6 +3571,7 @@ public final class CampaignSystem {
         st.missionSections.clear();
         st.activeMissionSection = 0;
         st.missionSectionTravelLocked = false;
+        st.missionTheme = missionThemeForSector(st);
         st.discoverySites.clear();
         st.discoveriesFound = 0;
         st.recoverableWreckSites.clear();
@@ -3471,6 +3588,8 @@ public final class CampaignSystem {
         st.missionIntroTimer = 0.0;
         st.missionStartBanterPlayed = false;
         st.extractionWarningStage = 0;
+        st.objectiveSecured = false;
+        st.extractionMinHoldSeconds = 200.0;
         st.sectorStartMillis = System.currentTimeMillis();
         st.introSequenceActive = false;
         st.introPhase = 0;
@@ -3911,13 +4030,15 @@ public final class CampaignSystem {
         double reserveX = missionSubzoneCenterX(ctx, st.sector, reserveZone);
         double reserveY = missionSubzoneCenterY(ctx, st.sector, reserveZone);
 
-        addLandmark(st, ctx, LandmarkType.CORRIDOR, "FORWARD SCREEN", "Main assault lane where the enemy pickets the route",
+        MissionTheme theme = st.missionTheme;
+
+        addLandmark(st, ctx, LandmarkType.CORRIDOR, themeSectionLabel(theme, 0, "FORWARD SCREEN"), "Main assault lane where the enemy pickets the route",
                 laneXMid, laneY, 320.0, new Color(108, 164, 232, 16), new Color(188, 220, 255, 136));
-        addLandmark(st, ctx, LandmarkType.COLONY, "RESOURCE POCKET", "Rich ore and salvage off the main lane",
+        addLandmark(st, ctx, LandmarkType.COLONY, themeSectionLabel(theme, 1, "RESOURCE POCKET"), "Rich ore and salvage off the main lane",
                 resourceX, resourceY, 260.0, new Color(214, 190, 114, 20), new Color(255, 232, 170, 152));
-        addLandmark(st, ctx, LandmarkType.RELAY, "SUPPORT RELAY", "Fleet tenders and wounded ships regroup here",
+        addLandmark(st, ctx, LandmarkType.RELAY, themeSectionLabel(theme, 2, "SUPPORT RELAY"), "Fleet tenders and wounded ships regroup here",
                 supportX, supportY, 250.0, new Color(116, 198, 172, 18), new Color(186, 248, 228, 160));
-        addLandmark(st, ctx, LandmarkType.FRONT, "RESERVE STAGING", "Enemy reserve ships waiting to counterattack",
+        addLandmark(st, ctx, LandmarkType.FRONT, themeSectionLabel(theme, 1, "RESERVE STAGING"), "Enemy reserve ships waiting to counterattack",
                 reserveX, reserveY, 330.0, new Color(170, 88, 88, 18), new Color(248, 170, 170, 158));
         addLandmark(st, ctx, LandmarkType.COLONY, "FAINT TRANSPONDER", "Broken ships and drifting manifests may hide something useful",
                 laneXFar, laneY, 220.0, new Color(122, 132, 168, 14), new Color(216, 226, 255, 120));
@@ -3932,18 +4053,56 @@ public final class CampaignSystem {
         spawnCampaignAsteroidPocket(ctx, laneXFar, laneY, 4 + Math.min(3, st.sector / 8), 0.75, false);
         spawnCampaignSalvagePocket(ctx, resourceX + 110.0, resourceY + 80.0, 4);
         spawnCampaignSalvagePocket(ctx, supportX - 90.0, supportY - 70.0, 2);
+        addMissionThemeSetpieces(ctx, st, theme, laneXNear, laneXMid, laneXFar, laneY, resourceX, resourceY, supportX, supportY, reserveX, reserveY);
 
         spawnCampaignPatrolBand(ctx, st, laneXNear, laneY, 0);
         spawnCampaignPatrolBand(ctx, st, laneXMid, laneY + 110.0 * (((st.sector & 1) == 0) ? -1.0 : 1.0), 1);
         spawnCampaignReserveNode(ctx, st, reserveX, reserveY);
         spawnCampaignSupportPocket(ctx, st, supportX, supportY);
-        configureMissionSections(st, laneXNear, laneY, laneXMid, resourceX, resourceY, supportX, supportY, reserveX, reserveY);
+        configureMissionSections(st, theme, laneXNear, laneY, laneXMid, resourceX, resourceY, supportX, supportY, reserveX, reserveY);
         configureDiscoveries(ctx, st, enteredFromRight);
         seedAmbientDiscoveryPresence(ctx, st);
 
-        st.objectivePhaseLabel = appendHudClause(st.objectivePhaseLabel, "MAP: Long-range scanners are tagging separate warp pockets; push the lane, then investigate the contacts.");
+        st.objectivePhaseLabel = appendHudClause(st.objectivePhaseLabel, "MAP: " + missionThemeLead(theme));
         st.threatStateLabel = appendHudClause(st.threatStateLabel,
-                "CONTACTS: Route lane, support relay, reserve staging, and scanner anomalies are all active.");
+                "CONTACTS: " + missionThemeHudLabel(theme) + " pockets, support tracks, and scanner anomalies are all active.");
+    }
+
+    private static void addMissionThemeSetpieces(GameContext ctx, CampaignState st, MissionTheme theme,
+                                                 double laneXNear, double laneXMid, double laneXFar, double laneY,
+                                                 double resourceX, double resourceY,
+                                                 double supportX, double supportY,
+                                                 double reserveX, double reserveY) {
+        if (ctx == null || st == null) return;
+        switch (theme == null ? MissionTheme.BREAKTHROUGH : theme) {
+            case SALVAGE_RUN -> {
+                addLandmark(st, ctx, LandmarkType.COLONY, "RECOVERY VEIL", "Broken support hulls and work crews are cluttering the route.", laneXFar, laneY - 120.0, 240.0, new Color(196, 172, 118, 16), new Color(255, 228, 176, 122));
+                spawnCampaignSalvagePocket(ctx, laneXMid - 100.0, laneY + 90.0, 5);
+                spawnCampaignAsteroidPocket(ctx, supportX + 120.0, supportY + 30.0, 5, 0.9, false);
+            }
+            case RELAY_DEFENSE -> {
+                addLandmark(st, ctx, LandmarkType.RELAY, "HANDOFF SPINE", "A live support spine is feeding escorts and telemetry into the fight.", supportX + 90.0, supportY - 110.0, 240.0, new Color(118, 196, 170, 16), new Color(194, 245, 225, 124));
+                spawnCampaignShip(ctx, ShipRole.FRIGATE, greenSupportFaction(st), supportX + 70.0, supportY + 40.0, "Relay Guard");
+                spawnCampaignShip(ctx, ShipRole.PICKET, greenSupportFaction(st), supportX - 120.0, supportY - 60.0, "Relay Screen");
+            }
+            case MINE_CORRIDOR -> {
+                addLandmark(st, ctx, LandmarkType.FRONT, "DIRTY CROSSING", "Mine-control fragments and dark contacts are fouling the crossing lane.", laneXNear + 100.0, laneY - 120.0, 260.0, new Color(176, 102, 92, 15), new Color(246, 184, 176, 124));
+                spawnCampaignSalvagePocket(ctx, laneXNear - 130.0, laneY + 70.0, 2);
+            }
+            case PRISON_BREAK -> {
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "BREAKCHAIN WAKE", "Released prisoner traffic and rescue tenders are tangling up the route.", supportX - 40.0, supportY + 120.0, 245.0, new Color(198, 170, 120, 14), new Color(255, 228, 172, 124));
+                spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), supportX + 120.0, supportY + 20.0, "Recovery Hauler");
+                spawnCampaignShip(ctx, ShipRole.PATROL, greenSupportFaction(st), supportX - 100.0, supportY - 50.0, "Liberation Escort");
+            }
+            case ANOMALY_STORM -> {
+                addLandmark(st, ctx, LandmarkType.RING, "PHASE KNOT", "Charge bleed and shear fronts are breaking up clean lines of attack.", laneXMid + 110.0, laneY - 140.0, 270.0, new Color(116, 124, 208, 14), new Color(198, 208, 255, 118));
+                spawnCampaignAsteroidPocket(ctx, reserveX - 120.0, reserveY + 80.0, 3, 0.55, false);
+                spawnCampaignSalvagePocket(ctx, supportX + 120.0, supportY - 100.0, 3);
+            }
+            case BREAKTHROUGH -> {
+                addLandmark(st, ctx, LandmarkType.CORRIDOR, "BREACH WAKE", "The lane is still open enough for a direct punch if the screen breaks.", laneXFar + 100.0, laneY + 110.0, 220.0, new Color(132, 166, 220, 14), new Color(208, 228, 255, 116));
+            }
+        }
     }
 
     private static int[] shuffledMissionColumns(GameContext ctx, CampaignState st, boolean enteredFromRight, String tag) {
@@ -4045,7 +4204,50 @@ public final class CampaignSystem {
         return new Random(seed);
     }
 
+    private static MissionTheme missionThemeForSector(CampaignState st) {
+        if (st == null) return MissionTheme.BREAKTHROUGH;
+        return switch (st.sector) {
+            case 1, 3, 10, 14, 18, 22 -> MissionTheme.BREAKTHROUGH;
+            case 6, 8, 11, 20 -> MissionTheme.SALVAGE_RUN;
+            case 4, 5, 9, 12, 13, 17 -> MissionTheme.RELAY_DEFENSE;
+            case 2, 7, 15, 16, 21 -> MissionTheme.MINE_CORRIDOR;
+            case 19, 23 -> MissionTheme.PRISON_BREAK;
+            case 24 -> MissionTheme.ANOMALY_STORM;
+            default -> switch (st.objectiveType) {
+                case ESCORT, CAPTURE -> MissionTheme.RELAY_DEFENSE;
+                case SURVIVE -> MissionTheme.SALVAGE_RUN;
+                case BOSS, FINAL_BOSS -> MissionTheme.ANOMALY_STORM;
+                default -> MissionTheme.BREAKTHROUGH;
+            };
+        };
+    }
+
+    private static String missionThemeHudLabel(MissionTheme theme) {
+        if (theme == null) return "BREAKTHROUGH";
+        return switch (theme) {
+            case BREAKTHROUGH -> "BREAKTHROUGH";
+            case SALVAGE_RUN -> "SALVAGE RUN";
+            case RELAY_DEFENSE -> "RELAY DEFENSE";
+            case MINE_CORRIDOR -> "MINE CORRIDOR";
+            case PRISON_BREAK -> "PRISON BREAK";
+            case ANOMALY_STORM -> "ANOMALY STORM";
+        };
+    }
+
+    private static String missionThemeLead(MissionTheme theme) {
+        if (theme == null) return "";
+        return switch (theme) {
+            case BREAKTHROUGH -> "Push through layered enemy pockets and keep the route open.";
+            case SALVAGE_RUN -> "Work a cluttered field with enough breathing room to mine, recover, and regroup.";
+            case RELAY_DEFENSE -> "Fight around friendly handoff nodes and protect the support spine.";
+            case MINE_CORRIDOR -> "Expect trap pockets, dirty lanes, and flank contacts instead of a clean front.";
+            case PRISON_BREAK -> "Split the line, hit captivity assets, and keep the recovery lane alive.";
+            case ANOMALY_STORM -> "Expect unstable geometry, scattered contacts, and a less predictable front.";
+        };
+    }
+
     private static void configureMissionSections(CampaignState st,
+                                                 MissionTheme theme,
                                                  double laneXNear, double laneY, double laneXMid,
                                                  double resourceX, double resourceY,
                                                  double supportX, double supportY,
@@ -4057,27 +4259,69 @@ public final class CampaignSystem {
 
         switch (st.objectiveType) {
             case SURVIVE -> {
-                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXNear, laneY, 300.0));
-                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
-                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 0, "FORWARD SCREEN"), laneXNear, laneY, 300.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 1, "SUPPORT RELAY"), supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 2, "RESERVE STAGING"), reserveX, reserveY, 320.0));
             }
             case DESTROY -> {
-                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXMid, laneY, 300.0));
-                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
-                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 0, "FORWARD SCREEN"), laneXMid, laneY, 300.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 1, "RESERVE STAGING"), reserveX, reserveY, 320.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 2, "SUPPORT RELAY"), supportX, supportY, 280.0));
             }
             case ESCORT -> {
-                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXNear, laneY, 300.0));
-                st.missionSections.add(new MissionSection("RESOURCE POCKET", resourceX, resourceY, 270.0));
-                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 0, "FORWARD SCREEN"), laneXNear, laneY, 300.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 1, "RESOURCE POCKET"), resourceX, resourceY, 270.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 2, "SUPPORT RELAY"), supportX, supportY, 280.0));
             }
             case CAPTURE -> {
-                st.missionSections.add(new MissionSection("FORWARD SCREEN", laneXMid, laneY, 300.0));
-                st.missionSections.add(new MissionSection("SUPPORT RELAY", supportX, supportY, 280.0));
-                st.missionSections.add(new MissionSection("RESERVE STAGING", reserveX, reserveY, 320.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 0, "FORWARD SCREEN"), laneXMid, laneY, 300.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 1, "SUPPORT RELAY"), supportX, supportY, 280.0));
+                st.missionSections.add(new MissionSection(themeSectionLabel(theme, 2, "RESERVE STAGING"), reserveX, reserveY, 320.0));
             }
             case BOSS, FINAL_BOSS -> { }
         }
+    }
+
+    private static String themeSectionLabel(MissionTheme theme, int slot, String fallback) {
+        if (theme == null) return fallback;
+        return switch (theme) {
+            case BREAKTHROUGH -> switch (slot) {
+                case 0 -> "ASSAULT LANE";
+                case 1 -> "BREACH POINT";
+                case 2 -> "SUPPORT WAKE";
+                default -> fallback;
+            };
+            case SALVAGE_RUN -> switch (slot) {
+                case 0 -> "DEBRIS FRONT";
+                case 1 -> "RECOVERY POCKET";
+                case 2 -> "TENDER SCREEN";
+                default -> fallback;
+            };
+            case RELAY_DEFENSE -> switch (slot) {
+                case 0 -> "SCREEN RING";
+                case 1 -> "HANDOFF NODE";
+                case 2 -> "RELAY SHADOW";
+                default -> fallback;
+            };
+            case MINE_CORRIDOR -> switch (slot) {
+                case 0 -> "TRAP LANE";
+                case 1 -> "DIRTY CROSSING";
+                case 2 -> "KILL POCKET";
+                default -> fallback;
+            };
+            case PRISON_BREAK -> switch (slot) {
+                case 0 -> "CHAIN FRONT";
+                case 1 -> "RECOVERY RUN";
+                case 2 -> "BREAKOUT COVER";
+                default -> fallback;
+            };
+            case ANOMALY_STORM -> switch (slot) {
+                case 0 -> "SHEAR FRONT";
+                case 1 -> "PHASE KNOT";
+                case 2 -> "GHOST WAKE";
+                default -> fallback;
+            };
+        };
     }
 
     private static void configureDiscoveries(GameContext ctx, CampaignState st, boolean enteredFromRight) {
@@ -4086,80 +4330,74 @@ public final class CampaignSystem {
         st.discoveriesFound = 0;
         st.recoverableWreckSites.clear();
         st.recoverableWrecksClaimed = 0;
-        addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 0.0, -210.0, 170.0,
-                "Debris Cache",
-                "Black-boxes and salvage pods are tumbling off the route lane",
-                DiscoveryKind.CACHE);
-        addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -80.0, 130.0, 180.0,
-                "Mute Beacon Trap",
-                "A distress ping keeps repeating from a pocket that should already be dark",
-                DiscoveryKind.AMBUSH);
-        addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0,
-                "Abandoned Hulk",
-                "A torn support hull is drifting with power flickers and open cargo bays",
-                DiscoveryKind.SALVAGE_HULK);
-        addDiscoverySite(ctx, st, enteredFromRight, 0, 2, 90.0, 120.0, 165.0,
-                "Emergency Cache",
-                "Fleet-grade fuel, repair foam, and missile pallets are tucked into the pocket",
-                DiscoveryKind.SUPPLY_CACHE);
-        addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -150.0, 110.0, 170.0,
-                "Signal Fires",
-                "Friendly burst traffic and shield blooms flicker through the debris haze",
-                DiscoveryKind.REINFORCEMENT);
-        addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 130.0, 110.0, 185.0,
-                "Prospector Bloom",
-                "Ore fragments and clipped cargo pods glitter around the pocket",
-                DiscoveryKind.ORE);
-        addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -140.0, 60.0, 175.0,
-                "Broker Waystation",
-                "Neutral logistics craft are ghosting through the lane under sealed running lights",
-                DiscoveryKind.NEUTRAL_TRADER);
-        addDiscoverySite(ctx, st, enteredFromRight, 2, 2, -180.0, -150.0, 165.0,
-                "Coalition Distress Echo",
-                "A support transponder is flickering near the relay fringe",
-                DiscoveryKind.REINFORCEMENT);
-        addDiscoverySite(ctx, st, enteredFromRight, 3, 0, 80.0, -120.0, 165.0,
-                "Ghost Relay",
-                "A half-dead data spine is still pushing tactical telemetry into the dark",
-                DiscoveryKind.DATA_RELAY);
-        addDiscoverySite(ctx, st, enteredFromRight, 3, 1, 140.0, -150.0, 175.0,
-                "Kill-Web Nodes",
-                "Dormant mine-control hardware is suspended in a tight interdiction knot",
-                DiscoveryKind.MINEFIELD);
-        addDiscoverySite(ctx, st, enteredFromRight, 3, 2, 130.0, 70.0, 180.0,
-                "Broker Caravan",
-                "Neutral traffic is coasting under blackout discipline with its holds still intact",
-                DiscoveryKind.NEUTRAL_TRADER);
-        addDiscoverySite(ctx, st, enteredFromRight, 4, 0, -110.0, 90.0, 195.0,
-                "Wreck Field",
-                "Hull plates, dead drives, and lost cargo are rotating through a cold debris cloud",
-                DiscoveryKind.WRECK_FIELD);
-        addDiscoverySite(ctx, st, enteredFromRight, 4, 2, 150.0, -90.0, 175.0,
-                "Prison Barge",
-                "A detention transport is venting atmosphere and bleeding escape beacons",
-                DiscoveryKind.PRISON_BARGE);
-        addDiscoverySite(ctx, st, enteredFromRight, 5, 1, 210.0, 170.0, 175.0,
-                "Dark Picket Shadow",
-                "A silent contact is lurking beyond reserve staging",
-                DiscoveryKind.AMBUSH);
-        addDiscoverySite(ctx, st, enteredFromRight, 1, 1, 190.0, 140.0, 170.0,
-                "Drift Mine Cluster",
-                "Inactive signatures are nested along the lane like a snap-trap",
-                DiscoveryKind.MINEFIELD);
-        addDiscoverySite(ctx, st, enteredFromRight, 4, 1, -200.0, -150.0, 170.0,
-                "Drifting Weapon Platform",
-                "An old defense buoy is still rotating with dormant barrels and a weak beacon",
-                DiscoveryKind.DRIFTING_TURRET);
-        addDiscoverySite(ctx, st, enteredFromRight, 5, 0, -130.0, -140.0, 185.0,
-                "Warp-Shear Anomaly",
-                "Sensor ghosts, gravity shimmer, and charge echoes are knotting together here",
-                DiscoveryKind.ANOMALY);
-        addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0,
-                "Prototype Fleet Cradle",
-                "A sealed war crate and emergency dock frame are hanging beyond the route",
-                DiscoveryKind.FLEET_ASSET);
+        addThemeDiscoverySites(ctx, st, enteredFromRight, st.missionTheme);
         trimDiscoverySitesToSectorBudget(st);
         addDiscoveryScannerLandmarks(ctx, st);
+    }
+
+    private static void addThemeDiscoverySites(GameContext ctx, CampaignState st, boolean enteredFromRight, MissionTheme theme) {
+        switch (theme == null ? MissionTheme.BREAKTHROUGH : theme) {
+            case SALVAGE_RUN -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 10.0, -180.0, 170.0, "Salvage Drift", "Recovery hulls and black boxes are still loose in the wake.", DiscoveryKind.SALVAGE_HULK);
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 2, 120.0, 120.0, 165.0, "Fuel Locker", "A resupply cache drifted out of formation and is still intact.", DiscoveryKind.SUPPLY_CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -130.0, -60.0, 175.0, "Dead Tender", "A support tender is split open with recoverable stores still aboard.", DiscoveryKind.CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 120.0, 110.0, 185.0, "Prospector Bloom", "Ore fragments and clipped cargo pods glitter across the pocket.", DiscoveryKind.ORE);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 2, -170.0, -140.0, 170.0, "Recovery Beacon", "Friendly tenders are pulsing a weak homing signal through the debris.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 1, 150.0, -130.0, 175.0, "Trap Pods", "Inactive mines are buried inside the recovery route.", DiscoveryKind.MINEFIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 0, -110.0, 90.0, 195.0, "Wreck Canyon", "Broken hull slabs form a drifting salvage canyon.", DiscoveryKind.WRECK_FIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0, "Prototype Fleet Cradle", "A sealed war cradle is hanging behind the working field.", DiscoveryKind.FLEET_ASSET);
+            }
+            case RELAY_DEFENSE -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -70.0, 120.0, 180.0, "Relay Fringe Trap", "A false beacon is trying to pull escorts off the handoff lane.", DiscoveryKind.AMBUSH);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -160.0, 120.0, 170.0, "Support Echo", "Friendly traffic and repair bursts are clustering near the node.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -120.0, 40.0, 175.0, "Broker Waystation", "Neutral logistics craft are ghosting along the relay shadow.", DiscoveryKind.NEUTRAL_TRADER);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 0, 90.0, -110.0, 165.0, "Ghost Relay", "A half-dead data spine is still pushing tactical telemetry into the dark.", DiscoveryKind.DATA_RELAY);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 2, 120.0, 70.0, 180.0, "Coalition Service Spur", "A sealed service spur still has spare cells and foam aboard.", DiscoveryKind.SUPPLY_CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 1, -190.0, -130.0, 170.0, "Drifting Weapon Platform", "An old relay buoy still holds a live defense package.", DiscoveryKind.DRIFTING_TURRET);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 0, -130.0, -120.0, 185.0, "Warp-Shear Anomaly", "Charge bleed and sensor ghosts are knotting near the relay edge.", DiscoveryKind.ANOMALY);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 1, 200.0, 160.0, 175.0, "Dark Picket Shadow", "A silent contact is drifting just beyond the support line.", DiscoveryKind.AMBUSH);
+            }
+            case MINE_CORRIDOR -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 0.0, -200.0, 170.0, "Drift Mine Cluster", "Inactive signatures are nested along the lane like a snap-trap.", DiscoveryKind.MINEFIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -90.0, 130.0, 180.0, "Mute Beacon Trap", "A distress ping keeps repeating from a pocket that should already be dark.", DiscoveryKind.AMBUSH);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -140.0, 120.0, 170.0, "Emergency Cache", "Fleet-grade foam and missile pallets are hidden off the dirty lane.", DiscoveryKind.SUPPLY_CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 130.0, 110.0, 185.0, "Kill-Web Nodes", "Mine-control hardware is suspended in a tight interdiction knot.", DiscoveryKind.MINEFIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 2, -180.0, -150.0, 165.0, "Coalition Distress Echo", "A support transponder is flickering near a mined relay fringe.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 0, -110.0, 90.0, 195.0, "Wreck Field", "Hull plates and dead drives are rotating through a dirty choke.", DiscoveryKind.WRECK_FIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 2, 150.0, -90.0, 175.0, "Silent Barge", "A darkened prison hulk is drifting with sealed traffic logs.", DiscoveryKind.PRISON_BARGE);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0, "Prototype Recovery Cradle", "A salvage cradle hangs beyond the mined route.", DiscoveryKind.FLEET_ASSET);
+            }
+            case PRISON_BREAK -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 20.0, -210.0, 170.0, "Broken Chain Cache", "Released clamps and scuttled pods are still drifting through the line.", DiscoveryKind.CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0, "Detention Hulk", "A torn prison support hull is bleeding escape telemetry.", DiscoveryKind.PRISON_BARGE);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -150.0, 100.0, 170.0, "Liberation Signal", "Friendly recovery traffic is searching for survivors off the lane.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -140.0, 60.0, 175.0, "Broker Runner", "A neutral courier is trying to slip through the chaos.", DiscoveryKind.NEUTRAL_TRADER);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 1, 140.0, -150.0, 175.0, "Clamp Mine Knot", "Chain-control mines are nested in a tight interdiction web.", DiscoveryKind.MINEFIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 0, -110.0, 90.0, 195.0, "Escape Wreck Line", "Broken clamps, pods, and venting hulls mark the breakout route.", DiscoveryKind.WRECK_FIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 0, -130.0, -140.0, 185.0, "Panic Shear", "Violent local distortion is scrambling rescue telemetry.", DiscoveryKind.ANOMALY);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0, "Recovered Fleet Cradle", "A sealed fleet cradle is drifting beyond the prison lane.", DiscoveryKind.FLEET_ASSET);
+            }
+            case ANOMALY_STORM -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -80.0, 130.0, 180.0, "Storm Beacon", "A fractured beacon is flickering through the shear front.", DiscoveryKind.ANOMALY);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0, "Ghost Hulk", "A torn hull is phasing in and out of the contact picture.", DiscoveryKind.SALVAGE_HULK);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -150.0, 110.0, 170.0, "Signal Fires", "Friendly burst traffic is ghosting in and out of the storm.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -140.0, 60.0, 175.0, "Echo Market", "Neutral traffic is trying to sell passage through the distortion.", DiscoveryKind.NEUTRAL_TRADER);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 0, 80.0, -120.0, 165.0, "Ghost Relay", "A half-dead data spine is still whispering through the phase knot.", DiscoveryKind.DATA_RELAY);
+                addDiscoverySite(ctx, st, enteredFromRight, 4, 1, -200.0, -150.0, 170.0, "Phase Battery", "A weapon buoy is surfacing inside the shimmer.", DiscoveryKind.DRIFTING_TURRET);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 0, -130.0, -140.0, 185.0, "Warp-Shear Anomaly", "Sensor ghosts, gravity shimmer, and charge echoes are knotting together here.", DiscoveryKind.ANOMALY);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0, "Prototype Fleet Cradle", "A sealed war crate and emergency dock frame are hanging beyond the route.", DiscoveryKind.FLEET_ASSET);
+            }
+            case BREAKTHROUGH -> {
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 1, 0.0, -210.0, 170.0, "Debris Cache", "Black-boxes and salvage pods are tumbling off the route lane.", DiscoveryKind.CACHE);
+                addDiscoverySite(ctx, st, enteredFromRight, 0, 0, -80.0, 130.0, 180.0, "Mute Beacon Trap", "A distress ping keeps repeating from a pocket that should already be dark.", DiscoveryKind.AMBUSH);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 0, -120.0, -80.0, 175.0, "Abandoned Hulk", "A torn support hull is drifting with power flickers and open cargo bays.", DiscoveryKind.SALVAGE_HULK);
+                addDiscoverySite(ctx, st, enteredFromRight, 1, 2, -150.0, 110.0, 170.0, "Signal Fires", "Friendly burst traffic and shield blooms flicker through the debris haze.", DiscoveryKind.REINFORCEMENT);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 0, 130.0, 110.0, 185.0, "Prospector Bloom", "Ore fragments and clipped cargo pods glitter around the pocket.", DiscoveryKind.ORE);
+                addDiscoverySite(ctx, st, enteredFromRight, 2, 1, -140.0, 60.0, 175.0, "Broker Waystation", "Neutral logistics craft are ghosting through the lane under sealed running lights.", DiscoveryKind.NEUTRAL_TRADER);
+                addDiscoverySite(ctx, st, enteredFromRight, 3, 1, 140.0, -150.0, 175.0, "Kill-Web Nodes", "Dormant mine-control hardware is suspended in a tight interdiction knot.", DiscoveryKind.MINEFIELD);
+                addDiscoverySite(ctx, st, enteredFromRight, 5, 2, -150.0, 130.0, 190.0, "Prototype Fleet Cradle", "A sealed war crate and emergency dock frame are hanging beyond the route.", DiscoveryKind.FLEET_ASSET);
+            }
+        }
     }
 
     private static void trimDiscoverySitesToSectorBudget(CampaignState st) {
@@ -5632,6 +5870,7 @@ public final class CampaignSystem {
     private static void resolveAnomalySite(GameContext ctx, CampaignState st, DiscoverySite site) {
         if (ctx == null || st == null || site == null) return;
         int roll = Math.max(0, Math.floorMod(st.sector + st.discoveriesFound + (int) Math.round(site.x + site.y), 4));
+        describeAnomalySite(ctx, site, roll);
         switch (roll) {
             case 0 -> {
                 applyLocalizedFleetRefit(ctx, site.x, site.y, 540.0, 18.0, 28.0);
@@ -5656,6 +5895,21 @@ public final class CampaignSystem {
                 EventSystem.showBanner(ctx, "DISCOVERY: GRAVITY SHEAR HIDES A HOSTILE SCREEN", 2.2);
             }
         }
+    }
+
+    private static void describeAnomalySite(GameContext ctx, DiscoverySite site, int roll) {
+        if (ctx == null || site == null) return;
+        String label = trimmedOrFallback(site.label, "anomaly contact");
+        String line = switch (Math.floorMod(roll, 4)) {
+            case 0 -> label + " is bleeding off charge into a repair mist. It should help any hulls that hold close.";
+            case 1 -> label + " is wrapping itself around old wreck mass. There may be a recoverable hull shell inside it.";
+            case 2 -> label + " is condensing charge into rare ore and debris. This pocket may be worth working before we leave.";
+            default -> label + " is masking hostile motion. Expect the distortion to hide an ambush.";
+        };
+        AudioSystem.playContextBanter(ctx, "science", "anomaly_zone_description",
+                "SCIENCE",
+                line,
+                2.8, 9.0, 2);
     }
 
     private static void applyLocalizedFleetRefit(GameContext ctx, double x, double y, double radius, double hullRepair, double shieldRepair) {
@@ -5914,23 +6168,59 @@ public final class CampaignSystem {
     private static void playMissionStartBanter(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         String label = st.objectiveLabel == null ? "the objective" : st.objectiveLabel.toLowerCase(Locale.US);
+        String situation = missionSituationHint(st);
         switch (st.objectiveType) {
             case DESTROY -> AudioSystem.playContextBanter(ctx, "captain", "mission_destroy_start",
-                    "BLUE COMMAND", "Weapons free. Break " + label + " before red can regroup around it.",
+                    "BLUE COMMAND", joinBanterClauses(
+                            "Weapons free. Break " + label + " before red can regroup around it.",
+                            situation),
                     2.7, 14.0, 2);
             case ESCORT -> AudioSystem.playContextBanter(ctx, "helm", "mission_escort_start",
-                    "HELM", "Escort lane is live. Keep our protected ships inside the flagship screen.",
+                    "HELM", joinBanterClauses(
+                            "Escort lane is live. Keep our protected ships inside the flagship screen.",
+                            situation),
                     2.7, 14.0, 2);
             case SURVIVE -> AudioSystem.playContextBanter(ctx, "tactical", "mission_survive_start",
-                    "TACTICAL", "Red will try to grind us down here. Hold formation and bleed their pushes.",
+                    "TACTICAL", joinBanterClauses(
+                            "Red will try to grind us down here. Hold formation and bleed their pushes.",
+                            situation),
                     2.7, 14.0, 2);
             case CAPTURE -> AudioSystem.playContextBanter(ctx, "science", "mission_capture_start",
-                    "SCIENCE", "Capture zone is marked. We need the flagship parked on it long enough to lock control.",
+                    "SCIENCE", joinBanterClauses(
+                            "Capture zone is marked. We need the flagship parked on it long enough to lock control.",
+                            situation),
                     2.7, 14.0, 2);
             case BOSS, FINAL_BOSS -> AudioSystem.playContextBanter(ctx, "engineering", "mission_boss_start",
-                    "ENGINEERING", "Heavy signature confirmed. Keep the flagship stable and expect phase changes.",
+                    "ENGINEERING", joinBanterClauses(
+                            "Heavy signature confirmed. Keep the flagship stable and expect phase changes.",
+                            situation),
                     2.7, 14.0, 2);
         }
+    }
+
+    private static String missionSituationHint(CampaignState st) {
+        if (st == null) return "";
+        ArrayList<String> parts = new ArrayList<>();
+        if (st.missionTheme != null) {
+            parts.add(missionThemeLead(st.missionTheme));
+        }
+        if (st.discoverySites != null) {
+            for (DiscoverySite site : st.discoverySites) {
+                if (site == null || site.kind != DiscoveryKind.ANOMALY) continue;
+                parts.add("Science is tracking anomaly behavior in " + trimmedOrFallback(site.label, "the anomaly pocket").toLowerCase(Locale.US) + ".");
+                break;
+            }
+        }
+        if (parts.isEmpty()) return "";
+        return String.join(" ", parts);
+    }
+
+    private static String joinBanterClauses(String main, String addon) {
+        String a = (main == null) ? "" : main.trim();
+        String b = (addon == null) ? "" : addon.trim();
+        if (a.isBlank()) return b;
+        if (b.isBlank()) return a;
+        return a + " " + b;
     }
 
     private static ShipRole[] distributedPressureRoles(CampaignState st, int stage) {
@@ -6262,7 +6552,9 @@ public final class CampaignSystem {
     }
 
     private static Ship spawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y) {
-        return SpawnSystem.spawnEnemy(ctx, role, x, y);
+        Ship ship = SpawnSystem.spawnEnemy(ctx, role, x, y);
+        primeCampaignEnemyForContact(ship);
+        return ship;
     }
 
     private static Ship spawnCampaignShip(GameContext ctx, ShipRole role, Faction faction, double x, double y, String name) {
@@ -6270,12 +6562,19 @@ public final class CampaignSystem {
         Ship ship = new FleetShip(role, faction,
                 GameMath.clamp(x, 30.0, ctx.WORLD_W - 30.0),
                 GameMath.clamp(y, 30.0, ctx.WORLD_H - 30.0));
+        primeCampaignEnemyForContact(ship);
         ctx.ships.add(ship);
         try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
         if (ship != null && name != null && !name.isBlank()) {
             ship.name = name;
         }
         return ship;
+    }
+
+    private static void primeCampaignEnemyForContact(Ship ship) {
+        if (ship == null || ship.faction != Faction.ENEMY) return;
+        ship.aiForcedEngageTimer = Math.max(ship.aiForcedEngageTimer, 26.0);
+        ship.aiArrivalFireDelayTimer = Math.max(ship.aiArrivalFireDelayTimer, 3.0);
     }
 
     private static Ship spawnAuthoredObjectiveEnemyAtPoint(GameContext ctx, CampaignState st, ShipRole role, double x, double y) {
@@ -6524,7 +6823,7 @@ public final class CampaignSystem {
         }
 
         if (st.objectiveProgress >= st.objectiveGoal) {
-            onSectorComplete(ctx);
+            secureSectorObjective(ctx, "OBJECTIVE COMPLETE - EXTRACTION WINDOW OPEN");
         }
     }
 
@@ -6739,6 +7038,7 @@ public final class CampaignSystem {
     private static void onSectorComplete(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null) return;
+        st.objectiveSecured = false;
 
         int bonusBase = (int) Math.round((250 + st.sector * 70) * st.sectorCreditBonusMul);
         int bonus = GameContext.scaleCreditEarnings(bonusBase);
@@ -6818,6 +7118,38 @@ public final class CampaignSystem {
             finalizeCampaignOutcome(ctx, st);
             persistRunResult(ctx, true);
         }
+    }
+
+    private static void secureSectorObjective(GameContext ctx, String banner) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.objectiveSecured) return;
+        st.objectiveSecured = true;
+        st.objectiveProgress = Math.max(st.objectiveProgress, st.objectiveGoal);
+        st.awaitingFleetHubChoice = false;
+        st.fleetHubChoiceTimer = 0.0;
+        st.transitionTimer = 0.0;
+        st.transitionSummaryTop = "Objective secured. Sweep the field, mine what you can, and extract when you are ready.";
+        double holdLeft = Math.max(0.0, Math.ceil(st.extractionMinHoldSeconds - st.sectorElapsed));
+        if (holdLeft > 0.0) {
+            st.transitionSummaryBottom = "Extraction unlocks in " + (int) holdLeft + "s   |   Safe Exit becomes available after the hold timer";
+        } else {
+            st.transitionSummaryBottom = "Objective secured   |   Press SAFE EXIT to return to menu   |   Then choose CONTINUE CAMPAIGN to reopen the fleet hangar";
+        }
+        EventSystem.showBanner(ctx, (banner == null || banner.isBlank()) ? "OBJECTIVE COMPLETE" : banner, 2.0);
+        if (holdLeft <= 0.0) {
+            AudioSystem.playContextBanter(ctx, "captain", "mission_extract_ready",
+                    "BLUE COMMAND",
+                    "Primary objective secure. Press Safe Exit when you are ready to return to command and refit the fleet.",
+                    2.8, 10.0, 2);
+        }
+    }
+
+    public static boolean completeMissionExtraction(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled) return false;
+        if (!canExtractFromCurrentSector(ctx)) return false;
+        onSectorComplete(ctx);
+        return true;
     }
 
     private static String grantSectorOutcomeReward(GameContext ctx, CampaignState st) {
@@ -8472,7 +8804,10 @@ public final class CampaignSystem {
                     .append(encodedTurrets).append(',')
                     .append((entry.primaryWeaponFamilyName == null || entry.primaryWeaponFamilyName.isBlank())
                             ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
-                            : entry.primaryWeaponFamilyName.trim());
+                            : entry.primaryWeaponFamilyName.trim()).append(',')
+                    .append(Double.isFinite(entry.relX) ? entry.relX : "nan").append(',')
+                    .append(Double.isFinite(entry.relY) ? entry.relY : "nan").append(',')
+                    .append(Double.isFinite(entry.relAngle) ? entry.relAngle : "nan");
         }
         return sb.toString();
     }
@@ -8485,7 +8820,7 @@ public final class CampaignSystem {
         Base64.Decoder decoder = Base64.getUrlDecoder();
         for (String entryRaw : raw.split(";")) {
             if (entryRaw == null || entryRaw.isBlank()) continue;
-            String[] parts = entryRaw.split(",", 14);
+            String[] parts = entryRaw.split(",", 17);
             if (parts.length < 4) continue;
             try {
                 int slotId = Math.max(1, parseInt(parts[0], 1));
@@ -8510,6 +8845,9 @@ public final class CampaignSystem {
                 if (parts.length >= 14 && parts[13] != null && !parts[13].isBlank()) {
                     entry.primaryWeaponFamilyName = parts[13].trim();
                 }
+                if (parts.length >= 15) entry.relX = parseDouble(parts[14], Double.NaN);
+                if (parts.length >= 16) entry.relY = parseDouble(parts[15], Double.NaN);
+                if (parts.length >= 17) entry.relAngle = parseDouble(parts[16], Double.NaN);
                 st.persistentBlueFleet.add(entry);
                 st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);
             } catch (Exception ignored) {

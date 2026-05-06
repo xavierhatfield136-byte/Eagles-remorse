@@ -291,6 +291,10 @@ public final class GameplayActions {
             EventSystem.showBanner(ctx, "SAFE EXIT UNAVAILABLE DURING TRANSITION", 1.3);
             return true;
         }
+        if (!CampaignSystem.canExtractFromCurrentSector(ctx)) {
+            EventSystem.showBanner(ctx, CampaignSystem.extractionReadinessBanner(ctx), 1.5);
+            return true;
+        }
 
         Player player = ctx.player;
         if (player == null) return false;

@@ -4242,11 +4242,11 @@ public class Renderer {
                 ? CombatHudPanelImageKey.BEAM_CONCENTRATED
                 : CombatHudPanelImageKey.BEAM_RAPID;
         HudPanelVisual visual = panelVisual(key, rect);
+        String active = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) ? "CONCENTRATED" : "RAPID FIRE";
         if (visual != null) {
-            drawHudPanelImage(g2, visual);
+            drawCombatModeImagePanel(g2, rect, "BEAM MODE", active, new Color(255, 182, 92, 220), visual);
             return;
         }
-        String active = (player.primaryWeaponFamily == Ship.PrimaryWeaponFamily.BEAM_BOLT) ? "CONCENTRATED" : "RAPID FIRE";
         drawFallbackPanel(g2, rect, "BEAM MODE", active,
                 "Click left for rapid fire", "Click right for concentrated", new Color(255, 182, 92, 220));
     }
@@ -4260,15 +4260,15 @@ public class Renderer {
             case ANTI_LIGHT, ANTI_MEDIUM -> CombatHudPanelImageKey.MISSILE_FAST;
         };
         HudPanelVisual visual = panelVisual(key, rect);
-        if (visual != null) {
-            drawHudPanelImage(g2, visual);
-            return;
-        }
         String active = switch (role) {
             case ANTI_HEAVY -> "HEAVY";
             case INTERCEPT -> "AAA";
             case ANTI_LIGHT, ANTI_MEDIUM -> "FAST";
         };
+        if (visual != null) {
+            drawCombatModeImagePanel(g2, rect, "MISSILE MODE", active, new Color(255, 156, 92, 220), visual);
+            return;
+        }
         drawFallbackPanel(g2, rect, "MISSILE MODE", active,
                 "Top: heavy payload", "Mid: fast / Bottom: AAA", new Color(255, 156, 92, 220));
     }
@@ -4280,14 +4280,14 @@ public class Renderer {
                 ? CombatHudPanelImageKey.ECM_ACTIVE
                 : CombatHudPanelImageKey.ECM_PRIMED;
         HudPanelVisual visual = panelVisual(key, rect);
-        if (visual != null) {
-            drawHudPanelImage(g2, visual);
-            return;
-        }
         String active = activeNow ? "ACTIVE"
                 : ((ctx.player != null && !ctx.player.ecmReady())
                 ? String.format("RECHARGING %.0FS", Math.ceil(ctx.player.ecmCooldownRemaining()))
                 : "PRIMED");
+        if (visual != null) {
+            drawCombatModeImagePanel(g2, rect, "ECM MODE", active, new Color(255, 170, 90, 220), visual);
+            return;
+        }
         drawFallbackPanel(g2, rect, "ECM MODE", active,
                 "Top: primed", "Bottom: active", new Color(255, 170, 90, 220));
     }
@@ -4298,18 +4298,33 @@ public class Renderer {
                 ? CombatHudPanelImageKey.CLOAK_ACTIVE
                 : CombatHudPanelImageKey.CLOAK_CHARGE;
         HudPanelVisual visual = panelVisual(key, rect);
-        if (visual != null) {
-            drawHudPanelImage(g2, visual);
-            return;
-        }
         int pct = (int) Math.round(player.cloakEnergyFrac() * 100.0);
         String active = player.cloakWantsActive()
                 ? String.format("ACTIVE %d%%", pct)
                 : String.format("CHARGE %d%%", pct);
+        if (visual != null) {
+            drawCombatModeImagePanel(g2, rect, "CLOAK MODE", active,
+                    player.cloakWantsActive() ? new Color(122, 255, 116, 220) : new Color(108, 194, 255, 220), visual);
+            return;
+        }
         drawFallbackPanel(g2, rect, "CLOAK MODE", active,
                 "Top: preserve charge", "Bottom: cloak active", player.cloakWantsActive()
                         ? new Color(122, 255, 116, 220)
                         : new Color(108, 194, 255, 220));
+    }
+
+    private static void drawCombatModeImagePanel(Graphics2D g2, Rectangle rect, String title, String active, Color accent, HudPanelVisual visual) {
+        if (g2 == null || rect == null || visual == null) return;
+        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, title, accent);
+        drawHudPanelImage(g2, visual);
+        if (active != null && !active.isBlank()) {
+            Font oldFont = g2.getFont();
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            FontMetrics fm = g2.getFontMetrics();
+            int chipW = fm.stringWidth(active) + 14;
+            drawHudStatusChip(g2, active, rect.x + rect.width - chipW - 12, rect.y + rect.height - 28, chipW, 18, accent, true);
+            g2.setFont(oldFont);
+        }
     }
 
     private static Turret.MissileRole currentPlayerMissileRole(Player player) {
@@ -6913,18 +6928,12 @@ public class Renderer {
         if (w < 80 || h < 80) return;
         long nowNanos = System.nanoTime();
 
-        g2.setColor(new Color(16, 20, 28, 206));
-        g2.fillRoundRect(x, y, w, h, 12, 12);
-        g2.setColor(new Color(170, 210, 255, 115));
-        g2.drawRoundRect(x, y, w, h, 12, 12);
-
-        g2.setColor(new Color(205, 235, 255, 220));
-        g2.setFont(XRAY_TITLE_FONT);
-        g2.drawString((title == null || title.isBlank()) ? "TACTICAL X-RAY" : title, x + 10, y + 18);
+        String xrayTitle = (title == null || title.isBlank()) ? "TACTICAL X-RAY" : title;
+        drawHudPanelFrame(g2, x, y, w, h, xrayTitle, new Color(150, 205, 255, 214));
         g2.setFont(XRAY_SUBTITLE_FONT);
         g2.setColor(new Color(175, 218, 255, 205));
         if (subtitle != null && !subtitle.isBlank()) {
-            g2.drawString(subtitle, x + 10, y + 32);
+            g2.drawString(subtitle, x + 12, y + 36);
         }
 
         Rectangle mapRect = xrayMapRect(x, y, w, h);
@@ -6932,9 +6941,9 @@ public class Renderer {
         int mapY = mapRect.y;
         int mapW = mapRect.width;
         int mapH = mapRect.height;
-        g2.setColor(new Color(255, 255, 255, 20));
+        g2.setColor(new Color(10, 18, 28, 192));
         g2.fillRoundRect(mapX, mapY, mapW, mapH, 10, 10);
-        g2.setColor(new Color(255, 255, 255, 60));
+        g2.setColor(new Color(168, 206, 246, 76));
         g2.drawRoundRect(mapX, mapY, mapW, mapH, 10, 10);
 
         drawXrayShipUnderlay(g2, ship, mapRect, nowNanos);
@@ -9052,16 +9061,54 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawEcmIllusions(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null || !ship.hasActiveEcm() || ship.dying || !ship.alive) return;
         double t = Ship.ECM_ACTIVE_SECONDS - Math.max(0.0, ship.ecmActiveTimer);
-        double baseRadius = Math.max(16.0, ship.radius * 0.90);
-        for (int i = 0; i < 3; i++) {
-            double phase = t * (1.6 + i * 0.25) + ship.id * (0.19 + i * 0.07);
-            double ox = Math.cos(phase * 4.2 + i) * baseRadius + Math.sin(phase * 2.3 + i * 0.8) * baseRadius * 0.35;
-            double oy = Math.sin(phase * 3.8 + i * 0.6) * baseRadius + Math.cos(phase * 2.1 + i) * baseRadius * 0.30;
-            Graphics2D ghost = (Graphics2D) g2.create();
-            ghost.translate(ox, oy);
-            ghost.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.20f));
-            ShipRenderer.drawShip(ghost, ship, false, false, false);
-            ghost.dispose();
+        double pulse = 0.5 + 0.5 * Math.sin(t * 7.0 + ship.id * 0.13);
+        double innerR = Math.max(18.0, ship.radius * 1.35);
+        double outerR = innerR + 12.0 + pulse * 10.0;
+        double distortionR = outerR + 10.0 + pulse * 8.0;
+        Color team = factionHudColor(ship.faction, 255);
+        Color ring = withAlpha(mixColor(team, Color.WHITE, 0.18), 96 + (int) Math.round(pulse * 42.0));
+        Color glow = withAlpha(mixColor(team, new Color(120, 220, 255), 0.34), 34 + (int) Math.round(pulse * 24.0));
+        Color bright = withAlpha(mixColor(team, Color.WHITE, 0.46), 148 + (int) Math.round(pulse * 46.0));
+
+        Graphics2D fx = (Graphics2D) g2.create();
+        try {
+            Object oldAa = fx.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+            Stroke oldStroke = fx.getStroke();
+            Composite oldComposite = fx.getComposite();
+            fx.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            fx.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.34f));
+            fx.setColor(glow);
+            fx.fillOval((int) Math.round(ship.x - outerR), (int) Math.round(ship.y - outerR),
+                    (int) Math.round(outerR * 2.0), (int) Math.round(outerR * 2.0));
+
+            fx.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.78f));
+            fx.setStroke(new BasicStroke(2.2f));
+            fx.setColor(ring);
+            fx.drawOval((int) Math.round(ship.x - innerR), (int) Math.round(ship.y - innerR),
+                    (int) Math.round(innerR * 2.0), (int) Math.round(innerR * 2.0));
+
+            fx.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10.0f,
+                    new float[]{8.0f, 10.0f}, (float) ((t * 28.0 + ship.id * 3.0) % 18.0)));
+            fx.setColor(bright);
+            fx.drawOval((int) Math.round(ship.x - outerR), (int) Math.round(ship.y - outerR),
+                    (int) Math.round(outerR * 2.0), (int) Math.round(outerR * 2.0));
+
+            fx.setStroke(new BasicStroke(1.25f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10.0f,
+                    new float[]{5.0f, 11.0f}, (float) ((t * 18.0 + ship.id * 5.0) % 16.0)));
+            fx.setColor(withAlpha(mixColor(team, new Color(170, 240, 255), 0.52), 118));
+            for (int i = 0; i < 3; i++) {
+                double wobble = distortionR + i * 7.0 + Math.sin(t * (3.6 + i * 0.35) + ship.id * 0.11) * 3.0;
+                fx.drawArc((int) Math.round(ship.x - wobble), (int) Math.round(ship.y - wobble),
+                        (int) Math.round(wobble * 2.0), (int) Math.round(wobble * 2.0),
+                        (int) Math.round((t * 90.0 + i * 67.0 + ship.id * 9.0) % 360.0), 82);
+            }
+
+            fx.setStroke(oldStroke);
+            fx.setComposite(oldComposite);
+            fx.setRenderingHint(RenderingHints.KEY_ANTIALIASING, oldAa);
+        } finally {
+            fx.dispose();
         }
     }
 

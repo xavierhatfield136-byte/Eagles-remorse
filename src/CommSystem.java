@@ -720,6 +720,7 @@ public final class CommSystem {
         if (ctx == null || ctx.player == null || target == null) return;
         Faction newFaction = Faction.forTeamId(ctx.player.faction.teamId());
         target.faction = newFaction;
+        target.clearSurrenderState();
         target.aiCommittedTargetId = -1;
         target.aiTargetCommitTimer = 0.0;
         target.cancelBattlefieldWarp();
@@ -736,6 +737,7 @@ public final class CommSystem {
     private static void convertShipToContractEscort(GameContext ctx, Ship target) {
         if (ctx == null || ctx.player == null || target == null) return;
         target.faction = Faction.forTeamId(ctx.player.faction.teamId());
+        target.clearSurrenderState();
         target.aiCommittedTargetId = -1;
         target.aiTargetCommitTimer = 0.0;
         target.cancelBattlefieldWarp();

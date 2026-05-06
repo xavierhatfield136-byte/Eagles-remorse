@@ -885,6 +885,7 @@ public final class CarrierSystem {
         if (target.isSmallCraft()) return false;
         if (target.role == ShipRole.BASE || target.role == ShipRole.STATIC_TURRET) return false;
         if (target.role.isTitanOrMothership()) return false;
+        if (target.surrendered) return true;
 
         double hullFrac = (target.hpMax <= 0) ? 0.0 : MathUtil.clamp(target.hp / (double) target.hpMax, 0.0, 1.0);
         double shieldFrac = (target.shieldMax <= 1e-6) ? 0.0 : MathUtil.clamp(target.shield / target.shieldMax, 0.0, 1.0);
@@ -912,6 +913,7 @@ public final class CarrierSystem {
         if (carrier == null || target == null || carrier.faction == null) return;
         Faction convertedFaction = Faction.forTeamId(carrier.faction.teamId());
         target.faction = convertedFaction;
+        target.clearSurrenderState();
         target.cancelBattlefieldWarp();
         target.reveal(3.0);
         target.addTemporaryDisable(0.45);

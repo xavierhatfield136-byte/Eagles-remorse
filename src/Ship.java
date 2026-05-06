@@ -373,10 +373,14 @@ public abstract class Ship {
     public double aiBadApproachTimer = 0.0;
     public double aiBadApproachAngle = Double.NaN;
     public double aiNoFireTimer = 0.0;
+    public double aiForcedEngageTimer = 0.0;
+    public double aiArrivalFireDelayTimer = 0.0;
     public double aiLastEngagementX = Double.NaN;
     public double aiLastEngagementY = Double.NaN;
     public int aiCommittedTargetId = -1;
     public double aiTargetCommitTimer = 0.0;
+    public boolean surrendered = false;
+    public double surrenderLockTimer = 0.0;
 
     // Power management
     public enum PowerPreset {
@@ -786,6 +790,10 @@ public abstract class Ship {
         if (kineticMomentumTimer > 0.0) {
             kineticMomentumTimer -= dt;
             if (kineticMomentumTimer < 0.0) kineticMomentumTimer = 0.0;
+        }
+        if (surrenderLockTimer > 0.0) {
+            surrenderLockTimer -= dt;
+            if (surrenderLockTimer < 0.0) surrenderLockTimer = 0.0;
         }
         if (catastrophicChainGraceTimer > 0.0) {
             catastrophicChainGraceTimer -= dt;
@@ -6218,14 +6226,25 @@ public abstract class Ship {
     private Projectile createKineticSuperSlug(double dt, double aim) {
         double sx = x + Math.cos(aim) * (radius + 12.0);
         double sy = y + Math.sin(aim) * (radius + 12.0);
-        int damage = Math.max(4, (int) Math.round(superweaponDamage * 0.10));
-        double speed = Math.max(420.0, superweaponSpeed * 0.74);
-        int life = Math.max(36, (int) Math.round(superweaponLife * 1.35));
-        double slugRadius = Math.max(18.0, superweaponRadius * 2.35);
-        double blastRadius = Math.max(320.0, slugRadius * 11.6);
-        Projectile slug = new DisruptorSlug(sx, sy, aim, dt, speed, damage, life, slugRadius, blastRadius, faction);
-        slug.sourceShipId = id;
-        return slug;
+        int damage = Math.max(22, (int) Math.round(superweaponDamage * 0.92));
+        double speed = Math.max(980.0, superweaponSpeed * 1.18);
+        int life = Math.max(52, (int) Math.round(superweaponLife * 1.22));
+        double shotRadius = Math.max(10.0, superweaponRadius * 1.18);
+        int maxHits = Math.max(4, superweaponMaxHits + 1);
+        Projectile shot = new SuperweaponShot(
+                sx,
+                sy,
+                aim,
+                dt,
+                speed,
+                damage,
+                life,
+                shotRadius,
+                maxHits,
+                faction
+        );
+        shot.sourceShipId = id;
+        return shot;
     }
 
     public boolean isTemporarilyDisabled() {
@@ -6279,6 +6298,23 @@ public abstract class Ship {
         vy = 0.0;
         cancelBattlefieldWarp();
         cancelSuperweaponSequence();
+    }
+
+    public void enterSurrenderState(double seconds) {
+        if (!alive || dying || hp <= 0) return;
+        surrendered = true;
+        surrenderLockTimer = Math.max(surrenderLockTimer, Math.max(8.0, seconds));
+        crewOrder = CrewOrder.DAMAGE_CONTROL;
+        aiCommittedTargetId = -1;
+        aiTargetCommitTimer = 0.0;
+        aiForcedEngageTimer = 0.0;
+        aiArrivalFireDelayTimer = Math.max(aiArrivalFireDelayTimer, 1.5);
+        applyTemporaryDisable(Math.min(4.0, Math.max(1.5, seconds * 0.2)));
+    }
+
+    public void clearSurrenderState() {
+        surrendered = false;
+        surrenderLockTimer = 0.0;
     }
 
     public void applyStasisField(double seconds) {

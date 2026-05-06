@@ -98,6 +98,13 @@ public class CollisionSystem {
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
                     int effectiveDamage = p.getEffectiveDamage();
+                    boolean redRailgunShot = isRedRailgunSuperweapon(shooter, p);
+                    if (redRailgunShot) {
+                        int shieldCrack = Math.max(0, (int) Math.round(effectiveDamage * 0.35));
+                        if (shieldCrack > 0) {
+                            s.drainShieldByAmount(shieldCrack, p.x, p.y, p.vx, p.vy);
+                        }
+                    }
                     s.takeDamage(
                             effectiveDamage,
                             p.x,
@@ -106,9 +113,13 @@ public class CollisionSystem {
                             p.vy,
                             interiorHitProfileForProjectile(shooter, p)
                     );
-                    logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), effectiveDamage, impactStyle, s, p.x, p.y);
                     boolean shieldHit = s.shield < shieldBefore - 1e-6;
                     boolean hullHit = s.hp < hpBefore;
+                    if (redRailgunShot && hullHit && s.alive && !s.dying && s.hp > 0) {
+                        int penetratingDamage = Math.max(10, (int) Math.round(effectiveDamage * 0.72));
+                        s.takePenetratingInternalDamage(penetratingDamage, p.x, p.y, p.vx, p.vy);
+                    }
+                    logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), effectiveDamage, impactStyle, s, p.x, p.y);
                     double shieldX = impactPoints.shieldX();
                     double shieldY = impactPoints.shieldY();
                     double hullX = impactPoints.hullX();
@@ -954,6 +965,14 @@ public class CollisionSystem {
     private static boolean redKineticSlugDetonatesOnFirstShipImpact(Ship shooter) {
         return shooter != null
                 && shooter.faction == Faction.ENEMY
+                && (shooter.role == ShipRole.SUPERSHIP || shooter.role == ShipRole.HYPERWEAPON_TITAN);
+    }
+
+    private static boolean isRedRailgunSuperweapon(Ship shooter, Projectile projectile) {
+        return shooter != null
+                && projectile instanceof SuperweaponShot
+                && shooter.faction == Faction.ENEMY
+                && shooter.superweaponPattern == Ship.SuperweaponPattern.KINETIC_SLUG
                 && (shooter.role == ShipRole.SUPERSHIP || shooter.role == ShipRole.HYPERWEAPON_TITAN);
     }
 

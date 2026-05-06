@@ -76,8 +76,10 @@ class CampaignObjectiveActivationTest {
         CampaignSystem.update(ctx, 0.10);
 
         assertFalse(ctx.gameOver, "a completed destroy objective should beat a same-tick timeout fail");
-        assertTrue(st.awaitingFleetHubChoice || st.pendingEpisodeSector == 3,
-                "sector clear flow should still start when the last objective resolves on the deadline");
+        assertTrue(CampaignSystem.isSectorObjectiveSecured(ctx),
+                "same-tick completion should secure the sector instead of failing it");
+        assertTrue(CampaignSystem.canExtractFromCurrentSector(ctx),
+                "once the timer is already spent, extraction should be immediately available after the objective secures");
     }
 
     @Test
@@ -94,8 +96,8 @@ class CampaignObjectiveActivationTest {
         CampaignSystem.update(ctx, 0.10);
 
         assertFalse(ctx.gameOver, "sector 2 should resolve as a success if the convoy quota survives to extraction");
-        assertTrue(st.awaitingFleetHubChoice || st.pendingEpisodeSector == 3,
-                "convoy extraction at timeout should enter the sector clear flow");
+        assertTrue(CampaignSystem.isSectorObjectiveSecured(ctx),
+                "convoy extraction at timeout should secure the sector and open the post-objective window");
     }
 
     @Test

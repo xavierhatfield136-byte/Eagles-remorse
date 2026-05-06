@@ -25,12 +25,6 @@ public final class PhysicsSystem {
         constrainPlayerToLoadedSector(ctx);
         constrainWarpChargingShipsToSourceSector(ctx);
         constrainShipsToCampaignSubzones(ctx);
-        for (Ship s : ctx.ships) {
-            if (s == null || !s.alive || s.dying) continue;
-            if (!s.hasActiveEcm()) continue;
-            s.x = GameMath.clamp(s.x + s.ecmMoveOffsetX(dt), 0, ctx.WORLD_W);
-            s.y = GameMath.clamp(s.y + s.ecmMoveOffsetY(dt), 0, ctx.WORLD_H);
-        }
         syncPlayerEcmFlag(ctx);
         for (Ship s : ctx.ships) {
             if (s == null) continue;

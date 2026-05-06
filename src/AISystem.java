@@ -164,6 +164,10 @@ public final class AISystem {
         FleetState fleetState = buildFleetState(ctx, dt);
         fleetStateNs += System.nanoTime() - phaseStart;
 
+        phaseStart = System.nanoTime();
+        updateShipWillpower(ctx, dt);
+        shipUtilityNs += System.nanoTime() - phaseStart;
+
         // per ship AI
         for (Ship s : ctx.ships) {
             if (s == null) continue;
@@ -188,11 +192,25 @@ public final class AISystem {
             if (s.aiNoFireTimer > 0.0) {
                 s.aiNoFireTimer = Math.max(0.0, s.aiNoFireTimer - Math.max(0.0, dt) * 0.35);
             }
+            if (s.aiForcedEngageTimer > 0.0) {
+                s.aiForcedEngageTimer = Math.max(0.0, s.aiForcedEngageTimer - Math.max(0.0, dt));
+            }
+            if (s.aiArrivalFireDelayTimer > 0.0) {
+                s.aiArrivalFireDelayTimer = Math.max(0.0, s.aiArrivalFireDelayTimer - Math.max(0.0, dt));
+            }
             if (s.aiTargetCommitTimer > 0.0) {
                 s.aiTargetCommitTimer = Math.max(0.0, s.aiTargetCommitTimer - Math.max(0.0, dt));
                 if (s.aiTargetCommitTimer <= 0.0) {
                     s.aiCommittedTargetId = -1;
                 }
+            }
+            if (s.surrendered) {
+                s.vx *= 0.88;
+                s.vy *= 0.88;
+                s.desiredSpeed = 0.0;
+                s.tryCIWS(dt, ctx);
+                shipUtilityNs += System.nanoTime() - utilityStart;
+                continue;
             }
             shipUtilityNs += System.nanoTime() - utilityStart;
             if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
@@ -370,6 +388,84 @@ public final class AISystem {
             ctx.perf.aiFormationSyncMs = formationSyncNs / 1_000_000.0;
             ctx.perf.aiBoundsMs = boundsNs / 1_000_000.0;
         }
+    }
+
+    private static void updateShipWillpower(GameContext ctx, double dt) {
+        if (ctx == null || dt <= 0.0) return;
+        ArrayList<Ship> nearby = new ArrayList<>();
+        for (Ship ship : ctx.ships) {
+            if (!canSurrender(ship)) continue;
+            if (ship.surrendered) {
+                if (shouldRecoverWillpower(ctx, ship, nearby)) {
+                    ship.clearSurrenderState();
+                }
+                continue;
+            }
+            if (ship.aiForcedEngageTimer > 0.0 || ship.isWarpCharging()) continue;
+            if (!shouldSurrender(ctx, ship, nearby)) continue;
+            ship.enterSurrenderState(18.0);
+            EventSystem.showWorldCallout(ctx, ship.x, ship.y - ship.radius - 20.0, "SURRENDERING", new java.awt.Color(255, 226, 154), 1.4);
+            if (ctx.player != null && ship.faction != null && !ship.faction.isFriendlyTo(ctx.player.faction)) {
+                EventSystem.showBanner(ctx, ship.name + " IS SURRENDERING", 1.0);
+            }
+        }
+    }
+
+    private static boolean canSurrender(Ship ship) {
+        if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) return false;
+        if (ship.faction == null) return false;
+        if (ship.isSmallCraft()) return false;
+        if (ship.role == ShipRole.BASE || ship.role == ShipRole.STATIC_TURRET) return false;
+        if (ship.role.isTitanOrMothership()) return false;
+        return true;
+    }
+
+    private static boolean shouldRecoverWillpower(GameContext ctx, Ship ship, ArrayList<Ship> nearby) {
+        if (ctx == null || ship == null || ship.faction == null) return false;
+        if (ship.surrenderLockTimer > 0.0) return false;
+        nearby.clear();
+        ctx.entityQuery.collectAliveShipsNear(ship.x, ship.y, 520.0, nearby);
+        int friendly = 0;
+        int hostile = 0;
+        for (Ship other : nearby) {
+            if (other == null || other == ship || !other.alive || other.dying || other.hp <= 0) continue;
+            if (other.faction == null) continue;
+            if (ship.faction.isFriendlyTo(other.faction)) friendly++;
+            else hostile++;
+        }
+        return friendly >= 2 && hostile == 0;
+    }
+
+    private static boolean shouldSurrender(GameContext ctx, Ship ship, ArrayList<Ship> nearby) {
+        if (ctx == null || ship == null || ship.faction == null) return false;
+        double hullFrac = (ship.hpMax <= 0) ? 0.0 : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
+        double shieldFrac = (ship.shieldMax <= 1e-6) ? 0.0 : MathUtil.clamp(ship.shield / ship.shieldMax, 0.0, 1.0);
+        if (hullFrac > 0.30 && (hullFrac + shieldFrac) > 0.34) return false;
+        if (ship.secondsSinceDamage() > 2.5) return false;
+        if (ship.aiCommittedTargetId > 0 && ship.aiTargetCommitTimer > 2.0) return false;
+
+        nearby.clear();
+        ctx.entityQuery.collectAliveShipsNear(ship.x, ship.y, 680.0, nearby);
+        int friendly = 0;
+        int hostile = 0;
+        int hostileCapitals = 0;
+        for (Ship other : nearby) {
+            if (other == null || other == ship || !other.alive || other.dying || other.hp <= 0 || other.faction == null) continue;
+            if (ship.faction.isFriendlyTo(other.faction)) {
+                if (!other.isSmallCraft()) friendly++;
+            } else {
+                hostile++;
+                if (!other.isSmallCraft() && (other.role == ShipRole.CRUISER || other.role == ShipRole.BATTLECRUISER
+                        || other.role == ShipRole.BATTLESHIP || other.role == ShipRole.DREADNOUGHT
+                        || other.role == ShipRole.SUPERSHIP || other.role.isTitanOrMothership())) {
+                    hostileCapitals++;
+                }
+            }
+        }
+        boolean isolated = friendly <= 1;
+        boolean overwhelmed = hostile >= Math.max(2, friendly + 2) || hostileCapitals > 0;
+        boolean disabled = ship.isTemporarilyDisabled() || ship.isStasisFieldTrapped() || ship.isDestabilized();
+        return isolated && overwhelmed && (disabled || hullFrac <= 0.22 || (hullFrac + shieldFrac) <= 0.26);
     }
 
     static int resourceRushCappedGroupCount(int aliveShips, int requestedGroups) {
@@ -1633,6 +1729,9 @@ public final class AISystem {
 
     private static GameContext.FleetCommand resolveFleetCommand(GameContext ctx, Ship ship, Ship flagship) {
         if (ctx == null || ship == null) return GameContext.FleetCommand.AUTO;
+        if (ship.aiForcedEngageTimer > 0.0) {
+            return isSupportRole(ship.role) ? GameContext.FleetCommand.DEFEND : GameContext.FleetCommand.ATTACK;
+        }
         GameContext.FleetCommand override = ctx.command.shipFleetCommandOverrides.get(ship.id);
         if (override != null && override != GameContext.FleetCommand.AUTO) return override;
 
@@ -2218,6 +2317,7 @@ public final class AISystem {
                                                          Ship sharedHint, Ship preferredHint) {
         if (!isAlive(target) || seeker == null) return false;
         if (!canShipThreatenTarget(ctx, seeker, target)) return false;
+        if (forcedToHoldFight(seeker, target)) return true;
         if (target == sharedHint && shouldCommitToSharedTarget(state, seeker, target)) return true;
         double support = localSupportBalance(ctx, seeker, target, Math.max(620.0, preferredRange(seeker) * 1.55));
         double selfDur = combinedDurabilityFrac(seeker);
@@ -3025,6 +3125,13 @@ public final class AISystem {
                 push = false;
                 range *= 1.24 + Math.max(0.0, standoff) * 0.08;
             }
+            if (forcedToHoldFight(s, target)) {
+                fallBack = false;
+                if (!isSupportRole(s.role)) {
+                    push = true;
+                }
+                range *= 0.94;
+            }
 
             double speed = MovementModel.speedCeiling(s);
             double orbitDir = ((s.hashCode() & 1) == 0) ? 1.0 : -1.0;
@@ -3150,6 +3257,7 @@ public final class AISystem {
         long fireStart = System.nanoTime();
         try {
             if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
+            if (s.aiArrivalFireDelayTimer > 0.0) return 0;
             if (!TargetingSystem.isDetectableToObserver(s, target)) return 0;
             boolean ciwsIntercept = Turret.usesCiwsPelletsAgainst(s, firstGunTurret(s), target);
             if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return 0;
@@ -4565,6 +4673,7 @@ public final class AISystem {
 
     private static boolean canTakeFightMetric(GameContext ctx, Ship seeker, Ship target) {
         if (!isAlive(seeker) || !isAlive(target)) return false;
+        if (forcedToHoldFight(seeker, target)) return true;
         double immediateRange = Math.max(220.0, seeker.radius + target.radius + 140.0);
         if (Math.hypot(target.x - seeker.x, target.y - seeker.y) <= immediateRange) {
             return true;
@@ -4844,6 +4953,7 @@ public final class AISystem {
         if (ctx == null || s == null) return false;
         if (!s.canUseBattlefieldWarp()) return false;
         if (s.isWarpCharging()) return true;
+        if (s.aiForcedEngageTimer > 0.0) return false;
         if (s.secondsSinceDamage() < 10.0) return false;
         if (findImmediateThreat(ctx, s, BATTLEFIELD_WARP_SAFE_RADIUS) != null) return false;
 
@@ -5105,6 +5215,13 @@ public final class AISystem {
         double dx = bx - ax;
         double dy = by - ay;
         return dx*dx + dy*dy;
+    }
+
+    private static boolean forcedToHoldFight(Ship seeker, Ship target) {
+        if (!isAlive(seeker) || !isAlive(target)) return false;
+        if (seeker.aiForcedEngageTimer <= 0.0) return false;
+        if (seeker.faction == null || target.faction == null) return false;
+        return !seeker.faction.isFriendlyTo(target.faction);
     }
 
     private static void applyAsteroidAvoidance(GameContext ctx, Ship s, double dt) {

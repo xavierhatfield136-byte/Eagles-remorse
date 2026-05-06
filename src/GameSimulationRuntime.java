@@ -89,7 +89,11 @@ public final class GameSimulationRuntime {
         BattlefieldSectorSystem.ensureLoadedSector(ctx);
 
         if (CampaignSystem.isFleetHubSession(ctx)) {
+            PhysicsSystem.update(ctx, dt);
             ctx.entityQuery.rebuild(ctx);
+            AISystem.update(ctx, dt);
+            CarrierSystem.update(ctx, dt);
+            EconomySystem.update(ctx, dt);
             long campaignStart = System.nanoTime();
             CampaignSystem.update(ctx, dt);
             ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
@@ -366,9 +370,13 @@ public final class GameSimulationRuntime {
             ally.cancelBattlefieldWarp();
         }
         ctx.command.safeMissionExitPending = false;
-        ctx.command.safeMissionExitReady = true;
         ctx.command.playerTeleportCharging = false;
-        ctx.command.playerTeleportChargeRemaining = 0.0;
+       ctx.command.playerTeleportChargeRemaining = 0.0;
+        if (CampaignSystem.completeMissionExtraction(ctx)) {
+            ctx.command.safeMissionExitReady = true;
+            return;
+        }
+        ctx.command.safeMissionExitReady = true;
     }
 
     private void syncPlayerWarpHudState() {
@@ -400,14 +408,7 @@ public final class GameSimulationRuntime {
 
         Player p = ctx.player;
         if (p == null) return;
-        if (CampaignSystem.isFleetHubSession(ctx)) {
-            if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
-                CameraSystem.updateManualPan(ctx, dt);
-            }
-            p.vx = 0.0;
-            p.vy = 0.0;
-            return;
-        }
+        boolean fleetHubSession = CampaignSystem.isFleetHubSession(ctx);
         if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
             CameraSystem.updateManualPan(ctx, dt);
         }
@@ -425,7 +426,7 @@ public final class GameSimulationRuntime {
 
         boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);
 
-        if (ctx.state != GameState.RUNNING) {
+        if (ctx.state != GameState.RUNNING && !(fleetHubSession && ctx.state == GameState.FLEET)) {
             if (helmAutoApplied) return;
             p.vx = 0.0;
             p.vy = 0.0;
