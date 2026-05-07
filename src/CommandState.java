@@ -42,7 +42,7 @@ public final class CommandState {
     public final Map<Integer, String> fleetSquadRoleByShip = new HashMap<>();
     public final Map<Integer, Integer> fleetSquadLeaderByShip = new HashMap<>();
     public final Map<Integer, Integer> fleetSquadIndexByShip = new HashMap<>();
-    public final Map<String, String> fleetSquadStatusMemory = new HashMap<>();
+    public final Map<Integer, Long> fleetSquadStatusMemory = new HashMap<>();
     public boolean playerTeleportCharging = false;
     public double playerTeleportChargeRemaining = 0.0;
     public boolean safeMissionExitPending = false;

@@ -12,16 +12,25 @@ public class GameConfig {
     public final boolean fullscreen;
     public final int playerTeamId;
     public final boolean resumeCampaign;
+    public final int customBattleEnemyTeamId;
+    public final String customBattleFriendlyRoster;
+    public final String customBattleEnemyRoster;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
-        this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false);
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false, 1, "", "");
     }
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId) {
-        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, false);
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, false, 1, "", "");
     }
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId, boolean resumeCampaign) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign, 1, "", "");
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
+                      int playerTeamId, boolean resumeCampaign,
+                      int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
@@ -30,5 +39,8 @@ public class GameConfig {
         this.fullscreen = fullscreen;
         this.playerTeamId = Math.max(0, Math.min(3, playerTeamId));
         this.resumeCampaign = resumeCampaign;
+        this.customBattleEnemyTeamId = Math.max(0, Math.min(3, customBattleEnemyTeamId));
+        this.customBattleFriendlyRoster = (customBattleFriendlyRoster == null) ? "" : customBattleFriendlyRoster.trim();
+        this.customBattleEnemyRoster = (customBattleEnemyRoster == null) ? "" : customBattleEnemyRoster.trim();
     }
 }

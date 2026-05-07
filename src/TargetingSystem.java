@@ -253,19 +253,19 @@ public final class TargetingSystem {
                 && target.cloakEnergy > 0.01;
         if (cloakCoverActive) return false;
         if (observer.faction == null || target.faction == null || observer.faction.isFriendlyTo(target.faction)) return false;
-        return inSameDetectionZone(ctx, observer, target);
+        return canShareContactTelemetry(ctx, observer, target);
     }
 
     private static boolean formationRelayDetectsTarget(GameContext ctx, Ship observer, Ship target) {
         if (ctx == null || observer == null || target == null) return false;
         if (observer.role != ShipRole.MOTHERSHIP) return false;
         if (observer.faction == null || target.faction == null || observer.faction.isFriendlyTo(target.faction)) return false;
-        if (!inSameDetectionZone(ctx, observer, target)) return false;
+        if (!canShareContactTelemetry(ctx, observer, target)) return false;
         for (Ship ally : ctx.ships) {
             if (ally == null || ally == observer || ally == target) continue;
             if (!isAlive(ally)) continue;
             if (ally.faction == null || !ally.faction.isFriendlyTo(observer.faction)) continue;
-            if (!inSameDetectionZone(ctx, observer, ally) || !inSameDetectionZone(ctx, ally, target)) continue;
+            if (!canShareContactTelemetry(ctx, observer, ally) || !canShareContactTelemetry(ctx, ally, target)) continue;
             if (isDetectableToObserverLocal(ctx, ally, target)) return true;
         }
         return false;
@@ -300,6 +300,27 @@ public final class TargetingSystem {
             return aSector.id != null && aSector.id.equalsIgnoreCase(bSector.id);
         }
         return true;
+    }
+
+    private static boolean canShareContactTelemetry(GameContext ctx, Ship a, Ship b) {
+        if (ctx == null || a == null || b == null) return false;
+        if (inSameDetectionZone(ctx, a, b)) return true;
+        double relayRange = sensorRelayRange(a) + sensorRelayRange(b);
+        double dx = a.x - b.x;
+        double dy = a.y - b.y;
+        return dx * dx + dy * dy <= relayRange * relayRange;
+    }
+
+    private static double sensorRelayRange(Ship ship) {
+        if (ship == null) return 0.0;
+        double sensorMul = Math.max(0.35, Math.min(1.75, ship.sensorRangeMultiplier()));
+        double roleBase = baseDetectionRange(ship.role);
+        double relayBias = switch (ship.role) {
+            case PICKET, PATROL, STEALTH_SHIP, COMMAND_INTEL_TITAN, MOTHERSHIP -> 1.18;
+            case FIGHTER, BOMBER, PD_CRAFT, DRONE -> 0.72;
+            default -> 0.92;
+        };
+        return Math.max(540.0, roleBase * sensorMul * relayBias);
     }
 
     public static double detectionRangeForObserver(Ship observer, Ship target) {

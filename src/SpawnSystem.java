@@ -72,6 +72,11 @@ public final class SpawnSystem {
             return;
         }
 
+        if (ctx.config.mode == GameMode.CUSTOM_BATTLES) {
+            initCustomBattles(ctx);
+            return;
+        }
+
         ctx.teamBases.clear();
 
         // Bases anchor to edge lanes that scale with map size.
@@ -629,6 +634,60 @@ public final class SpawnSystem {
         tryApplyDoctrine(ctx);
     }
 
+    private static void initCustomBattles(GameContext ctx) {
+        ctx.teamBases.clear();
+
+        int playerTeamId = (ctx.config == null) ? 0 : ctx.config.playerTeamId;
+        int enemyTeamId = (ctx.config == null) ? 1 : ctx.config.customBattleEnemyTeamId;
+        if (enemyTeamId == playerTeamId) {
+            enemyTeamId = (playerTeamId == 0) ? 1 : 0;
+        }
+
+        Faction playerFaction = playerFactionForTeamId(playerTeamId);
+        Faction playerTeamFaction = Faction.forTeamId(playerTeamId);
+        Faction enemyFaction = Faction.forTeamId(enemyTeamId);
+
+        double[] friendlyBasePos = edgeBasePosition(ctx, true);
+        double[] enemyBasePos = edgeBasePosition(ctx, false);
+
+        Ship friendlyBase = new FleetShip(ShipRole.BASE, playerTeamFaction, friendlyBasePos[0], friendlyBasePos[1]);
+        Ship hostileBase = new FleetShip(ShipRole.BASE, enemyFaction, enemyBasePos[0], enemyBasePos[1]);
+        clampBaseToBounds(ctx, friendlyBase);
+        clampBaseToBounds(ctx, hostileBase);
+
+        ctx.ships.add(friendlyBase);
+        ctx.ships.add(hostileBase);
+        ctx.teamBases.put(playerTeamFaction, friendlyBase);
+        ctx.teamBases.put(enemyFaction, hostileBase);
+        ctx.allyBase = friendlyBase;
+        ctx.enemyBase = hostileBase;
+
+        BaseUpgrades friendlyUpgrades = new BaseUpgrades().bindTo(friendlyBase);
+        friendlyUpgrades.hangarLv = 3;
+        BaseUpgrades enemyUpgrades = new BaseUpgrades().bindTo(hostileBase);
+        enemyUpgrades.hangarLv = 3;
+        ctx.baseUpgrades.put(friendlyBase, friendlyUpgrades);
+        ctx.baseUpgrades.put(hostileBase, enemyUpgrades);
+
+        double[] spawn = inwardSpawnNearBase(ctx, friendlyBase);
+        ctx.player = new Player(ShipRole.MOTHERSHIP, spawn[0], spawn[1]);
+        ctx.player.faction = playerFaction;
+        ctx.player.name = "Player";
+        ctx.ships.add(ctx.player);
+
+        java.util.LinkedHashMap<ShipRole, Integer> friendlyRoster =
+                parseCustomBattleRoster(ctx.config == null ? "" : ctx.config.customBattleFriendlyRoster);
+        java.util.LinkedHashMap<ShipRole, Integer> enemyRoster =
+                parseCustomBattleRoster(ctx.config == null ? "" : ctx.config.customBattleEnemyRoster);
+        if (friendlyRoster.isEmpty()) friendlyRoster = defaultCustomBattleRoster(true);
+        if (enemyRoster.isEmpty()) enemyRoster = defaultCustomBattleRoster(false);
+
+        spawnCustomBattleRoster(ctx, playerTeamFaction, friendlyBase, friendlyRoster, true);
+        spawnCustomBattleRoster(ctx, enemyFaction, hostileBase, enemyRoster, false);
+
+        tryApplyDoctrine(ctx);
+    }
+
     private static double[] fourTeamHomeBaseAnchor(GameContext ctx, BattlefieldSectorSystem.SectorDefinition homeSector) {
         if (ctx == null || homeSector == null) return new double[]{0.0, 0.0};
         double sectorCx = homeSector.centerX(ctx);
@@ -726,7 +785,8 @@ public final class SpawnSystem {
         if (ctx == null || ctx.config == null) return Faction.PLAYER;
         if (ctx.config.mode != GameMode.RESOURCE_RUSH
                 && ctx.config.mode != GameMode.SHOOTING_RANGE
-                && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION) {
+                && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION
+                && ctx.config.mode != GameMode.CUSTOM_BATTLES) {
             return Faction.PLAYER;
         }
         return playerFactionForTeamId(ctx.config.playerTeamId);
@@ -754,6 +814,147 @@ public final class SpawnSystem {
         px = GameMath.clamp(px, 40.0, ctx.WORLD_W - 40.0);
         py = GameMath.clamp(py, 40.0, ctx.WORLD_H - 40.0);
         return new double[]{px, py};
+    }
+
+    private static java.util.LinkedHashMap<ShipRole, Integer> parseCustomBattleRoster(String encoded) {
+        java.util.LinkedHashMap<ShipRole, Integer> roster = new java.util.LinkedHashMap<>();
+        if (encoded == null || encoded.isBlank()) return roster;
+        String[] entries = encoded.split("[;,\\n\\r]+");
+        for (String rawEntry : entries) {
+            if (rawEntry == null) continue;
+            String entry = rawEntry.trim();
+            if (entry.isEmpty()) continue;
+            String[] parts = entry.split("[:=]", 2);
+            if (parts.length != 2) continue;
+            String roleId = parts[0].trim().toUpperCase(Locale.US);
+            String countText = parts[1].trim();
+            if (roleId.isEmpty() || countText.isEmpty()) continue;
+            try {
+                ShipRole role = ShipRole.valueOf(roleId);
+                int count = Integer.parseInt(countText);
+                if (count <= 0) continue;
+                roster.merge(role, count, Integer::sum);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return roster;
+    }
+
+    private static java.util.LinkedHashMap<ShipRole, Integer> defaultCustomBattleRoster(boolean friendly) {
+        java.util.LinkedHashMap<ShipRole, Integer> roster = new java.util.LinkedHashMap<>();
+        if (friendly) {
+            roster.put(ShipRole.FRIGATE, 4);
+            roster.put(ShipRole.CIWS_CORVETTE, 2);
+            roster.put(ShipRole.LIGHT_CRUISER, 2);
+            roster.put(ShipRole.BATTLECRUISER, 1);
+            roster.put(ShipRole.CARRIER, 1);
+            roster.put(ShipRole.SUPERSHIP, 1);
+        } else {
+            roster.put(ShipRole.FRIGATE, 6);
+            roster.put(ShipRole.MISSILE_BOAT, 3);
+            roster.put(ShipRole.LIGHT_CRUISER, 2);
+            roster.put(ShipRole.BATTLESHIP, 1);
+            roster.put(ShipRole.INTERDICTION_TITAN, 1);
+            roster.put(ShipRole.MOTHERSHIP, 1);
+        }
+        return roster;
+    }
+
+    private static void spawnCustomBattleRoster(GameContext ctx,
+                                                Faction faction,
+                                                Ship base,
+                                                java.util.LinkedHashMap<ShipRole, Integer> roster,
+                                                boolean playerSide) {
+        if (ctx == null || faction == null || base == null || roster == null || roster.isEmpty()) return;
+
+        java.util.ArrayList<ShipRole> roles = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<ShipRole, Integer> entry : roster.entrySet()) {
+            ShipRole role = entry.getKey();
+            int count = (entry.getValue() == null) ? 0 : entry.getValue();
+            for (int i = 0; i < count; i++) roles.add(role);
+        }
+        roles.sort((a, b) -> Integer.compare(customBattleSpawnWeight(b), customBattleSpawnWeight(a)));
+        if (roles.isEmpty()) return;
+
+        double centerX = ctx.WORLD_W * 0.5;
+        double centerY = ctx.WORLD_H * 0.5;
+        double dx = centerX - base.x;
+        double dy = centerY - base.y;
+        double len = Math.hypot(dx, dy);
+        if (len <= 1e-6) len = 1.0;
+        double nx = dx / len;
+        double ny = dy / len;
+        double tx = -ny;
+        double ty = nx;
+
+        int columns = Math.max(4, (int) Math.ceil(Math.sqrt(roles.size())));
+        for (int i = 0; i < roles.size(); i++) {
+            ShipRole role = roles.get(i);
+            int row = i / columns;
+            int col = i % columns;
+            double lane = col - (columns - 1) * 0.5;
+            double size = customBattleSpacingScale(role);
+            double forward = 340.0 + row * (175.0 * size);
+            double lateral = lane * (150.0 * size);
+            double jitterX = (ctx.rng.nextDouble() - 0.5) * 26.0;
+            double jitterY = (ctx.rng.nextDouble() - 0.5) * 26.0;
+            double x = base.x + nx * forward + tx * lateral + jitterX;
+            double y = base.y + ny * forward + ty * lateral + jitterY;
+            Ship ship = spawnExactTeamShip(ctx, role, faction, x, y);
+            if (ship == null) continue;
+            if (playerSide) {
+                ship.angle = Math.atan2(centerY - ship.y, centerX - ship.x);
+            } else {
+                ship.angle = Math.atan2(base.y - ship.y, base.x - ship.x);
+            }
+        }
+    }
+
+    private static int customBattleSpawnWeight(ShipRole role) {
+        if (role == null) return 0;
+        return requiredHangarTierForRole(role) * 100 + Math.max(0, roleMaxCountBias(role));
+    }
+
+    private static int roleMaxCountBias(ShipRole role) {
+        if (role == null) return 0;
+        return switch (role) {
+            case MOTHERSHIP, BASE, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                    ELITE_SUPERSHIP_COMMAND_TITAN, FLEET_TELEPORTER_TITAN,
+                    SHIELD_BASTION_TITAN, ARTILLERY_TITAN, INTERDICTION_TITAN,
+                    VANGUARD_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    CARRIER_SUPPORT_TITAN, BULWARK_TITAN, TRANSPORT_TITAN -> 12;
+            case SUPERSHIP, DREADNOUGHT, BATTLESHIP, BATTLECRUISER -> 8;
+            case CRUISER, MEDIUM_CRUISER, LIGHT_CRUISER, CARRIER, DRONE_CARRIER -> 5;
+            default -> 1;
+        };
+    }
+
+    private static double customBattleSpacingScale(ShipRole role) {
+        if (role == null) return 1.0;
+        return switch (role) {
+            case BASE, MOTHERSHIP, MOBILE_STATION_TITAN, HYPERWEAPON_TITAN,
+                    ELITE_SUPERSHIP_COMMAND_TITAN, FLEET_TELEPORTER_TITAN,
+                    SHIELD_BASTION_TITAN, ARTILLERY_TITAN, INTERDICTION_TITAN,
+                    VANGUARD_TITAN, COMMAND_INTEL_TITAN, BOARDING_RECOVERY_TITAN,
+                    CARRIER_SUPPORT_TITAN, BULWARK_TITAN, TRANSPORT_TITAN -> 1.55;
+            case SUPERSHIP, DREADNOUGHT, BATTLESHIP, BATTLECRUISER -> 1.25;
+            case CRUISER, MEDIUM_CRUISER, LIGHT_CRUISER, CARRIER, DRONE_CARRIER -> 1.1;
+            default -> 1.0;
+        };
+    }
+
+    private static Ship spawnExactTeamShip(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
+        if (ctx == null || role == null || faction == null) return null;
+        if (role == ShipRole.MINER && TeamSystem.countAliveMiners(ctx, faction) >= MAX_MINERS_PER_FACTION) {
+            return null;
+        }
+        double sx = GameMath.clamp(x, 20, ctx.WORLD_W - 20);
+        double sy = GameMath.clamp(y, 20, ctx.WORLD_H - 20);
+        Ship ship = new FleetShip(role, faction, sx, sy);
+        ctx.ships.add(ship);
+        try { DoctrineRegistry.applyToShip(ship); } catch (Throwable ignored) {}
+        if (role == ShipRole.MINER) logMinerSpawn(ship);
+        return ship;
     }
 
     private static void spawnTeamStart(GameContext ctx, Faction team, Ship base) {

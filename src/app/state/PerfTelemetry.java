@@ -20,6 +20,7 @@ public final class PerfTelemetry {
     public double aiAvoidanceMs = 0.0;
     public double aiFormationSyncMs = 0.0;
     public double aiBoundsMs = 0.0;
+    public double aiCacheQueryMs = 0.0;
     public double campaignMs = 0.0;
     public double renderShipsMs = 0.0;
     public double renderHudMs = 0.0;
@@ -35,4 +36,10 @@ public final class PerfTelemetry {
     public int drawnExplosions = 0;
     public int totalVfx = 0;
     public int totalExplosions = 0;
+    public int aiPreferredTargetHits = 0;
+    public int aiPreferredTargetMisses = 0;
+    public int aiImmediateThreatHits = 0;
+    public int aiImmediateThreatMisses = 0;
+    public int aiSensorSignalHits = 0;
+    public int aiSensorSignalMisses = 0;
 }

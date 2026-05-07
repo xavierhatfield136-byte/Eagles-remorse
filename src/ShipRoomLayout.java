@@ -196,6 +196,7 @@ public final class ShipRoomLayout {
 
     private static final Map<String, Profile> PROFILES = new HashMap<>();
     private static final Map<String, List<VisualCell>> VISUAL_CACHE = new HashMap<>();
+    private static final EnumMap<ShipRole, EnumMap<Faction, String>> LAYOUT_KEYS = buildLayoutKeys();
 
     public static List<RoomDef> profileFor(ShipRole role) {
         return profileFor(role, null);
@@ -494,8 +495,15 @@ public final class ShipRoomLayout {
     }
 
     private static String layoutKey(ShipRole role, Faction faction) {
-        String rolePart = (role == null) ? "capital" : role.name();
-        return rolePart + "|" + keyForFaction(faction);
+        ShipRole roleKey = (role == null) ? ShipRole.CRUISER : role;
+        Faction factionKey = (faction == null) ? Faction.ALLY : faction;
+        EnumMap<Faction, String> byFaction = LAYOUT_KEYS.get(roleKey);
+        if (byFaction == null) {
+            return roleKey.name() + "|" + keyForFaction(factionKey);
+        }
+        String cached = byFaction.get(factionKey);
+        if (cached != null) return cached;
+        return roleKey.name() + "|" + keyForFaction(factionKey);
     }
 
     private static String profileKey(ShipRole role) {
@@ -805,6 +813,20 @@ public final class ShipRoomLayout {
             case TEAM_C -> "team_c";
             case TEAM_D -> "team_d";
         };
+    }
+
+    private static EnumMap<ShipRole, EnumMap<Faction, String>> buildLayoutKeys() {
+        EnumMap<ShipRole, EnumMap<Faction, String>> keys = new EnumMap<>(ShipRole.class);
+        for (ShipRole role : ShipRole.values()) {
+            EnumMap<Faction, String> byFaction = new EnumMap<>(Faction.class);
+            for (Faction faction : Faction.values()) {
+                ShipRole roleKey = (role == null) ? ShipRole.CRUISER : role;
+                Faction factionKey = (faction == null) ? Faction.ALLY : faction;
+                byFaction.put(faction, roleKey.name() + "|" + keyForFaction(factionKey));
+            }
+            keys.put(role, byFaction);
+        }
+        return keys;
     }
 
     private static HullProfile defaultSmallHull() {
@@ -1856,6 +1878,8 @@ public final class ShipRoomLayout {
     }
 
     private static final class HullProfile {
+        private static final EnumMap<ShipRole, EnumMap<Faction, HullProfile>> SILHOUETTE_CACHE =
+                new EnumMap<>(ShipRole.class);
         final double[] xs;
         final double[] top;
         final double[] bottom;
@@ -1867,6 +1891,11 @@ public final class ShipRoomLayout {
         }
 
         static HullProfile fromSilhouette(ShipRole role, Faction faction) {
+            ShipRole roleKey = (role == null) ? ShipRole.CRUISER : role;
+            Faction factionKey = (faction == null) ? Faction.ALLY : faction;
+            EnumMap<Faction, HullProfile> byFaction = SILHOUETTE_CACHE.computeIfAbsent(roleKey, k -> new EnumMap<>(Faction.class));
+            HullProfile cached = byFaction.get(factionKey);
+            if (cached != null) return cached;
             Polygon hull = ShipHullSilhouette.hullPolygon(role, 100.0, faction);
             if (hull == null || hull.npoints < 3) return null;
 
@@ -1911,7 +1940,9 @@ public final class ShipRoomLayout {
             fillMissingColumns(top, bottom, valid);
             if (!anyValid(valid)) return null;
             smoothProfile(top, bottom);
-            return new HullProfile(xs, top, bottom);
+            HullProfile built = new HullProfile(xs, top, bottom);
+            byFaction.put(factionKey, built);
+            return built;
         }
 
         HullProfile(double[] xs, double[] top, double[] bottom) {

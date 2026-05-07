@@ -14,6 +14,12 @@ import java.util.Random;
 public abstract class Ship {
     private static int NEXT_ID = 1;
     private static final Object SHIP_RNG_LOCK = new Object();
+    private static final InternalSystem[] INTERNAL_SYSTEM_VALUES = InternalSystem.values();
+    private static final ShipRoomLayout.RoomId[] PROPULSION_ENGINE_ROOMS = {
+            ShipRoomLayout.RoomId.ENGINES,
+            ShipRoomLayout.RoomId.PORT_ENGINES,
+            ShipRoomLayout.RoomId.STARBOARD_ENGINES
+    };
     private static Random deterministicRandom = null;
 
     public static void enableDeterministicRandom(long seed) {
@@ -381,6 +387,7 @@ public abstract class Ship {
     public double aiTargetCommitTimer = 0.0;
     public boolean surrendered = false;
     public double surrenderLockTimer = 0.0;
+    public double surrenderSelfDestructTimer = 0.0;
 
     // Power management
     public enum PowerPreset {
@@ -398,6 +405,7 @@ public abstract class Ship {
         AUXILIARY
     }
     private static final double POWER_BUS_UI_SOFT_CAP_RATIO = 1.70;
+    private static final double SURRENDER_SELF_DESTRUCT_SECONDS = 20.0;
     public enum SubsystemState {
         NOMINAL,
         STRESSED,
@@ -794,6 +802,17 @@ public abstract class Ship {
         if (surrenderLockTimer > 0.0) {
             surrenderLockTimer -= dt;
             if (surrenderLockTimer < 0.0) surrenderLockTimer = 0.0;
+        }
+        if (surrendered) {
+            preserveSurrenderedHullState();
+            if (surrenderSelfDestructTimer > 0.0) {
+                surrenderSelfDestructTimer -= dt;
+                if (surrenderSelfDestructTimer <= 0.0) {
+                    surrenderSelfDestructTimer = 0.0;
+                    triggerSurrenderSelfDestruct();
+                    return;
+                }
+            }
         }
         if (catastrophicChainGraceTimer > 0.0) {
             catastrophicChainGraceTimer -= dt;
@@ -1255,6 +1274,7 @@ public abstract class Ship {
                 hullDamage, impact, interiorRoom, hullBefore, interiorProfile, impactVx, impactVy);
         if (split != null) lastRoomDamageResult = split;
         syncHullFromRoomIntegrity();
+        preserveSurrenderedHullState();
         evaluateCondemnedStateFromRooms();
     }
 
@@ -1286,6 +1306,7 @@ public abstract class Ship {
                 penetratingDamage, impact, interiorRoom, hullBefore, interiorProfile, impactVx, impactVy);
         if (split != null) lastRoomDamageResult = split;
         syncHullFromRoomIntegrity();
+        preserveSurrenderedHullState();
         evaluateCondemnedStateFromRooms();
     }
 
@@ -1306,6 +1327,7 @@ public abstract class Ship {
         }
         if (!changed) return;
         syncHullFromRoomIntegrity();
+        preserveSurrenderedHullState();
         evaluateCondemnedStateFromRooms();
     }
 
@@ -2168,9 +2190,11 @@ public abstract class Ship {
     public double roomHealthFraction(ShipRoomLayout.RoomId roomId) {
         ensureRoomSystemsInitialized();
         if (roomId == null) return 1.0;
-        double hpv = roomHp.getOrDefault(roomId, 1.0);
-        double maxv = roomHpMax.getOrDefault(roomId, 1.0);
-        if (maxv <= 1e-9) return 1.0;
+        Double hpValue = roomHp.get(roomId);
+        Double maxValue = roomHpMax.get(roomId);
+        if (maxValue == null || maxValue <= 1e-9) return 1.0;
+        double maxv = maxValue;
+        double hpv = (hpValue == null) ? maxv : hpValue;
         return Math.max(0.0, Math.min(1.0, hpv / maxv));
     }
 
@@ -2215,7 +2239,8 @@ public abstract class Ship {
         int total = 0;
         for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             if (def == null || def.id == null) continue;
-            if (roomHpMax.getOrDefault(def.id, 0.0) <= 1e-6) continue;
+            Double hpMaxValue = roomHpMax.get(def.id);
+            if (hpMaxValue == null || hpMaxValue <= 1e-6) continue;
             total++;
         }
         if (total <= 0) return 0.0;
@@ -2235,7 +2260,9 @@ public abstract class Ship {
     public int activeFireRoomCount() {
         ensureRoomSystemsInitialized();
         int count = 0;
-        for (RoomHazardState hz : roomHazards.values()) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null) continue;
+            RoomHazardState hz = roomHazards.get(def.id);
             if (hz != null && hz.fireIntensity > 0.05) count++;
         }
         return count;
@@ -2244,7 +2271,9 @@ public abstract class Ship {
     public double totalFireIntensity() {
         ensureRoomSystemsInitialized();
         double total = 0.0;
-        for (RoomHazardState hz : roomHazards.values()) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null) continue;
+            RoomHazardState hz = roomHazards.get(def.id);
             if (hz == null) continue;
             total += Math.max(0.0, hz.fireIntensity);
         }
@@ -2259,7 +2288,9 @@ public abstract class Ship {
         ensureRoomSystemsInitialized();
         ShipRoomLayout.RoomId hottest = null;
         double hottestIntensity = 0.05;
-        for (RoomHazardState hz : roomHazards.values()) {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null) continue;
+            RoomHazardState hz = roomHazards.get(def.id);
             if (hz == null || hz.roomId == null) continue;
             if (hz.fireIntensity > hottestIntensity) {
                 hottestIntensity = hz.fireIntensity;
@@ -2416,9 +2447,12 @@ public abstract class Ship {
         if (roomHealFrac > 0.0) {
             for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
                 if (def == null || def.id == null) continue;
-                double maxv = roomHpMax.getOrDefault(def.id, 0.0);
+                Double maxValue = roomHpMax.get(def.id);
+                if (maxValue == null) continue;
+                double maxv = maxValue;
                 if (maxv <= 1e-9) continue;
-                double cur = roomHp.getOrDefault(def.id, maxv);
+                Double currentValue = roomHp.get(def.id);
+                double cur = (currentValue == null) ? maxv : currentValue;
                 if (cur >= maxv - 1e-9) continue;
                 double add = maxv * roomHealFrac;
                 if (add <= 1e-9) continue;
@@ -2660,11 +2694,7 @@ public abstract class Ship {
 
     public double propulsionRoomIntegrity() {
         ensureRoomSystemsInitialized();
-        double engine = roomClusterAverageFraction(
-                ShipRoomLayout.RoomId.ENGINES,
-                ShipRoomLayout.RoomId.PORT_ENGINES,
-                ShipRoomLayout.RoomId.STARBOARD_ENGINES
-        );
+        double engine = roomClusterAverageFraction(PROPULSION_ENGINE_ROOMS);
         double warp = roomHealthFraction(ShipRoomLayout.RoomId.WARP_DRIVE);
         return MathUtil.clamp(engine * 0.72 + warp * 0.28, 0.0, 1.0);
     }
@@ -3079,10 +3109,12 @@ public abstract class Ship {
         double maxTotal = 0.0;
         for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
             if (def == null || ShipRoomLayout.isArmorRoom(def.id)) continue;
-            double max = roomHpMax.getOrDefault(def.id, 0.0);
+            Double maxValue = roomHpMax.get(def.id);
+            double max = (maxValue == null) ? 0.0 : maxValue;
             if (max <= 0.0) continue;
             maxTotal += max;
-            total += Math.max(0.0, roomHp.getOrDefault(def.id, max));
+            Double hpValue = roomHp.get(def.id);
+            total += Math.max(0.0, (hpValue == null) ? max : hpValue);
         }
         if (maxTotal <= 1e-9) return 1.0;
         return Math.max(0.0, Math.min(1.0, total / maxTotal));
@@ -3137,6 +3169,10 @@ public abstract class Ship {
 
     private void evaluateCondemnedStateFromRooms() {
         if (!alive || dying) return;
+        if (surrendered) {
+            preserveSurrenderedHullState();
+            return;
+        }
         if (totalRoomIntegrityFraction() > roomCondemnedThreshold()) return;
         hp = 0;
         startDeathSequence();
@@ -3179,7 +3215,7 @@ public abstract class Ship {
         ensureInternalSystemsInitialized();
         ensureRoomSystemsInitialized();
         List<ShipRoomLayout.RoomDef> defs = ShipRoomLayout.profileFor(role, faction);
-        for (InternalSystem system : InternalSystem.values()) {
+        for (InternalSystem system : INTERNAL_SYSTEM_VALUES) {
             boolean hasMappedRoom = false;
             boolean anyOperationalRoom = false;
             boolean criticalMappedRoomFailed = false;
@@ -3217,9 +3253,12 @@ public abstract class Ship {
 
     private boolean isRoomOperational(ShipRoomLayout.RoomId roomId) {
         if (roomId == null) return false;
-        double max = roomHpMax.getOrDefault(roomId, 0.0);
+        Double maxValue = roomHpMax.get(roomId);
+        if (maxValue == null) return false;
+        double max = maxValue;
         if (max <= 1e-6) return false;
-        double hpv = roomHp.getOrDefault(roomId, max);
+        Double hpValue = roomHp.get(roomId);
+        double hpv = (hpValue == null) ? max : hpValue;
         double frac = MathUtil.clamp(hpv / max, 0.0, 1.0);
         return frac >= ROOM_OPERATIONAL_THRESHOLD;
     }
@@ -4476,7 +4515,7 @@ public abstract class Ship {
 
         InternalSystem lowest = null;
         double lowestFrac = 1.0;
-        for (InternalSystem s : InternalSystem.values()) {
+        for (InternalSystem s : INTERNAL_SYSTEM_VALUES) {
             double f = systemHealthFraction(s);
             if (f < lowestFrac) {
                 lowestFrac = f;
@@ -6304,6 +6343,8 @@ public abstract class Ship {
         if (!alive || dying || hp <= 0) return;
         surrendered = true;
         surrenderLockTimer = Math.max(surrenderLockTimer, Math.max(8.0, seconds));
+        surrenderSelfDestructTimer = Math.max(surrenderSelfDestructTimer, SURRENDER_SELF_DESTRUCT_SECONDS);
+        preserveSurrenderedHullState();
         crewOrder = CrewOrder.DAMAGE_CONTROL;
         aiCommittedTargetId = -1;
         aiTargetCommitTimer = 0.0;
@@ -6315,6 +6356,20 @@ public abstract class Ship {
     public void clearSurrenderState() {
         surrendered = false;
         surrenderLockTimer = 0.0;
+        surrenderSelfDestructTimer = 0.0;
+    }
+
+    private void preserveSurrenderedHullState() {
+        if (!surrendered || !alive || dying) return;
+        if (hp <= 0) hp = 1;
+    }
+
+    private void triggerSurrenderSelfDestruct() {
+        if (!alive || dying) return;
+        surrendered = false;
+        surrenderLockTimer = 0.0;
+        hp = 0;
+        startDeathSequence();
     }
 
     public void applyStasisField(double seconds) {

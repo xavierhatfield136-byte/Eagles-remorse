@@ -103,6 +103,12 @@ public final class DevOverlay {
                 + "  Bounds " + fmt2(perfValue(perf, "aiBoundsMs")));
 
         y += lineH;
+        drawLine(g2, x, y, "AI Cache: " + fmt2(perfValue(perf, "aiCacheQueryMs"))
+                + "  Pref " + perfInt(perf, "aiPreferredTargetHits") + "/" + perfInt(perf, "aiPreferredTargetMisses")
+                + "  Threat " + perfInt(perf, "aiImmediateThreatHits") + "/" + perfInt(perf, "aiImmediateThreatMisses")
+                + "  Signal " + perfInt(perf, "aiSensorSignalHits") + "/" + perfInt(perf, "aiSensorSignalMisses"));
+
+        y += lineH;
         drawLine(g2, x, y, "Drawn: Ships " + perfInt(perf, "drawnShips") + "/" + sizeOf(ctx, "ships")
                 + "  Proj " + perfInt(perf, "drawnProjectiles") + "/" + sizeOf(ctx, "projectiles")
                 + "  Ast " + perfInt(perf, "drawnAsteroids") + "/" + sizeOf(ctx, "asteroids"));

@@ -60,9 +60,8 @@ public class Main {
             try {
                 ShipHullSilhouette.prewarmCaches();
                 HullGeometry.prewarmCaches();
-                ShipPartLibrary.prewarmCaches();
-                ShipWreckLibrary.prewarmCaches();
-                Renderer.prewarmAssetCaches();
+                // Multipart sprite prewarm is extremely allocation-heavy in giant test battles.
+                // Keep runtime lazy-loading for these caches instead of competing with live combat.
             } catch (Throwable ignored) {
                 // Warmup is opportunistic. Lazy runtime loading remains as a fallback.
             }

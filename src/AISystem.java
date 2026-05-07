@@ -37,6 +37,81 @@ public final class AISystem {
         }
     }
 
+    private enum IntentType {
+        FIGHT,
+        WANDER,
+        FLEET_ACTION,
+        SCREEN,
+        REARM,
+        HOLD
+    }
+
+    private static final class ShipPerception {
+        final Ship immediateThreat;
+        final Ship selectedTarget;
+        final boolean abstractedSectorBehavior;
+
+        ShipPerception(Ship immediateThreat, Ship selectedTarget, boolean abstractedSectorBehavior) {
+            this.immediateThreat = immediateThreat;
+            this.selectedTarget = selectedTarget;
+            this.abstractedSectorBehavior = abstractedSectorBehavior;
+        }
+    }
+
+    private static final class ShipIntent {
+        final IntentType type;
+        final Ship target;
+        final Ship anchor;
+
+        ShipIntent(IntentType type, Ship target) {
+            this(type, target, null);
+        }
+
+        ShipIntent(IntentType type, Ship target, Ship anchor) {
+            this.type = (type == null) ? IntentType.WANDER : type;
+            this.target = target;
+            this.anchor = anchor;
+        }
+    }
+
+    private static final class EscortPerception {
+        final Ship anchor;
+        final Ship threat;
+
+        EscortPerception(Ship anchor, Ship threat) {
+            this.anchor = anchor;
+            this.threat = threat;
+        }
+    }
+
+    private static final class RearmPerception {
+        final Ship tender;
+
+        RearmPerception(Ship tender) {
+            this.tender = tender;
+        }
+    }
+
+    private static final class PdEscortPerception {
+        final Ship anchor;
+        final Ship threat;
+
+        PdEscortPerception(Ship anchor, Ship threat) {
+            this.anchor = anchor;
+            this.threat = threat;
+        }
+    }
+
+    private static final class CarrierCraftPerception {
+        final boolean needsRearm;
+        final Ship target;
+
+        CarrierCraftPerception(boolean needsRearm, Ship target) {
+            this.needsRearm = needsRearm;
+            this.target = target;
+        }
+    }
+
     private static final class DangerMemory {
         double x;
         double y;
@@ -80,11 +155,26 @@ public final class AISystem {
         final ArrayDeque<ArrayList<Ship>> shipLists = new ArrayDeque<>();
         final ArrayDeque<ArrayList<Missile>> missileLists = new ArrayDeque<>();
         final ArrayDeque<ArrayList<Integer>> intLists = new ArrayDeque<>();
+        final ArrayDeque<java.util.HashSet<Integer>> intSets = new ArrayDeque<>();
+    }
+
+    private static final class AIFrameCache {
+        final Map<Integer, Ship> preferredEnemyTargets = new HashMap<>();
+        final Map<Long, Ship> immediateThreats = new HashMap<>();
+        List<FogOfWarSystem.SensorInterestSignal> sensorInterestSignals = null;
+        long queryComputeNs = 0L;
+        int preferredTargetHits = 0;
+        int preferredTargetMisses = 0;
+        int immediateThreatHits = 0;
+        int immediateThreatMisses = 0;
+        int sensorSignalHits = 0;
+        int sensorSignalMisses = 0;
     }
 
     private static long shipCombatTargetNs = 0L;
     private static long shipCombatFightNs = 0L;
     private static long shipCombatFireNs = 0L;
+    private static final ThreadLocal<AIFrameCache> ACTIVE_FRAME_CACHE = new ThreadLocal<>();
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -103,73 +193,75 @@ public final class AISystem {
         shipCombatTargetNs = 0L;
         shipCombatFightNs = 0L;
         shipCombatFireNs = 0L;
+        ACTIVE_FRAME_CACHE.set(new AIFrameCache());
 
-        long phaseStart = System.nanoTime();
-        tickFleetCommLog(ctx, Math.max(0.0, dt));
-        decayKillConfirmTimers(Math.max(0.0, dt));
-        pruneClosestRetargetState(ctx.ships);
+        try {
+            long phaseStart = System.nanoTime();
+            tickFleetCommLog(ctx, Math.max(0.0, dt));
+            decayKillConfirmTimers(Math.max(0.0, dt));
+            pruneClosestRetargetState(ctx.ships);
 
-        // Generic wave spawner (disabled for Last Stand and 4-team, which have custom pacing).
-        if (ctx.config.mode != GameMode.LAST_STAND
-                && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION
-                && !CampaignSystem.useAuthoredWaveSchedule(ctx)) {
-            ctx.enemyWaveTimer -= dt;
-            if (ctx.enemyWaveTimer <= 0) {
-                ctx.enemyWaveTimer = CampaignSystem.nextWaveDelay(ctx);
-                int groups = CampaignSystem.groupsPerWave(ctx);
-                int enemyGroups = groups;
-                int allyGroups = Math.max(1, groups - 1);
-                enemyGroups = Math.max(1, enemyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ENEMY));
-                allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
-
-                if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
-                    // Resource Rush should not snowball into red-only pressure.
-                    allyGroups = groups;
-                    int enemyAlive = TeamSystem.countAliveShips(ctx, Faction.ENEMY);
-                    int allyAlive = TeamSystem.countAliveShips(ctx, Faction.ALLY);
-                    int deficit = enemyAlive - allyAlive;
-                    if (deficit >= 3) {
-                        allyGroups += Math.min(2, deficit / 3);
-                    }
+            // Generic wave spawner (disabled for Last Stand and 4-team, which have custom pacing).
+            if (ctx.config.mode != GameMode.LAST_STAND
+                    && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION
+                    && !CampaignSystem.useAuthoredWaveSchedule(ctx)) {
+                ctx.enemyWaveTimer -= dt;
+                if (ctx.enemyWaveTimer <= 0) {
+                    ctx.enemyWaveTimer = CampaignSystem.nextWaveDelay(ctx);
+                    int groups = CampaignSystem.groupsPerWave(ctx);
+                    int enemyGroups = groups;
+                    int allyGroups = Math.max(1, groups - 1);
+                    enemyGroups = Math.max(1, enemyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ENEMY));
                     allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
-                    enemyGroups = Math.max(1, enemyGroups);
-                    enemyGroups = resourceRushCappedGroupCount(enemyAlive, enemyGroups);
-                    allyGroups = resourceRushCappedGroupCount(allyAlive, allyGroups);
-                }
-                if (CampaignSystem.isCampaignActive(ctx)) {
-                    allyGroups = 0;
-                }
-                for (int i = 0; i < enemyGroups; i++) {
-                    double[] spawn = teamWaveStagingPoint(ctx, Faction.ENEMY);
-                    SpawnSystem.spawnEnemyGroup(
-                            ctx,
-                            spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
-                            spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
-                    );
-                }
 
-                for (int i = 0; i < allyGroups; i++) {
-                    double[] spawn = teamWaveStagingPoint(ctx, Faction.ALLY);
-                    SpawnSystem.spawnAllyGroup(
-                            ctx,
-                            spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
-                            spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
-                    );
+                    if (ctx.config.mode == GameMode.RESOURCE_RUSH) {
+                        // Resource Rush should not snowball into red-only pressure.
+                        allyGroups = groups;
+                        int enemyAlive = TeamSystem.countAliveShips(ctx, Faction.ENEMY);
+                        int allyAlive = TeamSystem.countAliveShips(ctx, Faction.ALLY);
+                        int deficit = enemyAlive - allyAlive;
+                        if (deficit >= 3) {
+                            allyGroups += Math.min(2, deficit / 3);
+                        }
+                        allyGroups = Math.max(0, allyGroups + OffSectorSimulationSystem.reinforcementBudgetDelta(ctx, Faction.ALLY));
+                        enemyGroups = Math.max(1, enemyGroups);
+                        enemyGroups = resourceRushCappedGroupCount(enemyAlive, enemyGroups);
+                        allyGroups = resourceRushCappedGroupCount(allyAlive, allyGroups);
+                    }
+                    if (CampaignSystem.isCampaignActive(ctx)) {
+                        allyGroups = 0;
+                    }
+                    for (int i = 0; i < enemyGroups; i++) {
+                        double[] spawn = teamWaveStagingPoint(ctx, Faction.ENEMY);
+                        SpawnSystem.spawnEnemyGroup(
+                                ctx,
+                                spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
+                                spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
+                        );
+                    }
+
+                    for (int i = 0; i < allyGroups; i++) {
+                        double[] spawn = teamWaveStagingPoint(ctx, Faction.ALLY);
+                        SpawnSystem.spawnAllyGroup(
+                                ctx,
+                                spawn[0] + (ctx.rng.nextDouble() - 0.5) * 220.0,
+                                spawn[1] + (ctx.rng.nextDouble() - 0.5) * 220.0
+                        );
+                    }
                 }
             }
-        }
-        maintenanceNs += System.nanoTime() - phaseStart;
+            maintenanceNs += System.nanoTime() - phaseStart;
 
-        phaseStart = System.nanoTime();
-        FleetState fleetState = buildFleetState(ctx, dt);
-        fleetStateNs += System.nanoTime() - phaseStart;
+            phaseStart = System.nanoTime();
+            FleetState fleetState = buildFleetState(ctx, dt);
+            fleetStateNs += System.nanoTime() - phaseStart;
 
-        phaseStart = System.nanoTime();
-        updateShipWillpower(ctx, dt);
-        shipUtilityNs += System.nanoTime() - phaseStart;
+            phaseStart = System.nanoTime();
+            updateShipWillpower(ctx, dt);
+            shipUtilityNs += System.nanoTime() - phaseStart;
 
-        // per ship AI
-        for (Ship s : ctx.ships) {
+            // per ship AI
+            for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
@@ -213,129 +305,8 @@ public final class AISystem {
                 continue;
             }
             shipUtilityNs += System.nanoTime() - utilityStart;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) {
-                long combatStart = System.nanoTime();
-                // Bases and static defense turrets stay put but can still defend themselves.
-                s.vx = 0;
-                s.vy = 0;
-                Ship target = periodicClosestRetargetTarget(ctx, s);
-                if (!isAlive(target)) target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
-                if (target != null && target.alive && !target.dying) {
-                    fireIfAble(ctx, s, target, dt, Math.hypot(target.x - s.x, target.y - s.y));
-                }
-                s.tryCIWS(dt, ctx);
-                shipCombatNs += System.nanoTime() - combatStart;
-                continue;
-            }
-            if (s.role == ShipRole.MINER) {
-                long combatStart = System.nanoTime();
-                // Mining movement is handled in EconomySystem. Miners only do opportunistic self-defense here.
-                Ship target = periodicClosestRetargetTarget(ctx, s);
-                if (!isAlive(target)) target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
-                if (target != null && target.alive && !target.dying) {
-                    double d = Math.hypot(target.x - s.x, target.y - s.y);
-                    if (d <= 280) {
-                        fireIfAble(ctx, s, target, dt, d);
-                    }
-                }
-                s.tryCIWS(dt, ctx);
-                shipCombatNs += System.nanoTime() - combatStart;
-                continue;
-            }
-            if (s.role == ShipRole.PD_CRAFT && s.carrierOwnerId < 0 && s.minerHomeBase != null) {
-                long combatStart = System.nanoTime();
-                Ship escortCarrier = s.minerHomeBase;
-                boolean validCarrierAnchor = isAlive(escortCarrier)
-                        && escortCarrier.isCarrier
-                        && escortCarrier.faction != null
-                        && s.faction != null
-                        && escortCarrier.faction.teamId() == s.faction.teamId();
-                if (!validCarrierAnchor) {
-                    s.minerHomeBase = null;
-                } else {
-                    Ship target = findEscortThreatNearCarrier(ctx, s, escortCarrier);
-                    if (isAlive(target)) {
-                        fight(ctx, s, target, dt);
-                    } else {
-                        // Keep PD escorts out as a screen, instead of hugging the carrier.
-                        double orbitRange = Math.max(360.0, escortCarrier.radius + 220.0);
-                        double speed = Math.max(95.0, MovementModel.speedCeiling(s) * 0.92);
-                        orbit(s, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((s.id & 1) == 0) ? 1.0 : -1.0);
-                    }
-                    s.tryCIWS(dt, ctx);
-                    shipCombatNs += System.nanoTime() - combatStart;
-                    long avoidStart = System.nanoTime();
-                    applyAsteroidAvoidance(ctx, s, dt);
-                    applyProjectileLaneAvoidance(ctx, s, dt);
-                    avoidanceNs += System.nanoTime() - avoidStart;
-                    continue;
-                }
-                shipCombatNs += System.nanoTime() - combatStart;
-            }
             long combatStart = System.nanoTime();
-            if (handleEscortFighterBehavior(ctx, s, dt)) {
-                shipCombatNs += System.nanoTime() - combatStart;
-                long avoidStart = System.nanoTime();
-                applyAsteroidAvoidance(ctx, s, dt);
-                applyProjectileLaneAvoidance(ctx, s, dt);
-                avoidanceNs += System.nanoTime() - avoidStart;
-                continue;
-            }
-            if (s.carrierOwnerId >= 0) {
-                long combatStartCraft = System.nanoTime();
-                // Carrier-launched craft movement is owned by CarrierSystem; keep only lightweight fire control here.
-                if (s.needsStrikeCraftRearm()) {
-                    s.tryCIWS(dt, ctx);
-                    shipCombatNs += System.nanoTime() - combatStartCraft;
-                    long avoidStart = System.nanoTime();
-                    applyAsteroidAvoidance(ctx, s, dt);
-                    applyProjectileLaneAvoidance(ctx, s, dt);
-                    avoidanceNs += System.nanoTime() - avoidStart;
-                    continue;
-                }
-                Ship target = periodicClosestRetargetTarget(ctx, s);
-                if (!isAlive(target)) target = CarrierSystem.preferredTargetForCraft(ctx, s, null);
-                if (!isAlive(target)) target = TargetingSystem.getPreferredEnemyTarget(ctx, s);
-                if (!isAlive(target)) target = findImmediateThreat(ctx, s, Math.max(180.0, preferredRange(s) * 0.78));
-                if (target != null && target.alive && !target.dying) {
-                    double d = Math.hypot(target.x - s.x, target.y - s.y);
-                    fireIfAble(ctx, s, target, dt, d);
-                }
-                s.tryCIWS(dt, ctx);
-                shipCombatNs += System.nanoTime() - combatStartCraft;
-                long avoidStart = System.nanoTime();
-                applyAsteroidAvoidance(ctx, s, dt);
-                applyProjectileLaneAvoidance(ctx, s, dt);
-                avoidanceNs += System.nanoTime() - avoidStart;
-                continue;
-            }
-
-            if (handleStandaloneStrikeCraftRearm(ctx, s, dt)) {
-                long avoidStart = System.nanoTime();
-                applyAsteroidAvoidance(ctx, s, dt);
-                applyProjectileLaneAvoidance(ctx, s, dt);
-                avoidanceNs += System.nanoTime() - avoidStart;
-                continue;
-            }
-
-            if (OffSectorSimulationSystem.shouldUseAbstractShipBehavior(ctx, s)) {
-                long combatStartAbstract = System.nanoTime();
-                Ship immediate = findImmediateThreat(ctx, s, Math.max(180.0, preferredRange(s) * 0.56));
-                if (immediate != null && immediate.alive && !immediate.dying) {
-                    fight(ctx, s, immediate, dt);
-                } else {
-                    wander(ctx, s, dt);
-                }
-                shipCombatNs += System.nanoTime() - combatStartAbstract;
-                long avoidStart = System.nanoTime();
-                applyAsteroidAvoidance(ctx, s, dt);
-                applyProjectileLaneAvoidance(ctx, s, dt);
-                avoidanceNs += System.nanoTime() - avoidStart;
-                continue;
-            }
-
-            combatStart = System.nanoTime();
-            if (applyFleetBehavior(ctx, fleetState, s, dt)) {
+            if (tryRunSpecializedShipAI(ctx, s, dt)) {
                 shipCombatNs += System.nanoTime() - combatStart;
                 long avoidStart = System.nanoTime();
                 applyAsteroidAvoidance(ctx, s, dt);
@@ -345,49 +316,326 @@ public final class AISystem {
             }
 
             combatStart = System.nanoTime();
-            long targetStart = System.nanoTime();
-            Ship target = selectEngagementTarget(ctx, fleetState, s, dt);
-            shipCombatTargetNs += System.nanoTime() - targetStart;
-            if (target != null && target.alive && !target.dying) {
-                fight(ctx, s, target, dt);
-            } else {
-                wander(ctx, s, dt);
-            }
+            runCombatShipAI(ctx, fleetState, s, dt);
             shipCombatNs += System.nanoTime() - combatStart;
             long avoidStart = System.nanoTime();
             applyAsteroidAvoidance(ctx, s, dt);
             applyProjectileLaneAvoidance(ctx, s, dt);
             avoidanceNs += System.nanoTime() - avoidStart;
-        }
+            }
 
-        phaseStart = System.nanoTime();
-        synchronizeFlagshipWarpFormations(ctx, fleetState);
-        formationSyncNs += System.nanoTime() - phaseStart;
+            phaseStart = System.nanoTime();
+            synchronizeFlagshipWarpFormations(ctx, fleetState);
+            formationSyncNs += System.nanoTime() - phaseStart;
 
-        // keep bounds
-        phaseStart = System.nanoTime();
-        for (Ship s : ctx.ships) {
-            if (s == null) continue;
-            if (!s.alive || s.dying) continue;
-            s.x = GameMath.clamp(s.x, 0, ctx.WORLD_W);
-            s.y = GameMath.clamp(s.y, 0, ctx.WORLD_H);
-        }
-        boundsNs += System.nanoTime() - phaseStart;
+            // keep bounds
+            phaseStart = System.nanoTime();
+            for (Ship s : ctx.ships) {
+                if (s == null) continue;
+                if (!s.alive || s.dying) continue;
+                s.x = GameMath.clamp(s.x, 0, ctx.WORLD_W);
+                s.y = GameMath.clamp(s.y, 0, ctx.WORLD_H);
+            }
+            boundsNs += System.nanoTime() - phaseStart;
 
-        if (ctx.perf != null) {
-            ctx.perf.aiMs = (maintenanceNs + fleetStateNs + shipUtilityNs + shipCombatNs
-                    + avoidanceNs + formationSyncNs + boundsNs) / 1_000_000.0;
-            ctx.perf.aiMaintenanceMs = maintenanceNs / 1_000_000.0;
-            ctx.perf.aiFleetStateMs = fleetStateNs / 1_000_000.0;
-            ctx.perf.aiShipUtilityMs = shipUtilityNs / 1_000_000.0;
-            ctx.perf.aiShipCombatMs = shipCombatNs / 1_000_000.0;
-            ctx.perf.aiShipCombatTargetMs = shipCombatTargetNs / 1_000_000.0;
-            ctx.perf.aiShipCombatFightMs = shipCombatFightNs / 1_000_000.0;
-            ctx.perf.aiShipCombatFireMs = shipCombatFireNs / 1_000_000.0;
-            ctx.perf.aiAvoidanceMs = avoidanceNs / 1_000_000.0;
-            ctx.perf.aiFormationSyncMs = formationSyncNs / 1_000_000.0;
-            ctx.perf.aiBoundsMs = boundsNs / 1_000_000.0;
+            if (ctx.perf != null) {
+                ctx.perf.aiMs = (maintenanceNs + fleetStateNs + shipUtilityNs + shipCombatNs
+                        + avoidanceNs + formationSyncNs + boundsNs) / 1_000_000.0;
+                ctx.perf.aiMaintenanceMs = maintenanceNs / 1_000_000.0;
+                ctx.perf.aiFleetStateMs = fleetStateNs / 1_000_000.0;
+                ctx.perf.aiShipUtilityMs = shipUtilityNs / 1_000_000.0;
+                ctx.perf.aiShipCombatMs = shipCombatNs / 1_000_000.0;
+                ctx.perf.aiShipCombatTargetMs = shipCombatTargetNs / 1_000_000.0;
+                ctx.perf.aiShipCombatFightMs = shipCombatFightNs / 1_000_000.0;
+                ctx.perf.aiShipCombatFireMs = shipCombatFireNs / 1_000_000.0;
+                ctx.perf.aiAvoidanceMs = avoidanceNs / 1_000_000.0;
+                ctx.perf.aiFormationSyncMs = formationSyncNs / 1_000_000.0;
+                ctx.perf.aiBoundsMs = boundsNs / 1_000_000.0;
+                AIFrameCache cache = currentFrameCache();
+                ctx.perf.aiCacheQueryMs = (cache == null) ? 0.0 : cache.queryComputeNs / 1_000_000.0;
+                ctx.perf.aiPreferredTargetHits = (cache == null) ? 0 : cache.preferredTargetHits;
+                ctx.perf.aiPreferredTargetMisses = (cache == null) ? 0 : cache.preferredTargetMisses;
+                ctx.perf.aiImmediateThreatHits = (cache == null) ? 0 : cache.immediateThreatHits;
+                ctx.perf.aiImmediateThreatMisses = (cache == null) ? 0 : cache.immediateThreatMisses;
+                ctx.perf.aiSensorSignalHits = (cache == null) ? 0 : cache.sensorSignalHits;
+                ctx.perf.aiSensorSignalMisses = (cache == null) ? 0 : cache.sensorSignalMisses;
+            }
+        } finally {
+            ACTIVE_FRAME_CACHE.remove();
         }
+    }
+
+    private static void runCombatShipAI(GameContext ctx, FleetState fleetState, Ship ship, double dt) {
+        if (ctx == null || ship == null) return;
+        ShipPerception perception = perceiveCombatSituation(ctx, fleetState, ship, dt);
+        ShipIntent intent = chooseCombatIntent(ctx, fleetState, ship, perception);
+        executeCombatIntent(ctx, fleetState, ship, dt, intent);
+    }
+
+    private static boolean tryRunSpecializedShipAI(GameContext ctx, Ship ship, double dt) {
+        if (ctx == null || ship == null || dt <= 0.0) return false;
+        if (runStaticDefenseShipAI(ctx, ship, dt)) return true;
+        if (runMinerDefenseShipAI(ctx, ship, dt)) return true;
+        if (runPdEscortShipAI(ctx, ship, dt)) return true;
+        if (handleEscortFighterBehavior(ctx, ship, dt)) return true;
+        if (runCarrierStrikeCraftAI(ctx, ship, dt)) return true;
+        return handleStandaloneStrikeCraftRearm(ctx, ship, dt);
+    }
+
+    private static boolean runStaticDefenseShipAI(GameContext ctx, Ship ship, double dt) {
+        if (ctx == null || ship == null) return false;
+        if (ship.role != ShipRole.BASE && ship.role != ShipRole.STATIC_TURRET) return false;
+
+        ship.vx = 0;
+        ship.vy = 0;
+        Ship target = periodicClosestRetargetTarget(ctx, ship);
+        if (!isAlive(target)) target = preferredEnemyTargetCached(ctx, ship);
+        if (isAlive(target)) {
+            fireIfAble(ctx, ship, target, dt, Math.hypot(target.x - ship.x, target.y - ship.y));
+        }
+        ship.tryCIWS(dt, ctx);
+        return true;
+    }
+
+    private static boolean runMinerDefenseShipAI(GameContext ctx, Ship ship, double dt) {
+        if (ctx == null || ship == null) return false;
+        if (ship.role != ShipRole.MINER) return false;
+
+        Ship target = periodicClosestRetargetTarget(ctx, ship);
+        if (!isAlive(target)) target = preferredEnemyTargetCached(ctx, ship);
+        if (isAlive(target)) {
+            double d = Math.hypot(target.x - ship.x, target.y - ship.y);
+            if (d <= 280.0) {
+                fireIfAble(ctx, ship, target, dt, d);
+            }
+        }
+        ship.tryCIWS(dt, ctx);
+        return true;
+    }
+
+    private static boolean runPdEscortShipAI(GameContext ctx, Ship ship, double dt) {
+        if (ctx == null || ship == null) return false;
+        if (ship.role != ShipRole.PD_CRAFT || ship.carrierOwnerId >= 0 || ship.minerHomeBase == null) return false;
+
+        PdEscortPerception perception = perceivePdEscortSituation(ctx, ship);
+        if (perception == null || !isAlive(perception.anchor)) {
+            return false;
+        }
+        ShipIntent intent = choosePdEscortIntent(perception);
+        executePdEscortIntent(ctx, ship, dt, intent);
+        ship.tryCIWS(dt, ctx);
+        return true;
+    }
+
+    private static PdEscortPerception perceivePdEscortSituation(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null) return null;
+        Ship escortCarrier = ship.minerHomeBase;
+        boolean validCarrierAnchor = isAlive(escortCarrier)
+                && escortCarrier.isCarrier
+                && escortCarrier.faction != null
+                && ship.faction != null
+                && escortCarrier.faction.teamId() == ship.faction.teamId();
+        if (!validCarrierAnchor) {
+            ship.minerHomeBase = null;
+            return null;
+        }
+        Ship threat = findEscortThreatNearCarrier(ctx, ship, escortCarrier);
+        return new PdEscortPerception(escortCarrier, threat);
+    }
+
+    private static ShipIntent choosePdEscortIntent(PdEscortPerception perception) {
+        if (perception == null || !isAlive(perception.anchor)) {
+            return new ShipIntent(IntentType.WANDER, null);
+        }
+        if (isAlive(perception.threat)) {
+            return new ShipIntent(IntentType.FIGHT, perception.threat, perception.anchor);
+        }
+        return new ShipIntent(IntentType.SCREEN, null, perception.anchor);
+    }
+
+    private static void executePdEscortIntent(GameContext ctx, Ship ship, double dt, ShipIntent intent) {
+        if (ctx == null || ship == null || intent == null) return;
+        if (intent.type == IntentType.FIGHT && isAlive(intent.target)) {
+            fight(ctx, ship, intent.target, dt);
+            return;
+        }
+        if (intent.type != IntentType.SCREEN || !isAlive(intent.anchor)) {
+            wander(ctx, ship, dt);
+            return;
+        }
+        Ship escortCarrier = intent.anchor;
+        double orbitRange = Math.max(360.0, escortCarrier.radius + 220.0);
+        double speed = Math.max(95.0, MovementModel.speedCeiling(ship) * 0.92);
+        orbit(ship, escortCarrier.x, escortCarrier.y, orbitRange, speed, dt, ((ship.id & 1) == 0) ? 1.0 : -1.0);
+    }
+
+    private static boolean runCarrierStrikeCraftAI(GameContext ctx, Ship ship, double dt) {
+        if (ctx == null || ship == null) return false;
+        if (ship.carrierOwnerId < 0) return false;
+
+        CarrierCraftPerception perception = perceiveCarrierCraftSituation(ctx, ship);
+        ShipIntent intent = chooseCarrierCraftIntent(perception);
+        executeCarrierCraftIntent(ctx, ship, dt, intent);
+        ship.tryCIWS(dt, ctx);
+        return true;
+    }
+
+    private static CarrierCraftPerception perceiveCarrierCraftSituation(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null) return new CarrierCraftPerception(false, null);
+        boolean needsRearm = ship.needsStrikeCraftRearm();
+        Ship target = null;
+        if (!needsRearm) {
+            target = periodicClosestRetargetTarget(ctx, ship);
+            if (!isAlive(target)) target = CarrierSystem.preferredTargetForCraft(ctx, ship, null);
+            if (!isAlive(target)) target = preferredEnemyTargetCached(ctx, ship);
+            if (!isAlive(target)) target = immediateThreatCached(ctx, ship, Math.max(180.0, preferredRange(ship) * 0.78));
+        }
+        return new CarrierCraftPerception(needsRearm, target);
+    }
+
+    private static ShipIntent chooseCarrierCraftIntent(CarrierCraftPerception perception) {
+        if (perception == null) return new ShipIntent(IntentType.HOLD, null);
+        if (perception.needsRearm) return new ShipIntent(IntentType.REARM, null);
+        if (isAlive(perception.target)) return new ShipIntent(IntentType.FIGHT, perception.target);
+        return new ShipIntent(IntentType.HOLD, null);
+    }
+
+    private static void executeCarrierCraftIntent(GameContext ctx, Ship ship, double dt, ShipIntent intent) {
+        if (ctx == null || ship == null || intent == null) return;
+        if (intent.type == IntentType.FIGHT && isAlive(intent.target)) {
+            double d = Math.hypot(intent.target.x - ship.x, intent.target.y - ship.y);
+            fireIfAble(ctx, ship, intent.target, dt, d);
+        }
+    }
+
+    private static ShipPerception perceiveCombatSituation(GameContext ctx, FleetState fleetState, Ship ship, double dt) {
+        if (ctx == null || ship == null) {
+            return new ShipPerception(null, null, false);
+        }
+        boolean abstracted = OffSectorSimulationSystem.shouldUseAbstractShipBehavior(ctx, ship);
+        Ship immediate = null;
+        Ship selected = null;
+        if (abstracted) {
+            immediate = immediateThreatCached(ctx, ship, Math.max(180.0, preferredRange(ship) * 0.56));
+            selected = immediate;
+        } else {
+            long targetStart = System.nanoTime();
+            selected = selectEngagementTarget(ctx, fleetState, ship, dt);
+            shipCombatTargetNs += System.nanoTime() - targetStart;
+            immediate = committedOrImmediateThreat(ctx, ship, selected);
+        }
+        return new ShipPerception(immediate, selected, abstracted);
+    }
+
+    private static ShipIntent chooseCombatIntent(GameContext ctx, FleetState fleetState, Ship ship, ShipPerception perception) {
+        if (ctx == null || ship == null || perception == null) {
+            return new ShipIntent(IntentType.WANDER, null);
+        }
+        if (perception.abstractedSectorBehavior) {
+            return isAlive(perception.immediateThreat)
+                    ? new ShipIntent(IntentType.FIGHT, perception.immediateThreat)
+                    : new ShipIntent(IntentType.WANDER, null);
+        }
+        if (shouldYieldToFleetExecution(ctx, fleetState, ship)) {
+            return new ShipIntent(IntentType.FLEET_ACTION, perception.selectedTarget);
+        }
+        return isAlive(perception.selectedTarget)
+                ? new ShipIntent(IntentType.FIGHT, perception.selectedTarget)
+                : new ShipIntent(IntentType.WANDER, null);
+    }
+
+    private static void executeCombatIntent(GameContext ctx, FleetState fleetState, Ship ship, double dt, ShipIntent intent) {
+        if (ctx == null || ship == null || intent == null) return;
+        switch (intent.type) {
+            case FIGHT -> {
+                if (isAlive(intent.target)) {
+                    fight(ctx, ship, intent.target, dt);
+                } else {
+                    wander(ctx, ship, dt);
+                }
+            }
+            case FLEET_ACTION -> {
+                if (!applyFleetBehavior(ctx, fleetState, ship, dt)) {
+                    if (isAlive(intent.target)) {
+                        fight(ctx, ship, intent.target, dt);
+                    } else {
+                        wander(ctx, ship, dt);
+                    }
+                }
+            }
+            case WANDER -> wander(ctx, ship, dt);
+        }
+    }
+
+    private static boolean shouldYieldToFleetExecution(GameContext ctx, FleetState fleetState, Ship ship) {
+        if (ctx == null || fleetState == null || ship == null || ship.faction == null) return false;
+        int teamId = ship.faction.teamId();
+        Ship flagship = fleetState.flagships.get(teamId);
+        if (flagship == null) return false;
+        List<Ship> members = fleetState.members.get(teamId);
+        return members != null && members.size() > 1;
+    }
+
+    private static AIFrameCache currentFrameCache() {
+        return ACTIVE_FRAME_CACHE.get();
+    }
+
+    private static Ship preferredEnemyTargetCached(GameContext ctx, Ship seeker) {
+        if (ctx == null || seeker == null) return null;
+        AIFrameCache cache = currentFrameCache();
+        if (cache == null) return TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
+        if (cache.preferredEnemyTargets.containsKey(seeker.id)) {
+            cache.preferredTargetHits++;
+            return cache.preferredEnemyTargets.get(seeker.id);
+        }
+        long start = System.nanoTime();
+        Ship target = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
+        cache.queryComputeNs += System.nanoTime() - start;
+        cache.preferredTargetMisses++;
+        cache.preferredEnemyTargets.put(seeker.id, target);
+        return target;
+    }
+
+    private static Ship immediateThreatCached(GameContext ctx, Ship seeker, double radius) {
+        if (ctx == null || seeker == null) return null;
+        AIFrameCache cache = currentFrameCache();
+        if (cache == null) return findImmediateThreatUncached(ctx, seeker, radius);
+        long key = (((long) seeker.id) << 32) ^ (quantizeThreatRadius(radius) & 0xffffffffL);
+        if (cache.immediateThreats.containsKey(key)) {
+            cache.immediateThreatHits++;
+            return cache.immediateThreats.get(key);
+        }
+        long start = System.nanoTime();
+        Ship target = findImmediateThreatUncached(ctx, seeker, radius);
+        cache.queryComputeNs += System.nanoTime() - start;
+        cache.immediateThreatMisses++;
+        cache.immediateThreats.put(key, target);
+        return target;
+    }
+
+    private static int quantizeThreatRadius(double radius) {
+        return (int) Math.round(Math.max(0.0, radius) * 0.1);
+    }
+
+    private static List<FogOfWarSystem.SensorInterestSignal> sensorInterestSignalsCached(GameContext ctx) {
+        if (ctx == null) return List.of();
+        AIFrameCache cache = currentFrameCache();
+        if (cache == null) return FogOfWarSystem.sensorInterestSignals(ctx);
+        if (cache.sensorInterestSignals == null) {
+            long start = System.nanoTime();
+            cache.sensorInterestSignals = FogOfWarSystem.sensorInterestSignals(ctx);
+            cache.queryComputeNs += System.nanoTime() - start;
+            cache.sensorSignalMisses++;
+        } else {
+            cache.sensorSignalHits++;
+        }
+        return cache.sensorInterestSignals;
+    }
+
+    private static Ship committedOrImmediateThreat(GameContext ctx, Ship ship, Ship selected) {
+        if (isAlive(selected)) return selected;
+        if (ctx == null || ship == null) return null;
+        return immediateThreatCached(ctx, ship, Math.max(180.0, preferredRange(ship) * 0.56));
     }
 
     private static void updateShipWillpower(GameContext ctx, double dt) {
@@ -827,10 +1075,10 @@ public final class AISystem {
 
     private static void syncFleetPresentation(GameContext ctx, FleetState state) {
         if (ctx == null || state == null) return;
-        if (ctx.command.fleetSquadLabelByShip != null) ctx.command.fleetSquadLabelByShip.putAll(state.squadLabels);
-        if (ctx.command.fleetSquadRoleByShip != null) ctx.command.fleetSquadRoleByShip.putAll(state.squadRoles);
-        if (ctx.command.fleetSquadLeaderByShip != null) ctx.command.fleetSquadLeaderByShip.putAll(state.squadLeaders);
-        if (ctx.command.fleetSquadIndexByShip != null) ctx.command.fleetSquadIndexByShip.putAll(state.squadIndexes);
+        syncFleetMap(ctx.command.fleetSquadLabelByShip, state.squadLabels);
+        syncFleetMap(ctx.command.fleetSquadRoleByShip, state.squadRoles);
+        syncFleetMap(ctx.command.fleetSquadLeaderByShip, state.squadLeaders);
+        syncFleetMap(ctx.command.fleetSquadIndexByShip, state.squadIndexes);
         syncResolvedFleetOrders(ctx, state);
         updateFleetNetTraffic(ctx, state);
     }
@@ -864,35 +1112,51 @@ public final class AISystem {
     private static void updateFleetNetTraffic(GameContext ctx, FleetState state) {
         if (ctx == null || state == null || ctx.player == null || ctx.player.faction == null) return;
         int playerTeamId = ctx.player.faction.teamId();
-        java.util.HashSet<String> activeKeys = new java.util.HashSet<>();
-        for (Map.Entry<Integer, String> e : state.squadLabels.entrySet()) {
-            Integer shipId = e.getKey();
-            if (shipId == null) continue;
-            Integer leaderId = state.squadLeaders.get(shipId);
-            if (leaderId == null || leaderId.intValue() != shipId.intValue()) continue;
-            Ship leader = findShipById(ctx.ships, shipId);
-            if (!isAlive(leader) || leader.faction == null || leader.faction.teamId() != playerTeamId) continue;
+        java.util.HashSet<Integer> activeKeys = borrowIntSetScratch();
+        try {
+            for (Map.Entry<Integer, String> e : state.squadLabels.entrySet()) {
+                Integer shipId = e.getKey();
+                if (shipId == null) continue;
+                Integer leaderId = state.squadLeaders.get(shipId);
+                if (leaderId == null || leaderId.intValue() != shipId.intValue()) continue;
+                Ship leader = findShipById(ctx.ships, shipId);
+                if (!isAlive(leader) || leader.faction == null || leader.faction.teamId() != playerTeamId) continue;
 
-            Ship flagship = state.flagships.get(playerTeamId);
-            SquadObjective objective = state.squadObjectives.getOrDefault(shipId, SquadObjective.HOLD);
-            GameContext.FleetCommand command = resolveFleetCommand(ctx, leader, flagship);
-            Ship target = state.sharedTargets.get(playerTeamId);
-            String key = playerTeamId + ":" + e.getValue();
-            activeKeys.add(key);
-            boolean trackTarget = objective == SquadObjective.FLANK || command == GameContext.FleetCommand.ATTACK;
-            String signature = ((command == null) ? "AUTO" : command.name())
-                    + "|" + objective.name()
-                    + "|" + (trackTarget && isAlive(target) ? target.id : -1)
-                    + "|" + (leader.isWarpCharging() ? "WARP" : "LINE");
-            String previous = ctx.command.fleetSquadStatusMemory.get(key);
-            if (previous != null && !previous.equals(signature)) {
-                postFleetComm(ctx, leader.faction, e.getValue(), describeSquadTraffic(leader, e.getValue(), command, objective, target));
+                Ship flagship = state.flagships.get(playerTeamId);
+                SquadObjective objective = state.squadObjectives.getOrDefault(shipId, SquadObjective.HOLD);
+                GameContext.FleetCommand command = resolveFleetCommand(ctx, leader, flagship);
+                Ship target = state.sharedTargets.get(playerTeamId);
+                int key = shipId;
+                activeKeys.add(key);
+                boolean trackTarget = objective == SquadObjective.FLANK || command == GameContext.FleetCommand.ATTACK;
+                long signature = fleetTrafficSignature(command, objective,
+                        trackTarget && isAlive(target) ? target.id : -1,
+                        leader.isWarpCharging());
+                Long previous = ctx.command.fleetSquadStatusMemory.get(key);
+                if (previous != null && previous.longValue() != signature) {
+                    postFleetComm(ctx, leader.faction, e.getValue(), describeSquadTraffic(leader, e.getValue(), command, objective, target));
+                }
+                ctx.command.fleetSquadStatusMemory.put(key, signature);
             }
-            ctx.command.fleetSquadStatusMemory.put(key, signature);
+            if (!ctx.command.fleetSquadStatusMemory.isEmpty()) {
+                ctx.command.fleetSquadStatusMemory.entrySet().removeIf(entry -> entry == null || !activeKeys.contains(entry.getKey()));
+            }
+        } finally {
+            releaseIntSetScratch(activeKeys);
         }
-        if (!ctx.command.fleetSquadStatusMemory.isEmpty()) {
-            ctx.command.fleetSquadStatusMemory.entrySet().removeIf(entry -> entry == null || !activeKeys.contains(entry.getKey()));
-        }
+    }
+
+    private static long fleetTrafficSignature(GameContext.FleetCommand command,
+                                              SquadObjective objective,
+                                              int targetId,
+                                              boolean warpCharging) {
+        int commandOrdinal = (command == null) ? -1 : command.ordinal();
+        int objectiveOrdinal = (objective == null) ? -1 : objective.ordinal();
+        long commandBits = ((long) (commandOrdinal + 1) & 0xffL) << 56;
+        long objectiveBits = ((long) (objectiveOrdinal + 1) & 0xffL) << 48;
+        long warpBits = warpCharging ? (1L << 47) : 0L;
+        long targetBits = ((long) targetId) & 0xffffffffL;
+        return commandBits | objectiveBits | warpBits | targetBits;
     }
 
     private static String describeSquadTraffic(Ship leader, String label, GameContext.FleetCommand command,
@@ -1048,42 +1312,49 @@ public final class AISystem {
         }
 
         Map<Integer, SquadObjective> assigned = new HashMap<>();
+        IdentityHashMap<Ship, Boolean> assignedShips = new IdentityHashMap<>();
         int reserveAssigned = 0;
         int interceptAssigned = 0;
         int flankAssigned = 0;
         for (Ship s : pool) {
             if (isSupportRole(s.role) || hullFrac(s) < 0.52 || shieldFrac(s) < 0.30) {
                 assigned.put(s.id, SquadObjective.RESERVE);
+                assignedShips.put(s, Boolean.TRUE);
                 reserveAssigned++;
                 continue;
             }
             if (isCapitalRole(s.role) && shouldRotateCapitalBehindLine(s, members, flagship)) {
                 assigned.put(s.id, SquadObjective.RESERVE);
+                assignedShips.put(s, Boolean.TRUE);
                 reserveAssigned++;
                 continue;
             }
             if (isPointDefenseRole(s) && isAlive(threatenedAlly)) {
                 assigned.put(s.id, SquadObjective.INTERCEPT);
+                assignedShips.put(s, Boolean.TRUE);
                 interceptAssigned++;
             }
         }
 
         while (reserveAssigned < reserveQuota) {
-            Ship pick = pickBestUnassigned(pool, assigned, s -> reserveScore(s, members, flagship));
+            Ship pick = pickBestUnassigned(pool, assignedShips, s -> reserveScore(s, members, flagship));
             if (pick == null) break;
             assigned.put(pick.id, SquadObjective.RESERVE);
+            assignedShips.put(pick, Boolean.TRUE);
             reserveAssigned++;
         }
         while (interceptAssigned < interceptQuota) {
-            Ship pick = pickBestUnassigned(pool, assigned, s -> interceptScore(s, threatenedAlly));
+            Ship pick = pickBestUnassigned(pool, assignedShips, s -> interceptScore(s, threatenedAlly));
             if (pick == null) break;
             assigned.put(pick.id, SquadObjective.INTERCEPT);
+            assignedShips.put(pick, Boolean.TRUE);
             interceptAssigned++;
         }
         while (flankAssigned < flankQuota) {
-            Ship pick = pickBestUnassigned(pool, assigned, s -> flankScore(s, sharedTarget));
+            Ship pick = pickBestUnassigned(pool, assignedShips, s -> flankScore(s, sharedTarget));
             if (pick == null) break;
             assigned.put(pick.id, SquadObjective.FLANK);
+            assignedShips.put(pick, Boolean.TRUE);
             flankAssigned++;
         }
 
@@ -1159,13 +1430,14 @@ public final class AISystem {
         double score(Ship s);
     }
 
-    private static Ship pickBestUnassigned(List<Ship> pool, Map<Integer, SquadObjective> assigned, ShipScore scoreFn) {
+    private static Ship pickBestUnassigned(List<Ship> pool, IdentityHashMap<Ship, Boolean> assignedShips, ShipScore scoreFn) {
         if (pool == null || pool.isEmpty() || scoreFn == null) return null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
-        for (Ship s : pool) {
+        for (int i = 0; i < pool.size(); i++) {
+            Ship s = pool.get(i);
             if (!isAlive(s)) continue;
-            if (assigned.containsKey(s.id)) continue;
+            if (assignedShips.containsKey(s)) continue;
             double score = scoreFn.score(s);
             if (score > bestScore) {
                 bestScore = score;
@@ -1860,12 +2132,12 @@ public final class AISystem {
         if (shouldDeferEngagementScan(seeker, Math.max(0.0, dt))) {
             if (isAlive(committed) && canTakeFightMetric(ctx, seeker, committed)) return committed;
             if (isAlive(shared) && canTakeFightMetric(ctx, seeker, shared)) return shared;
-            preferred = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
+            preferred = preferredEnemyTargetCached(ctx, seeker);
             if (isAlive(preferred) && canTakeFightMetric(ctx, seeker, preferred)) return preferred;
             return null;
         }
 
-        preferred = TargetingSystem.getPreferredEnemyTarget(ctx, seeker);
+        preferred = preferredEnemyTargetCached(ctx, seeker);
         if (isAlive(preferred)
                 && canShipThreatenTarget(ctx, seeker, preferred)
                 && canTakeFightMetric(ctx, seeker, preferred)) {
@@ -1900,7 +2172,7 @@ public final class AISystem {
             IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, t);
             return null;
         }
-        Ship immediate = findImmediateThreat(ctx, seeker, radius);
+        Ship immediate = immediateThreatCached(ctx, seeker, radius);
         double jitter = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
         double baseCadence = isAlive(immediate)
                 ? 0.08
@@ -1972,13 +2244,18 @@ public final class AISystem {
     }
 
     private static Ship findImmediateThreat(GameContext ctx, Ship seeker, double radius) {
+        return immediateThreatCached(ctx, seeker, radius);
+    }
+
+    private static Ship findImmediateThreatUncached(GameContext ctx, Ship seeker, double radius) {
         if (ctx == null || seeker == null || seeker.faction == null || radius <= 0.0) return null;
         Ship best = null;
         double bestD2 = radius * radius;
         ArrayList<Ship> nearby = borrowShipScratch();
         try {
             ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, radius, nearby);
-            for (Ship enemy : nearby) {
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship enemy = nearby.get(i);
                 if (!isAlive(enemy) || enemy.faction == null) continue;
                 if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
                 double d2 = dist2(seeker.x, seeker.y, enemy.x, enemy.y);
@@ -2033,38 +2310,68 @@ public final class AISystem {
         if (s.carrierOwnerId >= 0) return false;
         if (s.escortAnchorId <= 0) return false;
 
-        Ship anchor = findLiveShipById(ctx.ships, s.escortAnchorId);
-        if (!isAlive(anchor) || anchor.isSmallCraft()) {
-            s.escortAnchorId = -1;
+        EscortPerception perception = perceiveEscortFighterSituation(ctx, s);
+        if (perception == null || !isAlive(perception.anchor)) {
             return false;
         }
-
-        Ship threat = designatedEscortTarget(ctx, s, anchor);
-        if (!isAlive(threat)) {
-            threat = findEscortThreatNearAnchor(ctx, s, anchor);
-        }
-        if (isAlive(threat)) {
-            commitToTarget(s, threat, targetCommitDuration(s, threat, SquadObjective.INTERCEPT));
-            fight(ctx, s, threat, dt, 1.0, SquadObjective.INTERCEPT);
-        } else {
-            double speed = Math.max(136.0, MovementModel.speedCeiling(s) * 0.98);
-            double side = ((s.escortSlotIndex & 1) == 0) ? -1.0 : 1.0;
-            double screenForward = anchor.radius + 340.0 + 110.0 * Math.max(0, s.escortSlotIndex);
-            double lateral = anchor.radius + 170.0 + 64.0 * Math.max(0, s.escortSlotIndex);
-            double tx = anchor.x + Math.cos(anchor.angle) * screenForward
-                    - Math.sin(anchor.angle) * side * lateral;
-            double ty = anchor.y + Math.sin(anchor.angle) * screenForward
-                    + Math.cos(anchor.angle) * side * lateral;
-            if (dist2(s.x, s.y, anchor.x, anchor.y) > ESCORT_WARP_SUPPORT_RANGE * ESCORT_WARP_SUPPORT_RANGE * 1.2) {
-                tx = anchor.x + Math.cos(anchor.angle) * (anchor.radius + 110.0)
-                        - Math.sin(anchor.angle) * side * (anchor.radius + 92.0);
-                ty = anchor.y + Math.sin(anchor.angle) * (anchor.radius + 110.0)
-                        + Math.cos(anchor.angle) * side * (anchor.radius + 92.0);
-            }
-            moveToward(s, tx, ty, speed, dt);
-        }
+        ShipIntent intent = chooseEscortFighterIntent(s, perception);
+        executeEscortFighterIntent(ctx, s, dt, intent);
         s.tryCIWS(dt, ctx);
         return true;
+    }
+
+    private static EscortPerception perceiveEscortFighterSituation(GameContext ctx, Ship escort) {
+        if (ctx == null || escort == null || escort.escortAnchorId <= 0) return null;
+        Ship anchor = findLiveShipById(ctx.ships, escort.escortAnchorId);
+        if (!isAlive(anchor) || anchor.isSmallCraft()) {
+            escort.escortAnchorId = -1;
+            return null;
+        }
+        Ship threat = designatedEscortTarget(ctx, escort, anchor);
+        if (!isAlive(threat)) {
+            threat = findEscortThreatNearAnchor(ctx, escort, anchor);
+        }
+        return new EscortPerception(anchor, threat);
+    }
+
+    private static ShipIntent chooseEscortFighterIntent(Ship escort, EscortPerception perception) {
+        if (escort == null || perception == null || !isAlive(perception.anchor)) {
+            return new ShipIntent(IntentType.WANDER, null);
+        }
+        if (isAlive(perception.threat)) {
+            return new ShipIntent(IntentType.FIGHT, perception.threat, perception.anchor);
+        }
+        return new ShipIntent(IntentType.SCREEN, null, perception.anchor);
+    }
+
+    private static void executeEscortFighterIntent(GameContext ctx, Ship escort, double dt, ShipIntent intent) {
+        if (ctx == null || escort == null || intent == null) return;
+        if (intent.type == IntentType.FIGHT && isAlive(intent.target)) {
+            commitToTarget(escort, intent.target, targetCommitDuration(escort, intent.target, SquadObjective.INTERCEPT));
+            fight(ctx, escort, intent.target, dt, 1.0, SquadObjective.INTERCEPT);
+            return;
+        }
+        if (intent.type != IntentType.SCREEN || !isAlive(intent.anchor)) {
+            wander(ctx, escort, dt);
+            return;
+        }
+
+        Ship anchor = intent.anchor;
+        double speed = Math.max(136.0, MovementModel.speedCeiling(escort) * 0.98);
+        double side = ((escort.escortSlotIndex & 1) == 0) ? -1.0 : 1.0;
+        double screenForward = anchor.radius + 340.0 + 110.0 * Math.max(0, escort.escortSlotIndex);
+        double lateral = anchor.radius + 170.0 + 64.0 * Math.max(0, escort.escortSlotIndex);
+        double tx = anchor.x + Math.cos(anchor.angle) * screenForward
+                - Math.sin(anchor.angle) * side * lateral;
+        double ty = anchor.y + Math.sin(anchor.angle) * screenForward
+                + Math.cos(anchor.angle) * side * lateral;
+        if (dist2(escort.x, escort.y, anchor.x, anchor.y) > ESCORT_WARP_SUPPORT_RANGE * ESCORT_WARP_SUPPORT_RANGE * 1.2) {
+            tx = anchor.x + Math.cos(anchor.angle) * (anchor.radius + 110.0)
+                    - Math.sin(anchor.angle) * side * (anchor.radius + 92.0);
+            ty = anchor.y + Math.sin(anchor.angle) * (anchor.radius + 110.0)
+                    + Math.cos(anchor.angle) * side * (anchor.radius + 92.0);
+        }
+        moveToward(escort, tx, ty, speed, dt);
     }
 
     private static Ship findEscortThreatNearAnchor(GameContext ctx, Ship escort, Ship anchor) {
@@ -2140,8 +2447,10 @@ public final class AISystem {
                 if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
                 if (!canShipThreatenTarget(ctx, seeker, enemy)) continue;
                 double d = Math.hypot(enemy.x - seeker.x, enemy.y - seeker.y);
+                double ewConf = observerEWConfidence(ctx, seeker, enemy, d);
                 double score = Math.max(0.0, 1500.0 - d) * 0.92;
                 score += roleWeightForFlagship(enemy.role) * 18.0;
+                score += (ewConf - 0.42) * 150.0;
                 if (enemy == sharedHint) score += 180.0 + focusBias * 95.0;
                 if (enemy == preferredHint) score += 140.0;
                 if (enemy == committed) score += 170.0 + Math.max(0.0, seeker.aiTargetCommitTimer) * 32.0;
@@ -2171,6 +2480,9 @@ public final class AISystem {
                 if (targetValue > 4.4 || combinedDurabilityFrac(enemy) < 0.34) overCommitPenalty *= 0.62;
                 score -= overCommitPenalty;
                 score -= killConfirmTargetPenalty(enemy, hullFrac(enemy)) * Math.max(0.40, 1.0 - focusBias * 0.18);
+                if (ewConf < 0.22) {
+                    score -= (0.22 - ewConf) * 280.0;
+                }
                 if (state != null && shouldCommitToSharedTarget(state, seeker, enemy)) {
                     score += 36.0 + sharedTargetConfidence(state, seeker) * 42.0;
                 }
@@ -2353,15 +2665,19 @@ public final class AISystem {
             ENGAGEMENT_SCAN_BACKOFF_TIMERS.clear();
             return;
         }
-        java.util.HashSet<Integer> liveIds = new java.util.HashSet<>();
-        for (Ship s : ships) {
-            if (!isAlive(s)) continue;
-            liveIds.add(s.id);
+        java.util.HashSet<Integer> liveIds = borrowIntSetScratch();
+        try {
+            for (Ship s : ships) {
+                if (!isAlive(s)) continue;
+                liveIds.add(s.id);
+            }
+            CLOSEST_RETARGET_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+            CLOSEST_RETARGET_TARGET_IDS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+            IMMEDIATE_THREAT_SCAN_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+            ENGAGEMENT_SCAN_BACKOFF_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
+        } finally {
+            releaseIntSetScratch(liveIds);
         }
-        CLOSEST_RETARGET_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
-        CLOSEST_RETARGET_TARGET_IDS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
-        IMMEDIATE_THREAT_SCAN_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
-        ENGAGEMENT_SCAN_BACKOFF_TIMERS.entrySet().removeIf(e -> !liveIds.contains(e.getKey()));
     }
 
     private static void tickClosestWeaponRetarget(GameContext ctx, Ship seeker, double dt) {
@@ -3188,15 +3504,21 @@ public final class AISystem {
     private static void wander(GameContext ctx, Ship s, double dt) {
         double tx;
         double ty;
-        double[] sectorPoint = BattlefieldSectorSystem.navigationPoint(ctx, s == null ? null : s.faction,
-                s == null ? 0.0 : s.x, s == null ? 0.0 : s.y, s == null ? 0 : s.id);
-        if (sectorPoint != null) {
-            tx = sectorPoint[0];
-            ty = sectorPoint[1];
+        double[] featurePoint = sensorDrivenNavigationAnchor(ctx, s);
+        if (featurePoint != null) {
+            tx = featurePoint[0];
+            ty = featurePoint[1];
         } else {
-            double[] idleAnchor = idleNavigationAnchor(ctx, s);
-            tx = idleAnchor[0];
-            ty = idleAnchor[1];
+            double[] sectorPoint = BattlefieldSectorSystem.navigationPoint(ctx, s == null ? null : s.faction,
+                    s == null ? 0.0 : s.x, s == null ? 0.0 : s.y, s == null ? 0 : s.id);
+            if (sectorPoint != null) {
+                tx = sectorPoint[0];
+                ty = sectorPoint[1];
+            } else {
+                double[] idleAnchor = idleNavigationAnchor(ctx, s);
+                tx = idleAnchor[0];
+                ty = idleAnchor[1];
+            }
         }
         if (maybeStartBattlefieldWarp(ctx, s, tx, ty, Math.max(180.0, s.radius + 110.0))) {
             s.tryCIWS(dt, ctx);
@@ -3205,6 +3527,58 @@ public final class AISystem {
         moveToward(s, tx, ty, Math.max(32.0, MovementModel.speedCeiling(s) * 0.7), dt);
 
         s.tryCIWS(dt, ctx);
+    }
+
+    private static double[] sensorDrivenNavigationAnchor(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null || ship.faction == null || ctx.player == null || ctx.player.faction == null) {
+            return null;
+        }
+        if (!ship.faction.isFriendlyTo(ctx.player.faction)) {
+            return null;
+        }
+        List<FogOfWarSystem.SensorInterestSignal> signals = sensorInterestSignalsCached(ctx);
+        if (signals.isEmpty()) {
+            return null;
+        }
+
+        FogOfWarSystem.SensorInterestSignal best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        boolean scoutRole = ship.role == ShipRole.PICKET
+                || ship.role == ShipRole.PATROL
+                || ship.role == ShipRole.STEALTH_SHIP
+                || ship.role == ShipRole.FIGHTER
+                || ship.role == ShipRole.DRONE;
+        boolean supportRole = ship.role == ShipRole.TRANSPORT
+                || ship.role == ShipRole.HAULER
+                || ship.role == ShipRole.MINER;
+
+        for (FogOfWarSystem.SensorInterestSignal signal : signals) {
+            if (signal == null || signal.kind == null) continue;
+            double dx = signal.x - ship.x;
+            double dy = signal.y - ship.y;
+            double dist = Math.hypot(dx, dy);
+            if (dist < Math.max(180.0, ship.radius * 3.0)) continue;
+            double score = signal.strength * 180.0 - dist * 0.055;
+            switch (signal.kind) {
+                case CONTACT, INSTALLATION, MASS_SIGNATURE -> score += scoutRole ? 135.0 : 75.0;
+                case INTEL, ANOMALY, FLEET_ASSET -> score += scoutRole ? 115.0 : 62.0;
+                case ORE_VEIN, CACHE, WRECKAGE -> score += supportRole ? 130.0 : 28.0;
+                case HAZARD -> score += scoutRole ? 42.0 : -24.0;
+                default -> score += 0.0;
+            }
+            if (signal.uncertaintyRadius > 240.0 && !scoutRole) {
+                score -= Math.min(70.0, (signal.uncertaintyRadius - 240.0) * 0.12);
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                best = signal;
+            }
+        }
+
+        if (best == null || bestScore < 18.0) {
+            return null;
+        }
+        return new double[]{best.x, best.y};
     }
 
     private static double[] idleNavigationAnchor(GameContext ctx, Ship s) {
@@ -3618,6 +3992,31 @@ public final class AISystem {
         if (list == null) return;
         list.clear();
         SCRATCH.get().intLists.offerFirst(list);
+    }
+
+    private static java.util.HashSet<Integer> borrowIntSetScratch() {
+        ScratchLists scratch = SCRATCH.get();
+        java.util.HashSet<Integer> set = scratch.intSets.pollFirst();
+        if (set == null) return new java.util.HashSet<>(32);
+        set.clear();
+        return set;
+    }
+
+    private static void releaseIntSetScratch(java.util.HashSet<Integer> set) {
+        if (set == null) return;
+        set.clear();
+        SCRATCH.get().intSets.offerFirst(set);
+    }
+
+    private static <V> void syncFleetMap(Map<Integer, V> destination, Map<Integer, V> source) {
+        if (destination == null || source == null) return;
+        if (!destination.isEmpty()) {
+            destination.entrySet().removeIf(e -> e == null || !source.containsKey(e.getKey()));
+        }
+        for (Map.Entry<Integer, V> entry : source.entrySet()) {
+            if (entry == null) continue;
+            destination.put(entry.getKey(), entry.getValue());
+        }
     }
 
 
@@ -4915,24 +5314,43 @@ public final class AISystem {
         if (s.carrierOwnerId >= 0) return false;
         if (!s.needsStrikeCraftRearm()) return false;
 
-        Ship tender = nearestFriendlyStrikeCraftTender(ctx, s);
-        if (!isAlive(tender)) {
-            setVelPerSec(s, 0.0, 0.0, dt);
-            return true;
-        }
-
-        double recoverRange = tender.radius + s.radius + 18.0;
-        double d2 = dist2(s.x, s.y, tender.x, tender.y);
-        if (d2 <= recoverRange * recoverRange) {
-            s.reloadStrikeCraftMunitions();
-            double orbitRange = Math.max(recoverRange + 24.0, tender.radius + 56.0);
-            orbit(s, tender.x, tender.y, orbitRange, Math.max(80.0, MovementModel.speedCeiling(s) * 0.72), dt,
-                    ((s.id & 1) == 0) ? 1.0 : -1.0);
-            return true;
-        }
-
-        moveToward(s, tender.x, tender.y, Math.max(110.0, MovementModel.speedCeiling(s) * 0.96), dt);
+        RearmPerception perception = perceiveStrikeCraftRearmSituation(ctx, s);
+        ShipIntent intent = chooseStrikeCraftRearmIntent(perception);
+        executeStrikeCraftRearmIntent(s, dt, intent);
         return true;
+    }
+
+    private static RearmPerception perceiveStrikeCraftRearmSituation(GameContext ctx, Ship craft) {
+        if (ctx == null || craft == null) return new RearmPerception(null);
+        return new RearmPerception(nearestFriendlyStrikeCraftTender(ctx, craft));
+    }
+
+    private static ShipIntent chooseStrikeCraftRearmIntent(RearmPerception perception) {
+        if (perception == null || !isAlive(perception.tender)) {
+            return new ShipIntent(IntentType.HOLD, null);
+        }
+        return new ShipIntent(IntentType.REARM, perception.tender);
+    }
+
+    private static void executeStrikeCraftRearmIntent(Ship craft, double dt, ShipIntent intent) {
+        if (craft == null || intent == null) return;
+        if (intent.type != IntentType.REARM || !isAlive(intent.target)) {
+            setVelPerSec(craft, 0.0, 0.0, dt);
+            return;
+        }
+
+        Ship tender = intent.target;
+        double recoverRange = tender.radius + craft.radius + 18.0;
+        double d2 = dist2(craft.x, craft.y, tender.x, tender.y);
+        if (d2 <= recoverRange * recoverRange) {
+            craft.reloadStrikeCraftMunitions();
+            double orbitRange = Math.max(recoverRange + 24.0, tender.radius + 56.0);
+            orbit(craft, tender.x, tender.y, orbitRange, Math.max(80.0, MovementModel.speedCeiling(craft) * 0.72), dt,
+                    ((craft.id & 1) == 0) ? 1.0 : -1.0);
+            return;
+        }
+
+        moveToward(craft, tender.x, tender.y, Math.max(110.0, MovementModel.speedCeiling(craft) * 0.96), dt);
     }
 
     private static boolean maybeStartBattlefieldWarp(GameContext ctx, Ship s, Ship target, double desiredOffset) {

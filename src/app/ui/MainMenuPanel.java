@@ -12,12 +12,26 @@ import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public final class MainMenuPanel extends JPanel {
     private static final long MENU_BG_SEED = 0x5A17C0DEL;
     private static final String NO_CHECKPOINT_MESSAGE =
             "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.";
+    private static final String[] CUSTOM_BATTLE_ROLE_IDS = {
+            "PICKET", "PATROL", "STEALTH_SHIP", "FIGHTER", "BOMBER", "PD_CRAFT", "DRONE",
+            "FRIGATE", "ARTILLERY_SHIP", "MISSILE_BOAT", "CIWS_CORVETTE", "LIGHT_CRUISER",
+            "MEDIUM_CRUISER", "CRUISER", "BATTLECRUISER", "BATTLESHIP", "DREADNOUGHT",
+            "SUPERSHIP", "TRANSPORT_TITAN", "BULWARK_TITAN", "CARRIER_SUPPORT_TITAN",
+            "VANGUARD_TITAN", "INTERDICTION_TITAN", "COMMAND_INTEL_TITAN",
+            "BOARDING_RECOVERY_TITAN", "ARTILLERY_TITAN", "SHIELD_BASTION_TITAN",
+            "FLEET_TELEPORTER_TITAN", "ELITE_SUPERSHIP_COMMAND_TITAN",
+            "ELITE_REINFORCEMENTS_TITAN", "MOBILE_STATION_TITAN", "HYPERWEAPON_TITAN",
+            "MOTHERSHIP", "CARRIER", "DRONE_CARRIER", "TRANSPORT", "MINER", "HAULER",
+            "BASE", "STATIC_TURRET"
+    };
     private final long backgroundStartNs = System.nanoTime();
     private final Timer backgroundTimer;
     private final JButton continueCampaignButton;
@@ -56,6 +70,7 @@ public final class MainMenuPanel extends JPanel {
                 GameMode.LAST_STAND,
                 GameMode.RESOURCE_RUSH,
                 GameMode.FOUR_TEAM_DOMINATION,
+                GameMode.CUSTOM_BATTLES,
                 GameMode.SHOOTING_RANGE,
                 GameMode.SHOWCASE
         };
@@ -140,6 +155,12 @@ public final class MainMenuPanel extends JPanel {
             int playerTeamId = (choice == null) ? 0 : choice.teamId();
             persistSettings.accept(mode);
             boolean resumeCampaign = mode == GameMode.FLEET;
+            if (mode == GameMode.CUSTOM_BATTLES) {
+                GameConfig customConfig = buildCustomBattleConfig(this, uiScale, w, h, seed, playerTeamId);
+                if (customConfig == null) return;
+                onStart.accept(customConfig);
+                return;
+            }
             onStart.accept(new GameConfig(mode, w, h, true, seed, false, playerTeamId, resumeCampaign));
         };
 
@@ -360,7 +381,7 @@ public final class MainMenuPanel extends JPanel {
         g2.dispose();
     }
 
-    private JLabel label(String text, double scale) {
+    private static JLabel label(String text, double scale) {
         JLabel l = new JLabel(text);
         l.setForeground(new Color(255, 255, 255, 210));
         l.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 17, scale));
@@ -475,6 +496,7 @@ public final class MainMenuPanel extends JPanel {
         return mode == GameMode.LAST_STAND
                 || mode == GameMode.RESOURCE_RUSH
                 || mode == GameMode.FOUR_TEAM_DOMINATION
+                || mode == GameMode.CUSTOM_BATTLES
                 || mode == GameMode.SHOOTING_RANGE
                 || mode == GameMode.SHOWCASE;
     }
@@ -677,7 +699,7 @@ public final class MainMenuPanel extends JPanel {
     private static PlayerTeamChoice[] allowedTeamsForMode(GameMode mode) {
         if (mode == null) return new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
         return switch (mode) {
-            case RESOURCE_RUSH, SHOOTING_RANGE -> new PlayerTeamChoice[]{
+            case RESOURCE_RUSH, SHOOTING_RANGE, CUSTOM_BATTLES -> new PlayerTeamChoice[]{
                     PlayerTeamChoice.TEAM_A,
                     PlayerTeamChoice.TEAM_B,
                     PlayerTeamChoice.TEAM_C,
@@ -691,6 +713,475 @@ public final class MainMenuPanel extends JPanel {
             };
             default -> new PlayerTeamChoice[]{PlayerTeamChoice.TEAM_A};
         };
+    }
+
+    private static GameConfig buildCustomBattleConfig(Component parent,
+                                                      double uiScale,
+                                                      int worldW,
+                                                      int worldH,
+                                                      long seed,
+                                                      int playerTeamId) {
+        PlayerTeamChoice playerTeam = PlayerTeamChoice.forTeamId(playerTeamId);
+        PlayerTeamChoice defaultEnemyTeam = defaultCustomBattleEnemyTeam(playerTeam);
+        JComboBox<PlayerTeamChoice> enemyTeamBox = new JComboBox<>(PlayerTeamChoice.values());
+        styleCombo(enemyTeamBox);
+        scaleCombo(enemyTeamBox, uiScale);
+        enemyTeamBox.setSelectedItem(defaultEnemyTeam);
+
+        LinkedHashMap<String, JSpinner> friendlySpinners = createCustomBattleSpinners(uiScale);
+        LinkedHashMap<String, JSpinner> enemySpinners = createCustomBattleSpinners(uiScale);
+        applyCustomBattleDraft(CustomBattleDraft.createDefault(playerTeam.teamId(), defaultEnemyTeam.teamId()),
+                friendlySpinners, enemySpinners, enemyTeamBox);
+
+        JPanel form = new JPanel();
+        form.setOpaque(true);
+        form.setBackground(new Color(9, 17, 29));
+        form.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(76, 113, 154)),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(18, uiScale),
+                        MenuDisplay.scaled(18, uiScale),
+                        MenuDisplay.scaled(16, uiScale),
+                        MenuDisplay.scaled(18, uiScale))));
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.add(bodyLabel("<html><div style='width:620px;'>"
+                + "Launch a battle sandbox with the player inside a mothership. Add exact hull counts to both sides and mix factions however you want."
+                + "</div></html>", uiScale));
+        form.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+
+        JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, MenuDisplay.scaled(12, uiScale), 0));
+        topRow.setOpaque(true);
+        topRow.setBackground(new Color(12, 23, 38));
+        topRow.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(62, 94, 128)),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(10, uiScale),
+                        MenuDisplay.scaled(10, uiScale),
+                        MenuDisplay.scaled(10, uiScale),
+                        MenuDisplay.scaled(10, uiScale))));
+        JLabel friendlyTeamLabel = label("Player Team: " + playerTeam, uiScale);
+        friendlyTeamLabel.setForeground(new Color(214, 228, 242, 210));
+        topRow.add(friendlyTeamLabel);
+        topRow.add(label("Enemy Team:", uiScale));
+        topRow.add(enemyTeamBox);
+        form.add(topRow);
+        form.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setOpaque(false);
+        tabs.setFont(MenuDisplay.font("Consolas", Font.BOLD, 13, uiScale));
+        tabs.setBackground(new Color(10, 18, 30));
+        tabs.setForeground(new Color(232, 239, 247));
+        tabs.addTab("Friendly Fleet", wrapCustomBattleRosterPanel(buildCustomBattleRosterPanel(friendlySpinners, uiScale), uiScale));
+        tabs.addTab("Enemy Fleet", wrapCustomBattleRosterPanel(buildCustomBattleRosterPanel(enemySpinners, uiScale), uiScale));
+        form.add(tabs);
+        form.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+
+        JPanel toolsRow = transparentPanel();
+        toolsRow.setLayout(new FlowLayout(FlowLayout.LEFT, MenuDisplay.scaled(10, uiScale), 0));
+        JComboBox<CustomBattlePreset> presetBox = new JComboBox<>(CustomBattlePreset.values());
+        styleCombo(presetBox);
+        scaleCombo(presetBox, uiScale);
+        presetBox.setSelectedItem(CustomBattlePreset.FULL_FLEET_BATTLE);
+        JButton presetButton = createMenuButton("Apply Preset", new Color(80, 114, 170), uiScale);
+        JButton clearButton = createMenuButton("Clear Counts", new Color(93, 72, 86), uiScale);
+        presetButton.addActionListener(e -> applyCustomBattleDraft(
+                ((CustomBattlePreset) presetBox.getSelectedItem()).createDraft(
+                        playerTeam.teamId(),
+                        ((PlayerTeamChoice) enemyTeamBox.getSelectedItem()).teamId()),
+                friendlySpinners,
+                enemySpinners,
+                enemyTeamBox));
+        presetBox.addActionListener(e -> applyCustomBattleDraft(
+                ((CustomBattlePreset) presetBox.getSelectedItem()).createDraft(
+                        playerTeam.teamId(),
+                        ((PlayerTeamChoice) enemyTeamBox.getSelectedItem()).teamId()),
+                friendlySpinners,
+                enemySpinners,
+                enemyTeamBox));
+        clearButton.addActionListener(e -> clearCustomBattleSpinners(friendlySpinners, enemySpinners));
+        toolsRow.add(presetBox);
+        toolsRow.add(presetButton);
+        toolsRow.add(clearButton);
+        form.add(toolsRow);
+
+        while (true) {
+            int result = JOptionPane.showConfirmDialog(
+                    parent,
+                    form,
+                    "Custom Battles Setup",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE);
+            if (result != JOptionPane.OK_OPTION) {
+                return null;
+            }
+
+            PlayerTeamChoice enemyTeam = (PlayerTeamChoice) enemyTeamBox.getSelectedItem();
+            if (enemyTeam == null) enemyTeam = defaultEnemyTeam;
+            if (enemyTeam.teamId() == playerTeam.teamId()) {
+                JOptionPane.showMessageDialog(parent,
+                        "Enemy team must be different from the player team.",
+                        "Custom Battles",
+                        JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            String friendlyRoster = serializeCustomBattleRoster(friendlySpinners);
+            String enemyRoster = serializeCustomBattleRoster(enemySpinners);
+            if (enemyRoster.isBlank()) {
+                JOptionPane.showMessageDialog(parent,
+                        "Add at least one enemy ship before launching.",
+                        "Custom Battles",
+                        JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            return new GameConfig(
+                    GameMode.CUSTOM_BATTLES,
+                    worldW,
+                    worldH,
+                    true,
+                    seed,
+                    false,
+                    playerTeam.teamId(),
+                    false,
+                    enemyTeam.teamId(),
+                    friendlyRoster,
+                    enemyRoster);
+        }
+    }
+
+    private static LinkedHashMap<String, JSpinner> createCustomBattleSpinners(double uiScale) {
+        LinkedHashMap<String, JSpinner> spinners = new LinkedHashMap<>();
+        for (String roleId : CUSTOM_BATTLE_ROLE_IDS) {
+            JSpinner spinner = new JSpinner(new SpinnerNumberModel(0, 0, 64, 1));
+            styleSpinner(spinner, uiScale);
+            spinners.put(roleId, spinner);
+        }
+        return spinners;
+    }
+
+    private static JPanel buildCustomBattleRosterPanel(LinkedHashMap<String, JSpinner> spinners, double uiScale) {
+        JPanel panel = new JPanel();
+        panel.setOpaque(true);
+        panel.setBackground(new Color(12, 21, 35));
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(10, uiScale),
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(10, uiScale)));
+        panel.setLayout(new GridBagLayout());
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(
+                MenuDisplay.scaled(5, uiScale),
+                MenuDisplay.scaled(8, uiScale),
+                MenuDisplay.scaled(5, uiScale),
+                MenuDisplay.scaled(8, uiScale));
+        c.gridy = 0;
+
+        int idx = 0;
+        for (Map.Entry<String, JSpinner> entry : spinners.entrySet()) {
+            int column = idx % 2;
+            if (column == 0 && idx > 0) c.gridy++;
+            c.gridx = column * 2;
+            c.anchor = GridBagConstraints.LINE_END;
+            c.fill = GridBagConstraints.NONE;
+            c.weightx = 0.0;
+            panel.add(label(formatCustomBattleRoleLabel(entry.getKey()) + ":", uiScale), c);
+
+            c.gridx = column * 2 + 1;
+            c.anchor = GridBagConstraints.LINE_START;
+            c.fill = GridBagConstraints.HORIZONTAL;
+            c.weightx = 1.0;
+            panel.add(entry.getValue(), c);
+            idx++;
+        }
+        return panel;
+    }
+
+    private static JScrollPane wrapCustomBattleRosterPanel(JPanel panel, double uiScale) {
+        JScrollPane scrollPane = new JScrollPane(panel);
+        scrollPane.setOpaque(true);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(88, 124, 159)));
+        scrollPane.getViewport().setBackground(new Color(12, 21, 35));
+        scrollPane.getViewport().setOpaque(true);
+        scrollPane.setBackground(new Color(12, 21, 35));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(MenuDisplay.scaled(16, uiScale));
+        scrollPane.setPreferredSize(new Dimension(MenuDisplay.scaled(680, uiScale), MenuDisplay.scaled(360, uiScale)));
+        return scrollPane;
+    }
+
+    private static void styleSpinner(JSpinner spinner, double uiScale) {
+        spinner.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
+        spinner.setPreferredSize(new Dimension(MenuDisplay.scaled(88, uiScale), MenuDisplay.scaled(30, uiScale)));
+        JComponent editor = spinner.getEditor();
+        if (editor instanceof JSpinner.DefaultEditor defaultEditor) {
+            JTextField field = defaultEditor.getTextField();
+            styleField(field);
+            field.setHorizontalAlignment(SwingConstants.CENTER);
+        }
+    }
+
+    private static void applyCustomBattleDraft(CustomBattleDraft draft,
+                                               LinkedHashMap<String, JSpinner> friendlySpinners,
+                                               LinkedHashMap<String, JSpinner> enemySpinners,
+                                               JComboBox<PlayerTeamChoice> enemyTeamBox) {
+        if (draft == null) return;
+        if (enemyTeamBox != null) {
+            enemyTeamBox.setSelectedItem(PlayerTeamChoice.forTeamId(draft.enemyTeamId));
+        }
+        applyCustomBattleCounts(friendlySpinners, draft.friendlyCounts);
+        applyCustomBattleCounts(enemySpinners, draft.enemyCounts);
+    }
+
+    private static void applyCustomBattleCounts(LinkedHashMap<String, JSpinner> spinners, LinkedHashMap<String, Integer> counts) {
+        for (Map.Entry<String, JSpinner> entry : spinners.entrySet()) {
+            int amount = 0;
+            if (counts != null && counts.containsKey(entry.getKey())) {
+                amount = Math.max(0, counts.get(entry.getKey()));
+            }
+            entry.getValue().setValue(amount);
+        }
+    }
+
+    private static void clearCustomBattleSpinners(LinkedHashMap<String, JSpinner> friendlySpinners,
+                                                  LinkedHashMap<String, JSpinner> enemySpinners) {
+        applyCustomBattleCounts(friendlySpinners, new LinkedHashMap<>());
+        applyCustomBattleCounts(enemySpinners, new LinkedHashMap<>());
+    }
+
+    private static String serializeCustomBattleRoster(LinkedHashMap<String, JSpinner> spinners) {
+        StringBuilder out = new StringBuilder();
+        for (Map.Entry<String, JSpinner> entry : spinners.entrySet()) {
+            Object value = entry.getValue().getValue();
+            int count = (value instanceof Number number) ? number.intValue() : 0;
+            if (count <= 0) continue;
+            if (out.length() > 0) out.append(';');
+            out.append(entry.getKey()).append('=').append(count);
+        }
+        return out.toString();
+    }
+
+    private static PlayerTeamChoice defaultCustomBattleEnemyTeam(PlayerTeamChoice playerTeam) {
+        if (playerTeam == null || playerTeam == PlayerTeamChoice.TEAM_A) return PlayerTeamChoice.TEAM_B;
+        return PlayerTeamChoice.TEAM_A;
+    }
+
+    private static String formatCustomBattleRoleLabel(String roleId) {
+        if (roleId == null || roleId.isBlank()) return "Ship";
+        String[] parts = roleId.split("_");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(part.charAt(0)).append(part.substring(1).toLowerCase());
+        }
+        return out.toString();
+    }
+
+    private static final class CustomBattleDraft {
+        final int friendlyTeamId;
+        final int enemyTeamId;
+        final LinkedHashMap<String, Integer> friendlyCounts;
+        final LinkedHashMap<String, Integer> enemyCounts;
+
+        private CustomBattleDraft(int friendlyTeamId,
+                                  int enemyTeamId,
+                                  LinkedHashMap<String, Integer> friendlyCounts,
+                                  LinkedHashMap<String, Integer> enemyCounts) {
+            this.friendlyTeamId = friendlyTeamId;
+            this.enemyTeamId = enemyTeamId;
+            this.friendlyCounts = friendlyCounts;
+            this.enemyCounts = enemyCounts;
+        }
+
+        static CustomBattleDraft createDefault(int friendlyTeamId, int enemyTeamId) {
+            LinkedHashMap<String, Integer> friendly = new LinkedHashMap<>();
+            friendly.put("FRIGATE", 4);
+            friendly.put("CIWS_CORVETTE", 2);
+            friendly.put("LIGHT_CRUISER", 2);
+            friendly.put("BATTLECRUISER", 1);
+            friendly.put("CARRIER", 1);
+            friendly.put("SUPERSHIP", 1);
+
+            LinkedHashMap<String, Integer> enemy = new LinkedHashMap<>();
+            enemy.put("FRIGATE", 6);
+            enemy.put("MISSILE_BOAT", 3);
+            enemy.put("LIGHT_CRUISER", 2);
+            enemy.put("BATTLESHIP", 1);
+            enemy.put("INTERDICTION_TITAN", 1);
+            enemy.put("MOTHERSHIP", 1);
+
+            return new CustomBattleDraft(friendlyTeamId, enemyTeamId, friendly, enemy);
+        }
+    }
+
+    private enum CustomBattlePreset {
+        LIGHT_WEIGHT("Light Weight"),
+        MEDIUM("Medium"),
+        FULL_FLEET_BATTLE("Full Fleet Battle"),
+        THE_LAGGENING("The Laggening"),
+        WHY("Why");
+
+        private final String label;
+
+        CustomBattlePreset(String label) {
+            this.label = label;
+        }
+
+        CustomBattleDraft createDraft(int friendlyTeamId, int enemyTeamId) {
+            return switch (this) {
+                case LIGHT_WEIGHT -> draft(friendlyTeamId, enemyTeamId,
+                        mapOf(
+                                entry("FRIGATE", 3),
+                                entry("CIWS_CORVETTE", 1),
+                                entry("LIGHT_CRUISER", 1)
+                        ),
+                        mapOf(
+                                entry("FRIGATE", 4),
+                                entry("MISSILE_BOAT", 1),
+                                entry("LIGHT_CRUISER", 1)
+                        ));
+                case MEDIUM -> draft(friendlyTeamId, enemyTeamId,
+                        mapOf(
+                                entry("FRIGATE", 6),
+                                entry("CIWS_CORVETTE", 2),
+                                entry("LIGHT_CRUISER", 2),
+                                entry("BATTLECRUISER", 1),
+                                entry("CARRIER", 1)
+                        ),
+                        mapOf(
+                                entry("FRIGATE", 8),
+                                entry("MISSILE_BOAT", 3),
+                                entry("LIGHT_CRUISER", 2),
+                                entry("BATTLECRUISER", 1),
+                                entry("BATTLESHIP", 1)
+                        ));
+                case FULL_FLEET_BATTLE -> draft(friendlyTeamId, enemyTeamId,
+                        mapOf(
+                                entry("FRIGATE", 10),
+                                entry("CIWS_CORVETTE", 4),
+                                entry("MISSILE_BOAT", 3),
+                                entry("LIGHT_CRUISER", 3),
+                                entry("CRUISER", 2),
+                                entry("BATTLECRUISER", 2),
+                                entry("BATTLESHIP", 1),
+                                entry("CARRIER", 1),
+                                entry("SUPERSHIP", 1)
+                        ),
+                        mapOf(
+                                entry("FRIGATE", 12),
+                                entry("CIWS_CORVETTE", 4),
+                                entry("MISSILE_BOAT", 4),
+                                entry("LIGHT_CRUISER", 3),
+                                entry("CRUISER", 2),
+                                entry("BATTLECRUISER", 2),
+                                entry("BATTLESHIP", 1),
+                                entry("INTERDICTION_TITAN", 1),
+                                entry("MOTHERSHIP", 1)
+                        ));
+                case THE_LAGGENING -> draft(friendlyTeamId, enemyTeamId,
+                        mapOf(
+                                entry("FIGHTER", 16),
+                                entry("BOMBER", 10),
+                                entry("DRONE", 12),
+                                entry("FRIGATE", 16),
+                                entry("CIWS_CORVETTE", 8),
+                                entry("MISSILE_BOAT", 8),
+                                entry("LIGHT_CRUISER", 6),
+                                entry("CRUISER", 4),
+                                entry("BATTLECRUISER", 3),
+                                entry("BATTLESHIP", 2),
+                                entry("CARRIER", 2),
+                                entry("SUPERSHIP", 1),
+                                entry("MOTHERSHIP", 1)
+                        ),
+                        mapOf(
+                                entry("FIGHTER", 18),
+                                entry("BOMBER", 12),
+                                entry("DRONE", 14),
+                                entry("FRIGATE", 18),
+                                entry("CIWS_CORVETTE", 8),
+                                entry("MISSILE_BOAT", 10),
+                                entry("LIGHT_CRUISER", 6),
+                                entry("CRUISER", 4),
+                                entry("BATTLECRUISER", 3),
+                                entry("BATTLESHIP", 2),
+                                entry("DRONE_CARRIER", 2),
+                                entry("INTERDICTION_TITAN", 1),
+                                entry("HYPERWEAPON_TITAN", 1)
+                        ));
+                case WHY -> draft(friendlyTeamId, enemyTeamId,
+                        mapOf(
+                                entry("FIGHTER", 32),
+                                entry("BOMBER", 20),
+                                entry("PD_CRAFT", 16),
+                                entry("DRONE", 24),
+                                entry("FRIGATE", 26),
+                                entry("CIWS_CORVETTE", 14),
+                                entry("MISSILE_BOAT", 14),
+                                entry("LIGHT_CRUISER", 10),
+                                entry("CRUISER", 8),
+                                entry("BATTLECRUISER", 5),
+                                entry("BATTLESHIP", 4),
+                                entry("DREADNOUGHT", 2),
+                                entry("CARRIER", 3),
+                                entry("DRONE_CARRIER", 2),
+                                entry("SUPERSHIP", 2),
+                                entry("MOTHERSHIP", 1),
+                                entry("FLEET_TELEPORTER_TITAN", 1),
+                                entry("ELITE_SUPERSHIP_COMMAND_TITAN", 1)
+                        ),
+                        mapOf(
+                                entry("FIGHTER", 36),
+                                entry("BOMBER", 24),
+                                entry("PD_CRAFT", 18),
+                                entry("DRONE", 28),
+                                entry("FRIGATE", 30),
+                                entry("CIWS_CORVETTE", 16),
+                                entry("MISSILE_BOAT", 16),
+                                entry("LIGHT_CRUISER", 12),
+                                entry("CRUISER", 8),
+                                entry("BATTLECRUISER", 6),
+                                entry("BATTLESHIP", 4),
+                                entry("DREADNOUGHT", 2),
+                                entry("CARRIER", 2),
+                                entry("DRONE_CARRIER", 3),
+                                entry("SUPERSHIP", 2),
+                                entry("MOTHERSHIP", 1),
+                                entry("INTERDICTION_TITAN", 1),
+                                entry("HYPERWEAPON_TITAN", 1),
+                                entry("ELITE_REINFORCEMENTS_TITAN", 1)
+                        ));
+            };
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+
+        private static CustomBattleDraft draft(int friendlyTeamId,
+                                               int enemyTeamId,
+                                               LinkedHashMap<String, Integer> friendly,
+                                               LinkedHashMap<String, Integer> enemy) {
+            return new CustomBattleDraft(friendlyTeamId, enemyTeamId, friendly, enemy);
+        }
+
+        @SafeVarargs
+        private static LinkedHashMap<String, Integer> mapOf(Map.Entry<String, Integer>... entries) {
+            LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
+            if (entries == null) return map;
+            for (Map.Entry<String, Integer> entry : entries) {
+                if (entry == null || entry.getKey() == null || entry.getValue() == null) continue;
+                map.put(entry.getKey(), entry.getValue());
+            }
+            return map;
+        }
+
+        private static Map.Entry<String, Integer> entry(String roleId, int count) {
+            return Map.entry(roleId, count);
+        }
     }
 
     private static final class FlowPanel extends JPanel {

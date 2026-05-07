@@ -35,6 +35,11 @@ public final class CarrierSystem {
     private static final double BOMBER_ESCORT_RANGE = 360.0;
     private static final double BOMBER_GUARD_REACTION_RANGE = 640.0;
     private static final WeakHashMap<GameContext, Map<Integer, Double>> PD_ESCORT_COOLDOWNS = new WeakHashMap<>();
+    private static final ThreadLocal<ListScratch> SCRATCH = ThreadLocal.withInitial(ListScratch::new);
+
+    private static final class ListScratch {
+        final java.util.ArrayDeque<ArrayList<Ship>> shipLists = new java.util.ArrayDeque<>();
+    }
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null || ctx.gameOver) return;
@@ -249,19 +254,24 @@ public final class CarrierSystem {
         if (carrier == null || carrier.faction == null) return null;
         Ship best = null;
         double bestD2 = maxDist * maxDist;
-        List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectHostileShipsNear(carrier.faction, x, y, maxDist, nearby);
-        for (Ship s : nearby) {
-            if (s == null) continue;
-            if (!s.alive || s.dying || s.hp <= 0) continue;
-            if (s.role == ShipRole.BASE) continue;
-            if (s.faction == null) continue;
-            if (carrier.faction.isFriendlyTo(s.faction)) continue;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectHostileShipsNear(carrier.faction, x, y, maxDist, nearby);
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship s = nearby.get(i);
+                if (s == null) continue;
+                if (!s.alive || s.dying || s.hp <= 0) continue;
+                if (s.role == ShipRole.BASE) continue;
+                if (s.faction == null) continue;
+                if (carrier.faction.isFriendlyTo(s.faction)) continue;
 
-            double d2 = dist2(s.x, s.y, x, y);
-            if (d2 >= bestD2) continue;
-            bestD2 = d2;
-            best = s;
+                double d2 = dist2(s.x, s.y, x, y);
+                if (d2 >= bestD2) continue;
+                bestD2 = d2;
+                best = s;
+            }
+        } finally {
+            releaseShipScratch(nearby);
         }
         return best;
     }
@@ -421,49 +431,54 @@ public final class CarrierSystem {
         Ship protectedBomber = (craft.role == ShipRole.FIGHTER) ? findEscortBomber(ctx, craft) : null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
-        List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectHostileShipsNear(craft.faction, craft.x, craft.y, ATTACK_SEARCH_RANGE, nearby);
-        for (Ship enemy : nearby) {
-            if (!isAlive(enemy) || enemy.faction == null) continue;
-            if (craft.faction.isFriendlyTo(enemy.faction)) continue;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectHostileShipsNear(craft.faction, craft.x, craft.y, ATTACK_SEARCH_RANGE, nearby);
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship enemy = nearby.get(i);
+                if (!isAlive(enemy) || enemy.faction == null) continue;
+                if (craft.faction.isFriendlyTo(enemy.faction)) continue;
 
-            double dCraft = Math.hypot(enemy.x - craft.x, enemy.y - craft.y);
-            if (dCraft > ATTACK_SEARCH_RANGE) continue;
+                double dCraft = Math.hypot(enemy.x - craft.x, enemy.y - craft.y);
+                if (dCraft > ATTACK_SEARCH_RANGE) continue;
 
-            double score = Math.max(0.0, 1600.0 - dCraft) * 0.78;
-            if (carrier != null) {
-                double dCarrier = Math.hypot(enemy.x - carrier.x, enemy.y - carrier.y);
-                score += Math.max(0.0, 1400.0 - dCarrier) * 0.12;
-                if (dCarrier > ATTACK_LEASH_RANGE * 1.55) score -= 220.0;
-            }
+                double score = Math.max(0.0, 1600.0 - dCraft) * 0.78;
+                if (carrier != null) {
+                    double dCarrier = Math.hypot(enemy.x - carrier.x, enemy.y - carrier.y);
+                    score += Math.max(0.0, 1400.0 - dCarrier) * 0.12;
+                    if (dCarrier > ATTACK_LEASH_RANGE * 1.55) score -= 220.0;
+                }
 
-            score += strikeRoleTargetBias(craft.role, enemy.role);
-            if (craft.role == ShipRole.BOMBER && enemy.isSmallCraft()) {
-                score -= 240.0;
-            }
-            if (craft.role == ShipRole.DRONE && enemy.isSmallCraft()) {
-                score -= 120.0;
-            }
-            if (craft.role == ShipRole.BOMBER && isHighValueStrikeTarget(enemy)) {
-                score += 180.0;
-            }
-            if (craft.role == ShipRole.DRONE && isHighValueStrikeTarget(enemy)) {
-                score += 120.0;
-            }
-            if (carrier != null && enemy == designatedTargetForCraft(ctx, craft, carrier)) {
-                score += (craft.role == ShipRole.BOMBER) ? 360.0 : 220.0;
-            }
-            if (protectedBomber != null) {
-                double dBomber = Math.hypot(enemy.x - protectedBomber.x, enemy.y - protectedBomber.y);
-                if (dBomber <= BOMBER_GUARD_REACTION_RANGE) {
-                    score += Math.max(0.0, BOMBER_GUARD_REACTION_RANGE - dBomber) * 0.95;
+                score += strikeRoleTargetBias(craft.role, enemy.role);
+                if (craft.role == ShipRole.BOMBER && enemy.isSmallCraft()) {
+                    score -= 240.0;
+                }
+                if (craft.role == ShipRole.DRONE && enemy.isSmallCraft()) {
+                    score -= 120.0;
+                }
+                if (craft.role == ShipRole.BOMBER && isHighValueStrikeTarget(enemy)) {
+                    score += 180.0;
+                }
+                if (craft.role == ShipRole.DRONE && isHighValueStrikeTarget(enemy)) {
+                    score += 120.0;
+                }
+                if (carrier != null && enemy == designatedTargetForCraft(ctx, craft, carrier)) {
+                    score += (craft.role == ShipRole.BOMBER) ? 360.0 : 220.0;
+                }
+                if (protectedBomber != null) {
+                    double dBomber = Math.hypot(enemy.x - protectedBomber.x, enemy.y - protectedBomber.y);
+                    if (dBomber <= BOMBER_GUARD_REACTION_RANGE) {
+                        score += Math.max(0.0, BOMBER_GUARD_REACTION_RANGE - dBomber) * 0.95;
+                    }
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = enemy;
                 }
             }
-
-            if (score > bestScore) {
-                bestScore = score;
-                best = enemy;
-            }
+        } finally {
+            releaseShipScratch(nearby);
         }
         return best;
     }
@@ -784,17 +799,22 @@ public final class CarrierSystem {
         if (fighter.role != ShipRole.FIGHTER) return null;
         Ship best = null;
         double bestD2 = Double.POSITIVE_INFINITY;
-        List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectAliveShipsNear(fighter.x, fighter.y, BOMBER_GUARD_REACTION_RANGE, nearby);
-        for (Ship s : nearby) {
-            if (!isAlive(s)) continue;
-            if (s.role != ShipRole.BOMBER) continue;
-            if (s.carrierOwnerId != fighter.carrierOwnerId) continue;
-            double d2 = dist2(fighter.x, fighter.y, s.x, s.y);
-            if (d2 < bestD2) {
-                bestD2 = d2;
-                best = s;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectAliveShipsNear(fighter.x, fighter.y, BOMBER_GUARD_REACTION_RANGE, nearby);
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship s = nearby.get(i);
+                if (!isAlive(s)) continue;
+                if (s.role != ShipRole.BOMBER) continue;
+                if (s.carrierOwnerId != fighter.carrierOwnerId) continue;
+                double d2 = dist2(fighter.x, fighter.y, s.x, s.y);
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    best = s;
+                }
             }
+        } finally {
+            releaseShipScratch(nearby);
         }
         return best;
     }
@@ -804,40 +824,51 @@ public final class CarrierSystem {
         Ship best = craft;
         int bestId = craft.id;
         int count = 0;
-        List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectAliveShipsNear(craft.x, craft.y, STRIKE_COHESION_RANGE, nearby);
-        for (Ship s : nearby) {
-            if (!isAlive(s)) continue;
-            if (s.carrierOwnerId != craft.carrierOwnerId) continue;
-            if (s.role != craft.role) continue;
-            if (dist2(s.x, s.y, craft.x, craft.y) > STRIKE_COHESION_RANGE * STRIKE_COHESION_RANGE) continue;
-            if (s.id < bestId) {
-                bestId = s.id;
-                best = s;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectAliveShipsNear(craft.x, craft.y, STRIKE_COHESION_RANGE, nearby);
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship s = nearby.get(i);
+                if (!isAlive(s)) continue;
+                if (s.carrierOwnerId != craft.carrierOwnerId) continue;
+                if (s.role != craft.role) continue;
+                if (dist2(s.x, s.y, craft.x, craft.y) > STRIKE_COHESION_RANGE * STRIKE_COHESION_RANGE) continue;
+                if (s.id < bestId) {
+                    bestId = s.id;
+                    best = s;
+                }
+                count++;
+                if (count >= STRIKE_WING_SIZE) break;
             }
-            count++;
-            if (count >= STRIKE_WING_SIZE) break;
+        } finally {
+            releaseShipScratch(nearby);
         }
         return best;
     }
 
     private static int wingSlotIndex(GameContext ctx, Ship craft, Ship leader) {
         if (ctx == null || craft == null) return 0;
-        ArrayList<Ship> peers = new ArrayList<>();
+        ArrayList<Ship> peers = borrowShipScratch();
         double queryX = (leader != null) ? leader.x : craft.x;
         double queryY = (leader != null) ? leader.y : craft.y;
-        List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectAliveShipsNear(queryX, queryY, STRIKE_COHESION_RANGE, nearby);
-        for (Ship s : nearby) {
-            if (!isAlive(s)) continue;
-            if (s.carrierOwnerId != craft.carrierOwnerId) continue;
-            if (s.role != craft.role) continue;
-            if (leader != null && dist2(s.x, s.y, leader.x, leader.y) > STRIKE_COHESION_RANGE * STRIKE_COHESION_RANGE) continue;
-            peers.add(s);
-        }
-        peers.sort((a, b) -> Integer.compare(a.id, b.id));
-        for (int i = 0; i < peers.size() && i < STRIKE_WING_SIZE; i++) {
-            if (peers.get(i) == craft) return i;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectAliveShipsNear(queryX, queryY, STRIKE_COHESION_RANGE, nearby);
+            for (int i = 0; i < nearby.size(); i++) {
+                Ship s = nearby.get(i);
+                if (!isAlive(s)) continue;
+                if (s.carrierOwnerId != craft.carrierOwnerId) continue;
+                if (s.role != craft.role) continue;
+                if (leader != null && dist2(s.x, s.y, leader.x, leader.y) > STRIKE_COHESION_RANGE * STRIKE_COHESION_RANGE) continue;
+                peers.add(s);
+            }
+            peers.sort((a, b) -> Integer.compare(a.id, b.id));
+            for (int i = 0; i < peers.size() && i < STRIKE_WING_SIZE; i++) {
+                if (peers.get(i) == craft) return i;
+            }
+        } finally {
+            releaseShipScratch(nearby);
+            releaseShipScratch(peers);
         }
         return Math.max(0, craft.id % STRIKE_WING_SIZE);
     }
@@ -869,6 +900,20 @@ public final class CarrierSystem {
             };
             default -> 0.0;
         };
+    }
+
+    private static ArrayList<Ship> borrowShipScratch() {
+        ListScratch scratch = SCRATCH.get();
+        ArrayList<Ship> list = scratch.shipLists.pollFirst();
+        if (list == null) return new ArrayList<>(48);
+        list.clear();
+        return list;
+    }
+
+    private static void releaseShipScratch(ArrayList<Ship> list) {
+        if (list == null) return;
+        list.clear();
+        SCRATCH.get().shipLists.offerFirst(list);
     }
 
     private static boolean isBoardingBomber(Ship craft, Ship carrier) {

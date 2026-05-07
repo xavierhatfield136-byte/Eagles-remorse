@@ -23,6 +23,7 @@ final class ShipPartLibrary {
     private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
     private static Map<String, double[]> DAMAGE_FOCUS_CACHE = null;
     private static boolean cachesPrewarmed = false;
+    private static final Map<Variant, PartSet> EMPTY_SET_BY_VARIANT = buildEmptySets();
 
     enum Variant {
         NORMAL,
@@ -51,7 +52,7 @@ final class ShipPartLibrary {
                 && resolvedVariant != Variant.DESTROYED) {
             // Stations and titan-scale hulls stay on the authored ship skin path while alive.
             // Their multipart section sprites are reserved for the death handoff only.
-            return new PartSet(List.of(), (variant == null) ? Variant.NORMAL : variant);
+            return emptySetFor(resolvedVariant);
         }
         String roleKey = keyForRole(role);
         String factionKey = keyForFaction(faction);
@@ -68,7 +69,9 @@ final class ShipPartLibrary {
         }
 
         if (parts.isEmpty() && resolvedVariant != Variant.NORMAL) {
-            return getSet(role, faction, Variant.NORMAL);
+            PartSet fallback = getSet(role, faction, Variant.NORMAL);
+            CACHE.put(cacheKey, fallback);
+            return fallback;
         }
 
         PartSet set = new PartSet(parts, resolvedVariant);
@@ -298,6 +301,19 @@ final class ShipPartLibrary {
             case TEAM_C -> "team_c";
             case TEAM_D -> "team_d";
         };
+    }
+
+    private static PartSet emptySetFor(Variant variant) {
+        Variant resolved = (variant == null) ? Variant.NORMAL : variant;
+        return EMPTY_SET_BY_VARIANT.getOrDefault(resolved, EMPTY_SET_BY_VARIANT.get(Variant.NORMAL));
+    }
+
+    private static Map<Variant, PartSet> buildEmptySets() {
+        Map<Variant, PartSet> out = new HashMap<>();
+        for (Variant variant : Variant.values()) {
+            out.put(variant, new PartSet(List.of(), variant));
+        }
+        return out;
     }
 
     static final class PartSet {

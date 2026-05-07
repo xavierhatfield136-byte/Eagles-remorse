@@ -1,4 +1,5 @@
 import java.util.Locale;
+import java.util.EnumMap;
 
 /**
  * Central identity definitions for faction-themed passives and faction-role bonus stats.
@@ -105,6 +106,8 @@ public final class ShipIdentityRegistry {
             "No Role Bonus",
             "No role-specific bonus is configured."
     );
+    private static final EnumMap<Faction, EnumMap<ShipRole, RoleBonus>> ROLE_BONUS_CACHE =
+            buildRoleBonusCache();
 
     public static FactionTrait factionTraitFor(Faction faction) {
         if (faction == null) return NONE_TRAIT;
@@ -120,7 +123,15 @@ public final class ShipIdentityRegistry {
         if (role == null) return NO_ROLE_BONUS;
         Faction key = normalizeFaction(faction);
         if (key == null) return NO_ROLE_BONUS;
+        EnumMap<ShipRole, RoleBonus> byRole = ROLE_BONUS_CACHE.get(key);
+        if (byRole == null) return NO_ROLE_BONUS;
+        return byRole.getOrDefault(role, NO_ROLE_BONUS);
+    }
 
+    private static RoleBonus buildRoleBonus(Faction faction, ShipRole role) {
+        if (role == null) return NO_ROLE_BONUS;
+        Faction key = normalizeFaction(faction);
+        if (key == null) return NO_ROLE_BONUS;
         return switch (role) {
             case PATROL -> matrixBonus(key, role,
                     spec(IdentityStat.SENSOR_RANGE, 1.16, "Recon Uplink"),
@@ -337,6 +348,19 @@ public final class ShipIdentityRegistry {
             case TEAM_C -> Faction.TEAM_C;
             case TEAM_D -> Faction.TEAM_D;
         };
+    }
+
+    private static EnumMap<Faction, EnumMap<ShipRole, RoleBonus>> buildRoleBonusCache() {
+        EnumMap<Faction, EnumMap<ShipRole, RoleBonus>> cache = new EnumMap<>(Faction.class);
+        Faction[] factions = {Faction.ALLY, Faction.ENEMY, Faction.TEAM_C, Faction.TEAM_D};
+        for (Faction faction : factions) {
+            EnumMap<ShipRole, RoleBonus> byRole = new EnumMap<>(ShipRole.class);
+            for (ShipRole role : ShipRole.values()) {
+                byRole.put(role, buildRoleBonus(faction, role));
+            }
+            cache.put(faction, byRole);
+        }
+        return cache;
     }
 
     private static BonusSpec spec(IdentityStat stat, double multiplier, String name) {
