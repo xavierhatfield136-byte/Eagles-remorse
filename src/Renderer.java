@@ -4282,7 +4282,7 @@ public class Renderer {
         HudPanelVisual visual = panelVisual(key, rect);
         String active = activeNow ? "ACTIVE"
                 : ((ctx.player != null && !ctx.player.ecmReady())
-                ? String.format("RECHARGING %.0FS", Math.ceil(ctx.player.ecmCooldownRemaining()))
+                ? String.format("RECHARGING %.0fs", Math.ceil(ctx.player.ecmCooldownRemaining()))
                 : "PRIMED");
         if (visual != null) {
             drawCombatModeImagePanel(g2, rect, "ECM MODE", active, new Color(255, 170, 90, 220), visual);
