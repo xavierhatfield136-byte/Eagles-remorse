@@ -143,7 +143,6 @@ public final class GameRenderSystem {
                 drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
             }
             Renderer.drawCombatCallouts(worldG, ctx.ui.combatCallouts, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
-            drawFleetSquadMarkers(ctx, worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
             drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
             TutorialSystem.drawWorldMarkers(ctx, worldG);
         }
@@ -975,45 +974,6 @@ if (DevTools.isDebugOverlay()) {
         }
         if (!line.isEmpty()) out.add(line);
         return out;
-    }
-
-    private static void drawFleetSquadMarkers(GameContext ctx, Graphics2D g2,
-                                              java.util.List<Ship> ships,
-                                              double minX, double minY, double maxX, double maxY) {
-        if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null || ships == null) return;
-        int playerTeamId = ctx.player.faction.teamId();
-        Font oldFont = g2.getFont();
-        java.util.List<Ship> leaders = new java.util.ArrayList<>();
-        for (Ship s : ships) {
-            if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
-            if (s.faction == null || s.faction.teamId() != playerTeamId) continue;
-            Integer leaderId = ctx.command.fleetSquadLeaderByShip.get(s.id);
-            if (leaderId == null || leaderId != s.id) continue;
-            if (s.x + s.radius + 90.0 < minX || s.x - s.radius - 90.0 > maxX
-                    || s.y + s.radius + 90.0 < minY || s.y - s.radius - 90.0 > maxY) continue;
-            leaders.add(s);
-        }
-        leaders.sort(java.util.Comparator.comparingInt(s -> ctx.command.fleetSquadIndexByShip.getOrDefault(s.id, Integer.MAX_VALUE)));
-        for (Ship leader : leaders) {
-            String label = ctx.command.fleetSquadLabelByShip.get(leader.id);
-            if (label == null || label.isBlank()) continue;
-            String role = ctx.command.fleetSquadRoleByShip.getOrDefault(leader.id, "Line");
-            int x = (int) Math.round(leader.x);
-            int y = (int) Math.round(leader.y - leader.radius - 48);
-            Color accent = squadColor(leader.faction, 215);
-            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 70));
-            g2.fillRoundRect(x - 40, y - 12, 80, 26, 10, 10);
-            g2.setColor(new Color(248, 252, 255, 210));
-            g2.drawRoundRect(x - 40, y - 12, 80, 26, 10, 10);
-            g2.setFont(new Font("Consolas", Font.BOLD, 10));
-            FontMetrics fm = g2.getFontMetrics();
-            g2.drawString(label, x - fm.stringWidth(label) / 2, y);
-            g2.setFont(new Font("Consolas", Font.PLAIN, 9));
-            FontMetrics roleFm = g2.getFontMetrics();
-            g2.setColor(new Color(214, 228, 246, 214));
-            g2.drawString(role.toUpperCase(), x - roleFm.stringWidth(role.toUpperCase()) / 2, y + 10);
-        }
-        g2.setFont(oldFont);
     }
 
     private static Color squadColor(Faction faction, int alpha) {
