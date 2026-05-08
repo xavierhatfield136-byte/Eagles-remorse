@@ -1,3 +1,4 @@
+import app.ui.ThemeArt;
 import app.config.GameMode;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -850,27 +851,33 @@ public class Renderer {
         if (y + height > viewH - 12) y = mouseY - height - 18;
         if (y < 12) y = 12;
 
-        g2.setColor(new Color(4, 8, 16, 228));
-        g2.fillRoundRect(x, y, width, height, 12, 12);
-        g2.setColor(new Color(190, 222, 255, 170));
-        g2.drawRoundRect(x, y, width, height, 12, 12);
+        if (!paintThemedHudFrame(g2, x, y, width, height,
+                new Color(190, 222, 255, 170), ThemeArt.HUD_STANDARD_PANEL, 12)) {
+            g2.setColor(new Color(4, 8, 16, 228));
+            g2.fillRoundRect(x, y, width, height, 12, 12);
+            g2.setColor(new Color(190, 222, 255, 170));
+            g2.drawRoundRect(x, y, width, height, 12, 12);
+        }
 
-        int ty = y + pad + bodyFm.getAscent();
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, width, height);
+        pad = Math.max(8, Math.min(14, inner.x - x));
+
+        int ty = inner.y + bodyFm.getAscent();
         if (ui.hoverTooltipTitle != null && !ui.hoverTooltipTitle.isBlank()) {
             g2.setFont(HOVER_TOOLTIP_TITLE_FONT);
             g2.setColor(new Color(246, 250, 255, 240));
-            ty = y + pad + titleFm.getAscent();
-            g2.drawString(ui.hoverTooltipTitle, x + pad, ty);
+            ty = inner.y + titleFm.getAscent();
+            g2.drawString(ui.hoverTooltipTitle, inner.x, ty);
             ty += titleFm.getDescent() + 8;
             g2.setColor(new Color(155, 206, 255, 110));
-            g2.drawLine(x + pad, ty - 2, x + width - pad, ty - 2);
+            g2.drawLine(inner.x, ty - 2, inner.x + inner.width, ty - 2);
             ty += bodyFm.getAscent();
         }
 
         g2.setFont(HOVER_TOOLTIP_BODY_FONT);
         g2.setColor(new Color(224, 235, 248, 228));
         for (String line : lines) {
-            g2.drawString(line, x + pad, ty);
+            g2.drawString(line, inner.x, ty);
             ty += bodyFm.getHeight();
         }
     }
@@ -1178,10 +1185,13 @@ public class Renderer {
         if (g2 == null || ctx == null) return;
         Rectangle bar = getCoreMenuBarRect(viewW, viewH);
 
-        g2.setColor(new Color(0, 0, 0, 158));
-        g2.fillRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
-        g2.setColor(new Color(255, 255, 255, 95));
-        g2.drawRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
+        if (!paintThemedHudFrame(g2, bar.x, bar.y, bar.width, bar.height,
+                new Color(110, 200, 255, 190), ThemeArt.HUD_STATUS_STRIP, 14)) {
+            g2.setColor(new Color(0, 0, 0, 158));
+            g2.fillRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
+            g2.setColor(new Color(255, 255, 255, 95));
+            g2.drawRoundRect(bar.x, bar.y, bar.width, bar.height, 14, 14);
+        }
 
         boolean[] open = {
                 ctx.ui.shopOpen,
@@ -4093,8 +4103,11 @@ public class Renderer {
             int by = 60;  // Moved down from y=10 to avoid blocking menus
 
             int a = (int) Math.round(60 + 140 * Math.max(0.0, Math.min(1.0, eventBannerT / 3.0)));
-            g2.setColor(new Color(0, 0, 0, MathUtil.clamp(a, 0, 190)));
-            g2.fillRoundRect(bx, by, bw, bh, 14, 14);
+            if (!paintThemedHudFrame(g2, bx, by, bw, bh,
+                    new Color(255, 120, 110, MathUtil.clamp(a, 0, 220)), ThemeArt.HUD_ALERT_PANEL, 14)) {
+                g2.setColor(new Color(0, 0, 0, MathUtil.clamp(a, 0, 190)));
+                g2.fillRoundRect(bx, by, bw, bh, 14, 14);
+            }
             g2.setColor(new Color(255, 255, 255, 210));
             g2.setFont(new Font("Consolas", Font.BOLD, 15));
             FontMetrics fm = g2.getFontMetrics();
@@ -4385,7 +4398,7 @@ public class Renderer {
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
         FontMetrics titleFm = g2.getFontMetrics(titleFont);
         FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
-        int contentW = Math.max(220, w - 24);
+        int contentW = Math.max(220, themedContentWidth(ThemeArt.HUD_STANDARD_PANEL, w, 120));
 
         List<String> titleLines = buildObjectiveTitleLines(titleFm, objectiveTitle, contentW, detail);
         List<String> detailLines = buildObjectiveDetailLines(bodyFm, objectiveDetail, contentW, detail);
@@ -4394,24 +4407,25 @@ public class Renderer {
         int h = computeObjectiveCardHeight(objectiveTitle, objectiveDetail, w, detail);
         drawHudPanelFrame(g2, x, y, w, h, "OBJECTIVE", new Color(255, 214, 132, 220));
 
-        int rowY = y + 38;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
+        int rowY = inner.y + 4;
         g2.setFont(titleFont);
         g2.setColor(new Color(255, 232, 170, 232));
         for (String line : titleLines) {
-            g2.drawString(line, x + 12, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 16;
         }
 
         if (!titleLines.isEmpty() && !detailLines.isEmpty()) {
             g2.setColor(new Color(255, 255, 255, 44));
-            g2.drawLine(x + 12, rowY + 1, x + w - 12, rowY + 1);
+            g2.drawLine(inner.x, rowY + 1, inner.x + inner.width, rowY + 1);
             rowY += 16;
         }
 
         g2.setFont(bodyFont);
         g2.setColor(new Color(220, 232, 244, 208));
         for (String line : detailLines) {
-            g2.drawString(line, x + 12, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 15;
         }
 
@@ -4427,14 +4441,15 @@ public class Renderer {
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
         FontMetrics titleFm = metricsCanvas.getFontMetrics(titleFont);
         FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
-        int contentW = Math.max(220, w - 24);
+        int contentW = Math.max(220, themedContentWidth(ThemeArt.HUD_STANDARD_PANEL, w, 120));
         List<String> titleLines = buildObjectiveTitleLines(titleFm, objectiveTitle, contentW, detail);
         List<String> detailLines = buildObjectiveDetailLines(bodyFm, objectiveDetail, contentW, detail);
         if (titleLines.isEmpty() && detailLines.isEmpty()) return 0;
-        int h = 34 + titleLines.size() * 16;
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 120);
+        int h = metrics.top() + 4 + titleLines.size() * 16;
         if (!titleLines.isEmpty() && !detailLines.isEmpty()) h += 16;
-        h += detailLines.size() * 15 + 12;
-        return Math.max(66, h);
+        h += detailLines.size() * 15 + metrics.bottom();
+        return Math.max(metrics.top() + metrics.bottom() + 28, h);
     }
 
     private static String buildObjectiveHoverBody(GameContext ctx, String objectiveTitle, String objectiveDetail) {
@@ -4471,22 +4486,23 @@ public class Renderer {
 
         drawHudPanelFrame(g2, x, y, w, h, "COMMAND", factionHudColor(player.faction, 210));
 
-        int titleY = y + 34;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
+        int titleY = inner.y;
         g2.setFont(new Font("Consolas", Font.BOLD, 16));
         g2.setColor(new Color(244, 248, 255, 235));
         String shipLabel = (player.role == null) ? "COMMAND SHIP" : player.role.name().replace('_', ' ');
-        g2.drawString(shipLabel, x + 12, titleY);
+        g2.drawString(shipLabel, inner.x, titleY);
 
         boolean infiniteCredits = ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOOTING_RANGE;
         String creditLabel = infiniteCredits ? "CREDITS INF" : ("CREDITS " + credits);
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         FontMetrics creditFm = g2.getFontMetrics();
         g2.setColor(new Color(150, 214, 255, 225));
-        g2.drawString(creditLabel, x + w - 12 - creditFm.stringWidth(creditLabel), titleY);
+        g2.drawString(creditLabel, inner.x + inner.width - creditFm.stringWidth(creditLabel), titleY);
 
-        int rowY = y + 58;
+        int rowY = inner.y + 24;
         g2.setColor(new Color(255, 255, 255, 58));
-        g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+        g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
         rowY += 18;
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -4494,7 +4510,7 @@ public class Renderer {
             g2.setColor(line.startsWith("Status:")
                     ? new Color(255, 196, 148, 226)
                     : new Color(190, 214, 236, 198));
-            g2.drawString(line, x + 12, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 15;
         }
 
@@ -4511,7 +4527,8 @@ public class Renderer {
         if (player == null) return 0;
         List<String> statusLines = buildCommandStatusLines(player, hangarTier, dockedAtBase, resourceRush,
                 allyOre, enemyOre, goal, orePriceMul, orePriceT, miningMul, miningT, gameOverText, detail, ctx);
-        return 76 + statusLines.size() * 15;
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 120);
+        return metrics.top() + 24 + 18 + statusLines.size() * 15 + metrics.bottom();
     }
 
     private static List<String> buildObjectiveTitleLines(FontMetrics titleFm, String objectiveTitle, int contentW,
@@ -4616,11 +4633,12 @@ public class Renderer {
         g2.setFont(chipFont);
         FontMetrics fm = g2.getFontMetrics();
 
-        int chipX = x + 12;
-        int chipY = y + 34;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, 88);
+        int chipX = inner.x;
+        int chipY = inner.y;
         int lineHeight = 28;
         int chipH = 18;
-        int maxX = x + w - 12;
+        int maxX = inner.x + inner.width;
         int rows = 1;
 
         int panelH = 60;
@@ -4628,7 +4646,7 @@ public class Renderer {
         for (String chip : chips) {
             int chipW = fm.stringWidth(chip) + 14;
             if (chipX + chipW > maxX) {
-                chipX = x + 12;
+                chipX = inner.x;
                 chipY += lineHeight;
                 rows++;
             }
@@ -4638,12 +4656,14 @@ public class Renderer {
         if (rows > 1) {
             panelH = 60 + (rows - 1) * 28;
             drawHudPanelFrame(g2, x, y, w, panelH, "ACTION STRIP", new Color(132, 196, 255, 210));
-            chipX = x + 12;
-            chipY = y + 34;
+            inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, panelH);
+            chipX = inner.x;
+            chipY = inner.y;
+            maxX = inner.x + inner.width;
             for (String chip : chips) {
                 int chipW = fm.stringWidth(chip) + 14;
                 if (chipX + chipW > maxX) {
-                    chipX = x + 12;
+                    chipX = inner.x;
                     chipY += lineHeight;
                 }
                 drawHudStatusChip(g2, chip, chipX, chipY - 12, chipW, chipH, new Color(125, 190, 255, 210), false);
@@ -4688,7 +4708,7 @@ public class Renderer {
         Color oldColor = g2.getColor();
         Font bodyFont = new Font("Consolas", Font.PLAIN, 12);
         FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
-        int contentW = Math.max(220, w - 24);
+        int contentW = Math.max(220, themedContentWidth(ThemeArt.HUD_STANDARD_PANEL, w, 180));
 
         List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW, ctx);
@@ -4705,14 +4725,15 @@ public class Renderer {
                 stationStatus, overlayStatus, contextHint, w, detail, ctx);
 
         drawHudPanelFrame(g2, x, y, w, h, "SHIP", factionHudColor(player.faction, 210));
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
-        int chipY = y + 34;
-        int chipX = x + 12;
-        int chipMaxX = x + w - 12;
+        int chipY = inner.y;
+        int chipX = inner.x;
+        int chipMaxX = inner.x + inner.width;
         for (int i = 0; i < chips.texts.size(); i++) {
             int chipW = chipFm.stringWidth(chips.texts.get(i)) + 14;
             if (chipX + chipW > chipMaxX) {
-                chipX = x + 12;
+                chipX = inner.x;
                 chipY += 24;
             }
             drawHudStatusChip(g2, chips.texts.get(i), chipX, chipY - 12, chipW, 18,
@@ -4723,7 +4744,7 @@ public class Renderer {
         int textY;
         if (showPowerStrip) {
             int barY = chipY + 30;
-            int powerBlockUsed = drawPowerAllocationStrip(g2, player, x + 12, barY, w - 24, 16, showPowerLegend);
+            int powerBlockUsed = drawPowerAllocationStrip(g2, player, inner.x, barY, inner.width, 16, showPowerLegend);
             textY = barY + powerBlockUsed + 10;
         } else {
             textY = chipY + 20;
@@ -4734,7 +4755,7 @@ public class Renderer {
             if (line == null || line.isBlank()) continue;
             boolean emphasis = line.startsWith("Hint:") || line.startsWith("Counter:") || line.startsWith("OVERLAY:");
             g2.setColor(emphasis ? new Color(255, 226, 154, 224) : new Color(198, 218, 238, 195));
-            g2.drawString(line, x + 12, textY);
+            g2.drawString(line, inner.x, textY);
             textY += 15;
         }
 
@@ -4753,14 +4774,15 @@ public class Renderer {
         Font chipFont = new Font("Consolas", Font.BOLD, 11);
         FontMetrics bodyFm = metricsCanvas.getFontMetrics(bodyFont);
         FontMetrics chipFm = metricsCanvas.getFontMetrics(chipFont);
-        int contentW = Math.max(220, w - 24);
+        int contentW = Math.max(220, themedContentWidth(ThemeArt.HUD_STANDARD_PANEL, w, 180));
         List<String> noteLines = buildShipSystemNoteLines(player, lockedTarget, playerWingActive, playerWingCap,
                 stationStatus, overlayStatus, contextHint, detail, bodyFm, contentW, ctx);
         HudChipSet chips = buildShipSystemChips(player, autoLock, detail);
         int chipRows = computeHudChipRows(chips.texts, chipFm, w);
         boolean showPowerStrip = detail != GameContext.HudDetail.MINIMAL;
         int powerBlockH = showPowerStrip ? ((detail == GameContext.HudDetail.FULL) ? 62 : 18) : 0;
-        return 52 + chipRows * 24 + powerBlockH + noteLines.size() * 15;
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.HUD_STANDARD_PANEL, w, 180);
+        return metrics.top() + chipRows * 24 + 18 + powerBlockH + noteLines.size() * 15 + metrics.bottom();
     }
 
     private static List<String> buildShipSystemNoteLines(Player player, Ship lockedTarget,
@@ -4960,19 +4982,90 @@ public class Renderer {
     }
 
     private static void drawHudPanelFrame(Graphics2D g2, int x, int y, int w, int h, String title, Color accent) {
+        drawHudPanelFrame(g2, x, y, w, h, title, accent, ThemeArt.HUD_STANDARD_PANEL);
+    }
+
+    private static void drawHudPanelFrame(Graphics2D g2, int x, int y, int w, int h,
+                                          String title, Color accent, String themeSlot) {
         if (g2 == null) return;
         Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
-        g2.setColor(new Color(7, 14, 24, 188));
-        g2.fillRoundRect(x, y, w, h, 18, 18);
-        g2.setColor(withAlpha(base, 110));
-        g2.drawRoundRect(x, y, w - 1, h - 1, 18, 18);
-        g2.setColor(new Color(255, 255, 255, 22));
-        g2.drawRoundRect(x + 1, y + 1, w - 3, h - 3, 16, 16);
+        if (!paintThemedHudFrame(g2, x, y, w, h, base, themeSlot, 18)) {
+            g2.setColor(new Color(7, 14, 24, 188));
+            g2.fillRoundRect(x, y, w, h, 18, 18);
+            g2.setColor(withAlpha(base, 110));
+            g2.drawRoundRect(x, y, w - 1, h - 1, 18, 18);
+            g2.setColor(new Color(255, 255, 255, 22));
+            g2.drawRoundRect(x + 1, y + 1, w - 3, h - 3, 16, 16);
+        }
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(themeSlot, w, h);
         g2.setFont(new Font("Consolas", Font.BOLD, 12));
         g2.setColor(withAlpha(base, 220));
-        g2.drawString(title, x + 12, y + 16);
+        g2.drawString(title, x + metrics.left(), y + metrics.titleBaseline());
         g2.setColor(withAlpha(base, 72));
-        g2.drawLine(x + 12, y + 22, x + w - 12, y + 22);
+        g2.drawLine(x + metrics.left(), y + metrics.separatorY(), x + w - metrics.right(), y + metrics.separatorY());
+    }
+
+    private static boolean paintThemedHudFrame(Graphics2D g2, int x, int y, int w, int h,
+                                               Color accent, String slot, int arc) {
+        if (g2 == null || w <= 0 || h <= 0) return false;
+        BufferedImage image = ThemeArt.get(slot);
+        if (image == null) return false;
+
+        Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
+        Paint oldPaint = g2.getPaint();
+        Composite oldComposite = g2.getComposite();
+
+        g2.setPaint(new GradientPaint(x, y, new Color(6, 12, 22, 224), x, y + h, new Color(4, 8, 16, 212)));
+        g2.fillRoundRect(x, y, w, h, arc, arc);
+        g2.setPaint(new GradientPaint(
+                x + w * 0.14f, y + h * 0.10f, withAlpha(base, 42),
+                x + w * 0.48f, y + h * 0.42f, withAlpha(base, 0)));
+        g2.fillRoundRect(x + 6, y + 6, Math.max(8, w - 12), Math.max(8, h - 12),
+                Math.max(8, arc - 4), Math.max(8, arc - 4));
+        g2.setComposite(AlphaComposite.SrcOver);
+        g2.drawImage(image, x, y, w, h, null);
+
+        g2.setComposite(oldComposite);
+        g2.setPaint(oldPaint);
+        return true;
+    }
+
+    private static boolean paintThemedCircularHudFrame(Graphics2D g2, int x, int y, int size,
+                                                       Color accent, String slot) {
+        if (g2 == null || size <= 0) return false;
+        BufferedImage image = ThemeArt.get(slot);
+        if (image == null) return false;
+
+        Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
+        Paint oldPaint = g2.getPaint();
+        Composite oldComposite = g2.getComposite();
+
+        g2.setPaint(new GradientPaint(x, y, new Color(6, 12, 22, 224), x, y + size, new Color(4, 8, 16, 212)));
+        g2.fillOval(x, y, size, size);
+        g2.setPaint(new GradientPaint(
+                x + size * 0.22f, y + size * 0.18f, withAlpha(base, 40),
+                x + size * 0.55f, y + size * 0.62f, withAlpha(base, 0)));
+        g2.fillOval(x + 8, y + 8, Math.max(8, size - 16), Math.max(8, size - 16));
+        g2.setComposite(AlphaComposite.SrcOver);
+        g2.drawImage(image, x, y, size, size, null);
+
+        g2.setComposite(oldComposite);
+        g2.setPaint(oldPaint);
+        return true;
+    }
+
+    private static Rectangle themedContentRect(String slot, int x, int y, int w, int h) {
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(slot, w, h);
+        int innerX = x + metrics.left();
+        int innerY = y + metrics.top();
+        int innerW = Math.max(1, w - metrics.left() - metrics.right());
+        int innerH = Math.max(1, h - metrics.top() - metrics.bottom());
+        return new Rectangle(innerX, innerY, innerW, innerH);
+    }
+
+    private static int themedContentWidth(String slot, int w, int h) {
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(slot, w, h);
+        return Math.max(1, w - metrics.left() - metrics.right());
     }
 
     private static int drawHudChipAuto(Graphics2D g2, String text, int x, int y, Color accent, boolean strong) {
@@ -5642,15 +5735,19 @@ public class Renderer {
         int page = (ui == null) ? 0 : clampShopHullPage(category, ui.shopHullPage);
         int pageCount = shopHullPageCount(category);
 
-        GradientPaint panelFill = new GradientPaint(
-                panel.x, panel.y, new Color(7, 10, 16, 236),
-                panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
-        gx.setPaint(panelFill);
-        gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-        gx.setColor(new Color(255, 255, 255, 78));
-        gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-        gx.setColor(new Color(118, 180, 255, 42));
-        gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+        if (!paintThemedHudFrame(gx, panel.x, panel.y, panel.width, panel.height,
+                new Color(136, 196, 255, 190), ThemeArt.HUD_SPECIAL_FRAME, 24)) {
+            GradientPaint panelFill = new GradientPaint(
+                    panel.x, panel.y, new Color(7, 10, 16, 236),
+                    panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
+            gx.setPaint(panelFill);
+            gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+            gx.setColor(new Color(255, 255, 255, 78));
+            gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+            gx.setColor(new Color(118, 180, 255, 42));
+            gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
         if (campaignShop && fleetHub) {
             drawFleetOverlayModeTabs(gx, panel, false);
@@ -5658,24 +5755,24 @@ public class Renderer {
 
         gx.setFont(new Font("Consolas", Font.BOLD, 18));
         gx.setColor(new Color(245, 248, 255, 230));
-        gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", panel.x + 22, panel.y + 28);
+        gx.drawString(campaignShop ? "FLEET COMMISSIONING" : "SHOP / LOADOUT", inner.x, inner.y);
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(192, 210, 232, 180));
         gx.drawString(campaignShop
                         ? "Upgrade the Mothership on the left and commission persistent blue hulls on the right. Fleet growth is limited by shipyard tier, command grid, and sustainment pressure. TAB/ESC closes."
                         : "Buy capped upgrades on the left and browse hull classes on the right. TAB/ESC closes.",
-                panel.x + 22, panel.y + 48);
+                inner.x, inner.y + 20);
 
-        drawShopMetricPill(gx, panel.x + 22, panel.y + 64, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
-        drawShopMetricPill(gx, panel.x + 202, panel.y + 64, 150,
+        drawShopMetricPill(gx, inner.x, inner.y + 36, 170, "CREDITS", "$" + credits, new Color(120, 214, 170));
+        drawShopMetricPill(gx, inner.x + 180, inner.y + 36, 150,
                 campaignShop ? "ORE" : "HANGAR",
                 campaignShop ? String.valueOf(CampaignSystem.currentCampaignOre(ctx)) : ("TIER " + hangarTier),
                 new Color(158, 196, 255));
-        drawShopMetricPill(gx, panel.x + 362, panel.y + 64, 250,
+        drawShopMetricPill(gx, inner.x + 340, inner.y + 36, 250,
                 campaignShop ? "FLAGSHIP" : "CURRENT HULL",
                 shopRoleTitle(player.role),
                 new Color(255, 206, 122));
-        drawShopMetricPill(gx, panel.x + 622, panel.y + 64, 170,
+        drawShopMetricPill(gx, inner.x + 600, inner.y + 36, 170,
                 campaignShop ? "FLEET MIX" : "SUPERWEAPON",
                 campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
                 new Color(156, 224, 255));
@@ -5795,26 +5892,30 @@ public class Renderer {
         Graphics2D gx = (Graphics2D) g2.create();
         try {
             // Panel background
-            GradientPaint panelFill = new GradientPaint(
-                    panel.x, panel.y, new Color(7, 10, 16, 236),
-                    panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
-            gx.setPaint(panelFill);
-            gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-            gx.setColor(new Color(255, 255, 255, 78));
-            gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
-            gx.setColor(new Color(118, 180, 255, 42));
-            gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+            if (!paintThemedHudFrame(gx, panel.x, panel.y, panel.width, panel.height,
+                    new Color(136, 196, 255, 190), ThemeArt.HUD_SPECIAL_FRAME, 24)) {
+                GradientPaint panelFill = new GradientPaint(
+                        panel.x, panel.y, new Color(7, 10, 16, 236),
+                        panel.x, panel.y + panel.height, new Color(14, 18, 28, 226));
+                gx.setPaint(panelFill);
+                gx.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+                gx.setColor(new Color(255, 255, 255, 78));
+                gx.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 24, 24);
+                gx.setColor(new Color(118, 180, 255, 42));
+                gx.drawRoundRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, 22, 22);
+            }
+            Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
             drawFleetOverlayModeTabs(gx, panel, true);
 
             // Title
             gx.setFont(new Font("Consolas", Font.BOLD, 18));
             gx.setColor(new Color(245, 248, 255, 230));
-            gx.drawString("FLEET REFIT", panel.x + 22, panel.y + 28);
+            gx.drawString("FLEET REFIT", inner.x, inner.y);
             gx.setFont(new Font("Consolas", Font.PLAIN, 12));
             gx.setColor(new Color(192, 210, 232, 180));
             gx.drawString("Select a hull, then swap a slot between GUN/MSL and set missile roles. TAB/ESC closes.",
-                    panel.x + 22, panel.y + 48);
+                    inner.x, inner.y + 20);
 
             Rectangle shipList = getFleetEditorShipListRect(panel);
             Rectangle editor = getFleetEditorEditorRect(panel, shipList);
@@ -6314,25 +6415,23 @@ public class Renderer {
         int x = (clip.width - w) / 2;
         int y = Math.max(54, (clip.height - h) / 2);
 
-        g2.setColor(new Color(0, 0, 0, 205));
-        g2.fillRoundRect(x, y, w, h, 18, 18);
-        g2.setColor(new Color(255, 255, 255, 110));
-        g2.drawRoundRect(x, y, w, h, 18, 18);
+        drawHudPanelFrame(g2, x, y, w, h, "POWER MANAGEMENT", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         g2.setFont(new Font("Consolas", Font.BOLD, 18));
         g2.setColor(new Color(255, 240, 180, 230));
-        g2.drawString("POWER MANAGEMENT", x + 18, y + 30);
+        g2.drawString("POWER MANAGEMENT", inner.x, inner.y);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 170));
-        g2.drawString("O/ESC close   1-6 select bus   <-/-> or [/] adjust   F1-F4 presets", x + 18, y + 48);
-        g2.drawString("7 overload on/off   8 cycle overload bus   9 cycle repair priority   0 emergency thrust", x + 18, y + 64);
-        g2.drawString("Bars fill to useful cap. Gold tick = nominal power, red tick = saturation point.", x + 18, y + 80);
+        g2.drawString("O/ESC close   1-6 select bus   <-/-> or [/] adjust   F1-F4 presets", inner.x, inner.y + 18);
+        g2.drawString("7 overload on/off   8 cycle overload bus   9 cycle repair priority   0 emergency thrust", inner.x, inner.y + 34);
+        g2.drawString("Bars fill to useful cap. Gold tick = nominal power, red tick = saturation point.", inner.x, inner.y + 50);
 
         String[] labels = {"PROPULSION", "SHIELD", "TACTICAL", "SENSOR", "ENGINEERING", "SUPERCHARGE"};
         double[] values = player.powerBusFractions();
 
-        int rowY = y + 110;
+        int rowY = inner.y + 80;
         int barW = 330;
         int barH = 16;
         for (int i = 0; i < labels.length; i++) {
@@ -6348,9 +6447,9 @@ public class Renderer {
 
             g2.setColor(focus ? new Color(255, 230, 170, 220) : new Color(255, 255, 255, 200));
             g2.setFont(new Font("Consolas", focus ? Font.BOLD : Font.PLAIN, 14));
-            g2.drawString((i + 1) + ": " + labels[i], x + 20, ry + 13);
+            g2.drawString((i + 1) + ": " + labels[i], inner.x + 2, ry + 13);
 
-            int bx = x + 150;
+            int bx = inner.x + 132;
             int by = ry;
             g2.setColor(new Color(255, 255, 255, 50));
             g2.fillRoundRect(bx, by, barW, barH, 8, 8);
@@ -6459,7 +6558,7 @@ public class Renderer {
         int x = (clip.width - w) / 2;
         int y = Math.max(48, (clip.height - h) / 2);
 
-        drawHudPanelFrame(g2, x, y, w, h, "FLIGHT DECK CONTROL", new Color(146, 210, 255, 225));
+        drawHudPanelFrame(g2, x, y, w, h, "FLIGHT DECK CONTROL", new Color(146, 210, 255, 225), ThemeArt.HUD_SPECIAL_FRAME);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(225, 236, 250, 188));
@@ -6573,23 +6672,21 @@ public class Renderer {
         int x = (clip.width - w) / 2;
         int y = Math.max(34, (clip.height - h) / 2);
 
-        g2.setColor(new Color(0, 0, 0, 214));
-        g2.fillRoundRect(x, y, w, h, 18, 18);
-        g2.setColor(new Color(255, 255, 255, 110));
-        g2.drawRoundRect(x, y, w, h, 18, 18);
+        drawHudPanelFrame(g2, x, y, w, h, "HELP AND OPERATIONS", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         g2.setColor(new Color(255, 240, 180, 230));
         g2.setFont(new Font("Consolas", Font.BOLD, 18));
-        g2.drawString("HELP AND OPERATIONS", x + 18, y + 30);
+        g2.drawString("HELP AND OPERATIONS", inner.x, inner.y);
 
         g2.setColor(new Color(255, 255, 255, 170));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.drawString("H/ESC close   F1-F5 stations   A toggle station AI   <-/-> cycle station   N HUD detail", x + 18, y + 48);
+        g2.drawString("H/ESC close   F1-F5 stations   A toggle station AI   <-/-> cycle station   N HUD detail", inner.x, inner.y + 18);
 
-        int portraitPaneX = x + 18;
-        int portraitPaneY = y + 70;
+        int portraitPaneX = inner.x;
+        int portraitPaneY = inner.y + 36;
         int portraitPaneW = 232;
-        int portraitPaneH = h - 88;
+        int portraitPaneH = inner.height - 36;
 
         g2.setColor(new Color(255, 255, 255, 28));
         g2.fillRoundRect(portraitPaneX, portraitPaneY, portraitPaneW, portraitPaneH, 12, 12);
@@ -6626,11 +6723,11 @@ public class Renderer {
         g2.drawString(ctx.command.activeCrewStation.name(), portraitPaneX + 12, portraitPaneY + 16);
 
         int panelX = portraitPaneX + portraitPaneW + 14;
-        int panelW = x + w - panelX - 14;
-        int textRight = x + w - 18;
+        int panelW = inner.x + inner.width - panelX;
+        int textRight = inner.x + inner.width;
 
         int tabX = panelX + 8;
-        int tabY = y + 70;
+        int tabY = inner.y + 36;
         int tabGap = 8;
         int stationCount = GameContext.CrewStation.values().length;
         int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
@@ -6929,7 +7026,7 @@ public class Renderer {
         long nowNanos = System.nanoTime();
 
         String xrayTitle = (title == null || title.isBlank()) ? "TACTICAL X-RAY" : title;
-        drawHudPanelFrame(g2, x, y, w, h, xrayTitle, new Color(150, 205, 255, 214));
+        drawHudPanelFrame(g2, x, y, w, h, xrayTitle, new Color(150, 205, 255, 214), ThemeArt.HUD_SPECIAL_FRAME);
         g2.setFont(XRAY_SUBTITLE_FONT);
         g2.setColor(new Color(175, 218, 255, 205));
         if (subtitle != null && !subtitle.isBlank()) {
@@ -7550,13 +7647,13 @@ public class Renderer {
         g2.setColor(new Color(90, 220, 255, MathUtil.clamp(glowA, 30, 90)));
         g2.fillRoundRect(x - 4, y - 4, w + 8, h + 8, 24, 24);
 
-        // Panel body
-        g2.setColor(new Color(0, 0, 0, 190));
-        g2.fillRoundRect(x, y, w, h, 20, 20);
-
-        // Inner border
-        g2.setColor(new Color(255, 255, 255, 95));
-        g2.drawRoundRect(x, y, w, h, 20, 20);
+        if (!paintThemedHudFrame(g2, x, y, w, h, new Color(120, 214, 255, 190), ThemeArt.HUD_SPECIAL_FRAME, 20)) {
+            g2.setColor(new Color(0, 0, 0, 190));
+            g2.fillRoundRect(x, y, w, h, 20, 20);
+            g2.setColor(new Color(255, 255, 255, 95));
+            g2.drawRoundRect(x, y, w, h, 20, 20);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         // Subtle grid
         g2.setColor(new Color(255, 255, 255, 18));
@@ -7571,7 +7668,7 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.BOLD, 14));
         g2.setColor(new Color(230, 250, 255, 230));
-        g2.drawString(fleetHub ? "FLEET UPGRADE CONSOLE  (ESC)" : "BASE UPGRADE CONSOLE  (ESC)", x + 18, y + 28);
+        g2.drawString(fleetHub ? "FLEET UPGRADE CONSOLE  (ESC)" : "BASE UPGRADE CONSOLE  (ESC)", inner.x, inner.y);
 
         // Scanline sweep
         int sweepY = y + 42 + (int) Math.round(((Math.sin(t * 0.9) * 0.5 + 0.5)) * (h - 70));
@@ -7584,25 +7681,25 @@ public class Renderer {
         }
         g2.setFont(new Font("Consolas", Font.PLAIN, 13));
 
-        int ty = y + 58;
+        int ty = inner.y + 28;
         g2.setColor(new Color(255, 255, 255, 210));
         if (fleetHub) {
-            g2.drawString("Selected hull: " + baseName, x + 18, ty);
+            g2.drawString("Selected hull: " + baseName, inner.x, ty);
             ty += 18;
             if (selectedShip != null) {
                 String role = (selectedShip.role == null) ? "UNKNOWN" : shopRoleTitle(selectedShip.role);
                 String faction = (selectedShip.faction == null) ? "Unknown" : selectedShip.faction.name().replace('_', ' ');
-                g2.drawString("Role: " + role + "   Faction: " + faction, x + 18, ty);
+                g2.drawString("Role: " + role + "   Faction: " + faction, inner.x, ty);
                 ty += 18;
             }
         } else {
-            g2.drawString("Base: " + baseName, x + 18, ty);
+            g2.drawString("Base: " + baseName, inner.x, ty);
             ty += 18;
         }
 
         // Resource readouts (with small pills)
-        drawPill(g2, x + 18, ty - 12, 150, "CREDITS", String.valueOf(credits));
-        drawPill(g2, x + 178, ty - 12, 150, "BASE ORE", String.valueOf(baseOre));
+        drawPill(g2, inner.x, ty - 12, 150, "CREDITS", String.valueOf(credits));
+        drawPill(g2, inner.x + 160, ty - 12, 150, "BASE ORE", String.valueOf(baseOre));
         String focusLabel = "SYSTEMS";
         String focusValue = turretLv + " / 5";
         if (fleetHub && selectedShip != null) {
@@ -7621,11 +7718,11 @@ public class Renderer {
                 focusValue = miningLv + " / 5";
             }
         }
-        drawPill(g2, x + 338, ty - 12, 160, focusLabel, focusValue);
+        drawPill(g2, inner.x + 320, ty - 12, 160, focusLabel, focusValue);
         ty += 30;
 
         g2.setColor(new Color(255, 255, 255, 180));
-        g2.drawString(fleetHub ? "Press the numbered slots shown below to upgrade the selected hull:" : "Press 1-5 to purchase:", x + 18, ty);
+        g2.drawString(fleetHub ? "Press the numbered slots shown below to upgrade the selected hull:" : "Press 1-5 to purchase:", inner.x, ty);
         ty += 18;
 
         // Costs mirror GamePanel (keep in sync)
@@ -7745,11 +7842,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int size = 170;
         int x0 = viewW - size - pad;
         int y0 = pad;
+        int ringInset = 10;
+        int ringX = x0 + ringInset;
+        int ringY = y0 + ringInset;
+        int ringSize = size - ringInset * 2;
 
-        g2.setColor(new Color(0, 0, 0, 150));
-        g2.fillRoundRect(x0, y0, size, size, 16, 16);
-        g2.setColor(new Color(255, 255, 255, 80));
-        g2.drawRoundRect(x0, y0, size, size, 16, 16);
+        if (!paintThemedCircularHudFrame(g2, ringX, ringY, ringSize, new Color(120, 210, 255, 190), ThemeArt.HUD_RADAR_RING)) {
+            g2.setColor(new Color(0, 0, 0, 150));
+            g2.fillRoundRect(x0, y0, size, size, 16, 16);
+            g2.setColor(new Color(255, 255, 255, 80));
+            g2.drawRoundRect(x0, y0, size, size, 16, 16);
+        }
+
+        Shape oldClip = g2.getClip();
+        g2.setClip(new Ellipse2D.Double(ringX + 6, ringY + 6, ringSize - 12, ringSize - 12));
 
         double view = 1500;
         double left = player.x - view / 2.0;
@@ -7814,6 +7920,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(255, 255, 255, 110));
         g2.drawString("MINIMAP", x0 + 10, y0 + size - 10);
+        g2.setClip(oldClip);
     }
 
 
@@ -7847,21 +7954,26 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 ? BattlefieldSectorSystem.selectedSector(ctx)
                 : null;
 
-        // Backdrop + glow border (Style B)
-        g2.setColor(new Color(0, 0, 0, 205));
-        g2.fillRoundRect(r.x, r.y, r.width, r.height, 22, 22);
-
-        g2.setColor(new Color(140, 200, 255, 55));
-        g2.drawRoundRect(r.x - 2, r.y - 2, r.width + 4, r.height + 4, 24, 24);
-        g2.setColor(new Color(255, 255, 255, 95));
-        g2.drawRoundRect(r.x, r.y, r.width, r.height, 22, 22);
+        // Backdrop + glow border
+        if (!paintThemedHudFrame(g2, r.x, r.y, r.width, r.height,
+                new Color(140, 200, 255, 188), ThemeArt.HUD_SPECIAL_FRAME, 22)) {
+            g2.setColor(new Color(0, 0, 0, 205));
+            g2.fillRoundRect(r.x, r.y, r.width, r.height, 22, 22);
+            g2.setColor(new Color(140, 200, 255, 55));
+            g2.drawRoundRect(r.x - 2, r.y - 2, r.width + 4, r.height + 4, 24, 24);
+            g2.setColor(new Color(255, 255, 255, 95));
+            g2.drawRoundRect(r.x, r.y, r.width, r.height, 22, 22);
+        }
 
         Rectangle m = getStrategicMapInnerRect(viewW, viewH);
 
-        g2.setColor(new Color(255, 255, 255, 22));
-        g2.fillRoundRect(m.x, m.y, m.width, m.height, 16, 16);
-        g2.setColor(new Color(255, 255, 255, 55));
-        g2.drawRoundRect(m.x, m.y, m.width, m.height, 16, 16);
+        if (!paintThemedHudFrame(g2, m.x, m.y, m.width, m.height,
+                new Color(124, 204, 255, 150), ThemeArt.HUD_STANDARD_PANEL, 16)) {
+            g2.setColor(new Color(255, 255, 255, 22));
+            g2.fillRoundRect(m.x, m.y, m.width, m.height, 16, 16);
+            g2.setColor(new Color(255, 255, 255, 55));
+            g2.drawRoundRect(m.x, m.y, m.width, m.height, 16, 16);
+        }
 
         // Subtle grid
         g2.setColor(new Color(255, 255, 255, 22));
@@ -8045,7 +8157,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         FontMetrics titleFm = g2.getFontMetrics(titleFont);
         FontMetrics bodyFm = g2.getFontMetrics(bodyFont);
         FontMetrics markerFm = g2.getFontMetrics(markerFont);
-        int contentW = w - 20;
+        int contentW = Math.max(180, themedContentWidth(ThemeArt.HUD_STANDARD_PANEL, w, panelRect.height));
         List<String> titleLines = limitHudLines(wrapHudText(titleFm, title, contentW), 2);
         List<String> bodyLines = limitHudLines(wrapHudMultilineText(bodyFm, body, contentW), 9);
         List<String> markerLines = buildStrategicObjectiveMarkerLines(markers);
@@ -8071,26 +8183,30 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Color oldColor = g2.getColor();
         Font oldFont = g2.getFont();
 
-        g2.setColor(new Color(0, 0, 0, 180));
-        g2.fillRoundRect(x, y, w, h, 16, 16);
-        g2.setColor(new Color(255, 214, 132, 210));
-        g2.drawRoundRect(x, y, w, h, 16, 16);
+        if (!paintThemedHudFrame(g2, x, y, w, h,
+                new Color(255, 214, 132, 180), ThemeArt.HUD_STANDARD_PANEL, 16)) {
+            g2.setColor(new Color(0, 0, 0, 180));
+            g2.fillRoundRect(x, y, w, h, 16, 16);
+            g2.setColor(new Color(255, 214, 132, 210));
+            g2.drawRoundRect(x, y, w, h, 16, 16);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
-        int rowY = y + 18;
+        int rowY = inner.y;
         g2.setFont(titleFont);
         g2.setColor(new Color(255, 232, 170, 230));
         for (String line : titleLines) {
-            g2.drawString(line, x + 10, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 16;
         }
         rowY += 4;
         g2.setFont(bodyFont);
         g2.setColor(new Color(224, 236, 248, 220));
         if (bodyLines.isEmpty()) {
-            g2.drawString("No objective data.", x + 10, rowY);
+            g2.drawString("No objective data.", inner.x, rowY);
         } else {
             for (String line : bodyLines) {
-                g2.drawString(line, x + 10, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += 14;
             }
         }
@@ -8098,15 +8214,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!wrappedLandmarkLines.isEmpty()) {
             rowY += 4;
             g2.setColor(new Color(182, 212, 236, 130));
-            g2.drawLine(x + 10, rowY, x + w - 10, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 12;
             g2.setFont(markerFont);
             g2.setColor(new Color(182, 212, 236, 210));
-            g2.drawString("LANDMARKS", x + 10, rowY);
+            g2.drawString("LANDMARKS", inner.x, rowY);
             rowY += 13;
             g2.setColor(new Color(220, 236, 248, 205));
             for (String line : wrappedLandmarkLines) {
-                g2.drawString(line, x + 10, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += 13;
             }
         }
@@ -8114,15 +8230,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!wrappedMarkerLines.isEmpty()) {
             rowY += 4;
             g2.setColor(new Color(255, 214, 132, 175));
-            g2.drawLine(x + 10, rowY, x + w - 10, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 12;
             g2.setFont(markerFont);
             g2.setColor(new Color(180, 226, 255, 205));
-            g2.drawString("ACTIVE MARKERS", x + 10, rowY);
+            g2.drawString("ACTIVE MARKERS", inner.x, rowY);
             rowY += 13;
             g2.setColor(new Color(220, 236, 248, 205));
             for (String line : wrappedMarkerLines) {
-                g2.drawString(line, x + 10, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += 13;
             }
         }
@@ -8130,15 +8246,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (!wrappedSupportLines.isEmpty()) {
             rowY += 4;
             g2.setColor(new Color(150, 220, 255, 150));
-            g2.drawLine(x + 10, rowY, x + w - 10, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 12;
             g2.setFont(markerFont);
             g2.setColor(new Color(150, 220, 255, 210));
-            g2.drawString("SUPPORT CONTACTS", x + 10, rowY);
+            g2.drawString("SUPPORT CONTACTS", inner.x, rowY);
             rowY += 13;
             g2.setColor(new Color(220, 236, 248, 205));
             for (String line : wrappedSupportLines) {
-                g2.drawString(line, x + 10, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += 13;
             }
         }

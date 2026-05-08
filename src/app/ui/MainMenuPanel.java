@@ -447,31 +447,35 @@ public final class MainMenuPanel extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 int w = getWidth();
                 int h = getHeight();
-                g2.setPaint(new GradientPaint(0, 0, new Color(8, 18, 32, 226), 0, h,
-                        new Color(5, 12, 24, 214)));
-                g2.fillRoundRect(0, 0, w, h, 30, 30);
-                g2.setPaint(new GradientPaint(0, 0, new Color(76, 136, 204, 78), w, h,
-                        new Color(230, 129, 86, 42)));
-                g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
-                g2.setColor(new Color(255, 255, 255, 24));
-                g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
-                g2.setPaint(new GradientPaint((float) (w * 0.08), (float) (h * 0.06), new Color(88, 164, 226, 58),
-                        (float) (w * 0.42), (float) (h * 0.26), new Color(88, 164, 226, 0)));
-                g2.fillRoundRect(MenuDisplay.scaled(24, scale), MenuDisplay.scaled(22, scale),
-                        (int) Math.round(w * 0.36), MenuDisplay.scaled(110, scale), 28, 28);
-                g2.setColor(new Color(255, 255, 255, 18));
-                int separatorY = MenuDisplay.scaled(136, scale);
-                g2.drawLine(MenuDisplay.scaled(34, scale), separatorY, w - MenuDisplay.scaled(34, scale), separatorY);
+                if (!paintThemedFrame(g2, ThemeArt.MENU_MAIN_SHELL, w, h,
+                        new Color(8, 18, 32, 226), new Color(5, 12, 24, 214), 30)) {
+                    g2.setPaint(new GradientPaint(0, 0, new Color(8, 18, 32, 226), 0, h,
+                            new Color(5, 12, 24, 214)));
+                    g2.fillRoundRect(0, 0, w, h, 30, 30);
+                    g2.setPaint(new GradientPaint(0, 0, new Color(76, 136, 204, 78), w, h,
+                            new Color(230, 129, 86, 42)));
+                    g2.drawRoundRect(0, 0, w - 1, h - 1, 30, 30);
+                    g2.setColor(new Color(255, 255, 255, 24));
+                    g2.drawRoundRect(1, 1, w - 3, h - 3, 28, 28);
+                    g2.setPaint(new GradientPaint((float) (w * 0.08), (float) (h * 0.06), new Color(88, 164, 226, 58),
+                            (float) (w * 0.42), (float) (h * 0.26), new Color(88, 164, 226, 0)));
+                    g2.fillRoundRect(MenuDisplay.scaled(24, scale), MenuDisplay.scaled(22, scale),
+                            (int) Math.round(w * 0.36), MenuDisplay.scaled(110, scale), 28, 28);
+                    g2.setColor(new Color(255, 255, 255, 18));
+                    int separatorY = MenuDisplay.scaled(136, scale);
+                    g2.drawLine(MenuDisplay.scaled(34, scale), separatorY, w - MenuDisplay.scaled(34, scale), separatorY);
+                }
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         card.setOpaque(false);
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.MENU_MAIN_SHELL, 1400, 940);
         card.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(34, scale),
-                MenuDisplay.scaled(38, scale),
-                MenuDisplay.scaled(28, scale),
-                MenuDisplay.scaled(38, scale)));
+                MenuDisplay.scaled(metrics.top(), scale),
+                MenuDisplay.scaled(metrics.left(), scale),
+                MenuDisplay.scaled(metrics.bottom(), scale),
+                MenuDisplay.scaled(metrics.right(), scale)));
         card.add(content);
         return card;
     }
@@ -633,23 +637,27 @@ public final class MainMenuPanel extends JPanel {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 int w = getWidth();
                 int h = getHeight();
-                g2.setColor(new Color(8, 18, 31, 196));
-                g2.fillRoundRect(0, 0, w, h, 24, 24);
-                g2.setColor(accent);
-                g2.fillRoundRect(0, 0, MenuDisplay.scaled(6, scale), h, 24, 24);
-                g2.setColor(new Color(255, 255, 255, 20));
-                g2.drawRoundRect(0, 0, w - 1, h - 1, 24, 24);
+                if (!paintThemedFrame(g2, ThemeArt.MENU_SECTION_PANEL, w, h,
+                        new Color(8, 18, 31, 196), new Color(6, 14, 24, 182), 24)) {
+                    g2.setColor(new Color(8, 18, 31, 196));
+                    g2.fillRoundRect(0, 0, w, h, 24, 24);
+                    g2.setColor(accent);
+                    g2.fillRoundRect(0, 0, MenuDisplay.scaled(6, scale), h, 24, 24);
+                    g2.setColor(new Color(255, 255, 255, 20));
+                    g2.drawRoundRect(0, 0, w - 1, h - 1, 24, 24);
+                }
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.MENU_SECTION_PANEL, 1400, 940);
         panel.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(20, scale),
-                MenuDisplay.scaled(22, scale),
-                MenuDisplay.scaled(20, scale),
-                MenuDisplay.scaled(22, scale)));
+                MenuDisplay.scaled(metrics.top(), scale),
+                MenuDisplay.scaled(metrics.left(), scale),
+                MenuDisplay.scaled(metrics.bottom(), scale),
+                MenuDisplay.scaled(metrics.right(), scale)));
         return panel;
     }
 
@@ -659,10 +667,13 @@ public final class MainMenuPanel extends JPanel {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(fill);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
-                g2.setColor(border);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                if (!paintThemedFrame(g2, ThemeArt.MENU_INSET_PANEL, getWidth(), getHeight(),
+                        fill, darker(fill, 0.78f), 18)) {
+                    g2.setColor(fill);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+                    g2.setColor(border);
+                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 18, 18);
+                }
                 g2.dispose();
                 super.paintComponent(g);
             }
@@ -670,12 +681,34 @@ public final class MainMenuPanel extends JPanel {
         panel.setOpaque(false);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(ThemeArt.MENU_INSET_PANEL, 1240, 700);
         panel.setBorder(BorderFactory.createEmptyBorder(
-                MenuDisplay.scaled(12, scale),
-                MenuDisplay.scaled(14, scale),
-                MenuDisplay.scaled(12, scale),
-                MenuDisplay.scaled(14, scale)));
+                MenuDisplay.scaled(metrics.top(), scale),
+                MenuDisplay.scaled(metrics.left(), scale),
+                MenuDisplay.scaled(metrics.bottom(), scale),
+                MenuDisplay.scaled(metrics.right(), scale)));
         return panel;
+    }
+
+    private static boolean paintThemedFrame(Graphics2D g2, String slot, int w, int h,
+                                            Color topFill, Color bottomFill, int arc) {
+        if (g2 == null || w <= 0 || h <= 0) return false;
+        Image image = ThemeArt.get(slot);
+        if (image == null) return false;
+        g2.setPaint(new GradientPaint(0, 0, topFill, 0, h, bottomFill));
+        g2.fillRoundRect(0, 0, w, h, arc, arc);
+        g2.drawImage(image, 0, 0, w, h, null);
+        return true;
+    }
+
+    private static Color darker(Color color, float factor) {
+        if (color == null) return new Color(8, 16, 24, 180);
+        factor = Math.max(0.0f, Math.min(1.0f, factor));
+        return new Color(
+                Math.max(0, Math.round(color.getRed() * factor)),
+                Math.max(0, Math.round(color.getGreen() * factor)),
+                Math.max(0, Math.round(color.getBlue() * factor)),
+                color.getAlpha());
     }
 
     private static void syncTeamOptionsForMode(GameMode mode, JComboBox<PlayerTeamChoice> teamBox, int preferredTeamId) {

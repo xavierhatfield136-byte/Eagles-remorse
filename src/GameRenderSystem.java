@@ -1,5 +1,7 @@
 import app.config.GameMode;
+import app.ui.ThemeArt;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 
 public final class GameRenderSystem {
     static final class SensorNetEntry {
@@ -26,6 +28,37 @@ public final class GameRenderSystem {
 
     private static final java.util.WeakHashMap<Ship, Integer> LAST_HP = new java.util.WeakHashMap<>();
     private static final java.util.WeakHashMap<Ship, Double> LAST_SHIELD = new java.util.WeakHashMap<>();
+
+    private static boolean paintThemedHudFrame(Graphics2D g2, int x, int y, int w, int h,
+                                               Color accent, String slot, int arc) {
+        if (g2 == null || w <= 0 || h <= 0) return false;
+        BufferedImage image = ThemeArt.get(slot);
+        if (image == null) return false;
+        Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
+        Paint oldPaint = g2.getPaint();
+        Composite oldComposite = g2.getComposite();
+        g2.setPaint(new GradientPaint(x, y, new Color(6, 12, 22, 224), x, y + h, new Color(4, 8, 16, 212)));
+        g2.fillRoundRect(x, y, w, h, arc, arc);
+        g2.setPaint(new GradientPaint(
+                x + w * 0.14f, y + h * 0.10f, new Color(base.getRed(), base.getGreen(), base.getBlue(), 42),
+                x + w * 0.48f, y + h * 0.42f, new Color(base.getRed(), base.getGreen(), base.getBlue(), 0)));
+        g2.fillRoundRect(x + 6, y + 6, Math.max(8, w - 12), Math.max(8, h - 12),
+                Math.max(8, arc - 4), Math.max(8, arc - 4));
+        g2.setComposite(AlphaComposite.SrcOver);
+        g2.drawImage(image, x, y, w, h, null);
+        g2.setComposite(oldComposite);
+        g2.setPaint(oldPaint);
+        return true;
+    }
+
+    private static Rectangle themedContentRect(String slot, int x, int y, int w, int h) {
+        ThemeArt.FrameMetrics metrics = ThemeArt.metrics(slot, w, h);
+        return new Rectangle(
+                x + metrics.left(),
+                y + metrics.top(),
+                Math.max(1, w - metrics.left() - metrics.right()),
+                Math.max(1, h - metrics.top() - metrics.bottom()));
+    }
 
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         Renderer.beginFramePerfCapture();
@@ -638,30 +671,34 @@ if (DevTools.isDebugOverlay()) {
             h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
         }
 
-        g2.setColor(new Color(0, 0, 0, 165));
-        g2.fillRoundRect(x, y, w, h, 16, 16);
-        g2.setColor(new Color(140, 190, 255, 190));
-        g2.drawRoundRect(x, y, w, h, 16, 16);
+        if (!paintThemedHudFrame(g2, x, y, w, h,
+                new Color(140, 190, 255, 190), ThemeArt.HUD_STANDARD_PANEL, 16)) {
+            g2.setColor(new Color(0, 0, 0, 165));
+            g2.fillRoundRect(x, y, w, h, 16, 16);
+            g2.setColor(new Color(140, 190, 255, 190));
+            g2.drawRoundRect(x, y, w, h, 16, 16);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
-        int rowY = y + 22;
+        int rowY = inner.y;
         g2.setFont(titleFont);
         g2.setColor(new Color(236, 244, 255, 230));
-        g2.drawString("SENSOR NET", x + 12, rowY);
+        g2.drawString("SENSOR NET", inner.x, rowY);
         rowY += 16;
 
         g2.setFont(bodyFont);
         for (String line : sensorLines) {
             g2.setColor(new Color(120, 236, 255, 220));
-            g2.drawString(line, x + 12, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 15;
         }
         if (!entries.isEmpty()) {
             g2.setColor(new Color(255, 255, 255, 58));
-            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 14;
             g2.setFont(signalFont);
             g2.setColor(new Color(255, 220, 164, 220));
-            g2.drawString("TRACKS  (CLICK TO ROUTE)", x + 12, rowY);
+            g2.drawString("TRACKS  (CLICK TO ROUTE)", inner.x, rowY);
             rowY += 14;
             String currentSection = "";
             for (SensorNetEntry entry : entries) {
@@ -669,44 +706,44 @@ if (DevTools.isDebugOverlay()) {
                 if (!entry.section.equals(currentSection)) {
                     currentSection = entry.section;
                     g2.setColor(new Color(255, 255, 255, 44));
-                    g2.drawLine(x + 12, rowY - 8, x + w - 12, rowY - 8);
+                    g2.drawLine(inner.x, rowY - 8, inner.x + inner.width, rowY - 8);
                     g2.setColor(new Color(150, 220, 255, 210));
-                    g2.drawString(currentSection, x + 12, rowY);
+                    g2.drawString(currentSection, inner.x, rowY);
                     rowY += 14;
                 }
                 String line = sensorNetRow(entry);
                 Color accent = entry.accent;
                 g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 56));
-                g2.fillRoundRect(x + 10, rowY - 11, w - 20, 16, 8, 8);
+                g2.fillRoundRect(inner.x - 2, rowY - 11, inner.width + 4, 16, 8, 8);
                 g2.setColor(new Color(238, 246, 255, 220));
-                g2.drawString(line, x + 16, rowY);
+                g2.drawString(line, inner.x + 4, rowY);
                 rowY += 18;
             }
             g2.setFont(bodyFont);
         }
         if ((!sensorLines.isEmpty() || !entries.isEmpty()) && (!squadLines.isEmpty() || !messages.isEmpty())) {
             g2.setColor(new Color(255, 255, 255, 58));
-            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 14;
         }
         for (String line : squadLines) {
             g2.setColor(new Color(168, 212, 255, 214));
-            g2.drawString(line, x + 12, rowY);
+            g2.drawString(line, inner.x, rowY);
             rowY += 15;
         }
         if (!squadLines.isEmpty() && !messages.isEmpty()) {
             g2.setColor(new Color(255, 255, 255, 58));
-            g2.drawLine(x + 12, rowY, x + w - 12, rowY);
+            g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 14;
         }
         for (GameContext.FleetCommMessage msg : messages) {
-            java.util.List<String> wrapped = wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24);
+            java.util.List<String> wrapped = wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, inner.width);
             Color accent = squadColor(msg.faction, 210);
             g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 88));
-            g2.fillRoundRect(x + 10, rowY - 10, w - 20, 14 + wrapped.size() * 14, 10, 10);
+            g2.fillRoundRect(inner.x - 2, rowY - 10, inner.width + 4, 14 + wrapped.size() * 14, 10, 10);
             g2.setColor(new Color(244, 248, 255, 226));
             for (String line : wrapped) {
-                g2.drawString(line, x + 16, rowY + 2);
+                g2.drawString(line, inner.x + 4, rowY + 2);
                 rowY += 14;
             }
             rowY += 8;
@@ -1310,28 +1347,32 @@ if (DevTools.isDebugOverlay()) {
         int bodyLines = topLines.size() + bottomLines.size();
         int h = 18 + titleFm.getHeight() + 4 + timerFm.getHeight() + 10 + Math.max(1, bodyLines) * bodyLineH + 12;
 
-        g2.setColor(new Color(0, 0, 0, 190));
-        g2.fillRoundRect(x, y, w, h, 16, 16);
-        g2.setColor(new Color(255, 255, 255, 180));
-        g2.drawRoundRect(x, y, w, h, 16, 16);
+        if (!paintThemedHudFrame(g2, x, y, w, h,
+                new Color(255, 214, 132, 190), ThemeArt.HUD_STANDARD_PANEL, 16)) {
+            g2.setColor(new Color(0, 0, 0, 190));
+            g2.fillRoundRect(x, y, w, h, 16, 16);
+            g2.setColor(new Color(255, 255, 255, 180));
+            g2.drawRoundRect(x, y, w, h, 16, 16);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
 
         g2.setFont(new Font("Consolas", Font.BOLD, 22));
         g2.setColor(new Color(255, 230, 150, 230));
-        int ty = y + 30;
-        int tx1 = x + 20;
+        int ty = inner.y;
+        int tx1 = inner.x;
         g2.drawString(label, tx1, ty);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 16));
         g2.setColor(new Color(255, 255, 255, 220));
-        int tx2 = x + w - 20 - timerFm.stringWidth(timer);
+        int tx2 = inner.x + inner.width - timerFm.stringWidth(timer);
         g2.drawString(timer, tx2, ty);
 
-        int rowY = y + 56;
+        int rowY = inner.y + 26;
         if (!topLines.isEmpty()) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 14));
             g2.setColor(new Color(224, 236, 248, 220));
             for (String line : topLines) {
-                g2.drawString(line, x + 20, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += bodyLineH;
             }
         }
@@ -1340,7 +1381,7 @@ if (DevTools.isDebugOverlay()) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 13));
             g2.setColor(new Color(255, 230, 170, 225));
             for (String line : bottomLines) {
-                g2.drawString(line, x + 20, rowY);
+                g2.drawString(line, inner.x, rowY);
                 rowY += bodyLineH;
             }
         }
