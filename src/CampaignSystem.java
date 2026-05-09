@@ -442,6 +442,9 @@ public final class CampaignSystem {
         public double durationSec = 0.0;
         public boolean traveling = false;
         public float interceptionRisk = 0.0f;
+        public double targetX = Double.NaN;
+        public double targetY = Double.NaN;
+        public double speed = 0.0;
 
         public void clear() {
             originId = "";
@@ -450,6 +453,59 @@ public final class CampaignSystem {
             durationSec = 0.0;
             traveling = false;
             interceptionRisk = 0.0f;
+            targetX = Double.NaN;
+            targetY = Double.NaN;
+            speed = 0.0;
+        }
+    }
+
+    private enum GalaxySearchBehavior {
+        PATROLLING,
+        SEARCHING,
+        INVESTIGATING,
+        INTERCEPTING,
+        GUARDING,
+        RETURNING
+    }
+
+    private static final class GalaxySearchGroup {
+        final int id;
+        final String label;
+        final double speed;
+        final double detectionRange;
+        final double interceptRange;
+        final float threatLevel;
+        final CampaignLocationType anchorType;
+        final int tier;
+        double x;
+        double y;
+        double targetX;
+        double targetY;
+        double searchRadius;
+        double stateTimer;
+        boolean hostile = true;
+        boolean visible = false;
+        boolean identified = false;
+        GalaxySearchBehavior behavior = GalaxySearchBehavior.PATROLLING;
+        String anchorLocationId = "";
+
+        GalaxySearchGroup(int id, String label, double x, double y,
+                          double speed, double detectionRange, double interceptRange,
+                          float threatLevel, CampaignLocationType anchorType, int tier) {
+            this.id = Math.max(1, id);
+            this.label = (label == null || label.isBlank()) ? "Unknown Contact" : label.trim();
+            this.x = x;
+            this.y = y;
+            this.targetX = x;
+            this.targetY = y;
+            this.speed = Math.max(20.0, speed);
+            this.detectionRange = Math.max(120.0, detectionRange);
+            this.interceptRange = Math.max(90.0, interceptRange);
+            this.threatLevel = Math.max(0.0f, threatLevel);
+            this.anchorType = (anchorType == null) ? CampaignLocationType.ENEMY_ACTIVITY : anchorType;
+            this.tier = Math.max(1, tier);
+            this.searchRadius = 620.0;
+            this.stateTimer = 8.0;
         }
     }
 
@@ -711,7 +767,13 @@ public final class CampaignSystem {
 
     public static CampaignLocation currentCampaignLocation(GameContext ctx) {
         CampaignState st = state(ctx);
-        return campaignLocationById(st, (st == null) ? "" : st.currentGalaxyLocationId);
+        if (st == null) return null;
+        String dockedId = (st.dockedGalaxyLocationId == null) ? "" : st.dockedGalaxyLocationId;
+        if (!dockedId.isBlank()) {
+            CampaignLocation docked = campaignLocationById(st, dockedId);
+            if (docked != null) return docked;
+        }
+        return campaignLocationById(st, st.currentGalaxyLocationId);
     }
 
     public static CampaignLocation selectedCampaignLocation(GameContext ctx) {
@@ -744,9 +806,71 @@ public final class CampaignSystem {
         return (st == null) ? 0 : Math.max(0, st.campaignSalvage);
     }
 
+    public static double earthProgress(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0.0 : MathUtil.clamp(st.earthProgress, 0.0, 1.0);
+    }
+
+    public static String enemyAlertReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return threatReadout((float) MathUtil.clamp((st == null ? 0.0 : st.enemyAlertLevel) / 100.0, 0.0, 1.0));
+    }
+
+    public static String threatReadoutForSidebar(float threatLevel) {
+        return threatReadout(threatLevel);
+    }
+
     public static CampaignTravelState campaignTravelState(GameContext ctx) {
         CampaignState st = state(ctx);
         return (st == null) ? null : st.galaxyTravel;
+    }
+
+    public static double playerGalaxyX(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return Double.NaN;
+        return st.playerGalaxyX;
+    }
+
+    public static double playerGalaxyY(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return Double.NaN;
+        return st.playerGalaxyY;
+    }
+
+    public static double playerGalaxyHeadingDeg(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return -90.0;
+        return st.playerGalaxyHeadingDeg;
+    }
+
+    public static boolean isDockedAtSelectedLocation(GameContext ctx) {
+        CampaignState st = state(ctx);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        return st != null && selected != null && selected.id.equalsIgnoreCase(st.dockedGalaxyLocationId);
+    }
+
+    public static List<String> galaxyIntelSummaryLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.visible) continue;
+            String name = group.identified ? group.label : "Unknown Contact";
+            String state = switch (group.behavior) {
+                case PATROLLING -> "patrolling";
+                case SEARCHING -> "searching";
+                case INVESTIGATING -> "investigating";
+                case INTERCEPTING -> "intercepting";
+                case GUARDING -> "guarding";
+                case RETURNING -> "returning";
+            };
+            out.add(name + "  |  " + state + "  |  " + threatReadout(group.threatLevel));
+            if (out.size() >= 5) break;
+        }
+        if (out.isEmpty()) {
+            out.add("No confirmed hostile contacts in current sensor picture.");
+        }
+        return out;
     }
 
     public static boolean openSelectedHubService(GameContext ctx, HubService service) {
@@ -754,6 +878,10 @@ public final class CampaignSystem {
         if (ctx == null || st == null || ctx.ui == null || service == null) return false;
         CampaignLocation location = selectedCampaignLocation(ctx);
         if (location == null || !location.services.contains(service)) return false;
+        if (!isDockedAtSelectedLocation(ctx)) {
+            EventSystem.showBanner(ctx, "MOVE INTO DOCKING RANGE BEFORE USING HUB SERVICES", 1.3);
+            return false;
+        }
         ctx.ui.showCampaignHubMenu(location.id, service.name());
         EventSystem.showBanner(ctx, service.label.toUpperCase(Locale.US) + " - " + location.name.toUpperCase(Locale.US), 1.0);
         return true;
@@ -808,14 +936,14 @@ public final class CampaignSystem {
     public static boolean startTravelToSelectedLocation(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
-        if (st.galaxyTravel.traveling) {
-            EventSystem.showBanner(ctx, "TRAVEL ALREADY IN PROGRESS", 1.2);
-            return true;
-        }
         CampaignLocation current = currentCampaignLocation(ctx);
         CampaignLocation destination = selectedCampaignLocation(ctx);
-        if (current == null || destination == null) return false;
-        if (current.id.equalsIgnoreCase(destination.id)) {
+        if (destination == null) return false;
+        ensureGalaxyFleetPosition(st, current);
+        if (isWithinDockingRange(st, destination)) {
+            st.dockedGalaxyLocationId = destination.id;
+            st.currentGalaxyLocationId = destination.id;
+            st.galaxyTravel.clear();
             if (destination.primaryMission && !destination.completed) {
                 beginCampaignLocationEncounterChoice(ctx, st, destination);
             } else {
@@ -823,19 +951,35 @@ public final class CampaignSystem {
             }
             return true;
         }
-        double dist = Math.hypot(destination.x - current.x, destination.y - current.y);
-        st.galaxyTravel.originId = current.id;
+        double originX = st.playerGalaxyX;
+        double originY = st.playerGalaxyY;
+        double dist = Math.hypot(destination.x - originX, destination.y - originY);
+        st.galaxyTravel.originId = (current == null) ? st.currentGalaxyLocationId : current.id;
         st.galaxyTravel.destinationId = destination.id;
         st.galaxyTravel.progress = 0.0;
         st.galaxyTravel.durationSec = Math.max(8.0, dist / 260.0);
+        st.galaxyTravel.targetX = destination.x;
+        st.galaxyTravel.targetY = destination.y;
+        st.galaxyTravel.speed = Math.max(120.0, dist / Math.max(8.0, st.galaxyTravel.durationSec));
         st.galaxyTravel.interceptionRisk = (float) MathUtil.clamp(
                 8.0 + destination.threatLevel * 55.0 + st.enemyAlertLevel * 0.35 + st.earthProgress * 30.0,
                 0.0, 95.0);
         st.galaxyTravel.traveling = true;
+        st.dockedGalaxyLocationId = "";
         EventSystem.showBanner(ctx,
                 "TRAVELING TO " + destination.name.toUpperCase(Locale.US)
                         + "  ETA " + (int) Math.ceil(st.galaxyTravel.durationSec) + "S",
                 1.5);
+        return true;
+    }
+
+    public static boolean stopCampaignTravel(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
+        if (!st.galaxyTravel.traveling) return false;
+        st.galaxyTravel.clear();
+        st.currentGalaxyLocationId = "";
+        EventSystem.showBanner(ctx, "TRAVEL HOLD - FLEET DRIFT HALTED", 1.1);
         return true;
     }
 
@@ -1083,6 +1227,10 @@ public final class CampaignSystem {
                 }
                 out.add(new CampaignSupportMarker(type, area.name, subtitle, area.x, area.y, 120.0, 40));
             }
+            for (GalaxySearchGroup group : st.galaxySearchGroups) {
+                CampaignSupportMarker marker = supportMarkerForGalaxySearchGroup(group);
+                if (marker != null) out.add(marker);
+            }
             return out;
         }
         ArrayList<CampaignSupportMarker> out = new ArrayList<>();
@@ -1143,7 +1291,7 @@ public final class CampaignSystem {
                 return "TRAVEL: " + ((destination == null) ? "EN ROUTE" : destination.name.toUpperCase(Locale.US))
                         + "  ETA " + eta + "S  RISK " + (int) Math.round(travel.interceptionRisk) + "%";
             }
-            return "TRAVEL READY  |  ARROWS PAN NORTH  |  SELECT DESTINATION, THEN PRESS T OR DOUBLE-CLICK TO DEPART";
+            return "FLEET HOLDING  |  SELECT A DESTINATION, PRESS T TO CRUISE, H TO HOLD, OR DOUBLE-CLICK TO DEPART";
         }
         int torpedoes = Math.max(0, st.strategicTorpedoCharges);
         int sortieCap = strategicSortieCapacity(ctx);
@@ -1441,6 +1589,27 @@ public final class CampaignSystem {
             label = "Ghost Trace";
         }
         return new CampaignSupportMarker(taskForce.markerType, label, subtitle, x, y, 170.0, priority);
+    }
+
+    private static CampaignSupportMarker supportMarkerForGalaxySearchGroup(GalaxySearchGroup group) {
+        if (group == null || !group.visible) return null;
+        String label = group.identified ? group.label : "Unknown Contact";
+        String subtitle = switch (group.behavior) {
+            case PATROLLING -> "Patrol sweep moving through this region";
+            case SEARCHING -> "Search formation widening sensor coverage";
+            case INVESTIGATING -> "Investigating suspicious traffic";
+            case INTERCEPTING -> "Vectoring toward the fleet";
+            case GUARDING -> "Holding a defensive screen";
+            case RETURNING -> "Returning to anchor point";
+        };
+        return new CampaignSupportMarker(
+                SupportMarkerType.HAZARD,
+                label,
+                subtitle,
+                group.x,
+                group.y,
+                Math.max(92.0, group.detectionRange * 0.55),
+                52 + group.tier * 4);
     }
 
     private static String strategicTaskForceSubtitle(StrategicTaskForce taskForce) {
@@ -2160,6 +2329,12 @@ public final class CampaignSystem {
         public int campaignSupplies = 90;
         public int campaignAmmo = 110;
         public int campaignSalvage = 35;
+        public double playerGalaxyX = Double.NaN;
+        public double playerGalaxyY = Double.NaN;
+        public double playerGalaxyHeadingDeg = -90.0;
+        public String dockedGalaxyLocationId = "";
+        public final List<GalaxySearchGroup> galaxySearchGroups = new ArrayList<>();
+        public int nextGalaxySearchGroupId = 1;
         public final List<StrategicTaskForce> strategicTaskForces = new ArrayList<>();
         public int nextStrategicTaskForceId = 1;
         public int strategicTorpedoCharges = 2;
@@ -2353,6 +2528,9 @@ public final class CampaignSystem {
         st.completedMainMissions = 0;
         st.earthProgress = 0.0;
         st.enemyAlertLevel = 0.0;
+        CampaignLocation start = campaignLocationById(st, st.currentGalaxyLocationId);
+        ensureGalaxyFleetPosition(st, start);
+        initializeGalaxySearchGroups(st);
     }
 
     private static CampaignLocation campaignArea(GameContext ctx, String id, String name, double nx, double ny,
@@ -2372,6 +2550,44 @@ public final class CampaignSystem {
             case 24 -> new HubService[]{HubService.INTEL};
             default -> new HubService[]{HubService.SUPPLY};
         };
+    }
+
+    private static void initializeGalaxySearchGroups(CampaignState st) {
+        if (st == null) return;
+        st.galaxySearchGroups.clear();
+        for (CampaignLocation area : st.galaxyAreasOfInterest) {
+            if (area == null || area.type != CampaignLocationType.ENEMY_ACTIVITY) continue;
+            GalaxySearchGroup patrol = new GalaxySearchGroup(
+                    st.nextGalaxySearchGroupId++,
+                    (area.threatLevel >= 0.6f) ? "Hunter-Killer Group" : "Patrol Sweep",
+                    area.x, area.y,
+                    78.0 + area.threatLevel * 30.0,
+                    210.0 + area.threatLevel * 120.0,
+                    120.0 + area.threatLevel * 70.0,
+                    area.threatLevel,
+                    area.type,
+                    (area.threatLevel >= 0.6f) ? 3 : 2);
+            patrol.anchorLocationId = area.id;
+            patrol.behavior = (area.threatLevel >= 0.6f) ? GalaxySearchBehavior.SEARCHING : GalaxySearchBehavior.PATROLLING;
+            st.galaxySearchGroups.add(patrol);
+        }
+        for (CampaignLocation poi : st.galaxyMainPois) {
+            if (poi == null || poi.missionIndex < 18 || poi.missionIndex % 3 != 0) continue;
+            GalaxySearchGroup guard = new GalaxySearchGroup(
+                    st.nextGalaxySearchGroupId++,
+                    "Defense Screen",
+                    poi.x + 80.0, poi.y - 60.0,
+                    66.0 + poi.threatLevel * 24.0,
+                    240.0 + poi.threatLevel * 140.0,
+                    135.0 + poi.threatLevel * 75.0,
+                    Math.max(poi.threatLevel, 0.65f),
+                    poi.type,
+                    4);
+            guard.anchorLocationId = poi.id;
+            guard.behavior = GalaxySearchBehavior.GUARDING;
+            guard.visible = poi.completed;
+            st.galaxySearchGroups.add(guard);
+        }
     }
 
     private static double[] campaignWorldPoint(GameContext ctx, double nx, double ny) {
@@ -4186,7 +4402,9 @@ public final class CampaignSystem {
     private static void updateStrategicOvermapCampaign(GameContext ctx, CampaignState st, double dt) {
         if (ctx == null || st == null) return;
         st.sectorElapsed += Math.max(0.0, dt);
+        updateGalaxySearchGroups(ctx, st, dt);
         updateCampaignTravel(ctx, st, dt);
+        updateGalaxyDetectionAndInterception(ctx, st, dt);
         syncPersistentFleetCasualties(ctx, st);
         detectHostileKills(ctx);
         updatePocketDiscoveries(ctx, st);
@@ -4195,14 +4413,36 @@ public final class CampaignSystem {
     }
 
     private static void updateCampaignTravel(GameContext ctx, CampaignState st, double dt) {
-        if (ctx == null || st == null || !st.galaxyTravel.traveling) return;
-        st.galaxyTravel.progress = Math.min(1.0, st.galaxyTravel.progress + Math.max(0.0, dt) / Math.max(0.1, st.galaxyTravel.durationSec));
-        if (st.galaxyTravel.progress < 1.0) return;
+        if (ctx == null || st == null) return;
+        ensureGalaxyFleetPosition(st, campaignLocationById(st, st.currentGalaxyLocationId));
+        if (!st.galaxyTravel.traveling) {
+            CampaignLocation docked = campaignLocationById(st, st.dockedGalaxyLocationId);
+            if (docked != null) {
+                st.playerGalaxyX = docked.x;
+                st.playerGalaxyY = docked.y;
+            }
+            return;
+        }
+        double dx = st.galaxyTravel.targetX - st.playerGalaxyX;
+        double dy = st.galaxyTravel.targetY - st.playerGalaxyY;
+        double dist = Math.hypot(dx, dy);
+        if (dist > 1e-6) {
+            double step = Math.min(dist, Math.max(20.0, st.galaxyTravel.speed) * Math.max(0.0, dt));
+            st.playerGalaxyX += dx / dist * step;
+            st.playerGalaxyY += dy / dist * step;
+            st.playerGalaxyHeadingDeg = Math.toDegrees(Math.atan2(dy, dx));
+        }
         CampaignLocation destination = campaignLocationById(st, st.galaxyTravel.destinationId);
-        st.currentGalaxyLocationId = (destination == null) ? st.currentGalaxyLocationId : destination.id;
-        st.selectedGalaxyLocationId = st.currentGalaxyLocationId;
+        double totalDist = Math.max(1.0, Math.hypot(st.galaxyTravel.targetX - galaxyOriginX(st), st.galaxyTravel.targetY - galaxyOriginY(st)));
+        double remain = Math.hypot(st.galaxyTravel.targetX - st.playerGalaxyX, st.galaxyTravel.targetY - st.playerGalaxyY);
+        st.galaxyTravel.progress = MathUtil.clamp(1.0 - remain / totalDist, 0.0, 1.0);
+        if (destination == null || !isWithinDockingRange(st, destination)) return;
+        st.currentGalaxyLocationId = destination.id;
+        st.selectedGalaxyLocationId = destination.id;
+        st.dockedGalaxyLocationId = destination.id;
+        st.playerGalaxyX = destination.x;
+        st.playerGalaxyY = destination.y;
         st.galaxyTravel.clear();
-        if (destination == null) return;
         if (!destination.primaryMission) {
             resolveAreaOfInterestArrival(ctx, st, destination);
         } else {
@@ -4240,6 +4480,143 @@ public final class CampaignSystem {
                     destination.name.toUpperCase(Locale.US) + "  |  CONTACT REPORT LOGGED",
                     1.5);
             default -> EventSystem.showBanner(ctx, "LOCATION REACHED: " + destination.name.toUpperCase(Locale.US), 1.2);
+        }
+    }
+
+    private static void ensureGalaxyFleetPosition(CampaignState st, CampaignLocation fallback) {
+        if (st == null) return;
+        if (Double.isFinite(st.playerGalaxyX) && Double.isFinite(st.playerGalaxyY)) return;
+        CampaignLocation anchor = (fallback != null) ? fallback : campaignLocationById(st, st.currentGalaxyLocationId);
+        if (anchor != null) {
+            st.playerGalaxyX = anchor.x;
+            st.playerGalaxyY = anchor.y;
+            st.dockedGalaxyLocationId = anchor.id;
+            return;
+        }
+        st.playerGalaxyX = 0.0;
+        st.playerGalaxyY = 0.0;
+    }
+
+    private static double galaxyOriginX(CampaignState st) {
+        CampaignLocation origin = campaignLocationById(st, (st == null || st.galaxyTravel == null) ? "" : st.galaxyTravel.originId);
+        if (origin != null) return origin.x;
+        return (st == null) ? 0.0 : st.playerGalaxyX;
+    }
+
+    private static double galaxyOriginY(CampaignState st) {
+        CampaignLocation origin = campaignLocationById(st, (st == null || st.galaxyTravel == null) ? "" : st.galaxyTravel.originId);
+        if (origin != null) return origin.y;
+        return (st == null) ? 0.0 : st.playerGalaxyY;
+    }
+
+    private static boolean isWithinDockingRange(CampaignState st, CampaignLocation location) {
+        if (st == null || location == null || !Double.isFinite(st.playerGalaxyX) || !Double.isFinite(st.playerGalaxyY)) return false;
+        double dockingRange = location.primaryMission ? 170.0 : 145.0;
+        return GameMath.dist2(st.playerGalaxyX, st.playerGalaxyY, location.x, location.y) <= dockingRange * dockingRange;
+    }
+
+    private static void updateGalaxySearchGroups(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return;
+        ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null) continue;
+            group.stateTimer = Math.max(0.0, group.stateTimer - Math.max(0.0, dt));
+            if (group.stateTimer <= 0.0 || reachedGalaxyTarget(group)) {
+                chooseNextGalaxySearchTarget(st, group);
+            }
+            double dx = group.targetX - group.x;
+            double dy = group.targetY - group.y;
+            double dist = Math.hypot(dx, dy);
+            if (dist > 1e-6) {
+                double step = Math.min(dist, group.speed * Math.max(0.0, dt));
+                group.x += dx / dist * step;
+                group.y += dy / dist * step;
+            }
+            double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            boolean near = playerDist <= group.detectionRange * 1.45;
+            group.visible = near || st.enemyAlertLevel >= 45.0;
+            group.identified = playerDist <= group.detectionRange || st.enemyAlertLevel >= 65.0;
+            if (playerDist <= group.detectionRange && group.behavior != GalaxySearchBehavior.INTERCEPTING) {
+                group.behavior = GalaxySearchBehavior.INTERCEPTING;
+                group.targetX = st.playerGalaxyX;
+                group.targetY = st.playerGalaxyY;
+                group.stateTimer = 10.0 + group.tier * 2.0;
+            }
+        }
+    }
+
+    private static boolean reachedGalaxyTarget(GalaxySearchGroup group) {
+        if (group == null) return true;
+        return Math.hypot(group.targetX - group.x, group.targetY - group.y) <= 40.0;
+    }
+
+    private static void chooseNextGalaxySearchTarget(CampaignState st, GalaxySearchGroup group) {
+        if (st == null || group == null) return;
+        CampaignLocation anchor = campaignLocationById(st, group.anchorLocationId);
+        if (group.behavior == GalaxySearchBehavior.INTERCEPTING) {
+            group.behavior = GalaxySearchBehavior.RETURNING;
+        } else if (group.behavior == GalaxySearchBehavior.RETURNING) {
+            group.behavior = GalaxySearchBehavior.PATROLLING;
+        } else if (group.tier >= 3 && group.behavior == GalaxySearchBehavior.PATROLLING) {
+            group.behavior = GalaxySearchBehavior.SEARCHING;
+        } else {
+            group.behavior = GalaxySearchBehavior.PATROLLING;
+        }
+        double baseX = (anchor == null) ? group.x : anchor.x;
+        double baseY = (anchor == null) ? group.y : anchor.y;
+        double radius = switch (group.behavior) {
+            case GUARDING -> 120.0;
+            case RETURNING -> 60.0;
+            case SEARCHING -> 820.0;
+            case INVESTIGATING -> 520.0;
+            case INTERCEPTING -> 260.0;
+            case PATROLLING -> 440.0;
+        };
+        double angle = (group.id * 0.92 + st.sectorElapsed * 0.11) % (Math.PI * 2.0);
+        group.searchRadius = radius;
+        group.targetX = baseX + Math.cos(angle) * radius;
+        group.targetY = baseY + Math.sin(angle) * radius;
+        group.stateTimer = switch (group.behavior) {
+            case GUARDING -> 12.0;
+            case RETURNING -> 10.0;
+            case SEARCHING -> 14.0;
+            case INVESTIGATING -> 11.0;
+            case INTERCEPTING -> 8.0;
+            case PATROLLING -> 10.0;
+        };
+    }
+
+    private static void updateGalaxyDetectionAndInterception(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return;
+        if (ctx.ui != null && (ctx.ui.strategicEncounterPrompt.active || ctx.ui.campaignHubMenu.active)) return;
+        ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double dist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            if (dist > group.interceptRange) continue;
+            CampaignLocation nearby = nearestCampaignLocation(ctx, st.playerGalaxyX, st.playerGalaxyY, 220.0);
+            if (nearby != null && isWithinDockingRange(st, nearby)) {
+                st.dockedGalaxyLocationId = nearby.id;
+            }
+            CampaignLocation encounterAnchor = (nearby != null) ? nearby : selectedCampaignLocation(ctx);
+            if (encounterAnchor == null) {
+                stopCampaignTravel(ctx);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0 + group.threatLevel * 6.0, 0.0, 100.0);
+                EventSystem.showBanner(ctx, "HOSTILE CONTACT FORCES A COURSE CHANGE", 1.4);
+                return;
+            }
+            if (ctx.ui != null) {
+                ctx.ui.showCampaignLocationEncounterPrompt(
+                        encounterAnchor.id,
+                        "HOSTILE CONTACT: " + (group.identified ? group.label.toUpperCase(Locale.US) : "UNKNOWN CONTACT"),
+                        "Enemy patrols have closed on the fleet during transit. Take command to fight through the interception, or auto-resolve the engagement.",
+                        "Intercepted near " + encounterAnchor.name,
+                        "Threat " + threatReadout(group.threatLevel));
+            }
+            ctx.state = GameState.PAUSED;
+            st.galaxyTravel.clear();
+            EventSystem.showBanner(ctx, "INTERCEPTED BY HOSTILE SEARCH GROUP", 1.5);
+            return;
         }
     }
 

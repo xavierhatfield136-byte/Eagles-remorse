@@ -1,7 +1,9 @@
 # Campaign And UI Overhaul Plan
 
+> Outdated: this document has been superseded by `STRATEGIC_CAMPAIGN_MAP_SPEC.md` as the active campaign design reference.
+
 Date: 2026-05-01  
-Status: Active design + implementation roadmap
+Status: Outdated reference
 
 ## Goal
 

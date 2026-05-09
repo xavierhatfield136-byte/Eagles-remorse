@@ -1,7 +1,9 @@
 # Campaign 24-Sector Outline
 
+> Outdated: this document has been superseded by `STRATEGIC_CAMPAIGN_MAP_SPEC.md` as the active campaign design reference.
+
 Date: 2026-04-13
-Status: Draft expansion outline
+Status: Outdated reference
 
 ## Purpose
 

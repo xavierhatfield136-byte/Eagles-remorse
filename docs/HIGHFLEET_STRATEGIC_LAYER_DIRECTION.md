@@ -1,7 +1,9 @@
 # Highfleet-Style Strategic Layer Direction
 
+> Outdated: this document has been superseded by `STRATEGIC_CAMPAIGN_MAP_SPEC.md` as the active campaign design reference.
+
 Date: 2026-05-08  
-Status: Active concept consolidation
+Status: Outdated reference
 
 ## Purpose
 

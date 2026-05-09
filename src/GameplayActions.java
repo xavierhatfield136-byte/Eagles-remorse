@@ -405,6 +405,9 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_T,
                     java.awt.event.KeyEvent.VK_ENTER ->
                     CampaignSystem.startTravelToSelectedLocation(ctx);
+            case java.awt.event.KeyEvent.VK_H,
+                    java.awt.event.KeyEvent.VK_BACK_SPACE ->
+                    CampaignSystem.stopCampaignTravel(ctx);
             case java.awt.event.KeyEvent.VK_N ->
                     CampaignSystem.createDetachedStrategicDivision(ctx);
             case java.awt.event.KeyEvent.VK_J ->
