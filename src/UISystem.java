@@ -67,6 +67,12 @@ public final class UISystem {
     public static void toggleMap(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+            ctx.ui.mapOpen = true;
+            ctx.state = GameState.MAP;
+            EventSystem.showBanner(ctx, "CAMPAIGN MAP ACTIVE", 1.0);
+            return;
+        }
         ctx.ui.mapOpen = !ctx.ui.mapOpen;
         if (ctx.ui.mapOpen) {
             ctx.ui.shopOpen = false;
@@ -778,8 +784,41 @@ public final class UISystem {
         return false;
     }
 
+    public static boolean handleCampaignMapUiClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.ui == null || e == null) return false;
+        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx) && !ctx.ui.campaignHubMenu.active) return false;
+
+        Renderer.CampaignHubClickTarget target =
+                Renderer.campaignHubClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
+        if (target == null) return false;
+
+        switch (target.kind) {
+            case SERVICE -> {
+                try {
+                    CampaignSystem.HubService service = CampaignSystem.HubService.valueOf(target.serviceId);
+                    return CampaignSystem.openSelectedHubService(ctx, service);
+                } catch (Exception ignored) {
+                    return false;
+                }
+            }
+            case CONFIRM -> {
+                return CampaignSystem.confirmSelectedHubService(ctx);
+            }
+            case CLOSE -> {
+                CampaignSystem.closeHubServiceMenu(ctx);
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
-        Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH);
+        Rectangle rect = Renderer.getStrategicMapInnerRect(
+                viewportW, viewportH, CampaignSystem.isStrategicGalaxyMapMode(ctx));
         if (!rect.contains(e.getPoint())) return;
 
         double nx = (e.getX() - rect.x) / (double) rect.width;
@@ -789,6 +828,31 @@ public final class UISystem {
         if (SwingUtilities.isMiddleMouseButton(e)) {
             focusStrategicMapAt(ctx, worldX, worldY);
             EventSystem.showBanner(ctx, "MAP FOCUS SHIFTED", 0.9);
+            return;
+        }
+        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+            CampaignSystem.CampaignLocation clickedLocation =
+                    CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, 260.0);
+            if (clickedLocation != null) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    addPing(ctx, clickedLocation.x, clickedLocation.y, 2.2);
+                    EventSystem.showBanner(ctx, "LOCATION PING: " + clickedLocation.name.toUpperCase(), 1.2);
+                    return;
+                }
+                CampaignSystem.selectCampaignLocation(ctx, worldX, worldY);
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
+                    CampaignSystem.startTravelToSelectedLocation(ctx);
+                }
+                return;
+            }
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, worldX, worldY, 2.2);
+                EventSystem.showBanner(ctx, "PING MARKED", 1.0);
+            }
+            return;
+        }
+        if (e.isAltDown() && SwingUtilities.isLeftMouseButton(e)) {
+            CampaignSystem.issueStrategicDivisionOrder(ctx, worldX, worldY);
             return;
         }
         CampaignSystem.CampaignObjectiveMarker clickedMarker =
@@ -812,6 +876,38 @@ public final class UISystem {
         }
 
         CampaignSystem.CampaignSupportMarker clickedSupport =
+                CampaignSystem.nearestStrategicTaskForceMarker(ctx, worldX, worldY, 240.0);
+        if (clickedSupport != null) {
+            if (e.isShiftDown() && e.isControlDown() && SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.launchStrategicAtomicStrike(ctx, worldX, worldY);
+                return;
+            }
+            if (e.isShiftDown() && SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.launchStrategicTorpedoStrike(ctx, worldX, worldY);
+                return;
+            }
+            if (e.isShiftDown() && SwingUtilities.isRightMouseButton(e)) {
+                CampaignSystem.launchStrategicSortie(ctx, worldX, worldY);
+                return;
+            }
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
+                EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
+                return;
+            }
+            ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
+            addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+            String subtitle = (clickedSupport.subtitle == null || clickedSupport.subtitle.isBlank())
+                    ? ""
+                    : "  " + clickedSupport.subtitle.toUpperCase();
+            EventSystem.showBanner(ctx,
+                    "CONTACT TRACK SET: " + clickedSupport.label.toUpperCase() + subtitle,
+                    1.4);
+            return;
+        }
+
+        clickedSupport =
                 CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
         if (clickedSupport != null) {
             if (SwingUtilities.isRightMouseButton(e)) {
@@ -958,7 +1054,8 @@ public final class UISystem {
 
     public static void stepStrategicMapZoom(GameContext ctx, int dir, int mouseX, int mouseY, int viewportW, int viewportH) {
         if (ctx == null || ctx.ui == null || !ctx.ui.mapOpen || dir == 0) return;
-        Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH);
+        Rectangle rect = Renderer.getStrategicMapInnerRect(
+                viewportW, viewportH, CampaignSystem.isStrategicGalaxyMapMode(ctx));
         double nx = 0.5;
         double ny = 0.5;
         if (rect.width > 0 && rect.height > 0 && rect.contains(mouseX, mouseY)) {
@@ -976,7 +1073,7 @@ public final class UISystem {
 
     public static void resetStrategicMapZoom(GameContext ctx) {
         if (ctx == null || ctx.ui == null) return;
-        applyStrategicMapZoom(ctx, 1.0);
+        applyStrategicMapZoom(ctx, CampaignSystem.isStrategicGalaxyMapMode(ctx) ? 2.2 : 1.0);
     }
 
     private static void applyStrategicMapZoom(GameContext ctx, double zoom) {
@@ -1050,6 +1147,26 @@ public final class UISystem {
         double focusX = worldX - (normalizedX - 0.5) * strategicMapViewWidth(ctx);
         double focusY = worldY - (normalizedY - 0.5) * strategicMapViewHeight(ctx);
         focusStrategicMapAt(ctx, focusX, focusY);
+    }
+
+    public static void updateStrategicMapCameraPan(GameContext ctx, double dt) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.mapOpen || dt <= 0.0) return;
+        double panX = 0.0;
+        double panY = 0.0;
+        if (ctx.cameraPanLeft) panX -= 1.0;
+        if (ctx.cameraPanRight) panX += 1.0;
+        if (ctx.cameraPanUp) panY -= 1.0;
+        if (ctx.cameraPanDown) panY += 1.0;
+        if (Math.abs(panX) <= 1e-9 && Math.abs(panY) <= 1e-9) return;
+        double len = Math.hypot(panX, panY);
+        if (len > 1e-9) {
+            panX /= len;
+            panY /= len;
+        }
+        double panSpeed = Math.max(540.0, Math.max(strategicMapViewWidth(ctx), strategicMapViewHeight(ctx)) * 0.34);
+        focusStrategicMapAt(ctx,
+                strategicMapFocusX(ctx) + panX * panSpeed * dt,
+                strategicMapFocusY(ctx) + panY * panSpeed * dt);
     }
 
     private static java.util.List<String> wrapUiLines(String text, int maxWidth, int charWidth) {

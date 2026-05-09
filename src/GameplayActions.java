@@ -7,6 +7,10 @@ public final class GameplayActions {
             if (exitToMenu != null) exitToMenu.run();
             return;
         }
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
+            EventSystem.showBanner(ctx, "CHOOSE AUTO-RESOLVE [A] OR TAKE COMMAND [C]", 1.2);
+            return;
+        }
         if (ctx.ui.hasBlockingOverlay()) {
             UISystem.closeAllOverlays(ctx);
             return;
@@ -394,6 +398,17 @@ public final class GameplayActions {
                     UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.STANDARD);
             case java.awt.event.KeyEvent.VK_3 ->
                     UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.EXPANDED);
+            case java.awt.event.KeyEvent.VK_OPEN_BRACKET ->
+                    CampaignSystem.cycleStrategicDivisionSelection(ctx, -1);
+            case java.awt.event.KeyEvent.VK_CLOSE_BRACKET ->
+                    CampaignSystem.cycleStrategicDivisionSelection(ctx, +1);
+            case java.awt.event.KeyEvent.VK_T,
+                    java.awt.event.KeyEvent.VK_ENTER ->
+                    CampaignSystem.startTravelToSelectedLocation(ctx);
+            case java.awt.event.KeyEvent.VK_N ->
+                    CampaignSystem.createDetachedStrategicDivision(ctx);
+            case java.awt.event.KeyEvent.VK_J ->
+                    CampaignSystem.mergeSelectedStrategicDivisionIntoFlagship(ctx);
             default -> {
                 return false;
             }
@@ -415,6 +430,17 @@ public final class GameplayActions {
             default -> -1;
         };
         return routeIndex >= 0 && CampaignSystem.selectRouteChoice(ctx, routeIndex);
+    }
+
+    public static boolean tryHandleStrategicEncounterHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
+        if (ctx == null || e == null || !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) return false;
+        return switch (e.getKeyCode()) {
+            case java.awt.event.KeyEvent.VK_A -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
+            case java.awt.event.KeyEvent.VK_C,
+                    java.awt.event.KeyEvent.VK_ENTER,
+                    java.awt.event.KeyEvent.VK_SPACE -> CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx);
+            default -> false;
+        };
     }
 
     public static boolean tryHandlePowerOverlayHotkey(GameContext ctx, int keyCode) {

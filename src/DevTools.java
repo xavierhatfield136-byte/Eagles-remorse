@@ -5,10 +5,10 @@ public final class DevTools {
     private static boolean aiEnabled = true;
     private static boolean fancyVfxEnabled = true;
     private static boolean asteroidHeatmapEnabled = false;
-    private static boolean roomPolygonsEnabled = true;
-    private static boolean roomImpactPointsEnabled = true;
-    private static boolean roomHpBarsEnabled = true;
-    private static boolean roomHazardsEnabled = true;
+    private static boolean roomPolygonsEnabled = false;
+    private static boolean roomImpactPointsEnabled = false;
+    private static boolean roomHpBarsEnabled = false;
+    private static boolean roomHazardsEnabled = false;
 
     private static final double[] SCALES = {1.0, 0.5, 0.25, 0.10};
     private static int scaleIndex = 0;

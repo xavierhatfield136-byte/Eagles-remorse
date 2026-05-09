@@ -83,6 +83,28 @@ public final class UiState {
         }
     }
 
+    public static final class StrategicEncounterPrompt {
+        public enum Kind {
+            TASK_FORCE,
+            CAMPAIGN_LOCATION
+        }
+
+        public boolean active = false;
+        public Kind kind = Kind.TASK_FORCE;
+        public int taskForceId = -1;
+        public String campaignLocationId = "";
+        public String title = "";
+        public String body = "";
+        public String location = "";
+        public String strengthReadout = "";
+    }
+
+    public static final class CampaignHubMenu {
+        public boolean active = false;
+        public String locationId = "";
+        public String serviceId = "";
+    }
+
     public boolean shopOpen = false;
     public ShopHullCategory shopHullCategory = ShopHullCategory.ESCORT;
     public int shopHullPage = 0;
@@ -91,6 +113,8 @@ public final class UiState {
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
+    public final StrategicEncounterPrompt strategicEncounterPrompt = new StrategicEncounterPrompt();
+    public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
     // Fleet hub: when the campaign shop is open (TAB), toggle between "commission" (buy hulls) and "refit"
@@ -98,6 +122,7 @@ public final class UiState {
     public boolean fleetRefitMode = true;
     public int powerManagementFocus = 0;
     public int flightDeckFocus = 0;
+    public int selectedStrategicDivisionGroupId = 0;
 
     public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
     public boolean tacticalViewEnabled = false;
@@ -143,7 +168,56 @@ public final class UiState {
     public String objectiveHoverBody = "";
 
     public boolean hasBlockingOverlay() {
-        return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen;
+        return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen
+                || strategicEncounterPrompt.active || campaignHubMenu.active;
+    }
+
+    public void showStrategicEncounterPrompt(int taskForceId, String title, String body,
+                                             String location, String strengthReadout) {
+        strategicEncounterPrompt.active = true;
+        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
+        strategicEncounterPrompt.taskForceId = taskForceId;
+        strategicEncounterPrompt.campaignLocationId = "";
+        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "STRATEGIC CONTACT" : title.trim();
+        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
+        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
+        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+    }
+
+    public void showCampaignLocationEncounterPrompt(String campaignLocationId, String title, String body,
+                                                    String location, String strengthReadout) {
+        strategicEncounterPrompt.active = true;
+        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION;
+        strategicEncounterPrompt.taskForceId = -1;
+        strategicEncounterPrompt.campaignLocationId =
+                (campaignLocationId == null) ? "" : campaignLocationId.trim();
+        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "MISSION ENCOUNTER" : title.trim();
+        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
+        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
+        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+    }
+
+    public void clearStrategicEncounterPrompt() {
+        strategicEncounterPrompt.active = false;
+        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
+        strategicEncounterPrompt.taskForceId = -1;
+        strategicEncounterPrompt.campaignLocationId = "";
+        strategicEncounterPrompt.title = "";
+        strategicEncounterPrompt.body = "";
+        strategicEncounterPrompt.location = "";
+        strategicEncounterPrompt.strengthReadout = "";
+    }
+
+    public void showCampaignHubMenu(String locationId, String serviceId) {
+        campaignHubMenu.active = true;
+        campaignHubMenu.locationId = (locationId == null) ? "" : locationId.trim();
+        campaignHubMenu.serviceId = (serviceId == null) ? "" : serviceId.trim();
+    }
+
+    public void clearCampaignHubMenu() {
+        campaignHubMenu.active = false;
+        campaignHubMenu.locationId = "";
+        campaignHubMenu.serviceId = "";
     }
 
     public void clearVoiceCaption() {

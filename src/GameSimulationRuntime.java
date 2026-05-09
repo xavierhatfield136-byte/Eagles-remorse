@@ -86,6 +86,18 @@ public final class GameSimulationRuntime {
         }
 
         applyPlayerInput(dt, input);
+        if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
+            UISystem.updateStrategicMapCameraPan(ctx, dt);
+            long campaignStart = System.nanoTime();
+            CampaignSystem.update(ctx, dt);
+            ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
+            UISystem.updatePings(ctx, dt);
+            EventSystem.update(ctx, dt);
+            AudioSystem.update(ctx, dt);
+            syncPlayerWarpHudState();
+            return;
+        }
+
         BattlefieldSectorSystem.ensureLoadedSector(ctx);
 
         if (CampaignSystem.isFleetHubSession(ctx)) {
@@ -405,6 +417,9 @@ public final class GameSimulationRuntime {
         ctx.cursorScreenY = snap.mouseY;
         ctx.cursorWorldX = mouseWorldX;
         ctx.cursorWorldY = mouseWorldY;
+        if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
+            return;
+        }
 
         Player p = ctx.player;
         if (p == null) return;

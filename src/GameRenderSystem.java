@@ -62,6 +62,10 @@ public final class GameRenderSystem {
 
     public static void render(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
         Renderer.beginFramePerfCapture();
+        if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
+            renderCampaignMapScreen(ctx, g2, viewportW, viewportH);
+            return;
+        }
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
         boolean tacticalView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
@@ -304,7 +308,11 @@ public final class GameRenderSystem {
         drawCampaignMissionIntro(ctx, g2, viewportW, viewportH);
         drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
 
-        if (ctx.state == GameState.PAUSED) {
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
+            Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
+        }
+
+        if (ctx.state == GameState.PAUSED && !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             g2.setColor(new Color(0, 0, 0, 160));
             g2.fillRect(0, 0, viewportW, viewportH);
 
@@ -348,6 +356,34 @@ if (DevTools.isDebugOverlay()) {
     try { DevOverlay.draw(g2, ctx, viewportW, viewportH); } catch (Throwable ignored) {}
 }
 
+    }
+
+    private static void renderCampaignMapScreen(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {
+        long seed = (ctx != null && ctx.config != null) ? ctx.config.seed : 12345L;
+        g2.setColor(Color.BLACK);
+        g2.fillRect(0, 0, viewportW, viewportH);
+        Renderer.drawSpaceBackground(g2, 0.0, 0.0, viewportW, viewportH, seed);
+        Renderer.drawStrategicMap(g2, ctx, viewportW, viewportH, ctx.WORLD_W, ctx.WORLD_H,
+                0.0, 0.0, viewportW, viewportH, ctx.player,
+                java.util.List.of(), java.util.List.of(), java.util.List.of(),
+                Double.NaN, Double.NaN, ctx.ui.mapPings, null, ctx.eventBanner);
+        drawCampaignMissionIntro(ctx, g2, viewportW, viewportH);
+        drawCampaignTransitionOverlay(ctx, g2, viewportW, viewportH);
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
+            Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
+        }
+        Renderer.drawCampaignHubOverlay(g2, ctx, viewportW, viewportH);
+        ctx.perf.drawnAsteroids = 0;
+        ctx.perf.drawnSalvage = 0;
+        ctx.perf.drawnShips = 0;
+        ctx.perf.drawnProjectiles = 0;
+        ctx.perf.drawnVfx = 0;
+        ctx.perf.drawnExplosions = 0;
+        ctx.perf.totalVfx = 0;
+        ctx.perf.totalExplosions = 0;
+        ctx.perf.renderShipsMs = 0.0;
+        ctx.perf.shieldRenderMs = 0.0;
+        ctx.perf.renderHudMs = 0.0;
     }
 
     private static String activeOverlayLabel(GameContext ctx) {

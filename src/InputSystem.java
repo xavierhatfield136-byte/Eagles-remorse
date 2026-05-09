@@ -45,6 +45,9 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.ui.mapOpen) {
+                    if (UISystem.handleCampaignMapUiClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                        return;
+                    }
                     UISystem.handleMapClick(ctx, e, panel.viewportW(), panel.viewportH());
                     return;
                 }
@@ -80,6 +83,7 @@ public final class InputSystem {
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
                 handleCameraPanKeyPressed(ctx, keyCode);
+                if (GameplayActions.tryHandleStrategicEncounterHotkey(ctx, e)) return;
                 if (GameplayActions.tryHandleCampaignEpisodeHotkey(ctx, e)) return;
                 if (GameplayActions.tryHandleMapHotkey(ctx, keyCode)) return;
                 if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;

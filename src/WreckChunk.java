@@ -23,6 +23,11 @@ final class WreckChunk {
     private static final int MAX_SECONDARY_SCARS = 8;
     private static final Map<Ship, MultipartFinaleState> MULTIPART_FINALES = new IdentityHashMap<>();
 
+    static void clearAll() {
+        ACTIVE.clear();
+        MULTIPART_FINALES.clear();
+    }
+
     private final Ship parent;
     private final BufferedImage image;
     private final boolean breach;

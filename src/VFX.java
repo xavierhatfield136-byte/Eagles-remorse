@@ -66,6 +66,11 @@ public final class VFX {
         return active.size();
     }
 
+    public static void clearAll() {
+        active.clear();
+        pool.clear();
+    }
+
     /**
      * Allocate a particle from the pool or create a new one.
      * Performance optimization: reuses objects to reduce garbage collection pressure.
@@ -471,22 +476,22 @@ public final class VFX {
 
         // Performance-focused hull hit: no particle spray, just a compact flash.
         double size = switch (s) {
-            case EXPLOSIVE -> 6.4 + sev * 1.2;
-            case BEAM -> 5.2 + sev * 0.9;
-            case ENERGY -> 5.0 + sev * 0.95;
-            case KINETIC -> 4.8 + sev * 0.85;
+            case EXPLOSIVE -> 4.8 + sev * 0.9;
+            case BEAM -> 3.8 + sev * 0.7;
+            case ENERGY -> 3.6 + sev * 0.7;
+            case KINETIC -> 3.4 + sev * 0.6;
         };
         int life = switch (s) {
-            case EXPLOSIVE -> 12;
-            case BEAM -> 9;
-            case ENERGY -> 10;
-            case KINETIC -> 9;
+            case EXPLOSIVE -> 10;
+            case BEAM -> 7;
+            case ENERGY -> 8;
+            case KINETIC -> 7;
         };
         int alpha = switch (s) {
-            case EXPLOSIVE -> 195;
-            case BEAM -> 170;
-            case ENERGY -> 180;
-            case KINETIC -> 175;
+            case EXPLOSIVE -> 170;
+            case BEAM -> 142;
+            case ENERGY -> 150;
+            case KINETIC -> 145;
         };
         spawnImpactBloom(x, y, size, tint, life, alpha);
 

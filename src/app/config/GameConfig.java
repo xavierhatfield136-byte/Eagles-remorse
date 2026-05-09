@@ -15,6 +15,7 @@ public class GameConfig {
     public final int customBattleEnemyTeamId;
     public final String customBattleFriendlyRoster;
     public final String customBattleEnemyRoster;
+    public final String startupPreset;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false, 1, "", "");
@@ -31,6 +32,15 @@ public class GameConfig {
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen,
+                playerTeamId, resumeCampaign,
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, "");
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
+                      int playerTeamId, boolean resumeCampaign,
+                      int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
+                      String startupPreset) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
@@ -42,5 +52,6 @@ public class GameConfig {
         this.customBattleEnemyTeamId = Math.max(0, Math.min(3, customBattleEnemyTeamId));
         this.customBattleFriendlyRoster = (customBattleFriendlyRoster == null) ? "" : customBattleFriendlyRoster.trim();
         this.customBattleEnemyRoster = (customBattleEnemyRoster == null) ? "" : customBattleEnemyRoster.trim();
+        this.startupPreset = (startupPreset == null) ? "" : startupPreset.trim();
     }
 }

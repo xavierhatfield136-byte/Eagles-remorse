@@ -99,6 +99,7 @@ public final class MainMenuPanel extends JPanel {
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(87, 134, 91), uiScale);
         JButton fleet = createMenuButton("Fleet", new Color(74, 122, 168), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(46, 97, 155), uiScale);
+        JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(83, 121, 188), uiScale);
         JButton tutorialStart = createMenuButton("Start Command School", new Color(76, 132, 196), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(188, 201, 216));
@@ -211,6 +212,26 @@ public final class MainMenuPanel extends JPanel {
             onStart.accept(checkpoint.config());
         });
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
+        galaxyMapTest.addActionListener(e -> {
+            persistSettings.accept(GameMode.CAMPAIGN_OPS);
+            int w = 20000;
+            int h = 20000;
+            long seed;
+            try {
+                seed = Long.parseLong(seedField.getText().trim());
+            } catch (Exception ex) {
+                seed = System.nanoTime();
+            }
+            if (seed == 0) seed = System.nanoTime();
+            PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
+            int playerTeamId = (choice == null) ? 0 : choice.teamId();
+            onStart.accept(new GameConfig(
+                    GameMode.CAMPAIGN_OPS,
+                    w, h, true, seed, false,
+                    playerTeamId, false,
+                    1, "", "",
+                    "galaxy_map_test"));
+        });
 
         JPanel headerPanel = transparentPanel();
         headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
@@ -304,6 +325,8 @@ public final class MainMenuPanel extends JPanel {
         singlePlayerCard.add(checkpointPanel);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
         singlePlayerCard.add(campaignOps);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerCard.add(galaxyMapTest);
 
         JPanel missionCard = createSectionPanel(new Color(136, 92, 60, 118), uiScale);
         missionCard.add(eyebrowLabel("Mission Setup", uiScale, new Color(233, 173, 126)));
@@ -356,6 +379,13 @@ public final class MainMenuPanel extends JPanel {
         getActionMap().put("dev_four_team", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) {
                 startWithMode.accept(GameMode.FOUR_TEAM_DOMINATION);
+            }
+        });
+
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0), "dev_galaxy_map_test");
+        getActionMap().put("dev_galaxy_map_test", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                galaxyMapTest.doClick();
             }
         });
 

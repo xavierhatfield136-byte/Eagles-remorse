@@ -9,10 +9,10 @@ public class Turret {
 
     // Universal missile buff (applies to all factions/ships).
     public static final double MISSILE_DAMAGE_MULT = 1.55;
-    public static final double MISSILE_SPEED_MULT = 1.40;
+    public static final double MISSILE_SPEED_MULT = 0.96;
     public static final double MISSILE_TURN_MULT = 1.32;
     public static final double MISSILE_LIFE_MULT = 1.22;
-    public static final double GUN_PROJECTILE_SPEED_MULT = 1.18;
+    public static final double GUN_PROJECTILE_SPEED_MULT = 0.88;
 
     public enum Kind {
         GUN,
@@ -292,7 +292,7 @@ public class Turret {
             // KINETIC_CONSORTIUM uses the existing fast conventional rounds.
             double projectileSpeed = bulletSpeed * GUN_PROJECTILE_SPEED_MULT;
             if (prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
-                projectileSpeed *= 1.06;
+                projectileSpeed *= 1.03;
             }
             int gunDamage = host.resolveStrikeCraftWeaponDamage(this, damage * damageMul);
             if (host.faction == Faction.TEAM_C) {
@@ -333,9 +333,9 @@ public class Turret {
                 pendingBlueTarget = missileTarget;
                 return p;
             }
-            double bulletRadius = 3.0;
+            double bulletRadius = 2.2;
             if (prof.doctrine == Doctrine.KINETIC_CONSORTIUM) {
-                bulletRadius = Math.max(4.2, Math.min(6.6, radius * 0.62));
+                bulletRadius = Math.max(3.2, Math.min(5.0, radius * 0.48));
             }
             Projectile p = new Bullet(mx, my, angle, dt, projectileSpeed, gunDamage, bulletLife, bulletRadius, host.faction);
             p.sourceShipId = host.id;
@@ -372,7 +372,7 @@ public class Turret {
                 missileTurn *= 1.08;
                 missileLifetime = Math.max(missileLifetime, (int) Math.round(missileLife * 1.40));
             }
-            double missileRadius = Math.max(6.0, radius);
+            double missileRadius = Math.max(4.8, radius * 0.82);
             double missileSpd_final = missileSpd;
             double missileTurn_final = missileTurn;
             int missileDamage_final = missileDamage;
