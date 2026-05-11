@@ -87,6 +87,7 @@ public final class GameSimulationRuntime {
 
         applyPlayerInput(dt, input);
         if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
+            CampaignSystem.enforceCampaignMapDiscipline(ctx);
             UISystem.updateStrategicMapCameraPan(ctx, dt);
             long campaignStart = System.nanoTime();
             CampaignSystem.update(ctx, dt);

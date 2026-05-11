@@ -5430,9 +5430,11 @@ public class Renderer {
         java.util.List<String> bodyLines = wrapHudText(bodyFm, prompt.body, w - 52);
         int h = 176 + Math.max(0, bodyLines.size() - 2) * 18;
 
-        String frameTitle = (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION)
-                ? "MISSION ENCOUNTER"
-                : "STRATEGIC CONTACT";
+        String frameTitle = switch (prompt.kind) {
+            case CAMPAIGN_LOCATION -> "MISSION ENCOUNTER";
+            case GALAXY_SEARCH_GROUP -> "HOSTILE INTERCEPT";
+            case TASK_FORCE -> "STRATEGIC CONTACT";
+        };
         drawHudPanelFrame(g2, x, y, w, h, frameTitle, new Color(255, 206, 122, 230), ThemeArt.HUD_SPECIAL_FRAME);
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
@@ -5444,9 +5446,11 @@ public class Renderer {
         g2.setColor(new Color(255, 214, 142, 220));
         int infoY = inner.y + 48;
         if (prompt.location != null && !prompt.location.isBlank()) {
-            String label = (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION)
-                    ? "Location: "
-                    : "Pocket: ";
+            String label = switch (prompt.kind) {
+                case CAMPAIGN_LOCATION -> "Location: ";
+                case GALAXY_SEARCH_GROUP -> "Intercept Zone: ";
+                case TASK_FORCE -> "Pocket: ";
+            };
             g2.drawString(label + prompt.location, inner.x, infoY);
             infoY += 18;
         }
@@ -5469,9 +5473,14 @@ public class Renderer {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(180, 200, 220, 210));
-        String footer = (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION)
-                ? "Auto-resolve stays on the galaxy map. Taking command opens one large tactical sector."
-                : "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
+        String footer = switch (prompt.kind) {
+            case CAMPAIGN_LOCATION ->
+                    "Auto-resolve stays on the galaxy map. Taking command opens one large tactical sector.";
+            case GALAXY_SEARCH_GROUP ->
+                    "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
+            case TASK_FORCE ->
+                    "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
+        };
         g2.drawString(footer,
                 inner.x, y + h - 18);
 
@@ -8613,6 +8622,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
         CampaignSystem.CampaignTravelState travel = CampaignSystem.campaignTravelState(ctx);
         List<CampaignSystem.HubService> hubServices = CampaignSystem.selectedCampaignLocationServices(ctx);
+        List<String> roleLines = CampaignSystem.strategicFleetRoleSummaryLines(ctx);
         List<String> intelLines = CampaignSystem.galaxyIntelSummaryLines(ctx);
 
         int x = panelRect.x;
@@ -8637,7 +8647,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 "Earth Progress: " + Math.round(CampaignSystem.earthProgress(ctx) * 100.0) + "%",
                 "Travel: " + galaxyTravelStatus(ctx, travel),
                 "Threat: " + galaxyThreatStatus(ctx, selected),
-                "Enemy Alert: " + galaxyAlertStatus(ctx)
+                "Enemy Alert: " + galaxyAlertStatus(ctx),
+                "Pressure Band: " + CampaignSystem.enemyAlertRegionReadout(ctx)
         ), new Color(184, 228, 255, 220), true);
 
         List<String> locationLines = new ArrayList<>();
@@ -8646,6 +8657,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             locationLines.add("Alignment: " + galaxyLocationFaction(selected));
             locationLines.add("Danger: " + CampaignSystem.threatReadoutForSidebar(selected.threatLevel));
             locationLines.add("Docking: " + (CampaignSystem.isDockedAtSelectedLocation(ctx) ? "IN RANGE" : "APPROACH REQUIRED"));
+            locationLines.addAll(CampaignSystem.selectedHubIdentityLines(ctx));
+            locationLines.addAll(CampaignSystem.selectedRouteAssessmentLines(ctx));
             locationLines.add(selected.detail);
         } else {
             locationLines.add("No location selected.");
@@ -8653,6 +8666,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width,
                 (selected == null) ? "SELECTED LOCATION" : selected.name.toUpperCase(Locale.US),
                 locationLines, hubAccent(selected, 220), false);
+
+        if (!roleLines.isEmpty()) {
+            rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "FLEET POSTURE",
+                    roleLines, new Color(188, 228, 255, 220), false);
+        }
 
         if (!hubServices.isEmpty()) {
             g2.setColor(new Color(160, 220, 255, 150));
@@ -8702,7 +8720,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
         int eta = (int) Math.ceil(Math.max(0.0, (1.0 - travel.progress) * travel.durationSec));
-        return "En route to " + ((selected == null) ? "target" : selected.name) + "  ETA " + eta + "s";
+        return "En route to " + ((selected == null) ? "target" : selected.name)
+                + "  ETA " + eta + "s  RISK " + (int) Math.round(travel.interceptionRisk) + "%";
     }
 
     private static String galaxyThreatStatus(GameContext ctx, CampaignSystem.CampaignLocation selected) {
@@ -8920,60 +8939,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static List<String> campaignHubOverlayLines(GameContext ctx,
                                                         CampaignSystem.CampaignLocation location,
                                                         CampaignSystem.HubService service) {
-        ArrayList<String> lines = new ArrayList<>();
-        lines.add(location.name);
-        lines.add(location.detail);
-        switch (service) {
-            case REPAIR -> {
-                lines.add("Repair Fleet");
-                lines.add("Hull damage estimate: light placeholder pass");
-                lines.add("Repair cost: " + GameContext.scaleCreditEarnings(140) + " credits");
-                lines.add("Confirm repair to fully restore the flagship for now.");
-            }
-            case TRADE -> {
-                lines.add("Trade Market");
-                lines.add("Fuel, supplies, and salvage exchange are placeholder values in this pass.");
-                lines.add("Current salvage stock: " + CampaignSystem.campaignSalvageStock(ctx));
-                lines.add("Confirm trade to convert salvage into credits and stores.");
-            }
-            case SHIPYARD -> {
-                lines.add("Ship Construction");
-                lines.add("Available hulls: Corvette / Frigate / Destroyer");
-                lines.add("Build cost: " + GameContext.scaleCreditEarnings(320) + " credits");
-                lines.add("Confirm build to add a placeholder hull directly to the campaign roster.");
-            }
-            case SUPPLY -> {
-                lines.add("Supply Purchase");
-                lines.add("Buys campaign supplies and ammunition.");
-                lines.add("Placeholder bundle cost: " + GameContext.scaleCreditEarnings(90) + " credits");
-            }
-            case FUEL -> {
-                lines.add("Fuel Purchase");
-                lines.add("Top up long-range campaign fuel reserves.");
-                lines.add("Placeholder bundle cost: " + GameContext.scaleCreditEarnings(70) + " credits");
-            }
-            case SALVAGE -> {
-                lines.add("Sell Salvage");
-                lines.add("Converts recovered salvage stock into credits.");
-                lines.add("Current salvage stock: " + CampaignSystem.campaignSalvageStock(ctx));
-            }
-            case INTEL -> {
-                lines.add("Intel Exchange");
-                lines.add("Gather route data, patrol notes, and hostile pressure estimates.");
-                lines.add("Confirm to lower local enemy alert slightly.");
-            }
-            case CONTRACTS -> {
-                lines.add("Contract Board");
-                lines.add("Placeholder contract advance and route opportunity.");
-                lines.add("Confirm to receive a simple credit reward.");
-            }
-            case REFIT -> {
-                lines.add("Refit Docket");
-                lines.add("Placeholder refit menu for future subsystem and loadout work.");
-                lines.add("Confirm currently logs a refit action only.");
-            }
-        }
-        return lines;
+        return CampaignSystem.hubServicePreviewLines(ctx, location, service);
     }
 
     private static List<String> buildStrategicLandmarkLines(List<CampaignSystem.CampaignLandmark> landmarks) {
