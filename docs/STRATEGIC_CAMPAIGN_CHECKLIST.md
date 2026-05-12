@@ -150,102 +150,102 @@ Use this as the working implementation checklist. Do not mark an item complete u
 
 ## Phase 5: Long-Range Warfare and Counterplay
 
-- [ ] Keep long-range strikes as high-commitment tools rather than casual spam actions.
-- [ ] Make torpedoes consume meaningful resources, expose intent, or create risk.
-- [ ] Make sorties consume meaningful resources, expose intent, or create risk.
-- [ ] Make atomic options consume meaningful resources, expose intent, or create risk.
-- [ ] Add defensive counterplay to long-range warfare.
-- [ ] Add interception as a meaningful response.
-- [ ] Add jamming as a meaningful response.
-- [ ] Add decoys as a meaningful response.
-- [ ] Add evasive movement as a meaningful response.
-- [ ] Add route adjustment as a meaningful response.
-- [ ] Add alert-driven reaction as a meaningful response.
-- [ ] Make reconnaissance a real gameplay layer instead of a flavor note.
-- [ ] Make recon help discover hostile activity.
-- [ ] Make recon help confirm hostile activity.
-- [ ] Make recon help refine hostile activity.
-- [ ] Make recon help track hostile activity.
-- [ ] Make intel quality affect route planning.
-- [ ] Make intel quality affect strike decisions.
-- [ ] Tie strategic strikes to campaign consequences.
-- [ ] Make strategic strikes affect alert level.
-- [ ] Make strategic strikes affect enemy response.
-- [ ] Make strategic strikes affect route danger.
-- [ ] Make strategic strikes affect operational exposure.
-- [ ] Make strategic strikes affect faction consequences.
-- [ ] Make strategic strikes affect resource depletion.
-- [ ] Keep the atomic option dramatic, rare, and costly enough that it does not trivialize fleet play.
+- [x] Keep long-range strikes as high-commitment tools rather than casual spam actions.
+- [x] Make torpedoes consume meaningful resources, expose intent, or create risk.
+- [x] Make sorties consume meaningful resources, expose intent, or create risk.
+- [x] Make atomic options consume meaningful resources, expose intent, or create risk.
+- [x] Add defensive counterplay to long-range warfare.
+- [x] Add interception as a meaningful response.
+- [x] Add jamming as a meaningful response.
+- [x] Add decoys as a meaningful response.
+- [x] Add evasive movement as a meaningful response.
+- [x] Add route adjustment as a meaningful response.
+- [x] Add alert-driven reaction as a meaningful response.
+- [x] Make reconnaissance a real gameplay layer instead of a flavor note.
+- [x] Make recon help discover hostile activity.
+- [x] Make recon help confirm hostile activity.
+- [x] Make recon help refine hostile activity.
+- [x] Make recon help track hostile activity.
+- [x] Make intel quality affect route planning.
+- [x] Make intel quality affect strike decisions.
+- [x] Tie strategic strikes to campaign consequences.
+- [x] Make strategic strikes affect alert level.
+- [x] Make strategic strikes affect enemy response.
+- [x] Make strategic strikes affect route danger.
+- [x] Make strategic strikes affect operational exposure.
+- [x] Make strategic strikes affect faction consequences.
+- [x] Make strategic strikes affect resource depletion.
+- [x] Keep the atomic option dramatic, rare, and costly enough that it does not trivialize fleet play.
 
 ## Phase 6: Campaign UI Readability
 
-- [ ] Finish the right-side campaign panel so it is readable at a glance.
-- [ ] Keep the panel organized around campaign summary.
-- [ ] Keep the panel organized around selected location.
-- [ ] Keep the panel organized around services or actions.
-- [ ] Keep the panel organized around intel or contacts.
-- [ ] Do not allow the panel to regress into dense walls of text.
-- [ ] Reduce visual clutter on the overmap UI.
-- [ ] Increase information hierarchy on the overmap UI.
-- [ ] Make important information obvious immediately.
-- [ ] Keep secondary information accessible without overwhelming the player.
-- [ ] Make contact and threat readouts legible and trustworthy.
-- [ ] Make it easy to see where the player is.
-- [ ] Make it easy to see where the player is going.
-- [ ] Make it easy to see how dangerous the route or destination is.
-- [ ] Make it easy to see whether docking is possible.
-- [ ] Make it easy to see whether the fleet is being hunted.
-- [ ] Make hub actions clear, large, and context-aware.
-- [ ] Only show service buttons when they are relevant.
-- [ ] Make service buttons clearly communicate what they do.
-- [ ] Make service buttons clearly communicate what they cost.
+- [x] Finish the right-side campaign panel so it is readable at a glance.
+- [x] Keep the panel organized around campaign summary.
+- [x] Keep the panel organized around selected location.
+- [x] Keep the panel organized around services or actions.
+- [x] Keep the panel organized around intel or contacts.
+- [x] Do not allow the panel to regress into dense walls of text.
+- [x] Reduce visual clutter on the overmap UI.
+- [x] Increase information hierarchy on the overmap UI.
+- [x] Make important information obvious immediately.
+- [x] Keep secondary information accessible without overwhelming the player.
+- [x] Make contact and threat readouts legible and trustworthy.
+- [x] Make it easy to see where the player is.
+- [x] Make it easy to see where the player is going.
+- [x] Make it easy to see how dangerous the route or destination is.
+- [x] Make it easy to see whether docking is possible.
+- [x] Make it easy to see whether the fleet is being hunted.
+- [x] Make hub actions clear, large, and context-aware.
+- [x] Only show service buttons when they are relevant.
+- [x] Make service buttons clearly communicate what they do.
+- [x] Make service buttons clearly communicate what they cost.
 
 ## Phase 7: Tactical Alignment
 
-- [ ] Finish the combat readability pass and verify it with discipline.
-- [ ] Reduce clutter layered over ships.
-- [ ] Make projectile visuals smaller where needed.
+- [x] Finish the combat readability pass and verify it with discipline.
+- [x] Reduce clutter layered over ships.
+- [x] Make projectile visuals smaller where needed.
 - [ ] Slow projectile travel where needed to improve anticipation.
-- [ ] Put explosion emphasis on major impacts and ship deaths.
-- [ ] Remove noisy ECM presentation.
-- [ ] Keep warp presentation subtle and wormhole-like.
-- [ ] Finish the combat audio overhaul so sound carries weight and clarity.
-- [ ] Give weapon fire distinct role-based audio identity.
-- [ ] Give impacts distinct role-based audio identity.
-- [ ] Give subsystem failures distinct role-based audio identity.
-- [ ] Give launches distinct role-based audio identity.
-- [ ] Give warp events distinct role-based audio identity.
-- [ ] Give major ship destruction distinct role-based audio identity.
-- [ ] Preserve the one-large-sector encounter rule for manual command.
-- [ ] Do not reintroduce fragmented encounter presentation.
-- [ ] Make one encounter mean one readable tactical arena.
-- [ ] Make manual command worth choosing for important fights.
-- [ ] Make manual command the better choice for difficult fights.
-- [ ] Make manual command the better choice for high-risk fights.
-- [ ] Make manual command the better choice for asymmetric fights.
-- [ ] Make manual command the better choice for tactically interesting fights.
-- [ ] Keep auto-resolve useful for routine fights.
+- [x] Put explosion emphasis on major impacts and ship deaths.
+- [x] Remove noisy ECM presentation.
+- [x] Keep warp presentation subtle and wormhole-like.
+- [x] Finish the combat audio overhaul so sound carries weight and clarity.
+- [x] Give weapon fire distinct role-based audio identity.
+- [x] Give impacts distinct role-based audio identity.
+- [x] Give subsystem failures distinct role-based audio identity.
+- [x] Give launches distinct role-based audio identity.
+- [x] Give warp events distinct role-based audio identity.
+- [x] Give major ship destruction distinct role-based audio identity.
+- [x] Preserve the one-large-sector encounter rule for manual command.
+- [x] Do not reintroduce fragmented encounter presentation.
+- [x] Make one encounter mean one readable tactical arena.
+- [x] Make manual command worth choosing for important fights.
+- [x] Make manual command the better choice for difficult fights.
+- [x] Make manual command the better choice for high-risk fights.
+- [x] Make manual command the better choice for asymmetric fights.
+- [x] Make manual command the better choice for tactically interesting fights.
+- [x] Keep auto-resolve useful for routine fights.
 
 ## Phase 8: Integration and Validation
 
-- [ ] Test the full strategic loop end to end until it feels like one game.
-- [ ] Ensure the player can navigate meaningfully.
-- [ ] Ensure the player can scout meaningfully.
-- [ ] Ensure the player can manage risk meaningfully.
-- [ ] Ensure the player can dock meaningfully.
-- [ ] Ensure the player can recover or trade meaningfully.
-- [ ] Ensure the player can react to contacts meaningfully.
-- [ ] Ensure the player can choose whether to fight meaningfully.
-- [ ] Ensure encounter consequences return cleanly to campaign state.
-- [ ] Ensure the player can continue north toward Earth without flow breakage.
-- [ ] Eliminate places where the campaign still feels like a mission menu in disguise.
-- [ ] Redesign any remaining “click next mission” flow until route choice, logistics, and pressure are doing the real work.
-- [ ] Do not consider the strategic layer complete until the overmap creates tension even when no tactical battle is active.
-- [ ] Ensure the overmap itself carries gameplay through pursuit.
-- [ ] Ensure the overmap itself carries gameplay through uncertainty.
-- [ ] Ensure the overmap itself carries gameplay through travel pressure.
-- [ ] Ensure the overmap itself carries gameplay through docking decisions.
-- [ ] Ensure the overmap itself carries gameplay through route planning.
+- [x] Test the full strategic loop end to end until it feels like one game.
+- [x] Ensure the player can navigate meaningfully.
+- [x] Ensure the player can scout meaningfully.
+- [x] Ensure the player can manage risk meaningfully.
+- [x] Ensure the player can dock meaningfully.
+- [x] Ensure the player can recover or trade meaningfully.
+- [x] Ensure the player can react to contacts meaningfully.
+- [x] Ensure the player can choose whether to fight meaningfully.
+- [x] Ensure encounter consequences return cleanly to campaign state.
+- [x] Ensure the player can continue north toward Earth without flow breakage.
+- [x] Eliminate places where the campaign still feels like a mission menu in disguise.
+- [x] Redesign any remaining "click next mission" flow until route choice, logistics, and pressure are doing the real work.
+- [x] Do not consider the strategic layer complete until the overmap creates tension even when no tactical battle is active.
+- [x] Ensure the overmap itself carries gameplay through pursuit.
+- [x] Ensure the overmap itself carries gameplay through uncertainty.
+- [x] Ensure the overmap itself carries gameplay through travel pressure.
+- [x] Ensure the overmap itself carries gameplay through docking decisions.
+- [x] Ensure the overmap itself carries gameplay through route planning.
 
 ## Final Definition of Done
 

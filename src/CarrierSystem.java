@@ -328,6 +328,7 @@ public final class CarrierSystem {
         if (launched > 0) {
             carrier.flightDeckLaunchCursor = Math.floorMod(carrier.flightDeckLaunchCursor + 1, Math.max(1, carrier.flightDeckLoadout.length));
             carrier.resetFighterTimer();
+            AudioSystem.onFlightLaunch(ctx, carrier);
         }
         return launched;
     }

@@ -120,6 +120,9 @@ public final class CampaignCheckpointStore {
         public int completedMainMissions = 0;
         public double earthProgress = 0.0;
         public double enemyAlertLevel = 0.0;
+        public double campaignIntelLevel = 0.0;
+        public double strategicExposureLevel = 0.0;
+        public double recentStrikePressure = 0.0;
         public boolean galaxyEncounterActive = false;
         public int campaignFuel = 0;
         public int campaignSupplies = 0;
@@ -217,6 +220,9 @@ public final class CampaignCheckpointStore {
             completedMainMissions = clamp(completedMainMissions, 0, MAX_CAMPAIGN_SECTORS);
             earthProgress = clamp(finiteOr(earthProgress, 0.0), 0.0, 1.0);
             enemyAlertLevel = clamp(finiteOr(enemyAlertLevel, 0.0), 0.0, 100.0);
+            campaignIntelLevel = clamp(finiteOr(campaignIntelLevel, 0.0), 0.0, 100.0);
+            strategicExposureLevel = clamp(finiteOr(strategicExposureLevel, 0.0), 0.0, 100.0);
+            recentStrikePressure = clamp(finiteOr(recentStrikePressure, 0.0), 0.0, 100.0);
             campaignFuel = Math.max(0, campaignFuel);
             campaignSupplies = Math.max(0, campaignSupplies);
             campaignAmmo = Math.max(0, campaignAmmo);
@@ -357,6 +363,9 @@ public final class CampaignCheckpointStore {
                 cp.completedMainMissions = parseInt(props, "completedMainMissions", cp.completedMainMissions);
                 cp.earthProgress = parseDouble(props, "earthProgress", cp.earthProgress);
                 cp.enemyAlertLevel = parseDouble(props, "enemyAlertLevel", cp.enemyAlertLevel);
+                cp.campaignIntelLevel = parseDouble(props, "campaignIntelLevel", cp.campaignIntelLevel);
+                cp.strategicExposureLevel = parseDouble(props, "strategicExposureLevel", cp.strategicExposureLevel);
+                cp.recentStrikePressure = parseDouble(props, "recentStrikePressure", cp.recentStrikePressure);
                 cp.galaxyEncounterActive = parseBoolean(props, "galaxyEncounterActive", cp.galaxyEncounterActive);
                 cp.campaignFuel = parseInt(props, "campaignFuel", cp.campaignFuel);
                 cp.campaignSupplies = parseInt(props, "campaignSupplies", cp.campaignSupplies);
@@ -487,6 +496,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("completedMainMissions", String.valueOf(cp.completedMainMissions));
             props.setProperty("earthProgress", String.valueOf(cp.earthProgress));
             props.setProperty("enemyAlertLevel", String.valueOf(cp.enemyAlertLevel));
+            props.setProperty("campaignIntelLevel", String.valueOf(cp.campaignIntelLevel));
+            props.setProperty("strategicExposureLevel", String.valueOf(cp.strategicExposureLevel));
+            props.setProperty("recentStrikePressure", String.valueOf(cp.recentStrikePressure));
             props.setProperty("galaxyEncounterActive", String.valueOf(cp.galaxyEncounterActive));
             props.setProperty("campaignFuel", String.valueOf(cp.campaignFuel));
             props.setProperty("campaignSupplies", String.valueOf(cp.campaignSupplies));

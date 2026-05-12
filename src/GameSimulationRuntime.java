@@ -281,6 +281,7 @@ public final class GameSimulationRuntime {
         ship.vx = 0.0;
         ship.vy = 0.0;
         ship.cancelBattlefieldWarp();
+        AudioSystem.onWarpExit(ctx, ship);
         ship.campaignMissionSubzone = arrivedCampaignSubzone;
         ship.campaignWarpSourceSubzone = -1;
         BattlefieldSectorSystem.SectorDefinition arrivedSector = BattlefieldSectorSystem.sectorAt(ctx, tx, ty);

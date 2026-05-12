@@ -584,6 +584,14 @@ public final class CampaignSystem {
         }
     }
 
+    private static final class StrategicCountermeasureProfile {
+        double interception;
+        double jamming;
+        double decoy;
+        double evasion;
+        double alertResponse;
+    }
+
     private static final class GalaxySearchGroup {
         final int id;
         final String label;
@@ -1034,6 +1042,7 @@ public final class CampaignSystem {
             case INTEL -> {
                 lines.add("Intel Exchange");
                 lines.add("Reveals local hostile contacts and reduces enemy alert.");
+                lines.add("Current intel quality: " + campaignIntelReadout(ctx));
                 lines.add("Green hubs identify more contacts; other hubs mostly confirm threats.");
             }
             case CONTRACTS -> {
@@ -1063,6 +1072,18 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "SOUTHERN SHELTER";
         return regionalPressureLabel(regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY));
+    }
+
+    public static String campaignIntelReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        double intel = (st == null) ? 0.0 : MathUtil.clamp(st.campaignIntelLevel, 0.0, 100.0);
+        return intelBandLabel(intel) + " (" + (int) Math.round(intel) + ")";
+    }
+
+    public static String campaignExposureReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        double exposure = (st == null) ? 0.0 : MathUtil.clamp(st.strategicExposureLevel, 0.0, 100.0);
+        return exposureBandLabel(exposure) + " (" + (int) Math.round(exposure) + ")";
     }
 
     public static String threatReadoutForSidebar(float threatLevel) {
@@ -1105,7 +1126,54 @@ public final class CampaignSystem {
                 "Threat Exposure: " + routeExposureLabel(assessment) + "  Risk " + (int) Math.round(assessment.interceptionRisk) + "%",
                 "Logistics Pressure: " + routeLogisticsLabel(assessment),
                 "Opportunity Window: " + routeOpportunityLabel(assessment),
-                "Regional Pressure: " + regionalPressureLabel(assessment.northPressure)
+                "Regional Pressure: " + regionalPressureLabel(assessment.northPressure),
+                "Intel Confidence: " + campaignIntelReadout(ctx)
+        );
+    }
+
+    public static List<String> campaignSummarySidebarLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Campaign data unavailable.");
+        CampaignLocation current = currentCampaignLocation(ctx);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        CampaignTravelState travel = st.galaxyTravel;
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Position: " + ((current == null) ? "In transit" : current.name));
+        out.add("Destination: " + ((selected == null) ? "None selected" : selected.name));
+        out.add("Progress: Earth " + Math.round(earthProgress(ctx) * 100.0) + "%");
+        out.add("Travel: " + galaxyTravelSidebarReadout(ctx, travel));
+        out.add("Hunt Status: " + huntedStatusReadout(ctx));
+        out.add("Alert / Pressure: " + enemyAlertReadout(ctx) + "  |  " + enemyAlertRegionReadout(ctx));
+        return out;
+    }
+
+    public static List<String> selectedLocationSidebarLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        if (ctx == null || st == null) return List.of("No location selected.");
+        if (selected == null) return List.of("No location selected.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Type: " + selected.type.name().replace('_', ' '));
+        out.add("Alignment: " + selectedLocationAlignmentLabel(selected));
+        out.add("Threat: " + threatReadoutForSidebar(selected.threatLevel));
+        out.add("Docking: " + dockingStatusReadout(ctx, selected));
+        out.addAll(selectedHubIdentityLines(ctx));
+        out.addAll(compactRouteAssessmentLines(ctx));
+        out.add(selected.detail);
+        return out;
+    }
+
+    public static List<String> compactRouteAssessmentLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        CampaignLocation current = currentCampaignLocation(ctx);
+        if (ctx == null || st == null || selected == null) return List.of();
+        ensureGalaxyFleetPosition(st, current);
+        GalaxyRouteAssessment assessment = analyzeRoute(st, ctx, st.playerGalaxyX, st.playerGalaxyY, selected);
+        return List.of(
+                "Route: " + routeTempoLabel(assessment) + "  |  ETA " + (int) Math.ceil(assessment.durationSec) + "s",
+                "Risk: " + routeExposureLabel(assessment) + "  |  " + (int) Math.round(assessment.interceptionRisk) + "%",
+                "Support: " + routeLogisticsLabel(assessment) + "  |  Intel " + campaignIntelReadout(ctx)
         );
     }
 
@@ -1139,8 +1207,11 @@ public final class CampaignSystem {
 
     public static List<String> galaxyIntelSummaryLines(GameContext ctx) {
         CampaignState st = state(ctx);
-        if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return List.of();
+        if (ctx == null || st == null) return List.of();
         ArrayList<String> out = new ArrayList<>();
+        out.add("Intel Quality  |  " + campaignIntelReadout(ctx));
+        out.add("Operational Exposure  |  " + campaignExposureReadout(ctx));
+        if (st.galaxySearchGroups.isEmpty()) return out;
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
             if (group == null || !group.visible) continue;
             String name = contactConfidenceLabel(group);
@@ -1155,10 +1226,33 @@ public final class CampaignSystem {
             out.add(name + "  |  " + state + "  |  " + threatReadout(group.threatLevel));
             if (out.size() >= 5) break;
         }
-        if (out.isEmpty()) {
+        if (out.size() <= 2) {
             out.add("No confirmed hostile contacts in current sensor picture.");
         }
         return out;
+    }
+
+    public static String hubServiceActionLabel(GameContext ctx, CampaignLocation location, HubService service) {
+        if (service == null) return "SERVICE";
+        return service.label.toUpperCase(Locale.US);
+    }
+
+    public static String hubServiceActionDetail(GameContext ctx, CampaignLocation location, HubService service) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || location == null || service == null) return "";
+        if (!isDockedAtSelectedLocation(ctx)) return "APPROACH";
+        HubProfile profile = hubProfile(ctx, location);
+        return switch (service) {
+            case REPAIR -> "C " + GameContext.scaleCreditEarnings((int) Math.round((80 + damagedPersistentFleetCount(ctx, st) * 28) * profile.priceMul));
+            case TRADE -> "SELL SALVAGE";
+            case REFIT -> "C " + GameContext.scaleCreditEarnings((int) Math.round(110 * profile.priceMul));
+            case SHIPYARD -> "BUILD READY";
+            case SUPPLY -> "C " + GameContext.scaleCreditEarnings((int) Math.round(90 * profile.priceMul));
+            case INTEL -> "C " + GameContext.scaleCreditEarnings((int) Math.round(70 * profile.priceMul));
+            case CONTRACTS -> "TAKE ADVANCE";
+            case SALVAGE -> "PAYOUT";
+            case FUEL -> "C " + GameContext.scaleCreditEarnings((int) Math.round(70 * profile.priceMul));
+        };
     }
 
     public static boolean openSelectedHubService(GameContext ctx, HubService service) {
@@ -1577,15 +1671,20 @@ public final class CampaignSystem {
                 CampaignLocation destination = campaignLocationById(st, travel.destinationId);
                 int eta = (int) Math.ceil(Math.max(0.0, (1.0 - travel.progress) * travel.durationSec));
                 return "TRAVEL: " + ((destination == null) ? "EN ROUTE" : destination.name.toUpperCase(Locale.US))
-                        + "  ETA " + eta + "S  RISK " + (int) Math.round(travel.interceptionRisk) + "%";
+                        + "  ETA " + eta + "S  RISK " + (int) Math.round(travel.interceptionRisk) + "%"
+                        + "  INTEL " + (int) Math.round(st.campaignIntelLevel);
             }
-            return "FLEET HOLDING  |  SELECT A DESTINATION, PRESS T TO CRUISE, H TO HOLD, OR DOUBLE-CLICK TO DEPART";
+            return "FLEET HOLDING  |  INTEL " + (int) Math.round(st.campaignIntelLevel)
+                    + "  EXPOSURE " + (int) Math.round(st.strategicExposureLevel)
+                    + "  |  SELECT A DESTINATION, PRESS T TO CRUISE, H TO HOLD, OR DOUBLE-CLICK TO DEPART";
         }
         int torpedoes = Math.max(0, st.strategicTorpedoCharges);
         int sortieCap = strategicSortieCapacity(ctx);
         int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
         int atomic = Math.max(0, st.strategicAtomicCharges);
-        return "TORPEDOES " + torpedoes + "  SORTIES " + sortiesLeft + "  ATOMIC " + atomic;
+        return "TORPEDOES " + torpedoes + "  SORTIES " + sortiesLeft + "  ATOMIC " + atomic
+                + "  INTEL " + (int) Math.round(st.campaignIntelLevel)
+                + "  EXPOSURE " + (int) Math.round(st.strategicExposureLevel);
     }
 
     static List<String> strategicDivisionSummaryLines(GameContext ctx) {
@@ -1770,6 +1869,171 @@ public final class CampaignSystem {
                 && !ctx.ui.strategicEncounterPrompt.campaignLocationId.isBlank()));
     }
 
+    private static double strategicReconQualityAgainstTaskForce(GameContext ctx, CampaignState st, StrategicTaskForce taskForce) {
+        if (ctx == null || st == null || taskForce == null) return 0.18;
+        StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        double recon = 0.16
+                + MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0) * 0.48
+                + roleProfile.carrierProjection() * 0.22
+                + roleProfile.stealthCoverage() * 0.14
+                + roleProfile.strikeReach() * 0.08;
+        if (taskForce.kind == StrategicTaskForceKind.STEALTH) recon -= 0.18;
+        if (taskForce.kind == StrategicTaskForceKind.CONVOY || taskForce.kind == StrategicTaskForceKind.SALVAGE) recon += 0.06;
+        if (taskForce.disruptionRemainingSec > 0.0) recon += 0.12;
+        if (taskForce.torpedoStrikesSustained + taskForce.sortieStrikesSustained > 0) recon += 0.08;
+        return MathUtil.clamp(recon, 0.05, 0.96);
+    }
+
+    private static StrategicCountermeasureProfile strategicCountermeasureProfile(GameContext ctx, CampaignState st, StrategicTaskForce taskForce) {
+        StrategicCountermeasureProfile profile = new StrategicCountermeasureProfile();
+        if (st == null || taskForce == null) return profile;
+        switch (taskForce.kind) {
+            case PATROL -> {
+                profile.interception = 0.18;
+                profile.jamming = 0.10;
+                profile.decoy = 0.10;
+                profile.evasion = 0.12;
+                profile.alertResponse = 0.18;
+            }
+            case STRIKE -> {
+                profile.interception = 0.28;
+                profile.jamming = 0.14;
+                profile.decoy = 0.10;
+                profile.evasion = 0.16;
+                profile.alertResponse = 0.30;
+            }
+            case STEALTH -> {
+                profile.interception = 0.10;
+                profile.jamming = 0.30;
+                profile.decoy = 0.24;
+                profile.evasion = 0.30;
+                profile.alertResponse = 0.24;
+            }
+            case CONVOY -> {
+                profile.interception = 0.12;
+                profile.jamming = 0.08;
+                profile.decoy = 0.26;
+                profile.evasion = 0.24;
+                profile.alertResponse = 0.18;
+            }
+            case SALVAGE -> {
+                profile.interception = 0.08;
+                profile.jamming = 0.06;
+                profile.decoy = 0.18;
+                profile.evasion = 0.18;
+                profile.alertResponse = 0.12;
+            }
+        }
+        double support = hostileCountermeasureSupport(st, taskForce);
+        double alert = MathUtil.clamp(st.enemyAlertLevel / 100.0, 0.0, 1.0);
+        double strikeHeat = MathUtil.clamp(st.recentStrikePressure / 100.0, 0.0, 1.0);
+        profile.interception = MathUtil.clamp(profile.interception + support * 0.10 + alert * 0.16, 0.0, 0.78);
+        profile.jamming = MathUtil.clamp(profile.jamming + support * 0.06 + alert * 0.10, 0.0, 0.78);
+        profile.decoy = MathUtil.clamp(profile.decoy + support * 0.05 + strikeHeat * 0.08, 0.0, 0.80);
+        profile.evasion = MathUtil.clamp(profile.evasion + alert * 0.10 + strikeHeat * 0.08, 0.0, 0.82);
+        profile.alertResponse = MathUtil.clamp(profile.alertResponse + support * 0.08 + alert * 0.20 + strikeHeat * 0.20, 0.0, 0.92);
+        return profile;
+    }
+
+    private static double hostileCountermeasureSupport(CampaignState st, StrategicTaskForce target) {
+        if (st == null || target == null) return 0.0;
+        double support = 0.0;
+        for (StrategicTaskForce other : st.strategicTaskForces) {
+            if (other == null || other == target || other.encounterResolved || !other.hostile) continue;
+            int distance = manhattanSubzoneDistance(other.currentSubzone, target.currentSubzone);
+            if (distance <= 0) support += 0.18;
+            else if (distance == 1) support += 0.10;
+            else if (distance == 2) support += 0.05;
+        }
+        return MathUtil.clamp(support, 0.0, 0.45);
+    }
+
+    private static int countHostileCounterInterceptors(CampaignState st, StrategicTaskForce target) {
+        if (st == null || target == null) return 0;
+        int count = 0;
+        for (StrategicTaskForce other : st.strategicTaskForces) {
+            if (other == null || other == target || other.encounterResolved || !other.hostile) continue;
+            if (manhattanSubzoneDistance(other.currentSubzone, target.currentSubzone) <= 1) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static void rerouteHostileTaskForcesAfterStrike(GameContext ctx, CampaignState st,
+                                                            StrategicTaskForce target,
+                                                            StrategicCountermeasureProfile countermeasure) {
+        if (ctx == null || st == null || target == null || countermeasure == null) return;
+        for (StrategicTaskForce other : st.strategicTaskForces) {
+            if (other == null || other == target || other.encounterResolved || !other.hostile) continue;
+            int distance = manhattanSubzoneDistance(other.currentSubzone, target.currentSubzone);
+            if (distance > 2) continue;
+            other.dwellRemainingSec = 0.0;
+            other.targetSubzone = target.currentSubzone;
+            if (distance > 0) {
+                other.transitRemainingSec = Math.max(4.0, other.transitRemainingSec * 0.55);
+            }
+            if (other.kind == StrategicTaskForceKind.PATROL || other.kind == StrategicTaskForceKind.STRIKE) {
+                other.disruptionRemainingSec = Math.max(0.0, other.disruptionRemainingSec - 4.0);
+            }
+        }
+        if (target.currentStrength > 1.0 && countermeasure.evasion >= 0.18) {
+            List<Integer> neighbors = strategicNeighborSubzones(target.currentSubzone);
+            if (!neighbors.isEmpty()) {
+                int playerSubzone = currentLoadedMissionSubzone(ctx);
+                neighbors.sort((a, b) -> Integer.compare(manhattanSubzoneDistance(b, playerSubzone), manhattanSubzoneDistance(a, playerSubzone)));
+                int fallback = neighbors.get(0);
+                if (fallback >= 0 && fallback != target.currentSubzone) {
+                    target.targetSubzone = fallback;
+                    target.transitRemainingSec = Math.max(5.0, strategicTransitSeconds(target, target.currentSubzone, fallback, friendlyStrategicRoleProfile(ctx, st)) * 0.55);
+                    target.dwellRemainingSec = 0.0;
+                }
+            }
+        }
+    }
+
+    private static void applyLongRangeStrikeConsequences(GameContext ctx, CampaignState st,
+                                                         StrategicTaskForce taskForce,
+                                                         String strikeType,
+                                                         double reconQuality,
+                                                         StrategicCountermeasureProfile countermeasure,
+                                                         boolean atomic) {
+        if (ctx == null || st == null || taskForce == null || countermeasure == null) return;
+        double baseAlert = atomic ? 24.0 : ("SORTIE".equals(strikeType) ? 11.0 : 8.0);
+        double baseExposure = atomic ? 28.0 : ("SORTIE".equals(strikeType) ? 13.0 : 10.0);
+        double baseStrikePressure = atomic ? 22.0 : ("SORTIE".equals(strikeType) ? 12.0 : 10.0);
+        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + baseAlert + countermeasure.alertResponse * 18.0, 0.0, 100.0);
+        st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + baseExposure + countermeasure.alertResponse * 16.0, 0.0, 100.0);
+        st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure + baseStrikePressure + countermeasure.alertResponse * 20.0, 0.0, 100.0);
+        double intelShift = atomic
+                ? (reconQuality * 5.0 - countermeasure.jamming * 12.0)
+                : ("SORTIE".equals(strikeType)
+                ? (10.0 + reconQuality * 12.0 - countermeasure.jamming * 8.0)
+                : (4.0 + reconQuality * 6.0 - countermeasure.jamming * 9.0));
+        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelShift, 0.0, 100.0);
+        if (atomic) {
+            st.greenContractFavor = Math.max(0, st.greenContractFavor - 2);
+            st.yellowLiberationFavor = Math.max(0, st.yellowLiberationFavor - 2);
+        }
+        rerouteHostileTaskForcesAfterStrike(ctx, st, taskForce, countermeasure);
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            group.visible = true;
+            group.contactFadeSec = Math.max(group.contactFadeSec, atomic ? 24.0 : 16.0);
+            if (group.contactConfidence.ordinal() < GalaxyContactConfidence.CONFIRMED_HOSTILE.ordinal()) {
+                group.contactConfidence = GalaxyContactConfidence.CONFIRMED_HOSTILE;
+            }
+            if (st.enemyAlertLevel >= 72.0 || atomic) {
+                group.contactConfidence = GalaxyContactConfidence.IDENTIFIED_TASK_FORCE;
+                group.identified = true;
+            }
+            group.behavior = (group.tier >= 3 || atomic) ? GalaxySearchBehavior.INTERCEPTING : GalaxySearchBehavior.INVESTIGATING;
+            group.targetX = st.playerGalaxyX;
+            group.targetY = st.playerGalaxyY;
+            group.stateTimer = Math.max(group.stateTimer, atomic ? 18.0 : 12.0);
+        }
+    }
+
     public static boolean launchStrategicTorpedoStrike(GameContext ctx, double worldX, double worldY) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
@@ -1783,14 +2047,34 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "NO TORPEDO STRIKES READY", 1.2);
             return true;
         }
+        int ammoCost = 18;
+        int fuelCost = 9;
+        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost) {
+            EventSystem.showBanner(ctx, "TORPEDO STRIKE REQUIRES AMMO AND FUEL", 1.2);
+            return true;
+        }
         st.strategicTorpedoCharges--;
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        double reconQuality = strategicReconQualityAgainstTaskForce(ctx, st, taskForce);
+        StrategicCountermeasureProfile countermeasure = strategicCountermeasureProfile(ctx, st, taskForce);
         double damageFrac = (taskForce.kind == StrategicTaskForceKind.STRIKE) ? 0.34
                 : (taskForce.kind == StrategicTaskForceKind.STEALTH ? 0.22 : 0.30);
         damageFrac += roleProfile.stealthCoverage() * 0.10 + roleProfile.carrierProjection() * 0.05;
+        damageFrac *= MathUtil.clamp(
+                0.42 + reconQuality * 0.68
+                        - countermeasure.jamming * 0.30
+                        - countermeasure.decoy * 0.24
+                        - countermeasure.interception * 0.18
+                        - countermeasure.evasion * 0.18,
+                0.18,
+                1.08);
         taskForce.currentStrength = Math.max(0.0, taskForce.currentStrength - taskForce.maxStrength * damageFrac);
-        taskForce.disruptionRemainingSec = Math.max(taskForce.disruptionRemainingSec, 18.0 + roleProfile.carrierProjection() * 10.0);
+        taskForce.disruptionRemainingSec = Math.max(taskForce.disruptionRemainingSec,
+                16.0 + roleProfile.carrierProjection() * 10.0 - countermeasure.evasion * 4.0);
         taskForce.torpedoStrikesSustained++;
+        applyLongRangeStrikeConsequences(ctx, st, taskForce, "TORPEDO", reconQuality, countermeasure, false);
         resolveStrategicTaskForceAfterRemoteStrike(ctx, st, taskForce, "LONG-RANGE TORPEDO IMPACT");
         return true;
     }
@@ -1813,16 +2097,39 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "SORTIE DECKS COMMITTED", 1.2);
             return true;
         }
+        int ammoCost = 10;
+        int fuelCost = 12;
+        int supplyCost = 4;
+        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
+            EventSystem.showBanner(ctx, "SORTIE STRIKE REQUIRES FUEL, AMMO, AND SUPPLIES", 1.2);
+            return true;
+        }
         st.strategicSortiesLaunched++;
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        double reconQuality = strategicReconQualityAgainstTaskForce(ctx, st, taskForce);
+        StrategicCountermeasureProfile countermeasure = strategicCountermeasureProfile(ctx, st, taskForce);
+        int interceptors = countHostileCounterInterceptors(st, taskForce);
         double damageFrac = (taskForce.kind == StrategicTaskForceKind.STEALTH) ? 0.28 : 0.18;
         damageFrac += roleProfile.carrierProjection() * 0.16;
         if (taskForce.kind == StrategicTaskForceKind.STRIKE) {
             damageFrac += roleProfile.carrierProjection() * 0.08;
         }
+        damageFrac *= MathUtil.clamp(
+                0.52 + reconQuality * 0.78
+                        - countermeasure.interception * 0.30
+                        - countermeasure.jamming * 0.16
+                        - countermeasure.decoy * 0.10
+                        - interceptors * 0.04,
+                0.22,
+                1.15);
         taskForce.currentStrength = Math.max(0.0, taskForce.currentStrength - taskForce.maxStrength * damageFrac);
-        taskForce.disruptionRemainingSec = Math.max(taskForce.disruptionRemainingSec, 28.0 + roleProfile.carrierProjection() * 12.0);
+        taskForce.disruptionRemainingSec = Math.max(taskForce.disruptionRemainingSec,
+                24.0 + roleProfile.carrierProjection() * 14.0 + reconQuality * 10.0 - countermeasure.evasion * 5.0);
         taskForce.sortieStrikesSustained++;
+        applyLongRangeStrikeConsequences(ctx, st, taskForce, "SORTIE", reconQuality, countermeasure, false);
         resolveStrategicTaskForceAfterRemoteStrike(ctx, st, taskForce, "SORTIE STRIKE COMPLETE");
         return true;
     }
@@ -1840,8 +2147,20 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "ATOMIC OPTION UNAVAILABLE", 1.2);
             return true;
         }
+        int ammoCost = 42;
+        int fuelCost = 18;
+        int supplyCost = 12;
+        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
+            EventSystem.showBanner(ctx, "ATOMIC STRIKE REQUIRES HEAVY FUEL, AMMO, AND SUPPLIES", 1.3);
+            return true;
+        }
 
         st.strategicAtomicCharges--;
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
+        double reconQuality = strategicReconQualityAgainstTaskForce(ctx, st, taskForce);
+        StrategicCountermeasureProfile countermeasure = strategicCountermeasureProfile(ctx, st, taskForce);
         int strikeSubzone = taskForce.currentSubzone;
         for (StrategicTaskForce candidate : st.strategicTaskForces) {
             if (candidate == null || candidate.encounterResolved || candidate.currentSubzone != strikeSubzone) continue;
@@ -1853,6 +2172,9 @@ public final class CampaignSystem {
             } else {
                 damageFrac = 0.26;
             }
+            if (candidate == taskForce) {
+                damageFrac *= MathUtil.clamp(0.88 + reconQuality * 0.18 - countermeasure.evasion * 0.10, 0.72, 1.06);
+            }
             candidate.currentStrength = Math.max(0.0, candidate.currentStrength - candidate.maxStrength * damageFrac);
             candidate.disruptionRemainingSec = Math.max(candidate.disruptionRemainingSec, 36.0);
             if (candidate.currentStrength <= 1.0) {
@@ -1862,6 +2184,7 @@ public final class CampaignSystem {
                 candidate.spawnedShipIds.clear();
             }
         }
+        applyLongRangeStrikeConsequences(ctx, st, taskForce, "ATOMIC", reconQuality, countermeasure, true);
         if (hasPendingStrategicEncounterChoice(ctx)
                 && ctx.ui.strategicEncounterPrompt.taskForceId == taskForce.id
                 && taskForce.encounterResolved) {
@@ -2650,6 +2973,9 @@ public final class CampaignSystem {
         public int completedMainMissions = 0;
         public double earthProgress = 0.0;
         public double enemyAlertLevel = 0.0;
+        public double campaignIntelLevel = 28.0;
+        public double strategicExposureLevel = 0.0;
+        public double recentStrikePressure = 0.0;
         public boolean galaxyEncounterActive = false;
         public int campaignFuel = 120;
         public int campaignSupplies = 90;
@@ -2944,6 +3270,8 @@ public final class CampaignSystem {
         st.strategicTorpedoCharges = 4;
         st.strategicAtomicCharges = 1;
         st.enemyAlertLevel = 18.0;
+        st.campaignIntelLevel = 52.0;
+        st.strategicExposureLevel = 14.0;
         st.branchScore = 4;
         st.branchRoute = branchRouteLabel(st.branchScore);
 
@@ -3142,6 +3470,8 @@ public final class CampaignSystem {
                 }
                 ctx.credits -= cost;
                 st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel - (4.0 + profile.supportMul * 3.0));
+                st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 14.0 + profile.supportMul * 10.0, 0.0, 100.0);
+                st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - (3.0 + profile.quality * 2.0));
                 revealLocalIntel(st, location, profile);
                 EventSystem.showBanner(ctx, "INTEL ACQUIRED - LOCAL THREAT PICTURE UPDATED", 1.5);
                 return true;
@@ -4943,6 +5273,7 @@ public final class CampaignSystem {
     private static void updateStrategicOvermapCampaign(GameContext ctx, CampaignState st, double dt) {
         if (ctx == null || st == null) return;
         st.sectorElapsed += Math.max(0.0, dt);
+        updateStrategicIntelAndExposure(ctx, st, dt);
         updateGalaxySearchGroups(ctx, st, dt);
         updateCampaignTravel(ctx, st, dt);
         updateGalaxyDetectionAndInterception(ctx, st, dt);
@@ -4951,6 +5282,17 @@ public final class CampaignSystem {
         updatePocketDiscoveries(ctx, st);
         updateRecoverableWreckSites(ctx, st);
         maintainStrategicOvermapView(ctx, st);
+    }
+
+    private static void updateStrategicIntelAndExposure(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || dt <= 0.0) return;
+        StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        double regionalPressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
+        double intelDrift = -0.42 - regionalPressure * 0.16 + roleProfile.carrierProjection() * 0.70 + roleProfile.stealthCoverage() * 0.45;
+        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelDrift * dt, 0.0, 100.0);
+        double exposureDrift = -0.60 + regionalPressure * 0.18 - roleProfile.stealthCoverage() * 0.32 - roleProfile.screenCoverage() * 0.22;
+        st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + exposureDrift * dt, 0.0, 100.0);
+        st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure - dt * 0.95, 0.0, 100.0);
     }
 
     private static void updateCampaignTravel(GameContext ctx, CampaignState st, double dt) {
@@ -5065,6 +5407,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return;
         ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        double intelFactor = MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0);
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
             if (group == null) continue;
             group.stateTimer = Math.max(0.0, group.stateTimer - Math.max(0.0, dt));
@@ -5085,13 +5428,14 @@ public final class CampaignSystem {
             double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
             double detectionRange = group.detectionRange
                     * (0.92 + regionPressure * 0.55)
-                    * (1.0 - roleProfile.stealthCoverage() * 0.26);
+                    * (1.0 - roleProfile.stealthCoverage() * 0.26 + intelFactor * 0.14);
             double broadSenseRange = detectionRange * (1.30 + regionPressure * 0.20);
-            boolean broadSense = playerDist <= broadSenseRange || st.enemyAlertLevel >= 38.0 + regionPressure * 16.0;
-            boolean solidTrack = playerDist <= detectionRange || st.enemyAlertLevel >= 58.0 + regionPressure * 12.0;
+            boolean broadSense = playerDist <= broadSenseRange || st.enemyAlertLevel >= 38.0 + regionPressure * 16.0 || intelFactor >= 0.72;
+            boolean solidTrack = playerDist <= detectionRange || st.enemyAlertLevel >= 58.0 + regionPressure * 12.0 || intelFactor >= 0.64 && playerDist <= broadSenseRange * 1.08;
             boolean hardIdentify = playerDist <= detectionRange * (0.78 + roleProfile.carrierProjection() * 0.18)
                     || st.enemyAlertLevel >= 78.0
-                    || roleProfile.carrierProjection() >= 0.4 && solidTrack;
+                    || roleProfile.carrierProjection() >= 0.4 && solidTrack
+                    || intelFactor >= 0.82 && solidTrack;
             if (hardIdentify) {
                 group.contactConfidence = GalaxyContactConfidence.IDENTIFIED_TASK_FORCE;
                 group.visible = true;
@@ -5200,9 +5544,9 @@ public final class CampaignSystem {
                     ctx,
                     group,
                     "HOSTILE CONTACT: " + contactConfidenceLabel(group).toUpperCase(Locale.US),
-                    "Enemy patrols have closed on the fleet during transit. Take command to fight through the interception, or auto-resolve the engagement.",
+                    "Enemy patrols have closed on the fleet during transit. Take command to fight through one large tactical sector, or auto-resolve the engagement from the campaign layer.",
                     "Intercepted near " + encounterAnchor.name,
-                    contactConfidenceLabel(group) + "  |  Threat " + threatReadout(group.threatLevel));
+                    galaxySearchGroupStrengthReadout(ctx, st, group));
             st.galaxyTravel.clear();
             EventSystem.showBanner(ctx, "INTERCEPTED BY HOSTILE SEARCH GROUP", 1.5);
             return;
@@ -5245,9 +5589,9 @@ public final class CampaignSystem {
                         ctx,
                         group,
                         "HOSTILE ZONE: " + location.name.toUpperCase(Locale.US),
-                        "Enemy search activity dominates this area. Take command to force a passage through the hostile screen, or auto-resolve the clash from the campaign layer.",
+                        "Enemy search activity dominates this area. Take command to force a passage through one large tactical sector, or auto-resolve the clash from the campaign layer.",
                         "Patrol zone " + location.name,
-                        "Threat " + threatReadout(Math.max(location.threatLevel, group.threatLevel)));
+                        galaxySearchGroupStrengthReadout(ctx, st, group));
                 EventSystem.showBanner(ctx, "ENCOUNTER READY: " + location.name.toUpperCase(Locale.US), 1.4);
                 return;
             }
@@ -5304,7 +5648,27 @@ public final class CampaignSystem {
         double fleet = galaxyCampaignFleetStrength(ctx, st);
         double threat = campaignLocationThreatValue(st, location);
         return "Fleet " + Math.round(fleet) + "  Threat " + Math.round(threat)
-                + "  " + threatReadout(location == null ? 0.0f : location.threatLevel);
+                + "  " + threatReadout(location == null ? 0.0f : location.threatLevel)
+                + "  |  " + strategicManualPriorityTag(fleet, threat, location != null && location.primaryMission);
+    }
+
+    private static String galaxySearchGroupStrengthReadout(GameContext ctx, CampaignState st, GalaxySearchGroup group) {
+        double fleet = galaxyCampaignFleetStrength(ctx, st);
+        double threat = Math.max(35.0, 70.0 + group.tier * 30.0 + group.threatLevel * 120.0);
+        return contactConfidenceLabel(group)
+                + "  |  Threat " + threatReadout(group.threatLevel)
+                + "  |  " + strategicManualPriorityTag(fleet, threat, group.behavior == GalaxySearchBehavior.INTERCEPTING);
+    }
+
+    private static String strategicManualPriorityTag(double fleetStrength, double threatStrength, boolean importantEncounter) {
+        double ratio = fleetStrength / Math.max(45.0, threatStrength);
+        if (importantEncounter || ratio < 0.95) {
+            return "MANUAL PRIORITY: HIGH";
+        }
+        if (ratio < 1.20) {
+            return "MANUAL PRIORITY: RECOMMENDED";
+        }
+        return "AUTO-RESOLVE: VIABLE";
     }
 
     private static GalaxyRouteAssessment analyzeRoute(CampaignState st, GameContext ctx, double fromX, double fromY, CampaignLocation destination) {
@@ -5333,16 +5697,22 @@ public final class CampaignSystem {
         hostileCoverage /= (samples + 1.0);
         supportCoverage /= (samples + 1.0);
         opportunityCoverage /= (samples + 1.0);
+        double intelFactor = MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0);
+        double exposureFactor = MathUtil.clamp(st.strategicExposureLevel / 100.0, 0.0, 1.0);
+        double strikeHeat = MathUtil.clamp(st.recentStrikePressure / 100.0, 0.0, 1.0);
+        hostileCoverage = MathUtil.clamp(hostileCoverage + exposureFactor * 0.12 + strikeHeat * 0.10 - intelFactor * 0.14, 0.0, 1.0);
         supportCoverage = MathUtil.clamp(supportCoverage + roleProfile.carrierProjection() * 0.12 + roleProfile.logisticsSupport() * 0.08, 0.0, 1.0);
-        opportunityCoverage = MathUtil.clamp(opportunityCoverage + roleProfile.stealthCoverage() * 0.06, 0.0, 1.0);
+        opportunityCoverage = MathUtil.clamp(opportunityCoverage + roleProfile.stealthCoverage() * 0.06 + intelFactor * 0.10, 0.0, 1.0);
         double logisticsPressure = MathUtil.clamp(
                 0.14
                         + Math.min(0.55, dist / 16000.0)
                         + northPressure * 0.42
                         + hostileCoverage * 0.24
                         + roleProfile.heavyPresence() * 0.18
+                        + exposureFactor * 0.12
                         - supportCoverage * 0.28
-                        - roleProfile.logisticsSupport() * 0.16,
+                        - roleProfile.logisticsSupport() * 0.16
+                        - intelFactor * 0.08,
                 0.05,
                 1.0);
         double cruiseSpeed = MathUtil.clamp(
@@ -5350,8 +5720,10 @@ public final class CampaignSystem {
                         - northPressure * 75.0
                         - hostileCoverage * 48.0
                         - roleProfile.heavyPresence() * 26.0
+                        - exposureFactor * 12.0
                         + supportCoverage * 28.0
                         + roleProfile.strikeReach() * 12.0
+                        + intelFactor * 10.0
                         + opportunityCoverage * 8.0,
                 140.0,
                 320.0);
@@ -5363,8 +5735,11 @@ public final class CampaignSystem {
                         + northPressure * 22.0
                         + logisticsPressure * 18.0
                         + st.enemyAlertLevel * 0.22
+                        + exposureFactor * 16.0
+                        + strikeHeat * 12.0
                         + roleProfile.heavyPresence() * 18.0
                         - supportCoverage * 14.0
+                        - intelFactor * 14.0
                         - roleProfile.stealthCoverage() * 18.0
                         - roleProfile.carrierProjection() * 10.0
                         - opportunityCoverage * 4.0,
@@ -5474,6 +5849,70 @@ public final class CampaignSystem {
         if (p < 0.58) return "CONTESTED BELT";
         if (p < 0.78) return "LUNAR APPROACH";
         return "EARTH DEFENSE NET";
+    }
+
+    private static String intelBandLabel(double intel) {
+        double v = MathUtil.clamp(intel, 0.0, 100.0);
+        if (v < 18.0) return "BLIND";
+        if (v < 38.0) return "PATCHY";
+        if (v < 58.0) return "WORKABLE";
+        if (v < 78.0) return "SHARP";
+        return "DOMINANT";
+    }
+
+    private static String exposureBandLabel(double exposure) {
+        double v = MathUtil.clamp(exposure, 0.0, 100.0);
+        if (v < 15.0) return "MASKED";
+        if (v < 35.0) return "QUIET";
+        if (v < 55.0) return "TRACKED";
+        if (v < 75.0) return "EXPOSED";
+        return "BURNING";
+    }
+
+    private static String galaxyTravelSidebarReadout(GameContext ctx, CampaignTravelState travel) {
+        if (travel == null || !travel.traveling) return "Holding";
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        int eta = (int) Math.ceil(Math.max(0.0, (1.0 - travel.progress) * travel.durationSec));
+        return ((selected == null) ? "En route" : selected.name) + "  ETA " + eta + "s  RISK " + (int) Math.round(travel.interceptionRisk) + "%";
+    }
+
+    private static String huntedStatusReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return "Clear";
+        boolean intercepting = false;
+        boolean tracking = false;
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            if (group.behavior == GalaxySearchBehavior.INTERCEPTING && playerDist <= group.interceptRange * 1.6) {
+                intercepting = true;
+                break;
+            }
+            if (group.visible && playerDist <= group.detectionRange * 1.4) {
+                tracking = true;
+            }
+        }
+        if (intercepting) return "Being Hunted";
+        if (tracking) return "Tracked";
+        return "Clear";
+    }
+
+    private static String selectedLocationAlignmentLabel(CampaignLocation location) {
+        if (location == null || location.name == null) return "Neutral";
+        String name = location.name.toUpperCase(Locale.US);
+        if (name.contains("GREEN")) return "Green Team";
+        if (name.contains("YELLOW")) return "Yellow Team";
+        if (location.type == CampaignLocationType.ENEMY_ACTIVITY) return "Hostile";
+        return "Neutral";
+    }
+
+    private static String dockingStatusReadout(GameContext ctx, CampaignLocation location) {
+        if (ctx == null || location == null) return "Unknown";
+        if (isDockedAtSelectedLocation(ctx)) return "IN RANGE";
+        CampaignState st = state(ctx);
+        if (st == null) return "APPROACH REQUIRED";
+        double distance = Math.hypot(st.playerGalaxyX - location.x, st.playerGalaxyY - location.y);
+        return "APPROACH " + (int) Math.round(distance);
     }
 
     private static void maintainStrategicOvermapView(GameContext ctx, CampaignState st) {
@@ -5689,6 +6128,8 @@ public final class CampaignSystem {
             addObjectiveLine(lines, "Travel State: Idle and ready to depart");
         }
         addObjectiveLine(lines, "Enemy Alert: " + threatReadout((float) MathUtil.clamp(st.enemyAlertLevel / 100.0, 0.0, 1.0)));
+        addObjectiveLine(lines, "Intel Quality: " + campaignIntelReadout(ctx));
+        addObjectiveLine(lines, "Operational Exposure: " + campaignExposureReadout(ctx));
         addObjectiveLine(lines, "Regional Pressure: " + regionalPressureLabel(regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY)));
         if (expanded) {
             addObjectiveLine(lines, "Controls: arrows pan camera north-south  |  LMB select destination  |  Double-click or T to travel  |  RMB ping");
@@ -12133,6 +12574,9 @@ public final class CampaignSystem {
         cp.completedMainMissions = st.completedMainMissions;
         cp.earthProgress = st.earthProgress;
         cp.enemyAlertLevel = st.enemyAlertLevel;
+        cp.campaignIntelLevel = st.campaignIntelLevel;
+        cp.strategicExposureLevel = st.strategicExposureLevel;
+        cp.recentStrikePressure = st.recentStrikePressure;
         cp.galaxyEncounterActive = st.galaxyEncounterActive;
         cp.campaignFuel = st.campaignFuel;
         cp.campaignSupplies = st.campaignSupplies;
@@ -12240,6 +12684,9 @@ public final class CampaignSystem {
         st.completedMainMissions = cp.completedMainMissions;
         st.earthProgress = MathUtil.clamp(cp.earthProgress, 0.0, 1.0);
         st.enemyAlertLevel = MathUtil.clamp(cp.enemyAlertLevel, 0.0, 100.0);
+        st.campaignIntelLevel = MathUtil.clamp(cp.campaignIntelLevel, 0.0, 100.0);
+        st.strategicExposureLevel = MathUtil.clamp(cp.strategicExposureLevel, 0.0, 100.0);
+        st.recentStrikePressure = MathUtil.clamp(cp.recentStrikePressure, 0.0, 100.0);
         st.galaxyEncounterActive = cp.galaxyEncounterActive;
         st.campaignFuel = Math.max(0, cp.campaignFuel);
         st.campaignSupplies = Math.max(0, cp.campaignSupplies);

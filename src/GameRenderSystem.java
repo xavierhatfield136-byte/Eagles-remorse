@@ -1547,19 +1547,29 @@ if (DevTools.isDebugOverlay()) {
         double rem = e.frac();
         double age = e.ageFrac();
 
-        int blastR = (int) Math.round(8 + age * 44);
-        int coreR = (int) Math.round(4 + Math.min(1.0, age * 1.9) * 11);
-        int smokeR = (int) Math.round(14 + Math.max(0.0, age - 0.24) * 42);
+        int blastR = (int) Math.round(10 + age * 52);
+        int coreR = (int) Math.round(5 + Math.min(1.0, age * 2.0) * 13);
+        int ringR = (int) Math.round(18 + Math.max(0.0, age - 0.08) * 54);
+        int smokeR = (int) Math.round(18 + Math.max(0.0, age - 0.20) * 52);
 
-        int blastA = (int) MathUtil.clamp(220 * rem, 0, 230);
-        int coreA = (int) MathUtil.clamp((age < 0.65 ? 240 : 180) * rem, 0, 240);
-        int smokeA = (int) MathUtil.clamp(Math.max(0.0, age - 0.14) * 180 * rem, 0, 120);
+        int blastA = (int) MathUtil.clamp(232 * rem, 0, 240);
+        int coreA = (int) MathUtil.clamp((age < 0.65 ? 248 : 188) * rem, 0, 248);
+        int ringA = (int) MathUtil.clamp(Math.max(0.0, 1.0 - age * 0.74) * 178 * rem, 0, 190);
+        int smokeA = (int) MathUtil.clamp(Math.max(0.0, age - 0.10) * 196 * rem, 0, 132);
 
         g2.setColor(new Color(255, 152, 88, blastA));
         g2.fillOval((int) Math.round(e.x - blastR), (int) Math.round(e.y - blastR), blastR * 2, blastR * 2);
 
         g2.setColor(new Color(255, 228, 180, coreA));
         g2.fillOval((int) Math.round(e.x - coreR), (int) Math.round(e.y - coreR), coreR * 2, coreR * 2);
+
+        if (ringA > 4) {
+            Stroke old = g2.getStroke();
+            g2.setStroke(new BasicStroke(2.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(new Color(255, 206, 160, ringA));
+            g2.drawOval((int) Math.round(e.x - ringR), (int) Math.round(e.y - ringR), ringR * 2, ringR * 2);
+            g2.setStroke(old);
+        }
 
         if (smokeA > 4) {
             g2.setColor(new Color(78, 78, 82, smokeA));
@@ -1622,12 +1632,12 @@ if (DevTools.isDebugOverlay()) {
         int ring3R = (int) Math.round(e.finalDetonationRingRadius(2));
         int hazeR = (int) Math.round(e.finalDetonationHazeRadius());
 
-        int plasmaA = (int) MathUtil.clamp(206 * rem, 0, 220);
-        int coreA = (int) MathUtil.clamp((age < 0.52 ? 245 : 180) * rem, 0, 245);
-        int ring1A = (int) MathUtil.clamp(225 * Math.max(0.0, 1.0 - age * 0.62) * rem, 0, 228);
-        int ring2A = (int) MathUtil.clamp(188 * Math.max(0.0, 1.0 - age * 0.78) * rem, 0, 198);
-        int ring3A = (int) MathUtil.clamp(142 * Math.max(0.0, 1.0 - age * 0.96) * rem, 0, 160);
-        int hazeA = (int) MathUtil.clamp(104 * Math.max(0.0, 1.0 - age * 0.88) * rem, 0, 116);
+        int plasmaA = (int) MathUtil.clamp(220 * rem, 0, 232);
+        int coreA = (int) MathUtil.clamp((age < 0.52 ? 252 : 188) * rem, 0, 252);
+        int ring1A = (int) MathUtil.clamp(236 * Math.max(0.0, 1.0 - age * 0.58) * rem, 0, 240);
+        int ring2A = (int) MathUtil.clamp(202 * Math.max(0.0, 1.0 - age * 0.74) * rem, 0, 210);
+        int ring3A = (int) MathUtil.clamp(158 * Math.max(0.0, 1.0 - age * 0.92) * rem, 0, 172);
+        int hazeA = (int) MathUtil.clamp(118 * Math.max(0.0, 1.0 - age * 0.84) * rem, 0, 128);
 
         g2.setColor(new Color(255, 86, 74, plasmaA));
         g2.fillOval((int) Math.round(e.x - plasmaR), (int) Math.round(e.y - plasmaR), plasmaR * 2, plasmaR * 2);

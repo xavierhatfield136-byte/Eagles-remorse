@@ -47,6 +47,9 @@ public final class SfxManifest {
             event("weapon.primary_fire", "weapons", "primary_fire", Category.WEAPON, 1, 0.04, -15.0, 2, true),
             event("weapon.secondary_fire", "weapons", "secondary_fire", Category.WEAPON, 2, 0.08, -13.0, 2, true),
             event("weapon.wave_fire", "weapons", "wave_fire", Category.WEAPON, 3, 0.75, -10.0, 1, true),
+            event("flight.launch", "weapons", "flight_launch", Category.WEAPON, 2, 0.18, -11.0, 1, true),
+            event("warp.charge_start", "weapons", "warp_charge_start", Category.WEAPON, 2, 0.45, -10.5, 1, true),
+            event("warp.exit", "weapons", "warp_exit", Category.WEAPON, 3, 0.40, -9.5, 1, true),
 
             // Impacts by damage class
             event("impact.shield.kinetic", "impacts", "shield_kinetic", Category.IMPACT, 2, 0.05, -13.0, 2, true),
@@ -58,6 +61,7 @@ public final class SfxManifest {
             event("impact.hull.beam", "impacts", "hull_beam", Category.IMPACT, 2, 0.05, -12.0, 2, true),
             event("impact.hull.explosive", "impacts", "hull_explosive", Category.IMPACT, 2, 0.05, -12.0, 2, true),
             event("impact.explosion", "impacts", "explosion", Category.IMPACT, 3, 0.24, -9.0, 2, true),
+            event("impact.ship_death_major", "impacts", "ship_death_major", Category.IMPACT, 3, 0.42, -8.0, 1, true),
 
             // Hazards
             event("hazard.fire_ignition", "hazards", "fire_ignition", Category.HAZARD, 2, 0.25, -12.0, 2, true),

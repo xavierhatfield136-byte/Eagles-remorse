@@ -258,7 +258,11 @@ public final class AudioSystem {
         WEAPON_PRIMARY("weapon.primary_fire"),
         WEAPON_SECONDARY("weapon.secondary_fire"),
         WEAPON_WAVE("weapon.wave_fire"),
-        IMPACT_EXPLOSION("impact.explosion");
+        FLIGHT_LAUNCH("flight.launch"),
+        WARP_CHARGE_START("warp.charge_start"),
+        WARP_EXIT("warp.exit"),
+        IMPACT_EXPLOSION("impact.explosion"),
+        IMPACT_SHIP_DEATH_MAJOR("impact.ship_death_major");
 
         final String eventId;
 
@@ -282,6 +286,7 @@ public final class AudioSystem {
         double lastHp;
         double lastShield;
         int lastExplosionCount;
+        int lastMajorDetonationCount;
         GameContext.HelmMode lastHelmMode;
         GameContext.CaptainDirective lastCaptainDirective;
         int lastFriendlyCommandShipId = -1;
@@ -330,6 +335,7 @@ public final class AudioSystem {
                 s.lastHp = ctx.player.hp;
                 s.lastShield = ctx.player.shield;
                 s.lastExplosionCount = explosionCountNearPlayer(ctx);
+                s.lastMajorDetonationCount = majorDetonationCountNearPlayer(ctx);
                 s.lastHelmMode = ctx.command.helmMode;
                 s.lastCaptainDirective = ctx.command.captainDirective;
                 Ship commandShip = friendlyCommandShip(ctx);
@@ -558,6 +564,30 @@ public final class AudioSystem {
 
     public static void onExplosion(GameContext ctx, double sourceX, double sourceY) {
         triggerSfx(ctx, SfxCue.IMPACT_EXPLOSION, sourceX, sourceY);
+    }
+
+    public static void onFlightLaunch(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.FLIGHT_LAUNCH);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.FLIGHT_LAUNCH, source.x, source.y);
+    }
+
+    public static void onWarpChargeStart(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WARP_CHARGE_START);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WARP_CHARGE_START, source.x, source.y);
+    }
+
+    public static void onWarpExit(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WARP_EXIT);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WARP_EXIT, source.x, source.y);
     }
 
     public static void onCommandShipFormationOrder(GameContext ctx, Ship commander, GameContext.FleetFormation formation) {
@@ -1004,6 +1034,12 @@ public final class AudioSystem {
             triggerSfx(ctx, st, SfxCue.IMPACT_EXPLOSION, now);
         }
         st.lastExplosionCount = explosionsNow;
+
+        int majorDetonationsNow = majorDetonationCountNearPlayer(ctx);
+        if (majorDetonationsNow > st.lastMajorDetonationCount) {
+            triggerSfx(ctx, st, SfxCue.IMPACT_SHIP_DEATH_MAJOR, now);
+        }
+        st.lastMajorDetonationCount = majorDetonationsNow;
     }
 
     private static void processHazardAndSubsystemSignals(GameContext ctx, RuntimeState st, double now) {
@@ -1511,6 +1547,27 @@ public final class AudioSystem {
             for (Explosion e : Explosion.active) {
                 if (e == null) continue;
                 if (GameMath.dist2(e.x, e.y, ctx.player.x, ctx.player.y) <= WORLD_SFX_HEARING_RADIUS2) count++;
+            }
+            return count;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static int majorDetonationCountNearPlayer(GameContext ctx) {
+        try {
+            if (Explosion.active == null) return 0;
+            if (ctx == null || ctx.player == null) return Explosion.active.size();
+            int count = 0;
+            for (Explosion e : Explosion.active) {
+                if (e == null) continue;
+                if (e.kind != Explosion.Kind.FINAL_DETONATION
+                        && e.kind != Explosion.Kind.SUPERWEAPON_BLAST) {
+                    continue;
+                }
+                if (GameMath.dist2(e.x, e.y, ctx.player.x, ctx.player.y) <= WORLD_SFX_HEARING_RADIUS2) {
+                    count++;
+                }
             }
             return count;
         } catch (Throwable ignored) {

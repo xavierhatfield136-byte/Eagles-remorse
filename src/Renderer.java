@@ -3468,32 +3468,32 @@ public class Renderer {
         Color base = hyperLance ? new Color(122, 232, 255) : beamColorForFaction(beam.faction);
         Color hot = mixColor(base, Color.WHITE, hyperLance ? 0.82 : 0.72);
         double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 10.0);
-        float width = (float) Math.max(2.2, beam.width * (hyperLance ? (1.02 + 0.24 * pulse) : (0.90 + 0.16 * pulse)));
+        float width = (float) Math.max(1.6, beam.width * (hyperLance ? (0.92 + 0.18 * pulse) : (0.70 + 0.10 * pulse)));
 
         Stroke old = g2.getStroke();
 
-        g2.setStroke(new BasicStroke(width * (hyperLance ? 2.75f : 2.15f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(base, (int) Math.round((hyperLance ? 86 : 56) + pulse * (hyperLance ? 44 : 28))));
+        g2.setStroke(new BasicStroke(width * (hyperLance ? 2.10f : 1.55f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, (int) Math.round((hyperLance ? 62 : 38) + pulse * (hyperLance ? 24 : 14))));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        g2.setStroke(new BasicStroke(width * (hyperLance ? 1.35f : 1.05f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(hot, hyperLance ? 228 : 210));
+        g2.setStroke(new BasicStroke(width * (hyperLance ? 1.05f : 0.88f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, hyperLance ? 210 : 186));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        g2.setStroke(new BasicStroke(Math.max(1.1f, width * (hyperLance ? 0.54f : 0.40f)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(Color.WHITE, hyperLance ? 205 : 165));
+        g2.setStroke(new BasicStroke(Math.max(0.9f, width * (hyperLance ? 0.44f : 0.34f)), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(Color.WHITE, hyperLance ? 182 : 144));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        int glowR = (int) Math.round(Math.max(hyperLance ? 8.0 : 5.0, beam.width * (hyperLance ? 1.8 : 1.3)));
-        g2.setColor(withAlpha(base, 150));
+        int glowR = (int) Math.round(Math.max(hyperLance ? 6.0 : 3.0, beam.width * (hyperLance ? 1.25 : 0.90)));
+        g2.setColor(withAlpha(base, hyperLance ? 118 : 92));
         g2.fillOval((int) Math.round(sx) - glowR, (int) Math.round(sy) - glowR, glowR * 2, glowR * 2);
-        g2.setColor(withAlpha(hot, 126));
+        g2.setColor(withAlpha(hot, hyperLance ? 112 : 86));
         g2.fillOval((int) Math.round(ex) - glowR, (int) Math.round(ey) - glowR, glowR * 2, glowR * 2);
         if (hyperLance) {
-            int terminalR = (int) Math.round(Math.max(16.0, beam.width * 2.2));
-            g2.setColor(withAlpha(base, 96));
+            int terminalR = (int) Math.round(Math.max(12.0, beam.width * 1.7));
+            g2.setColor(withAlpha(base, 74));
             g2.fillOval((int) Math.round(ex) - terminalR, (int) Math.round(ey) - terminalR, terminalR * 2, terminalR * 2);
-            g2.setColor(withAlpha(Color.WHITE, 118));
+            g2.setColor(withAlpha(Color.WHITE, 92));
             g2.drawOval((int) Math.round(ex) - terminalR, (int) Math.round(ey) - terminalR, terminalR * 2, terminalR * 2);
         }
 
@@ -3510,20 +3510,20 @@ public class Renderer {
 
         Color base = mixColor(beamColorForFaction(laser.faction), new Color(130, 245, 210), 0.34);
         Color hot = mixColor(base, Color.WHITE, 0.78);
-        float width = (float) Math.max(1.1, laser.width);
+        float width = (float) Math.max(0.9, laser.width * 0.82);
 
         Stroke old = g2.getStroke();
 
-        g2.setStroke(new BasicStroke(width * 2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(base, 102));
+        g2.setStroke(new BasicStroke(width * 1.45f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(base, 72));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        g2.setStroke(new BasicStroke(Math.max(1.0f, width * 0.85f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g2.setColor(withAlpha(hot, 212));
+        g2.setStroke(new BasicStroke(Math.max(0.8f, width * 0.70f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(hot, 184));
         g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
-        int r = (int) Math.round(Math.max(2.0, laser.width * 1.5));
-        g2.setColor(withAlpha(hot, 178));
+        int r = (int) Math.round(Math.max(1.0, laser.width * 1.0));
+        g2.setColor(withAlpha(hot, 132));
         g2.fillOval((int) Math.round(ex) - r, (int) Math.round(ey) - r, r * 2, r * 2);
 
         g2.setStroke(old);
@@ -8618,9 +8618,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static void drawGalaxySidebar(Graphics2D g2, GameContext ctx, Rectangle panelRect) {
-        CampaignSystem.CampaignLocation current = CampaignSystem.currentCampaignLocation(ctx);
         CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
-        CampaignSystem.CampaignTravelState travel = CampaignSystem.campaignTravelState(ctx);
         List<CampaignSystem.HubService> hubServices = CampaignSystem.selectedCampaignLocationServices(ctx);
         List<String> roleLines = CampaignSystem.strategicFleetRoleSummaryLines(ctx);
         List<String> intelLines = CampaignSystem.galaxyIntelSummaryLines(ctx);
@@ -8641,28 +8639,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, x, y, w, h);
         int rowY = inner.y + 2;
 
-        rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "CAMPAIGN SUMMARY", List.of(
-                "Current: " + ((current == null) ? "In transit" : current.name),
-                "Selected: " + ((selected == null) ? "None" : selected.name),
-                "Earth Progress: " + Math.round(CampaignSystem.earthProgress(ctx) * 100.0) + "%",
-                "Travel: " + galaxyTravelStatus(ctx, travel),
-                "Threat: " + galaxyThreatStatus(ctx, selected),
-                "Enemy Alert: " + galaxyAlertStatus(ctx),
-                "Pressure Band: " + CampaignSystem.enemyAlertRegionReadout(ctx)
-        ), new Color(184, 228, 255, 220), true);
+        rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "CAMPAIGN SUMMARY",
+                CampaignSystem.campaignSummarySidebarLines(ctx), new Color(184, 228, 255, 220), true);
 
-        List<String> locationLines = new ArrayList<>();
-        if (selected != null) {
-            locationLines.add("Type: " + selected.type.name().replace('_', ' '));
-            locationLines.add("Alignment: " + galaxyLocationFaction(selected));
-            locationLines.add("Danger: " + CampaignSystem.threatReadoutForSidebar(selected.threatLevel));
-            locationLines.add("Docking: " + (CampaignSystem.isDockedAtSelectedLocation(ctx) ? "IN RANGE" : "APPROACH REQUIRED"));
-            locationLines.addAll(CampaignSystem.selectedHubIdentityLines(ctx));
-            locationLines.addAll(CampaignSystem.selectedRouteAssessmentLines(ctx));
-            locationLines.add(selected.detail);
-        } else {
-            locationLines.add("No location selected.");
-        }
+        List<String> locationLines = CampaignSystem.selectedLocationSidebarLines(ctx);
         rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width,
                 (selected == null) ? "SELECTED LOCATION" : selected.name.toUpperCase(Locale.US),
                 locationLines, hubAccent(selected, 220), false);
@@ -8780,9 +8760,32 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int row = index / 2;
             int bx = x + col * (colW + 10);
             int by = y + row * 32;
-            drawHudStatusChip(g2, service.label.toUpperCase(Locale.US), bx, by, colW, 26, accent, false);
+            drawCampaignHubActionButton(g2, ctx, bx, by, colW, 26, accent, location, service);
             index++;
         }
+    }
+
+    private static void drawCampaignHubActionButton(Graphics2D g2, GameContext ctx,
+                                                    int x, int y, int w, int h, Color accent,
+                                                    CampaignSystem.CampaignLocation location,
+                                                    CampaignSystem.HubService service) {
+        if (g2 == null || service == null) return;
+        boolean docked = CampaignSystem.isDockedAtSelectedLocation(ctx);
+        Color base = docked ? accent : new Color(160, 176, 196, 180);
+        g2.setColor(new Color(base.getRed(), base.getGreen(), base.getBlue(), docked ? 62 : 34));
+        g2.fillRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(withAlpha(base, docked ? 196 : 132));
+        g2.drawRoundRect(x, y, w, h, 12, 12);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(245, 250, 255, docked ? 228 : 178));
+        g2.drawString(CampaignSystem.hubServiceActionLabel(ctx, location, service), x + 7, y + 11);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(220, 236, 248, docked ? 210 : 160));
+        g2.drawString(CampaignSystem.hubServiceActionDetail(ctx, location, service), x + 7, y + 22);
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
     }
 
     private static int campaignHubButtonsStartY(GameContext ctx, Rectangle panelRect) {
@@ -9917,8 +9920,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 double ux = Math.cos(eb.angle);
                 double uy = Math.sin(eb.angle);
                 double speed = Math.hypot(eb.vx, eb.vy);
-                double trailLen = Math.max(8.0, Math.min(18.0, 8.0 + speed * 5.0));
-                if (tactical) trailLen *= 0.78;
+                double trailLen = Math.max(6.0, Math.min(14.0, 6.0 + speed * 3.2));
+                if (tactical) trailLen *= 0.68;
 
                 Color core = projectileCoreColor(eb.faction);
                 Color hot = mixColor(core, Color.WHITE, 0.34);
@@ -9927,22 +9930,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
                 Stroke old = g2.getStroke();
                 try {
-                    g2.setStroke(new BasicStroke((float) Math.max(1.2, eb.radius * 0.55), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                    g2.setColor(withAlpha(core, tactical ? 132 : 170));
+                    g2.setStroke(new BasicStroke((float) Math.max(0.9, eb.radius * 0.42), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.setColor(withAlpha(core, tactical ? 102 : 142));
                     g2.drawLine(x, y,
                             (int) Math.round(eb.x - ux * trailLen),
                             (int) Math.round(eb.y - uy * trailLen));
 
-                    int glowR = Math.max(2, (int) Math.round(eb.radius * (tactical ? 0.82 : 0.96)));
-                    g2.setColor(withAlpha(hot, tactical ? 170 : 200));
+                    int glowR = Math.max(1, (int) Math.round(eb.radius * (tactical ? 0.62 : 0.78)));
+                    g2.setColor(withAlpha(hot, tactical ? 140 : 176));
                     g2.fillOval(x - glowR, y - glowR, glowR * 2, glowR * 2);
                 } finally {
                     g2.setStroke(old);
                 }
 
-                double boltLen = Math.max(14.0, eb.radius * 4.0) * (tactical ? 0.80 : 1.0);
-                double boltW = Math.max(5.0, eb.radius * 1.8) * (tactical ? 0.76 : 0.90);
-                drawOrientedProjectileSkin(g2, skin, eb.x, eb.y, eb.angle, boltLen, boltW, tactical ? 0.82f : 0.92f);
+                double boltLen = Math.max(10.0, eb.radius * 3.2) * (tactical ? 0.72 : 0.92);
+                double boltW = Math.max(3.0, eb.radius * 1.35) * (tactical ? 0.68 : 0.82);
+                drawOrientedProjectileSkin(g2, skin, eb.x, eb.y, eb.angle, boltLen, boltW, tactical ? 0.72f : 0.84f);
                 return;
             }
         }
@@ -10004,7 +10007,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         double pulse = 0.5 + 0.5 * Math.sin(time * (beamBolt ? 8.8 : 7.2) + len * 0.012);
         double phaseBase = time * (beamBolt ? 5.6 : 4.8) + len * 0.007;
         double widthScale = tactical ? 0.72 : 1.0;
-        double coreWidth = Math.max(tactical ? 1.0 : 1.4, eb.radius * (beamBolt ? 0.46 : 0.36) * widthScale);
+        double coreWidth = Math.max(tactical ? 0.9 : 1.2, eb.radius * (beamBolt ? 0.36 : 0.28) * widthScale);
         double gap = Math.max(1.4, coreWidth * (beamBolt ? 0.96 : 0.82));
         double twist = Math.max(0.9, coreWidth * (beamBolt ? 0.74 : 0.52));
         int segments = tactical ? 8 : 16;
@@ -10016,17 +10019,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (combinedBeam) {
                 g2.setStroke(new BasicStroke((float) Math.max(1.4, coreWidth * (beamBolt ? 1.55 : 1.35)),
                         BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(withAlpha(base, tactical ? 66 : (beamBolt ? 88 : 72)));
+                g2.setColor(withAlpha(base, tactical ? 44 : (beamBolt ? 62 : 54)));
                 g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
                 g2.setStroke(new BasicStroke((float) Math.max(1.0, coreWidth * 0.82),
                         BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(withAlpha(hot, tactical ? 170 : (beamBolt ? 232 : 210)));
+                g2.setColor(withAlpha(hot, tactical ? 142 : (beamBolt ? 206 : 186)));
                 g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
 
                 g2.setStroke(new BasicStroke((float) Math.max(0.8, coreWidth * 0.42),
                         BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                g2.setColor(withAlpha(Color.WHITE, tactical ? 180 : (beamBolt ? 232 : 210)));
+                g2.setColor(withAlpha(Color.WHITE, tactical ? 154 : (beamBolt ? 210 : 186)));
                 g2.drawLine((int) Math.round(sx), (int) Math.round(sy), (int) Math.round(ex), (int) Math.round(ey));
             } else {
                 double lane = laneSeeds[0];

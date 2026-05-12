@@ -281,6 +281,7 @@ public final class GameplayActions {
         }
         ctx.command.playerTeleportCharging = true;
         ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();
+        AudioSystem.onWarpChargeStart(ctx, player);
         EventSystem.showBanner(ctx,
                 "BATTLEFIELD WARP TO " + destinationLabel + "  "
                         + ctx.ui.tacticalSectorScalePreset.label().toUpperCase()
@@ -335,6 +336,7 @@ public final class GameplayActions {
         ctx.command.safeMissionExitReady = false;
         ctx.command.playerTeleportCharging = true;
         ctx.command.playerTeleportChargeRemaining = player.warpChargeRemaining();
+        AudioSystem.onWarpChargeStart(ctx, player);
         EventSystem.showBanner(ctx, "SAFE EXIT MISSION WARP CHARGING (7.5S)", 1.4);
         return true;
     }
