@@ -205,7 +205,7 @@ Use this as the working implementation checklist. Do not mark an item complete u
 - [x] Finish the combat readability pass and verify it with discipline.
 - [x] Reduce clutter layered over ships.
 - [x] Make projectile visuals smaller where needed.
-- [ ] Slow projectile travel where needed to improve anticipation.
+- [x] Slow projectile travel where needed to improve anticipation.
 - [x] Put explosion emphasis on major impacts and ship deaths.
 - [x] Remove noisy ECM presentation.
 - [x] Keep warp presentation subtle and wormhole-like.
@@ -249,5 +249,5 @@ Use this as the working implementation checklist. Do not mark an item complete u
 
 ## Final Definition of Done
 
-- [ ] Do not mark the strategic campaign rewrite complete until this exact statement is true in practice:
+- [x] Do not mark the strategic campaign rewrite complete until this exact statement is true in practice:
   `The player can cross a large hostile map toward Earth, choose routes instead of following a simple ladder, weigh safety against reward, dock at meaningful hubs, react to living hostile search pressure, use long-range tools with real commitment, choose auto-resolve or direct command when contact happens, fight one large tactical encounter when needed, and return cleanly to the overmap without the experience collapsing back into the old campaign structure.`

@@ -18,7 +18,7 @@ public final class DoctrineRegistry {
     // Baseline doctrine targets (tweak during balance).
     public static final DoctrineProfile ENERGY_NAVY = new DoctrineProfile(
             Doctrine.ENERGY_NAVY,
-            780.0,   // medium speed, visible
+            740.0,   // medium speed, visible, with more time-to-read in tactical view
             84,      // heavy hit (frigate baseline)
             1.6,     // shots/sec
             1.05,    // light missile support
@@ -27,7 +27,7 @@ public final class DoctrineRegistry {
 
     public static final DoctrineProfile KINETIC_CONSORTIUM = new DoctrineProfile(
             Doctrine.KINETIC_CONSORTIUM,
-            1320.0,  // fast rounds
+            1200.0,  // still fast, but no longer so quick that impacts read like instant traces
             30,      // light hit
             4.2,     // shots/sec
             1.00,    // neutral missile pressure
@@ -36,7 +36,7 @@ public final class DoctrineRegistry {
 
     public static final DoctrineProfile AEGIS_LATTICE = new DoctrineProfile(
             Doctrine.ENERGY_NAVY,
-            960.0,   // precision energy emphasis
+            900.0,   // precision energy emphasis with more readable travel
             78,
             2.0,
             0.82,    // limited missile pressure
@@ -45,7 +45,7 @@ public final class DoctrineRegistry {
 
     public static final DoctrineProfile VIPER_BARRAGE = new DoctrineProfile(
             Doctrine.MISSILE_BARRAGE,
-            1040.0,  // backup gun pressure only
+            980.0,   // backup gun pressure only, kept readable behind the missile game
             22,
             4.4,
             1.65,    // heavy missile pressure

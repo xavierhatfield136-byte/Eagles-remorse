@@ -295,11 +295,12 @@ public final class FogOfWarSystem {
 
     private static void addOreInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
         if (ctx.asteroids == null || ctx.asteroids.isEmpty()) return;
+        boolean ambientLocal = CampaignSystem.isAmbientLocalEncounterActive(ctx);
         double clusterSize = Math.max(420.0, 700.0 - 220.0 * sweep);
         LinkedHashMap<Long, OreCluster> clusters = new LinkedHashMap<>();
         for (Asteroid asteroid : ctx.asteroids) {
             if (asteroid == null || asteroid.ore <= 0) continue;
-            if (ctx.fogOfWar.isExploredAtWorld(asteroid.x, asteroid.y)) continue;
+            if (!ambientLocal && ctx.fogOfWar.isExploredAtWorld(asteroid.x, asteroid.y)) continue;
             double weight = asteroid.ore + Math.max(0.0, asteroid.radius - 18.0) * 8.0;
             if (asteroid.rich || asteroid.oreMax >= 650) weight *= 1.35;
             if (weight < 360.0) continue;
@@ -318,9 +319,10 @@ public final class FogOfWarSystem {
 
     private static void addSalvageInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
         if (ctx.salvage == null || ctx.salvage.isEmpty()) return;
+        boolean ambientLocal = CampaignSystem.isAmbientLocalEncounterActive(ctx);
         for (Salvage salvage : ctx.salvage) {
             if (salvage == null || !salvage.alive()) continue;
-            if (ctx.fogOfWar.isExploredAtWorld(salvage.x, salvage.y)) continue;
+            if (!ambientLocal && ctx.fogOfWar.isExploredAtWorld(salvage.x, salvage.y)) continue;
             double value = salvage.credits * 0.45 + salvage.ore * 3.0 + Math.max(0.0, salvage.life) * 0.12;
             if (value < 26.0 && sweep < 0.55) continue;
             double strength = clamp01(0.26 + sweep * 0.48 + Math.min(0.22, value / 420.0));
@@ -332,16 +334,21 @@ public final class FogOfWarSystem {
     private static void addShipInterestSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
         Faction perspective = ctx.player.faction;
         if (perspective == null) return;
+        boolean ambientLocal = CampaignSystem.isAmbientLocalEncounterActive(ctx);
         for (Ship ship : ctx.ships) {
-            if (!isTrackableHostile(ship, perspective)) continue;
-            if (ctx.fogOfWar.isExploredAtWorld(ship.x, ship.y)) continue;
+            if (ship == null || ship == ctx.player || !ship.alive || ship.dying || ship.hp <= 0 || ship.faction == null) continue;
+            boolean hostile = !ship.faction.isFriendlyTo(perspective);
+            if (!hostile && !ambientLocal) continue;
+            if (hostile && !isTrackableHostile(ship, perspective)) continue;
+            if (!ambientLocal && ctx.fogOfWar.isExploredAtWorld(ship.x, ship.y)) continue;
             boolean installation = ship.role == ShipRole.BASE || ship.role == ShipRole.MOTHERSHIP;
             boolean capital = ship.radius >= 42.0 || (ship.role != null && ship.role.isTitan());
-            if (!installation && !capital && sweep < 0.72) continue;
-            SensorInterestKind kind = installation ? SensorInterestKind.INSTALLATION : SensorInterestKind.MASS_SIGNATURE;
-            String label = installation ? "Installation" : "Mass signature";
+            boolean escortContact = !hostile && ambientLocal;
+            if (!installation && !capital && !escortContact && sweep < 0.72) continue;
+            SensorInterestKind kind = installation ? SensorInterestKind.INSTALLATION : (escortContact ? SensorInterestKind.CONTACT : SensorInterestKind.MASS_SIGNATURE);
+            String label = installation ? "Installation" : (escortContact ? "Friendly contact" : "Mass signature");
             double sizeSignal = clamp01((Math.max(10.0, ship.radius) - 28.0) / 80.0);
-            double strength = clamp01(0.24 + sweep * 0.52 + sizeSignal * 0.22);
+            double strength = clamp01((escortContact ? 0.36 : 0.24) + sweep * 0.52 + sizeSignal * 0.22);
             addSignalIfCovered(ctx, out, kind, label, ship.x, ship.y, strength, installation ? 320.0 : 280.0);
         }
     }

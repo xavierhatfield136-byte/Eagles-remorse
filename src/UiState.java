@@ -58,6 +58,23 @@ public final class UiState {
         }
     }
 
+    public enum CampaignCommandTab {
+        NAV("Navigation"),
+        FLEET("Fleet"),
+        RESOURCES("Resources"),
+        STRIKES("Strikes");
+
+        private final String label;
+
+        CampaignCommandTab(String label) {
+            this.label = (label == null || label.isBlank()) ? name() : label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
     public static final class CombatCallout {
         public double x;
         public double y;
@@ -125,6 +142,7 @@ public final class UiState {
     public int powerManagementFocus = 0;
     public int flightDeckFocus = 0;
     public int selectedStrategicDivisionGroupId = 0;
+    public CampaignCommandTab campaignCommandTab = CampaignCommandTab.NAV;
 
     public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
     public boolean tacticalViewEnabled = false;

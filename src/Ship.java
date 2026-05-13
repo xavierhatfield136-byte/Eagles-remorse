@@ -255,7 +255,8 @@ public abstract class Ship {
 
     public static final double BLUE_MAIN_BATTERY_MIN_RELOAD_SECONDS = 1.0;
     public static final double MISSILE_MIN_RELOAD_SECONDS = 1.0;
-    public static final double BEAM_BOLT_SPEED = 780.0;
+    // Tactical alignment: beam-bolt primaries stay punchy, but move slow enough to sell anticipation and lane identity.
+    public static final double BEAM_BOLT_SPEED = 700.0;
     public static final double BEAM_BOLT_RELOAD_SECONDS = 1.0;
     public static final double BEAM_BOLT_DAMAGE_RELOAD_FACTOR = 1.12;
     public static final int BEAM_BOLT_LIFE = 150; // frames (~1950px at 780 px/s)

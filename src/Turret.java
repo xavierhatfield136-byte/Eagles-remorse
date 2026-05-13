@@ -9,10 +9,12 @@ public class Turret {
 
     // Universal missile buff (applies to all factions/ships).
     public static final double MISSILE_DAMAGE_MULT = 1.55;
-    public static final double MISSILE_SPEED_MULT = 0.96;
+    // Tactical alignment: keep missiles threatening, but slow enough that the player can read and react to inbound arcs.
+    public static final double MISSILE_SPEED_MULT = 0.90;
     public static final double MISSILE_TURN_MULT = 1.32;
     public static final double MISSILE_LIFE_MULT = 1.22;
-    public static final double GUN_PROJECTILE_SPEED_MULT = 0.88;
+    // Tactical alignment: non-beam ordnance should cross the screen visibly instead of feeling nearly hitscan.
+    public static final double GUN_PROJECTILE_SPEED_MULT = 0.84;
 
     public enum Kind {
         GUN,

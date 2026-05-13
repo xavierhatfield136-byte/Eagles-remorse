@@ -490,6 +490,7 @@ public final class CommSystem {
 
     private static void applySupportOrder(GameContext ctx, Ship target) {
         if (ctx == null || ctx.command == null || target == null) return;
+        CampaignSystem.noteAmbientSupportRequest(ctx, target);
         GameContext.FleetCommand cmd = (target.role == ShipRole.BASE || target.role == ShipRole.STATIC_TURRET)
                 ? GameContext.FleetCommand.DEFEND
                 : GameContext.FleetCommand.ESCORT;

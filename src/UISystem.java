@@ -803,6 +803,17 @@ public final class UISystem {
                     return false;
                 }
             }
+            case TAB -> {
+                try {
+                    ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.valueOf(target.valueId);
+                    return true;
+                } catch (Exception ignored) {
+                    return false;
+                }
+            }
+            case ACTION -> {
+                return handleCampaignCommandAction(ctx, target.valueId);
+            }
             case CONFIRM -> {
                 return CampaignSystem.confirmSelectedHubService(ctx);
             }
@@ -841,6 +852,13 @@ public final class UISystem {
                 }
                 CampaignSystem.selectCampaignLocation(ctx, worldX, worldY);
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
+                    CampaignSystem.startTravelToSelectedLocation(ctx);
+                }
+                return;
+            }
+            if (SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.selectCampaignFreeTravelTarget(ctx, worldX, worldY);
+                if (e.getClickCount() >= 2) {
                     CampaignSystem.startTravelToSelectedLocation(ctx);
                 }
                 return;
@@ -1195,6 +1213,19 @@ public final class UISystem {
         FontMetricsLike(int charWidth) {
             this.charWidth = Math.max(6, charWidth);
         }
+    }
+
+    private static boolean handleCampaignCommandAction(GameContext ctx, String actionId) {
+        if (ctx == null || actionId == null || actionId.isBlank()) return false;
+        return switch (actionId) {
+            case "HOLD" -> CampaignSystem.stopCampaignTravel(ctx);
+            case "ENGAGE" -> CampaignSystem.startTravelToSelectedLocation(ctx);
+            case "ENTER_SITE" -> CampaignSystem.launchSelectedLocalEncounter(ctx);
+            case "SCAN_SWEEP" -> CampaignSystem.requestCampaignSensorSweep(ctx);
+            case "ALLY_GREEN" -> CampaignSystem.requestCampaignAllySupport(ctx, false);
+            case "ALLY_YELLOW" -> CampaignSystem.requestCampaignAllySupport(ctx, true);
+            default -> false;
+        };
     }
 
     public static void setWaypointAtCursor(GameContext ctx, PlayerControl controls) {

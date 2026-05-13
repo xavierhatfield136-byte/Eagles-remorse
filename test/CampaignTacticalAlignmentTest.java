@@ -67,6 +67,30 @@ class CampaignTacticalAlignmentTest {
         assertNotNull(SfxManifest.byId("impact.ship_death_major"));
     }
 
+    @Test
+    void tacticalProjectileSpeedBudgetLeavesMoreTimeToReadImpacts() {
+        double energyNavyProjectileSpeed = DoctrineRegistry.ENERGY_NAVY.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
+        double kineticProjectileSpeed = DoctrineRegistry.KINETIC_CONSORTIUM.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
+        double aegisProjectileSpeed = DoctrineRegistry.AEGIS_LATTICE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
+        double viperProjectileSpeed = DoctrineRegistry.VIPER_BARRAGE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
+        double baselineMissileSpeed = 220.0 * Turret.MISSILE_SPEED_MULT;
+        double interceptorMissileSpeed = baselineMissileSpeed * 1.18;
+
+        assertTrue(energyNavyProjectileSpeed <= 640.0,
+                "energy-navy bolts should stay readable, got " + energyNavyProjectileSpeed);
+        assertTrue(kineticProjectileSpeed <= 1020.0,
+                "kinetic rounds should stay below near-hitscan feel, got " + kineticProjectileSpeed);
+        assertTrue(aegisProjectileSpeed <= 780.0,
+                "aegis bolts should remain anticipatable, got " + aegisProjectileSpeed);
+        assertTrue(viperProjectileSpeed <= 840.0,
+                "backup barrage guns should remain readable, got " + viperProjectileSpeed);
+        assertTrue(interceptorMissileSpeed <= 236.0,
+                "missiles should stay slow enough for anticipation, got " + interceptorMissileSpeed);
+        assertTrue(Ship.BEAM_BOLT_SPEED <= 700.0);
+        assertTrue(Turret.GUN_PROJECTILE_SPEED_MULT <= 0.84);
+        assertTrue(Turret.MISSILE_SPEED_MULT <= 0.90);
+    }
+
     private static GameContext initializedCampaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
@@ -105,4 +129,5 @@ class CampaignTacticalAlignmentTest {
         field.setAccessible(true);
         field.setDouble(target, value);
     }
+
 }
