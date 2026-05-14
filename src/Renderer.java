@@ -231,6 +231,20 @@ public class Renderer {
         }
     }
 
+    private static final class CampaignActionSection {
+        final CampaignSystem.CampaignActionCategory category;
+        final String label;
+        final List<CampaignSystem.CampaignAction> actions;
+
+        CampaignActionSection(CampaignSystem.CampaignActionCategory category,
+                              String label,
+                              List<CampaignSystem.CampaignAction> actions) {
+            this.category = category;
+            this.label = label;
+            this.actions = actions;
+        }
+    }
+
     private enum CombatHudPanelImageKey {
         BEAM_RAPID,
         BEAM_CONCENTRATED,
@@ -8684,22 +8698,124 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         paintGalaxyConsolePanel(g2, panelRect, new Color(144, 214, 255, 160));
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         List<String> navLines = CampaignSystem.campaignNavigationStationLines(ctx);
-        int rowY = inner.y + 4;
+        List<String> receiverLines = CampaignSystem.campaignReceiverBoardLines(ctx);
+        List<String> finderLines = CampaignSystem.campaignDirectionFinderLines(ctx);
+        List<String> commsLines = CampaignSystem.campaignCommsBoardLines(ctx);
 
-        rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "RADIO POST",
-                navLines.subList(0, Math.min(2, navLines.size())), new Color(188, 228, 255, 220), true);
-        rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "RECEIVER / SIGNAL",
-                navLines.subList(Math.min(2, navLines.size()), Math.min(6, navLines.size())),
-                new Color(255, 220, 146, 220), false);
-        if (navLines.size() > 6) {
-            rowY = drawGalaxySidebarSection(g2, inner.x, rowY, inner.width, "DIRECTION FINDER",
-                    navLines.subList(6, navLines.size()), new Color(168, 230, 255, 220), false);
+        int rowY = inner.y + 4;
+        rowY = drawGalaxySessionClockPanel(g2, inner.x, rowY, inner.width, navLines);
+        rowY += 8;
+        rowY = drawGalaxyReceiverManualPanel(g2, inner.x, rowY, inner.width, receiverLines, ctx);
+        rowY += 8;
+        rowY = drawGalaxyDirectionFinderPanel(g2, inner.x, rowY, inner.width, finderLines, ctx);
+        rowY += 8;
+        drawGalaxyCommsPanel(g2, inner.x, rowY, inner.width, Math.max(116, inner.y + inner.height - rowY - 8), commsLines);
+    }
+
+    private static int drawGalaxySessionClockPanel(Graphics2D g2, int x, int y, int width, List<String> navLines) {
+        int h = 54;
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "SESSION TIME");
+        String time = (navLines != null && navLines.size() > 1) ? navLines.get(1) : "00:00:00";
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setColor(new Color(210, 234, 252, 230));
+        g2.drawString(time, x + 12, y + 35);
+        g2.setColor(new Color(255, 255, 255, 24));
+        for (int i = 0; i < 8; i++) {
+            int yy = y + 14 + i * 4;
+            g2.drawLine(x + width / 2, yy, x + width - 12, yy);
+        }
+        return y + h;
+    }
+
+    private static int drawGalaxyReceiverManualPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
+        int h = 154;
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RECEIVER MANUAL");
+        int dialCx = x + 64;
+        int dialCy = y + 82;
+        int dialR = 34;
+        g2.setColor(new Color(255, 230, 176, 145));
+        g2.drawArc(dialCx - dialR, dialCy - dialR, dialR * 2, dialR * 2, 24, 132);
+        g2.setColor(new Color(255, 210, 132, 220));
+        double needleFrac = navReceiverFraction(ctx);
+        double theta = Math.toRadians(204 - 132 * needleFrac);
+        int nx = dialCx + (int) Math.round(Math.cos(theta) * (dialR - 4));
+        int ny = dialCy - (int) Math.round(Math.sin(theta) * (dialR - 4));
+        g2.drawLine(dialCx, dialCy, nx, ny);
+        g2.fillOval(dialCx - 3, dialCy - 3, 6, 6);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(255, 220, 156, 220));
+        g2.drawString("TUNING", x + 36, y + 128);
+        g2.drawString("SIGNAL", x + 118, y + 44);
+
+        drawGalaxyMeter(g2, x + 116, y + 56, width - 128, "STRENGTH", navSignalFraction(ctx),
+                new Color(255, 198, 132, 220), safeNavLine(lines, 1, "Signal"));
+        drawGalaxyMeter(g2, x + 116, y + 80, width - 128, "TRACK", navTrackFraction(ctx),
+                new Color(132, 214, 255, 220), safeNavLine(lines, 2, "Track"));
+        drawGalaxyMeter(g2, x + 116, y + 104, width - 128, "LOCK", navLockFraction(ctx),
+                new Color(116, 224, 186, 220), safeNavLine(lines, 3, "Course"));
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(210, 228, 242, 205));
+        g2.drawString(safeNavLine(lines, 0, "Band"), x + 12, y + 148);
+        return y + h;
+    }
+
+    private static int drawGalaxyDirectionFinderPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
+        int h = 152;
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "DIRECTION FINDER");
+        int dialCx = x + 58;
+        int dialCy = y + 78;
+        int dialR = 28;
+        g2.setColor(new Color(160, 220, 255, 145));
+        g2.drawOval(dialCx - dialR, dialCy - dialR, dialR * 2, dialR * 2);
+        g2.drawLine(dialCx, dialCy - dialR - 4, dialCx, dialCy + dialR + 4);
+        g2.drawLine(dialCx - dialR - 4, dialCy, dialCx + dialR + 4, dialCy);
+        double theta = Math.toRadians(navBearingAngle(ctx));
+        int nx = dialCx + (int) Math.round(Math.sin(theta) * (dialR - 3));
+        int ny = dialCy - (int) Math.round(Math.cos(theta) * (dialR - 3));
+        g2.setColor(new Color(118, 238, 220, 220));
+        g2.drawLine(dialCx, dialCy, nx, ny);
+        g2.fillOval(dialCx - 3, dialCy - 3, 6, 6);
+
+        drawGalaxyMeter(g2, x + 102, y + 42, width - 114, "BEARING", navBearingFraction(ctx),
+                new Color(132, 214, 255, 220), safeNavLine(lines, 0, "Bearing"));
+        drawGalaxyMeter(g2, x + 102, y + 66, width - 114, "EXPOSURE", navExposureFraction(ctx),
+                new Color(255, 182, 120, 220), safeNavLine(lines, 1, "Exposure"));
+        drawGalaxyMeter(g2, x + 102, y + 90, width - 114, "SWEEP", navSweepFraction(ctx),
+                new Color(118, 238, 220, 220), safeNavLine(lines, 3, "Sweep"));
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(210, 228, 242, 205));
+        g2.drawString(safeNavLine(lines, 2, "Pressure"), x + 12, y + 126);
+        g2.drawString(safeNavLine(lines, 4, "Enter Site"), x + width - 132, y + 126);
+        if (lines.size() > 5) {
+            drawGalaxyBoardLine(g2, x + 12, y + 142, width - 24, safeNavLine(lines, 5, "Callout"), new Color(198, 220, 236, 210));
+        }
+        return y + h;
+    }
+
+    private static void drawGalaxyCommsPanel(Graphics2D g2, int x, int y, int width, int height, List<String> lines) {
+        int h = Math.max(144, Math.min(height, 220));
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RADIO / COMMS");
+        int top = y + 34;
+        for (int i = 0; i < Math.min(4, lines.size()); i++) {
+            Color lamp = (i == 0) ? new Color(132, 236, 170, 220)
+                    : (i == 1) ? new Color(255, 206, 132, 220)
+                    : (i == 2) ? new Color(132, 214, 255, 220)
+                    : new Color(118, 238, 220, 220);
+            g2.setColor(lamp);
+            g2.fillOval(x + 12, top - 8 + i * 18, 6, 6);
+            drawGalaxyBoardLine(g2, x + 24, top + i * 18, width - 36, lines.get(i), new Color(226, 236, 246, 220));
+        }
+        int infoStart = y + 112;
+        for (int i = 4; i < lines.size() && infoStart + (i - 4) * 14 <= y + h - 10; i++) {
+            Color accent = (i < 6) ? new Color(198, 220, 236, 210) : new Color(224, 232, 242, 214);
+            drawGalaxyBoardLine(g2, x + 12, infoStart + (i - 4) * 14, width - 24, lines.get(i), accent);
         }
     }
 
     private static void drawGalaxySidebar(Graphics2D g2, GameContext ctx, Rectangle panelRect) {
         CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
-        List<CampaignSystem.HubService> hubServices = CampaignSystem.selectedCampaignLocationServices(ctx);
         paintGalaxyConsolePanel(g2, panelRect, new Color(170, 214, 255, 155));
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Color oldColor = g2.getColor();
@@ -8707,21 +8823,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         drawGalaxyCommandTabs(g2, ctx, inner.x, inner.y + 2, inner.width);
         int rowY = inner.y + 34;
-        int serviceRows = Math.max(1, (hubServices.size() + 1) / 2);
-        int servicesBlockH = hubServices.isEmpty() ? 0 : 28 + serviceRows * 36;
-        int actionBlockH = 74;
-        int contentBottom = inner.y + inner.height - servicesBlockH - actionBlockH - 12;
+        int actionBlockH = galaxyActionBlockHeight(ctx, panelRect);
+        int contentBottom = inner.y + inner.height - actionBlockH - 12;
         rowY = drawGalaxyCommandContent(g2, ctx, selected, inner.x, rowY, inner.width, contentBottom);
-
-        if (!hubServices.isEmpty()) {
-            int servicesY = inner.y + inner.height - servicesBlockH - actionBlockH;
-            g2.setColor(new Color(160, 220, 255, 150));
-            g2.drawLine(inner.x, servicesY, inner.x + inner.width, servicesY);
-            g2.setFont(new Font("Consolas", Font.BOLD, 13));
-            g2.setColor(new Color(196, 232, 255, 225));
-            g2.drawString("LOCAL SERVICES", inner.x, servicesY + 18);
-            drawCampaignHubButtons(g2, ctx, panelRect, inner.x, servicesY + 28, inner.width, hubServices, selected);
-        }
 
         int actionY = inner.y + inner.height - actionBlockH + 6;
         g2.setColor(new Color(160, 220, 255, 150));
@@ -8748,6 +8852,23 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static int galaxyActionBlockHeight(GameContext ctx, Rectangle panelRect) {
+        if (ctx == null || panelRect == null) return 248;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
+        List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
+        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        List<CampaignActionSection> sections = galaxyActionSections(actions, primary);
+        int height = 56;
+        if (primary != null) height += 38;
+        for (CampaignActionSection section : sections) {
+            if (section == null || section.actions.isEmpty()) continue;
+            int columns = galaxyActionColumns(section.actions.size(), inner.width);
+            int rows = (int) Math.ceil(section.actions.size() / (double) columns);
+            height += 20 + rows * 30;
+        }
+        return Math.max(228, Math.min(344, height));
+    }
+
     private static int drawGalaxyCommandContent(Graphics2D g2, GameContext ctx, CampaignSystem.CampaignLocation selected,
                                                 int x, int y, int width, int maxBottomY) {
         List<String> primaryLines;
@@ -8761,20 +8882,29 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case FLEET -> {
                 primaryHeader = "FLEET MANAGER";
                 primaryLines = CampaignSystem.campaignFleetManagerLines(ctx);
-                secondaryHeader = "FLEET POSTURE";
-                secondaryLines = CampaignSystem.strategicFleetRoleSummaryLines(ctx);
+                secondaryHeader = "READINESS / DETACHMENTS";
+                ArrayList<String> fleetSecondary = new ArrayList<>();
+                fleetSecondary.addAll(CampaignSystem.campaignFleetConditionLines(ctx));
+                fleetSecondary.addAll(CampaignSystem.campaignFleetDetachmentLines(ctx));
+                secondaryLines = fleetSecondary;
             }
             case RESOURCES -> {
                 primaryHeader = "RESOURCE BOARD";
                 primaryLines = CampaignSystem.campaignResourceManagerLines(ctx);
-                secondaryHeader = "SELECTED LOCATION";
-                secondaryLines = CampaignSystem.selectedLocationSidebarLines(ctx);
+                secondaryHeader = "LOGISTICS / ROUTE";
+                ArrayList<String> resourceSecondary = new ArrayList<>();
+                resourceSecondary.addAll(CampaignSystem.campaignResourceTrendLines(ctx));
+                resourceSecondary.addAll(CampaignSystem.campaignResourceWarningLines(ctx));
+                secondaryLines = resourceSecondary;
             }
             case STRIKES -> {
                 primaryHeader = "LONG-RANGE STRIKE CONTROL";
                 primaryLines = CampaignSystem.campaignStrikeManagerLines(ctx);
-                secondaryHeader = "INTEL / CONTACTS";
-                secondaryLines = CampaignSystem.galaxyIntelSummaryLines(ctx);
+                secondaryHeader = "READINESS / CONSEQUENCES";
+                ArrayList<String> strikeSecondary = new ArrayList<>();
+                strikeSecondary.addAll(CampaignSystem.campaignStrikeReadinessLines(ctx));
+                strikeSecondary.addAll(CampaignSystem.campaignStrikeConsequenceLines(ctx));
+                secondaryLines = strikeSecondary;
             }
             default -> {
                 primaryHeader = "CAMPAIGN SUMMARY";
@@ -8830,62 +8960,235 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static void drawGalaxyCommandActions(Graphics2D g2, GameContext ctx, Rectangle panelRect, int x, int y, int width) {
-        List<String[]> actions = galaxyCommandActions(ctx);
-        int colW = Math.max(120, (width - 10) / 2);
-        for (int i = 0; i < actions.size(); i++) {
-            int col = i % 2;
-            int row = i / 2;
-            int bx = x + col * (colW + 10);
-            int by = y + row * 34;
-            String[] action = actions.get(i);
-            g2.setColor(new Color(18, 18, 18, 150));
-            g2.fillRoundRect(bx, by, colW, 24, 12, 12);
-            drawHudStatusChip(g2, action[1], bx, by + 12, colW, 22, new Color(255, 214, 132, 210), true);
-            g2.setColor(new Color(255, 190, 110, 210));
-            g2.fillOval(bx + 8, by + 8, 6, 6);
+        List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
+        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        int cursorY = y;
+        if (primary != null) {
+            drawGalaxyActionButton(g2, primary, x, cursorY, width, 30, true);
+            cursorY += 38;
         }
+        for (CampaignActionSection section : galaxyActionSections(actions, primary)) {
+            if (section == null || section.actions.isEmpty()) continue;
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            g2.setColor(new Color(172, 214, 244, 208));
+            g2.drawString(section.label, x, cursorY + 10);
+            cursorY += 16;
+            int columns = galaxyActionColumns(section.actions.size(), width);
+            int gap = 8;
+            int colW = Math.max(96, (width - gap * (columns - 1)) / columns);
+            for (int i = 0; i < section.actions.size(); i++) {
+                int col = i % columns;
+                int row = i / columns;
+                int bx = x + col * (colW + gap);
+                int by = cursorY + row * 30;
+                drawGalaxyActionButton(g2, section.actions.get(i), bx, by, colW, 24, false);
+            }
+            int rows = (int) Math.ceil(section.actions.size() / (double) columns);
+            cursorY += rows * 30 + 6;
+        }
+    }
+
+    private static List<CampaignActionSection> galaxyActionSections(List<CampaignSystem.CampaignAction> actions,
+                                                                    CampaignSystem.CampaignAction primary) {
+        EnumMap<CampaignSystem.CampaignActionCategory, ArrayList<CampaignSystem.CampaignAction>> grouped =
+                new EnumMap<>(CampaignSystem.CampaignActionCategory.class);
+        for (CampaignSystem.CampaignAction action : actions) {
+            if (action == null || action == primary) continue;
+            grouped.computeIfAbsent(action.category, ignored -> new ArrayList<>()).add(action);
+        }
+        ArrayList<CampaignActionSection> out = new ArrayList<>();
+        CampaignSystem.CampaignActionCategory[] order = {
+                CampaignSystem.CampaignActionCategory.NAVIGATION,
+                CampaignSystem.CampaignActionCategory.SERVICES,
+                CampaignSystem.CampaignActionCategory.STRIKES,
+                CampaignSystem.CampaignActionCategory.SUPPORT,
+                CampaignSystem.CampaignActionCategory.POSTURE,
+                CampaignSystem.CampaignActionCategory.SITE_RESOLUTION,
+                CampaignSystem.CampaignActionCategory.SENSORS
+        };
+        for (CampaignSystem.CampaignActionCategory category : order) {
+            ArrayList<CampaignSystem.CampaignAction> sectionActions = grouped.get(category);
+            if (sectionActions == null || sectionActions.isEmpty()) continue;
+            out.add(new CampaignActionSection(category, galaxyActionSectionLabel(category), sectionActions));
+        }
+        return out;
+    }
+
+    private static String galaxyActionSectionLabel(CampaignSystem.CampaignActionCategory category) {
+        if (category == null) return "COMMANDS";
+        return switch (category) {
+            case NAVIGATION -> "NAVIGATION";
+            case SERVICES -> "LOCAL SERVICES";
+            case STRIKES -> "TACTICAL / STRIKE";
+            case SUPPORT -> "SUPPORT";
+            case POSTURE -> "FLEET POSTURE";
+            case SITE_RESOLUTION -> "SITE RESOLUTION";
+            case SENSORS -> "SENSORS / COMMS";
+        };
+    }
+
+    private static int galaxyActionColumns(int actionCount, int width) {
+        if (actionCount <= 2) return 2;
+        if (width >= 320 && actionCount >= 5) return 3;
+        return 2;
+    }
+
+    private static void drawGalaxyActionButton(Graphics2D g2, CampaignSystem.CampaignAction action,
+                                               int x, int y, int w, int h, boolean primary) {
+        if (g2 == null || action == null) return;
+        Color accent = switch (action.state) {
+            case DISABLED -> new Color(126, 136, 150, 170);
+            case WARNING -> new Color(255, 176, 120, 220);
+            case RECOMMENDED -> new Color(132, 236, 194, 220);
+            default -> new Color(255, 214, 132, 210);
+        };
+        int fillAlpha = action.enabled ? (primary ? 74 : 56) : 22;
+        g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), fillAlpha));
+        g2.fillRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(withAlpha(accent, action.enabled ? 210 : 110));
+        g2.drawRoundRect(x, y, w, h, 12, 12);
+        g2.setColor(withAlpha(accent, action.enabled ? 220 : 90));
+        g2.fillOval(x + 8, y + 8, 6, 6);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, primary ? 12 : 11));
+        g2.setColor(new Color(245, 250, 255, action.enabled ? 230 : 144));
+        g2.drawString(action.label, x + 18, y + 12);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        String detail = action.enabled
+                ? (action.shortDescription.isBlank() ? action.tooltip : action.shortDescription)
+                : ("Disabled: " + action.disabledReason);
+        g2.setColor(new Color(220, 236, 248, action.enabled ? 194 : 124));
+        g2.drawString(trimHudLine(detail, w - 22), x + 18, y + 23);
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    private static String trimHudLine(String text, int maxWidth) {
+        if (text == null) return "";
+        String trimmed = text.trim();
+        if (trimmed.isBlank()) return "";
+        int maxChars = Math.max(8, maxWidth / 6);
+        if (trimmed.length() <= maxChars) return trimmed;
+        return trimmed.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
     private static void drawGalaxyNavigationBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 48) return;
         CampaignSystem.CampaignTravelState travel = CampaignSystem.campaignTravelState(ctx);
         double travelFrac = (travel == null || !travel.traveling) ? 0.0 : travel.progress;
-        drawGalaxyInstrumentPanel(g2, x, y, width, Math.min(height, 86), "ROUTE SCHEMATIC");
+        List<String> afterAction = CampaignSystem.campaignAfterActionPlateLines(ctx);
+        List<String> preview = CampaignSystem.campaignActionPreviewLines(ctx);
+        int panelH = Math.min(height, afterAction.isEmpty() ? 126 : 176);
+        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, afterAction.isEmpty() ? "ROUTE SCHEMATIC" : "ROUTE / AFTER ACTION");
         drawGalaxyMeter(g2, x + 12, y + 34, width - 24, "COURSE PROGRESS", travelFrac, new Color(116, 224, 186, 220),
                 (travel == null || !travel.traveling) ? "HOLDING" : ((int) Math.round(travelFrac * 100.0)) + "%");
         drawGalaxyMeter(g2, x + 12, y + 58, width - 24, "EXPOSURE", 0.01 * Math.max(0, parseTrailingNumber(CampaignSystem.campaignExposureReadout(ctx))),
                 new Color(255, 182, 120, 220), CampaignSystem.campaignExposureReadout(ctx));
+        int infoY = y + 84;
+        for (int i = 0; i < preview.size() && infoY + i * 14 <= y + panelH - 34; i++) {
+            Color accent = (i == 0) ? new Color(132, 236, 194, 220) : new Color(212, 226, 238, 214);
+            drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, preview.get(i), accent);
+        }
+        if (!afterAction.isEmpty()) {
+            int plateY = Math.max(y + 118, y + panelH - 44);
+            for (int i = 0; i < afterAction.size() && plateY + i * 14 <= y + panelH - 8; i++) {
+                Color accent = (i == 0) ? new Color(255, 214, 132, 220) : new Color(212, 226, 238, 214);
+                drawGalaxyBoardLine(g2, x + 12, plateY + i * 14, width - 24, afterAction.get(i), accent);
+            }
+        }
     }
 
     private static void drawGalaxyFleetBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 48) return;
-        drawGalaxyInstrumentPanel(g2, x, y, width, Math.min(height, 110), "FLEET READINESS");
-        List<String> lines = CampaignSystem.campaignFleetManagerLines(ctx);
+        int panelH = Math.min(height, 246);
+        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "FLEET READINESS");
+        List<String> summary = CampaignSystem.campaignFleetBoardSummaryLines(ctx);
         int boardY = y + 34;
-        for (int i = 0; i < Math.min(3, lines.size()); i++) {
-            drawGalaxyBoardLine(g2, x + 12, boardY + i * 20, width - 24, lines.get(i), new Color(226, 236, 246, 220));
+        for (int i = 0; i < Math.min(3, summary.size()); i++) {
+            drawGalaxyBoardLine(g2, x + 12, boardY + i * 18, width - 24, summary.get(i), new Color(226, 236, 246, 220));
+        }
+
+        int meterY = y + 92;
+        drawGalaxyMeter(g2, x + 12, meterY, width - 24, "READINESS", fleetBoardFraction(summary, 0), new Color(116, 224, 186, 220),
+                metricTail(summary, 0, "READY"));
+        drawGalaxyMeter(g2, x + 12, meterY + 22, width - 24, "SUPPORT MIX", fleetBoardFraction(summary, 1), new Color(132, 198, 255, 220),
+                metricTail(summary, 1, "SUPPORT"));
+        drawGalaxyMeter(g2, x + 12, meterY + 44, width - 24, "DETACHMENTS", fleetBoardFraction(summary, 2), new Color(255, 196, 132, 220),
+                metricTail(summary, 2, "DETACHED"));
+
+        List<String> condition = CampaignSystem.campaignFleetConditionLines(ctx);
+        int conditionY = y + 154;
+        for (int i = 0; i < condition.size() && i < 4; i++) {
+            Color lamp = switch (i) {
+                case 0 -> new Color(112, 230, 172, 220);
+                case 1 -> new Color(132, 198, 255, 220);
+                case 2 -> new Color(255, 208, 132, 220);
+                default -> new Color(255, 148, 132, 220);
+            };
+            g2.setColor(lamp);
+            g2.fillOval(x + 12, conditionY - 8 + i * 16, 6, 6);
+            drawGalaxyBoardLine(g2, x + 24, conditionY + i * 16, width - 36, condition.get(i), new Color(212, 226, 238, 214));
+        }
+
+        List<String> roster = CampaignSystem.campaignFleetRosterLines(ctx, 3);
+        int rosterY = y + 224;
+        for (int i = 0; i < roster.size() && rosterY + i * 14 <= y + panelH - 8; i++) {
+            drawGalaxyBoardLine(g2, x + 12, rosterY + i * 14, width - 24, roster.get(i), new Color(210, 224, 238, 214));
         }
     }
 
     private static void drawGalaxyResourceBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 70) return;
-        drawGalaxyInstrumentPanel(g2, x, y, width, Math.min(height, 120), "RESOURCE BOARD");
+        int panelH = Math.min(height, 214);
+        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "RESOURCE BOARD");
         drawGalaxyMeter(g2, x + 12, y + 34, width - 24, "FUEL", Math.min(1.0, CampaignSystem.campaignFuel(ctx) / 180.0), new Color(120, 220, 255, 220), String.valueOf(CampaignSystem.campaignFuel(ctx)));
         drawGalaxyMeter(g2, x + 12, y + 56, width - 24, "SUPPLIES", Math.min(1.0, CampaignSystem.campaignSupplies(ctx) / 150.0), new Color(148, 224, 168, 220), String.valueOf(CampaignSystem.campaignSupplies(ctx)));
         drawGalaxyMeter(g2, x + 12, y + 78, width - 24, "AMMO", Math.min(1.0, CampaignSystem.campaignAmmo(ctx) / 180.0), new Color(255, 206, 132, 220), String.valueOf(CampaignSystem.campaignAmmo(ctx)));
         drawGalaxyMeter(g2, x + 12, y + 100, width - 24, "SALVAGE", Math.min(1.0, CampaignSystem.campaignSalvageStock(ctx) / 60.0), new Color(255, 150, 132, 220), String.valueOf(CampaignSystem.campaignSalvageStock(ctx)));
+        drawGalaxyMeter(g2, x + 12, y + 122, width - 24, "ORE", Math.min(1.0, CampaignSystem.currentCampaignOre(ctx) / 80.0), new Color(214, 198, 120, 220), String.valueOf(CampaignSystem.currentCampaignOre(ctx)));
+
+        List<String> trend = CampaignSystem.campaignResourceTrendLines(ctx);
+        int trendY = y + 154;
+        for (int i = 0; i < trend.size() && i < 4; i++) {
+            drawGalaxyBoardLine(g2, x + 12, trendY + i * 15, width - 24, trend.get(i), new Color(214, 226, 238, 214));
+        }
+
+        List<String> warnings = CampaignSystem.campaignResourceWarningLines(ctx);
+        int warnY = y + 154 + Math.min(4, trend.size()) * 15 + 8;
+        for (int i = 0; i < warnings.size() && warnY + i * 15 <= y + panelH - 8; i++) {
+            Color lamp = (warnings.get(i).contains("LOW") || warnings.get(i).contains("CRITICAL"))
+                    ? new Color(255, 146, 132, 220)
+                    : new Color(132, 214, 180, 220);
+            g2.setColor(lamp);
+            g2.fillOval(x + 12, warnY - 8 + i * 15, 6, 6);
+            drawGalaxyBoardLine(g2, x + 24, warnY + i * 15, width - 36, warnings.get(i), new Color(214, 226, 238, 214));
+        }
     }
 
     private static void drawGalaxyStrikeBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 64) return;
-        drawGalaxyInstrumentPanel(g2, x, y, width, Math.min(height, 112), "CONTACT / STRIKE BOARD");
-        List<String> lines = CampaignSystem.galaxyIntelSummaryLines(ctx);
+        int panelH = Math.min(height, 218);
+        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "CONTACT / STRIKE BOARD");
+        List<String> readiness = CampaignSystem.campaignStrikeReadinessLines(ctx);
         int top = y + 34;
-        for (int i = 0; i < Math.min(4, lines.size()); i++) {
-            Color lamp = (i < 2) ? new Color(120, 220, 255, 220) : new Color(255, 140, 120, 220);
+        for (int i = 0; i < readiness.size() && i < 4; i++) {
+            Color lamp = (i < 3) ? new Color(120, 220, 255, 220) : new Color(120, 236, 186, 220);
             g2.setColor(lamp);
             g2.fillOval(x + 12, top - 8 + i * 18, 6, 6);
-            drawGalaxyBoardLine(g2, x + 24, top + i * 18, width - 36, lines.get(i), new Color(226, 236, 246, 220));
+            drawGalaxyBoardLine(g2, x + 24, top + i * 18, width - 36, readiness.get(i), new Color(226, 236, 246, 220));
+        }
+        List<String> consequences = CampaignSystem.campaignStrikeConsequenceLines(ctx);
+        String strikeHeat = consequences.size() > 1 ? consequences.get(1) : "Strike Heat: COLD (0)";
+        drawGalaxyMeter(g2, x + 12, y + 112, width - 24, "INTEL LOCK", CampaignSystem.campaignIntelPercent(ctx),
+                new Color(120, 220, 255, 220), CampaignSystem.campaignIntelReadout(ctx));
+        drawGalaxyMeter(g2, x + 12, y + 134, width - 24, "EXPOSURE", CampaignSystem.campaignExposurePercent(ctx),
+                new Color(255, 182, 120, 220), CampaignSystem.campaignExposureReadout(ctx));
+        drawGalaxyMeter(g2, x + 12, y + 156, width - 24, "STRIKE HEAT", MathUtil.clamp(parseTrailingNumber(strikeHeat) / 100.0, 0.0, 1.0),
+                new Color(255, 140, 120, 220), strikeHeat);
+        int infoY = y + 190;
+        for (int i = 0; i < consequences.size() && i < 4 && infoY + i * 14 <= y + panelH - 8; i++) {
+            drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, consequences.get(i), new Color(214, 226, 238, 214));
         }
     }
 
@@ -8932,34 +9235,92 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
-    private static List<String[]> galaxyCommandActions(GameContext ctx) {
-        UiState.CampaignCommandTab tab = (ctx == null || ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
-        boolean traveling = CampaignSystem.campaignTravelState(ctx) != null && CampaignSystem.campaignTravelState(ctx).traveling;
-        boolean enterSite = CampaignSystem.canEnterSelectedLocalEncounter(ctx);
-        ArrayList<String[]> out = new ArrayList<>();
-        switch (tab) {
-            case FLEET -> {
-                if (enterSite) out.add(new String[]{"ENTER_SITE", "ENTER SITE"});
-                out.add(new String[]{"ALLY_GREEN", "GREEN SUPPORT"});
-                out.add(new String[]{"ALLY_YELLOW", "YELLOW RUNNERS"});
-            }
-            case RESOURCES -> {
-                if (enterSite) out.add(new String[]{"ENTER_SITE", "ENTER SITE"});
-                out.add(new String[]{"SCAN_SWEEP", "SCAN SWEEP"});
-                out.add(new String[]{"ALLY_YELLOW", "CALL TRADERS"});
-            }
-            case STRIKES -> {
-                if (enterSite) out.add(new String[]{"ENTER_SITE", "ENTER SITE"});
-                out.add(new String[]{"SCAN_SWEEP", "RECON SWEEP"});
-                out.add(new String[]{"ALLY_GREEN", "CALL ESCORTS"});
-            }
-            default -> {
-                out.add(new String[]{traveling ? "HOLD" : "ENGAGE", traveling ? "HOLD COURSE" : "ENGAGE COURSE"});
-                if (enterSite) out.add(new String[]{"ENTER_SITE", "ENTER SITE"});
-                out.add(new String[]{"SCAN_SWEEP", "SIGNAL SWEEP"});
-            }
+    private static double fleetBoardFraction(List<String> lines, int row) {
+        if (lines == null || row < 0 || row >= lines.size()) return 0.0;
+        String text = lines.get(row);
+        if (text == null || text.isBlank()) return 0.0;
+        String[] nums = text.replaceAll("[^0-9]+", " ").trim().split("\\s+");
+        if (nums.length < 2) return 0.0;
+        try {
+            int a = Integer.parseInt(nums[0]);
+            int b = Integer.parseInt(nums[1]);
+            int total = Math.max(1, a + b);
+            return MathUtil.clamp(a / (double) total, 0.0, 1.0);
+        } catch (NumberFormatException ignored) {
+            return 0.0;
         }
-        return out;
+    }
+
+    private static String metricTail(List<String> lines, int row, String fallback) {
+        if (lines == null || row < 0 || row >= lines.size() || lines.get(row) == null || lines.get(row).isBlank()) {
+            return fallback;
+        }
+        return lines.get(row);
+    }
+
+    private static String safeNavLine(List<String> lines, int index, String fallback) {
+        if (lines == null || index < 0 || index >= lines.size() || lines.get(index) == null || lines.get(index).isBlank()) {
+            return fallback;
+        }
+        return lines.get(index);
+    }
+
+    private static double navReceiverFraction(GameContext ctx) {
+        return navIntelFraction(ctx);
+    }
+
+    private static double navSignalFraction(GameContext ctx) {
+        return navAlertFraction(ctx);
+    }
+
+    private static double navTrackFraction(GameContext ctx) {
+        String hunted = CampaignSystem.campaignHuntStatusReadout(ctx);
+        if (hunted == null) return 0.0;
+        if (hunted.contains("Hunted")) return 1.0;
+        if (hunted.contains("Tracked")) return 0.68;
+        return 0.22;
+    }
+
+    private static double navLockFraction(GameContext ctx) {
+        String label = CampaignSystem.selectedStrategicDestinationLabel(ctx);
+        return (label == null || label.equalsIgnoreCase("None selected")) ? 0.12 : 0.88;
+    }
+
+    private static double navBearingFraction(GameContext ctx) {
+        String bearing = CampaignSystem.campaignDirectionFinderLines(ctx).isEmpty() ? "000 DEG" : CampaignSystem.campaignDirectionFinderLines(ctx).get(0);
+        int value = parseTrailingNumber(bearing);
+        return MathUtil.clamp(value / 360.0, 0.0, 1.0);
+    }
+
+    private static double navExposureFraction(GameContext ctx) {
+        return CampaignSystem.campaignExposurePercent(ctx);
+    }
+
+    private static double navSweepFraction(GameContext ctx) {
+        List<String> lines = CampaignSystem.campaignDirectionFinderLines(ctx);
+        String value = safeNavLine(lines, 3, "Sweep");
+        if (value.contains("OPEN")) return 0.95;
+        if (value.contains("WORKABLE")) return 0.66;
+        if (value.contains("NARROW")) return 0.38;
+        return 0.12;
+    }
+
+    private static double navIntelFraction(GameContext ctx) {
+        return CampaignSystem.campaignIntelPercent(ctx);
+    }
+
+    private static double navAlertFraction(GameContext ctx) {
+        return CampaignSystem.enemyAlertPercent(ctx);
+    }
+
+    private static double navBearingAngle(GameContext ctx) {
+        List<String> lines = CampaignSystem.campaignDirectionFinderLines(ctx);
+        int value = parseTrailingNumber(safeNavLine(lines, 0, "000 DEG"));
+        return Math.toRadians(Math.floorMod(value, 360));
+    }
+
+    private static List<CampaignSystem.CampaignAction> galaxyCommandActions(GameContext ctx) {
+        return CampaignSystem.campaignVisibleActions(ctx);
     }
 
     private static int drawGalaxySidebarSection(Graphics2D g2, int x, int y, int width, String header,
@@ -9155,6 +9516,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     public static CampaignHubClickTarget campaignHubClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx.ui.campaignActionConfirm.active) {
+            Rectangle overlay = campaignActionConfirmOverlayRect(viewW, viewH);
+            Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
+            Rectangle confirmRect = new Rectangle(overlay.x + 18, overlay.y + overlay.height - 38, 122, 22);
+            if (confirmRect.contains(mouseX, mouseY)) {
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.CONFIRM, ctx.ui.campaignActionConfirm.actionId);
+            }
+            if (closeRect.contains(mouseX, mouseY)) {
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.CLOSE, "");
+            }
+            return null;
+        }
         if (ctx.ui.campaignHubMenu.active) {
             Rectangle overlay = campaignHubOverlayRect(viewW, viewH);
             Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
@@ -9180,23 +9553,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Rectangle rect = galaxyActionRect(ctx, panelRect, target.valueId);
             if (rect != null && rect.contains(mouseX, mouseY)) return target;
         }
-        CampaignSystem.CampaignLocation location = CampaignSystem.selectedCampaignLocation(ctx);
-        List<CampaignSystem.HubService> services = CampaignSystem.selectedCampaignLocationServices(ctx);
-        for (int i = 0; i < services.size(); i++) {
-            Rectangle rect = galaxyServiceRect(panelRect, services.size(), i);
-            if (rect != null && rect.contains(mouseX, mouseY)) {
-                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.SERVICE, services.get(i).name());
-            }
-        }
         return null;
     }
 
     private static List<CampaignHubClickTarget> galaxyActionClickTargets(GameContext ctx, Rectangle panelRect) {
-        List<String[]> actions = galaxyCommandActions(ctx);
+        List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
         ArrayList<CampaignHubClickTarget> out = new ArrayList<>();
-        for (String[] action : actions) {
-            if (action == null || action.length < 2) continue;
-            out.add(new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ACTION, "", action[0]));
+        for (CampaignSystem.CampaignAction action : actions) {
+            if (action == null || action.id.isBlank()) continue;
+            out.add(new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ACTION, "", action.id));
         }
         return out;
     }
@@ -9204,28 +9569,31 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Rectangle galaxyActionRect(GameContext ctx, Rectangle panelRect, String actionId) {
         if (panelRect == null || actionId == null || actionId.isBlank()) return null;
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
-        List<String[]> actions = galaxyCommandActions(ctx);
-        int colW = Math.max(120, (inner.width - 10) / 2);
-        int baseY = inner.y + inner.height - 74 + 24;
-        for (int i = 0; i < actions.size(); i++) {
-            if (!actionId.equals(actions.get(i)[0])) continue;
-            int col = i % 2;
-            int row = i / 2;
-            return new Rectangle(inner.x + col * (colW + 10), baseY + row * 34, colW, 22);
+        List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
+        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        int actionBlockH = galaxyActionBlockHeight(ctx, panelRect);
+        int baseY = inner.y + inner.height - actionBlockH + 24;
+        if (primary != null && actionId.equals(primary.id)) {
+            return new Rectangle(inner.x, baseY, inner.width, 30);
+        }
+        int cursorY = baseY + ((primary == null) ? 0 : 38);
+        for (CampaignActionSection section : galaxyActionSections(actions, primary)) {
+            if (section == null || section.actions.isEmpty()) continue;
+            cursorY += 16;
+            int columns = galaxyActionColumns(section.actions.size(), inner.width);
+            int gap = 8;
+            int colW = Math.max(96, (inner.width - gap * (columns - 1)) / columns);
+            for (int i = 0; i < section.actions.size(); i++) {
+                CampaignSystem.CampaignAction action = section.actions.get(i);
+                int col = i % columns;
+                int row = i / columns;
+                Rectangle rect = new Rectangle(inner.x + col * (colW + gap), cursorY + row * 30, colW, 24);
+                if (action != null && actionId.equals(action.id)) return rect;
+            }
+            int rows = (int) Math.ceil(section.actions.size() / (double) columns);
+            cursorY += rows * 30 + 6;
         }
         return null;
-    }
-
-    private static Rectangle galaxyServiceRect(Rectangle panelRect, int serviceCount, int index) {
-        if (panelRect == null || serviceCount <= 0 || index < 0 || index >= serviceCount) return null;
-        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
-        int serviceRows = Math.max(1, (serviceCount + 1) / 2);
-        int servicesBlockH = 28 + serviceRows * 36;
-        int colW = Math.max(120, (inner.width - 10) / 2);
-        int servicesY = inner.y + inner.height - servicesBlockH - 74 + 28;
-        int col = index % 2;
-        int row = index / 2;
-        return new Rectangle(inner.x + col * (colW + 10), servicesY + row * 36, colW, 26);
     }
 
     public static void drawCampaignHubOverlay(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -9257,9 +9625,40 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(oldColor);
     }
 
+    public static void drawCampaignActionConfirmOverlay(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.campaignActionConfirm.active) return;
+        Rectangle rect = campaignActionConfirmOverlayRect(viewW, viewH);
+        g2.setColor(new Color(0, 0, 0, 176));
+        g2.fillRect(0, 0, viewW, viewH);
+        paintThemedHudFrame(g2, rect.x, rect.y, rect.width, rect.height, new Color(255, 176, 120, 220), ThemeArt.HUD_STANDARD_PANEL, 18);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, rect.x, rect.y, rect.width, rect.height);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setColor(new Color(255, 204, 154, 236));
+        g2.drawString(ctx.ui.campaignActionConfirm.title, inner.x, inner.y + 20);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(228, 236, 248, 220));
+        int rowY = inner.y + 46;
+        for (String line : wrapHudText(g2.getFontMetrics(), ctx.ui.campaignActionConfirm.body, inner.width - 20)) {
+            g2.drawString(line, inner.x, rowY);
+            rowY += 16;
+        }
+        drawHudStatusChip(g2, "CONFIRM", inner.x, rect.y + rect.height - 38, 122, 22, new Color(255, 176, 120, 220), true);
+        drawHudStatusChip(g2, "CANCEL", rect.x + rect.width - 92, rect.y + rect.height - 38, 78, 22, new Color(180, 200, 220, 220), false);
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
     private static Rectangle campaignHubOverlayRect(int viewW, int viewH) {
         int w = Math.min(520, Math.max(380, viewW / 2));
         int h = Math.min(280, Math.max(220, viewH / 3));
+        return new Rectangle((viewW - w) / 2, (viewH - h) / 2, w, h);
+    }
+
+    private static Rectangle campaignActionConfirmOverlayRect(int viewW, int viewH) {
+        int w = Math.min(560, Math.max(400, viewW / 2));
+        int h = Math.min(300, Math.max(220, viewH / 3));
         return new Rectangle((viewW - w) / 2, (viewH - h) / 2, w, h);
     }
 

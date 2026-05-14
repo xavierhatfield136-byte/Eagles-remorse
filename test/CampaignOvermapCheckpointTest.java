@@ -56,12 +56,35 @@ class CampaignOvermapCheckpointTest {
         assertNotNull(aoi);
         mission.completed = true;
         mission.consumed = true;
+        setObject(mission, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "TRACKED"));
+        setObject(mission, "chainType", enumConstant(findNestedEnum("DiscoveryChainType"), "RELAY_ECHO"));
+        setIntField(mission, "chainStage", 2);
+        mission.scarNote = "Mission scar note";
+        mission.routeNote = "Mission route note";
+        mission.recurringContactId = "VOSS";
+        mission.recurringContactStatus = "trusted route handler";
+        mission.supportRouteStabilized = true;
+        mission.unresolvedAgeSec = 88.0;
+        mission.escalationStage = 1;
         aoi.discovered = false;
         aoi.consumed = true;
+        setObject(aoi, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "CLASSIFIED"));
+        setObject(aoi, "chainType", enumConstant(findNestedEnum("DiscoveryChainType"), "SMUGGLER_LEAD"));
+        setIntField(aoi, "chainStage", 1);
+        aoi.scarNote = "AOI scar note";
+        aoi.unresolvedAgeSec = 112.0;
+        aoi.escalationStage = 2;
 
         Object group = firstSearchGroup(st);
         assertNotNull(group);
         st.activeGalaxyEncounterSearchGroupId = getInt(group, "id");
+        st.selectedFleetPostureId = "RECON_SWEEP";
+        st.selectedSiteResolutionModeId = "MARK_FOR_ALLIES";
+        st.activeSiteResolutionModeId = "QUIET_DECODE";
+        st.fleetStrain = 57.5;
+        st.vossRelationshipStateId = "TRUSTED";
+        st.marrRelationshipStateId = "OWED_FAVOR";
+        st.rookRelationshipStateId = "HOSTILE";
         st.galaxyEncounterActive = true;
         setDouble(group, "x", 7777.0);
         setDouble(group, "y", 888.0);
@@ -72,6 +95,8 @@ class CampaignOvermapCheckpointTest {
         setDouble(group, "contactFadeSec", 7.5);
         setBoolean(group, "visible", true);
         setBoolean(group, "identified", true);
+        setObject(group, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "TARGET_QUALITY"));
+        setObject(group, "doctrine", enumConstant(fieldType(group, "doctrine"), "PUNISHMENT_FLEET"));
         setObject(group, "behavior", enumConstant(fieldType(group, "behavior"), "INTERCEPTING"));
         setObject(group, "contactConfidence", enumConstant(fieldType(group, "contactConfidence"), "IDENTIFIED_TASK_FORCE"));
 
@@ -86,6 +111,13 @@ class CampaignOvermapCheckpointTest {
         assertEquals("poi-06", restoredState.selectedGalaxyLocationId);
         assertEquals("", restoredState.dockedGalaxyLocationId);
         assertEquals(getInt(group, "id"), restoredState.activeGalaxyEncounterSearchGroupId);
+        assertEquals("RECON_SWEEP", restoredState.selectedFleetPostureId);
+        assertEquals("MARK_FOR_ALLIES", restoredState.selectedSiteResolutionModeId);
+        assertEquals("QUIET_DECODE", restoredState.activeSiteResolutionModeId);
+        assertEquals(57.5, restoredState.fleetStrain, 1e-9);
+        assertEquals("TRUSTED", restoredState.vossRelationshipStateId);
+        assertEquals("OWED_FAVOR", restoredState.marrRelationshipStateId);
+        assertEquals("HOSTILE", restoredState.rookRelationshipStateId);
         assertEquals(4, restoredState.completedMainMissions);
         assertEquals(4.0 / 24.0, restoredState.earthProgress, 1e-9);
         assertEquals(41.0, restoredState.enemyAlertLevel, 1e-9);
@@ -115,8 +147,24 @@ class CampaignOvermapCheckpointTest {
         assertNotNull(restoredAoi);
         assertTrue(restoredMission.completed);
         assertTrue(restoredMission.consumed);
+        assertEquals("TRACKED", getObject(restoredMission, "intelQuality").toString());
+        assertEquals("RELAY_ECHO", getObject(restoredMission, "chainType").toString());
+        assertEquals(2, getInt(restoredMission, "chainStage"));
+        assertEquals("Mission scar note", restoredMission.scarNote);
+        assertEquals("Mission route note", restoredMission.routeNote);
+        assertEquals("VOSS", restoredMission.recurringContactId);
+        assertEquals("trusted route handler", restoredMission.recurringContactStatus);
+        assertTrue(restoredMission.supportRouteStabilized);
+        assertEquals(88.0, restoredMission.unresolvedAgeSec, 1e-9);
+        assertEquals(1, restoredMission.escalationStage);
         assertFalse(restoredAoi.discovered);
         assertTrue(restoredAoi.consumed);
+        assertEquals("CLASSIFIED", getObject(restoredAoi, "intelQuality").toString());
+        assertEquals("SMUGGLER_LEAD", getObject(restoredAoi, "chainType").toString());
+        assertEquals(1, getInt(restoredAoi, "chainStage"));
+        assertEquals("AOI scar note", restoredAoi.scarNote);
+        assertEquals(112.0, restoredAoi.unresolvedAgeSec, 1e-9);
+        assertEquals(2, restoredAoi.escalationStage);
 
         Object restoredGroup = firstSearchGroup(restoredState);
         assertNotNull(restoredGroup);
@@ -129,6 +177,8 @@ class CampaignOvermapCheckpointTest {
         assertEquals(7.5, getDouble(restoredGroup, "contactFadeSec"), 1e-9);
         assertTrue(getBoolean(restoredGroup, "visible"));
         assertTrue(getBoolean(restoredGroup, "identified"));
+        assertEquals("TARGET_QUALITY", getObject(restoredGroup, "intelQuality").toString());
+        assertEquals("PUNISHMENT_FLEET", getObject(restoredGroup, "doctrine").toString());
         assertEquals("INTERCEPTING", getObject(restoredGroup, "behavior").toString());
         assertEquals("IDENTIFIED_TASK_FORCE", getObject(restoredGroup, "contactConfidence").toString());
     }
@@ -153,6 +203,11 @@ class CampaignOvermapCheckpointTest {
         st.playerGalaxyY = 933.5;
         st.playerGalaxyHeadingDeg = -12.0;
         st.activeGalaxyEncounterSearchGroupId = 3;
+        st.selectedFleetPostureId = "RESCUE_PRIORITY";
+        st.fleetStrain = 33.0;
+        st.vossRelationshipStateId = "HELPED";
+        st.marrRelationshipStateId = "TRUSTED";
+        st.rookRelationshipStateId = "HOSTILE";
         st.strategicTorpedoCharges = 4;
         st.strategicSortiesLaunched = 2;
         st.strategicAtomicCharges = 1;
@@ -186,6 +241,11 @@ class CampaignOvermapCheckpointTest {
         assertEquals(933.5, loaded.playerGalaxyY, 1e-9);
         assertEquals(-12.0, loaded.playerGalaxyHeadingDeg, 1e-9);
         assertEquals(3, loaded.activeGalaxyEncounterSearchGroupId);
+        assertEquals("RESCUE_PRIORITY", loaded.selectedFleetPostureId);
+        assertEquals(33.0, loaded.fleetStrain, 1e-9);
+        assertEquals("HELPED", loaded.vossRelationshipStateId);
+        assertEquals("TRUSTED", loaded.marrRelationshipStateId);
+        assertEquals("HOSTILE", loaded.rookRelationshipStateId);
         assertEquals(4, loaded.strategicTorpedoCharges);
         assertEquals(2, loaded.strategicSortiesLaunched);
         assertEquals(1, loaded.strategicAtomicCharges);
@@ -257,10 +317,25 @@ class CampaignOvermapCheckpointTest {
         return java.lang.Enum.valueOf((Class<? extends Enum>) enumType.asSubclass(Enum.class), name);
     }
 
+    private static Class<?> findNestedEnum(String simpleName) {
+        for (Class<?> nested : CampaignSystem.class.getDeclaredClasses()) {
+            if (nested != null && simpleName.equals(nested.getSimpleName())) {
+                return nested;
+            }
+        }
+        throw new AssertionError("Missing nested enum: " + simpleName);
+    }
+
     private static void setDouble(Object target, String fieldName, double value) throws Exception {
         java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.setDouble(target, value);
+    }
+
+    private static void setIntField(Object target, String fieldName, int value) throws Exception {
+        java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setInt(target, value);
     }
 
     private static double getDouble(Object target, String fieldName) throws Exception {

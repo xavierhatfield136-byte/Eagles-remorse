@@ -373,6 +373,7 @@ if (DevTools.isDebugOverlay()) {
             Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
         }
         Renderer.drawCampaignHubOverlay(g2, ctx, viewportW, viewportH);
+        Renderer.drawCampaignActionConfirmOverlay(g2, ctx, viewportW, viewportH);
         ctx.perf.drawnAsteroids = 0;
         ctx.perf.drawnSalvage = 0;
         ctx.perf.drawnShips = 0;

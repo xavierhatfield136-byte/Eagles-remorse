@@ -788,7 +788,9 @@ public final class UISystem {
         if (ctx == null || ctx.ui == null || e == null) return false;
         if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
-        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx) && !ctx.ui.campaignHubMenu.active) return false;
+        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
+                && !ctx.ui.campaignHubMenu.active
+                && !ctx.ui.campaignActionConfirm.active) return false;
 
         Renderer.CampaignHubClickTarget target =
                 Renderer.campaignHubClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
@@ -798,7 +800,7 @@ public final class UISystem {
             case SERVICE -> {
                 try {
                     CampaignSystem.HubService service = CampaignSystem.HubService.valueOf(target.serviceId);
-                    return CampaignSystem.openSelectedHubService(ctx, service);
+                    return CampaignSystem.executeSelectedHubService(ctx, service.name());
                 } catch (Exception ignored) {
                     return false;
                 }
@@ -815,9 +817,16 @@ public final class UISystem {
                 return handleCampaignCommandAction(ctx, target.valueId);
             }
             case CONFIRM -> {
+                if (ctx.ui.campaignActionConfirm.active) {
+                    return CampaignSystem.confirmCampaignAction(ctx);
+                }
                 return CampaignSystem.confirmSelectedHubService(ctx);
             }
             case CLOSE -> {
+                if (ctx.ui.campaignActionConfirm.active) {
+                    CampaignSystem.cancelCampaignActionConfirm(ctx);
+                    return true;
+                }
                 CampaignSystem.closeHubServiceMenu(ctx);
                 return true;
             }
@@ -850,13 +859,42 @@ public final class UISystem {
                     EventSystem.showBanner(ctx, "LOCATION PING: " + clickedLocation.name.toUpperCase(), 1.2);
                     return;
                 }
+                CampaignSystem.clearSelectedCampaignContact(ctx);
                 CampaignSystem.selectCampaignLocation(ctx, worldX, worldY);
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
                     CampaignSystem.startTravelToSelectedLocation(ctx);
                 }
                 return;
             }
+            CampaignSystem.CampaignSupportMarker clickedSupport =
+                    CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
+            if (clickedSupport != null) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
+                    EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
+                    return;
+                }
+                String intel = "";
+                if (clickedSupport.subtitle != null && clickedSupport.subtitle.contains("|")) {
+                    intel = clickedSupport.subtitle.substring(0, clickedSupport.subtitle.indexOf('|')).trim();
+                }
+                boolean hostile = clickedSupport.type == CampaignSystem.SupportMarkerType.HAZARD;
+                CampaignSystem.selectCampaignContactTarget(ctx,
+                        clickedSupport.label,
+                        clickedSupport.subtitle,
+                        intel,
+                        clickedSupport.x,
+                        clickedSupport.y,
+                        hostile,
+                        true);
+                ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
+                addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+                EventSystem.showBanner(ctx, "CONTACT SELECTED: " + clickedSupport.label.toUpperCase(), 1.2);
+                return;
+            }
             if (SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.clearSelectedCampaignContact(ctx);
                 CampaignSystem.selectCampaignFreeTravelTarget(ctx, worldX, worldY);
                 if (e.getClickCount() >= 2) {
                     CampaignSystem.startTravelToSelectedLocation(ctx);
@@ -1216,16 +1254,7 @@ public final class UISystem {
     }
 
     private static boolean handleCampaignCommandAction(GameContext ctx, String actionId) {
-        if (ctx == null || actionId == null || actionId.isBlank()) return false;
-        return switch (actionId) {
-            case "HOLD" -> CampaignSystem.stopCampaignTravel(ctx);
-            case "ENGAGE" -> CampaignSystem.startTravelToSelectedLocation(ctx);
-            case "ENTER_SITE" -> CampaignSystem.launchSelectedLocalEncounter(ctx);
-            case "SCAN_SWEEP" -> CampaignSystem.requestCampaignSensorSweep(ctx);
-            case "ALLY_GREEN" -> CampaignSystem.requestCampaignAllySupport(ctx, false);
-            case "ALLY_YELLOW" -> CampaignSystem.requestCampaignAllySupport(ctx, true);
-            default -> false;
-        };
+        return CampaignSystem.executeCampaignAction(ctx, actionId);
     }
 
     public static void setWaypointAtCursor(GameContext ctx, PlayerControl controls) {

@@ -124,6 +124,13 @@ public final class UiState {
         public String serviceId = "";
     }
 
+    public static final class CampaignActionConfirm {
+        public boolean active = false;
+        public String actionId = "";
+        public String title = "";
+        public String body = "";
+    }
+
     public boolean shopOpen = false;
     public ShopHullCategory shopHullCategory = ShopHullCategory.ESCORT;
     public int shopHullPage = 0;
@@ -134,6 +141,7 @@ public final class UiState {
     public boolean flightDeckOpen = false;
     public final StrategicEncounterPrompt strategicEncounterPrompt = new StrategicEncounterPrompt();
     public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
+    public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
     // Fleet hub: when the campaign shop is open (TAB), toggle between "commission" (buy hulls) and "refit"
@@ -160,6 +168,13 @@ public final class UiState {
     public CommIntent commIntent = CommIntent.IDENTIFY;
     public TacticalSectorScalePreset tacticalSectorScalePreset = TacticalSectorScalePreset.STANDARD;
     public final List<Renderer.MapPing> mapPings = new ArrayList<>();
+    public String selectedCampaignContactLabel = "";
+    public String selectedCampaignContactSubtitle = "";
+    public String selectedCampaignContactIntel = "";
+    public double selectedCampaignContactX = Double.NaN;
+    public double selectedCampaignContactY = Double.NaN;
+    public boolean selectedCampaignContactHostile = false;
+    public boolean selectedCampaignContactTrackable = false;
 
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
@@ -189,7 +204,7 @@ public final class UiState {
 
     public boolean hasBlockingOverlay() {
         return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen
-                || strategicEncounterPrompt.active || campaignHubMenu.active;
+                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active;
     }
 
     public void showStrategicEncounterPrompt(int taskForceId, String title, String body,
@@ -254,6 +269,30 @@ public final class UiState {
         campaignHubMenu.active = false;
         campaignHubMenu.locationId = "";
         campaignHubMenu.serviceId = "";
+    }
+
+    public void showCampaignActionConfirm(String actionId, String title, String body) {
+        campaignActionConfirm.active = true;
+        campaignActionConfirm.actionId = (actionId == null) ? "" : actionId.trim();
+        campaignActionConfirm.title = (title == null || title.isBlank()) ? "CONFIRM ACTION" : title.trim();
+        campaignActionConfirm.body = (body == null) ? "" : body.trim();
+    }
+
+    public void clearCampaignActionConfirm() {
+        campaignActionConfirm.active = false;
+        campaignActionConfirm.actionId = "";
+        campaignActionConfirm.title = "";
+        campaignActionConfirm.body = "";
+    }
+
+    public void clearSelectedCampaignContact() {
+        selectedCampaignContactLabel = "";
+        selectedCampaignContactSubtitle = "";
+        selectedCampaignContactIntel = "";
+        selectedCampaignContactX = Double.NaN;
+        selectedCampaignContactY = Double.NaN;
+        selectedCampaignContactHostile = false;
+        selectedCampaignContactTrackable = false;
     }
 
     public void clearVoiceCaption() {

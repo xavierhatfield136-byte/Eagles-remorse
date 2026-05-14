@@ -397,6 +397,12 @@ public final class CampaignSystem {
         FRONTIER
     }
 
+    private enum GalaxyRegionIdentity {
+        SOUTHERN_SHELTER,
+        CONTESTED_BELT,
+        EARTHWARDED_NORTH
+    }
+
     private static final class HubProfile {
         final HubAlignment alignment;
         final double regionPressure;
@@ -437,6 +443,16 @@ public final class CampaignSystem {
         public boolean discovered;
         public boolean completed;
         public boolean consumed;
+        public String scarNote = "";
+        public String routeNote = "";
+        public String recurringContactId = "";
+        public String recurringContactStatus = "";
+        public boolean supportRouteStabilized = false;
+        public ContactIntelQuality intelQuality = ContactIntelQuality.UNKNOWN;
+        public DiscoveryChainType chainType = DiscoveryChainType.NONE;
+        public int chainStage = 0;
+        public double unresolvedAgeSec = 0.0;
+        public int escalationStage = 0;
 
         CampaignLocation(String id,
                          String name,
@@ -513,6 +529,143 @@ public final class CampaignSystem {
         CONFIRMED_HOSTILE,
         IDENTIFIED_TASK_FORCE,
         LOST_CONTACT
+    }
+
+    private enum ContactIntelQuality {
+        UNKNOWN,
+        CLASSIFIED,
+        IDENTIFIED,
+        TRACKED,
+        TARGET_QUALITY
+    }
+
+    private enum GalaxySearchDoctrine {
+        SCOUT_SCREEN,
+        HUNTER_KILLER,
+        BLOCKADE_GROUP,
+        INTERDICTION_GROUP,
+        PUNISHMENT_FLEET
+    }
+
+    private enum CampaignReputationState {
+        UNKNOWN_FLEET,
+        RELIABLE_RESCUE_FORCE,
+        RAIDER_THREAT,
+        LIBERATION_SYMBOL,
+        OVEREXTENDED_COMMAND,
+        HIGH_EXPOSURE_TARGET
+    }
+
+    private enum FleetPosture {
+        SILENT_RUNNING,
+        COMBAT_PATROL,
+        RESCUE_PRIORITY,
+        RAIDER_DOCTRINE,
+        LOGISTICS_CONSERVATION,
+        RECON_SWEEP
+    }
+
+    private enum TheaterPressureState {
+        PATROL_NET_EXPANDING,
+        BLOCKADE_TIGHTENING,
+        TRADE_LANES_UNSTABLE,
+        SUPPLY_LINES_WEAKENING,
+        HIDDEN_HOSTILES_ACTIVE
+    }
+
+    private enum SiteResolutionMode {
+        FAST_STRIP,
+        CAREFUL_SECURE,
+        MARK_FOR_ALLIES,
+        EVAC_SURVIVORS,
+        TOW_DAMAGED_HULL,
+        STRIP_FOR_PARTS,
+        QUIET_DECODE,
+        ALLY_BROADCAST,
+        JAM_AND_DESTROY
+    }
+
+    private enum DiscoveryChainType {
+        NONE,
+        RELAY_ECHO,
+        WRECK_TRAIL,
+        FALSE_DISTRESS,
+        MISSING_PATROL,
+        SMUGGLER_LEAD
+    }
+
+    private enum CampaignRelationshipState {
+        UNKNOWN,
+        HELPED,
+        TRUSTED,
+        OWED_FAVOR,
+        NEGLECTED,
+        HOSTILE,
+        MISSING,
+        DESTROYED
+    }
+
+    public enum CampaignActionCategory {
+        NAVIGATION,
+        SERVICES,
+        STRIKES,
+        SUPPORT,
+        POSTURE,
+        SITE_RESOLUTION,
+        SENSORS
+    }
+
+    public enum CampaignActionState {
+        AVAILABLE,
+        DISABLED,
+        WARNING,
+        RECOMMENDED
+    }
+
+    @FunctionalInterface
+    public interface CampaignActionExecutor {
+        boolean execute(GameContext ctx);
+    }
+
+    public static final class CampaignAction {
+        public final String id;
+        public final String label;
+        public final String shortDescription;
+        public final String tooltip;
+        public final CampaignActionCategory category;
+        public final boolean visible;
+        public final boolean enabled;
+        public final String disabledReason;
+        public final CampaignActionState state;
+        public final boolean primary;
+        public final String shortcut;
+        public final CampaignActionExecutor execute;
+
+        CampaignAction(String id,
+                       String label,
+                       String shortDescription,
+                       String tooltip,
+                       CampaignActionCategory category,
+                       boolean visible,
+                       boolean enabled,
+                       String disabledReason,
+                       CampaignActionState state,
+                       boolean primary,
+                       String shortcut,
+                       CampaignActionExecutor execute) {
+            this.id = (id == null) ? "" : id.trim();
+            this.label = (label == null || label.isBlank()) ? this.id : label.trim();
+            this.shortDescription = (shortDescription == null) ? "" : shortDescription.trim();
+            this.tooltip = (tooltip == null) ? "" : tooltip.trim();
+            this.category = (category == null) ? CampaignActionCategory.NAVIGATION : category;
+            this.visible = visible;
+            this.enabled = enabled;
+            this.disabledReason = (disabledReason == null) ? "" : disabledReason.trim();
+            this.state = (state == null) ? (enabled ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED) : state;
+            this.primary = primary;
+            this.shortcut = (shortcut == null) ? "" : shortcut.trim();
+            this.execute = execute;
+        }
     }
 
     private static final class GalaxyRouteAssessment {
@@ -618,6 +771,8 @@ public final class CampaignSystem {
         boolean visible = false;
         boolean identified = false;
         GalaxyContactConfidence contactConfidence = GalaxyContactConfidence.UNKNOWN_CONTACT;
+        ContactIntelQuality intelQuality = ContactIntelQuality.UNKNOWN;
+        GalaxySearchDoctrine doctrine = GalaxySearchDoctrine.SCOUT_SCREEN;
         double contactFadeSec = 0.0;
         GalaxySearchBehavior behavior = GalaxySearchBehavior.PATROLLING;
         String anchorLocationId = "";
@@ -1104,10 +1259,74 @@ public final class CampaignSystem {
         return intelBandLabel(intel) + " (" + (int) Math.round(intel) + ")";
     }
 
+    public static String selectedLocationIntelReadout(GameContext ctx) {
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        if (selected == null) return "";
+        return contactIntelQualityLabel(selected.intelQuality);
+    }
+
+    public static List<String> campaignRumorBoardLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Rumor Board offline.");
+        ArrayList<String> out = new ArrayList<>();
+        TheaterPressureState pressure = theaterPressureState(ctx);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        String regionTitle = regionIdentityTitleFor(ctx, st.playerGalaxyX, st.playerGalaxyY);
+        out.add("Rumor Board  |  " + regionTitle);
+        out.add("Net Shift  |  " + theaterPressureReadout(ctx));
+        if (selected != null && selected.escalationStage > 0) {
+            out.add("Lead  |  " + selected.name + " is " + ((selected.escalationStage >= 2) ? "compromised" : "narrowing fast"));
+        } else if (selected != null && selected.discovered && !selected.completed && !selected.consumed) {
+            out.add("Lead  |  " + selected.name + " tagged " + contactIntelQualityLabel(selected.intelQuality));
+        } else {
+            out.add("Lead  |  " + rumorLeadForPressure(pressure));
+        }
+        GalaxySearchGroup nearest = nearestVisibleSearchGroup(st);
+        if (nearest != null) {
+            out.add("Traffic  |  " + contactConfidenceLabel(nearest) + " " + contactIntelQualityLabel(nearest.intelQuality));
+        } else {
+            out.add("Traffic  |  " + rumorTrafficLineForPressure(pressure));
+        }
+        out.add("Assessment  |  " + rumorAssessmentLine(ctx, st));
+        return out;
+    }
+
     public static String campaignExposureReadout(GameContext ctx) {
         CampaignState st = state(ctx);
         double exposure = (st == null) ? 0.0 : MathUtil.clamp(st.strategicExposureLevel, 0.0, 100.0);
         return exposureBandLabel(exposure) + " (" + (int) Math.round(exposure) + ")";
+    }
+
+    public static String campaignFleetStrainReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return "STEADY (0)";
+        double strain = MathUtil.clamp(st.fleetStrain, 0.0, 100.0);
+        String label = (strain < 20.0) ? "STEADY"
+                : (strain < 40.0) ? "WORKED"
+                : (strain < 62.0) ? "PRESSED"
+                : (strain < 82.0) ? "THIN"
+                : "CRITICAL";
+        return label + " (" + (int) Math.round(strain) + ")";
+    }
+
+    public static double campaignFleetStrainPercent(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0.0 : MathUtil.clamp(st.fleetStrain, 0.0, 100.0);
+    }
+
+    public static double enemyAlertPercent(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0.0 : MathUtil.clamp(st.enemyAlertLevel / 100.0, 0.0, 1.0);
+    }
+
+    public static double campaignIntelPercent(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0.0 : MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0);
+    }
+
+    public static double campaignExposurePercent(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0.0 : MathUtil.clamp(st.strategicExposureLevel / 100.0, 0.0, 1.0);
     }
 
     public static String threatReadoutForSidebar(float threatLevel) {
@@ -1155,6 +1374,43 @@ public final class CampaignSystem {
         );
     }
 
+    public static String campaignFleetPostureReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return fleetPostureLabel(resolveFleetPosture((st == null) ? "" : st.selectedFleetPostureId));
+    }
+
+    public static String campaignFleetPostureDetail(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return fleetPostureDetail(resolveFleetPosture((st == null) ? "" : st.selectedFleetPostureId));
+    }
+
+    public static boolean cycleSelectedFleetPosture(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return false;
+        FleetPosture[] values = FleetPosture.values();
+        FleetPosture current = resolveFleetPosture(st.selectedFleetPostureId);
+        int idx = 0;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == current) {
+                idx = i;
+                break;
+            }
+        }
+        FleetPosture next = values[(idx + 1) % values.length];
+        st.selectedFleetPostureId = next.name();
+        EventSystem.showBanner(ctx, "FLEET POSTURE: " + fleetPostureLabel(next).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    public static boolean setSelectedFleetPosture(GameContext ctx, String postureId) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || postureId == null || postureId.isBlank()) return false;
+        FleetPosture next = resolveFleetPosture(postureId);
+        st.selectedFleetPostureId = next.name();
+        EventSystem.showBanner(ctx, "FLEET POSTURE: " + fleetPostureLabel(next).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
     public static List<String> campaignSummarySidebarLines(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Campaign data unavailable.");
@@ -1166,8 +1422,12 @@ public final class CampaignSystem {
         out.add("Destination: " + selectedStrategicDestinationLabel(ctx));
         out.add("Progress: Earth " + Math.round(earthProgress(ctx) * 100.0) + "%");
         out.add("Travel: " + galaxyTravelSidebarReadout(ctx, travel));
+        out.add("Region: " + regionIdentityTitleFor(ctx, st.playerGalaxyX, st.playerGalaxyY));
+        out.add("Posture: " + campaignFleetPostureReadout(ctx));
         out.add("Hunt Status: " + huntedStatusReadout(ctx));
         out.add("Alert / Pressure: " + enemyAlertReadout(ctx) + "  |  " + enemyAlertRegionReadout(ctx));
+        out.add("Reputation: " + campaignReputationReadout(ctx));
+        out.add("Theater Shift: " + theaterPressureReadout(ctx));
         return out;
     }
 
@@ -1176,6 +1436,7 @@ public final class CampaignSystem {
         CampaignLocation selected = selectedCampaignLocation(ctx);
         if (ctx == null || st == null) return List.of("No location selected.");
         if (selected == null) {
+            if (hasSelectedCampaignContactTarget(ctx)) return selectedContactSidebarLines(ctx);
             if (!hasSelectedFreeTravelTarget(ctx)) return List.of("No location selected.");
             return freeTravelSelectionLines(ctx);
         }
@@ -1184,8 +1445,32 @@ public final class CampaignSystem {
         out.add("Alignment: " + selectedLocationAlignmentLabel(selected));
         out.add("Threat: " + threatReadoutForSidebar(selected.threatLevel));
         out.add("Docking: " + dockingStatusReadout(ctx, selected));
+        out.add("Posture: " + campaignFleetPostureReadout(ctx));
+        out.add("Intel State: " + contactIntelQualityLabel(selected.intelQuality));
+        String chain = campaignDiscoveryChainLine(selected);
+        if (!chain.isBlank()) out.add("Chain: " + chain);
+        String resolution = selectedSiteResolutionModeReadout(ctx);
+        if (!resolution.isBlank()) out.add("Site Plan: " + resolution);
+        String resolutionDetail = selectedSiteResolutionModeDetail(ctx);
+        if (!resolutionDetail.isBlank()) out.add("Plan Detail: " + resolutionDetail);
+        CampaignAction primaryAction = campaignPrimaryAction(ctx);
+        if (primaryAction != null && !primaryAction.label.isBlank()) {
+            out.add("Primary Recommendation: " + primaryAction.label);
+        }
+        out.add("Available Actions: " + campaignVisibleActions(ctx).size());
+        String escalation = campaignEscalationLine(selected);
+        if (!escalation.isBlank()) out.add("Contact State: " + escalation);
+        String memory = campaignSiteMemoryLine(selected);
+        if (!memory.isBlank()) out.add("Site Memory: " + memory);
+        String contact = campaignRecurringContactLine(ctx, selected);
+        if (!contact.isBlank()) out.add("Known Contact: " + contact);
+        String routeState = campaignRouteStateLine(selected);
+        if (!routeState.isBlank()) out.add("Route State: " + routeState);
+        String scar = campaignScarLine(selected);
+        if (!scar.isBlank()) out.add("Scar: " + scar);
         out.addAll(selectedHubIdentityLines(ctx));
         out.addAll(compactRouteAssessmentLines(ctx));
+        out.add("Region Note: " + regionIdentitySummaryFor(ctx, selected.x, selected.y));
         out.add(selected.detail);
         return out;
     }
@@ -1216,10 +1501,34 @@ public final class CampaignSystem {
         out.add("Alignment: Unrestricted navigation");
         out.add("Threat: " + routeExposureLabel(assessment));
         out.add("Docking: Open space");
+        out.add("Posture: " + campaignFleetPostureReadout(ctx));
+        CampaignAction primaryAction = campaignPrimaryAction(ctx);
+        if (primaryAction != null && !primaryAction.label.isBlank()) out.add("Primary Recommendation: " + primaryAction.label);
+        out.add("Available Actions: " + campaignVisibleActions(ctx).size());
         out.add("Route: " + routeTempoLabel(assessment) + "  |  ETA " + (int) Math.ceil(assessment.durationSec) + "s");
         out.add("Risk: " + routeExposureLabel(assessment) + "  |  " + (int) Math.round(assessment.interceptionRisk) + "%");
         out.add("Support: " + routeLogisticsLabel(assessment) + "  |  Intel " + campaignIntelReadout(ctx));
+        out.add("Region Note: " + regionIdentitySummaryFor(ctx, targetX, targetY));
         out.add("Free-travel target at X " + (int) Math.round(targetX) + "  Y " + (int) Math.round(targetY));
+        return out;
+    }
+
+    private static List<String> selectedContactSidebarLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !hasSelectedCampaignContactTarget(ctx)) return List.of("No contact selected.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Type: " + (selectedCampaignContactHostile(ctx) ? "HOSTILE CONTACT" : "TRACKED CONTACT"));
+        out.add("Alignment: " + (selectedCampaignContactHostile(ctx) ? "Hostile" : "Unknown"));
+        String intel = selectedCampaignContactIntelLabel(ctx);
+        if (!intel.isBlank()) out.add("Intel State: " + intel);
+        out.add("Posture: " + campaignFleetPostureReadout(ctx));
+        CampaignAction primaryAction = campaignPrimaryAction(ctx);
+        if (primaryAction != null && !primaryAction.label.isBlank()) out.add("Primary Recommendation: " + primaryAction.label);
+        out.add("Available Actions: " + campaignVisibleActions(ctx).size());
+        String subtitle = selectedCampaignContactSubtitle(ctx);
+        if (!subtitle.isBlank()) out.add("Contact Detail: " + subtitle);
+        out.add("Coordinates: X " + (int) Math.round(ctx.ui.selectedCampaignContactX)
+                + "  Y " + (int) Math.round(ctx.ui.selectedCampaignContactY));
         return out;
     }
 
@@ -1269,6 +1578,111 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static List<String> campaignFleetBoardSummaryLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("No fleet data.");
+        int ready = 0;
+        int strained = 0;
+        int support = 0;
+        int escorts = 0;
+        int capitals = 0;
+        int detached = 0;
+        int recovered = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            double hull = MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0);
+            double shield = MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0);
+            if (hull >= 0.86 && shield >= 0.80) ready++;
+            if (hull < 0.70 || shield < 0.62) strained++;
+            if (entry.commandGroupId != CAMPAIGN_FLAGSHIP_COMMAND_GROUP) detached++;
+            if (entry.role == ShipRole.HAULER || entry.role == ShipRole.MINER || entry.role == ShipRole.TRANSPORT
+                    || entry.role == ShipRole.TRANSPORT_TITAN || entry.role == ShipRole.MOBILE_STATION_TITAN) {
+                support++;
+            } else if (entry.role == ShipRole.BATTLESHIP || entry.role == ShipRole.DREADNOUGHT
+                    || entry.role == ShipRole.SUPERSHIP || entry.role == ShipRole.BATTLECRUISER
+                    || entry.role == ShipRole.BULWARK_TITAN || entry.role == ShipRole.ARTILLERY_TITAN) {
+                capitals++;
+            } else {
+                escorts++;
+            }
+            String name = (entry.name == null) ? "" : entry.name.toUpperCase(Locale.US);
+            if (name.contains("RECOVERED") || name.contains("RELAY") || name.contains("DISTRESS") || name.contains("CRADLE")) {
+                recovered++;
+            }
+        }
+        return List.of(
+                "READY " + ready + "  |  STRAINED " + strained,
+                "ESCORTS " + escorts + "  |  SUPPORT " + support + "  |  CAPITALS " + capitals,
+                "DETACHED " + detached + "  |  RECOVERED " + recovered
+        );
+    }
+
+    public static List<String> campaignFleetRosterLines(GameContext ctx, int maxCount) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || maxCount <= 0) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            String role = roleDisplayName(entry.role).toUpperCase(Locale.US);
+            String group = (entry.commandGroupId == CAMPAIGN_FLAGSHIP_COMMAND_GROUP)
+                    ? "FLAG"
+                    : ("DET " + entry.commandGroupId);
+            String hull = String.valueOf((int) Math.round(MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0) * 100.0));
+            String shield = String.valueOf((int) Math.round(MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0) * 100.0));
+            out.add(displayPersistentFleetEntryName(entry) + "  |  " + role + "  |  H " + hull + "  S " + shield + "  |  " + group);
+            if (out.size() >= maxCount) break;
+        }
+        return out;
+    }
+
+    public static List<String> campaignFleetConditionLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Condition board offline.");
+        int battleReady = 0;
+        int escortReady = 0;
+        int miningReady = 0;
+        int repairQueue = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            double hull = MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0);
+            double shield = MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0);
+            boolean carrier = entry.role == ShipRole.CARRIER || entry.role == ShipRole.DRONE_CARRIER || entry.role == ShipRole.CARRIER_SUPPORT_TITAN;
+            boolean logistics = entry.role == ShipRole.HAULER || entry.role == ShipRole.MINER
+                    || entry.role == ShipRole.TRANSPORT || entry.role == ShipRole.TRANSPORT_TITAN
+                    || entry.role == ShipRole.MOBILE_STATION_TITAN;
+            if (hull < 0.64 || shield < 0.56) repairQueue++;
+            if (hull >= 0.84 && shield >= 0.76 && !logistics) battleReady++;
+            if (hull >= 0.76 && shield >= 0.68 && !carrier) escortReady++;
+            if (logistics && hull >= 0.72) miningReady++;
+        }
+        return List.of(
+                "BATTLE READY " + battleReady,
+                "ESCORT READY " + escortReady,
+                "MINING READY " + miningReady,
+                "REPAIR QUEUE " + repairQueue,
+                "FLEET STRAIN " + campaignFleetStrainReadout(ctx)
+        );
+    }
+
+    public static List<String> campaignFleetDetachmentLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("No detachment data.");
+        java.util.LinkedHashMap<Integer, Integer> groups = new java.util.LinkedHashMap<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            groups.merge(entry.commandGroupId, 1, Integer::sum);
+        }
+        ArrayList<String> out = new ArrayList<>();
+        for (java.util.Map.Entry<Integer, Integer> entry : groups.entrySet()) {
+            int groupId = entry.getKey();
+            int count = entry.getValue();
+            String label = (groupId == CAMPAIGN_FLAGSHIP_COMMAND_GROUP) ? "FLAG GROUP" : ("DETACHMENT " + groupId);
+            out.add(label + "  |  " + count + " HULLS");
+            if (out.size() >= 4) break;
+        }
+        return out;
+    }
+
     public static List<String> campaignResourceManagerLines(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Resource data unavailable.");
@@ -1277,8 +1691,34 @@ public final class CampaignSystem {
                 "Fuel: " + campaignFuel(ctx) + "  |  Supplies " + campaignSupplies(ctx),
                 "Ammo: " + campaignAmmo(ctx) + "  |  Salvage " + campaignSalvageStock(ctx),
                 "Intel: " + campaignIntelReadout(ctx) + "  |  Exposure " + campaignExposureReadout(ctx),
-                "Green Favor: " + st.greenContractFavor + "  |  Yellow Favor " + st.yellowLiberationFavor
+                "Green Favor: " + st.greenContractFavor + "  |  Yellow Favor " + st.yellowLiberationFavor,
+                "Fleet Strain: " + campaignFleetStrainReadout(ctx)
         );
+    }
+
+    public static List<String> campaignResourceTrendLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("No logistics trend.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Fuel State: " + logisticsStateLabel(campaignFuel(ctx), 42, 84));
+        out.add("Supply State: " + logisticsStateLabel(campaignSupplies(ctx), 34, 76));
+        out.add("Ammo State: " + logisticsStateLabel(campaignAmmo(ctx), 44, 88));
+        out.add("Salvage State: " + logisticsStateLabel(campaignSalvageStock(ctx), 10, 28));
+        return out;
+    }
+
+    public static List<String> campaignResourceWarningLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("No route selected.");
+        ArrayList<String> out = new ArrayList<>();
+        if (campaignFuel(ctx) < 36) out.add("FUEL LOW  |  LONG BURNS RISKY");
+        if (campaignSupplies(ctx) < 28) out.add("SUPPLIES LOW  |  SWEEPS / REFIT LIMITED");
+        if (campaignAmmo(ctx) < 36) out.add("AMMO LOW  |  STRIKES CONSTRAINED");
+        if (campaignSalvageStock(ctx) < 8) out.add("SALVAGE LOW  |  REPAIR FLEX THIN");
+        if (campaignFleetStrainPercent(ctx) >= 72.0) out.add("FLEET STRAIN HIGH  |  RECOVERY EFFICIENCY FALLING");
+        if (out.isEmpty()) out.add("LOGISTICS STABLE  |  NO IMMEDIATE SHORTFALL");
+        out.add(routeSupportPreviewLine(ctx));
+        return out;
     }
 
     public static List<String> campaignStrikeManagerLines(GameContext ctx) {
@@ -1289,8 +1729,32 @@ public final class CampaignSystem {
                 "Carrier Sorties Committed: " + Math.max(0, st.strategicSortiesLaunched),
                 "Atomic Charges: " + Math.max(0, st.strategicAtomicCharges),
                 "Recon Picture: " + campaignIntelReadout(ctx),
-                "Use Shift+LMB torpedo, Shift+RMB sortie, Ctrl+Shift+LMB atomic on the map."
+                "Use the command bay for torpedoes, sorties, atomic strikes, and target tracking."
         );
+    }
+
+    public static List<String> campaignStrikeReadinessLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Strike board offline.");
+        int sortieCap = strategicSortieCapacity(ctx);
+        int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
+        return List.of(
+                "TORPEDO READY " + Math.max(0, st.strategicTorpedoCharges),
+                "SORTIE READY " + sortiesLeft + "/" + Math.max(0, sortieCap),
+                "ATOMIC READY " + Math.max(0, st.strategicAtomicCharges),
+                "RECON " + campaignIntelReadout(ctx)
+        );
+    }
+
+    public static List<String> campaignStrikeConsequenceLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("No strike consequences.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Exposure: " + campaignExposureReadout(ctx));
+        out.add("Strike Heat: " + pressureBandLabel(st.recentStrikePressure) + " (" + (int) Math.round(st.recentStrikePressure) + ")");
+        out.add("Counterplay: " + ((st.campaignIntelLevel >= 54.0) ? "GOOD FIX ON TARGETS" : "PARTIAL TARGET LOCK"));
+        out.add(selectedStrikeOpportunityLine(ctx));
+        return out;
     }
 
     public static boolean canEnterSelectedLocalEncounter(GameContext ctx) {
@@ -1302,9 +1766,515 @@ public final class CampaignSystem {
         return !selected.completed || selected.services.size() > 0 || selected.type == CampaignLocationType.REPAIR_SITE;
     }
 
+    public static String selectedSiteResolutionModeReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "";
+        CampaignLocation location = selectedCampaignLocation(ctx);
+        if (location == null || !canEnterSelectedLocalEncounter(ctx)) return "";
+        SiteResolutionMode mode = resolveSiteResolutionMode(st.selectedSiteResolutionModeId, location);
+        return siteResolutionModeLabel(mode);
+    }
+
+    public static String selectedSiteResolutionModeDetail(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "";
+        CampaignLocation location = selectedCampaignLocation(ctx);
+        if (location == null || !canEnterSelectedLocalEncounter(ctx)) return "";
+        SiteResolutionMode mode = resolveSiteResolutionMode(st.selectedSiteResolutionModeId, location);
+        return siteResolutionModeDetail(location, mode);
+    }
+
+    public static boolean cycleSelectedSiteResolutionMode(GameContext ctx) {
+        CampaignState st = state(ctx);
+        CampaignLocation location = selectedCampaignLocation(ctx);
+        if (ctx == null || st == null || location == null || !canEnterSelectedLocalEncounter(ctx)) return false;
+        List<SiteResolutionMode> modes = availableSiteResolutionModes(location);
+        if (modes.isEmpty()) return false;
+        SiteResolutionMode current = resolveSiteResolutionMode(st.selectedSiteResolutionModeId, location);
+        int idx = Math.max(0, modes.indexOf(current));
+        SiteResolutionMode next = modes.get((idx + 1) % modes.size());
+        st.selectedSiteResolutionModeId = next.name();
+        EventSystem.showBanner(ctx, "SITE RESOLUTION: " + siteResolutionModeLabel(next).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    public static boolean setSelectedSiteResolutionMode(GameContext ctx, String modeId) {
+        CampaignState st = state(ctx);
+        CampaignLocation location = selectedCampaignLocation(ctx);
+        if (ctx == null || st == null || location == null || !canEnterSelectedLocalEncounter(ctx) || modeId == null || modeId.isBlank()) return false;
+        SiteResolutionMode desired;
+        try {
+            desired = SiteResolutionMode.valueOf(modeId.trim().toUpperCase(Locale.US));
+        } catch (Exception ignored) {
+            return false;
+        }
+        List<SiteResolutionMode> modes = availableSiteResolutionModes(location);
+        if (!modes.contains(desired)) return false;
+        st.selectedSiteResolutionModeId = desired.name();
+        EventSystem.showBanner(ctx, "SITE RESOLUTION: " + siteResolutionModeLabel(desired).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    public static List<CampaignAction> campaignVisibleActions(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of();
+        ArrayList<CampaignAction> out = new ArrayList<>();
+        UiState.CampaignCommandTab tab = (ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        CampaignTravelState travel = st.galaxyTravel;
+        boolean hasCourse = selected != null || hasSelectedFreeTravelTarget(ctx);
+        boolean traveling = travel != null && travel.traveling;
+        boolean enterSite = canEnterSelectedLocalEncounter(ctx);
+        boolean hasDockable = selected != null && !selected.services.isEmpty();
+        boolean inRange = selected != null && isWithinDockingRange(st, selected);
+        boolean hasStrikeTarget = hasSelectedCampaignContactTarget(ctx) && selectedCampaignContactHostile(ctx);
+        String strikeIntel = selectedCampaignContactIntelLabel(ctx);
+        boolean sortieTarget = hasStrikeTarget
+                && ("Tracked".equalsIgnoreCase(strikeIntel) || "Target-Quality".equalsIgnoreCase(strikeIntel));
+        boolean heavyStrikeTarget = hasStrikeTarget && "Target-Quality".equalsIgnoreCase(strikeIntel);
+        boolean freeTarget = selected == null && hasSelectedFreeTravelTarget(ctx);
+
+        if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.RESOURCES) {
+            out.add(action("PLOT_COURSE",
+                    freeTarget ? "PLOT COURSE HERE" : "PLOT COURSE",
+                    freeTarget ? "Free-space destination selected and ready for engagement." : "Use the current selection as the next route lock.",
+                    freeTarget ? "Empty-space navigation point selected. Engage when ready."
+                            : "Select a location, contact, or free-space point first.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    hasCourse,
+                    hasCourse ? "" : "no destination selected",
+                    hasCourse ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    actionCtx -> {
+                        if (hasSelectedCampaignContactTarget(actionCtx)) {
+                            selectCampaignFreeTravelTarget(actionCtx, actionCtx.ui.selectedCampaignContactX, actionCtx.ui.selectedCampaignContactY);
+                        }
+                        return true;
+                    }));
+            out.add(action("ENGAGE_COURSE",
+                    "ENGAGE COURSE",
+                    traveling ? "Already moving on the plotted route." : "Commit the plotted route and begin travel.",
+                    hasCourse ? "Begin the plotted burn toward the selected destination." : "Select a destination or map point first.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    hasCourse && !traveling,
+                    hasCourse ? (traveling ? "course already engaged" : "") : "no course plotted",
+                    hasCourse && !traveling ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
+                    !traveling,
+                    "",
+                    CampaignSystem::startTravelToSelectedLocation));
+            out.add(action("CANCEL_COURSE",
+                    "CANCEL COURSE",
+                    "Hold the fleet and cancel the active burn.",
+                    "Cancel current travel and return to a hold.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    traveling,
+                    traveling ? "" : "no course engaged",
+                    traveling ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    CampaignSystem::stopCampaignTravel));
+            out.add(action("SET_WAYPOINT",
+                    "SET WAYPOINT",
+                    "Mark the current selection or course point on the map.",
+                    hasCourse || hasSelectedCampaignContactTarget(ctx) ? "Drop a visible ping on the current selection." : "Select a destination, contact, or free-space point first.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    hasCourse || hasSelectedCampaignContactTarget(ctx),
+                    (hasCourse || hasSelectedCampaignContactTarget(ctx)) ? "" : "no selection to mark",
+                    (hasCourse || hasSelectedCampaignContactTarget(ctx)) ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    actionCtx -> {
+                        if (actionCtx == null || actionCtx.ui == null) return false;
+                        if (hasSelectedCampaignContactTarget(actionCtx)) {
+                            UISystem.addPing(actionCtx, actionCtx.ui.selectedCampaignContactX, actionCtx.ui.selectedCampaignContactY, 2.2);
+                            return true;
+                        }
+                        CampaignLocation loc = selectedCampaignLocation(actionCtx);
+                        if (loc != null) {
+                            UISystem.addPing(actionCtx, loc.x, loc.y, 2.2);
+                            return true;
+                        }
+                        if (hasSelectedFreeTravelTarget(actionCtx)) {
+                            UISystem.addPing(actionCtx, selectedFreeTravelTargetX(actionCtx), selectedFreeTravelTargetY(actionCtx), 2.2);
+                            return true;
+                        }
+                        return false;
+                    }));
+        }
+
+        if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.FLEET) {
+            out.add(action("ENTER_SITE",
+                    "ENTER SITE",
+                    "Load the selected contact as a local encounter pocket.",
+                    enterSite ? "Enter the selected local site and transition into a contained encounter pocket."
+                            : "Move into approach range and select a valid local site first.",
+                    CampaignActionCategory.NAVIGATION,
+                    selected != null,
+                    enterSite,
+                    enterSite ? "" : ((selected == null) ? "no local site selected" : "move within approach range"),
+                    enterSite ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
+                    !traveling && enterSite,
+                    "",
+                    CampaignSystem::launchSelectedLocalEncounter));
+            out.add(action("SITE_MODE",
+                    "SITE PLAN",
+                    selectedSiteResolutionModeReadout(ctx),
+                    selectedSiteResolutionModeDetail(ctx),
+                    CampaignActionCategory.SITE_RESOLUTION,
+                    selected != null,
+                    enterSite,
+                    enterSite ? "" : "site plan only matters for enterable local contacts",
+                    enterSite ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    CampaignSystem::cycleSelectedSiteResolutionMode));
+            out.add(action("APPROACH_DOCK",
+                    inRange ? "DOCK / APPROACH" : "APPROACH / DOCK",
+                    hasDockable ? (inRange ? "Docking and local services are available." : "Plot the fleet into docking range.")
+                            : "No docking-capable location selected.",
+                    hasDockable
+                            ? (inRange ? "Docking range reached. Local services can be used from this location."
+                            : "Move into docking range before using local services.")
+                            : "Select a hub, anchorage, or service site.",
+                    CampaignActionCategory.SERVICES,
+                    selected != null,
+                    hasDockable && !inRange,
+                    hasDockable ? (inRange ? "already in docking range" : "") : "selected contact has no docking services",
+                    hasDockable && !inRange ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    CampaignSystem::startTravelToSelectedLocation));
+        }
+
+        if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.STRIKES) {
+            out.add(action("SIGNAL_SWEEP",
+                    (tab == UiState.CampaignCommandTab.STRIKES) ? "RECON SWEEP" : "SIGNAL SWEEP",
+                    "Refresh the local search picture and sharpen uncertain contacts.",
+                    "Spend supplies to sweep nearby contacts, reveal sites, and improve local intel quality.",
+                    CampaignActionCategory.SENSORS,
+                    true,
+                    st.campaignSupplies >= 4,
+                    (st.campaignSupplies >= 4) ? "" : "insufficient supplies for sweep",
+                    (st.campaignSupplies >= 4) ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    tab == UiState.CampaignCommandTab.STRIKES && !hasStrikeTarget,
+                    "",
+                    CampaignSystem::requestCampaignSensorSweep));
+        }
+
+        if (tab == UiState.CampaignCommandTab.FLEET || tab == UiState.CampaignCommandTab.RESOURCES || tab == UiState.CampaignCommandTab.STRIKES) {
+            FleetPosture currentPosture = resolveFleetPosture(st.selectedFleetPostureId);
+            for (FleetPosture posture : FleetPosture.values()) {
+                boolean active = posture == currentPosture;
+                out.add(action("POSTURE_" + posture.name(),
+                        fleetPostureLabel(posture).toUpperCase(Locale.US),
+                        active ? "Active fleet posture." : fleetPostureEffectSummary(posture),
+                        fleetPostureDetail(posture),
+                        CampaignActionCategory.POSTURE,
+                        true,
+                        !active,
+                        active ? "already active" : "",
+                        active ? CampaignActionState.RECOMMENDED : CampaignActionState.AVAILABLE,
+                        tab == UiState.CampaignCommandTab.FLEET && active,
+                        "",
+                        actionCtx -> setSelectedFleetPosture(actionCtx, posture.name())));
+            }
+        }
+
+        if (tab == UiState.CampaignCommandTab.FLEET || tab == UiState.CampaignCommandTab.RESOURCES) {
+            out.add(action("ALLY_GREEN",
+                    (tab == UiState.CampaignCommandTab.RESOURCES) ? "CALL TRADERS" : "GREEN SUPPORT",
+                    "Spend Green favor for stores, intel, and relay support.",
+                    "Request Green-channel support using accumulated favor.",
+                    CampaignActionCategory.SUPPORT,
+                    true,
+                    st.greenContractFavor > 0,
+                    (st.greenContractFavor > 0) ? "" : "Green Favor 0",
+                    (st.greenContractFavor > 0 && st.campaignSupplies < 28) ? CampaignActionState.RECOMMENDED
+                            : ((st.greenContractFavor > 0) ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED),
+                    false,
+                    "",
+                    actionCtx -> requestCampaignAllySupport(actionCtx, false)));
+            out.add(action("ALLY_YELLOW",
+                    (tab == UiState.CampaignCommandTab.FLEET) ? "YELLOW RUNNERS" : "CALL TRADERS",
+                    "Spend Yellow favor for fuel, salvage, and traffic support.",
+                    "Request Yellow-channel support using accumulated favor.",
+                    CampaignActionCategory.SUPPORT,
+                    true,
+                    st.yellowLiberationFavor > 0,
+                    (st.yellowLiberationFavor > 0) ? "" : "Yellow Favor 0",
+                    (st.yellowLiberationFavor > 0 && st.campaignFuel < 36) ? CampaignActionState.RECOMMENDED
+                            : ((st.yellowLiberationFavor > 0) ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED),
+                    false,
+                    "",
+                    actionCtx -> requestCampaignAllySupport(actionCtx, true)));
+        }
+
+        if (tab == UiState.CampaignCommandTab.STRIKES) {
+            out.add(action("TRACK_TARGET",
+                    "TRACK TARGET",
+                    hasStrikeTarget ? selectedCampaignContactLabel(ctx) : "No hostile contact selected.",
+                    hasStrikeTarget ? "Refresh the map ping and keep the selected hostile contact in view."
+                            : "Select a hostile contact on the map first.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    hasStrikeTarget,
+                    hasStrikeTarget ? "" : "no hostile contact selected",
+                    hasStrikeTarget ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    !sortieTarget,
+                    "",
+                    CampaignSystem::trackSelectedCampaignContact));
+            out.add(action("TORPEDO_STRIKE",
+                    "TORPEDO STRIKE",
+                    "Launch a long-range torpedo strike.",
+                    "Fire a torpedo strike against the selected target-quality hostile contact.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    heavyStrikeTarget,
+                    hasStrikeTarget ? "target intel below Target-Quality" : "no target-quality hostile contact selected",
+                    heavyStrikeTarget ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                    false,
+                    "Shift+LMB",
+                    CampaignSystem::launchSelectedCampaignTorpedoStrike));
+            out.add(action("CARRIER_SORTIE",
+                    "CARRIER SORTIE",
+                    "Launch a carrier sortie against the selected hostile contact.",
+                    "Commit a sortie strike against a tracked or target-quality hostile contact.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    sortieTarget,
+                    hasStrikeTarget ? "target intel below Tracked" : "no tracked hostile contact selected",
+                    sortieTarget ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                    false,
+                    "Shift+RMB",
+                    CampaignSystem::launchSelectedCampaignSortie));
+            out.add(action("ATOMIC_STRIKE",
+                    "ATOMIC STRIKE",
+                    "Commit the atomic option against the selected contact.",
+                    "High-risk strike. Greatly raises exposure and may trigger punishment response.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    heavyStrikeTarget,
+                    hasStrikeTarget ? "target intel below Target-Quality" : "no target-quality hostile contact selected",
+                    heavyStrikeTarget ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                    false,
+                    "Ctrl+Shift+LMB",
+                    CampaignSystem::beginCampaignAtomicStrikeConfirm));
+        }
+
+        if ((tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.RESOURCES) && selected != null && inRange && hasDockable) {
+            for (HubService service : selected.services) {
+                if (service == null) continue;
+                out.add(action("HUB_" + service.name(),
+                        hubServiceActionLabel(ctx, selected, service).toUpperCase(Locale.US),
+                        hubServiceActionDetail(ctx, selected, service),
+                        "Execute " + service.label + " at " + selected.name + ".",
+                        CampaignActionCategory.SERVICES,
+                        true,
+                        true,
+                        "",
+                        CampaignActionState.AVAILABLE,
+                        service == HubService.FUEL && campaignFuel(ctx) < 36,
+                        "",
+                        actionCtx -> executeSelectedHubService(actionCtx, service.name())));
+            }
+        }
+
+        if ((tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.FLEET) && enterSite && selected != null) {
+            for (SiteResolutionMode mode : availableSiteResolutionModes(selected)) {
+                boolean active = resolveSiteResolutionMode(st.selectedSiteResolutionModeId, selected) == mode;
+                out.add(action("SITE_" + mode.name(),
+                        siteResolutionModeLabel(mode).toUpperCase(Locale.US),
+                        active ? "Current site resolution plan." : siteResolutionModeDetail(selected, mode),
+                        siteResolutionModeDetail(selected, mode),
+                        CampaignActionCategory.SITE_RESOLUTION,
+                        true,
+                        !active,
+                        active ? "already selected" : "",
+                        active ? CampaignActionState.RECOMMENDED : CampaignActionState.AVAILABLE,
+                        false,
+                        "",
+                        actionCtx -> setSelectedSiteResolutionMode(actionCtx, mode.name())));
+            }
+        }
+
+        ArrayList<CampaignAction> visible = new ArrayList<>();
+        for (CampaignAction action : out) {
+            if (action != null && action.visible) visible.add(action);
+        }
+        return visible;
+    }
+
+    public static CampaignAction campaignPrimaryAction(GameContext ctx) {
+        for (CampaignAction action : campaignVisibleActions(ctx)) {
+            if (action != null && action.primary) return action;
+        }
+        List<CampaignAction> actions = campaignVisibleActions(ctx);
+        return actions.isEmpty() ? null : actions.get(0);
+    }
+
+    public static List<String> campaignActionPreviewLines(GameContext ctx) {
+        CampaignAction primary = campaignPrimaryAction(ctx);
+        if (primary == null) return List.of("ACTION PREVIEW  |  No active command.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("ACTION PREVIEW  |  " + primary.label);
+        if (!primary.shortDescription.isBlank()) out.add(primary.shortDescription);
+        if (!primary.enabled && !primary.disabledReason.isBlank()) {
+            out.add("Disabled: " + primary.disabledReason);
+        } else if (!primary.tooltip.isBlank()) {
+            out.add(primary.tooltip);
+        }
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        if (primary.category == CampaignActionCategory.NAVIGATION && selected != null) {
+            for (String line : compactRouteAssessmentLines(ctx)) out.add(line);
+        } else if (primary.category == CampaignActionCategory.SERVICES && selected != null) {
+            out.add("Location: " + selected.name);
+            out.add(hubServiceActionDetail(ctx, selected, hubServiceFromActionId(primary.id)));
+        } else if (primary.category == CampaignActionCategory.STRIKES) {
+            List<String> strike = campaignStrikeConsequenceLines(ctx);
+            if (!strike.isEmpty()) out.add(strike.get(0));
+            if (strike.size() > 1) out.add(strike.get(1));
+            if (hasSelectedCampaignContactTarget(ctx)) {
+                out.add("Target: " + selectedCampaignContactLabel(ctx));
+                if (!selectedCampaignContactIntelLabel(ctx).isBlank()) {
+                    out.add("Intel Quality: " + selectedCampaignContactIntelLabel(ctx));
+                }
+            }
+            if ("ATOMIC_STRIKE".equalsIgnoreCase(primary.id)) {
+                out.add("Cost: 1 atomic charge  |  Exposure spike severe");
+            }
+        } else if (primary.category == CampaignActionCategory.SITE_RESOLUTION && selected != null) {
+            out.add("Site: " + selected.name);
+            out.add("Plan Detail: " + selectedSiteResolutionModeDetail(ctx));
+        } else if (primary.category == CampaignActionCategory.POSTURE) {
+            out.add("Current Posture: " + campaignFleetPostureReadout(ctx));
+            out.add("Effect: " + primary.shortDescription);
+        } else if (primary.category == CampaignActionCategory.SUPPORT) {
+            CampaignState st = state(ctx);
+            if (st != null) {
+                out.add("Green Favor: " + st.greenContractFavor + "  |  Yellow Favor: " + st.yellowLiberationFavor);
+            }
+        }
+        return out;
+    }
+
+    private static HubService hubServiceFromActionId(String actionId) {
+        if (actionId == null || !actionId.startsWith("HUB_")) return null;
+        return hubServiceById(actionId.substring(4));
+    }
+
+    public static boolean executeCampaignAction(GameContext ctx, String actionId) {
+        if (ctx == null || actionId == null || actionId.isBlank()) return false;
+        for (CampaignAction action : campaignVisibleActions(ctx)) {
+            if (action == null || !action.id.equalsIgnoreCase(actionId)) continue;
+            if (!action.enabled) {
+                EventSystem.showBanner(ctx, action.disabledReason.isBlank()
+                        ? (action.label.toUpperCase(Locale.US) + " UNAVAILABLE")
+                        : (action.label.toUpperCase(Locale.US) + "  |  " + action.disabledReason.toUpperCase(Locale.US)), 1.3);
+                return true;
+            }
+            return action.execute != null && action.execute.execute(ctx);
+        }
+        return false;
+    }
+
     public static boolean isAmbientLocalEncounterActive(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.galaxyEncounterActive && st.galaxyAmbientEncounterActive;
+    }
+
+    private static CampaignAction action(String id,
+                                         String label,
+                                         String shortDescription,
+                                         String tooltip,
+                                         CampaignActionCategory category,
+                                         boolean visible,
+                                         boolean enabled,
+                                         String disabledReason,
+                                         CampaignActionState state,
+                                         boolean primary,
+                                         String shortcut,
+                                         CampaignActionExecutor execute) {
+        return new CampaignAction(id, label, shortDescription, tooltip, category, visible, enabled, disabledReason, state, primary, shortcut, execute);
+    }
+
+    public static boolean hasSelectedCampaignContactTarget(GameContext ctx) {
+        return ctx != null && ctx.ui != null
+                && ctx.ui.selectedCampaignContactLabel != null
+                && !ctx.ui.selectedCampaignContactLabel.isBlank()
+                && Double.isFinite(ctx.ui.selectedCampaignContactX)
+                && Double.isFinite(ctx.ui.selectedCampaignContactY);
+    }
+
+    public static String selectedCampaignContactLabel(GameContext ctx) {
+        return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactLabel;
+    }
+
+    public static String selectedCampaignContactSubtitle(GameContext ctx) {
+        return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactSubtitle;
+    }
+
+    public static String selectedCampaignContactIntelLabel(GameContext ctx) {
+        return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactIntel;
+    }
+
+    public static boolean selectedCampaignContactHostile(GameContext ctx) {
+        return ctx != null && ctx.ui != null && ctx.ui.selectedCampaignContactHostile;
+    }
+
+    public static void clearSelectedCampaignContact(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.clearSelectedCampaignContact();
+    }
+
+    public static void selectCampaignContactTarget(GameContext ctx,
+                                                   String label,
+                                                   String subtitle,
+                                                   String intelQuality,
+                                                   double x,
+                                                   double y,
+                                                   boolean hostile,
+                                                   boolean trackable) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.selectedCampaignContactLabel = (label == null) ? "" : label.trim();
+        ctx.ui.selectedCampaignContactSubtitle = (subtitle == null) ? "" : subtitle.trim();
+        ctx.ui.selectedCampaignContactIntel = (intelQuality == null) ? "" : intelQuality.trim();
+        ctx.ui.selectedCampaignContactX = x;
+        ctx.ui.selectedCampaignContactY = y;
+        ctx.ui.selectedCampaignContactHostile = hostile;
+        ctx.ui.selectedCampaignContactTrackable = trackable;
+    }
+
+    public static boolean trackSelectedCampaignContact(GameContext ctx) {
+        if (!hasSelectedCampaignContactTarget(ctx)) return false;
+        UISystem.addPing(ctx, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY, 2.2);
+        EventSystem.showBanner(ctx, "TRACKING " + selectedCampaignContactLabel(ctx).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    public static boolean launchSelectedCampaignTorpedoStrike(GameContext ctx) {
+        if (!hasSelectedCampaignContactTarget(ctx)) return false;
+        boolean result = launchStrategicTorpedoStrike(ctx, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY);
+        if (!result) EventSystem.showBanner(ctx, "NO STRIKE-ELIGIBLE CONTACT AT CURRENT TARGET LOCK", 1.2);
+        return result;
+    }
+
+    public static boolean launchSelectedCampaignSortie(GameContext ctx) {
+        if (!hasSelectedCampaignContactTarget(ctx)) return false;
+        boolean result = launchStrategicSortie(ctx, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY);
+        if (!result) EventSystem.showBanner(ctx, "NO SORTIE-ELIGIBLE CONTACT AT CURRENT TARGET LOCK", 1.2);
+        return result;
+    }
+
+    public static boolean launchSelectedCampaignAtomicStrike(GameContext ctx) {
+        if (!hasSelectedCampaignContactTarget(ctx)) return false;
+        boolean result = launchStrategicAtomicStrike(ctx, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY);
+        if (!result) EventSystem.showBanner(ctx, "NO ATOMIC-ELIGIBLE CONTACT AT CURRENT TARGET LOCK", 1.2);
+        return result;
     }
 
     static void noteAmbientSupportRequest(GameContext ctx, Ship target) {
@@ -1331,8 +2301,62 @@ public final class CampaignSystem {
         out.add("Signal Strength: " + enemyAlertReadout(ctx));
         out.add("Course: " + selectedStrategicDestinationLabel(ctx));
         out.add("Travel State: " + galaxyTravelSidebarReadout(ctx, travel));
-        out.add("Free travel: left-click empty space to plot, double-click to burn engines.");
-        out.add("Right-click anywhere to mark a contact ping.");
+        out.add("Posture: " + campaignFleetPostureReadout(ctx));
+        out.add("Posture Effects: " + fleetPostureEffectSummary(resolveFleetPosture(st.selectedFleetPostureId)));
+        out.add("Reputation: " + campaignReputationReadout(ctx));
+        out.add("Theater Shift: " + theaterPressureReadout(ctx));
+        out.add("Map use: select first, then command from the action bay.");
+        out.add("Double-click and shortcuts still work, but are optional.");
+        return out;
+    }
+
+    public static List<String> campaignReceiverBoardLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Receiver offline.");
+        CampaignTravelState travel = st.galaxyTravel;
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Band: " + receiverBandLabel(ctx));
+        out.add("Signal: " + enemyAlertReadout(ctx) + "  |  Intel " + campaignIntelReadout(ctx));
+        out.add("Track: " + huntedStatusReadout(ctx));
+        out.add("Course Lock: " + selectedStrategicDestinationLabel(ctx));
+        out.add("Posture Bias: " + campaignFleetPostureReadout(ctx));
+        out.add("Effect Window: " + fleetPostureEffectSummary(resolveFleetPosture(st.selectedFleetPostureId)));
+        out.add((travel != null && travel.traveling)
+                ? ("Drive: " + (travel.freeTravel ? "FREE BURN" : "ROUTE HOLD"))
+                : "Drive: HOLDING");
+        out.add("Pressure Shift: " + theaterPressureReadout(ctx));
+        return out;
+    }
+
+    public static List<String> campaignDirectionFinderLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Direction finder offline.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Bearing: " + campaignBearingReadout(ctx));
+        out.add("Exposure: " + campaignExposureReadout(ctx));
+        out.add("Pressure Band: " + enemyAlertRegionReadout(ctx));
+        out.add("Sweep Window: " + sweepWindowReadout(ctx));
+        out.add("Posture Detail: " + campaignFleetPostureDetail(ctx));
+        out.add("Enter Site: " + (canEnterSelectedLocalEncounter(ctx) ? "READY" : "NO LOCAL CONTACT"));
+        out.add("Current Callout: " + campaignCrewCommentaryLines(ctx).get(0));
+        return out;
+    }
+
+    public static List<String> campaignCommsBoardLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Comms offline.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Green Channel Favor: " + st.greenContractFavor);
+        out.add("Yellow Channel Favor: " + st.yellowLiberationFavor);
+        out.add("Contact Net: " + campaignRelationshipBoardLine(ctx));
+        out.add("Docking Link: " + dockedLocationReadout(ctx));
+        out.add("Fleet Posture: " + campaignFleetPostureReadout(ctx));
+        out.add("Reputation: " + campaignReputationReadout(ctx));
+        out.add("Theater Shift: " + theaterPressureReadout(ctx));
+        List<String> commentary = campaignCrewCommentaryLines(ctx);
+        out.add("Crew: " + commentary.get(0));
+        out.add("Crew: " + commentary.get(Math.min(1, commentary.size() - 1)));
+        out.addAll(campaignRumorBoardLines(ctx));
         return out;
     }
 
@@ -1366,6 +2390,390 @@ public final class CampaignSystem {
         return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, secs);
     }
 
+    private static String receiverBandLabel(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "50-79 MHZ";
+        double intel = MathUtil.clamp(st.campaignIntelLevel, 0.0, 100.0);
+        if (intel < 28.0) return "50-79 MHZ";
+        if (intel < 56.0) return "80-109 MHZ";
+        if (intel < 78.0) return "110-139 MHZ";
+        return "140-169 MHZ";
+    }
+
+    private static FleetPosture resolveFleetPosture(String raw) {
+        if (raw != null) {
+            try {
+                return FleetPosture.valueOf(raw.trim().toUpperCase(Locale.US));
+            } catch (Exception ignored) {
+                // Fall through to default.
+            }
+        }
+        return FleetPosture.SILENT_RUNNING;
+    }
+
+    private static String fleetPostureLabel(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> "Silent Running";
+            case COMBAT_PATROL -> "Combat Patrol";
+            case RESCUE_PRIORITY -> "Rescue Priority";
+            case RAIDER_DOCTRINE -> "Raider Doctrine";
+            case LOGISTICS_CONSERVATION -> "Logistics Conservation";
+            case RECON_SWEEP -> "Recon Sweep";
+        };
+    }
+
+    private static String fleetPostureDetail(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> "Lower signature, slower sweep picture, cleaner route masking.";
+            case COMBAT_PATROL -> "Higher readiness and deterrence, but burns stores and shows your hand.";
+            case RESCUE_PRIORITY -> "Biases toward support windows, ally trust, and survivor traffic.";
+            case RAIDER_DOCTRINE -> "Pushes for harsh contact windows and payoff at the cost of exposure.";
+            case LOGISTICS_CONSERVATION -> "Saves fuel and supplies, but reduces tempo and aggressive reach.";
+            case RECON_SWEEP -> "Sharpens contact identification and sweep results, but risks detection.";
+        };
+    }
+
+    private static double postureIntelDrift(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.08;
+            case COMBAT_PATROL -> -0.04;
+            case RESCUE_PRIORITY -> 0.10;
+            case RAIDER_DOCTRINE -> -0.06;
+            case LOGISTICS_CONSERVATION -> -0.02;
+            case RECON_SWEEP -> 0.38;
+        };
+    }
+
+    private static double postureExposureDrift(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.20;
+            case COMBAT_PATROL -> 0.18;
+            case RESCUE_PRIORITY -> 0.06;
+            case RAIDER_DOCTRINE -> 0.24;
+            case LOGISTICS_CONSERVATION -> -0.08;
+            case RECON_SWEEP -> 0.14;
+        };
+    }
+
+    private static double postureHostileCoverageBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.06;
+            case COMBAT_PATROL -> 0.05;
+            case RESCUE_PRIORITY -> 0.02;
+            case RAIDER_DOCTRINE -> 0.07;
+            case LOGISTICS_CONSERVATION -> -0.03;
+            case RECON_SWEEP -> 0.04;
+        };
+    }
+
+    private static double postureSupportCoverageBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 0.00;
+            case COMBAT_PATROL -> 0.02;
+            case RESCUE_PRIORITY -> 0.10;
+            case RAIDER_DOCTRINE -> -0.02;
+            case LOGISTICS_CONSERVATION -> 0.08;
+            case RECON_SWEEP -> 0.02;
+        };
+    }
+
+    private static double postureOpportunityCoverageBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 0.01;
+            case COMBAT_PATROL -> -0.02;
+            case RESCUE_PRIORITY -> 0.10;
+            case RAIDER_DOCTRINE -> 0.08;
+            case LOGISTICS_CONSERVATION -> -0.01;
+            case RECON_SWEEP -> 0.06;
+        };
+    }
+
+    private static double postureLogisticsPressureBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 0.01;
+            case COMBAT_PATROL -> 0.08;
+            case RESCUE_PRIORITY -> 0.05;
+            case RAIDER_DOCTRINE -> 0.06;
+            case LOGISTICS_CONSERVATION -> -0.12;
+            case RECON_SWEEP -> 0.03;
+        };
+    }
+
+    private static double postureCruiseSpeedBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -18.0;
+            case COMBAT_PATROL -> -14.0;
+            case RESCUE_PRIORITY -> -8.0;
+            case RAIDER_DOCTRINE -> 4.0;
+            case LOGISTICS_CONSERVATION -> -10.0;
+            case RECON_SWEEP -> -6.0;
+        };
+    }
+
+    private static double postureInterceptionRiskBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -10.0;
+            case COMBAT_PATROL -> 8.0;
+            case RESCUE_PRIORITY -> 4.0;
+            case RAIDER_DOCTRINE -> 10.0;
+            case LOGISTICS_CONSERVATION -> -4.0;
+            case RECON_SWEEP -> 6.0;
+        };
+    }
+
+    private static double postureEscalationRateBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.12;
+            case COMBAT_PATROL -> 0.04;
+            case RESCUE_PRIORITY -> -0.06;
+            case RAIDER_DOCTRINE -> 0.10;
+            case LOGISTICS_CONSERVATION -> 0.02;
+            case RECON_SWEEP -> -0.03;
+        };
+    }
+
+    private static int sweepSupplyCost(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 3;
+            case COMBAT_PATROL -> 5;
+            case RESCUE_PRIORITY -> 4;
+            case RAIDER_DOCTRINE -> 4;
+            case LOGISTICS_CONSERVATION -> 2;
+            case RECON_SWEEP -> 5;
+        };
+    }
+
+    private static double postureSweepRadiusBonus(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -90.0;
+            case COMBAT_PATROL -> 40.0;
+            case RESCUE_PRIORITY -> 120.0;
+            case RAIDER_DOCTRINE -> 60.0;
+            case LOGISTICS_CONSERVATION -> -120.0;
+            case RECON_SWEEP -> 260.0;
+        };
+    }
+
+    private static double postureSweepIntelBonus(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -4.0;
+            case COMBAT_PATROL -> 2.0;
+            case RESCUE_PRIORITY -> 4.0;
+            case RAIDER_DOCTRINE -> 0.0;
+            case LOGISTICS_CONSERVATION -> -2.0;
+            case RECON_SWEEP -> 10.0;
+        };
+    }
+
+    private static double postureSweepAlertShift(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -2.0;
+            case COMBAT_PATROL -> 1.0;
+            case RESCUE_PRIORITY -> -1.0;
+            case RAIDER_DOCTRINE -> 1.5;
+            case LOGISTICS_CONSERVATION -> -1.0;
+            case RECON_SWEEP -> 2.0;
+        };
+    }
+
+    private static double postureSweepExposureShift(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -1.0;
+            case COMBAT_PATROL -> 1.5;
+            case RESCUE_PRIORITY -> 0.5;
+            case RAIDER_DOCTRINE -> 2.0;
+            case LOGISTICS_CONSERVATION -> -0.5;
+            case RECON_SWEEP -> 3.0;
+        };
+    }
+
+    private static int postureTravelFuelCostPerTick(FleetPosture posture, double dt) {
+        if (dt <= 0.0) return 0;
+        double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 0.18;
+            case COMBAT_PATROL -> 0.44;
+            case RESCUE_PRIORITY -> 0.34;
+            case RAIDER_DOCTRINE -> 0.38;
+            case LOGISTICS_CONSERVATION -> 0.12;
+            case RECON_SWEEP -> 0.26;
+        };
+        return (int) Math.floor(rate * dt);
+    }
+
+    private static int postureTravelSupplyCostPerTick(FleetPosture posture, double dt) {
+        if (dt <= 0.0) return 0;
+        double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 0.08;
+            case COMBAT_PATROL -> 0.22;
+            case RESCUE_PRIORITY -> 0.18;
+            case RAIDER_DOCTRINE -> 0.16;
+            case LOGISTICS_CONSERVATION -> 0.06;
+            case RECON_SWEEP -> 0.12;
+        };
+        return (int) Math.floor(rate * dt);
+    }
+
+    private static int postureTravelAmmoCostPerTick(FleetPosture posture, double dt) {
+        if (dt <= 0.0) return 0;
+        double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING, RESCUE_PRIORITY, LOGISTICS_CONSERVATION -> 0.0;
+            case COMBAT_PATROL -> 0.18;
+            case RAIDER_DOCTRINE -> 0.10;
+            case RECON_SWEEP -> 0.04;
+        };
+        return (int) Math.floor(rate * dt);
+    }
+
+    private static double postureTransitEventBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.04;
+            case COMBAT_PATROL -> -0.06;
+            case RESCUE_PRIORITY -> 0.12;
+            case RAIDER_DOCTRINE -> 0.08;
+            case LOGISTICS_CONSERVATION -> -0.03;
+            case RECON_SWEEP -> 0.14;
+        };
+    }
+
+    private static double postureTransitCooldownBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> 2.0;
+            case COMBAT_PATROL -> 1.0;
+            case RESCUE_PRIORITY -> -2.0;
+            case RAIDER_DOCTRINE -> -1.0;
+            case LOGISTICS_CONSERVATION -> 1.5;
+            case RECON_SWEEP -> -3.0;
+        };
+    }
+
+    private static double postureInterceptRangeBias(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -0.18;
+            case COMBAT_PATROL -> 0.10;
+            case RESCUE_PRIORITY -> 0.04;
+            case RAIDER_DOCTRINE -> 0.08;
+            case LOGISTICS_CONSERVATION -> -0.06;
+            case RECON_SWEEP -> 0.12;
+        };
+    }
+
+    private static double postureAlertOnForcedIntercept(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> -2.0;
+            case COMBAT_PATROL -> 2.0;
+            case RESCUE_PRIORITY -> 0.0;
+            case RAIDER_DOCTRINE -> 3.0;
+            case LOGISTICS_CONSERVATION -> -1.0;
+            case RECON_SWEEP -> 1.0;
+        };
+    }
+
+    private static String fleetPostureEffectSummary(FleetPosture posture) {
+        return switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
+            case SILENT_RUNNING -> "low detect / slow burn / weak sweep";
+            case COMBAT_PATROL -> "hard screen / higher drain / louder signature";
+            case RESCUE_PRIORITY -> "more aid leads / steadier allies / slower push";
+            case RAIDER_DOCTRINE -> "aggressive gains / hotter reprisals / higher exposure";
+            case LOGISTICS_CONSERVATION -> "lean drain / slow response / soft posture";
+            case RECON_SWEEP -> "sharp IDs / more discoveries / easier to detect";
+        };
+    }
+
+    private static String campaignBearingReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "000 DEG";
+        double fromX = st.playerGalaxyX;
+        double fromY = st.playerGalaxyY;
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        double targetX;
+        double targetY;
+        if (selected != null) {
+            targetX = selected.x;
+            targetY = selected.y;
+        } else if (hasSelectedFreeTravelTarget(ctx)) {
+            targetX = selectedFreeTravelTargetX(ctx);
+            targetY = selectedFreeTravelTargetY(ctx);
+        } else {
+            return "NO LOCK";
+        }
+        double angle = Math.toDegrees(Math.atan2(targetY - fromY, targetX - fromX));
+        int bearing = Math.floorMod((int) Math.round(angle + 90.0), 360);
+        return String.format(Locale.US, "%03d DEG", bearing);
+    }
+
+    private static String sweepWindowReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "COLD";
+        if (st.campaignSupplies < 4) return "COLD";
+        if (st.campaignIntelLevel < 28.0) return "NARROW";
+        if (st.campaignIntelLevel < 58.0) return "WORKABLE";
+        return "OPEN";
+    }
+
+    private static String logisticsStateLabel(int value, int lowThreshold, int healthyThreshold) {
+        if (value < Math.max(1, lowThreshold)) return "CRITICAL";
+        if (value < Math.max(lowThreshold + 1, healthyThreshold)) return "TIGHT";
+        return "STABLE";
+    }
+
+    private static String pressureBandLabel(double value) {
+        double v = MathUtil.clamp(value, 0.0, 100.0);
+        if (v < 12.0) return "COLD";
+        if (v < 32.0) return "LOW";
+        if (v < 56.0) return "RISING";
+        if (v < 78.0) return "HOT";
+        return "SEVERE";
+    }
+
+    private static String routeSupportPreviewLine(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "ROUTE PREVIEW OFFLINE";
+        List<String> route = compactRouteAssessmentLines(ctx);
+        if (!route.isEmpty()) {
+            String support = route.size() >= 3 ? route.get(2) : route.get(route.size() - 1);
+            return "ROUTE PREVIEW  |  " + support.replace("Support: ", "");
+        }
+        if (hasSelectedFreeTravelTarget(ctx)) {
+            List<String> free = freeTravelSelectionLines(ctx);
+            if (free.size() >= 7) {
+                return "ROUTE PREVIEW  |  " + free.get(6).replace("Support: ", "");
+            }
+        }
+        return "ROUTE PREVIEW  |  NO ROUTE SELECTED";
+    }
+
+    private static String selectedStrikeOpportunityLine(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return "TARGET BOARD OFFLINE";
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        if (selected != null) {
+            return "TARGET WINDOW  |  " + selected.name.toUpperCase(Locale.US) + "  " + threatReadoutForSidebar(selected.threatLevel);
+        }
+        double bestDist = Double.POSITIVE_INFINITY;
+        GalaxySearchGroup best = null;
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile || !group.visible) continue;
+            double dist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = group;
+            }
+        }
+        if (best != null) {
+            return "TARGET WINDOW  |  " + doctrineReadout(best).toUpperCase(Locale.US) + "  " + contactConfidenceLabel(best).toUpperCase(Locale.US);
+        }
+        return "TARGET WINDOW  |  NO FIRM TARGET";
+    }
+
+    private static String dockedLocationReadout(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.dockedGalaxyLocationId == null || st.dockedGalaxyLocationId.isBlank()) {
+            return "UNLATCHED";
+        }
+        CampaignLocation docked = campaignLocationById(st, st.dockedGalaxyLocationId);
+        return (docked == null) ? "UNLATCHED" : ("LATCHED " + docked.name.toUpperCase(Locale.US));
+    }
+
     public static boolean isDockedAtSelectedLocation(GameContext ctx) {
         CampaignState st = state(ctx);
         CampaignLocation selected = selectedCampaignLocation(ctx);
@@ -1390,7 +2798,7 @@ public final class CampaignSystem {
                 case GUARDING -> "guarding";
                 case RETURNING -> "returning";
             };
-            out.add(name + "  |  " + state + "  |  " + threatReadout(group.threatLevel));
+            out.add(name + "  |  " + contactIntelQualityLabel(group.intelQuality) + "  |  " + doctrineReadout(group) + "  |  " + state);
             if (out.size() >= 5) break;
         }
         if (out.size() <= 2) {
@@ -1436,6 +2844,19 @@ public final class CampaignSystem {
         return true;
     }
 
+    public static boolean executeSelectedHubService(GameContext ctx, String serviceId) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || serviceId == null || serviceId.isBlank()) return false;
+        HubService service = hubServiceById(serviceId);
+        CampaignLocation location = selectedCampaignLocation(ctx);
+        if (service == null || location == null || !location.services.contains(service)) return false;
+        if (!isDockedAtSelectedLocation(ctx)) {
+            EventSystem.showBanner(ctx, "MOVE INTO DOCKING RANGE BEFORE USING HUB SERVICES", 1.3);
+            return false;
+        }
+        return performHubService(ctx, st, location, service);
+    }
+
     public static void closeHubServiceMenu(GameContext ctx) {
         if (ctx == null || ctx.ui == null) return;
         ctx.ui.clearCampaignHubMenu();
@@ -1453,6 +2874,33 @@ public final class CampaignSystem {
         boolean result = performHubService(ctx, st, location, service);
         ctx.ui.clearCampaignHubMenu();
         return result;
+    }
+
+    public static boolean beginCampaignAtomicStrikeConfirm(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return false;
+        if (!hasSelectedCampaignContactTarget(ctx)) {
+            EventSystem.showBanner(ctx, "SELECT A TARGET-QUALITY HOSTILE CONTACT FIRST", 1.2);
+            return false;
+        }
+        String label = selectedCampaignContactLabel(ctx);
+        String body = "Target: " + label + "  |  Cost: 1 atomic charge, heavy fuel, ammo, and supplies  |  Risk: massive exposure and punishment response.";
+        ctx.ui.showCampaignActionConfirm("ATOMIC_STRIKE", "ATOMIC STRIKE CONFIRMATION", body);
+        return true;
+    }
+
+    public static boolean confirmCampaignAction(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.campaignActionConfirm.active) return false;
+        String actionId = ctx.ui.campaignActionConfirm.actionId;
+        ctx.ui.clearCampaignActionConfirm();
+        if ("ATOMIC_STRIKE".equalsIgnoreCase(actionId)) {
+            return launchSelectedCampaignAtomicStrike(ctx);
+        }
+        return false;
+    }
+
+    public static void cancelCampaignActionConfirm(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.clearCampaignActionConfirm();
     }
 
     public static CampaignLocation nearestCampaignLocation(GameContext ctx, double x, double y, double maxDist) {
@@ -1585,29 +3033,102 @@ public final class CampaignSystem {
     public static boolean requestCampaignSensorSweep(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
-        if (st.campaignSupplies < 4) {
-            EventSystem.showBanner(ctx, "SCAN SWEEP REQUIRES 4 SUPPLIES", 1.3);
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
+        int cost = sweepSupplyCost(posture);
+        if (st.campaignSupplies < cost) {
+            EventSystem.showBanner(ctx, "SCAN SWEEP REQUIRES " + cost + " SUPPLIES", 1.3);
             return true;
         }
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - 4);
-        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 14.0, 0.0, 100.0);
-        st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel - 3.0);
-        EventSystem.showBanner(ctx, "SENSOR SWEEP COMPLETE  INTEL PICTURE SHARPENED", 1.4);
+        double siteRadius = 1400.0 + st.campaignIntelLevel * 7.0 + postureSweepRadiusBonus(posture);
+        double hostileRadius = siteRadius + 320.0 + Math.max(0.0, postureSweepRadiusBonus(posture) * 0.35);
+        boolean identifyHostiles = st.campaignIntelLevel + postureSweepIntelBonus(posture) >= 42.0;
+        int siteHits = revealCampaignSweepSites(ctx, st, siteRadius);
+        int hostileHits = revealCampaignSweepHostiles(ctx, st, hostileRadius, identifyHostiles);
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
+        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 14.0 + postureSweepIntelBonus(posture), 0.0, 100.0);
+        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel - 3.0 + postureSweepAlertShift(posture), 0.0, 100.0);
+        st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + postureSweepExposureShift(posture), 0.0, 100.0);
+        updateOvermapIntelQualities(ctx, st);
+        EventSystem.showBanner(ctx, campaignSweepBanner(siteHits, hostileHits, identifyHostiles) + "  |  " + fleetPostureLabel(posture).toUpperCase(Locale.US), 1.5);
         return true;
+    }
+
+    private static int revealCampaignSweepSites(GameContext ctx, CampaignState st, double radius) {
+        if (ctx == null || st == null || radius <= 0.0) return 0;
+        int hits = 0;
+        for (CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location == null || location.consumed) continue;
+            double dist = Math.hypot(location.x - st.playerGalaxyX, location.y - st.playerGalaxyY);
+            if (dist > radius) continue;
+            location.discovered = true;
+            location.intelQuality = (st.campaignIntelLevel >= 62.0 || dist <= 520.0)
+                    ? ContactIntelQuality.IDENTIFIED
+                    : ContactIntelQuality.CLASSIFIED;
+            if (ctx.ui != null) UISystem.addPing(ctx, location.x, location.y, 2.8);
+            hits++;
+        }
+        return hits;
+    }
+
+    private static int revealCampaignSweepHostiles(GameContext ctx, CampaignState st, double radius, boolean identify) {
+        if (ctx == null || st == null || radius <= 0.0) return 0;
+        int hits = 0;
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double dist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            if (dist > radius) continue;
+            group.visible = true;
+            group.contactFadeSec = Math.max(group.contactFadeSec, 24.0);
+            group.contactConfidence = identify
+                    ? GalaxyContactConfidence.IDENTIFIED_TASK_FORCE
+                    : GalaxyContactConfidence.CONFIRMED_HOSTILE;
+            group.identified = identify;
+            group.intelQuality = identify ? ContactIntelQuality.TARGET_QUALITY : ContactIntelQuality.IDENTIFIED;
+            if (ctx.ui != null) UISystem.addPing(ctx, group.x, group.y, 2.8);
+            hits++;
+        }
+        return hits;
+    }
+
+    private static String campaignSweepBanner(int siteHits, int hostileHits, boolean identifyHostiles) {
+        if (hostileHits > 0 && siteHits > 0) {
+            return "SWEEP MARKED " + siteHits + " SITES  " + hostileHits + " HOSTILES "
+                    + (identifyHostiles ? "IDENTIFIED" : "TRACKED");
+        }
+        if (hostileHits > 0) {
+            return "SWEEP TRACKED " + hostileHits + " HOSTILES "
+                    + (identifyHostiles ? "WITH POSITIVE ID" : "ON PARTIAL LOCK");
+        }
+        if (siteHits > 0) {
+            return "SWEEP MARKED " + siteHits + " NEARBY SITES";
+        }
+        return "SENSOR SWEEP CLEAR  INTEL PICTURE SHARPENED";
     }
 
     public static boolean requestCampaignAllySupport(GameContext ctx, boolean yellowChannel) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
+        CampaignReputationState reputation = campaignReputationState(ctx);
+        double strainPenalty = MathUtil.clamp(st.fleetStrain / 100.0, 0.0, 0.45);
+        CampaignRelationshipState vossState = relationshipStateFor(st, "VOSS");
+        CampaignRelationshipState marrState = relationshipStateFor(st, "MARR");
         if (yellowChannel) {
             if (st.yellowLiberationFavor <= 0) {
                 EventSystem.showBanner(ctx, "NO YELLOW CHANNEL FAVOR AVAILABLE", 1.3);
                 return true;
             }
             st.yellowLiberationFavor--;
-            ctx.credits += GameContext.scaleCreditEarnings(140);
-            st.campaignFuel += 16;
-            st.campaignSalvage += 4;
+            double relationshipMul = switch (vossState) {
+                case TRUSTED -> 1.18;
+                case OWED_FAVOR -> 1.28;
+                case NEGLECTED -> 0.88;
+                case HOSTILE -> 0.76;
+                default -> 1.0;
+            };
+            ctx.credits += GameContext.scaleCreditEarnings((int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 180 : 140) * (1.0 - strainPenalty * 0.35) * relationshipMul));
+            st.campaignFuel += Math.max(8, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 24 : 16) * (1.0 - strainPenalty * 0.45) * relationshipMul));
+            st.campaignSalvage += Math.max(2, (int) Math.round(((reputation == CampaignReputationState.RAIDER_THREAT) ? 6 : 4) * (1.0 - strainPenalty * 0.25) * relationshipMul));
+            adjustFleetStrain(st, -4.0);
             EventSystem.showBanner(ctx, "YELLOW RUNNERS ANSWER  FUEL, SALVAGE, AND CREDIT TRAFFIC INBOUND", 1.5);
             return true;
         }
@@ -1616,9 +3137,17 @@ public final class CampaignSystem {
             return true;
         }
         st.greenContractFavor--;
-        st.campaignSupplies += 12;
-        st.campaignAmmo += 12;
-        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 8.0, 0.0, 100.0);
+        double relationshipMul = switch (marrState) {
+            case TRUSTED -> 1.18;
+            case OWED_FAVOR -> 1.28;
+            case NEGLECTED -> 0.90;
+            case HOSTILE -> 0.78;
+            default -> 1.0;
+        };
+        st.campaignSupplies += Math.max(8, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 18 : 12) * (1.0 - strainPenalty * 0.45) * relationshipMul));
+        st.campaignAmmo += Math.max(8, (int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 16 : 12) * (1.0 - strainPenalty * 0.30) * relationshipMul));
+        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + ((reputation == CampaignReputationState.RELIABLE_RESCUE_FORCE) ? 12.0 : 8.0) * relationshipMul, 0.0, 100.0);
+        adjustFleetStrain(st, -4.0);
         EventSystem.showBanner(ctx, "GREEN RELAY SUPPORT INBOUND  STORES AND CONTACT PICTURE IMPROVED", 1.5);
         return true;
     }
@@ -1909,11 +3438,13 @@ public final class CampaignSystem {
                     case HIDDEN_CACHE -> SupportMarkerType.INTEL;
                     default -> SupportMarkerType.ANOMALY;
                 };
-                String subtitle = area.detail;
-                if (area.consumed && area.type != CampaignLocationType.REPAIR_SITE) {
-                    subtitle = "Survey complete  |  " + area.detail;
-                }
+                String subtitle = contactIntelQualityLabel(area.intelQuality) + "  |  " + campaignSiteMemorySubtitle(area);
                 out.add(new CampaignSupportMarker(type, area.name, subtitle, area.x, area.y, 120.0, 40));
+                addDynamicTheaterMarkers(out, area);
+            }
+            for (CampaignLocation poi : st.galaxyMainPois) {
+                if (poi == null || !poi.discovered) continue;
+                addDynamicTheaterMarkers(out, poi);
             }
             for (GalaxySearchGroup group : st.galaxySearchGroups) {
                 CampaignSupportMarker marker = supportMarkerForGalaxySearchGroup(group);
@@ -1940,6 +3471,102 @@ public final class CampaignSystem {
             out.add(marker);
         }
         return out;
+    }
+
+    private static void addDynamicTheaterMarkers(ArrayList<CampaignSupportMarker> out, CampaignLocation location) {
+        if (out == null || location == null) return;
+        String scar = campaignScarLine(location);
+        String route = campaignRouteStateLine(location);
+        String contact = recurringContactName(location.recurringContactId);
+        if (!scar.isBlank()) {
+            SupportMarkerType scarType = (location.type == CampaignLocationType.ENEMY_ACTIVITY || location.primaryMission)
+                    ? SupportMarkerType.HAZARD
+                    : SupportMarkerType.SALVAGE;
+            out.add(new CampaignSupportMarker(
+                    scarType,
+                    location.name + " Scar",
+                    scar,
+                    location.x + 52.0,
+                    location.y - 44.0,
+                    90.0,
+                    26));
+        }
+        if (!route.isBlank()) {
+            out.add(new CampaignSupportMarker(
+                    location.supportRouteStabilized ? SupportMarkerType.FACTION_CONTACT : SupportMarkerType.INTEL,
+                    location.supportRouteStabilized ? "Stabilized Route" : "Lane State",
+                    route,
+                    location.x - 46.0,
+                    location.y + 42.0,
+                    86.0,
+                    24));
+        }
+        if (!contact.isBlank()) {
+            out.add(new CampaignSupportMarker(
+                    SupportMarkerType.INTEL,
+                    contact,
+                    recurringContactStatus(null, location),
+                    location.x + 34.0,
+                    location.y + 60.0,
+                    80.0,
+                    22));
+        }
+    }
+
+    private static List<SiteResolutionMode> availableSiteResolutionModes(CampaignLocation location) {
+        if (location == null) return List.of();
+        return switch (location.type) {
+            case RESOURCE_ZONE, SALVAGE_FIELD, HIDDEN_CACHE -> List.of(
+                    SiteResolutionMode.FAST_STRIP,
+                    SiteResolutionMode.CAREFUL_SECURE,
+                    SiteResolutionMode.MARK_FOR_ALLIES);
+            case DISTRESS_SIGNAL -> List.of(
+                    SiteResolutionMode.EVAC_SURVIVORS,
+                    SiteResolutionMode.TOW_DAMAGED_HULL,
+                    SiteResolutionMode.STRIP_FOR_PARTS);
+            case STORY_EVENT -> List.of(
+                    SiteResolutionMode.QUIET_DECODE,
+                    SiteResolutionMode.ALLY_BROADCAST,
+                    SiteResolutionMode.JAM_AND_DESTROY);
+            default -> List.of();
+        };
+    }
+
+    private static SiteResolutionMode resolveSiteResolutionMode(String raw, CampaignLocation location) {
+        List<SiteResolutionMode> available = availableSiteResolutionModes(location);
+        if (available.isEmpty()) return SiteResolutionMode.CAREFUL_SECURE;
+        SiteResolutionMode parsed = parseEnum(raw, available.get(0));
+        return available.contains(parsed) ? parsed : available.get(0);
+    }
+
+    private static String siteResolutionModeLabel(SiteResolutionMode mode) {
+        if (mode == null) return "";
+        return switch (mode) {
+            case FAST_STRIP -> "Fast Strip";
+            case CAREFUL_SECURE -> "Careful Secure";
+            case MARK_FOR_ALLIES -> "Mark For Allies";
+            case EVAC_SURVIVORS -> "Evacuate Survivors";
+            case TOW_DAMAGED_HULL -> "Tow Damaged Hull";
+            case STRIP_FOR_PARTS -> "Strip For Parts";
+            case QUIET_DECODE -> "Quiet Decode";
+            case ALLY_BROADCAST -> "Ally Broadcast";
+            case JAM_AND_DESTROY -> "Jam And Destroy";
+        };
+    }
+
+    private static String siteResolutionModeDetail(CampaignLocation location, SiteResolutionMode mode) {
+        if (location == null || mode == null) return "";
+        return switch (mode) {
+            case FAST_STRIP -> "more immediate payout, more exposure, rougher site scar";
+            case CAREFUL_SECURE -> "safer recovery, steadier intel, lower exposure";
+            case MARK_FOR_ALLIES -> "less direct payout, stronger favor and route support";
+            case EVAC_SURVIVORS -> "favor gain, lower material reward, safer lane aftermath";
+            case TOW_DAMAGED_HULL -> "better chance to recover a hull, slower and costlier extraction";
+            case STRIP_FOR_PARTS -> "more salvage, harsher reputation and distress memory";
+            case QUIET_DECODE -> "best intel, lower exposure, slower payoff";
+            case ALLY_BROADCAST -> "more favor and support-route gains, more exposure";
+            case JAM_AND_DESTROY -> "cuts pressure and enemy intel, loses softer rewards";
+        };
     }
 
     private static void addAmbientEncounterSupportMarkers(GameContext ctx, CampaignState st,
@@ -2604,7 +4231,7 @@ public final class CampaignSystem {
             case GUARDING -> "Holding a defensive screen";
             case RETURNING -> "Returning to anchor point";
         };
-        subtitle = contactConfidenceReadout(group) + "  |  " + subtitle;
+        subtitle = contactIntelQualityLabel(group.intelQuality) + "  |  " + contactConfidenceReadout(group) + "  |  " + doctrineReadout(group) + "  |  " + subtitle;
         return new CampaignSupportMarker(
                 SupportMarkerType.HAZARD,
                 label,
@@ -2618,11 +4245,11 @@ public final class CampaignSystem {
     private static String contactConfidenceLabel(GalaxySearchGroup group) {
         if (group == null) return "Unknown Contact";
         return switch (group.contactConfidence) {
-            case IDENTIFIED_TASK_FORCE -> group.label;
-            case CONFIRMED_HOSTILE -> "Confirmed Hostile";
-            case POSSIBLE_PATROL -> "Possible Patrol";
-            case LOST_CONTACT -> "Lost Contact";
-            case UNKNOWN_CONTACT -> "Unknown Contact";
+            case IDENTIFIED_TASK_FORCE -> galaxySearchGroupRegionalLabel(group, regionIdentityAt(null, group.x, group.y));
+            case CONFIRMED_HOSTILE -> doctrineReadout(group);
+            case POSSIBLE_PATROL -> uncertainContactLabel(group, false);
+            case LOST_CONTACT -> "Lost " + uncertainContactLabel(group, true);
+            case UNKNOWN_CONTACT -> uncertainContactLabel(group, false);
         };
     }
 
@@ -2630,10 +4257,147 @@ public final class CampaignSystem {
         if (group == null) return "UNKNOWN CONTACT";
         return switch (group.contactConfidence) {
             case IDENTIFIED_TASK_FORCE -> "IDENTIFIED TASK FORCE";
-            case CONFIRMED_HOSTILE -> "CONFIRMED HOSTILE";
-            case POSSIBLE_PATROL -> "POSSIBLE PATROL";
-            case LOST_CONTACT -> "LOST CONTACT";
-            case UNKNOWN_CONTACT -> "UNKNOWN CONTACT";
+            case CONFIRMED_HOSTILE -> "CONFIRMED HOSTILE  |  " + doctrineReadout(group).toUpperCase(Locale.US);
+            case POSSIBLE_PATROL -> "PARTIAL TRACK  |  " + uncertainContactLabel(group, false).toUpperCase(Locale.US);
+            case LOST_CONTACT -> "LOST CONTACT  |  " + uncertainContactLabel(group, true).toUpperCase(Locale.US);
+            case UNKNOWN_CONTACT -> "UNCERTAIN CONTACT  |  " + uncertainContactLabel(group, false).toUpperCase(Locale.US);
+        };
+    }
+
+    private static String contactIntelQualityLabel(ContactIntelQuality quality) {
+        return switch ((quality == null) ? ContactIntelQuality.UNKNOWN : quality) {
+            case UNKNOWN -> "Unknown";
+            case CLASSIFIED -> "Classified";
+            case IDENTIFIED -> "Identified";
+            case TRACKED -> "Tracked";
+            case TARGET_QUALITY -> "Target-Quality";
+        };
+    }
+
+    private static ContactIntelQuality locationIntelQualityFor(CampaignState st, CampaignLocation location) {
+        if (st == null || location == null) return ContactIntelQuality.UNKNOWN;
+        if (location.completed || location.consumed) return ContactIntelQuality.TARGET_QUALITY;
+        if (!location.discovered) return ContactIntelQuality.UNKNOWN;
+        double playerDist = Math.hypot(location.x - st.playerGalaxyX, location.y - st.playerGalaxyY);
+        double intel = MathUtil.clamp(st.campaignIntelLevel, 0.0, 100.0);
+        if (playerDist <= 115.0) return ContactIntelQuality.TARGET_QUALITY;
+        if (playerDist <= 360.0 || intel >= 82.0) return ContactIntelQuality.TRACKED;
+        if (playerDist <= 820.0 || intel >= 58.0) return ContactIntelQuality.IDENTIFIED;
+        return ContactIntelQuality.CLASSIFIED;
+    }
+
+    private static ContactIntelQuality searchGroupIntelQualityFor(CampaignState st, GalaxySearchGroup group) {
+        if (st == null || group == null) return ContactIntelQuality.UNKNOWN;
+        double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+        double intel = MathUtil.clamp(st.campaignIntelLevel, 0.0, 100.0);
+        return switch (group.contactConfidence) {
+            case UNKNOWN_CONTACT -> ContactIntelQuality.UNKNOWN;
+            case POSSIBLE_PATROL, LOST_CONTACT -> (intel >= 48.0 || playerDist <= group.detectionRange * 1.1)
+                    ? ContactIntelQuality.CLASSIFIED
+                    : ContactIntelQuality.UNKNOWN;
+            case CONFIRMED_HOSTILE -> (intel >= 64.0 || playerDist <= group.detectionRange * 0.92)
+                    ? ContactIntelQuality.IDENTIFIED
+                    : ContactIntelQuality.CLASSIFIED;
+            case IDENTIFIED_TASK_FORCE -> (intel >= 84.0 || playerDist <= group.interceptRange * 1.3)
+                    ? ContactIntelQuality.TARGET_QUALITY
+                    : ContactIntelQuality.TRACKED;
+        };
+    }
+
+    private static void updateOvermapIntelQualities(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null) continue;
+            location.intelQuality = locationIntelQualityFor(st, location);
+        }
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null) continue;
+            group.intelQuality = searchGroupIntelQualityFor(st, group);
+        }
+    }
+
+    private static GalaxySearchGroup nearestVisibleSearchGroup(CampaignState st) {
+        if (st == null) return null;
+        GalaxySearchGroup best = null;
+        double bestDist = Double.POSITIVE_INFINITY;
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.visible) continue;
+            double dist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = group;
+            }
+        }
+        return best;
+    }
+
+    private static String rumorLeadForPressure(TheaterPressureState pressure) {
+        return switch (pressure == null ? TheaterPressureState.PATROL_NET_EXPANDING : pressure) {
+            case PATROL_NET_EXPANDING -> "Patrol net probing outer lanes for weak traffic.";
+            case BLOCKADE_TIGHTENING -> "Northern blockade is thickening around the Earthward route.";
+            case TRADE_LANES_UNSTABLE -> "Yellow traders report broken lanes and broker panic.";
+            case SUPPLY_LINES_WEAKENING -> "Green sustainment traffic is thinning between hubs.";
+            case HIDDEN_HOSTILES_ACTIVE -> "Encrypted bursts hint at hunter cells inside the theater.";
+        };
+    }
+
+    private static String rumorTrafficLineForPressure(TheaterPressureState pressure) {
+        return switch (pressure == null ? TheaterPressureState.PATROL_NET_EXPANDING : pressure) {
+            case PATROL_NET_EXPANDING -> "Scout screens are being heard farther south than usual.";
+            case BLOCKADE_TIGHTENING -> "Blockade groups are compressing clean routes.";
+            case TRADE_LANES_UNSTABLE -> "Convoy chatter is fragmenting into false leads.";
+            case SUPPLY_LINES_WEAKENING -> "Aid traffic is skipping marginal waypoints.";
+            case HIDDEN_HOSTILES_ACTIVE -> "False transponders and dead relays are spiking.";
+        };
+    }
+
+    private static String rumorAssessmentLine(GameContext ctx, CampaignState st) {
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        if (selected != null && selected.discovered) {
+            return selected.name + "  " + contactIntelQualityLabel(selected.intelQuality) + "  |  " + threatReadoutForSidebar(selected.threatLevel);
+        }
+        GalaxySearchGroup nearest = nearestVisibleSearchGroup(st);
+        if (nearest != null) {
+            return doctrineReadout(nearest) + "  " + contactIntelQualityLabel(nearest.intelQuality) + "  |  " + contactConfidenceLabel(nearest);
+        }
+        return "No clean target-quality fixes; rely on sweep and proximity.";
+    }
+
+    private static String doctrineReadout(GalaxySearchGroup group) {
+        if (group == null) return "Unknown Hostile";
+        return doctrineDisplayName(group.doctrine, regionIdentityAt(null, group.x, group.y));
+    }
+
+    private static String doctrineDisplayName(GalaxySearchDoctrine doctrine, GalaxyRegionIdentity region) {
+        GalaxySearchDoctrine resolved = (doctrine == null) ? GalaxySearchDoctrine.SCOUT_SCREEN : doctrine;
+        GalaxyRegionIdentity resolvedRegion = (region == null) ? GalaxyRegionIdentity.CONTESTED_BELT : region;
+        return switch (resolved) {
+            case SCOUT_SCREEN -> switch (resolvedRegion) {
+                case SOUTHERN_SHELTER -> "Outer Patrol Screen";
+                case CONTESTED_BELT -> "Raid Sweep";
+                case EARTHWARDED_NORTH -> "Picket Kill Net";
+            };
+            case HUNTER_KILLER -> (resolvedRegion == GalaxyRegionIdentity.EARTHWARDED_NORTH)
+                    ? "Earthward Hunt Group"
+                    : "Hunter-Killer Group";
+            case BLOCKADE_GROUP -> (resolvedRegion == GalaxyRegionIdentity.EARTHWARDED_NORTH)
+                    ? "Lattice Defense Screen"
+                    : "Blockade Group";
+            case INTERDICTION_GROUP -> (resolvedRegion == GalaxyRegionIdentity.SOUTHERN_SHELTER)
+                    ? "Spoiler Screen"
+                    : "Interdiction Group";
+            case PUNISHMENT_FLEET -> "Punishment Fleet";
+        };
+    }
+
+    private static String uncertainContactLabel(GalaxySearchGroup group, boolean lost) {
+        if (group == null) return lost ? "trace" : "weak signal";
+        return switch ((group.doctrine == null) ? GalaxySearchDoctrine.SCOUT_SCREEN : group.doctrine) {
+            case SCOUT_SCREEN -> lost ? "civilian squawk" : "weak signal";
+            case HUNTER_KILLER -> lost ? "hot contact" : "active drive plume";
+            case BLOCKADE_GROUP -> lost ? "encrypted relay echo" : "false transponder";
+            case INTERDICTION_GROUP -> lost ? "metallic debris field" : "distress burst";
+            case PUNISHMENT_FLEET -> lost ? "burning pursuit trace" : "hot contact";
         };
     }
 
@@ -3070,30 +4834,30 @@ public final class CampaignSystem {
 
     private static final SectorScript[] SCRIPTS = new SectorScript[]{
             null,
-            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the evacuation lanes until the timer ends", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(2, ObjectiveType.DESTROY, "Destroy 6 strike ships and keep at least 2 convoy ships alive", 6, 840, BossKind.NONE, MapModifier.NEBULA),
-            new SectorScript(3, ObjectiveType.DESTROY, "Destroy the ships blocking the jump ring", 6, 720, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(1, ObjectiveType.SURVIVE, "Hold the evac lane", 200, 200, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(2, ObjectiveType.DESTROY, "Kill 6 strike ships; save 2 convoy hulls", 6, 840, BossKind.NONE, MapModifier.NEBULA),
+            new SectorScript(3, ObjectiveType.DESTROY, "Break the jump-ring cordon", 6, 720, BossKind.NONE, MapModifier.NEBULA),
             new SectorScript(4, ObjectiveType.DESTROY, "Destroy 4 relay blockers", 4, 750, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(5, ObjectiveType.DESTROY, "Destroy the enemy relief force", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
-            new SectorScript(6, ObjectiveType.SURVIVE, "Protect the recovery caches until the timer ends", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(7, ObjectiveType.BOSS, "Destroy the AI pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
-            new SectorScript(8, ObjectiveType.ESCORT, "Escort the Exodus Transport Titan", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(9, ObjectiveType.SURVIVE, "Protect the defecting broker ships until the timer ends", 65, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(10, ObjectiveType.DESTROY, "Destroy the enemy vanguard fleet", 16, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
-            new SectorScript(11, ObjectiveType.SURVIVE, "Protect the depot ships until the timer ends", 85, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(12, ObjectiveType.SURVIVE, "Protect the signatory ships until the timer ends", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(5, ObjectiveType.DESTROY, "Break the relief wing", 10, 780, BossKind.NONE, MapModifier.DEBRIS_FIELD),
+            new SectorScript(6, ObjectiveType.SURVIVE, "Hold until cache recovery", 110, 720, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(7, ObjectiveType.BOSS, "Kill the pursuit Titan", 1, 780, BossKind.MID_ALPHA, MapModifier.EMP_ZONE, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(8, ObjectiveType.ESCORT, "Escort the Exodus Titan", 95, 780, BossKind.NONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(9, ObjectiveType.SURVIVE, "Hold until defectors cross", 65, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(10, ObjectiveType.DESTROY, "Destroy the vanguard fleet", 16, 780, BossKind.NONE, MapModifier.RICH_DEPOSITS),
+            new SectorScript(11, ObjectiveType.SURVIVE, "Hold the depot shelf", 85, 780, BossKind.NONE, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(12, ObjectiveType.SURVIVE, "Hold the signatory run", 95, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
             new SectorScript(13, ObjectiveType.DESTROY, "Destroy the 3 jammer towers", 3, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(14, ObjectiveType.DESTROY, "Destroy the enemy relief force", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
-            new SectorScript(15, ObjectiveType.DESTROY, "Destroy the outer defense guns", 4, 800, BossKind.NONE, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
-            new SectorScript(16, ObjectiveType.BOSS, "Destroy the red Artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
-            new SectorScript(17, ObjectiveType.DESTROY, "Destroy 6 recon ships before they escape", 6, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(18, ObjectiveType.SURVIVE, "Hold the corridor until the timer ends", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
-            new SectorScript(19, ObjectiveType.DESTROY, "Destroy the prison ships and break the clamps", 4, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
+            new SectorScript(14, ObjectiveType.DESTROY, "Break the Nysa relief wing", 8, 780, BossKind.NONE, MapModifier.SOLAR_STORM),
+            new SectorScript(15, ObjectiveType.DESTROY, "Silence the outer batteries", 4, 800, BossKind.NONE, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(16, ObjectiveType.BOSS, "Kill the artillery Titan", 1, 840, BossKind.MID_BETA, MapModifier.GRAVITY_SHEAR, MapModifier.SOLAR_STORM),
+            new SectorScript(17, ObjectiveType.DESTROY, "Kill 6 recon ships before escape", 6, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(18, ObjectiveType.SURVIVE, "Hold the corridor", 240, 780, BossKind.NONE, MapModifier.NEBULA, MapModifier.SOLAR_STORM),
+            new SectorScript(19, ObjectiveType.DESTROY, "Break the prison chain", 4, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
             new SectorScript(20, ObjectiveType.ESCORT, "Escort the recovery Titan", 100, 840, BossKind.NONE, MapModifier.DEBRIS_FIELD, MapModifier.SUPPLY_WINDFALL),
-            new SectorScript(21, ObjectiveType.DESTROY, "Destroy the 3 orbital defense anchors", 3, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(22, ObjectiveType.DESTROY, "Destroy the enemy reserve cordon", 10, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
-            new SectorScript(23, ObjectiveType.DESTROY, "Destroy the 4 uplink towers and protect the launch ships", 4, 900, BossKind.NONE, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR),
-            new SectorScript(24, ObjectiveType.FINAL_BOSS, "Destroy the AI Mothership over Earth", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
+            new SectorScript(21, ObjectiveType.DESTROY, "Destroy 3 orbital anchors", 3, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(22, ObjectiveType.DESTROY, "Break the reserve cordon", 10, 840, BossKind.NONE, MapModifier.EMP_ZONE, MapModifier.RESOURCE_DROUGHT),
+            new SectorScript(23, ObjectiveType.DESTROY, "Kill 4 uplinks; cover the launches", 4, 900, BossKind.NONE, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR),
+            new SectorScript(24, ObjectiveType.FINAL_BOSS, "Kill the AI mothership", 1, 900, BossKind.FINAL, MapModifier.SOLAR_STORM, MapModifier.GRAVITY_SHEAR)
     };
 
     private static final SideObjectiveScript[] SIDE_SCRIPTS = new SideObjectiveScript[]{
@@ -3267,6 +5031,11 @@ public final class CampaignSystem {
         public long sectorStartMillis = 0L;
         public String transitionSummaryTop = "";
         public String transitionSummaryBottom = "";
+        public String transitionRewardLine = "";
+        public String transitionRouteImpactLine = "";
+        public String selectedFleetPostureId = "";
+        public String selectedSiteResolutionModeId = "";
+        public String activeSiteResolutionModeId = "";
         public double missionIntroTimer = 0.0;
         public boolean missionStartBanterPlayed = false;
         public int extractionWarningStage = 0;
@@ -3327,6 +5096,10 @@ public final class CampaignSystem {
         public boolean yellowLiberationFleetJoined = false;
         public int greenContractFavor = 0;
         public int yellowLiberationFavor = 0;
+        public double fleetStrain = 18.0;
+        public String vossRelationshipStateId = "";
+        public String marrRelationshipStateId = "";
+        public String rookRelationshipStateId = "";
 
         // Fleet hub choice timeout: When mission completes, let player choose to open fleet tab or wait for auto-open
         public boolean awaitingFleetHubChoice = false;
@@ -3541,6 +5314,9 @@ public final class CampaignSystem {
                     sector,
                     details[sector - 1] + "  |  Mission: " + lore.title,
                     hubServicesForMainPoi(sector));
+            if (!poi.services.isEmpty()) {
+                poi.recurringContactId = (sector % 2 == 0) ? "MARR" : "VOSS";
+            }
             st.galaxyMainPois.add(poi);
         }
         addGalaxyArea(st, campaignArea(ctx, "aoi-cache-1", "Ghost Cache", 0.10, 0.90,
@@ -3602,25 +5378,29 @@ public final class CampaignSystem {
         st.galaxySearchGroups.clear();
         for (CampaignLocation area : st.galaxyAreasOfInterest) {
             if (area == null || area.type != CampaignLocationType.ENEMY_ACTIVITY) continue;
+            GalaxyRegionIdentity region = regionIdentityAt(null, area.x, area.y);
+            GalaxySearchDoctrine doctrine = doctrineForEnemyActivity(area, region);
             GalaxySearchGroup patrol = new GalaxySearchGroup(
                     st.nextGalaxySearchGroupId++,
-                    (area.threatLevel >= 0.6f) ? "Hunter-Killer Group" : "Patrol Sweep",
+                    doctrineDisplayName(doctrine, region),
                     area.x, area.y,
                     78.0 + area.threatLevel * 30.0,
                     210.0 + area.threatLevel * 120.0,
                     120.0 + area.threatLevel * 70.0,
                     area.threatLevel,
                     area.type,
-                    (area.threatLevel >= 0.6f) ? 3 : 2);
+                    (doctrine == GalaxySearchDoctrine.HUNTER_KILLER || doctrine == GalaxySearchDoctrine.INTERDICTION_GROUP) ? 3 : 2);
             patrol.anchorLocationId = area.id;
-            patrol.behavior = (area.threatLevel >= 0.6f) ? GalaxySearchBehavior.SEARCHING : GalaxySearchBehavior.PATROLLING;
+            patrol.doctrine = doctrine;
+            patrol.behavior = initialDoctrineBehavior(doctrine);
             st.galaxySearchGroups.add(patrol);
         }
         for (CampaignLocation poi : st.galaxyMainPois) {
             if (poi == null || poi.missionIndex < 18 || poi.missionIndex % 3 != 0) continue;
+            GalaxyRegionIdentity region = regionIdentityAt(null, poi.x, poi.y);
             GalaxySearchGroup guard = new GalaxySearchGroup(
                     st.nextGalaxySearchGroupId++,
-                    "Defense Screen",
+                    doctrineDisplayName(GalaxySearchDoctrine.BLOCKADE_GROUP, region),
                     poi.x + 80.0, poi.y - 60.0,
                     66.0 + poi.threatLevel * 24.0,
                     240.0 + poi.threatLevel * 140.0,
@@ -3629,10 +5409,31 @@ public final class CampaignSystem {
                     poi.type,
                     4);
             guard.anchorLocationId = poi.id;
+            guard.doctrine = GalaxySearchDoctrine.BLOCKADE_GROUP;
             guard.behavior = GalaxySearchBehavior.GUARDING;
             guard.visible = poi.completed;
             st.galaxySearchGroups.add(guard);
         }
+    }
+
+    private static GalaxySearchDoctrine doctrineForEnemyActivity(CampaignLocation area, GalaxyRegionIdentity region) {
+        if (area == null) return GalaxySearchDoctrine.SCOUT_SCREEN;
+        double threat = Math.max(0.0, area.threatLevel);
+        if (region == GalaxyRegionIdentity.EARTHWARDED_NORTH && threat >= 0.52) return GalaxySearchDoctrine.HUNTER_KILLER;
+        if (region == GalaxyRegionIdentity.CONTESTED_BELT && threat >= 0.38) return GalaxySearchDoctrine.INTERDICTION_GROUP;
+        if (threat >= 0.62) return GalaxySearchDoctrine.HUNTER_KILLER;
+        return GalaxySearchDoctrine.SCOUT_SCREEN;
+    }
+
+    private static GalaxySearchBehavior initialDoctrineBehavior(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return GalaxySearchBehavior.PATROLLING;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> GalaxySearchBehavior.PATROLLING;
+            case HUNTER_KILLER -> GalaxySearchBehavior.SEARCHING;
+            case BLOCKADE_GROUP -> GalaxySearchBehavior.GUARDING;
+            case INTERDICTION_GROUP -> GalaxySearchBehavior.INVESTIGATING;
+            case PUNISHMENT_FLEET -> GalaxySearchBehavior.INTERCEPTING;
+        };
     }
 
     private static double[] campaignWorldPoint(GameContext ctx, double nx, double ny) {
@@ -3735,26 +5536,52 @@ public final class CampaignSystem {
         if (upper.contains("RELAY") || upper.contains("LISTENING")) {
             baseQuality += 0.08;
         }
+        GalaxyRegionIdentity region = regionIdentityAt(ctx, location.x, location.y);
+        switch (region) {
+            case SOUTHERN_SHELTER -> baseQuality += 0.08;
+            case CONTESTED_BELT -> baseQuality += 0.02;
+            case EARTHWARDED_NORTH -> baseQuality -= 0.08;
+        }
         double quality = MathUtil.clamp(baseQuality - pressure * 0.10, 0.75, 1.45);
         double priceMul = switch (alignment) {
             case GREEN -> 0.94 + pressure * 0.08;
             case YELLOW -> 0.88 + pressure * 0.12;
             case FRONTIER -> 1.02 + pressure * 0.14;
         };
+        priceMul += switch (region) {
+            case SOUTHERN_SHELTER -> -0.04;
+            case CONTESTED_BELT -> 0.02;
+            case EARTHWARDED_NORTH -> 0.10;
+        };
         double supportMul = switch (alignment) {
             case GREEN -> 1.18 - pressure * 0.08;
             case YELLOW -> 0.96 - pressure * 0.04;
             case FRONTIER -> 0.92 - pressure * 0.03;
+        };
+        supportMul += switch (region) {
+            case SOUTHERN_SHELTER -> 0.12;
+            case CONTESTED_BELT -> 0.0;
+            case EARTHWARDED_NORTH -> -0.10;
         };
         double tradeMul = switch (alignment) {
             case GREEN -> 0.92;
             case YELLOW -> 1.22 - pressure * 0.06;
             case FRONTIER -> 1.04;
         };
+        tradeMul += switch (region) {
+            case SOUTHERN_SHELTER -> 0.04;
+            case CONTESTED_BELT -> 0.08;
+            case EARTHWARDED_NORTH -> -0.06;
+        };
         double logisticsMul = switch (alignment) {
             case GREEN -> 1.10;
             case YELLOW -> 1.18;
             case FRONTIER -> 0.94;
+        };
+        logisticsMul += switch (region) {
+            case SOUTHERN_SHELTER -> 0.12;
+            case CONTESTED_BELT -> 0.0;
+            case EARTHWARDED_NORTH -> -0.12;
         };
         return new HubProfile(alignment, pressure, quality, priceMul, supportMul, tradeMul, logisticsMul);
     }
@@ -3771,6 +5598,7 @@ public final class CampaignSystem {
     private static boolean performHubService(GameContext ctx, CampaignState st, CampaignLocation location, HubService service) {
         if (ctx == null || st == null || location == null || service == null) return false;
         HubProfile profile = hubProfile(ctx, location);
+        double strainPenalty = 1.0 + MathUtil.clamp((st.fleetStrain - 55.0) / 100.0, 0.0, 0.30);
         switch (service) {
             case REPAIR -> {
                 int damagedShips = damagedPersistentFleetCount(ctx, st);
@@ -3784,7 +5612,11 @@ public final class CampaignSystem {
                 ctx.credits -= cost;
                 st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
                 st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
-                restorePersistentFleetCondition(ctx, st, 0.45 * profile.supportMul, 0.60 * profile.supportMul);
+                restorePersistentFleetCondition(ctx, st, 0.45 * profile.supportMul / strainPenalty, 0.60 * profile.supportMul / strainPenalty);
+                adjustFleetStrain(st, -14.0);
+                setRelationshipState(st, "VOSS", CampaignRelationshipState.TRUSTED);
+                setLocationRouteState(location, "Repair traffic is now flowing cleanly through this anchorage", true);
+                setLocationRecurringContact(location, "VOSS", "service crews know your fleet and are waving you through faster");
                 EventSystem.showBanner(ctx, "FLEET REPAIRED  -" + cost + " CREDITS  -" + supplyCost + " SUP  -" + salvageCost + " SALV", 1.6);
                 return true;
             }
@@ -3801,6 +5633,10 @@ public final class CampaignSystem {
                 ctx.credits += sale;
                 st.campaignFuel += fuelGain;
                 st.campaignSupplies += supplyGain;
+                adjustFleetStrain(st, -6.0);
+                setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
+                setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
+                setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
                 EventSystem.showBanner(ctx, "MARKET TRADE COMPLETE  +" + sale + " CREDITS  +" + fuelGain + " FUEL", 1.6);
                 return true;
             }
@@ -3821,6 +5657,7 @@ public final class CampaignSystem {
                     built.hullConditionFrac = 1.0;
                     built.shieldConditionFrac = 1.0;
                 }
+                adjustFleetStrain(st, -5.0);
                 EventSystem.showBanner(ctx, "SHIPYARD ORDER ADDED: " + buildRole.name() + "  -" + creditCost + "C  -" + oreCost + " ORE", 1.7);
                 return true;
             }
@@ -3835,6 +5672,7 @@ public final class CampaignSystem {
                 int ammoGain = Math.max(10, (int) Math.round(20 * profile.supportMul));
                 st.campaignSupplies += supplyGain;
                 st.campaignAmmo += ammoGain;
+                adjustFleetStrain(st, -8.0);
                 EventSystem.showBanner(ctx, "SUPPLIES PURCHASED  +" + supplyGain + " SUP  +" + ammoGain + " AMMO", 1.5);
                 return true;
             }
@@ -3848,6 +5686,8 @@ public final class CampaignSystem {
                 ctx.credits -= cost;
                 st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
                 refitPersistentFleet(ctx, st, profile);
+                adjustFleetStrain(st, -10.0);
+                setRelationshipState(st, "VOSS", CampaignRelationshipState.TRUSTED);
                 EventSystem.showBanner(ctx, "FLEET REFIT COMPLETE  -" + cost + " CREDITS", 1.4);
                 return true;
             }
@@ -3862,6 +5702,9 @@ public final class CampaignSystem {
                 st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 14.0 + profile.supportMul * 10.0, 0.0, 100.0);
                 st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - (3.0 + profile.quality * 2.0));
                 revealLocalIntel(st, location, profile);
+                setRelationshipState(st, "MARR", CampaignRelationshipState.TRUSTED);
+                setLocationRecurringContact(location, "MARR", "Marr's relay clerks are quietly sharpening your local picture");
+                setLocationRouteState(location, "Intel clerks cleaned up the local route picture around this hub", true);
                 EventSystem.showBanner(ctx, "INTEL ACQUIRED - LOCAL THREAT PICTURE UPDATED", 1.5);
                 return true;
             }
@@ -3870,6 +5713,12 @@ public final class CampaignSystem {
                 int supplies = (profile.alignment == HubAlignment.GREEN) ? 6 : 3;
                 ctx.credits += payout;
                 st.campaignSupplies += supplies;
+                adjustFleetStrain(st, -4.0);
+                setRelationshipState(st, (profile.alignment == HubAlignment.GREEN) ? "VOSS" : "MARR", CampaignRelationshipState.OWED_FAVOR);
+                setLocationRecurringContact(location, (profile.alignment == HubAlignment.GREEN) ? "VOSS" : "MARR",
+                        (profile.alignment == HubAlignment.GREEN)
+                                ? "green handlers are now treating this hub as part of your trusted circuit"
+                                : "broker intermediaries are now routing favors through this port");
                 EventSystem.showBanner(ctx, "CONTRACT ADVANCE RECEIVED  +" + payout + " CREDITS  +" + supplies + " SUP", 1.5);
                 return true;
             }
@@ -3882,6 +5731,7 @@ public final class CampaignSystem {
                 int payout = GameContext.scaleCreditEarnings((int) Math.round(soldSalvage * 11 * profile.tradeMul));
                 ctx.credits += payout;
                 st.campaignSalvage -= soldSalvage;
+                adjustFleetStrain(st, -3.0);
                 EventSystem.showBanner(ctx, "SALVAGE SOLD  +" + payout + " CREDITS", 1.5);
                 return true;
             }
@@ -3894,6 +5744,7 @@ public final class CampaignSystem {
                 ctx.credits -= cost;
                 int fuelGain = Math.max(14, (int) Math.round(24 * profile.logisticsMul));
                 st.campaignFuel += fuelGain;
+                adjustFleetStrain(st, -8.0);
                 EventSystem.showBanner(ctx, "FUEL STORES TOPPED UP  +" + fuelGain + " FUEL", 1.5);
                 return true;
             }
@@ -3903,7 +5754,21 @@ public final class CampaignSystem {
 
     private static void addGalaxyArea(CampaignState st, CampaignLocation location) {
         if (st == null || location == null) return;
+        assignRecurringContactSeed(location);
         st.galaxyAreasOfInterest.add(location);
+    }
+
+    private static void assignRecurringContactSeed(CampaignLocation location) {
+        if (location == null || location.recurringContactId != null && !location.recurringContactId.isBlank()) return;
+        if (location.type == CampaignLocationType.DISTRESS_SIGNAL || location.type == CampaignLocationType.REPAIR_SITE) {
+            location.recurringContactId = "VOSS";
+        } else if (location.type == CampaignLocationType.HIDDEN_CACHE
+                || location.type == CampaignLocationType.SALVAGE_FIELD
+                || location.type == CampaignLocationType.STORY_EVENT) {
+            location.recurringContactId = "MARR";
+        } else if (location.type == CampaignLocationType.ENEMY_ACTIVITY) {
+            location.recurringContactId = "ROOK";
+        }
     }
 
     private static int damagedPersistentFleetCount(GameContext ctx, CampaignState st) {
@@ -4797,6 +6662,26 @@ public final class CampaignSystem {
         return st.transitionSummaryBottom == null ? "" : st.transitionSummaryBottom;
     }
 
+    public static List<String> campaignAfterActionPlateLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of();
+        String top = transitionSummaryTop(ctx);
+        String bottom = transitionSummaryBottom(ctx);
+        if ((top == null || top.isBlank()) && (bottom == null || bottom.isBlank())) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        if (top != null && !top.isBlank()) out.add(top);
+        if (bottom != null && !bottom.isBlank()) out.add(bottom);
+        if (st.transitionRewardLine != null && !st.transitionRewardLine.isBlank()) {
+            out.add("REWARD  |  " + st.transitionRewardLine.toUpperCase(Locale.US));
+        }
+        if (st.transitionRouteImpactLine != null && !st.transitionRouteImpactLine.isBlank()) {
+            out.add("ROUTE  |  " + st.transitionRouteImpactLine.toUpperCase(Locale.US));
+        }
+        out.add("REPUTATION  |  " + campaignReputationReadout(ctx).toUpperCase(Locale.US));
+        out.add("THEATER  |  " + theaterPressureReadout(ctx).toUpperCase(Locale.US));
+        return out;
+    }
+
     public static List<CampaignRouteChoice> routeChoices(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null || st.routeChoices.isEmpty()) return List.of();
@@ -4998,7 +6883,7 @@ public final class CampaignSystem {
         st.transitionTimer = 0.0;
         if (st.transitionLabel == null || st.transitionLabel.isBlank()) st.transitionLabel = "FLEET HANGAR";
         if (st.transitionSummaryTop == null || st.transitionSummaryTop.isBlank()) {
-            st.transitionSummaryTop = "Fleet hangar open. Click a ship to focus it, refit the fleet, then launch when ready.";
+            st.transitionSummaryTop = "Fleet hangar open. Inspect, refit, and launch.";
         }
         // Always replace the bottom row with fleet hub controls (sector-clear screens use the same overlay).
         st.transitionSummaryBottom = routeChoiceSummary(st)
@@ -5663,7 +7548,9 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return;
         st.sectorElapsed += Math.max(0.0, dt);
         updateStrategicIntelAndExposure(ctx, st, dt);
+        updateIgnoredContactEscalation(ctx, st, dt);
         updateGalaxySearchGroups(ctx, st, dt);
+        updateOvermapIntelQualities(ctx, st);
         updateCampaignTravel(ctx, st, dt);
         updateGalaxyDetectionAndInterception(ctx, st, dt);
         syncPersistentFleetCasualties(ctx, st);
@@ -5676,10 +7563,13 @@ public final class CampaignSystem {
     private static void updateStrategicIntelAndExposure(GameContext ctx, CampaignState st, double dt) {
         if (ctx == null || st == null || dt <= 0.0) return;
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
         double regionalPressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
-        double intelDrift = -0.42 - regionalPressure * 0.16 + roleProfile.carrierProjection() * 0.70 + roleProfile.stealthCoverage() * 0.45;
+        double intelDrift = -0.42 - regionalPressure * 0.16 + roleProfile.carrierProjection() * 0.70 + roleProfile.stealthCoverage() * 0.45
+                + postureIntelDrift(posture);
         st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelDrift * dt, 0.0, 100.0);
-        double exposureDrift = -0.60 + regionalPressure * 0.18 - roleProfile.stealthCoverage() * 0.32 - roleProfile.screenCoverage() * 0.22;
+        double exposureDrift = -0.60 + regionalPressure * 0.18 - roleProfile.stealthCoverage() * 0.32 - roleProfile.screenCoverage() * 0.22
+                + postureExposureDrift(posture);
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + exposureDrift * dt, 0.0, 100.0);
         st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure - dt * 0.95, 0.0, 100.0);
     }
@@ -5695,6 +7585,18 @@ public final class CampaignSystem {
             }
             return;
         }
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
+        st.campaignFuel = Math.max(0, st.campaignFuel - postureTravelFuelCostPerTick(posture, dt));
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - postureTravelSupplyCostPerTick(posture, dt));
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - postureTravelAmmoCostPerTick(posture, dt));
+        double pressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
+        double strainGain = 0.10 + pressure * 0.18;
+        if (st.campaignFuel < 34) strainGain += 0.18;
+        if (st.campaignSupplies < 26) strainGain += 0.22;
+        if (st.campaignAmmo < 30) strainGain += 0.08;
+        if (posture == FleetPosture.COMBAT_PATROL || posture == FleetPosture.RAIDER_DOCTRINE) strainGain += 0.10;
+        if (posture == FleetPosture.LOGISTICS_CONSERVATION) strainGain -= 0.05;
+        adjustFleetStrain(st, strainGain * dt);
         double dx = st.galaxyTravel.targetX - st.playerGalaxyX;
         double dy = st.galaxyTravel.targetY - st.playerGalaxyY;
         double dist = Math.hypot(dx, dy);
@@ -5751,49 +7653,521 @@ public final class CampaignSystem {
 
     private static void updateTransitSignals(GameContext ctx, CampaignState st, double dt) {
         if (ctx == null || st == null || !st.galaxyTravel.traveling) return;
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
         st.transitEventCooldownSec = Math.max(0.0, st.transitEventCooldownSec - Math.max(0.0, dt));
         if (st.transitEventCooldownSec > 1e-6) return;
         if (st.galaxyTravel.progress < 0.18 || st.galaxyTravel.progress > 0.92) return;
         double risk = MathUtil.clamp(st.galaxyTravel.interceptionRisk / 100.0, 0.0, 1.0);
         double intel = MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0);
-        double eventScore = 0.32 + intel * 0.28 + (1.0 - risk) * 0.14;
-        st.transitEventCooldownSec = 14.0 + MathUtil.clamp(risk * 10.0, 0.0, 8.0);
+        double eventScore = 0.32 + intel * 0.28 + (1.0 - risk) * 0.14 + postureTransitEventBias(posture);
+        st.transitEventCooldownSec = Math.max(8.0, 14.0 + MathUtil.clamp(risk * 10.0, 0.0, 8.0) + postureTransitCooldownBias(posture));
         if (eventScore < 0.46) return;
         spawnTransitDiscovery(ctx, st);
+    }
+
+    private static void updateIgnoredContactEscalation(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || dt <= 0.0) return;
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        for (CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (!eligibleForEscalation(st, location)) continue;
+            if (location == selected || isTravelingTowardLocation(st, location) || isWithinDockingRange(st, location)) {
+                location.unresolvedAgeSec = Math.max(0.0, location.unresolvedAgeSec - dt * 1.5);
+                continue;
+            }
+            double pressure = regionPressureAt(ctx, location.x, location.y);
+            double ageRate = 1.0 + pressure * 0.85 + postureEscalationRateBias(posture);
+            location.unresolvedAgeSec += dt * ageRate;
+            if (location.escalationStage < 1 && location.unresolvedAgeSec >= 42.0) {
+                escalateLocationContact(ctx, st, location, 1);
+            }
+            if (location.escalationStage < 2 && location.unresolvedAgeSec >= 94.0) {
+                escalateLocationContact(ctx, st, location, 2);
+            }
+        }
+    }
+
+    private static boolean eligibleForEscalation(CampaignState st, CampaignLocation location) {
+        if (st == null || location == null || location.primaryMission) return false;
+        if (!location.discovered || location.completed || location.consumed) return false;
+        return switch (location.type) {
+            case RESOURCE_ZONE, SALVAGE_FIELD, HIDDEN_CACHE, DISTRESS_SIGNAL, STORY_EVENT -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isTravelingTowardLocation(CampaignState st, CampaignLocation location) {
+        if (st == null || location == null || !st.galaxyTravel.traveling) return false;
+        if (location.id.equals(st.galaxyTravel.destinationId)) return true;
+        return st.galaxyTravel.freeTravel
+                && Math.hypot(st.galaxyTravel.targetX - location.x, st.galaxyTravel.targetY - location.y) <= 180.0;
+    }
+
+    private static void escalateLocationContact(GameContext ctx, CampaignState st, CampaignLocation location, int stage) {
+        if (ctx == null || st == null || location == null || stage <= location.escalationStage) return;
+        location.escalationStage = stage;
+        switch (stage) {
+            case 1 -> applyEscalationWarning(ctx, st, location);
+            case 2 -> applyEscalationOutcome(ctx, st, location);
+            default -> {
+            }
+        }
+    }
+
+    private static void applyEscalationWarning(GameContext ctx, CampaignState st, CampaignLocation location) {
+        if (location == null) return;
+        switch (location.type) {
+            case RESOURCE_ZONE -> setLocationRouteState(location, "Prospector chatter is thickening around the ore drift", false);
+            case SALVAGE_FIELD -> setLocationRouteState(location, "Scavenger wakes are converging on the wreck lane", false);
+            case HIDDEN_CACHE -> setLocationRouteState(location, "The cache beacon is leaking into broker traffic", false);
+            case DISTRESS_SIGNAL -> setLocationRouteState(location, "The distress burst is degrading; rescue window narrowing", false);
+            case STORY_EVENT -> setLocationRouteState(location, "The relay echo is attracting hostile listeners", false);
+            default -> {
+            }
+        }
+        EventSystem.showBanner(ctx, "CONTACT SHIFTING  |  " + location.name.toUpperCase(Locale.US), 1.1);
+    }
+
+    private static void applyEscalationOutcome(GameContext ctx, CampaignState st, CampaignLocation location) {
+        if (location == null) return;
+        switch (location.type) {
+            case RESOURCE_ZONE -> {
+                location.consumed = true;
+                location.completed = true;
+                setLocationScar(location, "Late-arriving prospectors stripped the easy ore and left a thin rock haze.");
+                setLocationRouteState(location, "Prospector traffic already spent the drift before your fleet returned", false);
+            }
+            case SALVAGE_FIELD -> {
+                location.consumed = true;
+                location.completed = true;
+                setLocationScar(location, "Wreck pickers cleared the easy plates and black boxes.");
+                setLocationRouteState(location, "Recovery traffic moved through before your sweep reached the lane", false);
+            }
+            case HIDDEN_CACHE -> {
+                location.consumed = true;
+                location.completed = true;
+                setLocationScar(location, "Rivals burned the cache after the beacon lingered too long.");
+                setLocationRouteState(location, "The smuggler drop is cold and compromised", false);
+                st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 5.0, 0.0, 100.0);
+            }
+            case DISTRESS_SIGNAL -> {
+                location.consumed = true;
+                location.completed = true;
+                setLocationScar(location, "Only a cooling grave field remains where the rescue burst once held.");
+                setLocationRouteState(location, "Rescue window closed; wreck traffic and scavengers remain", false);
+                setLocationRecurringContact(location, location.recurringContactId, "unanswered rescue burst now logged as a loss");
+                setRelationshipState(st, "VOSS", CampaignRelationshipState.NEGLECTED);
+                st.yellowLiberationFavor = Math.max(0, st.yellowLiberationFavor - 1);
+                adjustFleetStrain(st, 7.0);
+                spawnIgnoredContactResponseGroup(ctx, st, location, GalaxySearchDoctrine.SCOUT_SCREEN);
+            }
+            case STORY_EVENT -> {
+                location.completed = true;
+                setLocationScar(location, "The relay went dark after a hostile decode sweep.");
+                setLocationRouteState(location, "Enemy listeners cracked the echo and tightened nearby hunt lanes", false);
+                setLocationRecurringContact(location, location.recurringContactId, "relay window lost after hostile decode");
+                setRelationshipState(st, "MARR", CampaignRelationshipState.NEGLECTED);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0, 0.0, 100.0);
+                st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 4.0, 0.0, 100.0);
+                adjustFleetStrain(st, 4.0);
+                spawnIgnoredContactResponseGroup(ctx, st, location, GalaxySearchDoctrine.INTERDICTION_GROUP);
+            }
+            default -> {
+            }
+        }
+        EventSystem.showBanner(ctx, "CONTACT ESCALATED  |  " + location.name.toUpperCase(Locale.US), 1.4);
+    }
+
+    private static void spawnIgnoredContactResponseGroup(GameContext ctx,
+                                                         CampaignState st,
+                                                         CampaignLocation location,
+                                                         GalaxySearchDoctrine doctrine) {
+        if (ctx == null || st == null || location == null || doctrine == null) return;
+        for (GalaxySearchGroup existing : st.galaxySearchGroups) {
+            if (existing == null || !existing.hostile) continue;
+            if (Math.hypot(existing.x - location.x, existing.y - location.y) <= 240.0) return;
+        }
+        GalaxyRegionIdentity region = regionIdentityAt(ctx, location.x, location.y);
+        String label = doctrineDisplayName(doctrine, region);
+        GalaxySearchGroup group = new GalaxySearchGroup(
+                st.nextGalaxySearchGroupId++,
+                label,
+                GameMath.clamp(location.x + 90.0, 0.0, ctx.WORLD_W),
+                GameMath.clamp(location.y - 60.0, 0.0, ctx.WORLD_H),
+                78.0 * doctrineSpeedMultiplier(doctrine),
+                210.0 * doctrineDetectionMultiplier(doctrine),
+                132.0 * doctrineInterceptMultiplier(doctrine),
+                Math.max(0.24f, location.threatLevel + 0.12f),
+                CampaignLocationType.ENEMY_ACTIVITY,
+                Math.max(2, 1 + (int) Math.round(regionPressureAt(ctx, location.x, location.y) * 3.0))
+        );
+        group.doctrine = doctrine;
+        group.behavior = initialDoctrineBehavior(doctrine);
+        group.anchorLocationId = location.id;
+        group.searchRadius = 360.0 * doctrineSearchRadiusMultiplier(doctrine);
+        st.galaxySearchGroups.add(group);
+    }
+
+    private static void assignDiscoveryChainSeed(CampaignLocation site, String seedName, CampaignLocationType type) {
+        if (site == null) return;
+        String name = (seedName == null) ? "" : seedName.toUpperCase(Locale.US);
+        site.chainStage = 1;
+        if (type == CampaignLocationType.STORY_EVENT && (name.contains("RELAY") || name.contains("ECHO"))) {
+            site.chainType = name.contains("FALSE SIGNAL") ? DiscoveryChainType.FALSE_DISTRESS : DiscoveryChainType.RELAY_ECHO;
+        } else if (type == CampaignLocationType.SALVAGE_FIELD && (name.contains("WRECK") || name.contains("DRIFT") || name.contains("INTERCEPT"))) {
+            site.chainType = DiscoveryChainType.WRECK_TRAIL;
+        } else if (type == CampaignLocationType.DISTRESS_SIGNAL && (name.contains("PICKET") || name.contains("RUNNER") || name.contains("RESISTANCE"))) {
+            site.chainType = DiscoveryChainType.MISSING_PATROL;
+        } else if (type == CampaignLocationType.HIDDEN_CACHE && name.contains("SMUGGLER")) {
+            site.chainType = DiscoveryChainType.SMUGGLER_LEAD;
+        } else {
+            site.chainType = DiscoveryChainType.NONE;
+            site.chainStage = 0;
+        }
+    }
+
+    private static AmbientReturnSummary advanceDiscoveryChain(GameContext ctx,
+                                                              CampaignState st,
+                                                              CampaignLocation location,
+                                                              AmbientReturnSummary summary) {
+        if (ctx == null || st == null || location == null || summary == null) return summary;
+        if (location.chainType == null || location.chainType == DiscoveryChainType.NONE || location.chainStage <= 0) {
+            return summary;
+        }
+        return switch (location.chainType) {
+            case RELAY_ECHO -> advanceRelayEchoChain(ctx, st, location, summary);
+            case WRECK_TRAIL -> advanceWreckTrailChain(ctx, st, location, summary);
+            case FALSE_DISTRESS -> advanceFalseDistressChain(ctx, st, location, summary);
+            case MISSING_PATROL -> advanceMissingPatrolChain(ctx, st, location, summary);
+            case SMUGGLER_LEAD -> advanceSmugglerLeadChain(ctx, st, location, summary);
+            case NONE -> summary;
+        };
+    }
+
+    private static AmbientReturnSummary advanceRelayEchoChain(GameContext ctx, CampaignState st, CampaignLocation location, AmbientReturnSummary summary) {
+        if (location.chainStage == 1) {
+            CampaignLocation next = spawnChainFollowupSite(ctx, st, location,
+                    location.id + "-vault",
+                    "Relay Vault",
+                    CampaignLocationType.HIDDEN_CACHE,
+                    "Decoded relay traffic points toward a sealed vault tucked behind the relay lattice.",
+                    Math.max(0.22f, location.threatLevel + 0.04f),
+                    location.recurringContactId.isBlank() ? "MARR" : location.recurringContactId,
+                    DiscoveryChainType.RELAY_ECHO,
+                    2);
+            if (next != null) {
+                setLocationRouteState(location, "Relay decode opened a hidden vault rung deeper along the lane", false);
+                return extendAmbientSummary(summary, "vault lead", "Relay vault triangulated");
+            }
+        } else if (location.chainStage >= 2) {
+            st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 8.0, 0.0, 100.0);
+            st.greenContractFavor += 1;
+            setLocationRouteState(location, "Decoded relay chain now strengthens a quieter allied route", true);
+            setLocationRecurringContact(location, "MARR", "broker relays now treat you as a vault-clearing route partner");
+            return extendAmbientSummary(summary, "intel / green favor", "Relay chain folded into allied routing");
+        }
+        return summary;
+    }
+
+    private static AmbientReturnSummary advanceWreckTrailChain(GameContext ctx, CampaignState st, CampaignLocation location, AmbientReturnSummary summary) {
+        if (location.chainStage == 1) {
+            CampaignLocation next = spawnChainFollowupSite(ctx, st, location,
+                    location.id + "-pod",
+                    "Survivor Pod Beacon",
+                    CampaignLocationType.DISTRESS_SIGNAL,
+                    "The wreck trail ends in a cold survivor pod beacon drifting beyond the broken hulls.",
+                    Math.max(0.20f, location.threatLevel + 0.02f),
+                    "VOSS",
+                    DiscoveryChainType.WRECK_TRAIL,
+                    2);
+            if (next != null) {
+                setLocationRouteState(location, "Black-box fragments now point to a surviving pod farther down-lane", false);
+                return extendAmbientSummary(summary, "survivor lead", "Wreck trail points to a live pod beacon");
+            }
+        } else if (location.chainStage >= 2) {
+            st.yellowLiberationFavor += 1;
+            setLocationRouteState(location, "Rescue traffic now treats this wreck corridor as a safer recovery seam", true);
+            return extendAmbientSummary(summary, "yellow favor", "Wreck corridor stabilized by rescue traffic");
+        }
+        return summary;
+    }
+
+    private static AmbientReturnSummary advanceFalseDistressChain(GameContext ctx, CampaignState st, CampaignLocation location, AmbientReturnSummary summary) {
+        if (location.chainStage == 1) {
+            CampaignLocation next = spawnChainFollowupSite(ctx, st, location,
+                    location.id + "-ambush",
+                    "Hunter Ambush Net",
+                    CampaignLocationType.ENEMY_ACTIVITY,
+                    "The false signal resolves into a hunter-killer ambush net tightening around the bait route.",
+                    Math.max(0.44f, location.threatLevel + 0.08f),
+                    "ROOK",
+                    DiscoveryChainType.FALSE_DISTRESS,
+                    2);
+            if (next != null) {
+                setLocationRouteState(location, "The bait contact drew out a hostile ambush net on the adjoining lane", false);
+                setLocationRecurringContact(location, "ROOK", "Rook's net is actively baiting your signal discipline now");
+                return extendAmbientSummary(summary, "ambush lead", "False distress resolved into a hunter ambush");
+            }
+        }
+        return summary;
+    }
+
+    private static AmbientReturnSummary advanceMissingPatrolChain(GameContext ctx, CampaignState st, CampaignLocation location, AmbientReturnSummary summary) {
+        if (location.chainStage == 1) {
+            CampaignLocation next = spawnChainFollowupSite(ctx, st, location,
+                    location.id + "-blackout",
+                    "Green Patrol Blackout",
+                    CampaignLocationType.STORY_EVENT,
+                    "Recovered traffic fragments point toward a damaged Green patrol drifting dark beyond the distress source.",
+                    Math.max(0.24f, location.threatLevel + 0.04f),
+                    "VOSS",
+                    DiscoveryChainType.MISSING_PATROL,
+                    2);
+            if (next != null) {
+                setLocationRouteState(location, "Survivor traffic hints at a missing Green patrol deeper in the blackout", false);
+                return extendAmbientSummary(summary, "patrol lead", "Survivors point toward a missing patrol blackout");
+            }
+        } else if (location.chainStage >= 2) {
+            st.greenContractFavor += 1;
+            setLocationRouteState(location, "The recovered patrol is now screening this corridor for allied traffic", true);
+            return extendAmbientSummary(summary, "green favor", "Patrol blackout turned into a screened allied lane");
+        }
+        return summary;
+    }
+
+    private static AmbientReturnSummary advanceSmugglerLeadChain(GameContext ctx, CampaignState st, CampaignLocation location, AmbientReturnSummary summary) {
+        if (location.chainStage == 1) {
+            CampaignLocation next = spawnChainFollowupSite(ctx, st, location,
+                    location.id + "-broker",
+                    "Broker Rendezvous",
+                    CampaignLocationType.STORY_EVENT,
+                    "The cache markings resolve into a broker rendezvous offering a deeper, riskier line through the seam.",
+                    Math.max(0.28f, location.threatLevel + 0.02f),
+                    "MARR",
+                    DiscoveryChainType.SMUGGLER_LEAD,
+                    2);
+            if (next != null) {
+                setLocationRouteState(location, "Smuggler markings now point toward a broker rendezvous farther down-route", false);
+                return extendAmbientSummary(summary, "broker lead", "Cache chain opened a broker rendezvous");
+            }
+        } else if (location.chainStage >= 2) {
+            ctx.credits += GameContext.scaleCreditEarnings(90);
+            st.yellowLiberationFavor += 1;
+            setLocationRouteState(location, "Broker traffic now leaks safer trade windows along this route", true);
+            setLocationRecurringContact(location, "MARR", "Marr's brokers now treat your route as worth feeding");
+            return extendAmbientSummary(summary, "+90 credits / yellow favor", "Broker route now leaks safer trade windows");
+        }
+        return summary;
+    }
+
+    private static CampaignLocation spawnChainFollowupSite(GameContext ctx,
+                                                           CampaignState st,
+                                                           CampaignLocation origin,
+                                                           String id,
+                                                           String name,
+                                                           CampaignLocationType type,
+                                                           String detail,
+                                                           float threat,
+                                                           String recurringId,
+                                                           DiscoveryChainType chainType,
+                                                           int stage) {
+        if (ctx == null || st == null || origin == null || id == null || id.isBlank()) return null;
+        if (campaignLocationById(st, id) != null) return null;
+        double px = Double.NaN;
+        double py = Double.NaN;
+        for (int attempt = 0; attempt < 6; attempt++) {
+            double angle = (attempt * 0.9) + origin.x * 0.0017 + origin.y * 0.0011;
+            double radius = 180.0 + attempt * 34.0;
+            double candidateX = GameMath.clamp(origin.x + Math.cos(angle) * radius, 0.0, ctx.WORLD_W);
+            double candidateY = GameMath.clamp(origin.y + Math.sin(angle) * radius, 0.0, ctx.WORLD_H);
+            boolean blocked = false;
+            for (CampaignLocation existing : allCampaignLocations(st)) {
+                if (existing == null) continue;
+                if (GameMath.dist2(existing.x, existing.y, candidateX, candidateY) <= 130.0 * 130.0) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if (!blocked) {
+                px = candidateX;
+                py = candidateY;
+                break;
+            }
+        }
+        if (!Double.isFinite(px) || !Double.isFinite(py)) return null;
+        CampaignLocation site = new CampaignLocation(id, name, px, py, type, threat, false, 0, detail);
+        site.discovered = true;
+        site.intelQuality = ContactIntelQuality.CLASSIFIED;
+        site.recurringContactId = (recurringId == null) ? "" : recurringId;
+        site.chainType = chainType == null ? DiscoveryChainType.NONE : chainType;
+        site.chainStage = Math.max(1, stage);
+        st.galaxyAreasOfInterest.add(site);
+        st.selectedGalaxyLocationId = site.id;
+        st.selectedFreeGalaxyTargetX = Double.NaN;
+        st.selectedFreeGalaxyTargetY = Double.NaN;
+        if (ctx.ui != null) UISystem.addPing(ctx, site.x, site.y, 3.2);
+        EventSystem.showBanner(ctx, "FOLLOW-ON LEAD: " + name.toUpperCase(Locale.US), 1.5);
+        return site;
+    }
+
+    private static AmbientReturnSummary extendAmbientSummary(AmbientReturnSummary base, String rewardSuffix, String routeImpact) {
+        if (base == null) return null;
+        String reward = base.rewardLine;
+        if (rewardSuffix != null && !rewardSuffix.isBlank()) {
+            reward = reward.isBlank() ? rewardSuffix : (reward + " / " + rewardSuffix);
+        }
+        String route = (routeImpact == null || routeImpact.isBlank()) ? base.routeImpactLine
+                : (base.routeImpactLine.isBlank() ? routeImpact : (base.routeImpactLine + " / " + routeImpact));
+        return new AmbientReturnSummary(base.topLine, base.bottomLine, base.bannerLine, reward, route);
     }
 
     private static void spawnTransitDiscovery(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         double heading = Math.atan2(st.galaxyTravel.targetY - st.playerGalaxyY, st.galaxyTravel.targetX - st.playerGalaxyX);
         int roll = Math.floorMod(st.transientGalaxySiteSerial++, 4);
-        CampaignLocationType type;
-        String name;
-        String detail;
-        float threat;
-        switch (roll) {
-            case 0 -> {
-                type = CampaignLocationType.RESOURCE_ZONE;
-                name = "Transit Ore Bloom";
-                detail = "Prospector returns spike on a drifting ore patch off the planned burn.";
-                threat = 0.12f;
+        GalaxyRegionIdentity region = regionIdentityAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
+        CampaignReputationState reputation = campaignReputationState(ctx);
+        TheaterPressureState pressure = theaterPressureState(ctx);
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
+        CampaignLocationType type = CampaignLocationType.HIDDEN_CACHE;
+        String name = "Transit Contact";
+        String detail = "A weak contact is drifting off the planned burn.";
+        float threat = 0.20f;
+        switch (region) {
+            case SOUTHERN_SHELTER -> {
+                switch (roll) {
+                    case 0 -> {
+                        type = CampaignLocationType.RESOURCE_ZONE;
+                        name = "Shelter Ore Bloom";
+                        detail = "Prospector returns spike on a sheltered ore drift near the green lanes.";
+                        threat = 0.10f;
+                    }
+                    case 1 -> {
+                        type = CampaignLocationType.DISTRESS_SIGNAL;
+                        name = "Runner Assistance Call";
+                        detail = "A yellow runner is calling for escort and offering favor if you answer.";
+                        threat = 0.18f;
+                    }
+                    case 2 -> {
+                        type = CampaignLocationType.SALVAGE_FIELD;
+                        name = "Prospector Wreck Drift";
+                        detail = "Light salvage and prospector frames are drifting off a safe corridor.";
+                        threat = 0.14f;
+                    }
+                    default -> {
+                        type = CampaignLocationType.STORY_EVENT;
+                        name = "Relay Echo";
+                        detail = "A low-power relay echo is bleeding local traffic and sheltered-route intel.";
+                        threat = 0.16f;
+                    }
+                }
             }
-            case 1 -> {
-                type = CampaignLocationType.DISTRESS_SIGNAL;
-                name = "Lost Ship Beacon";
-                detail = "A damaged hull is broadcasting a weak coalition emergency code.";
-                threat = 0.22f;
+            case CONTESTED_BELT -> {
+                switch (roll) {
+                    case 0 -> {
+                        type = CampaignLocationType.SALVAGE_FIELD;
+                        name = "Breakline Wreck Train";
+                        detail = "A broken convoy string is shedding salvage across a contested route seam.";
+                        threat = 0.28f;
+                    }
+                    case 1 -> {
+                        type = CampaignLocationType.DISTRESS_SIGNAL;
+                        name = "Split Picket Beacon";
+                        detail = "A damaged escort is broadcasting a clipped help request from raid country.";
+                        threat = 0.34f;
+                    }
+                    case 2 -> {
+                        type = CampaignLocationType.RESOURCE_ZONE;
+                        name = "Raided Fuel Vein";
+                        detail = "A rich fuel pocket sits in a lane recently touched by raiders.";
+                        threat = 0.30f;
+                    }
+                    default -> {
+                        type = CampaignLocationType.HIDDEN_CACHE;
+                        name = "Smuggler Drop";
+                        detail = "A smuggler cache is blinking from behind debris and false route chatter.";
+                        threat = 0.32f;
+                    }
+                }
             }
-            case 2 -> {
-                type = CampaignLocationType.SALVAGE_FIELD;
-                name = "Debris Drift";
-                detail = "Loose salvage and black boxes are rotating just outside the route lane.";
-                threat = 0.16f;
+            case EARTHWARDED_NORTH -> {
+                switch (roll) {
+                    case 0 -> {
+                        type = CampaignLocationType.DISTRESS_SIGNAL;
+                        name = "Resistance Flash";
+                        detail = "A resistance cell is pulsing a desperate short-burst call under heavy sweep pressure.";
+                        threat = 0.52f;
+                    }
+                    case 1 -> {
+                        type = CampaignLocationType.SALVAGE_FIELD;
+                        name = "Burned Intercept Pocket";
+                        detail = "Fresh wreckage is drifting in the wake of a recent hunter-killer pass.";
+                        threat = 0.48f;
+                    }
+                    case 2 -> {
+                        type = CampaignLocationType.STORY_EVENT;
+                        name = "False Signal Lure";
+                        detail = "A suspicious relay flare is mimicking friendly traffic near the Earthward hunt lanes.";
+                        threat = 0.56f;
+                    }
+                    default -> {
+                        type = CampaignLocationType.HIDDEN_CACHE;
+                        name = "Resistance Dead Drop";
+                        detail = "A concealed dead drop is tucked under blackout conditions and tight patrol arcs.";
+                        threat = 0.44f;
+                    }
+                }
+            }
+        }
+        if (reputation == CampaignReputationState.RELIABLE_RESCUE_FORCE && roll == 1) {
+            type = CampaignLocationType.DISTRESS_SIGNAL;
+            name = (region == GalaxyRegionIdentity.EARTHWARDED_NORTH) ? "Pinned Rescue Burst" : "Rescue Force Ping";
+            detail = "Operators are recognizing your rescue net and pushing a fresh emergency burst onto your route.";
+            threat = Math.max(threat, 0.22f);
+        } else if (reputation == CampaignReputationState.LIBERATION_SYMBOL && roll == 3) {
+            type = CampaignLocationType.STORY_EVENT;
+            name = (region == GalaxyRegionIdentity.SOUTHERN_SHELTER) ? "Green Rally Relay" : "Liberation Relay";
+            detail = "Friendly channels are opening because your route is being treated like a live symbol of resistance.";
+            threat = Math.max(0.18f, threat - 0.04f);
+        } else if ((reputation == CampaignReputationState.RAIDER_THREAT
+                || reputation == CampaignReputationState.HIGH_EXPOSURE_TARGET
+                || pressure == TheaterPressureState.HIDDEN_HOSTILES_ACTIVE) && roll == 2) {
+            type = CampaignLocationType.STORY_EVENT;
+            name = "False Transponder Trap";
+            detail = "A hot contact is faking friendly traffic and trying to drag your formation off the clean burn.";
+            threat = Math.max(threat, 0.48f);
+        } else if (pressure == TheaterPressureState.SUPPLY_LINES_WEAKENING && roll == 0) {
+            type = CampaignLocationType.SALVAGE_FIELD;
+            name = "Spent Supply Drift";
+            detail = "Broken supply traffic is shedding crates and wreckage across a starving lane.";
+            threat = Math.max(threat, 0.24f);
+        }
+        switch (posture) {
+            case RESCUE_PRIORITY -> {
+                if (roll == 1 || region == GalaxyRegionIdentity.EARTHWARDED_NORTH) {
+                    type = CampaignLocationType.DISTRESS_SIGNAL;
+                    name = (region == GalaxyRegionIdentity.EARTHWARDED_NORTH) ? "Pinned Rescue Corridor" : "Rescue Window";
+                    detail = "A rescue-biased channel is surfacing a live support lead because your fleet is listening for survivors.";
+                    threat = Math.max(threat, 0.22f);
+                }
+            }
+            case RAIDER_DOCTRINE -> {
+                if (roll == 2 || pressure == TheaterPressureState.HIDDEN_HOSTILES_ACTIVE) {
+                    type = CampaignLocationType.SALVAGE_FIELD;
+                    name = "Raid Spoil Wake";
+                    detail = "Aggressive routing is exposing shattered traffic and opportunistic salvage under hostile pressure.";
+                    threat = Math.max(threat, 0.36f);
+                }
+            }
+            case RECON_SWEEP -> {
+                if (roll == 3) {
+                    type = CampaignLocationType.STORY_EVENT;
+                    name = "Deep Sweep Echo";
+                    detail = "Recon-heavy posture teases out a faint relay trace that softer scans would miss.";
+                    threat = Math.max(threat, 0.20f);
+                }
             }
             default -> {
-                type = CampaignLocationType.HIDDEN_CACHE;
-                name = "Silent Cache";
-                detail = "A hidden logistics crate is pulsing a narrow-band transponder from the dark.";
-                threat = 0.20f;
             }
         }
         double px = Double.NaN;
@@ -5820,8 +8194,18 @@ public final class CampaignSystem {
         }
         if (!Double.isFinite(px) || !Double.isFinite(py)) return;
         String id = "transit-" + st.transientGalaxySiteSerial;
-        CampaignLocation site = new CampaignLocation(id, name, px, py, type, threat, false, 0, detail);
+        String recurringId = switch (type) {
+            case DISTRESS_SIGNAL, REPAIR_SITE -> "VOSS";
+            case HIDDEN_CACHE, SALVAGE_FIELD, STORY_EVENT -> "MARR";
+            case ENEMY_ACTIVITY -> "ROOK";
+            default -> "";
+        };
+        String decoratedName = recurringId.isBlank() ? name : (name + " / " + recurringId.substring(0, 1) + recurringId.substring(1).toLowerCase(Locale.US));
+        CampaignLocation site = new CampaignLocation(id, decoratedName, px, py, type, threat, false, 0, detail);
+        site.recurringContactId = recurringId;
         site.discovered = true;
+        site.intelQuality = ContactIntelQuality.CLASSIFIED;
+        assignDiscoveryChainSeed(site, name, type);
         st.galaxyAreasOfInterest.add(site);
         st.selectedGalaxyLocationId = site.id;
         st.selectedFreeGalaxyTargetX = Double.NaN;
@@ -5888,6 +8272,7 @@ public final class CampaignSystem {
         ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);
         double intelFactor = MathUtil.clamp(st.campaignIntelLevel / 100.0, 0.0, 1.0);
+        CampaignReputationState reputation = campaignReputationState(ctx);
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
             if (group == null) continue;
             group.stateTimer = Math.max(0.0, group.stateTimer - Math.max(0.0, dt));
@@ -5899,7 +8284,8 @@ public final class CampaignSystem {
             double dy = group.targetY - group.y;
             double dist = Math.hypot(dx, dy);
             double regionPressure = regionPressureAt(ctx, group.x, group.y);
-            double speedMul = 0.88 + regionPressure * 0.62;
+            updateDoctrineEscalation(ctx, st, group, reputation, regionPressure);
+            double speedMul = (0.88 + regionPressure * 0.62) * doctrineSpeedMultiplier(group.doctrine);
             if (dist > 1e-6) {
                 double step = Math.min(dist, group.speed * speedMul * Math.max(0.0, dt));
                 group.x += dx / dist * step;
@@ -5907,8 +8293,10 @@ public final class CampaignSystem {
             }
             double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
             double detectionRange = group.detectionRange
+                    * doctrineDetectionMultiplier(group.doctrine)
                     * (0.92 + regionPressure * 0.55)
-                    * (1.0 - roleProfile.stealthCoverage() * 0.26 + intelFactor * 0.14);
+                    * (1.0 - roleProfile.stealthCoverage() * 0.26 + intelFactor * 0.14)
+                    * (1.0 + postureInterceptRangeBias(resolveFleetPosture(st.selectedFleetPostureId)) * 0.70);
             double broadSenseRange = detectionRange * (1.30 + regionPressure * 0.20);
             boolean broadSense = playerDist <= broadSenseRange || st.enemyAlertLevel >= 38.0 + regionPressure * 16.0 || intelFactor >= 0.72;
             boolean solidTrack = playerDist <= detectionRange || st.enemyAlertLevel >= 58.0 + regionPressure * 12.0 || intelFactor >= 0.64 && playerDist <= broadSenseRange * 1.08;
@@ -5941,18 +8329,93 @@ public final class CampaignSystem {
                 group.identified = false;
             }
             double interceptRange = group.interceptRange
+                    * doctrineInterceptMultiplier(group.doctrine)
                     * (0.90 + regionPressure * 0.60)
                     * (1.0 - roleProfile.stealthCoverage() * 0.20 + roleProfile.heavyPresence() * 0.12);
             if (playerDist <= detectionRange && group.behavior != GalaxySearchBehavior.INTERCEPTING) {
                 group.behavior = GalaxySearchBehavior.INTERCEPTING;
                 group.targetX = st.playerGalaxyX;
                 group.targetY = st.playerGalaxyY;
-                group.stateTimer = Math.max(7.0, 11.0 - regionPressure * 2.0 + group.tier * 1.5);
-            } else if (group.behavior == GalaxySearchBehavior.INTERCEPTING && playerDist > interceptRange * 1.35) {
+                group.stateTimer = Math.max(7.0, (11.0 - regionPressure * 2.0 + group.tier * 1.5) * doctrinePursuitPersistence(group.doctrine));
+            } else if (group.behavior == GalaxySearchBehavior.INTERCEPTING
+                    && playerDist > interceptRange * (1.18 + 0.17 * doctrinePursuitPersistence(group.doctrine))) {
                 group.behavior = GalaxySearchBehavior.INVESTIGATING;
-                group.stateTimer = 9.0 + regionPressure * 4.0;
+                group.stateTimer = (9.0 + regionPressure * 4.0) * Math.max(0.75, doctrinePursuitPersistence(group.doctrine) * 0.92);
             }
         }
+    }
+
+    private static void updateDoctrineEscalation(GameContext ctx,
+                                                 CampaignState st,
+                                                 GalaxySearchGroup group,
+                                                 CampaignReputationState reputation,
+                                                 double regionPressure) {
+        if (st == null || group == null) return;
+        if (group.anchorType == CampaignLocationType.MAIN_MISSION && regionPressure >= 0.68) {
+            group.doctrine = GalaxySearchDoctrine.BLOCKADE_GROUP;
+            return;
+        }
+        if (reputation == CampaignReputationState.HIGH_EXPOSURE_TARGET && st.strategicExposureLevel >= 72.0 && group.tier >= 3) {
+            group.doctrine = GalaxySearchDoctrine.PUNISHMENT_FLEET;
+            return;
+        }
+        if (reputation == CampaignReputationState.RAIDER_THREAT && group.tier >= 3 && group.anchorType == CampaignLocationType.ENEMY_ACTIVITY) {
+            group.doctrine = GalaxySearchDoctrine.HUNTER_KILLER;
+            return;
+        }
+        if (group.anchorType == CampaignLocationType.ENEMY_ACTIVITY) {
+            CampaignLocation anchor = campaignLocationById(st, group.anchorLocationId);
+            group.doctrine = doctrineForEnemyActivity(anchor, regionIdentityAt(ctx, group.x, group.y));
+        }
+    }
+
+    private static double doctrineSpeedMultiplier(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return 1.0;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> 1.10;
+            case HUNTER_KILLER -> 1.02;
+            case BLOCKADE_GROUP -> 0.82;
+            case INTERDICTION_GROUP -> 1.06;
+            case PUNISHMENT_FLEET -> 1.14;
+        };
+    }
+
+    private static double doctrineDetectionMultiplier(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return 1.0;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> 1.08;
+            case HUNTER_KILLER -> 1.14;
+            case BLOCKADE_GROUP -> 1.18;
+            case INTERDICTION_GROUP -> 1.10;
+            case PUNISHMENT_FLEET -> 1.24;
+        };
+    }
+
+    private static double doctrineInterceptMultiplier(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return 1.0;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> 0.90;
+            case HUNTER_KILLER -> 1.10;
+            case BLOCKADE_GROUP -> 1.02;
+            case INTERDICTION_GROUP -> 1.08;
+            case PUNISHMENT_FLEET -> 1.18;
+        };
+    }
+
+    private static double doctrinePursuitPersistence(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return 1.0;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> 0.82;
+            case HUNTER_KILLER -> 1.18;
+            case BLOCKADE_GROUP -> 1.10;
+            case INTERDICTION_GROUP -> 1.06;
+            case PUNISHMENT_FLEET -> 1.32;
+        };
+    }
+
+    private static String galaxySearchGroupRegionalLabel(GalaxySearchGroup group, GalaxyRegionIdentity region) {
+        if (group == null) return "Unknown Contact";
+        return doctrineDisplayName(group.doctrine, region);
     }
 
     private static boolean reachedGalaxyTarget(GalaxySearchGroup group) {
@@ -5963,39 +8426,73 @@ public final class CampaignSystem {
     private static void chooseNextGalaxySearchTarget(GameContext ctx, CampaignState st, GalaxySearchGroup group) {
         if (st == null || group == null) return;
         CampaignLocation anchor = campaignLocationById(st, group.anchorLocationId);
-        if (group.behavior == GalaxySearchBehavior.INTERCEPTING) {
-            group.behavior = GalaxySearchBehavior.RETURNING;
-        } else if (group.behavior == GalaxySearchBehavior.RETURNING) {
-            group.behavior = GalaxySearchBehavior.PATROLLING;
-        } else if (group.behavior == GalaxySearchBehavior.INVESTIGATING) {
-            group.behavior = (group.tier >= 3) ? GalaxySearchBehavior.SEARCHING : GalaxySearchBehavior.PATROLLING;
-        } else if (group.tier >= 3 && group.behavior == GalaxySearchBehavior.PATROLLING) {
-            group.behavior = GalaxySearchBehavior.SEARCHING;
-        } else {
-            group.behavior = GalaxySearchBehavior.PATROLLING;
-        }
+        group.behavior = nextDoctrineBehavior(group);
         double baseX = (anchor == null) ? group.x : anchor.x;
         double baseY = (anchor == null) ? group.y : anchor.y;
         double regionPressure = regionPressureAt(ctx, baseX, baseY);
         double radius = switch (group.behavior) {
             case GUARDING -> 120.0;
             case RETURNING -> 60.0 + regionPressure * 20.0;
-            case SEARCHING -> 620.0 + regionPressure * 340.0;
-            case INVESTIGATING -> 360.0 + regionPressure * 260.0;
+            case SEARCHING -> (620.0 + regionPressure * 340.0) * doctrineSearchRadiusMultiplier(group.doctrine);
+            case INVESTIGATING -> (360.0 + regionPressure * 260.0) * doctrineSearchRadiusMultiplier(group.doctrine);
             case INTERCEPTING -> 260.0;
-            case PATROLLING -> 320.0 + regionPressure * 220.0;
+            case PATROLLING -> (320.0 + regionPressure * 220.0) * doctrineSearchRadiusMultiplier(group.doctrine);
         };
         double angle = (group.id * 0.92 + st.sectorElapsed * 0.11) % (Math.PI * 2.0);
         group.searchRadius = radius;
         group.targetX = baseX + Math.cos(angle) * radius;
         group.targetY = baseY + Math.sin(angle) * radius;
         group.stateTimer = switch (group.behavior) {
-            case GUARDING -> 12.0 - regionPressure * 2.0;
-            case RETURNING -> 10.0 - regionPressure * 1.5;
-            case SEARCHING -> 14.0 - regionPressure * 3.0;
-            case INVESTIGATING -> 10.0 - regionPressure * 2.0;
-            case INTERCEPTING -> 8.0 - regionPressure * 1.0;
-            case PATROLLING -> 10.0 - regionPressure * 2.0;
+            case GUARDING -> (12.0 - regionPressure * 2.0) * doctrinePursuitPersistence(group.doctrine);
+            case RETURNING -> (10.0 - regionPressure * 1.5) * Math.max(0.84, doctrinePursuitPersistence(group.doctrine) * 0.92);
+            case SEARCHING -> (14.0 - regionPressure * 3.0) * doctrinePursuitPersistence(group.doctrine);
+            case INVESTIGATING -> (10.0 - regionPressure * 2.0) * doctrinePursuitPersistence(group.doctrine);
+            case INTERCEPTING -> (8.0 - regionPressure * 1.0) * doctrinePursuitPersistence(group.doctrine);
+            case PATROLLING -> (10.0 - regionPressure * 2.0) * Math.max(0.82, doctrinePursuitPersistence(group.doctrine) * 0.96);
+        };
+    }
+
+    private static GalaxySearchBehavior nextDoctrineBehavior(GalaxySearchGroup group) {
+        if (group == null) return GalaxySearchBehavior.PATROLLING;
+        if (group.behavior == GalaxySearchBehavior.INTERCEPTING) return GalaxySearchBehavior.RETURNING;
+        if (group.behavior == GalaxySearchBehavior.RETURNING) {
+            return switch ((group.doctrine == null) ? GalaxySearchDoctrine.SCOUT_SCREEN : group.doctrine) {
+                case SCOUT_SCREEN -> GalaxySearchBehavior.PATROLLING;
+                case HUNTER_KILLER -> GalaxySearchBehavior.SEARCHING;
+                case BLOCKADE_GROUP -> GalaxySearchBehavior.GUARDING;
+                case INTERDICTION_GROUP -> GalaxySearchBehavior.INVESTIGATING;
+                case PUNISHMENT_FLEET -> GalaxySearchBehavior.SEARCHING;
+            };
+        }
+        if (group.behavior == GalaxySearchBehavior.INVESTIGATING) {
+            return switch ((group.doctrine == null) ? GalaxySearchDoctrine.SCOUT_SCREEN : group.doctrine) {
+                case SCOUT_SCREEN -> GalaxySearchBehavior.PATROLLING;
+                case HUNTER_KILLER, PUNISHMENT_FLEET -> GalaxySearchBehavior.SEARCHING;
+                case BLOCKADE_GROUP -> GalaxySearchBehavior.GUARDING;
+                case INTERDICTION_GROUP -> GalaxySearchBehavior.INVESTIGATING;
+            };
+        }
+        return switch ((group.doctrine == null) ? GalaxySearchDoctrine.SCOUT_SCREEN : group.doctrine) {
+            case SCOUT_SCREEN -> GalaxySearchBehavior.PATROLLING;
+            case HUNTER_KILLER -> (group.behavior == GalaxySearchBehavior.PATROLLING)
+                    ? GalaxySearchBehavior.SEARCHING
+                    : GalaxySearchBehavior.PATROLLING;
+            case BLOCKADE_GROUP -> GalaxySearchBehavior.GUARDING;
+            case INTERDICTION_GROUP -> (group.behavior == GalaxySearchBehavior.PATROLLING)
+                    ? GalaxySearchBehavior.INVESTIGATING
+                    : GalaxySearchBehavior.PATROLLING;
+            case PUNISHMENT_FLEET -> GalaxySearchBehavior.SEARCHING;
+        };
+    }
+
+    private static double doctrineSearchRadiusMultiplier(GalaxySearchDoctrine doctrine) {
+        if (doctrine == null) return 1.0;
+        return switch (doctrine) {
+            case SCOUT_SCREEN -> 1.12;
+            case HUNTER_KILLER -> 0.96;
+            case BLOCKADE_GROUP -> 0.62;
+            case INTERDICTION_GROUP -> 1.04;
+            case PUNISHMENT_FLEET -> 1.18;
         };
     }
 
@@ -6003,10 +8500,11 @@ public final class CampaignSystem {
         if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return;
         if (ctx.ui != null && (ctx.ui.strategicEncounterPrompt.active || ctx.ui.campaignHubMenu.active)) return;
         ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
             if (group == null || !group.hostile) continue;
             double regionPressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
-            double interceptRange = group.interceptRange * (0.92 + regionPressure * 0.55);
+            double interceptRange = group.interceptRange * (0.92 + regionPressure * 0.55) * (1.0 + postureInterceptRangeBias(posture));
             double dist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
             if (dist > interceptRange) continue;
             CampaignLocation nearby = nearestCampaignLocation(ctx, st.playerGalaxyX, st.playerGalaxyY, 220.0);
@@ -6016,7 +8514,7 @@ public final class CampaignSystem {
             CampaignLocation encounterAnchor = (nearby != null) ? nearby : selectedCampaignLocation(ctx);
             if (encounterAnchor == null) {
                 stopCampaignTravel(ctx);
-                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0 + group.threatLevel * 6.0, 0.0, 100.0);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0 + group.threatLevel * 6.0 + postureAlertOnForcedIntercept(posture), 0.0, 100.0);
                 EventSystem.showBanner(ctx, "HOSTILE CONTACT FORCES A COURSE CHANGE", 1.4);
                 return;
             }
@@ -6177,6 +8675,8 @@ public final class CampaignSystem {
         double hostileCoverage = 0.0;
         double supportCoverage = 0.0;
         double opportunityCoverage = 0.0;
+        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
+        TheaterPressureState pressureState = theaterPressureState(ctx);
         for (int i = 0; i <= samples; i++) {
             double t = i / (double) samples;
             double sx = fromX + dx * t;
@@ -6196,6 +8696,19 @@ public final class CampaignSystem {
         hostileCoverage = MathUtil.clamp(hostileCoverage + exposureFactor * 0.12 + strikeHeat * 0.10 - intelFactor * 0.14, 0.0, 1.0);
         supportCoverage = MathUtil.clamp(supportCoverage + roleProfile.carrierProjection() * 0.12 + roleProfile.logisticsSupport() * 0.08, 0.0, 1.0);
         opportunityCoverage = MathUtil.clamp(opportunityCoverage + roleProfile.stealthCoverage() * 0.06 + intelFactor * 0.10, 0.0, 1.0);
+        hostileCoverage = MathUtil.clamp(hostileCoverage + postureHostileCoverageBias(posture), 0.0, 1.0);
+        supportCoverage = MathUtil.clamp(supportCoverage + postureSupportCoverageBias(posture), 0.0, 1.0);
+        opportunityCoverage = MathUtil.clamp(opportunityCoverage + postureOpportunityCoverageBias(posture), 0.0, 1.0);
+        switch (pressureState) {
+            case PATROL_NET_EXPANDING -> hostileCoverage = MathUtil.clamp(hostileCoverage + 0.05, 0.0, 1.0);
+            case BLOCKADE_TIGHTENING -> {
+                hostileCoverage = MathUtil.clamp(hostileCoverage + 0.08, 0.0, 1.0);
+                supportCoverage = MathUtil.clamp(supportCoverage - 0.04, 0.0, 1.0);
+            }
+            case TRADE_LANES_UNSTABLE -> opportunityCoverage = MathUtil.clamp(opportunityCoverage + 0.05, 0.0, 1.0);
+            case SUPPLY_LINES_WEAKENING -> supportCoverage = MathUtil.clamp(supportCoverage - 0.08, 0.0, 1.0);
+            case HIDDEN_HOSTILES_ACTIVE -> hostileCoverage = MathUtil.clamp(hostileCoverage + 0.10, 0.0, 1.0);
+        }
         double logisticsPressure = MathUtil.clamp(
                 0.14
                         + Math.min(0.55, dist / 16000.0)
@@ -6203,6 +8716,7 @@ public final class CampaignSystem {
                         + hostileCoverage * 0.24
                         + roleProfile.heavyPresence() * 0.18
                         + exposureFactor * 0.12
+                        + postureLogisticsPressureBias(posture)
                         - supportCoverage * 0.28
                         - roleProfile.logisticsSupport() * 0.16
                         - intelFactor * 0.08,
@@ -6214,6 +8728,7 @@ public final class CampaignSystem {
                         - hostileCoverage * 48.0
                         - roleProfile.heavyPresence() * 26.0
                         - exposureFactor * 12.0
+                        + postureCruiseSpeedBias(posture)
                         + supportCoverage * 28.0
                         + roleProfile.strikeReach() * 12.0
                         + intelFactor * 10.0
@@ -6230,6 +8745,7 @@ public final class CampaignSystem {
                         + st.enemyAlertLevel * 0.22
                         + exposureFactor * 16.0
                         + strikeHeat * 12.0
+                        + postureInterceptionRiskBias(posture)
                         + roleProfile.heavyPresence() * 18.0
                         - supportCoverage * 14.0
                         - intelFactor * 14.0
@@ -6329,10 +8845,22 @@ public final class CampaignSystem {
 
     private static String routeOpportunityLabel(GalaxyRouteAssessment route) {
         if (route == null) return "Sparse";
+        if (route.northPressure >= 0.74) {
+            if (route.opportunityCoverage < 0.24) return "Thin pickings";
+            if (route.opportunityCoverage < 0.46) return "Risky openings";
+            if (route.opportunityCoverage < 0.66) return "Resistance pockets";
+            return "Desperate prizes";
+        }
+        if (route.northPressure >= 0.38) {
+            if (route.opportunityCoverage < 0.18) return "Sparse";
+            if (route.opportunityCoverage < 0.38) return "Contested openings";
+            if (route.opportunityCoverage < 0.62) return "Rich detours";
+            return "Traffic-heavy";
+        }
         if (route.opportunityCoverage < 0.18) return "Sparse";
-        if (route.opportunityCoverage < 0.38) return "Some openings";
-        if (route.opportunityCoverage < 0.62) return "Rich detours";
-        return "Target-rich";
+        if (route.opportunityCoverage < 0.38) return "Sheltered openings";
+        if (route.opportunityCoverage < 0.62) return "Prospector lanes";
+        return "Anchor-rich";
     }
 
     private static String regionalPressureLabel(double pressure) {
@@ -6342,6 +8870,29 @@ public final class CampaignSystem {
         if (p < 0.58) return "CONTESTED BELT";
         if (p < 0.78) return "LUNAR APPROACH";
         return "EARTH DEFENSE NET";
+    }
+
+    private static GalaxyRegionIdentity regionIdentityAt(GameContext ctx, double x, double y) {
+        double pressure = regionPressureAt(ctx, x, y);
+        if (pressure < 0.34) return GalaxyRegionIdentity.SOUTHERN_SHELTER;
+        if (pressure < 0.72) return GalaxyRegionIdentity.CONTESTED_BELT;
+        return GalaxyRegionIdentity.EARTHWARDED_NORTH;
+    }
+
+    private static String regionIdentityTitleFor(GameContext ctx, double x, double y) {
+        return switch (regionIdentityAt(ctx, x, y)) {
+            case SOUTHERN_SHELTER -> "SOUTHERN SHELTER";
+            case CONTESTED_BELT -> "CONTESTED BELT";
+            case EARTHWARDED_NORTH -> "EARTHWARDED NORTH";
+        };
+    }
+
+    private static String regionIdentitySummaryFor(GameContext ctx, double x, double y) {
+        return switch (regionIdentityAt(ctx, x, y)) {
+            case SOUTHERN_SHELTER -> "friendlier hubs, prospectors, lighter patrols";
+            case CONTESTED_BELT -> "mixed traffic, salvage, raids, shifting routes";
+            case EARTHWARDED_NORTH -> "tight supplies, hard hunts, resistance flashes";
+        };
     }
 
     private static String intelBandLabel(double intel) {
@@ -6360,6 +8911,90 @@ public final class CampaignSystem {
         if (v < 55.0) return "TRACKED";
         if (v < 75.0) return "EXPOSED";
         return "BURNING";
+    }
+
+    private static CampaignReputationState campaignReputationState(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return CampaignReputationState.UNKNOWN_FLEET;
+        int totalFavor = st.greenContractFavor + st.yellowLiberationFavor;
+        if (st.strategicExposureLevel >= 76.0) return CampaignReputationState.HIGH_EXPOSURE_TARGET;
+        if (st.campaignFuel < 26 || st.campaignSupplies < 18) return CampaignReputationState.OVEREXTENDED_COMMAND;
+        if (st.greenContractFavor >= 7 && st.campaignIntelLevel >= 58.0) return CampaignReputationState.RELIABLE_RESCUE_FORCE;
+        if (st.yellowLiberationFavor >= 7 && st.completedMainMissions >= 6) return CampaignReputationState.LIBERATION_SYMBOL;
+        if ((st.recentStrikePressure >= 42.0 || st.strategicAtomicCharges <= 0) && st.campaignIntelLevel >= 44.0 && totalFavor >= 3) {
+            return CampaignReputationState.RAIDER_THREAT;
+        }
+        return CampaignReputationState.UNKNOWN_FLEET;
+    }
+
+    public static String campaignReputationReadout(GameContext ctx) {
+        return switch (campaignReputationState(ctx)) {
+            case UNKNOWN_FLEET -> "Unknown Fleet";
+            case RELIABLE_RESCUE_FORCE -> "Reliable Rescue Force";
+            case RAIDER_THREAT -> "Raider Threat";
+            case LIBERATION_SYMBOL -> "Liberation Symbol";
+            case OVEREXTENDED_COMMAND -> "Overextended Command";
+            case HIGH_EXPOSURE_TARGET -> "High-Exposure Target";
+        };
+    }
+
+    private static TheaterPressureState theaterPressureState(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return TheaterPressureState.PATROL_NET_EXPANDING;
+        if (st.strategicExposureLevel >= 64.0 || st.enemyAlertLevel >= 74.0) return TheaterPressureState.HIDDEN_HOSTILES_ACTIVE;
+        if (st.earthProgress >= 0.72 || st.completedMainMissions >= 18) return TheaterPressureState.BLOCKADE_TIGHTENING;
+        if (st.campaignFuel < 34 || st.campaignSupplies < 26) return TheaterPressureState.SUPPLY_LINES_WEAKENING;
+        if (st.yellowLiberationFavor <= 1 || st.recentStrikePressure >= 36.0) return TheaterPressureState.TRADE_LANES_UNSTABLE;
+        return TheaterPressureState.PATROL_NET_EXPANDING;
+    }
+
+    public static String theaterPressureReadout(GameContext ctx) {
+        return switch (theaterPressureState(ctx)) {
+            case PATROL_NET_EXPANDING -> "Patrol net expanding";
+            case BLOCKADE_TIGHTENING -> "Northern blockade tightening";
+            case TRADE_LANES_UNSTABLE -> "Trade lanes unstable";
+            case SUPPLY_LINES_WEAKENING -> "Supply lines weakening";
+            case HIDDEN_HOSTILES_ACTIVE -> "Hidden hostile groups active";
+        };
+    }
+
+    public static List<String> campaignCrewCommentaryLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Command station online.", "Crew net steady.");
+        ArrayList<String> out = new ArrayList<>();
+        if (st.fleetStrain >= 78.0) {
+            out.add("Crew strain is climbing. Another hard push will cost us recovery tempo.");
+        } else if (st.fleetStrain >= 56.0) {
+            out.add("The fleet is feeling the pace. A cleaner lane or anchorage would help.");
+        }
+        if (st.campaignFuel < 30) {
+            out.add("Fuel range is thin if we keep pushing north.");
+        }
+        if (st.campaignSupplies < 20) {
+            out.add("Stores are running tight. One bad detour will hurt.");
+        }
+        if (hasSelectedFreeTravelTarget(ctx) || selectedCampaignLocation(ctx) != null) {
+            CampaignLocation selected = selectedCampaignLocation(ctx);
+            if (selected != null && selected.type == CampaignLocationType.DISTRESS_SIGNAL && st.campaignIntelLevel < 44.0) {
+                out.add("That distress burst is too clean. Could be bait.");
+            } else if (selected != null && selected.type == CampaignLocationType.REPAIR_SITE) {
+                out.add("This anchorage can patch hulls, but it will not solve every shortage.");
+            }
+        }
+        if ("Being Hunted".equalsIgnoreCase(huntedStatusReadout(ctx))) {
+            out.add("Search groups are converging on our last known sweep.");
+        } else if (regionIdentityAt(ctx, st.playerGalaxyX, st.playerGalaxyY) == GalaxyRegionIdentity.SOUTHERN_SHELTER) {
+            out.add("Green traffic is denser here. We are near a sheltered route.");
+        } else if (regionIdentityAt(ctx, st.playerGalaxyX, st.playerGalaxyY) == GalaxyRegionIdentity.EARTHWARDED_NORTH) {
+            out.add("Northern routes are tightening. Expect harder contact up here.");
+        }
+        if (out.isEmpty()) {
+            out.add("Command net stable. Keep the route loose and the picture clean.");
+        }
+        if (out.size() == 1) {
+            out.add("Radio room standing by for sweeps, support calls, and fresh contacts.");
+        }
+        return out;
     }
 
     private static String galaxyTravelSidebarReadout(GameContext ctx, CampaignTravelState travel) {
@@ -6393,6 +9028,10 @@ public final class CampaignSystem {
         return "Clear";
     }
 
+    public static String campaignHuntStatusReadout(GameContext ctx) {
+        return huntedStatusReadout(ctx);
+    }
+
     private static String selectedLocationAlignmentLabel(CampaignLocation location) {
         if (location == null || location.name == null) return "Neutral";
         String name = location.name.toUpperCase(Locale.US);
@@ -6400,6 +9039,230 @@ public final class CampaignSystem {
         if (name.contains("YELLOW")) return "Yellow Team";
         if (location.type == CampaignLocationType.ENEMY_ACTIVITY) return "Hostile";
         return "Neutral";
+    }
+
+    private static String campaignEscalationLine(CampaignLocation location) {
+        if (location == null || location.escalationStage <= 0 || location.completed || location.consumed) return "";
+        return switch (location.escalationStage) {
+            case 1 -> "Window narrowing";
+            case 2 -> "Compromised";
+            default -> "";
+        };
+    }
+
+    private static String campaignDiscoveryChainLine(CampaignLocation location) {
+        if (location == null || location.chainType == null || location.chainType == DiscoveryChainType.NONE) return "";
+        String stage = (location.chainStage <= 1) ? "Lead" : ("Stage " + location.chainStage);
+        return switch (location.chainType) {
+            case RELAY_ECHO -> stage + " / relay echo thread";
+            case WRECK_TRAIL -> stage + " / drifting wreck trail";
+            case FALSE_DISTRESS -> stage + " / false-distress bait";
+            case MISSING_PATROL -> stage + " / missing-patrol search";
+            case SMUGGLER_LEAD -> stage + " / broker lead";
+            case NONE -> "";
+        };
+    }
+
+    private static String campaignSiteMemoryLine(CampaignLocation location) {
+        if (location == null) return "";
+        if (location.type == CampaignLocationType.REPAIR_SITE) {
+            return location.completed ? "Fleet serviced here recently" : "Anchorage available for fleet service";
+        }
+        if (!location.consumed && !location.completed) return "";
+        return switch (location.type) {
+            case RESOURCE_ZONE -> "Pocket surveyed and ore stripped";
+            case SALVAGE_FIELD -> "Wreck field picked over and logged";
+            case HIDDEN_CACHE -> "Cache opened and ballast cleared";
+            case DISTRESS_SIGNAL -> "Rescue trace remains; survivors routed onward";
+            case STORY_EVENT -> "Relay traffic decoded and site stripped";
+            case ENEMY_ACTIVITY -> "Hostile zone broken or bypassed";
+            case MAIN_MISSION -> "Mission site secured";
+            default -> "Contact resolved";
+        };
+    }
+
+    private static String campaignRouteStateLine(CampaignLocation location) {
+        if (location == null) return "";
+        if (location.routeNote != null && !location.routeNote.isBlank()) return location.routeNote;
+        if (location.supportRouteStabilized) return "Allied traffic is stabilizing the nearby lanes";
+        return "";
+    }
+
+    private static String campaignScarLine(CampaignLocation location) {
+        if (location == null) return "";
+        return (location.scarNote == null) ? "" : location.scarNote.trim();
+    }
+
+    private static String campaignRecurringContactLine(GameContext ctx, CampaignLocation location) {
+        if (location == null) return "";
+        String id = (location.recurringContactId == null) ? "" : location.recurringContactId.trim();
+        if (id.isBlank()) return "";
+        String name = recurringContactName(id);
+        String status = recurringContactStatus(ctx, location);
+        return status.isBlank() ? name : (name + "  |  " + status);
+    }
+
+    private static String recurringContactName(String id) {
+        return switch ((id == null) ? "" : id.trim().toUpperCase(Locale.US)) {
+            case "VOSS" -> "Captain Nadi Voss";
+            case "MARR" -> "Broker Ilex Marr";
+            case "ROOK" -> "Marshal Sera Rook";
+            default -> "";
+        };
+    }
+
+    private static String recurringContactStatus(GameContext ctx, CampaignLocation location) {
+        if (location == null) return "";
+        if (location.recurringContactStatus != null && !location.recurringContactStatus.isBlank()) {
+            return location.recurringContactStatus;
+        }
+        CampaignState st = state(ctx);
+        String id = (location.recurringContactId == null) ? "" : location.recurringContactId.trim().toUpperCase(Locale.US);
+        CampaignRelationshipState relationship = relationshipStateFor(st, id);
+        return switch (id) {
+            case "VOSS" -> relationshipStateStatus("VOSS", relationship,
+                    ((st != null && st.yellowLiberationFavor >= 3) || location.completed)
+                            ? "rescue net loyal and answering your route"
+                            : "cautious rescue caller testing your channel");
+            case "MARR" -> relationshipStateStatus("MARR", relationship,
+                    ((st != null && st.greenContractFavor + st.yellowLiberationFavor >= 4) || location.consumed)
+                            ? "broker channel trading clean intel"
+                            : "broker channel active but likely shading the truth");
+            case "ROOK" -> relationshipStateStatus("ROOK", relationship,
+                    ((st != null && st.strategicExposureLevel >= 55.0) || location.completed)
+                            ? "hunt captain adapting to your route"
+                            : "distant hostile signature tagged to your file");
+            default -> "";
+        };
+    }
+
+    private static void setLocationScar(CampaignLocation location, String scar) {
+        if (location == null || scar == null || scar.isBlank()) return;
+        location.scarNote = scar.trim();
+    }
+
+    private static void setLocationRouteState(CampaignLocation location, String routeState, boolean stabilized) {
+        if (location == null) return;
+        location.routeNote = (routeState == null) ? "" : routeState.trim();
+        location.supportRouteStabilized = stabilized;
+    }
+
+    private static void setLocationRecurringContact(CampaignLocation location, String id, String status) {
+        if (location == null) return;
+        if (id != null && !id.isBlank()) location.recurringContactId = id.trim().toUpperCase(Locale.US);
+        location.recurringContactStatus = (status == null) ? "" : status.trim();
+    }
+
+    private static CampaignRelationshipState relationshipStateFor(CampaignState st, String recurringId) {
+        if (st == null || recurringId == null || recurringId.isBlank()) return CampaignRelationshipState.UNKNOWN;
+        return switch (recurringId.trim().toUpperCase(Locale.US)) {
+            case "VOSS" -> parseEnum(st.vossRelationshipStateId, CampaignRelationshipState.UNKNOWN);
+            case "MARR" -> parseEnum(st.marrRelationshipStateId, CampaignRelationshipState.UNKNOWN);
+            case "ROOK" -> parseEnum(st.rookRelationshipStateId, CampaignRelationshipState.UNKNOWN);
+            default -> CampaignRelationshipState.UNKNOWN;
+        };
+    }
+
+    private static void setRelationshipState(CampaignState st, String recurringId, CampaignRelationshipState next) {
+        if (st == null || recurringId == null || recurringId.isBlank() || next == null) return;
+        String raw = next.name();
+        switch (recurringId.trim().toUpperCase(Locale.US)) {
+            case "VOSS" -> st.vossRelationshipStateId = raw;
+            case "MARR" -> st.marrRelationshipStateId = raw;
+            case "ROOK" -> st.rookRelationshipStateId = raw;
+            default -> {
+            }
+        }
+    }
+
+    private static String relationshipStateStatus(String recurringId, CampaignRelationshipState state, String fallback) {
+        if (state == null || state == CampaignRelationshipState.UNKNOWN) return fallback;
+        return switch (state) {
+            case HELPED -> switch (recurringId) {
+                case "VOSS" -> "rescue net remembers your hulls and forwards your calls faster";
+                case "MARR" -> "broker channel is warmer and feeding you cleaner offers";
+                case "ROOK" -> "hunt file marks you as a recurring operational thorn";
+                default -> fallback;
+            };
+            case TRUSTED -> switch (recurringId) {
+                case "VOSS" -> "rescue net loyal and ready to move on your word";
+                case "MARR" -> "broker channel trusts your route and cuts straighter intel";
+                case "ROOK" -> "hostile counter-net is studying your habits closely";
+                default -> fallback;
+            };
+            case OWED_FAVOR -> switch (recurringId) {
+                case "VOSS" -> "rescue crews owe your fleet a pull when the lane goes bad";
+                case "MARR" -> "broker houses owe your route a quiet favor";
+                case "ROOK" -> "enemy files flag an unfinished debt against your fleet";
+                default -> fallback;
+            };
+            case NEGLECTED -> switch (recurringId) {
+                case "VOSS" -> "rescue channel still answers, but trust is frayed";
+                case "MARR" -> "broker channel remembers the silence and shades the truth";
+                case "ROOK" -> "hunt file notes your hesitation and presses harder";
+                default -> fallback;
+            };
+            case HOSTILE -> switch (recurringId) {
+                case "VOSS" -> "rescue net treats your calls with open suspicion now";
+                case "MARR" -> "broker channel is willing to burn you for a better deal";
+                case "ROOK" -> "hunt captain is openly shaping traps for your route";
+                default -> fallback;
+            };
+            case MISSING -> "contact went missing between relays";
+            case DESTROYED -> "contact lost permanently from the theater";
+            default -> fallback;
+        };
+    }
+
+    private static String campaignRelationshipBoardLine(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return "No reliable channels";
+        return "Voss " + relationshipShortLabel(relationshipStateFor(st, "VOSS"))
+                + "  |  Marr " + relationshipShortLabel(relationshipStateFor(st, "MARR"))
+                + "  |  Rook " + relationshipShortLabel(relationshipStateFor(st, "ROOK"));
+    }
+
+    private static String relationshipShortLabel(CampaignRelationshipState state) {
+        return switch ((state == null) ? CampaignRelationshipState.UNKNOWN : state) {
+            case HELPED -> "HELPED";
+            case TRUSTED -> "TRUSTED";
+            case OWED_FAVOR -> "OWED";
+            case NEGLECTED -> "NEGLECTED";
+            case HOSTILE -> "HOSTILE";
+            case MISSING -> "MISSING";
+            case DESTROYED -> "LOST";
+            default -> "UNKNOWN";
+        };
+    }
+
+    private static void adjustFleetStrain(CampaignState st, double delta) {
+        if (st == null || delta == 0.0) return;
+        st.fleetStrain = MathUtil.clamp(st.fleetStrain + delta, 0.0, 100.0);
+    }
+
+    private static String campaignSiteMemorySubtitle(CampaignLocation location) {
+        if (location == null) return "Survey complete";
+        if (location.type == CampaignLocationType.REPAIR_SITE) {
+            return location.completed
+                    ? "Serviced anchorage  |  fleet support has recently cycled through here"
+                    : "Repair anchorage  |  fleet service available";
+        }
+        String base = switch (location.type) {
+            case RESOURCE_ZONE -> "Survey complete  |  ore pocket stripped and navigation notes logged";
+            case SALVAGE_FIELD -> "Survey complete  |  wreck sweep finished and black boxes removed";
+            case HIDDEN_CACHE -> "Survey complete  |  hidden stores recovered and site opened";
+            case DISTRESS_SIGNAL -> "Survey complete  |  rescue contact stabilized and the channel went quiet";
+            case STORY_EVENT -> "Survey complete  |  relay traffic decoded and the ghost channel collapsed";
+            case ENEMY_ACTIVITY -> "Survey complete  |  hostile pocket mapped after action";
+            case MAIN_MISSION -> "Mission secured  |  site remains under campaign control";
+            default -> "Survey complete  |  contact resolved";
+        };
+        if (!location.consumed && !location.completed) base = location.detail;
+        String route = campaignRouteStateLine(location);
+        if (!route.isBlank()) return base + "  |  " + route;
+        String scar = campaignScarLine(location);
+        if (!scar.isBlank()) return base + "  |  " + scar;
+        return base;
     }
 
     private static String dockingStatusReadout(GameContext ctx, CampaignLocation location) {
@@ -6550,11 +9413,13 @@ public final class CampaignSystem {
         st.extractionMinHoldSeconds = 0.0;
         st.sectorTimeLimit = 0.0;
         st.enemyBaseWinConditionActive = false;
-        st.objectivePhaseLabel = "TACTICAL: Break the hostile interception and clear a path back to the overmap";
-        st.threatStateLabel = "HOSTILE CONTACT: This battle came from the strategic map and returns there when the encounter is resolved";
+        st.objectivePhaseLabel = "TACTICAL: Break the intercept and return to the overmap";
+        st.threatStateLabel = "HOSTILE CONTACT: Strategic intercept in progress";
         st.transitionLabel = "HOSTILE INTERCEPT";
-        st.transitionSummaryTop = "Search-group contact has collapsed the route into open tactical combat.";
-        st.transitionSummaryBottom = "Destroy the intercepting ships, then extract to return to the strategic overmap.";
+        st.transitionSummaryTop = "Search-group contact forced tactical combat.";
+        st.transitionSummaryBottom = "Break the interceptors, then extract to the overmap.";
+        st.transitionRewardLine = "";
+        st.transitionRouteImpactLine = "";
 
         int targetCount = spawnGalaxySearchGroupEncounterForce(ctx, st, group);
         setObjective(st, ObjectiveType.DESTROY, "Break the interception", Math.max(1, targetCount));
@@ -6601,11 +9466,13 @@ public final class CampaignSystem {
         st.sectorTimeLimit = 0.0;
         st.enemyBaseWinConditionActive = false;
         st.galaxyAmbientSupportRequested = false;
-        st.objectivePhaseLabel = "LOCAL SITE ACCESS: Search, mine, regroup, or call support before extracting.";
-        st.threatStateLabel = "SITE CONTACT: This pocket reflects the overmap contact you entered from the campaign layer.";
+        st.objectivePhaseLabel = "LOCAL SITE: Search, mine, regroup, or call support";
+        st.threatStateLabel = "SITE CONTACT: Local pocket generated from the overmap";
         st.transitionLabel = "LOCAL SITE";
-        st.transitionSummaryTop = "Site entered. Sweep the area, exploit the contact, and Safe Exit when you are ready.";
-        st.transitionSummaryBottom = "This is a local tactical pocket generated from the overmap contact you are sitting on.";
+        st.transitionSummaryTop = "Site entered. Sweep it, exploit it, then Safe Exit.";
+        st.transitionSummaryBottom = "Local pocket loaded from your overmap contact.";
+        st.transitionRewardLine = "";
+        st.transitionRouteImpactLine = "";
 
         populateAmbientCampaignLocationEncounter(ctx, st, location);
         FogOfWarSystem.update(ctx);
@@ -6619,17 +9486,28 @@ public final class CampaignSystem {
         if (ctx == null || st == null || location == null || ctx.player == null) return;
         double x = ambientEncounterCenterX(ctx, st);
         double y = ambientEncounterCenterY(ctx, st);
+        GalaxyRegionIdentity region = regionIdentityAt(ctx, location.x, location.y);
         if (!location.services.isEmpty() || location.type == CampaignLocationType.REPAIR_SITE) {
             Faction faction = ambientLocationFaction(st, location);
             spawnCampaignShip(ctx, ShipRole.BASE, faction, x + 220.0, y - 110.0, location.name + " Control");
             spawnCampaignShip(ctx, ShipRole.HAULER, faction, x - 130.0, y + 90.0, "Harbor Tender");
             spawnCampaignShip(ctx, ShipRole.MINER, faction, x - 320.0, y + 240.0, "Traffic Prospector");
             spawnCampaignShip(ctx, ShipRole.PATROL, faction, x + 340.0, y + 220.0, "Traffic Screen");
-            if (location.name.toUpperCase(Locale.US).contains("GREEN")) {
+            if (isGreenAlignedLocation(location)) {
                 spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x + 520.0, y - 180.0, "Green Watch");
-            } else if (location.name.toUpperCase(Locale.US).contains("YELLOW")) {
+                spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, x + 420.0, y + 60.0, "Contract Flak Screen");
+                spawnCampaignShip(ctx, ShipRole.MISSILE_BOAT, faction, x - 420.0, y - 120.0, "Green Spear Boat");
+            } else if (isYellowAlignedLocation(location)) {
                 spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, x + 460.0, y - 150.0, "Yellow Liner");
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, x + 360.0, y + 130.0, "Broker Runner");
+                spawnCampaignShip(ctx, ShipRole.PICKET, faction, x - 360.0, y - 140.0, "Yellow Lane Escort");
+                if (st.sector >= 10) {
+                    spawnCampaignShip(ctx, ShipRole.CARRIER, faction, x + 520.0, y + 10.0, "Yellow Deck Tender");
+                }
+            } else {
+                spawnCampaignShip(ctx, ShipRole.PICKET, faction, x + 430.0, y - 120.0, "Anchorage Guard");
             }
+            addRegionalAmbientHubTraffic(ctx, st, location, region, x, y, faction);
             return;
         }
         switch (location.type) {
@@ -6639,30 +9517,147 @@ public final class CampaignSystem {
                 spawnCampaignAsteroidPocket(ctx, x - 420.0, y - 240.0, 5, 0.8, false);
                 spawnCampaignShip(ctx, ShipRole.MINER, greenSupportFaction(st), x - 300.0, y + 150.0, "Survey Prospector");
                 spawnCampaignShip(ctx, ShipRole.PICKET, greenSupportFaction(st), x + 420.0, y - 180.0, "Survey Screen");
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
             }
             case SALVAGE_FIELD -> {
                 spawnCampaignSalvagePocket(ctx, x - 80.0, y + 70.0, 10);
                 spawnCampaignSalvagePocket(ctx, x + 320.0, y - 150.0, 6);
                 spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), x - 240.0, y + 180.0, "Recovery Tender");
                 spawnCampaignShip(ctx, ShipRole.PATROL, greenSupportFaction(st), x + 360.0, y - 120.0, "Recovery Screen");
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
             }
             case HIDDEN_CACHE -> {
                 spawnCampaignSalvagePocket(ctx, x - 40.0, y + 10.0, 4);
                 spawnCampaignAsteroidPocket(ctx, x + 210.0, y - 90.0, 3, 0.55, false);
                 spawnCampaignShip(ctx, ShipRole.HAULER, greenSupportFaction(st), x - 180.0, y + 120.0, "Cache Runner");
                 spawnCampaignShip(ctx, ShipRole.PICKET, greenSupportFaction(st), x + 260.0, y - 150.0, "Cache Guard");
+                addRecoverableWreckSite(st, x + 40.0, y + 120.0,
+                        salvageRecoveryRoleForSector(st, DiscoveryKind.CACHE),
+                        "Cache Cradle",
+                        "A mothballed escort frame is tucked behind the cache ballast.");
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
             }
-            case DISTRESS_SIGNAL, STORY_EVENT -> {
+            case DISTRESS_SIGNAL -> {
                 Faction faction = yellowSupportFaction(st);
                 spawnCampaignShip(ctx, ShipRole.TRANSPORT, faction, x - 60.0, y + 20.0, "Lost Liner");
                 spawnCampaignShip(ctx, ShipRole.PICKET, faction, x + 220.0, y - 150.0, "Distress Screen One");
                 spawnCampaignShip(ctx, ShipRole.PICKET, faction, x + 300.0, y + 170.0, "Distress Screen Two");
                 spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x + 470.0, y - 40.0, "Relief Escort");
                 spawnCampaignSalvagePocket(ctx, x - 220.0, y + 220.0, 3);
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
+            }
+            case STORY_EVENT -> {
+                Faction faction = greenSupportFaction(st);
+                spawnCampaignShip(ctx, ShipRole.STATIC_TURRET, faction, x + 60.0, y - 20.0, "Ghost Relay Node");
+                spawnCampaignShip(ctx, ShipRole.PICKET, faction, x + 250.0, y - 160.0, "Relay Scout");
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, x - 220.0, y + 130.0, "Signal Tender");
+                if (st.sector >= 10) {
+                    spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x + 410.0, y + 120.0, "Relay Guard");
+                }
+                spawnCampaignSalvagePocket(ctx, x - 120.0, y + 60.0, 3);
+                addRecoverableWreckSite(st, x + 150.0, y + 90.0,
+                        salvageRecoveryRoleForSector(st, DiscoveryKind.DATA_RELAY),
+                        "Relay Recovery Spine",
+                        "A derelict support hull is slaved to the relay's old service arm.");
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
             }
             default -> {
                 spawnCampaignSalvagePocket(ctx, x, y, 5);
                 spawnCampaignShip(ctx, ShipRole.PATROL, greenSupportFaction(st), x + 260.0, y - 120.0, "Site Patrol");
+                addRegionalAmbientSiteTraffic(ctx, st, location, region, x, y);
+            }
+        }
+    }
+
+    private static void addRegionalAmbientHubTraffic(GameContext ctx, CampaignState st, CampaignLocation location,
+                                                     GalaxyRegionIdentity region, double x, double y, Faction faction) {
+        if (ctx == null || st == null || location == null || faction == null || region == null) return;
+        switch (region) {
+            case SOUTHERN_SHELTER -> {
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, x - 430.0, y - 60.0, "Shelter Route Tender");
+                spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, faction, x + 110.0, y + 260.0, "Shelter Flak Boat");
+            }
+            case CONTESTED_BELT -> {
+                spawnCampaignShip(ctx, ShipRole.PATROL, faction, x - 380.0, y + 10.0, "Raid Belt Cutter");
+                spawnCampaignShip(ctx, ShipRole.HAULER, faction, x + 120.0, y - 260.0, "Broker Drift Tender");
+            }
+            case EARTHWARDED_NORTH -> {
+                spawnCampaignShip(ctx, ShipRole.FRIGATE, faction, x - 420.0, y + 20.0, "Blackout Guard");
+                spawnCampaignShip(ctx, ShipRole.PICKET, faction, x + 180.0, y - 250.0, "Resistance Wake Screen");
+            }
+        }
+    }
+
+    private static void addRegionalAmbientSiteTraffic(GameContext ctx, CampaignState st, CampaignLocation location,
+                                                      GalaxyRegionIdentity region, double x, double y) {
+        if (ctx == null || st == null || location == null || region == null) return;
+        Faction green = greenSupportFaction(st);
+        Faction yellow = yellowSupportFaction(st);
+        switch (location.type) {
+            case RESOURCE_ZONE -> {
+                switch (region) {
+                    case SOUTHERN_SHELTER -> {
+                        spawnCampaignShip(ctx, ShipRole.HAULER, green, x + 140.0, y + 210.0, "Shelter Ore Tender");
+                        spawnCampaignShip(ctx, ShipRole.MINER, green, x - 500.0, y - 80.0, "Lane Prospector");
+                    }
+                    case CONTESTED_BELT -> {
+                        spawnCampaignShip(ctx, ShipRole.PATROL, green, x + 120.0, y - 250.0, "Raid Screen");
+                        spawnCampaignSalvagePocket(ctx, x + 70.0, y + 240.0, 3);
+                    }
+                    case EARTHWARDED_NORTH -> {
+                        spawnCampaignShip(ctx, ShipRole.FRIGATE, green, x + 100.0, y - 250.0, "Resistance Fuel Guard");
+                        spawnCampaignShip(ctx, ShipRole.PICKET, green, x - 520.0, y + 40.0, "Cold Belt Screen");
+                    }
+                }
+            }
+            case SALVAGE_FIELD -> {
+                switch (region) {
+                    case SOUTHERN_SHELTER -> {
+                        spawnCampaignShip(ctx, ShipRole.TRANSPORT, green, x + 180.0, y + 210.0, "Shelter Recovery Barge");
+                    }
+                    case CONTESTED_BELT -> {
+                        spawnCampaignShip(ctx, ShipRole.PICKET, green, x - 330.0, y - 140.0, "Raid Wake Escort");
+                        spawnCampaignSalvagePocket(ctx, x + 420.0, y + 110.0, 4);
+                    }
+                    case EARTHWARDED_NORTH -> {
+                        spawnCampaignShip(ctx, ShipRole.FRIGATE, green, x + 80.0, y - 230.0, "Burnline Guard");
+                        spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, green, x - 300.0, y + 160.0, "Intercept Wreck Screen");
+                    }
+                }
+            }
+            case HIDDEN_CACHE -> {
+                switch (region) {
+                    case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.TRANSPORT, green, x - 320.0, y - 80.0, "Shelter Cache Skiff");
+                    case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, green, x + 340.0, y + 150.0, "False-Lane Decoy");
+                    case EARTHWARDED_NORTH -> spawnCampaignShip(ctx, ShipRole.FRIGATE, green, x - 300.0, y - 60.0, "Resistance Dead-Drop Guard");
+                }
+            }
+            case DISTRESS_SIGNAL -> {
+                switch (region) {
+                    case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.HAULER, yellow, x - 260.0, y - 120.0, "Shelter Relief Tender");
+                    case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, yellow, x - 300.0, y + 130.0, "Runner Rescue Screen");
+                    case EARTHWARDED_NORTH -> {
+                        spawnCampaignShip(ctx, ShipRole.FRIGATE, yellow, x - 250.0, y + 120.0, "Resistance Lift Escort");
+                        spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, yellow, x + 120.0, y + 250.0, "Hunt-Lane Screen");
+                    }
+                }
+            }
+            case STORY_EVENT -> {
+                switch (region) {
+                    case SOUTHERN_SHELTER -> spawnCampaignShip(ctx, ShipRole.HAULER, green, x - 340.0, y - 60.0, "Relay Choir Tender");
+                    case CONTESTED_BELT -> spawnCampaignShip(ctx, ShipRole.PATROL, green, x + 330.0, y + 110.0, "Ghost Courier");
+                    case EARTHWARDED_NORTH -> {
+                        spawnCampaignShip(ctx, ShipRole.FRIGATE, green, x - 320.0, y + 80.0, "Black Relay Guard");
+                        spawnCampaignShip(ctx, ShipRole.CIWS_CORVETTE, green, x + 120.0, y + 230.0, "Uplink Screen");
+                    }
+                }
+            }
+            case REPAIR_SITE -> {
+                if (region == GalaxyRegionIdentity.EARTHWARDED_NORTH) {
+                    spawnCampaignShip(ctx, ShipRole.PATROL, green, x - 260.0, y - 80.0, "Hard-Dock Escort");
+                }
+            }
+            default -> {
             }
         }
     }
@@ -6702,11 +9697,24 @@ public final class CampaignSystem {
     }
 
     private static Faction ambientLocationFaction(CampaignState st, CampaignLocation location) {
-        if (location == null || location.name == null) return greenSupportFaction(st);
-        String name = location.name.toUpperCase(Locale.US);
-        if (name.contains("YELLOW")) return yellowSupportFaction(st);
-        if (name.contains("GREEN")) return greenSupportFaction(st);
+        if (location == null) return greenSupportFaction(st);
+        if (isYellowAlignedLocation(location)) return yellowSupportFaction(st);
+        if (isGreenAlignedLocation(location)) return greenSupportFaction(st);
         return greenSupportFaction(st);
+    }
+
+    private static boolean isGreenAlignedLocation(CampaignLocation location) {
+        if (location == null) return false;
+        String name = (location.name == null) ? "" : location.name.toUpperCase(Locale.US);
+        String detail = (location.detail == null) ? "" : location.detail.toUpperCase(Locale.US);
+        return name.contains("GREEN") || detail.contains("GREEN") || detail.contains("COALITION") || detail.contains("RESISTANCE");
+    }
+
+    private static boolean isYellowAlignedLocation(CampaignLocation location) {
+        if (location == null) return false;
+        String name = (location.name == null) ? "" : location.name.toUpperCase(Locale.US);
+        String detail = (location.detail == null) ? "" : location.detail.toUpperCase(Locale.US);
+        return name.contains("YELLOW") || detail.contains("YELLOW") || detail.contains("BROKER") || detail.contains("MARKET");
     }
 
     private static int spawnGalaxySearchGroupEncounterForce(GameContext ctx, CampaignState st, GalaxySearchGroup group) {
@@ -7535,6 +10543,7 @@ public final class CampaignSystem {
         st.activeGalaxyEncounterSearchGroupId = 0;
         st.galaxyEncounterActive = true;
         st.galaxyAmbientEncounterActive = true;
+        st.activeSiteResolutionModeId = resolveSiteResolutionMode(st.selectedSiteResolutionModeId, location).name();
         st.strategicOvermapMode = false;
         prepareAmbientCampaignLocationEncounterWorld(ctx, st, location);
         ctx.state = GameState.RUNNING;
@@ -7576,6 +10585,10 @@ public final class CampaignSystem {
         st.galaxyAmbientEncounterActive = false;
         st.strategicOvermapMode = true;
         activateStrategicOvermapLayer(ctx, st, "AUTO-RESOLVE COMPLETE: " + location.name.toUpperCase(Locale.US));
+        st.transitionRewardLine = location.primaryMission ? "mission secured" : "contact cleared";
+        st.transitionRouteImpactLine = location.primaryMission
+                ? "mission node now reads as secured on the theater map"
+                : "local lane condition changed after contact";
         return true;
     }
 
@@ -7618,6 +10631,8 @@ public final class CampaignSystem {
                 : (ratio >= 0.9) ? "AUTO-RESOLVE: CONTACT CLEARED WITH DAMAGE"
                 : "AUTO-RESOLVE: PYRRHIC BREAKTHROUGH";
         activateStrategicOvermapLayer(ctx, st, outcome);
+        st.transitionRewardLine = "intercept broken";
+        st.transitionRouteImpactLine = "hostile pursuit corridor disrupted";
         return true;
     }
 
@@ -7641,7 +10656,13 @@ public final class CampaignSystem {
             group.y = anchor.y;
             group.targetX = anchor.x;
             group.targetY = anchor.y;
+            anchor.completed = true;
+            setLocationScar(anchor, "Burned intercept traces and snapped pursuit vectors still hang over the lane.");
+            setLocationRouteState(anchor, "The corridor is safer after the hostile screen was broken here", true);
+            setLocationRecurringContact(anchor, "ROOK", "Rook's patrol file remains active even after this screen was broken");
         }
+        adjustFleetStrain(st, -3.0);
+        setRelationshipState(st, "ROOK", CampaignRelationshipState.HOSTILE);
         group.behavior = GalaxySearchBehavior.RETURNING;
         group.visible = false;
         group.identified = false;
@@ -7786,6 +10807,7 @@ public final class CampaignSystem {
         if (ratio < 0.82 && weakest != null) {
             weakest.destroyed = true;
         }
+        adjustFleetStrain(st, (ratio >= 1.20) ? 3.0 : (ratio >= 0.9 ? 7.0 : 13.0));
         if (location != null && location.primaryMission) {
             int credits = GameContext.scaleCreditEarnings(120 + (int) Math.round(location.threatLevel * 90.0f));
             ctx.credits += credits;
@@ -7796,6 +10818,19 @@ public final class CampaignSystem {
         if (st == null || location == null) return;
         location.completed = true;
         location.consumed = true;
+        if (location.primaryMission) {
+            setLocationScar(location, "The objective site now reads as broken open, secured, and permanently changed by the push north.");
+            setLocationRouteState(location, "Coalition traffic is beginning to trust this corridor again", true);
+            setLocationRecurringContact(location, "VOSS", "campaign channels are treating this node as a live success marker");
+            adjustFleetStrain(st, -5.0);
+            setRelationshipState(st, "VOSS", CampaignRelationshipState.HELPED);
+        } else if (location.type == CampaignLocationType.ENEMY_ACTIVITY) {
+            setLocationScar(location, "Enemy search traces here are broken and the route carries the memory of the clash.");
+            setLocationRouteState(location, "Hostile pressure fell back after your passage through this pocket", true);
+            setLocationRecurringContact(location, "ROOK", "Rook's net still tags this lane after the setback");
+            adjustFleetStrain(st, -4.0);
+            setRelationshipState(st, "ROOK", CampaignRelationshipState.HOSTILE);
+        }
         if (location.primaryMission) {
             int completeCount = 0;
             for (CampaignLocation poi : st.galaxyMainPois) {
@@ -8321,6 +11356,7 @@ public final class CampaignSystem {
     private static void syncPersistentFleetCasualties(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null || st.persistentBlueFleet.isEmpty()) return;
         boolean changed = false;
+        int losses = 0;
         for (PersistentFleetEntry entry : st.persistentBlueFleet) {
             if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
             Ship live = findShipById(ctx, entry.activeShipId);
@@ -8328,8 +11364,10 @@ public final class CampaignSystem {
                 entry.destroyed = true;
                 entry.activeShipId = -1;
                 changed = true;
+                losses++;
             }
         }
+        if (losses > 0) adjustFleetStrain(st, losses * 8.0);
         if (changed) rebalancePersistentCommandGroups(st);
     }
 
@@ -8619,6 +11657,8 @@ public final class CampaignSystem {
         st.transitionLabel = "";
         st.transitionSummaryTop = "";
         st.transitionSummaryBottom = "";
+        st.transitionRewardLine = "";
+        st.transitionRouteImpactLine = "";
         st.missionIntroTimer = 0.0;
         st.missionStartBanterPlayed = false;
         st.extractionWarningStage = 0;
@@ -8716,7 +11756,7 @@ public final class CampaignSystem {
         if (st == null) return;
         SectorLore lore = loreFor(st.sector);
         st.objectiveType = ObjectiveType.SURVIVE;
-        st.objectiveLabel = "Coordinate the fleet on the strategic overmap";
+        st.objectiveLabel = "Command the fleet on the overmap";
         st.objectiveGoal = 1.0;
         st.objectiveProgress = 0.0;
         st.sectorTimeLimit = 0.0;
@@ -8732,11 +11772,11 @@ public final class CampaignSystem {
         st.sideObjectiveFailed = false;
         st.sideObjectiveBaseKills = st.kills;
         st.sideObjectiveStartPlayerHp = (ctx != null && ctx.player != null) ? ctx.player.hp : 0;
-        st.objectivePhaseLabel = "MAP: Move divisions, prosecute contacts, and keep the flagship alive";
+        st.objectivePhaseLabel = "MAP: Plot routes, manage contacts, keep the flagship alive";
         st.threatStateLabel = "THREAT: Only direct contact launches tactical combat";
         st.transitionLabel = "STRATEGIC OVERMAP";
-        st.transitionSummaryTop = lore.title + " is now a contact-driven theater rather than a scripted mission lane.";
-        st.transitionSummaryBottom = "Shift+LMB torpedo  |  Shift+RMB sortie  |  Ctrl+Shift+LMB atomic  |  Alt+LMB division order";
+        st.transitionSummaryTop = lore.title + " is now a contact-driven theater.";
+        st.transitionSummaryBottom = "Use the strategic action bay for strikes, support, and command posture changes.";
         if (script != null) {
             st.activeModifiers = (script.modifiers == null || script.modifiers.length == 0)
                     ? new MapModifier[]{MapModifier.NONE}
@@ -8771,30 +11811,30 @@ public final class CampaignSystem {
     private static String initialPhaseLabel(CampaignState st) {
         if (st == null) return "";
         return switch (st.sector) {
-            case 1 -> "PHASE: Screen the anchorage while civilian lanes stay open";
-            case 2 -> "PHASE: Intercept the customs-halo gunships before the aperture seals";
-            case 3 -> "PHASE: Break the aperture cordon before the jump ring becomes a kill box";
-            case 4 -> "PHASE: Sweep the relay blockers off the authority spindle";
-            case 5 -> "PHASE: Break the reserve wing chasing the relay";
-            case 6 -> "PHASE: Hold the debris field long enough to pull the caches free";
-            case 7 -> "PHASE: Hold formation until the pursuit Titan commits";
-            case 8 -> "PHASE: Keep the refugee titan screened and moving";
-            case 9 -> "PHASE: Keep the broker defectors alive while they cross into formation";
-            case 10 -> "PHASE: Shatter the trade-spine cordon before reserves entrench";
-            case 11 -> "PHASE: Hold the depot shelf while the logistics teams recover stores";
-            case 12 -> "PHASE: Keep the signatory run alive until the pact is sealed";
-            case 13 -> "PHASE: Sweep the Nysa perimeter and cut the jammer triad";
-            case 14 -> "PHASE: Break the Nysa relief wing before the array is isolated again";
-            case 15 -> "PHASE: Silence the outer batteries feeding Kharon's fire-control net";
-            case 16 -> "PHASE: Close through the siege lane and silence the artillery titan";
-            case 17 -> "PHASE: Kill the probe war screen before it marks the coalition";
-            case 18 -> "PHASE: Hold the coalition mustering corridor under pressure";
-            case 19 -> "PHASE: Break the prison chain and free the yellow convoy";
-            case 20 -> "PHASE: Keep the liberated recovery titan screened and moving";
-            case 21 -> "PHASE: Silence Luna's anchor grid and foundry guns";
-            case 22 -> "PHASE: Break the lunar reserve cordon and force the Earth lane";
-            case 23 -> "PHASE: Blind the occupation uplinks and cover the resistance launches";
-            case 24 -> "PHASE: Collapse the orbital defense ring and kill the AI flagship";
+            case 1 -> "PHASE: Screen the anchorage";
+            case 2 -> "PHASE: Intercept the customs-halo gunships";
+            case 3 -> "PHASE: Break the jump-ring cordon";
+            case 4 -> "PHASE: Clear the relay blockers";
+            case 5 -> "PHASE: Break the reserve wing";
+            case 6 -> "PHASE: Hold for cache recovery";
+            case 7 -> "PHASE: Hold until the Titan commits";
+            case 8 -> "PHASE: Screen the refugee Titan";
+            case 9 -> "PHASE: Cover the broker defectors";
+            case 10 -> "PHASE: Shatter the trade-spine cordon";
+            case 11 -> "PHASE: Hold the depot shelf";
+            case 12 -> "PHASE: Hold the signatory run";
+            case 13 -> "PHASE: Cut the jammer triad";
+            case 14 -> "PHASE: Break the Nysa relief wing";
+            case 15 -> "PHASE: Silence the outer batteries";
+            case 16 -> "PHASE: Kill the artillery Titan";
+            case 17 -> "PHASE: Kill the probe screen";
+            case 18 -> "PHASE: Hold the mustering corridor";
+            case 19 -> "PHASE: Break the prison chain";
+            case 20 -> "PHASE: Screen the recovery Titan";
+            case 21 -> "PHASE: Silence Luna's anchor grid";
+            case 22 -> "PHASE: Break the lunar reserve cordon";
+            case 23 -> "PHASE: Blind the occupation uplinks";
+            case 24 -> "PHASE: Kill the AI flagship";
             default -> "PHASE: Advance the campaign objective";
         };
     }
@@ -8802,29 +11842,29 @@ public final class CampaignSystem {
     private static String initialThreatLabel(CampaignState st) {
         if (st == null) return "";
         return switch (st.sector) {
-            case 1 -> "THREAT: Raider probes and panic around the colony docks";
-            case 2 -> "THREAT: Customs-halo gunships locking down the civilian aperture";
-            case 3 -> "THREAT: Interdiction packs covering the jump ring";
-            case 4 -> "THREAT: Relay defenders and route-control lances";
-            case 5 -> "THREAT: Relay reserves racing the vector from the hinterlane";
-            case 6 -> "THREAT: Demolition ships erasing the convoy's political and fuel reserves";
-            case 7 -> "THREAT: Titan pursuit group closing from the wake";
-            case 8 -> "THREAT: Vanguard hunters probing the convoy flanks";
-            case 9 -> "THREAT: Red raiders trying to kill the defectors before they switch sides";
-            case 10 -> "THREAT: Cordon reserves ready to counter-punch";
-            case 11 -> "THREAT: Demolition detachments burning ledgers and depot stores";
-            case 12 -> "THREAT: Interceptors hunting the signatory run";
-            case 13 -> "THREAT: Contract-array defenders and jammer escorts";
-            case 14 -> "THREAT: Red relief wings trying to re-isolate Nysa";
-            case 15 -> "THREAT: Spotter towers and anchor guns feeding Kharon's artillery";
-            case 16 -> "THREAT: Siege escorts feeding the artillery gate";
-            case 17 -> "THREAT: Probe groups and marker ships painting the coalition lane";
-            case 18 -> "THREAT: Sol pickets converging on the corridor";
-            case 19 -> "THREAT: Prison tenders and clamp escorts holding the yellow chain together";
-            case 20 -> "THREAT: Breakchain raiders hunting the recovery line";
+            case 1 -> "THREAT: Raider probes near the docks";
+            case 2 -> "THREAT: Customs-halo gunships locking the aperture";
+            case 3 -> "THREAT: Interdiction packs on the jump ring";
+            case 4 -> "THREAT: Relay defenders and route guns";
+            case 5 -> "THREAT: Relay reserves racing the vector";
+            case 6 -> "THREAT: Demolition ships closing on the caches";
+            case 7 -> "THREAT: Pursuit Titan group closing fast";
+            case 8 -> "THREAT: Vanguard hunters on the flanks";
+            case 9 -> "THREAT: Red raiders hunting the defectors";
+            case 10 -> "THREAT: Cordon reserves ready to counter";
+            case 11 -> "THREAT: Demo ships burning depot stores";
+            case 12 -> "THREAT: Interceptors on the signatory run";
+            case 13 -> "THREAT: Jammer escorts on the array";
+            case 14 -> "THREAT: Red relief wings re-isolating Nysa";
+            case 15 -> "THREAT: Spotter towers feeding anchor guns";
+            case 16 -> "THREAT: Siege escorts screening the Titan";
+            case 17 -> "THREAT: Probe ships marking the lane";
+            case 18 -> "THREAT: Sol pickets closing on the corridor";
+            case 19 -> "THREAT: Clamp escorts holding the prison chain";
+            case 20 -> "THREAT: Breakchain raiders on the recovery line";
             case 21 -> "THREAT: Orbital defense groups screening Luna";
-            case 22 -> "THREAT: Lunar reserve capitals protecting the Earth approach";
-            case 23 -> "THREAT: Occupation uplinks and kill teams suppressing resistance launches";
+            case 22 -> "THREAT: Lunar reserve capitals on the Earth lane";
+            case 23 -> "THREAT: Occupation uplinks and kill teams";
             case 24 -> "THREAT: Full occupation fleet over Earth";
             default -> "THREAT: Hostile fleet contact expected";
         };
@@ -9154,7 +12194,7 @@ public final class CampaignSystem {
 
         st.objectivePhaseLabel = appendHudClause(st.objectivePhaseLabel, "MAP: " + missionThemeLead(theme));
         st.threatStateLabel = appendHudClause(st.threatStateLabel,
-                "CONTACTS: " + missionThemeHudLabel(theme) + " pockets, support tracks, and scanner anomalies are all active.");
+                "CONTACTS: " + missionThemeHudLabel(theme) + " pockets active.");
     }
 
     private static void addMissionThemeSetpieces(GameContext ctx, CampaignState st, MissionTheme theme,
@@ -10389,11 +13429,10 @@ public final class CampaignSystem {
         double t = st.sectorElapsed;
         int remainingTargets = Math.max(0, (int) Math.ceil(st.objectiveGoal - st.objectiveProgress));
         int convoyAlive = liveObjectiveAssets(st);
-        st.objectivePhaseLabel = "PHASE: Destroy the customs-halo strike ships across the marked pockets ("
-                + remainingTargets + " remaining)";
-        st.threatStateLabel = "THREAT: The civilian aperture seals if fewer than "
+        st.objectivePhaseLabel = "PHASE: Kill the strike ships (" + remainingTargets + " left)";
+        st.threatStateLabel = "THREAT: Aperture fails below "
                 + Math.max(1, st.objectiveAssetRequiredSurvivors)
-                + " convoy hulls survive (" + convoyAlive + "/" + Math.max(0, st.objectiveAssetTotal) + " holding)";
+                + " convoy hulls (" + convoyAlive + "/" + Math.max(0, st.objectiveAssetTotal) + ")";
         if (st.authoredWaveCursor == 0 && t >= 55.0) {
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.FRIGATE, 860, -160);
             spawnAuthoredObjectiveEnemyAtPlayerOffset(ctx, st, ShipRole.PATROL, 930, -80);
@@ -10427,8 +13466,8 @@ public final class CampaignSystem {
     private static void updateSector3Script(GameContext ctx, CampaignState st) {
         if (st.objectiveStage == 0) {
             int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
-            st.objectivePhaseLabel = "PHASE: Break the relay interdiction screen (" + remaining + " blockers remaining)";
-            st.threatStateLabel = "THREAT: Route-control guns and raiders are pinning the authority relay";
+            st.objectivePhaseLabel = "PHASE: Break the relay screen (" + remaining + " left)";
+            st.threatStateLabel = "THREAT: Route guns and raiders on the relay";
             if (remaining == 0) {
                 st.captureArmed = true;
                 st.objectiveStage = 1;
@@ -10437,8 +13476,8 @@ public final class CampaignSystem {
                 st.objectiveGoal = 6.0;
                 st.objectiveProgress = 0.0;
                 st.authoredWaveCursor = 1;
-                st.objectivePhaseLabel = "PHASE: Break the relief wing while green navigation hands off jump authority";
-                st.threatStateLabel = "THREAT: Red reserve ships are racing the relay to shut the route again";
+                st.objectivePhaseLabel = "PHASE: Break the relief wing";
+                st.threatStateLabel = "THREAT: Red reserves racing the relay";
                 spawnEnemyAtPoint(ctx, ShipRole.PATROL, st.captureX + 220, st.captureY - 120);
                 spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 260, st.captureY + 40);
                 spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY - 10);
@@ -10449,8 +13488,8 @@ public final class CampaignSystem {
         }
 
         int contactsToBreak = (int) Math.ceil(Math.max(0.0, st.objectiveGoal - st.objectiveProgress));
-        st.objectivePhaseLabel = "PHASE: Break the relief wing and cover the route-control handoff (" + contactsToBreak + " contacts to shatter)";
-        st.threatStateLabel = "THREAT: Relay reserves are converging to shut the Earth vector";
+        st.objectivePhaseLabel = "PHASE: Break the relief wing (" + contactsToBreak + " left)";
+        st.threatStateLabel = "THREAT: Relay reserves closing on the Earth vector";
         if (st.authoredWaveCursor == 1 && st.objectiveProgress >= 2.0) {
             spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 250, st.captureY - 150);
             spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 280, st.captureY + 10);
@@ -10473,8 +13512,8 @@ public final class CampaignSystem {
     private static void updateSector7Script(GameContext ctx, CampaignState st) {
         if (st.objectiveStage == 0) {
             int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
-            st.objectivePhaseLabel = "PHASE: Sweep the array perimeter and cut the jammer triad (" + remaining + " remaining)";
-            st.threatStateLabel = "THREAT: Interdiction escorts are masking the uplink approach";
+            st.objectivePhaseLabel = "PHASE: Cut the jammer triad (" + remaining + " left)";
+            st.threatStateLabel = "THREAT: Interdiction escorts on the uplink";
             if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 32.0) {
                 spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 330, st.captureY - 210);
                 spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 380, st.captureY + 60);
@@ -10496,12 +13535,12 @@ public final class CampaignSystem {
                 st.captureArmed = true;
                 st.objectiveStage = 1;
                 st.objectiveKillBaseline = st.kills;
-                st.objectiveLabel = "Destroy the red relief wing and bring the green contract net online";
+                st.objectiveLabel = "Break the red relief wing";
                 st.objectiveGoal = 8.0;
                 st.objectiveProgress = 0.0;
                 st.authoredWaveCursor = 1;
-                st.objectivePhaseLabel = "PHASE: Break the relief wing while green command handshakes the coalition net";
-                st.threatStateLabel = "THREAT: Red reserves are trying to re-jam the array before the houses commit";
+                st.objectivePhaseLabel = "PHASE: Break the relief wing";
+                st.threatStateLabel = "THREAT: Red reserves trying to re-jam the array";
                 spawnEnemyAtPoint(ctx, ShipRole.FRIGATE, st.captureX + 350, st.captureY - 120);
                 spawnEnemyAtPoint(ctx, ShipRole.MISSILE_BOAT, st.captureX + 390, st.captureY + 40);
                 spawnEnemyAtPoint(ctx, ShipRole.PICKET, st.captureX + 310, st.captureY + 170);
@@ -10511,8 +13550,8 @@ public final class CampaignSystem {
             return;
         }
         int contactsToBreak = (int) Math.ceil(Math.max(0.0, st.objectiveGoal - st.objectiveProgress));
-        st.objectivePhaseLabel = "PHASE: Break the relief wing and secure the coalition handshake (" + contactsToBreak + " contacts to shatter)";
-        st.threatStateLabel = "THREAT: Red reserve groups are counterattacking to keep the green houses isolated";
+        st.objectivePhaseLabel = "PHASE: Break the relief wing (" + contactsToBreak + " left)";
+        st.threatStateLabel = "THREAT: Red reserves counterattacking";
         if (st.authoredWaveCursor == 1 && st.objectiveProgress >= 3.0) {
             spawnEnemyAtPoint(ctx, ShipRole.LIGHT_CRUISER, st.captureX + 360, st.captureY - 40);
             spawnEnemyAtPoint(ctx, ShipRole.CIWS_CORVETTE, st.captureX + 260, st.captureY + 190);
@@ -10534,8 +13573,8 @@ public final class CampaignSystem {
     private static void updateSector11Script(GameContext ctx, CampaignState st) {
         if (st.objectiveStage == 0) {
             int remaining = Math.max(0, st.authoredObjectiveHostiles.size());
-            st.objectivePhaseLabel = "PHASE: Silence the orbital anchor batteries (" + remaining + " remaining)";
-            st.threatStateLabel = "THREAT: Red cordon groups are screening Luna's defense lattice";
+            st.objectivePhaseLabel = "PHASE: Silence the anchor batteries (" + remaining + " left)";
+            st.threatStateLabel = "THREAT: Red cordon groups screening Luna";
             if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 38.0) {
                 spawnEnemyAtPlayerOffset(ctx, ShipRole.FRIGATE, 860, -210);
                 spawnEnemyAtPlayerOffset(ctx, ShipRole.PICKET, 980, 120);
@@ -10560,8 +13599,8 @@ public final class CampaignSystem {
                 st.objectiveGoal = 10.0;
                 st.objectiveProgress = 0.0;
                 st.authoredWaveCursor = 0;
-                st.objectivePhaseLabel = "PHASE: Push through the shattered perimeter and cover the evacuation line";
-                st.threatStateLabel = "THREAT: Red reserve capitals are committing to protect the Earth approach";
+                st.objectivePhaseLabel = "PHASE: Push through the shattered perimeter";
+                st.threatStateLabel = "THREAT: Red reserve capitals on the Earth approach";
                 EventSystem.showBanner(ctx, "ANCHORS SILENCED: BREAK THE CORDON", 2.2);
                 logTelemetry("sector_script", "sector=11 stage=cordon_break t=" + Math.round(st.sectorElapsed));
             }
@@ -10628,22 +13667,22 @@ public final class CampaignSystem {
     private static void updateLateSurvivePressure(GameContext ctx, CampaignState st) {
         if (st.authoredWaveCursor == 0 && st.sectorElapsed >= 50.0) {
             launchPressureStage(ctx, st, "ENEMY PROBE WING INBOUND",
-                    "PHASE: Screen the arrival lane against forward probes",
-                    "THREAT: Red scouts are testing the corridor edges",
+                    "PHASE: Screen the arrival lane",
+                    "THREAT: Red scouts probing the corridor",
                     pressureRolesFor(st, 0));
             return;
         }
         if (st.authoredWaveCursor == 1 && st.sectorElapsed >= 135.0) {
             launchPressureStage(ctx, st, "HEAVY BREAKTHROUGH FORMING",
-                    "PHASE: Hold the line while heavier ships push the lane",
-                    "THREAT: Capital-weight contacts are entering the battlespace",
+                    "PHASE: Hold while heavy ships push in",
+                    "THREAT: Capital contacts entering the lane",
                     pressureRolesFor(st, 1));
             return;
         }
         if (st.authoredWaveCursor == 2 && st.sectorElapsed >= 225.0) {
             launchPressureStage(ctx, st, "KILL BOX CLOSING",
-                    "PHASE: Survive the final convergence and keep the corridor intact",
-                    "THREAT: Reserve strike elements are collapsing on the mustering lane",
+                    "PHASE: Survive the final convergence",
+                    "THREAT: Reserve strike elements collapsing on the lane",
                     pressureRolesFor(st, 2));
         }
     }
@@ -10652,22 +13691,22 @@ public final class CampaignSystem {
         double ratio = progressRatio(st);
         if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 45.0 || ratio >= 0.20)) {
             launchPressureStage(ctx, st, "CORDON RESERVES SCRAMBLING",
-                    "PHASE: Keep pressing before the reserve line stabilizes",
-                    "THREAT: Red reserve escorts are moving to seal the breach",
+                    "PHASE: Keep pressing before the line stabilizes",
+                    "THREAT: Red reserve escorts sealing the breach",
                     pressureRolesFor(st, 0));
             return;
         }
         if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 120.0 || ratio >= 0.50)) {
             launchPressureStage(ctx, st, "COUNTER-ATTACK WING COMMITTED",
-                    "PHASE: Break the second cordon before it can mass guns",
-                    "THREAT: Counter-attack capitals are joining the screen",
+                    "PHASE: Break the second cordon",
+                    "THREAT: Counterattack capitals joining the screen",
                     pressureRolesFor(st, 1));
             return;
         }
         if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 215.0 || ratio >= 0.78)) {
             launchPressureStage(ctx, st, "LAST RED STAND",
-                    "PHASE: Shatter the final reserve and open the lane completely",
-                    "THREAT: The enemy is throwing its last standing reserve into the breach",
+                    "PHASE: Shatter the final reserve",
+                    "THREAT: Enemy last reserve entering the breach",
                     pressureRolesFor(st, 2));
         }
     }
@@ -10676,22 +13715,22 @@ public final class CampaignSystem {
         double ratio = progressRatio(st);
         if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 35.0 || ratio >= 0.16)) {
             launchPressureStage(ctx, st, "PURSUIT SCREEN DETECTED",
-                    "PHASE: Keep the flagship screened while pursuit ships bracket the lane",
-                    "THREAT: Fast red hunters are probing the escort perimeter",
+                    "PHASE: Keep the flagship screened",
+                    "THREAT: Fast red hunters probing the perimeter",
                     pressureRolesFor(st, 0));
             return;
         }
         if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 110.0 || ratio >= 0.45)) {
             launchPressureStage(ctx, st, "MISSILE AMBUSH ON THE FLANK",
-                    "PHASE: Absorb the missile wave without losing formation integrity",
-                    "THREAT: Ambush elements are trying to strip the escort screen",
+                    "PHASE: Absorb the missile wave",
+                    "THREAT: Ambush elements stripping the escort screen",
                     pressureRolesFor(st, 1));
             return;
         }
         if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 195.0 || ratio >= 0.74)) {
             launchPressureStage(ctx, st, "INTERDICTION NET DEPLOYING",
-                    "PHASE: Push the command ship through the last interception barrier",
-                    "THREAT: Heavy pursuit elements are trying to pin the convoy in place",
+                    "PHASE: Push through the last intercept barrier",
+                    "THREAT: Heavy pursuit elements pinning the convoy",
                     pressureRolesFor(st, 2));
         }
     }
@@ -10700,22 +13739,22 @@ public final class CampaignSystem {
         double ratio = progressRatio(st);
         if (st.authoredWaveCursor == 0 && (st.sectorElapsed >= 30.0 || ratio >= 0.18)) {
             launchPressureStage(ctx, st, "RELIEF COLUMN INBOUND",
-                    "PHASE: Hold the objective while the first relief column arrives",
-                    "THREAT: Local defenders are calling in response ships",
+                    "PHASE: Hold while the relief column arrives",
+                    "THREAT: Local defenders calling reinforcements",
                     pressureRolesFor(st, 0));
             return;
         }
         if (st.authoredWaveCursor == 1 && (st.sectorElapsed >= 105.0 || ratio >= 0.48)) {
             launchPressureStage(ctx, st, "RECAPTURE PACKAGE COMMITTING",
-                    "PHASE: Keep the point clean while heavier hulls hit the perimeter",
-                    "THREAT: Electronic-war and missile hulls are contesting the uplink",
+                    "PHASE: Hold the point against heavier hulls",
+                    "THREAT: EW and missile hulls contesting the uplink",
                     pressureRolesFor(st, 1));
             return;
         }
         if (st.authoredWaveCursor == 2 && (st.sectorElapsed >= 190.0 || ratio >= 0.78)) {
             launchPressureStage(ctx, st, "FINAL RECAPTURE PUSH",
-                    "PHASE: Beat back the final retake attempt and secure the array",
-                    "THREAT: The enemy is committing a last recapture package",
+                    "PHASE: Beat back the final retake",
+                    "THREAT: Enemy final recapture package inbound",
                     pressureRolesFor(st, 2));
         }
     }
@@ -10726,22 +13765,22 @@ public final class CampaignSystem {
         double hpFrac = (boss.hpMax <= 0) ? 0.0 : (boss.hp / (double) boss.hpMax);
         if (st.authoredWaveCursor == 0 && hpFrac <= 0.82) {
             launchPressureStage(ctx, st, "BOSS ESCORTS REDEPLOYING",
-                    "PHASE: Break through the first reserve screen around the flagship",
-                    "THREAT: Secondary escorts are moving to cover the command hull",
+                    "PHASE: Break the first reserve screen",
+                    "THREAT: Secondary escorts covering the command hull",
                     pressureRolesFor(st, 0));
             return;
         }
         if (st.authoredWaveCursor == 1 && hpFrac <= 0.54) {
             launchPressureStage(ctx, st, "HEAVY ESCORTS JOINING THE FIGHT",
-                    "PHASE: Keep the flagship under pressure while the escort wall thickens",
-                    "THREAT: Heavy support hulls are reinforcing the boss",
+                    "PHASE: Keep pressure on the flagship",
+                    "THREAT: Heavy support hulls reinforcing the boss",
                     pressureRolesFor(st, 1));
             return;
         }
         if (st.authoredWaveCursor == 2 && hpFrac <= 0.28) {
             launchPressureStage(ctx, st, "FINAL DEFENSE SCREEN",
-                    "PHASE: Collapse the last defense layer and finish the command hull",
-                    "THREAT: The occupation fleet is committing its final close guard",
+                    "PHASE: Collapse the last defense layer",
+                    "THREAT: Occupation fleet committing its close guard",
                     pressureRolesFor(st, 2));
         }
     }
@@ -12270,10 +15309,12 @@ public final class CampaignSystem {
     private static void finishAmbientGalaxyEncounterAndReturn(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         CampaignLocation location = campaignLocationById(st, st.activeGalaxyEncounterLocationId);
-        resolveAmbientEncounterOutcome(ctx, st, location);
+        AmbientReturnSummary summary = resolveAmbientEncounterOutcome(ctx, st, location);
+        summary = advanceDiscoveryChain(ctx, st, location, summary);
         st.galaxyEncounterActive = false;
         st.galaxyAmbientEncounterActive = false;
         st.galaxyAmbientSupportRequested = false;
+        st.activeSiteResolutionModeId = "";
         st.galaxyAmbientPocketCenterX = Double.NaN;
         st.galaxyAmbientPocketCenterY = Double.NaN;
         st.galaxyAmbientPocketRadius = 0.0;
@@ -12289,54 +15330,349 @@ public final class CampaignSystem {
         st.routeArrivalSourceSector = 0;
         consolidateCampaignOreLedger(ctx, st, true);
         String title = (location == null) ? "LOCAL SITE" : location.name.toUpperCase(Locale.US);
-        activateStrategicOvermapLayer(ctx, st, title + " CLEARED  |  LOCAL ENCOUNTER COMPLETE");
+        activateStrategicOvermapLayer(ctx, st, title + " CLEARED  |  "
+                + ((summary == null) ? "LOCAL ENCOUNTER COMPLETE" : summary.bannerLine));
+        if (summary != null) {
+            st.transitionSummaryTop = title + " CLEAR  |  " + summary.topLine;
+            st.transitionSummaryBottom = summary.bottomLine;
+            st.transitionRewardLine = summary.rewardLine;
+            st.transitionRouteImpactLine = summary.routeImpactLine;
+        }
     }
 
-    private static void resolveAmbientEncounterOutcome(GameContext ctx, CampaignState st, CampaignLocation location) {
-        if (ctx == null || st == null || location == null) return;
+    private static AmbientReturnSummary resolveAmbientEncounterOutcome(GameContext ctx, CampaignState st, CampaignLocation location) {
+        if (ctx == null || st == null || location == null) return null;
+        SiteResolutionMode mode = resolveSiteResolutionMode(st.activeSiteResolutionModeId, location);
         switch (location.type) {
             case RESOURCE_ZONE -> {
                 if (!location.consumed) {
                     int ore = 14 + (int) Math.round(location.threatLevel * 24.0f);
+                    switch (mode) {
+                        case FAST_STRIP -> {
+                            ore += 7;
+                            st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 8.0, 0.0, 100.0);
+                            adjustFleetStrain(st, 2.0);
+                            setLocationScar(location, "The ore bloom was ripped apart fast, leaving bright debris and a loud mining wake.");
+                        }
+                        case CAREFUL_SECURE -> {
+                            ore += 2;
+                            st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 4.0, 0.0, 100.0);
+                            st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - 2.0);
+                            adjustFleetStrain(st, -2.0);
+                            setLocationScar(location, "Survey crews stripped the ore bloom down to tagged rock and dust.");
+                        }
+                        case MARK_FOR_ALLIES -> {
+                            ore = Math.max(8, ore - 4);
+                            st.greenContractFavor += 1;
+                            setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
+                            setLocationRouteState(location, "Prospector escorts are now using this ore lane under your mark", true);
+                            setLocationScar(location, "Only the richest seams were pulled before the rest was marked for allied crews.");
+                        }
+                        default -> {}
+                    }
                     grantCampaignOre(ctx, ore);
                     location.consumed = true;
+                    setLocationRecurringContact(location, "MARR", "broker scouts logged your mining detour and kept the lane quiet");
                     EventSystem.showBanner(ctx, "ORE FIELD LOGGED +" + ore + " ORE", 1.5);
+                    return new AmbientReturnSummary(
+                            "+" + ore + " ORE RECOVERED",
+                            "Resource pocket stripped   |   Ore bunkers fuller   |   Route detour paid off",
+                            "+" + ore + " ORE",
+                            "+" + ore + " ore" + ((mode == SiteResolutionMode.MARK_FOR_ALLIES) ? " / green favor" : ""),
+                            (mode == SiteResolutionMode.MARK_FOR_ALLIES) ? "Prospector lane handed to allied crews" : "Prospector lane mapped and stripped");
                 }
             }
             case SALVAGE_FIELD -> {
                 if (!location.consumed) {
                     int credits = GameContext.scaleCreditEarnings(100 + (int) Math.round(location.threatLevel * 110.0f));
+                    int salvage = 0;
+                    switch (mode) {
+                        case FAST_STRIP -> {
+                            credits += GameContext.scaleCreditEarnings(40);
+                            st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 8.0, 0.0, 100.0);
+                            adjustFleetStrain(st, 2.0);
+                            setLocationScar(location, "The wreck lane was hacked apart fast, with hulls broken open and no quiet left behind.");
+                        }
+                        case CAREFUL_SECURE -> {
+                            st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 5.0, 0.0, 100.0);
+                            st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - 2.0);
+                            adjustFleetStrain(st, -2.0);
+                            setLocationScar(location, "The wreck lane now reads as cold metal, stripped hulks, and missing flight logs.");
+                        }
+                        case MARK_FOR_ALLIES -> {
+                            credits = Math.max(GameContext.scaleCreditEarnings(60), credits - GameContext.scaleCreditEarnings(30));
+                            salvage = 4;
+                            st.yellowLiberationFavor += 1;
+                            setRelationshipState(st, "MARR", CampaignRelationshipState.OWED_FAVOR);
+                            setLocationRouteState(location, "Allied recovery crews are now combing this wreck lane", true);
+                            setLocationScar(location, "Your crews skimmed the best pieces and left the rest under allied recovery beacons.");
+                        }
+                        default -> {}
+                    }
                     ctx.credits += credits;
+                    st.campaignSalvage += salvage;
                     location.consumed = true;
+                    setLocationRecurringContact(location, "MARR", "broker factors are now watching this wreck lane for your return");
                     EventSystem.showBanner(ctx, "SALVAGE YARD CLEARED +" + credits + " CREDITS", 1.5);
+                    return new AmbientReturnSummary(
+                            "+" + credits + " CREDITS FROM SALVAGE",
+                            "Wreck sweep complete   |   Black boxes sold clean   |   Salvage crews stand down",
+                            "+" + credits + " CREDITS",
+                            "+" + credits + " credits" + (salvage > 0 ? " / +" + salvage + " salvage / yellow favor" : ""),
+                            (mode == SiteResolutionMode.MARK_FOR_ALLIES) ? "Allied recovery route established" : "Wreck lane spent and logged");
                 }
             }
             case HIDDEN_CACHE -> {
                 if (!location.consumed) {
-                    st.strategicTorpedoCharges += 1;
-                    st.campaignSupplies += 8;
+                    int torpedoes = 1;
+                    int supplies = 8;
+                    int salvage = 6;
+                    double intelGain = 6.0;
+                    switch (mode) {
+                        case FAST_STRIP -> {
+                            supplies += 4;
+                            salvage += 3;
+                            st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 6.0, 0.0, 100.0);
+                            adjustFleetStrain(st, 1.0);
+                            setLocationScar(location, "The dead drop was ripped open fast, leaving its masking shells gutted and obvious.");
+                        }
+                        case CAREFUL_SECURE -> {
+                            intelGain += 4.0;
+                            st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - 2.0);
+                            adjustFleetStrain(st, -1.0);
+                            setLocationScar(location, "The dead drop is open now; ballast cut away, hide seals broken, no second pull left.");
+                        }
+                        case MARK_FOR_ALLIES -> {
+                            torpedoes = 0;
+                            supplies = 5;
+                            salvage = 3;
+                            intelGain += 6.0;
+                            st.greenContractFavor += 1;
+                            setRelationshipState(st, "MARR", CampaignRelationshipState.TRUSTED);
+                            setLocationRouteState(location, "Allied couriers are now using this cache chain as a hidden support rung", true);
+                            setLocationScar(location, "Only part of the cache was lifted; the rest was rehidden for allied pickup.");
+                        }
+                        default -> {}
+                    }
+                    st.strategicTorpedoCharges += torpedoes;
+                    st.campaignSupplies += supplies;
+                    st.campaignSalvage += salvage;
+                    st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelGain, 0.0, 100.0);
                     location.consumed = true;
-                    EventSystem.showBanner(ctx, "CACHE SECURED  +1 TORPEDO STRIKE  +8 SUPPLIES", 1.6);
+                    setLocationRecurringContact(location, "MARR", "Marr's cache line acknowledges that you pulled the stores clean");
+                    EventSystem.showBanner(ctx, "CACHE SECURED  +1 TORPEDO STRIKE  +8 SUPPLIES  +6 SALVAGE", 1.6);
+                    return new AmbientReturnSummary(
+                            "CACHE SECURED  |  TORPEDO / STORES / SALVAGE GAINED",
+                            "+1 torpedo strike   |   +8 supplies   |   +6 salvage   |   Intel picture improved",
+                            "CACHE SECURED",
+                            (torpedoes > 0 ? "+" + torpedoes + " torpedo / " : "") + "+" + supplies + " supplies / +" + salvage + " salvage"
+                                    + ((mode == SiteResolutionMode.MARK_FOR_ALLIES) ? " / green favor" : ""),
+                            (mode == SiteResolutionMode.MARK_FOR_ALLIES) ? "Cache chain folded into allied support traffic" : "Dead-drop network now points your way");
                 }
             }
-            case DISTRESS_SIGNAL, STORY_EVENT -> {
+            case DISTRESS_SIGNAL -> {
                 if (!location.consumed) {
-                    int joined = st.galaxyAmbientSupportRequested ? recoverAmbientFriendlyShips(ctx, st, location) : 0;
-                    st.yellowLiberationFavor += 1;
+                    int joined = 0;
+                    int salvageGain = 0;
+                    int fuelCost = 0;
+                    int favorGain = 0;
+                    switch (mode) {
+                        case EVAC_SURVIVORS -> {
+                            favorGain = 2;
+                            fuelCost = 6;
+                            joined = st.galaxyAmbientSupportRequested ? recoverAmbientFriendlyShips(ctx, st, location) : 0;
+                            adjustFleetStrain(st, -6.0);
+                            setRelationshipState(st, "VOSS", (joined > 0) ? CampaignRelationshipState.TRUSTED : CampaignRelationshipState.HELPED);
+                            setLocationRecurringContact(location, "VOSS", "Voss marked your route as rescue-safe and keeps repeating your callsign onward");
+                            setLocationRouteState(location, "Rescue traffic is stabilizing this lane for allied movement", true);
+                        }
+                        case TOW_DAMAGED_HULL -> {
+                            favorGain = 1;
+                            fuelCost = 10;
+                            joined = st.galaxyAmbientSupportRequested ? recoverAmbientFriendlyShips(ctx, st, location) : 1;
+                            adjustFleetStrain(st, -4.0);
+                            setRelationshipState(st, "VOSS", CampaignRelationshipState.OWED_FAVOR);
+                            setLocationRecurringContact(location, "VOSS", "Voss routed a damaged hull onto your tow line and flagged the lane as trusted");
+                            setLocationRouteState(location, "Recovery tugs now treat this lane as a live pickup route", true);
+                        }
+                        case STRIP_FOR_PARTS -> {
+                            salvageGain = 10;
+                            st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 10.0, 0.0, 100.0);
+                            adjustFleetStrain(st, 6.0);
+                            setRelationshipState(st, "VOSS", CampaignRelationshipState.HOSTILE);
+                            setLocationScar(location, "The distress site is now remembered as a stripped grave marker and a quiet accusation.");
+                            setLocationRecurringContact(location, "VOSS", "Voss will answer, but the rescue channel no longer trusts you fully");
+                        }
+                        default -> {}
+                    }
+                    st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+                    st.campaignSalvage += salvageGain;
+                    st.yellowLiberationFavor += favorGain;
                     location.consumed = true;
+                    location.completed = true;
                     if (joined > 0) {
                         EventSystem.showBanner(ctx, "DISTRESS CONTACT RECOVERED  +" + joined + " SHIP" + (joined == 1 ? "" : "S") + " JOINS THE FLEET", 1.7);
+                        return new AmbientReturnSummary(
+                                "DISTRESS CONTACT SAVED  |  +" + joined + " SHIP" + (joined == 1 ? "" : "S") + " RECOVERED",
+                                "Yellow favor increased   |   Survivors reactivated into your fleet",
+                                "+" + joined + " SHIP" + (joined == 1 ? "" : "S"),
+                                "+" + joined + " ship" + (joined == 1 ? "" : "s") + " / yellow favor / fuel spent",
+                                "Recovery route stabilized");
+                    } else if (mode == SiteResolutionMode.STRIP_FOR_PARTS) {
+                        EventSystem.showBanner(ctx, "DISTRESS SITE STRIPPED  +" + salvageGain + " SALVAGE", 1.6);
+                        return new AmbientReturnSummary(
+                                "DISTRESS SITE STRIPPED  |  PARTS SALVAGED",
+                                "Material gain secured   |   Rescue trust damaged   |   Exposure worsened",
+                                "PARTS STRIPPED",
+                                "+" + salvageGain + " salvage / rescue trust lost",
+                                "Distress lane darkened");
                     } else {
                         EventSystem.showBanner(ctx, "DISTRESS CONTACT STABILIZED  SURVIVORS SAFE  YELLOW FAVOR GAINED", 1.6);
+                        return new AmbientReturnSummary(
+                                "DISTRESS CONTACT STABILIZED  |  YELLOW FAVOR GAINED",
+                                "Survivors routed onward   |   Channel trust improved   |   No hulls recovered",
+                                "YELLOW FAVOR GAINED",
+                                "yellow favor / fuel spent",
+                                "Rescue route stabilized");
                     }
+                }
+            }
+            case STORY_EVENT -> {
+                if (!location.consumed) {
+                    int favorGain = 0;
+                    double intelGain = 0.0;
+                    double alertDelta = 0.0;
+                    double exposureDelta = 0.0;
+                    String routeImpact = "";
+                    switch (mode) {
+                        case QUIET_DECODE -> {
+                            favorGain = 1;
+                            intelGain = 18.0;
+                            alertDelta = -6.0;
+                            exposureDelta = -5.0;
+                            routeImpact = "Relay lane stabilized";
+                            adjustFleetStrain(st, -3.0);
+                            setRelationshipState(st, "MARR", CampaignRelationshipState.TRUSTED);
+                            setLocationRecurringContact(location, "MARR", "Marr's relay chain is now feeding you cleaner route intelligence");
+                            setLocationRouteState(location, "Decoded relay traffic is opening cleaner support lanes here", true);
+                        }
+                        case ALLY_BROADCAST -> {
+                            favorGain = 2;
+                            intelGain = 10.0;
+                            alertDelta = -2.0;
+                            exposureDelta = 4.0;
+                            routeImpact = "Broadcast support lane established";
+                            adjustFleetStrain(st, -2.0);
+                            setRelationshipState(st, "VOSS", CampaignRelationshipState.HELPED);
+                            setLocationRecurringContact(location, "VOSS", "allied relay crews now recognize your fleet as an active broadcast channel");
+                            setLocationRouteState(location, "Broadcasted relay traffic is rallying nearby allied lanes", true);
+                        }
+                        case JAM_AND_DESTROY -> {
+                            favorGain = 0;
+                            intelGain = 6.0;
+                            alertDelta = -10.0;
+                            exposureDelta = 1.0;
+                            routeImpact = "Enemy relay pressure cut";
+                            adjustFleetStrain(st, 1.0);
+                            setRelationshipState(st, "ROOK", CampaignRelationshipState.HOSTILE);
+                            setLocationRecurringContact(location, "ROOK", "hostile relay files mark this sector as a blind scar in their net");
+                            setLocationScar(location, "The relay was jammed, burned, and left as a dead shard in the route lattice.");
+                        }
+                        default -> {}
+                    }
+                    st.greenContractFavor += favorGain;
+                    st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelGain, 0.0, 100.0);
+                    st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel + alertDelta);
+                    st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + exposureDelta, 0.0, 100.0);
+                    revealNearbyCampaignSites(st, location, 1850.0,
+                            CampaignLocationType.HIDDEN_CACHE,
+                            CampaignLocationType.SALVAGE_FIELD,
+                            CampaignLocationType.RESOURCE_ZONE,
+                            CampaignLocationType.DISTRESS_SIGNAL);
+                    markNearbySearchGroupsVisible(st, location, 2300.0, true);
+                    location.consumed = true;
+                    location.completed = true;
+                    EventSystem.showBanner(ctx, "RELAY GHOST TRAFFIC DECODED  INTEL SHARPENED  GREEN FAVOR GAINED", 1.7);
+                    return new AmbientReturnSummary(
+                            "RELAY TRAFFIC DECODED  |  INTEL AND GREEN FAVOR GAINED",
+                            "Nearby opportunities exposed   |   Search picture sharpened   |   Exposure eased",
+                            "INTEL SHARPENED",
+                            ((favorGain > 0) ? "green favor / " : "") + "intel",
+                            routeImpact);
                 }
             }
             case REPAIR_SITE -> {
                 restorePersistentFleetCondition(ctx, st, 0.22, 0.28);
+                adjustFleetStrain(st, -10.0);
+                setRelationshipState(st, "VOSS", CampaignRelationshipState.HELPED);
+                location.completed = true;
+                setLocationRecurringContact(location, "VOSS", "support crews know your fleet and will cycle repair traffic faster now");
+                setLocationRouteState(location, "Anchorage crews are cycling support traffic through this pocket", true);
                 EventSystem.showBanner(ctx, "ANCHORAGE SERVICE COMPLETE", 1.4);
+                return new AmbientReturnSummary(
+                        "ANCHORAGE SERVICE COMPLETE",
+                        "Fleet condition improved   |   Hull crews cycled through the slips",
+                        "FLEET SERVICED",
+                        "fleet serviced",
+                        "Anchorage lane stabilized");
             }
             default -> {
             }
+        }
+        return new AmbientReturnSummary(
+                "LOCAL SITE COMPLETE",
+                "Pocket cleared   |   Contact resolved   |   Returning to overmap",
+                "LOCAL ENCOUNTER COMPLETE",
+                "",
+                "");
+    }
+
+    private static final class AmbientReturnSummary {
+        final String topLine;
+        final String bottomLine;
+        final String bannerLine;
+        final String rewardLine;
+        final String routeImpactLine;
+
+        AmbientReturnSummary(String topLine, String bottomLine, String bannerLine, String rewardLine, String routeImpactLine) {
+            this.topLine = (topLine == null || topLine.isBlank()) ? "LOCAL SITE COMPLETE" : topLine.trim();
+            this.bottomLine = (bottomLine == null || bottomLine.isBlank()) ? "Pocket resolved" : bottomLine.trim();
+            this.bannerLine = (bannerLine == null || bannerLine.isBlank()) ? "LOCAL ENCOUNTER COMPLETE" : bannerLine.trim();
+            this.rewardLine = (rewardLine == null) ? "" : rewardLine.trim();
+            this.routeImpactLine = (routeImpactLine == null) ? "" : routeImpactLine.trim();
+        }
+    }
+
+    private static void revealNearbyCampaignSites(CampaignState st, CampaignLocation origin, double radius,
+                                                  CampaignLocationType... preferredTypes) {
+        if (st == null || origin == null || radius <= 0.0) return;
+        HashSet<CampaignLocationType> preferred = new HashSet<>();
+        if (preferredTypes != null) {
+            for (CampaignLocationType type : preferredTypes) {
+                if (type != null) preferred.add(type);
+            }
+        }
+        for (CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location == null || location == origin || location.consumed) continue;
+            if (!preferred.isEmpty() && !preferred.contains(location.type)) continue;
+            double dist = Math.hypot(location.x - origin.x, location.y - origin.y);
+            if (dist > radius) continue;
+            location.discovered = true;
+        }
+    }
+
+    private static void markNearbySearchGroupsVisible(CampaignState st, CampaignLocation origin, double radius, boolean identify) {
+        if (st == null || origin == null || radius <= 0.0) return;
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double dist = Math.hypot(group.x - origin.x, group.y - origin.y);
+            if (dist > radius) continue;
+            group.visible = true;
+            group.contactFadeSec = Math.max(group.contactFadeSec, 22.0);
+            group.contactConfidence = identify
+                    ? GalaxyContactConfidence.IDENTIFIED_TASK_FORCE
+                    : GalaxyContactConfidence.CONFIRMED_HOSTILE;
+            group.identified = identify;
         }
     }
 
@@ -12372,12 +15708,12 @@ public final class CampaignSystem {
         st.awaitingFleetHubChoice = false;
         st.fleetHubChoiceTimer = 0.0;
         st.transitionTimer = 0.0;
-        st.transitionSummaryTop = "Objective secured. Sweep the field, mine what you can, and extract when you are ready.";
+        st.transitionSummaryTop = "Objective secure. Sweep, mine, and extract.";
         double holdLeft = Math.max(0.0, Math.ceil(st.extractionMinHoldSeconds - st.sectorElapsed));
         if (holdLeft > 0.0) {
-            st.transitionSummaryBottom = "Extraction unlocks in " + (int) holdLeft + "s   |   Safe Exit becomes available after the hold timer";
+            st.transitionSummaryBottom = "Extraction unlocks in " + (int) holdLeft + "s   |   Safe Exit follows the hold";
         } else {
-            st.transitionSummaryBottom = "Objective secured   |   Press SAFE EXIT to return to menu   |   Then choose CONTINUE CAMPAIGN to reopen the fleet hangar";
+            st.transitionSummaryBottom = "Objective secure   |   SAFE EXIT to overmap   |   CONTINUE CAMPAIGN for hangar";
         }
         EventSystem.showBanner(ctx, (banner == null || banner.isBlank()) ? "OBJECTIVE COMPLETE" : banner, 2.0);
         if (holdLeft <= 0.0) {
@@ -13327,6 +16663,10 @@ public final class CampaignSystem {
         cp.yellowLiberationFleetJoined = st.yellowLiberationFleetJoined;
         cp.greenContractFavor = st.greenContractFavor;
         cp.yellowLiberationFavor = st.yellowLiberationFavor;
+        cp.fleetStrain = st.fleetStrain;
+        cp.vossRelationshipStateId = (st.vossRelationshipStateId == null) ? "" : st.vossRelationshipStateId;
+        cp.marrRelationshipStateId = (st.marrRelationshipStateId == null) ? "" : st.marrRelationshipStateId;
+        cp.rookRelationshipStateId = (st.rookRelationshipStateId == null) ? "" : st.rookRelationshipStateId;
         cp.strategicOvermapMode = st.strategicOvermapMode;
         cp.currentGalaxyLocationId = (st.currentGalaxyLocationId == null) ? "" : st.currentGalaxyLocationId;
         cp.selectedGalaxyLocationId = (st.selectedGalaxyLocationId == null) ? "" : st.selectedGalaxyLocationId;
@@ -13334,6 +16674,9 @@ public final class CampaignSystem {
         cp.activeGalaxyEncounterLocationId =
                 (st.activeGalaxyEncounterLocationId == null) ? "" : st.activeGalaxyEncounterLocationId;
         cp.activeGalaxyEncounterSearchGroupId = Math.max(0, st.activeGalaxyEncounterSearchGroupId);
+        cp.selectedFleetPostureId = (st.selectedFleetPostureId == null) ? "" : st.selectedFleetPostureId;
+        cp.selectedSiteResolutionModeId = (st.selectedSiteResolutionModeId == null) ? "" : st.selectedSiteResolutionModeId;
+        cp.activeSiteResolutionModeId = (st.activeSiteResolutionModeId == null) ? "" : st.activeSiteResolutionModeId;
         cp.completedMainMissions = st.completedMainMissions;
         cp.earthProgress = st.earthProgress;
         cp.enemyAlertLevel = st.enemyAlertLevel;
@@ -13445,12 +16788,19 @@ public final class CampaignSystem {
         st.yellowLiberationFleetJoined = cp.yellowLiberationFleetJoined;
         st.greenContractFavor = cp.greenContractFavor;
         st.yellowLiberationFavor = cp.yellowLiberationFavor;
+        st.fleetStrain = MathUtil.clamp(cp.fleetStrain, 0.0, 100.0);
+        st.vossRelationshipStateId = cp.vossRelationshipStateId;
+        st.marrRelationshipStateId = cp.marrRelationshipStateId;
+        st.rookRelationshipStateId = cp.rookRelationshipStateId;
         st.strategicOvermapMode = cp.strategicOvermapMode;
         st.currentGalaxyLocationId = cp.currentGalaxyLocationId;
         st.selectedGalaxyLocationId = cp.selectedGalaxyLocationId;
         st.dockedGalaxyLocationId = cp.dockedGalaxyLocationId;
         st.activeGalaxyEncounterLocationId = cp.activeGalaxyEncounterLocationId;
         st.activeGalaxyEncounterSearchGroupId = Math.max(0, cp.activeGalaxyEncounterSearchGroupId);
+        st.selectedFleetPostureId = cp.selectedFleetPostureId;
+        st.selectedSiteResolutionModeId = cp.selectedSiteResolutionModeId;
+        st.activeSiteResolutionModeId = cp.activeSiteResolutionModeId;
         st.completedMainMissions = cp.completedMainMissions;
         st.earthProgress = MathUtil.clamp(cp.earthProgress, 0.0, 1.0);
         st.enemyAlertLevel = MathUtil.clamp(cp.enemyAlertLevel, 0.0, 100.0);
@@ -13516,7 +16866,17 @@ public final class CampaignSystem {
             sb.append(location.id).append('|')
                     .append(location.discovered).append('|')
                     .append(location.completed).append('|')
-                    .append(location.consumed);
+                    .append(location.consumed).append('|')
+                    .append(location.intelQuality.name()).append('|')
+                    .append(location.chainType.name()).append('|')
+                    .append(location.chainStage).append('|')
+                    .append(encodeCheckpointText(location.scarNote)).append('|')
+                    .append(encodeCheckpointText(location.routeNote)).append('|')
+                    .append(encodeCheckpointText(location.recurringContactId)).append('|')
+                    .append(encodeCheckpointText(location.recurringContactStatus)).append('|')
+                    .append(location.supportRouteStabilized).append('|')
+                    .append(String.format(Locale.US, "%.4f", location.unresolvedAgeSec)).append('|')
+                    .append(location.escalationStage);
         }
         return sb.toString();
     }
@@ -13533,6 +16893,16 @@ public final class CampaignSystem {
             location.discovered = Boolean.parseBoolean(parts[1]);
             location.completed = Boolean.parseBoolean(parts[2]);
             location.consumed = Boolean.parseBoolean(parts[3]);
+            if (parts.length >= 5) location.intelQuality = parseEnum(parts[4], ContactIntelQuality.UNKNOWN);
+            if (parts.length >= 6) location.chainType = parseEnum(parts[5], DiscoveryChainType.NONE);
+            if (parts.length >= 7) location.chainStage = Math.max(0, parseInt(parts[6], 0));
+            if (parts.length >= 8) location.scarNote = decodeCheckpointText(parts[7]);
+            if (parts.length >= 9) location.routeNote = decodeCheckpointText(parts[8]);
+            if (parts.length >= 10) location.recurringContactId = decodeCheckpointText(parts[9]);
+            if (parts.length >= 11) location.recurringContactStatus = decodeCheckpointText(parts[10]);
+            if (parts.length >= 12) location.supportRouteStabilized = Boolean.parseBoolean(parts[11]);
+            if (parts.length >= 13) location.unresolvedAgeSec = Math.max(0.0, parseDouble(parts[12], 0.0));
+            if (parts.length >= 14) location.escalationStage = Math.max(0, parseInt(parts[13], 0));
         }
     }
 
@@ -13559,6 +16929,8 @@ public final class CampaignSystem {
                     .append(group.hostile).append('|')
                     .append(group.visible).append('|')
                     .append(group.identified).append('|')
+                    .append(group.intelQuality.name()).append('|')
+                    .append(group.doctrine.name()).append('|')
                     .append(group.behavior.name()).append('|')
                     .append(encodeCheckpointText(group.anchorLocationId)).append('|')
                     .append(group.contactConfidence.name()).append('|')
@@ -13608,13 +16980,32 @@ public final class CampaignSystem {
                 group.hostile = Boolean.parseBoolean(parts[14]);
                 group.visible = Boolean.parseBoolean(parts[15]);
                 group.identified = Boolean.parseBoolean(parts[16]);
-                group.behavior = parseEnum(parts[17], GalaxySearchBehavior.PATROLLING);
-                group.anchorLocationId = decodeCheckpointText(parts[18]);
-                if (parts.length >= 20) {
-                    group.contactConfidence = parseEnum(parts[19], GalaxyContactConfidence.UNKNOWN_CONTACT);
-                }
-                if (parts.length >= 21) {
-                    group.contactFadeSec = Math.max(0.0, parseDouble(parts[20], 0.0));
+                if (parts.length >= 23) {
+                    group.intelQuality = parseEnum(parts[17], ContactIntelQuality.UNKNOWN);
+                    group.doctrine = parseEnum(parts[18], GalaxySearchDoctrine.SCOUT_SCREEN);
+                    group.behavior = parseEnum(parts[19], GalaxySearchBehavior.PATROLLING);
+                    group.anchorLocationId = decodeCheckpointText(parts[20]);
+                    group.contactConfidence = parseEnum(parts[21], GalaxyContactConfidence.UNKNOWN_CONTACT);
+                    group.contactFadeSec = Math.max(0.0, parseDouble(parts[22], 0.0));
+                } else if (parts.length >= 22) {
+                    group.doctrine = parseEnum(parts[17], GalaxySearchDoctrine.SCOUT_SCREEN);
+                    group.behavior = parseEnum(parts[18], GalaxySearchBehavior.PATROLLING);
+                    group.anchorLocationId = decodeCheckpointText(parts[19]);
+                    group.contactConfidence = parseEnum(parts[20], GalaxyContactConfidence.UNKNOWN_CONTACT);
+                    group.contactFadeSec = Math.max(0.0, parseDouble(parts[21], 0.0));
+                    group.intelQuality = searchGroupIntelQualityFor(st, group);
+                } else {
+                    group.behavior = parseEnum(parts[17], GalaxySearchBehavior.PATROLLING);
+                    group.anchorLocationId = decodeCheckpointText(parts[18]);
+                    group.doctrine = doctrineForEnemyActivity(campaignLocationById(st, group.anchorLocationId),
+                            regionIdentityAt(null, group.x, group.y));
+                    if (parts.length >= 20) {
+                        group.contactConfidence = parseEnum(parts[19], GalaxyContactConfidence.UNKNOWN_CONTACT);
+                    }
+                    if (parts.length >= 21) {
+                        group.contactFadeSec = Math.max(0.0, parseDouble(parts[20], 0.0));
+                    }
+                    group.intelQuality = searchGroupIntelQualityFor(st, group);
                 }
                 st.galaxySearchGroups.add(group);
                 highestId = Math.max(highestId, id);
