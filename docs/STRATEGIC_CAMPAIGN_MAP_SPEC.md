@@ -11,9 +11,9 @@ This document should be treated as the primary design reference for the campaign
 
 It replaces the old split between:
 
-- `CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
-- `CAMPAIGN_24_SECTOR_OUTLINE.md`
-- `HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`
+- `OUTDATED_CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
+- `OUTDATED_CAMPAIGN_24_SECTOR_OUTLINE.md`
+- `OUTDATED_HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`
 
 Those documents remain useful as historical context, but this file is the design we are actively building against.
 
@@ -528,6 +528,6 @@ Use this file as the primary campaign design reference.
 
 The following docs are now outdated as primary specs:
 
-- `CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
-- `CAMPAIGN_24_SECTOR_OUTLINE.md`
-- `HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`
+- `OUTDATED_CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
+- `OUTDATED_CAMPAIGN_24_SECTOR_OUTLINE.md`
+- `OUTDATED_HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`

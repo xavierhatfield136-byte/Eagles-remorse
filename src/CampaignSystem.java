@@ -2015,6 +2015,7 @@ public final class CampaignSystem {
         }
 
         if (tab == UiState.CampaignCommandTab.STRIKES) {
+            GalaxySearchGroup selectedSearchGroup = selectedCampaignSearchGroup(ctx);
             out.add(action("TRACK_TARGET",
                     "TRACK TARGET",
                     hasStrikeTarget ? selectedCampaignContactLabel(ctx) : "No hostile contact selected.",
@@ -2028,6 +2029,23 @@ public final class CampaignSystem {
                     !sortieTarget,
                     "",
                     CampaignSystem::trackSelectedCampaignContact));
+            out.add(action("ENGAGE_CONTACT",
+                    "ENGAGE CONTACT",
+                    hasStrikeTarget ? "Commit the fleet to a direct intercept against the selected hostile contact."
+                            : "No hostile contact selected.",
+                    hasStrikeTarget
+                            ? ((selectedSearchGroup != null)
+                            ? "Open the manual/auto-resolve intercept prompt for the selected hostile search group."
+                            : "Direct engagement is only available for live hostile search-group contacts on the overmap.")
+                            : "Select a hostile contact on the map first.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    selectedSearchGroup != null,
+                    hasStrikeTarget ? "selected hostile contact is not a direct-engage overmap group" : "no hostile contact selected",
+                    selectedSearchGroup != null ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    CampaignSystem::engageSelectedCampaignContact));
             out.add(action("TORPEDO_STRIKE",
                     "TORPEDO STRIKE",
                     "Launch a long-range torpedo strike.",
@@ -2203,6 +2221,7 @@ public final class CampaignSystem {
     }
 
     public static boolean hasSelectedCampaignContactTarget(GameContext ctx) {
+        refreshSelectedCampaignContactLock(ctx);
         return ctx != null && ctx.ui != null
                 && ctx.ui.selectedCampaignContactLabel != null
                 && !ctx.ui.selectedCampaignContactLabel.isBlank()
@@ -2211,14 +2230,17 @@ public final class CampaignSystem {
     }
 
     public static String selectedCampaignContactLabel(GameContext ctx) {
+        refreshSelectedCampaignContactLock(ctx);
         return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactLabel;
     }
 
     public static String selectedCampaignContactSubtitle(GameContext ctx) {
+        refreshSelectedCampaignContactLock(ctx);
         return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactSubtitle;
     }
 
     public static String selectedCampaignContactIntelLabel(GameContext ctx) {
+        refreshSelectedCampaignContactLock(ctx);
         return (ctx == null || ctx.ui == null) ? "" : ctx.ui.selectedCampaignContactIntel;
     }
 
@@ -2247,12 +2269,47 @@ public final class CampaignSystem {
         ctx.ui.selectedCampaignContactY = y;
         ctx.ui.selectedCampaignContactHostile = hostile;
         ctx.ui.selectedCampaignContactTrackable = trackable;
+        ctx.ui.selectedCampaignContactGalaxySearchGroupId = 0;
+        CampaignState st = state(ctx);
+        if (hostile && st != null && isStrategicOvermapMode(st)) {
+            GalaxySearchGroup group = nearestHostileGalaxySearchGroup(st, x, y, 180.0);
+            if (group != null) {
+                ctx.ui.selectedCampaignContactGalaxySearchGroupId = group.id;
+                ctx.ui.selectedCampaignContactLabel = contactConfidenceLabel(group);
+                ctx.ui.selectedCampaignContactSubtitle = contactIntelQualityLabel(group.intelQuality)
+                        + "  |  " + contactConfidenceReadout(group) + "  |  " + doctrineReadout(group);
+                ctx.ui.selectedCampaignContactIntel = contactIntelQualityLabel(group.intelQuality);
+                ctx.ui.selectedCampaignContactX = group.x;
+                ctx.ui.selectedCampaignContactY = group.y;
+            }
+        }
     }
 
     public static boolean trackSelectedCampaignContact(GameContext ctx) {
         if (!hasSelectedCampaignContactTarget(ctx)) return false;
         UISystem.addPing(ctx, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY, 2.2);
         EventSystem.showBanner(ctx, "TRACKING " + selectedCampaignContactLabel(ctx).toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    public static boolean engageSelectedCampaignContact(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !hasSelectedCampaignContactTarget(ctx) || !selectedCampaignContactHostile(ctx)) return false;
+        GalaxySearchGroup group = selectedCampaignSearchGroup(ctx);
+        if (group == null) {
+            EventSystem.showBanner(ctx, "NO DIRECT-ENGAGE HOSTILE CONTACT AT CURRENT TARGET LOCK", 1.2);
+            return false;
+        }
+        String locationLine = strategicEncounterLocationLine(ctx, st, group);
+        showGalaxySearchGroupEncounterChoice(
+                ctx,
+                group,
+                "HOSTILE CONTACT: " + contactConfidenceLabel(group).toUpperCase(Locale.US),
+                "Direct engagement ordered. Take command to break the hostile screen in one large tactical sector, or auto-resolve from the campaign layer.",
+                locationLine,
+                galaxySearchGroupStrengthReadout(ctx, st, group));
+        st.galaxyTravel.clear();
+        EventSystem.showBanner(ctx, "HOSTILE CONTACT MARKED FOR INTERCEPT", 1.4);
         return true;
     }
 
@@ -2288,6 +2345,35 @@ public final class CampaignSystem {
         if (!name.contains("DISTRESS") && !name.contains("RELIEF") && !name.contains("LOST")) return;
         st.galaxyAmbientSupportRequested = true;
         EventSystem.showBanner(ctx, "DISTRESS CHANNEL LOCKED  SURVIVORS MOVING TO YOUR NET", 1.2);
+    }
+
+    private static void refreshSelectedCampaignContactLock(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || ctx.ui == null) return;
+        if (ctx.ui.selectedCampaignContactGalaxySearchGroupId <= 0 || !isStrategicOvermapMode(st)) return;
+        GalaxySearchGroup group = galaxySearchGroupById(st, ctx.ui.selectedCampaignContactGalaxySearchGroupId);
+        if (group == null || !group.hostile) {
+            ctx.ui.selectedCampaignContactGalaxySearchGroupId = 0;
+            return;
+        }
+        ctx.ui.selectedCampaignContactLabel = contactConfidenceLabel(group);
+        ctx.ui.selectedCampaignContactSubtitle = contactIntelQualityLabel(group.intelQuality)
+                + "  |  " + contactConfidenceReadout(group) + "  |  " + doctrineReadout(group);
+        ctx.ui.selectedCampaignContactIntel = contactIntelQualityLabel(group.intelQuality);
+        ctx.ui.selectedCampaignContactX = group.x;
+        ctx.ui.selectedCampaignContactY = group.y;
+        ctx.ui.selectedCampaignContactHostile = group.hostile;
+        ctx.ui.selectedCampaignContactTrackable = group.visible || group.contactFadeSec > 0.0;
+    }
+
+    private static GalaxySearchGroup selectedCampaignSearchGroup(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || ctx.ui == null) return null;
+        if (ctx.ui.selectedCampaignContactGalaxySearchGroupId > 0) {
+            GalaxySearchGroup group = galaxySearchGroupById(st, ctx.ui.selectedCampaignContactGalaxySearchGroupId);
+            if (group != null && group.hostile) return group;
+        }
+        return nearestHostileGalaxySearchGroup(st, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY, 200.0);
     }
 
     public static List<String> campaignNavigationStationLines(GameContext ctx) {
@@ -4045,11 +4131,6 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx, worldX, worldY, 240.0);
-        if (taskForce == null) return false;
-        if (taskForce.encounterSpawned) {
-            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
-            return true;
-        }
         if (st.strategicTorpedoCharges <= 0) {
             EventSystem.showBanner(ctx, "NO TORPEDO STRIKES READY", 1.2);
             return true;
@@ -4058,6 +4139,22 @@ public final class CampaignSystem {
         int fuelCost = 9;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost) {
             EventSystem.showBanner(ctx, "TORPEDO STRIKE REQUIRES AMMO AND FUEL", 1.2);
+            return true;
+        }
+        if (taskForce == null) {
+            st.strategicTorpedoCharges--;
+            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+            boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "TORPEDO");
+            if (!result) {
+                st.strategicTorpedoCharges++;
+                st.campaignAmmo += ammoCost;
+                st.campaignFuel += fuelCost;
+            }
+            return result;
+        }
+        if (taskForce.encounterSpawned) {
+            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
             return true;
         }
         st.strategicTorpedoCharges--;
@@ -4090,11 +4187,6 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx, worldX, worldY, 240.0);
-        if (taskForce == null) return false;
-        if (taskForce.encounterSpawned) {
-            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
-            return true;
-        }
         int sortieCap = strategicSortieCapacity(ctx);
         if (sortieCap <= 0) {
             EventSystem.showBanner(ctx, "NO CARRIER SORTIES AVAILABLE", 1.2);
@@ -4109,6 +4201,24 @@ public final class CampaignSystem {
         int supplyCost = 4;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
             EventSystem.showBanner(ctx, "SORTIE STRIKE REQUIRES FUEL, AMMO, AND SUPPLIES", 1.2);
+            return true;
+        }
+        if (taskForce == null) {
+            st.strategicSortiesLaunched++;
+            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
+            boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "SORTIE");
+            if (!result) {
+                st.strategicSortiesLaunched = Math.max(0, st.strategicSortiesLaunched - 1);
+                st.campaignAmmo += ammoCost;
+                st.campaignFuel += fuelCost;
+                st.campaignSupplies += supplyCost;
+            }
+            return result;
+        }
+        if (taskForce.encounterSpawned) {
+            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
             return true;
         }
         st.strategicSortiesLaunched++;
@@ -4145,11 +4255,6 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx, worldX, worldY, 240.0);
-        if (taskForce == null) return false;
-        if (taskForce.encounterSpawned) {
-            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
-            return true;
-        }
         if (st.strategicAtomicCharges <= 0) {
             EventSystem.showBanner(ctx, "ATOMIC OPTION UNAVAILABLE", 1.2);
             return true;
@@ -4159,6 +4264,24 @@ public final class CampaignSystem {
         int supplyCost = 12;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
             EventSystem.showBanner(ctx, "ATOMIC STRIKE REQUIRES HEAVY FUEL, AMMO, AND SUPPLIES", 1.3);
+            return true;
+        }
+        if (taskForce == null) {
+            st.strategicAtomicCharges--;
+            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
+            boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "ATOMIC");
+            if (!result) {
+                st.strategicAtomicCharges++;
+                st.campaignAmmo += ammoCost;
+                st.campaignFuel += fuelCost;
+                st.campaignSupplies += supplyCost;
+            }
+            return result;
+        }
+        if (taskForce.encounterSpawned) {
+            EventSystem.showBanner(ctx, "CONTACT ALREADY IN TACTICAL COMBAT", 1.2);
             return true;
         }
 
@@ -4292,13 +4415,16 @@ public final class CampaignSystem {
         double intel = MathUtil.clamp(st.campaignIntelLevel, 0.0, 100.0);
         return switch (group.contactConfidence) {
             case UNKNOWN_CONTACT -> ContactIntelQuality.UNKNOWN;
-            case POSSIBLE_PATROL, LOST_CONTACT -> (intel >= 48.0 || playerDist <= group.detectionRange * 1.1)
+            case POSSIBLE_PATROL, LOST_CONTACT -> (intel >= 42.0 || playerDist <= group.detectionRange * 1.25)
                     ? ContactIntelQuality.CLASSIFIED
                     : ContactIntelQuality.UNKNOWN;
-            case CONFIRMED_HOSTILE -> (intel >= 64.0 || playerDist <= group.detectionRange * 0.92)
-                    ? ContactIntelQuality.IDENTIFIED
-                    : ContactIntelQuality.CLASSIFIED;
-            case IDENTIFIED_TASK_FORCE -> (intel >= 84.0 || playerDist <= group.interceptRange * 1.3)
+            case CONFIRMED_HOSTILE -> {
+                if (intel >= 74.0 || playerDist <= group.interceptRange * 1.55) yield ContactIntelQuality.TRACKED;
+                yield (intel >= 56.0 || playerDist <= group.detectionRange * 1.08)
+                        ? ContactIntelQuality.IDENTIFIED
+                        : ContactIntelQuality.CLASSIFIED;
+            }
+            case IDENTIFIED_TASK_FORCE -> (intel >= 72.0 || playerDist <= group.interceptRange * 1.8)
                     ? ContactIntelQuality.TARGET_QUALITY
                     : ContactIntelQuality.TRACKED;
         };
@@ -8512,18 +8638,12 @@ public final class CampaignSystem {
                 st.dockedGalaxyLocationId = nearby.id;
             }
             CampaignLocation encounterAnchor = (nearby != null) ? nearby : selectedCampaignLocation(ctx);
-            if (encounterAnchor == null) {
-                stopCampaignTravel(ctx);
-                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0 + group.threatLevel * 6.0 + postureAlertOnForcedIntercept(posture), 0.0, 100.0);
-                EventSystem.showBanner(ctx, "HOSTILE CONTACT FORCES A COURSE CHANGE", 1.4);
-                return;
-            }
             showGalaxySearchGroupEncounterChoice(
                     ctx,
                     group,
                     "HOSTILE CONTACT: " + contactConfidenceLabel(group).toUpperCase(Locale.US),
                     "Enemy patrols have closed on the fleet during transit. Take command to fight through one large tactical sector, or auto-resolve the engagement from the campaign layer.",
-                    "Intercepted near " + encounterAnchor.name,
+                    (encounterAnchor != null) ? ("Intercepted near " + encounterAnchor.name) : "Open-space intercept",
                     galaxySearchGroupStrengthReadout(ctx, st, group));
             st.galaxyTravel.clear();
             EventSystem.showBanner(ctx, "INTERCEPTED BY HOSTILE SEARCH GROUP", 1.5);
@@ -10685,6 +10805,124 @@ public final class CampaignSystem {
             }
         }
         return best;
+    }
+
+    private static GalaxySearchGroup nearestHostileGalaxySearchGroup(CampaignState st, double x, double y, double maxDist) {
+        if (st == null || st.galaxySearchGroups.isEmpty() || !Double.isFinite(x) || !Double.isFinite(y)) return null;
+        GalaxySearchGroup best = null;
+        double bestD2 = Math.max(1.0, maxDist) * Math.max(1.0, maxDist);
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double d2 = GameMath.dist2(x, y, group.x, group.y);
+            if (d2 < bestD2) {
+                best = group;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean canLaunchStrikeOnSearchGroup(GalaxySearchGroup group, ContactIntelQuality minimumIntel) {
+        if (group == null || !group.hostile) return false;
+        ContactIntelQuality current = (group.intelQuality == null) ? ContactIntelQuality.UNKNOWN : group.intelQuality;
+        return current.ordinal() >= minimumIntel.ordinal();
+    }
+
+    private static boolean launchStrategicStrikeAgainstSearchGroup(GameContext ctx,
+                                                                   CampaignState st,
+                                                                   double worldX,
+                                                                   double worldY,
+                                                                   String strikeType) {
+        GalaxySearchGroup group = nearestHostileGalaxySearchGroup(st, worldX, worldY, 220.0);
+        if (group == null) return false;
+        ContactIntelQuality minimumIntel = switch (strikeType) {
+            case "SORTIE" -> ContactIntelQuality.TRACKED;
+            case "ATOMIC", "TORPEDO" -> ContactIntelQuality.TARGET_QUALITY;
+            default -> ContactIntelQuality.TRACKED;
+        };
+        if (!canLaunchStrikeOnSearchGroup(group, minimumIntel)) return false;
+
+        switch (strikeType) {
+            case "TORPEDO" -> {
+                group.behavior = GalaxySearchBehavior.RETURNING;
+                group.stateTimer = Math.max(group.stateTimer, 28.0);
+                group.contactConfidence = GalaxyContactConfidence.LOST_CONTACT;
+                group.intelQuality = ContactIntelQuality.CLASSIFIED;
+                group.identified = false;
+                group.visible = false;
+                group.contactFadeSec = 0.0;
+                retaskGalaxySearchGroupAwayFromFleet(st, group, 2.6);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 10.0 + group.threatLevel * 4.0, 0.0, 100.0);
+                st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 8.0 + group.tier * 2.0, 0.0, 100.0);
+                st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure + 12.0 + group.tier * 3.0, 0.0, 100.0);
+                st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 4.0, 0.0, 100.0);
+                EventSystem.showBanner(ctx, "LONG-RANGE TORPEDO IMPACT: HOSTILE SCREEN DISRUPTED", 1.6);
+                return true;
+            }
+            case "SORTIE" -> {
+                group.behavior = (group.tier >= 3) ? GalaxySearchBehavior.INVESTIGATING : GalaxySearchBehavior.RETURNING;
+                group.stateTimer = Math.max(group.stateTimer, 24.0);
+                group.contactConfidence = GalaxyContactConfidence.CONFIRMED_HOSTILE;
+                group.intelQuality = ContactIntelQuality.IDENTIFIED;
+                group.identified = false;
+                group.visible = true;
+                group.contactFadeSec = Math.max(group.contactFadeSec, 8.0);
+                retaskGalaxySearchGroupAwayFromFleet(st, group, 2.1);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 12.0 + group.threatLevel * 5.0, 0.0, 100.0);
+                st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 10.0 + group.tier * 2.5, 0.0, 100.0);
+                st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure + 14.0 + group.tier * 3.0, 0.0, 100.0);
+                st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 8.0, 0.0, 100.0);
+                EventSystem.showBanner(ctx, "SORTIE STRIKE COMPLETE: HOSTILE CONTACT BROKEN OFF", 1.6);
+                return true;
+            }
+            case "ATOMIC" -> {
+                group.behavior = GalaxySearchBehavior.RETURNING;
+                group.stateTimer = Math.max(group.stateTimer, 42.0);
+                group.contactConfidence = GalaxyContactConfidence.UNKNOWN_CONTACT;
+                group.intelQuality = ContactIntelQuality.UNKNOWN;
+                group.identified = false;
+                group.visible = false;
+                group.contactFadeSec = 0.0;
+                retaskGalaxySearchGroupAwayFromFleet(st, group, 3.4);
+                st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 26.0 + group.threatLevel * 8.0, 0.0, 100.0);
+                st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 28.0 + group.tier * 4.0, 0.0, 100.0);
+                st.recentStrikePressure = MathUtil.clamp(st.recentStrikePressure + 28.0 + group.tier * 5.0, 0.0, 100.0);
+                st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 5.0, 0.0, 100.0);
+                EventSystem.showBanner(ctx, "ATOMIC STRIKE: HOSTILE CONTACT SCATTERED", 1.8);
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    private static void retaskGalaxySearchGroupAwayFromFleet(CampaignState st, GalaxySearchGroup group, double retreatMul) {
+        if (st == null || group == null) return;
+        CampaignLocation anchor = campaignLocationById(st, group.anchorLocationId);
+        if (anchor != null) {
+            group.x = anchor.x;
+            group.y = anchor.y;
+            group.targetX = anchor.x;
+            group.targetY = anchor.y;
+            return;
+        }
+        double dx = group.x - st.playerGalaxyX;
+        double dy = group.y - st.playerGalaxyY;
+        double dist = Math.max(1e-6, Math.hypot(dx, dy));
+        double retreat = Math.max(260.0, group.interceptRange * Math.max(1.4, retreatMul));
+        group.x = st.playerGalaxyX + dx / dist * retreat;
+        group.y = st.playerGalaxyY + dy / dist * retreat;
+        group.targetX = group.x;
+        group.targetY = group.y;
+    }
+
+    private static String strategicEncounterLocationLine(GameContext ctx, CampaignState st, GalaxySearchGroup group) {
+        CampaignLocation nearby = nearestCampaignLocation(ctx, st.playerGalaxyX, st.playerGalaxyY, 220.0);
+        if (nearby != null) return "Intercepted near " + nearby.name;
+        CampaignLocation anchor = (group == null) ? null : campaignLocationById(st, group.anchorLocationId);
+        if (anchor != null) return "Hostile screen operating near " + anchor.name;
+        return "Open-space intercept";
     }
 
     private static void resolveStrategicTaskForceAfterRemoteStrike(GameContext ctx, CampaignState st,

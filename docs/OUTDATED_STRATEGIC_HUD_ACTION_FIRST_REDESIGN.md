@@ -3,6 +3,8 @@
 Date: 2026-05-13  
 Status: Core implementation complete
 
+> Outdated: this redesign has been implemented and is now kept as a historical reference, not a live action plan.
+
 ## Core Rule
 
 The map is for selecting. The panels are for commanding.

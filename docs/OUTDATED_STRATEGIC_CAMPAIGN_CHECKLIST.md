@@ -1,5 +1,7 @@
 # Strategic Campaign Checklist
 
+> Outdated: this checklist is fully completed and is now kept only as a completion record for the strategic campaign rewrite.
+
 Use this as the working implementation checklist. Do not mark an item complete unless the exact requirement is satisfied in the game, not just partially represented in code.
 
 ## Phase 1: Strategic Overmap Foundation

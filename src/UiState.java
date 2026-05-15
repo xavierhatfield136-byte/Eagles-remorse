@@ -175,6 +175,7 @@ public final class UiState {
     public double selectedCampaignContactY = Double.NaN;
     public boolean selectedCampaignContactHostile = false;
     public boolean selectedCampaignContactTrackable = false;
+    public int selectedCampaignContactGalaxySearchGroupId = 0;
 
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
@@ -293,6 +294,7 @@ public final class UiState {
         selectedCampaignContactY = Double.NaN;
         selectedCampaignContactHostile = false;
         selectedCampaignContactTrackable = false;
+        selectedCampaignContactGalaxySearchGroupId = 0;
     }
 
     public void clearVoiceCaption() {

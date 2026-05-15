@@ -11,7 +11,7 @@ This document turns the current freeform design notes into a single direction fo
 
 It is meant to complement, not replace:
 
-- `CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
+- `OUTDATED_CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
 - `combat-and-campaign-change-notes.md`
 
 The main idea is to stop treating the game as only a fleet sandbox and instead push it toward a layered structure:

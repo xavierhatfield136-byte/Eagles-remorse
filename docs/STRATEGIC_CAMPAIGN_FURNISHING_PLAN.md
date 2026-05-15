@@ -1,19 +1,24 @@
 # Strategic Campaign Furnishing Plan
 
 Date: 2026-05-13  
-Status: Active companion roadmap
+Status: Mostly completed historical furnishing roadmap
+
+> Historical note: this document remains useful as furnishing philosophy and staged intent, but much of its roadmap has now been implemented or superseded by the reactive-theater and HUD-usability docs.
 
 ## Purpose
 
-This document explains how we are going to flush out, furnish, and deepen the new strategic campaign now that the core campaign rewrite exists.
+This document explains how we planned to flush out, furnish, and deepen the new strategic campaign once the core campaign rewrite existed.
 
 This is not the replacement for the core spec.
 
 Use the other docs like this:
 
 - `STRATEGIC_CAMPAIGN_MAP_SPEC.md`: source of truth for intended design
-- `STRATEGIC_CAMPAIGN_CHECKLIST.md`: implementation completion checklist
-- `STRATEGIC_CAMPAIGN_FURNISHING_PLAN.md`: staged content-and-feel roadmap for making the campaign rich, readable, and worth playing repeatedly
+- `STRATEGIC_CAMPAIGN_REACTIVE_THEATER_CHECKLIST.md`: active systems checklist
+- `STRATEGIC_HUD_ACTION_FIRST_SPEC.md`: active HUD usability spec
+- `STRATEGIC_CAMPAIGN_FURNISHING_STATUS.md`: current progress summary
+- `OUTDATED_STRATEGIC_CAMPAIGN_CHECKLIST.md`: completed implementation checklist
+- `STRATEGIC_CAMPAIGN_FURNISHING_PLAN.md`: historical staged content-and-feel roadmap for furnishing philosophy and intent
 
 ## What "Furnishing" Means
 

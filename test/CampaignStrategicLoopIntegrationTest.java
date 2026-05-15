@@ -46,6 +46,9 @@ class CampaignStrategicLoopIntegrationTest {
         tickTravelUntilSettled(ctx, st, 400);
         assertEquals(cache.id, st.currentGalaxyLocationId);
         assertEquals(cache.id, st.dockedGalaxyLocationId);
+        assertTrue(CampaignSystem.canEnterSelectedLocalEncounter(ctx));
+        assertTrue(CampaignSystem.launchSelectedLocalEncounter(ctx));
+        assertTrue(CampaignSystem.completeMissionExtraction(ctx));
         assertEquals(torpedoesBefore + 1, st.strategicTorpedoCharges);
 
         double alertBeforeIntercept = st.enemyAlertLevel;

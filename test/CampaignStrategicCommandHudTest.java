@@ -372,7 +372,7 @@ class CampaignStrategicCommandHudTest {
         assertEquals("Target-Quality", CampaignSystem.selectedLocationIntelReadout(ctx));
         assertTrue(getBooleanField(group, "visible"));
         assertTrue(getBooleanField(group, "identified"));
-        assertEquals("TRACKED", getObject(group, "intelQuality").toString());
+        assertEquals("TARGET_QUALITY", getObject(group, "intelQuality").toString());
         assertTrue(ctx.ui.mapPings.size() > pingBefore);
     }
 
@@ -614,6 +614,63 @@ class CampaignStrategicCommandHudTest {
         CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
         assertNotNull(torpedo);
         assertTrue(torpedo.enabled);
+    }
+
+    @Test
+    void hostileSearchGroupContactCanBeDirectlyEngagedFromStrikeConsole() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        setDouble(group, "x", st.playerGalaxyX + 140.0);
+        setDouble(group, "y", st.playerGalaxyY + 90.0);
+        setBoolean(group, "visible", true);
+        setObject(group, "contactConfidence", enumConstant(fieldType(group, "contactConfidence"), "CONFIRMED_HOSTILE"));
+        setObject(group, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "TRACKED"));
+
+        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.nearestSupportMarker(ctx, st.playerGalaxyX + 140.0, st.playerGalaxyY + 90.0, 220.0);
+        assertNotNull(marker);
+        String intel = marker.subtitle.substring(0, marker.subtitle.indexOf('|')).trim();
+        CampaignSystem.selectCampaignContactTarget(ctx, marker.label, marker.subtitle, intel, marker.x, marker.y, true, true);
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
+        st.selectedGalaxyLocationId = "";
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+        CampaignSystem.CampaignAction engage = actions.stream().filter(action -> "ENGAGE_CONTACT".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(engage);
+        assertTrue(engage.enabled);
+        assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP, ctx.ui.strategicEncounterPrompt.kind);
+    }
+
+    @Test
+    void hostileSearchGroupCanBeHitByStrategicSortie() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        setDouble(group, "x", st.playerGalaxyX + 160.0);
+        setDouble(group, "y", st.playerGalaxyY + 100.0);
+        setBoolean(group, "visible", true);
+        setObject(group, "contactConfidence", enumConstant(fieldType(group, "contactConfidence"), "IDENTIFIED_TASK_FORCE"));
+        setObject(group, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "TRACKED"));
+        setBoolean(group, "identified", true);
+
+        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.nearestSupportMarker(ctx, st.playerGalaxyX + 160.0, st.playerGalaxyY + 100.0, 220.0);
+        assertNotNull(marker);
+        String intel = marker.subtitle.substring(0, marker.subtitle.indexOf('|')).trim();
+        CampaignSystem.selectCampaignContactTarget(ctx, marker.label, marker.subtitle, intel, marker.x, marker.y, true, true);
+
+        int ammoBefore = st.campaignAmmo;
+        int fuelBefore = st.campaignFuel;
+        int suppliesBefore = st.campaignSupplies;
+        assertTrue(CampaignSystem.launchSelectedCampaignSortie(ctx));
+
+        assertTrue(st.campaignAmmo < ammoBefore);
+        assertTrue(st.campaignFuel < fuelBefore);
+        assertTrue(st.campaignSupplies < suppliesBefore);
+        assertTrue(List.of("RETURNING", "INVESTIGATING").contains(getObject(group, "behavior").toString()));
     }
 
     @Test

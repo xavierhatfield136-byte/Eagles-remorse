@@ -51,6 +51,26 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void hostileSearchGroupInterceptionInOpenSpaceStillCreatesEncounterPrompt() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+        setDouble(group, "x", 2500.0);
+        setDouble(group, "y", 2500.0);
+
+        invokeDetectionUpdate(ctx, st, 0.1);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals("Open-space intercept", ctx.ui.strategicEncounterPrompt.location);
+    }
+
+    @Test
     void enemyActivityArrivalUsesTheSameStrategicEncounterPipeline() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
