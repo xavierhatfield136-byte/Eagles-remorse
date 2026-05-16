@@ -834,9 +834,39 @@ if (DevTools.isDebugOverlay()) {
             ));
             countsBySection.put(section, countsBySection.getOrDefault(section, 0) + 1);
         }
+        appendCampaignPulseEntries(ctx, out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         return out;
+    }
+
+    private static void appendCampaignPulseEntries(GameContext ctx,
+                                                   java.util.List<SensorNetEntry> out,
+                                                   java.util.Set<String> seen,
+                                                   java.util.Map<String, Integer> countsBySection,
+                                                   int maxSignalsPerSection) {
+        for (CampaignSystem.CampaignSensorPulse pulse : CampaignSystem.campaignSensorPulses(ctx)) {
+            if (pulse == null) continue;
+            String section = pulse.relay ? "SENSOR" : "CONTACTS";
+            int count = countsBySection.getOrDefault(section, 0);
+            if (count >= Math.max(0, maxSignalsPerSection)) continue;
+            String key = section + "|" + pulse.label + "|" + Math.round(pulse.x / 20.0) + "|" + Math.round(pulse.y / 20.0);
+            if (!seen.add(key)) continue;
+            String title = pulse.relay ? ("Relay: " + pulse.label) : ("Signature: " + pulse.label);
+            String detail = ((ctx == null || ctx.player == null) ? 0 : (int) Math.round(Math.hypot(pulse.x - ctx.player.x, pulse.y - ctx.player.y)))
+                    + "m  CONF " + (int) Math.round(pulse.strength * 100.0) + "%"
+                    + (pulse.relay ? "  COVERAGE" : (pulse.hostile ? "  HOSTILE RETURN" : "  FRIENDLY RETURN"));
+            out.add(new SensorNetEntry(
+                    section,
+                    title,
+                    detail,
+                    pulse.x,
+                    pulse.y,
+                    pulse.relay ? new Color(120, 196, 255) : (pulse.hostile ? new Color(255, 146, 126) : new Color(140, 224, 196)),
+                    (pulse.relay ? "RELAY LOCK: " : "SENSOR RETURN: ") + pulse.label.toUpperCase(java.util.Locale.US)
+            ));
+            countsBySection.put(section, count + 1);
+        }
     }
 
     private static void appendCampaignSignalEntries(GameContext ctx,

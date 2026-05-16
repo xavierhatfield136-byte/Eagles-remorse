@@ -75,6 +75,32 @@ public final class UiState {
         }
     }
 
+    public enum TacticalMapTab {
+        MISSION("Mission"),
+        FLEET("Fleet"),
+        RESOURCES("Resources"),
+        CONTACTS("Contacts"),
+        STRIKES("Strikes");
+
+        private final String label;
+
+        TacticalMapTab(String label) {
+            this.label = (label == null || label.isBlank()) ? name() : label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
+    public enum TacticalMapSelectionKind {
+        MISSION,
+        OBJECTIVE,
+        CONTACT,
+        LANDMARK,
+        SPACE
+    }
+
     public static final class CombatCallout {
         public double x;
         public double y;
@@ -144,6 +170,7 @@ public final class UiState {
     public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
+    public int campaignFleetFocusSlotId = -1;
     // Fleet hub: when the campaign shop is open (TAB), toggle between "commission" (buy hulls) and "refit"
     // (ship-by-ship loadout editing) views.
     public boolean fleetRefitMode = true;
@@ -151,6 +178,7 @@ public final class UiState {
     public int flightDeckFocus = 0;
     public int selectedStrategicDivisionGroupId = 0;
     public CampaignCommandTab campaignCommandTab = CampaignCommandTab.NAV;
+    public TacticalMapTab tacticalMapTab = TacticalMapTab.MISSION;
 
     public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
     public boolean tacticalViewEnabled = false;
@@ -176,6 +204,13 @@ public final class UiState {
     public boolean selectedCampaignContactHostile = false;
     public boolean selectedCampaignContactTrackable = false;
     public int selectedCampaignContactGalaxySearchGroupId = 0;
+    public TacticalMapSelectionKind tacticalMapSelectionKind = TacticalMapSelectionKind.MISSION;
+    public String tacticalMapSelectionLabel = "";
+    public String tacticalMapSelectionSubtitle = "";
+    public String tacticalMapSelectionDetail = "";
+    public double tacticalMapSelectionX = Double.NaN;
+    public double tacticalMapSelectionY = Double.NaN;
+    public boolean tacticalMapSelectionHostile = false;
 
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
@@ -295,6 +330,16 @@ public final class UiState {
         selectedCampaignContactHostile = false;
         selectedCampaignContactTrackable = false;
         selectedCampaignContactGalaxySearchGroupId = 0;
+    }
+
+    public void clearTacticalMapSelection() {
+        tacticalMapSelectionKind = TacticalMapSelectionKind.MISSION;
+        tacticalMapSelectionLabel = "";
+        tacticalMapSelectionSubtitle = "";
+        tacticalMapSelectionDetail = "";
+        tacticalMapSelectionX = Double.NaN;
+        tacticalMapSelectionY = Double.NaN;
+        tacticalMapSelectionHostile = false;
     }
 
     public void clearVoiceCaption() {

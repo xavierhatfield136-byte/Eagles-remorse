@@ -3200,6 +3200,7 @@ public abstract class Ship {
 
     public boolean reactorBlackoutActive() {
         if (!alive || dying || hp <= 0) return false;
+        ensureRoomSystemsInitialized();
         return isSystemDestroyed(InternalSystem.REACTOR_CORE)
                 || !isRoomOperational(ShipRoomLayout.RoomId.REACTOR)
                 || allPowerRoomsDestroyed();
@@ -6270,8 +6271,8 @@ public abstract class Ship {
         double speed = Math.max(980.0, superweaponSpeed * 1.18);
         int life = Math.max(52, (int) Math.round(superweaponLife * 1.22));
         double shotRadius = Math.max(10.0, superweaponRadius * 1.18);
-        int maxHits = Math.max(4, superweaponMaxHits + 1);
-        Projectile shot = new SuperweaponShot(
+        double blastRadius = Math.max(220.0, superweaponRadius * 12.0);
+        Projectile shot = new DisruptorSlug(
                 sx,
                 sy,
                 aim,
@@ -6280,7 +6281,7 @@ public abstract class Ship {
                 damage,
                 life,
                 shotRadius,
-                maxHits,
+                blastRadius,
                 faction
         );
         shot.sourceShipId = id;

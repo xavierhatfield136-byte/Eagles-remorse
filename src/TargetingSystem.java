@@ -43,6 +43,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+            if (!canDirectlyEngage(ctx, ctx.player, s)) continue;
             if (!isDetectableToObserver(ctx, ctx.player, s)) continue;
             enemies.add(s);
         }
@@ -73,6 +74,7 @@ public final class TargetingSystem {
                 && seeker.faction.isFriendlyTo(ctx.player.faction)
                 && !seeker.faction.isFriendlyTo(ctx.lockedTarget.faction)
                 && !isCiwsOnlyTarget(ctx.lockedTarget)
+                && canDirectlyEngage(ctx, seeker, ctx.lockedTarget)
                 && isDetectableToObserver(ctx, seeker, ctx.lockedTarget)) {
             return ctx.lockedTarget;
         }
@@ -88,6 +90,7 @@ public final class TargetingSystem {
             if (isCiwsOnlyTarget(s)) continue;
 
             if (seeker.faction != null && s.faction != null && !seeker.faction.isFriendlyTo(s.faction)) {
+                if (!canDirectlyEngage(ctx, seeker, s)) continue;
                 if (!isDetectableToObserver(ctx, seeker, s)) continue;
                 double d2 = GameMath.dist2(seeker.x, seeker.y, s.x, s.y);
                 if (d2 < bestD2) { bestD2 = d2; best = s; }
@@ -114,6 +117,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (isCiwsOnlyTarget(s)) continue;
+            if (!canDirectlyEngage(ctx, observer, s)) continue;
             if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
@@ -136,6 +140,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!s.isSmallCraft()) continue;
             if (perspective != null && s.faction != null && perspective.isFriendlyTo(s.faction)) continue;
+            if (!canDirectlyEngage(ctx, observer, s)) continue;
             if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
@@ -161,6 +166,7 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (perspective != null && s.faction != null && perspective.isFriendlyTo(s.faction)) continue;
             if (!sourceSector.containsWorld(ctx, s.x, s.y)) continue;
+            if (!canDirectlyEngage(ctx, observer, s)) continue;
             if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
             if (d2 < bestD2) {
@@ -233,6 +239,7 @@ public final class TargetingSystem {
         if (sharesWeaponsHotContact(ctx, observer, target)) return true;
         if (formationRelayDetectsTarget(ctx, observer, target)) return true;
         if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
+        if (ctx != null && inSameDetectionZone(ctx, observer, target) && !target.isStealth) return true;
         double range = detectionRangeForObserver(observer, target, observerSensorMul, targetSignatureMul);
         double dx = target.x - observer.x;
         double dy = target.y - observer.y;
@@ -300,6 +307,11 @@ public final class TargetingSystem {
             return aSector.id != null && aSector.id.equalsIgnoreCase(bSector.id);
         }
         return true;
+    }
+
+    private static boolean canDirectlyEngage(GameContext ctx, Ship observer, Ship target) {
+        if (ctx == null || observer == null || target == null) return true;
+        return CampaignSystem.missionSubzonesAllowDirectFire(ctx, observer, target);
     }
 
     private static boolean canShareContactTelemetry(GameContext ctx, Ship a, Ship b) {

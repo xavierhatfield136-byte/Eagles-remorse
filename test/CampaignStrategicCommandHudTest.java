@@ -2,6 +2,9 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Canvas;
+import java.awt.Rectangle;
+import java.awt.event.MouseEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -78,14 +81,35 @@ class CampaignStrategicCommandHudTest {
         assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Reputation: ")));
         assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Theater Shift: ")));
         assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Band: ")));
+        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Contact Pressure: ")));
+        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Recommendation: ")));
         assertTrue(finder.stream().anyMatch(line -> line.startsWith("Bearing: ")));
+        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Route Trend: ")));
         assertTrue(finder.stream().anyMatch(line -> line.startsWith("Current Callout: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Green Channel Favor: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Contact Net: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Reputation: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Crew: ")));
-        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Rumor Board")));
+        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Lead  | ")));
         assertFalse(strikes.stream().anyMatch(line -> line.contains("Shift+LMB")));
+    }
+
+    @Test
+    void selectedLocationSidebarSurfacesWhyActionAndRisk() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignLocation selected = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location != null)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(selected);
+
+        ctx.campaign.selectedGalaxyLocationId = selected.id;
+        List<String> lines = CampaignSystem.selectedLocationSidebarLines(ctx);
+
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Why It Matters: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Action Window: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Risk: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Primary Recommendation: ")));
     }
 
     @Test
@@ -106,6 +130,9 @@ class CampaignStrategicCommandHudTest {
         assertNotNull(torpedo);
         assertFalse(torpedo.enabled);
         assertTrue(torpedo.disabledReason.toLowerCase().contains("target"));
+        CampaignSystem.CampaignAction engageCourse = navActions.stream().filter(action -> "ENGAGE_COURSE".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(engageCourse);
+        assertNotNull(engageCourse.disabledReason);
     }
 
     @Test
@@ -764,12 +791,45 @@ class CampaignStrategicCommandHudTest {
         while (!"Recon Sweep".equals(CampaignSystem.campaignFleetPostureReadout(ctx))) {
             assertTrue(CampaignSystem.cycleSelectedFleetPosture(ctx));
         }
-        assertTrue(CampaignSystem.campaignDirectionFinderLines(ctx).stream().anyMatch(line -> line.startsWith("Posture Detail: ")));
+        assertTrue(CampaignSystem.campaignDirectionFinderLines(ctx).stream().anyMatch(line -> line.startsWith("Route Trend: ")));
 
         st.campaignSupplies = 20;
         assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));
-        assertEquals(15, st.campaignSupplies);
+        assertEquals(17, st.campaignSupplies);
         assertTrue(CampaignSystem.campaignNavigationStationLines(ctx).stream().anyMatch(line -> line.startsWith("Posture: Recon Sweep")));
+    }
+
+    @Test
+    void campaignActionHitboxesResolveToTheRenderedButtonCenters() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        assertTrue(CampaignSystem.isStrategicGalaxyMapMode(ctx));
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, true);
+        Method actionRect = Renderer.class.getDeclaredMethod(
+                "galaxyActionRect",
+                GameContext.class,
+                Rectangle.class,
+                String.class
+        );
+        actionRect.setAccessible(true);
+
+        for (String actionId : List.of("ENGAGE_COURSE", "SET_WAYPOINT", "SIGNAL_SWEEP")) {
+            Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, actionId);
+            assertNotNull(rect, "expected a rendered rect for " + actionId);
+            Renderer.CampaignHubClickTarget target = Renderer.campaignHubClickTargetAt(
+                    ctx,
+                    viewW,
+                    viewH,
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2
+            );
+            assertNotNull(target, "expected a click target at the center of " + actionId);
+            assertEquals(Renderer.CampaignHubClickTarget.Kind.ACTION, target.kind);
+            assertEquals(actionId, target.valueId);
+        }
     }
 
     @Test
@@ -924,6 +984,131 @@ class CampaignStrategicCommandHudTest {
         assertTrue(relay.scarNote.contains("relay went dark"));
         assertTrue(st.enemyAlertLevel > 0.0);
         assertTrue(searchGroupCount(st) > searchGroupsBefore);
+    }
+
+    @Test
+    void tacticalMapActionHitboxesResolveToRenderedButtonCenters() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.MISSION;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.OBJECTIVE;
+        ctx.ui.tacticalMapSelectionLabel = "Kill Pocket";
+        ctx.ui.tacticalMapSelectionSubtitle = "Primary objective";
+        ctx.ui.tacticalMapSelectionDetail = "Hostile concentration";
+        ctx.ui.tacticalMapSelectionX = 2200.0;
+        ctx.ui.tacticalMapSelectionY = 1800.0;
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, false);
+        Method actionRect = Renderer.class.getDeclaredMethod(
+                "tacticalActionRect",
+                GameContext.class,
+                Rectangle.class,
+                String.class
+        );
+        actionRect.setAccessible(true);
+
+        for (String actionId : List.of("TACTICAL_PLOT_COURSE", "TACTICAL_HOLD_POSITION", "TACTICAL_SEND_RECON")) {
+            Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, actionId);
+            assertNotNull(rect, "expected a rendered rect for " + actionId);
+            Renderer.CampaignHubClickTarget target = Renderer.tacticalMapClickTargetAt(
+                    ctx,
+                    viewW,
+                    viewH,
+                    rect.x + rect.width / 2,
+                    rect.y + rect.height / 2
+            );
+            assertNotNull(target, "expected a click target at the center of " + actionId);
+            assertEquals(Renderer.CampaignHubClickTarget.Kind.ACTION, target.kind);
+            assertEquals(actionId, target.valueId);
+        }
+    }
+
+    @Test
+    void tacticalMissionCommandBayPlotCourseSetsWaypointFromSelection() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.MISSION;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.OBJECTIVE;
+        ctx.ui.tacticalMapSelectionLabel = "Prototype Recovery";
+        ctx.ui.tacticalMapSelectionSubtitle = "Discovery";
+        ctx.ui.tacticalMapSelectionDetail = "Recoverable site";
+        ctx.ui.tacticalMapSelectionX = 3100.0;
+        ctx.ui.tacticalMapSelectionY = 2600.0;
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, false);
+        Method actionRect = Renderer.class.getDeclaredMethod(
+                "tacticalActionRect",
+                GameContext.class,
+                Rectangle.class,
+                String.class
+        );
+        actionRect.setAccessible(true);
+        Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, "TACTICAL_PLOT_COURSE");
+        assertNotNull(rect);
+
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+                1,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertTrue(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH));
+        assertEquals(3100.0, ctx.ui.waypointX, 1e-6);
+        assertEquals(2600.0, ctx.ui.waypointY, 1e-6);
+    }
+
+    @Test
+    void overmapHostileContactClickBeatsNearbyMissionHitbox() {
+        GameContext ctx = initializedCampaignContext();
+        int viewW = 1280;
+        int viewH = 720;
+        CampaignSystem.CampaignLocation location = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(it -> it != null && it.primaryMission && "poi-06".equals(it.id))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(location);
+        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.activeSupportMarkers(ctx).stream()
+                .filter(it -> it != null && it.type == CampaignSystem.SupportMarkerType.HAZARD)
+                .filter(it -> it.label.contains(location.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(marker);
+
+        ctx.ui.strategicMapFocusX = location.x;
+        ctx.ui.strategicMapFocusY = location.y;
+        Rectangle rect = Renderer.getStrategicMapInnerRect(viewW, viewH, true);
+        double nx = (marker.x - UISystem.strategicMapWorldMinX(ctx)) / UISystem.strategicMapViewWidth(ctx);
+        double ny = (marker.y - UISystem.strategicMapWorldMinY(ctx)) / UISystem.strategicMapViewHeight(ctx);
+        int clickX = rect.x + (int) Math.round(nx * rect.width);
+        int clickY = rect.y + (int) Math.round(ny * rect.height);
+
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                clickX,
+                clickY,
+                1,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        UISystem.handleMapClick(ctx, click, viewW, viewH);
+        assertEquals(marker.label, CampaignSystem.selectedCampaignContactLabel(ctx));
+        assertTrue(CampaignSystem.selectedCampaignContactHostile(ctx));
     }
 
     private static GameContext initializedCampaignContext() {

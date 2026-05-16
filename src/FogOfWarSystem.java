@@ -171,6 +171,10 @@ public final class FogOfWarSystem {
     public static void update(GameContext ctx) {
         if (ctx == null || ctx.fogOfWar == null || !isCombatFogEnabled(ctx)) return;
         State fog = ctx.fogOfWar;
+        if (CampaignSystem.revealFullMissionSpace(ctx)) {
+            revealEntireState(fog);
+            return;
+        }
         Arrays.fill(fog.visible, false);
         fog.visibleCount = 0;
         fog.ageGhostContacts(GameContext.DT);
@@ -192,6 +196,15 @@ public final class FogOfWarSystem {
         }
         fog.pruneInvalidGhostContacts(ctx.ships, perspective);
         fog.pruneExpiredGhostContacts();
+    }
+
+    private static void revealEntireState(State fog) {
+        if (fog == null) return;
+        Arrays.fill(fog.explored, true);
+        Arrays.fill(fog.visible, true);
+        fog.exploredCount = fog.totalCells();
+        fog.visibleCount = fog.totalCells();
+        fog.contactGhosts.clear();
     }
 
     public static boolean isCombatFogEnabled(GameContext ctx) {
@@ -275,6 +288,7 @@ public final class FogOfWarSystem {
         addShipInterestSignals(ctx, sweep, out);
         addCampaignDiscoverySignals(ctx, sweep, out);
         addRecoverableWreckSignals(ctx, sweep, out);
+        addCampaignOvermapSensorSignals(ctx, sweep, out);
         out.sort((a, b) -> {
             int anomalyBias = Integer.compare(sensorInterestPriority(b), sensorInterestPriority(a));
             if (anomalyBias != 0) return anomalyBias;
@@ -379,6 +393,27 @@ public final class FogOfWarSystem {
             double strength = clamp01(0.62 + sweep * 0.28 + radiusSignal * 0.16);
             addSignalIfCovered(ctx, out, SensorInterestKind.FLEET_ASSET, site.label, site.x, site.y,
                     strength, Math.max(150.0, site.radius * (1.02 + (1.0 - sweep) * 0.25)));
+        }
+    }
+
+    private static void addCampaignOvermapSensorSignals(GameContext ctx, double sweep, ArrayList<SensorInterestSignal> out) {
+        if (ctx == null || out == null) return;
+        for (CampaignSystem.CampaignSensorPulse pulse : CampaignSystem.campaignSensorPulses(ctx)) {
+            if (pulse == null) continue;
+            SensorInterestKind kind;
+            if (pulse.relay) {
+                kind = SensorInterestKind.INTEL;
+            } else if (pulse.label.toLowerCase(Locale.US).contains("false")) {
+                kind = SensorInterestKind.HAZARD;
+            } else {
+                kind = pulse.hostile ? SensorInterestKind.CONTACT : SensorInterestKind.INTEL;
+            }
+            double strength = clamp01(Math.max(pulse.strength, 0.20 + sweep * 0.30));
+            out.add(new SensorInterestSignal(kind, pulse.label,
+                    clamp(pulse.x, 0.0, Math.max(1.0, ctx.WORLD_W)),
+                    clamp(pulse.y, 0.0, Math.max(1.0, ctx.WORLD_H)),
+                    strength,
+                    pulse.uncertaintyRadius));
         }
     }
 

@@ -786,14 +786,16 @@ public final class UISystem {
 
     public static boolean handleCampaignMapUiClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.ui == null || e == null) return false;
-        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
-        if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
+        boolean galaxyMode = CampaignSystem.isStrategicGalaxyMapMode(ctx);
+        if (galaxyMode
+                && CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
                 && !ctx.ui.campaignHubMenu.active
                 && !ctx.ui.campaignActionConfirm.active) return false;
 
-        Renderer.CampaignHubClickTarget target =
-                Renderer.campaignHubClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
+        Renderer.CampaignHubClickTarget target = galaxyMode
+                ? Renderer.campaignHubClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY())
+                : Renderer.tacticalMapClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
         if (target == null) return false;
 
         switch (target.kind) {
@@ -807,14 +809,20 @@ public final class UISystem {
             }
             case TAB -> {
                 try {
-                    ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.valueOf(target.valueId);
+                    if (galaxyMode) {
+                        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.valueOf(target.valueId);
+                    } else {
+                        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.valueOf(target.valueId);
+                    }
                     return true;
                 } catch (Exception ignored) {
                     return false;
                 }
             }
             case ACTION -> {
-                return handleCampaignCommandAction(ctx, target.valueId);
+                return galaxyMode
+                        ? handleCampaignCommandAction(ctx, target.valueId)
+                        : CampaignSystem.executeTacticalMapAction(ctx, target.valueId);
             }
             case CONFIRM -> {
                 if (ctx.ui.campaignActionConfirm.active) {
@@ -853,6 +861,33 @@ public final class UISystem {
         if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
             CampaignSystem.CampaignLocation clickedLocation =
                     CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, 260.0);
+            CampaignSystem.CampaignSupportMarker clickedSupport =
+                    CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
+            if (shouldPreferCampaignSupportClick(clickedLocation, clickedSupport, worldX, worldY)) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
+                    EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
+                    return;
+                }
+                String intel = "";
+                if (clickedSupport.subtitle != null && clickedSupport.subtitle.contains("|")) {
+                    intel = clickedSupport.subtitle.substring(0, clickedSupport.subtitle.indexOf('|')).trim();
+                }
+                boolean hostile = clickedSupport.type == CampaignSystem.SupportMarkerType.HAZARD;
+                CampaignSystem.selectCampaignContactTarget(ctx,
+                        clickedSupport.label,
+                        clickedSupport.subtitle,
+                        intel,
+                        clickedSupport.x,
+                        clickedSupport.y,
+                        hostile,
+                        true);
+                ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
+                ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
+                addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+                EventSystem.showBanner(ctx, "CONTACT SELECTED: " + clickedSupport.label.toUpperCase(), 1.2);
+                return;
+            }
             if (clickedLocation != null) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, clickedLocation.x, clickedLocation.y, 2.2);
@@ -866,8 +901,6 @@ public final class UISystem {
                 }
                 return;
             }
-            CampaignSystem.CampaignSupportMarker clickedSupport =
-                    CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
             if (clickedSupport != null) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
@@ -919,8 +952,17 @@ public final class UISystem {
                 EventSystem.showBanner(ctx, "OBJECTIVE PING: " + clickedMarker.label.toUpperCase(), 1.2);
                 return;
             }
+            CampaignSystem.clearSelectedCampaignContact(ctx);
             ctx.ui.waypointX = GameMath.clamp(clickedMarker.x, 0, ctx.WORLD_W);
             ctx.ui.waypointY = GameMath.clamp(clickedMarker.y, 0, ctx.WORLD_H);
+            setTacticalMapSelection(ctx,
+                    UiState.TacticalMapSelectionKind.OBJECTIVE,
+                    clickedMarker.label,
+                    clickedMarker.subtitle,
+                    clickedMarker.type.name().replace('_', ' '),
+                    clickedMarker.x,
+                    clickedMarker.y,
+                    false);
             addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
             String subtitle = (clickedMarker.subtitle == null || clickedMarker.subtitle.isBlank())
                     ? ""
@@ -951,6 +993,22 @@ public final class UISystem {
                 EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
                 return;
             }
+            setTacticalMapSelection(ctx,
+                    UiState.TacticalMapSelectionKind.CONTACT,
+                    clickedSupport.label,
+                    clickedSupport.subtitle,
+                    clickedSupport.type.name().replace('_', ' '),
+                    clickedSupport.x,
+                    clickedSupport.y,
+                    true);
+            CampaignSystem.selectCampaignContactTarget(ctx,
+                    clickedSupport.label,
+                    clickedSupport.subtitle,
+                    CampaignSystem.usesMissionSubzones(ctx) ? "Tracked" : clickedSupport.type.name().replace('_', ' '),
+                    clickedSupport.x,
+                    clickedSupport.y,
+                    true,
+                    true);
             ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
             ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
             addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
@@ -971,6 +1029,15 @@ public final class UISystem {
                 EventSystem.showBanner(ctx, "SUPPORT PING: " + clickedSupport.label.toUpperCase(), 1.2);
                 return;
             }
+            CampaignSystem.clearSelectedCampaignContact(ctx);
+            setTacticalMapSelection(ctx,
+                    UiState.TacticalMapSelectionKind.CONTACT,
+                    clickedSupport.label,
+                    clickedSupport.subtitle,
+                    clickedSupport.type.name().replace('_', ' '),
+                    clickedSupport.x,
+                    clickedSupport.y,
+                    false);
             ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
             ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
             addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
@@ -991,6 +1058,15 @@ public final class UISystem {
                 EventSystem.showBanner(ctx, "LANDMARK PING: " + clickedLandmark.label.toUpperCase(), 1.2);
                 return;
             }
+            CampaignSystem.clearSelectedCampaignContact(ctx);
+            setTacticalMapSelection(ctx,
+                    UiState.TacticalMapSelectionKind.LANDMARK,
+                    clickedLandmark.label,
+                    clickedLandmark.subtitle,
+                    clickedLandmark.type.name().replace('_', ' '),
+                    clickedLandmark.x,
+                    clickedLandmark.y,
+                    false);
             ctx.ui.waypointX = GameMath.clamp(clickedLandmark.x, 0, ctx.WORLD_W);
             ctx.ui.waypointY = GameMath.clamp(clickedLandmark.y, 0, ctx.WORLD_H);
             addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
@@ -1081,8 +1157,49 @@ public final class UISystem {
 
         ctx.ui.waypointX = worldX;
         ctx.ui.waypointY = worldY;
+        CampaignSystem.clearSelectedCampaignContact(ctx);
+        setTacticalMapSelection(ctx,
+                UiState.TacticalMapSelectionKind.SPACE,
+                "Free Course",
+                "Open battlespace",
+                "Waypoint only",
+                worldX,
+                worldY,
+                false);
         addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.2);
+    }
+
+    private static boolean shouldPreferCampaignSupportClick(CampaignSystem.CampaignLocation location,
+                                                            CampaignSystem.CampaignSupportMarker support,
+                                                            double worldX,
+                                                            double worldY) {
+        if (support == null) return false;
+        if (location == null) return true;
+        double supportDist2 = GameMath.dist2(worldX, worldY, support.x, support.y);
+        double locationDist2 = GameMath.dist2(worldX, worldY, location.x, location.y);
+        if (support.type == CampaignSystem.SupportMarkerType.HAZARD) {
+            return supportDist2 <= locationDist2 * 1.6;
+        }
+        return supportDist2 <= locationDist2;
+    }
+
+    private static void setTacticalMapSelection(GameContext ctx,
+                                                UiState.TacticalMapSelectionKind kind,
+                                                String label,
+                                                String subtitle,
+                                                String detail,
+                                                double x,
+                                                double y,
+                                                boolean hostile) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.tacticalMapSelectionKind = (kind == null) ? UiState.TacticalMapSelectionKind.MISSION : kind;
+        ctx.ui.tacticalMapSelectionLabel = (label == null) ? "" : label.trim();
+        ctx.ui.tacticalMapSelectionSubtitle = (subtitle == null) ? "" : subtitle.trim();
+        ctx.ui.tacticalMapSelectionDetail = (detail == null) ? "" : detail.trim();
+        ctx.ui.tacticalMapSelectionX = x;
+        ctx.ui.tacticalMapSelectionY = y;
+        ctx.ui.tacticalMapSelectionHostile = hostile;
     }
 
     private static Rectangle fleetNetPanelRect(int viewportW, int viewportH) {

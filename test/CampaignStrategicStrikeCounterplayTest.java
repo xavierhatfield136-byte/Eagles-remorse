@@ -9,6 +9,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class CampaignStrategicStrikeCounterplayTest {
 
@@ -128,6 +130,237 @@ class CampaignStrategicStrikeCounterplayTest {
         assertTrue(st.yellowLiberationFavor < startYellow, "atomic strike should damage Yellow standing");
     }
 
+    @Test
+    void torpedoStrikeStartsCampaignCinematicPresentation() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Object taskForce = firstHostileTaskForce(ctx.campaign);
+        assertNotNull(taskForce);
+
+        assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx,
+                taskForceCenterX(ctx, ctx.campaign, taskForce),
+                taskForceCenterY(ctx, ctx.campaign, taskForce)));
+
+        assertTrue(CampaignSystem.isCampaignStrikeCinematicActive(ctx),
+                "strategic strikes should kick off a visible campaign cinematic instead of resolving invisibly");
+        assertTrue(ctx.ui.mapOpen, "the campaign map should stay up so the player can follow the inbound weapon");
+    }
+
+    @Test
+    void strikeReportsPersistAfterSuccessfulLaunch() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Object taskForce = firstHostileTaskForce(ctx.campaign);
+        assertNotNull(taskForce);
+
+        assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx,
+                taskForceCenterX(ctx, ctx.campaign, taskForce),
+                taskForceCenterY(ctx, ctx.campaign, taskForce)));
+
+        assertTrue(CampaignSystem.lastStrikeReportTitle(ctx).contains("TORPEDO REPORT"));
+        assertTrue(CampaignSystem.lastStrikeReportDetail(ctx).contains("Heat"));
+        assertTrue(CampaignSystem.campaignStrikeConsequenceLines(ctx).stream().anyMatch(line -> line.startsWith("Report: ")));
+    }
+
+    @Test
+    void selectedTargetLockPersistsAcrossStrikeTabReadinessTransitions() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        setDouble(group, "x", st.playerGalaxyX + 180.0);
+        setDouble(group, "y", st.playerGalaxyY + 80.0);
+        setBoolean(group, "visible", true);
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "TRACKED"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "CONFIRMED_HOSTILE"));
+
+        CampaignSystem.selectCampaignContactTarget(ctx, "Tracked Return", "", "Tracked", getDouble(group, "x"), getDouble(group, "y"), true, true);
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
+        double lockedX = ctx.ui.selectedCampaignContactX;
+        double lockedY = ctx.ui.selectedCampaignContactY;
+        assertFalse(CampaignSystem.selectedCampaignContactLabel(ctx).isBlank());
+
+        List<CampaignSystem.CampaignAction> strikeActions = CampaignSystem.campaignVisibleActions(ctx);
+        CampaignSystem.CampaignAction sortie = strikeActions.stream().filter(action -> "CARRIER_SORTIE".equals(action.id)).findFirst().orElse(null);
+        CampaignSystem.CampaignAction torpedo = strikeActions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(sortie);
+        assertNotNull(torpedo);
+        assertTrue(sortie.enabled);
+        assertTrue(torpedo.enabled);
+
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "TARGET_QUALITY"));
+        CampaignSystem.selectCampaignContactTarget(ctx, "Tracked Return", "", "Target-Quality", getDouble(group, "x"), getDouble(group, "y"), true, true);
+        assertEquals(lockedX, ctx.ui.selectedCampaignContactX);
+        assertEquals(lockedY, ctx.ui.selectedCampaignContactY);
+        List<CampaignSystem.CampaignAction> upgraded = CampaignSystem.campaignVisibleActions(ctx);
+        CampaignSystem.CampaignAction upgradedTorpedo = upgraded.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(upgradedTorpedo);
+        assertTrue(upgradedTorpedo.enabled);
+    }
+
+    @Test
+    void broadSweepCreatesUsableStrikeWindowWithoutPointBlankContact() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.campaignSupplies = 20;
+        st.campaignIntelLevel = 24.0;
+        st.strategicTorpedoCharges = 2;
+        st.strategicSortiesLaunched = 0;
+
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        setDouble(group, "x", st.playerGalaxyX + 1350.0);
+        setDouble(group, "y", st.playerGalaxyY + 220.0);
+        setBoolean(group, "hostile", true);
+        setBoolean(group, "visible", false);
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "POSSIBLE_PATROL"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "UNKNOWN"));
+        setDouble(group, "trackIntegrity", 18.0);
+
+        assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));
+
+        CampaignSystem.selectCampaignContactTarget(
+                ctx,
+                "Sweep Return",
+                "",
+                CampaignSystem.selectedCampaignContactIntelLabel(ctx),
+                getDouble(group, "x"),
+                getDouble(group, "y"),
+                true,
+                true);
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+        CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
+        CampaignSystem.CampaignAction sortie = actions.stream().filter(action -> "CARRIER_SORTIE".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(torpedo);
+        assertNotNull(sortie);
+        assertTrue(getBoolean(group, "visible"), "sweep should reveal the hostile at long range");
+        assertTrue(torpedo.enabled || sortie.enabled,
+                "a single broad sweep should create at least one practical strike option");
+    }
+
+    @Test
+    void tacticalStrikeTabCanLaunchStandOffStrikeAgainstSelectedHostileZone() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object taskForce = firstHostileTaskForce(st);
+        assertNotNull(taskForce);
+
+        double x = taskForceCenterX(ctx, st, taskForce);
+        double y = taskForceCenterY(ctx, st, taskForce);
+        CampaignSystem.selectCampaignContactTarget(ctx, "Strike Zone", "", "Tracked", x, y, true, true);
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.CONTACT;
+        ctx.ui.tacticalMapSelectionLabel = "Strike Zone";
+        ctx.ui.tacticalMapSelectionSubtitle = "Hostile pocket";
+        ctx.ui.tacticalMapSelectionDetail = "Tracked";
+        ctx.ui.tacticalMapSelectionX = x;
+        ctx.ui.tacticalMapSelectionY = y;
+        ctx.ui.tacticalMapSelectionHostile = true;
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.tacticalMapVisibleActions(ctx);
+        CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(torpedo);
+        assertTrue(torpedo.enabled, "selected hostile zone should permit a tactical torpedo strike");
+        int torpedoesBefore = st.strategicTorpedoCharges;
+        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+        assertTrue(st.strategicTorpedoCharges < torpedoesBefore, "tactical torpedo strike should spend a charge");
+    }
+
+    @Test
+    void majorMissionThreatsAreVisibleAndStrikeableBeforeEntry() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignLocation location = findLocation(ctx, "poi-06");
+        assertNotNull(location);
+
+        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
+        CampaignSystem.CampaignSupportMarker marker = markers.stream()
+                .filter(it -> it.type == CampaignSystem.SupportMarkerType.HAZARD)
+                .filter(it -> it.label.contains(location.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(marker, "primary mission should advertise outside hostile contacts on the overmap");
+
+        ctx.campaign.strategicTorpedoCharges = 2;
+        ctx.campaign.campaignAmmo = 120;
+        ctx.campaign.campaignFuel = 120;
+        assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx, marker.x, marker.y));
+        assertTrue(location.missionOuterThreatSuppression > 0.0,
+                "outside strike should soften the mission before tactical entry");
+
+        invokePrivateStatic("launchCampaignLocationEncounter",
+                new Class<?>[]{GameContext.class, CampaignSystem.CampaignState.class, CampaignSystem.CampaignLocation.class},
+                ctx, ctx.campaign, location);
+        Object hostile = firstHostileTaskForce(ctx.campaign);
+        assertNotNull(hostile);
+        assertTrue(getDouble(hostile, "currentStrength") < getDouble(hostile, "maxStrength"),
+                "pre-entry bombardment should carry into the mission task forces");
+    }
+
+    @Test
+    void tacticalTorpedoCanLockAndStrikeEnemyShipInAnotherSubzone() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Ship hostile = ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && ship.alive && !ship.dying)
+                .filter(ship -> ship.faction != null && !ship.faction.isFriendlyTo(ctx.player.faction))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(hostile);
+
+        int playerSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        int remoteSubzone = (playerSubzone == CampaignSystem.missionSubzoneIndex(5, 2))
+                ? CampaignSystem.missionSubzoneIndex(0, 0)
+                : CampaignSystem.missionSubzoneIndex(5, 2);
+        double remoteX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, remoteSubzone);
+        double remoteY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, remoteSubzone);
+        hostile.x = remoteX;
+        hostile.y = remoteY;
+        hostile.campaignMissionSubzone = remoteSubzone;
+
+        CampaignSystem.selectCampaignContactTarget(ctx, hostile.name, "", "Tracked", hostile.x, hostile.y, true, true);
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.CONTACT;
+        ctx.ui.tacticalMapSelectionLabel = hostile.name;
+        ctx.ui.tacticalMapSelectionSubtitle = "Hostile hull";
+        ctx.ui.tacticalMapSelectionDetail = "Tracked";
+        ctx.ui.tacticalMapSelectionX = hostile.x;
+        ctx.ui.tacticalMapSelectionY = hostile.y;
+        ctx.ui.tacticalMapSelectionHostile = true;
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.tacticalMapVisibleActions(ctx);
+        CampaignSystem.CampaignAction torpedo = actions.stream()
+                .filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(torpedo);
+        assertTrue(torpedo.enabled, "remote hostile ship should be strike-eligible from the tactical map");
+        double durabilityBefore = hostile.hp + hostile.shield;
+        int torpedoesBefore = ctx.campaign.strategicTorpedoCharges;
+        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+        assertTrue(ctx.campaign.strategicTorpedoCharges < torpedoesBefore, "remote tactical strike should actually fire");
+        assertTrue(hostile.hp + hostile.shield < durabilityBefore || !hostile.alive,
+                "tactical torpedo should damage the selected hostile ship even across subzone boundaries");
+    }
+
+    @Test
+    void campaignCombatUsesAuthoredPresenceInsteadOfGenericWaveSpawner() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.sector = 18;
+        assertTrue(CampaignSystem.useAuthoredWaveSchedule(ctx),
+                "campaign combat should rely on represented task-force pressure instead of generic pop-in waves");
+    }
+
     private static GameContext initializedCampaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
@@ -229,5 +462,29 @@ class CampaignStrategicStrikeCounterplayTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getBoolean(target);
+    }
+
+    private static void setDouble(Object target, String fieldName, double value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setDouble(target, value);
+    }
+
+    private static void setBoolean(Object target, String fieldName, boolean value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setBoolean(target, value);
+    }
+
+    private static void setObject(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static Object enumConstant(Class<?> type, String name) {
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        Object value = Enum.valueOf((Class<? extends Enum>) type.asSubclass(Enum.class), name);
+        return value;
     }
 }

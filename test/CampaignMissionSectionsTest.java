@@ -74,7 +74,7 @@ class CampaignMissionSectionsTest {
     }
 
     @Test
-    void missionProgressCapsUntilFleetReachesNextSection() throws Exception {
+    void missionProgressAdvancesWithoutTravelLockAcrossUnifiedBattlespace() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -85,15 +85,8 @@ class CampaignMissionSectionsTest {
         invokeUpdateMissionSectionFlow(ctx);
 
         assertEquals(1, ctx.campaign.activeMissionSection);
-        assertTrue(ctx.campaign.missionSectionTravelLocked, "progress should pause until the fleet reaches the next section");
-
-        Object activeSection = ctx.campaign.missionSections.get(ctx.campaign.activeMissionSection);
-        ctx.player.x = getDoubleField(activeSection, "x");
-        ctx.player.y = getDoubleField(activeSection, "y");
-
-        invokeUpdateMissionSectionFlow(ctx);
-
-        assertFalse(ctx.campaign.missionSectionTravelLocked, "arriving at the new section should unlock progress again");
+        assertFalse(ctx.campaign.missionSectionTravelLocked,
+                "campaign missions should remain one continuous battlespace instead of pausing for section travel");
     }
 
     @Test
@@ -150,20 +143,34 @@ class CampaignMissionSectionsTest {
     }
 
     @Test
-    void lockedMissionSectionHudSaysToFlyFlagshipToNextPocket() throws Exception {
+    void missionHudExplainsOpenDistrictPressureInsteadOfPocketLocking() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
 
         startSector(ctx, 10);
         ctx.campaign.activeMissionSection = 1;
-        ctx.campaign.missionSectionTravelLocked = true;
 
         String detail = CampaignSystem.hudObjectiveDetail(ctx);
-        assertTrue(detail.contains("Current Task: Pocket clear at ASSAULT LANE; fly the flagship to BREACH POINT to resume mission progress"),
-                "locked staged missions should say which pocket is cleared and which pocket the flagship must enter next");
-        assertTrue(detail.contains("Next Move: Pocket clear; route the flagship to BREACH POINT because kills are paused until arrival"),
-                "locked staged missions should explain that combat progress is paused until the flagship reaches the next pocket");
+        assertTrue(detail.contains("Current Task: Clear BREACH POINT"),
+                "the HUD should keep the player focused on the active pressure lane without asking for warp-like pocket moves");
+        assertTrue(detail.contains("Next Move: Break the pressure around BREACH POINT, then roll the fleet toward SUPPORT WAKE while side pockets stay open."),
+                "the HUD should describe a continuous advance across the full district");
+    }
+
+    @Test
+    void campaignFogRevealsTheFullMissionSpace() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        startSector(ctx, 10);
+        FogOfWarSystem.update(ctx);
+
+        assertEquals(1.0, ctx.fogOfWar.exploredFraction(), 0.0001,
+                "campaign missions should expose the whole district instead of hiding pockets behind concealment");
+        assertEquals(ctx.fogOfWar.totalCells(), ctx.fogOfWar.visibleCount(),
+                "all combat-fog cells should be visible in unified campaign missions");
     }
 
     @Test
@@ -357,7 +364,7 @@ class CampaignMissionSectionsTest {
 
         int diagonalTarget = CampaignSystem.missionSubzoneIndex(5, 2);
         int diagonalHop = CampaignSystem.nextCampaignWarpHop(source, diagonalTarget);
-        assertEquals(CampaignSystem.missionSubzoneIndex(1, 2), diagonalHop);
+        assertEquals(CampaignSystem.missionSubzoneIndex(1, 1), diagonalHop);
     }
 
     private static void startSector(GameContext ctx, int sector) throws Exception {

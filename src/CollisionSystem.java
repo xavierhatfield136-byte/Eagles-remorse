@@ -52,7 +52,7 @@ public class CollisionSystem {
             for (Ship s : candidates) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
-                if (!canProjectileDamageShip(shooter, p, s)) continue;
+                if (!canProjectileDamageShip(ctx, shooter, p, s)) continue;
 
                 Missile interceptorMissile = (p instanceof Missile missile
                         && missile.role == Turret.MissileRole.INTERCEPT)
@@ -554,7 +554,7 @@ public class CollisionSystem {
                 if (s == null || !s.alive) continue;
                 if (s == directHit) continue;
                 if (s.faction.isFriendlyTo(m.faction)) continue;
-                if (!canProjectileDamageShip(shooter, m, s)) continue;
+                if (!canProjectileDamageShip(ctx, shooter, m, s)) continue;
 
                 double d = Math.hypot(s.x - m.x, s.y - m.y);
                 double maxD = rr + HullGeometry.broadPhaseRadius(s);
@@ -591,7 +591,7 @@ public class CollisionSystem {
         for (Ship ship : candidates) {
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
             if (ship.faction != null && missile.faction != null && ship.faction.isFriendlyTo(missile.faction)) continue;
-            if (!canProjectileDamageShip(shooter, missile, ship)) continue;
+            if (!canProjectileDamageShip(ctx, shooter, missile, ship)) continue;
 
             double dx = ship.x - missile.x;
             double dy = ship.y - missile.y;
@@ -688,7 +688,7 @@ public class CollisionSystem {
             for (Ship s : candidates) {
                 if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
                 if (s.id == pulse.sourceShipId) continue;
-                if (!canProjectileDamageShip(shooter, pulse, s)) continue;
+                if (!canProjectileDamageShip(ctx, shooter, pulse, s)) continue;
 
                 double dx = s.x - x;
                 double dy = s.y - y;
@@ -874,7 +874,7 @@ public class CollisionSystem {
         for (Ship s : candidates) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.id == slug.sourceShipId) continue;
-            if (!canProjectileDamageShip(shooter, slug, s)) continue;
+            if (!canProjectileDamageShip(ctx, shooter, slug, s)) continue;
             if (isRedSupershipTitanSplashImmune(shooter, s, directHit)) continue;
 
             double maxD = rr + HullGeometry.broadPhaseRadius(s);
@@ -1055,7 +1055,7 @@ public class CollisionSystem {
         for (Ship s : candidates) {
             if (s == null || !s.alive || s.dying || s.hp <= 0) continue;
             if (s.faction == null || s.faction.isFriendlyTo(beam.faction)) continue;
-            if (!canProjectileDamageShip(shooter, beam, s)) continue;
+            if (!canProjectileDamageShip(ctx, shooter, beam, s)) continue;
 
             double shipBroad = HullGeometry.broadPhaseRadius(s) + halfWidth;
             if (segmentPointDistanceSq(sx, sy, ex, ey, s.x, s.y) > shipBroad * shipBroad) continue;
@@ -1295,10 +1295,13 @@ public class CollisionSystem {
         return projectile.sourceShipId == ctx.player.id;
     }
 
-    private static boolean canProjectileDamageShip(Ship shooter, Projectile projectile, Ship target) {
+    private static boolean canProjectileDamageShip(GameContext ctx, Ship shooter, Projectile projectile, Ship target) {
         if (projectile == null || target == null) return false;
         Faction sourceFaction = (shooter != null && shooter.faction != null) ? shooter.faction : projectile.faction;
         if (sourceFaction != null && target.faction != null && sourceFaction.isFriendlyTo(target.faction)) return false;
+        if (shooter != null && !CampaignSystem.missionSubzonesAllowDirectFire(ctx, shooter, target)) {
+            return false;
+        }
         boolean interceptorMissile = projectile instanceof Missile missile
                 && missile.role == Turret.MissileRole.INTERCEPT;
         if (projectile instanceof CIWSPellet || projectile instanceof PointDefenseLaser) {

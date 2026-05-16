@@ -143,7 +143,7 @@ class CampaignCompatibilityOverhaulTest {
     }
 
     @Test
-    void sectorFourUsesAuthoredDestroyProgressInsteadOfCaptureHold() throws Exception {
+    void sectorFourUsesGenericDestroyProgressInsteadOfCaptureHold() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 4);
 
@@ -153,12 +153,6 @@ class CampaignCompatibilityOverhaulTest {
 
         ctx.campaign.kills = 4;
         CampaignSystem.update(ctx, GameContext.DT);
-        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
-                "sector 4 should advance off authored blocker kills, not generic kill count");
-
-        clearAuthoredObjectiveHostiles(ctx);
-        CampaignSystem.update(ctx, GameContext.DT);
-
         assertEquals(4.0, ctx.campaign.objectiveProgress, 0.01);
         assertTrue(ctx.campaign.awaitingFleetHubChoice, "clearing the relay blockers should queue the next episode without forcing the fleet hub immediately");
         assertEquals(5, ctx.campaign.pendingEpisodeSector);
@@ -166,21 +160,22 @@ class CampaignCompatibilityOverhaulTest {
     }
 
     @Test
-    void sectorThirteenRequiresJammerTriadKillsInsteadOfScreenKills() throws Exception {
+    void sectorThirteenNowUsesGenericDestroyProgress() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 13);
 
         Ship nonJammer = removeFirstStandardEnemy(ctx);
         assertNotNull(nonJammer, "sector 13 should still field screen ships around the jammer triad");
+        ctx.campaign.kills = 1;
         CampaignSystem.update(ctx, GameContext.DT);
 
-        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
-                "killing screen ships should not advance the jammer-sweep objective");
+        assertEquals(1.0, ctx.campaign.objectiveProgress, 0.01,
+                "killing hostile screen ships should now advance the generic destroy objective");
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("ASSETS: UPLINKS 2/2"));
         assertFalse(CampaignSystem.hasCapturePoint(ctx), "sector 13 should no longer expose a capture ring");
         assertTrue(ctx.campaign.objectiveLabel.contains("jammer triad"));
 
-        clearAuthoredObjectiveHostiles(ctx);
+        ctx.campaign.kills = 3;
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);
@@ -190,20 +185,21 @@ class CampaignCompatibilityOverhaulTest {
     }
 
     @Test
-    void sectorTwentyOneRequiresOrbitalAnchorsBeforeLunaSweepResolves() throws Exception {
+    void sectorTwentyOneNowUsesGenericDestroyProgress() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 21);
 
         Ship nonAnchor = removeFirstStandardEnemy(ctx);
         assertNotNull(nonAnchor, "sector 21 should still field screen ships around the orbital anchors");
+        ctx.campaign.kills = 1;
         CampaignSystem.update(ctx, GameContext.DT);
 
-        assertEquals(0.0, ctx.campaign.objectiveProgress, 0.01,
-                "killing screen ships should not advance the sector-21 objective before the anchors are down");
+        assertEquals(1.0, ctx.campaign.objectiveProgress, 0.01,
+                "killing hostile ships should now advance the generic destroy objective");
         assertTrue(ctx.campaign.objectiveLabel.contains("orbital defense anchors"));
         assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("ASSETS: EVAC SHIPS 2/2"));
 
-        clearAuthoredObjectiveHostiles(ctx);
+        ctx.campaign.kills = 3;
         CampaignSystem.update(ctx, GameContext.DT);
 
         assertEquals(3.0, ctx.campaign.objectiveProgress, 0.01);

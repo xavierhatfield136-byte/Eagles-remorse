@@ -3632,7 +3632,7 @@ public final class AISystem {
         try {
             if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
             if (s.aiArrivalFireDelayTimer > 0.0) return 0;
-            if (!TargetingSystem.isDetectableToObserver(s, target)) return 0;
+            if (!TargetingSystem.isDetectableToObserver(ctx, s, target)) return 0;
             boolean ciwsIntercept = Turret.usesCiwsPelletsAgainst(s, firstGunTurret(s), target);
             if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return 0;
             if (objective == null) objective = SquadObjective.HOLD;
@@ -3892,12 +3892,16 @@ public final class AISystem {
         return fallback;
     }
 
+    private static double missileRangeForTurret(GameContext ctx, Ship shooter, Turret turret, double baseMissileRange) {
+        return missileRangeForTurret(turret, baseMissileRange);
+    }
+
     private static double missileRangeForTurret(Turret turret, double baseMissileRange) {
         if (turret == null) return baseMissileRange;
         Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
         return switch (role) {
-            case ANTI_HEAVY -> Math.max(520.0, baseMissileRange * 0.72);
-            case ANTI_LIGHT -> Math.max(baseMissileRange, baseMissileRange * 2.5);
+            case ANTI_HEAVY -> Math.max(baseMissileRange, baseMissileRange * 1.44);
+            case ANTI_LIGHT -> Math.max(baseMissileRange, baseMissileRange * 3.5);
             case ANTI_MEDIUM -> baseMissileRange;
             case INTERCEPT -> Math.min(baseMissileRange, 820.0);
         };

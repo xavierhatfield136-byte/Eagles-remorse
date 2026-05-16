@@ -46,6 +46,8 @@ class CampaignStrategicTravelPressureTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         Object group = firstSearchGroup(st);
         assertNotNull(group);
+        st.campaignIntelLevel = 0.0;
+        st.enemyAlertLevel = 0.0;
 
         double playerX = st.playerGalaxyX;
         double playerY = st.playerGalaxyY;
@@ -60,8 +62,8 @@ class CampaignStrategicTravelPressureTest {
         invokeSearchUpdate(ctx, st, 0.1);
         assertEquals("IDENTIFIED_TASK_FORCE", getEnumName(group, "contactConfidence"));
 
-        setDouble(group, "x", playerX + detection * 3.0);
-        setDouble(group, "targetX", playerX + detection * 3.0);
+        setDouble(group, "x", playerX + detection * 6.0);
+        setDouble(group, "targetX", playerX + detection * 6.0);
         setDouble(group, "targetY", playerY);
         setDouble(group, "stateTimer", 999.0);
         invokeSearchUpdate(ctx, st, 0.1);

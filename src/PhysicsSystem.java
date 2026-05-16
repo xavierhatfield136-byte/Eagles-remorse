@@ -243,16 +243,16 @@ public final class PhysicsSystem {
         if (ctx.player.isWarpCharging()) return;
 
         if (CampaignSystem.usesMissionSubzones(ctx)) {
-            int subzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
-            if (subzone < 0) {
-                subzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
-            }
-            double[] clamped = CampaignSystem.clampToMissionSubzone(
-                    ctx, ctx.campaign.sector, subzone, ctx.player.x, ctx.player.y);
+            double[] clamped = CampaignSystem.clampToMissionBounds(
+                    ctx, ctx.campaign.sector, ctx.player.x, ctx.player.y);
             if (clamped.length >= 2) {
                 ctx.player.x = clamped[0];
                 ctx.player.y = clamped[1];
-                CampaignSystem.setLoadedMissionSubzone(ctx, subzone);
+                int subzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ctx.player.x, ctx.player.y);
+                if (subzone >= 0) {
+                    CampaignSystem.setLoadedMissionSubzone(ctx, subzone);
+                    ctx.player.campaignMissionSubzone = subzone;
+                }
             }
             return;
         }
@@ -308,13 +308,12 @@ public final class PhysicsSystem {
         for (Ship ship : ctx.ships) {
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
             if (ship.isWarpCharging()) continue;
-            int subzone = CampaignSystem.ensureShipMissionSubzone(ctx, ship);
-            if (subzone < 0) continue;
-            double[] clamped = CampaignSystem.clampToMissionSubzone(
-                    ctx, ctx.campaign.sector, subzone, ship.x, ship.y);
+            double[] clamped = CampaignSystem.clampToMissionBounds(
+                    ctx, ctx.campaign.sector, ship.x, ship.y);
             if (clamped.length < 2) continue;
             ship.x = clamped[0];
             ship.y = clamped[1];
+            ship.campaignMissionSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ship.x, ship.y);
         }
     }
 

@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CampaignObjectiveActivationTest {
 
     @Test
-    void futureMissionPocketDoesNotBecomeObjectiveAnchorUntilArrival() throws Exception {
+    void activeMissionPressureAnchorCanAdvanceImmediatelyAcrossUnifiedBattlespace() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -21,28 +21,17 @@ class CampaignObjectiveActivationTest {
 
         CampaignSystem.CampaignState st = ctx.campaign;
         st.activeMissionSection = 1;
-        st.missionSectionTravelLocked = true;
 
-        double lockedAnchorX = invokeObjectiveAnchorX(ctx, st);
-        double lockedAnchorY = invokeObjectiveAnchorY(ctx, st);
-        Object previousSection = st.missionSections.get(0);
         Object futureSection = st.missionSections.get(1);
+        double anchorX = invokeObjectiveAnchorX(ctx, st);
+        double anchorY = invokeObjectiveAnchorY(ctx, st);
 
-        assertEquals(getDoubleField(previousSection, "x"), lockedAnchorX);
-        assertEquals(getDoubleField(previousSection, "y"), lockedAnchorY);
-        assertFalse(nearlyEquals(getDoubleField(futureSection, "x"), lockedAnchorX)
-                && nearlyEquals(getDoubleField(futureSection, "y"), lockedAnchorY),
-                "locked transit should not retarget the future pocket before arrival");
-
-        st.missionSectionTravelLocked = false;
-        double unlockedAnchorX = invokeObjectiveAnchorX(ctx, st);
-        double unlockedAnchorY = invokeObjectiveAnchorY(ctx, st);
-        assertEquals(getDoubleField(futureSection, "x"), unlockedAnchorX);
-        assertEquals(getDoubleField(futureSection, "y"), unlockedAnchorY);
+        assertEquals(getDoubleField(futureSection, "x"), anchorX);
+        assertEquals(getDoubleField(futureSection, "y"), anchorY);
     }
 
     @Test
-    void objectiveAssetFailureIsDeferredWhileTransitToNextPocketIsLocked() throws Exception {
+    void objectiveAssetFailureResolvesWithoutPocketTravelDeferral() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -51,15 +40,10 @@ class CampaignObjectiveActivationTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         st.sectorElapsed = 10.0;
         st.activeMissionSection = 1;
-        st.missionSectionTravelLocked = true;
         st.objectiveAssetLosses = Math.max(st.objectiveAssetLosses, 2);
 
         CampaignSystem.update(ctx, 0.0);
-        assertFalse(ctx.gameOver, "future-pocket loss conditions should stay dormant until the player arrives");
-
-        st.missionSectionTravelLocked = false;
-        CampaignSystem.update(ctx, 0.0);
-        assertTrue(ctx.gameOver, "once the pocket is active again, the loss condition should resolve normally");
+        assertTrue(ctx.gameOver, "convoy quota failures should resolve immediately now that campaign missions are one continuous area");
     }
 
     @Test
@@ -71,7 +55,7 @@ class CampaignObjectiveActivationTest {
 
         CampaignSystem.CampaignState st = ctx.campaign;
         st.sectorElapsed = st.sectorTimeLimit - 0.05;
-        st.authoredObjectiveKills = (int) Math.ceil(st.objectiveGoal);
+        st.kills = (int) Math.ceil(st.objectiveGoal);
 
         CampaignSystem.update(ctx, 0.10);
 

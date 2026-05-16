@@ -229,6 +229,29 @@ class CampaignPersistentFleetShopTest {
         assertEquals(oreBefore - 270, ctx.player.cargo);
     }
 
+    @Test
+    void commissionedHullAppearsInFleetHubAndLaunchesIntoNextMission() throws Exception {
+        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
+        ctx.campaign.pendingEpisodeSector = 6;
+        ctx.campaign.routeArrivalSourceSector = 5;
+
+        invokeCampaignPrivate("enterFleetHub",
+                new Class<?>[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, ctx.campaign);
+
+        long beforeFleetHubVisible = alliedRoleCount(ctx, ShipRole.FRIGATE);
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
+        long afterFleetHubVisible = alliedRoleCount(ctx, ShipRole.FRIGATE);
+
+        assertTrue(afterFleetHubVisible > beforeFleetHubVisible,
+                "commissioned hull should appear immediately in the fleet hub");
+        assertTrue(CampaignSystem.launchPendingEpisode(ctx));
+
+        long afterLaunchVisible = alliedRoleCount(ctx, ShipRole.FRIGATE);
+        assertTrue(afterLaunchVisible >= 1,
+                "commissioned hull should spawn with the player in the next mission");
+    }
+
     private static GameContext campaignShopContext(int credits, int ore, int hangarTier, int sector) {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
@@ -269,5 +292,22 @@ class CampaignPersistentFleetShopTest {
         );
         applyCheckpoint.setAccessible(true);
         return (boolean) applyCheckpoint.invoke(null, ctx, ctx.campaign, checkpoint);
+    }
+
+    private static Object invokeCampaignPrivate(String name, Class<?>[] signature, Object... args) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(name, signature);
+        method.setAccessible(true);
+        return method.invoke(null, args);
+    }
+
+    private static long alliedRoleCount(GameContext ctx, ShipRole role) {
+        return ctx.ships.stream()
+                .filter(ship -> ship != null
+                        && ship.role == role
+                        && ship.faction == Faction.ALLY
+                        && ship.alive
+                        && !ship.dying
+                        && ship.hp > 0)
+                .count();
     }
 }
