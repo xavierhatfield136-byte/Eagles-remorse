@@ -260,6 +260,34 @@ class CampaignOvermapCheckpointTest {
         assertEquals(205.0, loaded.galaxyTravelSpeed, 1e-9);
     }
 
+    @Test
+    void checkpointPreservesDetachedStrategicDivisionOrders() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 10);
+
+        assertTrue(CampaignSystem.createDetachedStrategicDivision(ctx));
+        int groupId = ctx.ui.selectedStrategicDivisionGroupId;
+        assertTrue(groupId > 0);
+
+        int targetSubzone = CampaignSystem.missionSubzoneIndex(5, 2);
+        double targetX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, targetSubzone);
+        double targetY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, targetSubzone);
+        assertTrue(CampaignSystem.issueStrategicDivisionOrder(ctx, targetX, targetY));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 11);
+        assertFalse(checkpoint.strategicDivisions.isBlank());
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        Object division = strategicDivision(restored.campaign, groupId);
+        assertNotNull(division);
+        assertEquals(targetSubzone, getInt(division, "targetSubzone"));
+        assertTrue(getDouble(division, "transitRemainingSec") > 0.0);
+        assertEquals(targetX, getDouble(division, "lastOrderX"), 1e-6);
+        assertEquals(targetY, getDouble(division, "lastOrderY"), 1e-6);
+    }
+
     private static GameContext initializedCampaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
@@ -287,6 +315,19 @@ class CampaignOvermapCheckpointTest {
         );
         applyCheckpoint.setAccessible(true);
         return (boolean) applyCheckpoint.invoke(null, ctx, ctx.campaign, checkpoint);
+    }
+
+    private static void startSector(GameContext ctx, int sector) throws Exception {
+        Method startSector = CampaignSystem.class.getDeclaredMethod("startSector", GameContext.class, int.class);
+        startSector.setAccessible(true);
+        startSector.invoke(null, ctx, sector);
+    }
+
+    private static Object strategicDivision(CampaignSystem.CampaignState st, int groupId) throws Exception {
+        java.lang.reflect.Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicDivisions");
+        field.setAccessible(true);
+        java.util.Map<?, ?> divisions = (java.util.Map<?, ?>) field.get(st);
+        return divisions.get(groupId);
     }
 
     private static CampaignSystem.CampaignLocation findLocation(GameContext ctx, String id) {

@@ -3,6 +3,7 @@ import app.config.PlayerTeamChoice;
 import app.persistence.MenuSettingsStore;
 import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.util.ArrayList;
 import java.util.Locale;
 import javax.swing.SwingUtilities;
@@ -824,6 +825,18 @@ public final class UISystem {
                         ? handleCampaignCommandAction(ctx, target.valueId)
                         : CampaignSystem.executeTacticalMapAction(ctx, target.valueId);
             }
+            case FLEET_ROSTER -> {
+                try {
+                    int slotId = Integer.parseInt(target.valueId);
+                    boolean selected = CampaignSystem.selectCampaignFleetRosterSlot(ctx, slotId);
+                    if (selected && e.getClickCount() >= 2) {
+                        return CampaignSystem.openFocusedCampaignFleetEditor(ctx);
+                    }
+                    return selected;
+                } catch (Exception ignored) {
+                    return false;
+                }
+            }
             case CONFIRM -> {
                 if (ctx.ui.campaignActionConfirm.active) {
                     return CampaignSystem.confirmCampaignAction(ctx);
@@ -842,6 +855,15 @@ public final class UISystem {
                 return false;
             }
         }
+    }
+
+    public static boolean handleCampaignMapWheel(GameContext ctx, MouseWheelEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.mapOpen) return false;
+        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+        if (ctx.ui.campaignCommandTab != UiState.CampaignCommandTab.FLEET) return false;
+        if (!Renderer.campaignFleetRosterContains(ctx, viewportW, viewportH, e.getX(), e.getY())) return false;
+        int visibleRows = Renderer.campaignFleetRosterVisibleRows(ctx, viewportW, viewportH);
+        return CampaignSystem.scrollCampaignFleetRoster(ctx, e.getWheelRotation(), visibleRows);
     }
 
     public static void handleMapClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
@@ -962,7 +984,17 @@ public final class UISystem {
                     clickedMarker.type.name().replace('_', ' '),
                     clickedMarker.x,
                     clickedMarker.y,
-                    false);
+                    isHostileTacticalObjective(ctx, clickedMarker));
+            if (isHostileTacticalObjective(ctx, clickedMarker)) {
+                CampaignSystem.selectCampaignContactTarget(ctx,
+                        clickedMarker.label,
+                        clickedMarker.subtitle,
+                        "Tracked",
+                        clickedMarker.x,
+                        clickedMarker.y,
+                        true,
+                        true);
+            }
             addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
             String subtitle = (clickedMarker.subtitle == null || clickedMarker.subtitle.isBlank())
                     ? ""
@@ -1200,6 +1232,15 @@ public final class UISystem {
         ctx.ui.tacticalMapSelectionX = x;
         ctx.ui.tacticalMapSelectionY = y;
         ctx.ui.tacticalMapSelectionHostile = hostile;
+    }
+
+    private static boolean isHostileTacticalObjective(GameContext ctx, CampaignSystem.CampaignObjectiveMarker marker) {
+        if (marker == null) return false;
+        if (marker.faction != null && ctx != null && ctx.player != null && ctx.player.faction != null) {
+            return !marker.faction.isFriendlyTo(ctx.player.faction);
+        }
+        return marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET
+                || marker.type == CampaignSystem.ObjectiveMarkerType.BOSS_TARGET;
     }
 
     private static Rectangle fleetNetPanelRect(int viewportW, int viewportH) {
@@ -1785,7 +1826,8 @@ public final class UISystem {
         for (int i = 0; i < ctx.player.flightDeckLoadout.length; i++) {
             ctx.player.setFlightDeckRole(i, role);
         }
-        EventSystem.showBanner(ctx, "SQUAD LOADOUT: " + role.name() + " x10", 1.0);
+        String count = role == ShipRole.PICKET ? "x5 BERTHS" : "x10";
+        EventSystem.showBanner(ctx, "SQUAD LOADOUT: " + role.name() + " " + count, 1.0);
     }
 
     public static void resetFlightDeckLoadout(GameContext ctx) {

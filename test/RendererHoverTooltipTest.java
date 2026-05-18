@@ -5,10 +5,12 @@ import org.junit.jupiter.api.Test;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class RendererHoverTooltipTest {
 
@@ -115,6 +117,213 @@ class RendererHoverTooltipTest {
         assertTrue(tooltip.title.contains("OBJECTIVE"));
         assertTrue(tooltip.body.contains(objectiveTitle));
         assertTrue(tooltip.body.contains("warp corridor stabilizes"));
+    }
+
+    @Test
+    void campaignActionButtonsExposeFullHoverDescriptions() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, true);
+        Method actionRect = Renderer.class.getDeclaredMethod("galaxyActionRect", GameContext.class, Rectangle.class, String.class);
+        actionRect.setAccessible(true);
+        Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, "SIGNAL_SWEEP");
+
+        Renderer.HoverTooltip tooltip = Renderer.hoverTooltipAt(
+                ctx,
+                viewW,
+                viewH,
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2);
+
+        assertNotNull(tooltip);
+        assertTrue(tooltip.title.toUpperCase().contains("SWEEP"));
+        assertFalse(tooltip.body.isBlank());
+    }
+
+    @Test
+    void fleetOverlayModeTabsExposeHoverDescriptions() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+        ctx.ui.shopOpen = true;
+
+        Method modeRect = Renderer.class.getDeclaredMethod("getFleetOverlayModeTabRect", Rectangle.class, boolean.class);
+        modeRect.setAccessible(true);
+        Rectangle panel = Renderer.getShopOverlayRect(1280, 720);
+        Rectangle refit = (Rectangle) modeRect.invoke(null, panel, true);
+
+        Renderer.HoverTooltip tooltip = Renderer.hoverTooltipAt(
+                ctx,
+                1280,
+                720,
+                refit.x + refit.width / 2,
+                refit.y + refit.height / 2);
+
+        assertNotNull(tooltip);
+        assertTrue(tooltip.title.toUpperCase().contains("REFIT"));
+        assertTrue(tooltip.body.contains("weapon mounts"));
+    }
+
+    @Test
+    void hoverTooltipRevealCanBeImmediate() {
+        UiState ui = new UiState();
+        long start = 1_000_000_000L;
+
+        ui.updateHoverTooltip("test", "Title", "Body", 100, 100, start, 0L);
+        assertFalse(ui.hoverTooltipVisible);
+
+        ui.updateHoverTooltip("test", "Title", "Body", 100, 100, start + 1L, 0L);
+        assertTrue(ui.hoverTooltipVisible);
+    }
+
+    @Test
+    void supportFleetMarkersUseFactionColorInsteadOfGenericHazardRed() throws Exception {
+        CampaignSystem.CampaignSupportMarker marker = new CampaignSystem.CampaignSupportMarker(
+                CampaignSystem.SupportMarkerType.HAZARD,
+                "Yellow Screen",
+                "Waiting fleet",
+                Faction.TEAM_D,
+                100.0,
+                100.0,
+                120.0,
+                50
+        );
+
+        Method colorMethod = Renderer.class.getDeclaredMethod(
+                "strategicSupportMarkerColor",
+                CampaignSystem.CampaignSupportMarker.class
+        );
+        colorMethod.setAccessible(true);
+        java.awt.Color actual = (java.awt.Color) colorMethod.invoke(null, marker);
+        Method factionColorMethod = Renderer.class.getDeclaredMethod(
+                "factionMapColor",
+                Faction.class,
+                boolean.class,
+                int.class
+        );
+        factionColorMethod.setAccessible(true);
+        java.awt.Color expected = (java.awt.Color) factionColorMethod.invoke(null, Faction.TEAM_D, false, 220);
+
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    void missionOuterThreatMarkersInheritSiteFactionColor() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+
+        CampaignSystem.CampaignLocation location = ctx.campaign.galaxyMainPois.stream()
+                .filter(loc -> loc != null && loc.name != null && loc.name.startsWith("Green "))
+                .findFirst()
+                .orElseThrow();
+
+        Method markerMethod = CampaignSystem.class.getDeclaredMethod(
+                "missionOuterThreatMarkers",
+                CampaignSystem.CampaignLocation.class
+        );
+        markerMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.List<CampaignSystem.CampaignSupportMarker> markers =
+                (java.util.List<CampaignSystem.CampaignSupportMarker>) markerMethod.invoke(null, location);
+
+        assertFalse(markers.isEmpty());
+        assertEquals(Faction.TEAM_C, markers.get(0).faction);
+        assertTrue(markers.size() >= 4);
+    }
+
+    @Test
+    void recurringContactMarkersUseContactFactionInsteadOfBlueAllyFallback() throws Exception {
+        CampaignSystem.CampaignLocation location = new CampaignSystem.CampaignLocation(
+                "test-voss",
+                "Neutral Holding",
+                0.0,
+                0.0,
+                CampaignSystem.CampaignLocationType.STORY_EVENT,
+                0.0f,
+                false,
+                0,
+                ""
+        );
+        location.recurringContactId = "VOSS";
+        location.recurringContactStatus = "rescue net loyal and answering your route";
+
+        java.util.ArrayList<CampaignSystem.CampaignSupportMarker> markers = new java.util.ArrayList<>();
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "addDynamicTheaterMarkers",
+                java.util.ArrayList.class,
+                CampaignSystem.CampaignLocation.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, markers, location);
+
+        CampaignSystem.CampaignSupportMarker contact = markers.stream()
+                .filter(marker -> marker != null && "Captain Nadi Voss".equals(marker.label))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(Faction.TEAM_C, contact.faction);
+    }
+
+    @Test
+    void neutralMissionOuterThreatMarkersResolveHostileRedInsteadOfBlueAlly() throws Exception {
+        CampaignSystem.CampaignLocation location = new CampaignSystem.CampaignLocation(
+                "neutral-main",
+                "Contract Shipworks Myr",
+                0.0,
+                0.0,
+                CampaignSystem.CampaignLocationType.MAIN_MISSION,
+                0.35f,
+                true,
+                3,
+                "Independent contract world"
+        );
+
+        Method markerMethod = CampaignSystem.class.getDeclaredMethod(
+                "missionOuterThreatMarkers",
+                CampaignSystem.CampaignLocation.class
+        );
+        markerMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.List<CampaignSystem.CampaignSupportMarker> markers =
+                (java.util.List<CampaignSystem.CampaignSupportMarker>) markerMethod.invoke(null, location);
+
+        assertFalse(markers.isEmpty());
+        assertEquals(Faction.ENEMY, markers.get(0).faction);
+    }
+
+    @Test
+    void redTeamObjectiveMarkersUseRedFactionOutline() throws Exception {
+        CampaignSystem.CampaignObjectiveMarker marker = new CampaignSystem.CampaignObjectiveMarker(
+                CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET,
+                "Red Spear",
+                "Hostile contact",
+                Faction.ENEMY,
+                100.0,
+                100.0,
+                120.0,
+                90
+        );
+
+        Method colorMethod = Renderer.class.getDeclaredMethod(
+                "strategicMarkerColor",
+                CampaignSystem.CampaignObjectiveMarker.class
+        );
+        colorMethod.setAccessible(true);
+        java.awt.Color actual = (java.awt.Color) colorMethod.invoke(null, marker);
+
+        Method factionColorMethod = Renderer.class.getDeclaredMethod(
+                "factionMapColor",
+                Faction.class,
+                boolean.class,
+                int.class
+        );
+        factionColorMethod.setAccessible(true);
+        java.awt.Color expected = (java.awt.Color) factionColorMethod.invoke(null, Faction.ENEMY, false, 220);
+
+        assertEquals(expected, actual);
     }
 
     @Test

@@ -21,7 +21,7 @@ class CampaignStrategicLoopIntegrationTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         CampaignSystem.CampaignLocation start = CampaignSystem.currentCampaignLocation(ctx);
         CampaignSystem.CampaignLocation cache = findLocation(ctx, "aoi-cache-1");
-        CampaignSystem.CampaignLocation mission = findLocation(ctx, "poi-02");
+        CampaignSystem.CampaignLocation mission = findLocation(ctx, "poi-08");
         CampaignSystem.CampaignLocation north = findLocation(ctx, "poi-20");
 
         assertNotNull(start);

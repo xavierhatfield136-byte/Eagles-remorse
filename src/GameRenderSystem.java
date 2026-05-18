@@ -345,7 +345,7 @@ public final class GameRenderSystem {
                     mouseX,
                     mouseY,
                     System.nanoTime(),
-                    420_000_000L);
+                    0L);
         } else {
             ctx.ui.clearHoverTooltip();
         }
@@ -677,9 +677,9 @@ if (DevTools.isDebugOverlay()) {
         if (ctx == null || g2 == null || ctx.player == null || ctx.player.faction == null) return;
 
         String sensorSummary = FogOfWarSystem.isCombatFogEnabled(ctx) ? FogOfWarSystem.coverageSummary(ctx) : "";
-        java.util.List<SensorNetEntry> entries = sensorNetEntries(ctx, 4, 2);
+        java.util.List<SensorNetEntry> entries = sensorNetEntries(ctx, 3, 1);
         java.util.List<String> squadLines = activeSquadSummaryLines(ctx);
-        java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 4);
+        java.util.List<GameContext.FleetCommMessage> messages = recentFleetCommMessages(ctx, 2);
         java.util.List<String> sensorLines = sensorSummary.isBlank()
                 ? java.util.List.of()
                 : wrapLines(g2.getFontMetrics(new Font("Consolas", Font.PLAIN, 12)), sensorSummary, Math.min(300, Math.max(240, viewportW / 4)) - 24);
@@ -691,7 +691,7 @@ if (DevTools.isDebugOverlay()) {
         int w = Math.min(300, Math.max(240, viewportW / 4));
         int x = viewportW - w - 16;
         int y = 16;
-        int h = 42 + sensorLines.size() * 15 + squadLines.size() * 15;
+        int h = 48 + Math.min(2, sensorLines.size()) * 15 + Math.min(2, squadLines.size()) * 15;
         if (!entries.isEmpty()) {
             h += 18;
             String currentSection = "";
@@ -705,7 +705,7 @@ if (DevTools.isDebugOverlay()) {
             }
         }
         for (GameContext.FleetCommMessage msg : messages) {
-            h += 18 + wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, w - 24).size() * 14;
+            h += 22;
         }
 
         if (!paintThemedHudFrame(g2, x, y, w, h,
@@ -721,10 +721,14 @@ if (DevTools.isDebugOverlay()) {
         g2.setFont(titleFont);
         g2.setColor(new Color(236, 244, 255, 230));
         g2.drawString("SENSOR NET", inner.x, rowY);
+        g2.setFont(signalFont);
+        g2.setColor(new Color(160, 220, 255, 178));
+        g2.drawString("CLICK A TRACK TO ROUTE", inner.x + 112, rowY);
         rowY += 16;
 
         g2.setFont(bodyFont);
-        for (String line : sensorLines) {
+        for (int i = 0; i < sensorLines.size() && i < 2; i++) {
+            String line = sensorLines.get(i);
             g2.setColor(new Color(120, 236, 255, 220));
             g2.drawString(line, inner.x, rowY);
             rowY += 15;
@@ -735,7 +739,7 @@ if (DevTools.isDebugOverlay()) {
             rowY += 14;
             g2.setFont(signalFont);
             g2.setColor(new Color(255, 220, 164, 220));
-            g2.drawString("TRACKS  (CLICK TO ROUTE)", inner.x, rowY);
+            g2.drawString("PRIORITY TRACKS", inner.x, rowY);
             rowY += 14;
             String currentSection = "";
             for (SensorNetEntry entry : entries) {
@@ -763,7 +767,8 @@ if (DevTools.isDebugOverlay()) {
             g2.drawLine(inner.x, rowY, inner.x + inner.width, rowY);
             rowY += 14;
         }
-        for (String line : squadLines) {
+        for (int i = 0; i < squadLines.size() && i < 2; i++) {
+            String line = squadLines.get(i);
             g2.setColor(new Color(168, 212, 255, 214));
             g2.drawString(line, inner.x, rowY);
             rowY += 15;
@@ -774,16 +779,14 @@ if (DevTools.isDebugOverlay()) {
             rowY += 14;
         }
         for (GameContext.FleetCommMessage msg : messages) {
-            java.util.List<String> wrapped = wrapLines(g2.getFontMetrics(bodyFont), msg.channel + ": " + msg.text, inner.width);
+            String compact = msg.channel + ": " + trimOverlayLine(msg.text, inner.width - 18);
             Color accent = squadColor(msg.faction, 210);
             g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 88));
-            g2.fillRoundRect(inner.x - 2, rowY - 10, inner.width + 4, 14 + wrapped.size() * 14, 10, 10);
+            g2.fillRoundRect(inner.x - 2, rowY - 10, inner.width + 4, 20, 10, 10);
             g2.setColor(new Color(244, 248, 255, 226));
-            for (String line : wrapped) {
-                g2.drawString(line, inner.x + 4, rowY + 2);
-                rowY += 14;
-            }
+            g2.drawString(compact, inner.x + 4, rowY + 2);
             rowY += 8;
+            rowY += 14;
         }
     }
 
@@ -838,6 +841,15 @@ if (DevTools.isDebugOverlay()) {
         appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         return out;
+    }
+
+    private static String trimOverlayLine(String text, int maxWidthPx) {
+        if (text == null) return "";
+        String trimmed = text.trim();
+        if (trimmed.isBlank()) return "";
+        int maxChars = Math.max(12, maxWidthPx / 6);
+        if (trimmed.length() <= maxChars) return trimmed;
+        return trimmed.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
     private static void appendCampaignPulseEntries(GameContext ctx,

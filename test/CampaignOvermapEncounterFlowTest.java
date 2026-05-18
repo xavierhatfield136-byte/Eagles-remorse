@@ -68,6 +68,57 @@ class CampaignOvermapEncounterFlowTest {
         assertTrue(ctx.ui.strategicEncounterPrompt.active);
         assertEquals(UiState.StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP, ctx.ui.strategicEncounterPrompt.kind);
         assertEquals("Open-space intercept", ctx.ui.strategicEncounterPrompt.location);
+        assertTrue(ctx.ui.strategicEncounterPrompt.body.toLowerCase().contains("route intercept"));
+        assertTrue(ctx.ui.strategicEncounterPrompt.body.toLowerCase().contains("compact three-zone"));
+    }
+
+    @Test
+    void pointOfInterestDefenseContactFoldsIntoMissionPromptInsteadOfOpenSpaceClash() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation mission = firstCombatMission(ctx);
+        assertNotNull(mission);
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+
+        st.playerGalaxyX = mission.x;
+        st.playerGalaxyY = mission.y;
+        st.selectedGalaxyLocationId = mission.id;
+        setDouble(group, "x", mission.x);
+        setDouble(group, "y", mission.y);
+        setObject(group, "anchorLocationId", mission.id);
+
+        invokeDetectionUpdate(ctx, st, 0.1);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals(mission.id, ctx.ui.strategicEncounterPrompt.campaignLocationId);
+        assertTrue(ctx.ui.strategicEncounterPrompt.body.toLowerCase().contains("site assault"));
+    }
+
+    @Test
+    void openSpaceFleetClashExposesThreeOwnedTacticalZones() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+
+        assertTrue(launchGalaxySearchGroupEncounter(ctx, st, group));
+
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Allied Spawn Zone")
+                        && marker.faction == Faction.ALLY
+                        && marker.subtitle.toLowerCase().contains("left zone")));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Neutral Transit Zone")
+                        && marker.faction == null
+                        && marker.subtitle.toLowerCase().contains("middle zone")));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Hostile Contact Zone")
+                        && marker.faction == Faction.ENEMY
+                        && marker.subtitle.toLowerCase().contains("right zone")));
+        assertTrue(st.objectivePhaseLabel.toLowerCase().contains("left allied"));
+        assertTrue(st.threatStateLabel.toLowerCase().contains("no authored mission blockers"));
     }
 
     @Test
@@ -109,6 +160,17 @@ class CampaignOvermapEncounterFlowTest {
         method.invoke(null, ctx, st, dt);
     }
 
+    private static boolean launchGalaxySearchGroupEncounter(GameContext ctx, CampaignSystem.CampaignState st, Object group) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "launchGalaxySearchGroupEncounter",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                group.getClass()
+        );
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, st, group);
+    }
+
     private static Object firstSearchGroup(CampaignSystem.CampaignState st) throws Exception {
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("galaxySearchGroups");
         field.setAccessible(true);
@@ -119,6 +181,13 @@ class CampaignOvermapEncounterFlowTest {
     private static CampaignSystem.CampaignLocation findAreaOfInterest(GameContext ctx, String id) {
         for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
             if (location != null && id.equals(location.id)) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstCombatMission(GameContext ctx) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && location.primaryMission && "poi-08".equals(location.id)) return location;
         }
         return null;
     }
@@ -139,5 +208,11 @@ class CampaignOvermapEncounterFlowTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(target);
+    }
+
+    private static void setObject(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }

@@ -58,6 +58,7 @@ class CampaignStrategicStrikeCounterplayTest {
         assertTrue(CampaignSystem.launchStrategicSortie(lowIntelCtx,
                 taskForceCenterX(lowIntelCtx, lowIntelCtx.campaign, lowTarget),
                 taskForceCenterY(lowIntelCtx, lowIntelCtx.campaign, lowTarget)));
+        advanceStrikeObjects(lowIntelCtx, 90.0);
         double lowDamage = lowBefore - getDouble(lowTarget, "currentStrength");
 
         GameContext highIntelCtx = tacticalStrikeContext(
@@ -71,6 +72,7 @@ class CampaignStrategicStrikeCounterplayTest {
         assertTrue(CampaignSystem.launchStrategicSortie(highIntelCtx,
                 taskForceCenterX(highIntelCtx, highIntelCtx.campaign, highTarget),
                 taskForceCenterY(highIntelCtx, highIntelCtx.campaign, highTarget)));
+        advanceStrikeObjects(highIntelCtx, 90.0);
         double highDamage = highBefore - getDouble(highTarget, "currentStrength");
 
         assertTrue(highDamage > lowDamage, "better intel should improve sortie damage after counterplay");
@@ -245,6 +247,35 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
+    void staleSearchGroupMarkersUseLastKnownPositionInsteadOfLiveCompliment() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+
+        double lastX = st.playerGalaxyX + 320.0;
+        double lastY = st.playerGalaxyY + 180.0;
+        setDouble(group, "x", st.playerGalaxyX + 4200.0);
+        setDouble(group, "y", st.playerGalaxyY + 1300.0);
+        setDouble(group, "lastKnownX", lastX);
+        setDouble(group, "lastKnownY", lastY);
+        setDouble(group, "lastKnownAgeSec", 44.0);
+        setBoolean(group, "visible", true);
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "CLASSIFIED"));
+
+        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.activeSupportMarkers(ctx).stream()
+                .filter(it -> it.type == CampaignSystem.SupportMarkerType.HAZARD)
+                .filter(it -> it.subtitle.contains("last known"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(marker);
+        assertEquals(lastX, marker.x, 1e-6);
+        assertEquals(lastY, marker.y, 1e-6);
+        assertTrue(marker.subtitle.contains("44s old"));
+    }
+
+    @Test
     void tacticalStrikeTabCanLaunchStandOffStrikeAgainstSelectedHostileZone() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
@@ -293,6 +324,7 @@ class CampaignStrategicStrikeCounterplayTest {
         ctx.campaign.campaignAmmo = 120;
         ctx.campaign.campaignFuel = 120;
         assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx, marker.x, marker.y));
+        advanceStrikeObjects(ctx, 90.0);
         assertTrue(location.missionOuterThreatSuppression > 0.0,
                 "outside strike should soften the mission before tactical entry");
 
@@ -345,12 +377,137 @@ class CampaignStrategicStrikeCounterplayTest {
                 .orElse(null);
         assertNotNull(torpedo);
         assertTrue(torpedo.enabled, "remote hostile ship should be strike-eligible from the tactical map");
-        double durabilityBefore = hostile.hp + hostile.shield;
+        int projectilesBefore = ctx.projectiles.size();
         int torpedoesBefore = ctx.campaign.strategicTorpedoCharges;
         assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
         assertTrue(ctx.campaign.strategicTorpedoCharges < torpedoesBefore, "remote tactical strike should actually fire");
-        assertTrue(hostile.hp + hostile.shield < durabilityBefore || !hostile.alive,
-                "tactical torpedo should damage the selected hostile ship even across subzone boundaries");
+        assertTrue(ctx.projectiles.size() > projectilesBefore,
+                "tactical torpedo should become a physical inbound object instead of instant damage");
+    }
+
+    @Test
+    void tacticalStrikeCanUseHostileObjectiveSelectionWithoutSeparateCampaignContact() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Ship hostile = firstLiveHostileShip(ctx);
+        assertNotNull(hostile);
+        CampaignSystem.clearSelectedCampaignContact(ctx);
+
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.OBJECTIVE;
+        ctx.ui.tacticalMapSelectionLabel = "Enemy Patrol";
+        ctx.ui.tacticalMapSelectionSubtitle = "Hostile tactical objective";
+        ctx.ui.tacticalMapSelectionDetail = "Tracked";
+        ctx.ui.tacticalMapSelectionX = hostile.x;
+        ctx.ui.tacticalMapSelectionY = hostile.y;
+        ctx.ui.tacticalMapSelectionHostile = true;
+
+        CampaignSystem.CampaignAction torpedo = CampaignSystem.tacticalMapVisibleActions(ctx).stream()
+                .filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(torpedo);
+        assertTrue(torpedo.enabled, "hostile tactical objective selection should be enough for strikes");
+        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+    }
+
+    @Test
+    void tacticalAtomicConfirmLaunchesAgainstTacticalSelection() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Ship hostile = firstLiveHostileShip(ctx);
+        assertNotNull(hostile);
+        ctx.campaign.strategicAtomicCharges = 1;
+        ctx.campaign.campaignAmmo = 120;
+        ctx.campaign.campaignFuel = 120;
+        ctx.campaign.campaignSupplies = 120;
+        CampaignSystem.clearSelectedCampaignContact(ctx);
+
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.OBJECTIVE;
+        ctx.ui.tacticalMapSelectionLabel = "Enemy Patrol";
+        ctx.ui.tacticalMapSelectionSubtitle = "Hostile tactical objective";
+        ctx.ui.tacticalMapSelectionDetail = "Target-Quality";
+        ctx.ui.tacticalMapSelectionX = hostile.x;
+        ctx.ui.tacticalMapSelectionY = hostile.y;
+        ctx.ui.tacticalMapSelectionHostile = true;
+
+        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_ATOMIC_STRIKE"));
+        assertTrue(ctx.ui.campaignActionConfirm.active);
+        int projectilesBefore = ctx.projectiles.size();
+        assertTrue(CampaignSystem.confirmCampaignAction(ctx));
+        assertFalse(ctx.ui.campaignActionConfirm.active);
+        assertEquals(0, ctx.campaign.strategicAtomicCharges);
+        assertTrue(ctx.projectiles.size() > projectilesBefore,
+                "confirmed tactical atomic strike should spawn a tactical inbound object");
+    }
+
+    @Test
+    void tacticalSortieAndAtomicStrikeCreateVisibleStrikeObjects() throws Exception {
+        GameContext sortieCtx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Ship sortieTarget = firstLiveHostileShip(sortieCtx);
+        assertNotNull(sortieTarget);
+        selectTacticalStrikeTarget(sortieCtx, sortieTarget);
+        sortieCtx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        int sortieProjectilesBefore = sortieCtx.projectiles.size();
+        long bombersBefore = sortieCtx.ships.stream().filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY).count();
+        assertTrue(CampaignSystem.executeTacticalMapAction(sortieCtx, "TACTICAL_CARRIER_SORTIE"));
+        assertTrue(sortieCtx.projectiles.size() > sortieProjectilesBefore,
+                "carrier sortie should put payload objects into tactical space");
+        assertTrue(sortieCtx.ships.stream().filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY).count() > bombersBefore,
+                "carrier sortie should spawn visible friendly heavy bombers");
+        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(sortieCtx).toLowerCase().contains("heavy bomber"));
+        CampaignSystem.update(sortieCtx, 2.0);
+        Ship egressBomber = sortieCtx.ships.stream()
+                .filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(egressBomber);
+        assertTrue(Math.hypot(egressBomber.vx, egressBomber.vy) > egressBomber.desiredSpeedBase * 0.9,
+                "strike bombers should accelerate into egress after payload release");
+
+        GameContext atomicCtx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.CIWS_CORVETTE}
+        );
+        Ship atomicTarget = firstLiveHostileShip(atomicCtx);
+        assertNotNull(atomicTarget);
+        selectTacticalStrikeTarget(atomicCtx, atomicTarget);
+        atomicCtx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
+        int atomicProjectilesBefore = atomicCtx.projectiles.size();
+        assertTrue(CampaignSystem.executeTacticalMapAction(atomicCtx, "TACTICAL_ATOMIC_STRIKE"));
+        assertTrue(atomicCtx.ui.campaignActionConfirm.active);
+        assertTrue(CampaignSystem.confirmCampaignAction(atomicCtx));
+        assertTrue(atomicCtx.projectiles.size() > atomicProjectilesBefore,
+                "atomic strike should spawn a visible inbound tactical device");
+        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(atomicCtx).toLowerCase().contains("atomic device"));
+    }
+
+    @Test
+    void strategicStrikeImpactCreatesCampaignStrikeBattleEventSummary() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
+        );
+        Object taskForce = firstHostileTaskForce(ctx.campaign);
+        assertNotNull(taskForce);
+
+        assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx,
+                taskForceCenterX(ctx, ctx.campaign, taskForce),
+                taskForceCenterY(ctx, ctx.campaign, taskForce)));
+        advanceStrikeObjects(ctx, 90.0);
+
+        String summary = CampaignSystem.campaignStrikeBattleEventSummary(ctx);
+        assertTrue(summary.contains("TORPEDO IMPACT EVENT"));
+        assertTrue(summary.toLowerCase().contains("campaign strength"));
+        assertTrue(CampaignSystem.campaignStrikeConsequenceLines(ctx).stream().anyMatch(line -> line.contains("IMPACT EVENT")));
     }
 
     @Test
@@ -440,6 +597,25 @@ class CampaignStrategicStrikeCounterplayTest {
         return null;
     }
 
+    private static Ship firstLiveHostileShip(GameContext ctx) {
+        return ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && ship.alive && !ship.dying && ship.hp > 0)
+                .filter(ship -> ship.faction != null && !ship.faction.isFriendlyTo(ctx.player.faction))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static void selectTacticalStrikeTarget(GameContext ctx, Ship hostile) {
+        CampaignSystem.selectCampaignContactTarget(ctx, hostile.name, "", "Target-Quality", hostile.x, hostile.y, true, true);
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.CONTACT;
+        ctx.ui.tacticalMapSelectionLabel = hostile.name;
+        ctx.ui.tacticalMapSelectionSubtitle = "Hostile hull";
+        ctx.ui.tacticalMapSelectionDetail = "Target-Quality";
+        ctx.ui.tacticalMapSelectionX = hostile.x;
+        ctx.ui.tacticalMapSelectionY = hostile.y;
+        ctx.ui.tacticalMapSelectionHostile = true;
+    }
+
     private static Object invokePrivateStatic(String name, Class<?>[] paramTypes, Object... args) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(name, paramTypes);
         method.setAccessible(true);
@@ -486,5 +662,19 @@ class CampaignStrategicStrikeCounterplayTest {
         @SuppressWarnings({"rawtypes", "unchecked"})
         Object value = Enum.valueOf((Class<? extends Enum>) type.asSubclass(Enum.class), name);
         return value;
+    }
+
+    private static void advanceStrikeObjects(GameContext ctx, double seconds) {
+        int ticks = Math.max(1, (int) Math.ceil(seconds / 0.25));
+        for (int i = 0; i < ticks; i++) {
+            CampaignSystem.update(ctx, 0.25);
+        }
+    }
+
+    private static void advanceTacticalProjectiles(GameContext ctx, double seconds) {
+        int ticks = Math.max(1, (int) Math.ceil(seconds / GameContext.DT));
+        for (int i = 0; i < ticks; i++) {
+            PhysicsSystem.update(ctx, GameContext.DT);
+        }
     }
 }

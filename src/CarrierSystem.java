@@ -34,6 +34,8 @@ public final class CarrierSystem {
     private static final double STRIKE_COHESION_RANGE = 420.0;
     private static final double BOMBER_ESCORT_RANGE = 360.0;
     private static final double BOMBER_GUARD_REACTION_RANGE = 640.0;
+    private static final int MOTHERSHIP_PICKET_BERTHS = 4;
+    private static final int MOBILE_STATION_PICKET_BERTHS = 3;
     private static final WeakHashMap<GameContext, Map<Integer, Double>> PD_ESCORT_COOLDOWNS = new WeakHashMap<>();
     private static final ThreadLocal<ListScratch> SCRATCH = ThreadLocal.withInitial(ListScratch::new);
 
@@ -311,13 +313,15 @@ public final class CarrierSystem {
 
     private static int launchFlight(GameContext ctx, Ship carrier, double dt) {
         if (ctx == null || carrier == null) return 0;
+        ShipRole squadRole = chooseLaunchRole(ctx, carrier);
         int activeWing = countActiveWingByCarrier(ctx, carrier.id);
-        int deckRoom = Math.max(0, carrier.maxFighters - activeWing);
+        int squadSize = launchSquadSize(squadRole);
+        int deckCap = launchDeckCap(carrier, squadRole);
+        int deckRoom = Math.max(0, deckCap - activeWing);
         int globalRoom = Math.max(0, globalLaunchedCraftCap(ctx) - countGlobalLaunchedCraft(ctx));
         int teamRoom = Math.max(0, teamLaunchedCraftCap(ctx, carrier.faction) - countActiveWingByFaction(ctx, carrier.faction));
-        int toLaunch = Math.min(STRIKE_SQUAD_SIZE, Math.min(deckRoom, Math.min(globalRoom, teamRoom)));
+        int toLaunch = Math.min(squadSize, Math.min(deckRoom, Math.min(globalRoom, teamRoom)));
         if (toLaunch <= 0) return 0;
-        ShipRole squadRole = chooseLaunchRole(ctx, carrier);
         int launched = 0;
         for (int i = 0; i < toLaunch; i++) {
             int slotIndex = activeWing + launched;
@@ -331,6 +335,18 @@ public final class CarrierSystem {
             AudioSystem.onFlightLaunch(ctx, carrier);
         }
         return launched;
+    }
+
+    private static int launchSquadSize(ShipRole role) {
+        return role == ShipRole.PICKET ? 1 : STRIKE_SQUAD_SIZE;
+    }
+
+    private static int launchDeckCap(Ship carrier, ShipRole role) {
+        if (carrier == null) return 0;
+        if (role != ShipRole.PICKET) return Math.max(0, carrier.maxFighters);
+        if (carrier.role == ShipRole.MOTHERSHIP) return MOTHERSHIP_PICKET_BERTHS;
+        if (carrier.role == ShipRole.MOBILE_STATION_TITAN) return MOBILE_STATION_PICKET_BERTHS;
+        return Math.min(2, Math.max(0, carrier.maxFighters));
     }
 
     private static Ship launchCraft(GameContext ctx, Ship carrier, ShipRole craftRole, double dt, int slotIndex) {
@@ -350,11 +366,12 @@ public final class CarrierSystem {
         if (craft == null) return null;
 
         craft.carrierOwnerId = carrier.id;
+        craft.minerHomeBase = carrier;
         craft.wingState = Ship.WingState.ATTACK;
         craft.carrierOrphanTimer = -1.0;
         craft.angle = carrier.angle;
 
-        double launchSpeedPerSec = Math.max(120.0, craft.desiredSpeed * 0.75);
+        double launchSpeedPerSec = Math.max(120.0, craft.desiredSpeed * (craftRole == ShipRole.PICKET ? 0.44 : 0.75));
         craft.vx = carrier.vx + ca * launchSpeedPerSec * dt;
         craft.vy = carrier.vy + sa * launchSpeedPerSec * dt;
         return craft;

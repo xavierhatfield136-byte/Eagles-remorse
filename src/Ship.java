@@ -5835,7 +5835,9 @@ public abstract class Ship {
 
     public void resetFlightDeckLoadout() {
         ShipRole[] defaults;
-        if (role == ShipRole.DRONE_CARRIER) {
+        if (supportsPicketFlightDeck()) {
+            defaults = new ShipRole[]{ShipRole.PICKET, ShipRole.PICKET, ShipRole.PICKET, ShipRole.PICKET, ShipRole.PICKET};
+        } else if (role == ShipRole.DRONE_CARRIER) {
             defaults = new ShipRole[]{ShipRole.DRONE, ShipRole.DRONE, ShipRole.DRONE, ShipRole.FIGHTER, ShipRole.BOMBER};
         } else {
             defaults = new ShipRole[]{ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.FIGHTER, ShipRole.BOMBER};
@@ -5854,12 +5856,17 @@ public abstract class Ship {
 
     public void setFlightDeckRole(int slot, ShipRole craftRole) {
         if (slot < 0 || slot >= flightDeckLoadout.length) return;
-        if (craftRole != ShipRole.FIGHTER && craftRole != ShipRole.BOMBER && craftRole != ShipRole.DRONE) return;
+        if (craftRole != ShipRole.FIGHTER && craftRole != ShipRole.BOMBER && craftRole != ShipRole.DRONE
+                && !(craftRole == ShipRole.PICKET && supportsPicketFlightDeck())) {
+            return;
+        }
         flightDeckLoadout[slot] = craftRole;
     }
 
     public ShipRole cycleFlightDeckRole(int slot, int dir) {
-        ShipRole[] options = new ShipRole[]{ShipRole.FIGHTER, ShipRole.DRONE, ShipRole.BOMBER};
+        ShipRole[] options = supportsPicketFlightDeck()
+                ? new ShipRole[]{ShipRole.PICKET, ShipRole.FIGHTER, ShipRole.DRONE, ShipRole.BOMBER}
+                : new ShipRole[]{ShipRole.FIGHTER, ShipRole.DRONE, ShipRole.BOMBER};
         int idx = 0;
         ShipRole current = flightDeckRoleAt(slot);
         for (int i = 0; i < options.length; i++) {
@@ -5871,6 +5878,10 @@ public abstract class Ship {
         idx = Math.floorMod(idx + ((dir < 0) ? -1 : 1), options.length);
         setFlightDeckRole(slot, options[idx]);
         return options[idx];
+    }
+
+    public boolean supportsPicketFlightDeck() {
+        return role == ShipRole.MOTHERSHIP || role == ShipRole.MOBILE_STATION_TITAN;
     }
 
     public boolean canSpawnDefender() {

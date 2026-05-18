@@ -67,6 +67,63 @@ class CampaignHubEconomyTest {
     }
 
     @Test
+    void friendlyInstallationsRebuildLongRangeStrikeStoresForOreAndCredits() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation greenHub = findLocation(ctx, "poi-05");
+        assertNotNull(greenHub);
+
+        st.selectedGalaxyLocationId = greenHub.id;
+        st.dockedGalaxyLocationId = greenHub.id;
+        st.currentGalaxyLocationId = greenHub.id;
+        st.strategicTorpedoCharges = 0;
+        st.strategicSortiesLaunched = 3;
+        ctx.credits = 5000;
+        CampaignSystem.grantCampaignOre(ctx, 200);
+
+        assertTrue(greenHub.services.contains(CampaignSystem.HubService.STRIKE_REARM));
+        assertTrue(openHubService(ctx, "STRIKE_REARM"));
+        assertTrue(confirmHubService(ctx));
+
+        assertTrue(st.strategicTorpedoCharges > 0);
+        assertTrue(st.strategicSortiesLaunched < 3);
+        assertTrue(ctx.credits < 5000);
+        assertTrue(CampaignSystem.currentCampaignOre(ctx) < 200);
+    }
+
+    @Test
+    void openFriendlyHubHasNearbyOreAndHiredEscortsJoinPersistentFleet() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation greenHub = findLocation(ctx, "poi-01");
+        assertNotNull(greenHub);
+
+        st.selectedGalaxyLocationId = greenHub.id;
+        st.playerGalaxyX = greenHub.x;
+        st.playerGalaxyY = greenHub.y;
+        int fleetBefore = st.persistentBlueFleet.size();
+
+        assertTrue(CampaignSystem.launchSelectedLocalEncounter(ctx));
+        assertTrue(ctx.asteroids.size() >= 8, "friendly installations should spawn mineable ore patches nearby");
+
+        Ship hired = ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && ship.alive && ship.faction != null
+                        && ship.faction.isFriendlyTo(ctx.player.faction)
+                        && ship.role == ShipRole.FRIGATE
+                        && ship.name != null
+                        && ship.name.contains("Green Watch"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(hired);
+
+        CampaignSystem.noteAmbientSupportRequest(ctx, hired);
+        assertTrue(CampaignSystem.completeMissionExtraction(ctx));
+
+        assertTrue(st.persistentBlueFleet.size() > fleetBefore);
+        assertTrue(persistentFleetContainsName(st, hired.name));
+    }
+
+    @Test
     void hubDockingIsStillRequiredForServices() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -98,6 +155,25 @@ class CampaignHubEconomyTest {
         field.setAccessible(true);
         List<?> entries = (List<?>) field.get(st);
         return entries.isEmpty() ? null : entries.get(0);
+    }
+
+    private static boolean persistentFleetContainsName(CampaignSystem.CampaignState st, String name) {
+        if (st == null || name == null) return false;
+        try {
+            Field field = CampaignSystem.CampaignState.class.getDeclaredField("persistentBlueFleet");
+            field.setAccessible(true);
+            List<?> entries = (List<?>) field.get(st);
+            for (Object entry : entries) {
+                if (entry == null) continue;
+                Field nameField = entry.getClass().getDeclaredField("name");
+                nameField.setAccessible(true);
+                Object value = nameField.get(entry);
+                if (name.equals(value)) return true;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return false;
+        }
+        return false;
     }
 
     private static void setDouble(Object target, String fieldName, double value) throws Exception {

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,12 +15,36 @@ class CampaignTacticalAlignmentTest {
     void missionEncounterPromptPreservesSingleLargeSectorRuleAndManualPriorityGuidance() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
-        st.selectedGalaxyLocationId = "poi-01";
+        st.selectedGalaxyLocationId = "poi-08";
+        CampaignSystem.CampaignLocation mission = CampaignSystem.selectedCampaignLocation(ctx);
+        assertNotNull(mission);
+        st.playerGalaxyX = mission.x;
+        st.playerGalaxyY = mission.y;
 
         assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
         assertTrue(ctx.ui.strategicEncounterPrompt.active);
         assertTrue(ctx.ui.strategicEncounterPrompt.body.contains("single large tactical sector"));
         assertTrue(ctx.ui.strategicEncounterPrompt.strengthReadout.contains("MANUAL PRIORITY"));
+    }
+
+    @Test
+    void greenAndYellowCampaignHubsStayOpenInsteadOfForcingCombat() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "poi-01";
+
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(CampaignSystem.canEnterSelectedLocalEncounter(ctx));
+        assertTrue(CampaignSystem.selectedLocationSidebarLines(ctx).stream()
+                .anyMatch(line -> line.contains("Open campaign hub") || line.contains("Dock / trade / explore")));
+
+        st.selectedGalaxyLocationId = "poi-02";
+        st.playerGalaxyX = CampaignSystem.selectedCampaignLocation(ctx).x;
+        st.playerGalaxyY = CampaignSystem.selectedCampaignLocation(ctx).y;
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(CampaignSystem.canEnterSelectedLocalEncounter(ctx));
     }
 
     @Test

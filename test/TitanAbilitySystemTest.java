@@ -380,6 +380,29 @@ class TitanAbilitySystemTest {
     }
 
     @Test
+    void mothershipAndMobileDockyardLaunchPicketEscortsFromFlightDecks() {
+        GameContext ctx = testContext();
+        FleetShip mothership = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 1200.0, 1200.0);
+        FleetShip dockyard = new FleetShip(ShipRole.MOBILE_STATION_TITAN, Faction.ALLY, 1600.0, 1200.0);
+        ctx.ships.add(mothership);
+        ctx.ships.add(dockyard);
+
+        assertTrue(mothership.supportsPicketFlightDeck());
+        assertTrue(dockyard.supportsPicketFlightDeck());
+        assertEquals(ShipRole.PICKET, mothership.flightDeckRoleAt(0));
+        assertEquals(ShipRole.PICKET, dockyard.flightDeckRoleAt(0));
+
+        assertEquals(1, CarrierSystem.tryLaunchFlight(ctx, mothership));
+        assertEquals(1, CarrierSystem.tryLaunchFlight(ctx, dockyard));
+
+        long launchedPickets = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.role == ShipRole.PICKET)
+                .filter(ship -> ship.carrierOwnerId == mothership.id || ship.carrierOwnerId == dockyard.id)
+                .count();
+        assertEquals(2, launchedPickets);
+    }
+
+    @Test
     void shootingRangeShopUsesInfiniteCredits() {
         GameContext ctx = testContext();
         SpawnSystem.initWorld(ctx);

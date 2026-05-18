@@ -147,6 +147,9 @@ public final class CampaignCheckpointStore {
         public int strategicSortiesLaunched = 0;
         public int strategicAtomicCharges = 0;
         public int nextGalaxySearchGroupId = 1;
+        public int nextStrategicStrikeObjectId = 1;
+        public String strategicStrikeObjects = "";
+        public String strategicDivisions = "";
         public String galaxyTravelOriginId = "";
         public String galaxyTravelDestinationId = "";
         public String galaxyTravelDestinationLabel = "";
@@ -255,6 +258,9 @@ public final class CampaignCheckpointStore {
             strategicSortiesLaunched = Math.max(0, strategicSortiesLaunched);
             strategicAtomicCharges = Math.max(0, strategicAtomicCharges);
             nextGalaxySearchGroupId = Math.max(1, nextGalaxySearchGroupId);
+            nextStrategicStrikeObjectId = Math.max(1, nextStrategicStrikeObjectId);
+            strategicStrikeObjects = (strategicStrikeObjects == null) ? "" : strategicStrikeObjects.trim();
+            strategicDivisions = (strategicDivisions == null) ? "" : strategicDivisions.trim();
             galaxyTravelOriginId = safeName(galaxyTravelOriginId, "");
             galaxyTravelDestinationId = safeName(galaxyTravelDestinationId, "");
             galaxyTravelProgress = clamp(finiteOr(galaxyTravelProgress, 0.0), 0.0, 1.0);
@@ -406,6 +412,9 @@ public final class CampaignCheckpointStore {
                 cp.strategicSortiesLaunched = parseInt(props, "strategicSortiesLaunched", cp.strategicSortiesLaunched);
                 cp.strategicAtomicCharges = parseInt(props, "strategicAtomicCharges", cp.strategicAtomicCharges);
                 cp.nextGalaxySearchGroupId = parseInt(props, "nextGalaxySearchGroupId", cp.nextGalaxySearchGroupId);
+                cp.nextStrategicStrikeObjectId = parseInt(props, "nextStrategicStrikeObjectId", cp.nextStrategicStrikeObjectId);
+                cp.strategicStrikeObjects = props.getProperty("strategicStrikeObjects", cp.strategicStrikeObjects);
+                cp.strategicDivisions = props.getProperty("strategicDivisions", cp.strategicDivisions);
                 cp.galaxyTravelOriginId = props.getProperty("galaxyTravelOriginId", cp.galaxyTravelOriginId);
                 cp.galaxyTravelDestinationId = props.getProperty("galaxyTravelDestinationId", cp.galaxyTravelDestinationId);
                 cp.galaxyTravelProgress = parseDouble(props, "galaxyTravelProgress", cp.galaxyTravelProgress);
@@ -546,6 +555,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("strategicSortiesLaunched", String.valueOf(cp.strategicSortiesLaunched));
             props.setProperty("strategicAtomicCharges", String.valueOf(cp.strategicAtomicCharges));
             props.setProperty("nextGalaxySearchGroupId", String.valueOf(cp.nextGalaxySearchGroupId));
+            props.setProperty("nextStrategicStrikeObjectId", String.valueOf(cp.nextStrategicStrikeObjectId));
+            props.setProperty("strategicStrikeObjects", cp.strategicStrikeObjects);
+            props.setProperty("strategicDivisions", cp.strategicDivisions);
             props.setProperty("galaxyTravelOriginId", cp.galaxyTravelOriginId);
             props.setProperty("galaxyTravelDestinationId", cp.galaxyTravelDestinationId);
             props.setProperty("galaxyTravelProgress", String.valueOf(cp.galaxyTravelProgress));

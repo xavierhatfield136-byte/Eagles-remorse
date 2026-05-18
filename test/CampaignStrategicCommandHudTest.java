@@ -95,6 +95,56 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void campaignFleetRosterEntriesAreSortedSelectableAndScrollable() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.mapOpen = true;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+
+        List<CampaignSystem.CampaignFleetRosterEntry> entries = CampaignSystem.campaignFleetRosterEntries(ctx);
+        assertTrue(entries.size() >= 3);
+        for (int i = 1; i < entries.size(); i++) {
+            assertTrue(entries.get(i - 1).oreCost >= entries.get(i).oreCost,
+                    "fleet roster should be ordered largest ore cost to smallest");
+        }
+
+        CampaignSystem.CampaignFleetRosterEntry target = entries.get(Math.min(2, entries.size() - 1));
+        assertTrue(CampaignSystem.selectCampaignFleetRosterSlot(ctx, target.slotId));
+        assertTrue(CampaignSystem.campaignFleetRosterEntries(ctx).stream()
+                .anyMatch(entry -> entry.slotId == target.slotId && entry.selected));
+
+        assertTrue(CampaignSystem.scrollCampaignFleetRoster(ctx, 1, 2));
+        assertTrue(ctx.ui.campaignFleetRosterScroll > 0);
+    }
+
+    @Test
+    void campaignFleetRosterCanOpenPersistentHullRefitFromOvermap() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.mapOpen = true;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+
+        CampaignSystem.CampaignFleetRosterEntry target = CampaignSystem.campaignFleetRosterEntries(ctx).stream()
+                .filter(entry -> entry != null && entry.slotId > 0)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(target);
+
+        assertTrue(CampaignSystem.selectCampaignFleetRosterSlot(ctx, target.slotId));
+        assertTrue(CampaignSystem.openFocusedCampaignFleetEditor(ctx));
+
+        assertTrue(ctx.ui.shopOpen);
+        assertTrue(ctx.ui.fleetRefitMode);
+        assertTrue(ctx.ui.fleetSelectedShipId > 0);
+        assertTrue(ctx.ships.stream().anyMatch(ship ->
+                ship != null
+                        && ship.id == ctx.ui.fleetSelectedShipId
+                        && ship.faction != null
+                        && ship.faction.teamId() == Faction.ALLY.teamId()
+                        && ship.alive
+                        && !ship.dying
+                        && ship.hp > 0));
+    }
+
+    @Test
     void selectedLocationSidebarSurfacesWhyActionAndRisk() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignLocation selected = CampaignSystem.mainCampaignLocations(ctx).stream()

@@ -38,6 +38,41 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
+    void navigationAndStrikeSidebarsStayCompactEnoughToScan() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "poi-05";
+
+        List<String> fleet = CampaignSystem.campaignFleetManagerLines(ctx);
+        List<String> summary = CampaignSystem.campaignSummarySidebarLines(ctx);
+        List<String> selected = CampaignSystem.selectedLocationSidebarLines(ctx);
+        List<String> strikeTop = CampaignSystem.campaignStrikeManagerLines(ctx);
+        List<String> strikeReadiness = CampaignSystem.campaignStrikeReadinessLines(ctx);
+        List<String> strikeConsequences = CampaignSystem.campaignStrikeConsequenceLines(ctx);
+
+        assertTrue(fleet.stream().anyMatch(line -> line.startsWith("Overmap Berths: ")));
+        assertTrue(fleet.stream().anyMatch(line -> line.startsWith("Flagship Capability: ")));
+        assertTrue(summary.size() <= 7, "navigation summary should be glanceable");
+        assertTrue(selected.size() <= 15, "selected location details should fit the sidebar");
+        assertTrue(strikeTop.size() <= 5, "strike control should avoid duplicated readiness prose");
+        assertTrue(strikeReadiness.size() <= 4, "strike readiness should stay compact");
+        assertTrue(strikeConsequences.size() <= 7, "strike consequences should stay compact");
+    }
+
+    @Test
+    void strikeTabDoesNotShowFleetPostureButtons() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+
+        assertFalse(actions.stream().anyMatch(action -> action.id.startsWith("POSTURE_")));
+        assertTrue(actions.stream().anyMatch(action -> action.id.equals("TORPEDO_STRIKE")));
+        assertTrue(actions.stream().anyMatch(action -> action.id.equals("RECON_SWEEP")
+                || action.id.equals("SIGNAL_SWEEP")));
+    }
+
+    @Test
     void hubActionDetailShowsApproachUntilDockedThenShowsActionCost() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

@@ -15,6 +15,9 @@ public final class InputSystem {
             int rot = e.getWheelRotation();
             if (rot == 0) return;
             if (ctx.ui.mapOpen) {
+                if (UISystem.handleCampaignMapWheel(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 UISystem.stepStrategicMapZoom(ctx, -rot, e.getX(), e.getY(), panel.viewportW(), panel.viewportH());
             } else {
                 CameraSystem.stepZoom(ctx, -rot);

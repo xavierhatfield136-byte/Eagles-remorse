@@ -630,6 +630,7 @@ public final class GameplayActions {
             case java.awt.event.KeyEvent.VK_RIGHT, java.awt.event.KeyEvent.VK_CLOSE_BRACKET -> UISystem.cycleFlightDeckSlot(ctx, +1);
             case java.awt.event.KeyEvent.VK_MINUS, java.awt.event.KeyEvent.VK_SUBTRACT -> UISystem.cycleFocusedFlightDeckRole(ctx, -1);
             case java.awt.event.KeyEvent.VK_EQUALS, java.awt.event.KeyEvent.VK_ADD -> UISystem.cycleFocusedFlightDeckRole(ctx, +1);
+            case java.awt.event.KeyEvent.VK_5 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.PICKET);
             case java.awt.event.KeyEvent.VK_6 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.FIGHTER);
             case java.awt.event.KeyEvent.VK_7 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.DRONE);
             case java.awt.event.KeyEvent.VK_8 -> UISystem.setFocusedFlightDeckRole(ctx, ShipRole.BOMBER);
