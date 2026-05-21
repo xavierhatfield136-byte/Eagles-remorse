@@ -5708,6 +5708,7 @@ public class Renderer {
         String frameTitle = switch (prompt.kind) {
             case CAMPAIGN_LOCATION -> "MISSION ENCOUNTER";
             case GALAXY_SEARCH_GROUP -> "HOSTILE INTERCEPT";
+            case INSTALLATION_THREAT -> "INSTALLATION THREAT";
             case TASK_FORCE -> "STRATEGIC CONTACT";
         };
         String footer = switch (prompt.kind) {
@@ -5715,6 +5716,8 @@ public class Renderer {
                     "Auto-resolve stays on the galaxy map. Taking command opens one large tactical sector.";
             case GALAXY_SEARCH_GROUP ->
                     "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
+            case INSTALLATION_THREAT ->
+                    "Auto-resolve keeps the installation open. Taking command clears the hostile pocket inside the harbor approach.";
             case TASK_FORCE ->
                     "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
         };
@@ -5747,6 +5750,7 @@ public class Renderer {
             String label = switch (prompt.kind) {
                 case CAMPAIGN_LOCATION -> "Location: ";
                 case GALAXY_SEARCH_GROUP -> "Intercept Zone: ";
+                case INSTALLATION_THREAT -> "Threat Axis: ";
                 case TASK_FORCE -> "Pocket: ";
             };
             g2.drawString(label + prompt.location, inner.x, infoY);

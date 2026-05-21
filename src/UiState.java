@@ -130,13 +130,15 @@ public final class UiState {
         public enum Kind {
             TASK_FORCE,
             CAMPAIGN_LOCATION,
-            GALAXY_SEARCH_GROUP
+            GALAXY_SEARCH_GROUP,
+            INSTALLATION_THREAT
         }
 
         public boolean active = false;
         public Kind kind = Kind.TASK_FORCE;
         public int taskForceId = -1;
         public int galaxySearchGroupId = -1;
+        public int installationThreatId = -1;
         public String campaignLocationId = "";
         public String title = "";
         public String body = "";
@@ -250,6 +252,7 @@ public final class UiState {
         strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
         strategicEncounterPrompt.taskForceId = taskForceId;
         strategicEncounterPrompt.galaxySearchGroupId = -1;
+        strategicEncounterPrompt.installationThreatId = -1;
         strategicEncounterPrompt.campaignLocationId = "";
         strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "STRATEGIC CONTACT" : title.trim();
         strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
@@ -263,6 +266,7 @@ public final class UiState {
         strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION;
         strategicEncounterPrompt.taskForceId = -1;
         strategicEncounterPrompt.galaxySearchGroupId = -1;
+        strategicEncounterPrompt.installationThreatId = -1;
         strategicEncounterPrompt.campaignLocationId =
                 (campaignLocationId == null) ? "" : campaignLocationId.trim();
         strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "MISSION ENCOUNTER" : title.trim();
@@ -277,8 +281,23 @@ public final class UiState {
         strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP;
         strategicEncounterPrompt.taskForceId = -1;
         strategicEncounterPrompt.galaxySearchGroupId = galaxySearchGroupId;
+        strategicEncounterPrompt.installationThreatId = -1;
         strategicEncounterPrompt.campaignLocationId = "";
         strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "HOSTILE INTERCEPT" : title.trim();
+        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
+        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
+        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+    }
+
+    public void showInstallationThreatEncounterPrompt(int installationThreatId, String campaignLocationId, String title, String body,
+                                                      String location, String strengthReadout) {
+        strategicEncounterPrompt.active = true;
+        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.INSTALLATION_THREAT;
+        strategicEncounterPrompt.taskForceId = -1;
+        strategicEncounterPrompt.galaxySearchGroupId = -1;
+        strategicEncounterPrompt.installationThreatId = installationThreatId;
+        strategicEncounterPrompt.campaignLocationId = (campaignLocationId == null) ? "" : campaignLocationId.trim();
+        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "INSTALLATION THREAT" : title.trim();
         strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
         strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
         strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
@@ -289,6 +308,7 @@ public final class UiState {
         strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
         strategicEncounterPrompt.taskForceId = -1;
         strategicEncounterPrompt.galaxySearchGroupId = -1;
+        strategicEncounterPrompt.installationThreatId = -1;
         strategicEncounterPrompt.campaignLocationId = "";
         strategicEncounterPrompt.title = "";
         strategicEncounterPrompt.body = "";

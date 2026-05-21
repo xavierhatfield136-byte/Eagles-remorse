@@ -45,7 +45,16 @@ public final class UISystem {
             return;
         }
         if (fleetHubEditingLocked(ctx)) {
-            EventSystem.showBanner(ctx, "FLEET HANGAR OPENS BETWEEN SECTORS", 1.8);
+            ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+            ctx.ui.mapOpen = true;
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
+            clearManualCombatInputs(ctx);
+            ctx.state = GameState.MAP;
+            EventSystem.showBanner(ctx, "IN-WORLD FLEET MANAGEMENT OPEN", 1.2);
             return;
         }
         ctx.ui.shopOpen = !ctx.ui.shopOpen;
@@ -104,7 +113,12 @@ public final class UISystem {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (fleetHubEditingLocked(ctx)) {
-            EventSystem.showBanner(ctx, "FLEET UPGRADES OPEN BETWEEN SECTORS", 1.8);
+            ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+            ctx.ui.mapOpen = true;
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.state = GameState.MAP;
+            EventSystem.showBanner(ctx, "FLEET MANAGEMENT IS AVAILABLE IN-WORLD", 1.2);
             return;
         }
         Ship dock = CampaignSystem.currentBaseUpgradeAnchor(ctx);

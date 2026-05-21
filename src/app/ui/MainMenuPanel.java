@@ -97,7 +97,6 @@ public final class MainMenuPanel extends JPanel {
         JButton credits = createMenuButton("Credits", new Color(65, 77, 102), uiScale);
         JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(87, 134, 91), uiScale);
-        JButton fleet = createMenuButton("Fleet", new Color(74, 122, 168), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(46, 97, 155), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(83, 121, 188), uiScale);
         JButton tutorialStart = createMenuButton("Start Command School", new Color(76, 132, 196), uiScale);
@@ -193,15 +192,6 @@ public final class MainMenuPanel extends JPanel {
         });
 
         tutorialStart.addActionListener(e -> startWithMode.accept(GameMode.TUTORIAL));
-        fleet.addActionListener(e -> {
-            ResumeCampaignState checkpoint = loadResumeCampaignState();
-            persistSettings.accept(GameMode.FLEET);
-            if (checkpoint.available() && checkpoint.config() != null) {
-                onStart.accept(toFleetResumeConfig(checkpoint.config()));
-                return;
-            }
-            startWithMode.accept(GameMode.FLEET);
-        });
         continueCampaignButton.addActionListener(e -> {
             ResumeCampaignState checkpoint = loadResumeCampaignState();
             if (!checkpoint.available() || checkpoint.config() == null) {
@@ -315,8 +305,6 @@ public final class MainMenuPanel extends JPanel {
         singlePlayerCard.add(singlePlayerLead);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
         singlePlayerCard.add(tutorialStart);
-        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
-        singlePlayerCard.add(fleet);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
         singlePlayerCard.add(continueCampaignButton);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
