@@ -145,6 +145,81 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void inWorldFleetManagementOpensDuringOpenSpaceTravelAndMapModeThenClosesCleanly() {
+        GameContext openCtx = initializedCampaignContext();
+        UISystem.toggleShop(openCtx);
+        assertTrue(openCtx.ui.mapOpen);
+        assertEquals(GameState.MAP, openCtx.state);
+        assertEquals(UiState.CampaignCommandTab.FLEET, openCtx.ui.campaignCommandTab);
+        UISystem.closeAllOverlays(openCtx);
+        assertFalse(openCtx.ui.mapOpen);
+        assertEquals(GameState.RUNNING, openCtx.state);
+
+        GameContext travelCtx = initializedCampaignContext();
+        assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(travelCtx, 900.0, 4200.0));
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(travelCtx));
+        UISystem.toggleShop(travelCtx);
+        assertTrue(travelCtx.ui.mapOpen);
+        assertEquals(GameState.MAP, travelCtx.state);
+        assertEquals(UiState.CampaignCommandTab.FLEET, travelCtx.ui.campaignCommandTab);
+        UISystem.closeAllOverlays(travelCtx);
+        assertEquals(GameState.RUNNING, travelCtx.state);
+        assertTrue(travelCtx.campaign.galaxyTravel.traveling, "closing the fleet tab should preserve campaign travel");
+
+        GameContext mapCtx = initializedCampaignContext();
+        mapCtx.ui.mapOpen = true;
+        mapCtx.state = GameState.MAP;
+        mapCtx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+        UISystem.toggleShop(mapCtx);
+        assertTrue(mapCtx.ui.mapOpen);
+        assertEquals(GameState.MAP, mapCtx.state);
+        assertEquals(UiState.CampaignCommandTab.FLEET, mapCtx.ui.campaignCommandTab);
+    }
+
+    @Test
+    void inWorldFleetManagementOpensWhileDockedWithoutShopOrBaseOverlayConflict() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignLocation hub = firstFriendlyServiceLocation(ctx);
+        assertNotNull(hub, "expected a friendly service hub");
+        ctx.campaign.selectedGalaxyLocationId = hub.id;
+        ctx.campaign.dockedGalaxyLocationId = hub.id;
+        ctx.ui.shopOpen = true;
+        ctx.ui.baseMenuOpen = true;
+
+        UISystem.toggleBaseMenu(ctx);
+
+        assertTrue(ctx.ui.mapOpen);
+        assertFalse(ctx.ui.shopOpen);
+        assertFalse(ctx.ui.baseMenuOpen);
+        assertEquals(GameState.MAP, ctx.state);
+        assertEquals(UiState.CampaignCommandTab.FLEET, ctx.ui.campaignCommandTab);
+        UISystem.closeAllOverlays(ctx);
+        assertEquals(GameState.RUNNING, ctx.state);
+        assertEquals(hub.id, ctx.campaign.dockedGalaxyLocationId, "closing should preserve the docked campaign state");
+    }
+
+    @Test
+    void inWorldFleetRosterExposesKeyHintsCargoForceReadinessGroupsAndCommitment() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+        List<String> fleet = CampaignSystem.campaignFleetManagerLines(ctx);
+        List<String> roster = CampaignSystem.campaignFleetRosterLines(ctx, 2);
+        List<CampaignSystem.CampaignFleetRosterEntry> entries = CampaignSystem.campaignFleetRosterEntries(ctx);
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+
+        assertTrue(fleet.stream().anyMatch(line -> line.contains("TAB opens this in-world fleet tab")));
+        assertFalse(roster.isEmpty());
+        assertTrue(roster.stream().anyMatch(line -> line.contains("H ") && line.contains(" S ")));
+        assertTrue(roster.stream().anyMatch(line -> line.contains("CARGO ")));
+        assertTrue(roster.stream().anyMatch(line -> line.contains("FORCE ")));
+        assertTrue(roster.stream().anyMatch(line -> line.contains("FLAG") || line.contains("DET ")));
+        assertTrue(entries.stream().anyMatch(entry -> entry.readinessLabel.startsWith("READY")
+                || entry.readinessLabel.startsWith("STRAINED") || entry.readinessLabel.startsWith("UNREADY")));
+        assertTrue(actions.stream().anyMatch(action -> "FLEET_COMMIT_NOW".equals(action.id)));
+        assertTrue(actions.stream().anyMatch(action -> "FLEET_ASSIGN_FLAG".equals(action.id)));
+    }
+
+    @Test
     void selectedLocationSidebarSurfacesWhyActionAndRisk() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignLocation selected = CampaignSystem.mainCampaignLocations(ctx).stream()
@@ -1228,6 +1303,27 @@ class CampaignStrategicCommandHudTest {
     private static CampaignSystem.CampaignLocation firstLocationOfType(GameContext ctx, String typeName) {
         for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
             if (location != null && location.type.name().equals(typeName)) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstFriendlyServiceLocation(GameContext ctx) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            String name = location == null || location.name == null ? "" : location.name.toUpperCase();
+            String detail = location == null || location.detail == null ? "" : location.detail.toUpperCase();
+            if (location != null && location.services != null && !location.services.isEmpty()
+                    && (name.contains("GREEN")
+                    || name.contains("YELLOW")
+                    || detail.contains("GREEN")
+                    || detail.contains("YELLOW")
+                    || detail.contains("BROKER")
+                    || detail.contains("COALITION")
+                    || detail.contains("RESISTANCE"))) {
+                return location;
+            }
+        }
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
+            if (location != null && location.services != null && !location.services.isEmpty()) return location;
         }
         return null;
     }

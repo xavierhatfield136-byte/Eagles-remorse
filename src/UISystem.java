@@ -909,7 +909,7 @@ public final class UISystem {
                 if (clickedSupport.subtitle != null && clickedSupport.subtitle.contains("|")) {
                     intel = clickedSupport.subtitle.substring(0, clickedSupport.subtitle.indexOf('|')).trim();
                 }
-                boolean hostile = clickedSupport.type == CampaignSystem.SupportMarkerType.HAZARD;
+                boolean hostile = isHostileCampaignSupportMarker(ctx, clickedSupport);
                 CampaignSystem.selectCampaignContactTarget(ctx,
                         clickedSupport.label,
                         clickedSupport.subtitle,
@@ -947,7 +947,7 @@ public final class UISystem {
                 if (clickedSupport.subtitle != null && clickedSupport.subtitle.contains("|")) {
                     intel = clickedSupport.subtitle.substring(0, clickedSupport.subtitle.indexOf('|')).trim();
                 }
-                boolean hostile = clickedSupport.type == CampaignSystem.SupportMarkerType.HAZARD;
+                boolean hostile = isHostileCampaignSupportMarker(ctx, clickedSupport);
                 CampaignSystem.selectCampaignContactTarget(ctx,
                         clickedSupport.label,
                         clickedSupport.subtitle,
@@ -1224,7 +1224,12 @@ public final class UISystem {
         if (location == null) return true;
         double supportDist2 = GameMath.dist2(worldX, worldY, support.x, support.y);
         double locationDist2 = GameMath.dist2(worldX, worldY, location.x, location.y);
-        if (support.type == CampaignSystem.SupportMarkerType.HAZARD) {
+        if (support.faction == Faction.ENEMY
+                || support.type == CampaignSystem.SupportMarkerType.HAZARD
+                || support.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
+                || support.type == CampaignSystem.SupportMarkerType.FORCE_SEARCH
+                || support.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
+                || support.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE) {
             return supportDist2 <= locationDist2 * 1.6;
         }
         return supportDist2 <= locationDist2;
@@ -1255,6 +1260,18 @@ public final class UISystem {
         }
         return marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET
                 || marker.type == CampaignSystem.ObjectiveMarkerType.BOSS_TARGET;
+    }
+
+    private static boolean isHostileCampaignSupportMarker(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
+        if (marker == null) return false;
+        if (marker.faction != null && ctx != null && ctx.player != null && ctx.player.faction != null) {
+            return !marker.faction.isFriendlyTo(ctx.player.faction);
+        }
+        return marker.type == CampaignSystem.SupportMarkerType.HAZARD
+                || marker.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
+                || marker.type == CampaignSystem.SupportMarkerType.FORCE_SEARCH
+                || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
+                || marker.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE;
     }
 
     private static Rectangle fleetNetPanelRect(int viewportW, int viewportH) {

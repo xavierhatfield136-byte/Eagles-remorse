@@ -560,14 +560,143 @@ class CampaignForceOwnershipTest {
         CampaignSystem.CampaignState st = ctx.campaign;
 
         invokeStrategicForceSimulation(ctx, st, 1.0);
+        ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.LOCAL_FORCE,
+                Faction.ENEMY,
+                "Test Checkpoint Contact Force",
+                st.playerGalaxyX + 900.0,
+                st.playerGalaxyY + 80.0,
+                64.0);
+        Object force = campaignForceByName(st, "Test Checkpoint Contact Force");
+        assertTrue(force != null, "expected test force to exist before checkpoint");
+        setField(force, "contactConfidence", 0.73);
+        setField(force, "uncertaintyRadius", 222.0);
+        setField(force, "lastKnownX", 1234.0);
+        setField(force, "lastKnownY", 2345.0);
+        setField(force, "lastKnownAgeSec", 17.0);
+        setField(force, "contactState", Enum.valueOf((Class<Enum>) readField(force, "contactState").getClass(), "SUSPECTED"));
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
 
         GameContext restored = initializedCampaignContext();
         assertTrue(applyCheckpoint(restored, checkpoint));
-        invokeStrategicForceSimulation(restored, restored.campaign, 0.1);
+        Object restoredForce = campaignForceByName(restored.campaign, "Test Checkpoint Contact Force");
 
+        assertTrue(restoredForce != null, "expected restored test force");
+        assertEquals(0.73, (double) readField(restoredForce, "contactConfidence"), 1e-6);
+        assertEquals(222.0, (double) readField(restoredForce, "uncertaintyRadius"), 1e-6);
+        assertEquals("SUSPECTED", readField(restoredForce, "contactState").toString());
         assertTrue(CampaignSystem.campaignForceSummaries(restored).stream()
                 .anyMatch(summary -> summary.intent != null && summary.strength > 0.0));
+    }
+
+    @Test
+    void strategicMapShowsCampaignForceMarkersWithContactTelemetry() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        invokeStrategicForceSimulation(ctx, st, 1.0);
+
+        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
+        assertTrue(markers.stream().anyMatch(marker ->
+                        marker.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE
+                                || marker.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
+                                || marker.type == CampaignSystem.SupportMarkerType.FORCE_CONVOY
+                                || marker.type == CampaignSystem.SupportMarkerType.FORCE_MINING
+                                || marker.type == CampaignSystem.SupportMarkerType.FORCE_SEARCH
+                                || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE),
+                "expected campaign forces to be visible as strategic support markers");
+        assertTrue(markers.stream().anyMatch(marker ->
+                        marker.subtitle.contains("force contact")
+                                && marker.subtitle.contains("conf ")
+                                && marker.subtitle.contains("intent ")),
+                "expected force markers to explain confidence, last known state, direction, and intent");
+    }
+
+    @Test
+    void selectedForceContactAddsDetailPanelLinesAndRouteInterceptWarning() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation destination = firstFriendlyServiceLocation(ctx);
+        assertTrue(destination != null, "expected a route destination");
+        st.selectedGalaxyLocationId = destination.id;
+
+        ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Test Route Interceptor",
+                (st.playerGalaxyX + destination.x) * 0.5,
+                (st.playerGalaxyY + destination.y) * 0.5,
+                82.0);
+        Object force = campaignForceByName(st, "Test Route Interceptor");
+        assertTrue(force != null, "expected test force");
+        setField(force, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
+        setField(force, "contactConfidence", 0.86);
+        setField(force, "uncertaintyRadius", 180.0);
+
+        List<String> warnings = CampaignSystem.selectedRouteForceWarningLines(ctx);
+        assertTrue(warnings.stream().anyMatch(line -> line.contains("Test Route Interceptor")),
+                "expected plotted route to warn about the intercepting force");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Test Route Interceptor",
+                "Known force contact  |  strike detachment  |  conf 86%  |  intent intercepting",
+                "Known force contact",
+                (double) readField(force, "x"),
+                (double) readField(force, "y"),
+                true,
+                true);
+        List<String> detail = invokeSelectedContactSidebarLines(ctx);
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Force Owner: Test Route Interceptor")));
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Force Orders: intercepting")));
+    }
+
+    @Test
+    void scoutingBattleContextAndAfterActionLinesNameForceOriginsAndOutcomes() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation location = firstFriendlyServiceLocation(ctx);
+        assertTrue(location != null, "expected a friendly hub");
+        st.selectedGalaxyLocationId = location.id;
+
+        List<String> safeContext = CampaignSystem.campaignBattleContextLines(ctx);
+        assertTrue(safeContext.stream().anyMatch(line -> line.contains("Hub Safety: SAFE")),
+                "friendly hubs should read safe before a hostile force is nearby");
+        assertTrue(safeContext.size() <= 4, "battle context should stay compact");
+
+        ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Test Hidden Approach Cell",
+                location.x + 160.0,
+                location.y + 30.0,
+                48.0);
+        Object force = campaignForceByName(st, "Test Hidden Approach Cell");
+        assertTrue(force != null, "expected test force");
+        setField(force, "sourceLocationId", firstEnemyActivityLocationId(ctx));
+        setField(force, "contactConfidence", 0.41);
+        setEnumField(force, "contactState", "SUSPECTED");
+
+        List<String> scout = CampaignSystem.campaignScoutingReportLines(ctx);
+        assertTrue(scout.stream().anyMatch(line -> line.contains("Test Hidden Approach Cell") && line.contains("from")),
+                "scouting reports should explain force origin");
+
+        List<String> dangerContext = CampaignSystem.campaignBattleContextLines(ctx);
+        assertTrue(dangerContext.stream().anyMatch(line -> line.contains("Battle Reason: Test Hidden Approach Cell")),
+                "battle context should explain why a battle can happen before entry");
+        assertTrue(dangerContext.stream().anyMatch(line -> line.contains("Hub Safety: THREATENED")),
+                "hub safety should escalate when a hostile force approaches");
+        assertTrue(dangerContext.stream().anyMatch(line -> line.startsWith("Hidden Threat Hint: ")),
+                "uncertain hostile forces should leave a subtle hint");
+
+        st.transitionSummaryTop = "Test engagement resolved.";
+        st.transitionSummaryBottom = "Command crews are compiling losses.";
+        setField(force, "intent", CampaignSystem.CampaignForceIntent.RETREATING);
+        setField(force, "strength", 18.0);
+        setField(force, "readiness", 44.0);
+        assertTrue(CampaignSystem.campaignAfterActionPlateLines(ctx).stream()
+                        .anyMatch(line -> line.contains("FORCE OUTCOME") && line.contains("Test Hidden Approach Cell")
+                                && (line.contains("ROUTED") || line.contains("DAMAGED"))),
+                "after-action plate should name damaged or routed campaign forces");
     }
 
     @Test
@@ -613,6 +742,82 @@ class CampaignForceOwnershipTest {
         int groupId = (int) readField(group, "id");
         assertTrue(countEnemyShipsForLinkedSearchGroup(st, groupId) > 0, "expected hostile ships to belong to the linked force");
         assertTrue(st.transitionSummaryTop.contains("fleets clashed"), "expected clash summary");
+    }
+
+    @Test
+    void activeTacticalEncounterPersistsParentForceReferencesWithoutDuplicateRestore() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.update(ctx, 0.1);
+        Object group = firstGalaxySearchGroup(st);
+        assertTrue(group != null, "expected a hostile search group");
+
+        assertTrue(invokeLaunchGalaxySearchGroupEncounter(ctx, st, group));
+        List<Integer> activeForceIds = CampaignSystem.activeGalaxyEncounterForceIds(ctx);
+        assertFalse(activeForceIds.isEmpty(), "active tactical encounter should remember participating campaign forces");
+        assertTrue(CampaignSystem.activeGalaxyEncounterParentForceId(ctx) > 0,
+                "active tactical encounter should retain a parent-force reference");
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        assertFalse(checkpoint.activeGalaxyEncounterForceIds.isBlank());
+        assertTrue(checkpoint.activeGalaxyEncounterParentForceId > 0);
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        int liveShipsAfterFirstRestore = liveShipCount(restored);
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        assertEquals(liveShipsAfterFirstRestore, liveShipCount(restored),
+                "reapplying a force checkpoint should not duplicate live ships");
+        assertEquals(liveShipCount(restored), restored.campaign.shipCampaignForceIds.size(),
+                "restored live ships should keep one current force membership each");
+        assertEquals(activeForceIds, CampaignSystem.activeGalaxyEncounterForceIds(restored));
+        assertEquals(checkpoint.activeGalaxyEncounterParentForceId, CampaignSystem.activeGalaxyEncounterParentForceId(restored));
+    }
+
+    @Test
+    void campaignEncounterSetupExitsWithEveryLiveCampaignShipOwned() throws Exception {
+        GameContext friendlyCtx = initializedCampaignContext();
+        CampaignSystem.CampaignState friendlyState = friendlyCtx.campaign;
+        CampaignSystem.CampaignLocation hub = firstFriendlyServiceLocation(friendlyCtx);
+        assertTrue(hub != null, "expected a friendly hub");
+        prepareAmbientEncounter(friendlyCtx, friendlyState, hub);
+        assertEveryLiveShipHasCampaignForce(friendlyCtx);
+
+        GameContext hostileCtx = initializedCampaignContext();
+        CampaignSystem.CampaignState hostileState = hostileCtx.campaign;
+        CampaignSystem.update(hostileCtx, 0.1);
+        Object group = firstGalaxySearchGroup(hostileState);
+        assertTrue(group != null, "expected a seeded hostile search group");
+        prepareSearchGroupEncounter(hostileCtx, hostileState, group);
+        assertEveryLiveShipHasCampaignForce(hostileCtx);
+    }
+
+    @Test
+    void tacticalKillsRemoveShipsFromParentForceMembershipAndLowerStrength() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        startSector(ctx, 6);
+        invokeStrategicForceSimulation(ctx, st, 0.2);
+
+        invokeLaunchPressureStage(ctx, st, "TEST PRESSURE", "phase", "threat",
+                new ShipRole[]{ShipRole.FRIGATE, ShipRole.MISSILE_BOAT});
+        Object detachment = campaignForceByName(st, "Reserve Detachment Alpha");
+        assertTrue(detachment != null, "expected reserve detachment");
+        int memberBefore = campaignForceShipIdCount(detachment);
+        double strengthBefore = (double) readField(detachment, "strength");
+        Ship victim = firstLiveShipForForce(ctx, detachment);
+        assertTrue(victim != null, "expected a live detachment ship to kill");
+
+        victim.alive = false;
+        victim.dying = true;
+        victim.hp = 0;
+        invokeStrategicForceSimulation(ctx, st, 0.2);
+
+        assertTrue(campaignForceShipIdCount(detachment) < memberBefore,
+                "dead tactical ships should be removed from their campaign force membership");
+        assertTrue((double) readField(detachment, "strength") < strengthBefore,
+                "tactical casualties should lower the owning force strength");
     }
 
     @Test
@@ -895,6 +1100,20 @@ class CampaignForceOwnershipTest {
         method.invoke(null, ctx, st, group);
     }
 
+    private static boolean invokeLaunchGalaxySearchGroupEncounter(GameContext ctx,
+                                                                  CampaignSystem.CampaignState st,
+                                                                  Object group) throws Exception {
+        Class<?> groupClass = group.getClass();
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "launchGalaxySearchGroupEncounter",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                groupClass
+        );
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, st, group);
+    }
+
     private static void invokeSectorScriptUpdate(String methodName, GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 methodName,
@@ -1000,6 +1219,16 @@ class CampaignForceOwnershipTest {
         );
         method.setAccessible(true);
         method.invoke(null, ctx, st, taskForce, playerSubzone);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> invokeSelectedContactSidebarLines(GameContext ctx) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "selectedContactSidebarLines",
+                GameContext.class
+        );
+        method.setAccessible(true);
+        return (List<String>) method.invoke(null, ctx);
     }
 
     private static void ensureCampaignForce(CampaignSystem.CampaignState st,
@@ -1186,6 +1415,29 @@ class CampaignForceOwnershipTest {
         Object shipIds = readField(force, "shipIds");
         if (!(shipIds instanceof java.util.Set<?>)) return false;
         return !((java.util.Set<?>) shipIds).isEmpty();
+    }
+
+    private static int campaignForceShipIdCount(Object force) throws Exception {
+        Object shipIds = readField(force, "shipIds");
+        if (!(shipIds instanceof java.util.Set<?>)) return 0;
+        return ((java.util.Set<?>) shipIds).size();
+    }
+
+    private static Ship firstLiveShipForForce(GameContext ctx, Object force) throws Exception {
+        Object shipIds = readField(force, "shipIds");
+        if (!(shipIds instanceof java.util.Set<?> ids)) return null;
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ids.contains(ship.id) && ship.alive && !ship.dying && ship.hp > 0) return ship;
+        }
+        return null;
+    }
+
+    private static void assertEveryLiveShipHasCampaignForce(GameContext ctx) {
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            assertTrue(ctx.campaign.shipCampaignForceIds.containsKey(ship.id),
+                    "expected live campaign ship to have a force owner: " + ship.name + " id=" + ship.id);
+        }
     }
 
     private static Ship findShipById(GameContext ctx, int id) {

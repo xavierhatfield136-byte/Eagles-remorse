@@ -984,8 +984,9 @@ public class Renderer {
                         rosterEntry.name,
                         rosterEntry.roleLabel + "  |  Ore " + rosterEntry.oreCost
                                 + "\n" + rosterEntry.readinessLabel
+                                + "\n" + rosterEntry.cargoLabel + "  |  " + rosterEntry.forceLabel
                                 + "\n" + rosterEntry.groupLabel + "  |  " + rosterEntry.commitmentLabel
-                                + "\nClick to focus. Double-click in a fleet hangar to refit. Use the fleet command buttons to commit, reserve, hold, or assign groups.");
+                                + "\nClick to focus. Use command buttons to refit where safe, commit, reserve, hold, or assign groups.");
             }
         }
         for (CampaignSystem.CampaignAction action : galaxyCommandActions(ctx)) {
@@ -1109,13 +1110,13 @@ public class Renderer {
         String body = switch (index) {
             case 0 -> campaign
                     ? (fleetHub
-                        ? "Fleet hangar. Commission hulls, refit the roster, and prepare the next mission. Hotkey: TAB."
-                        : "Fleet hangar opens between sectors. Clear the current mission or snapshot to menu before refitting. Hotkey: TAB.")
+                        ? "Fleet hub implementation detail for between-sector commissioning and refit. Hotkey: TAB."
+                        : "In-world fleet management. Opens the campaign fleet tab for roster inspection, refit where safe, groups, and commitments. Hotkey: TAB.")
                     : "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
             case 1 -> campaign
                     ? (fleetHub
                         ? "Fleet upgrade console. Edit the selected hull, its turrets, and its upgrade track. Hotkey: B."
-                        : "Fleet upgrades open between sectors. Clear the current mission or snapshot to menu before editing hulls. Hotkey: B.")
+                        : "In-world fleet shortcut. Jumps to the campaign fleet tab without opening a detached upgrade menu. Hotkey: B.")
                     : "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
@@ -5515,7 +5516,7 @@ public class Renderer {
 
         if (detail == GameContext.HudDetail.COMPACT) {
             rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-            rows.add("NAV: WASD move | arrows pan | TAB shop | M map | N HUD");
+            rows.add("NAV: WASD move | arrows pan | TAB in-world fleet | B fleet tab | M map | N HUD");
             rows.add("SYSTEMS: H crew | O power | B base | P ping | G waypoint");
             rows.add("OBJECTIVES: Click strategic-map markers to set objective waypoints directly.");
             rows.add("COMMS: I cycle intent | K hail target | marker panel lists live mission targets.");
@@ -5527,7 +5528,7 @@ public class Renderer {
         }
 
         rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-        rows.add("NAV: WASD move | arrows pan | TAB shop | M map | N HUD | H crew");
+        rows.add("NAV: WASD move | arrows pan | TAB in-world fleet | B fleet tab | M map | N HUD | H crew");
         rows.add("SYSTEMS: O power | B base | P ping | G waypoint | F mine | E overcharge | ; thrust");
         rows.add("OBJECTIVES: Strategic map markers can be clicked for direct routeing to kill, escort, protect, and capture targets.");
         rows.add("COMMS: I cycle intent | K hail target | live comms intent is now kept here instead of the ship card.");
@@ -7298,7 +7299,7 @@ public class Renderer {
         g2.setColor(new Color(206, 224, 244, 190));
         g2.drawString("Combat: SPACE/LMB fire   SHIFT/RMB secondary   L/MMB lock", readoutX, ly);
         ly += 16;
-        g2.drawString("Systems: O power   H crew   M map   TAB shop   ESC pause", readoutX, ly);
+        g2.drawString("Systems: O power   H crew   M map   TAB fleet   ESC pause", readoutX, ly);
         ly += 16;
         g2.drawString("Automation: manual flight, fire, or power input disables matching AI.", readoutX, ly);
 
@@ -8448,7 +8449,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.drawString(sectorized
                         ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (galaxyMode
-                        ? "LMB: select destination or free course   Double-click/T: burn engines   H: hold position   RMB: ping   wheel/Ctrl+/-: zoom   tabs: nav/fleet/resources/strikes"
+                        ? "LMB: select destination or free course   Double-click/T: burn engines   TAB/B: fleet   H: hold   RMB: ping   wheel/Ctrl+/-: zoom"
                         : (CampaignSystem.usesMissionSubzones(ctx)
                         ? "LMB: select marker or set course   Command Bay: visible actions   RMB: ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts/strikes"
                         : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies")),
@@ -9844,7 +9845,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(new Color(210, 226, 240, 205));
         g2.drawString(trimHudLine(entry.roleLabel + "  |  ORE " + entry.oreCost + "  |  " + entry.readinessLabel, row.width - 68),
                 textX, row.y + 28);
-        String bottom = entry.groupLabel + "  |  " + entry.commitmentLabel
+        String bottom = entry.cargoLabel + "  |  " + entry.forceLabel + "  |  " + entry.groupLabel + "  |  " + entry.commitmentLabel
                 + (entry.unavailableReason.isBlank() ? "" : "  |  " + entry.unavailableReason.toUpperCase(Locale.US));
         g2.setColor(entry.commitmentLabel.contains("HOLD")
                 ? new Color(255, 170, 142, 212)
@@ -10952,11 +10953,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         boolean selected = isSelectedTacticalMarker(ctx, marker.label, marker.x, marker.y);
         int radius = strategicSupportMarkerRadius(marker.type) + (selected ? 2 : markerPriorityBoost(marker.priority));
 
-        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.56f));
+        float markerAlpha = strategicSupportMarkerAlpha(marker);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, markerAlpha * 0.56f));
         g2.setColor(withAlpha(accent, 124));
         g2.fillOval(px - radius - 2, py - radius - 2, (radius + 2) * 2, (radius + 2) * 2);
 
-        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, markerAlpha * 0.88f));
         g2.setStroke(new BasicStroke(1.3f));
         g2.setColor(withAlpha(accent, 210));
         if (selected) {
@@ -11126,6 +11128,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case RESOURCE -> new Color(242, 208, 118);
             case HAZARD -> new Color(255, 132, 118);
             case INTEL -> new Color(126, 190, 255);
+            case FORCE_BASE_DEFENSE -> new Color(255, 178, 126);
+            case FORCE_PATROL -> new Color(255, 146, 132);
+            case FORCE_CONVOY -> new Color(146, 218, 194);
+            case FORCE_MINING -> new Color(238, 204, 112);
+            case FORCE_SEARCH -> new Color(255, 118, 112);
+            case FORCE_STRIKE -> new Color(255, 102, 156);
         };
     }
 
@@ -11142,8 +11150,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static int strategicSupportMarkerRadius(CampaignSystem.SupportMarkerType type) {
+        if (type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE
+                || type == CampaignSystem.SupportMarkerType.FORCE_STRIKE) return 10;
+        if (type == CampaignSystem.SupportMarkerType.FORCE_PATROL
+                || type == CampaignSystem.SupportMarkerType.FORCE_CONVOY
+                || type == CampaignSystem.SupportMarkerType.FORCE_MINING
+                || type == CampaignSystem.SupportMarkerType.FORCE_SEARCH) return 9;
         if (type == CampaignSystem.SupportMarkerType.FACTION_CONTACT || type == CampaignSystem.SupportMarkerType.ANOMALY) return 9;
         return 8;
+    }
+
+    private static float strategicSupportMarkerAlpha(CampaignSystem.CampaignSupportMarker marker) {
+        if (marker == null || marker.subtitle == null) return 1.0f;
+        String subtitle = marker.subtitle.toUpperCase(Locale.US);
+        if (subtitle.contains("STALE FORCE CONTACT") || subtitle.contains("LOST CONTACT")) return 0.48f;
+        if (subtitle.contains("SUSPECTED FORCE CONTACT") || subtitle.contains("UNCERTAIN CONTACT")) return 0.72f;
+        return 1.0f;
     }
 
     private static int strategicLandmarkRadius(CampaignSystem.LandmarkType type) {
@@ -11238,6 +11260,36 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.drawOval(px - r, py - r, r * 2, r * 2);
                 g2.drawLine(px, py - r + 2, px, py + r - 2);
                 g2.drawLine(px, py + r, px, py + r);
+            }
+            case FORCE_BASE_DEFENSE -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py, px + r, py);
+                g2.drawLine(px, py - r, px, py + r);
+            }
+            case FORCE_PATROL -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py + r, px + r, py - r);
+            }
+            case FORCE_CONVOY -> {
+                g2.drawRect(px - r, py - r / 2, r * 2, r);
+                g2.drawLine(px - r, py - r - 2, px + r, py - r - 2);
+                g2.drawLine(px - r, py + r + 2, px + r, py + r + 2);
+            }
+            case FORCE_MINING -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py + r, px + r, py - r);
+                g2.drawLine(px - r / 2, py - r, px + r, py + r / 2);
+            }
+            case FORCE_SEARCH -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px, py, px + r + 3, py - r - 3);
+                g2.drawLine(px + r - 2, py - r - 3, px + r + 3, py - r - 3);
+            }
+            case FORCE_STRIKE -> {
+                g2.drawLine(px - r, py + r, px, py - r);
+                g2.drawLine(px, py - r, px + r, py + r);
+                g2.drawLine(px - r, py + r, px + r, py + r);
+                g2.drawLine(px, py - r - 3, px, py + r + 3);
             }
         }
     }

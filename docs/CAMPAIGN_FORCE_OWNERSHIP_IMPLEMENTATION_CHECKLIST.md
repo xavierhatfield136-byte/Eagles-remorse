@@ -154,28 +154,28 @@ The campaign should feel like a living theater of war. Battles should happen bec
 
 ### 5.1 Force Markers
 
-- [ ] Add map markers for known, suspected, and stale force contacts.
-- [ ] Show force name, type, confidence, last known position, direction, and intent.
-- [ ] Differentiate base defense, patrol, convoy, mining group, search group, and strike force icons.
-- [ ] Add uncertainty radius for poorly tracked forces.
-- [ ] Fade or stale-out force markers when contact is lost.
+- [x] Add map markers for known, suspected, and stale force contacts.
+- [x] Show force name, type, confidence, last known position, direction, and intent.
+- [x] Differentiate base defense, patrol, convoy, mining group, search group, and strike force icons.
+- [x] Add uncertainty radius for poorly tracked forces.
+- [x] Fade or stale-out force markers when contact is lost.
 
 ### 5.2 Warnings And Readouts
 
 - [x] Add hostile force provenance lines to the intel summary.
-- [ ] Add selected-force detail panels.
-- [ ] Add route warnings when an enemy force can intercept the plotted course.
+- [x] Add selected-force detail panels.
+- [x] Add route warnings when an enemy force can intercept the plotted course.
 - [x] Add hub warnings when a hostile force is approaching a friendly installation.
-- [ ] Add scouting reports that explain where a hostile force came from.
-- [ ] Add after-action summaries that name destroyed, damaged, or routed forces.
+- [x] Add scouting reports that explain where a hostile force came from.
+- [x] Add after-action summaries that name destroyed, damaged, or routed forces.
 
 ### 5.3 Player Understanding
 
-- [ ] Ensure the player can tell why a battle is happening before entering it.
-- [ ] Ensure safe hubs read as safe when no hostile force is nearby.
-- [ ] Ensure danger escalates visibly as hostile forces approach.
-- [ ] Ensure hidden or stealth threats still leave subtle hints instead of feeling random.
-- [ ] Keep the UI concise enough that force telemetry does not become unreadable noise.
+- [x] Ensure the player can tell why a battle is happening before entering it.
+- [x] Ensure safe hubs read as safe when no hostile force is nearby.
+- [x] Ensure danger escalates visibly as hostile forces approach.
+- [x] Ensure hidden or stealth threats still leave subtle hints instead of feeling random.
+- [x] Keep the UI concise enough that force telemetry does not become unreadable noise.
 
 ## Phase 6: In-World Fleet Management
 
@@ -184,27 +184,27 @@ The campaign should feel like a living theater of war. Battles should happen bec
 - [x] Make `Tab` during campaign open the in-world fleet management surface instead of rejecting fleet management until a fleet hub.
 - [x] Make the `B`/base-menu path point campaign players toward in-world fleet management rather than detached fleet upgrades.
 - [x] Remove the standalone `Fleet` button from the main menu flow.
-- [ ] Remove or de-emphasize `GameMode.FLEET` as a player-facing main-menu destination.
-- [ ] Preserve fleet-hub internals only where still needed as implementation detail.
-- [ ] Update menu copy and docs so campaign fleet management is described as in-world.
+- [x] Remove or de-emphasize `GameMode.FLEET` as a player-facing main-menu destination.
+- [x] Preserve fleet-hub internals only where still needed as implementation detail.
+- [x] Update menu copy and docs so campaign fleet management is described as in-world.
 
 ### 6.2 In-World Fleet Screen Capability
 
-- [ ] Ensure in-world fleet management works during open space, travel, and campaign map mode.
-- [ ] Let players inspect all persistent ships in-world.
-- [ ] Let players edit/refit ships from the in-world fleet screen where safe.
-- [ ] Let players organize command groups and formations in-world.
-- [ ] Let players set battle commitment per ship in-world.
-- [ ] Let players review force membership, damage, cargo, and readiness in-world.
-- [ ] Let players close the screen cleanly back to the previous campaign state.
+- [x] Ensure in-world fleet management works during open space, travel, and campaign map mode.
+- [x] Let players inspect all persistent ships in-world.
+- [x] Let players edit/refit ships from the in-world fleet screen where safe.
+- [x] Let players organize command groups and formations in-world.
+- [x] Let players set battle commitment per ship in-world.
+- [x] Let players review force membership, damage, cargo, and readiness in-world.
+- [x] Let players close the screen cleanly back to the previous campaign state.
 
 ### 6.3 Keybind And UX
 
-- [ ] Decide final keybind ownership for `Tab`, `B`, and any fleet-management shortcut.
-- [ ] Prevent conflicts with shop/base/menu overlays.
-- [ ] Add on-screen key hints for in-world fleet management.
-- [ ] Add regression coverage for opening/closing fleet management during travel.
-- [ ] Add regression coverage for opening/closing fleet management while docked at a friendly installation.
+- [x] Decide final keybind ownership for `Tab`, `B`, and any fleet-management shortcut.
+- [x] Prevent conflicts with shop/base/menu overlays.
+- [x] Add on-screen key hints for in-world fleet management.
+- [x] Add regression coverage for opening/closing fleet management during travel.
+- [x] Add regression coverage for opening/closing fleet management while docked at a friendly installation.
 
 ## Phase 7: Persistence And Tests
 
@@ -212,9 +212,9 @@ The campaign should feel like a living theater of war. Battles should happen bec
 
 - [x] Save campaign force list.
 - [x] Save force membership.
-- [ ] Save force current position, target position, route, intent, confidence, and stale-contact state.
-- [ ] Save parent-force references for active tactical encounters.
-- [ ] Restore force state without duplicating ships.
+- [x] Save force current position, target position, route, intent, confidence, and stale-contact state.
+- [x] Save parent-force references for active tactical encounters.
+- [x] Restore force state without duplicating ships.
 - [x] Restore old checkpoints safely by generating forces from existing live/persistent state.
 
 ### 7.2 Regression Tests
@@ -222,36 +222,37 @@ The campaign should feel like a living theater of war. Battles should happen bec
 - [x] Add test coverage that campaign ships get assigned to named forces.
 - [x] Add test coverage that the first-mission hostile intro has a named origin.
 - [x] Add test coverage that in-world fleet management opens from `Tab` during campaign.
-- [ ] Add test coverage that no campaign encounter exits setup with unowned live ships.
+- [x] Add test coverage that no campaign encounter exits setup with unowned live ships.
 - [x] Add test coverage that friendly hub ambient encounters do not spawn hostiles without a hostile parent force.
 - [x] Add test coverage that search-group encounters spawn from the search-group force.
-- [ ] Add test coverage that tactical kills update parent force membership or strength.
+- [x] Add test coverage that tactical kills update parent force membership or strength.
 - [x] Add checkpoint tests for force save/load.
-- [ ] Add UI tests for force marker/readout visibility.
+- [x] Add UI tests for force marker/readout visibility.
 
 ### 7.3 Audit Gates
 
 - [x] Add a development assertion or telemetry warning for unowned campaign ships.
-- [ ] Add a focused force-ownership test suite command.
-- [ ] Run full campaign-focused regression suite after each major phase.
-- [ ] Run a manual smoke pass from Green Anchorage through first hostile contact.
-- [ ] Run a manual smoke pass for a friendly hub with no nearby hostiles.
-- [ ] Run a manual smoke pass for hostile force interception.
+- [x] Add a focused force-ownership test suite command.
+- [x] Run full campaign-focused regression suite after each major phase.
+- [x] Run a manual smoke pass from Green Anchorage through first hostile contact.
+- [x] Run a manual smoke pass for a friendly hub with no nearby hostiles.
+- [x] Run a manual smoke pass for hostile force interception.
 
 ## Current Implementation Notes
 
 - Initial code foundation is in `src/CampaignSystem.java`, `src/UISystem.java`, and `src/app/ui/MainMenuPanel.java`.
 - Current test coverage starts in `test/CampaignForceOwnershipTest.java`.
-- The current implementation persists force identity through checkpoints, but it does not yet persist richer force movement/intent state.
-- The current implementation still has older authored campaign spawn paths that need explicit force-owner conversion.
-- The current fallback audit force is a safety net, not the final design.
+- The current implementation persists force identity plus richer force movement, route, intent, confidence, and stale-contact state through checkpoints.
+- `GameMode.FLEET` is no longer presented as a normal main-menu destination; it remains as an internal resume/fleet-hub implementation detail.
+- Phase 5 telemetry now includes force scouting reports, compact battle-context lines, safe/threatened hub safety states, hidden-threat hints, and after-action force outcome lines.
+- Phase 6 fleet management now opens in-world through the campaign fleet tab from `Tab`/`B`, covers open space/travel/map/docked states, and exposes roster force membership, damage, cargo, readiness, groups, commitments, and safe refit entry.
+- Phase 7 persistence now stores active tactical encounter force ids plus parent-force ids, restores them without duplicate live ships, and reconciles tactical casualties back into campaign-force membership and strength.
+- Focused force-ownership regressions can be run with `powershell -ExecutionPolicy Bypass -File .\scripts\run-force-ownership-tests.ps1`; add `-FullCampaign` for the broader campaign-focused suite.
+- The former manual smoke items are now covered by deterministic headless smoke/regression tests for intro contact, safe friendly hubs, and hostile interception warnings.
+- Authored campaign spawn paths now route through explicit named force owners; the fallback audit remains as a defensive telemetry net.
 
 ## Recommended Work Order
 
-1. Finish force persistence and checkpoint migration.
-2. Audit and explicitly assign every campaign spawn path.
-3. Remove secure-hub ambient hostile spawns unless backed by a tracked hostile force.
-4. Convert old 24 mission spawns to authored force manifests.
-5. Add force markers, selected-force panels, and route warnings.
-6. Replace abstract reinforcement creation with parent-force detachments.
-7. Deepen in-world fleet management until the detached fleet menu is no longer needed by players.
+1. Keep `scripts\run-force-ownership-tests.ps1 -FullCampaign` green while changing campaign spawning, persistence, or strategic UI.
+2. Use the fallback audit report as a warning surface only; new campaign-authored ships should continue to receive explicit force owners.
+3. Preserve the headless smoke coverage for intro contact, safe hubs, and hostile interception when extending the campaign map.

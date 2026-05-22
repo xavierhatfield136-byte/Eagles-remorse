@@ -121,6 +121,8 @@ public final class CampaignCheckpointStore {
         public String dockedGalaxyLocationId = "";
         public String activeGalaxyEncounterLocationId = "";
         public int activeGalaxyEncounterSearchGroupId = 0;
+        public String activeGalaxyEncounterForceIds = "";
+        public int activeGalaxyEncounterParentForceId = 0;
         public String selectedFleetPostureId = "";
         public String selectedSiteResolutionModeId = "";
         public String activeSiteResolutionModeId = "";
@@ -241,6 +243,8 @@ public final class CampaignCheckpointStore {
             dockedGalaxyLocationId = safeName(dockedGalaxyLocationId, "");
             activeGalaxyEncounterLocationId = safeName(activeGalaxyEncounterLocationId, "");
             activeGalaxyEncounterSearchGroupId = Math.max(0, activeGalaxyEncounterSearchGroupId);
+            activeGalaxyEncounterForceIds = (activeGalaxyEncounterForceIds == null) ? "" : activeGalaxyEncounterForceIds.trim();
+            activeGalaxyEncounterParentForceId = Math.max(0, activeGalaxyEncounterParentForceId);
             selectedFleetPostureId = safeName(selectedFleetPostureId, "");
             selectedSiteResolutionModeId = safeName(selectedSiteResolutionModeId, "");
             activeSiteResolutionModeId = safeName(activeSiteResolutionModeId, "");
@@ -397,6 +401,8 @@ public final class CampaignCheckpointStore {
                 cp.dockedGalaxyLocationId = props.getProperty("dockedGalaxyLocationId", cp.dockedGalaxyLocationId);
                 cp.activeGalaxyEncounterLocationId = props.getProperty("activeGalaxyEncounterLocationId", cp.activeGalaxyEncounterLocationId);
                 cp.activeGalaxyEncounterSearchGroupId = parseInt(props, "activeGalaxyEncounterSearchGroupId", cp.activeGalaxyEncounterSearchGroupId);
+                cp.activeGalaxyEncounterForceIds = props.getProperty("activeGalaxyEncounterForceIds", cp.activeGalaxyEncounterForceIds);
+                cp.activeGalaxyEncounterParentForceId = parseInt(props, "activeGalaxyEncounterParentForceId", cp.activeGalaxyEncounterParentForceId);
                 cp.selectedFleetPostureId = props.getProperty("selectedFleetPostureId", cp.selectedFleetPostureId);
                 cp.selectedSiteResolutionModeId = props.getProperty("selectedSiteResolutionModeId", cp.selectedSiteResolutionModeId);
                 cp.activeSiteResolutionModeId = props.getProperty("activeSiteResolutionModeId", cp.activeSiteResolutionModeId);
@@ -407,6 +413,7 @@ public final class CampaignCheckpointStore {
                 cp.strategicExposureLevel = parseDouble(props, "strategicExposureLevel", cp.strategicExposureLevel);
                 cp.recentStrikePressure = parseDouble(props, "recentStrikePressure", cp.recentStrikePressure);
                 cp.galaxyEncounterActive = parseBoolean(props, "galaxyEncounterActive", cp.galaxyEncounterActive);
+                cp.galaxyAmbientEncounterActive = parseBoolean(props, "galaxyAmbientEncounterActive", cp.galaxyAmbientEncounterActive);
                 cp.campaignFuel = parseInt(props, "campaignFuel", cp.campaignFuel);
                 cp.campaignSupplies = parseInt(props, "campaignSupplies", cp.campaignSupplies);
                 cp.campaignAmmo = parseInt(props, "campaignAmmo", cp.campaignAmmo);
@@ -543,6 +550,8 @@ public final class CampaignCheckpointStore {
             props.setProperty("dockedGalaxyLocationId", cp.dockedGalaxyLocationId);
             props.setProperty("activeGalaxyEncounterLocationId", cp.activeGalaxyEncounterLocationId);
             props.setProperty("activeGalaxyEncounterSearchGroupId", String.valueOf(cp.activeGalaxyEncounterSearchGroupId));
+            props.setProperty("activeGalaxyEncounterForceIds", cp.activeGalaxyEncounterForceIds);
+            props.setProperty("activeGalaxyEncounterParentForceId", String.valueOf(cp.activeGalaxyEncounterParentForceId));
             props.setProperty("selectedFleetPostureId", cp.selectedFleetPostureId);
             props.setProperty("selectedSiteResolutionModeId", cp.selectedSiteResolutionModeId);
             props.setProperty("activeSiteResolutionModeId", cp.activeSiteResolutionModeId);
@@ -553,6 +562,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("strategicExposureLevel", String.valueOf(cp.strategicExposureLevel));
             props.setProperty("recentStrikePressure", String.valueOf(cp.recentStrikePressure));
             props.setProperty("galaxyEncounterActive", String.valueOf(cp.galaxyEncounterActive));
+            props.setProperty("galaxyAmbientEncounterActive", String.valueOf(cp.galaxyAmbientEncounterActive));
             props.setProperty("campaignFuel", String.valueOf(cp.campaignFuel));
             props.setProperty("campaignSupplies", String.valueOf(cp.campaignSupplies));
             props.setProperty("campaignAmmo", String.valueOf(cp.campaignAmmo));
