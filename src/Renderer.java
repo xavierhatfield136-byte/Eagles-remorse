@@ -6133,9 +6133,8 @@ public class Renderer {
         int viewH = clip.height;
         Rectangle panel = getShopOverlayRect(viewW, viewH);
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
-        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
 
-        if (campaignShop && fleetHub && ui != null && ui.fleetRefitMode) {
+        if (campaignShop && ui != null && ui.fleetRefitMode) {
             drawFleetEditorOverlay(g2, ctx, ui, viewW, viewH);
             return;
         }
@@ -6161,7 +6160,7 @@ public class Renderer {
         }
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
 
-        if (campaignShop && fleetHub) {
+        if (campaignShop) {
             drawFleetOverlayModeTabs(gx, panel, false);
         }
 
@@ -6189,7 +6188,7 @@ public class Renderer {
                 campaignShop ? campaignFleetCount(ctx) : superweaponStatusReadout(player),
                 new Color(156, 224, 255));
 
-        if (campaignShop && fleetHub) {
+        if (campaignShop) {
             drawFleetCapUpgradeButtons(gx, ctx, panel);
         }
 

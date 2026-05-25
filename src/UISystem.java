@@ -16,7 +16,11 @@ public final class UISystem {
     private UISystem(){}
 
     private static boolean fleetHubEditingLocked(GameContext ctx) {
-        return CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isFleetHubSession(ctx);
+        return CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.usesPersistentFleetShop(ctx);
+    }
+
+    private static boolean campaignFleetOverlayAvailable(GameContext ctx) {
+        return CampaignSystem.usesPersistentFleetShop(ctx);
     }
 
     private static GameState stateAfterOverlayClose(GameContext ctx) {
@@ -65,6 +69,9 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             clearManualCombatInputs(ctx);
+            if (CampaignSystem.usesPersistentFleetShop(ctx) && ctx.player != null && ctx.ui.fleetSelectedShipId <= 0) {
+                ctx.ui.fleetSelectedShipId = ctx.player.id;
+            }
             focusShopHullRole(ctx, (ctx.player == null) ? ShipRole.FRIGATE : ctx.player.role);
             ctx.state = GameState.SHOP;
             AudioSystem.onUiOpen(ctx);
@@ -112,6 +119,10 @@ public final class UISystem {
     public static void toggleBaseMenu(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+            toggleShop(ctx);
+            return;
+        }
         if (fleetHubEditingLocked(ctx)) {
             ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
             ctx.ui.mapOpen = true;
@@ -231,8 +242,7 @@ public final class UISystem {
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
 
         boolean campaignShop = CampaignSystem.usesPersistentFleetShop(ctx);
-        boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
-        if (campaignShop && fleetHub) {
+        if (campaignShop) {
             Renderer.FleetOverlayClickTarget fleetTarget = Renderer.fleetOverlayClickTargetAt(
                     ctx, ctx.ui, viewportW, viewportH, e.getX(), e.getY());
             if (fleetTarget != null) {
@@ -297,13 +307,13 @@ public final class UISystem {
     }
 
     public static void selectFleetShip(GameContext ctx, int shipId) {
-        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx == null || !campaignFleetOverlayAvailable(ctx)) return;
         ctx.ui.fleetSelectedShipId = shipId;
         ctx.ui.fleetSelectedTurretIndex = -1;  // Reset turret selection when changing ships
     }
 
     public static void selectFleetTurret(GameContext ctx, int turretIndex) {
-        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx == null || !campaignFleetOverlayAvailable(ctx)) return;
         if (ctx.ui.fleetSelectedShipId < 0) return;  // Must have a ship selected first
         Ship selected = findShipInFleet(ctx, ctx.ui.fleetSelectedShipId);
         if (selected == null || turretIndex < 0 || turretIndex >= selected.turrets.size()) {
@@ -314,7 +324,7 @@ public final class UISystem {
     }
 
     public static void setMissileRoleForSelectedTurret(GameContext ctx, Turret.MissileRole role) {
-        if (ctx == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx == null || !campaignFleetOverlayAvailable(ctx)) return;
         if (ctx.ui.fleetSelectedShipId < 0 || ctx.ui.fleetSelectedTurretIndex < 0) return;
         Ship selected = findShipInFleet(ctx, ctx.ui.fleetSelectedShipId);
         if (selected == null || selected.turrets.size() <= ctx.ui.fleetSelectedTurretIndex) return;
@@ -325,7 +335,7 @@ public final class UISystem {
     }
 
     private static void swapFleetTurretKind(GameContext ctx, int shipId, int turretIndex, Turret.Kind desired) {
-        if (ctx == null || desired == null || !CampaignSystem.isFleetHubSession(ctx)) return;
+        if (ctx == null || desired == null || !campaignFleetOverlayAvailable(ctx)) return;
         if (shipId <= 0 || turretIndex < 0) return;
         Ship ship = findShipInFleet(ctx, shipId);
         if (ship == null || ship.turrets == null || turretIndex >= ship.turrets.size()) return;

@@ -199,6 +199,77 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void sectorSpaceBaseHotkeyOpensPersistentFleetOverlay() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.ui.shopOpen = false;
+        ctx.ui.baseMenuOpen = false;
+        ctx.ui.mapOpen = false;
+        ctx.state = GameState.RUNNING;
+
+        UISystem.toggleBaseMenu(ctx);
+
+        assertTrue(ctx.ui.shopOpen);
+        assertFalse(ctx.ui.baseMenuOpen);
+        assertFalse(ctx.ui.mapOpen);
+        assertEquals(GameState.SHOP, ctx.state);
+        assertTrue(CampaignSystem.usesPersistentFleetShop(ctx));
+    }
+
+    @Test
+    void sectorMapDetectionRangeHidesDistantMinorMarkersButKeepsLargeLandmarks() {
+        GameContext ctx = initializedCampaignContext();
+        List<CampaignSystem.CampaignSupportMarker> nearbySupports = CampaignSystem.activeSupportMarkers(ctx);
+        CampaignSystem.CampaignSupportMarker support = nearbySupports.stream()
+                .filter(marker -> marker != null)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(support, "expected at least one live support marker in the overmap");
+
+        ctx.campaign.playerGalaxyX = 5000.0;
+        ctx.campaign.playerGalaxyY = 5000.0;
+        List<CampaignSystem.CampaignSupportMarker> distantSupports = CampaignSystem.activeSupportMarkers(ctx);
+
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.campaign.playerGalaxyX = 0.0;
+        ctx.campaign.playerGalaxyY = 0.0;
+        ctx.campaign.landmarks.clear();
+
+        ctx.campaign.landmarks.add(new CampaignSystem.CampaignLandmark(
+                CampaignSystem.LandmarkType.RELAY,
+                "Far Relay",
+                "Minor lane relay",
+                20000.0,
+                0.0,
+                120.0,
+                null,
+                null,
+                false));
+        ctx.campaign.landmarks.add(new CampaignSystem.CampaignLandmark(
+                CampaignSystem.LandmarkType.COLONY,
+                "Far Colony",
+                "Large settled landmark",
+                20000.0,
+                80.0,
+                280.0,
+                null,
+                null,
+                false));
+
+        List<CampaignSystem.CampaignLandmark> landmarks = CampaignSystem.strategicLandmarks(ctx);
+
+        assertTrue(distantSupports.stream().noneMatch(marker ->
+                marker != null
+                        && marker.label.equals(support.label)
+                        && Math.abs(marker.x - support.x) < 1.0
+                        && Math.abs(marker.y - support.y) < 1.0));
+        assertTrue(landmarks.stream().anyMatch(marker -> "Far Colony".equals(marker.label)));
+        assertTrue(landmarks.stream().noneMatch(marker -> "Far Relay".equals(marker.label)));
+    }
+
+    @Test
     void inWorldFleetRosterExposesKeyHintsCargoForceReadinessGroupsAndCommitment() {
         GameContext ctx = initializedCampaignContext();
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;

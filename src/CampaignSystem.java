@@ -337,6 +337,8 @@ public final class CampaignSystem {
         STALE
     }
 
+    private static final double STRATEGIC_DETECTION_RANGE_MUL = 1.5;
+
     public static final class CampaignObjectiveMarker {
         public final ObjectiveMarkerType type;
         public final String label;
@@ -6247,6 +6249,7 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return List.of();
+        double detectionRange = strategicDetectionRange(ctx, st);
         if (isStrategicOvermapMode(st)) {
             ArrayList<CampaignSupportMarker> out = new ArrayList<>();
             for (CampaignLocation area : st.galaxyAreasOfInterest) {
@@ -6276,6 +6279,8 @@ public final class CampaignSystem {
                 CampaignSupportMarker marker = supportMarkerForStrategicStrike(strike);
                 if (marker != null) out.add(marker);
             }
+            out.removeIf(marker -> marker == null
+                    || !isWithinStrategicDetectionRange(st, marker.x, marker.y, detectionRange));
             HashSet<String> seen = new HashSet<>();
             for (CampaignSupportMarker marker : out) {
                 if (marker == null) continue;
@@ -6292,12 +6297,14 @@ public final class CampaignSystem {
         for (DiscoverySignalSite site : discoverySignalSites(ctx)) {
             CampaignSupportMarker marker = supportMarkerFor(site);
             if (marker == null) continue;
+            if (!isWithinStrategicDetectionRange(st, marker.x, marker.y, detectionRange)) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!seen.add(key)) continue;
             out.add(marker);
         }
         for (CampaignSupportMarker marker : strategicTaskForceMarkers(ctx)) {
             if (marker == null) continue;
+            if (!isWithinStrategicDetectionRange(st, marker.x, marker.y, detectionRange)) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!seen.add(key)) continue;
             out.add(marker);
@@ -6313,8 +6320,10 @@ public final class CampaignSystem {
         if (ctx == null || st == null || out == null || seen == null) return;
         ensureCampaignForceOwnership(ctx, st);
         syncCampaignForceSimulationSeeds(ctx, st);
+        double detectionRange = strategicDetectionRange(ctx, st);
         for (CampaignForce force : st.campaignForces) {
             CampaignSupportMarker marker = supportMarkerForCampaignForce(ctx, st, force);
+            if (marker == null || !isWithinStrategicDetectionRange(st, marker.x, marker.y, detectionRange)) continue;
             addSupportMarker(out, seen, marker);
         }
     }
@@ -7827,6 +7836,29 @@ public final class CampaignSystem {
     private static double maxStrategicSensorRange(GameContext ctx, CampaignState st) {
         double strikeRange = maxStrategicStrikeRange(ctx, st);
         return Double.isFinite(strikeRange) ? strikeRange : STRATEGIC_SENSOR_RANGE_FALLBACK;
+    }
+
+    private static double strategicDetectionRange(GameContext ctx, CampaignState st) {
+        double strikeRange = maxStrategicStrikeRange(ctx, st);
+        if (!Double.isFinite(strikeRange) || strikeRange <= 0.0) {
+            return maxStrategicSensorRange(ctx, st);
+        }
+        return strikeRange * STRATEGIC_DETECTION_RANGE_MUL;
+    }
+
+    private static boolean isWithinStrategicDetectionRange(CampaignState st, double x, double y, double range) {
+        if (st == null || !Double.isFinite(st.playerGalaxyX) || !Double.isFinite(st.playerGalaxyY)) return false;
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(range) || range <= 0.0) return false;
+        return Math.hypot(x - st.playerGalaxyX, y - st.playerGalaxyY) <= range;
+    }
+
+    private static boolean shouldAlwaysShowStrategicLandmark(CampaignLandmark landmark) {
+        if (landmark == null) return false;
+        if (landmark.radius >= 220.0) return true;
+        return switch (landmark.type) {
+            case PLANET, STAR, RING, COLONY, FORTRESS -> true;
+            default -> false;
+        };
     }
 
     private static boolean isWithinStrategicStrikeRange(GameContext ctx, CampaignState st, double x, double y) {
@@ -11485,8 +11517,13 @@ public final class CampaignSystem {
         if (st == null || !st.enabled || st.landmarks.isEmpty()) return List.of();
         ArrayList<CampaignLandmark> out = new ArrayList<>();
         HashSet<String> seen = new HashSet<>();
+        double detectionRange = strategicDetectionRange(ctx, st);
         for (CampaignLandmark landmark : st.landmarks) {
             if (landmark == null || landmark.discoveryDerived) continue;
+            if (!shouldAlwaysShowStrategicLandmark(landmark)
+                    && !isWithinStrategicDetectionRange(st, landmark.x, landmark.y, detectionRange)) {
+                continue;
+            }
             String label = trimmedOrFallback(landmark.label, "");
             if (label.isBlank()) continue;
             String key = landmark.type + "|" + label + "|" + Math.round(landmark.x / 25.0) + "|" + Math.round(landmark.y / 25.0);
@@ -11721,7 +11758,8 @@ public final class CampaignSystem {
     }
 
     public static boolean usesPersistentFleetShop(GameContext ctx) {
-        return isFleetHubSession(ctx);
+        return isFleetHubSession(ctx)
+                || (isCampaignActive(ctx) && !isStrategicGalaxyMapMode(ctx));
     }
 
     public static boolean isPlayerControlLocked(GameContext ctx) {
