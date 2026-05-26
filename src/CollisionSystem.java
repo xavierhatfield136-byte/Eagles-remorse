@@ -538,7 +538,7 @@ public class CollisionSystem {
         double baseSplash = Math.max(0.0, m.damage * m.splashDamageMul);
         Ship shooter = resolveSourceShip(ctx, ships, m);
 
-        if (isYellowHyperweaponWarhead(shooter, m)) {
+        if (m.strikeVisual == Missile.StrikeVisual.ATOMIC || isYellowHyperweaponWarhead(shooter, m)) {
             applyNuclearBlast(ctx, m, directHit, ships, shooter);
             return;
         }
@@ -615,8 +615,14 @@ public class CollisionSystem {
 
             boolean unshieldedHull = shieldBefore <= 1e-6;
             boolean titanOrMothership = ship.role != null && ship.role.isTitanOrMothership();
+            boolean strikeAtomic = missile.strikeVisual == Missile.StrikeVisual.ATOMIC;
+            boolean nuclearHardTarget = titanOrMothership
+                    || ship.role == ShipRole.DREADNOUGHT
+                    || ship.role == ShipRole.SUPERSHIP;
             if (unshieldedHull) {
-                if (!titanOrMothership && ship.role != null && SpawnSystem.requiredHangarTierForRole(ship.role) <= 2) {
+                if (strikeAtomic && !nuclearHardTarget) {
+                    ship.scaleCurrentHullIntegrity(0.0);
+                } else if (!titanOrMothership && ship.role != null && SpawnSystem.requiredHangarTierForRole(ship.role) <= 2) {
                     ship.scaleCurrentHullIntegrity(0.0);
                 } else if (titanOrMothership) {
                     ship.scaleCurrentHullIntegrity(Math.max(0.28, 0.62 - 0.22 * falloff));
@@ -624,7 +630,11 @@ public class CollisionSystem {
                     ship.scaleCurrentHullIntegrity(Math.max(0.10, 0.42 - 0.26 * falloff));
                 }
             } else if (ship == directHit && ship.shield <= 1e-6) {
-                ship.scaleCurrentHullIntegrity(0.84);
+                if (strikeAtomic && !nuclearHardTarget) {
+                    ship.scaleCurrentHullIntegrity(0.0);
+                } else {
+                    ship.scaleCurrentHullIntegrity(0.84);
+                }
             }
 
             int hullDamage = Math.max(0, hpBefore - ship.hp);

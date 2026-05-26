@@ -3,6 +3,12 @@ public class Missile extends Projectile {
     public static final int HEAVY_INTERCEPT_HP = 4;
     public static final int INFINITE_GUIDANCE_TICKS = Integer.MAX_VALUE;
 
+    public enum StrikeVisual {
+        DEFAULT,
+        TORPEDO,
+        ATOMIC
+    }
+
     public double angle;
     public double speed = 300;                   // units/sec
     public double turnRate = Math.toRadians(280);// rad/sec
@@ -18,6 +24,7 @@ public class Missile extends Projectile {
     public boolean preferSmallCraft = false;
     public double retargetRange = 900.0;
     public double visualScale = 1.0;
+    public StrikeVisual strikeVisual = StrikeVisual.DEFAULT;
 
     public Missile(double x, double y, double angle, Ship target, double dt) {
         this(x, y, angle, target, dt, 300, Math.toRadians(280), 5, 240, 7.0, Faction.PLAYER);
@@ -70,6 +77,7 @@ public class Missile extends Projectile {
         preferSmallCraft = other.preferSmallCraft;
         retargetRange = other.retargetRange;
         visualScale = other.visualScale;
+        strikeVisual = (other.strikeVisual == null) ? StrikeVisual.DEFAULT : other.strikeVisual;
     }
 
     public boolean applyInterceptHit(int damage) {

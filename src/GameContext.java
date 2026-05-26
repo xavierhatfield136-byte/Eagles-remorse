@@ -238,7 +238,7 @@ public class GameContext {
 
     private static int resolvedWorldHeight(GameConfig config) {
         if (config != null && (config.mode == GameMode.CAMPAIGN_OPS || config.mode == GameMode.FLEET)) {
-            return Math.max(Math.max(1, config.worldH), CampaignSystem.recommendedWorldHeight(config));
+            return Math.max(Math.max(1, config.worldH), CampaignSystem.recommendedStrategicTheaterHeight(config));
         }
         return BattlefieldSectorSystem.recommendedWorldHeight(config);
     }

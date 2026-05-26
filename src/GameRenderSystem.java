@@ -4,6 +4,8 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 public final class GameRenderSystem {
+    private static final double LONG_RANGE_CONTACT_RENDER_METERS = 20_000.0;
+
     static final class SensorNetEntry {
         final String section;
         final String title;
@@ -634,12 +636,14 @@ if (DevTools.isDebugOverlay()) {
         if (CampaignSystem.usesMissionSubzones(ctx)) {
             int loadedSubzone = loadedMissionRenderSubzone(ctx);
             if (loadedSubzone < 0) return true;
-            return CampaignSystem.missionSubzoneForShip(ctx, ship) == loadedSubzone;
+            if (CampaignSystem.missionSubzoneForShip(ctx, ship) == loadedSubzone) return true;
+            return allowLongRangeContactRendering(ctx, ship);
         }
         BattlefieldSectorSystem.SectorDefinition loadedSector = loadedBattlefieldRenderSector(ctx);
         if (loadedSector == null) return true;
         BattlefieldSectorSystem.SectorDefinition shipSector = BattlefieldSectorSystem.sectorAt(ctx, ship.x, ship.y);
-        return shipSector != null && loadedSector.id.equals(shipSector.id);
+        if (shipSector != null && loadedSector.id.equals(shipSector.id)) return true;
+        return allowLongRangeContactRendering(ctx, ship);
     }
 
     static boolean isInLoadedRenderZone(GameContext ctx, double x, double y) {
@@ -671,6 +675,16 @@ if (DevTools.isDebugOverlay()) {
         if (!BattlefieldSectorSystem.isEnabled(ctx)) return null;
         BattlefieldSectorSystem.ensureLoadedSector(ctx);
         return BattlefieldSectorSystem.loadedSector(ctx);
+    }
+
+    private static boolean allowLongRangeContactRendering(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null || ctx.player == null || !ship.alive || ship.dying || ship.hp <= 0) return false;
+        double d2 = GameMath.dist2(ctx.player.x, ctx.player.y, ship.x, ship.y);
+        if (d2 > LONG_RANGE_CONTACT_RENDER_METERS * LONG_RANGE_CONTACT_RENDER_METERS) return false;
+        Faction perspective = ctx.player.faction;
+        if (perspective != null && ship.faction != null && ship.faction.isFriendlyTo(perspective)) return true;
+        if (FogOfWarSystem.isVisibleToPerspective(ctx.fogOfWar, perspective, ship)) return true;
+        return ctx.fogOfWar != null && ctx.fogOfWar.contactGhost(ship.id) != null;
     }
 
     private static void drawFleetNetOverlay(GameContext ctx, Graphics2D g2, int viewportW, int viewportH) {

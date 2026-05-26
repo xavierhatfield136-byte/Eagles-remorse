@@ -35,6 +35,8 @@ public class Renderer {
     private static final double HULL_DAMAGE_DETAIL_MIN_SCREEN_SPAN = 72.0;
     private static final double HULL_DAMAGE_BREACH_MIN_SCREEN_SPAN = 108.0;
     private static final double HULL_DAMAGE_IMPACT_OVERLAY_MIN_SCREEN_SPAN = 92.0;
+    private static final double HULL_DAMAGE_PATCH_MIN_SCREEN_SPAN = 96.0;
+    private static final double HULL_DAMAGE_PATCH_MIN_RENDER_RADIUS = 2.2;
     private static final double SHIELD_FX_MIN_SCREEN_SPAN = 56.0;
     private static final double WARP_FX_MIN_SCREEN_SPAN = 64.0;
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
@@ -198,7 +200,11 @@ public class Renderer {
             ECM_PRIMED,
             ECM_ACTIVE,
             CLOAK_CHARGE,
-            CLOAK_ACTIVE
+            CLOAK_ACTIVE,
+            STRIKE_SELECT_TORPEDO,
+            STRIKE_SELECT_AIRWING,
+            STRIKE_SELECT_NUCLEAR,
+            STRIKE_LAUNCH
         }
 
         public final Kind kind;
@@ -503,12 +509,9 @@ public class Renderer {
     };
 
     public static Rectangle getStrategicMapRect(int viewW, int viewH) {
-        int pad = 52;
-        int w = Math.min(1120, viewW - pad * 2);
-        int h = Math.min(560, viewH - pad * 2);
-        int x = (viewW - w) / 2;
-        int y = (viewH - h) / 2;
-        return new Rectangle(x, y, w, h);
+        int padX = Math.max(10, viewW / 90);
+        int padY = Math.max(10, viewH / 85);
+        return new Rectangle(padX, padY, Math.max(320, viewW - padX * 2), Math.max(240, viewH - padY * 2));
     }
 
     public static Rectangle getStrategicMapRect(int viewW, int viewH, boolean galaxyMode) {
@@ -4093,7 +4096,11 @@ public class Renderer {
     }
 
     private static void drawMissile(Graphics2D g2, Missile m) {
-        BufferedImage skin = ProjectileSkinLibrary.getMissileSkin();
+        BufferedImage skin = switch ((m == null || m.strikeVisual == null) ? Missile.StrikeVisual.DEFAULT : m.strikeVisual) {
+            case TORPEDO -> ProjectileSkinLibrary.getTorpedoStrikeSkin();
+            case ATOMIC -> ProjectileSkinLibrary.getAtomicStrikeSkin();
+            default -> ProjectileSkinLibrary.getMissileSkin();
+        };
         if (skin != null) {
             drawMissileSkin(g2, m, skin);
         } else {
@@ -4475,6 +4482,19 @@ public class Renderer {
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);
+        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
+            if (strikeRect != null && strikeRect.width > 0 && strikeRect.height > 0 && strikeRect.contains(mouseX, mouseY)) {
+                Rectangle t = combatStrikeTorpedoRect(strikeRect);
+                Rectangle a = combatStrikeAirWingRect(strikeRect);
+                Rectangle n = combatStrikeNuclearRect(strikeRect);
+                Rectangle l = combatStrikeLaunchRect(strikeRect);
+                if (t.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_TORPEDO);
+                if (a.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_AIRWING);
+                if (n.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_SELECT_NUCLEAR);
+                if (l.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.STRIKE_LAUNCH);
+            }
+        }
         Rectangle beamRapid = beamRapidRect(layout.beamRect);
         if (beamRapid.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.BEAM_RAPID);
         Rectangle beamConcentrated = beamConcentratedRect(layout.beamRect);
@@ -4561,6 +4581,10 @@ public class Renderer {
         drawEcmModePanel(g2, ctx, layout.ecmRect);
         if (player.isStealth) {
             drawCloakModePanel(g2, player, layout.cloakRect);
+        }
+        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
+            drawCombatStrikeSelectionPanel(g2, ctx, strikeRect);
         }
     }
 
@@ -4653,6 +4677,96 @@ public class Renderer {
             drawHudStatusChip(g2, active, rect.x + rect.width - chipW - 12, rect.y + rect.height - 28, chipW, 18, accent, true);
             g2.setFont(oldFont);
         }
+    }
+
+    private static boolean strikeActionEnabled(GameContext ctx, String id) {
+        if (ctx == null || id == null) return false;
+        for (CampaignSystem.CampaignAction action : CampaignSystem.tacticalMapVisibleActions(ctx)) {
+            if (action == null || action.id == null) continue;
+            if (action.id.equalsIgnoreCase(id)) return action.enabled;
+        }
+        return false;
+    }
+
+    private static Rectangle combatStrikePanelRect(int viewW, int viewH, CombatHudPanelLayout layout) {
+        if (layout == null) return new Rectangle(0, 0, 0, 0);
+        int w = layout.beamRect.width;
+        int h = Math.max(110, (int) Math.round(layout.beamRect.height * 0.76));
+        int x = Math.max(12, layout.beamRect.x - w - 12);
+        int y = layout.beamRect.y;
+        if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
+        if (y + h > viewH - 12) y = Math.max(12, viewH - h - 12);
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle combatStrikeTorpedoRect(Rectangle panel) {
+        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
+        int buttonH = (int) Math.round(panel.height * 0.30);
+        int x = panel.x + (int) Math.round(panel.width * 0.11);
+        int w = (int) Math.round(panel.width * 0.23);
+        return new Rectangle(x, buttonY, w, buttonH);
+    }
+
+    private static Rectangle combatStrikeAirWingRect(Rectangle panel) {
+        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
+        int buttonH = (int) Math.round(panel.height * 0.30);
+        int x = panel.x + (int) Math.round(panel.width * 0.39);
+        int w = (int) Math.round(panel.width * 0.23);
+        return new Rectangle(x, buttonY, w, buttonH);
+    }
+
+    private static Rectangle combatStrikeNuclearRect(Rectangle panel) {
+        int buttonY = panel.y + (int) Math.round(panel.height * 0.30);
+        int buttonH = (int) Math.round(panel.height * 0.30);
+        int x = panel.x + (int) Math.round(panel.width * 0.67);
+        int w = (int) Math.round(panel.width * 0.23);
+        return new Rectangle(x, buttonY, w, buttonH);
+    }
+
+    private static Rectangle combatStrikeLaunchRect(Rectangle panel) {
+        int y = panel.y + (int) Math.round(panel.height * 0.68);
+        int h = (int) Math.round(panel.height * 0.20);
+        int x = panel.x + (int) Math.round(panel.width * 0.28);
+        int w = (int) Math.round(panel.width * 0.44);
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static void drawCombatStrikeSelectionPanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
+        if (g2 == null || ctx == null || rect == null || rect.width <= 0 || rect.height <= 0) return;
+        int mode = (ctx.ui == null) ? 0 : MathUtil.clamp(ctx.ui.combatStrikeSelection, 0, 2);
+        BufferedImage art = switch (mode) {
+            case 1 -> StrikeButtonSkinLibrary.getAirWingButton();
+            case 2 -> StrikeButtonSkinLibrary.getNuclearButton();
+            default -> StrikeButtonSkinLibrary.getTorpedoButton();
+        };
+        boolean enabled = switch (mode) {
+            case 1 -> strikeActionEnabled(ctx, "TACTICAL_CARRIER_SORTIE");
+            case 2 -> strikeActionEnabled(ctx, "TACTICAL_ATOMIC_STRIKE");
+            default -> strikeActionEnabled(ctx, "TACTICAL_TORPEDO_STRIKE");
+        };
+        if (art != null) {
+            g2.drawImage(art, rect.x, rect.y, rect.width, rect.height, null);
+            if (!enabled) {
+                // Keep the panel readable at full brightness; only annotate disabled state.
+                int bx = rect.x + 10;
+                int by = rect.y + rect.height - 26;
+                int bw = 126;
+                int bh = 18;
+                g2.setColor(new Color(14, 22, 32, 210));
+                g2.fillRoundRect(bx, by, bw, bh, 8, 8);
+                g2.setColor(new Color(255, 180, 140, 210));
+                g2.drawRoundRect(bx, by, bw, bh, 8, 8);
+                Font oldFont = g2.getFont();
+                g2.setFont(new Font("Consolas", Font.BOLD, 10));
+                g2.drawString("STRIKE UNAVAILABLE", bx + 8, by + 12);
+                g2.setFont(oldFont);
+            }
+            g2.setColor(withAlpha(new Color(178, 220, 255, 220), enabled ? 220 : 176));
+            g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+            return;
+        }
+        drawFallbackPanel(g2, rect, "STRIKE CONTROL", enabled ? "READY" : "UNAVAILABLE",
+                "Select strike type", "Launch selected strike", new Color(255, 176, 120, 220));
     }
 
     private static Turret.MissileRole currentPlayerMissileRole(Player player) {
@@ -5718,7 +5832,7 @@ public class Renderer {
             case GALAXY_SEARCH_GROUP ->
                     "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
             case INSTALLATION_THREAT ->
-                    "Auto-resolve keeps the installation open. Taking command clears the hostile pocket inside the harbor approach.";
+                    "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
             case TASK_FORCE ->
                     "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
         };
@@ -5750,9 +5864,9 @@ public class Renderer {
         if (prompt.location != null && !prompt.location.isBlank()) {
             String label = switch (prompt.kind) {
                 case CAMPAIGN_LOCATION -> "Location: ";
-                case GALAXY_SEARCH_GROUP -> "Intercept Zone: ";
+                case GALAXY_SEARCH_GROUP -> "Intercept Contact: ";
                 case INSTALLATION_THREAT -> "Threat Axis: ";
-                case TASK_FORCE -> "Pocket: ";
+                case TASK_FORCE -> "Contact Axis: ";
             };
             g2.drawString(label + prompt.location, inner.x, infoY);
             infoY += 18;
@@ -8450,7 +8564,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                         : (galaxyMode
                         ? "LMB: select destination or free course   Double-click/T: burn engines   TAB/B: fleet   H: hold   RMB: ping   wheel/Ctrl+/-: zoom"
                         : (CampaignSystem.usesMissionSubzones(ctx)
-                        ? "LMB: select marker or set course   Command Bay: visible actions   RMB: ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts/strikes"
+                        ? "LMB: set local course or select contact   Command Bay: visible actions   RMB: local ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts/strikes"
                         : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies")),
                 r.x + 18, r.y + r.height - 16);
 
@@ -8530,7 +8644,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 drawSensorInterestSignals(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             }
             if (!sectorized && CampaignSystem.usesMissionSubzones(ctx)) {
-                drawCampaignSectorsOnMap(g2, m, ctx, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+                drawLocalOperatingAreaOnMap(g2, m, ctx, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             }
         }
         drawStrategicLandmarkMarkers(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
@@ -8967,7 +9081,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 && !ctx.ui.tacticalMapSelectionLabel.isBlank()) {
             out.add("Target: " + ctx.ui.tacticalMapSelectionLabel);
             out.add("Intel: " + defaultIfBlank(ctx.ui.tacticalMapSelectionDetail, "Tracked"));
-            out.add("Threat: Hostile tactical strike zone");
+            out.add("Threat: Hostile tactical strike contact");
         } else if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)) {
             out.add("Target: " + CampaignSystem.selectedCampaignContactLabel(ctx));
             out.add("Intel: " + defaultIfBlank(CampaignSystem.selectedCampaignContactIntelLabel(ctx), "Track weak"));
@@ -9136,6 +9250,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawTacticalActionButton(Graphics2D g2, CampaignSystem.CampaignAction action, Rectangle rect, boolean primary) {
         if (g2 == null || action == null || rect == null) return;
+        BufferedImage strikeButton = strikeActionButtonImage(action);
+        if (strikeButton != null) {
+            Composite oldComposite = g2.getComposite();
+            float alpha = action.enabled ? 1.0f : 0.54f;
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+            g2.drawImage(strikeButton, rect.x, rect.y, rect.width, rect.height, null);
+            g2.setComposite(oldComposite);
+            if (!action.enabled) {
+                g2.setColor(new Color(12, 18, 28, 120));
+                g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+            }
+            g2.setColor(withAlpha(new Color(178, 220, 255, 220), action.enabled ? 218 : 110));
+            g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+            return;
+        }
         Color accent = tacticalActionAccent(action);
         int fillAlpha = action.enabled ? (primary ? 86 : 64) : 34;
         g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), fillAlpha));
@@ -9678,6 +9807,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawGalaxyActionButton(Graphics2D g2, CampaignSystem.CampaignAction action,
                                                int x, int y, int w, int h, boolean primary) {
         if (g2 == null || action == null) return;
+        BufferedImage strikeButton = strikeActionButtonImage(action);
+        if (strikeButton != null) {
+            Composite oldComposite = g2.getComposite();
+            float alpha = action.enabled ? 1.0f : 0.54f;
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+            g2.drawImage(strikeButton, x, y, w, h, null);
+            g2.setComposite(oldComposite);
+            if (!action.enabled) {
+                g2.setColor(new Color(12, 18, 28, 120));
+                g2.fillRoundRect(x, y, w, h, 10, 10);
+            }
+            g2.setColor(withAlpha(new Color(178, 220, 255, 220), action.enabled ? 218 : 110));
+            g2.drawRoundRect(x, y, w, h, 10, 10);
+            return;
+        }
         Color accent = switch (action.state) {
             case DISABLED -> new Color(126, 136, 150, 170);
             case WARNING -> new Color(255, 176, 120, 220);
@@ -9715,6 +9859,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int maxChars = Math.max(8, maxWidth / 6);
         if (trimmed.length() <= maxChars) return trimmed;
         return trimmed.substring(0, Math.max(0, maxChars - 3)) + "...";
+    }
+
+    private static BufferedImage strikeActionButtonImage(CampaignSystem.CampaignAction action) {
+        if (action == null || action.id == null) return null;
+        String id = action.id.toUpperCase(Locale.US);
+        if (id.contains("TORPEDO_STRIKE")) return StrikeButtonSkinLibrary.getTorpedoButton();
+        if (id.contains("CARRIER_SORTIE") || id.contains("AIR_WING")) return StrikeButtonSkinLibrary.getAirWingButton();
+        if (id.contains("ATOMIC_STRIKE") || id.contains("NUCLEAR")) return StrikeButtonSkinLibrary.getNuclearButton();
+        return null;
     }
 
     private static void drawGalaxyNavigationBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
@@ -10808,6 +10961,50 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
+    private static void drawLocalOperatingAreaOnMap(Graphics2D g2, Rectangle mapRect, GameContext ctx,
+                                                    double worldMinX, double worldMinY,
+                                                    double worldViewW, double worldViewH) {
+        if (g2 == null || mapRect == null || ctx == null) return;
+        double centerX = (ctx.player != null) ? ctx.player.x : (worldMinX + worldViewW * 0.5);
+        double centerY = (ctx.player != null) ? ctx.player.y : (worldMinY + worldViewH * 0.5);
+        int cx = mapRect.x + (int) Math.round(((centerX - worldMinX) / Math.max(1.0, worldViewW)) * mapRect.width);
+        int cy = mapRect.y + (int) Math.round(((centerY - worldMinY) / Math.max(1.0, worldViewH)) * mapRect.height);
+
+        double[] radii = {220.0, 420.0, 760.0, 1150.0};
+        Color[] colors = {
+                new Color(255, 226, 170, 148),
+                new Color(172, 232, 255, 126),
+                new Color(150, 210, 255, 108),
+                new Color(128, 184, 255, 92)
+        };
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.94f));
+
+        for (int i = 0; i < radii.length; i++) {
+            double worldRadius = radii[i];
+            int pxRadius = (int) Math.max(8, Math.round((worldRadius / Math.max(1.0, worldViewW)) * mapRect.width));
+            g2.setStroke((i == 0) ? STRATEGIC_MAP_ZONE_ACTIVE_STROKE : STRATEGIC_MAP_ZONE_STROKE);
+            g2.setColor(colors[i]);
+            g2.drawOval(cx - pxRadius, cy - pxRadius, pxRadius * 2, pxRadius * 2);
+        }
+
+        g2.setColor(new Color(230, 244, 255, 198));
+        g2.setStroke(STRATEGIC_MAP_OBJECTIVE_STROKE);
+        g2.drawLine(cx - 11, cy, cx + 11, cy);
+        g2.drawLine(cx, cy - 11, cx, cy + 11);
+        g2.fillOval(cx - 3, cy - 3, 6, 6);
+
+        g2.setFont(STRATEGIC_MAP_ZONE_TAG_FONT);
+        g2.setColor(new Color(196, 232, 255, 188));
+        g2.drawString("LOCAL OPERATING AREA", MathUtil.clamp(cx + 14, mapRect.x + 6, mapRect.x + mapRect.width - 170), MathUtil.clamp(cy - 12, mapRect.y + 14, mapRect.y + mapRect.height - 8));
+
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
     private static void drawStrategicObjectiveMarkers(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                       double worldMinX, double worldMinY,
                                                       double worldW, double worldH) {
@@ -10880,7 +11077,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Composite oldComposite = g2.getComposite();
         Color accent = strategicMarkerColor(marker);
         Color fill = withAlpha(accent, strategicMarkerFillAlpha(marker.type));
-        boolean selected = isSelectedTacticalMarker(ctx, marker.label, marker.x, marker.y);
+        boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
         int sizeBoost = selected ? 2 : markerPriorityBoost(marker.priority);
         int outerRadius = strategicMarkerOuterRadius(marker.type) + sizeBoost;
         int innerRadius = strategicMarkerInnerRadius(marker.type) + Math.max(0, sizeBoost - 1);
@@ -10949,7 +11146,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Font oldFont = g2.getFont();
         Composite oldComposite = g2.getComposite();
         Color accent = strategicSupportMarkerColor(marker);
-        boolean selected = isSelectedTacticalMarker(ctx, marker.label, marker.x, marker.y);
+        boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
         int radius = strategicSupportMarkerRadius(marker.type) + (selected ? 2 : markerPriorityBoost(marker.priority));
 
         float markerAlpha = strategicSupportMarkerAlpha(marker);
@@ -10967,7 +11164,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         drawStrategicSupportMarkerGlyph(g2, marker.type, px, py, radius);
 
-        if (marker.label != null && !marker.label.isBlank()) {
+        if (shouldShowSupportMarkerLabel(ctx, marker, selected)
+                && marker.label != null && !marker.label.isBlank()) {
             g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
             FontMetrics fm = g2.getFontMetrics();
             String shortLabel = strategicSupportShortLabel(marker).trim().toUpperCase(Locale.US);
@@ -11038,7 +11236,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Font oldFont = g2.getFont();
         Composite oldComposite = g2.getComposite();
         Color accent = strategicLandmarkColor(marker);
-        boolean selected = isSelectedTacticalMarker(ctx, marker.label, marker.x, marker.y);
+        boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
         int radius = strategicLandmarkRadius(marker.type) + (selected ? 2 : 0);
 
         g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.36f));
@@ -11081,11 +11279,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
-    private static boolean isSelectedTacticalMarker(GameContext ctx, String label, double x, double y) {
-        if (ctx == null || ctx.ui == null || CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+    private static boolean isSelectedMapMarker(GameContext ctx, String label, double x, double y) {
+        if (ctx == null || ctx.ui == null) return false;
+        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+            if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)
+                    && Double.isFinite(ctx.ui.selectedCampaignContactX)
+                    && Double.isFinite(ctx.ui.selectedCampaignContactY)
+                    && Math.hypot(ctx.ui.selectedCampaignContactX - x, ctx.ui.selectedCampaignContactY - y) <= 180.0) {
+                return true;
+            }
+            if (label != null
+                    && !label.isBlank()
+                    && ctx.ui.selectedCampaignContactLabel != null
+                    && !ctx.ui.selectedCampaignContactLabel.isBlank()
+                    && label.equalsIgnoreCase(ctx.ui.selectedCampaignContactLabel)) {
+                return true;
+            }
+            return false;
+        }
         if (!Double.isFinite(ctx.ui.tacticalMapSelectionX) || !Double.isFinite(ctx.ui.tacticalMapSelectionY)) return false;
         if (label != null && !label.isBlank() && label.equalsIgnoreCase(ctx.ui.tacticalMapSelectionLabel)) return true;
         return Math.hypot(ctx.ui.tacticalMapSelectionX - x, ctx.ui.tacticalMapSelectionY - y) <= 140.0;
+    }
+
+    private static boolean shouldShowSupportMarkerLabel(GameContext ctx,
+                                                        CampaignSystem.CampaignSupportMarker marker,
+                                                        boolean selected) {
+        if (marker == null) return false;
+        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        return selected;
     }
 
     private static int markerPriorityBoost(int priority) {
@@ -13697,6 +13919,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final String SKIN_DIR = "assets/projectile_skins";
         private static final String SKIN_RESOURCE_DIR = "projectile_skins";
         private static BufferedImage missileSkin;
+        private static BufferedImage torpedoStrikeSkin;
+        private static BufferedImage atomicStrikeSkin;
         private static BufferedImage energyBoltSkin;
         private static BufferedImage beamBoltSkin;
         private static BufferedImage beamBoltSingleSkin;
@@ -13704,6 +13928,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static BufferedImage bulletSkin;
         private static BufferedImage ciwsPelletSkin;
         private static boolean missileSkinLoaded = false;
+        private static boolean torpedoStrikeSkinLoaded = false;
+        private static boolean atomicStrikeSkinLoaded = false;
         private static boolean energyBoltSkinLoaded = false;
         private static boolean beamBoltSkinLoaded = false;
         private static boolean beamBoltSingleSkinLoaded = false;
@@ -13716,6 +13942,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             missileSkinLoaded = true;
             missileSkin = loadSkin("missile");
             return missileSkin;
+        }
+
+        static BufferedImage getTorpedoStrikeSkin() {
+            if (torpedoStrikeSkinLoaded) return torpedoStrikeSkin;
+            torpedoStrikeSkinLoaded = true;
+            torpedoStrikeSkin = loadSkin("torpedo_strike");
+            return torpedoStrikeSkin;
+        }
+
+        static BufferedImage getAtomicStrikeSkin() {
+            if (atomicStrikeSkinLoaded) return atomicStrikeSkin;
+            atomicStrikeSkinLoaded = true;
+            atomicStrikeSkin = loadSkin("atomic_strike");
+            return atomicStrikeSkin;
         }
 
         static BufferedImage getEnergyBoltSkin(boolean beamBoltVariant) {
@@ -13757,6 +13997,49 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             ciwsPelletSkinLoaded = true;
             ciwsPelletSkin = loadSkin("ciws_pellet");
             return ciwsPelletSkin;
+        }
+
+        private static BufferedImage loadSkin(String key) {
+            BufferedImage resource = loadBundledImage(Renderer.class, SKIN_RESOURCE_DIR, SKIN_DIR, key);
+            if (resource != null) return resource;
+            String path = SKIN_DIR + "/" + key + ".png";
+            try {
+                File f = new File(path);
+                if (f.isFile()) return ImageIO.read(f);
+            } catch (IOException ignored) {}
+            return null;
+        }
+    }
+
+    private static final class StrikeButtonSkinLibrary {
+        private static final String SKIN_DIR = "assets/ui/strike_buttons";
+        private static final String SKIN_RESOURCE_DIR = "ui/strike_buttons";
+        private static BufferedImage torpedoButton;
+        private static BufferedImage airWingButton;
+        private static BufferedImage nuclearButton;
+        private static boolean torpedoLoaded = false;
+        private static boolean airWingLoaded = false;
+        private static boolean nuclearLoaded = false;
+
+        static BufferedImage getTorpedoButton() {
+            if (torpedoLoaded) return torpedoButton;
+            torpedoLoaded = true;
+            torpedoButton = loadSkin("torpedo_strike_button");
+            return torpedoButton;
+        }
+
+        static BufferedImage getAirWingButton() {
+            if (airWingLoaded) return airWingButton;
+            airWingLoaded = true;
+            airWingButton = loadSkin("air_wing_strike_button");
+            return airWingButton;
+        }
+
+        static BufferedImage getNuclearButton() {
+            if (nuclearLoaded) return nuclearButton;
+            nuclearLoaded = true;
+            nuclearButton = loadSkin("nuclear_strike_button");
+            return nuclearButton;
         }
 
         private static BufferedImage loadSkin(String key) {
@@ -14826,11 +15109,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     g.fillOval(px - sz, py - sz, sz * 2, sz * 2);
                 }
             }
+            boolean patchesAvailable = ShipDamagePatchLibrary.hasAnyPatch();
+            if (patchesAvailable && screenSpan >= HULL_DAMAGE_PATCH_MIN_SCREEN_SPAN) {
+                drawImpactMachineryPatches(g, ship, hullShape, marks, dmg, span);
+            }
             if (screenSpan >= HULL_DAMAGE_BREACH_MIN_SCREEN_SPAN) {
                 drawDestroyedHullBreaches(g, ship, hullShape, marks, span);
             }
             if (screenSpan >= HULL_DAMAGE_IMPACT_OVERLAY_MIN_SCREEN_SPAN) {
-                drawImpactHoleOverlays(g, marks);
+                drawImpactHoleOverlays(g, marks, patchesAvailable);
             }
         } finally {
             g.setStroke(oldStroke);
@@ -14838,7 +15125,80 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
-    private static void drawImpactHoleOverlays(Graphics2D g, List<Ship.HullImpactMark> marks) {
+    private static void drawImpactMachineryPatches(Graphics2D g,
+                                                   Ship ship,
+                                                   Shape hullShape,
+                                                   List<Ship.HullImpactMark> marks,
+                                                   double damageFraction,
+                                                   int span) {
+        if (g == null || ship == null || hullShape == null || marks == null || marks.isEmpty()) return;
+
+        Shape hullClip = g.getClip();
+        int start = Math.max(0, marks.size() - 18);
+        for (int i = start; i < marks.size(); i++) {
+            Ship.HullImpactMark mark = marks.get(i);
+            if (!shouldDrawMachineryPatch(mark)) continue;
+
+            int px = (int) Math.round(mark.localX);
+            int py = (int) Math.round(mark.localY);
+            double sev = MathUtil.clamp(mark.severity, 0.04, 1.0);
+            double radius = machineryPatchRenderRadius(mark, sev, span);
+            if (radius < HULL_DAMAGE_PATCH_MIN_RENDER_RADIUS) continue;
+
+            ShipDamagePatchLibrary.Selection selection =
+                    ShipDamagePatchLibrary.select(ship.faction, mark.localX, mark.localY, sev, i);
+            if (selection == null || selection.image == null) continue;
+
+            double wobble = seedUnit(mark.localX, mark.localY, i, 0.417);
+            double rx = radius * (0.92 + wobble * 0.24);
+            double ry = radius * (0.78 + seedUnit(mark.localY, mark.localX, i, 0.793) * 0.30);
+            Shape holeShape = createBreachBlob(px, py, rx, ry, breachSeed(ship, mark.roomId, i + 211));
+            Area holeArea = new Area(holeShape);
+            holeArea.intersect(new Area(hullShape));
+            if (holeArea.isEmpty()) continue;
+
+            Graphics2D gp = (Graphics2D) g.create();
+            try {
+                Area patchClip = new Area(hullClip == null ? hullShape : hullClip);
+                patchClip.intersect(holeArea);
+                gp.setClip(patchClip);
+                gp.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                gp.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+
+                float alpha = (float) MathUtil.clamp(0.26 + sev * 0.34 + damageFraction * 0.28, 0.24, 0.78);
+                gp.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+
+                BufferedImage image = selection.image;
+                double drawSize = Math.max(rx, ry) * 2.75;
+                AffineTransform tx = new AffineTransform();
+                tx.translate(px, py);
+                tx.rotate(selection.quarterTurns * Math.PI * 0.5);
+                if (selection.flipX) tx.scale(-1.0, 1.0);
+                tx.scale(drawSize / Math.max(1.0, image.getWidth()), drawSize / Math.max(1.0, image.getHeight()));
+                tx.translate(-image.getWidth() * 0.5, -image.getHeight() * 0.5);
+                gp.drawImage(image, tx, null);
+
+                gp.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                        (float) MathUtil.clamp(0.22 + damageFraction * 0.18, 0.20, 0.42)));
+                gp.setColor(new Color(2, 3, 5, 118));
+                gp.fill(holeArea);
+            } finally {
+                gp.dispose();
+            }
+
+            Stroke oldStroke = g.getStroke();
+            float rim = (float) Math.max(0.75, Math.min(2.2, radius * 0.24));
+            g.setStroke(new BasicStroke(rim, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(3, 3, 5, (int) MathUtil.clamp(118 + sev * 72, 0, 210)));
+            g.draw(holeArea);
+            g.setStroke(new BasicStroke(Math.max(0.45f, rim * 0.45f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(roomTraceTint(mark.roomId, (int) MathUtil.clamp(26 + sev * 52, 0, 118)));
+            g.draw(holeArea);
+            g.setStroke(oldStroke);
+        }
+    }
+
+    private static void drawImpactHoleOverlays(Graphics2D g, List<Ship.HullImpactMark> marks, boolean patchesAvailable) {
         if (g == null || marks == null || marks.isEmpty()) return;
         int start = Math.max(0, marks.size() - 18);
         for (int i = start; i < marks.size(); i++) {
@@ -14849,12 +15209,40 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int py = (int) Math.round(mark.localY);
             double sev = MathUtil.clamp(mark.severity, 0.04, 1.0);
             int br = (int) Math.round(Math.max(1.0, mark.breachRadius * IMPACT_DECAL_SCALE));
+            boolean machineryBreach = patchesAvailable && shouldDrawMachineryPatch(mark);
 
-            g.setColor(new Color(8, 8, 10, (int) MathUtil.clamp(95 + sev * 110, 0, 220)));
+            int coreAlpha = machineryBreach
+                    ? (int) MathUtil.clamp(26 + sev * 42, 0, 84)
+                    : (int) MathUtil.clamp(95 + sev * 110, 0, 220);
+            g.setColor(new Color(8, 8, 10, coreAlpha));
             g.fillOval(px - br, py - br, br * 2, br * 2);
+            if (machineryBreach) {
+                Stroke oldStroke = g.getStroke();
+                g.setStroke(new BasicStroke(Math.max(0.75f, br * 0.38f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g.setColor(new Color(0, 0, 0, (int) MathUtil.clamp(72 + sev * 72, 0, 170)));
+                g.drawOval(px - br, py - br, br * 2, br * 2);
+                g.setStroke(oldStroke);
+            }
             g.setColor(roomTraceTint(mark.roomId, (int) MathUtil.clamp(26 + sev * 58, 0, 140)));
             g.drawOval(px - br, py - br, br * 2, br * 2);
         }
+    }
+
+    private static boolean shouldDrawMachineryPatch(Ship.HullImpactMark mark) {
+        if (mark == null || mark.breachRadius <= 0.01) return false;
+        if (mark.breachRadius * IMPACT_DECAL_SCALE >= HULL_DAMAGE_PATCH_MIN_RENDER_RADIUS) return true;
+        return mark.severity >= 0.16 && mark.breachRadius * IMPACT_DECAL_SCALE >= HULL_DAMAGE_PATCH_MIN_RENDER_RADIUS * 0.62;
+    }
+
+    private static double machineryPatchRenderRadius(Ship.HullImpactMark mark, double severity, int span) {
+        if (mark == null) return 0.0;
+        double structuralLift = Math.max(0.0, span) * (0.012 + severity * 0.018);
+        return Math.max(1.0, (mark.breachRadius * 1.92 + structuralLift) * IMPACT_DECAL_SCALE);
+    }
+
+    private static double seedUnit(double x, double y, int sequence, double salt) {
+        double value = Math.sin(x * 12.9898 + y * 78.233 + sequence * 37.719 + salt * 43758.5453) * 43758.5453;
+        return value - Math.floor(value);
     }
 
     private static void drawDestroyedHullBreaches(Graphics2D g,

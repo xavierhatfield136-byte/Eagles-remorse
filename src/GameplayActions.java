@@ -198,30 +198,29 @@ public final class GameplayActions {
         double targetY;
         String destinationLabel;
         if (CampaignSystem.usesMissionSubzones(ctx)) {
+            if (hasWaypoint) {
+                // In mission-space, explicit waypoints should remain free-form (full 360 deg),
+                // not snapped onto legacy subzone warp ingress anchors.
+                targetX = GameMath.clamp(ctx.ui.waypointX, 0.0, ctx.WORLD_W);
+                targetY = GameMath.clamp(ctx.ui.waypointY, 0.0, ctx.WORLD_H);
+                destinationLabel = "WAYPOINT";
+            } else {
             int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
             if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
             int targetSubzone = -1;
-            if (hasWaypoint) {
-                targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ctx.ui.waypointX, ctx.ui.waypointY);
-            } else if (base != null && base.alive && !base.dying && base.hp > 0) {
+            if (base != null && base.alive && !base.dying && base.hp > 0) {
                 targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, base.x, base.y);
             }
             if (targetSubzone >= 0) {
                 int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
-                boolean sameSubzoneSelection = hasWaypoint
-                        && hopSubzone == targetSubzone
-                        && targetSubzone == loadedSubzone;
-                double[] arrival = sameSubzoneSelection ? null : CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
-                if (!sameSubzoneSelection && arrival == null) {
+                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
+                if (arrival == null) {
                     EventSystem.showBanner(ctx, "WARP ROUTE UNAVAILABLE", 1.4);
                     return;
                 }
-                targetX = sameSubzoneSelection ? ctx.ui.waypointX : arrival[0];
-                targetY = sameSubzoneSelection ? ctx.ui.waypointY : arrival[1];
+                targetX = arrival[0];
+                targetY = arrival[1];
                 destinationLabel = CampaignSystem.missionSubzoneLabel(hopSubzone);
-            } else if (hasWaypoint) {
-                EventSystem.showBanner(ctx, "WARP UNAVAILABLE: INVALID SECTOR", 1.4);
-                return;
             } else if (base != null && base.alive && !base.dying && base.hp > 0) {
                 targetX = base.x;
                 targetY = base.y;
@@ -229,6 +228,7 @@ public final class GameplayActions {
             } else {
                 EventSystem.showBanner(ctx, "WARP UNAVAILABLE: SET WAYPOINT OR FIND BASE", 1.4);
                 return;
+            }
             }
         } else {
         BattlefieldSectorSystem.SectorDefinition loadedSector = BattlefieldSectorSystem.loadedSector(ctx);

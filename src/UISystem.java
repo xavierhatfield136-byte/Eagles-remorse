@@ -10,7 +10,7 @@ import javax.swing.SwingUtilities;
 
 public final class UISystem {
     private static final double STRATEGIC_MAP_MIN_ZOOM = 1.0;
-    private static final double STRATEGIC_MAP_MAX_ZOOM = 8.0;
+    private static final double STRATEGIC_MAP_MAX_ZOOM = 18.0;
     private static final double STRATEGIC_MAP_ZOOM_STEP = 1.22;
 
     private UISystem(){}
@@ -46,19 +46,6 @@ public final class UISystem {
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         // If awaiting fleet hub choice after sector complete, TAB opens it immediately
         if (CampaignSystem.tryEnterFleetHubImmediately(ctx)) {
-            return;
-        }
-        if (fleetHubEditingLocked(ctx)) {
-            ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
-            ctx.ui.mapOpen = true;
-            ctx.ui.shopOpen = false;
-            ctx.ui.baseMenuOpen = false;
-            ctx.ui.powerManagementOpen = false;
-            ctx.ui.crewStationsOpen = false;
-            ctx.ui.flightDeckOpen = false;
-            clearManualCombatInputs(ctx);
-            ctx.state = GameState.MAP;
-            EventSystem.showBanner(ctx, "IN-WORLD FLEET MANAGEMENT OPEN", 1.2);
             return;
         }
         ctx.ui.shopOpen = !ctx.ui.shopOpen;
@@ -120,7 +107,23 @@ public final class UISystem {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
-            toggleShop(ctx);
+            // In live campaign space, B opens command-ship upgrade console
+            // (hull/shield/mining/hangar capacity) directly.
+            ctx.ui.baseMenuOpen = !ctx.ui.baseMenuOpen;
+            if (ctx.ui.baseMenuOpen) {
+                ctx.ui.shopOpen = false;
+                ctx.ui.mapOpen = false;
+                ctx.ui.powerManagementOpen = false;
+                ctx.ui.crewStationsOpen = false;
+                ctx.ui.flightDeckOpen = false;
+                clearManualCombatInputs(ctx);
+                ctx.state = GameState.BASE_MENU;
+                AudioSystem.onUiOpen(ctx);
+                EventSystem.showBanner(ctx, "COMMAND SHIP UPGRADE CONSOLE OPEN", 1.1);
+            } else {
+                ctx.state = stateAfterOverlayClose(ctx);
+                AudioSystem.onUiClose(ctx);
+            }
             return;
         }
         if (fleetHubEditingLocked(ctx)) {
@@ -760,6 +763,26 @@ public final class UISystem {
             case ECM_ACTIVE -> setScienceJamming(ctx, true);
             case CLOAK_CHARGE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.CHARGE);
             case CLOAK_ACTIVE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.ACTIVE);
+            case STRIKE_SELECT_TORPEDO -> {
+                ctx.ui.combatStrikeSelection = 0;
+                EventSystem.showBanner(ctx, "STRIKE MODE: TORPEDO", 0.8);
+            }
+            case STRIKE_SELECT_AIRWING -> {
+                ctx.ui.combatStrikeSelection = 1;
+                EventSystem.showBanner(ctx, "STRIKE MODE: AIR WING", 0.8);
+            }
+            case STRIKE_SELECT_NUCLEAR -> {
+                ctx.ui.combatStrikeSelection = 2;
+                EventSystem.showBanner(ctx, "STRIKE MODE: NUCLEAR", 0.8);
+            }
+            case STRIKE_LAUNCH -> {
+                int mode = MathUtil.clamp(ctx.ui.combatStrikeSelection, 0, 2);
+                switch (mode) {
+                    case 1 -> CampaignSystem.launchSelectedCampaignSortie(ctx);
+                    case 2 -> CampaignSystem.beginCampaignAtomicStrikeConfirm(ctx);
+                    default -> CampaignSystem.launchSelectedCampaignTorpedoStrike(ctx);
+                }
+            }
             default -> {
                 return false;
             }
@@ -908,7 +931,7 @@ public final class UISystem {
             CampaignSystem.CampaignLocation clickedLocation =
                     CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, 260.0);
             CampaignSystem.CampaignSupportMarker clickedSupport =
-                    CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 240.0);
+                    CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 110.0);
             if (shouldPreferCampaignSupportClick(clickedLocation, clickedSupport, worldX, worldY)) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
@@ -986,12 +1009,57 @@ public final class UISystem {
             }
             return;
         }
+        boolean strikeTargetingMode = ctx != null
+                && ctx.ui != null
+                && ctx.ui.tacticalMapTab == UiState.TacticalMapTab.STRIKES;
         if (e.isAltDown() && SwingUtilities.isLeftMouseButton(e)) {
             CampaignSystem.issueStrategicDivisionOrder(ctx, worldX, worldY);
             return;
         }
+        CampaignSystem.CampaignSupportMarker clickedSupport =
+                CampaignSystem.nearestStrategicTaskForceMarker(ctx, worldX, worldY, strikeTargetingMode ? 220.0 : 130.0);
+        if (strikeTargetingMode && clickedSupport != null && isHostileCampaignSupportMarker(ctx, clickedSupport)) {
+            if (e.isShiftDown() && e.isControlDown() && SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.launchStrategicAtomicStrike(ctx, worldX, worldY);
+                return;
+            }
+            if (e.isShiftDown() && SwingUtilities.isLeftMouseButton(e)) {
+                CampaignSystem.launchStrategicTorpedoStrike(ctx, worldX, worldY);
+                return;
+            }
+            if (e.isShiftDown() && SwingUtilities.isRightMouseButton(e)) {
+                CampaignSystem.launchStrategicSortie(ctx, worldX, worldY);
+                return;
+            }
+            if (SwingUtilities.isRightMouseButton(e)) {
+                addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
+                EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
+                return;
+            }
+            setTacticalMapSelection(ctx,
+                    UiState.TacticalMapSelectionKind.CONTACT,
+                    clickedSupport.label,
+                    clickedSupport.subtitle,
+                    clickedSupport.type.name().replace('_', ' '),
+                    clickedSupport.x,
+                    clickedSupport.y,
+                    true);
+            CampaignSystem.selectCampaignContactTarget(ctx,
+                    clickedSupport.label,
+                    clickedSupport.subtitle,
+                    CampaignSystem.usesMissionSubzones(ctx) ? "Tracked" : clickedSupport.type.name().replace('_', ' '),
+                    clickedSupport.x,
+                    clickedSupport.y,
+                    true,
+                    true);
+            ctx.ui.waypointX = GameMath.clamp(clickedSupport.x, 0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
+            addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
+            EventSystem.showBanner(ctx, "STRIKE TARGET LOCKED: " + clickedSupport.label.toUpperCase(), 1.3);
+            return;
+        }
         CampaignSystem.CampaignObjectiveMarker clickedMarker =
-                CampaignSystem.nearestObjectiveMarker(ctx, worldX, worldY, 280.0);
+                CampaignSystem.nearestObjectiveMarker(ctx, worldX, worldY, strikeTargetingMode ? 110.0 : 280.0);
         if (clickedMarker != null) {
             if (SwingUtilities.isRightMouseButton(e)) {
                 addPing(ctx, clickedMarker.x, clickedMarker.y, 2.2);
@@ -1029,8 +1097,8 @@ public final class UISystem {
             return;
         }
 
-        CampaignSystem.CampaignSupportMarker clickedSupport =
-                CampaignSystem.nearestStrategicTaskForceMarker(ctx, worldX, worldY, 240.0);
+        clickedSupport =
+                CampaignSystem.nearestStrategicTaskForceMarker(ctx, worldX, worldY, strikeTargetingMode ? 220.0 : 130.0);
         if (clickedSupport != null) {
             if (e.isShiftDown() && e.isControlDown() && SwingUtilities.isLeftMouseButton(e)) {
                 CampaignSystem.launchStrategicAtomicStrike(ctx, worldX, worldY);
@@ -1189,19 +1257,19 @@ public final class UISystem {
                 double[] arrival = sameSubzoneSelection ? null : CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
                 double targetX = sameSubzoneSelection ? worldX : ((arrival == null) ? worldX : arrival[0]);
                 double targetY = sameSubzoneSelection ? worldY : ((arrival == null) ? worldY : arrival[1]);
-                String sectorLabel = CampaignSystem.missionSubzoneLabel(targetSubzone);
+                String contact = CampaignSystem.localRangeBearingReadout(ctx, targetX, targetY);
                 String route = (hopSubzone >= 0 && hopSubzone != targetSubzone)
-                        ? "  VIA " + CampaignSystem.missionSubzoneLabel(hopSubzone)
+                        ? "  VIA STAGING"
                         : "";
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, targetX, targetY, 2.2);
-                    EventSystem.showBanner(ctx, "SECTOR PING: " + sectorLabel, 1.2);
+                    EventSystem.showBanner(ctx, "LOCAL PING: " + contact, 1.2);
                     return;
                 }
                 ctx.ui.waypointX = GameMath.clamp(targetX, 0, ctx.WORLD_W);
                 ctx.ui.waypointY = GameMath.clamp(targetY, 0, ctx.WORLD_H);
                 addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
-                EventSystem.showBanner(ctx, "COURSE SET: " + sectorLabel + route, 1.2);
+                EventSystem.showBanner(ctx, "COURSE SET: " + contact + route, 1.2);
                 return;
             }
         }

@@ -113,3 +113,12 @@ This keeps the visuals varied without making the internals look chaotic or unrea
 ## Expected Result
 
 After this pass, ships should feel more like they are being torn open at exact hit locations, with visible machinery behind the armor, while still fitting the current 2D renderer and room-damage systems.
+
+## Execution Checklist
+
+- [x] Add a small `ShipDamagePatchLibrary` for curated patch PNG loading.
+- [x] Map patch families to faction palettes with a safe fallback.
+- [x] Draw clipped machinery patches for non-trivial `HullImpactMark.breachRadius` values.
+- [x] Keep existing scorch, dent, smoke, and destroyed-room breach rendering intact.
+- [x] Retune the final hole overlay so medium breaches show recessed machinery instead of being fully blacked out.
+- [x] Verify with `compileJava` and focused renderer/source hygiene tests.

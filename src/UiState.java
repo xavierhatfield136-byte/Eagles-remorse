@@ -214,6 +214,8 @@ public final class UiState {
     public double tacticalMapSelectionX = Double.NaN;
     public double tacticalMapSelectionY = Double.NaN;
     public boolean tacticalMapSelectionHostile = false;
+    // 0 torpedo, 1 air wing, 2 nuclear
+    public int combatStrikeSelection = 0;
 
     public String voiceCaption = "";
     public double voiceCaptionT = 0.0;
