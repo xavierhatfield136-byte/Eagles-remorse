@@ -1,0 +1,14 @@
+# Ship Damage Patch Manifest
+# name|source|x|y|size
+emerald_breach_a|one.png|120|120|256
+emerald_breach_b|one.png|462|258|256
+emerald_breach_c|one.png|834|322|256
+azure_breach_a|two.png|118|182|256
+azure_breach_b|two.png|470|456|256
+azure_breach_c|two.png|826|698|256
+ember_breach_a|three.png|170|110|256
+ember_breach_b|three.png|512|338|256
+ember_breach_c|three.png|828|742|256
+amber_breach_a|four.png|108|116|256
+amber_breach_b|four.png|472|374|256
+amber_breach_c|four.png|818|612|256
