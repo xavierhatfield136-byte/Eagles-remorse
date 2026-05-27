@@ -27,6 +27,9 @@ import java.util.function.Supplier;
 public final class CampaignSystem {
     private CampaignSystem() {}
     private static final double STRATEGIC_TRAVEL_SPEED_MUL = 0.62;
+    private static final int STARTING_TORPEDO_INVENTORY = 100;
+    private static final int STARTING_SORTIE_INVENTORY = 100;
+    private static final int STARTING_ATOMIC_INVENTORY = 10;
 
     // Fleet hub auto-open delay when player completes a sector
     private static final double FLEET_HUB_AUTO_OPEN_DELAY = 10.0;
@@ -60,6 +63,8 @@ public final class CampaignSystem {
     private static final int MISSION_ZONE_COLUMNS = 6;
     private static final int MISSION_ZONE_ROWS = 3;
     private static final double MISSION_SUBZONE_CLAMP_MARGIN = 180.0;
+    // Mission subzones are kept for pacing/metadata, but physical boundary walls are disabled.
+    private static final boolean MISSION_SUBZONE_BOUNDARY_CONSTRAINTS = false;
     private static final double DEFAULT_MISSION_SUBZONE_WIDTH = 5000.0;
     private static final double DEFAULT_MISSION_SUBZONE_HEIGHT = 5000.0;
     private static final double MAX_MISSION_SUBZONE_WIDTH = 5000.0;
@@ -1516,6 +1521,10 @@ public final class CampaignSystem {
     static boolean usesMissionSubzones(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.enabled && ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS;
+    }
+
+    static boolean missionSubzoneBoundaryConstraintsEnabled(GameContext ctx) {
+        return usesMissionSubzones(ctx) && MISSION_SUBZONE_BOUNDARY_CONSTRAINTS;
     }
 
     static boolean usesUnifiedMissionSpace(GameContext ctx) {
@@ -5270,9 +5279,6 @@ public final class CampaignSystem {
                 : bestTacticalStrikeTarget(ctx, taskForce, hostiles, tx, ty);
         if (target == null) target = closestTacticalHostileToPoint(hostiles, tx, ty);
         if (target == null) {
-            if (taskForce != null) {
-                return launchStrategicTorpedoStrike(ctx, tx, ty);
-            }
             EventSystem.showBanner(ctx, "TORPEDO STRIKE  |  NO HOSTILE HULLS AT SELECTED CONTACT", 1.2);
             return hasAnyTacticalStrikeTarget(ctx);
         }
@@ -5280,12 +5286,17 @@ public final class CampaignSystem {
         st.campaignAmmo = Math.max(0, st.campaignAmmo - preflight.ammoCost);
         st.campaignFuel = Math.max(0, st.campaignFuel - preflight.fuelCost);
         double damageBudget = Math.max(target.hpMax * 0.54, strategicShipStrength(target) * 0.68);
-        spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.TORPEDO, target, target.x, target.y, 0.0,
+        Missile missile = spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.TORPEDO, target, target.x, target.y, 0.0,
                 Math.max(18, (int) Math.round(damageBudget)), Math.max(90.0, target.radius * 2.2));
+        if (missile == null) {
+            st.strategicTorpedoCharges++;
+            st.campaignAmmo += preflight.ammoCost;
+            st.campaignFuel += preflight.fuelCost;
+            EventSystem.showBanner(ctx, "TORPEDO STRIKE  |  LAUNCH FAILED", 1.2);
+            return false;
+        }
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 4.0, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0, 0.0, 100.0);
-        beginStrikeCinematic(ctx, st, "TORPEDO", ctx.player.x, ctx.player.y, target.x, target.y,
-                target.name == null ? tacticalStrikeTargetLabel(ctx) : target.name, 220.0, 0.0, false, false);
         setLastStrikeReport(st, "TORPEDO", target.name == null ? tacticalStrikeTargetLabel(ctx) : target.name, 0.0, false, false);
         st.lastStrikeReportDetail = "Result: torpedo object inbound  |  Damage resolves on impact";
         noteStrikeBattleEvent(st, "TORPEDO", target.name == null ? tacticalStrikeTargetLabel(ctx) : target.name,
@@ -5329,6 +5340,7 @@ public final class CampaignSystem {
         double sourceY = ctx.player == null ? ty : ctx.player.y;
         double angle = Math.atan2(primary.y - sourceY, primary.x - sourceX);
         final int bomberCount = 6;
+        int spawnedBombers = 0;
         for (int i = 0; i < bomberCount; i++) {
             double offset = (i - (bomberCount - 1) * 0.5) * 88.0;
             double px = -Math.sin(angle);
@@ -5339,15 +5351,22 @@ public final class CampaignSystem {
                     angle,
                     i + 1);
             if (bomber != null) {
+                spawnedBombers++;
                 st.tacticalStrikeBomberTargetIds.put(bomber.id, primary.id);
                 st.tacticalStrikeBomberPayloadsRemaining.put(bomber.id, 2);
                 st.tacticalStrikeBomberEgressTimers.put(bomber.id, -1.0);
             }
         }
+        if (spawnedBombers <= 0) {
+            st.strategicSortiesLaunched = Math.max(0, st.strategicSortiesLaunched - 1);
+            st.campaignAmmo += preflight.ammoCost;
+            st.campaignFuel += preflight.fuelCost;
+            st.campaignSupplies += preflight.supplyCost;
+            EventSystem.showBanner(ctx, "CARRIER SORTIE  |  LAUNCH FAILED", 1.2);
+            return false;
+        }
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 5.5, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 7.5, 0.0, 100.0);
-        beginStrikeCinematic(ctx, st, "SORTIE", ctx.player.x, ctx.player.y, tx, ty,
-                tacticalStrikeTargetLabel(ctx), 180.0, 0.0, false, false);
         setLastStrikeReport(st, "SORTIE", tacticalStrikeTargetLabel(ctx), 0.0, false, false);
         st.lastStrikeReportDetail = "Result: heavy bombers inbound  |  Payloads resolve on impact";
         noteStrikeBattleEvent(st, "SORTIE", tacticalStrikeTargetLabel(ctx),
@@ -5389,12 +5408,18 @@ public final class CampaignSystem {
         Ship target = largestTacticalHostileShip(ctx);
         if (target == null) target = bestTacticalStrikeTarget(ctx, taskForce, hostiles, tx, ty);
         if (target == null) target = hostiles.get(0);
-        spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.ATOMIC, target, tx, ty, 0.0,
+        Missile missile = spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.ATOMIC, target, tx, ty, 0.0,
                 Math.max(42, (int) Math.round(target.hpMax * 0.72)), blastRadius);
+        if (missile == null) {
+            st.strategicAtomicCharges++;
+            st.campaignAmmo += preflight.ammoCost;
+            st.campaignFuel += preflight.fuelCost;
+            st.campaignSupplies += preflight.supplyCost;
+            EventSystem.showBanner(ctx, "ATOMIC STRIKE  |  LAUNCH FAILED", 1.2);
+            return false;
+        }
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 18.0, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 20.0, 0.0, 100.0);
-        beginStrikeCinematic(ctx, st, "ATOMIC", ctx.player.x, ctx.player.y, tx, ty,
-                tacticalStrikeTargetLabel(ctx), blastRadius, 0.0, true, false);
         setLastStrikeReport(st, "ATOMIC", tacticalStrikeTargetLabel(ctx), 0.0, false, true);
         st.lastStrikeReportDetail = "Result: atomic device inbound  |  Detonation resolves on impact";
         noteStrikeBattleEvent(st, "ATOMIC", tacticalStrikeTargetLabel(ctx),
@@ -8749,6 +8774,7 @@ public final class CampaignSystem {
 
     static boolean missionSubzonesAllowDirectFire(GameContext ctx, Ship shooter, Ship target) {
         if (ctx == null || shooter == null || target == null || !usesMissionSubzones(ctx)) return true;
+        if (!missionSubzoneBoundaryConstraintsEnabled(ctx)) return true;
         int shooterSubzone = ensureShipMissionSubzone(ctx, shooter);
         int targetSubzone = ensureShipMissionSubzone(ctx, target);
         if (shooterSubzone < 0 || targetSubzone < 0) return true;
@@ -9161,9 +9187,9 @@ public final class CampaignSystem {
         public CampaignForceSpawnContext activeCampaignForceContext = null;
         public final List<StrategicStrikeObject> strategicStrikeObjects = new ArrayList<>();
         public int nextStrategicStrikeObjectId = 1;
-        public int strategicTorpedoCharges = 2;
+        public int strategicTorpedoCharges = STARTING_TORPEDO_INVENTORY;
         public int strategicSortiesLaunched = 0;
-        public int strategicAtomicCharges = 0;
+        public int strategicAtomicCharges = STARTING_ATOMIC_INVENTORY;
         public final List<Integer> pendingReserveReinforcementSlots = new ArrayList<>();
         public double reserveReinforcementTimerSec = 0.0;
         public final java.util.Map<Integer, StrategicDivisionState> strategicDivisions = new java.util.LinkedHashMap<>();
@@ -9721,8 +9747,9 @@ public final class CampaignSystem {
         st.strategicOvermapMode = true;
         ctx.credits = Math.max(ctx.credits, GameContext.scaleCreditEarnings(4200));
         setCampaignOre(ctx, st, 280);
-        st.strategicTorpedoCharges = 4;
-        st.strategicAtomicCharges = 1;
+        st.strategicTorpedoCharges = STARTING_TORPEDO_INVENTORY;
+        st.strategicSortiesLaunched = 0;
+        st.strategicAtomicCharges = STARTING_ATOMIC_INVENTORY;
         st.enemyAlertLevel = 18.0;
         st.campaignIntelLevel = 52.0;
         st.strategicExposureLevel = 14.0;
@@ -12465,8 +12492,10 @@ public final class CampaignSystem {
             if (entry == null || entry.destroyed || entry.activeShipId <= 0) continue;
             Ship ship = findShipById(ctx, entry.activeShipId);
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) {
-                entry.destroyed = true;
                 entry.activeShipId = -1;
+                if (entry.tacticalAbsenceReason == null || entry.tacticalAbsenceReason.isBlank()) {
+                    entry.tacticalAbsenceReason = "awaiting redeploy";
+                }
                 continue;
             }
             snapshotPersistentFleetEntry(ctx, st, entry, ship);
@@ -12801,20 +12830,16 @@ public final class CampaignSystem {
 
     public static boolean purchasePersistentFleetCapUpgrade(GameContext ctx, ShopHullCategory category) {
         if (ctx == null || category == null) return false;
-        EventSystem.showBanner(ctx, "CAMPAIGN UNIT CAPS REMOVED - GROWTH NOW LIMITED BY COMMAND, COST, AND ATTRITION", 2.2);
+        EventSystem.showBanner(ctx, "CAMPAIGN UNIT CAPS REMOVED - GROWTH NOW LIMITED BY COST, SHIPYARD, AND ATTRITION", 2.2);
         return false;
     }
 
     static int campaignStandardCommandCost(ShipRole role) {
-        if (role == null || role.isTitanOrMothership() || role == ShipRole.SUPERSHIP) return 0;
-        return switch (role) {
-            case DREADNOUGHT, CARRIER, DRONE_CARRIER -> 2;
-            default -> 1;
-        };
+        return 0;
     }
 
     static int campaignEliteCommandCost(ShipRole role) {
-        return (role == ShipRole.SUPERSHIP) ? 1 : 0;
+        return 0;
     }
 
     static int campaignStandardCommandCapacity(GameContext ctx) {
@@ -12956,6 +12981,7 @@ public final class CampaignSystem {
 
         int slotId = st.nextPersistentFleetSlotId++;
         PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, generatedBlueFleetName(role, slotId));
+        markPlayerPurchasedEntryCommitted(entry);
         st.persistentBlueFleet.add(entry);
         ArrayList<PersistentFleetEntry> spawnedPackage = new ArrayList<>();
         TitanArchetype titan = TitanArchetype.fromShipRole(role);
@@ -12964,6 +12990,9 @@ public final class CampaignSystem {
         }
         if (titan == TitanArchetype.ELITE_REINFORCEMENTS) {
             queueEliteReinforcementPackage(st, entry, spawnedPackage);
+            for (PersistentFleetEntry supportEntry : spawnedPackage) {
+                markPlayerPurchasedEntryCommitted(supportEntry);
+            }
         }
         rebalancePersistentCommandGroups(st);
         applyCampaignFleetBonuses(ctx, st);
@@ -12976,6 +13005,12 @@ public final class CampaignSystem {
         }
         EventSystem.showBanner(ctx, "BLUE HULL COMMISSIONED: " + entry.name, 1.8);
         return true;
+    }
+
+    private static void markPlayerPurchasedEntryCommitted(PersistentFleetEntry entry) {
+        if (entry == null) return;
+        entry.tacticalCommitmentId = FleetCommitment.COMMIT.name();
+        entry.tacticalAbsenceReason = "";
     }
 
     public static boolean launchPendingEpisode(GameContext ctx) {
@@ -16368,9 +16403,9 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return;
         st.strategicTaskForces.clear();
         st.strategicDivisions.clear();
-        st.strategicTorpedoCharges = 2 + ((st.sector >= 8) ? 1 : 0);
+        st.strategicTorpedoCharges = STARTING_TORPEDO_INVENTORY;
         st.strategicSortiesLaunched = 0;
-        st.strategicAtomicCharges = strategicAtomicCapacity(ctx);
+        st.strategicAtomicCharges = STARTING_ATOMIC_INVENTORY;
         int playerSubzone = currentLoadedMissionSubzone(ctx);
         if (playerSubzone < 0) playerSubzone = missionSubzoneIndex(0, 1);
         initializeStrategicDivisions(ctx, st, playerSubzone);
@@ -17855,49 +17890,19 @@ public final class CampaignSystem {
     private static int strategicSortieCapacity(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return 0;
-        StrategicRoleProfile profile = friendlyStrategicRoleProfile(ctx, st);
-        int carriers = 0;
-        if (ctx.player != null && ctx.player.alive && !ctx.player.dying && ctx.player.isCarrier) carriers++;
-        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
-            if (entry == null || entry.destroyed || entry.role == null) continue;
-            if (entry.role.isCarrierHull() || entry.role == ShipRole.CARRIER_SUPPORT_TITAN) carriers++;
-        }
-        return Math.max(0, (int) Math.round(carriers * 2 + profile.carrierProjection() * 2));
+        return STARTING_SORTIE_INVENTORY;
     }
 
     private static int strategicTorpedoCapacity(GameContext ctx) {
         CampaignState st = state(ctx);
-        if (ctx == null || st == null) return 2;
-        int missileHulls = 0;
-        if (ctx.player != null && ctx.player.alive && !ctx.player.dying) {
-            missileHulls += ctx.player.hasMissileBattery() ? 2 : 1;
-        }
-        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
-            if (entry == null || entry.destroyed || entry.role == null) continue;
-            if (entry.role == ShipRole.MISSILE_BOAT || entry.role == ShipRole.FRIGATE || entry.role == ShipRole.CRUISER
-                    || entry.role == ShipRole.BATTLECRUISER || entry.role == ShipRole.BATTLESHIP
-                    || entry.role == ShipRole.DREADNOUGHT || entry.role.isTitanOrMothership()) {
-                missileHulls++;
-            }
-        }
-        return MathUtil.clamp(2 + missileHulls / 2 + Math.max(0, st.sector - 1) / 8, 2, 6);
+        if (ctx == null || st == null) return STARTING_TORPEDO_INVENTORY;
+        return STARTING_TORPEDO_INVENTORY;
     }
 
     private static int strategicAtomicCapacity(GameContext ctx) {
         CampaignState st = state(ctx);
-        if (ctx == null || st == null) return 0;
-        boolean available = false;
-        if (ctx.player != null && ctx.player.alive && !ctx.player.dying && ctx.player.hasSuperweapon) {
-            available = true;
-        }
-        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
-            if (entry == null || entry.destroyed) continue;
-            if (entry.role == ShipRole.HYPERWEAPON_TITAN) {
-                available = true;
-                break;
-            }
-        }
-        return available ? 1 : 0;
+        if (ctx == null || st == null) return STARTING_ATOMIC_INVENTORY;
+        return STARTING_ATOMIC_INVENTORY;
     }
 
     private static void applyStrategicAutoResolveDamage(GameContext ctx, List<Ship> friendlies,
@@ -25751,10 +25756,12 @@ public final class CampaignSystem {
             double px = ctx.player.x - Math.cos(ctx.player.angle) * trail - Math.sin(ctx.player.angle) * lateral;
             double py = ctx.player.y - Math.sin(ctx.player.angle) * trail + Math.cos(ctx.player.angle) * lateral;
             if (arrivedCampaignSubzone >= 0) {
-                double[] clamped = clampToMissionSubzone(ctx, state(ctx).sector, arrivedCampaignSubzone, px, py);
-                if (clamped != null && clamped.length >= 2) {
-                    px = clamped[0];
-                    py = clamped[1];
+                if (missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                    double[] clamped = clampToMissionSubzone(ctx, state(ctx).sector, arrivedCampaignSubzone, px, py);
+                    if (clamped != null && clamped.length >= 2) {
+                        px = clamped[0];
+                        py = clamped[1];
+                    }
                 }
                 ship.campaignMissionSubzone = arrivedCampaignSubzone;
                 ship.campaignWarpSourceSubzone = -1;

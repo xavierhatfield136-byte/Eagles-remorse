@@ -269,11 +269,13 @@ public final class GameSimulationRuntime {
             if (arrivedCampaignSubzone < 0) {
                 arrivedCampaignSubzone = CampaignSystem.nearestMissionSubzone(ctx, ctx.campaign.sector, tx, ty);
             }
-            double[] clamped = CampaignSystem.clampToMissionSubzone(
-                    ctx, ctx.campaign.sector, arrivedCampaignSubzone, tx, ty);
-            if (clamped != null && clamped.length >= 2) {
-                tx = clamped[0];
-                ty = clamped[1];
+            if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                double[] clamped = CampaignSystem.clampToMissionSubzone(
+                        ctx, ctx.campaign.sector, arrivedCampaignSubzone, tx, ty);
+                if (clamped != null && clamped.length >= 2) {
+                    tx = clamped[0];
+                    ty = clamped[1];
+                }
             }
         }
         ship.x = tx;
@@ -343,11 +345,13 @@ public final class GameSimulationRuntime {
                 }
             }
             if (CampaignSystem.usesMissionSubzones(ctx) && ctx.campaign != null && arrivedCampaignSubzone >= 0) {
-                double[] clamped = CampaignSystem.clampToMissionSubzone(
-                        ctx, ctx.campaign.sector, arrivedCampaignSubzone, craftX, craftY);
-                if (clamped != null && clamped.length >= 2) {
-                    craftX = clamped[0];
-                    craftY = clamped[1];
+                if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                    double[] clamped = CampaignSystem.clampToMissionSubzone(
+                            ctx, ctx.campaign.sector, arrivedCampaignSubzone, craftX, craftY);
+                    if (clamped != null && clamped.length >= 2) {
+                        craftX = clamped[0];
+                        craftY = clamped[1];
+                    }
                 }
                 craft.campaignMissionSubzone = arrivedCampaignSubzone;
                 craft.campaignWarpSourceSubzone = -1;

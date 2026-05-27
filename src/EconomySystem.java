@@ -52,6 +52,8 @@ public final class EconomySystem {
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> ESCORT_RESPAWN_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, HaulerLogisticsState>> HAULER_LOGISTICS = new WeakHashMap<>();
+    private static final int DEBRIS_PELLET_ORE_REWARD = 100;
+    private static final double SALVAGE_PICKUP_RADIUS_BONUS = 38.0;
 
     private enum CommanderPersonality {
         BALANCED,
@@ -88,10 +90,24 @@ public final class EconomySystem {
         SpawnSystem.updateShootingRangeRespawns(ctx, dt);
 
         // Salvage drift
+        int playerSalvagePickups = 0;
         for (int i = ctx.salvage.size() - 1; i >= 0; i--) {
             Salvage s = ctx.salvage.get(i);
             s.update(dt);
-            if (s.life <= 0) ctx.salvage.remove(i);
+            if (s.life <= 0) {
+                ctx.salvage.remove(i);
+                continue;
+            }
+            if (canPlayerCollectSalvage(ctx, s)) {
+                collectPlayerSalvage(ctx, s);
+                ctx.salvage.remove(i);
+                playerSalvagePickups++;
+            }
+        }
+        if (playerSalvagePickups > 0) {
+            EventSystem.showBanner(ctx,
+                    "SALVAGE RECOVERED  +" + (playerSalvagePickups * DEBRIS_PELLET_ORE_REWARD) + " ORE",
+                    0.9);
         }
 
         // Mining for player (hold F)
@@ -123,6 +139,26 @@ public final class EconomySystem {
         // Mode win checks
         if (ctx.config.mode == GameMode.RESOURCE_RUSH) checkResourceRushWin(ctx);
         if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) checkFourTeamDominationWin(ctx);
+    }
+
+    private static boolean canPlayerCollectSalvage(GameContext ctx, Salvage salvage) {
+        if (ctx == null || salvage == null || ctx.player == null) return false;
+        if (!salvage.alive()) return false;
+        Ship player = ctx.player;
+        if (!player.alive || player.dying || player.hp <= 0) return false;
+        double pickupRadius = Math.max(10.0, player.radius + salvage.radius + SALVAGE_PICKUP_RADIUS_BONUS);
+        return GameMath.dist2(player.x, player.y, salvage.x, salvage.y) <= pickupRadius * pickupRadius;
+    }
+
+    private static void collectPlayerSalvage(GameContext ctx, Salvage salvage) {
+        if (ctx == null || salvage == null || ctx.player == null) return;
+        // Debris pellets now pay a fixed ore payout.
+        int oreGain = DEBRIS_PELLET_ORE_REWARD;
+        if (CampaignSystem.isCampaignActive(ctx)) {
+            CampaignSystem.grantCampaignOre(ctx, oreGain);
+        } else {
+            ctx.player.cargo = Math.max(0, ctx.player.cargo + oreGain);
+        }
     }
 
     private static void doMining(GameContext ctx, Ship miner, double dt) {

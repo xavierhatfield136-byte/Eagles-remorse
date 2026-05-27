@@ -228,6 +228,7 @@ public abstract class Ship {
     public double superweaponBeamDuration = 0.95;
     public double superweaponBeamTickInterval = 0.12;
     public double superweaponBeamDamageScale = 0.34;
+    private static final double SUPERWEAPON_SFX_CHARGE_SECONDS = 10.0;
     private static final double SUPERWEAPON_PROJECTILE_RATE_MULT = 3.0;
     private static final double SUPERWEAPON_RECHARGE_MIN_MULT = 0.25;
     private static final double SUPERWEAPON_RECHARGE_MAX_MULT = 2.05;
@@ -6174,9 +6175,17 @@ public abstract class Ship {
         queuedSuperweaponAim = aim;
         queuedSuperweaponTarget = isValidSuperweaponTarget(target) ? target : null;
 
-        if (superweaponChargeTime > 0.0) {
+        double effectiveChargeTime = superweaponChargeTime;
+        if (hasSuperweapon && (role == ShipRole.SUPERSHIP
+                || role == ShipRole.ARTILLERY_TITAN
+                || role == ShipRole.HYPERWEAPON_TITAN)) {
+            effectiveChargeTime = SUPERWEAPON_SFX_CHARGE_SECONDS;
+            superweaponChargeTime = SUPERWEAPON_SFX_CHARGE_SECONDS;
+        }
+
+        if (effectiveChargeTime > 0.0) {
             superweaponCharging = true;
-            superweaponChargeTimer = superweaponChargeTime;
+            superweaponChargeTimer = effectiveChargeTime;
             return null;
         }
 

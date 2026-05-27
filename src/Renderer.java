@@ -6347,13 +6347,7 @@ public class Renderer {
         g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
         g2.setFont(new Font("Consolas", Font.PLAIN, 10));
         g2.setColor(new Color(188, 208, 230, 200));
-        int standardUsed = CampaignSystem.campaignStandardCommandUsed(ctx);
-        int standardCap = CampaignSystem.campaignStandardCommandCapacity(ctx);
-        int eliteUsed = CampaignSystem.campaignEliteCommandUsed(ctx);
-        int eliteCap = CampaignSystem.campaignEliteCommandCapacity(ctx);
-        String line = "Growth gates: shipyard tier, credits/ore, standard grid "
-                + standardUsed + "/" + standardCap + ", elite grid " + eliteUsed + "/" + eliteCap
-                + ", and titan berth doctrine.";
+        String line = "Growth gates: shipyard tier, credits/ore, mission unlocks, and titan berth doctrine.";
         g2.drawString(fitShopText(g2.getFontMetrics(), line, rect.width - 20), rect.x + 10, rect.y + 18);
     }
 
@@ -9550,7 +9544,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(196, 232, 255, 225));
         g2.drawString("COMMAND ACTIONS", inner.x, actionY + 10);
-        drawGalaxyCommandActions(g2, ctx, panelRect, inner.x, actionY + 18, inner.width);
+        drawGalaxyCommandActions(g2, ctx, panelRect, inner.x, actionY + 18, inner.width, actionY + actionBlockH - 6);
 
         g2.setColor(oldColor);
         g2.setFont(oldFont);
@@ -9575,15 +9569,15 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
         CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
         List<CampaignActionSection> sections = galaxyActionSections(actions, primary);
-        int height = 56;
-        if (primary != null) height += 38;
+        int height = 50;
+        if (primary != null) height += galaxyPrimaryActionHeight();
         for (CampaignActionSection section : sections) {
             if (section == null || section.actions.isEmpty()) continue;
             int columns = galaxyActionColumns(section.actions.size(), inner.width);
             int rows = (int) Math.ceil(section.actions.size() / (double) columns);
-            height += 20 + rows * 30;
+            height += galaxySectionHeaderHeight() + rows * galaxySectionRowHeight() + galaxySectionFooterGap();
         }
-        return Math.max(228, Math.min(344, height));
+        return Math.max(206, Math.min(286, height));
     }
 
     private static int drawGalaxyCommandContent(Graphics2D g2, GameContext ctx, CampaignSystem.CampaignLocation selected,
@@ -9634,7 +9628,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         int rowY = drawGalaxySidebarSection(g2, x, y, width, primaryHeader, primaryLines, primaryAccent, true);
         if (rowY < maxBottomY) {
-            rowY = drawGalaxySidebarSection(g2, x, rowY, width, secondaryHeader, secondaryLines, secondaryAccent, false);
+            rowY = drawGalaxySidebarSection(g2, x, rowY, width, secondaryHeader, secondaryLines, secondaryAccent, true);
         }
         int remaining = maxBottomY - rowY;
         if (remaining > 54) {
@@ -9676,27 +9670,35 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return rects;
     }
 
-    private static void drawGalaxyCommandActions(Graphics2D g2, GameContext ctx, Rectangle panelRect, int x, int y, int width) {
+    private static void drawGalaxyCommandActions(Graphics2D g2, GameContext ctx, Rectangle panelRect, int x, int y, int width, int maxBottomY) {
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
         CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
         Rectangle contentRect = new Rectangle(x, y, width, Math.max(1, panelRect.height));
         int cursorY = y;
+        Shape oldClip = g2.getClip();
+        g2.setClip(x - 4, y - 4, width + 8, Math.max(1, maxBottomY - y + 8));
         if (primary != null) {
             Rectangle primaryRect = galaxyPrimaryActionRect(contentRect, y);
-            drawGalaxyActionButton(g2, primary, primaryRect.x, primaryRect.y, primaryRect.width, primaryRect.height, true);
-            cursorY = primaryRect.y + primaryRect.height + galaxyPrimaryActionGap();
+            if (primaryRect.y + primaryRect.height <= maxBottomY) {
+                drawGalaxyActionButton(g2, primary, primaryRect.x, primaryRect.y, primaryRect.width, primaryRect.height, true);
+                cursorY = primaryRect.y + primaryRect.height + galaxyPrimaryActionGap();
+            }
         }
         for (CampaignActionSection section : galaxyActionSections(actions, primary)) {
             if (section == null || section.actions.isEmpty()) continue;
+            int sectionHeight = galaxySectionBlockHeight(section, width);
+            if (cursorY + sectionHeight > maxBottomY) break;
             g2.setFont(new Font("Consolas", Font.BOLD, 11));
             g2.setColor(new Color(172, 214, 244, 208));
             g2.drawString(section.label, x, cursorY + 10);
             int buttonTop = cursorY + galaxySectionHeaderHeight();
             for (CampaignActionLayoutEntry entry : galaxySectionActionLayout(section, x, buttonTop, width)) {
+                if (entry.rect.y + entry.rect.height > maxBottomY) continue;
                 drawGalaxyActionButton(g2, entry.action, entry.rect.x, entry.rect.y, entry.rect.width, entry.rect.height, false);
             }
-            cursorY += galaxySectionBlockHeight(section, width);
+            cursorY += sectionHeight;
         }
+        g2.setClip(oldClip);
     }
 
     private static List<CampaignActionSection> galaxyActionSections(List<CampaignSystem.CampaignAction> actions,
@@ -9740,32 +9742,32 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int galaxyActionColumns(int actionCount, int width) {
         if (actionCount <= 2) return 2;
-        if (width >= 320 && actionCount >= 5) return 3;
+        if (width >= 300 && actionCount >= 4) return 3;
         return 2;
     }
 
     private static int galaxyPrimaryActionHeight() {
-        return 38;
+        return 34;
     }
 
     private static int galaxyPrimaryActionGap() {
-        return 8;
+        return 6;
     }
 
     private static int galaxySectionHeaderHeight() {
-        return 16;
+        return 14;
     }
 
     private static int galaxySectionRowHeight() {
-        return 36;
+        return 31;
     }
 
     private static int galaxySectionButtonHeight() {
-        return 30;
+        return 28;
     }
 
     private static int galaxySectionFooterGap() {
-        return 6;
+        return 4;
     }
 
     private static int galaxySectionColumnGap() {
@@ -10209,7 +10211,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static int drawGalaxySidebarSection(Graphics2D g2, int x, int y, int width, String header,
                                                 List<String> lines, Color accent, boolean compact) {
         if (g2 == null) return y;
-        List<String> displayLines = galaxySidebarDisplayLines(lines, compact ? 7 : 9);
+        List<String> displayLines = galaxySidebarDisplayLines(lines, compact ? 6 : 7);
         int headerGap = compact ? 18 : 20;
         int lineStep = compact ? 15 : 17;
         int panelHeight = compact ? 88 : 110;

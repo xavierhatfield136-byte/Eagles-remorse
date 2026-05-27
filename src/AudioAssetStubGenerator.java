@@ -65,9 +65,22 @@ public final class AudioAssetStubGenerator {
     }
 
     private static int durationMs(SfxManifest.EventSpec spec, int variant) {
+        String eventId = (spec == null || spec.eventId() == null)
+                ? ""
+                : spec.eventId().toLowerCase(Locale.US);
         return switch (spec.category()) {
             case UI -> 95 + variant * 14;
-            case WEAPON -> 140 + variant * 22;
+            case WEAPON -> {
+                if (eventId.contains("ciws")) yield 85 + variant * 10;
+                if (eventId.contains("missile_launch")) yield 260 + variant * 34;
+                if (eventId.contains("torpedo_launch")) yield 340 + variant * 42;
+                if (eventId.contains("warp.spool_up") || eventId.contains("warp.charge_start")) yield 520 + variant * 60;
+                if (eventId.contains("warp.exit")) yield 280 + variant * 34;
+                if (eventId.contains("capital_fire") || eventId.contains("wave_fire")) yield 250 + variant * 30;
+                if (eventId.contains("medium_fire")) yield 180 + variant * 22;
+                if (eventId.contains("small_fire")) yield 130 + variant * 16;
+                yield 140 + variant * 22;
+            }
             case IMPACT -> 180 + variant * 28;
             case HAZARD -> 340 + variant * 40;
             case SUBSYSTEM -> 460 + variant * 55;
@@ -99,28 +112,144 @@ public final class AudioAssetStubGenerator {
     }
 
     private static void synthWeapon(double[] signal, int sampleRate, SfxManifest.EventSpec spec, int variant, Random rng) {
-        double phase = 0.0;
         int frames = signal.length;
-        boolean wave = spec.eventId().contains("wave");
-        boolean secondary = spec.eventId().contains("secondary");
-        double fStart = wave ? 220.0 : (secondary ? 160.0 : 280.0);
-        double fEnd = wave ? 72.0 : (secondary ? 110.0 : 160.0);
+        String eventId = (spec == null || spec.eventId() == null)
+                ? ""
+                : spec.eventId().toLowerCase(Locale.US);
+        boolean wave = eventId.contains("wave");
+        boolean secondary = eventId.contains("secondary");
+        boolean missile = eventId.contains("missile_launch");
+        boolean torpedo = eventId.contains("torpedo_launch");
+        boolean ciws = eventId.contains("ciws");
+        boolean warpSpool = eventId.contains("warp.spool_up") || eventId.contains("warp.charge_start");
+        boolean warpExit = eventId.contains("warp.exit");
+        boolean capital = eventId.contains("capital_fire");
+        boolean medium = eventId.contains("medium_fire");
+        boolean small = eventId.contains("small_fire");
+        boolean blue = eventId.contains(".blue.");
+        boolean red = eventId.contains(".red.");
+        boolean green = eventId.contains(".green.");
+        boolean yellow = eventId.contains(".yellow.");
+
+        if (ciws) {
+            synthCiws(signal, sampleRate, variant, rng);
+            return;
+        }
+        if (missile || torpedo) {
+            synthMissileLaunch(signal, sampleRate, variant, rng, torpedo);
+            return;
+        }
+        if (warpSpool || warpExit) {
+            synthWarp(signal, sampleRate, variant, rng, warpSpool);
+            return;
+        }
+
+        double phase = 0.0;
+        double fStart = 280.0;
+        double fEnd = 160.0;
+        if (wave || capital) {
+            fStart = 210.0;
+            fEnd = 68.0;
+        } else if (medium || secondary) {
+            fStart = 190.0;
+            fEnd = 120.0;
+        } else if (small) {
+            fStart = 320.0;
+            fEnd = 190.0;
+        }
+        if (blue) {
+            fStart *= 1.20;
+            fEnd *= 1.15;
+        } else if (red) {
+            fStart *= 0.84;
+            fEnd *= 0.82;
+        } else if (green) {
+            fStart *= 1.02;
+            fEnd *= 0.94;
+        } else if (yellow) {
+            fStart *= 0.92;
+            fEnd *= 0.90;
+        }
         double lp = 0.0;
         double hpState = 0.0;
         for (int i = 0; i < frames; i++) {
             double t = i / (double) sampleRate;
             double x = i / (double) Math.max(1, frames - 1);
-            double freq = lerp(fStart, fEnd, Math.pow(x, wave ? 0.78 : 0.64));
+            double freq = lerp(fStart, fEnd, Math.pow(x, (wave || capital) ? 0.80 : 0.65));
             phase += (2.0 * Math.PI * freq) / sampleRate;
             double noise = randSigned(rng);
-            lp += (wave ? 0.06 : 0.10) * (noise - lp);
+            lp += ((wave || capital) ? 0.06 : 0.10) * (noise - lp);
             hpState += 0.35 * (noise - hpState);
             double hp = noise - hpState;
-            double body = 0.55 * Math.sin(phase) + 0.21 * Math.sin(phase * 1.97 + 0.31 * variant);
-            double transientEnv = Math.exp(-x * (wave ? 8.0 : 15.0));
+            double colorBend = blue ? 1.5 : (green ? 1.25 : (yellow ? 0.85 : 0.65));
+            double body = 0.55 * Math.sin(phase)
+                    + 0.21 * Math.sin(phase * (1.85 + colorBend * 0.08) + 0.31 * variant);
+            double transientEnv = Math.exp(-x * ((wave || capital) ? 7.5 : (medium ? 11.0 : 15.0)));
             double burst = transientEnv * (0.55 * hp + 0.23 * Math.sin(2.0 * Math.PI * (900.0 - 420.0 * x) * t));
-            double env = expEnv(x, 0.0, 0.92, wave ? 5.3 : 8.4);
+            double env = expEnv(x, 0.0, 0.92, (wave || capital) ? 5.3 : (medium ? 6.9 : 8.8));
             signal[i] = env * (body + 0.52 * lp) + burst;
+        }
+    }
+
+    private static void synthMissileLaunch(double[] signal, int sampleRate, int variant, Random rng, boolean torpedo) {
+        int frames = signal.length;
+        double lp = 0.0;
+        double hpState = 0.0;
+        double phase = 0.0;
+        for (int i = 0; i < frames; i++) {
+            double t = i / (double) sampleRate;
+            double x = i / (double) Math.max(1, frames - 1);
+            double noise = randSigned(rng);
+            lp += (torpedo ? 0.055 : 0.10) * (noise - lp);
+            hpState += 0.35 * (noise - hpState);
+            double hp = noise - hpState;
+            double lowFreq = torpedo ? 92.0 : 140.0;
+            double lowEnd = torpedo ? 42.0 : 70.0;
+            double freq = lerp(lowFreq, lowEnd, Math.pow(x, torpedo ? 0.76 : 0.68));
+            phase += (2.0 * Math.PI * freq) / sampleRate;
+            double rumble = Math.sin(phase) * Math.exp(-x * (torpedo ? 4.4 : 6.2));
+            double whoosh = (0.62 * hp + 0.38 * lp) * Math.exp(-x * (torpedo ? 3.8 : 5.4));
+            double spark = Math.sin(2.0 * Math.PI * (torpedo ? 680.0 : 920.0) * t + variant * 0.4) * Math.exp(-x * 11.0);
+            double env = expEnv(x, 0.0, 0.96, torpedo ? 2.9 : 4.2);
+            signal[i] = env * (0.66 * rumble + 0.58 * whoosh + 0.16 * spark);
+        }
+    }
+
+    private static void synthCiws(double[] signal, int sampleRate, int variant, Random rng) {
+        int frames = signal.length;
+        double hpState = 0.0;
+        for (int i = 0; i < frames; i++) {
+            double x = i / (double) Math.max(1, frames - 1);
+            double t = i / (double) sampleRate;
+            double noise = randSigned(rng);
+            hpState += 0.45 * (noise - hpState);
+            double hp = noise - hpState;
+            double pulse = Math.pow(Math.max(0.0, Math.sin(2.0 * Math.PI * (46.0 + variant * 4.0) * t)), 4.2);
+            double tone = Math.sin(2.0 * Math.PI * (940.0 - 280.0 * x) * t + 0.2 * variant);
+            double env = expEnv(x, 0.0, 0.84, 16.0);
+            signal[i] = env * (0.72 * pulse * hp + 0.40 * tone * Math.exp(-x * 9.0));
+        }
+    }
+
+    private static void synthWarp(double[] signal, int sampleRate, int variant, Random rng, boolean spoolUp) {
+        int frames = signal.length;
+        double phase = 0.0;
+        double lp = 0.0;
+        for (int i = 0; i < frames; i++) {
+            double t = i / (double) sampleRate;
+            double x = i / (double) Math.max(1, frames - 1);
+            double noise = randSigned(rng);
+            lp += 0.08 * (noise - lp);
+            double freq = spoolUp
+                    ? lerp(78.0 + variant * 4.0, 290.0 + variant * 14.0, Math.pow(x, 0.85))
+                    : lerp(320.0 + variant * 12.0, 78.0, Math.pow(x, 0.55));
+            phase += (2.0 * Math.PI * freq) / sampleRate;
+            double tonal = 0.62 * Math.sin(phase) + 0.24 * Math.sin(phase * 1.9 + 0.7);
+            double crackle = lp * (spoolUp ? 0.30 : 0.46);
+            double sweep = (spoolUp ? Math.pow(x, 1.4) : Math.exp(-x * 8.0))
+                    * Math.sin(2.0 * Math.PI * (spoolUp ? 1800.0 : 900.0) * t);
+            double env = spoolUp ? expEnv(x, 0.0, 0.995, 1.3) : expEnv(x, 0.0, 0.86, 8.4);
+            signal[i] = env * (tonal + crackle + 0.18 * sweep);
         }
     }
 

@@ -8,10 +8,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -43,10 +45,14 @@ public final class AudioSystem {
     private static volatile boolean TELEMETRY_ONLY = AUDIO_DISABLED;
 
     private static volatile Clip ambientClip;
+    private static volatile Clip greenWeaponLoopClip;
+    private static volatile Clip warpSpoolLoopClip;
     private static final int MAX_ACTIVE_ONE_SHOTS = 16;
     private static final int MAX_ACTIVE_LOW_PRIORITY_ONE_SHOTS = 8;
     private static final double DUPLICATE_ONE_SHOT_SUPPRESS_SEC = 0.075;
     private static final double HOSTILE_CONTACT_REFRESH_SEC = 0.24;
+    private static final double GREEN_WEAPON_LOOP_HOLD_SEC = 0.22;
+    private static final double WARP_LOOP_KEEPALIVE_SEC = 0.35;
 
     private AudioSystem() {}
 
@@ -258,11 +264,17 @@ public final class AudioSystem {
         WEAPON_PRIMARY("weapon.primary_fire"),
         WEAPON_SECONDARY("weapon.secondary_fire"),
         WEAPON_WAVE("weapon.wave_fire"),
+        WEAPON_MISSILE_LAUNCH("weapon.missile_launch"),
+        WEAPON_TORPEDO_LAUNCH("weapon.torpedo_launch"),
+        WEAPON_CIWS_FIRE("weapon.ciws_fire"),
         FLIGHT_LAUNCH("flight.launch"),
+        WARP_SPOOL_UP("warp.spool_up"),
         WARP_CHARGE_START("warp.charge_start"),
         WARP_EXIT("warp.exit"),
         IMPACT_EXPLOSION("impact.explosion"),
-        IMPACT_SHIP_DEATH_MAJOR("impact.ship_death_major");
+        IMPACT_SHIP_DEATH_MAJOR("impact.ship_death_major"),
+        IMPACT_SHIELD_DAMAGE("impact.shield.damage"),
+        IMPACT_HULL_DAMAGE("impact.hull.damage");
 
         final String eventId;
 
@@ -303,6 +315,7 @@ public final class AudioSystem {
         final Map<String, Double> voiceDedupeUntil = new HashMap<>();
         final Map<String, Double> roleThrottleUntil = new HashMap<>();
         final Map<Integer, Double> scienceKnownContactsUntil = new HashMap<>();
+        final Map<Integer, Boolean> lastSuperweaponChargingByShip = new HashMap<>();
         final Map<String, Integer> lastVariantByKey = new HashMap<>();
         final Map<String, Integer> lastSfxVariantByEvent = new HashMap<>();
         final Map<String, Integer> voiceDispatchByEvent = new HashMap<>();
@@ -311,6 +324,9 @@ public final class AudioSystem {
                 new EnumMap<>(Ship.InternalSystem.class);
         final EnumMap<ShipRoomLayout.RoomId, Double> lastRoomFireIntensity =
                 new EnumMap<>(ShipRoomLayout.RoomId.class);
+        double greenWeaponLoopUntilSec = 0.0;
+        String greenWeaponLoopEventId = "";
+        double warpSpoolLoopUntilSec = 0.0;
 
         int voiceDispatchCount = 0;
         int voiceDropCount = 0;
@@ -356,6 +372,12 @@ public final class AudioSystem {
                 for (Ship.RoomStatus room : ctx.player.roomStatusSnapshot()) {
                     if (room == null || room.roomId == null) continue;
                     s.lastRoomFireIntensity.put(room.roomId, room.fireIntensity);
+                }
+                if (ctx.ships != null) {
+                    for (Ship ship : ctx.ships) {
+                        if (ship == null || !ship.hasSuperweapon) continue;
+                        s.lastSuperweaponChargingByShip.put(ship.id, ship.isSuperweaponCharging());
+                    }
                 }
             }
             return s;
@@ -481,10 +503,12 @@ public final class AudioSystem {
         double now = nowSec();
 
         ensureAmbientLoop(ctx, st, now);
+        processLoopSignals(ctx, st, now);
 
         if (ctx.player == null || !ctx.player.alive || ctx.player.dying || ctx.player.hp <= 0) return;
 
         processVoiceSignals(ctx, st, now);
+        processSuperweaponSignals(ctx, st, now);
         processImpactSignals(ctx, st, now);
         processHazardAndSubsystemSignals(ctx, st, now);
         applyAmbientMix(ctx);
@@ -507,11 +531,29 @@ public final class AudioSystem {
     }
 
     public static void onWeaponPrimary(GameContext ctx, Ship source) {
-        if (source == null) {
-            triggerSfx(ctx, SfxCue.WEAPON_PRIMARY);
+        onWeaponPrimary(ctx, source, null);
+    }
+
+    public static void onWeaponPrimary(GameContext ctx, Ship source, List<Projectile> firedProjectiles) {
+        if (containsTorpedo(firedProjectiles)) {
+            onTorpedoLaunch(ctx, source);
             return;
         }
-        triggerSfx(ctx, SfxCue.WEAPON_PRIMARY, source.x, source.y);
+        if (containsMissile(firedProjectiles)) {
+            onMissileLaunch(ctx, source);
+            return;
+        }
+        String classifiedEvent = primaryWeaponEventId(source);
+        RuntimeState st = stateFor(ctx);
+        if (isGreenWeaponLoopEvent(classifiedEvent)) {
+            touchGreenWeaponLoop(ctx, st, nowSec(), classifiedEvent, source);
+            return;
+        }
+        if (source == null) {
+            triggerSfxEvent(ctx, st, classifiedEvent, nowSec());
+            return;
+        }
+        triggerSfxEvent(ctx, st, classifiedEvent, nowSec(), source.x, source.y);
     }
 
     public static void onWeaponSecondary(GameContext ctx) {
@@ -519,6 +561,18 @@ public final class AudioSystem {
     }
 
     public static void onWeaponSecondary(GameContext ctx, Ship source) {
+        onWeaponSecondary(ctx, source, null);
+    }
+
+    public static void onWeaponSecondary(GameContext ctx, Ship source, List<Projectile> firedProjectiles) {
+        if (containsTorpedo(firedProjectiles)) {
+            onTorpedoLaunch(ctx, source);
+            return;
+        }
+        if (containsMissile(firedProjectiles)) {
+            onMissileLaunch(ctx, source);
+            return;
+        }
         if (source == null) {
             triggerSfx(ctx, SfxCue.WEAPON_SECONDARY);
             return;
@@ -536,6 +590,24 @@ public final class AudioSystem {
             return;
         }
         triggerSfx(ctx, SfxCue.WEAPON_WAVE, source.x, source.y);
+    }
+
+    public static void onSuperweaponFired(GameContext ctx, Ship source) {
+        if (ctx == null || source == null) {
+            onWeaponWave(ctx, source);
+            return;
+        }
+        String eventId = superweaponFireEventId(source);
+        if (eventId == null || SfxManifest.byId(eventId) == null) {
+            onWeaponWave(ctx, source);
+            return;
+        }
+        RuntimeState st = stateFor(ctx);
+        if (isGreenWeaponLoopEvent(eventId)) {
+            touchGreenWeaponLoop(ctx, st, nowSec(), eventId, source);
+            return;
+        }
+        triggerSfxEvent(ctx, st, eventId, nowSec(), source.x, source.y);
     }
 
     public static void onShieldImpact(GameContext ctx, VFX.ImpactStyle style) {
@@ -574,20 +646,78 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.FLIGHT_LAUNCH, source.x, source.y);
     }
 
-    public static void onWarpChargeStart(GameContext ctx, Ship source) {
+    public static void onMissileLaunch(GameContext ctx, Ship source) {
         if (source == null) {
-            triggerSfx(ctx, SfxCue.WARP_CHARGE_START);
+            triggerSfx(ctx, SfxCue.WEAPON_MISSILE_LAUNCH);
             return;
         }
-        triggerSfx(ctx, SfxCue.WARP_CHARGE_START, source.x, source.y);
+        triggerSfx(ctx, SfxCue.WEAPON_MISSILE_LAUNCH, source.x, source.y);
+    }
+
+    public static void onTorpedoLaunch(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WEAPON_TORPEDO_LAUNCH);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WEAPON_TORPEDO_LAUNCH, source.x, source.y);
+    }
+
+    public static void onCiwsFire(GameContext ctx, Ship source) {
+        if (source == null) {
+            triggerSfx(ctx, SfxCue.WEAPON_CIWS_FIRE);
+            return;
+        }
+        triggerSfx(ctx, SfxCue.WEAPON_CIWS_FIRE, source.x, source.y);
+    }
+
+    public static void onWarpChargeStart(GameContext ctx, Ship source) {
+        RuntimeState st = stateFor(ctx);
+        double now = nowSec();
+        if (source == null) {
+            triggerSfx(ctx, st, SfxCue.WARP_CHARGE_START, now);
+            touchWarpSpoolLoop(ctx, st, now, Double.NaN, Double.NaN);
+            return;
+        }
+        triggerSfx(ctx, st, SfxCue.WARP_CHARGE_START, now, source.x, source.y);
+        touchWarpSpoolLoop(ctx, st, now, source.x, source.y);
     }
 
     public static void onWarpExit(GameContext ctx, Ship source) {
+        stopWarpSpoolLoop();
+        RuntimeState st = stateFor(ctx);
+        if (st != null) st.warpSpoolLoopUntilSec = 0.0;
         if (source == null) {
             triggerSfx(ctx, SfxCue.WARP_EXIT);
             return;
         }
         triggerSfx(ctx, SfxCue.WARP_EXIT, source.x, source.y);
+    }
+
+    private static boolean isGreenWeaponLoopEvent(String eventId) {
+        if (eventId == null || eventId.isBlank()) return false;
+        if (eventId.startsWith("weapon.green.")) return true;
+        return "super.green.fire".equals(eventId)
+                || "hyper.green.fire".equals(eventId)
+                || "super.green.charge".equals(eventId)
+                || "hyper.green.charge".equals(eventId);
+    }
+
+    private static void touchGreenWeaponLoop(GameContext ctx, RuntimeState st, double now, String eventId, Ship source) {
+        if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
+        if (source != null && !shouldPlayWorldSfxAt(ctx, source.x, source.y)) return;
+        st.greenWeaponLoopUntilSec = now + GREEN_WEAPON_LOOP_HOLD_SEC;
+        if (!eventId.equals(st.greenWeaponLoopEventId)) {
+            stopGreenWeaponLoop(st);
+            st.greenWeaponLoopEventId = eventId;
+        }
+        ensureGreenWeaponLoopRunning(ctx, st);
+    }
+
+    private static void touchWarpSpoolLoop(GameContext ctx, RuntimeState st, double now, double sourceX, double sourceY) {
+        if (ctx == null || st == null) return;
+        if (!shouldPlayWorldSfxAt(ctx, sourceX, sourceY)) return;
+        st.warpSpoolLoopUntilSec = now + WARP_LOOP_KEEPALIVE_SEC;
+        ensureWarpSpoolLoopRunning(ctx);
     }
 
     public static void onCommandShipFormationOrder(GameContext ctx, Ship commander, GameContext.FleetFormation formation) {
@@ -607,6 +737,8 @@ public final class AudioSystem {
     public static synchronized void setTelemetryOnly(boolean telemetryOnly) {
         TELEMETRY_ONLY = AUDIO_DISABLED || telemetryOnly;
         Clip clip = ambientClip;
+        Clip greenClip = greenWeaponLoopClip;
+        Clip warpClip = warpSpoolLoopClip;
         if (TELEMETRY_ONLY && clip != null) {
             try {
                 clip.stop();
@@ -615,6 +747,24 @@ public final class AudioSystem {
             }
             if (ambientClip == clip) {
                 ambientClip = null;
+            }
+        }
+        if (TELEMETRY_ONLY && greenClip != null) {
+            try {
+                greenClip.stop();
+            } catch (Throwable ignored) {
+            }
+            if (greenWeaponLoopClip == greenClip) {
+                greenWeaponLoopClip = null;
+            }
+        }
+        if (TELEMETRY_ONLY && warpClip != null) {
+            try {
+                warpClip.stop();
+            } catch (Throwable ignored) {
+            }
+            if (warpSpoolLoopClip == warpClip) {
+                warpSpoolLoopClip = null;
             }
         }
     }
@@ -1026,8 +1176,71 @@ public final class AudioSystem {
         }
     }
 
+    private static void processSuperweaponSignals(GameContext ctx, RuntimeState st, double now) {
+        if (ctx == null || st == null || ctx.ships == null) return;
+        Set<Integer> trackedIds = new HashSet<>();
+        for (Ship ship : ctx.ships) {
+            if (ship == null) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (!ship.hasSuperweapon) continue;
+
+            trackedIds.add(ship.id);
+            boolean chargingNow = ship.isSuperweaponCharging();
+            boolean chargingBefore = st.lastSuperweaponChargingByShip.getOrDefault(ship.id, false);
+            String eventId = superweaponChargeEventId(ship);
+            if (chargingNow && isGreenWeaponLoopEvent(eventId)) {
+                touchGreenWeaponLoop(ctx, st, now, eventId, ship);
+            } else if (chargingNow && !chargingBefore) {
+                triggerSfxEvent(ctx, st, eventId, now, ship.x, ship.y);
+            }
+            st.lastSuperweaponChargingByShip.put(ship.id, chargingNow);
+        }
+        st.lastSuperweaponChargingByShip.keySet().removeIf(id -> !trackedIds.contains(id));
+    }
+
+    private static void processLoopSignals(GameContext ctx, RuntimeState st, double now) {
+        if (ctx == null || st == null) {
+            stopGreenWeaponLoop(null);
+            stopWarpSpoolLoop();
+            return;
+        }
+
+        boolean warpCharging = false;
+        if (ctx.ships != null) {
+            for (Ship ship : ctx.ships) {
+                if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+                if (!ship.isWarpCharging()) continue;
+                if (ctx.player != null && !shouldPlayWorldSfxAt(ctx, ship.x, ship.y)) continue;
+                warpCharging = true;
+                break;
+            }
+        }
+        if (warpCharging) {
+            touchWarpSpoolLoop(ctx, st, now, Double.NaN, Double.NaN);
+        } else if (st.warpSpoolLoopUntilSec > 0.0 && now >= st.warpSpoolLoopUntilSec) {
+            stopWarpSpoolLoop();
+            st.warpSpoolLoopUntilSec = 0.0;
+        }
+
+        if (st.greenWeaponLoopUntilSec > 0.0 && now >= st.greenWeaponLoopUntilSec) {
+            stopGreenWeaponLoop(st);
+            st.greenWeaponLoopUntilSec = 0.0;
+        }
+    }
+
     private static void processImpactSignals(GameContext ctx, RuntimeState st, double now) {
         if (ctx == null || ctx.player == null) return;
+        Ship player = ctx.player;
+
+        double shieldLoss = Math.max(0.0, st.lastShield - player.shield);
+        if (shieldLoss > Math.max(4.0, player.effectiveShieldCapacityMax() * 0.015)) {
+            triggerSfx(ctx, st, SfxCue.IMPACT_SHIELD_DAMAGE, now);
+        }
+
+        double hullLoss = Math.max(0.0, st.lastHp - player.hp);
+        if (hullLoss > Math.max(3.0, player.hpMax * 0.015)) {
+            triggerSfx(ctx, st, SfxCue.IMPACT_HULL_DAMAGE, now);
+        }
 
         int explosionsNow = explosionCountNearPlayer(ctx);
         if (explosionsNow > st.lastExplosionCount) {
@@ -1264,6 +1477,68 @@ public final class AudioSystem {
         if (countHostiles(ctx, st, nowSec()) > 0) target = -21.5;
         if (ctx.ui.voiceCaptionT > 0.0) target -= 4.5;
         applyGain(clip, target);
+    }
+
+    private static synchronized void ensureGreenWeaponLoopRunning(GameContext ctx, RuntimeState st) {
+        if (ctx == null || st == null || TELEMETRY_ONLY) return;
+        String eventId = st.greenWeaponLoopEventId;
+        if (eventId == null || eventId.isBlank()) return;
+        Clip clip = greenWeaponLoopClip;
+        if (clip != null && clip.isOpen()) {
+            if (!clip.isRunning()) clip.loop(Clip.LOOP_CONTINUOUSLY);
+            return;
+        }
+        greenWeaponLoopClip = startEventLoopClip(ctx, eventId);
+    }
+
+    private static synchronized void ensureWarpSpoolLoopRunning(GameContext ctx) {
+        if (ctx == null || TELEMETRY_ONLY) return;
+        Clip clip = warpSpoolLoopClip;
+        if (clip != null && clip.isOpen()) {
+            if (!clip.isRunning()) clip.loop(Clip.LOOP_CONTINUOUSLY);
+            return;
+        }
+        warpSpoolLoopClip = startEventLoopClip(ctx, SfxCue.WARP_SPOOL_UP.eventId);
+    }
+
+    private static synchronized void stopGreenWeaponLoop(RuntimeState st) {
+        Clip clip = greenWeaponLoopClip;
+        if (clip != null) {
+            try {
+                clip.stop();
+            } catch (Throwable ignored) {
+            }
+        }
+        greenWeaponLoopClip = null;
+        if (st != null) st.greenWeaponLoopEventId = "";
+    }
+
+    private static synchronized void stopWarpSpoolLoop() {
+        Clip clip = warpSpoolLoopClip;
+        if (clip != null) {
+            try {
+                clip.stop();
+            } catch (Throwable ignored) {
+            }
+        }
+        warpSpoolLoopClip = null;
+    }
+
+    private static Clip startEventLoopClip(GameContext ctx, String eventId) {
+        if (TELEMETRY_ONLY || eventId == null || eventId.isBlank()) return null;
+        SfxManifest.EventSpec spec = SfxManifest.byId(eventId);
+        if (spec == null) return null;
+        int variantCount = Math.max(1, AssetLibrary.sfxVariantCount(spec));
+        AssetLibrary.SfxPick pick = AssetLibrary.pickSfx(spec, RNG.nextInt(variantCount));
+        if (pick == null || (pick.file() == null && (pick.resourcePath() == null || pick.resourcePath().isBlank()))) {
+            return null;
+        }
+        double gainDb = spec.gainDb() + sfxVoiceDuckingDb(ctx, spec.priority());
+        Clip clip = createClipFromAsset(pick.file(), pick.resourcePath(), gainDb);
+        if (clip == null) return null;
+        clip.loop(Clip.LOOP_CONTINUOUSLY);
+        clip.start();
+        return clip;
     }
 
     private static void playAssetAsync(File wav, String resourcePath, boolean loop, double gainDb) {
@@ -1615,6 +1890,69 @@ public final class AudioSystem {
         if (sfxPriority >= 3) return -1.0;
         if (sfxPriority == 2) return -2.5;
         return -4.0;
+    }
+
+    private static String primaryWeaponEventId(Ship source) {
+        if (source == null) return SfxCue.WEAPON_PRIMARY.eventId;
+        String color = factionColorKey(source.faction);
+        String grade = weaponGradeKey(source);
+        return "weapon." + color + "." + grade + "_fire";
+    }
+
+    private static String superweaponChargeEventId(Ship source) {
+        if (source == null) return null;
+        String color = factionColorKey(source.faction);
+        boolean hyper = source.role == ShipRole.HYPERWEAPON_TITAN;
+        return (hyper ? "hyper." : "super.") + color + ".charge";
+    }
+
+    private static String superweaponFireEventId(Ship source) {
+        if (source == null) return null;
+        String color = factionColorKey(source.faction);
+        boolean hyper = source.role == ShipRole.HYPERWEAPON_TITAN;
+        return (hyper ? "hyper." : "super.") + color + ".fire";
+    }
+
+    private static String factionColorKey(Faction faction) {
+        if (faction == null) return "red";
+        return switch (faction) {
+            case PLAYER, ALLY -> "blue";
+            case ENEMY -> "red";
+            case TEAM_C -> "green";
+            case TEAM_D -> "yellow";
+        };
+    }
+
+    private static String weaponGradeKey(Ship source) {
+        if (source == null) return "medium";
+        ShipRole role = source.role;
+        if (role == null) return "medium";
+        if (source.isSmallCraft()) return "small";
+        int tier = SpawnSystem.requiredHangarTierForRole(role);
+        if (tier >= 3 || role.isTitanOrMothership() || role.isCapitalCombatant()) return "capital";
+        if (tier <= 0) return "small";
+        return "medium";
+    }
+
+    private static boolean containsMissile(List<Projectile> projectiles) {
+        if (projectiles == null || projectiles.isEmpty()) return false;
+        for (Projectile p : projectiles) {
+            if (p instanceof Missile) return true;
+        }
+        return false;
+    }
+
+    private static boolean containsTorpedo(List<Projectile> projectiles) {
+        if (projectiles == null || projectiles.isEmpty()) return false;
+        for (Projectile p : projectiles) {
+            if (!(p instanceof Missile missile)) continue;
+            if (missile.role == Turret.MissileRole.ANTI_HEAVY) return true;
+            if (missile.strikeVisual == Missile.StrikeVisual.TORPEDO
+                    || missile.strikeVisual == Missile.StrikeVisual.ATOMIC) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String shieldImpactEventId(VFX.ImpactStyle style) {

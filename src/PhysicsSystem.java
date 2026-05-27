@@ -1,5 +1,6 @@
 import app.config.GameMode;
 import java.awt.Color;
+import java.util.ArrayList;
 import java.util.Iterator;
 
 /**
@@ -68,11 +69,11 @@ public final class PhysicsSystem {
                 if (!hyperLanceBurst || hyperLanceBeam) {
                     EventSystem.showBanner(ctx, banner, 1.0);
                 }
-                AudioSystem.onWeaponWave(ctx, s);
                 ScreenShake.kick(8.0);
             } else {
                 ScreenShake.kick(3.5);
             }
+            AudioSystem.onSuperweaponFired(ctx, s);
         }
 
         if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
@@ -149,7 +150,11 @@ public final class PhysicsSystem {
                     ctx.projectiles.addAll(ctx.player.firePrimary(ctx.cursorWorldX, ctx.cursorWorldY, dt, firePrimary));
                 }
                 if (ctx.projectiles.size() > beforePrimary) {
-                    AudioSystem.onWeaponPrimary(ctx, ctx.player);
+                    AudioSystem.onWeaponPrimary(
+                            ctx,
+                            ctx.player,
+                            new ArrayList<>(ctx.projectiles.subList(beforePrimary, ctx.projectiles.size()))
+                    );
                     if (firePrimary && manualPrimaryMissileVolley) {
                         ctx.firingPrimaryManualLatched = true;
                     }
@@ -169,7 +174,11 @@ public final class PhysicsSystem {
                     int beforeSecondary = ctx.projectiles.size();
                     ctx.projectiles.addAll(ctx.player.fireSecondary(ctx, target, dt));
                     if (ctx.projectiles.size() > beforeSecondary) {
-                        AudioSystem.onWeaponSecondary(ctx, ctx.player);
+                        AudioSystem.onWeaponSecondary(
+                                ctx,
+                                ctx.player,
+                                new ArrayList<>(ctx.projectiles.subList(beforeSecondary, ctx.projectiles.size()))
+                        );
                     }
                 }
                 if (manualSecondaryRequested) {
@@ -182,7 +191,21 @@ public final class PhysicsSystem {
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive) continue;
+            int beforeCiws = ctx.projectiles.size();
             s.tryCIWS(dt, ctx);
+            if (ctx.projectiles.size() <= beforeCiws) continue;
+            boolean ciwsBurst = false;
+            for (int i = beforeCiws; i < ctx.projectiles.size(); i++) {
+                Projectile p = ctx.projectiles.get(i);
+                if (p == null || p.sourceShipId != s.id) continue;
+                if (p instanceof CIWSPellet || p instanceof PointDefenseLaser) {
+                    ciwsBurst = true;
+                    break;
+                }
+            }
+            if (ciwsBurst) {
+                AudioSystem.onCiwsFire(ctx, s);
+            }
         }
 
         // --- Projectiles update / cull ---
@@ -243,16 +266,18 @@ public final class PhysicsSystem {
         if (ctx.player.isWarpCharging()) return;
 
         if (CampaignSystem.usesMissionSubzones(ctx)) {
-            double[] clamped = CampaignSystem.clampToMissionBounds(
-                    ctx, ctx.campaign.sector, ctx.player.x, ctx.player.y);
-            if (clamped.length >= 2) {
-                ctx.player.x = clamped[0];
-                ctx.player.y = clamped[1];
-                int subzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ctx.player.x, ctx.player.y);
-                if (subzone >= 0) {
-                    CampaignSystem.setLoadedMissionSubzone(ctx, subzone);
-                    ctx.player.campaignMissionSubzone = subzone;
+            if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                double[] clamped = CampaignSystem.clampToMissionBounds(
+                        ctx, ctx.campaign.sector, ctx.player.x, ctx.player.y);
+                if (clamped.length >= 2) {
+                    ctx.player.x = clamped[0];
+                    ctx.player.y = clamped[1];
                 }
+            }
+            int subzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ctx.player.x, ctx.player.y);
+            if (subzone >= 0) {
+                CampaignSystem.setLoadedMissionSubzone(ctx, subzone);
+                ctx.player.campaignMissionSubzone = subzone;
             }
             return;
         }
@@ -279,11 +304,13 @@ public final class PhysicsSystem {
                     subzone = CampaignSystem.ensureShipMissionSubzone(ctx, ship);
                     ship.campaignWarpSourceSubzone = subzone;
                 }
-                double[] clamped = CampaignSystem.clampToMissionSubzone(
-                        ctx, ctx.campaign.sector, subzone, ship.x, ship.y);
-                if (clamped.length >= 2) {
-                    ship.x = clamped[0];
-                    ship.y = clamped[1];
+                if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                    double[] clamped = CampaignSystem.clampToMissionSubzone(
+                            ctx, ctx.campaign.sector, subzone, ship.x, ship.y);
+                    if (clamped.length >= 2) {
+                        ship.x = clamped[0];
+                        ship.y = clamped[1];
+                    }
                 }
                 continue;
             }
@@ -308,11 +335,14 @@ public final class PhysicsSystem {
         for (Ship ship : ctx.ships) {
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
             if (ship.isWarpCharging()) continue;
-            double[] clamped = CampaignSystem.clampToMissionBounds(
-                    ctx, ctx.campaign.sector, ship.x, ship.y);
-            if (clamped.length < 2) continue;
-            ship.x = clamped[0];
-            ship.y = clamped[1];
+            if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)) {
+                double[] clamped = CampaignSystem.clampToMissionBounds(
+                        ctx, ctx.campaign.sector, ship.x, ship.y);
+                if (clamped.length >= 2) {
+                    ship.x = clamped[0];
+                    ship.y = clamped[1];
+                }
+            }
             ship.campaignMissionSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, ship.x, ship.y);
         }
     }

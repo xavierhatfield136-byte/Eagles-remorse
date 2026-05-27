@@ -145,7 +145,7 @@ public final class CarrierSystem {
 
             Ship carrier = carriersById.get(s.carrierOwnerId);
             if (carrier == null) continue;
-            if (CampaignSystem.usesMissionSubzones(ctx)
+            if (CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx)
                     && s.isSmallCraft()
                     && CampaignSystem.missionSubzoneForShip(ctx, s) >= 0
                     && CampaignSystem.missionSubzoneForShip(ctx, carrier) >= 0

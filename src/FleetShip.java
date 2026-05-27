@@ -13,6 +13,7 @@ import java.util.Locale;
  * - CIWS mount counts are standardized by hangar tier when a hull has CIWS.
  */
 public class FleetShip extends Ship {
+    private static final double SUPERWEAPON_CHARGE_SFX_SECONDS = 10.0;
 
     public FleetShip(ShipRole role, Faction faction, double x, double y) {
         this.role = role;
@@ -26,9 +27,15 @@ public class FleetShip extends Ship {
         standardizeCiwsLoadout();
         nerfGeneralistCiwsLoadout();
         finalizeCapitalLethalityProfile();
+        enforceSuperweaponChargeSfxTiming();
         assignDefaultMissileRoles();
         resetFlightDeckLoadout();
         applyCustomFlightDeckLoadout();
+    }
+
+    private void enforceSuperweaponChargeSfxTiming() {
+        if (!hasSuperweapon) return;
+        superweaponChargeTime = SUPERWEAPON_CHARGE_SFX_SECONDS;
     }
 
     private void assignDefaultMissileRoles() {

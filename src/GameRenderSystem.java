@@ -660,7 +660,7 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static boolean hasLoadedRenderScope(GameContext ctx) {
-        return CampaignSystem.usesMissionSubzones(ctx) || BattlefieldSectorSystem.isEnabled(ctx);
+        return CampaignSystem.missionSubzoneBoundaryConstraintsEnabled(ctx) || BattlefieldSectorSystem.isEnabled(ctx);
     }
 
     private static int loadedMissionRenderSubzone(GameContext ctx) {
