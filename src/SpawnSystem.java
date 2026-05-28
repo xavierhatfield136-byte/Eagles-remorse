@@ -54,26 +54,31 @@ public final class SpawnSystem {
 
         if (ctx.config.mode == GameMode.SHOWCASE) {
             initShowcase(ctx);
+            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 
         if (ctx.config.mode == GameMode.TUTORIAL) {
             TutorialSystem.init(ctx, configuredPlayerFaction(ctx));
+            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 
         if (ctx.config.mode == GameMode.SHOOTING_RANGE) {
             initShootingRange(ctx);
+            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 
         if (ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             initFourTeamDomination(ctx);
+            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 
         if (ctx.config.mode == GameMode.CUSTOM_BATTLES) {
             initCustomBattles(ctx);
+            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 
@@ -1327,21 +1332,37 @@ public final class SpawnSystem {
                 ShipRole.BOARDING_RECOVERY_TITAN, ShipRole.ARTILLERY_TITAN, ShipRole.SHIELD_BASTION_TITAN,
                 ShipRole.FLEET_TELEPORTER_TITAN, ShipRole.ELITE_SUPERSHIP_COMMAND_TITAN,
                 ShipRole.ELITE_REINFORCEMENTS_TITAN, ShipRole.MOBILE_STATION_TITAN,
-                ShipRole.HYPERWEAPON_TITAN, ShipRole.STATIC_TURRET, ShipRole.BASE, ShipRole.MOTHERSHIP
+                ShipRole.HYPERWEAPON_TITAN, ShipRole.STATIC_TURRET, ShipRole.STATIC_TURRET, ShipRole.BASE, ShipRole.MOTHERSHIP
         };
         final int columns = 5;
         final double startX = 420.0;
         final double startY = -520.0;
         final double colStep = 520.0;
         final double rowStep = 220.0;
+        final int titanColumns = 3;
+        final double titanStartX = 2100.0;
+        final double titanStartY = -1400.0;
+        final double titanColStep = 860.0;
+        final double titanRowStep = 700.0;
         int structureIndex = 1;
+        int titanIndex = 0;
         for (int i = 0; i < roster.length; i++) {
             ShipRole role = roster[i];
             if (role == null) continue;
-            int col = i % columns;
-            int row = i / columns;
-            double dx = startX + col * colStep;
-            double dy = startY + row * rowStep;
+            double dx;
+            double dy;
+            if (role.isTitanOrMothership()) {
+                int col = titanIndex % titanColumns;
+                int row = titanIndex / titanColumns;
+                dx = titanStartX + col * titanColStep;
+                dy = titanStartY + row * titanRowStep;
+                titanIndex++;
+            } else {
+                int col = i % columns;
+                int row = i / columns;
+                dx = startX + col * colStep;
+                dy = startY + row * rowStep;
+            }
             String label;
             if (role == ShipRole.STATIC_TURRET) {
                 label = shootingRangeRoleLabel(faction, role, structureIndex++);

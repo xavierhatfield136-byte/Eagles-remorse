@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ship Viewer</title>
+    <style>
+      html, body, #app {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(circle at 30% 20%, #1e2b45, #05070d 70%);
+        color: #dbe6ff;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+      .hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 10px 12px;
+        background: rgba(3, 8, 18, 0.65);
+        border: 1px solid rgba(160, 200, 255, 0.3);
+        border-radius: 8px;
+        font-size: 13px;
+        line-height: 1.4;
+        backdrop-filter: blur(3px);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="hud">
+      Orbit: LMB/RMB/Wheel<br/>
+      X: toggle flight mode<br/>
+      Flight: W/S thrust, A/D yaw, R/F vertical<br/>
+      Shift: boost, Space: fire<br/>
+      1/2: swap ship, F: refocus (orbit mode)
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.179.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.179.1/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1538,6 +1538,7 @@ public final class CampaignSystem {
     private static void ensureStrategicOvermapReady(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled || st.strategicOvermapMode || st.strategicBootstrapLocked) return;
+        if (!isCommandLayerMode(ctx)) return;
         if (st.sector == 1
                 && st.sectorElapsed <= 0.0
                 && !st.galaxyEncounterActive
@@ -1548,6 +1549,7 @@ public final class CampaignSystem {
     }
 
     public static boolean isStrategicGalaxyMapMode(GameContext ctx) {
+        if (!isCommandLayerMode(ctx)) return false;
         ensureStrategicOvermapReady(ctx);
         return isStrategicOvermapMode(ctx);
     }
@@ -9301,6 +9303,17 @@ public final class CampaignSystem {
         }
     }
 
+    public static void initTacticalStrikeState(GameContext ctx) {
+        if (ctx == null || ctx.config == null) return;
+        if (ctx.config.mode == GameMode.CAMPAIGN_OPS || ctx.config.mode == GameMode.FLEET) return;
+        CampaignState st = new CampaignState();
+        st.enabled = true;
+        st.sector = 1;
+        st.act = actForSector(1);
+        st.strategicOvermapMode = false;
+        ctx.campaign = st;
+    }
+
     private static void initializeGalaxyCampaignMap(GameContext ctx, CampaignState st) {
         if (st == null || !st.galaxyMainPois.isEmpty()) return;
         String[] names = {
@@ -11282,6 +11295,11 @@ public final class CampaignSystem {
     public static void update(GameContext ctx, double dt) {
         CampaignState st = state(ctx);
         if (st == null || !st.enabled || ctx.gameOver) return;
+        if (!isCommandLayerMode(ctx)) {
+            updateStrikeCinematic(ctx, st, dt);
+            updateTacticalStrikeBombers(ctx, st, dt);
+            return;
+        }
         if (st.galaxyMainPois.isEmpty()) {
             initializeGalaxyCampaignMap(ctx, st);
         }
@@ -11393,7 +11411,7 @@ public final class CampaignSystem {
 
     public static boolean isCampaignActive(GameContext ctx) {
         CampaignState st = state(ctx);
-        return st != null && st.enabled;
+        return st != null && st.enabled && isCommandLayerMode(ctx);
     }
 
     public static boolean isStrategicOvermapMode(GameContext ctx) {
@@ -11406,7 +11424,12 @@ public final class CampaignSystem {
 
     public static boolean useAuthoredWaveSchedule(GameContext ctx) {
         CampaignState st = state(ctx);
-        return st != null && st.enabled;
+        return st != null && st.enabled && isCommandLayerMode(ctx);
+    }
+
+    private static boolean isCommandLayerMode(GameContext ctx) {
+        if (ctx == null || ctx.config == null || ctx.config.mode == null) return false;
+        return ctx.config.mode == GameMode.CAMPAIGN_OPS || ctx.config.mode == GameMode.FLEET;
     }
 
     public static boolean suppressRandomEvents(GameContext ctx) {

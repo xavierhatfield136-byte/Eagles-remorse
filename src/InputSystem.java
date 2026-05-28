@@ -86,16 +86,46 @@ public final class InputSystem {
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
                 handleCameraPanKeyPressed(ctx, keyCode);
-                if (GameplayActions.tryHandleStrategicEncounterHotkey(ctx, e)) return;
-                if (GameplayActions.tryHandleCampaignEpisodeHotkey(ctx, e)) return;
-                if (GameplayActions.tryHandleMapHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) return;
-                if (GameplayActions.tryHandleShootingRangeHotkey(ctx, e)) return;
-                if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) return;
+                if (GameplayActions.tryHandleStrategicEncounterHotkey(ctx, e)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleCampaignEpisodeHotkey(ctx, e)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleMapHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleCrewStationsHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleFlightDeckHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleShopHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleBaseMenuHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleShootingRangeHotkey(ctx, e)) {
+                    e.consume();
+                    return;
+                }
+                if (GameplayActions.tryHandleAllySpawnHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
                 DevTools.handleKeyPressed(e);
             }
 

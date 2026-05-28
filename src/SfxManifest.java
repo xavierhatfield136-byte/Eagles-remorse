@@ -77,7 +77,7 @@ public final class SfxManifest {
             event("weapon.yellow.capital_fire", "weapons", "weapon_yellow_capital_fire", Category.WEAPON, 3, 0.12, -12.5, 2, true),
             event("weapon.missile_launch", "weapons", "missile_launch", Category.WEAPON, 2, 0.10, -12.0, 2, true),
             event("weapon.torpedo_launch", "weapons", "torpedo_launch", Category.WEAPON, 3, 0.14, -11.0, 2, true),
-            event("weapon.ciws_fire", "weapons", "ciws_fire", Category.WEAPON, 1, 0.06, -15.0, 2, true),
+            event("weapon.ciws_fire", "weapons", "ciws_fire", Category.WEAPON, 1, 0.06, -21.0, 2, true),
             event("flight.launch", "weapons", "flight_launch", Category.WEAPON, 2, 0.18, -11.0, 1, true),
             event("warp.charge_start", "weapons", "warp_charge_start", Category.WEAPON, 2, 0.45, -10.5, 1, true),
             event("warp.spool_up", "weapons", "warp_spool_up", Category.WEAPON, 2, 0.45, -10.5, 1, true),

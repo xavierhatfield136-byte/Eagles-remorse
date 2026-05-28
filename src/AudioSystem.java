@@ -51,7 +51,8 @@ public final class AudioSystem {
     private static final int MAX_ACTIVE_LOW_PRIORITY_ONE_SHOTS = 8;
     private static final double DUPLICATE_ONE_SHOT_SUPPRESS_SEC = 0.075;
     private static final double HOSTILE_CONTACT_REFRESH_SEC = 0.24;
-    private static final double GREEN_WEAPON_LOOP_HOLD_SEC = 0.22;
+    private static final double GREEN_WEAPON_LOOP_HOLD_SEC = 0.45;
+    private static final double GREEN_SUPERWEAPON_FIRE_LOOP_HOLD_SEC = 5.2;
     private static final double WARP_LOOP_KEEPALIVE_SEC = 0.35;
 
     private AudioSystem() {}
@@ -543,10 +544,10 @@ public final class AudioSystem {
             onMissileLaunch(ctx, source);
             return;
         }
-        String classifiedEvent = primaryWeaponEventId(source);
+        String classifiedEvent = primaryWeaponEventId(source, firedProjectiles);
         RuntimeState st = stateFor(ctx);
         if (isGreenWeaponLoopEvent(classifiedEvent)) {
-            touchGreenWeaponLoop(ctx, st, nowSec(), classifiedEvent, source);
+            touchGreenWeaponLoop(ctx, st, nowSec(), classifiedEvent, source, greenLoopHoldSeconds(classifiedEvent));
             return;
         }
         if (source == null) {
@@ -604,7 +605,7 @@ public final class AudioSystem {
         }
         RuntimeState st = stateFor(ctx);
         if (isGreenWeaponLoopEvent(eventId)) {
-            touchGreenWeaponLoop(ctx, st, nowSec(), eventId, source);
+            touchGreenWeaponLoop(ctx, st, nowSec(), eventId, source, greenLoopHoldSeconds(eventId));
             return;
         }
         triggerSfxEvent(ctx, st, eventId, nowSec(), source.x, source.y);
@@ -702,15 +703,39 @@ public final class AudioSystem {
                 || "hyper.green.charge".equals(eventId);
     }
 
-    private static void touchGreenWeaponLoop(GameContext ctx, RuntimeState st, double now, String eventId, Ship source) {
+    private static void touchGreenWeaponLoop(GameContext ctx, RuntimeState st, double now, String eventId, Ship source, double holdSec) {
         if (ctx == null || st == null || eventId == null || eventId.isBlank()) return;
         if (source != null && !shouldPlayWorldSfxAt(ctx, source.x, source.y)) return;
-        st.greenWeaponLoopUntilSec = now + GREEN_WEAPON_LOOP_HOLD_SEC;
-        if (!eventId.equals(st.greenWeaponLoopEventId)) {
+        double ttl = Math.max(0.10, holdSec);
+        st.greenWeaponLoopUntilSec = Math.max(st.greenWeaponLoopUntilSec, now + ttl);
+        String incomingFamily = greenLoopFamilyKey(eventId);
+        String activeEventId = st.greenWeaponLoopEventId;
+        String activeFamily = greenLoopFamilyKey(activeEventId);
+        if (activeEventId == null || activeEventId.isBlank()) {
+            st.greenWeaponLoopEventId = eventId;
+        } else if ("superweapon.green".equals(activeFamily) && !"superweapon.green".equals(incomingFamily)
+                && now < st.greenWeaponLoopUntilSec) {
+            return;
+        } else if (!incomingFamily.equals(activeFamily)) {
             stopGreenWeaponLoop(st);
             st.greenWeaponLoopEventId = eventId;
         }
         ensureGreenWeaponLoopRunning(ctx, st);
+    }
+
+    private static String greenLoopFamilyKey(String eventId) {
+        if (eventId == null || eventId.isBlank()) return "";
+        if (eventId.startsWith("weapon.green.")) return "weapon.green";
+        if (eventId.startsWith("super.green.") || eventId.startsWith("hyper.green.")) return "superweapon.green";
+        return eventId;
+    }
+
+    private static double greenLoopHoldSeconds(String eventId) {
+        if (eventId == null || eventId.isBlank()) return GREEN_WEAPON_LOOP_HOLD_SEC;
+        if ("super.green.fire".equals(eventId) || "hyper.green.fire".equals(eventId)) {
+            return GREEN_SUPERWEAPON_FIRE_LOOP_HOLD_SEC;
+        }
+        return GREEN_WEAPON_LOOP_HOLD_SEC;
     }
 
     private static void touchWarpSpoolLoop(GameContext ctx, RuntimeState st, double now, double sourceX, double sourceY) {
@@ -1189,7 +1214,7 @@ public final class AudioSystem {
             boolean chargingBefore = st.lastSuperweaponChargingByShip.getOrDefault(ship.id, false);
             String eventId = superweaponChargeEventId(ship);
             if (chargingNow && isGreenWeaponLoopEvent(eventId)) {
-                touchGreenWeaponLoop(ctx, st, now, eventId, ship);
+                touchGreenWeaponLoop(ctx, st, now, eventId, ship, greenLoopHoldSeconds(eventId));
             } else if (chargingNow && !chargingBefore) {
                 triggerSfxEvent(ctx, st, eventId, now, ship.x, ship.y);
             }
@@ -1892,11 +1917,15 @@ public final class AudioSystem {
         return -4.0;
     }
 
-    private static String primaryWeaponEventId(Ship source) {
+    private static String primaryWeaponEventId(Ship source, List<Projectile> firedProjectiles) {
         if (source == null) return SfxCue.WEAPON_PRIMARY.eventId;
         String color = factionColorKey(source.faction);
-        String grade = weaponGradeKey(source);
+        String grade = weaponGradeKey(source, firedProjectiles);
         return "weapon." + color + "." + grade + "_fire";
+    }
+
+    private static String primaryWeaponEventId(Ship source) {
+        return primaryWeaponEventId(source, null);
     }
 
     private static String superweaponChargeEventId(Ship source) {
@@ -1923,8 +1952,19 @@ public final class AudioSystem {
         };
     }
 
-    private static String weaponGradeKey(Ship source) {
+    private static String weaponGradeKey(Ship source, List<Projectile> firedProjectiles) {
         if (source == null) return "medium";
+        if (source.faction == Faction.TEAM_C) {
+            if (containsProjectileType(firedProjectiles, PhaserBeam.class)) {
+                return (source.role != null && source.role.isTitanOrMothership()) ? "capital" : "medium";
+            }
+            if (containsProjectileType(firedProjectiles, EnergyBolt.class)) {
+                return source.isSmallCraft() ? "small" : "medium";
+            }
+            if (containsProjectileType(firedProjectiles, Bullet.class)) {
+                return "small";
+            }
+        }
         ShipRole role = source.role;
         if (role == null) return "medium";
         if (source.isSmallCraft()) return "small";
@@ -1932,6 +1972,18 @@ public final class AudioSystem {
         if (tier >= 3 || role.isTitanOrMothership() || role.isCapitalCombatant()) return "capital";
         if (tier <= 0) return "small";
         return "medium";
+    }
+
+    private static String weaponGradeKey(Ship source) {
+        return weaponGradeKey(source, null);
+    }
+
+    private static boolean containsProjectileType(List<Projectile> projectiles, Class<?> type) {
+        if (projectiles == null || projectiles.isEmpty() || type == null) return false;
+        for (Projectile p : projectiles) {
+            if (p != null && type.isInstance(p)) return true;
+        }
+        return false;
     }
 
     private static boolean containsMissile(List<Projectile> projectiles) {

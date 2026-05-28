@@ -675,11 +675,13 @@ public final class GameplayActions {
         if (e.isControlDown() && e.isShiftDown()) {
             if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
                 ctx.player.applyHull(ShipRole.FRIGATE, ctx.player.x, ctx.player.y);
+                keepShootingRangeInCombatView(ctx);
                 EventSystem.showBanner(ctx, "PLAYER HULL: FRIGATE", 1.0);
                 return true;
             }
             if (keyCode == java.awt.event.KeyEvent.VK_M) {
                 ctx.player.applyHull(ShipRole.MOTHERSHIP, ctx.player.x, ctx.player.y);
+                keepShootingRangeInCombatView(ctx);
                 EventSystem.showBanner(ctx, "PLAYER HULL: MOTHERSHIP", 1.1);
                 return true;
             }
@@ -705,6 +707,7 @@ public final class GameplayActions {
 
             ShipRole hullRole = playerArchetype.shipRole();
             ctx.player.applyHull(hullRole, ctx.player.x, ctx.player.y);
+            keepShootingRangeInCombatView(ctx);
             EventSystem.showBanner(ctx, "PLAYER HULL: " + playerArchetype.displayName().toUpperCase(), 1.1);
             return true;
         }
@@ -749,6 +752,22 @@ public final class GameplayActions {
             return true;
         }
         return SpawnSystem.setShootingRangeTargetFaction(ctx, targetFaction);
+    }
+
+    private static void keepShootingRangeInCombatView(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || ctx.config == null) return;
+        if (ctx.config.mode != app.config.GameMode.SHOOTING_RANGE) return;
+        ctx.ui.mapOpen = false;
+        ctx.ui.shopOpen = false;
+        ctx.ui.baseMenuOpen = false;
+        ctx.ui.powerManagementOpen = false;
+        ctx.ui.crewStationsOpen = false;
+        ctx.ui.flightDeckOpen = false;
+        ctx.ui.strategicMapFocusX = Double.NaN;
+        ctx.ui.strategicMapFocusY = Double.NaN;
+        if (!ctx.gameOver) {
+            ctx.state = GameState.RUNNING;
+        }
     }
 
     private static boolean isAlive(Ship s) {
