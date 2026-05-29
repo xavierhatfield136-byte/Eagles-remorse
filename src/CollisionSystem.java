@@ -201,14 +201,18 @@ public class CollisionSystem {
                     else if (p.damage >= 3) ScreenShake.kick(1.8);
                 }
 
-                s.takeDamage(
-                        p.damage,
-                        p.x,
-                        p.y,
-                        p.vx,
-                        p.vy,
-                        interiorHitProfileForProjectile(shooter, p)
-                );
+                if (p instanceof Missile missile && isArmorBypassingTorpedo(missile)) {
+                    applyArmorBypassingTorpedoImpact(missile, s);
+                } else {
+                    s.takeDamage(
+                            p.damage,
+                            p.x,
+                            p.y,
+                            p.vx,
+                            p.vy,
+                            interiorHitProfileForProjectile(shooter, p)
+                    );
+                }
                 logDamageEvent(ctx, "projectile:" + System.identityHashCode(p), p.damage, impactStyle, s, p.x, p.y);
                 if (p instanceof Missile m) {
                     applyMissileBlast(ctx, m, s, ships);
@@ -574,6 +578,38 @@ public class CollisionSystem {
             Explosion.spawnShieldHit(m.x, m.y);
         }
         AudioSystem.onExplosion(ctx, m.x, m.y);
+    }
+
+    private static boolean isArmorBypassingTorpedo(Missile missile) {
+        return missile != null && missile.strikeVisual == Missile.StrikeVisual.TORPEDO;
+    }
+
+    private static void applyArmorBypassingTorpedoImpact(Missile missile, Ship target) {
+        if (missile == null || target == null) return;
+        double durability = Math.max(1.0, target.hp + Math.max(0.0, target.shield));
+        int trueHullDamage = Math.max(1, missile.damage);
+        if (isBattleshipOrSmaller(target.role)) {
+            trueHullDamage = Math.max(trueHullDamage, (int) Math.ceil(durability * 1.35));
+        } else {
+            trueHullDamage = Math.max(trueHullDamage, (int) Math.ceil(durability * 0.70));
+        }
+        target.shield = 0.0;
+        target.shieldActive = false;
+        target.hp = Math.max(0, target.hp - trueHullDamage);
+        if (target.hp <= 0) {
+            target.hp = 0;
+            target.alive = false;
+            target.dying = true;
+        }
+    }
+
+    private static boolean isBattleshipOrSmaller(ShipRole role) {
+        if (role == null) return true;
+        if (role.isTitanOrMothership()) return false;
+        return switch (role) {
+            case DREADNOUGHT, SUPERSHIP -> false;
+            default -> true;
+        };
     }
 
     private static void applyNuclearBlast(GameContext ctx, Missile missile, Ship directHit, List<Ship> ships, Ship shooter) {

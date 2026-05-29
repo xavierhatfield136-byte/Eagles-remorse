@@ -7,6 +7,7 @@ public enum Faction {
 
     private static volatile boolean campaignBlueGreenAlliance = false;
     private static volatile boolean campaignBlueYellowAlliance = false;
+    private static volatile boolean campaignRedYellowAlliance = false;
 
     private final int teamId;
     private final String teamName;
@@ -28,6 +29,15 @@ public enum Faction {
     public static void configureCampaignAlliances(boolean blueGreenAlliance, boolean blueYellowAlliance) {
         campaignBlueGreenAlliance = blueGreenAlliance;
         campaignBlueYellowAlliance = blueYellowAlliance;
+        campaignRedYellowAlliance = false;
+    }
+
+    public static void configureCampaignAlliances(boolean blueGreenAlliance,
+                                                  boolean blueYellowAlliance,
+                                                  boolean redYellowAlliance) {
+        campaignBlueGreenAlliance = blueGreenAlliance;
+        campaignBlueYellowAlliance = blueYellowAlliance;
+        campaignRedYellowAlliance = redYellowAlliance;
     }
 
     public static void clearCampaignAlliances() {
@@ -51,6 +61,13 @@ public enum Faction {
         if (campaignBlueGreenAlliance && campaignBlueYellowAlliance
                 && ((aGreen && bYellow) || (aYellow && bGreen))) {
             return true;
+        }
+        if (campaignRedYellowAlliance) {
+            boolean aRed = a.teamId == 1;
+            boolean bRed = b.teamId == 1;
+            if ((aRed && bYellow) || (aYellow && bRed)) {
+                return true;
+            }
         }
         return false;
     }

@@ -779,7 +779,13 @@ public final class UISystem {
                 int mode = MathUtil.clamp(ctx.ui.combatStrikeSelection, 0, 2);
                 switch (mode) {
                     case 1 -> CampaignSystem.launchSelectedCampaignSortie(ctx);
-                    case 2 -> CampaignSystem.beginCampaignAtomicStrikeConfirm(ctx);
+                    case 2 -> {
+                        if (CampaignSystem.isStrategicGalaxyMapMode(ctx) || ctx.ui.mapOpen) {
+                            CampaignSystem.beginCampaignAtomicStrikeConfirm(ctx);
+                        } else {
+                            CampaignSystem.launchSelectedCampaignAtomicStrike(ctx);
+                        }
+                    }
                     default -> CampaignSystem.launchSelectedCampaignTorpedoStrike(ctx);
                 }
             }

@@ -98,4 +98,4 @@ The strategic HUD must clearly surface:
 - `STRATEGIC_CAMPAIGN_MAP_SPEC.md` defines what the campaign is
 - `STRATEGIC_CAMPAIGN_REACTIVE_THEATER_CHECKLIST.md` defines current reactive systems work
 - `STRATEGIC_HUD_ACTION_FIRST_SPEC.md` defines how the player should command those systems
-- `OUTDATED_STRATEGIC_HUD_ACTION_FIRST_REDESIGN.md` remains as the historical redesign record
+- superseded redesign notes were removed to avoid conflicting guidance

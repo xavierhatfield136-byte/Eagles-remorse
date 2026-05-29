@@ -999,6 +999,48 @@ public class Renderer {
                 return campaignActionTooltip("campaign:action:" + action.id, action);
             }
         }
+        HoverTooltip mapTooltip = galaxyMapSurfaceHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        if (mapTooltip != null) return mapTooltip;
+        return null;
+    }
+
+    private static HoverTooltip galaxyMapSurfaceHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        Rectangle map = getStrategicMapInnerRect(viewW, viewH, true);
+        if (!map.contains(mouseX, mouseY)) return null;
+        double worldMinX = UISystem.strategicMapWorldMinX(ctx);
+        double worldMinY = UISystem.strategicMapWorldMinY(ctx);
+        double worldW = UISystem.strategicMapViewWidth(ctx);
+        double worldH = UISystem.strategicMapViewHeight(ctx);
+        if (worldW <= 1e-6 || worldH <= 1e-6) return null;
+        double wx = worldMinX + ((mouseX - map.x) / (double) Math.max(1, map.width)) * worldW;
+        double wy = worldMinY + ((mouseY - map.y) / (double) Math.max(1, map.height)) * worldH;
+        double markerRadius = Math.max(90.0, worldW * 0.025);
+
+        CampaignSystem.CampaignSupportMarker support = CampaignSystem.nearestSupportMarker(ctx, wx, wy, markerRadius);
+        if (support != null) {
+            String body = defaultIfBlank(support.subtitle, "No detail available")
+                    + "\nOwner: " + CampaignSystem.supportMarkerOwnerReadout(support)
+                    + "\nRole: " + CampaignSystem.supportMarkerRoleReadout(support)
+                    + "\n" + CampaignSystem.supportMarkerStrategicValueReadout(support);
+            return new HoverTooltip("campaign:map:support:" + support.type + ":" + support.label, support.label, body);
+        }
+
+        CampaignSystem.CampaignObjectiveMarker objective = CampaignSystem.nearestObjectiveMarker(ctx, wx, wy, markerRadius);
+        if (objective != null) {
+            String body = defaultIfBlank(objective.subtitle, "No objective detail available")
+                    + "\nType: " + objective.type.name().replace('_', ' ')
+                    + "\nStrategic value: objective pressure and theater control";
+            return new HoverTooltip("campaign:map:objective:" + objective.type + ":" + objective.label, objective.label, body);
+        }
+
+        CampaignSystem.CampaignLandmark landmark = CampaignSystem.nearestStrategicLandmark(ctx, wx, wy, markerRadius);
+        if (landmark != null) {
+            String body = defaultIfBlank(landmark.subtitle, "No landmark detail available")
+                    + "\nType: " + landmark.type.name().replace('_', ' ')
+                    + "\nStrategic value: route and theater orientation";
+            return new HoverTooltip("campaign:map:landmark:" + landmark.type + ":" + landmark.label, landmark.label, body);
+        }
         return null;
     }
 
@@ -4482,7 +4524,7 @@ public class Renderer {
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);
-        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+        if (showCombatStrikePanel(ctx)) {
             Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
             if (strikeRect != null && strikeRect.width > 0 && strikeRect.height > 0 && strikeRect.contains(mouseX, mouseY)) {
                 Rectangle t = combatStrikeTorpedoRect(strikeRect);
@@ -4582,10 +4624,16 @@ public class Renderer {
         if (player.isStealth) {
             drawCloakModePanel(g2, player, layout.cloakRect);
         }
-        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+        if (showCombatStrikePanel(ctx)) {
             Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
             drawCombatStrikeSelectionPanel(g2, ctx, strikeRect);
         }
+    }
+
+    private static boolean showCombatStrikePanel(GameContext ctx) {
+        if (ctx == null || ctx.player == null || ctx.campaign == null || !ctx.campaign.enabled) return false;
+        if (ctx.player.role != ShipRole.MOTHERSHIP) return false;
+        return !CampaignSystem.isStrategicOvermapMode(ctx);
     }
 
     private static void drawBeamModePanel(Graphics2D g2, Player player, Rectangle rect) {
@@ -8678,6 +8726,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         g2.setClip(oldClip);
+        if (galaxyMode) {
+            drawCampaignWarLegend(g2, ctx, m);
+        }
 
         if (!galaxyMode) {
             double focusX = (ctx != null && ctx.ui != null && Double.isFinite(ctx.ui.strategicMapFocusX))
@@ -8737,23 +8788,32 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawGalaxyLatitudeBands(Graphics2D g2, GameContext ctx, Rectangle rect,
                                                 double worldMinY, double worldH) {
         if (g2 == null || rect == null || ctx == null) return;
-        double mapHeight = Math.max(1.0, ctx.WORLD_H);
         Stroke oldStroke = g2.getStroke();
         g2.setStroke(new BasicStroke(1.0f));
-        double[] boundaries = {
-                mapHeight * 0.72,
-                mapHeight * 0.46,
-                mapHeight * 0.22
-        };
-        String[] labels = {"SOUTHERN REACH", "CONTESTED FRONTIER", "EARTH APPROACH"};
-        for (int i = 0; i < boundaries.length; i++) {
-            double boundaryY = boundaries[i];
-            if (boundaryY < worldMinY || boundaryY > worldMinY + worldH) continue;
-            int py = strategicMapPixelY(rect, worldMinY, worldH, boundaryY);
-            g2.setColor(new Color(150, 190, 226, 42));
-            g2.drawLine(rect.x, py, rect.x + rect.width, py);
-            g2.setColor(new Color(214, 228, 244, 120));
-            g2.drawString(labels[i], rect.x + 12, Math.max(rect.y + 18, py - 6));
+        java.util.List<CampaignSystem.TheaterBand> bands = CampaignSystem.campaignTheaterBands(ctx);
+        if (bands.isEmpty()) {
+            g2.setStroke(oldStroke);
+            return;
+        }
+        double mapHeight = Math.max(1.0, ctx.WORLD_H);
+        for (CampaignSystem.TheaterBand band : bands) {
+            if (band == null) continue;
+            double topY = mapHeight * band.minYNorm;
+            double bottomY = mapHeight * band.maxYNorm;
+            int pyTop = strategicMapPixelY(rect, worldMinY, worldH, topY);
+            int pyBottom = strategicMapPixelY(rect, worldMinY, worldH, bottomY);
+            int y0 = Math.min(pyTop, pyBottom);
+            int y1 = Math.max(pyTop, pyBottom);
+            Color tint = theaterBandColor(band.controlToken, 24);
+            g2.setColor(tint);
+            g2.fillRect(rect.x, MathUtil.clamp(y0, rect.y, rect.y + rect.height), rect.width,
+                    Math.max(1, Math.min(rect.y + rect.height, y1) - Math.max(rect.y, y0)));
+            g2.setColor(theaterBandColor(band.controlToken, 74));
+            g2.drawLine(rect.x, pyTop, rect.x + rect.width, pyTop);
+            g2.drawLine(rect.x, pyBottom, rect.x + rect.width, pyBottom);
+            int labelY = MathUtil.clamp((y0 + y1) / 2, rect.y + 18, rect.y + rect.height - 14);
+            g2.setColor(theaterBandColor(band.controlToken, 188));
+            g2.drawString(band.label.toUpperCase(Locale.US), rect.x + 12, labelY);
         }
         int northX = rect.x + rect.width - 28;
         int northY = rect.y + 18;
@@ -8763,6 +8823,38 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawLine(northX, northY - 6, northX + 5, northY + 2);
         g2.drawString("N", northX - 4, northY + 34);
         g2.setStroke(oldStroke);
+    }
+
+    private static Color theaterBandColor(String controlToken, int alpha) {
+        String token = (controlToken == null) ? "" : controlToken.trim().toUpperCase(Locale.US);
+        if (token.startsWith("BG")) return new Color(120, 236, 188, MathUtil.clamp(alpha, 0, 255));
+        if (token.startsWith("R")) return new Color(255, 170, 150, MathUtil.clamp(alpha, 0, 255));
+        return new Color(196, 210, 236, MathUtil.clamp(alpha, 0, 255));
+    }
+
+    private static void drawCampaignTheaterBands(Graphics2D g2, GameContext ctx, Rectangle rect,
+                                                 double worldMinY, double worldH) {
+        drawGalaxyLatitudeBands(g2, ctx, rect, worldMinY, worldH);
+    }
+
+    private static void drawCampaignWarLegend(Graphics2D g2, GameContext ctx, Rectangle mapRect) {
+        if (g2 == null || mapRect == null) return;
+        int x = mapRect.x + 10;
+        int y = mapRect.y + mapRect.height - 56;
+        g2.setColor(new Color(8, 12, 20, 168));
+        g2.fillRoundRect(x - 6, y - 16, 330, 48, 12, 12);
+        g2.setColor(new Color(180, 214, 248, 78));
+        g2.drawRoundRect(x - 6, y - 16, 330, 48, 12, 12);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(228, 236, 244, 220));
+        g2.drawString("LEGEND", x, y - 4);
+        drawHudStatusChip(g2, "BG CONTROLLED", x, y + 8, 102, 16, new Color(120, 236, 188, 210), false);
+        drawHudStatusChip(g2, "CONTESTED", x + 108, y + 8, 82, 16, new Color(210, 220, 238, 210), false);
+        drawHudStatusChip(g2, "R/Y CONTROLLED", x + 194, y + 8, 120, 16, new Color(255, 170, 150, 210), false);
+        if (CampaignSystem.isCampaignWarMapSimplified(ctx)) {
+            g2.setColor(new Color(255, 226, 176, 210));
+            g2.drawString("SIMPLIFIED MODE ACTIVE", x + 140, y - 4);
+        }
     }
 
     private static void drawCampaignRouteNetwork(Graphics2D g2, GameContext ctx, Rectangle mapRect,
@@ -9298,6 +9390,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     public static CampaignHubClickTarget tacticalMapClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.ui == null || CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx.ui.campaignActionConfirm.active) {
+            Rectangle overlay = campaignActionConfirmOverlayRect(viewW, viewH);
+            Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
+            Rectangle confirmRect = new Rectangle(overlay.x + 18, overlay.y + overlay.height - 38, 122, 22);
+            if (confirmRect.contains(mouseX, mouseY)) {
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.CONFIRM, ctx.ui.campaignActionConfirm.actionId);
+            }
+            if (closeRect.contains(mouseX, mouseY)) {
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.CLOSE, "");
+            }
+            return null;
+        }
         Rectangle panelRect = getStrategicMapSidebarRect(viewW, viewH, false);
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Rectangle[] tabRects = tacticalMapTabRects(inner.x, inner.y + 2, inner.width);
@@ -11104,7 +11208,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         drawStrategicMarkerCenterGlyph(g2, marker.type, px, py);
 
-        if (label != null && !label.isBlank()) {
+        boolean simplified = CampaignSystem.isCampaignWarMapSimplified(ctx);
+        if (label != null && !label.isBlank() && (!simplified || selected)) {
             g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
             FontMetrics fm = g2.getFontMetrics();
             String shortLabel = label.trim().toUpperCase(Locale.US);
@@ -11167,6 +11272,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawStrategicSupportMarkerGlyph(g2, marker.type, px, py, radius);
 
         if (shouldShowSupportMarkerLabel(ctx, marker, selected)
+                && (!CampaignSystem.isCampaignWarMapSimplified(ctx) || selected)
                 && marker.label != null && !marker.label.isBlank()) {
             g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
             FontMetrics fm = g2.getFontMetrics();

@@ -182,6 +182,7 @@ public final class UiState {
     public int selectedStrategicDivisionGroupId = 0;
     public CampaignCommandTab campaignCommandTab = CampaignCommandTab.NAV;
     public TacticalMapTab tacticalMapTab = TacticalMapTab.MISSION;
+    public boolean campaignWarMapSimplified = false;
 
     public GameContext.HudDetail hudDetail = GameContext.HudDetail.COMPACT;
     public boolean tacticalViewEnabled = false;

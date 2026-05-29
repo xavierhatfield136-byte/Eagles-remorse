@@ -14,7 +14,6 @@ This folder keeps older planning, milestone, migration, and superseded checklist
 - `legacy/THREE_D_MIGRATION_TASK_BOARD.md`
 - `legacy/HULL_VISUAL_PHASE1.md`
 - `legacy/RESOURCE_RUSH_FACTION_CHARACTERIZATION.md`
-- `legacy/OLD_CAMPAIGN_CHECK.md`
 - `legacy/M1_PARITY_WORKFLOW.md`
 - `legacy/M1_VERTICAL_SLICE_PLAYTEST.md`
 - `legacy/M2_3D_SANDBOX_VALIDATION.md`

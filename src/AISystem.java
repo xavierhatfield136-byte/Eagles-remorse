@@ -3747,8 +3747,8 @@ public final class AISystem {
         }
 
         // Rough engagement gating by weapon kind (shared across turrets on the same ship).
-        double gunRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 1100.0 : 720.0;
-        double missileRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 1850.0 : 1300.0;
+        double gunRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 760.0 : 460.0;
+        double missileRange = (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) ? 2450.0 : 1780.0;
         gunRange = gunRange * gunRangeRoleMul(s.role) * rangeMul;
         missileRange = missileRange * missileRangeRoleMul(s.role) * rangeMul;
         double sustainedRange = sustainedEngagementRangeForTarget(ctx, s, target);
@@ -3837,9 +3837,7 @@ public final class AISystem {
 
                 // --- GUN turrets ---
                 boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
-                double allowedGunRange = ciwsStyle
-                        ? effectiveGunRangeForTarget(s, t, target, gunRange)
-                        : Math.max(effectiveGunRangeForTarget(s, t, target, gunRange), sustainedRange);
+                double allowedGunRange = effectiveGunRangeForTarget(s, t, target, gunRange);
                 if (dist > allowedGunRange) continue;
                 if (!ciwsStyle) {
                     if (useVolley && !volleyReady) continue;

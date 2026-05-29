@@ -411,7 +411,7 @@ Most likely affected sectors based on current scripts:
 
 ## Phase 3: Sector-by-sector authored cleanup
 
-- review all 24 sectors
+- review all strategic regions and objective routes
 - tag which landmarks are decorative vs actionable
 - verify each mission type has a visible marker for its current goal
 - verify each failure condition is named before the player triggers it

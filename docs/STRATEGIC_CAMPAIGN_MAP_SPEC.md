@@ -9,13 +9,7 @@ This document is the current design spec for the new campaign layer.
 
 This document should be treated as the primary design reference for the campaign layer. When older campaign documents conflict with this file, this file takes priority.
 
-It replaces the old split between:
-
-- `OUTDATED_CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
-- `OUTDATED_CAMPAIGN_24_SECTOR_OUTLINE.md`
-- `OUTDATED_HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`
-
-Those documents remain useful as historical context, but this file is the design we are actively building against.
+It replaces prior linear-campaign planning and is the design we are actively building against.
 
 ## Core Direction
 
@@ -91,7 +85,7 @@ The campaign map is a large world-space chart, larger than the visible screen.
 
 The map contains:
 
-- 24 main progression locations
+- main progression locations distributed across the overmap
 - optional areas of interest
 - Green and Yellow hub locations
 - shipyards
@@ -122,7 +116,7 @@ The map should encourage route planning, not only “click next mission.”
 
 ## Progression Structure
 
-The campaign still preserves the 24-mission return-to-Earth arc.
+The campaign preserves a long-form return-to-Earth journey across an open strategic map.
 
 That structure now lives inside a broader strategic world map.
 
@@ -413,9 +407,9 @@ One encounter should mean one readable combat arena with enough room to maneuver
 
 ## Main Mission Structure
 
-The 24-mission backbone remains active.
+Main authored objectives remain active as open-world points of interest.
 
-Those missions should be embedded into the overmap rather than presented as a simple linear node list.
+Those objectives are embedded into the overmap rather than presented as a linear node list.
 
 The campaign should preserve:
 
@@ -425,7 +419,7 @@ The campaign should preserve:
 - Green and Yellow hub identity
 - the escalation toward Earth
 
-The old 24-sector outline remains useful for authored mission content and pacing, but it now sits beneath the overmap structure rather than defining the campaign presentation on its own.
+Authored mission content and pacing should support the overmap structure, not define campaign presentation on their own.
 
 ## Combat Feel Direction
 
@@ -526,8 +520,4 @@ This means the implementation is aligned with the campaign direction, but not ev
 
 Use this file as the primary campaign design reference.
 
-The following docs are now outdated as primary specs:
-
-- `OUTDATED_CAMPAIGN_AND_UI_OVERHAUL_PLAN.md`
-- `OUTDATED_CAMPAIGN_24_SECTOR_OUTLINE.md`
-- `OUTDATED_HIGHFLEET_STRATEGIC_LAYER_DIRECTION.md`
+This file is the active campaign design source of truth.

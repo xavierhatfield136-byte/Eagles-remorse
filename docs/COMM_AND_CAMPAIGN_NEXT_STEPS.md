@@ -38,7 +38,7 @@ This note captures the most useful follow-up work after the current comms and ca
 
 ## Campaign Content Clarity
 
-- Revisit all 24 sector objective texts and rewrite them as:
+- Revisit all strategic objective texts and rewrite them as:
   - one short action verb line
   - one short tactical hint line
   - one short threat line

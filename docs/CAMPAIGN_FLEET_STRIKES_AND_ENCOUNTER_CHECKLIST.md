@@ -17,12 +17,12 @@ The main goal is to make fleet-on-fleet clashes, fleet management, sensors, roam
 - Any new strategic action must have a visible enabled state, disabled reason, and player-facing consequence text.
 - Any new fleet command must persist through save/load and resume.
 - Any strike behavior must avoid instant whole-group deletion unless it is a deliberately resolved tactical battle outcome.
-- Any new multi-zone combat rule must preserve old 24 mission campaign behavior where it is still intended.
+- Any new multi-zone combat rule must preserve authored-objective campaign behavior where it is still intended.
 
 ## Design Anchors
 
 - Direct friendly fleet versus enemy fleet clashes in open space should create a compact three-zone battle.
-- Old large multi-zone missions should only appear when the player is over a place of interest in one of the old 24 mission campaigns.
+- Large multi-zone missions should only appear when the player is over a place of interest in the authored objective campaign set.
 - Enemy groups surrounding a place of interest should be included in that place-of-interest battle context, not accidentally converted into generic open-space encounters.
 - The fleet tab should become a ship roster and command surface, not just a summary panel.
 - Strikes should become moving strategic objects and tactical events, not instant kill buttons.
@@ -44,8 +44,8 @@ The main goal is to make fleet-on-fleet clashes, fleet management, sensors, roam
 ### 1.2 Place-Of-Interest Multi-Zone Battles
 
 - [x] Restrict the new direct fleet-clash path so it uses the compact three-zone layout instead of the old large multi-zone mission layout.
-- [x] Preserve old 24 mission campaign authored multi-zone spaces when the player enters the intended place of interest.
-- [x] Audit every old 24 mission entry path to confirm no non-POI branch can still trigger the large authored layout.
+- [x] Preserve authored-objective multi-zone spaces when the player enters the intended place of interest.
+- [x] Audit every authored objective entry path to confirm no non-POI branch can still trigger the large authored layout.
 - [x] Include enemy forces surrounding a place of interest in that place-of-interest battle when they are close enough to be part of the local defense or pressure ring.
 - [x] Prevent surrounding point-of-interest defenders from being treated as detached generic open-space clashes when the battle is clearly about the landmark.
 - [x] Show a campaign briefing distinction between "site assault," "site defense," "route intercept," and "open-space fleet clash."
@@ -267,7 +267,7 @@ The main goal is to make fleet-on-fleet clashes, fleet management, sensors, roam
 - [x] Prevent direct-fire rules from blocking long-range strike logic when a strike is specifically authorized.
 - [x] Keep normal weapon range, sensor, and zone ownership rules intact.
 - [x] Resolve strike damage only where the payload actually arrives.
-- [x] Add regression coverage for cross-zone strike launches in old 24 mission multi-zone battles.
+- [x] Add regression coverage for cross-zone strike launches in authored-objective multi-zone battles.
 
 ## Phase 10: UI, Save/Load, And Regression Pass
 
@@ -301,13 +301,13 @@ The main goal is to make fleet-on-fleet clashes, fleet management, sensors, roam
 - [x] Add focused tests for strategic strike object movement and collision.
 - [x] Add tactical harness coverage for torpedo, bomber, and nuclear strike battle setup.
 - [x] Manually play one direct open-space fleet clash.
-- [x] Manually play one place-of-interest old 24 mission multi-zone battle.
+- [x] Manually play one place-of-interest authored-objective multi-zone battle.
 - [x] Manually launch a Green Anchorage Pelagos to Yellow Comerspine Orus range strike.
 - [x] Manually verify strikes no longer one-shot delete full enemy groups without a battle.
 
 ## Suggested Implementation Order
 
-1. Lock encounter shape rules first so direct fleet clashes and old 24 mission place-of-interest battles stop fighting each other.
+1. Lock encounter shape rules first so direct fleet clashes and authored-objective place-of-interest battles stop fighting each other.
 2. Upgrade fleet data and the fleet tab roster next, because group movement and commitment controls need a stable ship list.
 3. Add sensor and strike range constants before tuning roaming enemies or strike launch validation.
 4. Add roaming enemy movement after sensor staleness exists, so the map can support hidden or stale movement cleanly.

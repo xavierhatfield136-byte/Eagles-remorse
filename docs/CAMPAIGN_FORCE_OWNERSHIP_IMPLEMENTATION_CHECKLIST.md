@@ -135,7 +135,7 @@ The campaign should feel like a living theater of war. Battles should happen bec
 
 ### 4.2 Authored Mission Integration
 
-- [x] Map every old 24 mission to specific campaign force owners.
+- [x] Map every authored objective path to specific campaign force owners.
 - [x] Identify which mission ships are local garrisons, which are patrols, which are reinforcements, and which are scripted bosses.
 - [x] Give boss escorts named parent forces.
 - [x] Give static defenses parent base/garrison forces.

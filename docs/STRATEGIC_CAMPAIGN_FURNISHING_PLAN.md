@@ -17,7 +17,7 @@ Use the other docs like this:
 - `STRATEGIC_CAMPAIGN_REACTIVE_THEATER_CHECKLIST.md`: active systems checklist
 - `STRATEGIC_HUD_ACTION_FIRST_SPEC.md`: active HUD usability spec
 - `STRATEGIC_CAMPAIGN_FURNISHING_STATUS.md`: current progress summary
-- `OUTDATED_STRATEGIC_CAMPAIGN_CHECKLIST.md`: completed implementation checklist
+- completed implementation checklists now live in active campaign checklist docs
 - `STRATEGIC_CAMPAIGN_FURNISHING_PLAN.md`: historical staged content-and-feel roadmap for furnishing philosophy and intent
 
 ## What "Furnishing" Means

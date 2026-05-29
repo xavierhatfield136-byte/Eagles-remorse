@@ -13,7 +13,7 @@ It is meant to answer:
 - what the player can do
 - what the map contains
 - what encounters can happen
-- what each mission is
+- what each main objective location is
 - what each local site can turn into
 - what systemic states shape the run
 
@@ -25,7 +25,7 @@ It is not a line-by-line internal code commentary.
 
 ## The Campaign In One Sentence
 
-The campaign is a full-screen strategic overmap about getting home to Earth through 24 authored mission sectors, optional local site pockets, moving hostile search groups, logistics strain, faction support, uncertain contacts, and a command-station HUD that lets the player travel, dock, scan, strike, and choose how to resolve the theater around them.
+The campaign is a full-screen strategic overmap about getting home to Earth through 24 authored objective locations, optional local site pockets, moving hostile search groups, logistics strain, faction support, uncertain contacts, and a command-station HUD that lets the player travel, dock, scan, strike, and choose how to resolve the theater around them.
 
 ## Core Campaign Structure
 
@@ -45,7 +45,7 @@ The overmap is where the player:
 - selects posture
 - launches long-range strikes
 - enters local pockets
-- advances toward the next main mission
+- advances toward the next main objective
 
 The tactical layer is where the player:
 
@@ -58,7 +58,7 @@ The campaign is explicitly not a tactical battle running in the background. The 
 
 ## Campaign Progression Spine
 
-The strategic campaign preserves a `24-sector` return-to-Earth arc.
+The strategic campaign preserves a long-form open-world return-to-Earth arc.
 
 Broad progression:
 
@@ -110,7 +110,7 @@ The campaign tracks, among other things:
 - recurring-contact relationship states
 - current posture
 - current theater pressure state
-- completed main missions
+- completed main objectives
 - completed side objectives
 
 ## Core Resources And Strategic Counters
@@ -1202,7 +1202,7 @@ Modifier effects can influence:
 - sector credit bonus
 - auto-lock behavior
 
-## The Full 24-Sector Authored Campaign Arc
+## The Full Authored Campaign Arc
 
 Each sector below lists:
 
@@ -1520,7 +1520,7 @@ Use this document when you need one place to answer:
 - "What are all the encounter categories?"
 - "What does each site type do?"
 - "What are the current posture, reputation, pressure, and contact systems?"
-- "What are the 24 missions and what happens in each one?"
+- "What are the main authored objectives and what happens in each one?"
 
 Use the other docs like this:
 

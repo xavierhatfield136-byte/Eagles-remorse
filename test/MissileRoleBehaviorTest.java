@@ -124,4 +124,44 @@ class MissileRoleBehaviorTest {
 
         assertEquals(0.0, missile.angle, 1e-6, "AAA missiles should not keep steering around already-dead fighters");
     }
+
+    @Test
+    void tacticalStrikeTorpedoBypassesShieldAndArmorOnBattleshipAndCiwsCorvette() {
+        Faction.clearCampaignAlliances();
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOOTING_RANGE, 5000, 5000, true, 7878L, false));
+        Ship launcher = new FleetShip(ShipRole.MOTHERSHIP, Faction.ALLY, 0.0, 0.0);
+
+        Ship battleship = new FleetShip(ShipRole.BATTLESHIP, Faction.ENEMY, 280.0, 0.0);
+        battleship.shield = Math.max(battleship.shield, 240.0);
+        battleship.shieldMax = Math.max(battleship.shieldMax, battleship.shield);
+
+        Ship corvette = new FleetShip(ShipRole.CIWS_CORVETTE, Faction.ENEMY, 420.0, 0.0);
+        corvette.shield = Math.max(corvette.shield, 140.0);
+        corvette.shieldMax = Math.max(corvette.shieldMax, corvette.shield);
+
+        Missile strikeBattleship = new Missile(0.0, 0.0, 0.0, battleship, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
+        strikeBattleship.strikeVisual = Missile.StrikeVisual.TORPEDO;
+        strikeBattleship.x = battleship.x;
+        strikeBattleship.y = battleship.y;
+
+        Missile strikeCorvette = new Missile(0.0, 0.0, 0.0, corvette, GameContext.DT, 360.0, Math.toRadians(360.0), 14, 900, 10.0, Faction.ALLY);
+        strikeCorvette.strikeVisual = Missile.StrikeVisual.TORPEDO;
+        strikeCorvette.x = corvette.x;
+        strikeCorvette.y = corvette.y;
+
+        ctx.ships.add(launcher);
+        ctx.ships.add(battleship);
+        ctx.ships.add(corvette);
+        ctx.projectiles.add(strikeBattleship);
+        ctx.projectiles.add(strikeCorvette);
+        ctx.entityQuery.rebuild(ctx);
+
+        CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+
+        assertEquals(0.0, battleship.shield, 1e-6, "tactical torpedo strike should bypass and strip battleship shields");
+        assertEquals(0.0, corvette.shield, 1e-6, "tactical torpedo strike should bypass and strip corvette shields");
+        assertTrue(!battleship.alive || battleship.hp <= 0, "tactical torpedo strike should one-shot battleship-class targets");
+        assertTrue(!corvette.alive || corvette.hp <= 0, "tactical torpedo strike should one-shot smaller-than-battleship targets");
+    }
+
 }

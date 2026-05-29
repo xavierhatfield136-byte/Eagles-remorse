@@ -9,7 +9,7 @@ public class Turret {
 
     // Universal missile buff (applies to all factions/ships).
     public static final double MISSILE_DAMAGE_MULT = 1.55;
-    // Tactical alignment: keep missiles threatening, but slow enough that the player can read and react to inbound arcs.
+    // Baseline launch multiplier before faction doctrine is applied in Missile.
     public static final double MISSILE_SPEED_MULT = 0.90;
     public static final double MISSILE_TURN_MULT = 1.32;
     public static final double MISSILE_LIFE_MULT = 1.22;

@@ -313,6 +313,7 @@ public final class GameRenderSystem {
         if (CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
         }
+        Renderer.drawCampaignActionConfirmOverlay(g2, ctx, viewportW, viewportH);
 
         if (ctx.state == GameState.PAUSED && !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             g2.setColor(new Color(0, 0, 0, 160));

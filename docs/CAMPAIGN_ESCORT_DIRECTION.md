@@ -499,7 +499,7 @@ The ending should restore peace, not set up a forever-war as the only possible o
 ## Current Build Status
 
 Already in the build:
-- [x] The campaign is already structured as a 24-sector return-to-Earth arc.
+- [x] The campaign is already structured as an open-world return-to-Earth push with authored objectives embedded in the overmap.
 - [x] The four ship hierarchies are present: Small Craft, Standard Ships, Titans, and Motherships.
 - [x] The Titan command ladder and escort pressure are already present in campaign logic.
 - [x] Green support exists as contract fleets and persistent allied survivors.

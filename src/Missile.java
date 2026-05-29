@@ -2,6 +2,8 @@ public class Missile extends Projectile {
     public static final int BASE_INTERCEPT_HP = 3;
     public static final int HEAVY_INTERCEPT_HP = 4;
     public static final int INFINITE_GUIDANCE_TICKS = Integer.MAX_VALUE;
+    private static final double NON_YELLOW_SPEED_MULT = 2.35;
+    private static final double YELLOW_SPEED_MULT = 1.00;
 
     public enum StrikeVisual {
         DEFAULT,
@@ -51,7 +53,7 @@ public class Missile extends Projectile {
         this.angle = angle;
         this.target = target;
 
-        this.speed = speed;
+        this.speed = speed * factionMissileSpeedMultiplier(faction);
         this.turnRate = turnRate;
         this.interceptHp = (damage >= 8) ? HEAVY_INTERCEPT_HP : BASE_INTERCEPT_HP;
         this.blastRadius = Math.max(38.0, radius * 8.0);
@@ -115,5 +117,9 @@ public class Missile extends Projectile {
         vy = Math.sin(angle) * speed * dt;
 
         super.update(dt);
+    }
+
+    private static double factionMissileSpeedMultiplier(Faction faction) {
+        return faction == Faction.TEAM_D ? YELLOW_SPEED_MULT : NON_YELLOW_SPEED_MULT;
     }
 }
