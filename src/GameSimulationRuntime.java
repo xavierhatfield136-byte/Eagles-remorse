@@ -380,6 +380,7 @@ public final class GameSimulationRuntime {
 
     private void completeSafeMissionExit(Ship ship) {
         if (ship == null) return;
+        AudioSystem.onWarpExit(ctx, ship);
         ship.cancelBattlefieldWarp();
         for (Ship ally : ctx.ships) {
             if (ally == null || ally == ship) continue;

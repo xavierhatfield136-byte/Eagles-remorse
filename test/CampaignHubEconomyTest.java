@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -124,6 +125,46 @@ class CampaignHubEconomyTest {
     }
 
     @Test
+    void hiredCrossFactionShipKeepsFactionHullWhenPlayerFactionChanges() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation greenHub = findLocation(ctx, "poi-01");
+        assertNotNull(greenHub);
+
+        st.selectedGalaxyLocationId = greenHub.id;
+        st.playerGalaxyX = greenHub.x;
+        st.playerGalaxyY = greenHub.y;
+
+        assertTrue(CampaignSystem.launchSelectedLocalEncounter(ctx));
+
+        Ship hired = ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && ship.alive && ship.faction == Faction.TEAM_C
+                        && ship.role == ShipRole.FRIGATE
+                        && ship.name != null
+                        && ship.name.contains("Green Watch"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(hired);
+
+        CampaignSystem.noteAmbientSupportRequest(ctx, hired);
+        assertTrue(CampaignSystem.completeMissionExtraction(ctx));
+
+        Object entry = persistentFleetEntryByName(st, hired.name);
+        assertNotNull(entry);
+        assertEquals(Faction.TEAM_C.name(), getString(entry, "factionName"));
+
+        ctx.player.faction = Faction.TEAM_D;
+        invokeEnterFleetHub(ctx, st);
+
+        Ship respawned = ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && hired.name.equals(ship.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(respawned);
+        assertEquals(Faction.TEAM_C, respawned.faction);
+    }
+
+    @Test
     void hubDockingIsStillRequiredForServices() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -174,6 +215,38 @@ class CampaignHubEconomyTest {
             return false;
         }
         return false;
+    }
+
+    private static Object persistentFleetEntryByName(CampaignSystem.CampaignState st, String name) {
+        if (st == null || name == null) return null;
+        try {
+            Field field = CampaignSystem.CampaignState.class.getDeclaredField("persistentBlueFleet");
+            field.setAccessible(true);
+            List<?> entries = (List<?>) field.get(st);
+            for (Object entry : entries) {
+                if (entry == null) continue;
+                Field nameField = entry.getClass().getDeclaredField("name");
+                nameField.setAccessible(true);
+                Object value = nameField.get(entry);
+                if (name.equals(value)) return entry;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private static String getString(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        Object value = field.get(target);
+        return (value == null) ? "" : value.toString();
+    }
+
+    private static void invokeEnterFleetHub(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod("enterFleetHub", GameContext.class, CampaignSystem.CampaignState.class);
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
     }
 
     private static void setDouble(Object target, String fieldName, double value) throws Exception {

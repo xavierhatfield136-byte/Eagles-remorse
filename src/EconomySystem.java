@@ -2093,7 +2093,24 @@ public final class EconomySystem {
         boolean mothershipFleetDeposit = CampaignSystem.isCampaignActive(ctx)
                 && base.role != null
                 && base.role.isMothership();
-        if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, miner.faction) && !mothershipFleetDeposit) {
+        boolean alliedStarbaseFleetDeposit = CampaignSystem.isCampaignActive(ctx)
+                && moved > 0
+                && base.isBase
+                && ctx.player != null
+                && base != ctx.player
+                && miner.minerHomeBase == ctx.player
+                && miner.faction != null
+                && ctx.player.faction != null
+                && base.faction != null
+                && miner.faction.isFriendlyTo(ctx.player.faction)
+                && base.faction.isFriendlyTo(ctx.player.faction);
+        if (alliedStarbaseFleetDeposit) {
+            CampaignSystem.grantCampaignOre(ctx, moved);
+            base.oreStockpile = Math.max(0, base.oreStockpile - moved);
+        }
+        if (moved > 0 && TeamSystem.isFriendlyToPlayer(ctx, miner.faction)
+                && !mothershipFleetDeposit
+                && !alliedStarbaseFleetDeposit) {
             double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
             priceMul *= CampaignSystem.oreCreditMul(ctx);
             int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);

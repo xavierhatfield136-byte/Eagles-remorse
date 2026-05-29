@@ -1486,6 +1486,7 @@ public final class CampaignSystem {
         final int slotId;
         final ShipRole role;
         String name;
+        String factionName = Faction.ALLY.name();
         boolean destroyed = false;
         int activeShipId = -1;
         int commandGroupId = 0;
@@ -12809,7 +12810,7 @@ public final class CampaignSystem {
         Ship best = null;
         double bestDist2 = Double.POSITIVE_INFINITY;
         for (Ship ship : ctx.ships) {
-            if (!isFleetSelectionCandidate(ship)) continue;
+            if (!isFleetSelectionCandidate(ctx, ship)) continue;
             double radius = Math.max(38.0, ship.radius * 1.6 + 12.0);
             double d2 = GameMath.dist2(wx, wy, ship.x, ship.y);
             if (d2 > radius * radius || d2 >= bestDist2) continue;
@@ -12917,8 +12918,16 @@ public final class CampaignSystem {
     }
 
     public static boolean isFleetSelectionCandidate(Ship ship) {
+        return isFleetSelectionCandidate(null, ship);
+    }
+
+    public static boolean isFleetSelectionCandidate(GameContext ctx, Ship ship) {
         if (ship == null || ship.faction == null) return false;
-        if (ship.faction.teamId() != Faction.ALLY.teamId()) return false;
+        if (ctx != null && ctx.player != null && ctx.player.faction != null) {
+            if (!ship.faction.isFriendlyTo(ctx.player.faction)) return false;
+        } else if (ship.faction.teamId() != Faction.ALLY.teamId()) {
+            return false;
+        }
         return ship.alive && !ship.dying && ship.hp > 0;
     }
 
@@ -12979,9 +12988,7 @@ public final class CampaignSystem {
         }
         ctx.ships.removeIf(ship -> ship != null
                 && ship != ctx.player
-                && livePersistentIds.contains(ship.id)
-                && ship.faction != null
-                && ship.faction.teamId() == Faction.ALLY.teamId());
+                && livePersistentIds.contains(ship.id));
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
         arrangeFleetHubFormation(ctx, st);
@@ -13009,6 +13016,9 @@ public final class CampaignSystem {
     private static void snapshotPersistentFleetEntry(GameContext ctx, CampaignState st, PersistentFleetEntry entry, Ship ship) {
         if (entry == null || ship == null) return;
         entry.name = (ship.name == null || ship.name.isBlank()) ? entry.name : ship.name;
+        if (ship.faction != null) {
+            entry.factionName = ship.faction.name();
+        }
         BaseUpgrades up = (ctx == null) ? null : ctx.baseUpgrades.get(ship);
         normalizeCampaignShipUpgrades(ship, up);
         entry.hullLv = (up == null) ? 0 : Math.max(0, up.hullLv);
@@ -24552,7 +24562,7 @@ public final class CampaignSystem {
                     : ship.name.trim();
             String key = name.toUpperCase(Locale.US);
             if (!names.add(key)) continue;
-            PersistentFleetEntry entry = addPersistentFleetEntry(st, ship.role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+            PersistentFleetEntry entry = addPersistentFleetEntry(st, ship.role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP, ship.faction);
             if (entry != null) added++;
             if (!installationHire && added >= 2) break;
         }
@@ -24585,10 +24595,9 @@ public final class CampaignSystem {
                     : ship.name.trim();
             String key = name.toUpperCase(Locale.US);
             if (!names.add(key)) continue;
-            PersistentFleetEntry entry = addPersistentFleetEntry(st, ship.role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+            PersistentFleetEntry entry = addPersistentFleetEntry(st, ship.role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP, ship.faction);
             if (entry == null) continue;
             recovered++;
-            ship.faction = ctx.player.faction;
             EventSystem.showBanner(ctx, ("ALLY REJOINED  |  " + name + " ADDED TO FLEET").toUpperCase(Locale.US), 1.0);
         }
         if (recovered > 0) {
@@ -26726,13 +26735,22 @@ public final class CampaignSystem {
     }
 
     private static void addPersistentFleetEntry(CampaignState st, ShipRole role, String name) {
-        addPersistentFleetEntry(st, role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+        addPersistentFleetEntry(st, role, name, CAMPAIGN_FLAGSHIP_COMMAND_GROUP, Faction.ALLY);
     }
 
     private static PersistentFleetEntry addPersistentFleetEntry(CampaignState st, ShipRole role, String name, int commandGroupId) {
+        return addPersistentFleetEntry(st, role, name, commandGroupId, Faction.ALLY);
+    }
+
+    private static PersistentFleetEntry addPersistentFleetEntry(CampaignState st,
+                                                                 ShipRole role,
+                                                                 String name,
+                                                                 int commandGroupId,
+                                                                 Faction faction) {
         if (st == null || role == null) return null;
         PersistentFleetEntry entry = new PersistentFleetEntry(st.nextPersistentFleetSlotId++, role, name);
         entry.commandGroupId = Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, commandGroupId);
+        entry.factionName = ((faction == null) ? Faction.ALLY : faction).name();
         st.persistentBlueFleet.add(entry);
         return entry;
     }
@@ -26911,7 +26929,8 @@ public final class CampaignSystem {
         sx = GameMath.clamp(sx, 40.0, ctx.WORLD_W - 40.0);
         sy = GameMath.clamp(sy, 40.0, ctx.WORLD_H - 40.0);
 
-        Ship ship = new FleetShip(entry.role, Faction.ALLY, sx, sy);
+        Faction spawnFaction = parseEnum(entry.factionName, Faction.ALLY);
+        Ship ship = new FleetShip(entry.role, spawnFaction, sx, sy);
         ship.name = entry.name;
         ship.angle = angle;
         ship.vx = vx;
@@ -26957,7 +26976,7 @@ public final class CampaignSystem {
             if (ship == null || ship == ctx.player) continue;
             if (ship.role != ShipRole.MINER) continue;
             if (!ship.alive || ship.dying || ship.hp <= 0) continue;
-            if (ship.faction == null || ctx.player.faction == null || ship.faction.teamId() != ctx.player.faction.teamId()) {
+            if (ship.faction == null || ctx.player.faction == null || !ship.faction.isFriendlyTo(ctx.player.faction)) {
                 continue;
             }
             if (ship.minerHomeBase != ctx.player) continue;
@@ -27154,10 +27173,12 @@ public final class CampaignSystem {
             if (sb.length() > 0) sb.append(';');
             String encodedName = encoder.encodeToString(((entry.name == null) ? "" : entry.name).getBytes(StandardCharsets.UTF_8));
             String encodedTurrets = encoder.encodeToString(((entry.turretData == null) ? "" : entry.turretData).getBytes(StandardCharsets.UTF_8));
+            String factionName = parseEnum(entry.factionName, Faction.ALLY).name();
             sb.append(entry.slotId).append(',')
                     .append(entry.role.name()).append(',')
                     .append(entry.destroyed).append(',')
                     .append(encodedName).append(',')
+                    .append(factionName).append(',')
                     .append(entry.commandGroupId).append(',')
                     .append(MathUtil.clamp(entry.hullLv, 0, 5)).append(',')
                     .append(MathUtil.clamp(entry.shieldLv, 0, 5)).append(',')
@@ -27190,7 +27211,7 @@ public final class CampaignSystem {
         Base64.Decoder decoder = Base64.getUrlDecoder();
         for (String entryRaw : raw.split(";")) {
             if (entryRaw == null || entryRaw.isBlank()) continue;
-            String[] parts = entryRaw.split(",", 20);
+            String[] parts = entryRaw.split(",", 21);
             if (parts.length < 4) continue;
             try {
                 int slotId = Math.max(1, parseInt(parts[0], 1));
@@ -27198,29 +27219,34 @@ public final class CampaignSystem {
                 boolean destroyed = Boolean.parseBoolean(parts[2].trim());
                 String name = new String(decoder.decode(parts[3].trim()), StandardCharsets.UTF_8);
                 PersistentFleetEntry entry = new PersistentFleetEntry(slotId, role, name);
+                int offset = 0;
+                if (parts.length >= 21) {
+                    entry.factionName = parseEnum(parts[4], Faction.ALLY).name();
+                    offset = 1;
+                }
                 entry.destroyed = destroyed;
-                entry.commandGroupId = (parts.length >= 5)
-                        ? Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, parseInt(parts[4], CAMPAIGN_FLAGSHIP_COMMAND_GROUP))
+                entry.commandGroupId = (parts.length >= (5 + offset))
+                        ? Math.max(CAMPAIGN_FLAGSHIP_COMMAND_GROUP, parseInt(parts[4 + offset], CAMPAIGN_FLAGSHIP_COMMAND_GROUP))
                         : CAMPAIGN_FLAGSHIP_COMMAND_GROUP;
-                entry.hullLv = (parts.length >= 6) ? MathUtil.clamp(parseInt(parts[5], 0), 0, 5) : 0;
-                entry.shieldLv = (parts.length >= 7) ? MathUtil.clamp(parseInt(parts[6], 0), 0, 5) : 0;
-                entry.turretLv = (parts.length >= 8) ? MathUtil.clamp(parseInt(parts[7], 0), 0, 5) : 0;
-                entry.miningLv = (parts.length >= 9) ? MathUtil.clamp(parseInt(parts[8], 0), 0, 5) : 0;
-                entry.hangarLv = (parts.length >= 10) ? MathUtil.clamp(parseInt(parts[9], 0), 0, 5) : 0;
-                entry.cargo = (parts.length >= 11) ? Math.max(0, parseInt(parts[10], 0)) : 0;
-                entry.cargoMax = (parts.length >= 12) ? Math.max(0, parseInt(parts[11], 0)) : 0;
-                if (parts.length >= 13 && parts[12] != null && !parts[12].isBlank()) {
-                    entry.turretData = new String(decoder.decode(parts[12].trim()), StandardCharsets.UTF_8);
+                entry.hullLv = (parts.length >= (6 + offset)) ? MathUtil.clamp(parseInt(parts[5 + offset], 0), 0, 5) : 0;
+                entry.shieldLv = (parts.length >= (7 + offset)) ? MathUtil.clamp(parseInt(parts[6 + offset], 0), 0, 5) : 0;
+                entry.turretLv = (parts.length >= (8 + offset)) ? MathUtil.clamp(parseInt(parts[7 + offset], 0), 0, 5) : 0;
+                entry.miningLv = (parts.length >= (9 + offset)) ? MathUtil.clamp(parseInt(parts[8 + offset], 0), 0, 5) : 0;
+                entry.hangarLv = (parts.length >= (10 + offset)) ? MathUtil.clamp(parseInt(parts[9 + offset], 0), 0, 5) : 0;
+                entry.cargo = (parts.length >= (11 + offset)) ? Math.max(0, parseInt(parts[10 + offset], 0)) : 0;
+                entry.cargoMax = (parts.length >= (12 + offset)) ? Math.max(0, parseInt(parts[11 + offset], 0)) : 0;
+                if (parts.length >= (13 + offset) && parts[12 + offset] != null && !parts[12 + offset].isBlank()) {
+                    entry.turretData = new String(decoder.decode(parts[12 + offset].trim()), StandardCharsets.UTF_8);
                 }
-                if (parts.length >= 14 && parts[13] != null && !parts[13].isBlank()) {
-                    entry.primaryWeaponFamilyName = parts[13].trim();
+                if (parts.length >= (14 + offset) && parts[13 + offset] != null && !parts[13 + offset].isBlank()) {
+                    entry.primaryWeaponFamilyName = parts[13 + offset].trim();
                 }
-                if (parts.length >= 15) entry.hullConditionFrac = MathUtil.clamp(parseDouble(parts[14], 1.0), 0.0, 1.0);
-                if (parts.length >= 16) entry.shieldConditionFrac = MathUtil.clamp(parseDouble(parts[15], 1.0), 0.0, 1.0);
-                if (parts.length >= 17) entry.relX = parseDouble(parts[16], Double.NaN);
-                if (parts.length >= 18) entry.relY = parseDouble(parts[17], Double.NaN);
-                if (parts.length >= 19) entry.relAngle = parseDouble(parts[18], Double.NaN);
-                if (parts.length >= 20) entry.tacticalCommitmentId = parseEnum(parts[19], FleetCommitment.AUTO).name();
+                if (parts.length >= (15 + offset)) entry.hullConditionFrac = MathUtil.clamp(parseDouble(parts[14 + offset], 1.0), 0.0, 1.0);
+                if (parts.length >= (16 + offset)) entry.shieldConditionFrac = MathUtil.clamp(parseDouble(parts[15 + offset], 1.0), 0.0, 1.0);
+                if (parts.length >= (17 + offset)) entry.relX = parseDouble(parts[16 + offset], Double.NaN);
+                if (parts.length >= (18 + offset)) entry.relY = parseDouble(parts[17 + offset], Double.NaN);
+                if (parts.length >= (19 + offset)) entry.relAngle = parseDouble(parts[18 + offset], Double.NaN);
+                if (parts.length >= (20 + offset)) entry.tacticalCommitmentId = parseEnum(parts[19 + offset], FleetCommitment.AUTO).name();
                 st.persistentBlueFleet.add(entry);
                 st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);
             } catch (Exception ignored) {

@@ -406,7 +406,7 @@ public final class UISystem {
     private static Ship findShipInFleet(GameContext ctx, int shipId) {
         if (ctx == null || ctx.ships == null) return null;
         for (Ship s : ctx.ships) {
-            if (s.id == shipId && CampaignSystem.isFleetSelectionCandidate(s)) {
+            if (s.id == shipId && CampaignSystem.isFleetSelectionCandidate(ctx, s)) {
                 return s;
             }
         }

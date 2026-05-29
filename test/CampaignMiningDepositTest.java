@@ -59,6 +59,32 @@ class CampaignMiningDepositTest {
         assertEquals(Ship.MinerState.SEEK_ASTEROID, miner.minerState);
     }
 
+    @Test
+    void minerDepositAtAlliedStarbaseCreditsCampaignOreToPlayer() {
+        GameContext ctx = campaignContext();
+        ctx.player.cargo = 20;
+        int startingCredits = ctx.credits;
+        Faction.configureCampaignAlliances(true, true);
+        try {
+            Ship greenBase = new FleetShip(ShipRole.BASE, Faction.TEAM_C, ctx.player.x + 40.0, ctx.player.y);
+            ctx.ships.add(greenBase);
+
+            Ship miner = new FleetShip(ShipRole.MINER, Faction.ALLY, greenBase.x + 8.0, greenBase.y + 8.0);
+            miner.cargo = 70;
+            miner.minerState = Ship.MinerState.DEPOSIT;
+            miner.minerHomeBase = ctx.player;
+            ctx.ships.add(miner);
+
+            EconomySystem.update(ctx, GameContext.DT);
+
+            assertEquals(90, ctx.player.cargo);
+            assertEquals(0, miner.cargo);
+            assertEquals(startingCredits, ctx.credits);
+        } finally {
+            Faction.clearCampaignAlliances();
+        }
+    }
+
     private static GameContext campaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();

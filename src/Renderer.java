@@ -722,7 +722,7 @@ public class Renderer {
         ArrayList<Ship> out = new ArrayList<>();
         if (ctx == null || ctx.ships == null) return out;
         for (Ship s : ctx.ships) {
-            if (!CampaignSystem.isFleetSelectionCandidate(s)) continue;
+            if (!CampaignSystem.isFleetSelectionCandidate(ctx, s)) continue;
             out.add(s);
         }
         // Stable ordering: flagship first, then by role + id.
