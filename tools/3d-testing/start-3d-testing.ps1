@@ -6,9 +6,39 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
-$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-if (-not $pythonCmd) {
-  Write-Host 'Python was not found in PATH. Install Python or run: py -m http.server 5173' -ForegroundColor Red
+function Test-PythonInvocation {
+  param(
+    [string]$Exe,
+    [string[]]$Args = @()
+  )
+  try {
+    & $Exe @Args -c "import sys" *> $null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+
+$pythonExe = $null
+$pythonArgs = @()
+
+# Prefer the Python launcher on Windows because `python.exe` can be a Microsoft Store alias.
+$pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+if ($pyLauncher -and (Test-PythonInvocation -Exe 'py' -Args @('-3'))) {
+  $pythonExe = 'py'
+  $pythonArgs = @('-3')
+}
+
+if (-not $pythonExe) {
+  $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+  if ($pythonCmd -and (Test-PythonInvocation -Exe 'python')) {
+    $pythonExe = 'python'
+  }
+}
+
+if (-not $pythonExe) {
+  Write-Host 'No working Python interpreter found.' -ForegroundColor Red
+  Write-Host 'Install Python 3, or use the Python launcher (`py -3`) if available.' -ForegroundColor Red
   exit 1
 }
 
@@ -17,4 +47,4 @@ Write-Host "Starting 3D testing server in $root on $url"
 Write-Host 'Press Ctrl+C to stop the server.'
 
 Start-Process $url
-python -m http.server $Port
+& $pythonExe @pythonArgs -m http.server $Port

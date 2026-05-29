@@ -14,6 +14,7 @@ statusEl.style.border = "1px solid rgba(160, 200, 255, 0.3)";
 statusEl.style.borderRadius = "8px";
 statusEl.style.color = "#dbe6ff";
 statusEl.style.font = "12px Segoe UI, Tahoma, sans-serif";
+statusEl.style.whiteSpace = "pre-line";
 statusEl.textContent = "Loading ships...";
 document.body.appendChild(statusEl);
 
@@ -74,6 +75,10 @@ let activeShip = null;
 let activeIndex = 0;
 let activeHardpoints = [];
 const projectiles = [];
+const SHIP_FORWARD = new THREE.Vector3(1, 0, 0);
+const SHIP_UP = new THREE.Vector3(0, 1, 0);
+let hudNote = "Loading ships...";
+let hudNoteT = 0;
 
 const keyState = {
   forward: false,
@@ -98,6 +103,13 @@ const flight = {
   boostMult: 2.2
 };
 
+const weaponConfig = {
+  projectileSpeed: 140,
+  projectileRadius: 0.09,
+  projectileDamage: 16,
+  projectileTtl: 2.1
+};
+
 const clock = new THREE.Clock();
 
 Promise.all([
@@ -106,11 +118,13 @@ Promise.all([
 ])
   .then(() => {
     setActiveShip(0);
-    statusEl.textContent = "Ships loaded (1/2 swap, F refocus, X flight mode)";
+    hudNote = "Ships loaded (1/2 swap, F refocus, X flight mode, N reset)";
+    hudNoteT = 5.0;
   })
   .catch((err) => {
     console.error(err);
-    statusEl.textContent = "One or more ships failed to load (check console)";
+    hudNote = "One or more ships failed to load (check console)";
+    hudNoteT = 8.0;
   });
 
 function loadShip(path, spawnPos, name) {
@@ -125,19 +139,32 @@ function loadShip(path, spawnPos, name) {
         scene.add(shipPivot);
 
         normalizeModel(shipRoot, 9.0);
+        orientShipModel(shipRoot, shipPivot);
         shipPivot.position.copy(spawnPos);
 
-        const hardpoints = createHardpoints(shipPivot, shipRoot);
-        const thrusters = createThrusters(shipPivot, shipRoot);
+        const bounds = shipBoundsInPivotSpace(shipRoot, shipPivot);
+        const hardpoints = createHardpoints(shipPivot, bounds);
+        const thrusters = createThrusters(shipPivot, bounds);
+        const teamId = /red/i.test(name) ? 1 : 0;
+        const radius = Math.max(1.1, bounds.size.length() * 0.16);
+        const maxHp = teamId === 1 ? 180 : 220;
 
         const ship = {
           name,
           root: shipRoot,
           pivot: shipPivot,
+          teamId,
+          radius,
+          maxHp,
+          hp: maxHp,
+          alive: true,
+          spawnPos: spawnPos.clone(),
+          spawnQuat: shipPivot.quaternion.clone(),
+          spawnRootQuat: shipRoot.quaternion.clone(),
           hardpoints,
           thrusters,
           fireCooldown: 0,
-          fireRate: 0.08
+          fireRate: 0.1
         };
 
         ships.push(ship);
@@ -173,36 +200,150 @@ function normalizeModel(object3d, targetSize) {
   });
 }
 
-function createHardpoints(shipPivot, root) {
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
-
-  const points = [
-    new THREE.Vector3(size.x * 0.36, size.y * 0.52, size.z * 0.11),
-    new THREE.Vector3(size.x * 0.36, size.y * 0.52, -size.z * 0.11),
-    new THREE.Vector3(size.x * 0.26, size.y * 0.49, size.z * 0.22),
-    new THREE.Vector3(size.x * 0.26, size.y * 0.49, -size.z * 0.22)
-  ];
-
-  const markers = [];
-  const markerGeo = new THREE.SphereGeometry(0.1, 8, 8);
-  for (const p of points) {
-    const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xffaa44 }));
-    marker.position.copy(p);
-    marker.visible = false;
-    shipPivot.add(marker);
-    markers.push(marker);
-  }
-  return markers;
+function axisVector(index, sign = 1) {
+  if (index === 0) return new THREE.Vector3(sign, 0, 0);
+  if (index === 1) return new THREE.Vector3(0, sign, 0);
+  return new THREE.Vector3(0, 0, sign);
 }
 
-function createThrusters(shipPivot, root) {
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
+function collectVerticesInPivotSpace(root, shipPivot) {
+  const out = [];
+  shipPivot.updateMatrixWorld(true);
+  root.updateMatrixWorld(true);
+  const invPivot = shipPivot.matrixWorld.clone().invert();
+  root.traverse((node) => {
+    if (!node.isMesh || !node.geometry || !node.geometry.attributes || !node.geometry.attributes.position) return;
+    const attr = node.geometry.attributes.position;
+    for (let i = 0; i < attr.count; i++) {
+      const v = new THREE.Vector3().fromBufferAttribute(attr, i).applyMatrix4(node.matrixWorld).applyMatrix4(invPivot);
+      out.push(v);
+    }
+  });
+  return out;
+}
+
+function orientShipModel(root, shipPivot) {
+  const vertices = collectVerticesInPivotSpace(root, shipPivot);
+  if (!vertices.length) return;
+
+  const bounds = new THREE.Box3().setFromPoints(vertices);
+  const size = bounds.getSize(new THREE.Vector3());
+  const lengths = [size.x, size.y, size.z];
+  const forwardAxis = lengths.indexOf(Math.max(...lengths));
+
+  const min = forwardAxis === 0 ? bounds.min.x : (forwardAxis === 1 ? bounds.min.y : bounds.min.z);
+  const max = forwardAxis === 0 ? bounds.max.x : (forwardAxis === 1 ? bounds.max.y : bounds.max.z);
+  const span = Math.max(1e-5, max - min);
+  const cut = span * 0.14;
+
+  let minRadiusSum = 0;
+  let maxRadiusSum = 0;
+  let minCount = 0;
+  let maxCount = 0;
+  const center = bounds.getCenter(new THREE.Vector3());
+  for (const v of vertices) {
+    const a = (forwardAxis === 0) ? v.x : (forwardAxis === 1 ? v.y : v.z);
+    const b = (forwardAxis === 0) ? v.y : v.x;
+    const c = (forwardAxis === 2) ? v.y : v.z;
+    const cb = (forwardAxis === 0) ? center.y : center.x;
+    const cc = (forwardAxis === 2) ? center.y : center.z;
+    const r = Math.hypot(b - cb, c - cc);
+    if (a <= min + cut) {
+      minRadiusSum += r;
+      minCount++;
+    }
+    if (a >= max - cut) {
+      maxRadiusSum += r;
+      maxCount++;
+    }
+  }
+  const minAvg = minCount > 0 ? minRadiusSum / minCount : Number.POSITIVE_INFINITY;
+  const maxAvg = maxCount > 0 ? maxRadiusSum / maxCount : Number.POSITIVE_INFINITY;
+  const forwardSign = minAvg <= maxAvg ? -1 : 1;
+
+  const qForward = new THREE.Quaternion().setFromUnitVectors(
+    axisVector(forwardAxis, forwardSign).normalize(),
+    SHIP_FORWARD
+  );
+
+  const upAxis = lengths.indexOf(Math.min(...lengths));
+  const upAfterForward = axisVector(upAxis, 1).applyQuaternion(qForward).normalize();
+  const roll = Math.atan2(upAfterForward.z, upAfterForward.y);
+  const qRoll = new THREE.Quaternion().setFromAxisAngle(SHIP_FORWARD, -roll);
+
+  root.quaternion.premultiply(qRoll.multiply(qForward));
+  root.updateMatrixWorld(true);
+}
+
+function shipBoundsInPivotSpace(root, shipPivot) {
+  const points = collectVerticesInPivotSpace(root, shipPivot);
+  const box = points.length ? new THREE.Box3().setFromPoints(points) : new THREE.Box3().setFromObject(root);
+  return {
+    box,
+    min: box.min.clone(),
+    max: box.max.clone(),
+    size: box.getSize(new THREE.Vector3())
+  };
+}
+
+function pointFromBounds(bounds, nx, ny, nz) {
+  return new THREE.Vector3(
+    THREE.MathUtils.lerp(bounds.min.x, bounds.max.x, nx),
+    THREE.MathUtils.lerp(bounds.min.y, bounds.max.y, ny),
+    THREE.MathUtils.lerp(bounds.min.z, bounds.max.z, nz)
+  );
+}
+
+function createHardpoints(shipPivot, bounds) {
+  const weaponAnchors = [
+    { n: [0.82, 0.54, 0.63], size: 0.20 },
+    { n: [0.82, 0.54, 0.37], size: 0.20 },
+    { n: [0.72, 0.50, 0.70], size: 0.17 },
+    { n: [0.72, 0.50, 0.30], size: 0.17 }
+  ];
+
+  const hardpoints = [];
+  for (const mount of weaponAnchors) {
+    const group = new THREE.Group();
+    group.position.copy(pointFromBounds(bounds, mount.n[0], mount.n[1], mount.n[2]));
+
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(mount.size * 0.52, mount.size * 0.62, mount.size * 0.45, 10),
+      new THREE.MeshStandardMaterial({ color: 0x2a3445, roughness: 0.58, metalness: 0.42 })
+    );
+    base.rotation.z = Math.PI / 2;
+
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(mount.size * 0.16, mount.size * 0.16, mount.size * 1.7, 10),
+      new THREE.MeshStandardMaterial({ color: 0x8096ba, roughness: 0.44, metalness: 0.72 })
+    );
+    barrel.rotation.z = Math.PI / 2;
+    barrel.position.x = mount.size * 0.86;
+
+    const muzzle = new THREE.Object3D();
+    muzzle.position.x = mount.size * 1.75;
+
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(mount.size * 0.22, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffb35f, transparent: true, opacity: 0.0 })
+    );
+    flash.position.x = muzzle.position.x - mount.size * 0.1;
+
+    group.add(base);
+    group.add(barrel);
+    group.add(muzzle);
+    group.add(flash);
+    shipPivot.add(group);
+    hardpoints.push({ group, muzzle, flash });
+  }
+  return hardpoints;
+}
+
+function createThrusters(shipPivot, bounds) {
   const thrusterOffsets = [
-    new THREE.Vector3(-size.x * 0.46, size.y * 0.44, size.z * 0.18),
-    new THREE.Vector3(-size.x * 0.46, size.y * 0.44, -size.z * 0.18),
-    new THREE.Vector3(-size.x * 0.4, size.y * 0.38, 0)
+    pointFromBounds(bounds, 0.10, 0.47, 0.64),
+    pointFromBounds(bounds, 0.10, 0.47, 0.36),
+    pointFromBounds(bounds, 0.16, 0.41, 0.50)
   ];
 
   const thrusters = [];
@@ -267,8 +408,19 @@ function createAsteroid(scale = 1) {
 
 function setActiveShip(index) {
   if (!ships.length) return;
+  const liveShips = ships.filter((s) => s.alive);
+  if (!liveShips.length) {
+    activeShip = null;
+    activeHardpoints = [];
+    return;
+  }
   activeIndex = (index + ships.length) % ships.length;
-  activeShip = ships[activeIndex];
+  let candidate = ships[activeIndex];
+  if (!candidate.alive) {
+    candidate = liveShips[0];
+    activeIndex = ships.indexOf(candidate);
+  }
+  activeShip = candidate;
   activeHardpoints = activeShip.hardpoints;
   frameShip(activeShip);
 }
@@ -289,23 +441,28 @@ function frameShip(ship) {
 }
 
 function fireFromHardpoints(ship) {
+  if (!ship || !ship.alive) return;
   for (const hp of ship.hardpoints) {
     const origin = new THREE.Vector3();
-    hp.getWorldPosition(origin);
+    hp.muzzle.getWorldPosition(origin);
 
-    const direction = new THREE.Vector3(1, 0, 0).applyQuaternion(ship.pivot.quaternion).normalize();
+    const direction = SHIP_FORWARD.clone().applyQuaternion(ship.pivot.quaternion).normalize();
 
     const projectile = new THREE.Mesh(
-      new THREE.SphereGeometry(0.06, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff5533 })
+      new THREE.SphereGeometry(weaponConfig.projectileRadius, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0xff6d44 })
     );
     projectile.position.copy(origin);
     scene.add(projectile);
+    hp.flash.material.opacity = 0.95;
 
     projectiles.push({
       mesh: projectile,
-      velocity: direction.multiplyScalar(120),
-      ttl: 2.2
+      owner: ship,
+      damage: weaponConfig.projectileDamage,
+      velocity: direction.multiplyScalar(weaponConfig.projectileSpeed),
+      ttl: weaponConfig.projectileTtl,
+      radius: weaponConfig.projectileRadius
     });
   }
 }
@@ -359,6 +516,7 @@ function updateFlight(dt) {
 
 function updateThrusters(dt, t) {
   for (const ship of ships) {
+    if (!ship.alive) continue;
     const speed = ship === activeShip ? flight.velocity.length() : 0;
     const idle = ship === activeShip ? 0.35 : 0.2;
     const thrust = ship === activeShip ? Math.min(1.0, speed / 20) : 0.15;
@@ -387,7 +545,7 @@ function spawnThrusterParticle(localThruster, shipPivot) {
   p.position.copy(origin);
   scene.add(p);
 
-  const backward = new THREE.Vector3(-1, 0, 0).applyQuaternion(shipPivot.quaternion);
+  const backward = SHIP_FORWARD.clone().multiplyScalar(-1).applyQuaternion(shipPivot.quaternion);
   backward.add(new THREE.Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12));
   backward.normalize();
 
@@ -405,6 +563,14 @@ function updateProjectiles(dt) {
     p.ttl -= dt;
     p.mesh.position.addScaledVector(p.velocity, dt);
 
+    if (!p.fadeOnly && p.owner && p.owner.alive) {
+      const hitShip = firstProjectileHit(p);
+      if (hitShip) {
+        applyProjectileHit(hitShip, p);
+        p.ttl = 0;
+      }
+    }
+
     if (p.fadeOnly && p.mesh.material) {
       p.mesh.material.opacity = Math.max(0, p.ttl / 0.45);
     }
@@ -418,8 +584,73 @@ function updateProjectiles(dt) {
   }
 }
 
+function firstProjectileHit(projectile) {
+  if (!projectile || !projectile.owner) return null;
+  for (const ship of ships) {
+    if (!ship || !ship.alive || ship === projectile.owner) continue;
+    if (ship.teamId === projectile.owner.teamId) continue;
+    const hitRadius = Math.max(0.4, ship.radius + (projectile.radius || 0.05));
+    if (ship.pivot.position.distanceToSquared(projectile.mesh.position) <= hitRadius * hitRadius) {
+      return ship;
+    }
+  }
+  return null;
+}
+
+function applyProjectileHit(target, projectile) {
+  if (!target || !target.alive || !projectile) return;
+  target.hp = Math.max(0, target.hp - Math.max(1, projectile.damage || 1));
+  spawnHitBurst(projectile.mesh.position, target.teamId === 1 ? 0xff7b66 : 0x83d0ff);
+  if (target.hp <= 0) {
+    destroyShip(target, projectile.owner);
+  }
+}
+
+function spawnHitBurst(position, color) {
+  const burst = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 10, 10),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })
+  );
+  burst.position.copy(position);
+  scene.add(burst);
+  projectiles.push({
+    mesh: burst,
+    velocity: new THREE.Vector3(),
+    ttl: 0.22,
+    fadeOnly: true
+  });
+}
+
+function destroyShip(target, attacker) {
+  if (!target || !target.alive) return;
+  target.alive = false;
+  target.hp = 0;
+  target.pivot.visible = false;
+
+  const boom = new THREE.Mesh(
+    new THREE.SphereGeometry(target.radius * 0.55, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xffb06b, transparent: true, opacity: 0.95 })
+  );
+  boom.position.copy(target.pivot.position);
+  scene.add(boom);
+  projectiles.push({
+    mesh: boom,
+    velocity: new THREE.Vector3(),
+    ttl: 0.55,
+    fadeOnly: true
+  });
+
+  if (activeShip === target) {
+    setActiveShip(ships.findIndex((s) => s && s.alive));
+  }
+  if (attacker && attacker === activeShip) {
+    hudNote = `${target.name} destroyed. Press N to reset duel.`;
+    hudNoteT = 6.0;
+  }
+}
+
 function updateFiring(dt) {
-  if (!activeShip) return;
+  if (!activeShip || !activeShip.alive) return;
 
   activeShip.fireCooldown -= dt;
   if ((keyState.firing || keyState.forward) && activeShip.fireCooldown <= 0) {
@@ -429,17 +660,49 @@ function updateFiring(dt) {
 
   const blink = 0.55 + 0.45 * Math.sin(performance.now() * 0.01);
   for (const hp of activeHardpoints) {
-    hp.visible = true;
-    hp.material.color.setRGB(1.0, 0.6 + 0.35 * blink, 0.2);
+    hp.flash.material.opacity = Math.max(0, hp.flash.material.opacity - dt * 8.0);
+    hp.flash.material.color.setRGB(1.0, 0.58 + 0.35 * blink, 0.22);
   }
 }
 
 function setFlightMode(enabled) {
   flight.enabled = enabled;
   controls.enabled = !enabled;
-  statusEl.textContent = enabled
+  hudNote = enabled
     ? "Flight mode ON (WASD + RF move, QE look, Shift boost, Space fire)"
     : "Flight mode OFF (Orbit controls active; X toggles flight)";
+  hudNoteT = 3.0;
+}
+
+function updateStatusHud(dt) {
+  if (hudNoteT > 0) hudNoteT = Math.max(0, hudNoteT - dt);
+  const player = activeShip;
+  const enemies = ships.filter((s) => s.alive && player && s.teamId !== player.teamId);
+  const enemy = enemies[0] || null;
+  const playerLine = player
+    ? `${player.name}: ${Math.ceil(player.hp)}/${player.maxHp}`
+    : "No active ship";
+  const enemyLine = enemy
+    ? `${enemy.name}: ${Math.ceil(enemy.hp)}/${enemy.maxHp}`
+    : "Enemy: destroyed (N to reset)";
+  const base = `${playerLine}  |  ${enemyLine}`;
+  statusEl.textContent = hudNoteT > 0 ? `${base}\n${hudNote}` : base;
+}
+
+function resetDuel() {
+  for (const ship of ships) {
+    ship.alive = true;
+    ship.hp = ship.maxHp;
+    ship.fireCooldown = 0;
+    ship.pivot.visible = true;
+    ship.pivot.position.copy(ship.spawnPos);
+    ship.pivot.quaternion.copy(ship.spawnQuat);
+    ship.root.quaternion.copy(ship.spawnRootQuat);
+  }
+  flight.velocity.set(0, 0, 0);
+  setActiveShip(0);
+  hudNote = "Duel reset";
+  hudNoteT = 2.0;
 }
 
 window.addEventListener("keydown", (event) => {
@@ -457,6 +720,7 @@ window.addEventListener("keydown", (event) => {
   if (k === "2") setActiveShip(1);
   if (k === "x") setFlightMode(!flight.enabled);
   if (k === "f" && !flight.enabled && activeShip) frameShip(activeShip);
+  if (k === "n") resetDuel();
 });
 
 window.addEventListener("keyup", (event) => {
@@ -481,7 +745,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(0.033, clock.getDelta());
   const t = clock.elapsedTime;
 
-  if (activeShip && !flight.enabled) {
+  if (activeShip && activeShip.alive && !flight.enabled) {
     activeShip.pivot.rotation.y += dt * 0.18;
   }
 
@@ -494,6 +758,7 @@ renderer.setAnimationLoop(() => {
   updateThrusters(dt, t);
   updateFiring(dt);
   updateProjectiles(dt);
+  updateStatusHud(dt);
 
   controls.update();
   renderer.render(scene, camera);
