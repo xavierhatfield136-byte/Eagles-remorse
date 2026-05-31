@@ -24,6 +24,10 @@ Status: Active index
 
 - `STRATEGIC_CAMPAIGN_FURNISHING_PLAN.md`
 
+## Long-Horizon Idea Reservoir
+
+- `UNBOUNDED_GAME_EXPANSION_BACKLOG.md`
+
 ## How To Read This Set
 
 - use the current campaign state doc for the fastest implementation snapshot
