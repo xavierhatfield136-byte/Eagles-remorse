@@ -44,8 +44,21 @@ public final class UISystem {
     public static void toggleShop(GameContext ctx) {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
-        // If awaiting fleet hub choice after sector complete, TAB opens it immediately
+        // If awaiting fleet hub choice after sector complete, TAB opens it immediately.
         if (CampaignSystem.tryEnterFleetHubImmediately(ctx)) {
+            return;
+        }
+        if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
+            ctx.ui.mapOpen = true;
+            ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+            clearManualCombatInputs(ctx);
+            ctx.state = GameState.MAP;
+            AudioSystem.onUiOpen(ctx);
             return;
         }
         ctx.ui.shopOpen = !ctx.ui.shopOpen;
@@ -107,8 +120,6 @@ public final class UISystem {
         if (ctx == null) return;
         if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
         if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
-            // In live campaign space, B opens command-ship upgrade console
-            // (hull/shield/mining/hangar capacity) directly.
             ctx.ui.baseMenuOpen = !ctx.ui.baseMenuOpen;
             if (ctx.ui.baseMenuOpen) {
                 ctx.ui.shopOpen = false;

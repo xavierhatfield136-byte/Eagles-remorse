@@ -25,6 +25,99 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void campaignClockSlowsForLocationMenusAndStopsForEncounterDecisions() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.introSequenceActive = false;
+
+        double start = st.sectorElapsed;
+        CampaignSystem.update(ctx, 10.0);
+        assertEquals(start + 10.0, st.sectorElapsed, 0.001);
+        assertEquals(1.0, CampaignSystem.campaignTimeScale(ctx), 0.001);
+
+        ctx.ui.showCampaignHubMenu("test-hub", "REPAIR");
+        CampaignSystem.update(ctx, 10.0);
+        assertEquals(start + 11.0, st.sectorElapsed, 0.001);
+        assertEquals(0.10, CampaignSystem.campaignTimeScale(ctx), 0.001);
+
+        ctx.ui.clearCampaignHubMenu();
+        ctx.ui.showGalaxySearchGroupEncounterPrompt(1, "CONTACT", "", "", "");
+        CampaignSystem.update(ctx, 10.0);
+        assertEquals(start + 11.0, st.sectorElapsed, 0.001);
+        assertEquals(0.0, CampaignSystem.campaignTimeScale(ctx), 0.001);
+    }
+
+    @Test
+    void manualEncounterCommitLatchesUntilStrategicOvermapReturns() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        setDouble(group, "x", st.playerGalaxyX);
+        setDouble(group, "y", st.playerGalaxyY);
+        invokeDetectionUpdate(ctx, st, 0.1);
+
+        assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertTrue(st.manualEncounterCommitInProgress);
+        assertFalse(st.strategicOvermapMode);
+        assertFalse(CampaignSystem.autoResolvePendingStrategicEncounter(ctx));
+    }
+
+    @Test
+    void staleSecondPromptDuringManualEncounterDismissesInsteadOfLockingInput() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.manualEncounterCommitInProgress = true;
+        st.strategicOvermapMode = false;
+        ctx.ui.showStrategicEncounterPrompt(99, "CONTACT: RED PATROL GROUP", "", "", "");
+        ctx.state = GameState.PAUSED;
+
+        assertTrue(CampaignSystem.autoResolvePendingStrategicEncounter(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(GameState.RUNNING, ctx.state);
+        assertTrue(st.manualEncounterCommitInProgress);
+    }
+
+    @Test
+    void tacticalManualEntrySuppressesSecondStrategicTaskForcePrompt() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object taskForce = firstStrategicTaskForce(st);
+        assertNotNull(taskForce);
+        st.manualEncounterCommitInProgress = true;
+        st.strategicOvermapMode = false;
+        setInt(taskForce, "currentSubzone", 0);
+
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "updateStrategicTaskForceEncounter",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                taskForce.getClass(),
+                int.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, taskForce, 0);
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void changingEncounterPromptKindsClearsPriorIdentifiers() {
+        GameContext ctx = initializedCampaignContext();
+        UiState ui = ctx.ui;
+        ui.showStrategicEncounterPrompt(7, "TASK FORCE", "", "", "");
+        ui.showCampaignForceEncounterPrompt(11, "CAMPAIGN FORCE", "", "", "");
+
+        assertEquals(-1, ui.strategicEncounterPrompt.taskForceId);
+        assertEquals(11, ui.strategicEncounterPrompt.campaignForceId);
+        assertTrue(CampaignSystem.hasPendingStrategicEncounterChoice(ctx));
+
+        ui.showCampaignBattleInterventionPrompt(13, "BATTLE", "", "", "");
+        assertEquals(-1, ui.strategicEncounterPrompt.campaignForceId);
+        assertEquals(13, ui.strategicEncounterPrompt.campaignBattleId);
+    }
+
+    @Test
     void hostileSearchGroupInterceptionUsesDedicatedPromptAndAutoResolveReturnsToOvermap() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -178,6 +271,13 @@ class CampaignOvermapEncounterFlowTest {
         return groups.isEmpty() ? null : groups.get(0);
     }
 
+    private static Object firstStrategicTaskForce(CampaignSystem.CampaignState st) throws Exception {
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicTaskForces");
+        field.setAccessible(true);
+        List<?> taskForces = (List<?>) field.get(st);
+        return taskForces.isEmpty() ? null : taskForces.get(0);
+    }
+
     private static CampaignSystem.CampaignLocation findAreaOfInterest(GameContext ctx, String id) {
         for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
             if (location != null && id.equals(location.id)) return location;
@@ -202,6 +302,12 @@ class CampaignOvermapEncounterFlowTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getInt(target);
+    }
+
+    private static void setInt(Object target, String fieldName, int value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setInt(target, value);
     }
 
     private static Object getObject(Object target, String fieldName) throws Exception {

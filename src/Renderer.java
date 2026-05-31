@@ -1156,12 +1156,12 @@ public class Renderer {
             case 0 -> campaign
                     ? (fleetHub
                         ? "Fleet hub implementation detail for between-sector commissioning and refit. Hotkey: TAB."
-                        : "In-world fleet management. Opens the campaign fleet tab for roster inspection, refit where safe, groups, and commitments. Hotkey: TAB.")
+                        : "Persistent fleet management. Opens commissioning and refit controls for the active campaign fleet. Hotkey: TAB.")
                     : "Shop and loadout controls. Commission hulls, buy upgrades, and browse fleet bands. Hotkey: TAB.";
             case 1 -> campaign
                     ? (fleetHub
                         ? "Fleet upgrade console. Edit the selected hull, its turrets, and its upgrade track. Hotkey: B."
-                        : "In-world fleet shortcut. Jumps to the campaign fleet tab without opening a detached upgrade menu. Hotkey: B.")
+                        : "Command-ship upgrade console during live sectors. The campaign map remains on M. Hotkey: B.")
                     : "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
@@ -5678,7 +5678,7 @@ public class Renderer {
 
         if (detail == GameContext.HudDetail.COMPACT) {
             rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-            rows.add("NAV: WASD move | arrows pan | TAB in-world fleet | B fleet tab | M map | N HUD");
+            rows.add("NAV: WASD move | arrows pan | TAB fleet management | B command upgrades | M map | N HUD");
             rows.add("SYSTEMS: H crew | O power | B base | P ping | G waypoint");
             rows.add("OBJECTIVES: Click strategic-map markers to set objective waypoints directly.");
             rows.add("COMMS: I cycle intent | K hail target | marker panel lists live mission targets.");
@@ -5690,7 +5690,7 @@ public class Renderer {
         }
 
         rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-        rows.add("NAV: WASD move | arrows pan | TAB in-world fleet | B fleet tab | M map | N HUD | H crew");
+        rows.add("NAV: WASD move | arrows pan | TAB fleet management | B command upgrades | M map | N HUD | H crew");
         rows.add("SYSTEMS: O power | B base | P ping | G waypoint | F mine | E overcharge | ; thrust");
         rows.add("OBJECTIVES: Strategic map markers can be clicked for direct routeing to kill, escort, protect, and capture targets.");
         rows.add("COMMS: I cycle intent | K hail target | live comms intent is now kept here instead of the ship card.");
@@ -5872,6 +5872,8 @@ public class Renderer {
             case CAMPAIGN_LOCATION -> "MISSION ENCOUNTER";
             case GALAXY_SEARCH_GROUP -> "HOSTILE INTERCEPT";
             case INSTALLATION_THREAT -> "INSTALLATION THREAT";
+            case CAMPAIGN_FORCE -> "HOSTILE FORCE CONTACT";
+            case CAMPAIGN_BATTLE -> "BATTLE INTERVENTION";
             case TASK_FORCE -> "STRATEGIC CONTACT";
         };
         String footer = switch (prompt.kind) {
@@ -5881,6 +5883,10 @@ public class Renderer {
                     "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
             case INSTALLATION_THREAT ->
                     "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
+            case CAMPAIGN_FORCE ->
+                    "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
+            case CAMPAIGN_BATTLE ->
+                    "I ignore  |  J join battle  |  S strike support  |  O observe";
             case TASK_FORCE ->
                     "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
         };
@@ -5914,6 +5920,8 @@ public class Renderer {
                 case CAMPAIGN_LOCATION -> "Location: ";
                 case GALAXY_SEARCH_GROUP -> "Intercept Contact: ";
                 case INSTALLATION_THREAT -> "Threat Axis: ";
+                case CAMPAIGN_FORCE -> "Force Axis: ";
+                case CAMPAIGN_BATTLE -> "Battle Axis: ";
                 case TASK_FORCE -> "Contact Axis: ";
             };
             g2.drawString(label + prompt.location, inner.x, infoY);
@@ -5933,8 +5941,15 @@ public class Renderer {
         }
 
         int chipY = y + h - 58;
-        drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
-        drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
+        if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
+            drawHudStatusChip(g2, "I IGNORE", inner.x, chipY, 82, 22, new Color(132, 196, 255, 224), true);
+            drawHudStatusChip(g2, "J JOIN", inner.x + 92, chipY, 76, 22, new Color(255, 206, 122, 224), true);
+            drawHudStatusChip(g2, "S SUPPORT", inner.x + 178, chipY, 92, 22, new Color(190, 226, 152, 224), true);
+            drawHudStatusChip(g2, "O OBSERVE", inner.x + 280, chipY, 96, 22, new Color(190, 190, 220, 224), true);
+        } else {
+            drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
+            drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
+        }
 
         g2.setFont(footerFont);
         g2.setColor(new Color(180, 200, 220, 210));
@@ -8604,7 +8619,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.drawString(sectorized
                         ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (galaxyMode
-                        ? "LMB: select destination or free course   Double-click/T: burn engines   TAB/B: fleet   H: hold   RMB: ping   wheel/Ctrl+/-: zoom"
+                        ? "LMB: select destination or free course   Double-click/T: burn engines   TAB: fleet management   B: upgrades   H: hold   RMB: ping   wheel/Ctrl+/-: zoom"
                         : (CampaignSystem.usesMissionSubzones(ctx)
                         ? "LMB: set local course or select contact   Command Bay: visible actions   RMB: local ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts/strikes"
                         : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies")),
@@ -13032,14 +13047,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             double hpFrac = (ship == null || ship.hpMax <= 0)
                     ? 1.0
                     : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
-            ShipPartLibrary.PartSet damaged = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.DAMAGED);
-            ShipPartLibrary.PartSet critical = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.CRITICAL);
 
             if (hpFrac > 2.0 / 3.0) {
                 drawSkinParts(g, normal.parts, sw, sh, 1.0f);
                 return true;
             }
 
+            ShipPartLibrary.PartSet damaged = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.DAMAGED);
             if (hpFrac > 1.0 / 3.0 && damaged.variant == ShipPartLibrary.Variant.DAMAGED) {
                 float t = (float) MathUtil.clamp((2.0 / 3.0 - hpFrac) / (1.0 / 3.0), 0.0, 1.0);
                 drawSkinParts(g, normal.parts, sw, sh, 1.0f - t);
@@ -13047,6 +13061,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 return true;
             }
 
+            ShipPartLibrary.PartSet critical = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.CRITICAL);
             if (hpFrac <= 1.0 / 3.0 && critical.variant == ShipPartLibrary.Variant.CRITICAL) {
                 drawSkinParts(g, critical.parts, sw, sh, 1.0f);
                 return true;

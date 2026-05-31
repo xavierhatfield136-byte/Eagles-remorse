@@ -820,6 +820,9 @@ public class CollisionSystem {
                     if (s.alive && !s.dying && s.hp > 0) {
                         s.takePenetratingInternalDamage(executionDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
                     }
+                    if (s.alive && !s.dying && s.hp > 0) {
+                        s.scaleCurrentHullIntegrity(0.0);
+                    }
                     logDamageEvent(ctx, "destabilizer_execution:" + System.identityHashCode(pulse), executionDamage, VFX.ImpactStyle.ENERGY, s, x, y);
                     hullDamage = executionDamage;
                     s.applyShipwideRoomDisruption();

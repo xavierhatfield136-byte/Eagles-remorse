@@ -25,7 +25,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 24 + minerLines;
+        int lineCount = 26 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -48,6 +48,12 @@ public final class DevOverlay {
 
         y += lineH;
         drawLine(g2, x, y, "State: " + safe(ctx, "state"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Campaign Clock: " + CampaignSystem.campaignTimeScaleReadout(ctx));
+
+        y += lineH;
+        drawLine(g2, x, y, "Living War: " + CampaignSystem.campaignLivingWarDebugReadout(ctx));
 
         y += lineH;
         drawLine(g2, x, y, "Ships: " + sizeOf(ctx, "ships") +

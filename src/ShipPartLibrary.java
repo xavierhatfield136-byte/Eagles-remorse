@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,11 +19,12 @@ import java.util.Set;
 final class ShipPartLibrary {
     private static final String PART_DIR = "assets/ship_parts";
     private static final String PART_RESOURCE_DIR = "/ship_parts/";
-    private static final Map<String, PartSet> CACHE = new HashMap<>();
-    private static final Map<String, PartSprite> IMAGE_CACHE = new HashMap<>();
+    private static final Map<String, PartSet> CACHE = lruCache(64);
+    private static final Map<String, PartSprite> IMAGE_CACHE = lruCache(16);
     private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
     private static Map<String, double[]> DAMAGE_FOCUS_CACHE = null;
     private static boolean cachesPrewarmed = false;
+    private static int imageDecodeCount = 0;
     private static final Map<Variant, PartSet> EMPTY_SET_BY_VARIANT = buildEmptySets();
 
     enum Variant {
@@ -33,6 +35,15 @@ final class ShipPartLibrary {
     }
 
     private ShipPartLibrary() {}
+
+    private static <K, V> Map<K, V> lruCache(int maxEntries) {
+        return new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+                return size() > maxEntries;
+            }
+        };
+    }
 
     static boolean hasParts(ShipRole role, Faction faction) {
         return getSet(role, faction, Variant.NORMAL).hasParts();
@@ -95,6 +106,22 @@ final class ShipPartLibrary {
             getSet(role, null, Variant.DESTROYED);
         }
         cachesPrewarmed = true;
+    }
+
+    static int imageDecodeCount() {
+        return imageDecodeCount;
+    }
+
+    static void resetImageDecodeCount() {
+        imageDecodeCount = 0;
+    }
+
+    static void clearCachesForTest() {
+        CACHE.clear();
+        IMAGE_CACHE.clear();
+        IMAGE_MISS_CACHE.clear();
+        cachesPrewarmed = false;
+        imageDecodeCount = 0;
     }
 
     private static PartSprite loadVariant(String roleKey, String factionKey, String idx, Variant variant) {
@@ -186,6 +213,7 @@ final class ShipPartLibrary {
             return null;
         }
 
+        imageDecodeCount++;
         PartSprite sprite = trimSprite(img, key);
         if (sprite != null) {
             IMAGE_CACHE.put(key, sprite);
@@ -213,16 +241,20 @@ final class ShipPartLibrary {
                 if (y > maxY) maxY = y;
             }
         }
-        if (maxX < minX || maxY < minY) return null;
+        if (maxX < minX || maxY < minY) {
+            src.flush();
+            return null;
+        }
 
         int trimW = Math.max(1, maxX - minX + 1);
         int trimH = Math.max(1, maxY - minY + 1);
         BufferedImage trimmed = new BufferedImage(trimW, trimH, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = trimmed.createGraphics();
+        Graphics2D g2 = trimmed.createGraphics();
         try {
-            g.drawImage(src, 0, 0, trimW, trimH, minX, minY, maxX + 1, maxY + 1, null);
+            g2.drawImage(src, -minX, -minY, null);
         } finally {
-            g.dispose();
+            g2.dispose();
+            src.flush();
         }
 
         double centerX = minX + trimW * 0.5;

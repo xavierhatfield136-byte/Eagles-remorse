@@ -99,6 +99,8 @@ tasks.named("jar") {
 test {
     useJUnitPlatform()
     systemProperty "codex.disableAudio", "true"
+    // Simulation tests retain decoded visual assets and static effect state between classes.
+    forkEvery = 10
 }
 
 tasks.named("compileJava") {

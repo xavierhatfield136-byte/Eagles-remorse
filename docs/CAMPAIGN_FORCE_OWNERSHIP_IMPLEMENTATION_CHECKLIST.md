@@ -181,8 +181,8 @@ The campaign should feel like a living theater of war. Battles should happen bec
 
 ### 6.1 Remove Detached Fleet Menu Reliance
 
-- [x] Make `Tab` during campaign open the in-world fleet management surface instead of rejecting fleet management until a fleet hub.
-- [x] Make the `B`/base-menu path point campaign players toward in-world fleet management rather than detached fleet upgrades.
+- [x] Make `Tab` open the in-world Fleet board on the overmap and persistent fleet management inside live battlefields.
+- [x] Keep the `B`/base-menu path for command-ship upgrades inside live battlefields.
 - [x] Remove the standalone `Fleet` button from the main menu flow.
 - [x] Remove or de-emphasize `GameMode.FLEET` as a player-facing main-menu destination.
 - [x] Preserve fleet-hub internals only where still needed as implementation detail.
@@ -221,7 +221,7 @@ The campaign should feel like a living theater of war. Battles should happen bec
 
 - [x] Add test coverage that campaign ships get assigned to named forces.
 - [x] Add test coverage that the first-mission hostile intro has a named origin.
-- [x] Add test coverage that in-world fleet management opens from `Tab` during campaign.
+- [x] Add test coverage that persistent fleet management opens from `Tab` inside campaign battlefields.
 - [x] Add test coverage that no campaign encounter exits setup with unowned live ships.
 - [x] Add test coverage that friendly hub ambient encounters do not spawn hostiles without a hostile parent force.
 - [x] Add test coverage that search-group encounters spawn from the search-group force.
@@ -245,7 +245,7 @@ The campaign should feel like a living theater of war. Battles should happen bec
 - The current implementation persists force identity plus richer force movement, route, intent, confidence, and stale-contact state through checkpoints.
 - `GameMode.FLEET` is no longer presented as a normal main-menu destination; it remains as an internal resume/fleet-hub implementation detail.
 - Phase 5 telemetry now includes force scouting reports, compact battle-context lines, safe/threatened hub safety states, hidden-threat hints, and after-action force outcome lines.
-- Phase 6 fleet management now opens in-world through the campaign fleet tab from `Tab`/`B`, covers open space/travel/map/docked states, and exposes roster force membership, damage, cargo, readiness, groups, commitments, and safe refit entry.
+- Phase 6 fleet management uses `Tab` for the overmap Fleet board and live-battlefield persistent fleet overlay. `B` remains the live-battlefield command-upgrade console. The Fleet board covers open space, travel, map, and docked states and exposes roster force membership, damage, cargo, readiness, groups, commitments, and safe refit entry.
 - Phase 7 persistence now stores active tactical encounter force ids plus parent-force ids, restores them without duplicate live ships, and reconciles tactical casualties back into campaign-force membership and strength.
 - Focused force-ownership regressions can be run with `powershell -ExecutionPolicy Bypass -File .\scripts\run-force-ownership-tests.ps1`; add `-FullCampaign` for the broader campaign-focused suite.
 - The former manual smoke items are now covered by deterministic headless smoke/regression tests for intro contact, safe friendly hubs, and hostile interception warnings.

@@ -439,6 +439,17 @@ public final class GameplayActions {
 
     public static boolean tryHandleStrategicEncounterHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
         if (ctx == null || e == null || !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) return false;
+        if (ctx.ui.strategicEncounterPrompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
+            return switch (e.getKeyCode()) {
+                case java.awt.event.KeyEvent.VK_I -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE");
+                case java.awt.event.KeyEvent.VK_J,
+                        java.awt.event.KeyEvent.VK_ENTER,
+                        java.awt.event.KeyEvent.VK_SPACE -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN");
+                case java.awt.event.KeyEvent.VK_S -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT");
+                case java.awt.event.KeyEvent.VK_O -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "OBSERVE");
+                default -> false;
+            };
+        }
         return switch (e.getKeyCode()) {
             case java.awt.event.KeyEvent.VK_A -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
             case java.awt.event.KeyEvent.VK_C,

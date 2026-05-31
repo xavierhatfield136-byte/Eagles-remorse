@@ -145,20 +145,30 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
-    void inWorldFleetManagementOpensDuringOpenSpaceTravelAndMapModeThenClosesCleanly() {
+    void tabSelectsFleetBoardDuringOpenSpaceTravelAndMapModeThenClosesCleanly() {
         GameContext openCtx = initializedCampaignContext();
+        openCtx.campaign.introSequenceActive = false;
+        openCtx.campaign.awaitingFleetHubChoice = false;
+        openCtx.ui.shopOpen = false;
+        openCtx.state = GameState.RUNNING;
         UISystem.toggleShop(openCtx);
+        assertFalse(openCtx.ui.shopOpen);
         assertTrue(openCtx.ui.mapOpen);
         assertEquals(GameState.MAP, openCtx.state);
         assertEquals(UiState.CampaignCommandTab.FLEET, openCtx.ui.campaignCommandTab);
         UISystem.closeAllOverlays(openCtx);
-        assertFalse(openCtx.ui.mapOpen);
+        assertFalse(openCtx.ui.shopOpen);
         assertEquals(GameState.RUNNING, openCtx.state);
 
         GameContext travelCtx = initializedCampaignContext();
+        travelCtx.campaign.introSequenceActive = false;
+        travelCtx.campaign.awaitingFleetHubChoice = false;
+        travelCtx.ui.shopOpen = false;
+        travelCtx.state = GameState.RUNNING;
         assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(travelCtx, 900.0, 4200.0));
         assertTrue(CampaignSystem.startTravelToSelectedLocation(travelCtx));
         UISystem.toggleShop(travelCtx);
+        assertFalse(travelCtx.ui.shopOpen);
         assertTrue(travelCtx.ui.mapOpen);
         assertEquals(GameState.MAP, travelCtx.state);
         assertEquals(UiState.CampaignCommandTab.FLEET, travelCtx.ui.campaignCommandTab);
@@ -168,9 +178,11 @@ class CampaignStrategicCommandHudTest {
 
         GameContext mapCtx = initializedCampaignContext();
         mapCtx.ui.mapOpen = true;
+        mapCtx.ui.shopOpen = false;
         mapCtx.state = GameState.MAP;
         mapCtx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
         UISystem.toggleShop(mapCtx);
+        assertFalse(mapCtx.ui.shopOpen);
         assertTrue(mapCtx.ui.mapOpen);
         assertEquals(GameState.MAP, mapCtx.state);
         assertEquals(UiState.CampaignCommandTab.FLEET, mapCtx.ui.campaignCommandTab);
@@ -199,7 +211,7 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
-    void sectorSpaceBaseHotkeyOpensPersistentFleetOverlay() {
+    void sectorSpaceBaseHotkeyOpensCommandShipUpgradeConsole() {
         GameContext ctx = initializedCampaignContext();
         ctx.campaign.strategicOvermapMode = false;
         ctx.campaign.sectorElapsed = 1.0;
@@ -210,11 +222,10 @@ class CampaignStrategicCommandHudTest {
 
         UISystem.toggleBaseMenu(ctx);
 
-        assertTrue(ctx.ui.shopOpen);
-        assertFalse(ctx.ui.baseMenuOpen);
+        assertFalse(ctx.ui.shopOpen);
+        assertTrue(ctx.ui.baseMenuOpen);
         assertFalse(ctx.ui.mapOpen);
-        assertEquals(GameState.SHOP, ctx.state);
-        assertTrue(CampaignSystem.usesPersistentFleetShop(ctx));
+        assertEquals(GameState.BASE_MENU, ctx.state);
     }
 
     @Test
@@ -278,7 +289,7 @@ class CampaignStrategicCommandHudTest {
         List<CampaignSystem.CampaignFleetRosterEntry> entries = CampaignSystem.campaignFleetRosterEntries(ctx);
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
 
-        assertTrue(fleet.stream().anyMatch(line -> line.contains("TAB opens this in-world fleet tab")));
+        assertTrue(fleet.stream().anyMatch(line -> line.contains("TAB opens persistent fleet management")));
         assertFalse(roster.isEmpty());
         assertTrue(roster.stream().anyMatch(line -> line.contains("H ") && line.contains(" S ")));
         assertTrue(roster.stream().anyMatch(line -> line.contains("CARGO ")));
@@ -404,6 +415,7 @@ class CampaignStrategicCommandHudTest {
     void atomicStrikeUsesConfirmationOverlayBeforeExecution() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicOvermapMode = true;
         Object group = firstSearchGroup(st);
         assertNotNull(group);
         setDouble(group, "x", st.playerGalaxyX + 180.0);
@@ -725,13 +737,15 @@ class CampaignStrategicCommandHudTest {
         CampaignSystem.CampaignSupportMarker hostile = markers.stream()
                 .filter(marker -> marker != null
                         && marker.type == CampaignSystem.SupportMarkerType.HAZARD
-                        && marker.subtitle.contains("Interdiction Group"))
+                        && (marker.subtitle.contains("Interdiction Group")
+                        || marker.subtitle.contains("Spoiler Screen")))
                 .findFirst()
                 .orElse(null);
         assertNotNull(hostile);
         assertTrue(hostile.label.toLowerCase().contains("distress burst")
                 || hostile.label.toLowerCase().contains("metallic debris"));
-        assertTrue(hostile.subtitle.contains("Interdiction Group"));
+        assertTrue(hostile.subtitle.contains("Interdiction Group")
+                || hostile.subtitle.contains("Spoiler Screen"));
 
         st.campaignIntelLevel = 70.0;
         assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));
@@ -1179,7 +1193,8 @@ class CampaignStrategicCommandHudTest {
         assertTrue(relay.completed);
         assertTrue(relay.scarNote.contains("relay went dark"));
         assertTrue(st.enemyAlertLevel > 0.0);
-        assertTrue(searchGroupCount(st) > searchGroupsBefore);
+        assertEquals(searchGroupsBefore, searchGroupCount(st));
+        assertFalse(st.pendingHostileReinforcements.isEmpty());
     }
 
     @Test

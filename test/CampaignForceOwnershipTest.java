@@ -31,15 +31,21 @@ class CampaignForceOwnershipTest {
     }
 
     @Test
-    void tabOpensInWorldFleetManagementDuringCampaignInsteadOfDetachedFleetHub() {
+    void tabOpensPersistentFleetManagementInsideCampaignBattlefield() {
         GameContext ctx = initializedCampaignContext();
+        ctx.campaign.introSequenceActive = false;
+        ctx.campaign.awaitingFleetHubChoice = false;
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.galaxyEncounterActive = true;
+        ctx.ui.shopOpen = false;
+        ctx.ui.mapOpen = false;
+        ctx.state = GameState.RUNNING;
 
         GameplayActions.toggleShop(ctx);
 
-        assertTrue(ctx.ui.mapOpen);
-        assertEquals(GameState.MAP, ctx.state);
-        assertEquals(UiState.CampaignCommandTab.FLEET, ctx.ui.campaignCommandTab);
-        assertFalse(ctx.ui.shopOpen);
+        assertTrue(ctx.ui.shopOpen);
+        assertEquals(GameState.SHOP, ctx.state);
+        assertFalse(ctx.ui.mapOpen);
     }
 
     @Test

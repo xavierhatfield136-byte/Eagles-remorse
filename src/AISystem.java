@@ -276,6 +276,7 @@ public final class AISystem {
             maybeActivateEcm(ctx, s);
             updateStealthCloakIntent(ctx, s);
             tickClosestWeaponRetarget(ctx, s, dt);
+            adaptMissileRolesToThreats(ctx, s);
             maybeFireAutonomousInterceptMissiles(ctx, s, dt);
             if (s.aiBadApproachTimer > 0.0) {
                 s.aiBadApproachTimer = Math.max(0.0, s.aiBadApproachTimer - Math.max(0.0, dt));
@@ -3931,6 +3932,38 @@ public final class AISystem {
             if (p != null) {
                 ctx.projectiles.add(p);
             }
+        }
+    }
+
+    private static void adaptMissileRolesToThreats(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null || ship.faction == null || !ship.alive || ship.dying) return;
+        boolean dedicatedAaHull = switch (ship.role) {
+            case CIWS_CORVETTE, PD_CRAFT, PICKET, PATROL -> true;
+            default -> false;
+        };
+        boolean smallCraftNearby = hostileSmallCraftNear(ctx, ship, 1320.0);
+        Turret.MissileRole desired = dedicatedAaHull && incomingMissileThreatNear(ctx, ship, 920.0)
+                ? Turret.MissileRole.INTERCEPT : Turret.MissileRole.ANTI_LIGHT;
+        for (Turret turret : ship.turrets) {
+            if (turret != null && turret.kind == Turret.Kind.MISSILE) {
+                if (dedicatedAaHull || (smallCraftNearby && turret.missileRole != Turret.MissileRole.INTERCEPT)) {
+                    turret.missileRole = desired;
+                }
+            }
+        }
+    }
+
+    private static boolean hostileSmallCraftNear(GameContext ctx, Ship ship, double radius) {
+        if (ctx == null || ship == null || ship.faction == null || radius <= 0.0) return false;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectHostileShipsNear(ship.faction, ship.x, ship.y, radius, nearby);
+            for (Ship hostile : nearby) {
+                if (isAlive(hostile) && hostile.isSmallCraft()) return true;
+            }
+            return false;
+        } finally {
+            releaseShipScratch(nearby);
         }
     }
 
