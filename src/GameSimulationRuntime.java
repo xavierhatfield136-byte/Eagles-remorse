@@ -80,6 +80,7 @@ public final class GameSimulationRuntime {
     }
 
     private void tick(double dt, InputSnapshot input, int viewportW, int viewportH) {
+        UISystem.auditAndRecoverOverlayState(ctx);
         if (ctx.state == GameState.PAUSED) {
             if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
             return;

@@ -13,6 +13,16 @@ public final class UISystem {
     private static final double STRATEGIC_MAP_MAX_ZOOM = 18.0;
     private static final double STRATEGIC_MAP_ZOOM_STEP = 1.22;
 
+    private enum PrimaryOverlay {
+        NONE,
+        SHOP,
+        BASE_MENU,
+        MAP,
+        POWER_MANAGEMENT,
+        CREW_STATIONS,
+        FLIGHT_DECK
+    }
+
     private UISystem(){}
 
     private static boolean fleetHubEditingLocked(GameContext ctx) {
@@ -25,6 +35,175 @@ public final class UISystem {
 
     private static GameState stateAfterOverlayClose(GameContext ctx) {
         return CampaignSystem.isFleetHubSession(ctx) ? GameState.FLEET : GameState.RUNNING;
+    }
+
+    public static boolean auditAndRecoverOverlayState(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return false;
+
+        observeStateTransition(ctx, "runtime audit");
+        ArrayList<String> repairs = new ArrayList<>();
+        if (ctx.state == GameState.PAUSED && ctx.ui.strategicEncounterPrompt.active) {
+            ctx.ui.modalPauseOwned = true;
+        }
+        while (ctx.ui.strategicEncounterPrompt.active
+                && !CampaignSystem.hasValidStrategicEncounterResponder(ctx)) {
+            ctx.ui.clearStrategicEncounterPrompt();
+            repairs.add("cleared stale encounter prompt");
+            EventSystem.showBanner(ctx, "CONTACT WINDOW EXPIRED", 1.2);
+        }
+
+        if (ctx.ui.strategicEncounterPrompt.active) {
+            if (ctx.state != GameState.PAUSED && ctx.state != GameState.GAME_OVER && !ctx.gameOver) {
+                ctx.state = GameState.PAUSED;
+                repairs.add("paused for queued encounter prompt");
+            }
+            ctx.ui.modalPauseOwned = true;
+            if (ctx.ui.campaignActionConfirm.active) {
+                ctx.ui.clearCampaignActionConfirm();
+                repairs.add("encounter prompt replaced action confirmation");
+            }
+            if (ctx.ui.campaignHubMenu.active) {
+                ctx.ui.clearCampaignHubMenu();
+                repairs.add("encounter prompt replaced hub menu");
+            }
+        } else if (ctx.ui.campaignActionConfirm.active && ctx.ui.campaignHubMenu.active) {
+            ctx.ui.clearCampaignHubMenu();
+            repairs.add("action confirmation replaced hub menu");
+        }
+
+        int primaryOverlayCount = countPrimaryOverlays(ctx);
+        if (primaryOverlayCount > 1) {
+            PrimaryOverlay keep = primaryOverlayForState(ctx.state);
+            if (keep == PrimaryOverlay.NONE || !isPrimaryOverlayOpen(ctx, keep)) {
+                keep = firstOpenPrimaryOverlay(ctx);
+            }
+            clearPrimaryOverlaysExcept(ctx, keep);
+            repairs.add("collapsed " + primaryOverlayCount + " primary overlays to " + keep.name());
+        }
+
+        if (ctx.state == GameState.PAUSED && ctx.ui.modalPauseOwned
+                && !ctx.ui.strategicEncounterPrompt.active) {
+            if (!ctx.gameOver) ctx.state = GameState.RUNNING;
+            ctx.ui.modalPauseOwned = false;
+            repairs.add("released orphaned modal pause");
+        }
+
+        if (!repairs.isEmpty()) {
+            ctx.ui.overlayInvariantRepairCount++;
+            ctx.ui.overlayInvariantLastRepair = String.join("; ", repairs);
+            observeStateTransition(ctx, "overlay recovery");
+            return true;
+        }
+        return false;
+    }
+
+    public static String overlayInvariantReadout(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return "unavailable";
+        if (ctx.ui.overlayInvariantRepairCount <= 0) return "clean";
+        return ctx.ui.overlayInvariantRepairCount + " repair(s): " + ctx.ui.overlayInvariantLastRepair;
+    }
+
+    public static String overlayOwnerReadout(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return "unavailable";
+        return ctx.ui.blockingModalOwner().name()
+                + "  queued=" + ctx.ui.queuedStrategicEncounterPromptCount()
+                + "  modalPause=" + ctx.ui.modalPauseOwned;
+    }
+
+    public static String stateTransitionHistoryReadout(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || ctx.ui.stateTransitionHistory.isEmpty()) return "no transitions";
+        return String.join(" | ", ctx.ui.stateTransitionHistory);
+    }
+
+    public static void observeStateTransition(GameContext ctx, String reason) {
+        if (ctx == null || ctx.ui == null || ctx.state == null) return;
+        if (ctx.ui.lastObservedGameState == ctx.state) return;
+        GameState previous = ctx.ui.lastObservedGameState;
+        ctx.ui.lastObservedGameState = ctx.state;
+        if (!isLoggedOverlayState(previous) && !isLoggedOverlayState(ctx.state)) return;
+        String detail = ((previous == null) ? "INIT" : previous.name()) + " -> " + ctx.state.name()
+                + " (" + ((reason == null || reason.isBlank()) ? "unspecified" : reason.trim()) + ")";
+        ctx.ui.stateTransitionHistory.add(detail);
+        while (ctx.ui.stateTransitionHistory.size() > 10) ctx.ui.stateTransitionHistory.remove(0);
+        System.out.println("[ui-state] " + detail);
+    }
+
+    public static boolean dismissStaleStrategicEncounterPrompt(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.strategicEncounterPrompt.active
+                || CampaignSystem.hasValidStrategicEncounterResponder(ctx)) return false;
+        ctx.ui.clearStrategicEncounterPrompt();
+        if (!ctx.ui.strategicEncounterPrompt.active && ctx.state == GameState.PAUSED && !ctx.gameOver) {
+            ctx.state = GameState.RUNNING;
+            ctx.ui.modalPauseOwned = false;
+        }
+        EventSystem.showBanner(ctx, "STALE CONTACT DISMISSED", 1.2);
+        observeStateTransition(ctx, "dismiss stale prompt");
+        return true;
+    }
+
+    public static String printOverlayDiagnostics(GameContext ctx) {
+        observeStateTransition(ctx, "developer diagnostics");
+        String report = "owner=" + overlayOwnerReadout(ctx)
+                + " state=" + ((ctx == null || ctx.state == null) ? "unavailable" : ctx.state.name())
+                + " history=" + stateTransitionHistoryReadout(ctx);
+        System.out.println("[ui-diagnostics] " + report);
+        if (ctx != null) EventSystem.showBanner(ctx, "OVERLAY DIAGNOSTICS PRINTED", 1.0);
+        return report;
+    }
+
+    private static boolean isLoggedOverlayState(GameState state) {
+        return state == GameState.PAUSED || state == GameState.MAP || state == GameState.SHOP
+                || state == GameState.FLEET || state == GameState.BASE_MENU;
+    }
+
+    private static int countPrimaryOverlays(GameContext ctx) {
+        int count = 0;
+        for (PrimaryOverlay overlay : PrimaryOverlay.values()) {
+            if (isPrimaryOverlayOpen(ctx, overlay)) count++;
+        }
+        return count;
+    }
+
+    private static PrimaryOverlay primaryOverlayForState(GameState state) {
+        if (state == null) return PrimaryOverlay.NONE;
+        return switch (state) {
+            case SHOP -> PrimaryOverlay.SHOP;
+            case BASE_MENU -> PrimaryOverlay.BASE_MENU;
+            case MAP -> PrimaryOverlay.MAP;
+            case POWER_MANAGEMENT -> PrimaryOverlay.POWER_MANAGEMENT;
+            case CREW_STATIONS -> PrimaryOverlay.CREW_STATIONS;
+            case FLIGHT_DECK -> PrimaryOverlay.FLIGHT_DECK;
+            default -> PrimaryOverlay.NONE;
+        };
+    }
+
+    private static PrimaryOverlay firstOpenPrimaryOverlay(GameContext ctx) {
+        for (PrimaryOverlay overlay : PrimaryOverlay.values()) {
+            if (isPrimaryOverlayOpen(ctx, overlay)) return overlay;
+        }
+        return PrimaryOverlay.NONE;
+    }
+
+    private static boolean isPrimaryOverlayOpen(GameContext ctx, PrimaryOverlay overlay) {
+        if (ctx == null || ctx.ui == null || overlay == null) return false;
+        return switch (overlay) {
+            case SHOP -> ctx.ui.shopOpen;
+            case BASE_MENU -> ctx.ui.baseMenuOpen;
+            case MAP -> ctx.ui.mapOpen;
+            case POWER_MANAGEMENT -> ctx.ui.powerManagementOpen;
+            case CREW_STATIONS -> ctx.ui.crewStationsOpen;
+            case FLIGHT_DECK -> ctx.ui.flightDeckOpen;
+            case NONE -> false;
+        };
+    }
+
+    private static void clearPrimaryOverlaysExcept(GameContext ctx, PrimaryOverlay keep) {
+        ctx.ui.shopOpen = keep == PrimaryOverlay.SHOP;
+        ctx.ui.baseMenuOpen = keep == PrimaryOverlay.BASE_MENU;
+        ctx.ui.mapOpen = keep == PrimaryOverlay.MAP;
+        ctx.ui.powerManagementOpen = keep == PrimaryOverlay.POWER_MANAGEMENT;
+        ctx.ui.crewStationsOpen = keep == PrimaryOverlay.CREW_STATIONS;
+        ctx.ui.flightDeckOpen = keep == PrimaryOverlay.FLIGHT_DECK;
     }
 
     public static void closeAllOverlays(GameContext ctx) {

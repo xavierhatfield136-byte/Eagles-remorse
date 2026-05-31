@@ -5949,6 +5949,10 @@ public class Renderer {
         } else {
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
             drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
+            if (!CampaignSystem.hasValidStrategicEncounterResponder(ctx)) {
+                drawHudStatusChip(g2, "D DISMISS STALE", inner.x + 302, chipY, 132, 22,
+                        new Color(255, 146, 122, 224), true);
+            }
         }
 
         g2.setFont(footerFont);

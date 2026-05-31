@@ -13,9 +13,12 @@ public final class GameplayActions {
         }
         if (ctx.ui.hasBlockingOverlay()) {
             UISystem.closeAllOverlays(ctx);
+            UISystem.observeStateTransition(ctx, "escape closed overlay");
             return;
         }
         ctx.state = (ctx.state == GameState.PAUSED) ? GameState.RUNNING : GameState.PAUSED;
+        ctx.ui.modalPauseOwned = false;
+        UISystem.observeStateTransition(ctx, "escape toggled manual pause");
     }
 
     public static boolean canIssueCombatAction(GameContext ctx) {
@@ -439,6 +442,9 @@ public final class GameplayActions {
 
     public static boolean tryHandleStrategicEncounterHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
         if (ctx == null || e == null || !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) return false;
+        if (e.getKeyCode() == java.awt.event.KeyEvent.VK_D) {
+            return UISystem.dismissStaleStrategicEncounterPrompt(ctx);
+        }
         if (ctx.ui.strategicEncounterPrompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
             return switch (e.getKeyCode()) {
                 case java.awt.event.KeyEvent.VK_I -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE");

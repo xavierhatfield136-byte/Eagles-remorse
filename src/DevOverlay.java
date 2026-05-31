@@ -25,7 +25,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 26 + minerLines;
+        int lineCount = 29 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -48,6 +48,15 @@ public final class DevOverlay {
 
         y += lineH;
         drawLine(g2, x, y, "State: " + safe(ctx, "state"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Overlay Audit: " + UISystem.overlayInvariantReadout(ctx));
+
+        y += lineH;
+        drawLine(g2, x, y, "Modal Owner: " + UISystem.overlayOwnerReadout(ctx));
+
+        y += lineH;
+        drawLine(g2, x, y, "Ctrl+F6: print overlay owner and transition history");
 
         y += lineH;
         drawLine(g2, x, y, "Campaign Clock: " + CampaignSystem.campaignTimeScaleReadout(ctx));

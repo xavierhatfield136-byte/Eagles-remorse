@@ -7607,6 +7607,36 @@ public final class CampaignSystem {
         };
     }
 
+    public static boolean hasValidStrategicEncounterResponder(GameContext ctx) {
+        if (!hasPendingStrategicEncounterChoice(ctx)) return false;
+        CampaignState st = state(ctx);
+        if (st == null) return false;
+        UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        return switch (prompt.kind) {
+            case TASK_FORCE -> {
+                StrategicTaskForce taskForce = strategicTaskForceById(st, prompt.taskForceId);
+                yield taskForce != null && !taskForce.encounterResolved;
+            }
+            case GALAXY_SEARCH_GROUP -> galaxySearchGroupById(st, prompt.galaxySearchGroupId) != null;
+            case INSTALLATION_THREAT -> {
+                CampaignInstallationThreatCase threat = installationThreatCaseById(st, prompt.installationThreatId);
+                yield threat != null && threat.active && campaignLocationById(st, prompt.campaignLocationId) != null;
+            }
+            case CAMPAIGN_LOCATION -> {
+                CampaignLocation location = campaignLocationById(st, prompt.campaignLocationId);
+                yield location != null && !location.completed;
+            }
+            case CAMPAIGN_FORCE -> {
+                CampaignForce force = campaignForceById(st, prompt.campaignForceId);
+                yield force != null && !force.destroyed;
+            }
+            case CAMPAIGN_BATTLE -> {
+                CampaignBattle battle = campaignBattleById(st, prompt.campaignBattleId);
+                yield battle != null && !battle.resolved;
+            }
+        };
+    }
+
     private static double strategicReconQualityAgainstTaskForce(GameContext ctx, CampaignState st, StrategicTaskForce taskForce) {
         if (ctx == null || st == null || taskForce == null) return 0.18;
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfile(ctx, st);

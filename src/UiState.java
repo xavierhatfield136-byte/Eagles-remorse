@@ -1,7 +1,9 @@
 import app.persistence.MenuSettingsStore;
 import java.awt.Color;
 import java.awt.Rectangle;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.List;
@@ -150,6 +152,25 @@ public final class UiState {
         public String strengthReadout = "";
     }
 
+    public enum BlockingModalOwner {
+        NONE(0),
+        HUB_ACTION(10),
+        CONFIRMATION(20),
+        STORY_SCENE(30),
+        TACTICAL_ENTRY(50),
+        INTERVENTION(60);
+
+        private final int priority;
+
+        BlockingModalOwner(int priority) {
+            this.priority = priority;
+        }
+
+        int priority() {
+            return priority;
+        }
+    }
+
     public static final class CampaignHubMenu {
         public boolean active = false;
         public String locationId = "";
@@ -171,7 +192,13 @@ public final class UiState {
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
+    public int overlayInvariantRepairCount = 0;
+    public String overlayInvariantLastRepair = "";
+    public boolean modalPauseOwned = false;
+    public GameState lastObservedGameState = null;
+    public final List<String> stateTransitionHistory = new ArrayList<>();
     public final StrategicEncounterPrompt strategicEncounterPrompt = new StrategicEncounterPrompt();
+    private final Deque<StrategicEncounterPrompt> queuedStrategicEncounterPrompts = new ArrayDeque<>();
     public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
     public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
     public int fleetSelectedShipId = -1;
@@ -255,79 +282,76 @@ public final class UiState {
 
     public void showStrategicEncounterPrompt(int taskForceId, String title, String body,
                                              String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
-        strategicEncounterPrompt.taskForceId = taskForceId;
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "STRATEGIC CONTACT" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.TASK_FORCE,
+                title, body, location, strengthReadout, "STRATEGIC CONTACT");
+        next.taskForceId = taskForceId;
+        submitStrategicEncounterPrompt(next);
     }
 
     public void showCampaignLocationEncounterPrompt(String campaignLocationId, String title, String body,
                                                     String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION;
-        strategicEncounterPrompt.campaignLocationId =
-                (campaignLocationId == null) ? "" : campaignLocationId.trim();
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "MISSION ENCOUNTER" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.CAMPAIGN_LOCATION,
+                title, body, location, strengthReadout, "MISSION ENCOUNTER");
+        next.campaignLocationId = (campaignLocationId == null) ? "" : campaignLocationId.trim();
+        submitStrategicEncounterPrompt(next);
     }
 
     public void showGalaxySearchGroupEncounterPrompt(int galaxySearchGroupId, String title, String body,
                                                      String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP;
-        strategicEncounterPrompt.galaxySearchGroupId = galaxySearchGroupId;
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "HOSTILE INTERCEPT" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP,
+                title, body, location, strengthReadout, "HOSTILE INTERCEPT");
+        next.galaxySearchGroupId = galaxySearchGroupId;
+        submitStrategicEncounterPrompt(next);
     }
 
     public void showInstallationThreatEncounterPrompt(int installationThreatId, String campaignLocationId, String title, String body,
                                                       String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.INSTALLATION_THREAT;
-        strategicEncounterPrompt.installationThreatId = installationThreatId;
-        strategicEncounterPrompt.campaignLocationId = (campaignLocationId == null) ? "" : campaignLocationId.trim();
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "INSTALLATION THREAT" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.INSTALLATION_THREAT,
+                title, body, location, strengthReadout, "INSTALLATION THREAT");
+        next.installationThreatId = installationThreatId;
+        next.campaignLocationId = (campaignLocationId == null) ? "" : campaignLocationId.trim();
+        submitStrategicEncounterPrompt(next);
     }
 
     public void showCampaignForceEncounterPrompt(int campaignForceId, String title, String body,
                                                  String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE;
-        strategicEncounterPrompt.campaignForceId = campaignForceId;
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "HOSTILE FORCE CONTACT" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE,
+                title, body, location, strengthReadout, "HOSTILE FORCE CONTACT");
+        next.campaignForceId = campaignForceId;
+        submitStrategicEncounterPrompt(next);
     }
 
     public void showCampaignBattleInterventionPrompt(int campaignBattleId, String title, String body,
                                                      String location, String strengthReadout) {
-        clearStrategicEncounterPromptReferences();
-        strategicEncounterPrompt.active = true;
-        strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE;
-        strategicEncounterPrompt.campaignBattleId = campaignBattleId;
-        strategicEncounterPrompt.title = (title == null || title.isBlank()) ? "BATTLE INTERVENTION" : title.trim();
-        strategicEncounterPrompt.body = (body == null) ? "" : body.trim();
-        strategicEncounterPrompt.location = (location == null) ? "" : location.trim();
-        strategicEncounterPrompt.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        StrategicEncounterPrompt next = newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE,
+                title, body, location, strengthReadout, "BATTLE INTERVENTION");
+        next.campaignBattleId = campaignBattleId;
+        submitStrategicEncounterPrompt(next);
     }
 
     public void clearStrategicEncounterPrompt() {
+        clearActiveStrategicEncounterPrompt();
+        StrategicEncounterPrompt next = queuedStrategicEncounterPrompts.pollFirst();
+        if (next != null) copyStrategicEncounterPrompt(next, strategicEncounterPrompt);
+    }
+
+    public void clearAllStrategicEncounterPrompts() {
+        queuedStrategicEncounterPrompts.clear();
+        clearActiveStrategicEncounterPrompt();
+    }
+
+    public int queuedStrategicEncounterPromptCount() {
+        return queuedStrategicEncounterPrompts.size();
+    }
+
+    public BlockingModalOwner blockingModalOwner() {
+        if (strategicEncounterPrompt.active) return modalOwner(strategicEncounterPrompt.kind);
+        if (campaignActionConfirm.active) return BlockingModalOwner.CONFIRMATION;
+        if (campaignHubMenu.active) return BlockingModalOwner.HUB_ACTION;
+        return BlockingModalOwner.NONE;
+    }
+
+    private void clearActiveStrategicEncounterPrompt() {
         strategicEncounterPrompt.active = false;
         strategicEncounterPrompt.kind = StrategicEncounterPrompt.Kind.TASK_FORCE;
         clearStrategicEncounterPromptReferences();
@@ -335,6 +359,63 @@ public final class UiState {
         strategicEncounterPrompt.body = "";
         strategicEncounterPrompt.location = "";
         strategicEncounterPrompt.strengthReadout = "";
+    }
+
+    private StrategicEncounterPrompt newStrategicEncounterPrompt(StrategicEncounterPrompt.Kind kind,
+                                                                  String title, String body, String location,
+                                                                  String strengthReadout, String fallbackTitle) {
+        StrategicEncounterPrompt next = new StrategicEncounterPrompt();
+        next.active = true;
+        next.kind = (kind == null) ? StrategicEncounterPrompt.Kind.TASK_FORCE : kind;
+        next.title = (title == null || title.isBlank()) ? fallbackTitle : title.trim();
+        next.body = (body == null) ? "" : body.trim();
+        next.location = (location == null) ? "" : location.trim();
+        next.strengthReadout = (strengthReadout == null) ? "" : strengthReadout.trim();
+        return next;
+    }
+
+    private void submitStrategicEncounterPrompt(StrategicEncounterPrompt next) {
+        if (next == null) return;
+        if (!strategicEncounterPrompt.active) {
+            copyStrategicEncounterPrompt(next, strategicEncounterPrompt);
+            return;
+        }
+        BlockingModalOwner currentOwner = modalOwner(strategicEncounterPrompt.kind);
+        BlockingModalOwner nextOwner = modalOwner(next.kind);
+        if (nextOwner.priority() >= currentOwner.priority()) {
+            queuedStrategicEncounterPrompts.addLast(copyOfStrategicEncounterPrompt(strategicEncounterPrompt));
+            copyStrategicEncounterPrompt(next, strategicEncounterPrompt);
+        } else {
+            queuedStrategicEncounterPrompts.addLast(copyOfStrategicEncounterPrompt(next));
+        }
+    }
+
+    private static BlockingModalOwner modalOwner(StrategicEncounterPrompt.Kind kind) {
+        return kind == StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE
+                ? BlockingModalOwner.INTERVENTION
+                : BlockingModalOwner.TACTICAL_ENTRY;
+    }
+
+    private static StrategicEncounterPrompt copyOfStrategicEncounterPrompt(StrategicEncounterPrompt source) {
+        StrategicEncounterPrompt copy = new StrategicEncounterPrompt();
+        copyStrategicEncounterPrompt(source, copy);
+        return copy;
+    }
+
+    private static void copyStrategicEncounterPrompt(StrategicEncounterPrompt source,
+                                                     StrategicEncounterPrompt target) {
+        target.active = source.active;
+        target.kind = source.kind;
+        target.taskForceId = source.taskForceId;
+        target.galaxySearchGroupId = source.galaxySearchGroupId;
+        target.installationThreatId = source.installationThreatId;
+        target.campaignForceId = source.campaignForceId;
+        target.campaignBattleId = source.campaignBattleId;
+        target.campaignLocationId = source.campaignLocationId;
+        target.title = source.title;
+        target.body = source.body;
+        target.location = source.location;
+        target.strengthReadout = source.strengthReadout;
     }
 
     private void clearStrategicEncounterPromptReferences() {
@@ -347,6 +428,7 @@ public final class UiState {
     }
 
     public void showCampaignHubMenu(String locationId, String serviceId) {
+        if (blockingModalOwner().priority() > BlockingModalOwner.HUB_ACTION.priority()) return;
         campaignHubMenu.active = true;
         campaignHubMenu.locationId = (locationId == null) ? "" : locationId.trim();
         campaignHubMenu.serviceId = (serviceId == null) ? "" : serviceId.trim();
@@ -359,6 +441,8 @@ public final class UiState {
     }
 
     public void showCampaignActionConfirm(String actionId, String title, String body) {
+        if (blockingModalOwner().priority() > BlockingModalOwner.CONFIRMATION.priority()) return;
+        clearCampaignHubMenu();
         campaignActionConfirm.active = true;
         campaignActionConfirm.actionId = (actionId == null) ? "" : actionId.trim();
         campaignActionConfirm.title = (title == null || title.isBlank()) ? "CONFIRM ACTION" : title.trim();

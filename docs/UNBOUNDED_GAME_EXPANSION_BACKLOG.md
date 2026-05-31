@@ -21,17 +21,17 @@ It collects changes that could improve the game even when they would require maj
 
 ### 1.1 Soft-Lock Prevention
 
-- [ ] Add a centralized modal queue so only one blocking prompt can own input at a time.
-- [ ] Add explicit modal priority rules for tactical entry, intervention, hub actions, story scenes, and confirmations.
-- [ ] Add a visible "dismiss stale prompt" recovery action when referenced entities no longer exist.
-- [ ] Add watchdog logic that clears any blocking prompt with no valid responder.
-- [ ] Add watchdog logic that restores `RUNNING` when no active overlay owns a paused state.
-- [ ] Add debug logging for every state transition into and out of `PAUSED`, `MAP`, `SHOP`, `FLEET`, and `BASE_MENU`.
-- [ ] Add regression tests for back-to-back hostile contacts from every encounter source.
-- [ ] Add regression tests for contacts arriving during mining, docking, travel, tactical entry, and warp exit.
-- [ ] Add regression tests for save/load while a prompt is open.
-- [ ] Add regression tests for escape-menu use during every overlay state.
-- [ ] Add a developer command that prints the current overlay owner and state-transition history.
+- [x] Add a centralized modal queue so only one blocking prompt can own input at a time.
+- [x] Add explicit modal priority rules for tactical entry, intervention, hub actions, story scenes, and confirmations.
+- [x] Add a visible "dismiss stale prompt" recovery action when referenced entities no longer exist.
+- [x] Add watchdog logic that clears any blocking prompt with no valid responder.
+- [x] Add watchdog logic that restores `RUNNING` when no active overlay owns a paused state.
+- [x] Add debug logging for every state transition into and out of `PAUSED`, `MAP`, `SHOP`, `FLEET`, and `BASE_MENU`.
+- [x] Add regression tests for back-to-back hostile contacts from every encounter source.
+- [x] Add regression tests for contacts arriving during mining, docking, travel, tactical entry, and warp exit.
+- [x] Add regression tests for save/load while a prompt is open.
+- [x] Add regression tests for escape-menu use during every overlay state.
+- [x] Add a developer command that prints the current overlay owner and state-transition history.
 
 ### 1.2 Input Ownership
 
@@ -569,7 +569,7 @@ It collects changes that could improve the game even when they would require maj
 - [ ] Add typed IDs for fleets, battles, locations, ships, prompts, and contracts.
 - [ ] Add invariant checks for stale references.
 - [ ] Add invariant checks for duplicate ownership.
-- [ ] Add invariant checks for impossible overlay combinations.
+- [x] Add invariant checks for impossible overlay combinations.
 - [ ] Add structured event logging.
 - [ ] Add deterministic simulation mode.
 - [ ] Add scenario fixtures for common bug reports.
@@ -641,4 +641,3 @@ These are reasonable future documents to extract from this reservoir.
 - [ ] Accessibility and input-remapping checklist.
 - [ ] Architecture decomposition plan.
 - [ ] Automated scenario and soak-test harness plan.
-

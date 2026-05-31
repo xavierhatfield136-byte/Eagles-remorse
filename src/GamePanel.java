@@ -213,6 +213,8 @@ public class GamePanel extends JPanel implements ActionListener {
 
         // Menu
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", this::exitToMenu);
+        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F6, InputEvent.CTRL_DOWN_MASK, false),
+                "overlayDiagnostics", () -> UISystem.printOverlayDiagnostics(ctx));
 
         // Primary/secondary fire
         bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimaryManual = true);
