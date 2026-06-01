@@ -1,5 +1,6 @@
 import app.config.GameConfig;
 import app.config.GameMode;
+import app.config.ExperienceSettings;
 import app.persistence.CampaignUnlockProfile;
 import app.state.PerfTelemetry;
 import java.util.*;
@@ -33,6 +34,7 @@ public class GameContext {
     public final int WORLD_W;
     public final int WORLD_H;
     public final Random rng;
+    public final ExperienceSettings experience;
 
     // Time step
     public static final double DT = 1.0 / 60.0;
@@ -221,6 +223,13 @@ public class GameContext {
         this.WORLD_W = resolvedWorldWidth(this.config);
         this.WORLD_H = resolvedWorldHeight(this.config);
         this.rng = new Random(this.config.seed);
+        this.experience = this.config.experience.copy();
+        if (this.experience.commandComplexity <= 0.80) {
+            command.captainAutomation = true;
+            command.helmAutomation = true;
+            command.tacticalAutomation = true;
+            command.engineeringAutomation = true;
+        }
         this.fogOfWar = new FogOfWarSystem.State(this.WORLD_W, this.WORLD_H);
         Faction.clearCampaignAlliances();
         ui.initAudioPreferences();

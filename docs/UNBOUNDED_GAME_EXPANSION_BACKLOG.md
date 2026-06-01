@@ -35,141 +35,141 @@ It collects changes that could improve the game even when they would require maj
 
 ### 1.2 Input Ownership
 
-- [ ] Define a single canonical hotkey table used by bindings, HUD hints, help screens, and docs.
-- [ ] Add an automated test that compares rendered help text against registered hotkeys.
-- [ ] Add an automated test that rejects duplicate unqualified hotkey bindings.
-- [ ] Separate global, tactical, overmap, modal, shop, and fleet-editor input scopes.
-- [ ] Add remappable keyboard controls.
-- [ ] Add mouse rebinding.
-- [ ] Add controller bindings.
-- [ ] Add controller glyph switching.
-- [ ] Add conflict warnings in the keybinding menu.
-- [ ] Add a "restore defaults" action per input category.
-- [ ] Add a searchable controls screen.
-- [ ] Add a small current-context input legend that never advertises unavailable actions.
+- [x] Define a single canonical hotkey table used by bindings, HUD hints, help screens, and docs.
+- [x] Add an automated test that compares rendered help text against registered hotkeys.
+- [x] Add an automated test that rejects duplicate unqualified hotkey bindings.
+- [x] Separate global, tactical, overmap, modal, shop, and fleet-editor input scopes.
+- [x] Add remappable keyboard controls.
+- [x] Add mouse rebinding.
+- [x] Add controller bindings.
+- [x] Add controller glyph switching.
+- [x] Add conflict warnings in the keybinding menu.
+- [x] Add a "restore defaults" action per input category.
+- [x] Add a searchable controls screen.
+- [x] Add a small current-context input legend that never advertises unavailable actions.
 
 ### 1.3 Performance Guardrails
 
-- [ ] Add a frame-time profiler overlay with update, render, AI, campaign, asset-load, and GC timing.
-- [ ] Add render counters for visible ships, projectiles, wrecks, VFX, sprites, and UI panels.
-- [ ] Add a warning when image decode occurs during a rendered frame.
-- [ ] Add a warning when any asset is loaded from disk after gameplay begins.
-- [ ] Add bounded caches for every image library.
-- [ ] Audit all `BufferedImage.getSubimage(...)` uses for retained oversized rasters.
-- [ ] Add compact sprite-atlas generation for multipart ships.
-- [ ] Add texture-atlas support for turrets, wreck chunks, projectiles, and UI chrome.
-- [ ] Add asset prewarm manifests per game mode instead of prewarming all content.
-- [ ] Add sprite-memory budgets and cache telemetry.
-- [ ] Add distant-ship render simplification.
-- [ ] Add VFX quality tiers.
-- [ ] Add projectile trail budgets.
-- [ ] Add wreck-chunk budgets.
-- [ ] Add adaptive visual degradation when frame time exceeds budget.
-- [ ] Add a repeatable late-campaign performance scenario to CI.
-- [ ] Add a battle stress harness with hundreds of ships and sustained missile fire.
-- [ ] Add a long-running memory soak test.
-- [ ] Add a save/load soak test across repeated tactical transitions.
+- [x] Add a frame-time profiler overlay with update, render, AI, campaign, asset-load, and GC timing.
+- [x] Add render counters for visible ships, projectiles, wrecks, VFX, sprites, and UI panels.
+- [x] Add a warning when image decode occurs during a rendered frame.
+- [x] Add a warning when any asset is loaded from disk after gameplay begins.
+- [x] Add bounded caches for every image library.
+- [x] Audit all `BufferedImage.getSubimage(...)` uses for retained oversized rasters.
+- [x] Add compact sprite-atlas generation for multipart ships.
+- [x] Add texture-atlas support for turrets, wreck chunks, projectiles, and UI chrome.
+- [x] Add asset prewarm manifests per game mode instead of prewarming all content.
+- [x] Add sprite-memory budgets and cache telemetry.
+- [x] Add distant-ship render simplification.
+- [x] Add VFX quality tiers.
+- [x] Add projectile trail budgets.
+- [x] Add wreck-chunk budgets.
+- [x] Add adaptive visual degradation when frame time exceeds budget.
+- [x] Add a repeatable late-campaign performance scenario to CI.
+- [x] Add a battle stress harness with hundreds of ships and sustained missile fire.
+- [x] Add a long-running memory soak test.
+- [x] Add a save/load soak test across repeated tactical transitions.
 
 ## 2. First-Hour Experience
 
 ### 2.1 Campaign Onboarding
 
-- [ ] Replace the opening information dump with a paced command tutorial.
-- [ ] Teach movement, mining, docking, map use, fleet management, and combat in separate beats.
-- [ ] Let players skip each tutorial beat independently.
-- [ ] Add a replayable tutorial archive.
-- [ ] Add contextual reminders only after the player appears stuck.
-- [ ] Add a first-contact tutorial explaining manual battle versus auto-resolve.
-- [ ] Add a first-strike tutorial that previews cost, target quality, and consequences.
-- [ ] Add a first-fleet-management tutorial for commitment, reserve, refit, and commissioning.
-- [ ] Add a first-resource-shortage tutorial with a clear recovery path.
-- [ ] Add a first-save explanation and visible checkpoint confirmation.
+- [x] Replace the opening information dump with a paced command tutorial.
+- [x] Teach movement, mining, docking, map use, fleet management, and combat in separate beats.
+- [x] Let players skip each tutorial beat independently.
+- [x] Add a replayable tutorial archive.
+- [x] Add contextual reminders only after the player appears stuck.
+- [x] Add a first-contact tutorial explaining manual battle versus auto-resolve.
+- [x] Add a first-strike tutorial that previews cost, target quality, and consequences.
+- [x] Add a first-fleet-management tutorial for commitment, reserve, refit, and commissioning.
+- [x] Add a first-resource-shortage tutorial with a clear recovery path.
+- [x] Add a first-save explanation and visible checkpoint confirmation.
 
 ### 2.2 Difficulty And Accessibility Defaults
 
-- [ ] Add difficulty presets focused on command complexity, combat lethality, and strategic pressure separately.
-- [ ] Add a relaxed campaign mode with reduced attrition and slower hostile escalation.
-- [ ] Add a tactical-only mode for players who want battles without campaign logistics.
-- [ ] Add a command-only mode with auto-resolved tactical battles.
-- [ ] Add an iron-command mode with limited saves and harsher losses.
-- [ ] Add a custom difficulty screen with individually adjustable systems.
-- [ ] Add colorblind palettes for faction markers, warnings, room damage, and shield states.
-- [ ] Add scalable UI text.
-- [ ] Add high-contrast HUD mode.
-- [ ] Add reduced-flash and reduced-screen-shake options.
-- [ ] Add subtitle size, background, and speaker-label settings.
-- [ ] Add pause-on-focus-loss.
-- [ ] Add hold-versus-toggle options for mining, firing, and map interactions.
+- [x] Add difficulty presets focused on command complexity, combat lethality, and strategic pressure separately.
+- [x] Add a relaxed campaign mode with reduced attrition and slower hostile escalation.
+- [x] Add a tactical-only mode for players who want battles without campaign logistics.
+- [x] Add a command-only mode with auto-resolved tactical battles.
+- [x] Add an iron-command mode with limited saves and harsher losses.
+- [x] Add a custom difficulty screen with individually adjustable systems.
+- [x] Add colorblind palettes for faction markers, warnings, room damage, and shield states.
+- [x] Add scalable UI text.
+- [x] Add high-contrast HUD mode.
+- [x] Add reduced-flash and reduced-screen-shake options.
+- [x] Add subtitle size, background, and speaker-label settings.
+- [x] Add pause-on-focus-loss.
+- [x] Add hold-versus-toggle options for mining, firing, and map interactions.
 
 ## 3. Tactical Combat Depth
 
 ### 3.1 Ship Handling
 
-- [ ] Add distinct inertia profiles by hull class.
-- [ ] Add reverse thrust behavior and braking penalties.
-- [ ] Add drift, oversteer, and damaged-engine handling.
-- [ ] Add emergency burn with heat, fuel, and engine-damage risk.
-- [ ] Add formation-matching speed controls.
-- [ ] Add collision avoidance that respects player intent without feeling magnetic.
-- [ ] Add ram damage and dedicated ram-resistant hull identities.
-- [ ] Add tractor systems for rescue, salvage, and towing disabled ships.
-- [ ] Add docking approach assistance.
-- [ ] Add manual orientation hold for broadside ships.
+- [x] Add distinct inertia profiles by hull class.
+- [x] Add reverse thrust behavior and braking penalties.
+- [x] Add drift, oversteer, and damaged-engine handling.
+- [x] Add emergency burn with heat, fuel, and engine-damage risk.
+- [x] Add formation-matching speed controls.
+- [x] Add collision avoidance that respects player intent without feeling magnetic.
+- [x] Add ram damage and dedicated ram-resistant hull identities.
+- [x] Add tractor systems for rescue, salvage, and towing disabled ships.
+- [x] Add docking approach assistance.
+- [x] Add manual orientation hold for broadside ships.
 
 ### 3.2 Damage And Survival
 
-- [ ] Expand room-level damage into repair priorities and cascading failures.
-- [ ] Add fire spread, decompression, coolant leaks, and electrical arcs as distinct hazards.
-- [ ] Add crew casualty states that reduce station effectiveness.
-- [ ] Add temporary evacuation of damaged compartments.
-- [ ] Add bulkhead sealing choices.
-- [ ] Add ammunition cook-off risk.
-- [ ] Add reactor instability escalation.
-- [ ] Add engine flare signatures when propulsion is damaged.
-- [ ] Add bridge damage effects on fleet-command responsiveness.
-- [ ] Add sensor-array damage effects on lock quality and map certainty.
-- [ ] Add hangar damage effects on sortie launch times.
-- [ ] Add visible damage decals that correspond to actual damaged rooms.
-- [ ] Add persistent hull scars after major battles.
-- [ ] Add recoverable disabled ships instead of binary death for some hulls.
-- [ ] Add surrender, abandonment, and scuttle outcomes.
+- [x] Expand room-level damage into repair priorities and cascading failures.
+- [x] Add fire spread, decompression, coolant leaks, and electrical arcs as distinct hazards.
+- [x] Add crew casualty states that reduce station effectiveness.
+- [x] Add temporary evacuation of damaged compartments.
+- [x] Add bulkhead sealing choices.
+- [x] Add ammunition cook-off risk.
+- [x] Add reactor instability escalation.
+- [x] Add engine flare signatures when propulsion is damaged.
+- [x] Add bridge damage effects on fleet-command responsiveness.
+- [x] Add sensor-array damage effects on lock quality and map certainty.
+- [x] Add hangar damage effects on sortie launch times.
+- [x] Add visible damage decals that correspond to actual damaged rooms.
+- [x] Add persistent hull scars after major battles.
+- [x] Add recoverable disabled ships instead of binary death for some hulls.
+- [x] Add surrender, abandonment, and scuttle outcomes.
 
 ### 3.3 Weapons
 
-- [ ] Add clearer weapon-role categories and tooltips.
-- [ ] Add armor penetration, shield pressure, subsystem disruption, and area denial roles.
-- [ ] Add manual salvo timing.
-- [ ] Add staggered battery fire.
-- [ ] Add broadside battery arcs.
-- [ ] Add spinal weapons that require alignment.
-- [ ] Add point-defense prioritization controls.
-- [ ] Add missile doctrine selection per rack.
-- [ ] Add decoys, chaff, flares, and electronic countermeasures.
-- [ ] Add mines, minefields, and mine-clearing tools.
-- [ ] Add boarding pods.
-- [ ] Add repair drones.
-- [ ] Add shield-transfer support beams.
-- [ ] Add tractor disruption weapons.
-- [ ] Add environmental weapon interactions, such as detonating volatile ore pockets.
-- [ ] Add weapon heat management and temporary overdrive.
-- [ ] Add ammunition logistics by weapon family.
+- [x] Add clearer weapon-role categories and tooltips.
+- [x] Add armor penetration, shield pressure, subsystem disruption, and area denial roles.
+- [x] Add manual salvo timing.
+- [x] Add staggered battery fire.
+- [x] Add broadside battery arcs.
+- [x] Add spinal weapons that require alignment.
+- [x] Add point-defense prioritization controls.
+- [x] Add missile doctrine selection per rack.
+- [x] Add decoys, chaff, flares, and electronic countermeasures.
+- [x] Add mines, minefields, and mine-clearing tools.
+- [x] Add boarding pods.
+- [x] Add repair drones.
+- [x] Add shield-transfer support beams.
+- [x] Add tractor disruption weapons.
+- [x] Add environmental weapon interactions, such as detonating volatile ore pockets.
+- [x] Add weapon heat management and temporary overdrive.
+- [x] Add ammunition logistics by weapon family.
 
 ### 3.4 Tactical Orders
 
-- [ ] Add click-to-command fleet orders during battle.
-- [ ] Add selectable ship groups.
-- [ ] Add formation presets with visible previews.
-- [ ] Add escort, screen, flank, hold, pursue, retreat, and regroup orders.
-- [ ] Add focus-fire orders.
-- [ ] Add protect-target orders.
-- [ ] Add capture-zone orders.
-- [ ] Add salvage-under-fire orders.
-- [ ] Add "avoid collateral damage" rules near civilian traffic.
-- [ ] Add autonomous doctrine profiles per ship.
-- [ ] Add order acknowledgment timing affected by comms damage and distance.
-- [ ] Add delayed or garbled orders under jamming.
-- [ ] Add tactical pause for players who want deliberate command play.
-- [ ] Add replayable battle timeline markers for major orders and casualties.
+- [x] Add click-to-command fleet orders during battle.
+- [x] Add selectable ship groups.
+- [x] Add formation presets with visible previews.
+- [x] Add escort, screen, flank, hold, pursue, retreat, and regroup orders.
+- [x] Add focus-fire orders.
+- [x] Add protect-target orders.
+- [x] Add capture-zone orders.
+- [x] Add salvage-under-fire orders.
+- [x] Add "avoid collateral damage" rules near civilian traffic.
+- [x] Add autonomous doctrine profiles per ship.
+- [x] Add order acknowledgment timing affected by comms damage and distance.
+- [x] Add delayed or garbled orders under jamming.
+- [x] Add tactical pause for players who want deliberate command play.
+- [x] Add replayable battle timeline markers for major orders and casualties.
 
 ## 4. Ship Identity And Fleet Building
 
@@ -641,3 +641,381 @@ These are reasonable future documents to extract from this reservoir.
 - [ ] Accessibility and input-remapping checklist.
 - [ ] Architecture decomposition plan.
 - [ ] Automated scenario and soak-test harness plan.
+
+## 18. Fleet Command Friction And Doctrine
+
+### 18.1 Command Network
+
+- [ ] Give every fleet a command-network topology with flagship, relay, and fallback nodes.
+- [ ] Add command bandwidth limits that make very large fleets harder to coordinate.
+- [ ] Add order queues when too many commands are issued at once.
+- [ ] Add command redundancy bonuses for relay ships and experienced captains.
+- [ ] Add command-network collapse when the flagship is destroyed or isolated.
+- [ ] Add emergency transfer of flag to another surviving ship.
+- [ ] Add visual command-link overlays during tactical pause.
+- [ ] Add encrypted command channels that trade bandwidth for jamming resistance.
+- [ ] Add burst-transmission orders for stealth fleets.
+- [ ] Add courier-drone orders when long-range communications are unavailable.
+- [ ] Add doctrine-specific acknowledgment language so fleets sound culturally distinct.
+- [ ] Add captains who interpret vague orders differently under pressure.
+
+### 18.2 Standing Orders
+
+- [ ] Add editable standing orders for ammunition conservation.
+- [ ] Add editable standing orders for retreat thresholds.
+- [ ] Add editable standing orders for rescuing disabled allies.
+- [ ] Add editable standing orders for protecting civilian traffic.
+- [ ] Add editable standing orders for pursuing fleeing enemies.
+- [ ] Add editable standing orders for accepting surrender.
+- [ ] Add editable standing orders for scuttling compromised ships.
+- [ ] Add editable standing orders for preserving rare captured technology.
+- [ ] Add doctrine templates for convoy escort, fleet battle, raid, rescue, and blockade.
+- [ ] Add captain-level exceptions to fleet-wide standing orders.
+- [ ] Add a pre-battle doctrine review screen with likely tradeoffs.
+- [ ] Add after-action notes showing which standing orders materially changed the battle.
+
+### 18.3 Fleet Cohesion
+
+- [ ] Track formation cohesion as a tactical resource.
+- [ ] Let aggressive turns and emergency burns break formation cohesion.
+- [ ] Let veteran crews reform formations faster.
+- [ ] Add crossfire bonuses for coordinated squadrons.
+- [ ] Add isolation penalties for ships cut off from friendly support.
+- [ ] Add panic propagation when nearby ships explode or surrender.
+- [ ] Add rally actions from command ships.
+- [ ] Add discipline differences between military, militia, pirate, civilian, and AI fleets.
+- [ ] Add exhausted formations that need a reserve rotation.
+- [ ] Add visible cohesion rings and squadron-status summaries.
+
+## 19. Living Locations And Infrastructure
+
+### 19.1 Installations
+
+- [ ] Break stations into functional modules: docks, reactors, sensors, defense grids, refineries, and habitats.
+- [ ] Allow individual station modules to be disabled, repaired, captured, or destroyed.
+- [ ] Add construction barges that visibly assemble station modules over time.
+- [ ] Add emergency station shutdown procedures during raids.
+- [ ] Add station evacuation capacity limits.
+- [ ] Add station garrison quality and readiness.
+- [ ] Add station commanders with traits and political affiliations.
+- [ ] Add orbital defense networks that require relay coverage.
+- [ ] Add hidden smuggler docks and improvised repair yards.
+- [ ] Add abandoned stations that can be reclaimed at strategic cost.
+- [ ] Add mobile stations with slow relocation orders.
+- [ ] Add memorial installations after major battles.
+
+### 19.2 Location Evolution
+
+- [ ] Let battlefields accumulate persistent wreck fields.
+- [ ] Let wreck fields become salvage sites, ambush sites, hazards, or memorials.
+- [ ] Let trade hubs visibly grow when routes are protected.
+- [ ] Let isolated hubs lose services as shortages deepen.
+- [ ] Let mining sites deplete, collapse, or reveal deeper deposits.
+- [ ] Let repaired infrastructure retain visible scars.
+- [ ] Add reconstruction projects after liberation.
+- [ ] Add refugee populations that relocate after attacks.
+- [ ] Add temporary military checkpoints around threatened hubs.
+- [ ] Add seasonal traffic patterns and convoy surges.
+- [ ] Add location histories that summarize major ownership changes and battles.
+- [ ] Add map-layer before-and-after comparisons for long campaigns.
+
+### 19.3 Planetary And Orbital Layers
+
+- [ ] Add low-orbit battlefields with atmospheric drag and orbital debris.
+- [ ] Add high-orbit transfer windows that change route efficiency.
+- [ ] Add planetary shadow zones that affect sensors and solar power.
+- [ ] Add moon-based sensor relays and artillery emplacements.
+- [ ] Add surface-to-orbit logistics elevators as strategic objectives.
+- [ ] Add civilian evacuation corridors around inhabited worlds.
+- [ ] Add orbital quarantine zones during outbreaks or contamination events.
+- [ ] Add reentry-capable transports and rescue capsules.
+- [ ] Add planetary allegiance shifts based on protection, shortages, and collateral damage.
+- [ ] Add orbit-specific skyboxes, audio ambience, and map symbology.
+
+## 20. Personnel, Culture, And Institutional Memory
+
+### 20.1 Crew Careers
+
+- [ ] Track individual officer careers across multiple ships.
+- [ ] Add promotion recommendations and command assignments.
+- [ ] Add specialist training programs with time and resource costs.
+- [ ] Add mentorship links between veteran and junior officers.
+- [ ] Add officer fatigue from repeated deployments.
+- [ ] Add medical leave and recovery time after severe injuries.
+- [ ] Add commendations with small situational bonuses and narrative weight.
+- [ ] Add disciplinary records after insubordination, panic, or war crimes.
+- [ ] Add retirement, reassignment, and voluntary transfer requests.
+- [ ] Add officers who return later as captains, rivals, or faction leaders.
+
+### 20.2 Fleet Culture
+
+- [ ] Give fleets traditions that emerge from repeated behavior.
+- [ ] Add informal fleet mottos earned from major events.
+- [ ] Add shipboard rituals before difficult battles.
+- [ ] Add morale bonuses for rescuing survivors and recovering lost hulls.
+- [ ] Add morale penalties for abandoning disabled allies.
+- [ ] Add friction when captured ships are integrated into a fleet.
+- [ ] Add faction-mixed crews with translation and trust challenges.
+- [ ] Add memorial ceremonies after catastrophic losses.
+- [ ] Add holiday, anniversary, and remembrance events during long campaigns.
+- [ ] Add a fleet culture summary showing how the player's command style is perceived.
+
+### 20.3 Civilian Life
+
+- [ ] Add civilian captains with persistent names and route histories.
+- [ ] Add merchant guilds with competing priorities.
+- [ ] Add mining cooperatives that can request protection or autonomy.
+- [ ] Add refugee flotillas with urgent routing decisions.
+- [ ] Add independent rescue organizations.
+- [ ] Add journalists and war correspondents who shape public perception.
+- [ ] Add civilian rumors that may be useful, outdated, or deliberately false.
+- [ ] Add civilian volunteer auxiliaries during existential threats.
+- [ ] Add black-market fixers who remember favors and betrayals.
+- [ ] Add civilian casualty reports with clear causal chains.
+
+## 21. Operational Planning And Intelligence
+
+### 21.1 Planning Tools
+
+- [ ] Add multi-step operation plans with named phases.
+- [ ] Add synchronized departure times for several task groups.
+- [ ] Add conditional orders such as "engage only if escorts arrive."
+- [ ] Add branch plans for success, stalemate, and retreat.
+- [ ] Add staging-area selection.
+- [ ] Add reserve commitment triggers.
+- [ ] Add fuel, ammunition, repair, and crew-readiness projections per phase.
+- [ ] Add expected enemy-response estimates.
+- [ ] Add operation rehearsal using incomplete intelligence.
+- [ ] Add reusable operation templates.
+- [ ] Add a commander's notebook for pinned assumptions and unresolved risks.
+- [ ] Add post-operation comparisons between plan and outcome.
+
+### 21.2 Intelligence Analysis
+
+- [ ] Add intelligence sources with reliability ratings.
+- [ ] Add intercepted manifests that reveal convoy composition.
+- [ ] Add scout reports that can conflict with one another.
+- [ ] Add enemy order-of-battle estimates with confidence bands.
+- [ ] Add analyst recommendations that can be right, incomplete, or biased.
+- [ ] Add intelligence gaps explicitly shown on the map.
+- [ ] Add historical enemy-behavior summaries.
+- [ ] Add pattern detection for repeated raids and convoy timings.
+- [ ] Add misinformation campaigns that plant believable false patterns.
+- [ ] Add captured navigation data that reveals temporary routes.
+- [ ] Add debriefing choices that improve intelligence quality.
+- [ ] Add an intelligence archive searchable by location, faction, and date.
+
+### 21.3 Espionage And Counterintelligence
+
+- [ ] Add covert agents embedded in hubs and shipyards.
+- [ ] Add agent recruitment with loyalty risks.
+- [ ] Add sabotage operations against fuel, sensors, docks, and communications.
+- [ ] Add counterintelligence sweeps that may disrupt friendly operations.
+- [ ] Add compromised officers and false orders.
+- [ ] Add extraction missions for exposed agents.
+- [ ] Add double agents with uncertain allegiance.
+- [ ] Add encrypted dead-drop locations.
+- [ ] Add propaganda operations that affect faction exhaustion and civilian support.
+- [ ] Add diplomatic incidents when covert actions are exposed.
+
+## 22. Environmental Simulation And Space Weather
+
+### 22.1 Dynamic Hazards
+
+- [ ] Add moving radiation storms that reshape safe routes.
+- [ ] Add solar flare forecasts with uncertain timing.
+- [ ] Add comet trails that create temporary mining opportunities and navigation hazards.
+- [ ] Add unstable asteroid clusters that slowly drift and collide.
+- [ ] Add ion clouds that amplify jamming and shield instability.
+- [ ] Add dense debris fields that damage high-speed ships.
+- [ ] Add micro-meteor showers that threaten exposed station modules.
+- [ ] Add magnetic anomalies that bend missile guidance.
+- [ ] Add gravity wells that change braking distance and warp exit accuracy.
+- [ ] Add volatile gas pockets that can chain-react under weapons fire.
+- [ ] Add environmental hazard maps with confidence and age.
+- [ ] Add AI doctrine changes when fleets encounter known hazards.
+
+### 22.2 Resource Ecology
+
+- [ ] Let rich deposits attract miners, pirates, patrols, and speculators over time.
+- [ ] Let over-mining increase collapse risk and reduce long-term yield.
+- [ ] Add refinery pollution or debris as a local strategic cost.
+- [ ] Add survey uncertainty so prospecting remains valuable.
+- [ ] Add rare materials tied to dangerous environmental regions.
+- [ ] Add mobile resource phenomena such as cometary ice and drifting wreck clusters.
+- [ ] Add depleted belts that push factions into new contested regions.
+- [ ] Add salvage booms after major wars.
+- [ ] Add faction policies for conservation, extraction, rationing, and hoarding.
+- [ ] Add economic forecasts tied to resource discoveries and losses.
+
+## 23. Asymmetric Factions And Internal Politics
+
+### 23.1 Faction Identity
+
+- [ ] Give each faction a distinct logistical model instead of only combat bonuses.
+- [ ] Give each faction a distinct approach to surrender, salvage, and prisoners.
+- [ ] Give each faction unique station layouts and infrastructure priorities.
+- [ ] Give each faction signature command-network strengths and weaknesses.
+- [ ] Give each faction unique crisis responses.
+- [ ] Give each faction different tolerances for collateral damage.
+- [ ] Add faction-specific mission families.
+- [ ] Add faction-specific officer archetypes and radio language.
+- [ ] Add faction-specific victory and survival conditions.
+- [ ] Add faction-specific UI accent motifs without harming readability.
+
+### 23.2 Internal Politics
+
+- [ ] Split major factions into internal blocs with visible agendas.
+- [ ] Add military, industrial, civilian, ideological, and intelligence power centers.
+- [ ] Add bloc approval and leverage.
+- [ ] Add requests that trade tactical convenience for political support.
+- [ ] Add leadership changes after defeats, scandals, and victories.
+- [ ] Add budget disputes that affect construction and logistics.
+- [ ] Add faction hardliners who resist ceasefires.
+- [ ] Add reformers who reward restraint and rescue operations.
+- [ ] Add corruption investigations around procurement and salvage.
+- [ ] Add internal schisms that can become neutral or hostile splinter factions.
+- [ ] Add player choices that strengthen one bloc while alienating another.
+- [ ] Add ending slides for the political order the player helped create.
+
+### 23.3 Pirate, Mercenary, And Neutral Powers
+
+- [ ] Add pirate havens with local economies and protection rackets.
+- [ ] Add mercenary companies with persistent fleets and reputations.
+- [ ] Add neutral defense leagues formed by threatened hubs.
+- [ ] Add religious or ideological enclaves with unusual rules of engagement.
+- [ ] Add nomadic flotillas with mobile markets.
+- [ ] Add scavenger clans that follow major battles.
+- [ ] Add smugglers who can bypass blockades at a price.
+- [ ] Add privateers whose legal status changes with diplomacy.
+- [ ] Add bounty hunters who pursue named captains.
+- [ ] Add neutral powers that can be courted into coalition wars.
+
+## 24. Crisis, Failure, And Recovery
+
+### 24.1 Strategic Crises
+
+- [ ] Add fuel crises that force painful route and fleet-priority decisions.
+- [ ] Add ammunition shortages that change viable ship mixes.
+- [ ] Add repair-material shortages after major offensives.
+- [ ] Add crew-replacement shortages after casualty-heavy battles.
+- [ ] Add refugee crises that compete with military logistics.
+- [ ] Add station epidemics and quarantine decisions.
+- [ ] Add mutinies and command legitimacy crises.
+- [ ] Add intelligence leaks that expose player operations.
+- [ ] Add supply-chain sabotage investigations.
+- [ ] Add cascading front-line collapse when several hubs fall quickly.
+- [ ] Add emergency coalition summits during existential threats.
+- [ ] Add crisis postmortems that record the player's response.
+
+### 24.2 Recovery Play
+
+- [ ] Add fighting withdrawals where preserving ships is a meaningful victory.
+- [ ] Add fleet rebuilding plans after catastrophic losses.
+- [ ] Add emergency loans with political strings attached.
+- [ ] Add reserve mothballed hulls that can be reactivated slowly.
+- [ ] Add civilian requisition choices with reputation consequences.
+- [ ] Add improvised repairs that create future reliability risks.
+- [ ] Add salvage expeditions to recover lost strategic assets.
+- [ ] Add prisoner exchanges.
+- [ ] Add negotiated humanitarian corridors.
+- [ ] Add comeback objectives for campaigns where the player loses key regions.
+- [ ] Add graceful campaign defeat states that produce an epilogue instead of a hard stop.
+- [ ] Add "continue the resistance" branches after formal defeat.
+
+## 25. Endgame, Legacy, And Replayability
+
+### 25.1 Endgame Structures
+
+- [ ] Add multiple endgame crises selected by campaign history.
+- [ ] Add final offensives that require several coordinated operations.
+- [ ] Add defensive endgames around evacuation, survival, or delaying actions.
+- [ ] Add diplomatic endgames where coalition cohesion matters.
+- [ ] Add rogue-AI escalation endgames with rapidly changing tactical rules.
+- [ ] Add economic endgames where the war is won by exhaustion and blockade.
+- [ ] Add titan-construction races visible on the strategic map.
+- [ ] Add faction-collapse thresholds and surrender negotiations.
+- [ ] Add optional post-victory cleanup operations.
+- [ ] Add a final command review with maps, losses, rescues, and defining decisions.
+
+### 25.2 Campaign Legacy
+
+- [ ] Generate a campaign chronicle from major events.
+- [ ] Preserve notable ships and officers in a hall of records.
+- [ ] Add lineage bonuses that are flavorful but not mandatory.
+- [ ] Add unlockable historical scenarios based on completed campaigns.
+- [ ] Add defeated rival captains as future scenario opponents.
+- [ ] Add persistent memorial names for stations and ships.
+- [ ] Add exportable fleet rosters and battle summaries.
+- [ ] Add campaign comparison screens across different seeds.
+- [ ] Add player-authored campaign notes.
+- [ ] Add a compact share code for seed, difficulty, and major modifiers.
+
+### 25.3 Challenge Modes
+
+- [ ] Add a one-fleet survival campaign.
+- [ ] Add a no-replacement iron fleet challenge.
+- [ ] Add a civilian-protection challenge campaign.
+- [ ] Add a logistics-starvation challenge campaign.
+- [ ] Add a stealth-and-intelligence challenge campaign.
+- [ ] Add a pirate-privateer challenge campaign.
+- [ ] Add a titan-race challenge campaign.
+- [ ] Add a shattered-alliance challenge campaign.
+- [ ] Add score breakdowns that reward different command styles.
+- [ ] Add curated monthly challenge scenarios.
+
+## 26. Modding, Scenario Creation, And Community Longevity
+
+### 26.1 Data-Driven Content
+
+- [ ] Move hull definitions into validated external data files.
+- [ ] Move weapon definitions into validated external data files.
+- [ ] Move faction doctrines into validated external data files.
+- [ ] Move station modules into validated external data files.
+- [ ] Move contracts and mission templates into validated external data files.
+- [ ] Move dialogue bark pools into validated external data files.
+- [ ] Add schema versions and migration helpers for content packs.
+- [ ] Add clear validation errors with file and field names.
+- [ ] Add hot reload for selected development-time data.
+- [ ] Add a content-pack dependency manifest.
+
+### 26.2 Scenario Tools
+
+- [ ] Add a visual battlefield template editor.
+- [ ] Add drag-and-drop fleet composition for scenarios.
+- [ ] Add objective placement and trigger editing.
+- [ ] Add environment-hazard placement.
+- [ ] Add timeline scripting for reinforcements and events.
+- [ ] Add branching victory and failure conditions.
+- [ ] Add test-play launch directly from the editor.
+- [ ] Add deterministic scenario seeds.
+- [ ] Add scenario thumbnails and metadata.
+- [ ] Add import and export for standalone scenario packs.
+
+### 26.3 Community Features
+
+- [ ] Add shareable fleet doctrine codes.
+- [ ] Add shareable custom battle setups.
+- [ ] Add shareable campaign challenge codes.
+- [ ] Add mod compatibility diagnostics.
+- [ ] Add a safe-mode launcher that disables content packs.
+- [ ] Add content-pack load ordering.
+- [ ] Add per-save content-pack manifests.
+- [ ] Add replay validation when mods are missing.
+- [ ] Add a curated featured-scenario menu.
+- [ ] Add a local scenario rating and notes system.
+
+## 27. Additional Candidate Extraction Packs
+
+These are larger design documents worth extracting after the first backlog pass.
+
+- [ ] Command network, standing orders, and cohesion design.
+- [ ] Living stations and evolving battlefield locations roadmap.
+- [ ] Officer careers, fleet culture, and civilian-life narrative plan.
+- [ ] Multi-phase operations and intelligence-analysis design.
+- [ ] Environmental hazards and resource-ecology simulation plan.
+- [ ] Asymmetric faction identity and internal-politics roadmap.
+- [ ] Strategic crisis and recovery-play design.
+- [ ] Endgame, campaign chronicle, and challenge-mode roadmap.
+- [ ] Data-driven content conversion plan.
+- [ ] Scenario editor and community-content roadmap.

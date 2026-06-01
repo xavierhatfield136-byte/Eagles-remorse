@@ -215,6 +215,7 @@ public final class UISystem {
         ctx.ui.powerManagementOpen = false;
         ctx.ui.crewStationsOpen = false;
         ctx.ui.flightDeckOpen = false;
+        ctx.ui.controlsScreenOpen = false;
         clearManualCombatInputs(ctx);
         if (!ctx.gameOver) ctx.state = stateAfterOverlayClose(ctx);
         if (hadOverlay) AudioSystem.onUiClose(ctx);

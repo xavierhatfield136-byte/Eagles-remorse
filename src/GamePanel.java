@@ -1,4 +1,5 @@
 import app.config.GameConfig;
+import app.state.AssetLoadGuard;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -24,6 +25,8 @@ public class GamePanel extends JPanel implements ActionListener {
     private final Runnable toggleFullscreen;
 
     private final PlayerControl controls;
+    private boolean controllerPrimaryHeld = false;
+    private boolean controllerSecondaryHeld = false;
 
     public GamePanel(GameConfig config, Runnable exitToMenu) {
         this(config, exitToMenu, null);
@@ -43,9 +46,22 @@ public class GamePanel extends JPanel implements ActionListener {
 
         // World init
         SpawnSystem.initWorld(ctx);
+        ExperienceRuntime.activate(ctx.experience);
+        FirstHourOnboardingSystem.init(ctx);
+        TacticalCombatDepthSystem.init(ctx);
+        Renderer.prewarmAssetCaches(ctx.config.mode);
+        AssetLoadGuard.markGameplayBegun();
 
         // Input
         controls = InputSystem.install(this, ctx, this::exitToMenu, toggleFullscreen);
+        addFocusListener(new FocusAdapter() {
+            @Override public void focusLost(FocusEvent e) {
+                if (ctx.experience.pauseOnFocusLoss && ctx.state == GameState.RUNNING) {
+                    ctx.state = GameState.PAUSED;
+                    EventSystem.showBanner(ctx, "PAUSED: WINDOW FOCUS LOST", 1.2);
+                }
+            }
+        });
 
         // Higher-frequency scheduler + fixed-timestep simulation smooths frame pacing.
         timer = new Timer(5, this);
@@ -65,6 +81,15 @@ public class GamePanel extends JPanel implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
+        ExperienceRuntime.update(ctx);
+        boolean controllerPrimary = ControllerInputSystem.isActionPressed("primaryDown");
+        boolean controllerSecondary = ControllerInputSystem.isActionPressed("secondaryDown");
+        if (controllerPrimary && !controllerPrimaryHeld) ExperienceRuntime.firingPressed(ctx, false);
+        else if (!controllerPrimary && controllerPrimaryHeld) ExperienceRuntime.firingReleased(ctx, false);
+        if (controllerSecondary && !controllerSecondaryHeld) ExperienceRuntime.firingPressed(ctx, true);
+        else if (!controllerSecondary && controllerSecondaryHeld) ExperienceRuntime.firingReleased(ctx, true);
+        controllerPrimaryHeld = controllerPrimary;
+        controllerSecondaryHeld = controllerSecondary;
         InputSnapshot input = controls.snapshot();
         boolean shouldRepaint = runtime.advanceFrame(
                 System.nanoTime(),
@@ -85,14 +110,18 @@ public class GamePanel extends JPanel implements ActionListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         long renderStart = System.nanoTime();
+        AssetLoadGuard.beginRenderedFrame();
         Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        GameRenderSystem.render(ctx, g2, viewportW(), viewportH());
-
-        g2.dispose();
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            GameRenderSystem.render(ctx, g2, viewportW(), viewportH());
+        } finally {
+            g2.dispose();
+            AssetLoadGuard.endRenderedFrame();
+        }
         double renderMs = (System.nanoTime() - renderStart) / 1_000_000.0;
         runtime.recordRenderMs(renderMs);
+        PerformanceGuardrails.update(ctx.perf);
     }
 
     public void shutdown() {
@@ -115,30 +144,31 @@ public class GamePanel extends JPanel implements ActionListener {
         InputMap im = getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         ActionMap am = getActionMap();
 
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0, false), "toggleShop", () -> GameplayActions.toggleShop(ctx));
+        bind(im, am, "toggleShop", () -> GameplayActions.toggleShop(ctx));
 
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0, false), "escape", () -> {
+        bind(im, am, "escape", () -> {
             GameplayActions.handleEscape(ctx, exitToMenu);
         });
 
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_B, 0, false), "toggleBaseMenu", () -> GameplayActions.toggleBaseMenu(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_O, 0, false), "togglePowerManagement", () -> GameplayActions.togglePowerManagement(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_H, 0, false), "toggleCrewStations", () -> GameplayActions.toggleCrewStations(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SLASH, 0, false), "toggleFlightDeck", () -> GameplayActions.toggleFlightDeck(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_L, 0, false), "lockUnderMouse", () -> GameplayActions.lockUnderMouse(ctx, controls));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_I, 0, false), "cycleCommIntent", () -> GameplayActions.cycleCommIntent(ctx, +1));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_K, 0, false), "hailContact", () -> GameplayActions.hailCurrentContact(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_OPEN_BRACKET, 0, false), "cycleLeft", () -> GameplayActions.cycleLockedTarget(ctx, -1));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_CLOSE_BRACKET, 0, false), "cycleRight", () -> GameplayActions.cycleLockedTarget(ctx, +1));
+        bind(im, am, "toggleBaseMenu", () -> GameplayActions.toggleBaseMenu(ctx));
+        bind(im, am, "togglePowerManagement", () -> GameplayActions.togglePowerManagement(ctx));
+        bind(im, am, "toggleCrewStations", () -> GameplayActions.toggleCrewStations(ctx));
+        bind(im, am, "toggleFlightDeck", () -> GameplayActions.toggleFlightDeck(ctx));
+        bind(im, am, "lockUnderMouse", () -> GameplayActions.lockUnderMouse(ctx, controls));
+        bind(im, am, "cycleCommIntent", () -> GameplayActions.cycleCommIntent(ctx, +1));
+        bind(im, am, "hailContact", () -> GameplayActions.hailCurrentContact(ctx));
+        bind(im, am, "cycleLeft", () -> GameplayActions.cycleLockedTarget(ctx, -1));
+        bind(im, am, "cycleRight", () -> GameplayActions.cycleLockedTarget(ctx, +1));
 
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_M, 0, false), "toggleMap", () -> GameplayActions.toggleMap(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_N, 0, false), "cycleHudDetail", () -> GameplayActions.cycleHudDetail(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_J, 0, false), "toggleTacticalView", () -> GameplayActions.toggleTacticalView(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_BACK_QUOTE, 0, false), "cycleXrayFilter", () -> GameplayActions.cycleXrayFilter(ctx, +1));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_QUOTE, 0, false), "clearXrayFocus", () -> GameplayActions.clearXrayFocus(ctx));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_P, 0, false), "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_G, 0, false), "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, InputEvent.CTRL_DOWN_MASK, false), "zoomIn", () -> {
+        bind(im, am, "toggleMap", () -> ExperienceRuntime.mapPressed(ctx));
+        bind(im, am, "toggleMapUp", () -> ExperienceRuntime.mapReleased(ctx));
+        bind(im, am, "cycleHudDetail", () -> GameplayActions.cycleHudDetail(ctx));
+        bind(im, am, "toggleTacticalView", () -> GameplayActions.toggleTacticalView(ctx));
+        bind(im, am, "cycleXrayFilter", () -> GameplayActions.cycleXrayFilter(ctx, +1));
+        bind(im, am, "clearXrayFocus", () -> GameplayActions.clearXrayFocus(ctx));
+        bind(im, am, "pingAtCursor", () -> GameplayActions.pingAtCursor(ctx, controls));
+        bind(im, am, "setWaypoint", () -> GameplayActions.setWaypointAtCursor(ctx, controls));
+        bind(im, am, "zoomIn", () -> {
             if (ctx.ui.mapOpen) {
                 UISystem.stepStrategicMapZoom(ctx, +1, viewportW() / 2, viewportH() / 2, viewportW(), viewportH());
             } else {
@@ -146,7 +176,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 CameraSystem.update(ctx, viewportW(), viewportH());
             }
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK, false), "zoomOut", () -> {
+        bind(im, am, "zoomOut", () -> {
             if (ctx.ui.mapOpen) {
                 UISystem.stepStrategicMapZoom(ctx, -1, viewportW() / 2, viewportH() / 2, viewportW(), viewportH());
             } else {
@@ -154,7 +184,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 CameraSystem.update(ctx, viewportW(), viewportH());
             }
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK, false), "zoomReset", () -> {
+        bind(im, am, "zoomReset", () -> {
             if (ctx.ui.mapOpen) {
                 UISystem.resetStrategicMapZoom(ctx);
             } else {
@@ -164,66 +194,81 @@ public class GamePanel extends JPanel implements ActionListener {
         });
 
         // Toggle turret auto-lock
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_T, 0, false), "toggleTurretAuto", () -> GameplayActions.toggleTurretAutoLock(ctx));
+        bind(im, am, "toggleTurretAuto", () -> GameplayActions.toggleTurretAutoLock(ctx));
 
         // Fullscreen (Alt+Enter)
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.ALT_DOWN_MASK, false), "fullscreen", () -> {
+        bind(im, am, "fullscreen", () -> {
             if (toggleFullscreen != null) toggleFullscreen.run();
             requestFocusInWindow();
         });
 
         // Mining hold F uses KeyListener semantics; bind press/release
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, false), "miningDown", () -> ctx.miningKeyDown = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, true), "miningUp", () -> ctx.miningKeyDown = false);
+        bind(im, am, "miningDown", () -> ExperienceRuntime.miningPressed(ctx));
+        bind(im, am, "miningUp", () -> ExperienceRuntime.miningReleased(ctx));
 
         // Abilities
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_E, 0, false), "shieldOvercharge", () -> {
+        bind(im, am, "shieldOvercharge", () -> {
             GameplayActions.tryShieldOvercharge(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_X, 0, false), "superweapon", () -> {
+        bind(im, am, "superweapon", () -> {
             GameplayActions.trySuperweapon(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_C, 0, false), "carrierLaunch", () -> {
+        bind(im, am, "carrierLaunch", () -> {
             GameplayActions.tryCarrierLaunch(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_R, 0, false), "carrierRecall", () -> {
+        bind(im, am, "carrierRecall", () -> {
             GameplayActions.tryCarrierRecall(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_V, 0, false), "carrierMode", () -> {
+        bind(im, am, "carrierMode", () -> {
             GameplayActions.tryCarrierToggleMode(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Z, 0, false), "carrierAutoLaunch", () -> {
+        bind(im, am, "carrierAutoLaunch", () -> {
             GameplayActions.tryCarrierToggleAutoLaunch(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, 0, false), "battlefieldWarp", () -> {
+        bind(im, am, "battlefieldWarp", () -> {
             GameplayActions.tryTeleportToBase(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0, false), "teleportToBase", () -> {
+        bind(im, am, "teleportToBase", () -> {
             GameplayActions.tryTeleportToBase(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_Y, 0, false), "cyclePowerPreset", () -> {
+        bind(im, am, "cyclePowerPreset", () -> {
             GameplayActions.cyclePowerPreset(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_U, 0, false), "cycleCrewOrder", () -> {
+        bind(im, am, "cycleCrewOrder", () -> {
             GameplayActions.cycleCrewOrder(ctx);
         });
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SEMICOLON, 0, false), "toggleEmergencyThrust", () -> {
+        bind(im, am, "toggleEmergencyThrust", () -> {
             GameplayActions.toggleEmergencyThrust(ctx);
         });
 
         // Menu
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F10, 0, false), "toMenu", this::exitToMenu);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_F6, InputEvent.CTRL_DOWN_MASK, false),
-                "overlayDiagnostics", () -> UISystem.printOverlayDiagnostics(ctx));
+        bind(im, am, "toMenu", this::exitToMenu);
+        bind(im, am, "overlayDiagnostics", () -> UISystem.printOverlayDiagnostics(ctx));
+        bind(im, am, "toggleControlsScreen", () -> GameplayActions.toggleControlsScreen(ctx));
+        bind(im, am, "skipOnboardingBeat", () -> FirstHourOnboardingSystem.skipCurrent(ctx));
+        bind(im, am, "toggleTutorialArchive", () -> FirstHourOnboardingSystem.toggleArchive(ctx));
+        bind(im, am, "toggleTacticalOrders", () -> TacticalCombatDepthSystem.toggleOverlay(ctx));
+        bind(im, am, "cycleTacticalOrder", () -> TacticalCombatDepthSystem.cycleOrder(ctx));
+        bind(im, am, "toggleTacticalPause", () -> TacticalCombatDepthSystem.togglePause(ctx));
+        bind(im, am, "cycleSupportMode", () -> TacticalCombatDepthSystem.cycleSupportMode(ctx));
+        bind(im, am, "activateSupportMode", () -> TacticalCombatDepthSystem.activateSupportAtCursor(ctx));
+        bind(im, am, "toggleOrientationHold", () -> TacticalCombatDepthSystem.toggleOrientationHold(ctx));
+        bind(im, am, "toggleBulkheads", () -> TacticalCombatDepthSystem.toggleBulkheads(ctx));
+        bind(im, am, "weaponOverdrive", () -> TacticalCombatDepthSystem.overdriveWeapons(ctx));
+        bind(im, am, "cyclePointDefensePriority", () -> TacticalCombatDepthSystem.cyclePointDefensePriority(ctx));
+        bind(im, am, "cycleTacticalDoctrine", () -> TacticalCombatDepthSystem.cycleDoctrine(ctx));
+        bind(im, am, "cycleTacticalGroup", () -> TacticalCombatDepthSystem.cycleGroup(ctx));
+        bind(im, am, "scuttleDisabledShip", () -> TacticalCombatDepthSystem.scuttleNearestDisabled(ctx));
 
         // Primary/secondary fire
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, false), "primaryDown", () -> ctx.firingPrimaryManual = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0, true), "primaryUp", () -> ctx.firingPrimaryManual = false);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, false), "secondaryDown", () -> ctx.firingSecondaryManual = true);
-        bind(im, am, KeyStroke.getKeyStroke(KeyEvent.VK_SHIFT, 0, true), "secondaryUp", () -> ctx.firingSecondaryManual = false);
+        bind(im, am, "primaryDown", () -> ExperienceRuntime.firingPressed(ctx, false));
+        bind(im, am, "primaryUp", () -> ExperienceRuntime.firingReleased(ctx, false));
+        bind(im, am, "secondaryDown", () -> ExperienceRuntime.firingPressed(ctx, true));
+        bind(im, am, "secondaryUp", () -> ExperienceRuntime.firingReleased(ctx, true));
     }
 
-    private void bind(InputMap im, ActionMap am, KeyStroke ks, String name, Runnable action) {
+    private void bind(InputMap im, ActionMap am, String name, Runnable action) {
+        KeyStroke ks = HotkeyRegistry.stroke(name);
         im.put(ks, name);
         am.put(name, new AbstractAction() {
             @Override public void actionPerformed(ActionEvent e) { action.run(); }

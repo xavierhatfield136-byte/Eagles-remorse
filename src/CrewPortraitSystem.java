@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
 
 public final class CrewPortraitSystem {
     private static final File ROOT = new File("assets/crew_portraits");
@@ -33,7 +35,7 @@ public final class CrewPortraitSystem {
     private static final int NORMALIZED_SIZE = 512;
     private static final int HUD_PREVIEW_SIZE = 64;
     private static final double HUD_READABILITY_MIN = 0.22;
-    private static final Map<String, PortraitAsset> CACHE = new HashMap<>();
+    private static final Map<String, PortraitAsset> CACHE = new BoundedCache<>(32);
     public static final String STYLE_LOCK_PROMPT =
             "Photorealistic solo portrait of one real human starship bridge officer, one person only, bareheaded with no helmet or headgear, head-and-shoulders chest-up framing, face centered and fully visible, natural skin texture, " +
                     "physically accurate face anatomy, realistic eye detail, cinematic practical lighting, " +
@@ -109,7 +111,7 @@ public final class CrewPortraitSystem {
 
             BufferedImage img;
             try {
-                img = ImageIO.read(file);
+                img = AssetLoadGuard.read(file, "portrait");
             } catch (Throwable e) {
                 issues.add(new PortraitIssue("read", name, "Failed to decode image: " + e.getClass().getSimpleName()));
                 continue;

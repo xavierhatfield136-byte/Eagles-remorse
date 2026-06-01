@@ -327,6 +327,10 @@ final class WreckChunk {
         return drawAll(g2, minX, minY, maxX, maxY, null);
     }
 
+    static int activeCount() {
+        return ACTIVE.size();
+    }
+
     static int drawAll(Graphics2D g2, double minX, double minY, double maxX, double maxY,
                        BiPredicate<Double, Double> worldFilter) {
         if (g2 == null || ACTIVE.isEmpty()) return 0;
@@ -355,7 +359,8 @@ final class WreckChunk {
 
     private static void add(WreckChunk chunk) {
         ACTIVE.add(chunk);
-        while (ACTIVE.size() > MAX_ACTIVE) {
+        int budget = Math.min(MAX_ACTIVE, PerformanceGuardrails.wreckChunkBudget());
+        while (ACTIVE.size() > budget) {
             ACTIVE.remove(0);
         }
     }

@@ -1,0 +1,81 @@
+import app.config.GameConfig;
+import app.config.GameMode;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class TacticalCombatDepthSystemTest {
+    @Test
+    void groupOrdersWaitForAcknowledgmentAndThenReachTheFleetAi() {
+        GameContext ctx = context();
+        Player player = new Player(0.0, 0.0);
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 160.0, 0.0);
+        ctx.player = player;
+        ctx.ships.add(player);
+        ctx.ships.add(escort);
+        ctx.cursorWorldX = escort.x;
+        ctx.cursorWorldY = escort.y;
+        TacticalCombatDepthSystem.init(ctx);
+
+        TacticalCombatDepthSystem.selectNearestFriendlyIntoActiveGroup(ctx);
+        TacticalCombatDepthSystem.issueSelectedOrder(ctx, 320.0, 0.0);
+
+        assertFalse(ctx.command.shipFleetCommandOverrides.containsKey(escort.id));
+        TacticalCombatDepthSystem.update(ctx, 5.0);
+        assertEquals(GameContext.FleetCommand.ESCORT, ctx.command.shipFleetCommandOverrides.get(escort.id));
+        assertTrue(TacticalCombatDepthSystem.timeline(ctx).stream().anyMatch(marker -> marker.text().contains("ACK")));
+    }
+
+    @Test
+    void hazardsMinesRammingAndWeaponRolesExposeConcreteTacticalState() {
+        GameContext ctx = context();
+        Player player = new Player(0.0, 0.0);
+        FleetShip enemy = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 10.0, 0.0);
+        ctx.player = player;
+        ctx.ships.add(player);
+        ctx.ships.add(enemy);
+        TacticalCombatDepthSystem.init(ctx);
+        TacticalCombatDepthSystem.seedHazard(ctx, player, TacticalCombatDepthSystem.Hazard.COOLANT_LEAK, 1.0);
+
+        player.vx = 8.0;
+        enemy.vx = -8.0;
+        TacticalCombatDepthSystem.handleRamming(ctx);
+
+        assertTrue(TacticalCombatDepthSystem.hazardIntensity(ctx, player, TacticalCombatDepthSystem.Hazard.COOLANT_LEAK) > 0.0);
+        assertTrue(TacticalCombatDepthSystem.persistentScarCount(ctx, player) > 0);
+        assertTrue(TacticalCombatDepthSystem.persistentScarCount(ctx, enemy) > 0);
+        assertTrue(TacticalCombatDepthSystem.weaponRoleTooltip(player, player.turrets.get(0)).contains("/"));
+
+        for (int i = 0; i < 4; i++) TacticalCombatDepthSystem.cycleSupportMode(ctx);
+        ctx.cursorWorldX = 900.0;
+        ctx.cursorWorldY = 900.0;
+        TacticalCombatDepthSystem.activateSupportAtCursor(ctx);
+        assertEquals(1, TacticalCombatDepthSystem.mineCount(ctx));
+    }
+
+    @Test
+    void volatileOreAndWeaponHeatProvideEnvironmentalAndLogisticsPressure() {
+        GameContext ctx = context();
+        Player player = new Player(0.0, 0.0);
+        ctx.player = player;
+        ctx.ships.add(player);
+        TacticalCombatDepthSystem.init(ctx);
+        TacticalCombatDepthSystem.update(ctx, GameContext.DT);
+        Turret turret = player.turrets.get(0);
+        Asteroid richOre = new Asteroid(20.0, 0.0, 20.0, 500);
+        int hullBefore = player.hp;
+
+        for (int i = 0; i < 120; i++) TacticalCombatDepthSystem.onWeaponFired(player, turret);
+
+        assertFalse(TacticalCombatDepthSystem.canFireWeapon(player, turret));
+        TacticalCombatDepthSystem.detonateVolatileOre(ctx, richOre);
+        assertTrue(player.hp < hullBefore || player.shield < player.shieldMax
+                || TacticalCombatDepthSystem.timeline(ctx).stream().anyMatch(marker -> marker.text().contains("ORE DETONATION")));
+    }
+
+    private static GameContext context() {
+        return new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 5000, 5000, true, 1234L, false));
+    }
+}

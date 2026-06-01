@@ -115,6 +115,7 @@ public final class GameRenderSystem {
 
         ctx.perf.totalVfx = VFX.activeCount();
         ctx.perf.totalExplosions = Explosion.active.size();
+        ctx.perf.totalWreckChunks = WreckChunk.activeCount();
         if (!tacticalView) {
             try {
                 ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
@@ -132,7 +133,9 @@ public final class GameRenderSystem {
                     // Additional culling: skip drawing if explosion is in fogged area
                     if (fogCullEnabled && !ctx.fogOfWar.isVisibleAtWorld(e.x, e.y)) continue;
                     ctx.perf.drawnExplosions++;
-                    if (e.kind == Explosion.Kind.SHIELD_HIT) {
+                    if (ctx.experience.reducedFlash && e.kind != Explosion.Kind.SHIELD_HIT) {
+                        continue;
+                    } else if (e.kind == Explosion.Kind.SHIELD_HIT) {
                         drawShieldImpactExplosion(worldG, e);
                     } else if (e.kind == Explosion.Kind.DESTABILIZER_PULSE) {
                         drawDestabilizerPulseExplosion(worldG, e);
@@ -153,8 +156,10 @@ public final class GameRenderSystem {
         }
 
         if (!tacticalView) {
-            WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
+            ctx.perf.drawnWreckChunks = WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
                     (x, y) -> isInLoadedRenderZone(ctx, x, y));
+        } else {
+            ctx.perf.drawnWreckChunks = 0;
         }
 
         if (!tacticalView) {
@@ -172,6 +177,8 @@ public final class GameRenderSystem {
         ctx.perf.drawnProjectiles = tacticalView
                 ? 0
                 : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+        ctx.perf.visibleSprites = ctx.perf.drawnShips + ctx.perf.drawnProjectiles + ctx.perf.drawnAsteroids
+                + ctx.perf.drawnSalvage + ctx.perf.drawnWreckChunks + ctx.perf.drawnVfx + ctx.perf.drawnExplosions;
         if (!tacticalView) {
             Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
             Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
@@ -314,6 +321,7 @@ public final class GameRenderSystem {
             Renderer.drawStrategicEncounterOverlay(g2, ctx, viewportW, viewportH);
         }
         Renderer.drawCampaignActionConfirmOverlay(g2, ctx, viewportW, viewportH);
+        FirstHourOnboardingSystem.draw(ctx, g2, viewportW, viewportH);
 
         if (ctx.state == GameState.PAUSED && !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) {
             g2.setColor(new Color(0, 0, 0, 160));
@@ -337,6 +345,14 @@ public final class GameRenderSystem {
 
         // Persistent quick-access overlays bar.
         Renderer.drawCoreMenuBar(g2, ctx, viewportW, viewportH);
+        Renderer.drawCurrentContextLegend(g2, ctx, viewportW, viewportH);
+        Renderer.drawControlsScreen(g2, ctx, viewportW, viewportH);
+        TacticalCombatDepthSystem.drawOverlay(ctx, g2, viewportW, viewportH);
+        if (ctx.experience.highContrastHud) {
+            g2.setColor(new Color(245, 250, 255, 210));
+            g2.setStroke(new BasicStroke(2.0f));
+            g2.drawRect(3, 3, Math.max(1, viewportW - 7), Math.max(1, viewportH - 7));
+        }
         int mouseX = (int) Math.round(ctx.cursorScreenX);
         int mouseY = (int) Math.round(ctx.cursorScreenY);
         Renderer.HoverTooltip hoverTooltip = Renderer.hoverTooltipAt(ctx, viewportW, viewportH, mouseX, mouseY);
@@ -353,6 +369,7 @@ public final class GameRenderSystem {
             ctx.ui.clearHoverTooltip();
         }
         Renderer.drawHoverTooltip(g2, ctx.ui, mouseX, mouseY, viewportW, viewportH);
+        ctx.perf.drawnUiPanels = visibleUiPanelCount(ctx);
 
 // Dev debug overlay (F3)
 if (DevTools.isDebugOverlay()) {
@@ -377,17 +394,38 @@ if (DevTools.isDebugOverlay()) {
         }
         Renderer.drawCampaignHubOverlay(g2, ctx, viewportW, viewportH);
         Renderer.drawCampaignActionConfirmOverlay(g2, ctx, viewportW, viewportH);
+        FirstHourOnboardingSystem.draw(ctx, g2, viewportW, viewportH);
         ctx.perf.drawnAsteroids = 0;
         ctx.perf.drawnSalvage = 0;
         ctx.perf.drawnShips = 0;
         ctx.perf.drawnProjectiles = 0;
         ctx.perf.drawnVfx = 0;
         ctx.perf.drawnExplosions = 0;
+        ctx.perf.drawnWreckChunks = 0;
+        ctx.perf.visibleSprites = 0;
+        ctx.perf.drawnUiPanels = visibleUiPanelCount(ctx);
         ctx.perf.totalVfx = 0;
         ctx.perf.totalExplosions = 0;
+        ctx.perf.totalWreckChunks = WreckChunk.activeCount();
         ctx.perf.renderShipsMs = 0.0;
         ctx.perf.shieldRenderMs = 0.0;
         ctx.perf.renderHudMs = 0.0;
+    }
+
+    private static int visibleUiPanelCount(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 0;
+        int panels = 2; // HUD and persistent quick-access bar.
+        if (ctx.ui.mapOpen || CampaignSystem.isCampaignMapScreenActive(ctx)) panels++;
+        if (ctx.ui.shopOpen) panels++;
+        if (ctx.ui.baseMenuOpen) panels++;
+        if (ctx.ui.powerManagementOpen) panels++;
+        if (ctx.ui.crewStationsOpen) panels++;
+        if (ctx.ui.flightDeckOpen) panels++;
+        if (ctx.ui.strategicEncounterPrompt.active) panels++;
+        if (ctx.ui.campaignHubMenu.active) panels++;
+        if (ctx.ui.campaignActionConfirm.active) panels++;
+        if (ctx.state == GameState.PAUSED) panels++;
+        return panels;
     }
 
     private static String activeOverlayLabel(GameContext ctx) {
@@ -538,8 +576,11 @@ if (DevTools.isDebugOverlay()) {
         if (!ctx.ui.voiceCaptionsEnabled) return;
         if (ctx.ui.voiceCaptionT <= 0.0 || ctx.ui.voiceCaption == null || ctx.ui.voiceCaption.isBlank()) return;
 
-        String text = ctx.ui.voiceCaption;
-        g2.setFont(new Font("Consolas", Font.BOLD, 14));
+        String text = ctx.experience.subtitleSpeakerLabels
+                ? ctx.ui.voiceCaption
+                : ctx.ui.voiceCaption.replaceFirst("^[A-Z ]{2,18}:\\s*", "");
+        int subtitlePx = Math.max(11, (int) Math.round(14 * ctx.experience.subtitleScale * ctx.experience.uiTextScale));
+        g2.setFont(new Font("Consolas", Font.BOLD, subtitlePx));
         FontMetrics fm = g2.getFontMetrics();
 
         int w = Math.min(viewportW - 28, fm.stringWidth(text) + 24);
@@ -547,8 +588,10 @@ if (DevTools.isDebugOverlay()) {
         int x = (viewportW - w) / 2;
         int y = viewportH - 90;
 
-        g2.setColor(new Color(0, 0, 0, 165));
-        g2.fillRoundRect(x, y, w, h, 12, 12);
+        if (ctx.experience.subtitleBackground) {
+            g2.setColor(new Color(0, 0, 0, 195));
+            g2.fillRoundRect(x, y, w, h, 12, 12);
+        }
         g2.setColor(new Color(205, 225, 255, 190));
         g2.drawRoundRect(x, y, w, h, 12, 12);
 

@@ -59,6 +59,11 @@ public final class GameplayActions {
         UISystem.toggleFlightDeck(ctx);
     }
 
+    public static void toggleControlsScreen(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        ctx.ui.controlsScreenOpen = !ctx.ui.controlsScreenOpen;
+    }
+
     public static void lockUnderMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
         ctx.command.scienceAutomation = false;
@@ -442,6 +447,10 @@ public final class GameplayActions {
 
     public static boolean tryHandleStrategicEncounterHotkey(GameContext ctx, java.awt.event.KeyEvent e) {
         if (ctx == null || e == null || !CampaignSystem.hasPendingStrategicEncounterChoice(ctx)) return false;
+        if (ctx.experience.commandOnly
+                && ctx.ui.strategicEncounterPrompt.kind != UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
+            return CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
+        }
         if (e.getKeyCode() == java.awt.event.KeyEvent.VK_D) {
             return UISystem.dismissStaleStrategicEncounterPrompt(ctx);
         }

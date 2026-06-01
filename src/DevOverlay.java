@@ -25,7 +25,7 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 29 + minerLines;
+        int lineCount = 33 + minerLines;
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -106,6 +106,19 @@ public final class DevOverlay {
         drawLine(g2, x, y, "Hot2: Shield " + fmt2(perfValue(perf, "shieldRenderMs")) + "  Map " + fmt2(perfValue(perf, "renderMapMs")));
 
         y += lineH;
+        drawLine(g2, x, y, "Assets: decode " + perfInt(perf, "assetDecodeCount")
+                + "  in-frame " + perfInt(perf, "assetDecodeDuringFrameCount")
+                + "  gameplay disk " + perfInt(perf, "gameplayDiskLoadCount"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Memory: sprites " + perfMb(perf, "spriteMemoryBytes") + "/" + perfMb(perf, "spriteMemoryBudgetBytes")
+                + "MB  images " + perfInt(perf, "cachedImageCount")
+                + "  GC " + fmt2(perfValue(perf, "gcMs")) + "ms/" + perfInt(perf, "gcCollections"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Quality: " + perfInt(perf, "visualQuality") + "  Warn: " + perfInt(perf, "performanceWarning"));
+
+        y += lineH;
         drawLine(g2, x, y, "AI: Maint " + fmt2(perfValue(perf, "aiMaintenanceMs")) + "  Fleet " + fmt2(perfValue(perf, "aiFleetStateMs"))
                 + "  Util " + fmt2(perfValue(perf, "aiShipUtilityMs")) + "  Combat " + fmt2(perfValue(perf, "aiShipCombatMs")));
 
@@ -132,6 +145,11 @@ public final class DevOverlay {
         drawLine(g2, x, y, "FX: Salv " + perfInt(perf, "drawnSalvage") + "/" + sizeOf(ctx, "salvage")
                 + "  VFX " + perfInt(perf, "drawnVfx") + "/" + perfInt(perf, "totalVfx")
                 + "  Expl " + perfInt(perf, "drawnExplosions") + "/" + perfInt(perf, "totalExplosions"));
+
+        y += lineH;
+        drawLine(g2, x, y, "Sprites: " + perfInt(perf, "visibleSprites")
+                + "  Wreck " + perfInt(perf, "drawnWreckChunks") + "/" + perfInt(perf, "totalWreckChunks")
+                + "  UI Panels " + perfInt(perf, "drawnUiPanels"));
 
         y += lineH;
         drawLine(g2, x, y, "Cam: (" + (int) safeD(ctx, "camX") + ", " + (int) safeD(ctx, "camY") + ")  View: " + w + "x" + h);
@@ -274,5 +292,9 @@ public final class DevOverlay {
     private static String perfInt(PerfTelemetry perf, String field) {
         if (perf == null) return "?";
         return safe(perf, field);
+    }
+
+    private static String perfMb(PerfTelemetry perf, String field) {
+        return fmt2(perfValue(perf, field) / (1024.0 * 1024.0));
     }
 }

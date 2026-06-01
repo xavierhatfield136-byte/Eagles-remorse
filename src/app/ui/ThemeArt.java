@@ -1,12 +1,14 @@
 package app.ui;
 
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
 import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
 
 /**
  * Lightweight themed UI art registry. Missing files are expected while the art
@@ -31,7 +33,7 @@ public final class ThemeArt {
 
     private static final File UI_THEME_DIR = new File("assets/ui_theme");
     private static final BufferedImage MISSING = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-    private static final Map<String, BufferedImage> CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, BufferedImage> CACHE = Collections.synchronizedMap(new BoundedCache<>(32));
 
     private ThemeArt() {
     }
@@ -116,7 +118,7 @@ public final class ThemeArt {
             File file = new File(UI_THEME_DIR, candidate);
             if (!file.isFile()) continue;
             try {
-                return ImageIO.read(file);
+                return AssetLoadGuard.read(file, "ui");
             } catch (IOException ignored) {
                 return null;
             }

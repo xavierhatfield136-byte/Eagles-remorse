@@ -57,6 +57,7 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
 
     @Override
     public void keyPressed(KeyEvent e) {
+        HotkeyRegistry.noteKeyboardInput();
         switch (e.getKeyCode()) {
             case KeyEvent.VK_W -> up = true;
             case KeyEvent.VK_S -> down = true;

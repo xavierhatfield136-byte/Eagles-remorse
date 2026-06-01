@@ -228,6 +228,8 @@ public class Turret {
         if (!canFire()) return null;
         if (host == null) return null;
         if (!host.canUseCombatSystems()) return null;
+        if (!TacticalCombatDepthSystem.canFireWeapon(host, this)) return null;
+        if (!isWithinHullWeaponArc(host)) return null;
         if (!host.hasStrikeCraftMunitionsFor(this)) return null;
 
         DoctrineProfile prof = DoctrineRegistry.forFaction(host.faction);
@@ -256,6 +258,7 @@ public class Turret {
         host.consumeStrikeCraftMunition(this);
 
         host.onFire();
+        TacticalCombatDepthSystem.onWeaponFired(host, this);
 
         // Spawn at turret muzzle
         double mx = worldX(host) + Math.cos(angle) * (radius + 4);
@@ -425,6 +428,24 @@ public class Turret {
             }
             return p;
         }
+    }
+
+    private boolean isWithinHullWeaponArc(Ship host) {
+        if (host == null) return false;
+        double relative = Math.abs(MathUtil.normalizeAngle(angle - host.angle));
+        if (host.role == ShipRole.ARTILLERY_SHIP || host.role == ShipRole.ARTILLERY_TITAN) {
+            return relative <= Math.toRadians(18.0);
+        }
+        if (isBroadsideHull(host.role) && Math.abs(localY) > Math.abs(localX) * 0.72) {
+            double side = localY < 0.0 ? -Math.PI / 2.0 : Math.PI / 2.0;
+            return Math.abs(MathUtil.normalizeAngle(angle - host.angle - side)) <= Math.toRadians(72.0);
+        }
+        return true;
+    }
+
+    private static boolean isBroadsideHull(ShipRole role) {
+        return role == ShipRole.BULWARK_TITAN
+                || role == ShipRole.SHIELD_BASTION_TITAN;
     }
 
     private int nextBeamVisualLane(int laneCount) {

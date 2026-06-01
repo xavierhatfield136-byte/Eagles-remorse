@@ -38,7 +38,8 @@ public final class CampaignCheckpointStore {
     private static final int CURRENT_VERSION = 1;
     private static final int MAX_CAMPAIGN_SECTORS = 24;
     private static final Path SAVE_DIR = Paths.get("save");
-    private static final Path CHECKPOINT_FILE = SAVE_DIR.resolve("campaign_checkpoint.properties");
+    private static final Path CHECKPOINT_FILE = Paths.get(
+            System.getProperty("codex.checkpointFile", SAVE_DIR.resolve("campaign_checkpoint.properties").toString()));
     private static final Object IO_LOCK = new Object();
 
     public static final class Checkpoint {

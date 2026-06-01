@@ -192,6 +192,10 @@ public final class UiState {
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
+    public boolean controlsScreenOpen = false;
+    public String controlsSearchQuery = "";
+    public int controlsSelectedIndex = 0;
+    public String controlsCaptureAction = "";
     public int overlayInvariantRepairCount = 0;
     public String overlayInvariantLastRepair = "";
     public boolean modalPauseOwned = false;
@@ -276,7 +280,7 @@ public final class UiState {
     public String objectiveHoverBody = "";
 
     public boolean hasBlockingOverlay() {
-        return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen
+        return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
                 || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active;
     }
 

@@ -2,7 +2,9 @@ package app.ui;
 
 import app.config.GameConfig;
 import app.config.GameMode;
+import app.config.ExperienceSettings;
 import app.config.PlayerTeamChoice;
+import app.persistence.ExperienceSettingsStore;
 import app.persistence.MenuSettingsStore;
 import app.support.AppInfo;
 import app.support.MenuDisplay;
@@ -100,6 +102,7 @@ public final class MainMenuPanel extends JPanel {
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(46, 97, 155), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(83, 121, 188), uiScale);
         JButton tutorialStart = createMenuButton("Start Command School", new Color(76, 132, 196), uiScale);
+        JButton experienceButton = createMenuButton("Difficulty And Accessibility", new Color(82, 103, 145), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(188, 201, 216));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
@@ -117,6 +120,7 @@ public final class MainMenuPanel extends JPanel {
                         + "</div></html>", uiScale);
 
         MenuSettingsStore.MenuSettings persisted = MenuSettingsStore.load();
+        final ExperienceSettings[] experience = {ExperienceSettingsStore.load()};
         GameMode persistedMode = MenuSettingsStore.resolveMode(persisted.modeName);
         modeBox.setSelectedItem(isMissionSetupMode(persistedMode) ? persistedMode : GameMode.LAST_STAND);
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
@@ -158,11 +162,24 @@ public final class MainMenuPanel extends JPanel {
             if (mode == GameMode.CUSTOM_BATTLES) {
                 GameConfig customConfig = buildCustomBattleConfig(this, uiScale, w, h, seed, playerTeamId);
                 if (customConfig == null) return;
-                onStart.accept(customConfig);
+                onStart.accept(customConfig.withExperience(experience[0]));
                 return;
             }
-            onStart.accept(new GameConfig(mode, w, h, true, seed, false, playerTeamId, resumeCampaign));
+            if (mode == GameMode.CAMPAIGN_OPS && experience[0].tacticalOnly) {
+                onStart.accept(new GameConfig(GameMode.CUSTOM_BATTLES, w, h, true, seed, false,
+                        playerTeamId).withExperience(experience[0]));
+                return;
+            }
+            GameConfig launch = new GameConfig(mode, w, h, true, seed, false, playerTeamId, resumeCampaign);
+            onStart.accept(launch.withExperience(experience[0]));
         };
+        experienceButton.addActionListener(e -> {
+            ExperienceSettings edited = ExperienceSettingsDialog.show(this, experience[0]);
+            if (edited != null) {
+                experience[0] = edited;
+                ExperienceSettingsStore.save(edited);
+            }
+        });
 
         start.addActionListener(e -> startWithMode.accept(null));
 
@@ -199,7 +216,7 @@ public final class MainMenuPanel extends JPanel {
                 return;
             }
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
-            onStart.accept(checkpoint.config());
+            onStart.accept(checkpoint.config().withExperience(experience[0]));
         });
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
         galaxyMapTest.addActionListener(e -> {
@@ -220,7 +237,7 @@ public final class MainMenuPanel extends JPanel {
                     w, h, true, seed, false,
                     playerTeamId, false,
                     1, "", "",
-                    "galaxy_map_test"));
+                    "galaxy_map_test").withExperience(experience[0]));
         });
 
         JPanel headerPanel = transparentPanel();
@@ -315,6 +332,8 @@ public final class MainMenuPanel extends JPanel {
         singlePlayerCard.add(campaignOps);
         singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
         singlePlayerCard.add(galaxyMapTest);
+        singlePlayerCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        singlePlayerCard.add(experienceButton);
 
         JPanel missionCard = createSectionPanel(new Color(136, 92, 60, 118), uiScale);
         missionCard.add(eyebrowLabel("Mission Setup", uiScale, new Color(233, 173, 126)));

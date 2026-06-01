@@ -1,4 +1,6 @@
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
 import java.awt.Polygon;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -27,8 +29,8 @@ public final class ShipHullSilhouette {
     private static final String SKIN_DIR = "assets/ship_skins";
     private static final String SKIN_RESOURCE_DIR = "ship_skins";
 
-    private static final Map<String, Polygon> HULL_CACHE = new HashMap<>();
-    private static final Map<String, BufferedImage> SKIN_CACHE = new HashMap<>();
+    private static final Map<String, Polygon> HULL_CACHE = new BoundedCache<>(512);
+    private static final Map<String, BufferedImage> SKIN_CACHE = new BoundedCache<>(192);
     private static final Set<String> SKIN_MISS = new HashSet<>();
     private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
     private static boolean cachesPrewarmed = false;
@@ -226,7 +228,7 @@ public final class ShipHullSilhouette {
         for (File root : SKIN_ROOTS) {
             File f = new File(root, key + ".png");
             try {
-                if (f.isFile()) return ImageIO.read(f);
+                if (f.isFile()) return AssetLoadGuard.read(f, "silhouette");
             } catch (IOException ignored) {}
         }
         return null;
@@ -241,7 +243,7 @@ public final class ShipHullSilhouette {
         for (String path : paths) {
             try (InputStream in = ShipHullSilhouette.class.getResourceAsStream(path)) {
                 if (in == null) continue;
-                BufferedImage img = ImageIO.read(in);
+                BufferedImage img = AssetLoadGuard.read(in, "silhouette", path);
                 if (img != null) return img;
             } catch (IOException ignored) {}
         }

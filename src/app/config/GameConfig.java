@@ -16,6 +16,7 @@ public class GameConfig {
     public final String customBattleFriendlyRoster;
     public final String customBattleEnemyRoster;
     public final String startupPreset;
+    public final ExperienceSettings experience;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false, 1, "", "");
@@ -34,13 +35,21 @@ public class GameConfig {
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen,
                 playerTeamId, resumeCampaign,
-                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, "");
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, "", null);
     }
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
                       String startupPreset) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, null);
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
+                      int playerTeamId, boolean resumeCampaign,
+                      int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
+                      String startupPreset, ExperienceSettings experience) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
@@ -53,5 +62,12 @@ public class GameConfig {
         this.customBattleFriendlyRoster = (customBattleFriendlyRoster == null) ? "" : customBattleFriendlyRoster.trim();
         this.customBattleEnemyRoster = (customBattleEnemyRoster == null) ? "" : customBattleEnemyRoster.trim();
         this.startupPreset = (startupPreset == null) ? "" : startupPreset.trim();
+        this.experience = (experience == null) ? ExperienceSettings.defaults() : experience.copy();
+        this.experience.normalize();
+    }
+
+    public GameConfig withExperience(ExperienceSettings settings) {
+        return new GameConfig(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, settings);
     }
 }

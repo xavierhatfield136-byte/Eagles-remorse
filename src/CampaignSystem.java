@@ -87,7 +87,7 @@ public final class CampaignSystem {
     private static final int MISSION_ZONE_ROWS = 3;
     private static final double MISSION_SUBZONE_CLAMP_MARGIN = 180.0;
     // Mission subzones are kept for pacing/metadata, but physical boundary walls are disabled.
-    private static final boolean MISSION_SUBZONE_BOUNDARY_CONSTRAINTS = true;
+    private static final boolean MISSION_SUBZONE_BOUNDARY_CONSTRAINTS = false;
     private static final double DEFAULT_MISSION_SUBZONE_WIDTH = 5000.0;
     private static final double DEFAULT_MISSION_SUBZONE_HEIGHT = 5000.0;
     private static final double MAX_MISSION_SUBZONE_WIDTH = 5000.0;
@@ -1787,8 +1787,7 @@ public final class CampaignSystem {
     private static MissionLayout missionLayout(GameConfig config) {
         double sectorWidth = clampedMissionSubzoneWidth(config);
         double sectorHeight = clampedMissionSubzoneHeight(config);
-        // Mission subzones now share borders directly instead of floating far apart in one giant battlespace.
-        // Physical separation is preserved by per-subzone clamping and same-subzone detection rules.
+        // Mission subzones remain useful as tactical metadata, but combat takes place in one unified space.
         return new MissionLayout(sectorWidth, sectorHeight, 0.0);
     }
 
@@ -13628,6 +13627,10 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled || ctx.player == null) return false;
         if (ctx.gameOver || ctx.state == GameState.GAME_OVER) return false;
+        if (ctx.experience.ironCommand) {
+            EventSystem.showBanner(ctx, "IRON COMMAND: CHECKPOINTS ONLY SAVE AT SECTOR TRANSITIONS", 2.0);
+            return false;
+        }
 
         // When exiting via F10 (whether in mission or fleet hub), save the current checkpoint
         // This preserves ore, cargo, and ship inventory state
@@ -15732,9 +15735,10 @@ public final class CampaignSystem {
             return;
         }
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        st.campaignFuel = Math.max(0, st.campaignFuel - postureTravelFuelCostPerTick(posture, dt));
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - postureTravelSupplyCostPerTick(posture, dt));
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - postureTravelAmmoCostPerTick(posture, dt));
+        double attrition = ctx.experience.attrition;
+        st.campaignFuel = Math.max(0, st.campaignFuel - scaledAttritionCost(postureTravelFuelCostPerTick(posture, dt), attrition));
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - scaledAttritionCost(postureTravelSupplyCostPerTick(posture, dt), attrition));
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - scaledAttritionCost(postureTravelAmmoCostPerTick(posture, dt), attrition));
         double pressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
         double strainGain = 0.10 + pressure * 0.18;
         if (st.campaignFuel < 34) strainGain += 0.18;
@@ -15778,6 +15782,11 @@ public final class CampaignSystem {
         } else {
             beginCampaignLocationEncounterChoice(ctx, st, destination);
         }
+    }
+
+    private static int scaledAttritionCost(int baseCost, double multiplier) {
+        if (baseCost <= 0 || multiplier <= 0.0) return 0;
+        return Math.max(1, (int) Math.round(baseCost * multiplier));
     }
 
     private static void completeFreeTravel(GameContext ctx, CampaignState st) {
@@ -15903,7 +15912,7 @@ public final class CampaignSystem {
             }
             double pressure = regionPressureAt(ctx, location.x, location.y);
             double ageRate = 1.0 + pressure * 0.85 + postureEscalationRateBias(posture);
-            location.unresolvedAgeSec += dt * ageRate;
+            location.unresolvedAgeSec += dt * ageRate * ctx.experience.strategicPressure;
             if (location.escalationStage < 1 && location.unresolvedAgeSec >= 42.0) {
                 escalateLocationContact(ctx, st, location, 1);
             }
@@ -27384,6 +27393,7 @@ public final class CampaignSystem {
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, st, nextSector);
         if (checkpoint == null) return false;
         CampaignCheckpointStore.save(checkpoint);
+        FirstHourOnboardingSystem.noteCheckpointSaved(ctx);
         return true;
     }
 

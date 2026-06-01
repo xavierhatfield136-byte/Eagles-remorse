@@ -32,6 +32,18 @@ public final class InputSystem {
 
         panel.addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent e) {
+                if (e.isShiftDown() && SwingUtilities.isRightMouseButton(e)) {
+                    TacticalCombatDepthSystem.issueSelectedOrder(
+                            ctx,
+                            CameraSystem.screenToWorldX(ctx, e.getX()),
+                            CameraSystem.screenToWorldY(ctx, e.getY()));
+                    return;
+                }
+                if (ctx.ui.controlsScreenOpen && !ctx.ui.controlsCaptureAction.isBlank()
+                        && HotkeyRegistry.remapMouse(ctx.ui.controlsCaptureAction, e.getButton())) {
+                    ctx.ui.controlsCaptureAction = "";
+                    return;
+                }
                 if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
@@ -65,14 +77,15 @@ public final class InputSystem {
                     return;
                 }
 
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;
-                if (SwingUtilities.isMiddleMouseButton(e)) GameplayActions.lockUnderMouse(ctx, controls);
+                HotkeyRegistry.noteMouseInput();
+                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) ExperienceRuntime.firingPressed(ctx, false);
+                if (e.getButton() == HotkeyRegistry.mouseButton("secondaryDown")) ExperienceRuntime.firingPressed(ctx, true);
+                if (e.getButton() == HotkeyRegistry.mouseButton("lockUnderMouse")) GameplayActions.lockUnderMouse(ctx, controls);
             }
 
             @Override public void mouseReleased(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = false;
-                if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = false;
+                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) ExperienceRuntime.firingReleased(ctx, false);
+                if (e.getButton() == HotkeyRegistry.mouseButton("secondaryDown")) ExperienceRuntime.firingReleased(ctx, true);
             }
         });
 
@@ -85,6 +98,55 @@ public final class InputSystem {
             @Override
             public void keyPressed(KeyEvent e) {
                 int keyCode = e.getKeyCode();
+                HotkeyRegistry.noteKeyboardInput();
+                if (e.isControlDown() && keyCode == KeyEvent.VK_G) {
+                    TacticalCombatDepthSystem.selectNearestFriendlyIntoActiveGroup(ctx);
+                    e.consume();
+                    return;
+                }
+                if (ctx.ui.controlsScreenOpen) {
+                    if (!ctx.ui.controlsCaptureAction.isBlank()) {
+                        HotkeyRegistry.remapKeyboard(ctx.ui.controlsCaptureAction, KeyStroke.getKeyStrokeForEvent(e));
+                        ctx.ui.controlsCaptureAction = "";
+                        e.consume();
+                        return;
+                    }
+                    if (e.isControlDown() && keyCode >= KeyEvent.VK_1 && keyCode <= KeyEvent.VK_6) {
+                        HotkeyRegistry.restoreDefaults(HotkeyRegistry.Scope.values()[keyCode - KeyEvent.VK_1]);
+                        e.consume();
+                        return;
+                    }
+                    if (keyCode == KeyEvent.VK_UP) {
+                        ctx.ui.controlsSelectedIndex = Math.max(0, ctx.ui.controlsSelectedIndex - 1);
+                        e.consume();
+                        return;
+                    }
+                    if (keyCode == KeyEvent.VK_DOWN) {
+                        ctx.ui.controlsSelectedIndex++;
+                        e.consume();
+                        return;
+                    }
+                    if (keyCode == KeyEvent.VK_ENTER) {
+                        java.util.List<HotkeyRegistry.Binding> found = HotkeyRegistry.search(ctx.ui.controlsSearchQuery);
+                        if (!found.isEmpty()) {
+                            ctx.ui.controlsSelectedIndex = Math.min(ctx.ui.controlsSelectedIndex, found.size() - 1);
+                            ctx.ui.controlsCaptureAction = found.get(ctx.ui.controlsSelectedIndex).action();
+                        }
+                        e.consume();
+                        return;
+                    }
+                    if (keyCode == KeyEvent.VK_BACK_SPACE && !ctx.ui.controlsSearchQuery.isEmpty()) {
+                        ctx.ui.controlsSearchQuery = ctx.ui.controlsSearchQuery.substring(0, ctx.ui.controlsSearchQuery.length() - 1);
+                        e.consume();
+                        return;
+                    }
+                    char ch = e.getKeyChar();
+                    if (!Character.isISOControl(ch) && ctx.ui.controlsSearchQuery.length() < 32) {
+                        ctx.ui.controlsSearchQuery += ch;
+                        e.consume();
+                        return;
+                    }
+                }
                 handleCameraPanKeyPressed(ctx, keyCode);
                 if (GameplayActions.tryHandleStrategicEncounterHotkey(ctx, e)) {
                     e.consume();

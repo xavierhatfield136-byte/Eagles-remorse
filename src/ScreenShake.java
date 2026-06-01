@@ -17,10 +17,15 @@ public final class ScreenShake {
 
     private static double offX = 0.0;
     private static double offY = 0.0;
+    private static double scale = 1.0;
+
+    public static void setScale(double value) {
+        scale = Math.max(0.0, Math.min(1.0, value));
+    }
 
     public static void kick(double magnitude) {
         // stack a little, cap hard
-        mag = Math.min(22.0, mag + magnitude);
+        mag = Math.min(22.0, mag + magnitude * scale);
         timeLeft = Math.min(0.35, timeLeft + 0.12);
     }
 

@@ -5768,7 +5768,12 @@ public abstract class Ship {
         if (closestMissile != null && closestSmallCraft != null) {
             double missileD2 = GameMath.dist2(x, y, closestMissile.x, closestMissile.y);
             double craftD2 = GameMath.dist2(x, y, closestSmallCraft.x, closestSmallCraft.y);
-            targetMissile = missileD2 * 0.92 <= craftD2;
+            TacticalCombatDepthSystem.PointDefensePriority priority = TacticalCombatDepthSystem.pointDefensePriority(this);
+            targetMissile = switch (priority) {
+                case MISSILES_FIRST -> missileD2 * 0.55 <= craftD2;
+                case STRIKE_CRAFT_FIRST -> missileD2 * 1.65 <= craftD2;
+                case BALANCED -> missileD2 * 0.92 <= craftD2;
+            };
         }
 
         // Fire!
@@ -6647,6 +6652,10 @@ public abstract class Ship {
         double firePenalty = MathUtil.clamp(totalFireIntensity() * 0.10, 0.0, 0.60);
         double calm = MathUtil.clamp(1.0 - disruptionPenalty - firePenalty, 0.0, 1.0);
         return MathUtil.clamp((bridge * 0.42 + sensors * 0.33 + readiness * 0.25) * calm, 0.0, 1.0);
+    }
+
+    public double commandLinkQuality() {
+        return commandNetStrength();
     }
 
     private double aegisLatticeStrength() {

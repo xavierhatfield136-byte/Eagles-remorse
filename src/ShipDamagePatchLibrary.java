@@ -1,4 +1,6 @@
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -18,7 +20,7 @@ final class ShipDamagePatchLibrary {
     private static final String[] FAMILIES = {"azure", "ember", "emerald", "amber"};
     private static final String[] VARIANTS = {"a", "b", "c"};
     private static final List<File> PATCH_ROOTS = resolvePatchRoots(PATCH_DIR);
-    private static final Map<String, List<DamagePatch>> FAMILY_CACHE = new HashMap<>();
+    private static final Map<String, List<DamagePatch>> FAMILY_CACHE = new BoundedCache<>(16);
 
     private ShipDamagePatchLibrary() {}
 
@@ -81,12 +83,12 @@ final class ShipDamagePatchLibrary {
         for (File root : PATCH_ROOTS) {
             File file = new File(root, key + ".png");
             try {
-                if (file.isFile()) return ImageIO.read(file);
+                if (file.isFile()) return AssetLoadGuard.read(file, "damage-patch");
             } catch (IOException ignored) {}
         }
 
         try (InputStream in = ShipDamagePatchLibrary.class.getResourceAsStream(PATCH_RESOURCE_DIR + key + ".png")) {
-            if (in != null) return ImageIO.read(in);
+            if (in != null) return AssetLoadGuard.read(in, "damage-patch", key);
         } catch (IOException ignored) {}
         return null;
     }

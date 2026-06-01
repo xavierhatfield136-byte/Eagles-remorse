@@ -137,6 +137,39 @@ tasks.register("phase9Smoke", JavaExec) {
     args("--strict", "--seconds=60")
 }
 
+tasks.register("performanceGuardrailSmoke", JavaExec) {
+    group = "verification"
+    description = "Run the late-campaign battle stress and memory guardrail scenario."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "PerformanceGuardrailHarness"
+    args("--strict", "--ticks=180", "--ships-per-side=100")
+}
+
+tasks.register("performanceGuardrailSoak", JavaExec) {
+    group = "verification"
+    description = "Run the extended battle and memory soak scenario."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "PerformanceGuardrailHarness"
+    args("--strict", "--ticks=3600", "--ships-per-side=160")
+}
+
+tasks.register("saveLoadSoak", JavaExec) {
+    group = "verification"
+    description = "Run isolated checkpoint save/load cycles across tactical-transition-shaped state."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "SaveLoadSoakHarness"
+    args("--cycles=100")
+}
+
+tasks.register("performanceGuardrailsCi") {
+    group = "verification"
+    description = "Run the CI performance guardrail and isolated save/load scenarios."
+    dependsOn("performanceGuardrailSmoke", "saveLoadSoak")
+}
+
 tasks.register("stabilitySmoke") {
     group = "verification"
     description = "Run the lightweight regression smoke suite."

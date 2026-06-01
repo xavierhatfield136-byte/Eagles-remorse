@@ -15,6 +15,7 @@ public final class PhysicsSystem {
 
     public static void update(GameContext ctx, double dt) {
         if (ctx == null) return;
+        if (TacticalCombatDepthSystem.isTacticalPause(ctx)) return;
         ctx.battleElapsed += Math.max(0.0, dt);
         TargetingSystem.enforceCloakLockRules(ctx);
 
@@ -227,6 +228,7 @@ public final class PhysicsSystem {
         // --- Collisions ---
         CollisionSystem.handleProjectilesVsProjectiles(ctx, ctx.projectiles);
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
+        TacticalCombatDepthSystem.handleRamming(ctx);
         CollisionSystem.handleProjectilesVsAsteroids(ctx, ctx.projectiles, ctx.asteroids);
         CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
         awardPlayerKillAssistCredits(ctx);
@@ -256,6 +258,7 @@ public final class PhysicsSystem {
             WreckChunk.updateAll(dt);
         } catch (Throwable ignored) {
         }
+        TacticalCombatDepthSystem.update(ctx, dt);
 
         ctx.entityQuery.rebuild(ctx);
     }

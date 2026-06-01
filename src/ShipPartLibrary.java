@@ -1,4 +1,5 @@
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -199,12 +200,12 @@ final class ShipPartLibrary {
         BufferedImage img = null;
         File file = new File(PART_DIR, key + ".png");
         try {
-            if (file.isFile()) img = ImageIO.read(file);
+            if (file.isFile()) img = AssetLoadGuard.read(file, "multipart");
         } catch (IOException ignored) {}
 
         if (img == null) {
             try (InputStream in = ShipPartLibrary.class.getResourceAsStream(PART_RESOURCE_DIR + key + ".png")) {
-                if (in != null) img = ImageIO.read(in);
+                if (in != null) img = AssetLoadGuard.read(in, "multipart", key);
             } catch (IOException ignored) {}
         }
 

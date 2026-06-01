@@ -1,5 +1,8 @@
 import app.ui.ThemeArt;
 import app.config.GameMode;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
+import app.state.SpriteAtlasRegistry;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.geom.RoundRectangle2D;
@@ -43,7 +46,14 @@ public class Renderer {
     private static long frameShieldRenderNs = 0L;
 
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT"};
-    private static final String[] CORE_MENU_HOTKEYS = {"TAB", "B", "M", "O", "H", ""};
+    private static final String[] CORE_MENU_HOTKEYS = {
+            HotkeyRegistry.label("toggleShop"),
+            HotkeyRegistry.label("toggleBaseMenu"),
+            HotkeyRegistry.label("toggleMap"),
+            HotkeyRegistry.label("togglePowerManagement"),
+            HotkeyRegistry.label("toggleCrewStations"),
+            ""
+    };
     private static final long XRAY_PERCENT_REFRESH_NS = 180_000_000L;
     private static final Font XRAY_TITLE_FONT = new Font("Consolas", Font.BOLD, 13);
     private static final Font XRAY_SUBTITLE_FONT = new Font("Consolas", Font.PLAIN, 11);
@@ -99,7 +109,11 @@ public class Renderer {
     }
 
     public static void prewarmAssetCaches() {
-        for (ShipRole role : ShipRole.values()) {
+        prewarmAssetCaches(null);
+    }
+
+    public static void prewarmAssetCaches(GameMode mode) {
+        for (ShipRole role : AssetPrewarmManifest.rolesFor(mode)) {
             for (Faction faction : Faction.values()) {
                 ShipSkinLibrary.getSkinSet(role, faction);
             }
@@ -129,6 +143,31 @@ public class Renderer {
         ProjectileSkinLibrary.getWaveShotSkin();
         ProjectileSkinLibrary.getBulletSkin();
         ProjectileSkinLibrary.getCiwsPelletSkin();
+        for (CombatHudPanelImageKey key : CombatHudPanelImageKey.values()) HudPanelSkinLibrary.get(key);
+        ThemeArt.get(ThemeArt.HUD_STANDARD_PANEL);
+        ThemeArt.get(ThemeArt.HUD_ALERT_PANEL);
+        ThemeArt.get(ThemeArt.HUD_STATUS_STRIP);
+        ThemeArt.get(ThemeArt.HUD_SPECIAL_FRAME);
+        ThemeArt.get(ThemeArt.HUD_RADAR_RING);
+        EnvironmentSkinLibrary.backgroundBase();
+        EnvironmentSkinLibrary.backgroundNebula();
+        EnvironmentSkinLibrary.backgroundStars();
+        EnvironmentSkinLibrary.backgroundDust();
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 22, 100));
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 38, 100));
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 58, 100));
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 22, 600));
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 38, 600));
+        EnvironmentSkinLibrary.pickAsteroidSprite(new Asteroid(0, 0, 58, 600));
+        StrikeButtonSkinLibrary.getTorpedoButton();
+        StrikeButtonSkinLibrary.getAirWingButton();
+        StrikeButtonSkinLibrary.getNuclearButton();
+        ShipDamagePatchLibrary.hasAnyPatch();
+        SpriteAtlasRegistry.atlas("multipart");
+        SpriteAtlasRegistry.atlas("turret");
+        SpriteAtlasRegistry.atlas("wreck");
+        SpriteAtlasRegistry.atlas("projectile");
+        SpriteAtlasRegistry.atlas("ui");
     }
 
     public static final class ShopClickTarget {
@@ -367,7 +406,7 @@ public class Renderer {
                 File file = new File(HUD_PANEL_DIR, candidate);
                 if (!file.isFile()) continue;
                 try {
-                    return ImageIO.read(file);
+                    return AssetLoadGuard.read(file, "hud-panel");
                 } catch (IOException ignored) {
                 }
             }
@@ -1608,6 +1647,58 @@ public class Renderer {
         g2.setFont(oldFont);
     }
 
+    public static void drawCurrentContextLegend(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null) return;
+        List<String> rows = HotkeyRegistry.currentContextLegend(ctx);
+        if (rows.isEmpty()) return;
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        int width = 0;
+        for (String row : rows) width = Math.max(width, fm.stringWidth(row));
+        int x = Math.max(8, viewW - width - 24);
+        int y = Math.max(18, viewH - 82 - rows.size() * 14);
+        g2.setColor(new Color(0, 0, 0, 142));
+        g2.fillRoundRect(x - 8, y - 14, width + 16, rows.size() * 14 + 10, 10, 10);
+        g2.setColor(new Color(220, 236, 255, 205));
+        for (String row : rows) {
+            g2.drawString(row, x, y);
+            y += 14;
+        }
+    }
+
+    public static void drawControlsScreen(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.controlsScreenOpen) return;
+        int w = Math.min(900, viewW - 64);
+        int h = Math.min(620, viewH - 64);
+        int x = (viewW - w) / 2;
+        int y = (viewH - h) / 2;
+        g2.setColor(new Color(0, 0, 0, 232));
+        g2.fillRoundRect(x, y, w, h, 16, 16);
+        g2.setColor(new Color(160, 210, 255, 210));
+        g2.drawRoundRect(x, y, w, h, 16, 16);
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.drawString("SEARCHABLE CONTROLS  Ctrl+H close", x + 18, y + 28);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 13));
+        g2.drawString("Search: " + ctx.ui.controlsSearchQuery + "_", x + 18, y + 50);
+        g2.drawString("Arrows select, Enter rebind keyboard, Ctrl+1..6 restore scope defaults", x + 360, y + 50);
+        int rowY = y + 76;
+        int index = 0;
+        for (HotkeyRegistry.Binding binding : HotkeyRegistry.search(ctx.ui.controlsSearchQuery)) {
+            g2.setColor(index == ctx.ui.controlsSelectedIndex ? new Color(255, 230, 155) : new Color(160, 210, 255));
+            g2.drawString(String.format(Locale.US, "%-14s %-26s %s",
+                    binding.scope().name(), binding.action(), binding.label()), x + 18, rowY);
+            rowY += 16;
+            index++;
+            if (rowY > y + h - 48) break;
+        }
+        List<String> warnings = HotkeyRegistry.conflictWarnings();
+        g2.setColor(warnings.isEmpty() ? new Color(140, 230, 170) : new Color(255, 170, 120));
+        String status = ctx.ui.controlsCaptureAction.isBlank()
+                ? (warnings.isEmpty() ? "No binding conflicts." : "Conflict: " + warnings.get(0))
+                : "Press a key for " + ctx.ui.controlsCaptureAction;
+        g2.drawString(status, x + 18, y + h - 20);
+    }
+
 
 
     private static String fmt1(double v) {
@@ -2366,7 +2457,8 @@ public class Renderer {
             boolean visible = FogOfWarSystem.isVisibleToPerspective(fog, perspective, s);
             if (visible) {
                 if (!isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) continue;
-                drawShip(g2, s);
+                boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
                 drawn++;
             } else {
                 FogOfWarSystem.ContactGhost ghost = (fog == null) ? null : fog.contactGhost(s.id);
@@ -5400,26 +5492,30 @@ public class Renderer {
 
     private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
         ArrayList<String> out = new ArrayList<>();
-        out.add("SPACE/LMB FIRE");
-        out.add("SHIFT/RMB SECONDARY");
-        out.add("L/MMB LOCK");
-        out.add("J TACTICAL");
+        out.add(HotkeyRegistry.label("primaryDown") + "/LMB FIRE");
+        out.add(HotkeyRegistry.label("secondaryDown") + "/RMB SECONDARY");
+        out.add(HotkeyRegistry.label("lockUnderMouse") + "/MMB LOCK");
+        out.add(HotkeyRegistry.label("toggleTacticalView") + " TACTICAL");
         out.add("WASD MOVE / ARROWS PAN");
-        out.add("TAB SHOP / ESC PAUSE");
-        out.add("M MAP / N HUD / H CREW");
+        out.add(HotkeyRegistry.label("toggleShop") + " SHOP / " + HotkeyRegistry.label("escape") + " PAUSE");
+        out.add(HotkeyRegistry.label("toggleMap") + " MAP / " + HotkeyRegistry.label("cycleHudDetail") + " HUD / "
+                + HotkeyRegistry.label("toggleCrewStations") + " CREW");
         out.add("F1-F5 STATIONS");
-        out.add("O POWER / B BASE");
+        out.add(HotkeyRegistry.label("togglePowerManagement") + " POWER / " + HotkeyRegistry.label("toggleBaseMenu") + " BASE");
         out.add("SAFE EXIT BUTTON");
-        out.add("P PING / G WAYPOINT");
+        out.add(HotkeyRegistry.label("pingAtCursor") + " PING / " + HotkeyRegistry.label("setWaypoint") + " WAYPOINT");
         out.add("CTRL +/-/0 ZOOM");
-        out.add("-/BKSP WARP");
-        out.add("T AUTO-LOCK");
-        out.add("F MINE / E OVERCHARGE / ; THRUST");
-        out.add("Y PRESET / U CREW ORDER");
-        out.add("X SUPERWEAPON");
-        out.add("` XRAY FILTER / ' CLEAR");
+        out.add(HotkeyRegistry.label("battlefieldWarp") + "/BKSP WARP");
+        out.add(HotkeyRegistry.label("toggleTurretAuto") + " AUTO-LOCK");
+        out.add(HotkeyRegistry.label("miningDown") + " MINE / " + HotkeyRegistry.label("shieldOvercharge")
+                + " OVERCHARGE / " + HotkeyRegistry.label("toggleEmergencyThrust") + " THRUST");
+        out.add(HotkeyRegistry.label("cyclePowerPreset") + " PRESET / " + HotkeyRegistry.label("cycleCrewOrder") + " CREW ORDER");
+        out.add(HotkeyRegistry.label("superweapon") + " SUPERWEAPON");
+        out.add(HotkeyRegistry.label("cycleXrayFilter") + " XRAY FILTER / " + HotkeyRegistry.label("clearXrayFocus") + " CLEAR");
         if (player.isCarrier) {
-            out.add("C LAUNCH / R RECALL / V MODE / Z AUTO-LAUNCH");
+            out.add(HotkeyRegistry.label("carrierLaunch") + " LAUNCH / " + HotkeyRegistry.label("carrierRecall")
+                    + " RECALL / " + HotkeyRegistry.label("carrierMode") + " MODE / "
+                    + HotkeyRegistry.label("carrierAutoLaunch") + " AUTO-LAUNCH");
         }
         return out;
     }
@@ -5668,38 +5764,8 @@ public class Renderer {
         return rowY + 6;
     }
 
-    private static java.util.List<String> buildHudControlsRows(Player player, GameContext.HudDetail detail) {
-        java.util.List<String> rows = new ArrayList<>();
-        if (detail == GameContext.HudDetail.MINIMAL) {
-            rows.add("HELP surface stores combat, navigation, and overlay hotkeys so the live HUD can stay focused.");
-            rows.add("META: ESC pause/resume");
-            return rows;
-        }
-
-        if (detail == GameContext.HudDetail.COMPACT) {
-            rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-            rows.add("NAV: WASD move | arrows pan | TAB fleet management | B command upgrades | M map | N HUD");
-            rows.add("SYSTEMS: H crew | O power | B base | P ping | G waypoint");
-            rows.add("OBJECTIVES: Click strategic-map markers to set objective waypoints directly.");
-            rows.add("COMMS: I cycle intent | K hail target | marker panel lists live mission targets.");
-            rows.add("SPECIAL: F mine | E overcharge | ; thrust | Y preset | U crew order | T auto-lock");
-            rows.add("EXTRAS: X superweapon | ` xray filter | ' xray clear | -/BKSP warp | Ctrl +/-/0 zoom");
-            if (player.isCarrier) rows.add("CARRIER: C launch | R recall | V mode | Z auto-launch");
-            rows.add("META: ESC pause/resume | Alt+Enter fullscreen");
-            return rows;
-        }
-
-        rows.add("COMBAT: SPACE/LMB fire | SHIFT/RMB secondary | L/MMB lock | J tactical");
-        rows.add("NAV: WASD move | arrows pan | TAB fleet management | B command upgrades | M map | N HUD | H crew");
-        rows.add("SYSTEMS: O power | B base | P ping | G waypoint | F mine | E overcharge | ; thrust");
-        rows.add("OBJECTIVES: Strategic map markers can be clicked for direct routeing to kill, escort, protect, and capture targets.");
-        rows.add("COMMS: I cycle intent | K hail target | live comms intent is now kept here instead of the ship card.");
-        rows.add("TARGETING: T auto-lock | Y preset | U crew order | X superweapon");
-        rows.add("X-RAY: ` filter | ' clear focus | click room focus/protect");
-        rows.add("WARP: - or BACKSPACE | Ctrl +/-/0 zoom");
-        if (player.isCarrier) rows.add("CARRIER: C launch | R recall | V mode | Z auto-launch");
-        rows.add("META: ESC pause/resume | Alt+Enter fullscreen");
-        return rows;
+    static java.util.List<String> buildHudControlsRows(Player player, GameContext.HudDetail detail) {
+        return HotkeyRegistry.hudHelpRows(player != null && player.isCarrier, detail);
     }
 
     private static <T> List<T> limitHudLines(List<T> lines, int maxLines) {
@@ -12359,9 +12425,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Stroke old = g2.getStroke();
         g2.setStroke(new BasicStroke((float) Math.max(1.1, r * 0.8), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g2.setColor(withAlpha(core, (p instanceof SuperweaponShot) ? 220 : 190));
-        g2.drawLine(x, y,
-                (int) Math.round(p.x - ux * trailLen),
-                (int) Math.round(p.y - uy * trailLen));
+        if ((Math.abs(p.hashCode()) % PerformanceGuardrails.projectileTrailStride()) == 0) {
+            g2.drawLine(x, y,
+                    (int) Math.round(p.x - ux * trailLen),
+                    (int) Math.round(p.y - uy * trailLen));
+        }
         g2.setStroke(old);
         g2.setColor(withAlpha(mixColor(core, Color.WHITE, 0.22), (p instanceof SuperweaponShot) ? 236 : 214));
         g2.fillOval(x - r, y - r, r * 2, r * 2);
@@ -12446,7 +12514,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
      * - Engine cones and hardpoint mounts
      */
     private static final class ShipRenderer {
-        private static final Map<String, ShipVisual> CACHE = new HashMap<>();
+        private static final Map<String, ShipVisual> CACHE = new BoundedCache<>(256);
 
         static void drawShip(Graphics2D g2, Ship ship) {
             drawShip(g2, ship, true, true, true);
@@ -13444,7 +13512,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final String SKIN_DIR = "assets/ship_skins";
         private static final String SKIN_RESOURCE_DIR = "ship_skins";
         private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
-        private static final Map<String, ShipSkinSet> CACHE = new HashMap<>();
+        private static final Map<String, ShipSkinSet> CACHE = new BoundedCache<>(192);
         private static final Set<String> MISS = new HashSet<>();
 
         static boolean hasSkin(ShipRole role, Faction faction) {
@@ -13521,7 +13589,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
-                    if (f.isFile()) return ImageIO.read(f);
+                    if (f.isFile()) return AssetLoadGuard.read(f, "ship-skin");
                 } catch (IOException ignored) {}
             }
             return null;
@@ -13588,7 +13656,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final String SKIN_DIR = "assets/turret_skins";
         private static final String SKIN_RESOURCE_DIR = "turret_skins";
         private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
-        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final Map<String, BufferedImage> CACHE = new BoundedCache<>(192);
         private static final Set<String> MISS = new HashSet<>();
 
         static BufferedImage getTurretSkin(String styleKey, ShipRole role, Faction faction) {
@@ -13628,11 +13696,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             for (File root : SKIN_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
-                    if (f.isFile()) return ImageIO.read(f);
+                    if (f.isFile()) return AssetLoadGuard.read(f, "turret");
                 } catch (IOException ignored) {}
                 File upper = new File(root, key.toUpperCase(Locale.ROOT) + ".png");
                 try {
-                    if (upper.isFile()) return ImageIO.read(upper);
+                    if (upper.isFile()) return AssetLoadGuard.read(upper, "turret");
                 } catch (IOException ignored) {}
             }
             return null;
@@ -13692,7 +13760,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final String MODULE_DIR = "assets/station_modules";
         private static final String MODULE_RESOURCE_DIR = "station_modules";
         private static final List<File> MODULE_ROOTS = resolveSkinRoots(MODULE_DIR);
-        private static final Map<String, BufferedImage> CACHE = new HashMap<>();
+        private static final Map<String, BufferedImage> CACHE = new BoundedCache<>(64);
         private static final Set<String> MISS = new HashSet<>();
 
         static BufferedImage getModuleSkin(String moduleKey, Faction faction) {
@@ -13723,7 +13791,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             for (File root : MODULE_ROOTS) {
                 File f = new File(root, key + ".png");
                 try {
-                    if (f.isFile()) return ImageIO.read(f);
+                    if (f.isFile()) return AssetLoadGuard.read(f, "station");
                 } catch (IOException ignored) {}
             }
             return null;
@@ -13790,7 +13858,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static BufferedImage bgStars;
         private static BufferedImage bgDust;
         private static boolean campaignBgLoaded = false;
-        private static final Map<String, BufferedImage> CAMPAIGN_BG = new HashMap<>();
+        private static final Map<String, BufferedImage> CAMPAIGN_BG = new BoundedCache<>(32);
 
         private static boolean astLoaded = false;
         private static final Map<String, List<BufferedImage>> AST_NORMAL = new HashMap<>();
@@ -13907,7 +13975,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 if (size == null) continue;
 
                 try {
-                    BufferedImage img = ImageIO.read(f);
+                    BufferedImage img = AssetLoadGuard.read(f, "asteroid");
                     if (img == null) continue;
                     (ore ? AST_ORE : AST_NORMAL).get(size).add(img);
                 } catch (IOException ex) {
@@ -13935,7 +14003,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     String key = normalizeCampaignKey(stem);
                     if (key.isBlank() || CAMPAIGN_BG.containsKey(key)) continue;
                     try {
-                        BufferedImage img = ImageIO.read(f);
+                        BufferedImage img = AssetLoadGuard.read(f, "campaign-bg");
                         if (img != null) {
                             CAMPAIGN_BG.put(key, img);
                         }
@@ -14001,7 +14069,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 for (String key : keys) {
                     File f = new File(root, key + ".png");
                     try {
-                        if (f.isFile()) return ImageIO.read(f);
+                        if (f.isFile()) return AssetLoadGuard.read(f, "environment");
                     } catch (IOException ignored) {}
                 }
             }
@@ -14132,7 +14200,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             String path = SKIN_DIR + "/" + key + ".png";
             try {
                 File f = new File(path);
-                if (f.isFile()) return ImageIO.read(f);
+                if (f.isFile()) return AssetLoadGuard.read(f, "projectile");
             } catch (IOException ignored) {}
             return null;
         }
@@ -14175,7 +14243,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             String path = SKIN_DIR + "/" + key + ".png";
             try {
                 File f = new File(path);
-                if (f.isFile()) return ImageIO.read(f);
+                if (f.isFile()) return AssetLoadGuard.read(f, "ui");
             } catch (IOException ignored) {}
             return null;
         }
@@ -14190,11 +14258,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         for (String path : paths) {
             try (InputStream in = anchor.getResourceAsStream(path)) {
                 if (in == null) continue;
-                BufferedImage img = ImageIO.read(in);
+                BufferedImage img = AssetLoadGuard.read(in, atlasCategory(resourceDir), path);
                 if (img != null) return img;
             } catch (IOException ignored) {}
         }
         return null;
+    }
+
+    private static String atlasCategory(String resourceDir) {
+        if (resourceDir == null) return "image";
+        if (resourceDir.contains("turret")) return "turret";
+        if (resourceDir.contains("projectile")) return "projectile";
+        if (resourceDir.contains("strike") || resourceDir.contains("ui")) return "ui";
+        if (resourceDir.contains("ship_skin")) return "ship-skin";
+        return "environment";
     }
 
     private static void drawShipLegacy(Graphics2D g2, Ship ship) {
@@ -15966,12 +16043,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color roomTraceTint(ShipRoomLayout.RoomId roomId, int alpha) {
         int a = MathUtil.clamp(alpha, 0, 255);
         if (roomId == null) return new Color(255, 178, 105, a);
-        if (ShipRoomLayout.isShieldStripRoom(roomId)) return new Color(124, 214, 255, a);
+        if (ShipRoomLayout.isShieldStripRoom(roomId)) return withAlpha(ExperienceRuntime.shieldStateColor(), a);
         if (ShipRoomLayout.isArmorRoom(roomId)) return new Color(210, 224, 236, a);
         if (ShipRoomLayout.isPowerRoom(roomId)) return new Color(255, 198, 112, a);
         if (ShipRoomLayout.isWeaponRoom(roomId)) return new Color(255, 164, 94, a);
-        if (ShipRoomLayout.isMagazineRoom(roomId)) return new Color(255, 96, 86, a);
-        if (ShipRoomLayout.isShieldRoom(roomId)) return new Color(178, 166, 255, a);
+        if (ShipRoomLayout.isMagazineRoom(roomId)) return withAlpha(ExperienceRuntime.roomDamageColor(), a);
+        if (ShipRoomLayout.isShieldRoom(roomId)) return withAlpha(ExperienceRuntime.shieldStateColor(), a);
         if (ShipRoomLayout.isEngineRoom(roomId) || ShipRoomLayout.isWarpRoom(roomId) || roomId == ShipRoomLayout.RoomId.AFT_SPINE) {
             return new Color((roomId == ShipRoomLayout.RoomId.WARP_DRIVE) ? 144 : 130,
                     (roomId == ShipRoomLayout.RoomId.WARP_DRIVE) ? 186 : 208,
@@ -16251,6 +16328,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Color factionHullColor(Faction f) {
+        Color accessible = ExperienceRuntime.factionColor(f, false);
+        if (accessible != null) return accessible;
         if (f == Faction.ENEMY) return new Color(220, 80, 80);
         if (f == Faction.PLAYER) return new Color(70, 220, 120);
         if (f == Faction.TEAM_C) return new Color(86, 196, 102);
@@ -16259,6 +16338,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Color factionTrimColor(Faction f) {
+        Color accessible = ExperienceRuntime.factionColor(f, true);
+        if (accessible != null) return accessible.brighter();
         if (f == Faction.ENEMY) return new Color(255, 170, 170);
         if (f == Faction.PLAYER) return new Color(200, 255, 220);
         if (f == Faction.TEAM_C) return new Color(188, 255, 186);
@@ -16267,6 +16348,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Color factionHudColor(Faction f, int alpha) {
+        Color accessible = ExperienceRuntime.factionColor(f, true);
+        if (accessible != null) return withAlpha(accessible, alpha);
         Color base;
         if (f == Faction.ENEMY) base = new Color(255, 170, 170);
         else if (f == Faction.PLAYER) base = new Color(180, 255, 220);
@@ -16277,6 +16360,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Color factionMapColor(Faction f, boolean isPlayer, int alpha) {
+        Color accessible = ExperienceRuntime.factionColor(f, true);
+        if (accessible != null) return withAlpha(accessible, alpha);
         Color base;
         if (isPlayer || f == Faction.PLAYER) base = new Color(90, 255, 140);
         else if (f == Faction.ENEMY) base = new Color(255, 90, 90);

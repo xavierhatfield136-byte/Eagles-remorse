@@ -190,7 +190,13 @@ public final class XrayReadabilityHarness {
                         Math.min(frame.getWidth() - Math.max(0, stackRect.x - 12), stackRect.width + 24),
                         Math.min(frame.getHeight() - Math.max(0, stackRect.y - 12), stackRect.height + 24)
                 );
-                BufferedImage crop = frame.getSubimage(expanded.x, expanded.y, expanded.width, expanded.height);
+                BufferedImage crop = new BufferedImage(expanded.width, expanded.height, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D cropG = crop.createGraphics();
+                try {
+                    cropG.drawImage(frame, -expanded.x, -expanded.y, null);
+                } finally {
+                    cropG.dispose();
+                }
                 Path cropOut = args.snapshotDir.resolve(String.format(Locale.US, "xray_readability_%02d_crop.png", snapIndex + 1));
                 ImageIO.write(crop, "png", cropOut.toFile());
                 snapIndex++;

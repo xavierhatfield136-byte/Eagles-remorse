@@ -1,10 +1,11 @@
 import javax.imageio.ImageIO;
+import app.state.AssetLoadGuard;
+import app.state.BoundedCache;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -15,8 +16,8 @@ final class ShipWreckLibrary {
     private static final String WRECK_DIR = "assets/ship_wrecks";
     private static final String WRECK_RESOURCE_DIR = "/ship_wrecks/";
     private static final List<File> WRECK_ROOTS = resolveWreckRoots(WRECK_DIR);
-    private static final Map<String, WreckSet> CACHE = new HashMap<>();
-    private static final Map<String, BufferedImage> IMAGE_CACHE = new HashMap<>();
+    private static final Map<String, WreckSet> CACHE = new BoundedCache<>(96);
+    private static final Map<String, BufferedImage> IMAGE_CACHE = new BoundedCache<>(64);
     private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
     private static boolean cachesPrewarmed = false;
 
@@ -82,13 +83,13 @@ final class ShipWreckLibrary {
         File file = new File(WRECK_DIR, key + ".png");
         try {
             if (file.isFile()) {
-                img = ImageIO.read(file);
+                img = AssetLoadGuard.read(file, "wreck");
             }
         } catch (IOException ignored) {}
 
         if (img == null) {
             try (InputStream in = ShipWreckLibrary.class.getResourceAsStream(WRECK_RESOURCE_DIR + key + ".png")) {
-                if (in != null) img = ImageIO.read(in);
+                if (in != null) img = AssetLoadGuard.read(in, "wreck", key);
             } catch (IOException ignored) {}
         }
 

@@ -97,7 +97,7 @@ public class CollisionSystem {
                     ImpactVisualPoints impactPoints = resolveImpactVisualPoints(s, p.x, p.y, p.vx, p.vy);
                     double shieldBefore = s.shield;
                     int hpBefore = s.hp;
-                    int effectiveDamage = p.getEffectiveDamage();
+                    int effectiveDamage = scaleDamage(ctx, p.getEffectiveDamage());
                     boolean redRailgunShot = isRedRailgunSuperweapon(shooter, p);
                     if (redRailgunShot) {
                         int shieldCrack = Math.max(0, (int) Math.round(effectiveDamage * 0.35));
@@ -205,7 +205,7 @@ public class CollisionSystem {
                     applyArmorBypassingTorpedoImpact(missile, s);
                 } else {
                     s.takeDamage(
-                            p.damage,
+                            scaleDamage(ctx, p.damage),
                             p.x,
                             p.y,
                             p.vx,
@@ -408,6 +408,7 @@ public class CollisionSystem {
                 AudioSystem.onHullImpact(ctx, impactStyleFor(p), p.x, p.y);
 
                 if (destroyed) {
+                    TacticalCombatDepthSystem.detonateVolatileOre(ctx, a);
                     if (showImpactVfx) {
                         Explosion.spawnShieldHit(a.x, a.y);
                         ScreenShake.kick(Math.min(5.0, 1.2 + a.collisionRadius() * 0.06));
@@ -568,7 +569,7 @@ public class CollisionSystem {
                 int splash = (int) Math.round(baseSplash * (0.35 + 0.65 * falloff));
                 if (splash <= 0) continue;
                 markPlayerHitContribution(ctx, m, s);
-                s.takeDamage(splash, m.x, m.y);
+                s.takeDamage(scaleDamage(ctx, splash), m.x, m.y);
                 logDamageEvent(ctx, "missile_splash:" + System.identityHashCode(m), splash, VFX.ImpactStyle.EXPLOSIVE, s, m.x, m.y);
             }
         }
@@ -816,7 +817,7 @@ public class CollisionSystem {
                 if (artilleryExecute) {
                     int executionDamage = Math.max(720, s.hpMax * 20);
                     s.drainShieldByAmount(s.shieldMax + shieldDamage * 2.0, x, y, impactVx, impactVy);
-                    s.takeDamage(executionDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
+                    s.takeDamage(scaleDamage(ctx, executionDamage), impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
                     if (s.alive && !s.dying && s.hp > 0) {
                         s.takePenetratingInternalDamage(executionDamage, impactPoints.hullX(), impactPoints.hullY(), impactVx, impactVy);
                     }
@@ -943,7 +944,7 @@ public class CollisionSystem {
             int hullDamage = resolveDisruptorHullDamage(slug, s, falloff, s == directHit);
             if (hullDamage > 0) {
                 markPlayerHitContribution(ctx, slug, s);
-                s.takeDamage(hullDamage, x, y, impactVx, impactVy);
+                s.takeDamage(scaleDamage(ctx, hullDamage), x, y, impactVx, impactVy);
                 logDamageEvent(ctx, "disruptor_blast:" + System.identityHashCode(slug), hullDamage, VFX.ImpactStyle.BEAM, s, x, y);
             }
             s.applyTemporaryDisable(disruptorDisableSeconds(s));
@@ -1159,7 +1160,7 @@ public class CollisionSystem {
         markPlayerHitContribution(ctx, beam, target);
         double shieldBefore = target.shield;
         int hpBefore = target.hp;
-        target.takeDamage(damage, hitX, hitY, dirX, dirY, Ship.InteriorHitProfile.LASER_LINE);
+        target.takeDamage(scaleDamage(ctx, damage), hitX, hitY, dirX, dirY, Ship.InteriorHitProfile.LASER_LINE);
         logDamageEvent(ctx, "phaser_beam:" + System.identityHashCode(beam), damage, VFX.ImpactStyle.BEAM, target, hitX, hitY);
 
         boolean shieldHit = target.shield < shieldBefore - 1e-6;
@@ -1300,6 +1301,12 @@ public class CollisionSystem {
     private record BeamImpactResult(double hitX, double hitY, double impactFraction) {}
 
     private record ImpactVisualPoints(double hullX, double hullY, double shieldX, double shieldY) {}
+
+    static int scaleDamage(GameContext ctx, int damage) {
+        if (damage <= 0) return 0;
+        double multiplier = (ctx == null || ctx.experience == null) ? 1.0 : ctx.experience.combatLethality;
+        return Math.max(1, (int) Math.round(damage * multiplier));
+    }
 
     private static double segmentParamForPoint(double ax, double ay, double bx, double by, double px, double py) {
         double dx = bx - ax;

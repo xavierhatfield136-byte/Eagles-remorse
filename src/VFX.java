@@ -128,6 +128,7 @@ public final class VFX {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         int drawn = 0;
         int visibleIndex = 0;
+        int qualityStride = PerformanceGuardrails.vfxDrawStride();
         double screenScale = screenScale(g2);
         boolean stressMode = active.size() >= STRESS_ACTIVE_COUNT;
         boolean panicMode = active.size() >= PANIC_ACTIVE_COUNT;
@@ -137,6 +138,7 @@ public final class VFX {
                 if (!isVisible(p, minX, minY, maxX, maxY)) continue;
                 if (worldFilter != null && !worldFilter.test(p.x, p.y)) continue;
                 visibleIndex++;
+                if (qualityStride > 1 && (visibleIndex % qualityStride) != 0 && isSkippableUnderPanic(p.type)) continue;
                 if (panicMode && isSkippableUnderPanic(p.type) && (visibleIndex & 1) == 0) continue;
 
                 double f = (p.maxLife <= 0) ? 0 : Math.max(0.0, Math.min(1.0, p.life / (double) p.maxLife));
@@ -605,7 +607,7 @@ public final class VFX {
         p.size = Math.max(8.0, radius);
         p.maxLife = p.life = 10;
         p.baseAlpha = 190;
-        p.color = (color != null) ? color : new Color(120, 220, 255);
+        p.color = (color != null) ? color : ExperienceRuntime.shieldStateColor();
         addCapped(p);
     }
 

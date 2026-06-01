@@ -7,7 +7,6 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -65,7 +64,7 @@ class StrategicMapWaypointSelectionTest {
     }
 
     @Test
-    void missionSubzonesBlockDirectFireAcrossBorders() {
+    void unifiedMissionSpaceAllowsDirectFireAcrossFormerSubzoneBorders() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -79,12 +78,29 @@ class StrategicMapWaypointSelectionTest {
                 CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(1, 1)),
                 CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(1, 1)));
 
-        assertFalse(CampaignSystem.missionSubzonesAllowDirectFire(ctx, friendly, hostile));
+        assertTrue(CampaignSystem.missionSubzonesAllowDirectFire(ctx, friendly, hostile));
 
         hostile.x = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(0, 1));
         hostile.y = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(0, 1));
         hostile.campaignMissionSubzone = -1;
 
         assertTrue(CampaignSystem.missionSubzonesAllowDirectFire(ctx, friendly, hostile));
+    }
+
+    @Test
+    void unifiedMissionSpaceDoesNotClampPlayerAtFormerSouthGridEdge() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.player.x = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(0, 1));
+        ctx.player.y = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(0, 2)) + 3200.0;
+        double southOfFormerGrid = ctx.player.y;
+
+        PhysicsSystem.update(ctx, GameContext.DT);
+
+        assertEquals(southOfFormerGrid, ctx.player.y, 1e-6,
+                "unified combat space should not snap the player back to the old mission-grid south edge");
     }
 }
