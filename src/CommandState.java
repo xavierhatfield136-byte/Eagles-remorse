@@ -22,7 +22,6 @@ public final class CommandState {
     public boolean tacticalAutomation = false;
     public boolean engineeringAutomation = false;
     public boolean scienceAutomation = true;
-    public boolean scienceJamming = false;
     public double helmDesiredRange = 480.0;
     public boolean miningAuto = false;
     public GameContext.FleetCommand alliedFleetCommand = GameContext.FleetCommand.AUTO;

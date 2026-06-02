@@ -31,9 +31,9 @@ public final class RoomHitResolver {
         for (ShipRoomLayout.RoomDef room : rooms) {
             if (room == null) continue;
 
-            double boundarySq = distanceToBoundarySq(room, normalizedX, normalizedY);
-            double centroidSq = room.distanceSqToCentroid(normalizedX, normalizedY);
             boolean inside = room.contains(normalizedX, normalizedY);
+            double boundarySq = inside ? 0.0 : distanceToBoundarySq(room, normalizedX, normalizedY);
+            double centroidSq = room.distanceSqToCentroid(normalizedX, normalizedY);
             boolean onBoundary = boundarySq <= BOUNDARY_EPS * BOUNDARY_EPS;
 
             if (inside || onBoundary) {

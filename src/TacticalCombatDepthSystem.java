@@ -22,7 +22,7 @@ public final class TacticalCombatDepthSystem {
     }
 
     public enum SupportMode {
-        NONE, TRACTOR_TOW, REPAIR_DRONES, SHIELD_TRANSFER, MINE_LAYER, MINE_CLEARER, ECM_BURST
+        NONE, TRACTOR_TOW, REPAIR_DRONES, SHIELD_TRANSFER, MINE_LAYER, MINE_CLEARER
     }
 
     public enum PointDefensePriority {
@@ -232,15 +232,6 @@ public final class TacticalCombatDepthSystem {
                     marker(ctx, "MINEFIELD DEPLOYED");
                 }
             }
-            case ECM_BURST -> {
-                for (Projectile projectile : ctx.projectiles) {
-                    if (projectile instanceof Missile missile && missile.target == ctx.player) {
-                        missile.guidanceTicksRemaining = Math.min(missile.guidanceTicksRemaining, 1);
-                    }
-                }
-                disruptTractors(ctx, ctx.player.x, ctx.player.y, 440.0);
-                marker(ctx, "ECM / DECOY / CHAFF BURST: HOSTILE GUIDANCE DEGRADED");
-            }
             default -> marker(ctx, tactical.supportMode.name() + " ACTIVE");
         }
     }
@@ -292,6 +283,9 @@ public final class TacticalCombatDepthSystem {
 
     public static boolean canFireWeapon(Ship ship, Turret turret) {
         if (ship == null || turret == null) return false;
+        if (ship instanceof Player && turret.kind == Turret.Kind.GUN) {
+            return true;
+        }
         for (State state : STATES.values()) {
             ShipState tactical = state.ships.get(ship.id);
             if (tactical == null) continue;
@@ -308,7 +302,7 @@ public final class TacticalCombatDepthSystem {
             if (tactical == null) continue;
             tactical.weaponHeat = Math.min(1.0, tactical.weaponHeat + (turret.kind == Turret.Kind.MISSILE ? 0.035 : 0.018));
             if (turret.kind == Turret.Kind.MISSILE) tactical.missileAmmo = Math.max(0, tactical.missileAmmo - 1);
-            else tactical.ballisticAmmo = Math.max(0, tactical.ballisticAmmo - 1);
+            else if (!(ship instanceof Player)) tactical.ballisticAmmo = Math.max(0, tactical.ballisticAmmo - 1);
         }
     }
 
@@ -407,7 +401,7 @@ public final class TacticalCombatDepthSystem {
         if (ctx.player != null) {
             ShipState tactical = shipState(state, ctx.player);
             g2.drawString("Doctrine " + tactical.doctrine + "   PD " + tactical.pointDefensePriority, x + 16, y + 146);
-            g2.drawString("Ammo " + tactical.ballisticAmmo + "/" + tactical.missileAmmo + "/" + tactical.mineAmmo
+            g2.drawString("Ammo INF/" + tactical.missileAmmo + "/" + tactical.mineAmmo
                     + "   Heat " + (int) Math.round(tactical.weaponHeat * 100.0) + "%   Scars " + tactical.persistentScars,
                     x + 16, y + 164);
             if (!ctx.player.turrets.isEmpty()) {
@@ -427,37 +421,8 @@ public final class TacticalCombatDepthSystem {
     }
 
     public static void handleRamming(GameContext ctx) {
-        if (ctx == null) return;
-        List<Ship> ships = ctx.ships;
-        for (int i = 0; i < ships.size(); i++) {
-            Ship a = ships.get(i);
-            if (!alive(a)) continue;
-            for (int j = i + 1; j < ships.size(); j++) {
-                Ship b = ships.get(j);
-                if (!alive(b)) continue;
-                double rr = a.radius + b.radius;
-                double dx = b.x - a.x;
-                double dy = b.y - a.y;
-                double d2 = dx * dx + dy * dy;
-                if (d2 >= rr * rr) continue;
-                double d = Math.sqrt(Math.max(1e-6, d2));
-                double nx = dx / d;
-                double ny = dy / d;
-                double overlap = rr - d;
-                a.x -= nx * overlap * 0.5;
-                a.y -= ny * overlap * 0.5;
-                b.x += nx * overlap * 0.5;
-                b.y += ny * overlap * 0.5;
-                double relative = Math.hypot((a.vx - b.vx) / GameContext.DT, (a.vy - b.vy) / GameContext.DT);
-                if (relative < 95.0 || (a.faction != null && a.faction.isFriendlyTo(b.faction))) continue;
-                int damage = Math.max(1, (int) Math.round(relative / 88.0));
-                a.takeDamage(Math.max(1, (int) Math.round(damage * ramResistance(b.role))), a.x, a.y, -nx, -ny);
-                b.takeDamage(Math.max(1, (int) Math.round(damage * ramResistance(a.role))), b.x, b.y, nx, ny);
-                shipState(state(ctx), a).persistentScars++;
-                shipState(state(ctx), b).persistentScars++;
-                marker(ctx, "RAM IMPACT: " + a.name + " / " + b.name);
-            }
-        }
+        // The 2D game intentionally allows ships to overlap. Positional separation could
+        // trap hulls together and launch them through dense asteroid fields.
     }
 
     private static void updateHazards(GameContext ctx, State state, Ship ship, ShipState tactical, double dt) {
@@ -541,15 +506,6 @@ public final class TacticalCombatDepthSystem {
         }
     }
 
-    private static void disruptTractors(GameContext ctx, double x, double y, double range) {
-        State state = state(ctx);
-        if (state == null) return;
-        for (Map.Entry<Integer, ShipState> entry : state.ships.entrySet()) {
-            Ship ship = findShip(ctx, entry.getKey());
-            if (ship != null && GameMath.dist2(ship.x, ship.y, x, y) <= range * range) entry.getValue().towTargetId = -1;
-        }
-    }
-
     private static boolean collateralRiskNear(GameContext ctx, double x, double y, double range) {
         if (ctx == null || ctx.player == null || ctx.player.faction == null) return false;
         for (Ship ship : ctx.ships) {
@@ -594,8 +550,6 @@ public final class TacticalCombatDepthSystem {
     }
 
     private static String acknowledgmentText(GameContext ctx, Ship ship, Order order) {
-        boolean jammed = ctx != null && ctx.command != null && ctx.command.scienceJamming;
-        if (jammed && ctx.rng.nextDouble() < 0.45) return ship.name + " ACK GARBLED: ... " + order.name();
         return ship.name + " ACK: " + order.name();
     }
 

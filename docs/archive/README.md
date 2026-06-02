@@ -21,5 +21,7 @@ This folder keeps older planning, milestone, migration, and superseded checklist
 - `legacy/M3_INPUT_ACTION_MODEL.md`
 - `legacy/RC_SIGNOFF_CHECKLIST.md`
 
+The 3D sandbox references remain under `legacy/` as historical milestone documents, but the sandbox itself is intentionally preserved. Use `../FUTURE_3D_TRACK.md` for the active post-alpha 3D policy.
+
 ## Utility
 - `utility/HOW_TO_OPEN_CODEX_VIA_COMMAND_PROMPT.md`

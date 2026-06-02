@@ -282,9 +282,6 @@ public final class Phase9TelemetryHarness {
                     ? GameContext.EngineeringMode.DAMAGE_CONTROL
                     : GameContext.EngineeringMode.BALANCED);
         }
-        if (tick % 680 == 0) {
-            UISystem.toggleScienceJamming(ctx);
-        }
         if (tick % 900 == 0 && ctx.player != null) {
             SpawnSystem.spawnEnemyGroup(ctx, ctx.player.x + 560.0, ctx.player.y + 240.0);
             SpawnSystem.spawnAllyGroup(ctx, ctx.player.x - 560.0, ctx.player.y - 240.0);

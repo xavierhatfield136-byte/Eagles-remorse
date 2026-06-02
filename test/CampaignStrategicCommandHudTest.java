@@ -286,6 +286,7 @@ class CampaignStrategicCommandHudTest {
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
         List<String> fleet = CampaignSystem.campaignFleetManagerLines(ctx);
         List<String> roster = CampaignSystem.campaignFleetRosterLines(ctx, 2);
+        List<String> archive = CampaignSystem.campaignFleetArchiveLines(ctx, 2);
         List<CampaignSystem.CampaignFleetRosterEntry> entries = CampaignSystem.campaignFleetRosterEntries(ctx);
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
 
@@ -295,10 +296,42 @@ class CampaignStrategicCommandHudTest {
         assertTrue(roster.stream().anyMatch(line -> line.contains("CARGO ")));
         assertTrue(roster.stream().anyMatch(line -> line.contains("FORCE ")));
         assertTrue(roster.stream().anyMatch(line -> line.contains("FLAG") || line.contains("DET ")));
+        assertFalse(archive.isEmpty());
+        assertTrue(archive.stream().anyMatch(line -> line.startsWith("SERVICE")));
+        assertTrue(entries.stream().allMatch(entry -> entry.identityLabel.contains("counters")
+                && entry.identityLabel.contains("weak to")));
+        assertTrue(entries.stream().allMatch(entry -> entry.configurationLabel.contains("MAINT ")
+                && entry.configurationLabel.contains("variant")
+                && entry.configurationLabel.contains("combat zoom")));
+        assertTrue(entries.stream().allMatch(entry -> entry.personnelLabel.contains("MORALE")));
         assertTrue(entries.stream().anyMatch(entry -> entry.readinessLabel.startsWith("READY")
                 || entry.readinessLabel.startsWith("STRAINED") || entry.readinessLabel.startsWith("UNREADY")));
         assertTrue(actions.stream().anyMatch(action -> "FLEET_COMMIT_NOW".equals(action.id)));
         assertTrue(actions.stream().anyMatch(action -> "FLEET_ASSIGN_FLAG".equals(action.id)));
+    }
+
+    @Test
+    void shipyardPreviewAndStrategicAuthorityExposeLiveFleetBuildingContext() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignLocation shipyard = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location != null && location.services.contains(CampaignSystem.HubService.SHIPYARD))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(shipyard);
+
+        List<String> shipyardLines = CampaignSystem.hubServicePreviewLines(ctx, shipyard, CampaignSystem.HubService.SHIPYARD);
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Role: ")
+                && line.contains("Counter: ") && line.contains("Weakness: ")));
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Maintenance: ") && line.contains("Variant: ")));
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Silhouette: ") && line.contains("combat zoom")));
+
+        List<String> authority = CampaignSystem.campaignStrategicAuthorityLines(ctx);
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("LIVE AUTHORITY  |  Nodes ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("TASK GROUPS  |  Friendly ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("WAR TIMELINE  |  Battles ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("DIRECTORS  |  ")));
+        assertTrue(CampaignSystem.campaignStrategicExpansionLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("LIVE AUTHORITY  |  Nodes ")));
     }
 
     @Test
@@ -1072,6 +1105,27 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void liveTravelAttritionUpdatesCheckpointedExpansionLedgerAndResourceBoard() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        EconomyLogisticsIndustrySystem.LogisticsLedger ledger = st.economyExpansion.logistics;
+        int readinessBefore = ledger.readinessPercent;
+        int fatigueBefore = ledger.crewFatigue;
+
+        CampaignSystem.selectCampaignFreeTravelTarget(ctx, 1600.0, 3200.0);
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        invokeTravelUpdate(ctx, st, 10.0);
+
+        assertTrue(ledger.readinessPercent < readinessBefore);
+        assertTrue(ledger.crewFatigue > fatigueBefore);
+        assertEquals(st.campaignFuel, ledger.stores.get(EconomyLogisticsIndustrySystem.Resource.FUEL));
+        assertEquals(st.campaignAmmo, ledger.stores.get(EconomyLogisticsIndustrySystem.Resource.AMMUNITION));
+        assertEquals(st.campaignSupplies, ledger.stores.get(EconomyLogisticsIndustrySystem.Resource.PROVISIONS));
+        assertTrue(CampaignSystem.campaignResourceManagerLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Expansion Ledger: Readiness ")));
+    }
+
+    @Test
     void longTravelAndLowStoresIncreaseFleetStrain() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -1100,10 +1154,26 @@ class CampaignStrategicCommandHudTest {
         ctx.credits = 5000;
         st.campaignSupplies = 500;
         st.campaignSalvage = 500;
+        st.economyExpansion.logistics.crewFatigue = 40;
+        st.economyExpansion.logistics.readinessPercent = 60;
+        int industrialReputationBefore = st.diplomacyNarrative.relationships.reputation
+                .get(DiplomacyNarrativeCrewSystem.ReputationGroup.INDUSTRIAL);
+        int bridgeLogBefore = st.diplomacyNarrative.officers.get(DiplomacyNarrativeCrewSystem.CrewStation.CAPTAIN)
+                .captainLogEntries.size();
 
         assertTrue(invokeHubService(ctx, st, repair, "REPAIR"));
         assertTrue(st.fleetStrain < 68.0);
         assertEquals("TRUSTED", st.vossRelationshipStateId);
+        assertTrue(st.economyExpansion.logistics.crewFatigue < 40);
+        assertTrue(st.economyExpansion.logistics.readinessPercent > 60);
+        assertEquals(st.campaignSalvage, st.economyExpansion.logistics.stores
+                .get(EconomyLogisticsIndustrySystem.Resource.REPAIR_MATERIALS));
+        assertEquals(industrialReputationBefore + 1, st.diplomacyNarrative.relationships.reputation
+                .get(DiplomacyNarrativeCrewSystem.ReputationGroup.INDUSTRIAL));
+        assertTrue(st.diplomacyNarrative.officers.get(DiplomacyNarrativeCrewSystem.CrewStation.CAPTAIN)
+                .captainLogEntries.size() > bridgeLogBefore);
+        assertTrue(CampaignSystem.campaignCommsBoardLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Expansion Reputation Mil ")));
     }
 
     @Test
@@ -1327,6 +1397,28 @@ class CampaignStrategicCommandHudTest {
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;
+    }
+
+    @Test
+    void frameSizedTravelUpdatesAccumulateOperationalStoreAttrition() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedFleetPostureId = "COMBAT_PATROL";
+        st.galaxyTravel.traveling = true;
+        st.galaxyTravel.targetX = st.playerGalaxyX + 10000.0;
+        st.galaxyTravel.targetY = st.playerGalaxyY;
+        st.galaxyTravel.speed = 1.0;
+        int fuelBefore = st.campaignFuel;
+        int suppliesBefore = st.campaignSupplies;
+        int ammoBefore = st.campaignAmmo;
+
+        for (int i = 0; i < 600; i++) {
+            invokeTravelUpdate(ctx, st, 1.0 / 60.0);
+        }
+
+        assertTrue(st.campaignFuel < fuelBefore);
+        assertTrue(st.campaignSupplies < suppliesBefore);
+        assertTrue(st.campaignAmmo < ammoBefore);
     }
 
     private static void invokeTravelUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {

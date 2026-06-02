@@ -106,7 +106,6 @@ public final class VoiceSoakHarness {
         }
 
         if (tick % 360 == 0) {
-            ctx.command.scienceJamming = !ctx.command.scienceJamming;
         }
 
         if (tick % 540 == 0) {

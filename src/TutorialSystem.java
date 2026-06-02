@@ -106,7 +106,6 @@ public final class TutorialSystem {
         GameContext.HelmMode baselineHelmMode = GameContext.HelmMode.INTERCEPT;
         GameContext.TacticalMode baselineTacticalMode = GameContext.TacticalMode.DEFENSIVE;
         GameContext.EngineeringMode baselineEngineeringMode = GameContext.EngineeringMode.BALANCED;
-        boolean baselineScienceJamming = false;
         Ship.CarrierCommandMode baselineCarrierMode = Ship.CarrierCommandMode.ATTACK;
         boolean baselineCarrierAutoLaunch = false;
     }
@@ -798,7 +797,6 @@ public final class TutorialSystem {
         st.baselineHelmMode = ctx.command.helmMode;
         st.baselineTacticalMode = ctx.command.tacticalMode;
         st.baselineEngineeringMode = ctx.command.engineeringMode;
-        st.baselineScienceJamming = ctx.command.scienceJamming;
     }
 
     private static void captureCarrierBaseline(GameContext ctx, TutorialState st) {
@@ -821,7 +819,6 @@ public final class TutorialSystem {
                 || ctx.command.helmMode != st.baselineHelmMode
                 || ctx.command.tacticalMode != st.baselineTacticalMode
                 || ctx.command.engineeringMode != st.baselineEngineeringMode
-                || ctx.command.scienceJamming != st.baselineScienceJamming
                 || ctx.command.activeCrewStation != GameContext.CrewStation.CAPTAIN;
     }
 

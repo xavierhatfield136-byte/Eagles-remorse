@@ -285,8 +285,8 @@ final class Sandbox3DRenderer {
     }
 
     private static void drawWaypointIndicator(GameContext ctx, Graphics2D g2, int w, int h, double cameraTilt, double cameraZoom) {
-        if (Double.isNaN(ctx.waypointX) || Double.isNaN(ctx.waypointY)) return;
-        Proj p = project(ctx, w, h, ctx.waypointX, ctx.waypointY, 20, cameraTilt, cameraZoom);
+        if (Double.isNaN(ctx.ui.waypointX) || Double.isNaN(ctx.ui.waypointY)) return;
+        Proj p = project(ctx, w, h, ctx.ui.waypointX, ctx.ui.waypointY, 20, cameraTilt, cameraZoom);
         if (p == null) return;
         int sx = (int) Math.round(p.x);
         int sy = (int) Math.round(p.y);
@@ -333,7 +333,7 @@ final class Sandbox3DRenderer {
         g2.setColor(new Color(205, 220, 230));
         String right = String.format(
                 "FPS %.1f  CREDITS %d  ORE x%.2f  TILT %.2f  ZOOM %.2f",
-                ctx.perfFps, ctx.credits, CampaignSystem.oreCreditMul(ctx), cameraTilt, cameraZoom);
+                ctx.perf.fps, ctx.credits, CampaignSystem.oreCreditMul(ctx), cameraTilt, cameraZoom);
         int rw = g2.getFontMetrics().stringWidth(right);
         g2.drawString(right, Math.max(24, w - rw - 24), 72);
 

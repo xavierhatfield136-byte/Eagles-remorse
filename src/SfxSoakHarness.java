@@ -68,9 +68,6 @@ public final class SfxSoakHarness {
 
     private static void nudgeCommands(GameContext ctx, int tick) {
         if (ctx == null) return;
-        if (tick % 500 == 0) {
-            UISystem.toggleScienceJamming(ctx);
-        }
         if (tick % 620 == 0) {
             GameContext.CaptainDirective[] d = {
                     GameContext.CaptainDirective.ATTACK,

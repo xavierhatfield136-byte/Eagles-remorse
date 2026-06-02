@@ -168,6 +168,17 @@ class RendererHoverTooltipTest {
     }
 
     @Test
+    void fleetCommissioningColumnsStartBelowDoctrineStrip() throws Exception {
+        Method upgradeArea = Renderer.class.getDeclaredMethod("getShopUpgradeArea", Rectangle.class);
+        upgradeArea.setAccessible(true);
+        Rectangle panel = Renderer.getShopOverlayRect(1280, 720);
+        Rectangle columns = (Rectangle) upgradeArea.invoke(null, panel);
+
+        int doctrineStripBottom = panel.y + 116 + 28;
+        assertTrue(columns.y > doctrineStripBottom);
+    }
+
+    @Test
     void hoverTooltipRevealCanBeImmediate() {
         UiState ui = new UiState();
         long start = 1_000_000_000L;

@@ -288,7 +288,6 @@ public final class AudioSystem {
         Ship lastLockedTarget;
         boolean hadCombatContact;
         boolean missilesInbound;
-        boolean lastScienceJamming;
         boolean lastRepairsActive;
         int hostileContactCount;
         double hostileContactRefreshAtSec = 0.0;
@@ -344,7 +343,6 @@ public final class AudioSystem {
                 s.hostileContactRefreshAtSec = now + HOSTILE_CONTACT_REFRESH_SEC;
                 s.hadCombatContact = !visibleHostiles.isEmpty();
                 s.missilesInbound = hasMissilesInbound(ctx);
-                s.lastScienceJamming = ctx.command.scienceJamming;
                 s.lastRepairsActive = repairsActive(ctx);
                 s.hostileContactCount = visibleHostiles.size();
                 s.lastShieldFrac = shieldFrac(ctx.player);
@@ -947,10 +945,6 @@ public final class AudioSystem {
             emitVoice(ctx, st, VoiceCue.ENGINEERING_REPAIRS_COMPLETED, now);
         }
 
-        if (ctx.command.scienceJamming && !st.lastScienceJamming) {
-            emitVoice(ctx, st, VoiceCue.SCIENCE_JAMMED, now);
-        }
-
         pruneScienceContactMemory(st, now);
         int newlyDetectedContacts = 0;
         double memoryUntil = now + 12.0;
@@ -988,7 +982,6 @@ public final class AudioSystem {
         st.hostileContactCount = hostiles;
         st.lastLockedTarget = currentLock;
         st.missilesInbound = missilesNow;
-        st.lastScienceJamming = ctx.command.scienceJamming;
         st.lastRepairsActive = repairsNow;
         st.lastShieldFrac = shieldNow;
         st.lastReactorFrac = reactorNow;

@@ -1,3 +1,4 @@
+import app.config.GameConfig;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -102,12 +103,12 @@ final class Sandbox3DPanel extends JPanel implements ActionListener {
                 if (UISystem.handleXrayClick(ctx, e, viewportW(), viewportH())) {
                     return;
                 }
-                if (ctx.mapOpen) {
+                if (ctx.ui.mapOpen) {
                     UISystem.handleMapClick(ctx, e, viewportW(), viewportH());
                     return;
                 }
                 if (ctx.state == GameState.PAUSED) return;
-                if (ctx.shopOpen || ctx.baseMenuOpen || ctx.powerManagementOpen || ctx.crewStationsOpen) return;
+                if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.powerManagementOpen || ctx.ui.crewStationsOpen) return;
 
                 if (SwingUtilities.isLeftMouseButton(e)) ctx.firingPrimaryManual = true;
                 if (SwingUtilities.isRightMouseButton(e)) ctx.firingSecondaryManual = true;

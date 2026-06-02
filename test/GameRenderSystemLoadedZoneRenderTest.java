@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GameRenderSystemLoadedZoneRenderTest {
 
     @Test
-    void campaignRenderingScopesWorldObjectsToLoadedMissionSubzone() throws Exception {
+    void unifiedCampaignRenderingIncludesObjectsAcrossFormerMissionSubzones() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -48,13 +48,13 @@ class GameRenderSystemLoadedZoneRenderTest {
 
         assertTrue(scopedShips.contains(ctx.player));
         assertTrue(scopedShips.contains(localEscort));
-        assertFalse(scopedShips.contains(remoteEscort));
+        assertTrue(scopedShips.contains(remoteEscort));
         assertTrue(scopedProjectiles.contains(localShot));
-        assertFalse(scopedProjectiles.contains(remoteShot));
+        assertTrue(scopedProjectiles.contains(remoteShot));
         assertTrue(scopedAsteroids.contains(localAsteroid));
-        assertFalse(scopedAsteroids.contains(remoteAsteroid));
+        assertTrue(scopedAsteroids.contains(remoteAsteroid));
         assertTrue(scopedSalvage.contains(localSalvage));
-        assertFalse(scopedSalvage.contains(remoteSalvage));
+        assertTrue(scopedSalvage.contains(remoteSalvage));
     }
 
     @Test

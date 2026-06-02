@@ -1,0 +1,7 @@
+id,function,repair_cost
+docks,ship_service,80
+reactors,power,110
+sensors,intelligence,65
+defense_grid,defense,140
+refinery,fuel,95
+habitat,civilian_capacity,75

@@ -950,8 +950,6 @@ public final class UISystem {
             case MISSILE_HEAVY -> setPlayerMissileRole(ctx, Turret.MissileRole.ANTI_HEAVY, "MISSILE MODE: HEAVY");
             case MISSILE_FAST -> setPlayerMissileRole(ctx, Turret.MissileRole.ANTI_LIGHT, "MISSILE MODE: FAST");
             case MISSILE_AAA -> setPlayerMissileRole(ctx, Turret.MissileRole.INTERCEPT, "MISSILE MODE: AAA");
-            case ECM_PRIMED -> setScienceJamming(ctx, false);
-            case ECM_ACTIVE -> setScienceJamming(ctx, true);
             case CLOAK_CHARGE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.CHARGE);
             case CLOAK_ACTIVE -> setPlayerCloakMode(ctx, Ship.CloakControlMode.ACTIVE);
             case STRIKE_SELECT_TORPEDO -> {
@@ -1447,17 +1445,9 @@ public final class UISystem {
         if (CampaignSystem.usesMissionSubzones(ctx)) {
             int targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, worldX, worldY);
             if (targetSubzone >= 0) {
-                int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
-                if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
-                int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
-                boolean sameSubzoneSelection = hopSubzone == targetSubzone && targetSubzone == loadedSubzone;
-                double[] arrival = sameSubzoneSelection ? null : CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
-                double targetX = sameSubzoneSelection ? worldX : ((arrival == null) ? worldX : arrival[0]);
-                double targetY = sameSubzoneSelection ? worldY : ((arrival == null) ? worldY : arrival[1]);
+                double targetX = worldX;
+                double targetY = worldY;
                 String contact = CampaignSystem.localRangeBearingReadout(ctx, targetX, targetY);
-                String route = (hopSubzone >= 0 && hopSubzone != targetSubzone)
-                        ? "  VIA STAGING"
-                        : "";
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, targetX, targetY, 2.2);
                     EventSystem.showBanner(ctx, "LOCAL PING: " + contact, 1.2);
@@ -1466,7 +1456,7 @@ public final class UISystem {
                 ctx.ui.waypointX = GameMath.clamp(targetX, 0, ctx.WORLD_W);
                 ctx.ui.waypointY = GameMath.clamp(targetY, 0, ctx.WORLD_H);
                 addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
-                EventSystem.showBanner(ctx, "COURSE SET: " + contact + route, 1.2);
+                EventSystem.showBanner(ctx, "COURSE SET: " + contact, 1.2);
                 return;
             }
         }
@@ -2478,11 +2468,6 @@ public final class UISystem {
         ctx.lockedTarget = null;
     }
 
-    public static void toggleScienceJamming(GameContext ctx) {
-        if (ctx == null) return;
-        activatePlayerEcm(ctx);
-    }
-
     private static void setPlayerBeamMode(GameContext ctx, Ship.PrimaryWeaponFamily family) {
         if (ctx == null || ctx.player == null || family == null) return;
         if (ctx.player.primaryWeaponFamily == family) return;
@@ -2532,11 +2517,6 @@ public final class UISystem {
         };
     }
 
-    private static void setScienceJamming(GameContext ctx, boolean active) {
-        if (ctx == null) return;
-        activatePlayerEcm(ctx);
-    }
-
     private static void setPlayerCloakMode(GameContext ctx, Ship.CloakControlMode mode) {
         if (ctx == null || ctx.player == null) return;
         if (!ctx.player.isStealth) {
@@ -2549,20 +2529,6 @@ public final class UISystem {
                 ? "CLOAK MODE: ACTIVE"
                 : "CLOAK MODE: CHARGE";
         EventSystem.showBanner(ctx, label, 0.9);
-    }
-
-    private static void activatePlayerEcm(GameContext ctx) {
-        if (ctx == null || ctx.player == null) return;
-        if (ctx.player.tryActivateEcm()) {
-            ctx.command.scienceJamming = true;
-            EventSystem.showBanner(ctx, "ECM MODE: ACTIVE", 0.9);
-            return;
-        }
-        if (ctx.player.hasActiveEcm()) {
-            EventSystem.showBanner(ctx, "ECM ALREADY ACTIVE", 0.9);
-            return;
-        }
-        EventSystem.showBanner(ctx, String.format("ECM RECHARGING: %.1fS", ctx.player.ecmCooldownRemaining()), 1.0);
     }
 
     private static int pingCodeForFaction(Faction faction) {

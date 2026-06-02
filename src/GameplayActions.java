@@ -213,23 +213,7 @@ public final class GameplayActions {
                 targetY = GameMath.clamp(ctx.ui.waypointY, 0.0, ctx.WORLD_H);
                 destinationLabel = "WAYPOINT";
             } else {
-            int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
-            if (loadedSubzone < 0) loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
-            int targetSubzone = -1;
             if (base != null && base.alive && !base.dying && base.hp > 0) {
-                targetSubzone = CampaignSystem.campaignMapSubzoneAtPoint(ctx, base.x, base.y);
-            }
-            if (targetSubzone >= 0) {
-                int hopSubzone = CampaignSystem.nextCampaignWarpHop(loadedSubzone, targetSubzone);
-                double[] arrival = CampaignSystem.campaignWarpArrivalPoint(ctx, hopSubzone);
-                if (arrival == null) {
-                    EventSystem.showBanner(ctx, "WARP ROUTE UNAVAILABLE", 1.4);
-                    return;
-                }
-                targetX = arrival[0];
-                targetY = arrival[1];
-                destinationLabel = CampaignSystem.missionSubzoneLabel(hopSubzone);
-            } else if (base != null && base.alive && !base.dying && base.hp > 0) {
                 targetX = base.x;
                 targetY = base.y;
                 destinationLabel = "BASE";
@@ -618,11 +602,7 @@ public final class GameplayActions {
                 } else if (keyCode == java.awt.event.KeyEvent.VK_2) {
                     ctx.command.scienceAutomation = false;
                     UISystem.scienceClearLock(ctx);
-                } else if (keyCode == java.awt.event.KeyEvent.VK_3) {
-                    ctx.command.scienceAutomation = false;
-                    UISystem.toggleScienceJamming(ctx);
-                }
-                else return false;
+                } else return false;
                 return true;
             }
         }

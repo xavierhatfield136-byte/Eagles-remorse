@@ -33,6 +33,14 @@ public class FleetShip extends Ship {
         applyCustomFlightDeckLoadout();
     }
 
+    public FleetBuildingSystem.HullProfile hullProfile() {
+        return FleetBuildingSystem.hullProfile(role);
+    }
+
+    public String battlefieldIdentityCard() {
+        return FleetBuildingSystem.battleCard(role);
+    }
+
     private void enforceSuperweaponChargeSfxTiming() {
         if (!hasSuperweapon) return;
         superweaponChargeTime = SUPERWEAPON_CHARGE_SFX_SECONDS;

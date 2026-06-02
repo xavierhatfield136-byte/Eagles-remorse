@@ -702,13 +702,6 @@ public abstract class Ship {
     public double cloakMinEnergyToEngage = 1.0;
     public double cloakSignature = 0.08;
     public double cloakThreatTimer = 0.0;
-    public static final double ECM_ACTIVE_SECONDS = 5.0;
-    public static final double ECM_COOLDOWN_SECONDS = 20.0;
-    public static final double ECM_CLOSE_RANGE = 260.0;
-    public static final double ECM_MEDIUM_RANGE = 620.0;
-    public static final double ECM_LONG_RANGE = 980.0;
-    public double ecmActiveTimer = 0.0;
-    public double ecmCooldownTimer = 0.0;
 
     public void addTurret(Turret t) {
         if (t != null) {
@@ -852,7 +845,6 @@ public abstract class Ship {
         updateRoomHazards(dt);
         updateShieldFacing(dt);
         updateStealthCloak(dt);
-        updateEcmState(dt);
         ensureShieldFacesSynced();
 
         if (shieldOfflineTimer > 0.0) {
@@ -1114,8 +1106,6 @@ public abstract class Ship {
         cloakControlMode = CloakControlMode.CHARGE;
         cloakEnergy = cloakEnergyMax;
         cloakThreatTimer = 0.0;
-        ecmActiveTimer = 0.0;
-        ecmCooldownTimer = 0.0;
         primaryGunStaggerTimer = 0.0;
         primaryGunStaggerCursor = 0;
         primaryGunStaggerBurstRemaining = 0;
@@ -1967,82 +1957,6 @@ public abstract class Ship {
         return cloakEnergy > 0.01;
     }
 
-    public boolean hasActiveEcm() {
-        return ecmActiveTimer > 1e-4;
-    }
-
-    public boolean ecmReady() {
-        return !hasActiveEcm() && ecmCooldownTimer <= 1e-4;
-    }
-
-    public double ecmCooldownRemaining() {
-        return Math.max(0.0, ecmCooldownTimer);
-    }
-
-    public boolean tryActivateEcm() {
-        if (!alive || dying || hp <= 0) return false;
-        if (!ecmReady()) return false;
-        ecmActiveTimer = ECM_ACTIVE_SECONDS;
-        ecmCooldownTimer = ECM_COOLDOWN_SECONDS;
-        return true;
-    }
-
-    public boolean blocksMissileLocksFrom(double sourceX, double sourceY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(sourceX - x, sourceY - y);
-        return dist <= ECM_CLOSE_RANGE;
-    }
-
-    public boolean hiddenByEcmAt(double observerX, double observerY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        return dist >= ECM_MEDIUM_RANGE && dist <= ECM_LONG_RANGE * 1.35;
-    }
-
-    public boolean distortedByEcmAt(double observerX, double observerY) {
-        if (!hasActiveEcm()) return false;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        return dist > ECM_CLOSE_RANGE && dist < ECM_MEDIUM_RANGE;
-    }
-
-    public double ecmObservedX(double observerX, double observerY) {
-        return x + ecmIllusionOffsetX(observerX, observerY);
-    }
-
-    public double ecmObservedY(double observerX, double observerY) {
-        return y + ecmIllusionOffsetY(observerX, observerY);
-    }
-
-    public double ecmIllusionOffsetX(double observerX, double observerY) {
-        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.173;
-        double amp = 12.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.10;
-        return Math.sin(t * 7.9) * amp + Math.cos(t * 4.1) * amp * 0.45;
-    }
-
-    public double ecmIllusionOffsetY(double observerX, double observerY) {
-        if (!distortedByEcmAt(observerX, observerY)) return 0.0;
-        double dist = Math.hypot(observerX - x, observerY - y);
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.219;
-        double amp = 10.0 + Math.max(0.0, (dist - ECM_CLOSE_RANGE)) * 0.09;
-        return Math.cos(t * 6.7) * amp + Math.sin(t * 4.8) * amp * 0.40;
-    }
-
-    public double ecmMoveOffsetX(double dt) {
-        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.131;
-        double speed = 28.0 + Math.min(44.0, radius * 0.6);
-        return (Math.sin(t * 9.3) + Math.cos(t * 5.2) * 0.55) * speed * dt;
-    }
-
-    public double ecmMoveOffsetY(double dt) {
-        if (!hasActiveEcm() || dt <= 0.0) return 0.0;
-        double t = (ECM_ACTIVE_SECONDS - Math.max(0.0, ecmActiveTimer)) + id * 0.167;
-        double speed = 24.0 + Math.min(40.0, radius * 0.55);
-        return (Math.cos(t * 8.6) + Math.sin(t * 6.1) * 0.50) * speed * dt;
-    }
-
     public double cloakEnergyFrac() {
         if (!isStealth) return 0.0;
         if (cloakEnergyMax <= 0.0) return 0.0;
@@ -2105,18 +2019,6 @@ public abstract class Ship {
             }
         } else {
             cloakEnergy = Math.min(cloakEnergyMax, cloakEnergy + cloakRechargePerSec * dt);
-        }
-    }
-
-    private void updateEcmState(double dt) {
-        if (dt <= 0.0) return;
-        if (ecmActiveTimer > 0.0) {
-            ecmActiveTimer -= dt;
-            if (ecmActiveTimer < 0.0) ecmActiveTimer = 0.0;
-        }
-        if (ecmCooldownTimer > 0.0) {
-            ecmCooldownTimer -= dt;
-            if (ecmCooldownTimer < 0.0) ecmCooldownTimer = 0.0;
         }
     }
 

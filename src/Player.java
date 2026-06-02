@@ -641,7 +641,7 @@ public class Player extends Ship {
             return TargetingSystem.findClosestHostileSmallCraft(ctx, this, x, y, 820.0);
         }
 
-        if (isAliveMissileTarget(fallback) && !fallback.blocksMissileLocksFrom(x, y)) {
+        if (isAliveMissileTarget(fallback)) {
             return fallback;
         }
 
@@ -652,7 +652,6 @@ public class Player extends Ship {
             case INTERCEPT -> 820.0;
         };
         Ship target = TargetingSystem.findClosestEnemyToPoint(ctx, this, x, y, searchRange);
-        if (target != null && target.blocksMissileLocksFrom(x, y)) return null;
         return target;
     }
 

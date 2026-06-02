@@ -1,41 +1,14 @@
 # Strategic Campaign Documentation Index
 
-Date: 2026-05-14  
-Status: Active index
+Date: 2026-06-01
+Status: Superseded index retained for existing links
 
-## Active Source Of Truth
+The documentation set has been streamlined.
 
-- `CURRENT_CAMPAIGN_STATE.md`
-- `STRATEGIC_CAMPAIGN_MAP_SPEC.md`
-- `STRATEGIC_CAMPAIGN_SCRIPT.md`
+Start with:
 
-## Active Implementation Checklists
+1. `README.md`
+2. `NEXT_STEPS_TO_PLAYABLE_ALPHA.md`
+3. `CURRENT_CAMPAIGN_STATE.md`
 
-- `STRATEGIC_CAMPAIGN_REACTIVE_THEATER_CHECKLIST.md`
-- `STRATEGIC_HUD_ACTION_FIRST_SPEC.md`
-- `CAMPAIGN_FLEET_STRIKES_AND_ENCOUNTER_CHECKLIST.md`
-- `CAMPAIGN_FORCE_OWNERSHIP_IMPLEMENTATION_CHECKLIST.md`
-
-## Progress Logs
-
-- `STRATEGIC_CAMPAIGN_FURNISHING_STATUS.md`
-
-## Historical / Mostly Completed Roadmaps
-
-- `STRATEGIC_CAMPAIGN_FURNISHING_PLAN.md`
-
-## Long-Horizon Idea Reservoir
-
-- `UNBOUNDED_GAME_EXPANSION_BACKLOG.md`
-
-## How To Read This Set
-
-- use the current campaign state doc for the fastest implementation snapshot
-- use the map spec as the stable campaign constitution
-- use the campaign script as the broadest one-file reference for current player-facing campaign behavior
-- use the reactive checklist for current systems work
-- use the HUD action-first spec for current command-layer usability work
-- use the fleet/strikes/encounter checklist for the current fleet roster, group movement, roaming enemy, sensor, and strike-object work
-- use the force ownership checklist for the no-unexplained-spawns campaign theater rewrite
-- use the furnishing status file for the shortest current progress summary
-- use the historical roadmap file only for philosophy, context, and design intent
+Use `DOCUMENTATION_AUDIT.md` to find older strategic plans, completed implementation checklists, asset workflows, and the intentionally preserved future 3D lane.

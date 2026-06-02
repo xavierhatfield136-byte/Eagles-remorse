@@ -27,7 +27,6 @@ public final class PhysicsSystem {
         constrainPlayerToLoadedSector(ctx);
         constrainWarpChargingShipsToSourceSector(ctx);
         constrainShipsToCampaignSubzones(ctx);
-        syncPlayerEcmFlag(ctx);
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             boolean superFired = false;
@@ -421,9 +420,6 @@ public final class PhysicsSystem {
                 && missile.faction.isFriendlyTo(missile.projectileTarget.faction)) {
             missile.projectileTarget = null;
         }
-        if (missile.target != null && missile.target.blocksMissileLocksFrom(missile.x, missile.y)) {
-            missile.target = null;
-        }
         if (missile.projectileTarget != null) {
             return;
         }
@@ -452,7 +448,6 @@ public final class PhysicsSystem {
         for (Ship ship : nearby) {
             if (!isAlive(ship)) continue;
             if (missile.preferSmallCraft && !ship.isSmallCraft()) continue;
-            if (ship.blocksMissileLocksFrom(missile.x, missile.y)) continue;
             double d2 = GameMath.dist2(missile.x, missile.y, ship.x, ship.y);
             if (d2 < bestD2) {
                 bestD2 = d2;
@@ -460,11 +455,6 @@ public final class PhysicsSystem {
             }
         }
         return best;
-    }
-
-    private static void syncPlayerEcmFlag(GameContext ctx) {
-        if (ctx == null) return;
-        ctx.command.scienceJamming = ctx.player != null && ctx.player.hasActiveEcm();
     }
 
     private static void awardPlayerKillAssistCredits(GameContext ctx) {

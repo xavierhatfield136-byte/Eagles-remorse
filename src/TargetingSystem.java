@@ -238,7 +238,6 @@ public final class TargetingSystem {
         if (!isAlive(observer)) return false;
         if (sharesWeaponsHotContact(ctx, observer, target)) return true;
         if (formationRelayDetectsTarget(ctx, observer, target)) return true;
-        if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
         if (ctx != null && inSameDetectionZone(ctx, observer, target) && !target.isStealth) return true;
         double range = detectionRangeForObserver(observer, target, observerSensorMul, targetSignatureMul);
         double dx = target.x - observer.x;
@@ -253,7 +252,6 @@ public final class TargetingSystem {
     private static boolean sharesWeaponsHotContact(GameContext ctx, Ship observer, Ship target) {
         if (ctx == null || observer == null || target == null) return false;
         if (target.weaponsHotTimer <= 1e-6) return false;
-        if (target.hasActiveEcm()) return false;
         boolean cloakCoverActive = target.isStealth
                 && target.cloakEnabled
                 && target.cloakControlMode == Ship.CloakControlMode.ACTIVE
@@ -284,7 +282,6 @@ public final class TargetingSystem {
         if (observer == null) return !target.isStealth || !target.isCloaked() || target.revealTimer > 0.0;
         if (!isAlive(observer)) return false;
         if (sharesWeaponsHotContact(ctx, observer, target)) return true;
-        if (target.hiddenByEcmAt(observer.x, observer.y)) return false;
         double range = detectionRangeForObserver(observer, target);
         double dx = target.x - observer.x;
         double dy = target.y - observer.y;
@@ -350,7 +347,6 @@ public final class TargetingSystem {
                 ? Math.max(0.55, Math.min(1.45, targetSignatureMul))
                 : targetSignatureMultiplier(target);
         double range = baseRange * sensorMul * targetMul;
-        if (observer.hasActiveEcm()) range *= 0.90;
         return Math.max(260.0, range);
     }
 

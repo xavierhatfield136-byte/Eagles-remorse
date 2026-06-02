@@ -34,6 +34,9 @@ class CampaignOvermapCheckpointTest {
         st.campaignSupplies = 103;
         st.campaignAmmo = 126;
         st.campaignSalvage = 52;
+        st.travelFuelAttritionRemainder = 0.25;
+        st.travelSupplyAttritionRemainder = 0.50;
+        st.travelAmmoAttritionRemainder = 0.75;
         st.playerGalaxyX = 8123.5;
         st.playerGalaxyY = 611.75;
         st.playerGalaxyHeadingDeg = -24.5;
@@ -49,6 +52,9 @@ class CampaignOvermapCheckpointTest {
         st.galaxyTravel.targetX = 9100.0;
         st.galaxyTravel.targetY = 540.0;
         st.galaxyTravel.speed = 188.0;
+        st.transitEventCooldownSec = 2.5;
+        st.transitEncounterPressure = 3.25;
+        st.transitNextEncounterThreshold = 5.75;
 
         CampaignSystem.CampaignLocation mission = findLocation(ctx, "poi-06");
         CampaignSystem.CampaignLocation aoi = findLocation(ctx, "aoi-cache-1");
@@ -125,6 +131,9 @@ class CampaignOvermapCheckpointTest {
         assertEquals(103, restoredState.campaignSupplies);
         assertEquals(126, restoredState.campaignAmmo);
         assertEquals(52, restoredState.campaignSalvage);
+        assertEquals(0.25, restoredState.travelFuelAttritionRemainder, 1e-9);
+        assertEquals(0.50, restoredState.travelSupplyAttritionRemainder, 1e-9);
+        assertEquals(0.75, restoredState.travelAmmoAttritionRemainder, 1e-9);
         assertEquals(8123.5, restoredState.playerGalaxyX, 1e-9);
         assertEquals(611.75, restoredState.playerGalaxyY, 1e-9);
         assertEquals(-24.5, restoredState.playerGalaxyHeadingDeg, 1e-9);
@@ -140,6 +149,9 @@ class CampaignOvermapCheckpointTest {
         assertEquals(9100.0, restoredState.galaxyTravel.targetX, 1e-9);
         assertEquals(540.0, restoredState.galaxyTravel.targetY, 1e-9);
         assertEquals(188.0, restoredState.galaxyTravel.speed, 1e-9);
+        assertEquals(2.5, restoredState.transitEventCooldownSec, 1e-9);
+        assertEquals(3.25, restoredState.transitEncounterPressure, 1e-9);
+        assertEquals(5.75, restoredState.transitNextEncounterThreshold, 1e-9);
 
         CampaignSystem.CampaignLocation restoredMission = findLocation(restored, "poi-06");
         CampaignSystem.CampaignLocation restoredAoi = findLocation(restored, "aoi-cache-1");
@@ -199,6 +211,9 @@ class CampaignOvermapCheckpointTest {
         st.campaignSupplies = 118;
         st.campaignAmmo = 140;
         st.campaignSalvage = 61;
+        st.travelFuelAttritionRemainder = 0.20;
+        st.travelSupplyAttritionRemainder = 0.40;
+        st.travelAmmoAttritionRemainder = 0.60;
         st.playerGalaxyX = 7001.25;
         st.playerGalaxyY = 933.5;
         st.playerGalaxyHeadingDeg = -12.0;
@@ -220,6 +235,9 @@ class CampaignOvermapCheckpointTest {
         st.galaxyTravel.targetX = 8120.0;
         st.galaxyTravel.targetY = 840.0;
         st.galaxyTravel.speed = 205.0;
+        st.transitEventCooldownSec = 1.75;
+        st.transitEncounterPressure = 2.75;
+        st.transitNextEncounterThreshold = 6.25;
 
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 6);
         CampaignCheckpointStore.save(checkpoint);
@@ -237,6 +255,9 @@ class CampaignOvermapCheckpointTest {
         assertEquals(118, loaded.campaignSupplies);
         assertEquals(140, loaded.campaignAmmo);
         assertEquals(61, loaded.campaignSalvage);
+        assertEquals(0.20, loaded.travelFuelAttritionRemainder, 1e-9);
+        assertEquals(0.40, loaded.travelSupplyAttritionRemainder, 1e-9);
+        assertEquals(0.60, loaded.travelAmmoAttritionRemainder, 1e-9);
         assertEquals(7001.25, loaded.playerGalaxyX, 1e-9);
         assertEquals(933.5, loaded.playerGalaxyY, 1e-9);
         assertEquals(-12.0, loaded.playerGalaxyHeadingDeg, 1e-9);
@@ -258,6 +279,9 @@ class CampaignOvermapCheckpointTest {
         assertEquals(8120.0, loaded.galaxyTravelTargetX, 1e-9);
         assertEquals(840.0, loaded.galaxyTravelTargetY, 1e-9);
         assertEquals(205.0, loaded.galaxyTravelSpeed, 1e-9);
+        assertEquals(1.75, loaded.transitEventCooldownSec, 1e-9);
+        assertEquals(2.75, loaded.transitEncounterPressure, 1e-9);
+        assertEquals(6.25, loaded.transitNextEncounterThreshold, 1e-9);
     }
 
     @Test

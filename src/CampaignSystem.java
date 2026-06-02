@@ -1634,6 +1634,9 @@ public final class CampaignSystem {
         public final String forceLabel;
         public final String cargoLabel;
         public final String unavailableReason;
+        public final String identityLabel;
+        public final String configurationLabel;
+        public final String personnelLabel;
         public final int oreCost;
         public final double hullFraction;
         public final double shieldFraction;
@@ -1660,6 +1663,11 @@ public final class CampaignSystem {
             this.unavailableReason = entry == null || entry.destroyed
                     ? "destroyed"
                     : absence;
+            FleetBuildingSystem.HullProfile profile = FleetBuildingSystem.hullProfile(this.role);
+            this.identityLabel = profile.battlefieldRole + "  |  counters " + profile.counter
+                    + "  |  weak to " + profile.weakness;
+            this.configurationLabel = persistentFleetConfigurationLabel(profile);
+            this.personnelLabel = persistentFleetPersonnelLabel(entry);
             String condition = (hullFraction >= 0.86 && shieldFraction >= 0.76)
                     ? "READY"
                     : (hullFraction < 0.44 || shieldFraction < 0.28 ? "UNREADY" : "STRAINED");
@@ -1692,12 +1700,98 @@ public final class CampaignSystem {
         double relAngle = Double.NaN;
         String tacticalCommitmentId = FleetCommitment.AUTO.name();
         String tacticalAbsenceReason = "";
+        String captainName;
+        String captainPersonalityId;
+        String crewSpecializationId = FleetBuildingSystem.CrewSpecialization.DAMAGE_CONTROL.name();
+        int crewExperience = 0;
+        int morale = 70;
+        int refusalRisk = 0;
+        int kills = 0;
+        int rescues = 0;
+        int retreats = 0;
+        int scars = 0;
+        String commendations = "";
+        String serviceHistory = "";
+        String refitTemplateName = "Standard";
 
         PersistentFleetEntry(int slotId, ShipRole role, String name) {
             this.slotId = Math.max(1, slotId);
             this.role = (role == null) ? ShipRole.FRIGATE : role;
             this.name = (name == null || name.isBlank()) ? ("Blue Wing " + this.slotId) : name;
+            this.captainName = "Captain " + generatedCaptainName(this.slotId);
+            this.captainPersonalityId = FleetBuildingSystem.CaptainPersonality.values()[
+                    Math.floorMod(this.slotId - 1, FleetBuildingSystem.CaptainPersonality.values().length)].name();
         }
+    }
+
+    public enum CampaignYardOrderKind {
+        CONSTRUCTION,
+        REFIT
+    }
+
+    public static final class CampaignYardOrder {
+        public final int id;
+        public final CampaignYardOrderKind kind;
+        public final ShipRole role;
+        public final int fleetSlotId;
+        public final String sourceLocationId;
+        public final String sourceLabel;
+        public final String templateName;
+        public final int creditCost;
+        public final int oreCost;
+        public final int salvageCost;
+        public final double totalSeconds;
+        public double remainingSeconds;
+
+        CampaignYardOrder(int id,
+                          CampaignYardOrderKind kind,
+                          ShipRole role,
+                          int fleetSlotId,
+                          String sourceLocationId,
+                          String sourceLabel,
+                          String templateName,
+                          int creditCost,
+                          int oreCost,
+                          int salvageCost,
+                          double totalSeconds) {
+            this.id = Math.max(1, id);
+            this.kind = (kind == null) ? CampaignYardOrderKind.CONSTRUCTION : kind;
+            this.role = (role == null) ? ShipRole.FRIGATE : role;
+            this.fleetSlotId = Math.max(0, fleetSlotId);
+            this.sourceLocationId = trimmedOrFallback(sourceLocationId, "");
+            this.sourceLabel = trimmedOrFallback(sourceLabel, "Frontier Yard");
+            this.templateName = trimmedOrFallback(templateName, "Standard");
+            this.creditCost = Math.max(0, creditCost);
+            this.oreCost = Math.max(0, oreCost);
+            this.salvageCost = Math.max(0, salvageCost);
+            this.totalSeconds = Math.max(1.0, totalSeconds);
+            this.remainingSeconds = this.totalSeconds;
+        }
+    }
+
+    private static String generatedCaptainName(int slotId) {
+        String[] given = {"Mira", "Tarin", "Sera", "Ilex", "Nadi", "Venn", "Rook", "Aster"};
+        String[] family = {"Vale", "Morrow", "Kest", "Orin", "Dax", "Sol", "Reyes", "Ward"};
+        int index = Math.max(1, slotId) - 1;
+        return given[index % given.length] + " " + family[(index / given.length + index) % family.length];
+    }
+
+    private static String persistentFleetPersonnelLabel(PersistentFleetEntry entry) {
+        if (entry == null) return "CREW RECORD UNAVAILABLE";
+        FleetBuildingSystem.CaptainPersonality personality = parseEnum(
+                entry.captainPersonalityId, FleetBuildingSystem.CaptainPersonality.STEADY);
+        return entry.captainName + "  |  " + personality.name().replace('_', ' ')
+                + "  |  XP " + Math.max(0, entry.crewExperience)
+                + "  MORALE " + MathUtil.clamp(entry.morale, 0, 100)
+                + "  " + FleetBuildingSystem.disciplineRiskLabel(entry.morale, entry.refusalRisk)
+                + (entry.refusalRisk > 0 ? " " + MathUtil.clamp(entry.refusalRisk, 0, 100) + "%" : "");
+    }
+
+    private static String persistentFleetConfigurationLabel(FleetBuildingSystem.HullProfile profile) {
+        if (profile == null) return "PROFILE UNAVAILABLE";
+        return "MAINT " + profile.budgets.maintenance
+                + "  |  " + profile.factionVariant
+                + "  |  " + profile.silhouetteCheck;
     }
 
     private static String campaignCargoLabelForPersistentEntry(PersistentFleetEntry entry) {
@@ -2052,8 +2146,12 @@ public final class CampaignSystem {
                 ShipRole role = shipyardOfferRole(location, profile);
                 int creditCost = GameContext.scaleCreditEarnings((int) Math.round(shipyardOfferCreditCost(role) * profile.priceMul));
                 int oreCost = Math.max(10, (int) Math.round(campaignOreCost(role, creditCost, campaignRequiredTier(role, 1)) * profile.quality * 0.78));
+                FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
                 lines.add("Ship Construction");
                 lines.add("Current Yard Offer: " + role.name());
+                lines.add("Role: " + hull.battlefieldRole + "  |  Counter: " + hull.counter + "  |  Weakness: " + hull.weakness);
+                lines.add("Maintenance: " + hull.budgets.maintenance + "  |  Variant: " + hull.factionVariant);
+                lines.add("Silhouette: " + hull.silhouetteCheck);
                 lines.add("Cost: " + creditCost + " credits  |  " + oreCost + " ore");
             }
             case SUPPLY -> {
@@ -2088,11 +2186,192 @@ public final class CampaignSystem {
             }
             case REFIT -> {
                 lines.add("Refit Docket");
-                lines.add("Uses credits and salvage to improve persistent fleet condition.");
+                lines.add("Queues timed refit work against the currently focused persistent hull.");
                 lines.add("Green hubs favor warship readiness. Yellow hubs favor logistics hulls and carriers.");
+                lines.addAll(campaignFleetRefitScreenLines(ctx));
             }
         }
         return lines;
+    }
+
+    public static List<CampaignYardOrder> campaignYardOrders(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null || st.campaignYardOrders.isEmpty()) ? List.of() : List.copyOf(st.campaignYardOrders);
+    }
+
+    public static List<String> campaignYardDocketLines(GameContext ctx, int maxCount) {
+        CampaignState st = state(ctx);
+        if (st == null) return List.of("YARD DOCKET OFFLINE");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("YARD DOCKET  |  ACTIVE " + st.campaignYardOrders.size());
+        for (CampaignYardOrder order : st.campaignYardOrders) {
+            if (order == null) continue;
+            int progress = (int) Math.round(100.0 * (1.0 - order.remainingSeconds / Math.max(1.0, order.totalSeconds)));
+            out.add("#" + order.id + " " + order.kind + "  |  " + order.role
+                    + "  |  " + order.templateName
+                    + "  |  " + MathUtil.clamp(progress, 0, 100) + "%"
+                    + "  |  ETA " + (int) Math.ceil(order.remainingSeconds) + "s"
+                    + "  |  " + order.sourceLabel);
+            if (out.size() >= Math.max(1, maxCount)) break;
+        }
+        if (out.size() == 1) out.add("No construction or refit work currently queued.");
+        return out;
+    }
+
+    public static List<String> campaignFleetRefitScreenLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        PersistentFleetEntry focused = campaignFleetFocusEntry(ctx);
+        ShipRole role = (focused == null || focused.role == null) ? ShipRole.FRIGATE : focused.role;
+        FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
+        FleetBuildingSystem.RefitTemplate template = FleetBuildingSystem.standardLoadouts().get(
+                Math.floorMod((focused == null) ? 0 : focused.slotId - 1, FleetBuildingSystem.standardLoadouts().size()));
+        FleetBuildingSystem.RefitAssessment assessment =
+                FleetBuildingSystem.assessRefit(role, template, false, "Blue", "Green");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("REFIT SCREEN  |  " + role + "  |  TEMPLATE " + template.name);
+        out.add("SLOT BUDGETS  |  W" + hull.budgets.weight + " P" + hull.budgets.power
+                + " H" + hull.budgets.heat + " C" + hull.budgets.crew + " M" + hull.budgets.maintenance);
+        for (FleetBuildingSystem.RefitModule module : template.modules) {
+            out.add("MODULE  |  " + module.slot + " " + module.id
+                    + "  |  " + module.rarity
+                    + "  |  source " + module.industrialSource
+                    + (module.capturedTech ? "  |  CAPTURED TECH" : ""));
+            out.add("DECISION  |  " + FleetBuildingSystem.damagedModuleDecision(module, 62, true));
+        }
+        out.add("ASSESSMENT  |  " + (assessment.valid ? "COMPATIBLE" : "BLOCKED")
+                + "  |  reliability " + (int) Math.round(assessment.fieldReliability * 100.0) + "%"
+                + "  |  " + assessment.refitDays + " work days");
+        for (String warning : assessment.warnings) out.add("WARNING  |  " + warning);
+        out.add("SAVED LOADOUTS  |  " + FleetBuildingSystem.standardLoadouts().stream()
+                .map(saved -> saved.name)
+                .collect(java.util.stream.Collectors.joining(", ")));
+        if (st != null) out.addAll(campaignYardDocketLines(ctx, 3));
+        return out;
+    }
+
+    private static boolean queueCampaignConstructionOrder(GameContext ctx,
+                                                          CampaignState st,
+                                                          CampaignLocation location,
+                                                          ShipRole role,
+                                                          int creditCost,
+                                                          int oreCost,
+                                                          int salvageCost) {
+        if (ctx == null || st == null || location == null || role == null) return false;
+        FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
+        double seconds = 18.0 + hull.budgets.maintenance * 1.8 + (role.isTitanOrMothership() ? 22.0 : 0.0);
+        CampaignYardOrder order = new CampaignYardOrder(
+                st.nextCampaignYardOrderId++,
+                CampaignYardOrderKind.CONSTRUCTION,
+                role,
+                0,
+                location.id,
+                location.name,
+                "New Hull",
+                creditCost,
+                oreCost,
+                salvageCost,
+                seconds);
+        st.campaignYardOrders.add(order);
+        return true;
+    }
+
+    private static boolean queueCampaignRefitOrder(GameContext ctx,
+                                                   CampaignState st,
+                                                   CampaignLocation location,
+                                                   HubProfile profile,
+                                                   int creditCost,
+                                                   int salvageCost) {
+        if (ctx == null || st == null || location == null || profile == null) return false;
+        PersistentFleetEntry focused = campaignFleetFocusEntry(ctx);
+        ShipRole role = (focused == null || focused.role == null) ? ShipRole.FRIGATE : focused.role;
+        FleetBuildingSystem.RefitTemplate template = FleetBuildingSystem.standardLoadouts().get(
+                Math.floorMod((focused == null) ? 0 : focused.slotId - 1, FleetBuildingSystem.standardLoadouts().size()));
+        FleetBuildingSystem.RefitAssessment assessment =
+                FleetBuildingSystem.assessRefit(role, template, false, "Blue", selectedHubAlignmentLabelForProfile(profile));
+        CampaignYardOrder order = new CampaignYardOrder(
+                st.nextCampaignYardOrderId++,
+                CampaignYardOrderKind.REFIT,
+                role,
+                (focused == null) ? 0 : focused.slotId,
+                location.id,
+                location.name,
+                template.name,
+                creditCost,
+                0,
+                salvageCost,
+                12.0 + assessment.refitDays * 4.0);
+        st.campaignYardOrders.add(order);
+        return true;
+    }
+
+    private static void advanceCampaignYardOrders(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || dt <= 0.0 || st.campaignYardOrders.isEmpty()) return;
+        ArrayList<CampaignYardOrder> completed = new ArrayList<>();
+        for (CampaignYardOrder order : st.campaignYardOrders) {
+            if (order == null) continue;
+            order.remainingSeconds = Math.max(0.0, order.remainingSeconds - dt);
+            if (order.remainingSeconds <= 0.0) completed.add(order);
+        }
+        for (CampaignYardOrder order : completed) {
+            completeCampaignYardOrder(ctx, st, order);
+        }
+        st.campaignYardOrders.removeAll(completed);
+    }
+
+    private static void completeCampaignYardOrder(GameContext ctx, CampaignState st, CampaignYardOrder order) {
+        if (ctx == null || st == null || order == null) return;
+        if (order.kind == CampaignYardOrderKind.CONSTRUCTION) {
+            PersistentFleetEntry predecessor = latestDestroyedPersistentFleetEntry(st, order.role);
+            String buildName = (predecessor == null)
+                    ? order.sourceLabel + " Yard Build"
+                    : basePersistentFleetName(predecessor.name) + " II";
+            PersistentFleetEntry built = addPersistentFleetEntry(st, order.role, buildName,
+                    CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
+            if (built != null) {
+                built.hullConditionFrac = 1.0;
+                built.shieldConditionFrac = 1.0;
+                appendPersistentServiceHistory(built, "COMMISSIONED AT " + order.sourceLabel);
+                if (predecessor != null) {
+                    built.crewExperience = predecessor.crewExperience / 4;
+                    appendPersistentServiceHistory(built, "SUCCESSOR TO SLOT " + predecessor.slotId);
+                    appendPersistentServiceHistory(predecessor, "SUCCESSOR COMMISSIONED AS SLOT " + built.slotId);
+                }
+                markPlayerPurchasedEntryCommitted(built);
+                spawnPurchasedPersistentBlueShip(ctx, st, built);
+            }
+            EventSystem.showBanner(ctx, ("YARD DELIVERY: " + order.role).toUpperCase(Locale.US), 1.6);
+        } else {
+            PersistentFleetEntry target = persistentFleetEntryBySlotId(st, order.fleetSlotId);
+            if (target != null && !target.destroyed) {
+                target.refitTemplateName = order.templateName;
+                target.hullConditionFrac = Math.min(1.0, target.hullConditionFrac + 0.22);
+                target.shieldConditionFrac = Math.min(1.0, target.shieldConditionFrac + 0.26);
+                appendPersistentServiceHistory(target, "REFIT " + order.templateName + " COMPLETED");
+            } else {
+                refitPersistentFleet(ctx, st, hubProfile(ctx, campaignLocationById(st, order.sourceLocationId)));
+            }
+            syncPersistentFleetEntrySnapshots(ctx, st);
+            EventSystem.showBanner(ctx, ("REFIT COMPLETE: " + order.templateName).toUpperCase(Locale.US), 1.5);
+        }
+        rebalancePersistentCommandGroups(st);
+        applyCampaignFleetBonuses(ctx, st);
+    }
+
+    private static PersistentFleetEntry latestDestroyedPersistentFleetEntry(CampaignState st, ShipRole role) {
+        if (st == null || role == null) return null;
+        PersistentFleetEntry found = null;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && entry.destroyed && entry.role == role) found = entry;
+        }
+        return found;
+    }
+
+    private static String basePersistentFleetName(String name) {
+        String resolved = trimmedOrFallback(name, "Blue Hull");
+        int quote = resolved.indexOf(" \"");
+        if (quote > 0) resolved = resolved.substring(0, quote);
+        if (resolved.endsWith(" II")) resolved = resolved.substring(0, resolved.length() - 3);
+        return resolved;
     }
 
     public static double earthProgress(GameContext ctx) {
@@ -2510,6 +2789,251 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static List<String> campaignStrategicExpansionLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return List.of("Strategic campaign data unavailable.");
+        ArrayList<String> out = new ArrayList<>(campaignStrategicAuthorityLines(ctx));
+        out.addAll(StrategicCampaignExpansionSystem.commandBoardLines(st.strategicExpansion));
+        return out;
+    }
+
+    public static List<String> campaignStrategicAuthorityLines(GameContext ctx) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("Live strategic authority unavailable.");
+        synchronizeStrategicExpansionFromLive(st);
+        int moving = 0;
+        int hostile = 0;
+        int friendly = 0;
+        int visibleHostile = 0;
+        int contestedNodes = 0;
+        int activeBattles = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            if (force.intent != CampaignForceIntent.HOLDING || Math.hypot(force.targetX - force.x, force.targetY - force.y) > 1.0) {
+                moving++;
+            }
+            if (force.faction == Faction.ENEMY) {
+                hostile++;
+                if (force.visibleToPlayer || force.contactConfidence > 0.0) visibleHostile++;
+            } else {
+                friendly++;
+            }
+        }
+        for (StrategicNodeState node : st.strategicNodes) {
+            if (node != null && node.owner == TheaterNodeOwner.CONTESTED) contestedNodes++;
+        }
+        for (CampaignBattle battle : st.campaignBattles) {
+            if (battle != null && !battle.resolved) activeBattles++;
+        }
+        ArrayList<String> out = new ArrayList<>();
+        out.add("LIVE AUTHORITY  |  Nodes " + st.strategicNodes.size()
+                + "  Contested " + contestedNodes
+                + "  Fronts " + st.campaignTheaters.size());
+        out.add("TASK GROUPS  |  Friendly " + friendly
+                + "  Hostile " + hostile
+                + "  Moving " + moving
+                + "  Tracked " + visibleHostile);
+        out.add("WAR TIMELINE  |  Battles " + activeBattles
+                + "  Intervention reserve " + (int) Math.round(st.blueInterventionReserve) + "%");
+        out.add("OVERLAY  |  " + parseEnum(st.selectedStrategicOverlayId,
+                StrategicCampaignExpansionSystem.MapOverlay.CONTROL));
+        out.add("DIRECTORS  |  " + st.redDirectorBrief + "  |  " + st.greenDirectorBrief + "  |  " + st.yellowDirectorBrief);
+        if (!st.theaterWarRecentEvents.isEmpty()) {
+            out.add("AFTERMATH  |  " + st.theaterWarRecentEvents.get(st.theaterWarRecentEvents.size() - 1));
+        }
+        return out;
+    }
+
+    private static void synchronizeStrategicExpansionFromLive(CampaignState st) {
+        if (st == null) return;
+        StrategicCampaignExpansionSystem.State projection = st.strategicExpansion;
+        if (projection == null) {
+            projection = StrategicCampaignExpansionSystem.bootstrap(0L);
+            st.strategicExpansion = projection;
+        }
+        projection.systems.clear();
+        projection.lanes.clear();
+        projection.installations.clear();
+        projection.taskGroups.clear();
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null) continue;
+            TheaterId theater = theaterForPoint(st, location.y);
+            StrategicCampaignExpansionSystem.RegionRule rule = switch (theater) {
+                case SOUTHERN -> StrategicCampaignExpansionSystem.RegionRule.SHELTERED;
+                case FRONTIER -> StrategicCampaignExpansionSystem.RegionRule.CONTESTED_BELT;
+                case LUNAR -> StrategicCampaignExpansionSystem.RegionRule.GRAVITY_WELL;
+                case EARTH -> StrategicCampaignExpansionSystem.RegionRule.ORBITAL;
+            };
+            projection.systems.add(new StrategicCampaignExpansionSystem.StarSystem(
+                    location.id, location.name, rule, location.discovered));
+        }
+        ArrayList<CampaignLocation> routeLocations = new ArrayList<>(st.galaxyMainPois);
+        for (int i = 1; i < routeLocations.size(); i++) {
+            CampaignLocation from = routeLocations.get(i - 1);
+            CampaignLocation to = routeLocations.get(i);
+            if (from == null || to == null) continue;
+            StrategicCampaignExpansionSystem.LaneType type = to.discovered
+                    ? StrategicCampaignExpansionSystem.LaneType.TRAVEL_LANE
+                    : StrategicCampaignExpansionSystem.LaneType.HIDDEN_ROUTE;
+            projection.lanes.add(new StrategicCampaignExpansionSystem.TravelLane(
+                    from.id, to.id, type, from.discovered && to.discovered));
+        }
+        for (StrategicNodeState node : st.strategicNodes) {
+            if (node == null) continue;
+            StrategicCampaignExpansionSystem.InstallationType type = switch (node.type) {
+                case SHIPYARD -> StrategicCampaignExpansionSystem.InstallationType.ORBITAL_PLATFORM;
+                case LOGISTICS_HUB -> StrategicCampaignExpansionSystem.InstallationType.HUB;
+                case DEFENSE_ANCHOR -> StrategicCampaignExpansionSystem.InstallationType.FORWARD_BASE;
+                case RESOURCE_FIELD -> StrategicCampaignExpansionSystem.InstallationType.RESOURCE_BELT;
+                case RELAY -> StrategicCampaignExpansionSystem.InstallationType.POPULATION_CENTER;
+            };
+            projection.installations.add(new StrategicCampaignExpansionSystem.Installation(
+                    node.locationId, type, node.locationId, node.owner.name()));
+        }
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            StrategicCampaignExpansionSystem.TaskGroup group =
+                    new StrategicCampaignExpansionSystem.TaskGroup("live-force-" + force.id, force.name);
+            group.delegatedCaptain = force.kind == CampaignForceKind.PLAYER_FLEET ? "Blue Command" : force.faction.name();
+            group.route = campaignForceIntentLabel(force.intent) + "  |  " + theaterForPoint(st, force.y).label;
+            group.etaHours = (int) Math.ceil(Math.hypot(force.targetX - force.x, force.targetY - force.y) / Math.max(1.0, force.speed));
+            group.riskPercent = (int) Math.round(MathUtil.clamp(100.0 - force.readiness, 0.0, 100.0));
+            projection.taskGroups.add(group);
+        }
+        double sum = 0.0;
+        for (CampaignTheaterState theater : st.campaignTheaters) if (theater != null) sum += theater.controlScore;
+        projection.frontLinePosition = MathUtil.clamp((int) Math.round(50.0 + sum / Math.max(1, st.campaignTheaters.size()) * 0.5), 0, 100);
+    }
+
+    public static boolean cycleStrategicMapOverlay(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return false;
+        StrategicCampaignExpansionSystem.MapOverlay current = parseEnum(st.selectedStrategicOverlayId,
+                StrategicCampaignExpansionSystem.MapOverlay.CONTROL);
+        StrategicCampaignExpansionSystem.MapOverlay[] values = StrategicCampaignExpansionSystem.MapOverlay.values();
+        st.selectedStrategicOverlayId = values[(current.ordinal() + 1) % values.length].name();
+        EventSystem.showBanner(ctx, "STRATEGIC OVERLAY: " + st.selectedStrategicOverlayId, 1.2);
+        return true;
+    }
+
+    public static boolean cycleCampaignTaskGroup(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return false;
+        ArrayList<CampaignForce> friendly = new ArrayList<>();
+        for (CampaignForce force : st.campaignForces) {
+            if (force != null && !force.destroyed && force.faction != Faction.ENEMY) friendly.add(force);
+        }
+        if (friendly.isEmpty()) return false;
+        int index = -1;
+        for (int i = 0; i < friendly.size(); i++) if (friendly.get(i).id == st.selectedCampaignTaskGroupId) index = i;
+        CampaignForce selected = friendly.get((index + 1) % friendly.size());
+        st.selectedCampaignTaskGroupId = selected.id;
+        EventSystem.showBanner(ctx, "TASK GROUP: " + selected.name, 1.2);
+        return true;
+    }
+
+    public static boolean cycleSelectedCampaignTaskGroupOrder(GameContext ctx) {
+        CampaignState st = state(ctx);
+        CampaignForce force = (st == null) ? null : campaignForceById(st, st.selectedCampaignTaskGroupId);
+        if (ctx == null || st == null || force == null || force.destroyed || force.faction == Faction.ENEMY) return false;
+        CampaignForceIntent[] orders = {
+                CampaignForceIntent.HOLDING,
+                CampaignForceIntent.PATROLLING,
+                CampaignForceIntent.ESCORTING,
+                CampaignForceIntent.REINFORCING,
+                CampaignForceIntent.REPAIRING
+        };
+        int index = 0;
+        for (int i = 0; i < orders.length; i++) if (orders[i] == force.intent) index = i;
+        force.intent = orders[(index + 1) % orders.length];
+        force.intentTimerSec = Math.max(force.intentTimerSec, 12.0);
+        pushTheaterEvent(st, "Blue delegated " + force.name + " to " + campaignForceIntentLabel(force.intent));
+        EventSystem.showBanner(ctx, "TASK ORDER: " + campaignForceIntentLabel(force.intent), 1.2);
+        return true;
+    }
+
+    public static List<String> sectionFourHullFlowLines() {
+        ArrayList<String> out = new ArrayList<>();
+        for (ShipRole role : ShipRole.values()) {
+            FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
+            String shipyard = (role == ShipRole.BASE || role == ShipRole.STATIC_TURRET || role == ShipRole.MOTHERSHIP
+                    || role == ShipRole.FIGHTER || role == ShipRole.BOMBER || role == ShipRole.PD_CRAFT || role == ShipRole.DRONE)
+                    ? "ENCOUNTER"
+                    : "SHIPYARD+ENCOUNTER";
+            out.add(role + "  |  " + shipyard + "  |  " + hull.family
+                    + "  |  " + hull.factionVariant);
+        }
+        return out;
+    }
+
+    public static Ship spawnSectionFourHullEncounter(GameContext ctx,
+                                                     ShipRole role,
+                                                     Faction faction,
+                                                     double x,
+                                                     double y) {
+        return spawnCampaignShip(ctx, role, faction, x, y, "Section-4 " + roleDisplayName(role));
+    }
+
+    public static List<String> campaignScaleBalanceLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        double risk = (st == null || st.galaxyTravel == null) ? 0.0 : st.galaxyTravel.interceptionRisk;
+        return List.of(
+                "TRAVEL TEMPO  |  yard work 12-65s  |  route travel live-duration scaled",
+                "ROUTE RISK  |  current " + (int) Math.round(MathUtil.clamp(risk, 0.0, 100.0)) + "%  |  bounded 0-100%",
+                "DIRECTOR AGGRESSION  |  tick " + (int) Math.round(FACTION_DIRECTOR_TICK_SEC) + "s  |  live theater danger/trade inputs",
+                "INTERVENTION WINDOW  |  range " + (int) Math.round(CAMPAIGN_BATTLE_INTERVENTION_RANGE)
+                        + "  |  reserve " + (int) Math.round(st == null ? 0.0 : st.blueInterventionReserve) + "%",
+                "MULTI-FRONT PRESSURE  |  theaters " + (st == null ? 0 : st.campaignTheaters.size())
+                        + "  |  nodes " + (st == null ? 0 : st.strategicNodes.size())
+        );
+    }
+
+    public static List<String> campaignEconomyExpansionLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return EconomyLogisticsIndustrySystem.commandBoardLines((st == null) ? null : st.economyExpansion);
+    }
+
+    public static List<String> campaignDiplomacyNarrativeLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return DiplomacyNarrativeCrewSystem.commandBoardLines((st == null) ? null : st.diplomacyNarrative);
+    }
+
+    public static List<String> campaignOperationsExpansionLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return OperationsInformationCommandSystem.commandBoardLines((st == null) ? null : st.operationsExpansion);
+    }
+
+    public static List<String> campaignAlphaMissionMatrixLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.operationsExpansion == null) return List.of("Alpha mission matrix unavailable.");
+        ArrayList<String> out = new ArrayList<>();
+        for (OperationsInformationCommandSystem.LiveMission mission : st.operationsExpansion.liveAlphaMissions) {
+            out.add(mission.family + "  |  " + mission.objective + "  |  " + mission.warning);
+        }
+        return out;
+    }
+
+    public static List<String> campaignProductionReadinessLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return ProductionReadinessLongevitySystem.commandBoardLines((st == null) ? null : st.productionReadiness);
+    }
+
+    public static List<String> campaignFleetDoctrineExpansionLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return StretchGoalsFleetDoctrineSystem.commandBoardLines((st == null) ? null : st.fleetDoctrineExpansion);
+    }
+
+    public static List<String> campaignDeepSimulationLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return DeepCampaignSimulationSystem.commandBoardLines((st == null) ? null : st.deepCampaignExpansion);
+    }
+
+    public static List<String> campaignCommunityContentLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return CommunityContentSystem.commandBoardLines((st == null) ? null : st.communityContent);
+    }
+
     private static String campaignSelectedTheaterLabel(CampaignState st) {
         if (st == null) return "None";
         CampaignTheaterState theater = selectedCampaignTheater(st);
@@ -2925,6 +3449,8 @@ public final class CampaignSystem {
         out.add("Commitments: Commit " + committed + "  |  Reserve " + reserve + "  |  Hold " + heldBack);
         out.add("Average Hull Condition: " + (int) Math.round(avgHull * 100.0) + "%  |  Command Groups " + Math.max(1, groupIds.size()));
         out.add("Flagship Capability: Mothership deck can launch picket escorts.");
+        out.addAll(StretchGoalsFleetDoctrineSystem.commandBoardLines(st.fleetDoctrineExpansion));
+        out.addAll(campaignYardDocketLines(ctx, 3));
         if (focused != null) {
             out.add("Focused Hull: " + displayPersistentFleetEntryName(focused)
                     + "  |  " + roleDisplayName(focused.role).toUpperCase(Locale.US)
@@ -3003,6 +3529,24 @@ public final class CampaignSystem {
                     + "  |  " + campaignCargoLabelForPersistentEntry(entry)
                     + "  |  " + campaignForceLabelForPersistentEntry(st, entry)
                     + "  |  " + group + "  |  " + commitment);
+            if (out.size() >= maxCount) break;
+        }
+        return out;
+    }
+
+    public static List<String> campaignFleetArchiveLines(GameContext ctx, int maxCount) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || maxCount <= 0) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null) continue;
+            String prefix = entry.destroyed ? "MEMORIAL" : "SERVICE";
+            out.add(prefix + "  |  " + displayPersistentFleetEntryName(entry)
+                    + "  |  K " + Math.max(0, entry.kills)
+                    + " R " + Math.max(0, entry.rescues)
+                    + " SCARS " + Math.max(0, entry.scars)
+                    + "  |  " + persistentFleetPersonnelLabel(entry));
             if (out.size() >= maxCount) break;
         }
         return out;
@@ -3160,6 +3704,8 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Resource data unavailable.");
+        synchronizeCampaignEconomyLedger(ctx, st);
+        EconomyLogisticsIndustrySystem.LogisticsLedger ledger = st.economyExpansion.logistics;
         return List.of(
                 "Credits: " + ctx.credits + "  |  Ore " + currentCampaignOre(ctx),
                 "Operational State: Fuel " + logisticsStateLabel(campaignFuel(ctx), 42, 84)
@@ -3168,7 +3714,10 @@ public final class CampaignSystem {
                 "Recovery Stores: Salvage " + campaignSalvageStock(ctx) + "  |  Supplies " + campaignSupplies(ctx),
                 "Blue Intervention Reserve: " + (int) Math.round(MathUtil.clamp(st.blueInterventionReserve, 0.0, 100.0)) + "%",
                 "Pressure: Intel " + campaignIntelReadout(ctx) + "  |  Exposure " + campaignExposureReadout(ctx),
-                "Fleet Strain: " + campaignFleetStrainReadout(ctx)
+                "Fleet Strain: " + campaignFleetStrainReadout(ctx),
+                "Expansion Ledger: Readiness " + ledger.readinessPercent + "%  |  Fatigue " + ledger.crewFatigue
+                        + "  |  Maintenance " + ledger.maintenanceDebt,
+                DeepCampaignSimulationSystem.commandBoardLines(st.deepCampaignExpansion).get(1)
         );
     }
 
@@ -3199,6 +3748,7 @@ public final class CampaignSystem {
         if (campaignSalvageStock(ctx) < 8) out.add("SALVAGE LOW  |  REPAIR FLEX THIN");
         if (st.blueInterventionReserve < 22.0) out.add("BLUE RESERVE LOW  |  THEATER OPS LIMITED");
         if (campaignFleetStrainPercent(ctx) >= 72.0) out.add("FLEET STRAIN HIGH  |  RECOVERY EFFICIENCY FALLING");
+        out.addAll(EconomyLogisticsIndustrySystem.shortageWarningLines(st.economyExpansion));
         if (out.isEmpty()) out.add("LOGISTICS STABLE  |  NO IMMEDIATE SHORTFALL");
         out.add(routeSupportPreviewLine(ctx));
         out.add(logisticsBlockerLine(ctx));
@@ -3473,6 +4023,43 @@ public final class CampaignSystem {
                     false,
                     "",
                     CampaignSystem::toggleCampaignWarMapSimplification));
+            out.add(action("WAR_MAP_OVERLAY",
+                    "CYCLE OVERLAY",
+                    "Current strategic overlay: " + parseEnum(st.selectedStrategicOverlayId,
+                            StrategicCampaignExpansionSystem.MapOverlay.CONTROL),
+                    "Cycle logistics, sensors, control, danger, trade, and hostile-route emphasis on the live war map.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
+                    false,
+                    "",
+                    CampaignSystem::cycleStrategicMapOverlay));
+            out.add(action("TASK_GROUP_NEXT",
+                    "NEXT TASK GROUP",
+                    "Select the next friendly live task group for delegated planning.",
+                    "Cycle through real coalition forces before issuing a delegated task order.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
+                    false,
+                    "",
+                    CampaignSystem::cycleCampaignTaskGroup));
+            out.add(action("TASK_GROUP_ORDER",
+                    "CYCLE TASK ORDER",
+                    "Delegate hold, patrol, escort, reinforce, or repair behavior to the selected task group.",
+                    "Applies the selected order to a real live coalition campaign force.",
+                    CampaignActionCategory.NAVIGATION,
+                    true,
+                    st.selectedCampaignTaskGroupId > 0,
+                    st.selectedCampaignTaskGroupId > 0 ? "" : "select a task group first",
+                    st.selectedCampaignTaskGroupId > 0 ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    false,
+                    "",
+                    CampaignSystem::cycleSelectedCampaignTaskGroupOrder));
         }
 
         if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.FLEET) {
@@ -3517,6 +4104,30 @@ public final class CampaignSystem {
                     false,
                     "",
                     CampaignSystem::startTravelToSelectedLocation));
+            out.add(action("DOCTRINE_CYCLE",
+                    "CYCLE DOCTRINE",
+                    st.fleetDoctrineExpansion.fleet.preBattleReview,
+                    "Cycle escort, fleet battle, raid, rescue, and blockade standing orders. The live tactical queue uses the selected retreat, rescue, and surrender policy.",
+                    CampaignActionCategory.POSTURE,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
+                    false,
+                    "",
+                    CampaignSystem::cycleLiveDoctrine));
+            out.add(action("COMMAND_LINK_OVERLAY",
+                    st.fleetDoctrineExpansion.fleet.commandLinkOverlay ? "HIDE COMMAND LINKS" : "SHOW COMMAND LINKS",
+                    "Toggle the command-link overlay for the live fleet network.",
+                    "Show or hide the current flagship, relay, fallback, bandwidth, and acknowledgment picture.",
+                    CampaignActionCategory.POSTURE,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
+                    false,
+                    "",
+                    CampaignSystem::toggleLiveCommandLinkOverlay));
         }
 
         if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.STRIKES) {
@@ -3903,6 +4514,9 @@ public final class CampaignSystem {
         CampaignLocation selected = selectedCampaignLocation(ctx);
         if (primary.category == CampaignActionCategory.NAVIGATION && selected != null) {
             for (String line : compactRouteAssessmentLines(ctx)) out.add(line);
+            List<String> authority = campaignStrategicAuthorityLines(ctx);
+            if (!authority.isEmpty()) out.add(authority.get(0));
+            if (authority.size() > 1) out.add(authority.get(1));
         } else if (primary.category == CampaignActionCategory.SERVICES && selected != null) {
             out.add("Location: " + selected.name);
             out.add(hubServiceActionDetail(ctx, selected, hubServiceFromActionId(primary.id)));
@@ -4114,6 +4728,18 @@ public final class CampaignSystem {
         }
 
         if (tab == UiState.TacticalMapTab.FLEET) {
+            out.add(action("TACTICAL_DOCTRINE_CYCLE",
+                    "CYCLE DOCTRINE",
+                    st.fleetDoctrineExpansion.fleet.preBattleReview,
+                    "Change the live standing-order template before issuing more division orders.",
+                    CampaignActionCategory.POSTURE,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
+                    false,
+                    "",
+                    CampaignSystem::cycleLiveDoctrine));
             out.add(action("TACTICAL_MOVE_DIVISION",
                     "MOVE DIVISION",
                     hasSelection ? "Order the selected division toward the selected marker." : "No movement point selected.",
@@ -4307,6 +4933,7 @@ public final class CampaignSystem {
     private static boolean protectMissionConvoy(GameContext ctx) {
         CampaignObjectiveMarker marker = missionEscortObjectiveMarker(ctx);
         if (ctx == null || ctx.ui == null || marker == null) return false;
+        if (!queueLiveDoctrineOrder(ctx, "Protect convoy " + marker.label, false)) return false;
         ctx.ui.waypointX = GameMath.clamp(marker.x, 0.0, ctx.WORLD_W);
         ctx.ui.waypointY = GameMath.clamp(marker.y, 0.0, ctx.WORLD_H);
         UISystem.addPing(ctx, marker.x, marker.y, 2.2);
@@ -4321,6 +4948,7 @@ public final class CampaignSystem {
 
     private static boolean moveSelectedDivisionToTacticalSelection(GameContext ctx) {
         if (!hasTacticalMapSelection(ctx) || ctx == null || ctx.ui == null) return false;
+        if (!queueLiveDoctrineOrder(ctx, "Move division to " + ctx.ui.tacticalMapSelectionLabel, false)) return false;
         return issueStrategicDivisionOrder(ctx, ctx.ui.tacticalMapSelectionX, ctx.ui.tacticalMapSelectionY);
     }
 
@@ -4361,6 +4989,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null || ctx.ui == null) return false;
         StrategicDivisionState division = st.strategicDivisions.get(ctx.ui.selectedStrategicDivisionGroupId);
         if (division == null) return false;
+        if (!queueLiveDoctrineOrder(ctx, "Hold division " + strategicDivisionLabel(st, division.groupId), false)) return false;
         division.targetSubzone = division.currentSubzone;
         division.transitRemainingSec = 0.0;
         division.lastOrderX = Double.NaN;
@@ -4371,6 +5000,66 @@ public final class CampaignSystem {
                         missionSubzoneCenterX(ctx, st.sector, Math.max(0, division.currentSubzone)),
                         missionSubzoneCenterY(ctx, st.sector, Math.max(0, division.currentSubzone))),
                 1.1);
+        return true;
+    }
+
+    private static boolean queueLiveDoctrineOrder(GameContext ctx, String text, boolean vague) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.fleetDoctrineExpansion == null) return false;
+        StretchGoalsFleetDoctrineSystem.FleetCommandState fleet = st.fleetDoctrineExpansion.fleet;
+        if (fleet.networkCollapsed || fleet.bandwidthUsed >= fleet.bandwidthCapacity) {
+            EventSystem.showBanner(ctx, "COMMAND LINK SATURATED  |  ORDER DELAYED", 1.2);
+            return false;
+        }
+        StretchGoalsFleetDoctrineSystem.queueOrder(st.fleetDoctrineExpansion, text, vague);
+        return true;
+    }
+
+    private static boolean cycleLiveDoctrine(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.fleetDoctrineExpansion == null) return false;
+        StretchGoalsFleetDoctrineSystem.StandingOrders orders = st.fleetDoctrineExpansion.fleet.standingOrders;
+        StretchGoalsFleetDoctrineSystem.DoctrineTemplate[] values = StretchGoalsFleetDoctrineSystem.DoctrineTemplate.values();
+        orders.template = values[(orders.template.ordinal() + 1) % values.length];
+        switch (orders.template) {
+            case CONVOY_ESCORT -> {
+                orders.retreatThresholdPercent = 42;
+                orders.rescueDisabledAllies = true;
+                orders.acceptSurrender = true;
+            }
+            case FLEET_BATTLE -> {
+                orders.retreatThresholdPercent = 30;
+                orders.rescueDisabledAllies = true;
+                orders.acceptSurrender = true;
+            }
+            case RAID -> {
+                orders.retreatThresholdPercent = 52;
+                orders.rescueDisabledAllies = false;
+                orders.acceptSurrender = false;
+            }
+            case RESCUE -> {
+                orders.retreatThresholdPercent = 58;
+                orders.rescueDisabledAllies = true;
+                orders.acceptSurrender = true;
+            }
+            case BLOCKADE -> {
+                orders.retreatThresholdPercent = 36;
+                orders.rescueDisabledAllies = false;
+                orders.acceptSurrender = true;
+            }
+        }
+        synchronizePlayableAlphaSystems(ctx, st, 0.0);
+        EventSystem.showBanner(ctx, ("DOCTRINE: " + orders.template + "  |  RETREAT "
+                + orders.retreatThresholdPercent + "%").replace('_', ' '), 1.3);
+        return true;
+    }
+
+    private static boolean toggleLiveCommandLinkOverlay(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.fleetDoctrineExpansion == null) return false;
+        StretchGoalsFleetDoctrineSystem.FleetCommandState fleet = st.fleetDoctrineExpansion.fleet;
+        fleet.commandLinkOverlay = !fleet.commandLinkOverlay;
+        EventSystem.showBanner(ctx, fleet.commandLinkOverlay ? "COMMAND LINK OVERLAY ON" : "COMMAND LINK OVERLAY OFF", 1.1);
         return true;
     }
 
@@ -4746,6 +5435,7 @@ public final class CampaignSystem {
         out.add("Green Channel Favor: " + st.greenContractFavor);
         out.add("Yellow Leverage: " + st.yellowLiberationFavor);
         out.add("Contact Net: " + campaignRelationshipBoardLine(ctx));
+        out.add("Expansion " + DiplomacyNarrativeCrewSystem.commandBoardLines(st.diplomacyNarrative).get(0));
         out.add("Actionable Lead: " + campaignCrewCommentaryLines(ctx).get(0));
         out.add("Reputation: " + campaignReputationReadout(ctx));
         out.add("Theater Shift: " + theaterPressureReadout(ctx));
@@ -4988,7 +5678,7 @@ public final class CampaignSystem {
         };
     }
 
-    private static int postureTravelFuelCostPerTick(FleetPosture posture, double dt) {
+    private static double postureTravelFuelCostPerTick(FleetPosture posture, double dt) {
         if (dt <= 0.0) return 0;
         double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
             case SILENT_RUNNING -> 0.18;
@@ -4998,10 +5688,10 @@ public final class CampaignSystem {
             case LOGISTICS_CONSERVATION -> 0.12;
             case RECON_SWEEP -> 0.26;
         };
-        return (int) Math.floor(rate * dt);
+        return rate * dt;
     }
 
-    private static int postureTravelSupplyCostPerTick(FleetPosture posture, double dt) {
+    private static double postureTravelSupplyCostPerTick(FleetPosture posture, double dt) {
         if (dt <= 0.0) return 0;
         double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
             case SILENT_RUNNING -> 0.08;
@@ -5011,10 +5701,10 @@ public final class CampaignSystem {
             case LOGISTICS_CONSERVATION -> 0.06;
             case RECON_SWEEP -> 0.12;
         };
-        return (int) Math.floor(rate * dt);
+        return rate * dt;
     }
 
-    private static int postureTravelAmmoCostPerTick(FleetPosture posture, double dt) {
+    private static double postureTravelAmmoCostPerTick(FleetPosture posture, double dt) {
         if (dt <= 0.0) return 0;
         double rate = switch ((posture == null) ? FleetPosture.SILENT_RUNNING : posture) {
             case SILENT_RUNNING, RESCUE_PRIORITY, LOGISTICS_CONSERVATION -> 0.0;
@@ -5022,7 +5712,7 @@ public final class CampaignSystem {
             case RAIDER_DOCTRINE -> 0.10;
             case RECON_SWEEP -> 0.04;
         };
-        return (int) Math.floor(rate * dt);
+        return rate * dt;
     }
 
     private static double postureTransitEventBias(FleetPosture posture) {
@@ -5136,9 +5826,9 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "2-JUMP FORECAST  |  OFFLINE";
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        int fuel = Math.max(1, postureTravelFuelCostPerTick(posture, 20.0));
-        int supplies = Math.max(0, postureTravelSupplyCostPerTick(posture, 20.0));
-        int ammo = Math.max(0, postureTravelAmmoCostPerTick(posture, 20.0));
+        int fuel = Math.max(1, (int) Math.ceil(postureTravelFuelCostPerTick(posture, 20.0)));
+        int supplies = Math.max(0, (int) Math.ceil(postureTravelSupplyCostPerTick(posture, 20.0)));
+        int ammo = Math.max(0, (int) Math.ceil(postureTravelAmmoCostPerTick(posture, 20.0)));
         return "2-JUMP FORECAST  |  FUEL " + (fuel * 2) + "  SUP " + (supplies * 2) + "  AMMO " + (ammo * 2);
     }
 
@@ -9853,6 +10543,10 @@ public final class CampaignSystem {
         public final List<TitanArchetype> ownedTitans = new ArrayList<>();
         public final List<PersistentFleetEntry> persistentBlueFleet = new ArrayList<>();
         public int nextPersistentFleetSlotId = 1;
+        public final List<CampaignYardOrder> campaignYardOrders = new ArrayList<>();
+        public int nextCampaignYardOrderId = 1;
+        public String selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.CONTROL.name();
+        public int selectedCampaignTaskGroupId = 0;
         public int escortCapUpgradeLevel = 0;
         public int lineCapUpgradeLevel = 0;
         public int capitalCapUpgradeLevel = 0;
@@ -9936,6 +10630,9 @@ public final class CampaignSystem {
         public int campaignSupplies = 90;
         public int campaignAmmo = 110;
         public int campaignSalvage = 35;
+        public double travelFuelAttritionRemainder = 0.0;
+        public double travelSupplyAttritionRemainder = 0.0;
+        public double travelAmmoAttritionRemainder = 0.0;
         public double playerGalaxyX = Double.NaN;
         public double playerGalaxyY = Double.NaN;
         public double playerGalaxyHeadingDeg = -90.0;
@@ -9944,7 +10641,7 @@ public final class CampaignSystem {
         public double selectedFreeGalaxyTargetY = Double.NaN;
         public double transitEventCooldownSec = 4.0;
         public double transitEncounterPressure = 0.0;
-        public double transitNextEncounterThreshold = 8.0;
+        public double transitNextEncounterThreshold = 6.0;
         public int transientGalaxySiteSerial = 0;
         public final List<GalaxySearchGroup> galaxySearchGroups = new ArrayList<>();
         public int nextGalaxySearchGroupId = 1;
@@ -9986,6 +10683,14 @@ public final class CampaignSystem {
         public String redDirectorBrief = "Red director awaiting theater picture";
         public String greenDirectorBrief = "Green director awaiting theater picture";
         public String yellowDirectorBrief = "Yellow director awaiting theater picture";
+        public StrategicCampaignExpansionSystem.State strategicExpansion = StrategicCampaignExpansionSystem.bootstrap(0L);
+        public EconomyLogisticsIndustrySystem.State economyExpansion = EconomyLogisticsIndustrySystem.bootstrap(0L);
+        public DiplomacyNarrativeCrewSystem.State diplomacyNarrative = DiplomacyNarrativeCrewSystem.bootstrap(0L);
+        public OperationsInformationCommandSystem.State operationsExpansion = OperationsInformationCommandSystem.bootstrap(0L);
+        public ProductionReadinessLongevitySystem.State productionReadiness = ProductionReadinessLongevitySystem.bootstrap(0L);
+        public StretchGoalsFleetDoctrineSystem.State fleetDoctrineExpansion = StretchGoalsFleetDoctrineSystem.bootstrap(0L);
+        public DeepCampaignSimulationSystem.State deepCampaignExpansion = DeepCampaignSimulationSystem.bootstrap(0L);
+        public CommunityContentSystem.State communityContent = CommunityContentSystem.bootstrap(0L);
         public boolean strikeCinematicActive = false;
         public String strikeCinematicType = "";
         public String strikeCinematicSourceLabel = "";
@@ -10687,7 +11392,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null || location == null || service == null) return false;
         HubProfile profile = hubProfile(ctx, location);
         double strainPenalty = 1.0 + MathUtil.clamp((st.fleetStrain - 55.0) / 100.0, 0.0, 0.30);
-        switch (service) {
+        boolean completed = switch (service) {
             case REPAIR -> {
                 int damagedShips = damagedPersistentFleetCount(ctx, st);
                 int cost = GameContext.scaleCreditEarnings((int) Math.round((80 + damagedShips * 28) * profile.priceMul));
@@ -10695,7 +11400,7 @@ public final class CampaignSystem {
                 int supplyCost = Math.max(1, (int) Math.round((4 + damagedShips * 2) / profile.supportMul));
                 if (ctx.credits < cost || st.campaignSupplies < supplyCost || st.campaignSalvage < salvageCost) {
                     EventSystem.showBanner(ctx, "REPAIR REQUIRES CREDITS, SUPPLIES, AND SALVAGE", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= cost;
                 st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
@@ -10706,13 +11411,13 @@ public final class CampaignSystem {
                 setLocationRouteState(location, "Repair traffic is now flowing cleanly through this anchorage", true);
                 setLocationRecurringContact(location, "VOSS", "service crews know your fleet and are waving you through faster");
                 EventSystem.showBanner(ctx, "FLEET REPAIRED  -" + cost + " CREDITS  -" + supplyCost + " SUP  -" + salvageCost + " SALV", 1.6);
-                return true;
+                yield true;
             }
             case TRADE -> {
                 int soldSalvage = Math.min(st.campaignSalvage, 12 + (int) Math.round(profile.tradeMul * 6.0));
                 if (soldSalvage <= 0) {
                     EventSystem.showBanner(ctx, "NO SALVAGE READY FOR MARKET SALE", 1.3);
-                    return false;
+                    yield false;
                 }
                 int sale = GameContext.scaleCreditEarnings((int) Math.round(soldSalvage * 10 * profile.tradeMul));
                 int fuelGain = Math.max(4, (int) Math.round(soldSalvage * 0.7 * profile.logisticsMul));
@@ -10726,7 +11431,7 @@ public final class CampaignSystem {
                 setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
                 setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
                 EventSystem.showBanner(ctx, "MARKET TRADE COMPLETE  +" + sale + " CREDITS  +" + fuelGain + " FUEL", 1.6);
-                return true;
+                yield true;
             }
             case SHIPYARD -> {
                 ShipRole buildRole = shipyardOfferRole(location, profile);
@@ -10735,25 +11440,21 @@ public final class CampaignSystem {
                 int salvageCost = Math.max(0, (int) Math.round(4 + profile.regionPressure * 4));
                 if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost || st.campaignSalvage < salvageCost) {
                     EventSystem.showBanner(ctx, "SHIPYARD ORDER REQUIRES CREDITS, ORE, AND SALVAGE", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= creditCost;
                 setCampaignOre(ctx, st, Math.max(0, currentCampaignOre(ctx) - oreCost));
                 st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
-                PersistentFleetEntry built = addPersistentFleetEntry(st, buildRole, location.name + " Yard Build", CAMPAIGN_FLAGSHIP_COMMAND_GROUP);
-                if (built != null) {
-                    built.hullConditionFrac = 1.0;
-                    built.shieldConditionFrac = 1.0;
-                }
+                queueCampaignConstructionOrder(ctx, st, location, buildRole, creditCost, oreCost, salvageCost);
                 adjustFleetStrain(st, -5.0);
-                EventSystem.showBanner(ctx, "SHIPYARD ORDER ADDED: " + buildRole.name() + "  -" + creditCost + "C  -" + oreCost + " ORE", 1.7);
-                return true;
+                EventSystem.showBanner(ctx, "SHIPYARD WORK QUEUED: " + buildRole.name() + "  -" + creditCost + "C  -" + oreCost + " ORE", 1.7);
+                yield true;
             }
             case SUPPLY -> {
                 int cost = GameContext.scaleCreditEarnings((int) Math.round(90 * profile.priceMul));
                 if (ctx.credits < cost) {
                     EventSystem.showBanner(ctx, "SUPPLY ORDER REQUIRES " + cost + " CREDITS", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= cost;
                 int supplyGain = Math.max(12, (int) Math.round(18 * profile.logisticsMul));
@@ -10762,14 +11463,14 @@ public final class CampaignSystem {
                 st.campaignAmmo += ammoGain;
                 adjustFleetStrain(st, -8.0);
                 EventSystem.showBanner(ctx, "SUPPLIES PURCHASED  +" + supplyGain + " SUP  +" + ammoGain + " AMMO", 1.5);
-                return true;
+                yield true;
             }
             case STRIKE_REARM -> {
                 int creditCost = strikeRearmCreditCost(profile);
                 int oreCost = strikeRearmOreCost(profile);
                 if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost) {
                     EventSystem.showBanner(ctx, "STRIKE REBUILD REQUIRES " + creditCost + " CREDITS AND " + oreCost + " ORE", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= creditCost;
                 setCampaignOre(ctx, st, Math.max(0, currentCampaignOre(ctx) - oreCost));
@@ -10787,28 +11488,28 @@ public final class CampaignSystem {
                         "STRIKE STORES REBUILT  +TORPEDO  +SORTIE READY"
                                 + ((profile.alignment == HubAlignment.GREEN || profile.quality >= 1.08) ? "  +ATOMIC" : ""),
                         1.7);
-                return true;
+                yield true;
             }
             case REFIT -> {
                 int cost = GameContext.scaleCreditEarnings((int) Math.round(110 * profile.priceMul));
                 int salvageCost = Math.max(1, (int) Math.round(3 / profile.supportMul));
                 if (ctx.credits < cost || st.campaignSalvage < salvageCost) {
                     EventSystem.showBanner(ctx, "REFIT REQUIRES CREDITS AND SALVAGE", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= cost;
                 st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
-                refitPersistentFleet(ctx, st, profile);
+                queueCampaignRefitOrder(ctx, st, location, profile, cost, salvageCost);
                 adjustFleetStrain(st, -10.0);
                 setRelationshipState(st, "VOSS", CampaignRelationshipState.TRUSTED);
-                EventSystem.showBanner(ctx, "FLEET REFIT COMPLETE  -" + cost + " CREDITS", 1.4);
-                return true;
+                EventSystem.showBanner(ctx, "FLEET REFIT QUEUED  -" + cost + " CREDITS", 1.4);
+                yield true;
             }
             case INTEL -> {
                 int cost = GameContext.scaleCreditEarnings((int) Math.round(70 * profile.priceMul));
                 if (ctx.credits < cost) {
                     EventSystem.showBanner(ctx, "INTEL EXCHANGE REQUIRES " + cost + " CREDITS", 1.3);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= cost;
                 st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel - (4.0 + profile.supportMul * 3.0));
@@ -10819,7 +11520,7 @@ public final class CampaignSystem {
                 setLocationRecurringContact(location, "MARR", "Marr's relay clerks are quietly sharpening your local picture");
                 setLocationRouteState(location, "Intel clerks cleaned up the local route picture around this hub", true);
                 EventSystem.showBanner(ctx, "INTEL ACQUIRED - LOCAL THREAT PICTURE UPDATED", 1.5);
-                return true;
+                yield true;
             }
             case CONTRACTS -> {
                 int payout = GameContext.scaleCreditEarnings((int) Math.round((profile.alignment == HubAlignment.GREEN ? 135 : 105) * profile.quality));
@@ -10833,36 +11534,71 @@ public final class CampaignSystem {
                                 ? "green handlers are now treating this hub as part of your trusted circuit"
                                 : "broker intermediaries are now routing favors through this port");
                 EventSystem.showBanner(ctx, "CONTRACT ADVANCE RECEIVED  +" + payout + " CREDITS  +" + supplies + " SUP", 1.5);
-                return true;
+                yield true;
             }
             case SALVAGE -> {
                 int soldSalvage = Math.min(st.campaignSalvage, 16);
                 if (soldSalvage <= 0) {
                     EventSystem.showBanner(ctx, "NO SALVAGE TO SELL", 1.3);
-                    return false;
+                    yield false;
                 }
                 int payout = GameContext.scaleCreditEarnings((int) Math.round(soldSalvage * 11 * profile.tradeMul));
                 ctx.credits += payout;
                 st.campaignSalvage -= soldSalvage;
                 adjustFleetStrain(st, -3.0);
                 EventSystem.showBanner(ctx, "SALVAGE SOLD  +" + payout + " CREDITS", 1.5);
-                return true;
+                yield true;
             }
             case FUEL -> {
                 int cost = GameContext.scaleCreditEarnings((int) Math.round(70 * profile.priceMul));
                 if (ctx.credits < cost) {
                     EventSystem.showBanner(ctx, "FUEL ORDER REQUIRES " + cost + " CREDITS", 1.4);
-                    return false;
+                    yield false;
                 }
                 ctx.credits -= cost;
                 int fuelGain = Math.max(14, (int) Math.round(24 * profile.logisticsMul));
                 st.campaignFuel += fuelGain;
                 adjustFleetStrain(st, -8.0);
                 EventSystem.showBanner(ctx, "FUEL STORES TOPPED UP  +" + fuelGain + " FUEL", 1.5);
-                return true;
+                yield true;
             }
+        };
+        if (completed) {
+            EconomyLogisticsIndustrySystem.recordLiveDockingRecovery(st.economyExpansion, installationQuality(profile));
+            synchronizeCampaignEconomyLedger(ctx, st);
+            recordExpansionHubService(st, location, service);
+            DeepCampaignSimulationSystem.applyLiveStationService(st.deepCampaignExpansion, service.name(), location.name);
         }
-        return false;
+        return completed;
+    }
+
+    private static void recordExpansionHubService(CampaignState st, CampaignLocation location, HubService service) {
+        if (st == null || st.diplomacyNarrative == null || service == null) return;
+        DiplomacyNarrativeCrewSystem.ReputationGroup group = switch (service) {
+            case REPAIR, REFIT, SHIPYARD, STRIKE_REARM -> DiplomacyNarrativeCrewSystem.ReputationGroup.INDUSTRIAL;
+            case TRADE, SALVAGE, FUEL, SUPPLY -> DiplomacyNarrativeCrewSystem.ReputationGroup.CIVILIAN;
+            case INTEL -> DiplomacyNarrativeCrewSystem.ReputationGroup.POLITICAL;
+            case CONTRACTS -> DiplomacyNarrativeCrewSystem.ReputationGroup.MILITARY;
+        };
+        String locationName = (location.name == null || location.name.isBlank()) ? "campaign hub" : location.name;
+        String summary = service.label + " completed at " + locationName;
+        DiplomacyNarrativeCrewSystem.changeReputation(st.diplomacyNarrative, group, 1, summary);
+        DiplomacyNarrativeCrewSystem.recordDecision(st.diplomacyNarrative, summary,
+                DiplomacyNarrativeCrewSystem.ArrivalState.ON_TIME, service == HubService.REPAIR ? -2 : 0);
+    }
+
+    private static EconomyLogisticsIndustrySystem.InstallationQuality installationQuality(HubProfile profile) {
+        if (profile == null) return EconomyLogisticsIndustrySystem.InstallationQuality.OUTPOST;
+        if (profile.quality >= 1.28) return EconomyLogisticsIndustrySystem.InstallationQuality.FLEET_YARD;
+        if (profile.quality >= 1.10) return EconomyLogisticsIndustrySystem.InstallationQuality.INDUSTRIAL;
+        if (profile.quality >= 0.92) return EconomyLogisticsIndustrySystem.InstallationQuality.STANDARD;
+        return EconomyLogisticsIndustrySystem.InstallationQuality.OUTPOST;
+    }
+
+    private static void synchronizeCampaignEconomyLedger(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.economyExpansion == null) return;
+        EconomyLogisticsIndustrySystem.reflectLiveStores(st.economyExpansion,
+                st.campaignFuel, st.campaignAmmo, st.campaignSalvage, st.campaignSupplies, currentCampaignOre(ctx));
     }
 
     private static int strikeRearmCreditCost(HubProfile profile) {
@@ -10985,6 +11721,11 @@ public final class CampaignSystem {
                 primeCampaignForceDefaults(force);
                 return force;
             }
+        }
+        if (faction == Faction.ENEMY
+                && !EconomyLogisticsIndustrySystem.payForAiDeployment(st.economyExpansion, 1)) {
+            pushTheaterEvent(st, "Red reinforcement request stalled: hostile logistics reserve exhausted");
+            return null;
         }
         CampaignForce created = new CampaignForce(st.nextCampaignForceId++, kind, faction, resolved, origin, purpose, x, y);
         primeCampaignForceDefaults(created);
@@ -12642,6 +13383,7 @@ public final class CampaignSystem {
 
         refreshCampaignAlliances(st);
         ensureCampaignForceOwnership(ctx, st);
+        synchronizePlayableAlphaSystems(ctx, st, dt);
         st.missionIntroTimer = Math.max(0.0, st.missionIntroTimer - Math.max(0.0, dt));
         consolidateCampaignOreLedger(ctx, st, false);
         updateStrikeCinematic(ctx, st, dt);
@@ -13918,12 +14660,19 @@ public final class CampaignSystem {
         entry.primaryWeaponFamilyName = (ship.primaryWeaponFamily == null)
                 ? Ship.PrimaryWeaponFamily.ENERGY_BOLT.name()
                 : ship.primaryWeaponFamily.name();
+        double previousHull = entry.hullConditionFrac;
         entry.hullConditionFrac = (ship.hpMax <= 0)
                 ? 1.0
                 : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
         entry.shieldConditionFrac = (ship.shieldMax <= 0.0)
                 ? 1.0
                 : MathUtil.clamp(ship.shield / ship.shieldMax, 0.0, 1.0);
+        if (previousHull >= 0.72 && entry.hullConditionFrac < 0.72) {
+            entry.scars++;
+            entry.morale = MathUtil.clamp(entry.morale - 8, 0, 100);
+            entry.crewExperience += 2;
+            appendPersistentServiceHistory(entry, "MAJOR HULL DAMAGE");
+        }
         if (ctx != null && ctx.player != null && ship != ctx.player && !isFleetHubSession(ctx)) {
             double dx = ship.x - ctx.player.x;
             double dy = ship.y - ctx.player.y;
@@ -14441,7 +15190,10 @@ public final class CampaignSystem {
             return;
         }
         st.sectorElapsed += Math.max(0.0, dt);
+        EconomyLogisticsIndustrySystem.advanceCampaignTime(st.economyExpansion, dt * 60.0,
+                (int) Math.round(averageTheaterMarketPressure(st)));
         st.proximityAlertCooldownSec = Math.max(0.0, st.proximityAlertCooldownSec - Math.max(0.0, dt));
+        advanceCampaignYardOrders(ctx, st, dt);
         updatePendingHostileReinforcements(ctx, st, dt);
         st.blueInterventionReserve = MathUtil.clamp(st.blueInterventionReserve + Math.max(0.0, dt) * 0.85, 0.0, 100.0);
         updateSensorRelayNodes(st, dt);
@@ -14462,6 +15214,53 @@ public final class CampaignSystem {
         updatePocketDiscoveries(ctx, st);
         updateRecoverableWreckSites(ctx, st);
         maintainStrategicOvermapView(ctx, st);
+    }
+
+    private static void synchronizePlayableAlphaSystems(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null) return;
+        int hostileForces = 0;
+        int supportHubs = 0;
+        int wreckFields = 0;
+        int operationalFriendlyShips = (ctx.player != null && ctx.player.alive && ctx.player.hp > 0) ? 1 : 0;
+        int damagedFriendlyShips = (ctx.player != null && ctx.player.alive && ctx.player.hp < ctx.player.hpMax) ? 1 : 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            if (force.faction == Faction.ENEMY) hostileForces++;
+        }
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null) continue;
+            if (!location.services.isEmpty() || location.type == CampaignLocationType.REPAIR_SITE) supportHubs++;
+            if (location.type == CampaignLocationType.SALVAGE_FIELD || (location.scarNote != null && !location.scarNote.isBlank())) {
+                wreckFields++;
+            }
+        }
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0 || ship.faction == Faction.ENEMY) continue;
+            operationalFriendlyShips++;
+            if (ship.hp < ship.hpMax) damagedFriendlyShips++;
+        }
+        boolean blockadePressure = st.campaignTheaters.stream()
+                .filter(theater -> theater != null)
+                .anyMatch(theater -> theater.routeRisk >= 52.0 || theater.marketPressure >= 52.0);
+        OperationsInformationCommandSystem.refreshLiveAlphaMissions(st.operationsExpansion, hostileForces, supportHubs,
+                wreckFields, damagedFriendlyShips, blockadePressure);
+        StretchGoalsFleetDoctrineSystem.synchronizeLiveFleet(st.fleetDoctrineExpansion, operationalFriendlyShips,
+                damagedFriendlyShips, ctx.player != null && ctx.player.alive && ctx.player.hp > 0, st.sensorRelayNodes.size());
+        if (dt > 0.0 && st.fleetDoctrineExpansion.fleet.bandwidthUsed > 0) {
+            StretchGoalsFleetDoctrineSystem.resolveQueuedOrders(st.fleetDoctrineExpansion);
+        }
+    }
+
+    private static double averageTheaterMarketPressure(CampaignState st) {
+        if (st == null || st.campaignTheaters.isEmpty()) return 0.0;
+        double total = 0.0;
+        int count = 0;
+        for (CampaignTheaterState theater : st.campaignTheaters) {
+            if (theater == null) continue;
+            total += theater.marketPressure;
+            count++;
+        }
+        return count <= 0 ? 0.0 : total / count;
     }
 
     private static void updatePendingHostileReinforcements(GameContext ctx, CampaignState st, double dt) {
@@ -14642,6 +15441,8 @@ public final class CampaignSystem {
                 node.lastOwner = previousOwner;
                 pushTheaterEvent(st,
                         location.name + " captured by " + ((node.owner == TheaterNodeOwner.BLUE_GREEN) ? "Blue/Green" : "Red"));
+                DeepCampaignSimulationSystem.applyLiveStationDamage(st.deepCampaignExpansion, 2,
+                        node.owner == TheaterNodeOwner.RED, node.owner == TheaterNodeOwner.RED);
             }
         }
         applyShipyardReinforcementTick(st, tickSeconds);
@@ -15538,7 +16339,8 @@ public final class CampaignSystem {
             return;
         }
         CampaignLocation source = campaignLocationById(st, force.sourceLocationId);
-        if (force.hullIntegrity < 42.0 || force.readiness < 34.0 || force.supply < 28.0
+        double doctrineRetreat = liveDoctrineRetreatThreshold(st, force);
+        if (force.hullIntegrity < Math.max(42.0, doctrineRetreat) || force.readiness < Math.max(34.0, doctrineRetreat - 8.0) || force.supply < 28.0
                 || force.morale < 32.0 || force.fuelPressure > 76.0) {
             CampaignLocation repair = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
             if (repair != null) {
@@ -15602,7 +16404,15 @@ public final class CampaignSystem {
         double dist = Math.hypot(force.x - hostile.x, force.y - hostile.y);
         boolean yellow = force.faction == Faction.TEAM_D;
         boolean red = force.faction == Faction.ENEMY;
-        if (yellow && ratio < 1.45 || ratio < 0.68 || force.readiness < 38.0 || force.supply < 24.0
+        double doctrineRetreat = liveDoctrineRetreatThreshold(st, force);
+        if (acceptsLiveSurrender(st, force) && (hostile.strength < 15.0 || hostile.morale < 20.0)) {
+            hostile.intent = CampaignForceIntent.RETREATING;
+            hostile.state = CampaignFleetState.RETREATING;
+            force.intent = CampaignForceIntent.HOLDING;
+            force.state = CampaignFleetState.SEARCHING;
+            return true;
+        }
+        if (yellow && ratio < 1.45 || ratio < 0.68 || force.readiness < Math.max(38.0, doctrineRetreat - 6.0) || force.supply < 24.0
                 || force.morale < 36.0 || force.fuelPressure > 70.0) {
             force.intent = ratio < 0.52 ? CampaignForceIntent.RETREATING : CampaignForceIntent.REGROUPING;
             force.state = CampaignFleetState.RETREATING;
@@ -15627,6 +16437,18 @@ public final class CampaignSystem {
         force.targetForceId = hostile.id;
         setCampaignForceRoute(force, force.x, force.y, hostile.x, hostile.y);
         return true;
+    }
+
+    private static double liveDoctrineRetreatThreshold(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || force.faction == Faction.ENEMY || st.fleetDoctrineExpansion == null) return 35.0;
+        StretchGoalsFleetDoctrineSystem.StandingOrders orders = st.fleetDoctrineExpansion.fleet.standingOrders;
+        double rescueBias = orders.rescueDisabledAllies ? 4.0 : 0.0;
+        return MathUtil.clamp(orders.retreatThresholdPercent + rescueBias, 0.0, 100.0);
+    }
+
+    private static boolean acceptsLiveSurrender(CampaignState st, CampaignForce force) {
+        return st != null && force != null && force.faction != Faction.ENEMY && st.fleetDoctrineExpansion != null
+                && st.fleetDoctrineExpansion.fleet.standingOrders.acceptSurrender;
     }
 
     private static void advanceCampaignForcePosition(CampaignForce force, double dt) {
@@ -15736,10 +16558,21 @@ public final class CampaignSystem {
         }
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
         double attrition = ctx.experience.attrition;
-        st.campaignFuel = Math.max(0, st.campaignFuel - scaledAttritionCost(postureTravelFuelCostPerTick(posture, dt), attrition));
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - scaledAttritionCost(postureTravelSupplyCostPerTick(posture, dt), attrition));
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - scaledAttritionCost(postureTravelAmmoCostPerTick(posture, dt), attrition));
         double pressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
+        double fuelAccrued = st.travelFuelAttritionRemainder + postureTravelFuelCostPerTick(posture, dt) * attrition;
+        double supplyAccrued = st.travelSupplyAttritionRemainder + postureTravelSupplyCostPerTick(posture, dt) * attrition;
+        double ammoAccrued = st.travelAmmoAttritionRemainder + postureTravelAmmoCostPerTick(posture, dt) * attrition;
+        int fuelCost = (int) Math.floor(fuelAccrued);
+        int supplyCost = (int) Math.floor(supplyAccrued);
+        int ammoCost = (int) Math.floor(ammoAccrued);
+        st.travelFuelAttritionRemainder = fuelAccrued - fuelCost;
+        st.travelSupplyAttritionRemainder = supplyAccrued - supplyCost;
+        st.travelAmmoAttritionRemainder = ammoAccrued - ammoCost;
+        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+        EconomyLogisticsIndustrySystem.recordLiveTravelAttrition(st.economyExpansion, fuelCost, supplyCost, ammoCost, pressure >= 0.45);
+        synchronizeCampaignEconomyLedger(ctx, st);
         double strainGain = 0.10 + pressure * 0.18;
         if (st.campaignFuel < 34) strainGain += 0.18;
         if (st.campaignSupplies < 26) strainGain += 0.22;
@@ -15784,11 +16617,6 @@ public final class CampaignSystem {
         }
     }
 
-    private static int scaledAttritionCost(int baseCost, double multiplier) {
-        if (baseCost <= 0 || multiplier <= 0.0) return 0;
-        return Math.max(1, (int) Math.round(baseCost * multiplier));
-    }
-
     private static void completeFreeTravel(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         CampaignLocation nearby = nearestCampaignLocation(ctx, st.playerGalaxyX, st.playerGalaxyY, 180.0);
@@ -15829,8 +16657,8 @@ public final class CampaignSystem {
         if (st.transitEncounterPressure < Math.max(4.0, st.transitNextEncounterThreshold)) return;
         emitTransitEncounter(ctx, st, posture, risk, intel);
         st.transitEncounterPressure = 0.0;
-        st.transitNextEncounterThreshold = 6.0 + (Math.floorMod(st.transientGalaxySiteSerial, 5) * 1.5);
-        st.transitEventCooldownSec = Math.max(2.4, 3.8 + MathUtil.clamp(risk * 3.0, 0.0, 3.2) + postureTransitCooldownBias(posture) * 0.5);
+        st.transitNextEncounterThreshold = 4.8 + (Math.floorMod(st.transientGalaxySiteSerial, 5) * 1.2);
+        st.transitEventCooldownSec = Math.max(2.2, 3.2 + MathUtil.clamp(risk * 2.4, 0.0, 2.8) + postureTransitCooldownBias(posture) * 0.45);
     }
 
     private static void emitTransitEncounter(GameContext ctx,
@@ -20985,6 +21813,17 @@ public final class CampaignSystem {
         return label.toUpperCase(Locale.US);
     }
 
+    private static void appendPersistentServiceHistory(PersistentFleetEntry entry, String event) {
+        if (entry == null || event == null || event.isBlank()) return;
+        String next = event.trim().toUpperCase(Locale.US);
+        entry.serviceHistory = (entry.serviceHistory == null || entry.serviceHistory.isBlank())
+                ? next
+                : (entry.serviceHistory + " / " + next);
+        if (entry.serviceHistory.length() > 240) {
+            entry.serviceHistory = entry.serviceHistory.substring(entry.serviceHistory.length() - 240);
+        }
+    }
+
     private static int stealthPrioritySubzone(GameContext ctx, CampaignState st, int playerSubzone) {
         if (ctx == null || st == null) return playerSubzone;
         Ship asset = highValueShipInSubzone(ctx, st, -1);
@@ -21144,12 +21983,95 @@ public final class CampaignSystem {
             if (live == null || !live.alive || live.dying || live.hp <= 0) {
                 entry.destroyed = true;
                 entry.activeShipId = -1;
+                entry.scars++;
+                entry.morale = 0;
+                appendPersistentServiceHistory(entry, "LOST IN ACTION");
                 changed = true;
                 losses++;
             }
         }
         if (losses > 0) adjustFleetStrain(st, losses * 8.0);
         if (changed) rebalancePersistentCommandGroups(st);
+    }
+
+    private static void recordPersistentFleetMissionOutcome(GameContext ctx, CampaignState st, boolean retreated) {
+        if (ctx == null || st == null) return;
+        syncPersistentFleetEntrySnapshots(ctx, st);
+        syncPersistentFleetCasualties(ctx, st);
+        int liveCount = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && !entry.destroyed) liveCount++;
+        }
+        int distributedKills = Math.max(0, st.kills) / Math.max(1, liveCount);
+        boolean rescueOutcome = st.activeGalaxyEncounterLocationId != null
+                && st.activeGalaxyEncounterLocationId.toUpperCase(Locale.US).contains("DISTRESS");
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null || entry.destroyed) continue;
+            entry.kills += distributedKills;
+            entry.crewExperience += Math.max(1, distributedKills + (st.sideObjectiveCompleted ? 2 : 0));
+            entry.morale = MathUtil.clamp(entry.morale + (retreated ? -5 : 3) + (st.sideObjectiveCompleted ? 2 : 0), 0, 100);
+            entry.refusalRisk = Math.max(0, 45 - entry.morale);
+            if (retreated) entry.retreats++;
+            if (rescueOutcome || st.sideObjectiveCompleted && st.objectiveType == ObjectiveType.ESCORT) {
+                entry.rescues += 4;
+                if (entry.rescues >= 12 && !entry.commendations.contains("RESCUE PENNANT")) {
+                    entry.commendations = appendFleetToken(entry.commendations, "RESCUE PENNANT");
+                }
+            }
+            if (distributedKills >= 3 && !entry.commendations.contains("BATTLE STAR")) {
+                entry.commendations = appendFleetToken(entry.commendations, "BATTLE STAR");
+            }
+            appendPersistentServiceHistory(entry, retreated ? "TACTICAL RETREAT" : "MISSION COMPLETE");
+        }
+    }
+
+    public static boolean recordPersistentFleetRetreat(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return false;
+        recordPersistentFleetMissionOutcome(ctx, st, true);
+        adjustFleetStrain(st, 6.0);
+        return true;
+    }
+
+    public static boolean transferPersistentFleetFaction(GameContext ctx, int slotId, Faction faction, String reason) {
+        CampaignState st = state(ctx);
+        PersistentFleetEntry entry = persistentFleetEntryBySlotId(st, slotId);
+        if (st == null || entry == null || entry.destroyed || faction == null) return false;
+        String previous = parseEnum(entry.factionName, Faction.ALLY).name();
+        entry.factionName = faction.name();
+        appendPersistentServiceHistory(entry, "TRANSFER " + previous + " -> " + faction.name()
+                + " " + trimmedOrFallback(reason, "campaign assignment"));
+        Ship live = findShipById(ctx, entry.activeShipId);
+        if (live != null) live.faction = faction;
+        return true;
+    }
+
+    private static void reconcilePersistentFleetRecords(GameContext ctx, CampaignState st, String reason) {
+        if (st == null) return;
+        java.util.HashSet<Integer> activeIds = new java.util.HashSet<>();
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null) continue;
+            entry.factionName = parseEnum(entry.factionName, Faction.ALLY).name();
+            if (entry.destroyed) {
+                entry.activeShipId = -1;
+                continue;
+            }
+            if (entry.activeShipId <= 0) continue;
+            Ship live = findShipById(ctx, entry.activeShipId);
+            if (live == null || !live.alive || live.dying || live.hp <= 0 || !activeIds.add(entry.activeShipId)) {
+                entry.activeShipId = -1;
+                entry.tacticalAbsenceReason = "awaiting redeploy";
+                appendPersistentServiceHistory(entry, "RECONCILED " + trimmedOrFallback(reason, "campaign state"));
+            } else {
+                live.faction = parseEnum(entry.factionName, Faction.ALLY);
+            }
+        }
+        rebalancePersistentCommandGroups(st);
+    }
+
+    private static String appendFleetToken(String existing, String token) {
+        String clean = trimmedOrFallback(existing, "");
+        return clean.isBlank() ? token : clean + " / " + token;
     }
 
     private static void updateSectorOneIntro(GameContext ctx, CampaignState st, double dt) {
@@ -25789,6 +26711,7 @@ public final class CampaignSystem {
     private static void onSectorComplete(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null) return;
+        recordPersistentFleetMissionOutcome(ctx, st, false);
         st.objectiveSecured = false;
         reconcileDetachedCampaignForceParents(st);
 
@@ -26493,6 +27416,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null || !st.enabled) return false;
         if (!canExtractFromCurrentSector(ctx)) return false;
         if (st.galaxyEncounterActive && st.galaxyAmbientEncounterActive) {
+            recordPersistentFleetMissionOutcome(ctx, st, false);
             finishAmbientGalaxyEncounterAndReturn(ctx, st);
             return true;
         }
@@ -27425,6 +28349,10 @@ public final class CampaignSystem {
         cp.ownedTitans = TitanFleetSystem.serializeOwnedTitans(st.ownedTitans);
         syncPersistentFleetEntrySnapshots(ctx, st);
         cp.persistentBlueFleet = serializePersistentBlueFleet(st.persistentBlueFleet);
+        cp.campaignYardOrders = serializeCampaignYardOrders(st);
+        cp.nextCampaignYardOrderId = st.nextCampaignYardOrderId;
+        cp.selectedStrategicOverlayId = st.selectedStrategicOverlayId;
+        cp.selectedCampaignTaskGroupId = st.selectedCampaignTaskGroupId;
         cp.escortCapUpgradeLevel = 0;
         cp.lineCapUpgradeLevel = 0;
         cp.capitalCapUpgradeLevel = 0;
@@ -27461,12 +28389,17 @@ public final class CampaignSystem {
         cp.campaignSupplies = st.campaignSupplies;
         cp.campaignAmmo = st.campaignAmmo;
         cp.campaignSalvage = st.campaignSalvage;
+        cp.travelFuelAttritionRemainder = st.travelFuelAttritionRemainder;
+        cp.travelSupplyAttritionRemainder = st.travelSupplyAttritionRemainder;
+        cp.travelAmmoAttritionRemainder = st.travelAmmoAttritionRemainder;
         cp.playerGalaxyX = st.playerGalaxyX;
         cp.playerGalaxyY = st.playerGalaxyY;
         cp.playerGalaxyHeadingDeg = st.playerGalaxyHeadingDeg;
         cp.selectedFreeGalaxyTargetX = st.selectedFreeGalaxyTargetX;
         cp.selectedFreeGalaxyTargetY = st.selectedFreeGalaxyTargetY;
         cp.transitEventCooldownSec = st.transitEventCooldownSec;
+        cp.transitEncounterPressure = st.transitEncounterPressure;
+        cp.transitNextEncounterThreshold = st.transitNextEncounterThreshold;
         cp.transientGalaxySiteSerial = st.transientGalaxySiteSerial;
         cp.strategicTorpedoCharges = st.strategicTorpedoCharges;
         cp.strategicSortiesLaunched = st.strategicSortiesLaunched;
@@ -27510,6 +28443,15 @@ public final class CampaignSystem {
         cp.redDirectorBrief = st.redDirectorBrief;
         cp.greenDirectorBrief = st.greenDirectorBrief;
         cp.yellowDirectorBrief = st.yellowDirectorBrief;
+        synchronizeStrategicExpansionFromLive(st);
+        cp.strategicExpansionState = StrategicCampaignExpansionSystem.serialize(st.strategicExpansion);
+        cp.economyExpansionState = EconomyLogisticsIndustrySystem.serialize(st.economyExpansion);
+        cp.diplomacyNarrativeState = DiplomacyNarrativeCrewSystem.serialize(st.diplomacyNarrative);
+        cp.operationsExpansionState = OperationsInformationCommandSystem.serialize(st.operationsExpansion);
+        cp.productionReadinessState = ProductionReadinessLongevitySystem.serialize(st.productionReadiness);
+        cp.fleetDoctrineExpansionState = StretchGoalsFleetDoctrineSystem.serialize(st.fleetDoctrineExpansion);
+        cp.deepCampaignExpansionState = DeepCampaignSimulationSystem.serialize(st.deepCampaignExpansion);
+        cp.communityContentState = CommunityContentSystem.serialize(st.communityContent);
         cp.miningBaseMul = ctx.miningBaseMul;
         cp.orePriceBaseMul = ctx.orePriceBaseMul;
 
@@ -27613,12 +28555,17 @@ public final class CampaignSystem {
         st.campaignSupplies = Math.max(0, cp.campaignSupplies);
         st.campaignAmmo = Math.max(0, cp.campaignAmmo);
         st.campaignSalvage = Math.max(0, cp.campaignSalvage);
+        st.travelFuelAttritionRemainder = MathUtil.clamp(cp.travelFuelAttritionRemainder, 0.0, 0.999999);
+        st.travelSupplyAttritionRemainder = MathUtil.clamp(cp.travelSupplyAttritionRemainder, 0.0, 0.999999);
+        st.travelAmmoAttritionRemainder = MathUtil.clamp(cp.travelAmmoAttritionRemainder, 0.0, 0.999999);
         st.playerGalaxyX = cp.playerGalaxyX;
         st.playerGalaxyY = cp.playerGalaxyY;
         st.playerGalaxyHeadingDeg = cp.playerGalaxyHeadingDeg;
         st.selectedFreeGalaxyTargetX = cp.selectedFreeGalaxyTargetX;
         st.selectedFreeGalaxyTargetY = cp.selectedFreeGalaxyTargetY;
         st.transitEventCooldownSec = Math.max(0.0, cp.transitEventCooldownSec);
+        st.transitEncounterPressure = Math.max(0.0, cp.transitEncounterPressure);
+        st.transitNextEncounterThreshold = Math.max(4.0, cp.transitNextEncounterThreshold);
         st.transientGalaxySiteSerial = Math.max(0, cp.transientGalaxySiteSerial);
         st.strategicTorpedoCharges = Math.max(0, cp.strategicTorpedoCharges);
         st.strategicSortiesLaunched = Math.max(0, cp.strategicSortiesLaunched);
@@ -27647,6 +28594,10 @@ public final class CampaignSystem {
         st.lineCapUpgradeLevel = 0;
         st.capitalCapUpgradeLevel = 0;
         restorePersistentBlueFleet(st, cp.persistentBlueFleet);
+        restoreCampaignYardOrders(st, cp.campaignYardOrders, cp.nextCampaignYardOrderId);
+        st.selectedStrategicOverlayId = parseEnum(cp.selectedStrategicOverlayId,
+                StrategicCampaignExpansionSystem.MapOverlay.CONTROL).name();
+        st.selectedCampaignTaskGroupId = Math.max(0, cp.selectedCampaignTaskGroupId);
         restoreGalaxyLocationStates(st, cp.galaxyLocationStates);
         restoreGalaxySearchGroups(st, cp.galaxySearchGroups);
         restoreCampaignTheaters(st, cp.campaignTheaters);
@@ -27662,6 +28613,14 @@ public final class CampaignSystem {
         st.redDirectorBrief = trimmedOrFallback(cp.redDirectorBrief, st.redDirectorBrief);
         st.greenDirectorBrief = trimmedOrFallback(cp.greenDirectorBrief, st.greenDirectorBrief);
         st.yellowDirectorBrief = trimmedOrFallback(cp.yellowDirectorBrief, st.yellowDirectorBrief);
+        st.strategicExpansion = StrategicCampaignExpansionSystem.restore(cp.strategicExpansionState, 0L);
+        st.economyExpansion = EconomyLogisticsIndustrySystem.restore(cp.economyExpansionState, 0L);
+        st.diplomacyNarrative = DiplomacyNarrativeCrewSystem.restore(cp.diplomacyNarrativeState, 0L);
+        st.operationsExpansion = OperationsInformationCommandSystem.restore(cp.operationsExpansionState, 0L);
+        st.productionReadiness = ProductionReadinessLongevitySystem.restore(cp.productionReadinessState, 0L);
+        st.fleetDoctrineExpansion = StretchGoalsFleetDoctrineSystem.restore(cp.fleetDoctrineExpansionState, 0L);
+        st.deepCampaignExpansion = DeepCampaignSimulationSystem.restore(cp.deepCampaignExpansionState, 0L);
+        st.communityContent = CommunityContentSystem.restore(cp.communityContentState, 0L);
         if (st.campaignTheaters.isEmpty() || st.strategicNodes.isEmpty()) {
             initializeCampaignTheaterWar(st);
         } else {
@@ -27682,6 +28641,7 @@ public final class CampaignSystem {
         }
         sanitizeCampaignForceRoutesAfterLoad(st, ctx);
         ensureCampaignForceOwnership(ctx, st);
+        reconcilePersistentFleetRecords(ctx, st, "checkpoint restore");
         return true;
     }
 
@@ -29242,6 +30202,60 @@ public final class CampaignSystem {
         return "Blue " + title + " " + Math.max(1, slotId);
     }
 
+    private static String serializeCampaignYardOrders(CampaignState st) {
+        if (st == null || st.campaignYardOrders.isEmpty()) return "";
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        StringBuilder sb = new StringBuilder();
+        for (CampaignYardOrder order : st.campaignYardOrders) {
+            if (order == null) continue;
+            if (sb.length() > 0) sb.append(';');
+            sb.append(order.id).append(',')
+                    .append(order.kind).append(',')
+                    .append(order.role).append(',')
+                    .append(order.fleetSlotId).append(',')
+                    .append(encodeFleetText(encoder, order.sourceLocationId)).append(',')
+                    .append(encodeFleetText(encoder, order.sourceLabel)).append(',')
+                    .append(encodeFleetText(encoder, order.templateName)).append(',')
+                    .append(order.creditCost).append(',')
+                    .append(order.oreCost).append(',')
+                    .append(order.salvageCost).append(',')
+                    .append(String.format(Locale.US, "%.4f", order.totalSeconds)).append(',')
+                    .append(String.format(Locale.US, "%.4f", order.remainingSeconds));
+        }
+        return sb.toString();
+    }
+
+    private static void restoreCampaignYardOrders(CampaignState st, String raw, int nextId) {
+        if (st == null) return;
+        st.campaignYardOrders.clear();
+        st.nextCampaignYardOrderId = Math.max(1, nextId);
+        if (raw == null || raw.isBlank()) return;
+        Base64.Decoder decoder = Base64.getUrlDecoder();
+        for (String entryRaw : raw.split(";")) {
+            String[] fields = entryRaw.split(",", -1);
+            if (fields.length < 12) continue;
+            try {
+                CampaignYardOrder order = new CampaignYardOrder(
+                        Math.max(1, parseInt(fields[0], 1)),
+                        parseEnum(fields[1], CampaignYardOrderKind.CONSTRUCTION),
+                        parseEnum(fields[2], ShipRole.FRIGATE),
+                        Math.max(0, parseInt(fields[3], 0)),
+                        decodeFleetText(decoder, fields[4], ""),
+                        decodeFleetText(decoder, fields[5], "Frontier Yard"),
+                        decodeFleetText(decoder, fields[6], "Standard"),
+                        Math.max(0, parseInt(fields[7], 0)),
+                        Math.max(0, parseInt(fields[8], 0)),
+                        Math.max(0, parseInt(fields[9], 0)),
+                        Math.max(1.0, parseDouble(fields[10], 1.0)));
+                order.remainingSeconds = MathUtil.clamp(parseDouble(fields[11], order.totalSeconds), 0.0, order.totalSeconds);
+                st.campaignYardOrders.add(order);
+                st.nextCampaignYardOrderId = Math.max(st.nextCampaignYardOrderId, order.id + 1);
+            } catch (Exception ignored) {
+                // Skip malformed yard orders while keeping the rest of the checkpoint usable.
+            }
+        }
+    }
+
     private static String serializePersistentBlueFleet(List<PersistentFleetEntry> fleet) {
         if (fleet == null || fleet.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
@@ -29276,7 +30290,8 @@ public final class CampaignSystem {
                     .append(Double.isFinite(entry.relAngle) ? entry.relAngle : "nan").append(',')
                     .append((entry.tacticalCommitmentId == null || entry.tacticalCommitmentId.isBlank())
                             ? FleetCommitment.AUTO.name()
-                            : entry.tacticalCommitmentId.trim());
+                            : entry.tacticalCommitmentId.trim()).append(',')
+                    .append(encoder.encodeToString(serializePersistentFleetIdentity(entry).getBytes(StandardCharsets.UTF_8)));
         }
         return sb.toString();
     }
@@ -29289,7 +30304,7 @@ public final class CampaignSystem {
         Base64.Decoder decoder = Base64.getUrlDecoder();
         for (String entryRaw : raw.split(";")) {
             if (entryRaw == null || entryRaw.isBlank()) continue;
-            String[] parts = entryRaw.split(",", 21);
+            String[] parts = entryRaw.split(",", 22);
             if (parts.length < 4) continue;
             try {
                 int slotId = Math.max(1, parseInt(parts[0], 1));
@@ -29325,6 +30340,9 @@ public final class CampaignSystem {
                 if (parts.length >= (18 + offset)) entry.relY = parseDouble(parts[17 + offset], Double.NaN);
                 if (parts.length >= (19 + offset)) entry.relAngle = parseDouble(parts[18 + offset], Double.NaN);
                 if (parts.length >= (20 + offset)) entry.tacticalCommitmentId = parseEnum(parts[19 + offset], FleetCommitment.AUTO).name();
+                if (parts.length >= 22 && parts[21] != null && !parts[21].isBlank()) {
+                    restorePersistentFleetIdentity(entry, new String(decoder.decode(parts[21].trim()), StandardCharsets.UTF_8));
+                }
                 st.persistentBlueFleet.add(entry);
                 st.nextPersistentFleetSlotId = Math.max(st.nextPersistentFleetSlotId, slotId + 1);
             } catch (Exception ignored) {
@@ -29332,6 +30350,58 @@ public final class CampaignSystem {
             }
         }
         rebalancePersistentCommandGroups(st);
+    }
+
+    private static String serializePersistentFleetIdentity(PersistentFleetEntry entry) {
+        if (entry == null) return "";
+        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+        return encodeFleetText(encoder, entry.captainName) + ":"
+                + encodeFleetText(encoder, entry.captainPersonalityId) + ":"
+                + encodeFleetText(encoder, entry.crewSpecializationId) + ":"
+                + Math.max(0, entry.crewExperience) + ":"
+                + MathUtil.clamp(entry.morale, 0, 100) + ":"
+                + MathUtil.clamp(entry.refusalRisk, 0, 100) + ":"
+                + Math.max(0, entry.kills) + ":"
+                + Math.max(0, entry.rescues) + ":"
+                + Math.max(0, entry.retreats) + ":"
+                + Math.max(0, entry.scars) + ":"
+                + encodeFleetText(encoder, entry.commendations) + ":"
+                + encodeFleetText(encoder, entry.serviceHistory) + ":"
+                + encodeFleetText(encoder, entry.refitTemplateName);
+    }
+
+    private static void restorePersistentFleetIdentity(PersistentFleetEntry entry, String raw) {
+        if (entry == null || raw == null || raw.isBlank()) return;
+        String[] fields = raw.split(":", -1);
+        if (fields.length < 13) return;
+        Base64.Decoder decoder = Base64.getUrlDecoder();
+        entry.captainName = decodeFleetText(decoder, fields[0], entry.captainName);
+        entry.captainPersonalityId = parseEnum(decodeFleetText(decoder, fields[1], entry.captainPersonalityId),
+                FleetBuildingSystem.CaptainPersonality.STEADY).name();
+        entry.crewSpecializationId = parseEnum(decodeFleetText(decoder, fields[2], entry.crewSpecializationId),
+                FleetBuildingSystem.CrewSpecialization.DAMAGE_CONTROL).name();
+        entry.crewExperience = Math.max(0, parseInt(fields[3], 0));
+        entry.morale = MathUtil.clamp(parseInt(fields[4], 70), 0, 100);
+        entry.refusalRisk = MathUtil.clamp(parseInt(fields[5], 0), 0, 100);
+        entry.kills = Math.max(0, parseInt(fields[6], 0));
+        entry.rescues = Math.max(0, parseInt(fields[7], 0));
+        entry.retreats = Math.max(0, parseInt(fields[8], 0));
+        entry.scars = Math.max(0, parseInt(fields[9], 0));
+        entry.commendations = decodeFleetText(decoder, fields[10], "");
+        entry.serviceHistory = decodeFleetText(decoder, fields[11], "");
+        entry.refitTemplateName = decodeFleetText(decoder, fields[12], "Standard");
+    }
+
+    private static String encodeFleetText(Base64.Encoder encoder, String value) {
+        return encoder.encodeToString(((value == null) ? "" : value).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeFleetText(Base64.Decoder decoder, String raw, String fallback) {
+        try {
+            return new String(decoder.decode((raw == null) ? "" : raw), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return fallback;
+        }
     }
 
 }

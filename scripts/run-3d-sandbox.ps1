@@ -40,8 +40,8 @@ if (Test-Path $classesDir) {
 }
 New-Item -ItemType Directory -Path $classesDir -Force | Out-Null
 
-$legacySources = Get-ChildItem -Path (Join-Path $root "src") -Filter *.java | ForEach-Object { $_.FullName }
-$client3dSources = Get-ChildItem -Path (Join-Path $root "client-3dimentions\src") -Filter *.java | ForEach-Object { $_.FullName }
+$legacySources = Get-ChildItem -Path (Join-Path $root "src") -Filter *.java -Recurse | ForEach-Object { $_.FullName }
+$client3dSources = Get-ChildItem -Path (Join-Path $root "client-3dimentions\src") -Filter *.java -Recurse | ForEach-Object { $_.FullName }
 $sources = @($legacySources + $client3dSources)
 if (-not $sources -or $sources.Count -eq 0) {
     throw "No Java source files found for sandbox run."

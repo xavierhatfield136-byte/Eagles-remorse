@@ -1,0 +1,6 @@
+category,id,metric,value
+performance,frame,frame_budget_ms,16
+performance,memory,heap_budget_mb,1024
+performance,battle,max_profiled_ships,320
+campaign,autosave,rotation_slots,3
+campaign,test_matrix,smoke_scenarios,9

@@ -9,8 +9,6 @@ The current HUD renderer will auto-load these files when present:
 - `missile_mode_heavy.png`
 - `missile_mode_fast.png`
 - `missile_mode_aaa.png`
-- `ecm_mode_primed.png`
-- `ecm_mode_active.png`
 - `cloak_mode_charge.png`
 - `cloak_mode_active.png`
 

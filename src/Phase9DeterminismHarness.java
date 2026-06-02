@@ -325,16 +325,10 @@ public final class Phase9DeterminismHarness {
             };
             UISystem.applyCaptainDirective(ctx, directives[(tick / 520) % directives.length]);
         }
-        if (tick % 360 == 0) {
-            ctx.command.scienceJamming = !ctx.command.scienceJamming;
-        }
         if (tick % 540 == 0) {
             UISystem.setEngineeringMode(ctx, ((tick / 540) & 1) == 0
                     ? GameContext.EngineeringMode.DAMAGE_CONTROL
                     : GameContext.EngineeringMode.BALANCED);
-        }
-        if (tick % 620 == 0) {
-            UISystem.toggleScienceJamming(ctx);
         }
         if (tick % 300 == 0) {
             if (((tick / 300) & 1) == 0) UISystem.scienceLockNearest(ctx);

@@ -273,7 +273,6 @@ public final class AISystem {
                 continue;
             }
             long utilityStart = System.nanoTime();
-            maybeActivateEcm(ctx, s);
             updateStealthCloakIntent(ctx, s);
             tickClosestWeaponRetarget(ctx, s, dt);
             adaptMissileRolesToThreats(ctx, s);
@@ -1219,12 +1218,11 @@ public final class AISystem {
             return rawChoice;
         }
 
-        // Enemy fleets react with lag; jamming and low confidence increase the lag.
+        // Enemy fleets react with lag as contact confidence falls.
         double hold = TEAM_COMMAND_DELAY_TIMERS.getOrDefault(teamId, 0.0);
         int delayedId = TEAM_DELAYED_TARGET_IDS.getOrDefault(teamId, -1);
         Ship delayedTarget = findLiveShipById(ctx.ships, delayedId);
         double fogPenalty = 0.06 + (1.0 - Math.max(0.0, Math.min(1.0, rawChoice.confidence))) * 0.26;
-        if (ctx.command.scienceJamming) fogPenalty += 0.14;
         double effectiveConfidence = Math.max(0.08, Math.min(1.0, rawChoice.confidence * (1.0 - fogPenalty)));
 
         if (hold > 0.0) {
@@ -1236,7 +1234,7 @@ public final class AISystem {
         }
 
         if (isAlive(delayedTarget) && delayedTarget.id != rawChoice.target.id) {
-            double switchDelay = 0.20 + (1.0 - effectiveConfidence) * 0.72 + (ctx.command.scienceJamming ? 0.25 : 0.0);
+            double switchDelay = 0.20 + (1.0 - effectiveConfidence) * 0.72;
             TEAM_COMMAND_DELAY_TIMERS.put(teamId, switchDelay);
             TEAM_DELAYED_TARGET_IDS.put(teamId, delayedTarget.id);
             return new SharedTargetChoice(delayedTarget, Math.max(0.08, effectiveConfidence * 0.70));
@@ -3887,7 +3885,6 @@ public final class AISystem {
         if (role == Turret.MissileRole.INTERCEPT) {
             return TargetingSystem.findClosestHostileSmallCraft(ctx, shooter, shooter.x, shooter.y, missileRangeForTurret(turret, baseMissileRange));
         }
-        if (fallback != null && fallback.blocksMissileLocksFrom(shooter.x, shooter.y)) return null;
         return fallback;
     }
 
@@ -3919,8 +3916,6 @@ public final class AISystem {
             double range = missileRangeForTurret(turret, baseMissileRange);
             Ship target = TargetingSystem.findClosestHostileSmallCraft(ctx, ship, ship.x, ship.y, range);
             if (!isAlive(target)) continue;
-            if (target.blocksMissileLocksFrom(ship.x, ship.y)) continue;
-
             turret.aimAt(dt, ship, target);
             double wx = turret.worldX(ship);
             double wy = turret.worldY(ship);
@@ -4906,16 +4901,6 @@ public final class AISystem {
         double rangeBudget = TargetingSystem.detectionRangeForObserver(observer, target, sensor, targetSigMul);
         double distConf = Math.max(0.08, Math.min(1.0, 1.0 - dist / Math.max(520.0, rangeBudget)));
         double ewFactor = 1.0;
-        if (target.hasActiveEcm()) {
-            if (target.hiddenByEcmAt(observer.x, observer.y)) return 0.0;
-            if (target.distortedByEcmAt(observer.x, observer.y)) ewFactor *= 0.34;
-        }
-        if (ctx != null && ctx.command.scienceJamming && ctx.player != null && observer.faction != null && target.faction != null) {
-            boolean observerFriendlyToPlayer = observer.faction.isFriendlyTo(ctx.player.faction);
-            boolean targetFriendlyToPlayer = target.faction.isFriendlyTo(ctx.player.faction);
-            if (observerFriendlyToPlayer) ewFactor *= 0.90; // own-spectrum noise while actively jamming
-            if (!observerFriendlyToPlayer && targetFriendlyToPlayer) ewFactor *= 0.58; // player EW degrades enemy lock confidence
-        }
         double conf = (sensorNorm * 0.62 + distConf * 0.38) * ewFactor;
         return Math.max(0.05, Math.min(1.0, conf));
     }
@@ -4938,13 +4923,6 @@ public final class AISystem {
         double signature = TargetingSystem.targetSignatureMultiplier(target);
         buildCache.targetSignatureMul.put(target, signature);
         return signature;
-    }
-
-    private static void maybeActivateEcm(GameContext ctx, Ship ship) {
-        if (!isAlive(ship) || ctx == null) return;
-        if (!ship.ecmReady()) return;
-        if (!incomingMissileThreatNear(ctx, ship, Math.max(340.0, ship.radius * 10.0))) return;
-        ship.tryActivateEcm();
     }
 
     private static void updateStealthCloakIntent(GameContext ctx, Ship ship) {

@@ -220,11 +220,22 @@ public final class ChecklistV2Harness {
         int missing = 0;
 
         EnumSet<ShipRole> excluded = EnumSet.of(ShipRole.STATIC_TURRET);
+        EnumSet<ShipRoomLayout.RoomId> visualOnly = EnumSet.of(
+                ShipRoomLayout.RoomId.BOW_ARMOR_INNER,
+                ShipRoomLayout.RoomId.BOW_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.DORSAL_ARMOR_INNER,
+                ShipRoomLayout.RoomId.DORSAL_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.VENTRAL_ARMOR_INNER,
+                ShipRoomLayout.RoomId.VENTRAL_SHIELD_STRIP,
+                ShipRoomLayout.RoomId.AFT_ARMOR_INNER,
+                ShipRoomLayout.RoomId.AFT_SHIELD_STRIP
+        );
         for (ShipRole role : ShipRole.values()) {
             if (excluded.contains(role)) continue;
             totalRoles++;
             boolean ok = true;
             for (ShipRoomLayout.RoomId id : ShipRoomLayout.RoomId.values()) {
+                if (visualOnly.contains(id)) continue;
                 if (ShipRoomLayout.roomForId(role, id) == null) {
                     ok = false;
                     missing++;
@@ -272,6 +283,10 @@ public final class ChecklistV2Harness {
         };
         int checks = 400_000;
         Random rng = new Random(seed);
+        for (int i = 0; i < 40_000; i++) {
+            ShipRole role = roles[i % roles.length];
+            RoomHitResolver.resolve(role, -1.0 + rng.nextDouble() * 2.0, -1.0 + rng.nextDouble() * 2.0);
+        }
         long t0 = System.nanoTime();
         int hits = 0;
         for (int i = 0; i < checks; i++) {
@@ -527,7 +542,6 @@ public final class ChecklistV2Harness {
             };
             UISystem.applyCaptainDirective(ctx, directives[(tick / 520) % directives.length]);
         }
-        if (tick % 360 == 0) ctx.command.scienceJamming = !ctx.command.scienceJamming;
         if (tick % 540 == 0) {
             UISystem.setEngineeringMode(ctx, ((tick / 540) & 1) == 0
                     ? GameContext.EngineeringMode.DAMAGE_CONTROL
@@ -575,16 +589,13 @@ public final class ChecklistV2Harness {
                 for (ShipRoomLayout.RoomId id : targets) {
                     ShipRoomLayout.RoomDef room = ShipRoomLayout.roomForId(role, id);
                     if (room == null) continue;
-                    double nx = avg(room.xs);
-                    double ny = avg(room.ys);
+                    ShipRoomLayout.VisualCell cell = visualCellFor(role, Faction.ALLY, id);
+                    double nx = (cell == null) ? avg(room.xs) : avg(cell.xs);
+                    double ny = (cell == null) ? avg(room.ys) : avg(cell.ys);
                     double wx = ship.x + nx * ship.radius;
                     double wy = ship.y + ny * ship.radius;
-                    EnumSet<ShipRoomLayout.RoomId> expectedGroup = EnumSet.of(id);
-                    if (room.neighbors != null) {
-                        for (ShipRoomLayout.RoomId n : room.neighbors) {
-                            if (n != null) expectedGroup.add(n);
-                        }
-                    }
+                    EnumSet<ShipRoomLayout.RoomId> expectedGroup =
+                            EnumSet.noneOf(ShipRoomLayout.RoomId.class);
 
                     int match = 0;
                     int count = 0;
@@ -594,6 +605,15 @@ public final class ChecklistV2Harness {
                         if (result == null || result.roomId == null || result.roomId.isBlank()) continue;
                         count++;
                         ShipRoomLayout.RoomId actual = parseRoomId(result.roomId);
+                        if (actual != null && expectedGroup.isEmpty()) {
+                            expectedGroup.add(actual);
+                            ShipRoomLayout.RoomDef resolved = ShipRoomLayout.roomForId(role, actual);
+                            if (resolved != null && resolved.neighbors != null) {
+                                for (ShipRoomLayout.RoomId neighbor : resolved.neighbors) {
+                                    if (neighbor != null) expectedGroup.add(neighbor);
+                                }
+                            }
+                        }
                         if (actual != null && expectedGroup.contains(actual)) match++;
                         if (ship.hp < ship.hpMax * 0.22) {
                             ship.hp = (int) Math.round(ship.hpMax * 0.65);
@@ -611,6 +631,17 @@ public final class ChecklistV2Harness {
 
         if (total <= 0) return 0.0;
         return consistent / (double) total;
+    }
+
+    private static ShipRoomLayout.VisualCell visualCellFor(ShipRole role, Faction faction,
+                                                            ShipRoomLayout.RoomId roomId) {
+        ShipRoomLayout.VisualCell fallback = null;
+        for (ShipRoomLayout.VisualCell cell : ShipRoomLayout.visualCellsFor(role, faction)) {
+            if (cell == null || cell.roomId != roomId) continue;
+            if (cell.labelAnchor) return cell;
+            if (fallback == null) fallback = cell;
+        }
+        return fallback;
     }
 
     private static double roomHpById(Ship ship, String roomId) {

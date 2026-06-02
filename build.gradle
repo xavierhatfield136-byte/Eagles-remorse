@@ -100,7 +100,9 @@ test {
     useJUnitPlatform()
     systemProperty "codex.disableAudio", "true"
     // Simulation tests retain decoded visual assets and static effect state between classes.
-    forkEvery = 10
+    // Keep workers short-lived and sized for multipart sprite decode coverage.
+    forkEvery = 5
+    maxHeapSize = "1536m"
 }
 
 tasks.named("compileJava") {
@@ -162,6 +164,14 @@ tasks.register("saveLoadSoak", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "SaveLoadSoakHarness"
     args("--cycles=100")
+}
+
+tasks.register("productionValidation", JavaExec) {
+    group = "verification"
+    description = "Validate content schemas, asset inventory, duplicate names, save-schema docs, and balance exports."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "ProductionValidationHarness"
 }
 
 tasks.register("performanceGuardrailsCi") {

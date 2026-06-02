@@ -25,13 +25,14 @@ public final class DevOverlay {
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
-        int lineCount = 33 + minerLines;
+        List<String> expansionInspector = ExpansionIntegrationInspector.lines(ctx);
+        int lineCount = 33 + minerLines + expansionInspector.size();
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
 
         // Background panel
-        int boxW = 360;
+        int boxW = 760;
         int boxH = 10 + lineH * lineCount;
         g2.setColor(new Color(0, 0, 0, 165));
         g2.fillRoundRect(x - 6, y - 6, boxW, boxH, 12, 12);
@@ -63,6 +64,11 @@ public final class DevOverlay {
 
         y += lineH;
         drawLine(g2, x, y, "Living War: " + CampaignSystem.campaignLivingWarDebugReadout(ctx));
+
+        for (String line : expansionInspector) {
+            y += lineH;
+            drawLine(g2, x, y, line);
+        }
 
         y += lineH;
         drawLine(g2, x, y, "Ships: " + sizeOf(ctx, "ships") +

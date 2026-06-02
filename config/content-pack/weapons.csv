@@ -1,0 +1,3 @@
+id,role,damage,range
+escort_laser,point_defense,18,420
+relay_artillery,orbital_support,72,1200

@@ -288,7 +288,7 @@ public final class XrayReadabilityHarness {
 
     private static Rectangle extractPlayerPanelRect(Object layoutObj) throws Exception {
         Class<?> c = layoutObj.getClass();
-        Field fx = c.getDeclaredField("panelX");
+        Field fx = c.getDeclaredField("playerX");
         Field fw = c.getDeclaredField("panelW");
         Field fy = c.getDeclaredField("playerY");
         Field fh = c.getDeclaredField("playerH");
@@ -306,7 +306,7 @@ public final class XrayReadabilityHarness {
 
     private static Rectangle extractStackRect(Object layoutObj) throws Exception {
         Class<?> c = layoutObj.getClass();
-        Field fx = c.getDeclaredField("panelX");
+        Field fx = c.getDeclaredField("playerX");
         Field fw = c.getDeclaredField("panelW");
         Field ftx = c.getDeclaredField("targetX");
         Field fpy = c.getDeclaredField("playerY");
@@ -391,7 +391,7 @@ public final class XrayReadabilityHarness {
             int sw = symFm.stringWidth(sym);
             int sh = symFm.getAscent();
             int sx = cx - sw / 2 - 4;
-            int sy = cy - 14 - sh;
+            int sy = cy - (sh + 5) / 2 - 1;
             labelRects.add(new LabelRect(roomIndex, new Rectangle(sx, sy, sw + 8, sh + 5)));
 
             int pctVal = MathUtil.clamp((int) Math.round(player.roomHealthFraction(cell.roomId) * 100.0), 0, 100);
@@ -399,7 +399,7 @@ public final class XrayReadabilityHarness {
             int pw = pctFm.stringWidth(pct);
             int ph = pctFm.getAscent();
             int px = cx - pw / 2;
-            int py = cy + 12 - ph;
+            int py = Math.min(b.y + b.height - 4, cy + Math.max(8, b.height / 4)) - ph;
             labelRects.add(new LabelRect(roomIndex, new Rectangle(px, py, pw, ph + 2)));
         }
 

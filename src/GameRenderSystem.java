@@ -677,12 +677,6 @@ if (DevTools.isDebugOverlay()) {
         if (ship == null) return false;
         if (!hasLoadedRenderScope(ctx)) return true;
         if (ctx != null && ship == ctx.player) return true;
-        if (CampaignSystem.usesMissionSubzones(ctx)) {
-            int loadedSubzone = loadedMissionRenderSubzone(ctx);
-            if (loadedSubzone < 0) return true;
-            if (CampaignSystem.missionSubzoneForShip(ctx, ship) == loadedSubzone) return true;
-            return allowLongRangeContactRendering(ctx, ship);
-        }
         BattlefieldSectorSystem.SectorDefinition loadedSector = loadedBattlefieldRenderSector(ctx);
         if (loadedSector == null) return true;
         BattlefieldSectorSystem.SectorDefinition shipSector = BattlefieldSectorSystem.sectorAt(ctx, ship.x, ship.y);
@@ -692,11 +686,6 @@ if (DevTools.isDebugOverlay()) {
 
     static boolean isInLoadedRenderZone(GameContext ctx, double x, double y) {
         if (!hasLoadedRenderScope(ctx)) return true;
-        if (CampaignSystem.usesMissionSubzones(ctx)) {
-            int loadedSubzone = loadedMissionRenderSubzone(ctx);
-            if (loadedSubzone < 0) return true;
-            return CampaignSystem.campaignMapSubzoneAtPoint(ctx, x, y) == loadedSubzone;
-        }
         BattlefieldSectorSystem.SectorDefinition loadedSector = loadedBattlefieldRenderSector(ctx);
         if (loadedSector == null) return true;
         BattlefieldSectorSystem.SectorDefinition pointSector = BattlefieldSectorSystem.sectorAt(ctx, x, y);
@@ -704,15 +693,7 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static boolean hasLoadedRenderScope(GameContext ctx) {
-        return CampaignSystem.usesMissionSubzones(ctx) || BattlefieldSectorSystem.isEnabled(ctx);
-    }
-
-    private static int loadedMissionRenderSubzone(GameContext ctx) {
-        int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
-        if (loadedSubzone < 0 && ctx != null && ctx.player != null) {
-            loadedSubzone = CampaignSystem.syncLoadedMissionSubzoneFromPlayer(ctx);
-        }
-        return loadedSubzone;
+        return BattlefieldSectorSystem.isEnabled(ctx) && !CampaignSystem.usesUnifiedMissionSpace(ctx);
     }
 
     private static BattlefieldSectorSystem.SectorDefinition loadedBattlefieldRenderSector(GameContext ctx) {

@@ -61,7 +61,7 @@ public class Renderer {
     private static final Font XRAY_HP_FONT = new Font("Consolas", Font.PLAIN, 10);
     private static final String[] XRAY_PCT_LABELS = buildXrayPctLabels();
     // Cache rendered x-ray panels for a short window to avoid rebuilding the full panel every draw.
-    private static final long XRAY_PANEL_FRAME_CACHE_NS = 36_000_000L;
+    private static final long XRAY_PANEL_FRAME_CACHE_NS = 48_000_000L;
     private static final java.util.WeakHashMap<Ship, EnumMap<ShipRoomLayout.RoomId, Integer>> XRAY_ROOM_PCT_CACHE =
             new java.util.WeakHashMap<>();
     private static final java.util.WeakHashMap<Ship, Long> XRAY_ROOM_PCT_CACHE_TS =
@@ -236,8 +236,6 @@ public class Renderer {
             MISSILE_HEAVY,
             MISSILE_FAST,
             MISSILE_AAA,
-            ECM_PRIMED,
-            ECM_ACTIVE,
             CLOAK_CHARGE,
             CLOAK_ACTIVE,
             STRIKE_SELECT_TORPEDO,
@@ -308,8 +306,6 @@ public class Renderer {
         MISSILE_HEAVY,
         MISSILE_FAST,
         MISSILE_AAA,
-        ECM_PRIMED,
-        ECM_ACTIVE,
         CLOAK_CHARGE,
         CLOAK_ACTIVE
     }
@@ -317,13 +313,11 @@ public class Renderer {
     private static final class CombatHudPanelLayout {
         final Rectangle beamRect;
         final Rectangle missileRect;
-        final Rectangle ecmRect;
         final Rectangle cloakRect;
 
-        CombatHudPanelLayout(Rectangle beamRect, Rectangle missileRect, Rectangle ecmRect, Rectangle cloakRect) {
+        CombatHudPanelLayout(Rectangle beamRect, Rectangle missileRect, Rectangle cloakRect) {
             this.beamRect = beamRect;
             this.missileRect = missileRect;
-            this.ecmRect = ecmRect;
             this.cloakRect = cloakRect;
         }
     }
@@ -380,14 +374,6 @@ public class Renderer {
                         "missile mode aaa.png",
                         "missile_mode_aa.png",
                         "missile mode aa.png"
-                };
-                case ECM_PRIMED -> new String[]{
-                        "ecm_mode_primed.png",
-                        "ecm mode primed.png"
-                };
-                case ECM_ACTIVE -> new String[]{
-                        "ecm_mode_active.png",
-                        "ecm mode active.png"
                 };
                 case CLOAK_CHARGE -> new String[]{
                         "cloak_mode_charge.png",
@@ -1490,7 +1476,7 @@ public class Renderer {
                     case HELM -> "Movement and spacing control. Helm automation handles intercepts, orbiting, and evasive maneuvering.";
                     case TACTICAL -> "Weapons release and lock discipline. Tactical automation decides how aggressively the ship fires.";
                     case ENGINEERING -> "Power and damage-control authority. Engineering automation sets repair bias and overload posture.";
-                    case SCIENCE -> "Sensors, locks, and electronic warfare. Science automation handles target acquisition and jamming.";
+                    case SCIENCE -> "Sensors and locks. Science automation handles target acquisition and scanning.";
                 };
                 return new HoverTooltip("crew:" + station.name(), station.name(),
                         body + " Current mode: " + (UISystem.stationAutomation(ctx, station) ? "AI" : "MAN") + ".");
@@ -1767,9 +1753,9 @@ public class Renderer {
 
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
         int x = panel.x + 24;
-        int y = panel.y + 136;
+        int y = panel.y + 156;
         int w = Math.min(396, Math.max(332, (int) Math.round(panel.width * 0.34)));
-        int h = panel.height - 168;
+        int h = panel.height - 188;
         return new Rectangle(x, y, w, h);
     }
 
@@ -4596,21 +4582,18 @@ public class Renderer {
         int beamH = 150;
         int missileW = 336;
         int missileH = 166;
-        int ecmW = 336;
-        int ecmH = 124;
         int cloakW = 336;
         int cloakH = 124;
         int gap = 14;
         int x = Math.max(14, viewW - beamW - 18);
-        int totalH = beamH + gap + missileH + gap + ecmH + (includeCloak ? gap + cloakH : 0);
+        int totalH = beamH + gap + missileH + (includeCloak ? gap + cloakH : 0);
         int y = Math.max(18, coreMenu.y - totalH - 22);
         Rectangle beamRect = new Rectangle(x, y, beamW, beamH);
         Rectangle missileRect = new Rectangle(x, beamRect.y + beamRect.height + gap, missileW, missileH);
-        Rectangle ecmRect = new Rectangle(x, missileRect.y + missileRect.height + gap, ecmW, ecmH);
         Rectangle cloakRect = includeCloak
-                ? new Rectangle(x, ecmRect.y + ecmRect.height + gap, cloakW, cloakH)
-                : new Rectangle(x, ecmRect.y + ecmRect.height, 0, 0);
-        return new CombatHudPanelLayout(beamRect, missileRect, ecmRect, cloakRect);
+                ? new Rectangle(x, missileRect.y + missileRect.height + gap, cloakW, cloakH)
+                : new Rectangle(x, missileRect.y + missileRect.height, 0, 0);
+        return new CombatHudPanelLayout(beamRect, missileRect, cloakRect);
     }
 
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
@@ -4649,11 +4632,6 @@ public class Renderer {
         Rectangle missileAaa = missileRowRect(layout.missileRect, 2);
         if (missileAaa.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.MISSILE_AAA);
 
-        Rectangle ecmPrimed = ecmPrimedRect(layout.ecmRect);
-        if (ecmPrimed.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_PRIMED);
-        Rectangle ecmActive = ecmActiveRect(layout.ecmRect);
-        if (ecmActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.ECM_ACTIVE);
-
         if (ctx.player.isStealth) {
             Rectangle cloakCharge = cloakChargeRect(layout.cloakRect);
             if (cloakCharge.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.CLOAK_CHARGE);
@@ -4686,14 +4664,6 @@ public class Renderer {
         return new Rectangle(panel.x + 12, y, panel.width - 24, rowH);
     }
 
-    private static Rectangle ecmPrimedRect(Rectangle panel) {
-        return new Rectangle(panel.x + panel.width / 2, panel.y + 24, panel.width / 2 - 14, panel.height / 2 - 10);
-    }
-
-    private static Rectangle ecmActiveRect(Rectangle panel) {
-        return new Rectangle(panel.x + panel.width / 2, panel.y + panel.height / 2 + 2, panel.width / 2 - 14, panel.height / 2 - 14);
-    }
-
     private static Rectangle cloakChargeRect(Rectangle panel) {
         return new Rectangle(panel.x + 8, panel.y + 12, panel.width - 16, panel.height / 2 - 4);
     }
@@ -4712,7 +4682,6 @@ public class Renderer {
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, player.isStealth);
         drawBeamModePanel(g2, player, layout.beamRect);
         drawMissileModePanel(g2, player, layout.missileRect);
-        drawEcmModePanel(g2, ctx, layout.ecmRect);
         if (player.isStealth) {
             drawCloakModePanel(g2, player, layout.cloakRect);
         }
@@ -4763,25 +4732,6 @@ public class Renderer {
         }
         drawFallbackPanel(g2, rect, "MISSILE MODE", active,
                 "Top: heavy payload", "Mid: fast / Bottom: AAA", new Color(255, 156, 92, 220));
-    }
-
-    private static void drawEcmModePanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
-        if (g2 == null || ctx == null || rect == null) return;
-        boolean activeNow = ctx.player != null && ctx.player.hasActiveEcm();
-        CombatHudPanelImageKey key = activeNow
-                ? CombatHudPanelImageKey.ECM_ACTIVE
-                : CombatHudPanelImageKey.ECM_PRIMED;
-        HudPanelVisual visual = panelVisual(key, rect);
-        String active = activeNow ? "ACTIVE"
-                : ((ctx.player != null && !ctx.player.ecmReady())
-                ? String.format("RECHARGING %.0fs", Math.ceil(ctx.player.ecmCooldownRemaining()))
-                : "PRIMED");
-        if (visual != null) {
-            drawCombatModeImagePanel(g2, rect, "ECM MODE", active, new Color(255, 170, 90, 220), visual);
-            return;
-        }
-        drawFallbackPanel(g2, rect, "ECM MODE", active,
-                "Top: primed", "Bottom: active", new Color(255, 170, 90, 220));
     }
 
     private static void drawCloakModePanel(Graphics2D g2, Player player, Rectangle rect) {
@@ -7470,7 +7420,6 @@ public class Renderer {
                 + "   Fire " + fireRooms + " / " + String.format("%.1f", fireLoad), readoutX, ly);
         ly += 16;
         g2.drawString("Science: " + (sensorsOnline ? "ONLINE" : "DISABLED")
-                + "   EW: " + (ctx.command.scienceJamming ? "JAMMING" : "PASSIVE")
                 + "   Hotspot: " + hotspotLabel, readoutX, ly);
         ly += 16;
         String fieldLabel = (focusRoom == null)
@@ -7521,9 +7470,9 @@ public class Renderer {
             }
             case SCIENCE -> {
                 g2.setColor(new Color(220, 210, 255, 220));
-                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK  3 TOGGLE JAM", readoutX, ly);
+                g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK", readoutX, ly);
                 ly += 16;
-                g2.drawString("Controls target acquisition and jamming posture.", readoutX, ly);
+                g2.drawString("Controls target acquisition and sensor posture.", readoutX, ly);
             }
         }
 
@@ -10118,7 +10067,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawGalaxyBoardLine(g2, x + 24, conditionY + i * 16, width - 36, condition.get(i), new Color(212, 226, 238, 214));
         }
 
-        Rectangle roster = new Rectangle(x + 10, y + 208, width - 20, Math.max(64, y + panelH - (y + 216)));
+        List<String> archive = CampaignSystem.campaignFleetArchiveLines(ctx, 1);
+        if (!archive.isEmpty()) {
+            drawGalaxyBoardLine(g2, x + 12, y + 202, width - 24,
+                    "ARCHIVE  |  " + archive.get(0), new Color(255, 214, 132, 214));
+        }
+        Rectangle roster = new Rectangle(x + 10, y + 222, width - 20, Math.max(64, y + panelH - (y + 230)));
         drawGalaxyFleetRosterList(g2, ctx, roster);
     }
 
@@ -10186,14 +10140,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawString(trimHudLine(entry.name, row.width - 68), textX, row.y + 14);
         g2.setFont(new Font("Consolas", Font.PLAIN, 9));
         g2.setColor(new Color(210, 226, 240, 205));
-        g2.drawString(trimHudLine(entry.roleLabel + "  |  ORE " + entry.oreCost + "  |  " + entry.readinessLabel, row.width - 68),
+        g2.drawString(trimHudLine(entry.roleLabel + "  |  " + entry.identityLabel + "  |  ORE " + entry.oreCost
+                        + "  |  " + entry.readinessLabel, row.width - 68),
                 textX, row.y + 28);
+        g2.setColor(new Color(180, 210, 232, 196));
+        g2.drawString(trimHudLine(entry.configurationLabel, row.width - 68), textX, row.y + 41);
+        g2.setColor(new Color(210, 226, 240, 205));
+        g2.drawString(trimHudLine(entry.personnelLabel, row.width - 68), textX, row.y + 54);
         String bottom = entry.cargoLabel + "  |  " + entry.forceLabel + "  |  " + entry.groupLabel + "  |  " + entry.commitmentLabel
                 + (entry.unavailableReason.isBlank() ? "" : "  |  " + entry.unavailableReason.toUpperCase(Locale.US));
         g2.setColor(entry.commitmentLabel.contains("HOLD")
                 ? new Color(255, 170, 142, 212)
                 : (entry.commitmentLabel.contains("COMMIT") ? new Color(132, 236, 194, 214) : new Color(214, 226, 238, 198)));
-        g2.drawString(trimHudLine(bottom, row.width - 68), textX, row.y + 42);
+        g2.drawString(trimHudLine(bottom, row.width - 68), textX, row.y + 67);
     }
 
     private static void drawRosterHullSilhouette(Graphics2D g2, ShipRole role, int cx, int cy, int radius, Color accent) {
@@ -10730,7 +10689,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static int galaxyFleetRosterRowHeight() {
-        return 56;
+        return 80;
     }
 
     private static int estimateGalaxySidebarSectionHeight(List<String> lines, int width, boolean compact) {
@@ -12063,11 +12022,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     // IMPORTANT: This is the method that was likely stubbed/empty in your current project.
     public static void drawShip(Graphics2D g2, Ship ship) {
         ShipRenderer.drawShip(g2, ship);
-    }
-
-    private static void drawEcmIllusions(Graphics2D g2, Ship ship) {
-        // ECM keeps its gameplay effect, but the in-world distortion visuals are retired
-        // so fleets stay readable under pressure.
     }
 
     private static void drawTacticalAsteroid(Graphics2D g2, Asteroid a) {

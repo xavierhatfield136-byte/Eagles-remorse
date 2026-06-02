@@ -29,7 +29,7 @@ class TacticalCombatDepthSystemTest {
     }
 
     @Test
-    void hazardsMinesRammingAndWeaponRolesExposeConcreteTacticalState() {
+    void hazardsMinesCollisionlessShipsAndWeaponRolesExposeConcreteTacticalState() {
         GameContext ctx = context();
         Player player = new Player(0.0, 0.0);
         FleetShip enemy = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 10.0, 0.0);
@@ -44,8 +44,10 @@ class TacticalCombatDepthSystemTest {
         TacticalCombatDepthSystem.handleRamming(ctx);
 
         assertTrue(TacticalCombatDepthSystem.hazardIntensity(ctx, player, TacticalCombatDepthSystem.Hazard.COOLANT_LEAK) > 0.0);
-        assertTrue(TacticalCombatDepthSystem.persistentScarCount(ctx, player) > 0);
-        assertTrue(TacticalCombatDepthSystem.persistentScarCount(ctx, enemy) > 0);
+        assertEquals(0.0, player.x);
+        assertEquals(10.0, enemy.x);
+        assertEquals(0, TacticalCombatDepthSystem.persistentScarCount(ctx, player));
+        assertEquals(0, TacticalCombatDepthSystem.persistentScarCount(ctx, enemy));
         assertTrue(TacticalCombatDepthSystem.weaponRoleTooltip(player, player.turrets.get(0)).contains("/"));
 
         for (int i = 0; i < 4; i++) TacticalCombatDepthSystem.cycleSupportMode(ctx);
@@ -53,23 +55,31 @@ class TacticalCombatDepthSystemTest {
         ctx.cursorWorldY = 900.0;
         TacticalCombatDepthSystem.activateSupportAtCursor(ctx);
         assertEquals(1, TacticalCombatDepthSystem.mineCount(ctx));
+        assertEquals(6, TacticalCombatDepthSystem.SupportMode.values().length);
     }
 
     @Test
     void volatileOreAndWeaponHeatProvideEnvironmentalAndLogisticsPressure() {
         GameContext ctx = context();
         Player player = new Player(0.0, 0.0);
+        FleetShip enemy = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 400.0, 0.0);
         ctx.player = player;
         ctx.ships.add(player);
+        ctx.ships.add(enemy);
         TacticalCombatDepthSystem.init(ctx);
         TacticalCombatDepthSystem.update(ctx, GameContext.DT);
         Turret turret = player.turrets.get(0);
+        Turret enemyTurret = enemy.turrets.get(0);
         Asteroid richOre = new Asteroid(20.0, 0.0, 20.0, 500);
         int hullBefore = player.hp;
 
-        for (int i = 0; i < 120; i++) TacticalCombatDepthSystem.onWeaponFired(player, turret);
+        for (int i = 0; i < 120; i++) {
+            TacticalCombatDepthSystem.onWeaponFired(player, turret);
+            TacticalCombatDepthSystem.onWeaponFired(enemy, enemyTurret);
+        }
 
-        assertFalse(TacticalCombatDepthSystem.canFireWeapon(player, turret));
+        assertTrue(TacticalCombatDepthSystem.canFireWeapon(player, turret));
+        assertFalse(TacticalCombatDepthSystem.canFireWeapon(enemy, enemyTurret));
         TacticalCombatDepthSystem.detonateVolatileOre(ctx, richOre);
         assertTrue(player.hp < hullBefore || player.shield < player.shieldMax
                 || TacticalCombatDepthSystem.timeline(ctx).stream().anyMatch(marker -> marker.text().contains("ORE DETONATION")));

@@ -33,6 +33,10 @@ This document captures the larger design changes proposed for combat controls, m
 
 ## ECM Direction
 
+> Retired: tactical ship ECM was removed after playtesting because the
+> escape-button behavior did not fit the current combat model. The notes below
+> remain as historical design context only.
+
 - Make ECM a real player-facing feature instead of only passive science behavior.
 - Long-term target interaction:
 - Pull lever down to activate ECM.

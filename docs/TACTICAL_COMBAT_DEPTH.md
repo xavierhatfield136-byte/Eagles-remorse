@@ -9,7 +9,8 @@ Open the tactical command overlay with `Ctrl+F3`. Use `Ctrl+G` to assign the
 friendly ship nearest the cursor to the active group, `Ctrl+K` to cycle groups,
 `Q` to cycle orders, and `Shift+RMB` to issue the selected order. Order
 acknowledgments are delayed by distance and command-link damage, and may be
-garbled under jamming. `Ctrl+P` toggles tactical pause.
+garbled when future communications hazards are introduced. `Ctrl+P` toggles
+tactical pause.
 
 The overlay displays the active doctrine, point-defense priority, ammunition,
 weapon heat, scars, the lead weapon role, a formation preview, and recent
@@ -39,9 +40,8 @@ Use `Ctrl+D` to cycle point-defense priorities.
 
 Use `Ctrl+T` to cycle support modes and `Ctrl+R` to activate the current mode.
 Modes include tractor tow, repair drones, shield transfer, mine laying,
-mine clearing, and ECM. ECM also models decoy, chaff, and flare effects by
-degrading hostile guidance and disrupting tractor locks. Destroyed rich ore
-pockets detonate as environmental hazards.
+and mine clearing. Destroyed rich ore pockets detonate as environmental
+hazards.
 
 Use `Ctrl+J` to cycle balanced, aggressive, cautious, point-defense, support,
 and avoid-collateral doctrines. Avoid-collateral doctrine blocks mine

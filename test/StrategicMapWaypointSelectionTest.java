@@ -69,6 +69,7 @@ class StrategicMapWaypointSelectionTest {
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.introSequenceActive = false;
         ctx.campaign.sectorElapsed = 1.0;
 
         Ship friendly = new FleetShip(ShipRole.FRIGATE, Faction.ALLY,
@@ -102,5 +103,32 @@ class StrategicMapWaypointSelectionTest {
 
         assertEquals(southOfFormerGrid, ctx.player.y, 1e-6,
                 "unified combat space should not snap the player back to the old mission-grid south edge");
+    }
+
+    @Test
+    void unifiedMissionSpaceWarpsDirectlyToBaseWithoutStagingHop() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.introSequenceActive = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        UISystem.closeAllOverlays(ctx);
+        ctx.ui.waypointX = Double.NaN;
+        ctx.ui.waypointY = Double.NaN;
+        Ship base = new FleetShip(ShipRole.BASE, ctx.player.faction,
+                CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(5, 1)),
+                CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign.sector, CampaignSystem.missionSubzoneIndex(5, 1)));
+        ctx.ships.add(base);
+        ctx.teamBases.put(ctx.player.faction, base);
+
+        assertNotNull(base);
+        assertTrue(GameplayActions.canIssueCombatAction(ctx));
+
+        GameplayActions.tryTeleportToBase(ctx);
+
+        assertTrue(ctx.player.isWarpCharging());
+        assertEquals(base.x, ctx.player.warpExitX(), 1e-6);
+        assertEquals(base.y, ctx.player.warpExitY(), 1e-6);
     }
 }
