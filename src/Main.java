@@ -6,6 +6,7 @@ import app.ui.AppShell;
 import app.ui.MainMenuPanel;
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
 
 public class Main {
     private final AppShell shell;
@@ -39,12 +40,30 @@ public class Main {
     private MainMenuPanel.ResumeCampaignState loadResumeCampaignState() {
         CampaignCheckpointStore.Checkpoint checkpoint = CampaignCheckpointStore.load();
         if (checkpoint == null) {
-            return MainMenuPanel.ResumeCampaignState.unavailable(
-                    "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume.");
+            CampaignCheckpointStore.Checkpoint recovered = CampaignCheckpointStore.recoverLatestAutosave();
+            if (recovered == null) {
+                return MainMenuPanel.ResumeCampaignState.unavailable(
+                        "No checkpoint saved yet. Clear a sector in Campaign Ops to unlock resume."
+                                + slotStatusSuffix());
+            }
+            return MainMenuPanel.ResumeCampaignState.available(
+                    "Recovered autosave: " + recovered.menuSummary() + slotStatusSuffix(),
+                    recovered.toGameConfig(app.config.GameMode.CAMPAIGN_OPS));
         }
         return MainMenuPanel.ResumeCampaignState.available(
-                checkpoint.menuSummary(),
+                checkpoint.menuSummary() + slotStatusSuffix(),
                 checkpoint.toGameConfig(app.config.GameMode.CAMPAIGN_OPS));
+    }
+
+    private String slotStatusSuffix() {
+        List<CampaignCheckpointStore.SlotSummary> slots = CampaignCheckpointStore.listSlots();
+        long named = slots.stream().filter(s -> !s.autosave && !"primary".equals(s.id)).count();
+        long autosaves = slots.stream().filter(s -> s.autosave).count();
+        long recovery = slots.stream().filter(s -> !s.recoverable).count();
+        if (named <= 0 && autosaves <= 0 && recovery <= 0) return "";
+        String text = "<br>Slots " + named + "  |  Autosaves " + autosaves;
+        if (recovery > 0) text += "  |  Recovery " + recovery;
+        return text;
     }
 
     private void paintMenuSpaceBackground(Graphics2D g2, double camX, double camY, int width, int height, long seed) {

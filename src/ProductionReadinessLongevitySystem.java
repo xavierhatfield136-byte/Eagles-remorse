@@ -155,7 +155,9 @@ public final class ProductionReadinessLongevitySystem {
     }
 
     public static void appendCampaignEvent(State state, String event) {
-        if (state != null && event != null && !event.isBlank()) state.longevity.campaignEventLog.add(event.trim());
+        if (state == null || event == null || event.isBlank()) return;
+        state.longevity.campaignEventLog.add(event.trim());
+        while (state.longevity.campaignEventLog.size() > 24) state.longevity.campaignEventLog.remove(0);
     }
 
     public static void recoverCorruptSlot(State state, String slotId) {
@@ -172,7 +174,8 @@ public final class ProductionReadinessLongevitySystem {
                 "Presentation screens " + state.art.regressionScreenshots.size() + "  |  Audio captions " + state.audio.accessibilityCaptions,
                 "Save slots " + state.longevity.slots.size() + "  |  Autosaves " + state.longevity.autosaveRotation
                         + "  |  Seed " + state.longevity.sharedSeed,
-                "Boundaries " + state.architecture.ownershipBoundaries.size() + "  |  Smoke scenarios " + state.testing.smokeScenarios.size()
+                "Boundaries " + state.architecture.ownershipBoundaries.size() + "  |  Smoke scenarios " + state.testing.smokeScenarios.size(),
+                "Structured events " + state.longevity.campaignEventLog.size()
         );
     }
 
@@ -180,7 +183,8 @@ public final class ProductionReadinessLongevitySystem {
         if (state == null) return "";
         Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
         return state.longevity.autosaveRotation + "|" + enc(encoder, state.longevity.sharedSeed) + "|"
-                + state.testing.randomizedCampaignTransitionFuzz + "|" + enc(encoder, state.longevity.slots.get(0).metadata);
+                + state.testing.randomizedCampaignTransitionFuzz + "|" + enc(encoder, state.longevity.slots.get(0).metadata)
+                + "|" + enc(encoder, String.join("\n", state.longevity.campaignEventLog));
     }
 
     public static State restore(String raw, long seed) {
@@ -192,6 +196,12 @@ public final class ProductionReadinessLongevitySystem {
         state.longevity.sharedSeed = dec(parts[1], state.longevity.sharedSeed);
         state.testing.randomizedCampaignTransitionFuzz = Boolean.parseBoolean(parts[2]);
         state.longevity.slots.get(0).metadata = dec(parts[3], state.longevity.slots.get(0).metadata);
+        if (parts.length >= 5) {
+            state.longevity.campaignEventLog.clear();
+            for (String event : dec(parts[4], "").split("\\R")) {
+                appendCampaignEvent(state, event);
+            }
+        }
         return state;
     }
 

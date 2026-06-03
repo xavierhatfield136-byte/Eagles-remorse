@@ -33,11 +33,12 @@ class StretchGoalsFleetDoctrineSystemTest {
     }
 
     @Test
-    void extractionCatalogMapsTwelvePlanningPacksToArtifacts() {
+    void extractionCatalogMapsPlanningPacksToRealArtifacts() {
         StretchGoalsFleetDoctrineSystem.State state = StretchGoalsFleetDoctrineSystem.bootstrap(102L);
 
-        assertEquals(12, state.extractionPacks.size());
+        assertEquals(13, state.extractionPacks.size());
         assertTrue(state.extractionPacks.stream().allMatch(pack -> !pack.title.isBlank() && !pack.artifact.isBlank()));
+        assertTrue(state.extractionPacks.stream().allMatch(pack -> Files.isRegularFile(Path.of(pack.artifact))));
         assertTrue(Files.isRegularFile(Path.of("docs/CANDIDATE_EXTRACTION_PACKS.md")));
     }
 
@@ -59,9 +60,12 @@ class StretchGoalsFleetDoctrineSystemTest {
         assertTrue(fleet.commandLinkOverlay);
         StretchGoalsFleetDoctrineSystem.isolateFlagship(state);
         assertTrue(fleet.networkCollapsed);
+        assertTrue(fleet.panicPercent > 0);
+        assertTrue(fleet.isolationPenaltyPercent > 0);
         assertTrue(StretchGoalsFleetDoctrineSystem.transferFlag(state));
         assertFalse(fleet.networkCollapsed);
         assertTrue(fleet.rallyActions > 0);
+        assertTrue(fleet.panicPercent < 14);
     }
 
     @Test
@@ -87,8 +91,10 @@ class StretchGoalsFleetDoctrineSystemTest {
         assertTrue(state.fleet.panicPercent > 0);
         assertTrue(state.fleet.exhaustedReserveRotation);
         int damagedCohesion = state.fleet.cohesionPercent;
+        int panic = state.fleet.panicPercent;
         StretchGoalsFleetDoctrineSystem.reformFormation(state, true);
         assertTrue(state.fleet.cohesionPercent > damagedCohesion);
+        assertTrue(state.fleet.panicPercent < panic);
     }
 
     @Test
@@ -104,8 +110,20 @@ class StretchGoalsFleetDoctrineSystemTest {
         assertTrue(state.fleet.doctrineAcknowledgment.contains("Protect disabled allies"));
         assertFalse(state.fleet.standingOrders.afterActionNotes.isEmpty());
 
+        int bandwidth = state.fleet.bandwidthCapacity;
+        StretchGoalsFleetDoctrineSystem.loseRelays(state, 1);
+        assertTrue(state.fleet.bandwidthCapacity < bandwidth);
+        assertTrue(state.fleet.nodes.stream().anyMatch(node ->
+                node.type == StretchGoalsFleetDoctrineSystem.NodeType.RELAY && !node.operational));
+        assertTrue(state.fleet.panicPercent > 0);
+
         StretchGoalsFleetDoctrineSystem.synchronizeLiveFleet(state, 1, 1, false, 0);
         assertTrue(state.fleet.networkCollapsed);
+        assertTrue(state.fleet.exhaustedReserveRotation);
+
+        StretchGoalsFleetDoctrineSystem.synchronizeLiveFleet(state, 4, 0, true, 2);
+        assertFalse(state.fleet.networkCollapsed);
+        assertTrue(state.fleet.rallyActions > 0);
     }
 
     @Test
@@ -116,18 +134,28 @@ class StretchGoalsFleetDoctrineSystemTest {
         direct.fleet.standingOrders.pursueFleeingEnemies = true;
         direct.fleet.commandLinkOverlay = true;
         StretchGoalsFleetDoctrineSystem.applyAggressiveBurn(direct);
+        StretchGoalsFleetDoctrineSystem.applyAggressiveBurn(direct);
+        StretchGoalsFleetDoctrineSystem.isolateFlagship(direct);
+        StretchGoalsFleetDoctrineSystem.transferFlag(direct);
+        direct.fleet.doctrineAcknowledgment = "Order acknowledged: Rally on relay one.";
         StretchGoalsFleetDoctrineSystem.State directRestored =
                 StretchGoalsFleetDoctrineSystem.restore(StretchGoalsFleetDoctrineSystem.serialize(direct), 105L);
         assertEquals(StretchGoalsFleetDoctrineSystem.ChannelMode.BURST_TRANSMISSION, directRestored.fleet.channelMode);
         assertEquals(47, directRestored.fleet.standingOrders.retreatThresholdPercent);
         assertTrue(directRestored.fleet.standingOrders.pursueFleeingEnemies);
         assertTrue(directRestored.fleet.commandLinkOverlay);
+        assertEquals(direct.fleet.panicPercent, directRestored.fleet.panicPercent);
+        assertEquals(direct.fleet.isolationPenaltyPercent, directRestored.fleet.isolationPenaltyPercent);
+        assertEquals(direct.fleet.rallyActions, directRestored.fleet.rallyActions);
+        assertEquals(direct.fleet.doctrineAcknowledgment, directRestored.fleet.doctrineAcknowledgment);
 
         GameContext source = campaignContext();
         source.campaign.fleetDoctrineExpansion.fleet.standingOrders.retreatThresholdPercent = 52;
         source.campaign.fleetDoctrineExpansion.fleet.discipline = StretchGoalsFleetDoctrineSystem.Discipline.MILITIA;
         StretchGoalsFleetDoctrineSystem.setChannelMode(source.campaign.fleetDoctrineExpansion,
                 StretchGoalsFleetDoctrineSystem.ChannelMode.COURIER_DRONE);
+        StretchGoalsFleetDoctrineSystem.isolateFlagship(source.campaign.fleetDoctrineExpansion);
+        source.campaign.fleetDoctrineExpansion.fleet.doctrineAcknowledgment = "Order acknowledged: Emergency flag transfer.";
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(source, 4);
         GameContext restored = campaignContext();
         assertTrue(applyCheckpoint(restored, checkpoint));
@@ -136,8 +164,11 @@ class StretchGoalsFleetDoctrineSystemTest {
                 restored.campaign.fleetDoctrineExpansion.fleet.discipline);
         assertEquals(StretchGoalsFleetDoctrineSystem.ChannelMode.COURIER_DRONE,
                 restored.campaign.fleetDoctrineExpansion.fleet.channelMode);
+        assertTrue(restored.campaign.fleetDoctrineExpansion.fleet.panicPercent > 0);
+        assertTrue(restored.campaign.fleetDoctrineExpansion.fleet.networkCollapsed);
+        assertTrue(restored.campaign.fleetDoctrineExpansion.fleet.doctrineAcknowledgment.contains("Emergency flag"));
         assertTrue(CampaignSystem.campaignFleetDoctrineExpansionLines(restored).stream()
-                .anyMatch(line -> line.contains("Command nodes")));
+                .anyMatch(line -> line.contains("Panic")));
     }
 
     private static GameContext campaignContext() {

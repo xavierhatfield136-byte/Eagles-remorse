@@ -5,6 +5,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,6 +18,27 @@ class CampaignOvermapCheckpointTest {
     @AfterEach
     void cleanupCheckpoint() {
         CampaignCheckpointStore.clear();
+    }
+
+    @Test
+    void shareableSeedReproducesValidatedCampaignSetup() {
+        GameContext first = initializedCampaignContext(778899L);
+        GameContext second = initializedCampaignContext(778899L);
+        GameContext different = initializedCampaignContext(778900L);
+
+        assertEquals(campaignSetupSignature(first), campaignSetupSignature(second));
+        assertFalse(campaignSetupSignature(first).equals(campaignSetupSignature(different)),
+                "different seeds should alter at least the procedural campaign setup signature");
+    }
+
+    @Test
+    void headlessStrategicOvermapPlaybackIsDeterministicForFixedSeed() {
+        String first = CampaignOvermapPlaybackHarness.runSignature(998877L, 1200);
+        String second = CampaignOvermapPlaybackHarness.runSignature(998877L, 1200);
+        String shorter = CampaignOvermapPlaybackHarness.runSignature(998877L, 300);
+
+        assertEquals(first, second);
+        assertFalse(first.equals(shorter), "different playback lengths should produce distinct signatures");
     }
 
     @Test
@@ -313,10 +336,33 @@ class CampaignOvermapCheckpointTest {
     }
 
     private static GameContext initializedCampaignContext() {
-        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        return initializedCampaignContext(1234L);
+    }
+
+    private static GameContext initializedCampaignContext(long seed) {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, seed, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;
+    }
+
+    private static List<String> campaignSetupSignature(GameContext ctx) {
+        List<String> signature = new ArrayList<>();
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            signature.add("poi:" + location.id + ":" + location.name + ":"
+                    + Math.round(location.x) + ":" + Math.round(location.y));
+        }
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
+            signature.add("aoi:" + location.id + ":" + location.name + ":"
+                    + Math.round(location.x) + ":" + Math.round(location.y));
+        }
+        for (CampaignSystem.CampaignForceSummary force : CampaignSystem.campaignForceSummaries(ctx)) {
+            signature.add("force:" + force.id + ":" + force.kind + ":" + force.faction + ":" + force.name + ":"
+                    + Math.round(force.x) + ":" + Math.round(force.y) + ":" + Math.round(force.targetX) + ":"
+                    + Math.round(force.targetY));
+        }
+        signature.add("seed:" + ctx.config.seed);
+        return signature;
     }
 
     private static CampaignCheckpointStore.Checkpoint captureCheckpoint(GameContext ctx, int nextSector) throws Exception {

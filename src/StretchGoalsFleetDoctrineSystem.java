@@ -134,6 +134,7 @@ public final class StretchGoalsFleetDoctrineSystem {
         addPack(state, "Accessibility and input-remapping checklist", "docs/extraction-packs/ACCESSIBILITY_AND_INPUT.md");
         addPack(state, "Architecture decomposition plan", "docs/extraction-packs/ARCHITECTURE_DECOMPOSITION.md");
         addPack(state, "Automated scenario and soak-test harness plan", "docs/PERFORMANCE_GUARDRAILS.md");
+        addPack(state, "Section 27 deep-simulation and community design packs", "docs/extraction-packs/SECTION_27_DESIGN_PACKS.md");
 
         state.fleet.nodes.add(new CommandNode("node-flag", NodeType.FLAGSHIP, "Blue Flagship", 2));
         state.fleet.nodes.add(new CommandNode("node-relay", NodeType.RELAY, "Relay Cruiser", 3));
@@ -159,6 +160,9 @@ public final class StretchGoalsFleetDoctrineSystem {
                                             boolean flagshipOperational, int relayCount) {
         if (state == null) return;
         FleetCommandState fleet = state.fleet;
+        boolean wasCollapsed = fleet.networkCollapsed;
+        int priorPanic = fleet.panicPercent;
+        int priorRally = fleet.rallyActions;
         fleet.nodes.clear();
         fleet.nodes.add(new CommandNode("node-flag", NodeType.FLAGSHIP,
                 flagshipOperational ? "Live Flagship" : "Flagship link lost", flagshipOperational ? 2 : 0));
@@ -174,6 +178,18 @@ public final class StretchGoalsFleetDoctrineSystem {
         int redundancy = Math.max(0, relayCount) * 2 + (operationalShips > 1 ? 1 : 0);
         fleet.bandwidthCapacity = Math.max(1, channelCapacity(fleet.channelMode) + redundancy - damagePenalty / 4);
         fleet.cohesionPercent = clamp(82 - damagePenalty + redundancy, 0, 100);
+        fleet.panicPercent = clamp(Math.max(priorPanic - (relayCount > 0 ? 3 : 0), fleet.networkCollapsed ? priorPanic + 12 : priorPanic), 0, 100);
+        if (wasCollapsed && !fleet.networkCollapsed) {
+            fleet.rallyActions = priorRally + 1;
+            fleet.cohesionPercent = clamp(fleet.cohesionPercent + 8, 0, 100);
+            fleet.panicPercent = clamp(fleet.panicPercent - 10, 0, 100);
+        } else {
+            fleet.rallyActions = priorRally;
+        }
+        fleet.isolationPenaltyPercent = fleet.networkCollapsed
+                ? clamp(fleet.isolationPenaltyPercent + 10, 0, 100)
+                : clamp(fleet.isolationPenaltyPercent - Math.max(1, relayCount), 0, 100);
+        fleet.exhaustedReserveRotation = fleet.networkCollapsed || fleet.cohesionPercent < 55 || fleet.panicPercent >= 45;
         fleet.preBattleReview = fleet.standingOrders.template + " posture: bandwidth " + fleet.bandwidthUsed + "/"
                 + fleet.bandwidthCapacity + ", retreat at " + fleet.standingOrders.retreatThresholdPercent
                 + "%, rescue " + (fleet.standingOrders.rescueDisabledAllies ? "priority" : "optional")
@@ -213,6 +229,35 @@ public final class StretchGoalsFleetDoctrineSystem {
         }
         state.fleet.networkCollapsed = true;
         state.fleet.cohesionPercent = Math.max(0, state.fleet.cohesionPercent - 24);
+        state.fleet.isolationPenaltyPercent = Math.min(100, state.fleet.isolationPenaltyPercent + 18);
+        state.fleet.panicPercent = Math.min(100, state.fleet.panicPercent + 14);
+        state.fleet.exhaustedReserveRotation = state.fleet.networkCollapsed
+                || state.fleet.cohesionPercent < 55
+                || state.fleet.panicPercent >= 45;
+    }
+
+    public static void loseRelays(State state, int relaysLost) {
+        if (state == null || relaysLost <= 0) return;
+        FleetCommandState fleet = state.fleet;
+        int remaining = relaysLost;
+        for (CommandNode node : fleet.nodes) {
+            if (remaining <= 0) break;
+            if (node.type != NodeType.RELAY || !node.operational) continue;
+            node.operational = false;
+            remaining--;
+        }
+        int lost = relaysLost - remaining;
+        if (lost <= 0) return;
+        fleet.bandwidthCapacity = Math.max(1, fleet.bandwidthCapacity - lost * 2);
+        fleet.cohesionPercent = Math.max(0, fleet.cohesionPercent - lost * 8);
+        fleet.isolationPenaltyPercent = Math.min(100, fleet.isolationPenaltyPercent + lost * 7);
+        fleet.panicPercent = Math.min(100, fleet.panicPercent + lost * 5);
+        boolean flagshipOperational = fleet.nodes.stream()
+                .anyMatch(node -> node.type == NodeType.FLAGSHIP && node.operational);
+        boolean anyRelayOperational = fleet.nodes.stream()
+                .anyMatch(node -> node.type == NodeType.RELAY && node.operational);
+        fleet.networkCollapsed = !flagshipOperational && !anyRelayOperational;
+        fleet.exhaustedReserveRotation = fleet.networkCollapsed || fleet.cohesionPercent < 55 || fleet.panicPercent >= 45;
     }
 
     public static boolean transferFlag(State state) {
@@ -223,6 +268,11 @@ public final class StretchGoalsFleetDoctrineSystem {
             state.fleet.networkCollapsed = false;
             state.fleet.rallyActions++;
             state.fleet.cohesionPercent = Math.min(100, state.fleet.cohesionPercent + 14);
+            state.fleet.panicPercent = Math.max(0, state.fleet.panicPercent - 12);
+            state.fleet.isolationPenaltyPercent = Math.max(0, state.fleet.isolationPenaltyPercent - 10);
+            state.fleet.exhaustedReserveRotation = state.fleet.networkCollapsed
+                    || state.fleet.cohesionPercent < 55
+                    || state.fleet.panicPercent >= 45;
             return true;
         }
         return false;
@@ -240,6 +290,10 @@ public final class StretchGoalsFleetDoctrineSystem {
         if (state == null) return;
         state.fleet.cohesionPercent = Math.min(100, state.fleet.cohesionPercent + (veteranCrew ? 18 : 9));
         state.fleet.isolationPenaltyPercent = Math.max(0, state.fleet.isolationPenaltyPercent - 6);
+        state.fleet.panicPercent = Math.max(0, state.fleet.panicPercent - (veteranCrew ? 10 : 5));
+        state.fleet.exhaustedReserveRotation = state.fleet.networkCollapsed
+                || state.fleet.cohesionPercent < 55
+                || state.fleet.panicPercent >= 45;
     }
 
     public static List<String> commandBoardLines(State state) {
@@ -251,7 +305,9 @@ public final class StretchGoalsFleetDoctrineSystem {
                 "Command nodes " + fleet.nodes.size() + "  |  Bandwidth " + fleet.bandwidthUsed + "/" + fleet.bandwidthCapacity
                         + "  |  Channel " + fleet.channelMode,
                 "Cohesion " + fleet.cohesionPercent + "%  |  Discipline " + fleet.discipline
-                        + "  |  Queued orders " + fleet.orderQueue.size(),
+                        + "  |  Panic " + fleet.panicPercent + "%  |  Isolation " + fleet.isolationPenaltyPercent + "%",
+                "Queued orders " + fleet.orderQueue.size() + "  |  Rally actions " + fleet.rallyActions
+                        + "  |  Reserve rotation " + (fleet.exhaustedReserveRotation ? "strained" : "ready"),
                 "Review " + fleet.preBattleReview,
                 "Acknowledgment " + fleet.doctrineAcknowledgment
         );
@@ -264,6 +320,8 @@ public final class StretchGoalsFleetDoctrineSystem {
         StandingOrders orders = fleet.standingOrders;
         return fleet.channelMode + "," + fleet.bandwidthCapacity + "," + fleet.bandwidthUsed + "," + fleet.cohesionPercent
                 + "," + fleet.discipline + "," + fleet.commandLinkOverlay + "," + fleet.exhaustedReserveRotation
+                + "," + fleet.squadronCrossfireBonusPercent + "," + fleet.isolationPenaltyPercent + "," + fleet.panicPercent
+                + "," + fleet.rallyActions + "," + fleet.networkCollapsed + "," + enc(encoder, fleet.doctrineAcknowledgment)
                 + "|" + orders.retreatThresholdPercent + "," + orders.conserveAmmunition + "," + orders.rescueDisabledAllies
                 + "," + orders.protectCivilianTraffic + "," + orders.pursueFleeingEnemies + "," + orders.acceptSurrender
                 + "," + orders.scuttleCompromisedShips + "," + orders.preserveRareCapturedTechnology + "," + orders.template
@@ -284,6 +342,14 @@ public final class StretchGoalsFleetDoctrineSystem {
             state.fleet.discipline = value(fleet[4], Discipline.MILITARY);
             state.fleet.commandLinkOverlay = Boolean.parseBoolean(fleet[5]);
             state.fleet.exhaustedReserveRotation = Boolean.parseBoolean(fleet[6]);
+            if (fleet.length >= 13) {
+                state.fleet.squadronCrossfireBonusPercent = clamp(number(fleet[7], 12), 0, 100);
+                state.fleet.isolationPenaltyPercent = clamp(number(fleet[8], 0), 0, 100);
+                state.fleet.panicPercent = clamp(number(fleet[9], 0), 0, 100);
+                state.fleet.rallyActions = Math.max(0, number(fleet[10], 0));
+                state.fleet.networkCollapsed = Boolean.parseBoolean(fleet[11]);
+                state.fleet.doctrineAcknowledgment = dec(fleet[12], state.fleet.doctrineAcknowledgment);
+            }
         }
         String[] orders = parts[1].split(",", -1);
         if (orders.length >= 9) {

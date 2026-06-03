@@ -3019,6 +3019,15 @@ public final class CampaignSystem {
         return ProductionReadinessLongevitySystem.commandBoardLines((st == null) ? null : st.productionReadiness);
     }
 
+    public static List<String> campaignStructuredTelemetryLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null || st.productionReadiness == null) return List.of("Campaign telemetry unavailable.");
+        List<String> log = st.productionReadiness.longevity.campaignEventLog;
+        if (log.isEmpty()) return List.of("Campaign telemetry empty.");
+        int start = Math.max(0, log.size() - 6);
+        return List.copyOf(log.subList(start, log.size()));
+    }
+
     public static List<String> campaignFleetDoctrineExpansionLines(GameContext ctx) {
         CampaignState st = state(ctx);
         return StretchGoalsFleetDoctrineSystem.commandBoardLines((st == null) ? null : st.fleetDoctrineExpansion);
@@ -6707,6 +6716,13 @@ public final class CampaignSystem {
                         + "  ETA " + (int) Math.ceil(st.galaxyTravel.durationSec) + "S"
                         + "  RISK " + (int) Math.round(st.galaxyTravel.interceptionRisk) + "%",
                 1.5);
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.travel_start",
+                "from=" + safeTelemetryValue(st.galaxyTravel.originId)
+                        + " to=" + safeTelemetryValue(destination.id)
+                        + " label=" + safeTelemetryValue(destination.name)
+                        + " durationSec=" + Math.round(st.galaxyTravel.durationSec)
+                        + " risk=" + Math.round(st.galaxyTravel.interceptionRisk)
+                        + " free=false");
         return true;
     }
 
@@ -6738,6 +6754,13 @@ public final class CampaignSystem {
                 "FREE NAVIGATION ENGAGED  ETA " + (int) Math.ceil(st.galaxyTravel.durationSec) + "S"
                         + "  RISK " + (int) Math.round(st.galaxyTravel.interceptionRisk) + "%",
                 1.5);
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.travel_start",
+                "from=" + safeTelemetryValue(st.galaxyTravel.originId)
+                        + " to=free-course"
+                        + " label=FreeCourse"
+                        + " durationSec=" + Math.round(st.galaxyTravel.durationSec)
+                        + " risk=" + Math.round(st.galaxyTravel.interceptionRisk)
+                        + " free=true");
         return true;
     }
 
@@ -6748,6 +6771,7 @@ public final class CampaignSystem {
         st.galaxyTravel.clear();
         st.currentGalaxyLocationId = "";
         EventSystem.showBanner(ctx, "TRAVEL HOLD - FLEET DRIFT HALTED", 1.1);
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.travel_stop", "reason=player_hold");
         return true;
     }
 
@@ -20646,6 +20670,11 @@ public final class CampaignSystem {
         startSector(ctx, st.sector);
         applyPreEntryMissionBombardment(ctx, st, location);
         captureActiveGalaxyEncounterForceRefsFromLiveShips(ctx, st);
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.encounter_launch",
+                "location=" + safeTelemetryValue(location.id)
+                        + " label=" + safeTelemetryValue(location.name)
+                        + " ambient=false"
+                        + " missionSector=" + st.sector);
         return true;
     }
 
@@ -20665,6 +20694,11 @@ public final class CampaignSystem {
         captureActiveGalaxyEncounterForceRefsFromLiveShips(ctx, st);
         ctx.state = GameState.RUNNING;
         EventSystem.showBanner(ctx, "ENTER SITE: " + location.name.toUpperCase(Locale.US), 1.5);
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.encounter_launch",
+                "location=" + safeTelemetryValue(location.id)
+                        + " label=" + safeTelemetryValue(location.name)
+                        + " ambient=true"
+                        + " resolution=" + safeTelemetryValue(st.activeSiteResolutionModeId));
         return true;
     }
 
@@ -26853,6 +26887,11 @@ public final class CampaignSystem {
             persistRunResult(ctx, true);
             return;
         }
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.encounter_return",
+                "title=" + safeTelemetryValue(title)
+                        + " bonus=" + bonus
+                        + " sideBonus=" + sideBonus
+                        + " ambient=false");
     }
 
     private static void finishAmbientGalaxyEncounterAndReturn(GameContext ctx, CampaignState st) {
@@ -26891,6 +26930,10 @@ public final class CampaignSystem {
             st.transitionRewardLine = summary.rewardLine;
             st.transitionRouteImpactLine = summary.routeImpactLine;
         }
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.encounter_return",
+                "title=" + safeTelemetryValue(title)
+                        + " ambient=true"
+                        + " reward=" + safeTelemetryValue((summary == null) ? "none" : summary.rewardLine));
     }
 
     private static AmbientReturnSummary resolveAmbientEncounterOutcome(GameContext ctx, CampaignState st, CampaignLocation location) {
@@ -28250,6 +28293,23 @@ public final class CampaignSystem {
         System.out.println("[campaign] " + event + " " + detail);
     }
 
+    private static void recordStructuredCampaignEvent(GameContext ctx, CampaignState st, String event, String detail) {
+        if (st == null || st.productionReadiness == null) return;
+        String name = (event == null || event.isBlank()) ? "campaign.event" : event.trim();
+        String body = (detail == null || detail.isBlank()) ? "" : detail.trim();
+        String entry = "t=" + Math.round(st.sectorElapsed)
+                + " sector=" + st.sector
+                + " event=" + name
+                + (body.isBlank() ? "" : " " + body);
+        ProductionReadinessLongevitySystem.appendCampaignEvent(st.productionReadiness, entry);
+        logTelemetry(name, entry);
+    }
+
+    private static String safeTelemetryValue(String value) {
+        if (value == null || value.isBlank()) return "none";
+        return value.trim().replaceAll("[\\s|]+", "_");
+    }
+
     private static void failRun(GameContext ctx, String text) {
         failRun(ctx, text, text);
     }
@@ -28266,6 +28326,9 @@ public final class CampaignSystem {
         }
         persistRunResult(ctx, false);
         if (st != null) {
+            recordStructuredCampaignEvent(ctx, st, "campaign.failure",
+                    "reason=" + safeTelemetryValue(text)
+                            + " banner=" + safeTelemetryValue((bannerText == null) ? "" : bannerText));
             logTelemetry("sector_fail",
                     "sector=" + st.sector +
                             " elapsedSec=" + Math.round(st.sectorElapsed) +
@@ -28316,6 +28379,11 @@ public final class CampaignSystem {
     private static boolean saveCheckpoint(GameContext ctx, CampaignState st, int nextSector) {
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, st, nextSector);
         if (checkpoint == null) return false;
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.checkpoint_save",
+                "nextSector=" + nextSector
+                        + " seed=" + checkpoint.seed
+                        + " location=" + safeTelemetryValue(st.currentGalaxyLocationId));
+        checkpoint.productionReadinessState = ProductionReadinessLongevitySystem.serialize(st.productionReadiness);
         CampaignCheckpointStore.save(checkpoint);
         FirstHourOnboardingSystem.noteCheckpointSaved(ctx);
         return true;
@@ -28642,6 +28710,10 @@ public final class CampaignSystem {
         sanitizeCampaignForceRoutesAfterLoad(st, ctx);
         ensureCampaignForceOwnership(ctx, st);
         reconcilePersistentFleetRecords(ctx, st, "checkpoint restore");
+        recordStructuredCampaignEvent(ctx, st, "campaign.transition.checkpoint_restore",
+                "sector=" + st.sector
+                        + " location=" + safeTelemetryValue(st.currentGalaxyLocationId)
+                        + " traveling=" + st.galaxyTravel.traveling);
         return true;
     }
 

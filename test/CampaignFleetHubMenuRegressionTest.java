@@ -5,6 +5,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -109,6 +112,52 @@ class CampaignFleetHubMenuRegressionTest {
         assertNotNull(checkpoint);
         assertEquals(205, checkpoint.campaignOre);
         assertEquals(205, checkpoint.cargo);
+    }
+
+    @Test
+    void checkpointStoreSupportsNamedSlotsAutosaveRotationAndRecovery() throws Exception {
+        CampaignCheckpointStore.Checkpoint primary = new CampaignCheckpointStore.Checkpoint();
+        primary.nextSector = 3;
+        primary.campaignOre = 31;
+        primary.cargo = 31;
+        CampaignCheckpointStore.save(primary);
+
+        CampaignCheckpointStore.Checkpoint slot = new CampaignCheckpointStore.Checkpoint();
+        slot.nextSector = 8;
+        slot.campaignOre = 88;
+        slot.cargo = 88;
+        CampaignCheckpointStore.saveSlot("Iron Command", slot);
+
+        CampaignCheckpointStore.Checkpoint stillPrimary = CampaignCheckpointStore.load();
+        assertNotNull(stillPrimary);
+        assertEquals(3, stillPrimary.nextSector);
+        assertEquals(31, stillPrimary.campaignOre);
+
+        CampaignCheckpointStore.Checkpoint loadedSlot = CampaignCheckpointStore.loadSlot("iron-command");
+        assertNotNull(loadedSlot);
+        assertEquals(8, loadedSlot.nextSector);
+        assertEquals(88, loadedSlot.campaignOre);
+
+        for (int sector = 4; sector <= 7; sector++) {
+            CampaignCheckpointStore.Checkpoint auto = new CampaignCheckpointStore.Checkpoint();
+            auto.nextSector = sector;
+            auto.campaignOre = sector * 10;
+            auto.cargo = auto.campaignOre;
+            CampaignCheckpointStore.saveAutosave(auto, 3);
+        }
+
+        List<CampaignCheckpointStore.SlotSummary> slots = CampaignCheckpointStore.listSlots();
+        assertTrue(slots.stream().anyMatch(s -> "iron-command".equals(s.id) && s.recoverable));
+        assertEquals(3, slots.stream().filter(s -> s.autosave).count());
+
+        CampaignCheckpointStore.Checkpoint recovered = CampaignCheckpointStore.recoverLatestAutosave();
+        assertNotNull(recovered);
+        assertEquals(7, recovered.nextSector);
+        assertEquals(70, recovered.campaignOre);
+
+        Files.writeString(Path.of("save/campaign_slots/broken.properties"), "\\u00\n");
+        assertTrue(CampaignCheckpointStore.listSlots().stream()
+                .anyMatch(s -> "broken".equals(s.id) && !s.recoverable && s.summary.contains("Recovery available")));
     }
 
     @Test

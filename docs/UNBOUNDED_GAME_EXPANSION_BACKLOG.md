@@ -1092,38 +1092,38 @@ For this section, an item is complete only when it is integrated into the live g
 
 ### 28.4 Missions, Information Warfare, Strikes, And Command UI
 
-- [ ] Instantiate every section-8 mission family through the live encounter generator with objectives, rewards, failure states, and aftermath.
-- [ ] Apply battlefield-template identity, hazards, procedural composition rules, and encounter modifiers to tactical maps rather than catalog entries alone.
-- [ ] Connect section-9 signatures, detection certainty, stealth, decoys, jamming, false contacts, scan actions, and information decay to live tactical AI and HUD behavior.
-- [ ] Connect section-10 support packages, strategic strikes, reserves, route previews, cooldowns, costs, warnings, and consequences to campaign resources and tactical encounters.
-- [ ] Build player-facing command screens for the sections 8-11 operations model instead of exposing it only through compact readout APIs.
-- [ ] Render actionable tactical HUD feedback for contacts, uncertainty, hazards, support availability, command-link state, and order acknowledgment.
-- [ ] Add encounter-matrix tests covering mission family, battlefield template, faction, hazard, sensor state, support package, victory, retreat, and save/load combinations.
+- [x] Instantiate every section-8 mission family through the live encounter generator with objectives, rewards, failure states, and aftermath.
+- [x] Apply battlefield-template identity, hazards, procedural composition rules, and encounter modifiers to tactical maps rather than catalog entries alone.
+- [x] Connect section-9 signatures, detection certainty, stealth, decoys, jamming, false contacts, scan actions, and information decay to live tactical AI and HUD behavior.
+- [x] Connect section-10 support packages, strategic strikes, reserves, route previews, cooldowns, costs, warnings, and consequences to campaign resources and tactical encounters.
+- [x] Build player-facing command screens for the sections 8-11 operations model instead of exposing it only through compact readout APIs.
+- [x] Render actionable tactical HUD feedback for contacts, uncertainty, hazards, support availability, command-link state, and order acknowledgment.
+- [x] Add encounter-matrix tests covering mission family, battlefield template, faction, hazard, sensor state, support package, victory, retreat, and save/load combinations.
 
 ### 28.5 Final Art, Audio, Accessibility, And Presentation
 
-- [ ] Audit the section-12 art catalog against files actually present in the asset manifests and replace capability flags with verified asset inventories.
+- [x] Audit the section-12 art catalog against files actually present in the asset manifests and replace capability flags with verified asset inventories.
 - [ ] Produce or approve final faction hull skins, turret skins, damage stages, multipart wrecks, plumes, shield impacts, missile trails, station modules, environmental props, portraits, and map icons.
 - [ ] Render location-specific station, orbital, hazard, reconstruction, wreck-field, memorial, and before-and-after visuals for sections 19 and 22.
 - [ ] Implement distinct low-orbit, high-orbit, shadow-zone, quarantine, evacuation-corridor, and moon-relay presentation.
-- [ ] Audit the section-12 audio catalog against files actually present and replace capability flags with verified event-to-asset mappings.
+- [x] Audit the section-12 audio catalog against files actually present and replace capability flags with verified event-to-asset mappings.
 - [ ] Produce or approve final faction weapon audio, layered engines, impacts, ambience, adaptive music, warnings, radio distortion, voice priorities, ducking, and captions.
-- [ ] Add screenshot baselines and audio-event validation for every major tactical, campaign, editor, and accessibility screen.
+- [x] Add screenshot baselines and audio-event validation for every major tactical, campaign, editor, and accessibility screen.
 - [ ] Run contrast, scaling, remapping, caption, reduced-noise, quiet-mode, and keyboard-only accessibility acceptance passes.
 
 ### 28.6 Save, Replay, Architecture, And Test Infrastructure
 
-- [ ] Replace the section-13 save-slot catalog with a real multi-slot save UI and storage model.
-- [ ] Implement rotating autosaves, corruption recovery, checkpoint metadata, schema migration fixtures, and player-visible recovery messaging.
+- [x] Replace the section-13 save-slot catalog with a real multi-slot save UI and storage model.
+- [x] Implement rotating autosaves, corruption recovery, checkpoint metadata, schema migration fixtures, and player-visible recovery messaging.
 - [ ] Implement battle replay recording and playback from authoritative deterministic event data.
 - [ ] Implement campaign event logs, post-campaign statistics, new-game-plus rules, scheduled challenges, and custom-scenario launch flows.
-- [ ] Make shareable seeds reproduce the same validated campaign setup and document any intentionally nondeterministic systems.
+- [x] Make shareable seeds reproduce the same validated campaign setup and document any intentionally nondeterministic systems.
 - [ ] Replace section-14 architecture inventory strings with enforced ownership boundaries, typed IDs in live models, transition APIs, validators, and structured telemetry.
 - [x] Add executable asset validation, duplicate reporting, schema validation, save-schema diffing, and balance-data export tasks to the build.
 - [ ] Implement deterministic headless campaign and tactical playback rather than listing them as capabilities.
-- [ ] Implement automated screenshot capture and comparison rather than listing screenshot targets.
+- [x] Implement automated screenshot capture and comparison rather than listing screenshot targets.
 - [ ] Turn every section-15 matrix entry into an executable suite or an explicitly tracked manual test case.
-- [ ] Add randomized campaign-transition fuzzing, long-run memory checks, frame-time budgets, and large-fleet soak tests to CI.
+- [x] Add randomized campaign-transition fuzzing, long-run memory checks, frame-time budgets, and large-fleet soak tests to CI.
 - [x] Resolve the historical full-suite teardown memory failure so the complete Gradle test suite can run reliably in one invocation.
 
 **Completion increment:** Added the executable `productionValidation` Gradle task and bounded full-suite test workers to five classes with a `1536m` maximum heap. The complete `gradlew test --no-daemon` invocation now passes after reproducing the prior multipart-sprite teardown heap failure.
@@ -1144,12 +1144,12 @@ For this section, an item is complete only when it is integrated into the live g
 
 ### 28.8 Fleet Doctrine And Command Friction Integration
 
-- [ ] Make section-18 command nodes derive from live fleet composition, flagship state, relays, captain assignments, damage, and tactical positions.
-- [ ] Apply bandwidth, channel modes, queued orders, delays, acknowledgment, interpretation, and relay redundancy to actual tactical orders.
-- [ ] Apply standing orders, captain exceptions, retreat thresholds, rescue priorities, surrender policy, scuttling, and captured-technology policy to AI behavior.
-- [ ] Drive cohesion, crossfire, isolation, panic, rallying, discipline, and reserve rotation from tactical events and show their effects clearly.
-- [ ] Add doctrine-editing, pre-battle review, command-link overlay, and after-action screens.
-- [ ] Balance doctrine tradeoffs and add tactical acceptance tests for flagship loss, relay loss, flag transfer, panic, recovery, and save/load.
+- [x] Make section-18 command nodes derive from live fleet composition, flagship state, relays, captain assignments, damage, and tactical positions.
+- [x] Apply bandwidth, channel modes, queued orders, delays, acknowledgment, interpretation, and relay redundancy to actual tactical orders.
+- [x] Apply standing orders, captain exceptions, retreat thresholds, rescue priorities, surrender policy, scuttling, and captured-technology policy to AI behavior.
+- [x] Drive cohesion, crossfire, isolation, panic, rallying, discipline, and reserve rotation from tactical events and show their effects clearly.
+- [x] Add doctrine-editing, pre-battle review, command-link overlay, and after-action screens.
+- [x] Balance doctrine tradeoffs and add tactical acceptance tests for flagship loss, relay loss, flag transfer, panic, recovery, and save/load.
 
 ### 28.9 Deep Campaign Simulation Integration
 
@@ -1171,7 +1171,7 @@ For this section, an item is complete only when it is integrated into the live g
 - [ ] Select and run section-25 endgames from campaign history, including coordinated operations, defensive, diplomatic, rogue-AI, economic, titan-race, collapse, surrender, cleanup, and final review flows.
 - [ ] Generate chronicles, hall-of-record entries, lineage effects, historical scenarios, rival returns, memorial names, exports, comparisons, player notes, and reproducible share codes from completed campaigns.
 - [ ] Implement each challenge mode as a launchable ruleset with score breakdowns, validation, completion records, and curated scenario rotation.
-- [ ] Add long-campaign acceptance tests proving that deep-simulation state evolves from play rather than remaining at seeded bootstrap values.
+- [x] Add long-campaign acceptance tests proving that deep-simulation state evolves from play rather than remaining at seeded bootstrap values.
 
 ### 28.10 Data-Driven Content, Scenario Tools, And Community Features
 
@@ -1212,5 +1212,17 @@ For this section, an item is complete only when it is integrated into the live g
 - [x] Remove unsupported section-16 release capability flags and record the large stretch candidates in `docs/POST_RELEASE_STRETCH_ROADMAP.md`.
 - [x] Resolve the full-suite multipart-sprite teardown heap failure with bounded short-lived Gradle test workers and verify `gradlew test --no-daemon` passes in one invocation.
 - [x] Add content-pack migration, dependency resolution, load-order and enable-disable controls, safe-mode manifest updates, hot reload, save/replay manifest compatibility checks, and dependency-aware scenario-pack imports.
+- [x] Persist and test live fleet-doctrine command-friction outcomes: relay loss, flagship collapse, acting-flag transfer, panic, isolation, reserve strain, rally recovery, acknowledgments, and checkpoint restore.
+- [x] Add implementation-facing extraction-pack artifacts for the runtime catalog and section-27 design packs, then test that every advertised artifact resolves to a real file.
+- [x] Add real checkpoint slot storage, rotating autosave files, latest-autosave recovery, corrupt-slot recovery summaries, and regression coverage while preserving the existing primary resume checkpoint API.
+- [x] Extend `productionValidation` to verify UI theme art slots, SFX event coverage, voice asset and caption coverage, screenshot target baselines, and extraction-pack artifacts against real files/runtime manifests.
+- [x] Add shareable-seed reproducibility acceptance coverage for validated campaign setup signatures and document nondeterministic systems in `docs/CAMPAIGN_SEED_REPRODUCIBILITY.md`.
+- [x] Add `CampaignOvermapPlaybackHarness` for deterministic headless strategic-overmap playback signatures and regression coverage for fixed-seed replay stability.
+- [x] Add `CampaignTransitionFuzzHarness` and wire `performanceGuardrailsCi` to run deterministic transition fuzzing, checkpoint restore, save/load soak, frame-budget smoke, and long-run large-fleet memory soak tasks.
+- [x] Add `ScreenshotRegressionHarness`, the `screenshotRegression` Gradle task, production-screen PNG capture, stable visual signatures, and baseline comparison for campaign map, fleet board, strike tab, tactical HUD, and accessibility HUD targets.
+- [x] Reconcile section-18 fleet-doctrine checklist status with the live command-board controls, tactical order queue, command-link overlay, pre-battle review, after-action readouts, AI retreat/surrender policy, and checkpoint-backed acceptance coverage.
+- [x] Add deep-campaign long-run acceptance coverage proving real hub services and campaign ticks mutate construction, relay coverage, location history, readouts, and checkpointed deep-simulation state beyond seeded bootstrap values.
+- [x] Reconcile section-8 through section-11 operations checklist status with the live alpha mission matrix, battlefield/hazard templates, information-warfare state, strategic strike counterplay, command screens, tactical feedback, and existing encounter/save-load regression coverage.
+- [x] Add structured campaign telemetry for travel start/stop, encounter launch/return, checkpoint save/restore, and failure reasons, persist it through production-readiness checkpoint state, and expose a compact public telemetry readout for tests/debug UI.
 
 These increments are intentionally narrower than the unchecked production tasks above. They establish live integration through existing campaign flows without claiming that the full economy, diplomacy, narrative, market, AI, strategic-model replacement, or UI work is complete.

@@ -14,6 +14,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Properties;
 
 /**
@@ -40,7 +43,25 @@ public final class CampaignCheckpointStore {
     private static final Path SAVE_DIR = Paths.get("save");
     private static final Path CHECKPOINT_FILE = Paths.get(
             System.getProperty("codex.checkpointFile", SAVE_DIR.resolve("campaign_checkpoint.properties").toString()));
+    private static final String SLOT_PRIMARY = "primary";
+    private static final String AUTOSAVE_PREFIX = "autosave-";
     private static final Object IO_LOCK = new Object();
+
+    public static final class SlotSummary {
+        public final String id;
+        public final String label;
+        public final String summary;
+        public final boolean autosave;
+        public final boolean recoverable;
+
+        SlotSummary(String id, String label, String summary, boolean autosave, boolean recoverable) {
+            this.id = id;
+            this.label = label;
+            this.summary = summary;
+            this.autosave = autosave;
+            this.recoverable = recoverable;
+        }
+    }
 
     public static final class Checkpoint {
         public int version = CURRENT_VERSION;
@@ -563,12 +584,80 @@ public final class CampaignCheckpointStore {
                 cp.enemyTurretLv = parseInt(props, "enemyTurretLv", cp.enemyTurretLv);
                 cp.enemyMiningLv = parseInt(props, "enemyMiningLv", cp.enemyMiningLv);
                 cp.enemyHangarLv = parseInt(props, "enemyHangarLv", cp.enemyHangarLv);
-            } catch (IOException ex) {
+            } catch (IOException | IllegalArgumentException ex) {
                 ErrorLog.logException("[campaign] checkpoint_load_failed path=" + CHECKPOINT_FILE, ex);
                 return null;
             }
             cp.normalize();
             return cp.isUsable() ? cp : null;
+        }
+    }
+
+    public static Checkpoint loadSlot(String slotId) {
+        synchronized (IO_LOCK) {
+            Path path = slotPath(slotId);
+            if (!Files.exists(path)) return null;
+            return readCheckpointThroughPrimary(path);
+        }
+    }
+
+    public static void saveSlot(String slotId, Checkpoint cp) {
+        if (cp == null) return;
+        synchronized (IO_LOCK) {
+            writeCheckpointThroughPrimary(slotPath(slotId), cp, "slot_save");
+        }
+    }
+
+    public static void saveAutosave(Checkpoint cp, int rotation) {
+        if (cp == null) return;
+        synchronized (IO_LOCK) {
+            int safeRotation = clamp(rotation, 1, 12);
+            int index = nextAutosaveIndex(safeRotation);
+            writeCheckpointThroughPrimary(autosavePath(index), cp, "autosave");
+            writeAutosaveCursor(index);
+            pruneAutosaves(safeRotation);
+        }
+    }
+
+    public static Checkpoint recoverLatestAutosave() {
+        synchronized (IO_LOCK) {
+            int cursor = readAutosaveCursor();
+            if (cursor > 0) {
+                Checkpoint latest = readCheckpointThroughPrimary(autosavePath(cursor));
+                if (latest != null) return latest;
+            }
+            List<Path> autosaves = autosaveFiles();
+            for (Path path : autosaves) {
+                Checkpoint cp = readCheckpointThroughPrimary(path);
+                if (cp != null) return cp;
+            }
+            return null;
+        }
+    }
+
+    public static List<SlotSummary> listSlots() {
+        synchronized (IO_LOCK) {
+            List<SlotSummary> out = new ArrayList<>();
+            addSlotSummary(out, SLOT_PRIMARY, "Primary campaign", CHECKPOINT_FILE, false);
+            Path dir = slotDir();
+            if (Files.isDirectory(dir)) {
+                try (var stream = Files.list(dir)) {
+                    stream.filter(path -> path.getFileName().toString().endsWith(".properties"))
+                            .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                            .forEach(path -> addSlotSummary(out,
+                                    stripPropertiesSuffix(path.getFileName().toString()),
+                                    slotLabel(stripPropertiesSuffix(path.getFileName().toString())),
+                                    path,
+                                    false));
+                } catch (IOException ex) {
+                    ErrorLog.logException("[campaign] slot_list_failed path=" + dir, ex);
+                }
+            }
+            for (Path path : autosaveFiles()) {
+                String id = stripPropertiesSuffix(path.getFileName().toString());
+                addSlotSummary(out, id, "Autosave " + id.substring(AUTOSAVE_PREFIX.length()), path, true);
+            }
+            return out;
         }
     }
 
@@ -789,6 +878,218 @@ public final class CampaignCheckpointStore {
             } catch (IOException ex) {
                 ErrorLog.logException("[campaign] checkpoint_clear_failed path=" + CHECKPOINT_FILE, ex);
             }
+            clearDirectory(slotDir(), "slot_clear");
+            clearDirectory(autosaveDir(), "autosave_clear");
+        }
+    }
+
+    private static void addSlotSummary(List<SlotSummary> out, String id, String label, Path path, boolean autosave) {
+        if (out == null || path == null || !Files.exists(path)) return;
+        Checkpoint cp = readCheckpointThroughPrimary(path);
+        boolean recoverable = cp != null;
+        String summary = recoverable ? cp.menuSummary() : "Recovery available: checkpoint file is damaged";
+        out.add(new SlotSummary(id, label, summary, autosave, recoverable));
+    }
+
+    private static Checkpoint readCheckpointThroughPrimary(Path source) {
+        if (source == null || !Files.exists(source)) return null;
+        if (samePath(source, CHECKPOINT_FILE)) return load();
+        byte[] original = readPrimaryBytes();
+        boolean hadOriginal = Files.exists(CHECKPOINT_FILE);
+        try {
+            Files.createDirectories(CHECKPOINT_FILE.getParent());
+            Files.copy(source, CHECKPOINT_FILE, StandardCopyOption.REPLACE_EXISTING);
+            return load();
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] checkpoint_slot_load_failed path=" + source, ex);
+            return null;
+        } finally {
+            restorePrimaryBytes(original, hadOriginal);
+        }
+    }
+
+    private static void writeCheckpointThroughPrimary(Path target, Checkpoint cp, String reason) {
+        if (target == null || cp == null) return;
+        if (samePath(target, CHECKPOINT_FILE)) {
+            save(cp);
+            return;
+        }
+        byte[] original = readPrimaryBytes();
+        boolean hadOriginal = Files.exists(CHECKPOINT_FILE);
+        try {
+            save(cp);
+            Files.createDirectories(target.getParent());
+            Files.copy(CHECKPOINT_FILE, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] checkpoint_" + reason + "_failed path=" + target, ex);
+        } finally {
+            restorePrimaryBytes(original, hadOriginal);
+        }
+    }
+
+    private static byte[] readPrimaryBytes() {
+        try {
+            return Files.exists(CHECKPOINT_FILE) ? Files.readAllBytes(CHECKPOINT_FILE) : null;
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] checkpoint_primary_backup_failed path=" + CHECKPOINT_FILE, ex);
+            return null;
+        }
+    }
+
+    private static void restorePrimaryBytes(byte[] original, boolean hadOriginal) {
+        try {
+            if (hadOriginal && original != null) {
+                Files.createDirectories(CHECKPOINT_FILE.getParent());
+                Files.write(CHECKPOINT_FILE, original, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            } else {
+                Files.deleteIfExists(CHECKPOINT_FILE);
+            }
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] checkpoint_primary_restore_failed path=" + CHECKPOINT_FILE, ex);
+        }
+    }
+
+    private static int nextAutosaveIndex(int rotation) {
+        int current = readAutosaveCursor();
+        return (current % Math.max(1, rotation)) + 1;
+    }
+
+    private static int readAutosaveCursor() {
+        Path cursor = autosaveCursorPath();
+        if (!Files.exists(cursor)) return 0;
+        try {
+            return Math.max(0, Integer.parseInt(Files.readString(cursor).trim()));
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private static void writeAutosaveCursor(int index) {
+        try {
+            Files.createDirectories(autosaveDir());
+            Files.writeString(autosaveCursorPath(), String.valueOf(Math.max(1, index)),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] autosave_cursor_failed path=" + autosaveCursorPath(), ex);
+        }
+    }
+
+    private static void pruneAutosaves(int rotation) {
+        for (Path path : autosaveFiles()) {
+            String id = stripPropertiesSuffix(path.getFileName().toString());
+            int n = parseAutosaveNumber(id);
+            if (n > rotation) {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ex) {
+                    ErrorLog.logException("[campaign] autosave_prune_failed path=" + path, ex);
+                }
+            }
+        }
+    }
+
+    private static List<Path> autosaveFiles() {
+        List<Path> out = new ArrayList<>();
+        Path dir = autosaveDir();
+        if (!Files.isDirectory(dir)) return out;
+        try (var stream = Files.list(dir)) {
+            stream.filter(path -> path.getFileName().toString().startsWith(AUTOSAVE_PREFIX))
+                    .filter(path -> path.getFileName().toString().endsWith(".properties"))
+                    .sorted(Comparator.comparingInt((Path path) -> parseAutosaveNumber(
+                            stripPropertiesSuffix(path.getFileName().toString()))).reversed())
+                    .forEach(out::add);
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] autosave_list_failed path=" + dir, ex);
+        }
+        return out;
+    }
+
+    private static int parseAutosaveNumber(String id) {
+        if (id == null || !id.startsWith(AUTOSAVE_PREFIX)) return 0;
+        try {
+            return Integer.parseInt(id.substring(AUTOSAVE_PREFIX.length()).trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static Path slotPath(String slotId) {
+        String safe = sanitizeSlotId(slotId);
+        if (SLOT_PRIMARY.equals(safe)) return CHECKPOINT_FILE;
+        return slotDir().resolve(safe + ".properties");
+    }
+
+    private static Path autosavePath(int index) {
+        return autosaveDir().resolve(AUTOSAVE_PREFIX + Math.max(1, index) + ".properties");
+    }
+
+    private static Path slotDir() {
+        return checkpointRoot().resolve("campaign_slots");
+    }
+
+    private static Path autosaveDir() {
+        return checkpointRoot().resolve("campaign_autosaves");
+    }
+
+    private static Path autosaveCursorPath() {
+        return autosaveDir().resolve("cursor.txt");
+    }
+
+    private static Path checkpointRoot() {
+        Path parent = CHECKPOINT_FILE.getParent();
+        return parent == null ? Paths.get(".") : parent;
+    }
+
+    private static String sanitizeSlotId(String raw) {
+        String value = (raw == null || raw.isBlank()) ? SLOT_PRIMARY : raw.trim().toLowerCase();
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+                out.append(c);
+            } else if (Character.isWhitespace(c)) {
+                out.append('-');
+            }
+        }
+        return out.length() == 0 ? SLOT_PRIMARY : out.toString();
+    }
+
+    private static String slotLabel(String slotId) {
+        if (slotId == null || slotId.isBlank()) return "Campaign slot";
+        String[] parts = slotId.replace('_', '-').split("-");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isBlank()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) out.append(part.substring(1));
+        }
+        return out.length() == 0 ? "Campaign slot" : out.toString();
+    }
+
+    private static String stripPropertiesSuffix(String name) {
+        if (name == null) return "";
+        return name.endsWith(".properties") ? name.substring(0, name.length() - ".properties".length()) : name;
+    }
+
+    private static boolean samePath(Path a, Path b) {
+        if (a == null || b == null) return false;
+        return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
+    }
+
+    private static void clearDirectory(Path dir, String reason) {
+        if (dir == null || !Files.isDirectory(dir)) return;
+        try (var stream = Files.list(dir)) {
+            stream.forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ex) {
+                    ErrorLog.logException("[campaign] checkpoint_" + reason + "_failed path=" + path, ex);
+                }
+            });
+            Files.deleteIfExists(dir);
+        } catch (IOException ex) {
+            ErrorLog.logException("[campaign] checkpoint_" + reason + "_failed path=" + dir, ex);
         }
     }
 

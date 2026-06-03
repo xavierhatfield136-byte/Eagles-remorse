@@ -1,3 +1,5 @@
+import app.ui.ThemeArt;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -47,6 +49,12 @@ public final class ProductionValidationHarness {
             report.add("duplicate " + entry.getKey() + " -> " + String.join(" | ", entry.getValue()));
         }
 
+        validateThemeArt(errors, report);
+        validateSfxManifest(errors, report);
+        validateVoiceManifest(errors, report);
+        validateScreenshotTargets(errors, report);
+        validateExtractionArtifacts(resolvedRoot, errors, report);
+
         requireRegularFile(resolvedRoot, "docs/CAMPAIGN_SAVE_SCHEMA.md", errors, report);
         requireRegularFile(resolvedRoot, "config/balance_data_export.csv", errors, report);
         requireRegularFile(resolvedRoot, "config/content-pack/manifest.properties", errors, report);
@@ -66,6 +74,78 @@ public final class ProductionValidationHarness {
         boolean present = Files.isRegularFile(file);
         report.add(relative + "=" + (present ? "present" : "missing"));
         if (!present) errors.add(relative + ": file is missing");
+    }
+
+    private static void validateThemeArt(List<String> errors, List<String> report) {
+        String[] slots = {
+                ThemeArt.MENU_MAIN_SHELL,
+                ThemeArt.MENU_SECTION_PANEL,
+                ThemeArt.MENU_INSET_PANEL,
+                ThemeArt.HUD_STANDARD_PANEL,
+                ThemeArt.HUD_ALERT_PANEL,
+                ThemeArt.HUD_STATUS_STRIP,
+                ThemeArt.HUD_SPECIAL_FRAME,
+                ThemeArt.HUD_RADAR_RING
+        };
+        int present = 0;
+        for (String slot : slots) {
+            boolean ok = ThemeArt.get(slot) != null;
+            if (ok) present++;
+            else errors.add("ui-theme: missing asset for " + slot);
+        }
+        report.add("ui-theme slots=" + present + "/" + slots.length);
+    }
+
+    private static void validateSfxManifest(List<String> errors, List<String> report) {
+        SfxManifest.CoverageReport coverage = SfxManifest.coverage();
+        report.add("sfx events=" + coverage.okCount() + "/" + coverage.rows().size());
+        for (SfxManifest.CoverageRow row : coverage.rows()) {
+            if (!row.ok()) {
+                errors.add("sfx: " + row.spec().eventId() + " has " + row.assetVariants()
+                        + " variants, needs " + row.spec().requiredVariants());
+            }
+        }
+    }
+
+    private static void validateVoiceManifest(List<String> errors, List<String> report) {
+        List<AudioSystem.VoiceEventSpec> rows = AudioSystem.voiceEventMatrix();
+        int assetsOk = 0;
+        int captionsOk = 0;
+        for (AudioSystem.VoiceEventSpec row : rows) {
+            if (row.assetVariants() >= row.requiredVariants()) assetsOk++;
+            else errors.add("voice: " + row.role() + "/" + row.eventId() + " has " + row.assetVariants()
+                    + " variants, needs " + row.requiredVariants());
+            if (row.captionVariants() >= 1) captionsOk++;
+            else errors.add("voice: " + row.role() + "/" + row.eventId() + " has no caption variant");
+        }
+        report.add("voice assets=" + assetsOk + "/" + rows.size());
+        report.add("voice captions=" + captionsOk + "/" + rows.size());
+    }
+
+    private static void validateScreenshotTargets(List<String> errors, List<String> report) {
+        ProductionReadinessLongevitySystem.State state = ProductionReadinessLongevitySystem.bootstrap(0L);
+        List<String> targets = state.art.regressionScreenshots;
+        report.add("screenshot targets=" + targets.size() + " -> " + String.join(",", targets));
+        if (targets.size() < 5) errors.add("screenshots: fewer than five production targets");
+        for (String target : targets) {
+            if (target == null || target.isBlank()) {
+                errors.add("screenshots: blank target");
+            }
+        }
+        if (!targets.contains("campaign-map")) errors.add("screenshots: missing campaign-map target");
+        if (!targets.contains("tactical-hud")) errors.add("screenshots: missing tactical-hud target");
+        if (!targets.contains("accessibility-hud")) errors.add("screenshots: missing accessibility-hud target");
+    }
+
+    private static void validateExtractionArtifacts(Path root, List<String> errors, List<String> report) {
+        StretchGoalsFleetDoctrineSystem.State state = StretchGoalsFleetDoctrineSystem.bootstrap(0L);
+        int present = 0;
+        for (StretchGoalsFleetDoctrineSystem.ExtractionPack pack : state.extractionPacks) {
+            Path artifact = root.resolve(pack.artifact).normalize();
+            if (Files.isRegularFile(artifact)) present++;
+            else errors.add("extraction-pack: missing artifact " + pack.artifact);
+        }
+        report.add("extraction-pack artifacts=" + present + "/" + state.extractionPacks.size());
     }
 
     private static int loadedRowCount(CommunityContentSystem.State state) {

@@ -4,6 +4,7 @@ import app.persistence.CampaignCheckpointStore;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -97,11 +98,64 @@ class DeepCampaignSimulationSystemTest {
         assertTrue(restored.location.reconstructionProject);
     }
 
+    @Test
+    void liveCampaignServicesAndLongRunTicksEvolveDeepStateFromBootstrap() throws Exception {
+        GameContext ctx = campaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        String bootstrapSnapshot = DeepCampaignSimulationSystem.serialize(st.deepCampaignExpansion);
+
+        CampaignSystem.CampaignLocation shipyard = firstLocationWithService(ctx, CampaignSystem.HubService.SHIPYARD);
+        assertTrue(shipyard != null, "campaign map should expose a live shipyard service");
+        st.selectedGalaxyLocationId = shipyard.id;
+        st.dockedGalaxyLocationId = shipyard.id;
+        st.currentGalaxyLocationId = shipyard.id;
+        ctx.credits = 20_000;
+        st.campaignSalvage = 80;
+        CampaignSystem.grantCampaignOre(ctx, 1_000);
+        assertTrue(CampaignSystem.openSelectedHubService(ctx, CampaignSystem.HubService.SHIPYARD));
+        assertTrue(CampaignSystem.confirmSelectedHubService(ctx));
+        assertTrue(st.deepCampaignExpansion.location.history.stream()
+                .anyMatch(line -> line.contains("SHIPYARD service completed")));
+
+        CampaignSystem.CampaignLocation intel = firstLocationWithService(ctx, CampaignSystem.HubService.INTEL);
+        assertTrue(intel != null, "campaign map should expose a live intel service");
+        st.selectedGalaxyLocationId = intel.id;
+        st.dockedGalaxyLocationId = intel.id;
+        st.currentGalaxyLocationId = intel.id;
+        ctx.credits = 20_000;
+        assertTrue(CampaignSystem.openSelectedHubService(ctx, CampaignSystem.HubService.INTEL));
+        assertTrue(CampaignSystem.confirmSelectedHubService(ctx));
+
+        for (int i = 0; i < 900; i++) {
+            CampaignSystem.update(ctx, 1.0 / 30.0);
+        }
+
+        String evolvedSnapshot = DeepCampaignSimulationSystem.serialize(st.deepCampaignExpansion);
+        assertFalse(bootstrapSnapshot.equals(evolvedSnapshot));
+        assertTrue(st.deepCampaignExpansion.station.constructionPercent >= 8);
+        assertTrue(st.deepCampaignExpansion.station.orbitalRelayCoveragePercent > 80);
+        assertTrue(CampaignSystem.campaignDeepSimulationLines(ctx).stream()
+                .anyMatch(line -> line.contains("Construction")));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, st.sector + 1);
+        GameContext restored = campaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        assertEquals(evolvedSnapshot, DeepCampaignSimulationSystem.serialize(restored.campaign.deepCampaignExpansion));
+    }
+
     private static GameContext campaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 55L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;
+    }
+
+    private static CampaignSystem.CampaignLocation firstLocationWithService(GameContext ctx, CampaignSystem.HubService service) {
+        List<CampaignSystem.CampaignLocation> locations = CampaignSystem.mainCampaignLocations(ctx);
+        for (CampaignSystem.CampaignLocation location : locations) {
+            if (location != null && location.services.contains(service)) return location;
+        }
+        return null;
     }
 
     private static CampaignCheckpointStore.Checkpoint captureCheckpoint(GameContext ctx, int nextSector) throws Exception {

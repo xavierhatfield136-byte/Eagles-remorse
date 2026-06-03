@@ -101,8 +101,8 @@ test {
     systemProperty "codex.disableAudio", "true"
     // Simulation tests retain decoded visual assets and static effect state between classes.
     // Keep workers short-lived and sized for multipart sprite decode coverage.
-    forkEvery = 5
-    maxHeapSize = "1536m"
+    forkEvery = 3
+    maxHeapSize = "2048m"
 }
 
 tasks.named("compileJava") {
@@ -166,6 +166,15 @@ tasks.register("saveLoadSoak", JavaExec) {
     args("--cycles=100")
 }
 
+tasks.register("campaignTransitionFuzz", JavaExec) {
+    group = "verification"
+    description = "Run deterministic campaign overmap transition fuzzing with checkpoint restore."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "CampaignTransitionFuzzHarness"
+    args("--strict", "--cycles=24", "--ticks=45")
+}
+
 tasks.register("productionValidation", JavaExec) {
     group = "verification"
     description = "Validate content schemas, asset inventory, duplicate names, save-schema docs, and balance exports."
@@ -174,10 +183,19 @@ tasks.register("productionValidation", JavaExec) {
     mainClass = "ProductionValidationHarness"
 }
 
+tasks.register("screenshotRegression", JavaExec) {
+    group = "verification"
+    description = "Capture production screenshot targets and compare them against visual-regression baselines."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "ScreenshotRegressionHarness"
+    args("--strict")
+}
+
 tasks.register("performanceGuardrailsCi") {
     group = "verification"
-    description = "Run the CI performance guardrail and isolated save/load scenarios."
-    dependsOn("performanceGuardrailSmoke", "saveLoadSoak")
+    description = "Run CI performance, memory, large-fleet, campaign-transition fuzz, and isolated save/load scenarios."
+    dependsOn("performanceGuardrailSmoke", "performanceGuardrailSoak", "saveLoadSoak", "campaignTransitionFuzz")
 }
 
 tasks.register("stabilitySmoke") {

@@ -102,20 +102,28 @@ class ProductionReadinessLongevitySystemTest {
         direct.longevity.autosaveRotation = 6;
         direct.longevity.sharedSeed = "ER-WEEKLY-42";
         direct.longevity.slots.get(0).metadata = "Lunar siege checkpoint";
+        ProductionReadinessLongevitySystem.appendCampaignEvent(direct,
+                "t=4 sector=2 event=campaign.transition.travel_start to=poi-02");
         ProductionReadinessLongevitySystem.State directRestored =
                 ProductionReadinessLongevitySystem.restore(ProductionReadinessLongevitySystem.serialize(direct), 95L);
         assertEquals(6, directRestored.longevity.autosaveRotation);
         assertEquals("ER-WEEKLY-42", directRestored.longevity.sharedSeed);
         assertEquals("Lunar siege checkpoint", directRestored.longevity.slots.get(0).metadata);
+        assertTrue(directRestored.longevity.campaignEventLog.stream()
+                .anyMatch(line -> line.contains("campaign.transition.travel_start")));
 
         GameContext source = campaignContext();
         source.campaign.productionReadiness.longevity.autosaveRotation = 5;
         source.campaign.productionReadiness.longevity.sharedSeed = "ER-SHARED-77";
+        ProductionReadinessLongevitySystem.appendCampaignEvent(source.campaign.productionReadiness,
+                "t=8 sector=3 event=campaign.transition.encounter_launch location=poi-03");
         CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(source, 4);
         GameContext restored = campaignContext();
         assertTrue(applyCheckpoint(restored, checkpoint));
         assertEquals(5, restored.campaign.productionReadiness.longevity.autosaveRotation);
         assertEquals("ER-SHARED-77", restored.campaign.productionReadiness.longevity.sharedSeed);
+        assertTrue(restored.campaign.productionReadiness.longevity.campaignEventLog.stream()
+                .anyMatch(line -> line.contains("campaign.transition.encounter_launch")));
         assertTrue(CampaignSystem.campaignProductionReadinessLines(restored).stream()
                 .anyMatch(line -> line.contains("Save slots")));
     }
