@@ -27,9 +27,9 @@ import java.util.function.Supplier;
 public final class CampaignSystem {
     private CampaignSystem() {}
     private static final double STRATEGIC_TRAVEL_SPEED_MUL = 0.62;
-    private static final int STARTING_TORPEDO_INVENTORY = 100;
-    private static final int STARTING_SORTIE_INVENTORY = 100;
-    private static final int STARTING_ATOMIC_INVENTORY = 10;
+    private static final int STARTING_TORPEDO_INVENTORY = 6;
+    private static final int STARTING_SORTIE_INVENTORY = 4;
+    private static final int STARTING_ATOMIC_INVENTORY = 1;
     private static final double THEATER_WAR_TICK_INTERVAL_SEC = 4.0;
     private static final int THEATER_EVENT_LOG_CAP = 16;
     private static final double OPERATION_CONVOY_CONTROL_DELTA = 18.0;
@@ -5301,11 +5301,11 @@ public final class CampaignSystem {
         }
         switch (id) {
             case "TORPEDO_STRIKE" -> {
-                ammoCost = 14;
-                fuelCost = 7;
+                ammoCost = 24;
+                fuelCost = 12;
                 chargeCost = 1;
-                effect = "Heavy direct damage to a tracked hostile.";
-                retaliation = "Moderate alert and exposure spike.";
+                effect = "Heavy direct damage to a tracked hostile; spends a scarce torpedo package.";
+                retaliation = "High alert and exposure spike.";
                 if (!hostile) reason = "no tracked hostile contact selected";
                 else if (!trackedIntel) reason = "target intel below Tracked";
                 else if (st.strategicTorpedoCharges <= 0) reason = "no torpedo strikes ready";
@@ -5313,11 +5313,11 @@ public final class CampaignSystem {
                 else if (st.campaignFuel < fuelCost) reason = "insufficient fuel";
             }
             case "CARRIER_SORTIE" -> {
-                ammoCost = 8;
-                fuelCost = 10;
-                supplyCost = 2;
-                effect = "Flexible strike package with recon follow-through.";
-                retaliation = "Noticeable alert and exposure increase.";
+                ammoCost = 16;
+                fuelCost = 16;
+                supplyCost = 5;
+                effect = "Flexible strike package with recon follow-through; ties up carrier readiness.";
+                retaliation = "High alert and exposure increase.";
                 int sortieCap = strategicSortieCapacity(ctx);
                 if (!hostile) reason = "no identified hostile contact selected";
                 else if (!identifiedIntel) reason = "target intel below Identified";
@@ -5328,9 +5328,9 @@ public final class CampaignSystem {
                 else if (st.campaignSupplies < supplyCost) reason = "insufficient supplies";
             }
             case "ATOMIC_STRIKE" -> {
-                ammoCost = 36;
-                fuelCost = 14;
-                supplyCost = 8;
+                ammoCost = 60;
+                fuelCost = 24;
+                supplyCost = 16;
                 chargeCost = 1;
                 effect = "Devastating strike with severe theater consequence.";
                 retaliation = "Massive alert, exposure, and political blowback.";
@@ -6152,22 +6152,22 @@ public final class CampaignSystem {
         }
         switch (id) {
             case "TORPEDO_STRIKE" -> {
-                ammoCost = 14;
-                fuelCost = 7;
+                ammoCost = 24;
+                fuelCost = 12;
                 chargeCost = 1;
                 effect = "Inbound torpedo homes on the selected hostile contact and slams the heaviest target.";
-                retaliation = "Moderate exposure spike while hostile contacts react.";
+                retaliation = "High exposure spike while hostile contacts react.";
                 if (!hostile) reason = "no hostile contact selected";
                 else if (!infiniteStrikeStores && st.strategicTorpedoCharges <= 0) reason = "no torpedo strikes ready";
                 else if (!infiniteStrikeStores && st.campaignAmmo < ammoCost) reason = "insufficient ammo";
                 else if (!infiniteStrikeStores && st.campaignFuel < fuelCost) reason = "insufficient fuel";
             }
             case "CARRIER_SORTIE" -> {
-                ammoCost = 8;
-                fuelCost = 10;
-                supplyCost = 2;
+                ammoCost = 16;
+                fuelCost = 16;
+                supplyCost = 5;
                 effect = "Strike craft dash to the contact, dump heavy ordnance, and immediately egress.";
-                retaliation = "Noticeable strike heat and hostile alert increase.";
+                retaliation = "High strike heat and hostile alert increase.";
                 int sortieCap = strategicSortieCapacity(ctx);
                 if (!hostile) reason = "no hostile contact selected";
                 else if (!infiniteStrikeStores && sortieCap <= 0) reason = "no carrier sorties available";
@@ -6177,9 +6177,9 @@ public final class CampaignSystem {
                 else if (!infiniteStrikeStores && st.campaignSupplies < supplyCost) reason = "insufficient supplies";
             }
             case "ATOMIC_STRIKE" -> {
-                ammoCost = 36;
-                fuelCost = 14;
-                supplyCost = 8;
+                ammoCost = 60;
+                fuelCost = 24;
+                supplyCost = 16;
                 chargeCost = 1;
                 effect = "Large blast radius strike scourges the selected hostile contact.";
                 retaliation = "Severe theater consequence and major exposure increase.";
@@ -9019,8 +9019,8 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "NO TORPEDO STRIKES READY", 1.2);
             return true;
         }
-        int ammoCost = 18;
-        int fuelCost = 9;
+        int ammoCost = 24;
+        int fuelCost = 12;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost) {
             EventSystem.showBanner(ctx, "TORPEDO STRIKE REQUIRES AMMO AND FUEL", 1.2);
             return true;
@@ -9095,9 +9095,9 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "SORTIE DECKS COMMITTED", 1.2);
             return true;
         }
-        int ammoCost = 10;
-        int fuelCost = 12;
-        int supplyCost = 4;
+        int ammoCost = 16;
+        int fuelCost = 16;
+        int supplyCost = 5;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
             EventSystem.showBanner(ctx, "SORTIE STRIKE REQUIRES FUEL, AMMO, AND SUPPLIES", 1.2);
             return true;
@@ -9172,9 +9172,9 @@ public final class CampaignSystem {
             EventSystem.showBanner(ctx, "ATOMIC OPTION UNAVAILABLE", 1.2);
             return true;
         }
-        int ammoCost = 42;
-        int fuelCost = 18;
-        int supplyCost = 12;
+        int ammoCost = 60;
+        int fuelCost = 24;
+        int supplyCost = 16;
         if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
             EventSystem.showBanner(ctx, "ATOMIC STRIKE REQUIRES HEAVY FUEL, AMMO, AND SUPPLIES", 1.3);
             return true;
@@ -11627,12 +11627,12 @@ public final class CampaignSystem {
 
     private static int strikeRearmCreditCost(HubProfile profile) {
         HubProfile p = (profile == null) ? new HubProfile(HubAlignment.FRONTIER, 0.3, 1.0, 1.0, 1.0, 1.0, 1.0) : profile;
-        return GameContext.scaleCreditEarnings((int) Math.round(145 * p.priceMul));
+        return GameContext.scaleCreditEarnings((int) Math.round(320 * p.priceMul));
     }
 
     private static int strikeRearmOreCost(HubProfile profile) {
         HubProfile p = (profile == null) ? new HubProfile(HubAlignment.FRONTIER, 0.3, 1.0, 1.0, 1.0, 1.0, 1.0) : profile;
-        return Math.max(12, (int) Math.round(18 / Math.max(0.7, p.supportMul)));
+        return Math.max(28, (int) Math.round(42 / Math.max(0.7, p.supportMul)));
     }
 
     private static void addGalaxyArea(CampaignState st, CampaignLocation location) {
@@ -19852,6 +19852,9 @@ public final class CampaignSystem {
                 "Red Patrol Group", true, true, SupportMarkerType.HAZARD, patrolSubzone, 8.0);
         addStrategicTaskForce(st, StrategicTaskForceKind.STRIKE, Faction.ENEMY,
                 "Red Strike Group", true, true, SupportMarkerType.HAZARD, strikeSubzone, 12.0);
+        addStrategicTaskForce(st, StrategicTaskForceKind.PATROL, Faction.ENEMY,
+                "Red Route Hunters", true, true, SupportMarkerType.HAZARD,
+                supportSubzoneNear(playerSubzone, Set.of(strikeSubzone), false), 7.0);
         if (st.sector >= 4) {
             addStrategicTaskForce(st, StrategicTaskForceKind.CONVOY, greenSupportFaction(st),
                     "Coalition Supply Convoy", false, false, SupportMarkerType.RESOURCE, convoySubzone, 14.0);

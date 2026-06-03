@@ -669,22 +669,34 @@ Implement whichever deep-simulation vertical slice I choose first.
 Final Alpha Decision Summary
 Use this section after completing the worksheet.
 Systems Approved for Alpha
+- Keyboard-only controls, high contrast, captions, quiet mode, and 1280x720/1920x1080 readability passed owner review.
+- Current faction hull skins, turret skins, shields, trails, and station models are approved for alpha.
+- Terse command UI is approved for negotiation, favors, and alliance interactions.
+- Sensor shadows and logistics quarantine warnings are the approved narrow orbital-layer subset.
+- Current ownership-boundary docs/tests are accepted for alpha.
+- Civilian actors, rumors, casualty reports, neutral powers, political blocs, and crisis tone are approved.
 
 Systems Delayed Until Post-Alpha
+- Battle replay is not an alpha blocker. Preferred eventual depth is cinematic replay.
+- Visual battlefield editor is post-alpha/dev-only and can wait until after the game is complete.
+- Mod browser, featured scenarios, local ratings, notes, and mod compatibility report are non-blockers.
+- Custom scenarios, challenge mode, and New Game Plus are post-release.
 
 Top 10 Must-Fix Issues Before Alpha
-
-
-
-
-
-
-
-
-
+- Strategic strikes are too cheap and too plentiful; they function as a guaranteed extra combat punch.
+- Add clear ways to make, buy, salvage, or otherwise recover additional strikes if strikes become a managed resource.
+- Enemy fleets are not appearing often enough in open space.
+- Ore and early fleet growth are too generous; the player can build a large fleet in zone one and coast.
+- Damage control and transport-ship repair pressure are too forgiving.
+- Diplomacy has too little impact; trading and calling allies are optional rather than materially useful.
+- Remove temporary crew dialogue and voice lines until replacement lines are ready.
+- Replace the old ship-destruction sine-wave placeholder sound.
+- Unify damage-stage visuals and replace/approve wreck, prop, portal, and map-icon placeholders.
+- Fix HUD/menu text crowding where top-screen elements overlap.
 
 Final Release Confidence
 Circle one:
-Not Ready / Needs Fixes / Mostly Ready / Ready for Alpha
+Needs Fixes
 Final Notes:
-
+- Alpha scope is now clearer, but balance and consequence pressure need another pass before release confidence can move to mostly ready.
+- The strongest owner direction is to make the campaign less self-sufficient: strikes, ore, repairs, diplomacy, hazards, crises, endgames, and scoring should all apply more pressure.

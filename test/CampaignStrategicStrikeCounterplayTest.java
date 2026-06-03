@@ -54,11 +54,14 @@ class CampaignStrategicStrikeCounterplayTest {
         lowIntelCtx.campaign.campaignIntelLevel = 8.0;
         Object lowTarget = firstHostileTaskForce(lowIntelCtx.campaign);
         assertNotNull(lowTarget);
+        setBoolean(lowTarget, "encounterSpawned", false);
         double lowBefore = getDouble(lowTarget, "currentStrength");
         assertTrue(CampaignSystem.launchStrategicSortie(lowIntelCtx,
                 taskForceCenterX(lowIntelCtx, lowIntelCtx.campaign, lowTarget),
                 taskForceCenterY(lowIntelCtx, lowIntelCtx.campaign, lowTarget)));
-        advanceStrikeObjects(lowIntelCtx, 90.0);
+        assertTrue(strategicStrikeObjectCount(lowIntelCtx.campaign) > 0, "low-intel sortie should queue a strike object");
+        advanceStrikeObjects(lowIntelCtx, 240.0);
+        assertEquals(0, strategicStrikeObjectCount(lowIntelCtx.campaign), "low-intel sortie should resolve after advance");
         double lowDamage = lowBefore - getDouble(lowTarget, "currentStrength");
 
         GameContext highIntelCtx = tacticalStrikeContext(
@@ -68,14 +71,19 @@ class CampaignStrategicStrikeCounterplayTest {
         highIntelCtx.campaign.campaignIntelLevel = 86.0;
         Object highTarget = firstHostileTaskForce(highIntelCtx.campaign);
         assertNotNull(highTarget);
+        setBoolean(highTarget, "encounterSpawned", false);
         double highBefore = getDouble(highTarget, "currentStrength");
         assertTrue(CampaignSystem.launchStrategicSortie(highIntelCtx,
                 taskForceCenterX(highIntelCtx, highIntelCtx.campaign, highTarget),
                 taskForceCenterY(highIntelCtx, highIntelCtx.campaign, highTarget)));
-        advanceStrikeObjects(highIntelCtx, 90.0);
+        assertTrue(strategicStrikeObjectCount(highIntelCtx.campaign) > 0, "high-intel sortie should queue a strike object");
+        advanceStrikeObjects(highIntelCtx, 240.0);
+        assertEquals(0, strategicStrikeObjectCount(highIntelCtx.campaign), "high-intel sortie should resolve after advance");
         double highDamage = highBefore - getDouble(highTarget, "currentStrength");
 
-        assertTrue(highDamage > lowDamage, "better intel should improve sortie damage after counterplay");
+        assertTrue(highDamage > lowDamage,
+                "better intel should improve sortie damage after counterplay; lowDamage="
+                        + lowDamage + " highDamage=" + highDamage);
         assertTrue(highIntelCtx.campaign.campaignIntelLevel >= lowIntelCtx.campaign.campaignIntelLevel,
                 "sorties should reinforce the threat picture rather than collapse it");
     }
@@ -140,6 +148,7 @@ class CampaignStrategicStrikeCounterplayTest {
         );
         Object taskForce = firstHostileTaskForce(ctx.campaign);
         assertNotNull(taskForce);
+        setBoolean(taskForce, "encounterSpawned", false);
 
         assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx,
                 taskForceCenterX(ctx, ctx.campaign, taskForce),
@@ -324,7 +333,7 @@ class CampaignStrategicStrikeCounterplayTest {
         ctx.campaign.campaignAmmo = 120;
         ctx.campaign.campaignFuel = 120;
         assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx, marker.x, marker.y));
-        advanceStrikeObjects(ctx, 90.0);
+        advanceStrikeObjects(ctx, 240.0);
         assertTrue(location.missionOuterThreatSuppression > 0.0,
                 "outside strike should soften the mission before tactical entry");
 
@@ -502,10 +511,12 @@ class CampaignStrategicStrikeCounterplayTest {
         assertTrue(CampaignSystem.launchStrategicTorpedoStrike(ctx,
                 taskForceCenterX(ctx, ctx.campaign, taskForce),
                 taskForceCenterY(ctx, ctx.campaign, taskForce)));
-        advanceStrikeObjects(ctx, 90.0);
+        assertTrue(strategicStrikeObjectCount(ctx.campaign) > 0, "torpedo strike should queue a strike object");
+        advanceStrikeObjects(ctx, 240.0);
+        assertEquals(0, strategicStrikeObjectCount(ctx.campaign), "torpedo strike should resolve after advance");
 
         String summary = CampaignSystem.campaignStrikeBattleEventSummary(ctx);
-        assertTrue(summary.contains("TORPEDO IMPACT EVENT"));
+        assertTrue(summary.contains("TORPEDO IMPACT EVENT"), "summary=" + summary);
         assertTrue(summary.toLowerCase().contains("campaign strength"));
         assertTrue(CampaignSystem.campaignStrikeConsequenceLines(ctx).stream().anyMatch(line -> line.contains("IMPACT EVENT")));
     }
@@ -530,6 +541,11 @@ class CampaignStrategicStrikeCounterplayTest {
         replacePersistentFleet(ctx.campaign, roles);
         ctx.campaign.strategicOvermapMode = false;
         invokePrivateStatic("startSector", new Class<?>[]{GameContext.class, int.class}, ctx, sector);
+        ctx.campaign.introSequenceActive = false;
+        ctx.campaign.awaitingFleetHubChoice = false;
+        ctx.campaign.awaitingEpisodeLaunch = false;
+        ctx.campaign.transitionTimer = 0.0;
+        UISystem.closeAllOverlays(ctx);
         ctx.campaign.campaignAmmo = 160;
         ctx.campaign.campaignFuel = 140;
         ctx.campaign.campaignSupplies = 110;
@@ -576,6 +592,13 @@ class CampaignStrategicStrikeCounterplayTest {
         field.setAccessible(true);
         List<?> groups = (List<?>) field.get(st);
         return groups.isEmpty() ? null : groups.get(0);
+    }
+
+    private static int strategicStrikeObjectCount(CampaignSystem.CampaignState st) throws Exception {
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicStrikeObjects");
+        field.setAccessible(true);
+        List<?> strikes = (List<?>) field.get(st);
+        return strikes.size();
     }
 
     private static double taskForceCenterX(GameContext ctx, CampaignSystem.CampaignState st, Object taskForce) throws Exception {
@@ -640,16 +663,16 @@ class CampaignStrategicStrikeCounterplayTest {
         return field.getBoolean(target);
     }
 
-    private static void setDouble(Object target, String fieldName, double value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.setDouble(target, value);
-    }
-
     private static void setBoolean(Object target, String fieldName, boolean value) throws Exception {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.setBoolean(target, value);
+    }
+
+    private static void setDouble(Object target, String fieldName, double value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setDouble(target, value);
     }
 
     private static void setObject(Object target, String fieldName, Object value) throws Exception {
@@ -667,7 +690,13 @@ class CampaignStrategicStrikeCounterplayTest {
     private static void advanceStrikeObjects(GameContext ctx, double seconds) {
         int ticks = Math.max(1, (int) Math.ceil(seconds / 0.25));
         for (int i = 0; i < ticks; i++) {
-            CampaignSystem.update(ctx, 0.25);
+            try {
+                invokePrivateStatic("updateStrategicStrikeObjects",
+                        new Class<?>[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                        ctx, ctx.campaign, 0.25);
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
         }
     }
 

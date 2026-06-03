@@ -4161,8 +4161,8 @@ public abstract class Ship {
                 weapons = 0.80;
                 repairRoomDisruptions(dt);
                 ensureInternalSystemsInitialized();
-                repairDamagedSystems((0.55 + 0.55 * crewReadiness) * dt);
-                healHull((0.16 + 0.22 * crewReadiness) * dt);
+                repairDamagedSystems((0.40 + 0.42 * crewReadiness) * dt);
+                healHull((0.08 + 0.12 * crewReadiness) * dt);
             }
             default -> {
                 // Balanced

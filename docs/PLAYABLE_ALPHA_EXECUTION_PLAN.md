@@ -24,6 +24,9 @@ This plan narrows section 28 to the Windows-first playable-alpha target defined 
 - [x] Give shortages warnings and recovery options before they can fail a mission.
 - [x] Ensure AI fleets pay resource costs and cannot spawn forever for free.
 - [x] Add readable resource, resupply, salvage, and shipyard UI.
+- [ ] Re-tune strategic strikes so they are not a cheap guaranteed combat punch, and add a readable make/buy/salvage recovery path if they remain scarce.
+- [ ] Re-tune early ore, repair, and transport-ship sustain so a large zone-one fleet cannot coast through the campaign without meaningful pressure.
+- [ ] Make diplomacy and allied trade/call-in choices materially affect later encounters.
 
 - [x] Owner playtest checkpoint: run a 20-45 minute route, salvage, resupply, and refit loop. Record whether pressure feels moderate and whether every major consequence has warning text.
 
@@ -46,7 +49,12 @@ This plan narrows section 28 to the Windows-first playable-alpha target defined 
 ### A5. Presentation, Accessibility, And Release Validation
 
 - [x] Generate an asset inventory and duplicate review report.
+- [x] Owner accessibility pass: keyboard-only, high contrast, captions, quiet mode, 1280x720 readability, and 1920x1080 readability passed.
 - [ ] Replace only the most disruptive placeholder sprites, icons, HUD buttons, map panels, portraits, and voice lines before alpha.
+- [ ] Remove temporary crew dialogue and voice lines until replacement lines are ready.
+- [ ] Replace the old ship-destruction sine-wave placeholder sound.
+- [ ] Normalize damage-stage visuals and decide final dispositions for wreck, prop, portal, and map-icon placeholders.
+- [ ] Fix top-screen HUD/menu text crowding where elements overlap.
 - [ ] Validate 1280x720 and 1920x1080 layouts, keyboard-only navigation, contrast, captions, quiet mode, and visible consequence warnings.
 - [ ] Run Windows playthroughs for a new campaign, save/load, defeat, victory, and a longer campaign session.
 
@@ -57,6 +65,7 @@ This plan narrows section 28 to the Windows-first playable-alpha target defined 
 - [x] Confirm multiplayer and cooperative roles remain post-release.
 - [x] Confirm the full scenario editor and mod browser remain post-release.
 - [x] Confirm procedural star systems remain post-release.
+- [x] Confirm battle replay remains post-alpha; cinematic replay is the preferred eventual depth.
 - [x] Confirm the cinematic replay camera and autonomous spectator mode remain post-release.
 - [x] Confirm new-game-plus remains post-release.
 - [x] Confirm deep political blocs and fully simulated civilian societies remain post-release.
@@ -86,6 +95,12 @@ This plan narrows section 28 to the Windows-first playable-alpha target defined 
 ## Owner Playtest Evidence
 
 - A1: enemy encounters felt understandable and normal, with good warning text and working controls. Encounter density felt sparse and needs a tuning pass.
+- Section 28 strike balance: strikes are too cheap and plentiful because they act like a guaranteed extra hit in combat. The owner also wants a visible way to make, buy, or salvage more strikes if they become a scarce resource.
+- Section 28 economy loop: ore is too plentiful, early fleet growth is too easy, and damage-control plus transport repair support makes sustain too forgiving.
+- Section 28 diplomacy: diplomacy has almost no impact; traders and green/yellow support are not needed to keep pushing forward.
+- Section 28 scope: battle replay, visual battlefield editor, mod browser, custom scenarios, challenge mode, and New Game Plus are all post-alpha/post-release.
+- Section 28 presentation: current hull skins, turret skins, shields, trails, and station models are approved. Damage stages, props, portals, map icons, ambience/music/warnings/radio/voice/caption behavior, and temporary crew voice lines need replacement or removal before alpha acceptance.
+- Section 28 accessibility: keyboard-only controls, high contrast, captions, quiet mode, and 1280x720/1920x1080 readability passed owner review.
 - A2: travel, mining, salvage, resupply, refit, and fleet operations were reachable and worked as expected. Ammunition pressure was not noticeable and needs tuning.
 - A4: previously visited spaces remained revisitable for resource recovery and continued fleet operations.
 - Combat readability improved after removing ship collisions and tactical ECM; player guns no longer fell silent without explanation.
@@ -96,8 +111,9 @@ This plan narrows section 28 to the Windows-first playable-alpha target defined 
 The unchecked boxes above remain intentionally open until their required evidence exists.
 
 - Owner playtest notes are still required for A3 and the final acceptance session.
-- Encounter density and ammunition pressure received a tuning pass based on the A1 and A2 playtest notes. Transit events now arrive modestly more often, and frame-sized travel updates accumulate visible fuel, supplies, and ammunition attrition without affecting tactical gun reliability.
-- The asset report still needs owner approval and targeted screenshots for disruptive placeholders.
+- Encounter density and ammunition pressure received an earlier tuning pass, but the section 28 worksheet reopens campaign pressure: open-space enemy fleets, strike costs/recovery, ore abundance, repair sustain, diplomacy usefulness, hazards, crises, endgames, and scoring still feel too easy.
+- The asset report now has owner approval for hull skins, turret skins, shields, trails, and station models. It still needs targeted replacement/removal for the ship-destruction placeholder sound, temporary crew voices, damage visuals, props, portals, map icons, and audio presentation systems.
+- HUD/menu text crowding remains open where top-screen elements overlap.
 - The repaired `ChecklistV2Harness --strict` now passes phase-8 room consistency at `100%` and gameplay-room coverage at `39/39`. Performance acceptance remains open: x-ray draw cost is consistently above its legacy budget, room-hit timing is borderline around the threshold, and the scenario update comparison is noisy across runs.
 - `performanceGuardrailsCi` passes its late-campaign stress battle and `100` isolated save/load cycles. `Phase9TelemetryHarness --strict --seconds=60` still needs hazard-scenario stabilization because the latest sample emitted no hazard ignitions.
 - Windows playthroughs for new campaign, save/load, defeat, victory, and longer-session behavior still require hands-on execution.
