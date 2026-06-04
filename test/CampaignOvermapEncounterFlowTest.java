@@ -210,6 +210,23 @@ class CampaignOvermapEncounterFlowTest {
                 .anyMatch(marker -> marker.label.equals("Hostile Contact Zone")
                         && marker.faction == Faction.ENEMY
                         && marker.subtitle.toLowerCase().contains("right zone")));
+        CampaignSystem.CampaignObjectiveMarker allied = CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .filter(marker -> marker.label.equals("Allied Spawn Zone"))
+                .findFirst()
+                .orElse(null);
+        CampaignSystem.CampaignObjectiveMarker neutral = CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .filter(marker -> marker.label.equals("Neutral Transit Zone"))
+                .findFirst()
+                .orElse(null);
+        CampaignSystem.CampaignObjectiveMarker hostile = CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .filter(marker -> marker.label.equals("Hostile Contact Zone"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(allied);
+        assertNotNull(neutral);
+        assertNotNull(hostile);
+        assertTrue(neutral.x - allied.x < 1200.0, "open-space allied and neutral lanes should not span the whole tactical map");
+        assertTrue(hostile.x - neutral.x < 1200.0, "open-space neutral and hostile lanes should stay in the same battle pocket");
         assertTrue(st.objectivePhaseLabel.toLowerCase().contains("left allied"));
         assertTrue(st.threatStateLabel.toLowerCase().contains("no authored mission blockers"));
     }

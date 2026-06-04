@@ -4,7 +4,8 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 
 public final class GameRenderSystem {
-    private static final double LONG_RANGE_CONTACT_RENDER_METERS = 20_000.0;
+    static final double MATCH_RENDER_CULL_PAD_METERS = 440.0;
+    static final double LONG_RANGE_CONTACT_RENDER_METERS = 40_000.0;
 
     static final class SensorNetEntry {
         final String section;
@@ -76,7 +77,7 @@ public final class GameRenderSystem {
             drawModifierWorldTint(ctx, g2, viewportW, viewportH);
         }
         double zoom = CameraSystem.normalizedZoom(ctx);
-        double cullPad = 220.0;
+        double cullPad = MATCH_RENDER_CULL_PAD_METERS;
         double viewMinX = ctx.camX - cullPad;
         double viewMinY = ctx.camY - cullPad;
         double viewMaxX = ctx.camX + CameraSystem.worldViewWidth(ctx, viewportW) + cullPad;

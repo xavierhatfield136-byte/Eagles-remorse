@@ -93,7 +93,98 @@ class CampaignHubEconomyTest {
     }
 
     @Test
-    void openFriendlyHubHasNearbyOreAndHiredEscortsJoinPersistentFleet() {
+    void earlyShipyardCommissioningConsumesOreAndSalvageEnoughToPreventChainBuying() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation yard = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location != null && location.services.contains(CampaignSystem.HubService.SHIPYARD))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(yard);
+
+        st.selectedGalaxyLocationId = yard.id;
+        st.dockedGalaxyLocationId = yard.id;
+        st.currentGalaxyLocationId = yard.id;
+        st.campaignSalvage = 35;
+        ctx.credits = 100_000;
+        CampaignSystem.grantCampaignOre(ctx, 200);
+
+        assertTrue(openHubService(ctx, "SHIPYARD"));
+        assertTrue(confirmHubService(ctx));
+        assertEquals(1, CampaignSystem.campaignYardOrders(ctx).size());
+        assertTrue(CampaignSystem.currentCampaignOre(ctx) < 200);
+        assertTrue(st.campaignSalvage < 35);
+
+        assertTrue(openHubService(ctx, "SHIPYARD"));
+        assertFalse(confirmHubService(ctx),
+                "one early ore stockpile should not chain-buy a second hull without more salvage/ore pressure");
+        assertEquals(1, CampaignSystem.campaignYardOrders(ctx).size());
+    }
+
+    @Test
+    void greenFavorBuysStoresIntelRouteStabilityAndCombatSupport() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation greenHub = findLocation(ctx, "poi-05");
+        assertNotNull(greenHub);
+
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.RESOURCES;
+        st.selectedGalaxyLocationId = greenHub.id;
+        st.playerGalaxyX = greenHub.x;
+        st.playerGalaxyY = greenHub.y;
+        st.greenContractFavor = 2;
+        st.campaignSupplies = 8;
+        st.campaignAmmo = 9;
+        st.campaignIntelLevel = 20.0;
+        st.enemyAlertLevel = 30.0;
+        st.blueInterventionReserve = 40.0;
+        int forceCountBefore = st.campaignForces.size();
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ALLY_GREEN"));
+
+        assertEquals(1, st.greenContractFavor);
+        assertTrue(st.campaignSupplies > 8);
+        assertTrue(st.campaignAmmo > 9);
+        assertTrue(st.campaignIntelLevel > 20.0);
+        assertTrue(st.enemyAlertLevel < 30.0);
+        assertTrue(st.blueInterventionReserve > 40.0);
+        assertTrue(greenHub.supportRouteStabilized);
+        assertTrue(st.campaignForces.size() > forceCountBefore);
+    }
+
+    @Test
+    void yellowLeverageBuysFuelSalvageTradeRouteAndPressureRelief() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation yellowHub = findLocation(ctx, "poi-02");
+        assertNotNull(yellowHub);
+
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.RESOURCES;
+        st.selectedGalaxyLocationId = yellowHub.id;
+        st.playerGalaxyX = yellowHub.x;
+        st.playerGalaxyY = yellowHub.y;
+        st.yellowLiberationFavor = 2;
+        st.campaignFuel = 10;
+        st.campaignSalvage = 4;
+        st.recentStrikePressure = 22.0;
+        st.enemyAlertLevel = 28.0;
+        int creditsBefore = ctx.credits;
+        int forceCountBefore = st.campaignForces.size();
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ALLY_YELLOW"));
+
+        assertEquals(1, st.yellowLiberationFavor);
+        assertTrue(ctx.credits > creditsBefore);
+        assertTrue(st.campaignFuel > 10);
+        assertTrue(st.campaignSalvage > 4);
+        assertTrue(st.recentStrikePressure < 22.0);
+        assertTrue(st.enemyAlertLevel < 28.0);
+        assertTrue(yellowHub.supportRouteStabilized);
+        assertTrue(st.campaignForces.size() > forceCountBefore);
+    }
+
+    @Test
+    void openFriendlyHubHasNearbyOreAndHiredEscortsJoinPersistentFleet() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         CampaignSystem.CampaignLocation greenHub = findLocation(ctx, "poi-01");
@@ -122,6 +213,11 @@ class CampaignHubEconomyTest {
 
         assertTrue(st.persistentBlueFleet.size() > fleetBefore);
         assertTrue(persistentFleetContainsName(st, hired.name));
+        Object entry = persistentFleetEntryByName(st, hired.name);
+        assertNotNull(entry);
+        assertEquals("COMMIT", getString(entry, "tacticalCommitmentId"));
+        assertFalse(getBoolean(entry, "destroyed"));
+        assertTrue(getString(entry, "serviceHistory").contains("HIRED AT"));
     }
 
     @Test
@@ -241,6 +337,12 @@ class CampaignHubEconomyTest {
         field.setAccessible(true);
         Object value = field.get(target);
         return (value == null) ? "" : value.toString();
+    }
+
+    private static boolean getBoolean(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getBoolean(target);
     }
 
     private static void invokeEnterFleetHub(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {

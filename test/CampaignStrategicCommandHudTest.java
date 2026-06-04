@@ -3,8 +3,12 @@ import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
 import java.awt.Canvas;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -584,6 +588,7 @@ class CampaignStrategicCommandHudTest {
         st.playerGalaxyX = cache.x;
         st.playerGalaxyY = cache.y;
         st.selectedGalaxyLocationId = cache.id;
+        st.strategicTorpedoCharges = Math.max(0, st.strategicTorpedoCharges - 1);
         int torpedoesBefore = st.strategicTorpedoCharges;
         int suppliesBefore = st.campaignSupplies;
         int salvageBefore = st.campaignSalvage;
@@ -1304,6 +1309,46 @@ class CampaignStrategicCommandHudTest {
             assertNotNull(target, "expected a click target at the center of " + actionId);
             assertEquals(Renderer.CampaignHubClickTarget.Kind.ACTION, target.kind);
             assertEquals(actionId, target.valueId);
+        }
+    }
+
+    @Test
+    void strategicAndTacticalTopTabsFitTheirRenderedChipRects() throws Exception {
+        BufferedImage image = new BufferedImage(640, 360, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        try {
+            g2.setFont(new Font("Consolas", Font.BOLD, 12));
+            FontMetrics fm = g2.getFontMetrics();
+
+            Method galaxyRectsMethod = Renderer.class.getDeclaredMethod(
+                    "galaxyCommandTabRects", int.class, int.class, int.class);
+            galaxyRectsMethod.setAccessible(true);
+            Method galaxyLabelMethod = Renderer.class.getDeclaredMethod(
+                    "campaignCommandTabChipLabel", UiState.CampaignCommandTab.class);
+            galaxyLabelMethod.setAccessible(true);
+            Rectangle[] galaxyRects = (Rectangle[]) galaxyRectsMethod.invoke(null, 0, 0, 292);
+            UiState.CampaignCommandTab[] commandTabs = UiState.CampaignCommandTab.values();
+            for (int i = 0; i < commandTabs.length; i++) {
+                String label = (String) galaxyLabelMethod.invoke(null, commandTabs[i]);
+                assertTrue(fm.stringWidth(label) <= galaxyRects[i].width - 14,
+                        "campaign tab label should fit: " + label);
+            }
+
+            Method tacticalRectsMethod = Renderer.class.getDeclaredMethod(
+                    "tacticalMapTabRects", int.class, int.class, int.class);
+            tacticalRectsMethod.setAccessible(true);
+            Method tacticalLabelMethod = Renderer.class.getDeclaredMethod(
+                    "tacticalMapTabChipLabel", UiState.TacticalMapTab.class);
+            tacticalLabelMethod.setAccessible(true);
+            Rectangle[] tacticalRects = (Rectangle[]) tacticalRectsMethod.invoke(null, 0, 0, 292);
+            UiState.TacticalMapTab[] tacticalTabs = UiState.TacticalMapTab.values();
+            for (int i = 0; i < tacticalTabs.length; i++) {
+                String label = (String) tacticalLabelMethod.invoke(null, tacticalTabs[i]);
+                assertTrue(fm.stringWidth(label) <= tacticalRects[i].width - 14,
+                        "tactical tab label should fit: " + label);
+            }
+        } finally {
+            g2.dispose();
         }
     }
 

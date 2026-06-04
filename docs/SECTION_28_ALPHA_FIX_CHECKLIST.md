@@ -8,32 +8,32 @@ This checklist turns the completed section 28 worksheet into implementation work
 - [x] Increase torpedo, carrier sortie, and atomic strike costs so strikes cannot be used as a free extra combat punch.
 - [x] Keep strike rearm readable at hubs through make/buy/rebuild language.
 - [x] Make strike rearm expensive enough that rebuilding stores competes with fleet growth.
-- [ ] Add or verify salvage/cache rewards that can recover limited strike stores.
+- [x] Add or verify salvage/cache rewards that can recover limited strike stores.
 - [x] Increase early open-space hostile fleet pressure so routes contain visible enemy fleet contacts.
 - [ ] Re-test strike-heavy routes and record whether strike use now feels deliberate.
 
 ## P0 Economy And Sustain
 
-- [ ] Reduce early ore snowball or increase early fleet/refit costs.
+- [x] Reduce early ore snowball or increase early fleet/refit costs.
 - [x] Reduce passive damage-control sustain so damaged ships still create operational pressure.
 - [x] Reduce transport repair/support aura strength so transport ships help without erasing attrition.
-- [ ] Re-test one mine-return-buy-relaunch loop and record whether the next launch is stronger but not runaway.
+- [x] Re-test one mine-return-buy-relaunch loop and record whether the next launch is stronger but not runaway.
 
 ## P0 Diplomacy Consequence
 
-- [ ] Make Green support convert favor into noticeable stores, intel, relay, and combat support.
-- [ ] Make Yellow leverage convert into noticeable fuel, salvage, trade, and route support.
-- [ ] Make allied trade/call-ins affect later encounter pressure, not just immediate flavor.
-- [ ] Keep interaction writing terse and command-oriented.
-- [ ] Add focused tests for support actions changing resources or route pressure.
+- [x] Make Green support convert favor into noticeable stores, intel, relay, and combat support.
+- [x] Make Yellow leverage convert into noticeable fuel, salvage, trade, and route support.
+- [x] Make allied trade/call-ins affect later encounter pressure, not just immediate flavor.
+- [x] Keep interaction writing terse and command-oriented.
+- [x] Add focused tests for support actions changing resources or route pressure.
 
 ## P1 Presentation Blockers
 
-- [ ] Remove temporary crew dialogue and voice lines until replacements are ready.
-- [ ] Replace the ship-destruction sine-wave placeholder sound.
+- [x] Remove temporary crew dialogue and voice lines until replacements are ready.
+- [x] Replace the ship-destruction sine-wave placeholder sound.
 - [ ] Normalize damage-stage visuals.
 - [ ] Decide final disposition for wreck, prop, portal, and map-icon placeholders.
-- [ ] Fix top-screen HUD/menu text crowding.
+- [x] Fix top-screen HUD/menu text crowding.
 
 ## P2 Deferred Scope
 
@@ -45,3 +45,9 @@ This checklist turns the completed section 28 worksheet into implementation work
 ## Validation
 
 - [x] Focused campaign pressure suite passes: `.\gradlew.bat test --tests CampaignStrategicStrikeCounterplayTest --tests CampaignStrategicTravelPressureTest --tests CampaignHubEconomyTest`.
+- [x] Economy and diplomacy support tests pass: `.\gradlew.bat test --tests CampaignHubEconomyTest`.
+- [x] Presentation asset tests pass: `.\gradlew.bat test --tests AlphaPresentationAssetTest`.
+- [x] Command HUD crowding regression passes: `.\gradlew.bat test --tests CampaignStrategicCommandHudTest`.
+- [x] Player mine-return-buy-relaunch playtest recorded: ore loop now feels satisfactory and does not let the first sector run away.
+- [x] Direct Earthward-route interdiction regression passes: `.\gradlew.bat test --tests CampaignStrategicTravelPressureTest`.
+- [ ] Player strike-route playtest recorded a second failure after the interdiction fix: an enemy spawned high in the pre-Earth theater, moved halfway down, despawned, and recon sweeps could not reacquire it. Next work should move this from section 28 tuning into the NPC fleet AI project.

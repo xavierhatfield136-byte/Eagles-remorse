@@ -54,6 +54,7 @@ public final class AudioSystem {
     private static final double GREEN_WEAPON_LOOP_HOLD_SEC = 0.45;
     private static final double GREEN_SUPERWEAPON_FIRE_LOOP_HOLD_SEC = 5.2;
     private static final double WARP_LOOP_KEEPALIVE_SEC = 0.35;
+    private static final boolean ALPHA_TEMPORARY_CREW_CHATTER_ENABLED = false;
 
     private AudioSystem() {}
 
@@ -1017,6 +1018,13 @@ public final class AudioSystem {
 
     private static void processFleetHubChatter(GameContext ctx, RuntimeState st, double now, int visibleHostiles) {
         if (ctx == null || st == null) return;
+
+        if (!ALPHA_TEMPORARY_CREW_CHATTER_ENABLED) {
+            st.fleetHubChatterFollowupCue = null;
+            st.fleetHubChatterFollowupAtSec = 0.0;
+            st.fleetHubChatterNextSec = 0.0;
+            return;
+        }
 
         if (!CampaignSystem.isFleetHubSession(ctx)) {
             st.fleetHubChatterFollowupCue = null;

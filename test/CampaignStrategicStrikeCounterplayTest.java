@@ -256,6 +256,46 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
+    void discoveryCachesRecoverLimitedStrikeStoresWithoutOverfilling() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicTorpedoCharges = 0;
+        st.strategicSortiesLaunched = 3;
+        st.strategicAtomicCharges = 0;
+
+        Object cache = newDiscoverySite("Dead Tender", "Recoverable strike pallets",
+                "CACHE", st.playerGalaxyX + 20.0, st.playerGalaxyY + 20.0, 120.0);
+        invokeResolveDiscoverySite(ctx, st, cache);
+
+        assertEquals(1, st.strategicTorpedoCharges,
+                "ordinary caches should recover one torpedo store when below cap");
+        assertEquals(3, st.strategicSortiesLaunched,
+                "ordinary caches should not silently refresh carrier sortie decks");
+        assertEquals(0, st.strategicAtomicCharges,
+                "ordinary caches should not restore atomic stores");
+
+        Object supplyCache = newDiscoverySite("Fuel Locker", "Missile pallets and deck crews",
+                "SUPPLY_CACHE", st.playerGalaxyX + 40.0, st.playerGalaxyY + 40.0, 120.0);
+        invokeResolveDiscoverySite(ctx, st, supplyCache);
+
+        assertEquals(2, st.strategicTorpedoCharges,
+                "supply caches should recover a limited torpedo store");
+        assertEquals(2, st.strategicSortiesLaunched,
+                "supply caches should recover one committed sortie deck");
+
+        st.strategicTorpedoCharges = 99;
+        st.strategicAtomicCharges = 99;
+        Object cappedCache = newDiscoverySite("Capped Cache", "Already full stores",
+                "SUPPLY_CACHE", st.playerGalaxyX + 60.0, st.playerGalaxyY + 60.0, 120.0);
+        invokeResolveDiscoverySite(ctx, st, cappedCache);
+
+        assertEquals(6, st.strategicTorpedoCharges,
+                "cache rewards should clamp to strategic torpedo capacity instead of stockpiling");
+        assertEquals(1, st.strategicAtomicCharges,
+                "cache rewards should clamp atomic stores even when an old save is overfilled");
+    }
+
+    @Test
     void staleSearchGroupMarkersUseLastKnownPositionInsteadOfLiveCompliment() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -575,6 +615,26 @@ class CampaignStrategicStrikeCounterplayTest {
         Constructor<?> ctor = entryClass.getDeclaredConstructor(int.class, ShipRole.class, String.class);
         ctor.setAccessible(true);
         return ctor.newInstance(slotId, role, name);
+    }
+
+    private static Object newDiscoverySite(String label, String subtitle, String kind,
+                                           double x, double y, double radius) throws Exception {
+        Class<?> kindClass = Class.forName("CampaignSystem$DiscoveryKind");
+        Class<?> siteClass = Class.forName("CampaignSystem$DiscoverySite");
+        Constructor<?> ctor = siteClass.getDeclaredConstructor(
+                String.class, String.class, kindClass, double.class, double.class, double.class);
+        ctor.setAccessible(true);
+        return ctor.newInstance(label, subtitle, enumConstant(kindClass, kind), x, y, radius);
+    }
+
+    private static void invokeResolveDiscoverySite(GameContext ctx, CampaignSystem.CampaignState st, Object site) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "resolveDiscoverySite",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                site.getClass());
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, site);
     }
 
     private static Object firstHostileTaskForce(CampaignSystem.CampaignState st) throws Exception {

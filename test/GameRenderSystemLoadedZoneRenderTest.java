@@ -90,6 +90,26 @@ class GameRenderSystemLoadedZoneRenderTest {
     }
 
     @Test
+    void sectorizedRenderingKeepsDoubledLongRangeFriendlyContactsVisible() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 600, 3000);
+        ctx.player.faction = Faction.ALLY;
+        BattlefieldSectorSystem.setLoadedSector(ctx, "blue-home");
+
+        Ship distantFriendly = new FleetShip(ShipRole.FRIGATE, Faction.ALLY,
+                ctx.player.x + GameRenderSystem.LONG_RANGE_CONTACT_RENDER_METERS - 1200.0,
+                ctx.player.y);
+        Ship tooDistantFriendly = new FleetShip(ShipRole.FRIGATE, Faction.ALLY,
+                ctx.player.x + GameRenderSystem.LONG_RANGE_CONTACT_RENDER_METERS + 1200.0,
+                ctx.player.y);
+
+        List<Ship> scopedShips = GameRenderSystem.renderScopedShips(ctx, List.of(distantFriendly, tooDistantFriendly));
+
+        assertTrue(scopedShips.contains(distantFriendly));
+        assertFalse(scopedShips.contains(tooDistantFriendly));
+    }
+
+    @Test
     void particleDrawFilterSuppressesRemoteSectorEffects() {
         for (int i = 0; i < 240; i++) {
             VFX.updateAll(1.0 / 60.0);

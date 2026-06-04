@@ -14,13 +14,20 @@ public final class AudioAssetStubGenerator {
 
     public static void main(String[] args) throws Exception {
         boolean overwrite = false;
+        String onlyEventId = "";
         for (String arg : args) {
             if (arg != null && "--overwrite".equalsIgnoreCase(arg.trim())) overwrite = true;
+            if (arg != null && arg.toLowerCase(Locale.US).startsWith("--event=")) {
+                onlyEventId = arg.substring("--event=".length()).trim().toLowerCase(Locale.US);
+            }
         }
 
         int created = 0;
         int skipped = 0;
         for (SfxManifest.EventSpec spec : SfxManifest.all()) {
+            if (!onlyEventId.isBlank() && !onlyEventId.equals(spec.eventId().toLowerCase(Locale.US))) {
+                continue;
+            }
             int required = Math.max(1, spec.requiredVariants());
             File folder = new File("assets/audio", spec.folder());
             if (!folder.exists() && !folder.mkdirs()) {
@@ -81,7 +88,10 @@ public final class AudioAssetStubGenerator {
                 if (eventId.contains("small_fire")) yield 130 + variant * 16;
                 yield 140 + variant * 22;
             }
-            case IMPACT -> 180 + variant * 28;
+            case IMPACT -> {
+                if (eventId.contains("ship_death_major")) yield 780 + variant * 80;
+                yield 180 + variant * 28;
+            }
             case HAZARD -> 340 + variant * 40;
             case SUBSYSTEM -> 460 + variant * 55;
             case AMBIENCE -> 10000;
@@ -257,6 +267,7 @@ public final class AudioAssetStubGenerator {
         int frames = signal.length;
         String eventId = spec.eventId().toLowerCase(Locale.US);
         boolean explosion = spec.eventId().contains("explosion");
+        boolean shipDeath = eventId.contains("ship_death_major");
         boolean shield = spec.eventId().contains("shield");
         boolean hull = eventId.contains("hull");
         boolean beam = eventId.contains("beam");
@@ -281,6 +292,31 @@ public final class AudioAssetStubGenerator {
             lpMid += 0.11 * (noise - lpMid);
             lpFast += 0.20 * (noise - lpFast);
             double debris = 0.55 * lpMid + 0.28 * (noise - lpMid);
+
+            if (shipDeath) {
+                double freq = Math.max(24.0, 68.0 * (1.0 - 0.80 * x));
+                phase += (2.0 * Math.PI * freq) / sampleRate;
+                phaseRingA += (2.0 * Math.PI * Math.max(120.0, 820.0 * (1.0 - 0.62 * x))) / sampleRate;
+                phaseRingB += (2.0 * Math.PI * Math.max(80.0, 440.0 * (1.0 - 0.74 * x))) / sampleRate;
+                double thump = Math.sin(phase) * Math.exp(-x * 3.0);
+                double hullRing = (0.46 * Math.sin(phaseRingA + variant * 0.4)
+                        + 0.35 * Math.sin(phaseRingB + 0.8)) * Math.exp(-x * 4.4);
+                double debrisSpray = (0.74 * lpMid + 0.42 * hp + 0.28 * lpFast) * Math.exp(-x * 5.2);
+                double secondaryPop = 0.0;
+                if (x > 0.16 && x < 0.34) {
+                    double p = (x - 0.16) / 0.18;
+                    secondaryPop += Math.sin(2.0 * Math.PI * 92.0 * t) * Math.exp(-p * 8.0) * 0.42;
+                    secondaryPop += hp * Math.exp(-p * 10.0) * 0.35;
+                }
+                if (x > 0.42 && x < 0.60) {
+                    double p = (x - 0.42) / 0.18;
+                    secondaryPop += Math.sin(2.0 * Math.PI * 58.0 * t) * Math.exp(-p * 7.0) * 0.34;
+                    secondaryPop += lpFast * Math.exp(-p * 9.0) * 0.32;
+                }
+                double env = expEnv(x, 0.0, 0.98, 3.1);
+                signal[i] = env * (0.72 * thump + 0.58 * debrisSpray + 0.46 * hullRing + secondaryPop + 0.26 * lpLow);
+                continue;
+            }
 
             if (explosion) {
                 double freq = Math.max(34.0, 74.0 * (1.0 - 0.72 * x));

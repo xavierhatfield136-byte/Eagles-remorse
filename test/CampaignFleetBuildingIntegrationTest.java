@@ -86,6 +86,29 @@ class CampaignFleetBuildingIntegrationTest {
     }
 
     @Test
+    void strategicMapMissingActiveShipIdsDoNotDestroyPurchasedFleetRecords() throws Exception {
+        GameContext ctx = campaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        ctx.credits = 100_000;
+        ctx.player.cargo = 10_000;
+        int before = liveFleetCount(st);
+
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
+        Object purchased = newestFleetEntry(st);
+        assertEquals("COMMIT", getString(purchased, "tacticalCommitmentId"));
+        setField(purchased, "activeShipId", 987654321);
+        st.strategicOvermapMode = true;
+        ctx.ships.removeIf(ship -> ship != null && ship != ctx.player);
+
+        invokeSyncPersistentFleetCasualties(ctx, st);
+
+        assertEquals(before + 1, liveFleetCount(st));
+        assertFalse(getBoolean(purchased, "destroyed"),
+                "a tactical ship missing on the strategic map should mean awaiting redeploy, not lost in action");
+        assertEquals(-1, getInt(purchased, "activeShipId"));
+    }
+
+    @Test
     void everySectionFourHullHasAnExactLiveEncounterPath() {
         GameContext ctx = campaignContext();
         int index = 0;
@@ -139,6 +162,11 @@ class CampaignFleetBuildingIntegrationTest {
         throw new AssertionError("missing persistent fleet entry");
     }
 
+    private static Object newestFleetEntry(CampaignSystem.CampaignState st) {
+        if (st.persistentBlueFleet.isEmpty()) throw new AssertionError("missing persistent fleet entry");
+        return st.persistentBlueFleet.get(st.persistentBlueFleet.size() - 1);
+    }
+
     private static boolean invokeHubService(GameContext ctx, CampaignSystem.CampaignState st,
                                             CampaignSystem.CampaignLocation yard,
                                             CampaignSystem.HubService service) throws Exception {
@@ -154,6 +182,13 @@ class CampaignFleetBuildingIntegrationTest {
                 "advanceCampaignYardOrders", GameContext.class, CampaignSystem.CampaignState.class, double.class);
         method.setAccessible(true);
         method.invoke(null, ctx, st, dt);
+    }
+
+    private static void invokeSyncPersistentFleetCasualties(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "syncPersistentFleetCasualties", GameContext.class, CampaignSystem.CampaignState.class);
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
     }
 
     private static CampaignCheckpointStore.Checkpoint captureCheckpoint(GameContext ctx, int nextSector) throws Exception {

@@ -41,6 +41,25 @@ class CampaignStrategicTravelPressureTest {
     }
 
     @Test
+    void directEarthwardBurnSeedsVisibleRouteInterdictionForStrikeUse() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation northernObjective = findLocation(ctx, "poi-22");
+        assertNotNull(northernObjective);
+
+        double fromX = st.playerGalaxyX;
+        double fromY = st.playerGalaxyY;
+        st.selectedGalaxyLocationId = northernObjective.id;
+
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+
+        Object laneContact = visibleHostileLaneContact(st, fromX, fromY, northernObjective.x, northernObjective.y);
+        assertNotNull(laneContact, "direct Earthward travel should expose an interdiction contact in the route lane");
+        assertEquals("INTERCEPTING", getEnumName(laneContact, "behavior"));
+        assertEquals("TRACKED", getEnumName(laneContact, "intelQuality"));
+    }
+
+    @Test
     void searchGroupConfidenceTransitionsFromPossibleToIdentifiedToLost() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -126,5 +145,41 @@ class CampaignStrategicTravelPressureTest {
         field.setAccessible(true);
         Object value = field.get(target);
         return (value == null) ? "" : value.toString();
+    }
+
+    private static Object visibleHostileLaneContact(CampaignSystem.CampaignState st,
+                                                    double fromX,
+                                                    double fromY,
+                                                    double targetX,
+                                                    double targetY) throws Exception {
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("galaxySearchGroups");
+        field.setAccessible(true);
+        List<?> groups = (List<?>) field.get(st);
+        for (Object group : groups) {
+            if (group == null) continue;
+            if (!getBoolean(group, "hostile") || !getBoolean(group, "visible")) continue;
+            double x = getDouble(group, "x");
+            double y = getDouble(group, "y");
+            double lane = distancePointToSegment(x, y, fromX, fromY, targetX, targetY);
+            if (lane <= 620.0) return group;
+        }
+        return null;
+    }
+
+    private static boolean getBoolean(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getBoolean(target);
+    }
+
+    private static double distancePointToSegment(double px, double py, double ax, double ay, double bx, double by) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double len2 = dx * dx + dy * dy;
+        if (len2 <= 1e-6) return Math.hypot(px - ax, py - ay);
+        double t = Math.max(0.0, Math.min(1.0, ((px - ax) * dx + (py - ay) * dy) / len2));
+        double sx = ax + dx * t;
+        double sy = ay + dy * t;
+        return Math.hypot(px - sx, py - sy);
     }
 }

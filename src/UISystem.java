@@ -2458,7 +2458,7 @@ public final class UISystem {
 
     public static void scienceLockNearest(GameContext ctx) {
         if (ctx == null || ctx.player == null) return;
-        double range = 1800.0 * Math.max(0.20, ctx.player.sensorRangeMultiplier());
+        double range = TargetingSystem.PLAYER_TARGET_LOCK_RANGE * Math.max(1.0, ctx.player.sensorRangeMultiplier());
         Ship target = TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, ctx.player.x, ctx.player.y, range);
         ctx.lockedTarget = target;
     }

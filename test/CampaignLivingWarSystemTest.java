@@ -142,6 +142,66 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
+    void importantNpcBattleJoinLaunchesTacticalForceEncounter() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        setDouble(red, "x", 2200.0);
+        setDouble(red, "y", 2200.0);
+        setDouble(green, "x", 2240.0);
+        setDouble(green, "y", 2200.0);
+        setDouble(red, "strength", 90.0);
+        setDouble(green, "strength", 90.0);
+        st.playerGalaxyX = 2100.0;
+        st.playerGalaxyY = 2200.0;
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals("CAMPAIGN_BATTLE", ctx.ui.strategicEncounterPrompt.kind.toString());
+
+        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN"));
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals("JOIN", getObject(st.campaignBattles.get(0), "playerIntervention"));
+        assertFalse(st.strategicOvermapMode, "joining a nearby battle should enter tactical command");
+        assertTrue(st.galaxyEncounterActive, "joining should launch the hostile force encounter");
+    }
+
+    @Test
+    void importantNpcBattleSupportWorksWithLowReserve() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        setDouble(red, "x", 2200.0);
+        setDouble(red, "y", 2200.0);
+        setDouble(green, "x", 2240.0);
+        setDouble(green, "y", 2200.0);
+        setDouble(red, "strength", 90.0);
+        setDouble(green, "strength", 90.0);
+        st.playerGalaxyX = 2100.0;
+        st.playerGalaxyY = 2200.0;
+        st.blueInterventionReserve = 4.0;
+        double redBefore = getDouble(red, "strength");
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+
+        assertTrue(CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT"));
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals("SUPPORT", getObject(st.campaignBattles.get(0), "playerIntervention"));
+        assertTrue(getDouble(red, "strength") < redBefore, "low-reserve support should still disrupt the Red participant");
+        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(ctx).contains("SUPPORT IMPACT EVENT"));
+    }
+
+    @Test
     void factionDirectorBriefsPersistAcrossCheckpointRestore() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokePrivate("updateFactionDirectors",
@@ -295,7 +355,7 @@ class CampaignLivingWarSystemTest {
                 + " allocated=" + (st.nextCampaignForceId - nextId)
                 + " elapsedMs=" + elapsedMs);
 
-        assertTrue(activeCount <= 48, "simulation should enforce the bounded NPC roster");
+        assertTrue(activeCount <= 96, "simulation should enforce the bounded NPC roster");
         assertEquals(catalogCount, st.campaignForces.size(), "read-only map paths must not recreate checklist fleets");
         assertEquals(nextId, st.nextCampaignForceId, "read-only map paths must not allocate campaign forces");
 
@@ -304,7 +364,7 @@ class CampaignLivingWarSystemTest {
                     new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
                     ctx, st, 0.2);
         }
-        assertTrue(simulationActiveNpcCount(st) <= 48, "simulation ticks should retain the bounded NPC roster");
+        assertTrue(simulationActiveNpcCount(st) <= 96, "simulation ticks should retain the bounded NPC roster");
         assertEquals(catalogCount, st.campaignForces.size(), "simulation ticks should retain stable catalog entries");
         assertEquals(nextId, st.nextCampaignForceId, "simulation ticks must not rebuild checklist catalog entries");
     }

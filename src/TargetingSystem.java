@@ -2,6 +2,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class TargetingSystem {
+    public static final double PLAYER_CURSOR_LOCK_RADIUS = 560.0;
+    public static final double PLAYER_TARGET_LOCK_RANGE = 3600.0;
+    private static final double NPC_TARGET_SEARCH_RANGE = 2200.0;
+
     private TargetingSystem(){}
 
     public static boolean isCiwsOnlyTarget(Ship target) {
@@ -25,7 +29,7 @@ public final class TargetingSystem {
         double mx = CameraSystem.screenToWorldX(ctx, controls.getMouseX());
         double my = CameraSystem.screenToWorldY(ctx, controls.getMouseY());
         Ship observer = ctx.player;
-        Ship s = findClosestEnemyToPoint(ctx, observer, mx, my, 280);
+        Ship s = findClosestEnemyToPoint(ctx, observer, mx, my, PLAYER_CURSOR_LOCK_RADIUS);
         if (s == null) {
             ctx.eventBanner = "NO ENEMY NEAR CURSOR";
             ctx.eventBannerT = 1.2;
@@ -43,6 +47,8 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (isCiwsOnlyTarget(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
+            if (ctx.player != null && GameMath.dist2(ctx.player.x, ctx.player.y, s.x, s.y)
+                    > PLAYER_TARGET_LOCK_RANGE * PLAYER_TARGET_LOCK_RANGE) continue;
             if (!canDirectlyEngage(ctx, ctx.player, s)) continue;
             if (!isDetectableToObserver(ctx, ctx.player, s)) continue;
             enemies.add(s);
@@ -82,7 +88,7 @@ public final class TargetingSystem {
         Ship best = null;
         double bestD2 = Double.MAX_VALUE;
         List<Ship> nearby = new ArrayList<>();
-        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, 2200.0, nearby);
+        ctx.entityQuery.collectHostileShipsNear(seeker.faction, seeker.x, seeker.y, NPC_TARGET_SEARCH_RANGE, nearby);
 
         for (Ship s : nearby) {
             if (s == null) continue;
@@ -117,6 +123,8 @@ public final class TargetingSystem {
             if (!isAlive(s)) continue;
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
             if (isCiwsOnlyTarget(s)) continue;
+            if (isPlayerObserver(ctx, observer) && GameMath.dist2(observer.x, observer.y, s.x, s.y)
+                    > PLAYER_TARGET_LOCK_RANGE * PLAYER_TARGET_LOCK_RANGE) continue;
             if (!canDirectlyEngage(ctx, observer, s)) continue;
             if (!isDetectableToObserver(ctx, observer, s)) continue;
             double d2 = GameMath.dist2(x, y, s.x, s.y);
@@ -347,7 +355,14 @@ public final class TargetingSystem {
                 ? Math.max(0.55, Math.min(1.45, targetSignatureMul))
                 : targetSignatureMultiplier(target);
         double range = baseRange * sensorMul * targetMul;
+        if (observer instanceof Player) {
+            range *= 2.0;
+        }
         return Math.max(260.0, range);
+    }
+
+    private static boolean isPlayerObserver(GameContext ctx, Ship observer) {
+        return observer != null && (observer instanceof Player || ctx != null && observer == ctx.player);
     }
 
     private static double baseDetectionRange(ShipRole role) {

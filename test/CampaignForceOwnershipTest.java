@@ -653,7 +653,7 @@ class CampaignForceOwnershipTest {
                 true);
         List<String> detail = invokeSelectedContactSidebarLines(ctx);
         assertTrue(detail.stream().anyMatch(line -> line.contains("Force Owner: Test Route Interceptor")));
-        assertTrue(detail.stream().anyMatch(line -> line.contains("Force Orders: intercepting")));
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Force Orders: pursuit / intercept")));
     }
 
     @Test

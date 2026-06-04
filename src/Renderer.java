@@ -5611,7 +5611,8 @@ public class Renderer {
         g2.setColor(withAlpha(base, strong ? 210 : 170));
         g2.drawRoundRect(x, y, w, h, 12, 12);
         g2.setColor(new Color(245, 250, 255, strong ? 228 : 210));
-        g2.drawString(text, x + 7, y + 12);
+        String label = fitShopText(g2.getFontMetrics(), text, Math.max(1, w - 14));
+        g2.drawString(label, x + 7, y + 12);
     }
 
     private static int drawPowerAllocationStrip(Graphics2D g2, Player player, int x, int y, int w, int h, boolean showLegend) {
@@ -8983,7 +8984,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         for (int i = 0; i < tabs.length && i < tabRects.length; i++) {
             boolean selected = tabs[i] == activeTab;
             Color accent = selected ? new Color(255, 204, 124, 224) : new Color(178, 214, 238, 172);
-            drawHudStatusChip(g2, tabs[i].label().toUpperCase(Locale.US), tabRects[i].x, tabRects[i].y + 14, tabRects[i].width, 20, accent, selected);
+            drawHudStatusChip(g2, tacticalMapTabChipLabel(tabs[i]), tabRects[i].x, tabRects[i].y + 14, tabRects[i].width, 20, accent, selected);
         }
 
         Rectangle contentRect = tacticalMapContentRect(inner);
@@ -9046,6 +9047,17 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             cursor += tabW + gap;
         }
         return rects;
+    }
+
+    private static String tacticalMapTabChipLabel(UiState.TacticalMapTab tab) {
+        if (tab == null) return "TAB";
+        return switch (tab) {
+            case MISSION -> "MSN";
+            case RESOURCES -> "RES";
+            case CONTACTS -> "CNTCT";
+            case STRIKES -> "STRK";
+            default -> tab.label().toUpperCase(Locale.US);
+        };
     }
 
     private static List<String> tacticalSidebarTitleLines(GameContext ctx) {
@@ -9793,8 +9805,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
             g2.setColor(new Color(255, 255, 255, selected ? 36 : 18));
             g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
-            drawHudStatusChip(g2, tabs[i].label().toUpperCase(Locale.US), rect.x, rect.y + 14, rect.width, 20, accent, selected);
+            drawHudStatusChip(g2, campaignCommandTabChipLabel(tabs[i]), rect.x, rect.y + 14, rect.width, 20, accent, selected);
         }
+    }
+
+    private static String campaignCommandTabChipLabel(UiState.CampaignCommandTab tab) {
+        if (tab == null) return "TAB";
+        return switch (tab) {
+            case NAV -> "NAV";
+            case RESOURCES -> "RES";
+            case STRIKES -> "STRIKE";
+            default -> tab.label().toUpperCase(Locale.US);
+        };
     }
 
     private static Rectangle[] galaxyCommandTabRects(int x, int y, int width) {

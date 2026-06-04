@@ -41,6 +41,7 @@ class CampaignStrategicLoopIntegrationTest {
         assertTrue(visibleSearchGroupCount(st) >= visibleBefore);
 
         st.selectedGalaxyLocationId = cache.id;
+        st.strategicTorpedoCharges = Math.max(0, st.strategicTorpedoCharges - 1);
         int torpedoesBefore = st.strategicTorpedoCharges;
         assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
         tickTravelUntilSettled(ctx, st, 400);
