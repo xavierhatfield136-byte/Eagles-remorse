@@ -2532,12 +2532,72 @@ public final class CampaignSystem {
         return "Why It Matters: " + lead;
     }
 
+    private static String selectedStrategicRewardLine(GameContext ctx, CampaignLocation selected) {
+        if (ctx == null || selected == null) return "Gain: No site selected";
+        if (isOpenCampaignMissionHub(selected)) {
+            return selected.services.isEmpty()
+                    ? "Gain: local exploration, route context, and campaign options"
+                    : "Gain: services, trade, refit, recovery, and route stability";
+        }
+        if (!selected.services.isEmpty()) {
+            return "Gain: " + selected.services.stream()
+                    .limit(3)
+                    .map(service -> service.label)
+                    .reduce((a, b) -> a + " / " + b)
+                    .orElse("local services");
+        }
+        return switch (selected.type) {
+            case RESOURCE_ZONE -> "Gain: ore, supplies, and route sustain";
+            case SALVAGE_FIELD -> "Gain: salvage, parts, and possible fleet recovery";
+            case DISTRESS_SIGNAL -> "Gain: reputation, survivors, and allied trust";
+            case HIDDEN_CACHE -> "Gain: stores, intel, or limited strike readiness";
+            case REPAIR_SITE -> "Gain: hull recovery and fleet condition relief";
+            case ENEMY_ACTIVITY -> "Gain: pressure reduced and route opened";
+            case STORY_EVENT -> "Gain: campaign progress, intel, and branch consequences";
+            default -> "Gain: route information and local opportunity";
+        };
+    }
+
+    private static String selectedStrategicIgnoreLine(GameContext ctx, CampaignLocation selected) {
+        if (ctx == null || selected == null) return "If Ignored: no selected site";
+        CampaignState st = state(ctx);
+        String pressure = "";
+        if (st != null) {
+            double p = regionPressureAt(ctx, selected.x, selected.y);
+            pressure = p >= 0.72 ? " Hostile pressure is already high here."
+                    : (p >= 0.42 ? " Pressure may build while you move north." : "");
+        }
+        return switch (selected.type) {
+            case DISTRESS_SIGNAL -> "If Ignored: survivors may be lost and Green trust can suffer." + pressure;
+            case ENEMY_ACTIVITY -> "If Ignored: Red control hardens and northern routes stay dangerous." + pressure;
+            case RESOURCE_ZONE -> "If Ignored: the fleet loses a chance to rebuild ore and supplies." + pressure;
+            case SALVAGE_FIELD -> "If Ignored: salvage may be picked over by hostile or neutral traffic." + pressure;
+            case HIDDEN_CACHE -> "If Ignored: emergency stores remain unavailable for later pressure." + pressure;
+            case REPAIR_SITE -> "If Ignored: damaged hulls keep carrying strain into the next fight." + pressure;
+            case STORY_EVENT -> "If Ignored: campaign progress waits, but theater pressure keeps moving." + pressure;
+            default -> "If Ignored: route pressure and nearby contacts continue to evolve." + pressure;
+        };
+    }
+
     private static String selectedContactOpportunityLine(GameContext ctx) {
         if (!hasSelectedCampaignContactTarget(ctx)) return "Action Window: No tracked contact";
         String intel = selectedCampaignContactIntelLabel(ctx);
-        if ("Target-Quality".equalsIgnoreCase(intel)) return "Action Window: Torpedo / atomic eligible";
-        if ("Tracked".equalsIgnoreCase(intel)) return "Action Window: Sortie / engage eligible";
+        if ("Target-Quality".equalsIgnoreCase(intel)) return "Action Window: Direct engage / avoid / keep tracking";
+        if ("Tracked".equalsIgnoreCase(intel)) return "Action Window: Direct engage or shadow the contact";
         return "Action Window: Sweep or focused track required";
+    }
+
+    private static String selectedContactConsequenceLine(GameContext ctx) {
+        if (!hasSelectedCampaignContactTarget(ctx)) return "If Ignored: no tracked contact";
+        String intel = selectedCampaignContactIntelLabel(ctx);
+        String label = selectedCampaignContactHostile(ctx) ? "hostile" : "unidentified";
+        if ("Target-Quality".equalsIgnoreCase(intel) || "Tracked".equalsIgnoreCase(intel)) {
+            return "If Ignored: " + label + " force may report your route, close distance, or pressure nearby hubs.";
+        }
+        if ("Identified".equalsIgnoreCase(intel)) {
+            return "If Ignored: contact may fade or become a stronger intercept later.";
+        }
+        return "If Ignored: uncertain signal may vanish, shadow you, or reveal itself too late.";
     }
 
     private static String selectedContactRiskLine(GameContext ctx) {
@@ -3155,6 +3215,8 @@ public final class CampaignSystem {
         String chain = campaignDiscoveryChainLine(selected);
         if (!chain.isBlank()) out.add("Chain: " + chain);
         out.add(selectedStrategicPurposeLine(ctx, selected));
+        out.add(selectedStrategicRewardLine(ctx, selected));
+        out.add(selectedStrategicIgnoreLine(ctx, selected));
         out.add(selectedStrategicOpportunityLine(ctx, selected));
         out.add(selectedStrategicRiskLine(ctx, selected));
         CampaignAction primaryAction = campaignPrimaryAction(ctx);
@@ -3193,9 +3255,15 @@ public final class CampaignSystem {
 
     private static void trimSelectedLocationSidebarLines(ArrayList<String> out) {
         if (out == null) return;
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Region Note: ")) {}
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Support: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Available Actions: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Support: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Route: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Battle Reason: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Hub Safety: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Danger Trend: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Gain: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "If Ignored: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Contact State: ")) {}
         while (out.size() > 15) out.remove(out.size() - 1);
     }
 
@@ -3310,6 +3378,7 @@ public final class CampaignSystem {
         out.add("Posture: " + campaignFleetPostureReadout(ctx));
         out.add("Why It Matters: hostile track inside the current command picture");
         out.add(selectedContactOpportunityLine(ctx));
+        out.add(selectedContactConsequenceLine(ctx));
         out.add(selectedContactRiskLine(ctx));
         CampaignAction primaryAction = campaignPrimaryAction(ctx);
         if (primaryAction != null && !primaryAction.label.isBlank()) out.add("Primary Recommendation: " + primaryAction.label);
@@ -3600,6 +3669,60 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static List<String> campaignFleetServiceRecordLines(GameContext ctx, int maxCount) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || maxCount <= 0) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        ArrayList<PersistentFleetEntry> fleet = new ArrayList<>(st.persistentBlueFleet);
+        fleet.sort((a, b) -> {
+            if (a == null && b == null) return 0;
+            if (a == null) return 1;
+            if (b == null) return -1;
+            if (a.destroyed != b.destroyed) return Boolean.compare(a.destroyed, b.destroyed);
+            int action = Integer.compare(
+                    Math.max(0, b.kills) + Math.max(0, b.rescues) + Math.max(0, b.retreats) + Math.max(0, b.scars),
+                    Math.max(0, a.kills) + Math.max(0, a.rescues) + Math.max(0, a.retreats) + Math.max(0, a.scars));
+            if (action != 0) return action;
+            return Integer.compare(a.slotId, b.slotId);
+        });
+        for (PersistentFleetEntry entry : fleet) {
+            if (entry == null) continue;
+            String status = entry.destroyed ? "LOST" : repairStateLabel(entry);
+            String role = roleDisplayName(entry.role).toUpperCase(Locale.US);
+            String history = (entry.serviceHistory == null || entry.serviceHistory.isBlank())
+                    ? "No major service events recorded"
+                    : entry.serviceHistory.trim();
+            out.add(displayPersistentFleetEntryName(entry) + "  |  " + role
+                    + "  |  " + persistentFleetPersonnelLabel(entry)
+                    + "  |  STATUS " + status
+                    + "  |  KILLS " + Math.max(0, entry.kills)
+                    + " RESCUES " + Math.max(0, entry.rescues)
+                    + " RETREATS " + Math.max(0, entry.retreats)
+                    + " SCARS " + Math.max(0, entry.scars)
+                    + "  |  EVENTS " + history);
+            if (out.size() >= maxCount) break;
+        }
+        return out;
+    }
+
+    private static String repairStateLabel(PersistentFleetEntry entry) {
+        if (entry == null) return "UNKNOWN";
+        int hull = (int) Math.round(MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0) * 100.0);
+        int shield = (int) Math.round(MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0) * 100.0);
+        String state;
+        if (hull < 45 || shield < 35) {
+            state = "CRITICAL REPAIR";
+        } else if (hull < 72 || shield < 58) {
+            state = "REPAIRS NEEDED";
+        } else if (hull >= 92 && shield >= 88) {
+            state = "BATTLE READY";
+        } else {
+            state = "OPERATIONAL";
+        }
+        return state + " H" + hull + " S" + shield;
+    }
+
     private static ArrayList<PersistentFleetEntry> orderedLivePersistentFleetEntries(CampaignState st) {
         ArrayList<PersistentFleetEntry> live = new ArrayList<>();
         if (st == null) return live;
@@ -3808,6 +3931,21 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Strike systems unavailable.");
+        if (isStrategicOvermapMode(st)) {
+            String selected = hasSelectedCampaignContactTarget(ctx)
+                    ? selectedCampaignContactLabel(ctx)
+                    : "No hostile contact selected";
+            String rangeLine = hasSelectedCampaignContactTarget(ctx)
+                    ? strategicRangeReadout(ctx, st, ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY)
+                    : ("Sensor Horizon " + (int) Math.round(maxStrategicSensorRange(ctx, st)));
+            return List.of(
+                    "Overmap Role: Maneuver, recon, and close-range engagement setup.",
+                    "Selected Contact: " + selected,
+                    "Contact Window: " + selectedStrikeOpportunityLine(ctx),
+                    "Sensor Gate: " + rangeLine,
+                    "Engagement: Use direct intercept once a hostile search group is tracked."
+            );
+        }
         int sortieCap = strategicSortieCapacity(ctx);
         int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
         StrikePreflight torpedo = buildStrikePreflight(ctx, "TORPEDO_STRIKE");
@@ -3834,6 +3972,14 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Strike board offline.");
+        if (isStrategicOvermapMode(st)) {
+            return List.of(
+                    "REMOTE STRIKES HELD FOR TACTICAL CONTACT",
+                    "SENSOR " + (int) Math.round(maxStrategicSensorRange(ctx, st)),
+                    "RECON " + campaignIntelReadout(ctx),
+                    "RELAY NET " + st.sensorRelayNodes.size() + " ACTIVE"
+            );
+        }
         int sortieCap = strategicSortieCapacity(ctx);
         int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
         return List.of(
@@ -3851,6 +3997,17 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("No strike consequences.");
+        if (isStrategicOvermapMode(st)) {
+            ArrayList<String> out = new ArrayList<>();
+            out.add("Exposure: " + campaignExposureReadout(ctx));
+            out.add("Overmap Weapons: Held until close tactical contact");
+            out.add(selectedStrikeOpportunityLine(ctx));
+            if (!lastStrikeReportTitle(ctx).isBlank()) out.add("Report: " + lastStrikeReportTitle(ctx));
+            if (!lastStrikeReportDetail(ctx).isBlank()) out.add(lastStrikeReportDetail(ctx));
+            String event = campaignStrikeBattleEventSummary(ctx);
+            if (!event.isBlank()) out.add(event);
+            return out;
+        }
         StrikePreflight torpedo = buildStrikePreflight(ctx, "TORPEDO_STRIKE");
         StrikePreflight sortie = buildStrikePreflight(ctx, "CARRIER_SORTIE");
         StrikePreflight atomic = buildStrikePreflight(ctx, "ATOMIC_STRIKE");
@@ -3941,6 +4098,7 @@ public final class CampaignSystem {
         UiState.CampaignCommandTab tab = (ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
         CampaignLocation selected = selectedCampaignLocation(ctx);
         CampaignTravelState travel = st.galaxyTravel;
+        boolean overmapMode = isStrategicOvermapMode(st);
         boolean hasCourse = selected != null || hasSelectedFreeTravelTarget(ctx);
         boolean traveling = travel != null && travel.traveling;
         boolean enterSite = canEnterSelectedLocalEncounter(ctx);
@@ -4258,10 +4416,10 @@ public final class CampaignSystem {
                     "",
                     CampaignSystem::runConvoyDefenseOperation));
             out.add(action("OP_COMMAND_STRIKE",
-                    "COMMAND STRIKE OP",
-                    "Hit a hostile command element and reduce pressure.",
-                    "Launch a command strike operation at the selected location to disrupt hostile command presence in the theater.",
-                    CampaignActionCategory.STRIKES,
+                    "COMMAND DISRUPTION OP",
+                    "Disrupt a hostile command element and reduce pressure.",
+                    "Run a close-support operation at the selected location to disrupt hostile command presence in the theater.",
+                    CampaignActionCategory.NAVIGATION,
                     true,
                     canRunOperation,
                     canRunOperation ? "" : "move into operational range of a location",
@@ -4273,7 +4431,7 @@ public final class CampaignSystem {
                     "BLOCKADE BREAK OP",
                     "Break local blockade pressure and reopen transit.",
                     "Execute a blockade break operation to reduce theater threat pressure and force open nearby logistics lanes.",
-                    CampaignActionCategory.STRIKES,
+                    CampaignActionCategory.NAVIGATION,
                     true,
                     canRunOperation,
                     canRunOperation ? "" : "move into operational range of a location",
@@ -4461,42 +4619,44 @@ public final class CampaignSystem {
                     false,
                     "",
                     CampaignSystem::engageSelectedCampaignContact));
-            out.add(action("TORPEDO_STRIKE",
-                    "TORPEDO STRIKE",
-                    "Launch a long-range torpedo strike. Cost A" + torpedoPreflight.ammoCost + " F" + torpedoPreflight.fuelCost + ".",
-                    torpedoPreflight.effect + " " + torpedoPreflight.retaliation,
-                    CampaignActionCategory.STRIKES,
-                    true,
-                    torpedoPreflight.valid,
-                    torpedoPreflight.valid ? "" : ("target / strike gate: " + torpedoPreflight.reason),
-                    torpedoPreflight.valid ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
-                    false,
-                    "Shift+LMB",
-                    CampaignSystem::launchSelectedCampaignTorpedoStrike));
-            out.add(action("CARRIER_SORTIE",
-                    "CARRIER SORTIE",
-                    "Launch a carrier sortie. Cost A" + sortiePreflight.ammoCost + " F" + sortiePreflight.fuelCost + " S" + sortiePreflight.supplyCost + ".",
-                    sortiePreflight.effect + " " + sortiePreflight.retaliation,
-                    CampaignActionCategory.STRIKES,
-                    true,
-                    sortiePreflight.valid,
-                    sortiePreflight.valid ? "" : ("target / sortie gate: " + sortiePreflight.reason),
-                    sortiePreflight.valid ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
-                    false,
-                    "Shift+RMB",
-                    CampaignSystem::launchSelectedCampaignSortie));
-            out.add(action("ATOMIC_STRIKE",
-                    "ATOMIC STRIKE",
-                    "Commit the atomic option. Cost A" + atomicPreflight.ammoCost + " F" + atomicPreflight.fuelCost + " S" + atomicPreflight.supplyCost + ".",
-                    atomicPreflight.effect + " " + atomicPreflight.retaliation,
-                    CampaignActionCategory.STRIKES,
-                    true,
-                    atomicTargetReady,
-                    atomicTargetReady ? "" : ("target / atomic gate: " + atomicPreflight.reason),
-                    atomicTargetReady ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
-                    false,
-                    "Ctrl+Shift+LMB",
-                    CampaignSystem::beginCampaignAtomicStrikeConfirm));
+            if (!overmapMode) {
+                out.add(action("TORPEDO_STRIKE",
+                        "TORPEDO STRIKE",
+                        "Launch a long-range torpedo strike. Cost A" + torpedoPreflight.ammoCost + " F" + torpedoPreflight.fuelCost + ".",
+                        torpedoPreflight.effect + " " + torpedoPreflight.retaliation,
+                        CampaignActionCategory.STRIKES,
+                        true,
+                        torpedoPreflight.valid,
+                        torpedoPreflight.valid ? "" : ("target / strike gate: " + torpedoPreflight.reason),
+                        torpedoPreflight.valid ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                        false,
+                        "Shift+LMB",
+                        CampaignSystem::launchSelectedCampaignTorpedoStrike));
+                out.add(action("CARRIER_SORTIE",
+                        "CARRIER SORTIE",
+                        "Launch a carrier sortie. Cost A" + sortiePreflight.ammoCost + " F" + sortiePreflight.fuelCost + " S" + sortiePreflight.supplyCost + ".",
+                        sortiePreflight.effect + " " + sortiePreflight.retaliation,
+                        CampaignActionCategory.STRIKES,
+                        true,
+                        sortiePreflight.valid,
+                        sortiePreflight.valid ? "" : ("target / sortie gate: " + sortiePreflight.reason),
+                        sortiePreflight.valid ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                        false,
+                        "Shift+RMB",
+                        CampaignSystem::launchSelectedCampaignSortie));
+                out.add(action("ATOMIC_STRIKE",
+                        "ATOMIC STRIKE",
+                        "Commit the atomic option. Cost A" + atomicPreflight.ammoCost + " F" + atomicPreflight.fuelCost + " S" + atomicPreflight.supplyCost + ".",
+                        atomicPreflight.effect + " " + atomicPreflight.retaliation,
+                        CampaignActionCategory.STRIKES,
+                        true,
+                        atomicTargetReady,
+                        atomicTargetReady ? "" : ("target / atomic gate: " + atomicPreflight.reason),
+                        atomicTargetReady ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
+                        false,
+                        "Ctrl+Shift+LMB",
+                        CampaignSystem::beginCampaignAtomicStrikeConfirm));
+            }
         }
 
         if ((tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.RESOURCES) && selected != null && inRange && hasDockable) {
@@ -14992,6 +15152,81 @@ public final class CampaignSystem {
         out.add("THEATER  |  " + theaterPressureReadout(ctx).toUpperCase(Locale.US));
         out.addAll(campaignForceAfterActionLines(ctx, 3));
         return out;
+    }
+
+    public static List<String> campaignAfterActionReportLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of();
+        ArrayList<String> out = new ArrayList<>();
+        String location = campaignAfterActionLocationLabel(st);
+        String objective = trimmedOrFallback(st.objectiveLabel, "Command the fleet");
+        out.add("Battle Report: " + location + "  |  Objective: " + objective);
+        if (st.objectivePhaseLabel != null && !st.objectivePhaseLabel.isBlank()) {
+            out.add("Battle State: " + st.objectivePhaseLabel.trim());
+        }
+        String top = transitionSummaryTop(ctx);
+        String bottom = transitionSummaryBottom(ctx);
+        if (top != null && !top.isBlank()) out.add("Outcome: " + top.trim());
+        if (bottom != null && !bottom.isBlank()) out.add("Campaign Impact: " + bottom.trim());
+        if (st.transitionRewardLine != null && !st.transitionRewardLine.isBlank()) {
+            out.add("Rewards: " + st.transitionRewardLine.trim());
+        }
+        if (st.transitionRouteImpactLine != null && !st.transitionRouteImpactLine.isBlank()) {
+            out.add("Route Impact: " + st.transitionRouteImpactLine.trim());
+        }
+        out.addAll(campaignForceAfterActionLines(ctx, 3));
+        out.add("Friendly Fleet: " + campaignAfterActionFleetDamageLabel(st));
+        out.add("Resources: credits " + Math.max(0, ctx.credits)
+                + "  ore " + currentCampaignOre(ctx)
+                + "  fuel " + campaignFuel(ctx)
+                + "  supplies " + campaignSupplies(ctx)
+                + "  ammo " + campaignAmmo(ctx)
+                + "  salvage " + campaignSalvageStock(ctx));
+        out.add("Reputation: " + campaignReputationReadout(ctx));
+        out.add("Intel: " + campaignIntelReadout(ctx) + "  |  Exposure " + campaignExposureReadout(ctx));
+        out.add("Theater Pressure: " + theaterPressureReadout(ctx));
+        if (st.lastTheaterOperationDebrief != null && !st.lastTheaterOperationDebrief.isBlank()) {
+            out.add("Follow-On: " + st.lastTheaterOperationDebrief.trim());
+        } else if (st.lastStrikeReportTitle != null && !st.lastStrikeReportTitle.isBlank()) {
+            out.add("Follow-On: " + st.lastStrikeReportTitle.trim()
+                    + (st.lastStrikeReportDetail == null || st.lastStrikeReportDetail.isBlank()
+                    ? "" : "  |  " + st.lastStrikeReportDetail.trim()));
+        } else {
+            out.add("Follow-On: " + campaignFleetStrainReadout(ctx));
+        }
+        return out;
+    }
+
+    private static String campaignAfterActionLocationLabel(CampaignState st) {
+        if (st == null) return "Unknown Theater";
+        CampaignLocation selected = campaignLocationById(st, st.activeGalaxyEncounterLocationId);
+        if (selected == null) selected = campaignLocationById(st, st.selectedGalaxyLocationId);
+        if (selected == null) selected = campaignLocationById(st, st.dockedGalaxyLocationId);
+        if (selected != null) return selected.name;
+        String transition = st.transitionLabel == null ? "" : st.transitionLabel.trim();
+        if (!transition.isBlank()) return transition;
+        return "Sector " + Math.max(1, st.sector);
+    }
+
+    private static String campaignAfterActionFleetDamageLabel(CampaignState st) {
+        if (st == null) return "unknown";
+        int live = 0;
+        int damaged = 0;
+        int critical = 0;
+        int lost = 0;
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry == null) continue;
+            if (entry.destroyed) {
+                lost++;
+                continue;
+            }
+            live++;
+            double hull = MathUtil.clamp(entry.hullConditionFrac, 0.0, 1.0);
+            double shield = MathUtil.clamp(entry.shieldConditionFrac, 0.0, 1.0);
+            if (hull < 0.45 || shield < 0.35) critical++;
+            if (hull < 0.72 || shield < 0.58) damaged++;
+        }
+        return "live " + live + "  damaged " + damaged + "  critical " + critical + "  lost " + lost;
     }
 
     public static List<CampaignRouteChoice> routeChoices(GameContext ctx) {

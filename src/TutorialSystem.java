@@ -632,7 +632,7 @@ public final class TutorialSystem {
             case COMPLETE -> {
                 ctx.ui.waypointX = Double.NaN;
                 ctx.ui.waypointY = Double.NaN;
-                EventSystem.showBanner(ctx, "COMMAND SCHOOL COMPLETE", 3.0);
+                EventSystem.showBanner(ctx, "TACTICAL COMMAND SCHOOL COMPLETE", 3.0);
             }
         }
     }
@@ -651,7 +651,7 @@ public final class TutorialSystem {
     private static String lessonSummary(LessonId lesson) {
         return switch (lesson) {
             case FLIGHT_BASICS ->
-                    "Learn the ship's movement model, waypoint flow, and how the tactical view supports a simple navigation run.";
+                    "Tactical Command School: learn ship movement, waypoint flow, and how the local view supports a simple navigation run.";
             case TARGETING_AND_SENSORS ->
                     "Practice tactical pings, target locking, live-fire damage confirmation, and the x-ray room inspection tools.";
             case LOGISTICS_AND_REFIT ->
@@ -661,7 +661,7 @@ public final class TutorialSystem {
             case CARRIER_AND_WARP ->
                     "Open the flight deck, launch a wing, change carrier behavior, and finish with a controlled warp setup.";
             case COMPLETE ->
-                    "Every command school lesson is complete and the full sandbox remains open for practice.";
+                    "Every tactical command lesson is complete. Campaign Ops briefing covers overworld scanning, intel, allies, reputation, fleet organization, commissioning, and route command.";
         };
     }
 

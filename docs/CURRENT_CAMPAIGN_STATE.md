@@ -29,7 +29,7 @@ The current campaign is an open-world strategic overmap, not a linear mission la
 - Hostile search-group contact and interception pressure
 - Intel/contact confidence states
 - Faction support calls (Green/Yellow)
-- Long-range strike actions (with intel requirements)
+- Tactical strike readiness and consequences taught in close-contact context
 - Persistent fleet continuity and checkpoint persistence
 - One large tactical combat space per encounter
 

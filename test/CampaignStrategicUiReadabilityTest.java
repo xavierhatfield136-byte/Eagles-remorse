@@ -60,14 +60,17 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
-    void strikeTabDoesNotShowFleetPostureButtons() {
+    void overmapStrikeTabShowsReconButNoRemoteWeaponButtons() {
         GameContext ctx = initializedCampaignContext();
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
 
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
 
         assertFalse(actions.stream().anyMatch(action -> action.id.startsWith("POSTURE_")));
-        assertTrue(actions.stream().anyMatch(action -> action.id.equals("TORPEDO_STRIKE")));
+        assertFalse(actions.stream().anyMatch(action -> action.id.equals("TORPEDO_STRIKE")));
+        assertFalse(actions.stream().anyMatch(action -> action.id.equals("CARRIER_SORTIE")));
+        assertFalse(actions.stream().anyMatch(action -> action.id.equals("ATOMIC_STRIKE")));
+        assertTrue(actions.stream().anyMatch(action -> action.id.equals("TRACK_TARGET")));
         assertTrue(actions.stream().anyMatch(action -> action.id.equals("RECON_SWEEP")
                 || action.id.equals("SIGNAL_SWEEP")));
     }

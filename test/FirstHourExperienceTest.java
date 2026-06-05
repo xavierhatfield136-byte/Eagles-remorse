@@ -66,6 +66,65 @@ public class FirstHourExperienceTest {
     }
 
     @Test
+    void briefingCurriculumCoversOverworldEconomyFleetAndTacticalContact() {
+        assertNotNull(FirstHourOnboardingSystem.Beat.ROUTE);
+        assertNotNull(FirstHourOnboardingSystem.Beat.MAP_MARKERS);
+        assertNotNull(FirstHourOnboardingSystem.Beat.ROUTE_CONTROL);
+        assertNotNull(FirstHourOnboardingSystem.Beat.SCANNING);
+        assertNotNull(FirstHourOnboardingSystem.Beat.INTEL);
+        assertNotNull(FirstHourOnboardingSystem.Beat.CONTACT_CONFIDENCE);
+        assertNotNull(FirstHourOnboardingSystem.Beat.LOCAL_SITES);
+        assertNotNull(FirstHourOnboardingSystem.Beat.ALLIES);
+        assertNotNull(FirstHourOnboardingSystem.Beat.REPUTATION);
+        assertNotNull(FirstHourOnboardingSystem.Beat.FLEET_ROSTER);
+        assertNotNull(FirstHourOnboardingSystem.Beat.FLEET_ORGANIZATION);
+        assertNotNull(FirstHourOnboardingSystem.Beat.UPGRADES);
+        assertNotNull(FirstHourOnboardingSystem.Beat.REFIT_DETAILS);
+        assertNotNull(FirstHourOnboardingSystem.Beat.COMMISSIONING);
+        assertNotNull(FirstHourOnboardingSystem.Beat.ECONOMY);
+        assertNotNull(FirstHourOnboardingSystem.Beat.RESOURCE_RECOVERY);
+        assertNotNull(FirstHourOnboardingSystem.Beat.TACTICAL_ENGAGEMENT);
+        assertNotNull(FirstHourOnboardingSystem.Beat.TACTICAL_WEAPONS);
+        assertNotNull(FirstHourOnboardingSystem.Beat.CARRIER_TACTICS);
+        assertNotNull(FirstHourOnboardingSystem.Beat.TACTICAL_STRIKES);
+        assertNotNull(FirstHourOnboardingSystem.Beat.SALVAGE_EXTRACTION);
+        for (FirstHourOnboardingSystem.Beat beat : FirstHourOnboardingSystem.Beat.values()) {
+            assertNotEquals("STRIKE", beat.name(), "overworld briefing should not expose a generic remote strike beat");
+            assertNotEquals("First Strike", beat.title, "overworld briefing should not teach a generic first-strike launch");
+        }
+        assertTrue(FirstHourOnboardingSystem.Beat.TACTICAL_STRIKES.detail.contains("not launched from the overworld"));
+    }
+
+    @Test
+    void briefingCanAdvanceThroughOvermapRouteAndScanningBeats() {
+        GameContext ctx = context(ExperienceSettings.defaults());
+        SpawnSystem.initWorld(ctx);
+        FirstHourOnboardingSystem.init(ctx);
+
+        while (FirstHourOnboardingSystem.currentBeat(ctx).ordinal()
+                < FirstHourOnboardingSystem.Beat.ROUTE.ordinal()) {
+            FirstHourOnboardingSystem.skipCurrent(ctx);
+        }
+        assertEquals(FirstHourOnboardingSystem.Beat.ROUTE, FirstHourOnboardingSystem.currentBeat(ctx));
+
+        assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(ctx,
+                ctx.campaign.playerGalaxyX + 200.0,
+                ctx.campaign.playerGalaxyY + 120.0));
+        FirstHourOnboardingSystem.update(ctx, GameContext.DT);
+        assertEquals(FirstHourOnboardingSystem.Beat.ROUTE_CONTROL, FirstHourOnboardingSystem.currentBeat(ctx));
+
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        FirstHourOnboardingSystem.update(ctx, GameContext.DT);
+        assertEquals(FirstHourOnboardingSystem.Beat.SCANNING, FirstHourOnboardingSystem.currentBeat(ctx));
+
+        double intelBefore = ctx.campaign.campaignIntelLevel;
+        ctx.campaign.campaignIntelLevel = intelBefore + 10.0;
+        FirstHourOnboardingSystem.update(ctx, GameContext.DT);
+        assertTrue(FirstHourOnboardingSystem.currentBeat(ctx).ordinal()
+                > FirstHourOnboardingSystem.Beat.SCANNING.ordinal());
+    }
+
+    @Test
     void accessibilityPaletteChangesFactionAndStatusColors() {
         ExperienceSettings settings = ExperienceSettings.defaults();
         settings.colorblindPalette = ExperienceSettings.ColorblindPalette.TRITANOPIA;

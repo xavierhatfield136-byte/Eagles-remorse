@@ -3,6 +3,7 @@ import app.config.GameMode;
 import app.persistence.CampaignCheckpointStore;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +11,33 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignPersistentFleetShopTest {
+
+    @Test
+    void serviceRecordReadoutExposesCaptainMoraleRepairsAndEvents() throws Exception {
+        GameContext ctx = campaignShopContext(100_000, 20_000, 5, 5);
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
+
+        Object entry = ctx.campaign.persistentBlueFleet.get(0);
+        setField(entry, "captainName", "Captain Mira Vale");
+        setField(entry, "crewExperience", 14);
+        setField(entry, "morale", 61);
+        setField(entry, "refusalRisk", 9);
+        setField(entry, "kills", 3);
+        setField(entry, "rescues", 2);
+        setField(entry, "retreats", 1);
+        setField(entry, "scars", 4);
+        setField(entry, "hullConditionFrac", 0.52);
+        setField(entry, "shieldConditionFrac", 0.41);
+        setField(entry, "serviceHistory", "MAJOR HULL DAMAGE / MISSION COMPLETE");
+
+        String record = String.join("\n", CampaignSystem.campaignFleetServiceRecordLines(ctx, 4));
+
+        assertTrue(record.contains("Captain Mira Vale"));
+        assertTrue(record.contains("MORALE 61"));
+        assertTrue(record.contains("REPAIRS NEEDED"));
+        assertTrue(record.contains("KILLS 3 RESCUES 2 RETREATS 1 SCARS 4"));
+        assertTrue(record.contains("MAJOR HULL DAMAGE"));
+    }
 
     @Test
     void logisticsHullsCanBeCommissionedWithCampaignOrePricing() {
@@ -309,5 +337,11 @@ class CampaignPersistentFleetShopTest {
                         && !ship.dying
                         && ship.hp > 0)
                 .count();
+    }
+
+    private static void setField(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }

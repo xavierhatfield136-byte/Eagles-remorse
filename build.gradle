@@ -33,6 +33,24 @@ sourceSets {
         }
         resources {
             srcDirs = ["assets"]
+            exclude "**/dropbox/**"
+            exclude "ai_pipeline/**"
+            exclude "audio/dropoff/**"
+            exclude "base_station_generation/**"
+            exclude "newshipskins/**"
+            exclude "shipskinsupdate/**"
+            exclude "station_concepts/**"
+            exclude "station_module_generation/**"
+            exclude "station_module_generation_clean/**"
+            exclude "station_module_generation_tighttest/**"
+            exclude "turret_skin_generation/**"
+            exclude "**/backup*/**"
+            exclude "**/*.bak"
+            exclude "**/*.glb"
+            exclude "**/*.old"
+            exclude "**/*.psd"
+            exclude "**/*.tmp"
+            exclude "**/*.zip"
         }
     }
     test {

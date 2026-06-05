@@ -2,14 +2,14 @@
 
 ## Campaign Briefing
 
-New Campaign Ops runs use a paced, non-blocking command briefing. It teaches movement, mining, docking, map use, fleet management, first contact resolution, strike evaluation, shortage recovery, and checkpoint behavior one beat at a time.
+New Campaign Ops runs use a paced, non-blocking command briefing. It teaches movement, mining, docking, map use, route orders, scanning, intelligence, allies, reputation, fleet management, fleet organization, upgrades, commissioning, economy, first contact resolution, tactical engagement, tactical strike context, shortage recovery, and checkpoint behavior one beat at a time.
 
 - `Ctrl+F1`: skip the current beat independently.
 - `Ctrl+F2`: open or close the replayable briefing archive.
 - Reminders appear only after the current beat has been idle for 42 seconds.
 - Checkpoint saves show a visible confirmation banner.
 
-Command School remains available from the main menu as a replayable tactical sandbox.
+Command School remains available from the main menu as a replayable tactical sandbox. Campaign Ops briefing covers the overworld layer: maneuver, scans, intel, allies, reputation, fleet organization, commissioning, resources, and direct engagement.
 
 ## Difficulty
 

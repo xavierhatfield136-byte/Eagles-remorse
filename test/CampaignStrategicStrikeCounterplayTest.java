@@ -178,7 +178,7 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
-    void selectedTargetLockPersistsAcrossStrikeTabReadinessTransitions() throws Exception {
+    void selectedTargetLockPersistsAcrossOvermapReconTransitions() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object group = firstSearchGroup(st);
@@ -196,25 +196,23 @@ class CampaignStrategicStrikeCounterplayTest {
         assertFalse(CampaignSystem.selectedCampaignContactLabel(ctx).isBlank());
 
         List<CampaignSystem.CampaignAction> strikeActions = CampaignSystem.campaignVisibleActions(ctx);
-        CampaignSystem.CampaignAction sortie = strikeActions.stream().filter(action -> "CARRIER_SORTIE".equals(action.id)).findFirst().orElse(null);
-        CampaignSystem.CampaignAction torpedo = strikeActions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(sortie);
-        assertNotNull(torpedo);
-        assertTrue(sortie.enabled);
-        assertTrue(torpedo.enabled);
+        assertFalse(strikeActions.stream().anyMatch(action -> "CARRIER_SORTIE".equals(action.id)));
+        assertFalse(strikeActions.stream().anyMatch(action -> "TORPEDO_STRIKE".equals(action.id)));
+        CampaignSystem.CampaignAction track = strikeActions.stream().filter(action -> "TRACK_TARGET".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(track);
+        assertTrue(track.enabled);
 
         setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "TARGET_QUALITY"));
         CampaignSystem.selectCampaignContactTarget(ctx, "Tracked Return", "", "Target-Quality", getDouble(group, "x"), getDouble(group, "y"), true, true);
         assertEquals(lockedX, ctx.ui.selectedCampaignContactX);
         assertEquals(lockedY, ctx.ui.selectedCampaignContactY);
         List<CampaignSystem.CampaignAction> upgraded = CampaignSystem.campaignVisibleActions(ctx);
-        CampaignSystem.CampaignAction upgradedTorpedo = upgraded.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(upgradedTorpedo);
-        assertTrue(upgradedTorpedo.enabled);
+        assertFalse(upgraded.stream().anyMatch(action -> "TORPEDO_STRIKE".equals(action.id)));
+        assertTrue(upgraded.stream().anyMatch(action -> "ENGAGE_CONTACT".equals(action.id)));
     }
 
     @Test
-    void broadSweepCreatesUsableStrikeWindowWithoutPointBlankContact() throws Exception {
+    void broadSweepCreatesUsableOvermapReconWindowWithoutPointBlankContact() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         st.campaignSupplies = 20;
@@ -246,13 +244,12 @@ class CampaignStrategicStrikeCounterplayTest {
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
 
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
-        CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        CampaignSystem.CampaignAction sortie = actions.stream().filter(action -> "CARRIER_SORTIE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(torpedo);
-        assertNotNull(sortie);
+        CampaignSystem.CampaignAction track = actions.stream().filter(action -> "TRACK_TARGET".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(track);
         assertTrue(getBoolean(group, "visible"), "sweep should reveal the hostile at long range");
-        assertTrue(torpedo.enabled || sortie.enabled,
-                "a single broad sweep should create at least one practical strike option");
+        assertTrue(track.enabled, "a single broad sweep should create a practical recon/intercept option");
+        assertFalse(actions.stream().anyMatch(action -> "TORPEDO_STRIKE".equals(action.id)));
+        assertFalse(actions.stream().anyMatch(action -> "CARRIER_SORTIE".equals(action.id)));
     }
 
     @Test

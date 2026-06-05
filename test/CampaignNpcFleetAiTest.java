@@ -7,6 +7,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignNpcFleetAiTest {
@@ -221,11 +223,14 @@ class CampaignNpcFleetAiTest {
                 .filter(action -> "TORPEDO_STRIKE".equals(action.id))
                 .findFirst()
                 .orElse(null);
+        CampaignSystem.CampaignAction track = CampaignSystem.campaignVisibleActions(ctx).stream()
+                .filter(action -> "TRACK_TARGET".equals(action.id))
+                .findFirst()
+                .orElse(null);
 
-        assertNotNull(torpedo);
-        assertTrue(torpedo.enabled, "nearby visible hostile force should create an immediate strike lock");
-        assertTrue(CampaignSystem.launchSelectedCampaignTorpedoStrike(ctx));
-        assertTrue(st.strategicStrikeObjects.size() > 0, "selected strike should queue against the nearby hostile force");
+        assertNull(torpedo, "overmap should not expose remote torpedo strikes against fleet markers");
+        assertNotNull(track);
+        assertFalse(st.strategicStrikeObjects.size() > 0, "overmap selection should not queue remote strike objects");
     }
 
     @Test

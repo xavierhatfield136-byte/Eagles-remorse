@@ -78,8 +78,8 @@ class CampaignStrategicCommandHudTest {
         assertTrue(resources.stream().anyMatch(line -> line.startsWith("Fleet Strain: ")));
         assertTrue(resourceTrend.stream().anyMatch(line -> line.startsWith("Fuel State: ")));
         assertTrue(resourceWarnings.stream().anyMatch(line -> line.contains("ROUTE PREVIEW")));
-        assertTrue(strikes.stream().anyMatch(line -> line.startsWith("Torpedo Strikes Ready: ")));
-        assertTrue(strikeReadiness.stream().anyMatch(line -> line.startsWith("TORPEDO READY ")));
+        assertTrue(strikes.stream().anyMatch(line -> line.startsWith("Overmap Role: ")));
+        assertTrue(strikeReadiness.stream().anyMatch(line -> line.startsWith("REMOTE STRIKES HELD")));
         assertTrue(strikeConsequences.stream().anyMatch(line -> line.startsWith("Exposure: ")));
         assertTrue(navigation.stream().anyMatch(line -> line.contains("Map use:")));
         assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Reputation: ")));
@@ -96,6 +96,43 @@ class CampaignStrategicCommandHudTest {
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Crew: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Lead  | ")));
         assertFalse(strikes.stream().anyMatch(line -> line.contains("Shift+LMB")));
+    }
+
+    @Test
+    void afterActionReportConnectsBattleOutcomeToResourcesFleetAndTheater() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation hub = firstFriendlyServiceLocation(ctx);
+        assertNotNull(hub);
+        st.activeGalaxyEncounterLocationId = hub.id;
+        st.objectiveLabel = "Escort the damaged convoy to the exit lane";
+        st.objectivePhaseLabel = "PHASE: Jump drive charging";
+        st.transitionSummaryTop = "Convoy survived under heavy fire.";
+        st.transitionSummaryBottom = "Green repair crews opened a safer northern lane.";
+        st.transitionRewardLine = "+supplies / +green favor";
+        st.transitionRouteImpactLine = "route pressure reduced";
+        st.lastTheaterOperationDebrief = "Red scouts redirected after losing the relay track.";
+        st.campaignFuel = 37;
+        st.campaignSupplies = 29;
+        st.campaignAmmo = 41;
+        st.campaignSalvage = 7;
+        ctx.credits = 1234;
+        ctx.player.cargo = 88;
+        Object entry = st.persistentBlueFleet.get(0);
+        setDoubleField(entry, "hullConditionFrac", 0.40);
+        setDoubleField(entry, "shieldConditionFrac", 0.30);
+
+        String report = String.join("\n", CampaignSystem.campaignAfterActionReportLines(ctx));
+
+        assertTrue(report.contains("Battle Report: " + hub.name));
+        assertTrue(report.contains("Objective: Escort the damaged convoy to the exit lane"));
+        assertTrue(report.contains("Friendly Fleet: live"));
+        assertTrue(report.contains("critical 1"));
+        assertTrue(report.contains("Resources: credits 1234  ore 88  fuel 37  supplies 29  ammo 41  salvage 7"));
+        assertTrue(report.contains("Reputation: "));
+        assertTrue(report.contains("Intel: "));
+        assertTrue(report.contains("Theater Pressure: "));
+        assertTrue(report.contains("Follow-On: Red scouts redirected"));
     }
 
     @Test
@@ -351,6 +388,8 @@ class CampaignStrategicCommandHudTest {
         List<String> lines = CampaignSystem.selectedLocationSidebarLines(ctx);
 
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Why It Matters: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Gain: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("If Ignored: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Action Window: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Risk: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Primary Recommendation: ")));
@@ -370,10 +409,10 @@ class CampaignStrategicCommandHudTest {
 
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
         List<CampaignSystem.CampaignAction> strikeActions = CampaignSystem.campaignVisibleActions(ctx);
-        CampaignSystem.CampaignAction torpedo = strikeActions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(torpedo);
-        assertFalse(torpedo.enabled);
-        assertTrue(torpedo.disabledReason.toLowerCase().contains("target"));
+        assertFalse(strikeActions.stream().anyMatch(action -> "TORPEDO_STRIKE".equals(action.id)));
+        assertFalse(strikeActions.stream().anyMatch(action -> "CARRIER_SORTIE".equals(action.id)));
+        assertFalse(strikeActions.stream().anyMatch(action -> "ATOMIC_STRIKE".equals(action.id)));
+        assertTrue(strikeActions.stream().anyMatch(action -> "TRACK_TARGET".equals(action.id)));
         CampaignSystem.CampaignAction engageCourse = navActions.stream().filter(action -> "ENGAGE_COURSE".equals(action.id)).findFirst().orElse(null);
         assertNotNull(engageCourse);
         assertNotNull(engageCourse.disabledReason);
@@ -449,7 +488,7 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
-    void atomicStrikeUsesConfirmationOverlayBeforeExecution() {
+    void atomicStrikeConfirmationIsHiddenOnOvermap() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         st.strategicOvermapMode = true;
@@ -467,11 +506,9 @@ class CampaignStrategicCommandHudTest {
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
         st.selectedGalaxyLocationId = "";
 
-        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ATOMIC_STRIKE"));
-        assertTrue(ctx.ui.campaignActionConfirm.active);
-        assertEquals("ATOMIC_STRIKE", ctx.ui.campaignActionConfirm.actionId);
-
-        CampaignSystem.cancelCampaignActionConfirm(ctx);
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+        assertFalse(actions.stream().anyMatch(action -> "ATOMIC_STRIKE".equals(action.id)));
+        assertFalse(CampaignSystem.executeCampaignAction(ctx, "ATOMIC_STRIKE"));
         assertFalse(ctx.ui.campaignActionConfirm.active);
     }
 
@@ -885,10 +922,15 @@ class CampaignStrategicCommandHudTest {
 
         List<String> lines = CampaignSystem.selectedLocationSidebarLines(ctx);
         assertTrue(lines.stream().anyMatch(line -> line.contains("HOSTILE CONTACT")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("If Ignored: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Direct engage")));
+        assertFalse(lines.stream().anyMatch(line -> line.contains("Torpedo / atomic")));
+        assertFalse(lines.stream().anyMatch(line -> line.contains("Sortie / engage")));
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
-        CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(torpedo);
-        assertTrue(torpedo.enabled);
+        assertFalse(actions.stream().anyMatch(action -> "TORPEDO_STRIKE".equals(action.id)));
+        CampaignSystem.CampaignAction engage = actions.stream().filter(action -> "ENGAGE_CONTACT".equals(action.id)).findFirst().orElse(null);
+        assertNotNull(engage);
+        assertTrue(engage.enabled);
     }
 
     @Test

@@ -70,7 +70,7 @@ The visible HUD path must cover:
 - posture selection
 - support calls
 - hostile target tracking
-- torpedo, sortie, and atomic strike actions
+- tactical strike readiness and close-contact strike actions
 - confirmation flows for high-commitment actions
 
 ## Required Readout Coverage
@@ -82,7 +82,7 @@ The strategic HUD must clearly surface:
 - action availability and blocked reasons
 - distance and ETA where relevant
 - route cost / fuel / exposure preview where relevant
-- strike feasibility and retaliation risk where relevant
+- tactical strike readiness and retaliation risk where relevant
 - local site cost / risk / reward summary where relevant
 
 ## Current Priorities
@@ -90,7 +90,7 @@ The strategic HUD must clearly surface:
 1. standardize selected-object presentation
 2. improve preview quality before commitment
 3. reduce shortcut dependency further
-4. make strike and logistics constraints easier to read at a glance
+4. make tactical strike readiness and logistics constraints easier to read at a glance
 5. keep adding visible action paths wherever a shortcut still feels easier than the HUD
 
 ## Relationship To Other Docs
