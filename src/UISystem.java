@@ -280,6 +280,7 @@ public final class UISystem {
             clearManualCombatInputs(ctx);
             BattlefieldSectorSystem.ensureSelection(ctx);
             BattlefieldSectorSystem.ensureLoadedSector(ctx);
+            focusTacticalMapOnCurrentMission(ctx);
             ctx.state = GameState.MAP;
             AudioSystem.onUiOpen(ctx);
         } else {
@@ -1583,7 +1584,12 @@ public final class UISystem {
 
     public static void resetStrategicMapZoom(GameContext ctx) {
         if (ctx == null || ctx.ui == null) return;
-        applyStrategicMapZoom(ctx, CampaignSystem.isStrategicGalaxyMapMode(ctx) ? 2.2 : 1.0);
+        if (CampaignSystem.isStrategicOvermapMode(ctx)) {
+            applyStrategicMapZoom(ctx, 2.2);
+            return;
+        }
+        if (focusTacticalMapOnCurrentMission(ctx)) return;
+        applyStrategicMapZoom(ctx, 1.0);
     }
 
     private static void applyStrategicMapZoom(GameContext ctx, double zoom) {
@@ -1649,6 +1655,29 @@ public final class UISystem {
         double halfH = strategicMapViewHeight(ctx) * 0.5;
         ctx.ui.strategicMapFocusX = GameMath.clamp(x, halfW, Math.max(halfW, ctx.WORLD_W - halfW));
         ctx.ui.strategicMapFocusY = GameMath.clamp(y, halfH, Math.max(halfH, ctx.WORLD_H - halfH));
+    }
+
+    private static boolean focusTacticalMapOnCurrentMission(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !CampaignSystem.usesMissionSubzones(ctx)) {
+            return false;
+        }
+        int subzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        if (subzone < 0 && ctx.player != null) {
+            subzone = CampaignSystem.missionSubzoneForPoint(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector,
+                    ctx.player.x, ctx.player.y);
+        }
+        if (subzone < 0) return false;
+        double zoomForWidth = ctx.WORLD_W / Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.75);
+        double zoomForHeight = ctx.WORLD_H / Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.55);
+        ctx.ui.strategicMapZoom = MathUtil.clamp(Math.min(zoomForWidth, zoomForHeight), 1.65, 9.0);
+        double focusX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
+        double focusY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
+        if (ctx.player != null && Double.isFinite(ctx.player.x) && Double.isFinite(ctx.player.y)) {
+            focusX = (focusX + ctx.player.x) * 0.5;
+            focusY = (focusY + ctx.player.y) * 0.5;
+        }
+        focusStrategicMapAt(ctx, focusX, focusY);
+        return true;
     }
 
     private static void setStrategicMapFocusKeepingAnchor(GameContext ctx, double worldX, double worldY,

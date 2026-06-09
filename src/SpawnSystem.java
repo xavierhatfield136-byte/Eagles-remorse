@@ -1031,13 +1031,18 @@ public final class SpawnSystem {
         double startX = GameMath.clamp((ctx.WORLD_W - galleryW) * 0.5, 120.0, ctx.WORLD_W - 120.0 - galleryW);
         double startY = GameMath.clamp((ctx.WORLD_H - galleryH - 420.0) * 0.5, 180.0, ctx.WORLD_H - 180.0 - galleryH);
 
-        double playerX = GameMath.clamp(startX + galleryW * 0.5, 120.0, ctx.WORLD_W - 120.0);
+        double galleryCenterX = startX + galleryW * 0.5;
+        double galleryCenterY = startY + galleryH * 0.5;
+        double playerX = GameMath.clamp(galleryCenterX, 120.0, ctx.WORLD_W - 120.0);
         double playerY = GameMath.clamp(startY - 220.0, 120.0, ctx.WORLD_H - 120.0);
         ctx.player = new Player(ShipRole.FRIGATE, playerX, playerY);
         ctx.player.name = "Showcase Camera";
         ctx.player.vx = 0;
         ctx.player.vy = 0;
         ctx.player.angle = 0.0; // face right
+        ctx.zoom = 0.28;
+        ctx.cameraOffsetX = galleryCenterX - playerX;
+        ctx.cameraOffsetY = galleryCenterY - playerY;
         ctx.ships.add(ctx.player);
 
         double maxShowcaseY = playerY;

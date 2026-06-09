@@ -154,6 +154,7 @@ public final class ScreenshotRegressionHarness {
         if (ctx.campaign != null) {
             ctx.campaign.strategicOvermapMode = true;
             ctx.campaign.introSequenceActive = false;
+            ctx.campaign.missionIntroTimer = 0.0;
             ctx.campaign.sectorElapsed = Math.max(ctx.campaign.sectorElapsed, 45.0);
         }
         return ctx;
@@ -171,8 +172,7 @@ public final class ScreenshotRegressionHarness {
         ctx.ui.tacticalViewEnabled = true;
         ctx.ui.hudDetail = GameContext.HudDetail.FULL;
         if (ctx.player != null) {
-            ctx.camX = Math.max(0.0, ctx.player.x - VIEW_W * 0.5);
-            ctx.camY = Math.max(0.0, ctx.player.y - VIEW_H * 0.5);
+            CameraSystem.update(ctx, VIEW_W, VIEW_H);
             ctx.cursorWorldX = ctx.player.x + 180.0;
             ctx.cursorWorldY = ctx.player.y;
         }

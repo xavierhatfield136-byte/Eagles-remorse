@@ -82,6 +82,7 @@ public final class GameRenderSystem {
         double viewMinY = ctx.camY - cullPad;
         double viewMaxX = ctx.camX + CameraSystem.worldViewWidth(ctx, viewportW) + cullPad;
         double viewMaxY = ctx.camY + CameraSystem.worldViewHeight(ctx, viewportH) + cullPad;
+        FogOfWarSystem.State renderFog = FogOfWarSystem.isCombatFogEnabled(ctx) ? ctx.fogOfWar : null;
 
         // World space
         Graphics2D worldG = (Graphics2D) g2.create();
@@ -164,28 +165,28 @@ public final class GameRenderSystem {
         }
 
         if (!tacticalView) {
-            Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, ctx.fogOfWar,
+            Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, renderFog,
                     viewMinX, viewMinY, viewMaxX, viewMaxY, false);
         }
 
-        Faction perspective = (ctx.player == null) ? null : ctx.player.faction;
+        Faction perspective = (renderFog == null || ctx.player == null) ? null : ctx.player.faction;
         long shipRenderStart = System.nanoTime();
         ctx.perf.drawnShips = tacticalView
-                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective)
-                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective)
+                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
         ctx.perf.renderShipsMs = (System.nanoTime() - shipRenderStart) / 1_000_000.0;
         ctx.perf.shieldRenderMs = Renderer.frameShieldRenderMs();
         ctx.perf.drawnProjectiles = tacticalView
                 ? 0
-                : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+                : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
         ctx.perf.visibleSprites = ctx.perf.drawnShips + ctx.perf.drawnProjectiles + ctx.perf.drawnAsteroids
                 + ctx.perf.drawnSalvage + ctx.perf.drawnWreckChunks + ctx.perf.drawnVfx + ctx.perf.drawnExplosions;
         if (!tacticalView) {
             Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
-            Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar);
+            Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog);
 
             Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
-                    viewMinX, viewMinY, viewMaxX, viewMaxY, ctx.fogOfWar, perspective);
+                    viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
             if (CampaignSystem.isFleetHubSession(ctx)) {
                 drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
             }
@@ -694,6 +695,7 @@ if (DevTools.isDebugOverlay()) {
     }
 
     private static boolean hasLoadedRenderScope(GameContext ctx) {
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) return false;
         return BattlefieldSectorSystem.isEnabled(ctx) && !CampaignSystem.usesUnifiedMissionSpace(ctx);
     }
 

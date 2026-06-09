@@ -106,6 +106,24 @@ class StrategicMapWaypointSelectionTest {
     }
 
     @Test
+    void tacticalMissionMapDefaultsToLoadedPocketInsteadOfWholeWorld() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.introSequenceActive = false;
+
+        ctx.ui.mapOpen = true;
+        ctx.state = GameState.MAP;
+        UISystem.resetStrategicMapZoom(ctx);
+
+        assertTrue(ctx.ui.mapOpen);
+        assertTrue(UISystem.strategicMapZoom(ctx) > 1.5, "mission map should open closer than full-world scale");
+        double focusY = UISystem.strategicMapWorldMinY(ctx) + UISystem.strategicMapViewHeight(ctx) * 0.5;
+        assertEquals(ctx.player.y, focusY, CampaignSystem.missionSubzoneHeight(ctx) * 0.4);
+    }
+
+    @Test
     void unifiedMissionSpaceWarpsDirectlyToBaseWithoutStagingHop() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;

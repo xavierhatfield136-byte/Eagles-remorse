@@ -140,8 +140,8 @@ final class ShipPartLibrary {
             return new String[] {
                     roleKey + "_" + factionKey + "_damaged_part_" + idx,
                     roleKey + "_damaged_" + factionKey + "_part_" + idx,
-                    roleKey + "_damaged_part_" + idx,
                     "default_" + factionKey + "_damaged_part_" + idx,
+                    roleKey + "_damaged_part_" + idx,
                     "default_damaged_part_" + idx
             };
         }
@@ -149,13 +149,13 @@ final class ShipPartLibrary {
             return new String[] {
                     roleKey + "_" + factionKey + "_critical_part_" + idx,
                     roleKey + "_critical_" + factionKey + "_part_" + idx,
-                    roleKey + "_critical_part_" + idx,
                     "default_" + factionKey + "_critical_part_" + idx,
+                    roleKey + "_critical_part_" + idx,
                     "default_critical_part_" + idx,
                     roleKey + "_" + factionKey + "_damaged_part_" + idx,
                     roleKey + "_damaged_" + factionKey + "_part_" + idx,
-                    roleKey + "_damaged_part_" + idx,
                     "default_" + factionKey + "_damaged_part_" + idx,
+                    roleKey + "_damaged_part_" + idx,
                     "default_damaged_part_" + idx
             };
         }
@@ -165,28 +165,28 @@ final class ShipPartLibrary {
                     roleKey + "_" + factionKey + "_wreck_part_" + idx,
                     roleKey + "_destroyed_" + factionKey + "_part_" + idx,
                     roleKey + "_wreck_" + factionKey + "_part_" + idx,
-                    roleKey + "_destroyed_part_" + idx,
-                    roleKey + "_wreck_part_" + idx,
                     "default_" + factionKey + "_destroyed_part_" + idx,
                     "default_" + factionKey + "_wreck_part_" + idx,
+                    roleKey + "_destroyed_part_" + idx,
+                    roleKey + "_wreck_part_" + idx,
                     "default_destroyed_part_" + idx,
                     "default_wreck_part_" + idx,
                     roleKey + "_" + factionKey + "_critical_part_" + idx,
                     roleKey + "_critical_" + factionKey + "_part_" + idx,
-                    roleKey + "_critical_part_" + idx,
                     "default_" + factionKey + "_critical_part_" + idx,
+                    roleKey + "_critical_part_" + idx,
                     "default_critical_part_" + idx,
                     roleKey + "_" + factionKey + "_damaged_part_" + idx,
                     roleKey + "_damaged_" + factionKey + "_part_" + idx,
-                    roleKey + "_damaged_part_" + idx,
                     "default_" + factionKey + "_damaged_part_" + idx,
+                    roleKey + "_damaged_part_" + idx,
                     "default_damaged_part_" + idx
             };
         }
         return new String[] {
                 roleKey + "_" + factionKey + "_part_" + idx,
-                roleKey + "_part_" + idx,
                 "default_" + factionKey + "_part_" + idx,
+                roleKey + "_part_" + idx,
                 "default_part_" + idx
         };
     }

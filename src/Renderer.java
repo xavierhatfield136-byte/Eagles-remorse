@@ -4578,13 +4578,13 @@ public class Renderer {
 
     private static CombatHudPanelLayout combatHudPanelLayout(int viewW, int viewH, boolean includeCloak) {
         Rectangle coreMenu = getCoreMenuBarRect(viewW, viewH);
-        int beamW = 336;
-        int beamH = 150;
-        int missileW = 336;
-        int missileH = 166;
-        int cloakW = 336;
-        int cloakH = 124;
-        int gap = 14;
+        int beamW = Math.min(286, Math.max(236, viewW / 7));
+        int beamH = 118;
+        int missileW = beamW;
+        int missileH = 128;
+        int cloakW = beamW;
+        int cloakH = 104;
+        int gap = 10;
         int x = Math.max(14, viewW - beamW - 18);
         int totalH = beamH + gap + missileH + (includeCloak ? gap + cloakH : 0);
         int y = Math.max(18, coreMenu.y - totalH - 22);
@@ -4781,7 +4781,7 @@ public class Renderer {
     private static Rectangle combatStrikePanelRect(int viewW, int viewH, CombatHudPanelLayout layout) {
         if (layout == null) return new Rectangle(0, 0, 0, 0);
         int w = layout.beamRect.width;
-        int h = Math.max(110, (int) Math.round(layout.beamRect.height * 0.76));
+        int h = Math.max(88, (int) Math.round(layout.beamRect.height * 0.72));
         int x = Math.max(12, layout.beamRect.x - w - 12);
         int y = layout.beamRect.y;
         if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
@@ -5763,8 +5763,8 @@ public class Renderer {
                                                XrayStackLayout layout, int viewW, int viewH) {
         if (g2 == null || player == null) return;
 
-        int cardW = 220;
-        int cardH = 116;
+        int cardW = 194;
+        int cardH = player.isStealth ? 110 : 96;
         int margin = 12;
         int sideGap = 12;
 
@@ -8205,20 +8205,20 @@ public class Renderer {
         int targetY;
 
         if (targetVisible) {
-            int reservedVitalsW = 220;
+            int reservedVitalsW = 194;
             int outerMargin = 12;
             int sideGap = 12;
-            int centerGap = 18;
+            int centerGap = 14;
             int usableX = outerMargin + reservedVitalsW + sideGap;
             int usableW = viewW - (outerMargin + reservedVitalsW + sideGap) * 2;
-            if (usableW < 560) return null;
+            if (usableW < 500) return null;
 
-            int panelW = Math.max(270, Math.min(396, (usableW - centerGap) / 2));
+            int panelW = Math.max(240, Math.min(320, (usableW - centerGap) / 2));
             int totalW = panelW * 2 + centerGap;
             int playerX = usableX + Math.max(0, (usableW - totalW) / 2);
             int targetX = playerX + panelW + centerGap;
 
-            playerH = Math.max(166, Math.min(236, availableH - 12));
+            playerH = Math.max(144, Math.min(188, availableH - 12));
             targetH = playerH;
             panelY = menuTop - playerH - 8;
             playerY = panelY;
@@ -8228,9 +8228,9 @@ public class Renderer {
             return new XrayStackLayout(playerX, targetX, panelW, playerY, playerH, targetY, targetH, true);
         }
 
-        int panelW = Math.max(270, Math.min(396, menu.width - 170));
+        int panelW = Math.max(240, Math.min(320, menu.width - 170));
         int playerX = menu.x + (menu.width - panelW) / 2;
-        playerH = Math.max(170, Math.min(228, (int) Math.round(availableH * 0.58)));
+        playerH = Math.max(144, Math.min(186, (int) Math.round(availableH * 0.50)));
         playerY = menuTop - playerH - 8;
         if (playerY < 48) return null;
 
@@ -9585,7 +9585,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int drawGalaxyReceiverManualPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
         int h = 168;
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RECEIVER MANUAL");
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RECEIVER STATUS");
         int dialCx = x + 64;
         int dialCy = y + 82;
         int dialR = 34;
@@ -9643,15 +9643,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 new Color(118, 238, 220, 220), safeNavLine(lines, 3, "Sweep"));
         g2.setFont(new Font("Consolas", Font.PLAIN, 10));
         g2.setColor(new Color(210, 228, 242, 205));
-        g2.drawString(safeNavLine(lines, 2, "Pressure"), x + 12, y + 126);
-        drawGalaxyBoardLine(g2, x + 12, y + 139, width - 24, safeNavLine(lines, 4, "Posture"), new Color(198, 220, 236, 210));
-        g2.drawString(safeNavLine(lines, 5, "Enter Site"), x + width - 150, y + 126);
-        if (lines.size() > 6) {
-            drawGalaxyBoardLine(g2, x + 12, y + 154, width - 24, safeNavLine(lines, 6, "Route Vector"), new Color(198, 220, 236, 210));
-        }
-        if (lines.size() > 7) {
-            drawGalaxyBoardLine(g2, x + 12, y + 168, width - 24, safeNavLine(lines, 7, "Callout"), new Color(198, 220, 236, 210));
-        }
+        g2.drawString(fitShopText(g2.getFontMetrics(), safeNavLine(lines, 2, "Pressure"), width - 24), x + 12, y + 126);
+        drawGalaxyBoardLine(g2, x + 12, y + 140, width - 24, safeNavLine(lines, 4, "Modes"), new Color(198, 220, 236, 210));
+        drawGalaxyBoardLine(g2, x + 12, y + 154, width - 24, safeNavLine(lines, 5, "Relay"), new Color(198, 220, 236, 210));
+        drawGalaxyBoardLine(g2, x + 12, y + 168, width - 24, safeNavLine(lines, 7, "Enter Site"), new Color(198, 220, 236, 210));
         return y + h;
     }
 
@@ -9717,7 +9712,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (ctx == null || panelRect == null) return 248;
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
-        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        CampaignSystem.CampaignAction primary = galaxyPrimaryAction(ctx, actions);
         List<CampaignActionSection> sections = galaxyActionSections(actions, primary);
         int height = 50;
         if (primary != null) height += galaxyPrimaryActionHeight();
@@ -9832,11 +9827,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawGalaxyCommandActions(Graphics2D g2, GameContext ctx, Rectangle panelRect, int x, int y, int width, int maxBottomY) {
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
-        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        CampaignSystem.CampaignAction primary = galaxyPrimaryAction(ctx, actions);
         Rectangle contentRect = new Rectangle(x, y, width, Math.max(1, panelRect.height));
         int cursorY = y;
         Shape oldClip = g2.getClip();
         g2.setClip(x - 4, y - 4, width + 8, Math.max(1, maxBottomY - y + 8));
+        if (actions.isEmpty()) {
+            drawGalaxyNoActionsState(g2, x, y, width, maxBottomY - y);
+            g2.setClip(oldClip);
+            return;
+        }
         if (primary != null) {
             Rectangle primaryRect = galaxyPrimaryActionRect(contentRect, y);
             if (primaryRect.y + primaryRect.height <= maxBottomY) {
@@ -9866,7 +9866,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         EnumMap<CampaignSystem.CampaignActionCategory, ArrayList<CampaignSystem.CampaignAction>> grouped =
                 new EnumMap<>(CampaignSystem.CampaignActionCategory.class);
         for (CampaignSystem.CampaignAction action : actions) {
-            if (action == null || action == primary) continue;
+            if (action == null || sameCampaignAction(action, primary)) continue;
             grouped.computeIfAbsent(action.category, ignored -> new ArrayList<>()).add(action);
         }
         ArrayList<CampaignActionSection> out = new ArrayList<>();
@@ -9885,6 +9885,20 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             out.add(new CampaignActionSection(category, galaxyActionSectionLabel(category), sectionActions));
         }
         return out;
+    }
+
+    private static void drawGalaxyNoActionsState(Graphics2D g2, int x, int y, int width, int height) {
+        int h = Math.max(44, Math.min(72, height));
+        g2.setColor(new Color(10, 16, 24, 126));
+        g2.fillRoundRect(x, y, width, h, 12, 12);
+        g2.setColor(new Color(144, 176, 198, 78));
+        g2.drawRoundRect(x, y, width, h, 12, 12);
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(204, 222, 236, 178));
+        g2.drawString("NO ACTIVE COMMANDS", x + 14, y + 22);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(188, 206, 220, 150));
+        g2.drawString("Select a contact, plot a route, or change tabs.", x + 14, y + 40);
     }
 
     private static String galaxyActionSectionLabel(CampaignSystem.CampaignActionCategory category) {
@@ -10260,8 +10274,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawGalaxyMeter(Graphics2D g2, int x, int y, int width, String label, double frac, Color accent, String value) {
         g2.setFont(new Font("Consolas", Font.BOLD, 11));
         g2.setColor(new Color(220, 230, 240, 210));
+        FontMetrics fm = g2.getFontMetrics();
+        String safeValue = value == null ? "" : value;
+        String displayValue = fitShopText(fm, safeValue, Math.max(24, width - fm.stringWidth(label) - 10));
         g2.drawString(label, x, y);
-        g2.drawString(value, x + width - Math.max(40, g2.getFontMetrics().stringWidth(value)), y);
+        g2.drawString(displayValue, x + width - Math.max(40, fm.stringWidth(displayValue)), y);
         int barY = y + 6;
         g2.setColor(new Color(18, 18, 18, 150));
         g2.fillRoundRect(x, barY, width, 10, 8, 8);
@@ -10375,7 +10392,32 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static List<CampaignSystem.CampaignAction> galaxyCommandActions(GameContext ctx) {
-        return CampaignSystem.campaignVisibleActions(ctx);
+        ArrayList<CampaignSystem.CampaignAction> out = new ArrayList<>();
+        for (CampaignSystem.CampaignAction action : CampaignSystem.campaignVisibleActions(ctx)) {
+            if (action != null && action.enabled) out.add(action);
+        }
+        return out;
+    }
+
+    private static CampaignSystem.CampaignAction galaxyPrimaryAction(GameContext ctx,
+                                                                     List<CampaignSystem.CampaignAction> actions) {
+        if (actions == null || actions.isEmpty()) return null;
+        CampaignSystem.CampaignAction requested = CampaignSystem.campaignPrimaryAction(ctx);
+        if (requested != null && requested.enabled) {
+            for (CampaignSystem.CampaignAction action : actions) {
+                if (sameCampaignAction(action, requested)) return action;
+            }
+        }
+        for (CampaignSystem.CampaignAction action : actions) {
+            if (action != null && action.primary) return action;
+        }
+        return actions.get(0);
+    }
+
+    private static boolean sameCampaignAction(CampaignSystem.CampaignAction left,
+                                              CampaignSystem.CampaignAction right) {
+        if (left == null || right == null || left.id == null || right.id == null) return false;
+        return left.id.equalsIgnoreCase(right.id);
     }
 
     private static int drawGalaxySidebarSection(Graphics2D g2, int x, int y, int width, String header,
@@ -10745,7 +10787,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (panelRect == null || actionId == null || actionId.isBlank()) return null;
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         List<CampaignSystem.CampaignAction> actions = galaxyCommandActions(ctx);
-        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        CampaignSystem.CampaignAction primary = galaxyPrimaryAction(ctx, actions);
         int actionBlockH = galaxyActionBlockHeight(ctx, panelRect);
         int baseY = inner.y + inner.height - actionBlockH + 24;
         if (primary != null && actionId.equals(primary.id)) {
@@ -12972,7 +13014,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawStationUpgradeModules(g, ship, hullArea);
             boolean hasAuxLayers = skinSet.panel != null || skinSet.ao != null
                     || skinSet.emissive != null || skinSet.damage != null;
-            if (!hasAuxLayers) return;
 
             Shape oldClip = g.getClip();
             if (hullArea != null) {
@@ -12985,21 +13026,23 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 }
             }
 
-            drawSkinLayer(g, skinSet.panel, sx, sy, sw, sh, 0.46f);
-            drawSkinLayer(g, skinSet.ao, sx, sy, sw, sh, 0.50f);
+            if (hasAuxLayers) {
+                drawSkinLayer(g, skinSet.panel, sx, sy, sw, sh, 0.46f);
+                drawSkinLayer(g, skinSet.ao, sx, sy, sw, sh, 0.50f);
 
-            if (skinSet.damage != null && ship.hpMax > 0) {
-                double damageFrac = Math.max(0.0, Math.min(1.0, 1.0 - ship.hp / (double) ship.hpMax));
-                float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
-                if (damageAlpha > 0.16f) {
-                    drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha);
-                    if (damageFrac > 0.50) drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha * 0.36f);
+                if (skinSet.damage != null && ship.hpMax > 0) {
+                    double damageFrac = Math.max(0.0, Math.min(1.0, 1.0 - ship.hp / (double) ship.hpMax));
+                    float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
+                    if (damageAlpha > 0.16f) {
+                        drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha);
+                        if (damageFrac > 0.50) drawSkinLayer(g, skinSet.damage, sx, sy, sw, sh, damageAlpha * 0.36f);
+                    }
                 }
-            }
 
-            if (skinSet.emissive != null) {
-                drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.50f);
-                drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.17f);
+                if (skinSet.emissive != null) {
+                    drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.50f);
+                    drawSkinLayer(g, skinSet.emissive, sx, sy, sw, sh, 0.17f);
+                }
             }
 
             applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
@@ -13533,10 +13576,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             img = loadRoleSkin(roleKey + "_" + factionKey + layerSuffix);
             if (img != null) return img;
 
-            img = loadRoleSkin(roleKey + layerSuffix);
+            img = loadRoleSkin("default_" + factionKey + layerSuffix);
             if (img != null) return img;
 
-            img = loadRoleSkin("default_" + factionKey + layerSuffix);
+            img = loadRoleSkin(roleKey + layerSuffix);
             if (img != null) return img;
 
             img = loadRoleSkin("default" + layerSuffix);
@@ -13550,10 +13593,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             img = loadRoleSkin(roleKey + "_" + factionKey);
             if (img != null) return img;
 
-            img = loadRoleSkin(roleKey);
+            img = loadRoleSkin("default_" + factionKey);
             if (img != null) return img;
 
-            img = loadRoleSkin("default_" + factionKey);
+            img = loadRoleSkin(roleKey);
             if (img != null) return img;
 
             return loadRoleSkin("default");

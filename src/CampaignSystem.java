@@ -3257,13 +3257,17 @@ public final class CampaignSystem {
         if (out == null) return;
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Available Actions: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Support: ")) {}
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Route: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Battle Reason: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Hub Safety: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Danger Trend: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Gain: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "If Ignored: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Contact State: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Scar: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Site Memory: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Known Contact: ")) {}
+        while (out.size() > 15 && removeLastSidebarLineNotStartingWith(out,
+                "Route: ", "Route State: ", "Region Note: ")) {}
         while (out.size() > 15) out.remove(out.size() - 1);
     }
 
@@ -3272,6 +3276,27 @@ public final class CampaignSystem {
         for (int i = 0; i < out.size(); i++) {
             String line = out.get(i);
             if (line != null && line.startsWith(prefix)) {
+                out.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean removeLastSidebarLineNotStartingWith(ArrayList<String> out, String... protectedPrefixes) {
+        if (out == null || out.isEmpty()) return false;
+        for (int i = out.size() - 1; i >= 0; i--) {
+            String line = out.get(i);
+            boolean protectedLine = false;
+            if (line != null && protectedPrefixes != null) {
+                for (String prefix : protectedPrefixes) {
+                    if (prefix != null && line.startsWith(prefix)) {
+                        protectedLine = true;
+                        break;
+                    }
+                }
+            }
+            if (!protectedLine) {
                 out.remove(i);
                 return true;
             }
@@ -4141,8 +4166,24 @@ public final class CampaignSystem {
                     actionCtx -> {
                         if (hasSelectedCampaignContactTarget(actionCtx)) {
                             selectCampaignFreeTravelTarget(actionCtx, actionCtx.ui.selectedCampaignContactX, actionCtx.ui.selectedCampaignContactY);
+                            UISystem.addPing(actionCtx, actionCtx.ui.selectedCampaignContactX, actionCtx.ui.selectedCampaignContactY, 2.1);
+                            EventSystem.showBanner(actionCtx,
+                                    "COURSE PLOTTED: " + selectedCampaignContactLabel(actionCtx).toUpperCase(Locale.US), 1.2);
+                            return true;
                         }
-                        return true;
+                        CampaignLocation actionLocation = selectedCampaignLocation(actionCtx);
+                        if (actionLocation != null) {
+                            UISystem.addPing(actionCtx, actionLocation.x, actionLocation.y, 2.1);
+                            EventSystem.showBanner(actionCtx,
+                                    "COURSE PLOTTED: " + actionLocation.name.toUpperCase(Locale.US), 1.2);
+                            return true;
+                        }
+                        if (hasSelectedFreeTravelTarget(actionCtx)) {
+                            UISystem.addPing(actionCtx, selectedFreeTravelTargetX(actionCtx), selectedFreeTravelTargetY(actionCtx), 2.1);
+                            EventSystem.showBanner(actionCtx, "FREE-SPACE COURSE PLOTTED", 1.2);
+                            return true;
+                        }
+                        return false;
                     }));
             out.add(action("ENGAGE_COURSE",
                     "ENGAGE COURSE",
@@ -4183,15 +4224,19 @@ public final class CampaignSystem {
                         if (actionCtx == null || actionCtx.ui == null) return false;
                         if (hasSelectedCampaignContactTarget(actionCtx)) {
                             UISystem.addPing(actionCtx, actionCtx.ui.selectedCampaignContactX, actionCtx.ui.selectedCampaignContactY, 2.2);
+                            EventSystem.showBanner(actionCtx,
+                                    "WAYPOINT MARKED: " + selectedCampaignContactLabel(actionCtx).toUpperCase(Locale.US), 1.1);
                             return true;
                         }
                         CampaignLocation loc = selectedCampaignLocation(actionCtx);
                         if (loc != null) {
                             UISystem.addPing(actionCtx, loc.x, loc.y, 2.2);
+                            EventSystem.showBanner(actionCtx, "WAYPOINT MARKED: " + loc.name.toUpperCase(Locale.US), 1.1);
                             return true;
                         }
                         if (hasSelectedFreeTravelTarget(actionCtx)) {
                             UISystem.addPing(actionCtx, selectedFreeTravelTargetX(actionCtx), selectedFreeTravelTargetY(actionCtx), 2.2);
+                            EventSystem.showBanner(actionCtx, "FREE-SPACE WAYPOINT MARKED", 1.1);
                             return true;
                         }
                         return false;
@@ -5660,7 +5705,7 @@ public final class CampaignSystem {
         out.add("Exposure: " + campaignExposureReadout(ctx));
         out.add("Pressure Band: " + enemyAlertRegionReadout(ctx));
         out.add("Sweep Window: " + sweepWindowReadout(ctx));
-        out.add("Sensor Modes: Broad sweep | Focus lock | Traffic audit | Relay drone | Scout surge");
+        out.add("Modes: Broad | Focus | Audit | Relay | Surge");
         out.add("Relay Coverage: " + st.sensorRelayNodes.size() + " active nodes");
         out.add(routeDangerTrendLine(ctx, selected));
         out.add("Enter Site: " + (canEnterSelectedLocalEncounter(ctx) ? "READY" : "NO LOCAL CONTACT"));
@@ -24654,7 +24699,7 @@ public final class CampaignSystem {
         int middle = rows / 2;
         int clamped = Math.max(0, Math.min(rows - 1, originalRow));
         if (clamped == middle) return 0.0;
-        double offset = Math.max(300.0, missionLayout(ctx).subzoneHeight * 0.20);
+        double offset = Math.max(180.0, missionLayout(ctx).subzoneHeight * 0.12);
         return (clamped - middle) * offset;
     }
 
