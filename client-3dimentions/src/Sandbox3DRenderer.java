@@ -11,6 +11,7 @@ import java.util.List;
 final class Sandbox3DRenderer {
     private static final int SHIELD_RING_MIN_SCREEN_SIZE = 14;
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
+    private static final Sandbox3DModelLibrary MODEL_LIBRARY = Sandbox3DModelLibrary.discoverDefault();
 
     private Sandbox3DRenderer() {}
 
@@ -35,6 +36,32 @@ final class Sandbox3DRenderer {
         DrawOp(double depth, Runnable draw) {
             this.depth = depth;
             this.draw = draw;
+        }
+    }
+
+    private static final class ModelTriOp {
+        final double depth;
+        final int[] xs;
+        final int[] ys;
+        final Color fill;
+
+        ModelTriOp(double depth, int[] xs, int[] ys, Color fill) {
+            this.depth = depth;
+            this.xs = xs;
+            this.ys = ys;
+            this.fill = fill;
+        }
+    }
+
+    private static final class Vertex {
+        final int x;
+        final int y;
+        final double depth;
+
+        Vertex(int x, int y, double depth) {
+            this.x = x;
+            this.y = y;
+            this.depth = depth;
         }
     }
 
@@ -129,11 +156,12 @@ final class Sandbox3DRenderer {
             Proj p = project(ctx, w, h, s.x, s.y, shipAltitude(s), cameraTilt, cameraZoom);
             if (p == null) continue;
 
-            out.add(new DrawOp(p.depth, () -> drawShip(ctx, g2, s, p)));
+            out.add(new DrawOp(p.depth, () -> drawShip(ctx, g2, w, h, s, p, cameraTilt, cameraZoom)));
         }
     }
 
-    private static void drawShip(GameContext ctx, Graphics2D g2, Ship s, Proj p) {
+    private static void drawShip(GameContext ctx, Graphics2D g2, int w, int h, Ship s, Proj p,
+                                 double cameraTilt, double cameraZoom) {
         int size = (int) Math.max(5, Math.round((s.radius * 0.32 + 4.0) * p.scale));
         int sx = (int) Math.round(p.x);
         int sy = (int) Math.round(p.y);
@@ -141,27 +169,16 @@ final class Sandbox3DRenderer {
         g2.setColor(new Color(0, 0, 0, 80));
         g2.fillOval(sx - size, sy + size / 2, size * 2, Math.max(3, size / 2));
 
-        double ang = s.angle;
-        double cos = Math.cos(ang);
-        double sin = Math.sin(ang);
-
-        int fx = sx + (int) Math.round(cos * size * 1.45);
-        int fy = sy + (int) Math.round(sin * size * 1.45);
-        int lx = sx + (int) Math.round(Math.cos(ang + 2.36) * size);
-        int ly = sy + (int) Math.round(Math.sin(ang + 2.36) * size);
-        int rx = sx + (int) Math.round(Math.cos(ang - 2.36) * size);
-        int ry = sy + (int) Math.round(Math.sin(ang - 2.36) * size);
-
-        Path2D hull = new Path2D.Double();
-        hull.moveTo(fx, fy);
-        hull.lineTo(lx, ly);
-        hull.lineTo(rx, ry);
-        hull.closePath();
-
-        g2.setColor(colorForFaction(s.faction));
-        g2.fill(hull);
-        g2.setColor(new Color(240, 245, 255, 170));
-        g2.draw(hull);
+        GlbModel model = MODEL_LIBRARY.modelFor(s.role, s.faction);
+        if (model != null && model.isRenderable()) {
+            drawGlbShip(ctx, g2, w, h, s, model, cameraTilt, cameraZoom, p.scale);
+        } else {
+            drawFallbackShip(g2, s, sx, sy, size);
+            if (model != null && model.issue != null) {
+                g2.setColor(new Color(255, 180, 90, 180));
+                g2.drawString("GLB review", sx + size + 5, sy + 4);
+            }
+        }
 
         // Health sliver
         int barW = Math.max(10, size * 2);
@@ -183,6 +200,91 @@ final class Sandbox3DRenderer {
             g2.setColor(new Color(255, 255, 255, 120));
             g2.drawOval(sx - size - 6, sy - size - 6, size * 2 + 12, size * 2 + 12);
         }
+    }
+
+    private static void drawFallbackShip(Graphics2D g2, Ship s, int sx, int sy, int size) {
+        double ang = s.angle;
+        double cos = Math.cos(ang);
+        double sin = Math.sin(ang);
+
+        int fx = sx + (int) Math.round(cos * size * 1.45);
+        int fy = sy + (int) Math.round(sin * size * 1.45);
+        int lx = sx + (int) Math.round(Math.cos(ang + 2.36) * size);
+        int ly = sy + (int) Math.round(Math.sin(ang + 2.36) * size);
+        int rx = sx + (int) Math.round(Math.cos(ang - 2.36) * size);
+        int ry = sy + (int) Math.round(Math.sin(ang - 2.36) * size);
+
+        Path2D hull = new Path2D.Double();
+        hull.moveTo(fx, fy);
+        hull.lineTo(lx, ly);
+        hull.lineTo(rx, ry);
+        hull.closePath();
+
+        g2.setColor(colorForFaction(s.faction));
+        g2.fill(hull);
+        g2.setColor(new Color(240, 245, 255, 170));
+        g2.draw(hull);
+    }
+
+    private static void drawGlbShip(GameContext ctx, Graphics2D g2, int w, int h, Ship ship, GlbModel model,
+                                    double cameraTilt, double cameraZoom, double projectedScale) {
+        double size = Math.max(10.0, ship.radius * 0.70) * projectedScale;
+        if (ship.role != null && ship.role.isTitanOrMothership()) size *= 1.18;
+        if (ship.role == ShipRole.FIGHTER || ship.role == ShipRole.DRONE) size *= 0.82;
+
+        double cos = Math.cos(ship.angle);
+        double sin = Math.sin(ship.angle);
+        Color base = colorForFaction(ship.faction);
+        List<ModelTriOp> ops = new ArrayList<>(model.triangles.size());
+
+        for (GlbModel.Triangle tri : model.triangles) {
+            Vertex a = transformModelVertex(ctx, w, h, ship, tri.a, size, cos, sin, cameraTilt, cameraZoom);
+            Vertex b = transformModelVertex(ctx, w, h, ship, tri.b, size, cos, sin, cameraTilt, cameraZoom);
+            Vertex c = transformModelVertex(ctx, w, h, ship, tri.c, size, cos, sin, cameraTilt, cameraZoom);
+            if (a == null || b == null || c == null) continue;
+
+            double brightness = GameMath.clamp(0.56 + tri.avgZ * 0.30, 0.32, 1.0);
+            Color fill = shade(base, brightness, 205);
+            ops.add(new ModelTriOp(
+                    (a.depth + b.depth + c.depth) / 3.0,
+                    new int[]{a.x, b.x, c.x},
+                    new int[]{a.y, b.y, c.y},
+                    fill));
+        }
+
+        ops.sort(Comparator.comparingDouble(o -> o.depth));
+        for (ModelTriOp op : ops) {
+            g2.setColor(op.fill);
+            g2.fillPolygon(op.xs, op.ys, 3);
+        }
+        if (!ops.isEmpty()) {
+            g2.setColor(new Color(235, 245, 255, 96));
+            int stride = Math.max(1, ops.size() / 110);
+            for (int i = 0; i < ops.size(); i += stride) {
+                ModelTriOp op = ops.get(i);
+                g2.drawPolygon(op.xs, op.ys, 3);
+            }
+        }
+    }
+
+    private static Vertex transformModelVertex(GameContext ctx, int w, int h, Ship ship, double[] v, double size,
+                                               double cos, double sin, double cameraTilt, double cameraZoom) {
+        // Most generated ships are longest along local X; rotate local X/Y into the 2D battle plane.
+        double localX = v[0] * size;
+        double localY = v[1] * size * 0.54;
+        double localZ = v[2] * size * 0.72;
+        double wx = ship.x + localX * cos - localY * sin;
+        double wy = ship.y + localX * sin + localY * cos;
+        Proj p = project(ctx, w, h, wx, wy, shipAltitude(ship) + localZ, cameraTilt, cameraZoom);
+        if (p == null) return null;
+        return new Vertex((int) Math.round(p.x), (int) Math.round(p.y), p.depth);
+    }
+
+    private static Color shade(Color base, double mul, int alpha) {
+        int r = (int) GameMath.clamp(base.getRed() * mul, 0, 255);
+        int g = (int) GameMath.clamp(base.getGreen() * mul, 0, 255);
+        int b = (int) GameMath.clamp(base.getBlue() * mul, 0, 255);
+        return new Color(r, g, b, alpha);
     }
 
     private static void drawShieldRing(Graphics2D g2, Ship ship, int sx, int sy, int size, double effectiveShieldMax) {
@@ -335,7 +437,11 @@ final class Sandbox3DRenderer {
                 "FPS %.1f  CREDITS %d  ORE x%.2f  TILT %.2f  ZOOM %.2f",
                 ctx.perf.fps, ctx.credits, CampaignSystem.oreCreditMul(ctx), cameraTilt, cameraZoom);
         int rw = g2.getFontMetrics().stringWidth(right);
-        g2.drawString(right, Math.max(24, w - rw - 24), 72);
+        g2.drawString(right, Math.max(24, w - rw - 24), 32);
+
+        String models = MODEL_LIBRARY.summary();
+        g2.setColor(new Color(150, 230, 210, 215));
+        g2.drawString(models, 24, 72);
 
         if (ctx.eventBannerT > 0 && ctx.eventBanner != null && !ctx.eventBanner.isBlank()) {
             g2.setFont(new Font("Consolas", Font.BOLD, 18));

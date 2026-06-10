@@ -4,6 +4,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const app = document.getElementById("app");
 
+const hud = document.querySelector(".hud");
+if (hud) hud.innerHTML = "Loading dropoff models...";
+
 const statusEl = document.createElement("div");
 statusEl.style.position = "fixed";
 statusEl.style.right = "12px";
@@ -15,69 +18,72 @@ statusEl.style.borderRadius = "8px";
 statusEl.style.color = "#dbe6ff";
 statusEl.style.font = "12px Segoe UI, Tahoma, sans-serif";
 statusEl.style.whiteSpace = "pre-line";
-statusEl.textContent = "Loading ships...";
+statusEl.textContent = "Loading...";
 document.body.appendChild(statusEl);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = false;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x02050b);
-scene.fog = new THREE.Fog(0x030711, 120, 900);
+scene.fog = new THREE.Fog(0x030711, 180, 1800);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
-camera.position.set(14, 9, 20);
+const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 5000);
+camera.position.set(-58, 34, 0);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.enabled = false;
 controls.target.set(0, 2, 0);
 
-scene.add(new THREE.AmbientLight(0xa8c9ff, 0.52));
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.05);
-keyLight.position.set(16, 22, 8);
+scene.add(new THREE.AmbientLight(0xa8c9ff, 0.72));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.25);
+keyLight.position.set(36, 48, 20);
 scene.add(keyLight);
-const rimLight = new THREE.DirectionalLight(0x4f9bff, 0.7);
-rimLight.position.set(-18, 8, -16);
+const rimLight = new THREE.DirectionalLight(0x4f9bff, 0.9);
+rimLight.position.set(-42, 18, -34);
 scene.add(rimLight);
+scene.add(new THREE.HemisphereLight(0x6d8fbd, 0x05070d, 0.58));
 
-const hemi = new THREE.HemisphereLight(0x6d8fbd, 0x05070d, 0.45);
-scene.add(hemi);
-
-const grid = new THREE.GridHelper(200, 120, 0x4a658f, 0x1f2f43);
-grid.position.y = -0.03;
+const grid = new THREE.GridHelper(800, 120, 0x4a658f, 0x162339);
+grid.position.y = -0.05;
 scene.add(grid);
 
-const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(120, 160),
-  new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.96, metalness: 0.02 })
+const arena = new THREE.Mesh(
+  new THREE.RingGeometry(195, 198, 192),
+  new THREE.MeshBasicMaterial({ color: 0xd6af38, transparent: true, opacity: 0.32, side: THREE.DoubleSide })
 );
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.04;
-scene.add(ground);
+arena.rotation.x = -Math.PI / 2;
+scene.add(arena);
 
 const stars = createStars();
 scene.add(stars);
 
-const asteroid = createAsteroid();
-asteroid.position.set(10, 2.1, -6);
-scene.add(asteroid);
-
-const asteroid2 = createAsteroid(1.2);
-asteroid2.position.set(-15, 3.4, 4);
-scene.add(asteroid2);
-
 const loader = new GLTFLoader();
+const modelEntries = [];
+const modelCache = new Map();
 const ships = [];
-let activeShip = null;
-let activeIndex = 0;
-let activeHardpoints = [];
 const projectiles = [];
+const effects = [];
+const props = [];
+
 const SHIP_FORWARD = new THREE.Vector3(1, 0, 0);
-const SHIP_UP = new THREE.Vector3(0, 1, 0);
-let hudNote = "Loading ships...";
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const clock = new THREE.Clock();
+const arenaRadius = 185;
+
+let playerShip = null;
+let activeBlueIndex = 0;
+let followCamera = true;
+let paused = false;
+let cinematic = false;
+let waveTimer = 3.0;
+let waveNumber = 0;
+let hudNote = "Loading models...";
 let hudNoteT = 0;
 
 const keyState = {
@@ -85,94 +91,271 @@ const keyState = {
   back: false,
   left: false,
   right: false,
-  up: false,
-  down: false,
   boost: false,
   firing: false
 };
 
-const flight = {
-  enabled: false,
-  yaw: 0,
-  pitch: 0,
-  velocity: new THREE.Vector3(),
-  mouseSensitivity: 0.002,
-  accel: 25,
-  maxSpeed: 32,
-  damping: 0.92,
-  boostMult: 2.2
-};
+init();
 
-const weaponConfig = {
-  projectileSpeed: 140,
-  projectileRadius: 0.09,
-  projectileDamage: 16,
-  projectileTtl: 2.1
-};
-
-const clock = new THREE.Clock();
-
-Promise.all([
-  loadShip("./public/models/ship.glb", new THREE.Vector3(0, 0, 0), "Blue Ship"),
-  loadShip("./public/models/ship-red.glb", new THREE.Vector3(22, 0, -10), "Red Ship")
-])
-  .then(() => {
-    setActiveShip(0);
-    hudNote = "Ships loaded (1/2 swap, F refocus, X flight mode, N reset)";
-    hudNoteT = 5.0;
-  })
-  .catch((err) => {
+async function init() {
+  try {
+    await loadManifest();
+    createEnvironmentProps();
+    await spawnMothershipSandbox();
+    hudNote = "Mothership sandbox ready";
+    hudNoteT = 3;
+  } catch (err) {
     console.error(err);
-    hudNote = "One or more ships failed to load (check console)";
-    hudNoteT = 8.0;
+    hudNote = "Failed to initialize sandbox. Check console.";
+    hudNoteT = 10;
+  }
+}
+
+async function loadManifest() {
+  let manifest = [];
+  try {
+    const res = await fetch("./public/models/dropoff-manifest.json", { cache: "no-store" });
+    if (res.ok) manifest = await res.json();
+  } catch (err) {
+    console.warn("Dropoff manifest unavailable, using legacy models.", err);
+  }
+
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    manifest = [
+      { name: "ship.glb", url: "./public/models/ship.glb" },
+      { name: "ship-red.glb", url: "./public/models/ship-red.glb" }
+    ];
+  }
+
+  modelEntries.length = 0;
+  for (const entry of manifest) {
+    if (!entry || !entry.name || !entry.url) continue;
+    modelEntries.push({
+      name: entry.name,
+      url: entry.url,
+      key: normalizeName(entry.name),
+      bytes: entry.bytes || 0
+    });
+  }
+}
+
+async function spawnMothershipSandbox() {
+  clearSandbox();
+  waveTimer = 3.0;
+  waveNumber = 0;
+
+  playerShip = await addShip({
+    name: "Blue Mothership",
+    teamId: 0,
+    model: await loadModel(["blue", "mothership"]),
+    position: new THREE.Vector3(0, 0, 0),
+    targetSize: 34,
+    hp: 3600,
+    speed: 18,
+    turnRate: 0.62,
+    weaponRange: 130,
+    projectileSpeed: 155,
+    damage: 22,
+    fireRate: 0.095,
+    playerControlled: true
   });
+  playerShip.pivot.rotation.y = 0;
 
-function loadShip(path, spawnPos, name) {
-  return new Promise((resolve, reject) => {
-    loader.load(
-      path,
-      (gltf) => {
-        const shipRoot = gltf.scene;
-        const shipPivot = new THREE.Group();
-        shipPivot.name = name;
-        shipPivot.add(shipRoot);
-        scene.add(shipPivot);
+  const escortSpecs = [
+    ["Blue Battlecruiser", ["blue", "battlecruiser"], -34, -18, 16, 780, 28, 0.95, 95],
+    ["Blue Battleship", ["blue", "battleship"], -46, 22, 18, 980, 24, 0.82, 105],
+    ["Blue Dreadnought", ["blue", "dreadnaught"], -62, 0, 18, 1100, 22, 0.75, 110],
+    ["Blue Supership", ["blue", "supership"], -82, 34, 17, 980, 22, 0.78, 105],
+    ["Blue Carrier", ["blue", "carrier"], -76, -34, 16, 740, 24, 0.78, 105],
+    ["Blue Drone Carrier", ["blue", "drone", "carrier"], -104, -12, 15, 680, 26, 0.9, 95],
+    ["Blue Transport Titan", ["blue", "transport", "titan"], -120, 32, 22, 1450, 18, 0.55, 110],
+    ["Blue Carrier Titan", ["blue", "carrier", "titan"], -126, -42, 22, 1500, 18, 0.55, 110],
+    ["Blue Command Titan", ["blue", "command", "intel"], -152, 0, 24, 1750, 16, 0.45, 125],
+    ["Blue Bulwark Titan", ["bulwark"], -164, 46, 24, 1900, 15, 0.42, 120],
+    ["Blue Cruiser", ["blue", "cruiser"], -22, 42, 12, 440, 34, 1.2, 78],
+    ["Blue Missile Boat", ["blue", "missile", "boat"], -16, -44, 9, 260, 42, 1.45, 105],
+    ["Blue Frigate", ["blue", "frigate"], -44, -52, 9, 290, 44, 1.5, 70],
+    ["Blue CIWS Frigate", ["blue", "ciws", "frigate"], -48, 54, 9, 310, 42, 1.5, 70],
+    ["Blue CIWS Corvette", ["blue", "ciws", "corvette"], -70, -58, 7, 210, 48, 1.7, 62],
+    ["Blue Picket", ["blue", "picket"], 16, -56, 6, 140, 62, 2.0, 58],
+    ["Blue Patrol", ["blue", "patrol"], 18, 54, 6, 140, 62, 2.0, 58],
+    ["Blue Stealth", ["blue", "stealth"], 36, -46, 7, 160, 64, 2.05, 70],
+    ["Blue Transport", ["blue", "transport"], 42, 44, 8, 230, 36, 1.2, 58],
+    ["Blue Hauler", ["blue", "hauler"], 62, 24, 7, 190, 34, 1.1, 55],
+    ["Blue Miner", ["blue", "miner"], 62, -24, 7, 170, 34, 1.1, 52]
+  ];
 
-        normalizeModel(shipRoot, 9.0);
-        orientShipModel(shipRoot, shipPivot);
-        shipPivot.position.copy(spawnPos);
+  for (const spec of escortSpecs) {
+    const [name, terms, forward, side, size, hp, speed, turnRate, range] = spec;
+    const model = await loadModelAny([terms, terms.includes("frigate") ? ["frigate"] : terms]);
+    const ship = await addShip({
+      name,
+      teamId: 0,
+      model,
+      position: formationPoint(playerShip, forward, side),
+      targetSize: size,
+      hp,
+      speed,
+      turnRate,
+      weaponRange: range,
+      projectileSpeed: 140,
+      damage: Math.max(8, size * 1.1),
+      fireRate: Math.max(0.11, 0.36 - size * 0.006),
+      formationForward: forward,
+      formationSide: side
+    });
+    ship.pivot.rotation.y = playerShip.pivot.rotation.y;
+  }
 
-        const bounds = shipBoundsInPivotSpace(shipRoot, shipPivot);
-        const hardpoints = createHardpoints(shipPivot, bounds);
-        const thrusters = createThrusters(shipPivot, bounds);
-        const teamId = /red/i.test(name) ? 1 : 0;
-        const radius = Math.max(1.1, bounds.size.length() * 0.16);
-        const maxHp = teamId === 1 ? 180 : 220;
+  for (let i = 0; i < 5; i++) {
+    await addEscortCraft(`Blue Fighter ${i + 1}`, ["blue", "fighter"], 28 + i * 5, -30 + i * 15, 4.8);
+  }
+  for (let i = 0; i < 3; i++) {
+    await addEscortCraft(`Blue Bomber ${i + 1}`, ["blue", "bomber"], 56 + i * 7, -48 + i * 48, 5.6);
+  }
+  for (let i = 0; i < 4; i++) {
+    await addEscortCraft(`Blue Drone ${i + 1}`, ["blue", "drone"], 82 + i * 5, -34 + i * 22, 4.2);
+  }
 
-        const ship = {
-          name,
-          root: shipRoot,
-          pivot: shipPivot,
-          teamId,
-          radius,
-          maxHp,
-          hp: maxHp,
-          alive: true,
-          spawnPos: spawnPos.clone(),
-          spawnQuat: shipPivot.quaternion.clone(),
-          spawnRootQuat: shipRoot.quaternion.clone(),
-          hardpoints,
-          thrusters,
-          fireCooldown: 0,
-          fireRate: 0.1
-        };
+  activeBlueIndex = ships.indexOf(playerShip);
+  setPlayerShip(playerShip);
+}
 
-        ships.push(ship);
-        resolve(ship);
-      },
-      undefined,
-      reject
-    );
+async function addEscortCraft(name, terms, forward, side, size) {
+  const ship = await addShip({
+    name,
+    teamId: 0,
+    model: await loadModel(terms),
+    position: formationPoint(playerShip, forward, side),
+    targetSize: size,
+    hp: 110,
+    speed: 72,
+    turnRate: 2.4,
+    weaponRange: 52,
+    projectileSpeed: 150,
+    damage: 8,
+    fireRate: 0.16,
+    formationForward: forward,
+    formationSide: side
+  });
+  ship.pivot.rotation.y = playerShip.pivot.rotation.y;
+}
+
+function clearSandbox() {
+  for (const ship of ships) scene.remove(ship.pivot);
+  for (const p of projectiles) scene.remove(p.mesh);
+  for (const e of effects) scene.remove(e.mesh);
+  ships.length = 0;
+  projectiles.length = 0;
+  effects.length = 0;
+  playerShip = null;
+}
+
+async function addShip(config) {
+  const pivot = new THREE.Group();
+  pivot.name = config.name;
+  const root = config.model ? config.model.clone(true) : createFallbackModel(config.teamId);
+  pivot.add(root);
+  scene.add(pivot);
+
+  normalizeModel(root, config.targetSize || 8);
+  orientShipModel(root, pivot);
+  pivot.position.copy(config.position || new THREE.Vector3());
+  pivot.rotation.y = config.heading || 0;
+
+  const bounds = shipBoundsInPivotSpace(root, pivot);
+  const hardpoints = createHardpoints(pivot, bounds, config.teamId);
+  const thrusters = createThrusters(pivot, bounds);
+  const radius = Math.max(1.0, Math.max(bounds.size.x, bounds.size.y, bounds.size.z) * 0.16);
+
+  const ship = {
+    name: config.name,
+    teamId: config.teamId || 0,
+    root,
+    pivot,
+    bounds,
+    radius,
+    maxHp: config.hp || 200,
+    hp: config.hp || 200,
+    alive: true,
+    speed: config.speed || 30,
+    turnRate: config.turnRate || 1.2,
+    weaponRange: config.weaponRange || 70,
+    projectileSpeed: config.projectileSpeed || 135,
+    damage: config.damage || 12,
+    fireRate: config.fireRate || 0.18,
+    fireCooldown: Math.random() * 0.2,
+    hardpoints,
+    thrusters,
+    formationForward: config.formationForward || 0,
+    formationSide: config.formationSide || 0,
+    playerControlled: !!config.playerControlled,
+    velocity: new THREE.Vector3()
+  };
+  ships.push(ship);
+  return ship;
+}
+
+async function loadModel(terms) {
+  const entry = findModel(terms);
+  if (!entry) {
+    console.warn("Missing model for", terms);
+    return null;
+  }
+  if (modelCache.has(entry.url)) return modelCache.get(entry.url).clone(true);
+  const gltf = await loader.loadAsync(entry.url);
+  prepareMaterials(gltf.scene);
+  modelCache.set(entry.url, gltf.scene);
+  return gltf.scene.clone(true);
+}
+
+async function loadModelAny(choices) {
+  for (const terms of choices) {
+    const entry = findModel(terms);
+    if (entry) return loadModel(terms);
+  }
+  return null;
+}
+
+function findModel(terms) {
+  const wanted = (terms || []).map((t) => String(t).toLowerCase());
+  let best = null;
+  let bestScore = -Infinity;
+  for (const entry of modelEntries) {
+    if (!wanted.every((term) => entry.key.includes(term))) continue;
+    let score = 100;
+    if (entry.key.includes("modern")) score += 12;
+    if (entry.key.includes("copy")) score -= 4;
+    if (entry.key.includes("(1)")) score -= 3;
+    score -= entry.key.length / 20;
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+  return best;
+}
+
+function normalizeName(raw) {
+  return String(raw || "")
+    .toLowerCase()
+    .replace(/\.glb$/i, "")
+    .replace(/[+_-]/g, " ")
+    .replace(/[^a-z0-9() ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function prepareMaterials(object3d) {
+  object3d.traverse((node) => {
+    if (!node.isMesh || !node.material) return;
+    node.frustumCulled = true;
+    const mats = Array.isArray(node.material) ? node.material : [node.material];
+    for (const mat of mats) {
+      mat.side = THREE.DoubleSide;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+      mat.needsUpdate = true;
+    }
   });
 }
 
@@ -185,19 +368,9 @@ function normalizeModel(object3d, targetSize) {
 
   const scale = targetSize / maxSize;
   object3d.scale.setScalar(scale);
-
   const scaledCenter = center.multiplyScalar(scale);
   const scaledHeight = size.y * scale;
   object3d.position.set(-scaledCenter.x, -scaledCenter.y + scaledHeight * 0.45, -scaledCenter.z);
-
-  object3d.traverse((node) => {
-    if (!node.isMesh || !node.material) return;
-    if (Array.isArray(node.material)) {
-      for (const mat of node.material) mat.side = THREE.DoubleSide;
-    } else {
-      node.material.side = THREE.DoubleSide;
-    }
-  });
 }
 
 function axisVector(index, sign = 1) {
@@ -212,11 +385,11 @@ function collectVerticesInPivotSpace(root, shipPivot) {
   root.updateMatrixWorld(true);
   const invPivot = shipPivot.matrixWorld.clone().invert();
   root.traverse((node) => {
-    if (!node.isMesh || !node.geometry || !node.geometry.attributes || !node.geometry.attributes.position) return;
+    if (!node.isMesh || !node.geometry?.attributes?.position) return;
     const attr = node.geometry.attributes.position;
-    for (let i = 0; i < attr.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(attr, i).applyMatrix4(node.matrixWorld).applyMatrix4(invPivot);
-      out.push(v);
+    const stride = Math.max(1, Math.ceil(attr.count / 7000));
+    for (let i = 0; i < attr.count; i += stride) {
+      out.push(new THREE.Vector3().fromBufferAttribute(attr, i).applyMatrix4(node.matrixWorld).applyMatrix4(invPivot));
     }
   });
   return out;
@@ -225,28 +398,25 @@ function collectVerticesInPivotSpace(root, shipPivot) {
 function orientShipModel(root, shipPivot) {
   const vertices = collectVerticesInPivotSpace(root, shipPivot);
   if (!vertices.length) return;
-
   const bounds = new THREE.Box3().setFromPoints(vertices);
   const size = bounds.getSize(new THREE.Vector3());
   const lengths = [size.x, size.y, size.z];
   const forwardAxis = lengths.indexOf(Math.max(...lengths));
-
   const min = forwardAxis === 0 ? bounds.min.x : (forwardAxis === 1 ? bounds.min.y : bounds.min.z);
   const max = forwardAxis === 0 ? bounds.max.x : (forwardAxis === 1 ? bounds.max.y : bounds.max.z);
   const span = Math.max(1e-5, max - min);
   const cut = span * 0.14;
-
   let minRadiusSum = 0;
   let maxRadiusSum = 0;
   let minCount = 0;
   let maxCount = 0;
   const center = bounds.getCenter(new THREE.Vector3());
   for (const v of vertices) {
-    const a = (forwardAxis === 0) ? v.x : (forwardAxis === 1 ? v.y : v.z);
-    const b = (forwardAxis === 0) ? v.y : v.x;
-    const c = (forwardAxis === 2) ? v.y : v.z;
-    const cb = (forwardAxis === 0) ? center.y : center.x;
-    const cc = (forwardAxis === 2) ? center.y : center.z;
+    const a = forwardAxis === 0 ? v.x : (forwardAxis === 1 ? v.y : v.z);
+    const b = forwardAxis === 0 ? v.y : v.x;
+    const c = forwardAxis === 2 ? v.y : v.z;
+    const cb = forwardAxis === 0 ? center.y : center.x;
+    const cc = forwardAxis === 2 ? center.y : center.z;
     const r = Math.hypot(b - cb, c - cc);
     if (a <= min + cut) {
       minRadiusSum += r;
@@ -257,20 +427,12 @@ function orientShipModel(root, shipPivot) {
       maxCount++;
     }
   }
-  const minAvg = minCount > 0 ? minRadiusSum / minCount : Number.POSITIVE_INFINITY;
-  const maxAvg = maxCount > 0 ? maxRadiusSum / maxCount : Number.POSITIVE_INFINITY;
-  const forwardSign = minAvg <= maxAvg ? -1 : 1;
-
-  const qForward = new THREE.Quaternion().setFromUnitVectors(
-    axisVector(forwardAxis, forwardSign).normalize(),
-    SHIP_FORWARD
-  );
-
+  const forwardSign = (minCount ? minRadiusSum / minCount : Infinity) <= (maxCount ? maxRadiusSum / maxCount : Infinity) ? -1 : 1;
+  const qForward = new THREE.Quaternion().setFromUnitVectors(axisVector(forwardAxis, forwardSign).normalize(), SHIP_FORWARD);
   const upAxis = lengths.indexOf(Math.min(...lengths));
   const upAfterForward = axisVector(upAxis, 1).applyQuaternion(qForward).normalize();
   const roll = Math.atan2(upAfterForward.z, upAfterForward.y);
   const qRoll = new THREE.Quaternion().setFromAxisAngle(SHIP_FORWARD, -roll);
-
   root.quaternion.premultiply(qRoll.multiply(qForward));
   root.updateMatrixWorld(true);
 }
@@ -278,12 +440,7 @@ function orientShipModel(root, shipPivot) {
 function shipBoundsInPivotSpace(root, shipPivot) {
   const points = collectVerticesInPivotSpace(root, shipPivot);
   const box = points.length ? new THREE.Box3().setFromPoints(points) : new THREE.Box3().setFromObject(root);
-  return {
-    box,
-    min: box.min.clone(),
-    max: box.max.clone(),
-    size: box.getSize(new THREE.Vector3())
-  };
+  return { box, min: box.min.clone(), max: box.max.clone(), size: box.getSize(new THREE.Vector3()) };
 }
 
 function pointFromBounds(bounds, nx, ny, nz) {
@@ -294,45 +451,26 @@ function pointFromBounds(bounds, nx, ny, nz) {
   );
 }
 
-function createHardpoints(shipPivot, bounds) {
-  const weaponAnchors = [
-    { n: [0.82, 0.54, 0.63], size: 0.20 },
-    { n: [0.82, 0.54, 0.37], size: 0.20 },
-    { n: [0.72, 0.50, 0.70], size: 0.17 },
-    { n: [0.72, 0.50, 0.30], size: 0.17 }
+function createHardpoints(shipPivot, bounds, teamId) {
+  const color = teamId === 0 ? 0x66cfff : 0xff654b;
+  const anchors = [
+    [0.84, 0.54, 0.63],
+    [0.84, 0.54, 0.37],
+    [0.68, 0.50, 0.72],
+    [0.68, 0.50, 0.28]
   ];
-
   const hardpoints = [];
-  for (const mount of weaponAnchors) {
+  for (const a of anchors) {
     const group = new THREE.Group();
-    group.position.copy(pointFromBounds(bounds, mount.n[0], mount.n[1], mount.n[2]));
-
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(mount.size * 0.52, mount.size * 0.62, mount.size * 0.45, 10),
-      new THREE.MeshStandardMaterial({ color: 0x2a3445, roughness: 0.58, metalness: 0.42 })
-    );
-    base.rotation.z = Math.PI / 2;
-
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(mount.size * 0.16, mount.size * 0.16, mount.size * 1.7, 10),
-      new THREE.MeshStandardMaterial({ color: 0x8096ba, roughness: 0.44, metalness: 0.72 })
-    );
-    barrel.rotation.z = Math.PI / 2;
-    barrel.position.x = mount.size * 0.86;
-
+    group.position.copy(pointFromBounds(bounds, a[0], a[1], a[2]));
     const muzzle = new THREE.Object3D();
-    muzzle.position.x = mount.size * 1.75;
-
+    muzzle.position.x = Math.max(0.45, bounds.size.length() * 0.018);
     const flash = new THREE.Mesh(
-      new THREE.SphereGeometry(mount.size * 0.22, 10, 10),
-      new THREE.MeshBasicMaterial({ color: 0xffb35f, transparent: true, opacity: 0.0 })
+      new THREE.SphereGeometry(Math.max(0.08, bounds.size.length() * 0.006), 12, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0 })
     );
-    flash.position.x = muzzle.position.x - mount.size * 0.1;
-
-    group.add(base);
-    group.add(barrel);
-    group.add(muzzle);
-    group.add(flash);
+    flash.position.copy(muzzle.position);
+    group.add(muzzle, flash);
     shipPivot.add(group);
     hardpoints.push({ group, muzzle, flash });
   }
@@ -340,221 +478,174 @@ function createHardpoints(shipPivot, bounds) {
 }
 
 function createThrusters(shipPivot, bounds) {
-  const thrusterOffsets = [
-    pointFromBounds(bounds, 0.10, 0.47, 0.64),
-    pointFromBounds(bounds, 0.10, 0.47, 0.36),
-    pointFromBounds(bounds, 0.16, 0.41, 0.50)
+  const offsets = [
+    pointFromBounds(bounds, 0.08, 0.47, 0.64),
+    pointFromBounds(bounds, 0.08, 0.47, 0.36),
+    pointFromBounds(bounds, 0.14, 0.42, 0.50)
   ];
-
   const thrusters = [];
-  for (const offset of thrusterOffsets) {
+  for (const offset of offsets) {
     const group = new THREE.Group();
     group.position.copy(offset);
-
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0x66d0ff, transparent: true, opacity: 0.8 })
-    );
-
     const plume = new THREE.Mesh(
       new THREE.ConeGeometry(0.12, 0.9, 12, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x2fbaff, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0x2fbaff, transparent: true, opacity: 0.38, side: THREE.DoubleSide })
     );
     plume.rotation.z = Math.PI / 2;
     plume.position.x = -0.5;
-
-    group.add(glow);
     group.add(plume);
     shipPivot.add(group);
-
-    thrusters.push({ group, glow, plume });
+    thrusters.push({ group, plume });
   }
-
   return thrusters;
 }
 
-function createStars() {
-  const count = 2800;
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const r = 350 + Math.random() * 950;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.cos(phi);
-    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-  }
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xbfd8ff, size: 1.3, sizeAttenuation: true, transparent: true, opacity: 0.8 });
-  return new THREE.Points(geo, mat);
-}
-
-function createAsteroid(scale = 1) {
-  const geo = new THREE.IcosahedronGeometry(3 * scale, 2);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const noise = 0.72 + Math.random() * 0.45;
-    v.multiplyScalar(noise);
-    pos.setXYZ(i, v.x, v.y, v.z);
-  }
-  geo.computeVertexNormals();
-
-  const mat = new THREE.MeshStandardMaterial({ color: 0x5f6978, roughness: 0.97, metalness: 0.02, flatShading: true });
+function createFallbackModel(teamId) {
+  const group = new THREE.Group();
+  const geo = new THREE.ConeGeometry(1, 3, 5);
+  const mat = new THREE.MeshStandardMaterial({ color: teamId === 0 ? 0x298cff : 0xff473d, roughness: 0.6, metalness: 0.3 });
   const mesh = new THREE.Mesh(geo, mat);
-  return mesh;
+  mesh.rotation.z = -Math.PI / 2;
+  group.add(mesh);
+  return group;
 }
 
-function setActiveShip(index) {
-  if (!ships.length) return;
-  const liveShips = ships.filter((s) => s.alive);
-  if (!liveShips.length) {
-    activeShip = null;
-    activeHardpoints = [];
+function formationPoint(anchor, forward, side) {
+  const q = anchor?.pivot?.quaternion || new THREE.Quaternion();
+  const f = SHIP_FORWARD.clone().applyQuaternion(q);
+  const s = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+  return anchor.pivot.position.clone().addScaledVector(f, forward).addScaledVector(s, side);
+}
+
+function updatePlayer(dt) {
+  if (!playerShip?.alive) return;
+  const turn = (keyState.left ? 1 : 0) - (keyState.right ? 1 : 0);
+  playerShip.pivot.rotation.y += turn * playerShip.turnRate * dt;
+  const throttle = (keyState.forward ? 1 : 0) - (keyState.back ? 0.55 : 0);
+  const boost = keyState.boost ? 1.75 : 1.0;
+  const forward = SHIP_FORWARD.clone().applyQuaternion(playerShip.pivot.quaternion);
+  playerShip.pivot.position.addScaledVector(forward, playerShip.speed * throttle * boost * dt);
+  clampToArena(playerShip.pivot.position);
+  playerShip.fireCooldown -= dt;
+  if (keyState.firing && playerShip.fireCooldown <= 0) {
+    fireShip(playerShip, bestTargetInCone(playerShip) || null);
+    playerShip.fireCooldown = playerShip.fireRate;
+  }
+}
+
+function updateFriendlyEscort(ship, dt) {
+  if (!playerShip?.alive || !ship.alive || ship === playerShip) return;
+  const target = nearestHostile(ship);
+  if (target && ship.pivot.position.distanceTo(target.pivot.position) < ship.weaponRange * 1.35) {
+    steerToward(ship, target.pivot.position, dt, 0.45);
+    ship.fireCooldown -= dt;
+    if (ship.pivot.position.distanceTo(target.pivot.position) < ship.weaponRange && ship.fireCooldown <= 0) {
+      fireShip(ship, target);
+      ship.fireCooldown = ship.fireRate * (0.8 + Math.random() * 0.45);
+    }
     return;
   }
-  activeIndex = (index + ships.length) % ships.length;
-  let candidate = ships[activeIndex];
-  if (!candidate.alive) {
-    candidate = liveShips[0];
-    activeIndex = ships.indexOf(candidate);
+  const goal = formationPoint(playerShip, ship.formationForward, ship.formationSide);
+  steerToward(ship, goal, dt, THREE.MathUtils.clamp(ship.pivot.position.distanceTo(goal) / 50, 0.18, 1.05));
+}
+
+function updateEnemy(ship, dt) {
+  const target = nearestHostile(ship);
+  if (!target) return;
+  const dist = ship.pivot.position.distanceTo(target.pivot.position);
+  steerToward(ship, target.pivot.position, dt, dist > ship.weaponRange * 0.72 ? 0.85 : -0.25);
+  ship.fireCooldown -= dt;
+  if (dist < ship.weaponRange && ship.fireCooldown <= 0) {
+    fireShip(ship, target);
+    ship.fireCooldown = ship.fireRate * (0.85 + Math.random() * 0.5);
   }
-  activeShip = candidate;
-  activeHardpoints = activeShip.hardpoints;
-  frameShip(activeShip);
 }
 
-function frameShip(ship) {
-  const box = new THREE.Box3().setFromObject(ship.pivot);
-  const size = box.getSize(new THREE.Vector3());
-  const maxSize = Math.max(size.x, size.y, size.z);
-  const fitHeightDistance = maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360));
-  const fitWidthDistance = fitHeightDistance / camera.aspect;
-  const distance = 1.45 * Math.max(fitHeightDistance, fitWidthDistance);
-
-  camera.position.set(ship.pivot.position.x + distance * 0.65, ship.pivot.position.y + distance * 0.4, ship.pivot.position.z + distance);
-  controls.target.set(ship.pivot.position.x, ship.pivot.position.y + size.y * 0.2, ship.pivot.position.z);
-  controls.minDistance = distance * 0.15;
-  controls.maxDistance = distance * 8.0;
-  controls.update();
+function steerToward(ship, point, dt, throttle) {
+  const delta = point.clone().sub(ship.pivot.position);
+  delta.y = 0;
+  if (delta.lengthSq() < 0.0001) return;
+  const desiredYaw = Math.atan2(-delta.z, delta.x);
+  ship.pivot.rotation.y = turnAngle(ship.pivot.rotation.y, desiredYaw, ship.turnRate * dt);
+  const forward = SHIP_FORWARD.clone().applyQuaternion(ship.pivot.quaternion);
+  ship.pivot.position.addScaledVector(forward, ship.speed * throttle * dt);
+  clampToArena(ship.pivot.position);
 }
 
-function fireFromHardpoints(ship) {
-  if (!ship || !ship.alive) return;
+function turnAngle(current, target, maxStep) {
+  let delta = target - current;
+  while (delta <= -Math.PI) delta += Math.PI * 2;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  return current + THREE.MathUtils.clamp(delta, -maxStep, maxStep);
+}
+
+function clampToArena(pos) {
+  const len = Math.hypot(pos.x, pos.z);
+  if (len > arenaRadius) {
+    pos.x = (pos.x / len) * arenaRadius;
+    pos.z = (pos.z / len) * arenaRadius;
+  }
+}
+
+function nearestHostile(source) {
+  let best = null;
+  let bestD = Infinity;
+  for (const ship of ships) {
+    if (!ship.alive || ship === source || ship.teamId === source.teamId) continue;
+    const d = source.pivot.position.distanceToSquared(ship.pivot.position);
+    if (d < bestD) {
+      bestD = d;
+      best = ship;
+    }
+  }
+  return best;
+}
+
+function bestTargetInCone(source) {
+  const forward = SHIP_FORWARD.clone().applyQuaternion(source.pivot.quaternion).normalize();
+  let best = null;
+  let bestScore = Infinity;
+  for (const ship of ships) {
+    if (!ship.alive || ship.teamId === source.teamId) continue;
+    const toTarget = ship.pivot.position.clone().sub(source.pivot.position);
+    const dist = toTarget.length();
+    if (dist > source.weaponRange * 1.25) continue;
+    toTarget.normalize();
+    const dot = forward.dot(toTarget);
+    if (dot < 0.70) continue;
+    const score = dist - dot * 25;
+    if (score < bestScore) {
+      bestScore = score;
+      best = ship;
+    }
+  }
+  return best;
+}
+
+function fireShip(ship, target) {
+  const direction = target
+    ? target.pivot.position.clone().sub(ship.pivot.position).normalize()
+    : SHIP_FORWARD.clone().applyQuaternion(ship.pivot.quaternion).normalize();
+  const color = ship.teamId === 0 ? 0x35a3ff : 0xff493c;
   for (const hp of ship.hardpoints) {
     const origin = new THREE.Vector3();
     hp.muzzle.getWorldPosition(origin);
-
-    const direction = SHIP_FORWARD.clone().applyQuaternion(ship.pivot.quaternion).normalize();
-
     const projectile = new THREE.Mesh(
-      new THREE.SphereGeometry(weaponConfig.projectileRadius, 10, 10),
-      new THREE.MeshBasicMaterial({ color: 0xff6d44 })
+      new THREE.SphereGeometry(ship === playerShip ? 0.18 : 0.11, 10, 10),
+      new THREE.MeshBasicMaterial({ color })
     );
     projectile.position.copy(origin);
     scene.add(projectile);
     hp.flash.material.opacity = 0.95;
-
     projectiles.push({
       mesh: projectile,
       owner: ship,
-      damage: weaponConfig.projectileDamage,
-      velocity: direction.multiplyScalar(weaponConfig.projectileSpeed),
-      ttl: weaponConfig.projectileTtl,
-      radius: weaponConfig.projectileRadius
+      velocity: direction.clone().multiplyScalar(ship.projectileSpeed),
+      damage: ship.damage,
+      ttl: 2.4,
+      radius: 0.28
     });
   }
-}
-
-function updateFlight(dt) {
-  if (!activeShip || !flight.enabled) return;
-
-  const yawLeft = keyState.left ? 1 : 0;
-  const yawRight = keyState.right ? 1 : 0;
-  const pitchUp = keyState.up ? 1 : 0;
-  const pitchDown = keyState.down ? 1 : 0;
-
-  flight.yaw += (yawLeft - yawRight) * 1.9 * dt;
-  flight.pitch += (pitchUp - pitchDown) * 1.35 * dt;
-  flight.pitch = THREE.MathUtils.clamp(flight.pitch, -1.1, 1.1);
-
-  const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), flight.yaw);
-  const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), flight.pitch);
-  activeShip.pivot.quaternion.copy(qYaw).multiply(qPitch);
-
-  const thrustDir = new THREE.Vector3();
-  if (keyState.forward) thrustDir.x += 1;
-  if (keyState.back) thrustDir.x -= 0.55;
-  if (keyState.right) thrustDir.z += 0.3;
-  if (keyState.left) thrustDir.z -= 0.3;
-  if (keyState.up) thrustDir.y += 0.3;
-  if (keyState.down) thrustDir.y -= 0.3;
-
-  if (thrustDir.lengthSq() > 0) {
-    thrustDir.normalize();
-    thrustDir.applyQuaternion(activeShip.pivot.quaternion);
-    const accel = flight.accel * (keyState.boost ? flight.boostMult : 1.0);
-    flight.velocity.addScaledVector(thrustDir, accel * dt);
-  }
-
-  const maxSpeed = flight.maxSpeed * (keyState.boost ? flight.boostMult : 1.0);
-  if (flight.velocity.length() > maxSpeed) {
-    flight.velocity.setLength(maxSpeed);
-  }
-
-  flight.velocity.multiplyScalar(Math.pow(flight.damping, dt * 60));
-  activeShip.pivot.position.addScaledVector(flight.velocity, dt);
-
-  const camOffset = new THREE.Vector3(-14, 6, 0).applyQuaternion(activeShip.pivot.quaternion);
-  const desiredCam = activeShip.pivot.position.clone().add(camOffset);
-  camera.position.lerp(desiredCam, 1 - Math.pow(0.001, dt));
-
-  const desiredTarget = activeShip.pivot.position.clone().add(new THREE.Vector3(3, 1.8, 0).applyQuaternion(activeShip.pivot.quaternion));
-  controls.target.lerp(desiredTarget, 1 - Math.pow(0.001, dt));
-}
-
-function updateThrusters(dt, t) {
-  for (const ship of ships) {
-    if (!ship.alive) continue;
-    const speed = ship === activeShip ? flight.velocity.length() : 0;
-    const idle = ship === activeShip ? 0.35 : 0.2;
-    const thrust = ship === activeShip ? Math.min(1.0, speed / 20) : 0.15;
-
-    for (const thruster of ship.thrusters) {
-      const pulse = 0.78 + Math.sin(t * 24 + thruster.group.id * 0.7) * 0.22;
-      const intensity = idle + thrust * pulse;
-      thruster.glow.scale.setScalar(0.8 + intensity * 0.9);
-      thruster.plume.scale.set(1, 0.5 + intensity * 1.7, 1);
-      thruster.plume.material.opacity = 0.22 + intensity * 0.45;
-
-      if (Math.random() < intensity * dt * 40) {
-        spawnThrusterParticle(thruster.group, ship.pivot);
-      }
-    }
-  }
-}
-
-function spawnThrusterParticle(localThruster, shipPivot) {
-  const p = new THREE.Mesh(
-    new THREE.SphereGeometry(0.03, 6, 6),
-    new THREE.MeshBasicMaterial({ color: 0x7dd9ff, transparent: true, opacity: 0.9 })
-  );
-  const origin = new THREE.Vector3();
-  localThruster.getWorldPosition(origin);
-  p.position.copy(origin);
-  scene.add(p);
-
-  const backward = SHIP_FORWARD.clone().multiplyScalar(-1).applyQuaternion(shipPivot.quaternion);
-  backward.add(new THREE.Vector3((Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12, (Math.random() - 0.5) * 0.12));
-  backward.normalize();
-
-  projectiles.push({
-    mesh: p,
-    velocity: backward.multiplyScalar(8 + Math.random() * 6),
-    ttl: 0.45,
-    fadeOnly: true
-  });
 }
 
 function updateProjectiles(dt) {
@@ -562,147 +653,240 @@ function updateProjectiles(dt) {
     const p = projectiles[i];
     p.ttl -= dt;
     p.mesh.position.addScaledVector(p.velocity, dt);
-
-    if (!p.fadeOnly && p.owner && p.owner.alive) {
-      const hitShip = firstProjectileHit(p);
-      if (hitShip) {
-        applyProjectileHit(hitShip, p);
-        p.ttl = 0;
-      }
+    const hit = firstProjectileHit(p);
+    if (hit) {
+      applyDamage(hit, p.damage, p.mesh.position);
+      p.ttl = 0;
     }
-
-    if (p.fadeOnly && p.mesh.material) {
-      p.mesh.material.opacity = Math.max(0, p.ttl / 0.45);
-    }
-
     if (p.ttl <= 0) {
       scene.remove(p.mesh);
-      if (p.mesh.geometry) p.mesh.geometry.dispose();
-      if (p.mesh.material) p.mesh.material.dispose();
+      p.mesh.geometry?.dispose();
+      p.mesh.material?.dispose();
       projectiles.splice(i, 1);
     }
   }
 }
 
 function firstProjectileHit(projectile) {
-  if (!projectile || !projectile.owner) return null;
   for (const ship of ships) {
-    if (!ship || !ship.alive || ship === projectile.owner) continue;
-    if (ship.teamId === projectile.owner.teamId) continue;
-    const hitRadius = Math.max(0.4, ship.radius + (projectile.radius || 0.05));
-    if (ship.pivot.position.distanceToSquared(projectile.mesh.position) <= hitRadius * hitRadius) {
-      return ship;
-    }
+    if (!ship.alive || ship.teamId === projectile.owner.teamId || ship === projectile.owner) continue;
+    const r = ship.radius + projectile.radius;
+    if (ship.pivot.position.distanceToSquared(projectile.mesh.position) <= r * r) return ship;
   }
   return null;
 }
 
-function applyProjectileHit(target, projectile) {
-  if (!target || !target.alive || !projectile) return;
-  target.hp = Math.max(0, target.hp - Math.max(1, projectile.damage || 1));
-  spawnHitBurst(projectile.mesh.position, target.teamId === 1 ? 0xff7b66 : 0x83d0ff);
-  if (target.hp <= 0) {
-    destroyShip(target, projectile.owner);
+function applyDamage(ship, damage, position) {
+  ship.hp = Math.max(0, ship.hp - damage);
+  spawnHit(position, ship.teamId === 0 ? 0x7bcaff : 0xff7a5e);
+  if (ship.hp <= 0) destroyShip(ship);
+}
+
+function destroyShip(ship) {
+  ship.alive = false;
+  ship.pivot.visible = false;
+  spawnExplosion(ship.pivot.position, ship.radius, ship.teamId === 0 ? 0x66cfff : 0xff654b);
+  if (ship === playerShip) {
+    const next = ships.find((s) => s.alive && s.teamId === 0);
+    if (next) setPlayerShip(next);
   }
 }
 
-function spawnHitBurst(position, color) {
-  const burst = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 10, 10),
+function spawnHit(position, color) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55, 12, 12),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 })
+  );
+  mesh.position.copy(position);
+  scene.add(mesh);
+  effects.push({ mesh, ttl: 0.22 });
+}
+
+function spawnExplosion(position, radius, color) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(Math.max(1.2, radius * 0.7), 18, 18),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })
   );
-  burst.position.copy(position);
-  scene.add(burst);
-  projectiles.push({
-    mesh: burst,
-    velocity: new THREE.Vector3(),
-    ttl: 0.22,
-    fadeOnly: true
-  });
+  mesh.position.copy(position);
+  scene.add(mesh);
+  effects.push({ mesh, ttl: 0.6 });
 }
 
-function destroyShip(target, attacker) {
-  if (!target || !target.alive) return;
-  target.alive = false;
-  target.hp = 0;
-  target.pivot.visible = false;
-
-  const boom = new THREE.Mesh(
-    new THREE.SphereGeometry(target.radius * 0.55, 18, 18),
-    new THREE.MeshBasicMaterial({ color: 0xffb06b, transparent: true, opacity: 0.95 })
-  );
-  boom.position.copy(target.pivot.position);
-  scene.add(boom);
-  projectiles.push({
-    mesh: boom,
-    velocity: new THREE.Vector3(),
-    ttl: 0.55,
-    fadeOnly: true
-  });
-
-  if (activeShip === target) {
-    setActiveShip(ships.findIndex((s) => s && s.alive));
-  }
-  if (attacker && attacker === activeShip) {
-    hudNote = `${target.name} destroyed. Press N to reset duel.`;
-    hudNoteT = 6.0;
+function updateEffects(dt) {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i];
+    e.ttl -= dt;
+    if (e.mesh.material) e.mesh.material.opacity = Math.max(0, e.ttl / 0.6);
+    e.mesh.scale.multiplyScalar(1 + dt * 1.5);
+    if (e.ttl <= 0) {
+      scene.remove(e.mesh);
+      e.mesh.geometry?.dispose();
+      e.mesh.material?.dispose();
+      effects.splice(i, 1);
+    }
   }
 }
 
-function updateFiring(dt) {
-  if (!activeShip || !activeShip.alive) return;
+function updateEnemySpawner(dt) {
+  const aliveEnemies = ships.filter((s) => s.alive && s.teamId !== 0).length;
+  if (aliveEnemies > 18) return;
+  waveTimer -= dt;
+  if (waveTimer > 0) return;
+  spawnEnemyWave();
+  waveNumber++;
+  waveTimer = THREE.MathUtils.clamp(12 - waveNumber * 0.55, 5.5, 12) + Math.random() * 4;
+}
 
-  activeShip.fireCooldown -= dt;
-  if ((keyState.firing || keyState.forward) && activeShip.fireCooldown <= 0) {
-    fireFromHardpoints(activeShip);
-    activeShip.fireCooldown = activeShip.fireRate;
-  }
-
-  const blink = 0.55 + 0.45 * Math.sin(performance.now() * 0.01);
-  for (const hp of activeHardpoints) {
-    hp.flash.material.opacity = Math.max(0, hp.flash.material.opacity - dt * 8.0);
-    hp.flash.material.color.setRGB(1.0, 0.58 + 0.35 * blink, 0.22);
+async function spawnEnemyWave() {
+  if (!playerShip?.alive) return;
+  const count = 3 + Math.min(6, Math.floor(waveNumber / 2)) + Math.floor(Math.random() * 3);
+  const forward = SHIP_FORWARD.clone().applyQuaternion(playerShip.pivot.quaternion);
+  const side = new THREE.Vector3(0, 0, 1).applyQuaternion(playerShip.pivot.quaternion);
+  const center = playerShip.pivot.position.clone()
+    .addScaledVector(forward, 150 + Math.random() * 55)
+    .addScaledVector(side, (Math.random() - 0.5) * 80);
+  for (let i = 0; i < count; i++) {
+    const model = await loadEnemyModel(i);
+    const pos = center.clone().addScaledVector(side, (i - (count - 1) * 0.5) * 16).add(new THREE.Vector3((Math.random() - 0.5) * 10, 0, (Math.random() - 0.5) * 10));
+    const teamId = waveNumber % 5 === 4 ? 3 : 1;
+    const size = enemySize(model);
+    const ship = await addShip({
+      name: `Enemy Raider ${waveNumber + 1}.${i + 1}`,
+      teamId,
+      model,
+      position: pos,
+      targetSize: size,
+      hp: 180 + waveNumber * 14,
+      speed: 35 + Math.random() * 20,
+      turnRate: 1.3 + Math.random() * 0.5,
+      weaponRange: 70 + Math.random() * 32,
+      projectileSpeed: 130,
+      damage: 12 + waveNumber * 0.8,
+      fireRate: 0.2
+    });
+    steerToward(ship, playerShip.pivot.position, 1, 0);
   }
 }
 
-function setFlightMode(enabled) {
-  flight.enabled = enabled;
-  controls.enabled = !enabled;
-  hudNote = enabled
-    ? "Flight mode ON (WASD + RF move, QE look, Shift boost, Space fire)"
-    : "Flight mode OFF (Orbit controls active; X toggles flight)";
-  hudNoteT = 3.0;
+async function loadEnemyModel(index) {
+  const choices = [
+    [["red", "picket"], ["yellow", "picket"], ["green", "picket"]],
+    [["red", "patrol"], ["yellow", "patrol"], ["green", "patrol"]],
+    [["red", "stealth"], ["yellow", "stealth"], ["green", "stealth"]],
+    [["red", "missile"], ["yellow", "missile"], ["green", "missile"]],
+    [["red", "medium", "cruiser"], ["yellow", "medium", "cruiser"], ["green", "cruiser"]],
+    [["red", "hauler"], ["yellow", "hauler"], ["green", "hauler"]],
+    [["red", "transport"], ["yellow", "transport"], ["green", "transport"]]
+  ];
+  return loadModelAny(choices[(waveNumber + index) % choices.length]);
+}
+
+function enemySize(model) {
+  if (!model?.name) return 7;
+  const n = model.name.toLowerCase();
+  if (n.includes("cruiser") || n.includes("supership")) return 13;
+  if (n.includes("transport") || n.includes("hauler")) return 9;
+  return 6.5;
+}
+
+function updateThrusters(dt, t) {
+  for (const ship of ships) {
+    if (!ship.alive) continue;
+    const active = ship === playerShip;
+    const thrust = active && (keyState.forward || keyState.back) ? 1 : 0.25;
+    for (const thruster of ship.thrusters) {
+      const pulse = 0.75 + Math.sin(t * 22 + thruster.group.id * 0.4) * 0.25;
+      thruster.plume.scale.set(1, 0.6 + thrust * pulse * 1.5, 1);
+      thruster.plume.material.opacity = 0.18 + thrust * 0.38;
+    }
+    for (const hp of ship.hardpoints) {
+      hp.flash.material.opacity = Math.max(0, hp.flash.material.opacity - dt * 7);
+    }
+  }
+}
+
+function updateCamera(dt, t) {
+  if (!playerShip) return;
+  if (cinematic) {
+    const r = 75;
+    camera.position.lerp(playerShip.pivot.position.clone().add(new THREE.Vector3(Math.cos(t * 0.18) * r, 34, Math.sin(t * 0.18) * r)), 1 - Math.pow(0.001, dt));
+    controls.target.lerp(playerShip.pivot.position, 1 - Math.pow(0.001, dt));
+    return;
+  }
+  if (!followCamera) return;
+  const behind = new THREE.Vector3(-54, 22, 0).applyQuaternion(playerShip.pivot.quaternion);
+  const desiredCam = playerShip.pivot.position.clone().add(behind);
+  const desiredTarget = playerShip.pivot.position.clone().add(new THREE.Vector3(14, 4, 0).applyQuaternion(playerShip.pivot.quaternion));
+  camera.position.lerp(desiredCam, 1 - Math.pow(0.0008, dt));
+  controls.target.lerp(desiredTarget, 1 - Math.pow(0.0008, dt));
+}
+
+function setPlayerShip(ship) {
+  if (!ship) return;
+  if (playerShip) playerShip.playerControlled = false;
+  playerShip = ship;
+  playerShip.playerControlled = true;
+  activeBlueIndex = ships.indexOf(ship);
+  followCamera = true;
+  controls.enabled = false;
+}
+
+function cyclePlayerShip() {
+  const blue = ships.filter((s) => s.alive && s.teamId === 0);
+  if (!blue.length) return;
+  const current = blue.indexOf(playerShip);
+  setPlayerShip(blue[(current + 1 + blue.length) % blue.length]);
+}
+
+function createEnvironmentProps() {
+  for (const prop of props) scene.remove(prop);
+  props.length = 0;
+  for (let i = 0; i < 22; i++) {
+    const asteroid = createAsteroid(0.6 + Math.random() * 1.8);
+    const angle = Math.random() * Math.PI * 2;
+    const r = 45 + Math.random() * 160;
+    asteroid.position.set(Math.cos(angle) * r, 1.5 + Math.random() * 10, Math.sin(angle) * r);
+    asteroid.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    scene.add(asteroid);
+    props.push(asteroid);
+  }
+}
+
+function createStars() {
+  const count = 3200;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const r = 500 + Math.random() * 1400;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    positions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.cos(phi);
+    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  }
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xbfd8ff, size: 1.3, sizeAttenuation: true, transparent: true, opacity: 0.8 }));
+}
+
+function createAsteroid(scale = 1) {
+  const geo = new THREE.IcosahedronGeometry(3 * scale, 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+    v.multiplyScalar(0.72 + Math.random() * 0.45);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x5f6978, roughness: 0.97, metalness: 0.02, flatShading: true }));
 }
 
 function updateStatusHud(dt) {
   if (hudNoteT > 0) hudNoteT = Math.max(0, hudNoteT - dt);
-  const player = activeShip;
-  const enemies = ships.filter((s) => s.alive && player && s.teamId !== player.teamId);
-  const enemy = enemies[0] || null;
-  const playerLine = player
-    ? `${player.name}: ${Math.ceil(player.hp)}/${player.maxHp}`
-    : "No active ship";
-  const enemyLine = enemy
-    ? `${enemy.name}: ${Math.ceil(enemy.hp)}/${enemy.maxHp}`
-    : "Enemy: destroyed (N to reset)";
-  const base = `${playerLine}  |  ${enemyLine}`;
-  statusEl.textContent = hudNoteT > 0 ? `${base}\n${hudNote}` : base;
-}
-
-function resetDuel() {
-  for (const ship of ships) {
-    ship.alive = true;
-    ship.hp = ship.maxHp;
-    ship.fireCooldown = 0;
-    ship.pivot.visible = true;
-    ship.pivot.position.copy(ship.spawnPos);
-    ship.pivot.quaternion.copy(ship.spawnQuat);
-    ship.root.quaternion.copy(ship.spawnRootQuat);
-  }
-  flight.velocity.set(0, 0, 0);
-  setActiveShip(0);
-  hudNote = "Duel reset";
-  hudNoteT = 2.0;
+  const enemies = ships.filter((s) => s.alive && s.teamId !== 0).length;
+  const allies = ships.filter((s) => s.alive && s.teamId === 0).length;
+  const player = playerShip;
+  const playerLine = player ? `${player.name}: ${Math.ceil(player.hp)}/${player.maxHp}` : "No active blue ship";
+  statusEl.textContent = `${playerLine}\nAllies: ${allies}  Enemies: ${enemies}  Wave: ${waveNumber}\n${hudNoteT > 0 ? hudNote : "W/S thrust, A/D turn, Shift boost, Space/LMB fire, Tab switch ship"}`;
 }
 
 window.addEventListener("keydown", (event) => {
@@ -711,16 +895,19 @@ window.addEventListener("keydown", (event) => {
   if (k === "s") keyState.back = true;
   if (k === "a") keyState.left = true;
   if (k === "d") keyState.right = true;
-  if (k === "r") keyState.up = true;
-  if (k === "f") keyState.down = true;
   if (k === "shift") keyState.boost = true;
   if (k === " ") keyState.firing = true;
-
-  if (k === "1") setActiveShip(0);
-  if (k === "2") setActiveShip(1);
-  if (k === "x") setFlightMode(!flight.enabled);
-  if (k === "f" && !flight.enabled && activeShip) frameShip(activeShip);
-  if (k === "n") resetDuel();
+  if (k === "tab") {
+    event.preventDefault();
+    cyclePlayerShip();
+  }
+  if (k === "f") {
+    followCamera = !followCamera;
+    controls.enabled = !followCamera;
+  }
+  if (k === "c") cinematic = !cinematic;
+  if (k === "p") paused = !paused;
+  if (k === "n") spawnMothershipSandbox();
 });
 
 window.addEventListener("keyup", (event) => {
@@ -729,10 +916,16 @@ window.addEventListener("keyup", (event) => {
   if (k === "s") keyState.back = false;
   if (k === "a") keyState.left = false;
   if (k === "d") keyState.right = false;
-  if (k === "r") keyState.up = false;
-  if (k === "f") keyState.down = false;
   if (k === "shift") keyState.boost = false;
   if (k === " ") keyState.firing = false;
+});
+
+window.addEventListener("mousedown", (event) => {
+  if (event.button === 0) keyState.firing = true;
+});
+
+window.addEventListener("mouseup", (event) => {
+  if (event.button === 0) keyState.firing = false;
 });
 
 window.addEventListener("resize", () => {
@@ -744,22 +937,25 @@ window.addEventListener("resize", () => {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(0.033, clock.getDelta());
   const t = clock.elapsedTime;
-
-  if (activeShip && activeShip.alive && !flight.enabled) {
-    activeShip.pivot.rotation.y += dt * 0.18;
+  if (!paused && playerShip) {
+    updatePlayer(dt);
+    for (const ship of ships) {
+      if (!ship.alive || ship === playerShip) continue;
+      if (ship.teamId === 0) updateFriendlyEscort(ship, dt);
+      else updateEnemy(ship, dt);
+    }
+    updateEnemySpawner(dt);
+    updateProjectiles(dt);
+    updateEffects(dt);
   }
-
-  stars.rotation.y += dt * 0.01;
-  asteroid.rotation.y += dt * 0.07;
-  asteroid.rotation.x += dt * 0.04;
-  asteroid2.rotation.y -= dt * 0.06;
-
-  updateFlight(dt);
   updateThrusters(dt, t);
-  updateFiring(dt);
-  updateProjectiles(dt);
+  updateCamera(dt, t);
   updateStatusHud(dt);
-
+  stars.rotation.y += dt * 0.006;
+  for (const prop of props) {
+    prop.rotation.y += dt * 0.04;
+    prop.rotation.x += dt * 0.018;
+  }
   controls.update();
   renderer.render(scene, camera);
 });

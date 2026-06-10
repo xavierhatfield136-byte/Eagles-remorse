@@ -1,7 +1,10 @@
 param(
     [string]$Seed = "",
     [string]$MapSize = "medium", # small | medium | large
-    [switch]$NoRandomEvents
+    [string]$Mode = "campaign", # campaign | domination | custom | showcase | range
+    [string]$ModelDir = "C:\Users\xhatf\OneDrive\Desktop\3d models dropoff",
+    [switch]$NoRandomEvents,
+    [switch]$NoGlbModels
 )
 
 Set-StrictMode -Version Latest
@@ -65,6 +68,18 @@ switch ($MapSize.Trim().ToLowerInvariant()) {
 if ($NoRandomEvents) {
     $args += "--no-random-events"
 }
+switch ($Mode.Trim().ToLowerInvariant()) {
+    "domination" { $args += "--mode=domination" }
+    "custom" { $args += "--mode=custom" }
+    "showcase" { $args += "--mode=showcase" }
+    "range" { $args += "--mode=range" }
+    default { $args += "--mode=campaign" }
+}
+
+$javaProps = @()
+if (-not $NoGlbModels -and -not [string]::IsNullOrWhiteSpace($ModelDir)) {
+    $javaProps += "-Deagles.modelDir=$ModelDir"
+}
 
 Write-Host "Launching Main3D..."
-& $java -cp $classesDir Main3D $args
+& $java $javaProps -cp $classesDir Main3D $args

@@ -45,6 +45,7 @@ public final class Main3D {
         int w = 10000;
         int h = 10000;
         boolean randomEvents = true;
+        GameMode mode = GameMode.CAMPAIGN_OPS;
 
         if (args != null) {
             for (String raw : args) {
@@ -64,10 +65,29 @@ public final class Main3D {
                     h = 20000;
                 } else if (a.equals("--no-random-events")) {
                     randomEvents = false;
+                } else if (a.startsWith("--mode=")) {
+                    mode = parseMode(a.substring("--mode=".length()));
                 }
             }
         }
-        return new GameConfig(GameMode.CAMPAIGN_OPS, w, h, randomEvents, seed, false);
+        if (mode == GameMode.CUSTOM_BATTLES) {
+            String friendly = "FRIGATE:2,LIGHT_CRUISER:2,CRUISER:1,CARRIER:1,FIGHTER:4,BOMBER:2";
+            String enemy = "FRIGATE:2,LIGHT_CRUISER:2,CRUISER:1,MISSILE_BOAT:2,PATROL:3,FIGHTER:4";
+            return new GameConfig(mode, w, h, randomEvents, seed, false,
+                    0, false, 1, friendly, enemy);
+        }
+        return new GameConfig(mode, w, h, randomEvents, seed, false);
+    }
+
+    private static GameMode parseMode(String raw) {
+        if (raw == null) return GameMode.CAMPAIGN_OPS;
+        return switch (raw.trim().toLowerCase()) {
+            case "domination", "four-team", "four_team", "four-team-domination" -> GameMode.FOUR_TEAM_DOMINATION;
+            case "custom", "custom-battle", "custom_battle" -> GameMode.CUSTOM_BATTLES;
+            case "showcase" -> GameMode.SHOWCASE;
+            case "range", "shooting-range", "shooting_range" -> GameMode.SHOOTING_RANGE;
+            default -> GameMode.CAMPAIGN_OPS;
+        };
     }
 
     public static void main(String[] args) {

@@ -1,5 +1,6 @@
 param(
-  [int]$Port = 5173
+  [int]$Port = 5173,
+  [string]$ModelDir = "C:\Users\xhatf\OneDrive\Desktop\3d models dropoff"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +44,39 @@ if (-not $pythonExe) {
 }
 
 $url = "http://localhost:$Port"
+$modelsRoot = Join-Path $root "public\models"
+$dropoffLink = Join-Path $modelsRoot "dropoff"
+$manifestPath = Join-Path $modelsRoot "dropoff-manifest.json"
+
+New-Item -ItemType Directory -Force -Path $modelsRoot | Out-Null
+if (Test-Path -LiteralPath $ModelDir) {
+  if (Test-Path -LiteralPath $dropoffLink) {
+    $item = Get-Item -LiteralPath $dropoffLink -Force
+    if (-not ($item.LinkType -eq "Junction" -or $item.LinkType -eq "SymbolicLink")) {
+      Remove-Item -LiteralPath $dropoffLink -Recurse -Force
+    }
+  }
+  if (-not (Test-Path -LiteralPath $dropoffLink)) {
+    New-Item -ItemType Junction -Path $dropoffLink -Target $ModelDir | Out-Null
+  }
+
+  $models = Get-ChildItem -LiteralPath $ModelDir -File -Filter "*.glb" |
+    Sort-Object Name |
+    ForEach-Object {
+      [pscustomobject]@{
+        name = $_.Name
+        url = "./public/models/dropoff/$([Uri]::EscapeDataString($_.Name))"
+        bytes = $_.Length
+        modified = $_.LastWriteTime.ToString("s")
+      }
+    }
+  $models | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+} else {
+  Write-Host "Model dropoff folder not found: $ModelDir" -ForegroundColor Yellow
+}
+
 Write-Host "Starting 3D testing server in $root on $url"
+Write-Host "Model dropoff: $ModelDir"
 Write-Host 'Press Ctrl+C to stop the server.'
 
 Start-Process $url

@@ -39,6 +39,8 @@ bin/
 ### Local Runtime Data ###
 save/
 forge-launch.log
+tools/3d-testing/public/models/dropoff/
+tools/3d-testing/public/models/dropoff-manifest.json
 
 ### Local AI pipeline machine-specific config ###
 assets/ai_pipeline/local_tts_voices.json
