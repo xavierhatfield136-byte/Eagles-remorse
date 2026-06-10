@@ -4596,6 +4596,21 @@ public class Renderer {
         return new CombatHudPanelLayout(beamRect, missileRect, cloakRect);
     }
 
+    public static List<Rectangle> combatHudPanelRects(int viewW, int viewH, boolean includeCloak, boolean includeStrike) {
+        CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, includeCloak);
+        ArrayList<Rectangle> out = new ArrayList<>();
+        out.add(new Rectangle(layout.beamRect));
+        out.add(new Rectangle(layout.missileRect));
+        if (includeCloak && layout.cloakRect.width > 0 && layout.cloakRect.height > 0) {
+            out.add(new Rectangle(layout.cloakRect));
+        }
+        if (includeStrike) {
+            Rectangle strike = combatStrikePanelRect(viewW, viewH, layout);
+            if (strike.width > 0 && strike.height > 0) out.add(new Rectangle(strike));
+        }
+        return List.copyOf(out);
+    }
+
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);

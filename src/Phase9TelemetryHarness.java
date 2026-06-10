@@ -286,6 +286,23 @@ public final class Phase9TelemetryHarness {
             SpawnSystem.spawnEnemyGroup(ctx, ctx.player.x + 560.0, ctx.player.y + 240.0);
             SpawnSystem.spawnAllyGroup(ctx, ctx.player.x - 560.0, ctx.player.y - 240.0);
         }
+        stimulateHazardTelemetry(ctx, tick);
+    }
+
+    private static void stimulateHazardTelemetry(GameContext ctx, int tick) {
+        if (ctx == null || ctx.player == null) return;
+        Ship player = ctx.player;
+        if (tick >= 360 || tick % 18 != 0) return;
+
+        ShipRoomLayout.RoomDef reactor = ShipRoomLayout.roomForId(player.role, ShipRoomLayout.RoomId.REACTOR);
+        if (reactor == null) return;
+
+        double wx = player.x + avg(reactor.xs) * player.radius;
+        double wy = player.y + avg(reactor.ys) * player.radius;
+        player.shield = 0.0;
+        player.shieldActive = false;
+        player.crewOrder = Ship.CrewOrder.BALANCED;
+        player.takeDamage(4, wx, wy, 0.0, 0.0);
     }
 
     private static void keepPlayerAlive(GameContext ctx, int tick) {
@@ -377,6 +394,13 @@ public final class Phase9TelemetryHarness {
 
     private static String fmt6(double v) {
         return String.format(Locale.US, "%.6f", v);
+    }
+
+    private static double avg(double[] values) {
+        if (values == null || values.length == 0) return 0.0;
+        double sum = 0.0;
+        for (double v : values) sum += v;
+        return sum / values.length;
     }
 
     private static int parseInt(String raw, int fallback) {

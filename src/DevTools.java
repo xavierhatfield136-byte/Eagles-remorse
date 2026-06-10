@@ -33,6 +33,20 @@ public final class DevTools {
 
     public static double getTimeScale() { return SCALES[scaleIndex]; }
 
+    public static void setTimeScale(double scale) {
+        double target = Math.max(0.0, scale);
+        int best = 0;
+        double bestDelta = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < SCALES.length; i++) {
+            double delta = Math.abs(SCALES[i] - target);
+            if (delta < bestDelta) {
+                best = i;
+                bestDelta = delta;
+            }
+        }
+        scaleIndex = best;
+    }
+
     public static void cycleTimeScale() {
         scaleIndex = (scaleIndex + 1) % SCALES.length;
     }

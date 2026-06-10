@@ -42,6 +42,7 @@ public final class EventSystem {
             ctx.ui.updateCombatCallouts(dt);
             ctx.ui.updateCommResult(dt);
         }
+        TacticalReadabilitySystem.update(ctx);
         if (ctx.hazardHintCooldown > 0.0) ctx.hazardHintCooldown -= dt;
         if (ctx.hazardCriticalCooldown > 0.0) ctx.hazardCriticalCooldown -= dt;
         updateHazardWarnings(ctx);

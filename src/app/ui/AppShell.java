@@ -14,6 +14,7 @@ public final class AppShell {
     private static final String CARD_MENU = "menu";
     private static final String CARD_GAME = "game";
     private static final String CARD_CREDITS = "credits";
+    private static final String CARD_ALPHA_READINESS = "alpha-readiness";
 
     private final JFrame frame;
     private final CardLayout cards;
@@ -22,6 +23,7 @@ public final class AppShell {
     private final TitleSequencePanel titlePanel;
     private final MainMenuPanel menuPanel;
     private final CreditsPanel creditsPanel;
+    private final AlphaReadinessPanel alphaReadinessPanel;
     private final GameViewFactory gameViewFactory;
     private GameView gameView;
     private String activeCard = CARD_MENU;
@@ -44,13 +46,15 @@ public final class AppShell {
         root = new JPanel(cards);
 
         titlePanel = new TitleSequencePanel(this::showMenu);
-        menuPanel = new MainMenuPanel(this::startGame, this::showCredits, quitAction,
+        menuPanel = new MainMenuPanel(this::startGame, this::showCredits, this::showAlphaReadiness, quitAction,
                 resumeCampaignProvider, spaceBackgroundPainter);
         creditsPanel = new CreditsPanel(this::showMenu);
+        alphaReadinessPanel = new AlphaReadinessPanel(this::showMenu);
 
         root.add(titlePanel, CARD_TITLE);
         root.add(menuPanel, CARD_MENU);
         root.add(creditsPanel, CARD_CREDITS);
+        root.add(alphaReadinessPanel, CARD_ALPHA_READINESS);
 
         frame.setContentPane(root);
         frame.pack();
@@ -85,6 +89,10 @@ public final class AppShell {
 
     private void showCredits() {
         showCard(CARD_CREDITS);
+    }
+
+    private void showAlphaReadiness() {
+        showCard(CARD_ALPHA_READINESS);
     }
 
     private void removeActiveGameView() {
@@ -144,6 +152,7 @@ public final class AppShell {
                 }
             }
             case CARD_CREDITS -> creditsPanel.requestFocusInWindow();
+            case CARD_ALPHA_READINESS -> alphaReadinessPanel.requestFocusInWindow();
             case CARD_TITLE -> titlePanel.requestFocusInWindow();
             default -> menuPanel.requestFocusInWindow();
         }

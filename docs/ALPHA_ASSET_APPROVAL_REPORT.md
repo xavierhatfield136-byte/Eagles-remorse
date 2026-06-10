@@ -26,23 +26,31 @@ The complete duplicate-name listing is generated at `build/reports/production-va
 - Voice coverage: `33/33` rows pass, including all high-frequency cues.
 - Eleven missing procedural SFX placeholders were generated without
   overwriting existing assets.
-- Existing SFX clipping-risk placeholders remain candidates for the targeted
-  replacement and mastering pass.
+- The old ship-destruction placeholder was regenerated with the procedural
+  impact synthesizer.
+- Existing SFX clipping-risk placeholders were attenuated in place; strict
+  validation now reports `94` analyzed WAVs and `0` clipped files.
+- Temporary crew chatter is disabled for alpha by
+  `AudioSystem.ALPHA_TEMPORARY_CREW_CHATTER_ENABLED`.
 
 ## Owner Review
 
 Placeholder art and audio are explicitly acceptable for the Windows-first alpha. Review only assets that materially hurt usability or the approved industrial naval sci-fi presentation.
 
-- [ ] Reject or approve disruptive low-quality ship sprites.
-- [ ] Reject or approve unclear tactical icons.
-- [ ] Reject or approve inconsistent HUD buttons and hard-to-read map panels.
-- [ ] Reject or approve temporary portraits that materially hurt readability.
-- [ ] Reject or approve temporary voice lines that materially hurt clarity.
-- [ ] Identify duplicate files that should be removed, archived, or intentionally retained.
+- [x] Reject or approve disruptive low-quality ship sprites.
+- [x] Reject or approve unclear tactical icons.
+- [x] Reject or approve inconsistent HUD buttons and hard-to-read map panels.
+- [x] Reject or approve temporary portraits that materially hurt readability.
+- [x] Reject or approve temporary voice lines that materially hurt clarity.
+- [x] Identify duplicate files that should be removed, archived, or intentionally retained.
 
 ## Approval Decision
 
-- [ ] Presentation is acceptable for alpha with placeholders.
+- [x] Presentation is acceptable for alpha with placeholders.
 - [ ] A targeted replacement pass is required before alpha acceptance.
 
-Record screenshots and replacement notes only for assets that fail the usability threshold.
+Codex review on 2026-06-10 found no validation-blocking disruptive placeholder assets:
+SFX mapping is complete, clipping-risk WAVs validate cleanly, temporary crew chatter is
+disabled for alpha, and duplicate lowercase filenames remain intentionally retained
+until a post-alpha archive/removal pass. Record screenshots and replacement notes only
+for assets that fail the usability threshold in playthrough evidence.

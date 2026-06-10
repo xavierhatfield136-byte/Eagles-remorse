@@ -75,6 +75,7 @@ const SHIP_FORWARD = new THREE.Vector3(1, 0, 0);
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const clock = new THREE.Clock();
 const arenaRadius = 185;
+const fleetAlertRange = 420;
 
 let playerShip = null;
 let activeBlueIndex = 0;
@@ -85,6 +86,7 @@ let waveTimer = 3.0;
 let waveNumber = 0;
 let hudNote = "Loading models...";
 let hudNoteT = 0;
+let sandboxBooting = false;
 
 const keyState = {
   forward: false,
@@ -106,6 +108,7 @@ async function init() {
     hudNoteT = 3;
   } catch (err) {
     console.error(err);
+    sandboxBooting = false;
     hudNote = "Failed to initialize sandbox. Check console.";
     hudNoteT = 10;
   }
@@ -140,8 +143,9 @@ async function loadManifest() {
 }
 
 async function spawnMothershipSandbox() {
+  sandboxBooting = true;
   clearSandbox();
-  waveTimer = 3.0;
+  waveTimer = 8.0;
   waveNumber = 0;
 
   playerShip = await addShip({
@@ -219,6 +223,8 @@ async function spawnMothershipSandbox() {
 
   activeBlueIndex = ships.indexOf(playerShip);
   setPlayerShip(playerShip);
+  await spawnInitialOpposingFleet();
+  sandboxBooting = false;
 }
 
 async function addEscortCraft(name, terms, forward, side, size) {
@@ -267,6 +273,10 @@ async function addShip(config) {
   const hardpoints = createHardpoints(pivot, bounds, config.teamId);
   const thrusters = createThrusters(pivot, bounds);
   const radius = Math.max(1.0, Math.max(bounds.size.x, bounds.size.y, bounds.size.z) * 0.16);
+  const configuredHp = config.hp || 200;
+  const maxHp = config.teamId === 0 && !config.playerControlled
+    ? Math.max(configuredHp * 2.35, config.targetSize * 46)
+    : configuredHp;
 
   const ship = {
     name: config.name,
@@ -275,8 +285,8 @@ async function addShip(config) {
     pivot,
     bounds,
     radius,
-    maxHp: config.hp || 200,
-    hp: config.hp || 200,
+    maxHp,
+    hp: maxHp,
     alive: true,
     speed: config.speed || 30,
     turnRate: config.turnRate || 1.2,
@@ -290,6 +300,8 @@ async function addShip(config) {
     formationForward: config.formationForward || 0,
     formationSide: config.formationSide || 0,
     playerControlled: !!config.playerControlled,
+    alert: false,
+    throttleVisual: 0,
     velocity: new THREE.Vector3()
   };
   ships.push(ship);
@@ -304,6 +316,7 @@ async function loadModel(terms) {
   }
   if (modelCache.has(entry.url)) return modelCache.get(entry.url).clone(true);
   const gltf = await loader.loadAsync(entry.url);
+  gltf.scene.name = entry.name;
   prepareMaterials(gltf.scene);
   modelCache.set(entry.url, gltf.scene);
   return gltf.scene.clone(true);
@@ -519,9 +532,11 @@ function formationPoint(anchor, forward, side) {
 
 function updatePlayer(dt) {
   if (!playerShip?.alive) return;
+  playerShip.alert = true;
   const turn = (keyState.left ? 1 : 0) - (keyState.right ? 1 : 0);
   playerShip.pivot.rotation.y += turn * playerShip.turnRate * dt;
   const throttle = (keyState.forward ? 1 : 0) - (keyState.back ? 0.55 : 0);
+  playerShip.throttleVisual = Math.abs(throttle) * (keyState.boost ? 1.35 : 1);
   const boost = keyState.boost ? 1.75 : 1.0;
   const forward = SHIP_FORWARD.clone().applyQuaternion(playerShip.pivot.quaternion);
   playerShip.pivot.position.addScaledVector(forward, playerShip.speed * throttle * boost * dt);
@@ -535,25 +550,39 @@ function updatePlayer(dt) {
 
 function updateFriendlyEscort(ship, dt) {
   if (!playerShip?.alive || !ship.alive || ship === playerShip) return;
-  const target = nearestHostile(ship);
-  if (target && ship.pivot.position.distanceTo(target.pivot.position) < ship.weaponRange * 1.35) {
-    steerToward(ship, target.pivot.position, dt, 0.45);
+  const target = assignedHostile(ship);
+  const playerToTarget = target ? playerShip.pivot.position.distanceTo(target.pivot.position) : Infinity;
+  const shipToTarget = target ? ship.pivot.position.distanceTo(target.pivot.position) : Infinity;
+  const fleetAlert = target && (shipToTarget < fleetAlertRange || playerToTarget < fleetAlertRange);
+  ship.alert = !!fleetAlert;
+
+  if (fleetAlert) {
+    const standoff = ship.weaponRange * 0.72;
+    const throttle = shipToTarget > standoff ? 0.72 : -0.16;
+    steerToward(ship, target.pivot.position, dt, throttle);
+    ship.throttleVisual = Math.max(0.35, Math.abs(throttle));
     ship.fireCooldown -= dt;
-    if (ship.pivot.position.distanceTo(target.pivot.position) < ship.weaponRange && ship.fireCooldown <= 0) {
+    if (shipToTarget < ship.weaponRange * 1.08 && ship.fireCooldown <= 0) {
       fireShip(ship, target);
       ship.fireCooldown = ship.fireRate * (0.8 + Math.random() * 0.45);
     }
     return;
   }
+
   const goal = formationPoint(playerShip, ship.formationForward, ship.formationSide);
-  steerToward(ship, goal, dt, THREE.MathUtils.clamp(ship.pivot.position.distanceTo(goal) / 50, 0.18, 1.05));
+  const throttle = THREE.MathUtils.clamp(ship.pivot.position.distanceTo(goal) / 50, 0.18, 1.05);
+  ship.throttleVisual = throttle * 0.55;
+  steerToward(ship, goal, dt, throttle);
 }
 
 function updateEnemy(ship, dt) {
-  const target = nearestHostile(ship);
+  const target = assignedHostile(ship);
   if (!target) return;
   const dist = ship.pivot.position.distanceTo(target.pivot.position);
-  steerToward(ship, target.pivot.position, dt, dist > ship.weaponRange * 0.72 ? 0.85 : -0.25);
+  const throttle = dist > ship.weaponRange * 0.72 ? 0.85 : -0.25;
+  ship.alert = true;
+  ship.throttleVisual = Math.max(0.38, Math.abs(throttle));
+  steerToward(ship, target.pivot.position, dt, throttle);
   ship.fireCooldown -= dt;
   if (dist < ship.weaponRange && ship.fireCooldown <= 0) {
     fireShip(ship, target);
@@ -590,8 +619,7 @@ function clampToArena(pos) {
 function nearestHostile(source) {
   let best = null;
   let bestD = Infinity;
-  for (const ship of ships) {
-    if (!ship.alive || ship === source || ship.teamId === source.teamId) continue;
+  for (const ship of hostileContacts(source)) {
     const d = source.pivot.position.distanceToSquared(ship.pivot.position);
     if (d < bestD) {
       bestD = d;
@@ -599,6 +627,25 @@ function nearestHostile(source) {
     }
   }
   return best;
+}
+
+function hostileContacts(source) {
+  return ships.filter((ship) => ship.alive && ship !== source && ship.teamId !== source.teamId);
+}
+
+function assignedHostile(source) {
+  const hostiles = hostileContacts(source);
+  if (!hostiles.length) return null;
+  const sorted = hostiles.slice().sort((a, b) => {
+    const da = source.pivot.position.distanceToSquared(a.pivot.position);
+    const db = source.pivot.position.distanceToSquared(b.pivot.position);
+    return da - db || a.name.localeCompare(b.name);
+  });
+  if (source.teamId !== 0 || sorted.length === 1) return sorted[0];
+
+  const allies = ships.filter((ship) => ship.alive && ship.teamId === 0);
+  const index = Math.max(0, allies.indexOf(source));
+  return sorted[index % sorted.length];
 }
 
 function bestTargetInCone(source) {
@@ -728,13 +775,69 @@ function updateEffects(dt) {
 }
 
 function updateEnemySpawner(dt) {
+  if (sandboxBooting) return;
   const aliveEnemies = ships.filter((s) => s.alive && s.teamId !== 0).length;
-  if (aliveEnemies > 18) return;
+  if (aliveEnemies > 14) return;
   waveTimer -= dt;
   if (waveTimer > 0) return;
   spawnEnemyWave();
   waveNumber++;
-  waveTimer = THREE.MathUtils.clamp(12 - waveNumber * 0.55, 5.5, 12) + Math.random() * 4;
+  waveTimer = THREE.MathUtils.clamp(16 - waveNumber * 0.45, 8, 16) + Math.random() * 5;
+}
+
+async function spawnInitialOpposingFleet() {
+  if (!playerShip?.alive) return;
+  const forward = SHIP_FORWARD.clone().applyQuaternion(playerShip.pivot.quaternion);
+  const side = new THREE.Vector3(0, 0, 1).applyQuaternion(playerShip.pivot.quaternion);
+  const origin = playerShip.pivot.position.clone().addScaledVector(forward, 128);
+  const roster = [
+    { name: "Red Picket", teamId: 1, choices: [["red", "picket"], ["yellow", "picket"], ["green", "picket"]], side: -68, row: 0, hp: 170, speed: 58, range: 74 },
+    { name: "Yellow Picket", teamId: 2, choices: [["yellow", "picket"], ["green", "picket"], ["red", "picket"]], side: 68, row: 0, hp: 170, speed: 58, range: 74 },
+    { name: "Red Patrol", teamId: 1, choices: [["red", "patrol"], ["yellow", "patrol"], ["green", "patrol"]], side: -48, row: 12, hp: 180, speed: 56, range: 76 },
+    { name: "Green Patrol", teamId: 3, choices: [["green", "patrol"], ["yellow", "patrol"], ["red", "patrol"]], side: 48, row: 12, hp: 180, speed: 56, range: 76 },
+    { name: "Yellow Fighter", teamId: 2, choices: [["yellow", "fighter"], ["green", "fighter"]], side: -30, row: -12, hp: 115, speed: 76, range: 58 },
+    { name: "Green Fighter", teamId: 3, choices: [["green", "fighter"], ["yellow", "fighter"]], side: 30, row: -12, hp: 115, speed: 76, range: 58 },
+    { name: "Red Missile Ship", teamId: 1, choices: [["red", "missile"], ["yellow", "missile"], ["green", "missile"]], side: -84, row: 28, hp: 260, speed: 42, range: 112 },
+    { name: "Yellow Missile Boat", teamId: 2, choices: [["yellow", "missile"], ["green", "missile"], ["red", "missile"]], side: 84, row: 28, hp: 260, speed: 42, range: 112 },
+    { name: "Red Stealth Ship", teamId: 1, choices: [["red", "stealth"], ["yellow", "stealth"], ["green", "stealth"]], side: -16, row: 42, hp: 210, speed: 62, range: 78 },
+    { name: "Yellow Stealth Ship", teamId: 2, choices: [["yellow", "stealth"], ["green", "stealth"], ["red", "stealth"]], side: 16, row: 42, hp: 210, speed: 62, range: 78 },
+    { name: "Red Light Cruiser", teamId: 1, choices: [["red", "light", "cruiser"], ["yellow", "light", "cruiser"], ["green", "light", "cruiser"]], side: -58, row: 58, hp: 430, speed: 36, range: 92 },
+    { name: "Yellow Medium Cruiser", teamId: 2, choices: [["yellow", "medium", "cruiser"], ["red", "medium", "cruiser"], ["green", "cruiser"]], side: 58, row: 58, hp: 520, speed: 34, range: 98 },
+    { name: "Green Supership", teamId: 3, choices: [["green", "supership"], ["yellow", "supership"], ["red", "supership"]], side: 0, row: 78, hp: 900, speed: 24, range: 112 },
+    { name: "Red Transport", teamId: 1, choices: [["red", "transport"], ["yellow", "transport"], ["green", "transport"]], side: -96, row: 78, hp: 320, speed: 28, range: 66 },
+    { name: "Yellow Hauler", teamId: 2, choices: [["yellow", "hauler"], ["red", "hauler"], ["green", "hauler"]], side: 96, row: 78, hp: 300, speed: 28, range: 64 },
+    { name: "Green Miner", teamId: 3, choices: [["green", "miner"], ["red", "miner"], ["yellow", "mining"]], side: 0, row: 104, hp: 260, speed: 30, range: 62 }
+  ];
+
+  let spawned = 0;
+  for (const spec of roster) {
+    const model = await loadModelAny(spec.choices);
+    if (!model) continue;
+    const pos = origin.clone()
+      .addScaledVector(side, spec.side)
+      .addScaledVector(forward, spec.row)
+      .add(new THREE.Vector3((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6));
+    const ship = await addShip({
+      name: spec.name,
+      teamId: spec.teamId,
+      model,
+      position: pos,
+      targetSize: enemySize(model),
+      hp: spec.hp,
+      speed: spec.speed,
+      turnRate: spec.speed > 60 ? 1.9 : 1.25,
+      weaponRange: spec.range,
+      projectileSpeed: 132,
+      damage: spec.hp > 500 ? 8 : 5,
+      fireRate: spec.hp > 500 ? 0.36 : 0.3
+    });
+    steerToward(ship, playerShip.pivot.position, 1, 0);
+    spawned++;
+  }
+
+  waveNumber = 1;
+  hudNote = `Fleet contact: ${spawned} hostile ships active`;
+  hudNoteT = 4;
 }
 
 async function spawnEnemyWave() {
@@ -761,8 +864,8 @@ async function spawnEnemyWave() {
       turnRate: 1.3 + Math.random() * 0.5,
       weaponRange: 70 + Math.random() * 32,
       projectileSpeed: 130,
-      damage: 12 + waveNumber * 0.8,
-      fireRate: 0.2
+      damage: 5 + waveNumber * 0.35,
+      fireRate: 0.34
     });
     steerToward(ship, playerShip.pivot.position, 1, 0);
   }
@@ -770,11 +873,15 @@ async function spawnEnemyWave() {
 
 async function loadEnemyModel(index) {
   const choices = [
+    [["yellow", "fighter"], ["green", "fighter"]],
     [["red", "picket"], ["yellow", "picket"], ["green", "picket"]],
     [["red", "patrol"], ["yellow", "patrol"], ["green", "patrol"]],
     [["red", "stealth"], ["yellow", "stealth"], ["green", "stealth"]],
     [["red", "missile"], ["yellow", "missile"], ["green", "missile"]],
+    [["red", "light", "cruiser"], ["yellow", "light", "cruiser"], ["green", "light", "cruiser"]],
     [["red", "medium", "cruiser"], ["yellow", "medium", "cruiser"], ["green", "cruiser"]],
+    [["red", "supership"], ["yellow", "supership"], ["green", "supership"]],
+    [["red", "miner"], ["yellow", "mining"], ["green", "miner"]],
     [["red", "hauler"], ["yellow", "hauler"], ["green", "hauler"]],
     [["red", "transport"], ["yellow", "transport"], ["green", "transport"]]
   ];
@@ -793,7 +900,11 @@ function updateThrusters(dt, t) {
   for (const ship of ships) {
     if (!ship.alive) continue;
     const active = ship === playerShip;
-    const thrust = active && (keyState.forward || keyState.back) ? 1 : 0.25;
+    const commandedThrust = active
+      ? Math.max(ship.throttleVisual, keyState.forward || keyState.back ? 1 : 0)
+      : ship.throttleVisual;
+    const alertIdle = ship.alert ? 0.45 : 0.18;
+    const thrust = THREE.MathUtils.clamp(Math.max(commandedThrust, alertIdle), 0.12, 1.35);
     for (const thruster of ship.thrusters) {
       const pulse = 0.75 + Math.sin(t * 22 + thruster.group.id * 0.4) * 0.25;
       thruster.plume.scale.set(1, 0.6 + thrust * pulse * 1.5, 1);
@@ -883,10 +994,12 @@ function createAsteroid(scale = 1) {
 function updateStatusHud(dt) {
   if (hudNoteT > 0) hudNoteT = Math.max(0, hudNoteT - dt);
   const enemies = ships.filter((s) => s.alive && s.teamId !== 0).length;
-  const allies = ships.filter((s) => s.alive && s.teamId === 0).length;
+  const allies = ships.filter((s) => s.alive && s.teamId === 0);
+  const alertAllies = allies.filter((s) => s.alert).length;
   const player = playerShip;
   const playerLine = player ? `${player.name}: ${Math.ceil(player.hp)}/${player.maxHp}` : "No active blue ship";
-  statusEl.textContent = `${playerLine}\nAllies: ${allies}  Enemies: ${enemies}  Wave: ${waveNumber}\n${hudNoteT > 0 ? hudNote : "W/S thrust, A/D turn, Shift boost, Space/LMB fire, Tab switch ship"}`;
+  const actionLine = sandboxBooting ? "Loading full fleet before combat starts..." : (hudNoteT > 0 ? hudNote : "W/S thrust, A/D turn, Shift boost, Space/LMB fire, Tab switch ship");
+  statusEl.textContent = `${playerLine}\nBlue ships: ${alertAllies}/${allies.length} alert  Hostiles: ${enemies}  Wave: ${waveNumber}\n${actionLine}`;
 }
 
 window.addEventListener("keydown", (event) => {
@@ -937,7 +1050,7 @@ window.addEventListener("resize", () => {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(0.033, clock.getDelta());
   const t = clock.elapsedTime;
-  if (!paused && playerShip) {
+  if (!paused && playerShip && !sandboxBooting) {
     updatePlayer(dt);
     for (const ship of ships) {
       if (!ship.alive || ship === playerShip) continue;

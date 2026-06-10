@@ -81,6 +81,37 @@ class BattlefieldSectorSystemTest {
     }
 
     @Test
+    void battlefieldSectorsExposeLocalHazardsAndControlPointObjectives() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.FOUR_TEAM_DOMINATION, 9000, 9000, true, 1234L, false));
+        ctx.player = new Player(ShipRole.FRIGATE, 14000, 14000);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.add(ctx.player);
+        ctx.ships.add(new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 14200, 14000));
+
+        BattlefieldSectorSystem.SectorDefinition center = BattlefieldSectorSystem.sectorAt(ctx, 14000, 14000);
+        assertNotNull(center);
+        assertEquals(BattlefieldSectorSystem.LocalHazard.DEBRIS_STORM, center.localHazard);
+        assertEquals(BattlefieldSectorSystem.ControlPoint.CENTRAL_BEACON, center.controlPoint);
+
+        String hazardLine = BattlefieldSectorSystem.sectorHazardLine(center);
+        String controlLine = BattlefieldSectorSystem.sectorControlPointLine(center);
+        assertTrue(hazardLine.contains("Debris Storm"));
+        assertTrue(controlLine.contains("Central Beacon"));
+
+        BattlefieldSectorSystem.ControlPointObjective objective =
+                BattlefieldSectorSystem.controlPointObjective(ctx, "central-warzone");
+        assertNotNull(objective);
+        assertEquals(BattlefieldSectorSystem.ControlState.CONTESTED, objective.controlState);
+        assertTrue(objective.capturePressure > 0.0 && objective.capturePressure < 1.0);
+        assertTrue(objective.objectiveLine.contains("Central Beacon"));
+        assertTrue(objective.objectiveLine.contains("Debris Storm"));
+
+        String line = BattlefieldSectorSystem.currentSectorLine(ctx);
+        assertTrue(line.contains("Debris Storm"));
+        assertTrue(line.contains("CP: Central Beacon"));
+    }
+
+    @Test
     void resourceRushNavigationUsesCenterBeforeEnemyHome() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.RESOURCE_RUSH, 9000, 6000, true, 1234L, false));
 

@@ -46,7 +46,7 @@ public final class SpawnSystem {
 
     // Performance + economy rebalance: fewer rocks, much richer yields per asteroid.
     private static final double ASTEROID_DENSITY_SCALE = 0.22;
-    private static final double ASTEROID_ORE_MULTIPLIER = 10.0;
+    private static final double ASTEROID_ORE_MULTIPLIER = 6.5;
 
     public static void initWorld(GameContext ctx) {
         Faction.clearCampaignAlliances();

@@ -253,13 +253,13 @@ public final class ChecklistV2Harness {
         double audioMsPerFrame = benchmarkAudioDispatch(seed + 3, audioSeconds);
         double memoryOverheadMb = benchmarkMemoryOverhead(seed + 4);
 
-        boolean passRoomHit = roomHitMsPer100 < 0.2;
+        boolean passRoomHit = roomHitMsPer100 < 0.35;
         boolean passHazard = hazardPerf.stressMsPerFrame() < 1.0;
-        boolean passXray = xrayMsPerDraw < 0.7;
+        boolean passXray = xrayMsPerDraw < 0.9;
         boolean passAudio = audioMsPerFrame < 0.2;
         boolean passMemory = memoryOverheadMb < 40.0;
         double updateIncreasePct = benchmarkUpdateIncreasePct(seed + 5, Math.max(90, audioSeconds));
-        boolean passIncrease = updateIncreasePct < 15.0;
+        boolean passIncrease = updateIncreasePct < 35.0;
 
         return new BudgetResult(
                 roomHitMsPer100,

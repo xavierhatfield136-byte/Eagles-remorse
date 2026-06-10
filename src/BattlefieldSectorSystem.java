@@ -17,21 +17,33 @@ public final class BattlefieldSectorSystem {
     private static final int INTER_SECTOR_GAP = 2200;
 
     private static final List<SectorDefinition> RESOURCE_RUSH_SECTORS = List.of(
-            new SectorDefinition("blue-home", "BLUE HOME", 0, 0, 1, 1, Faction.ALLY),
-            new SectorDefinition("central-front", "CENTRAL FRONT", 1, 0, 1, 1, null),
-            new SectorDefinition("red-home", "RED HOME", 2, 0, 1, 1, Faction.ENEMY)
+            new SectorDefinition("blue-home", "BLUE HOME", 0, 0, 1, 1, Faction.ALLY,
+                    LocalHazard.SAFE_ANCHORAGE, ControlPoint.LOGISTICS_ANCHOR),
+            new SectorDefinition("central-front", "CENTRAL FRONT", 1, 0, 1, 1, null,
+                    LocalHazard.MINE_DRIFT, ControlPoint.RELAY_SPINE),
+            new SectorDefinition("red-home", "RED HOME", 2, 0, 1, 1, Faction.ENEMY,
+                    LocalHazard.FLAK_SCREEN, ControlPoint.COMMAND_BUNKER)
     );
 
     private static final List<SectorDefinition> FOUR_TEAM_SECTORS = List.of(
-            new SectorDefinition("blue-orbit", "BLUE ORBIT", 0, 0, 1, 1, Faction.ALLY),
-            new SectorDefinition("north-link", "NORTH LINK", 1, 0, 1, 1, null),
-            new SectorDefinition("red-orbit", "RED ORBIT", 2, 0, 1, 1, Faction.ENEMY),
-            new SectorDefinition("west-link", "WEST LINK", 0, 1, 1, 1, null),
-            new SectorDefinition("central-warzone", "CENTRAL WARZONE", 1, 1, 1, 1, null),
-            new SectorDefinition("east-link", "EAST LINK", 2, 1, 1, 1, null),
-            new SectorDefinition("green-orbit", "GREEN ORBIT", 0, 2, 1, 1, Faction.TEAM_C),
-            new SectorDefinition("south-link", "SOUTH LINK", 1, 2, 1, 1, null),
-            new SectorDefinition("yellow-orbit", "YELLOW ORBIT", 2, 2, 1, 1, Faction.TEAM_D)
+            new SectorDefinition("blue-orbit", "BLUE ORBIT", 0, 0, 1, 1, Faction.ALLY,
+                    LocalHazard.SAFE_ANCHORAGE, ControlPoint.SENSOR_CROWN),
+            new SectorDefinition("north-link", "NORTH LINK", 1, 0, 1, 1, null,
+                    LocalHazard.ION_SQUALL, ControlPoint.RELAY_SPINE),
+            new SectorDefinition("red-orbit", "RED ORBIT", 2, 0, 1, 1, Faction.ENEMY,
+                    LocalHazard.FLAK_SCREEN, ControlPoint.COMMAND_BUNKER),
+            new SectorDefinition("west-link", "WEST LINK", 0, 1, 1, 1, null,
+                    LocalHazard.ASTEROID_SHOAL, ControlPoint.ORE_GATE),
+            new SectorDefinition("central-warzone", "CENTRAL WARZONE", 1, 1, 1, 1, null,
+                    LocalHazard.DEBRIS_STORM, ControlPoint.CENTRAL_BEACON),
+            new SectorDefinition("east-link", "EAST LINK", 2, 1, 1, 1, null,
+                    LocalHazard.MINE_DRIFT, ControlPoint.JUMP_BUOY),
+            new SectorDefinition("green-orbit", "GREEN ORBIT", 0, 2, 1, 1, Faction.TEAM_C,
+                    LocalHazard.REPAIR_DOCKS, ControlPoint.SHELTER_PIER),
+            new SectorDefinition("south-link", "SOUTH LINK", 1, 2, 1, 1, null,
+                    LocalHazard.NEBULA_WAKE, ControlPoint.TRAFFIC_LOCK),
+            new SectorDefinition("yellow-orbit", "YELLOW ORBIT", 2, 2, 1, 1, Faction.TEAM_D,
+                    LocalHazard.CIVILIAN_LANES, ControlPoint.MARKET_RING)
     );
     private static final Map<String, List<String>> RESOURCE_RUSH_ADJACENCY = Map.of(
             "blue-home", List.of("central-front"),
@@ -66,6 +78,47 @@ public final class BattlefieldSectorSystem {
         CONTESTED
     }
 
+    public enum LocalHazard {
+        SAFE_ANCHORAGE("Safe Anchorage", "stable repair approach"),
+        MINE_DRIFT("Mine Drift", "slow routes through seeded mines"),
+        FLAK_SCREEN("Flak Screen", "fixed guns punish direct pushes"),
+        ION_SQUALL("Ion Squall", "sensor and engine interference"),
+        ASTEROID_SHOAL("Asteroid Shoal", "cover breaks long firing lines"),
+        DEBRIS_STORM("Debris Storm", "wreckage narrows approach lanes"),
+        REPAIR_DOCKS("Repair Docks", "support hulls can regroup here"),
+        NEBULA_WAKE("Nebula Wake", "visibility drops near the route"),
+        CIVILIAN_LANES("Civilian Lanes", "traffic limits careless fire");
+
+        public final String label;
+        public final String tacticalEffect;
+
+        LocalHazard(String label, String tacticalEffect) {
+            this.label = label;
+            this.tacticalEffect = tacticalEffect;
+        }
+    }
+
+    public enum ControlPoint {
+        LOGISTICS_ANCHOR("Logistics Anchor", "hold to stabilize reinforcements"),
+        RELAY_SPINE("Relay Spine", "hold to open forward routing"),
+        COMMAND_BUNKER("Command Bunker", "hold to break base command"),
+        SENSOR_CROWN("Sensor Crown", "hold to improve contact clarity"),
+        ORE_GATE("Ore Gate", "hold to protect resource flow"),
+        CENTRAL_BEACON("Central Beacon", "hold to dominate the center"),
+        JUMP_BUOY("Jump Buoy", "hold to control sector travel"),
+        SHELTER_PIER("Shelter Pier", "hold to preserve allied recovery"),
+        TRAFFIC_LOCK("Traffic Lock", "hold to keep civilian routes open"),
+        MARKET_RING("Market Ring", "hold to secure trade access");
+
+        public final String label;
+        public final String objectiveText;
+
+        ControlPoint(String label, String objectiveText) {
+            this.label = label;
+            this.objectiveText = objectiveText;
+        }
+    }
+
     public static final class SectorDefinition {
         public final String id;
         public final String label;
@@ -78,6 +131,8 @@ public final class BattlefieldSectorSystem {
         public final int gridRow;
         public final int columnSpan;
         public final int rowSpan;
+        public final LocalHazard localHazard;
+        public final ControlPoint controlPoint;
 
         SectorDefinition(String id,
                          String label,
@@ -85,13 +140,17 @@ public final class BattlefieldSectorSystem {
                          int gridRow,
                          int columnSpan,
                          int rowSpan,
-                         Faction anchorFaction) {
+                         Faction anchorFaction,
+                         LocalHazard localHazard,
+                         ControlPoint controlPoint) {
             this.id = (id == null || id.isBlank()) ? "sector" : id.trim();
             this.label = (label == null || label.isBlank()) ? this.id.toUpperCase(Locale.US) : label.trim();
             this.gridColumn = Math.max(0, gridColumn);
             this.gridRow = Math.max(0, gridRow);
             this.columnSpan = Math.max(1, columnSpan);
             this.rowSpan = Math.max(1, rowSpan);
+            this.localHazard = localHazard == null ? LocalHazard.SAFE_ANCHORAGE : localHazard;
+            this.controlPoint = controlPoint == null ? ControlPoint.RELAY_SPINE : controlPoint;
             int cols = Math.max(1, defaultGridColumns(anchorFaction, this.id));
             int rows = Math.max(1, defaultGridRows(anchorFaction, this.id));
             this.minXFrac = Math.max(0.0, Math.min(1.0, this.gridColumn / (double) cols));
@@ -221,6 +280,28 @@ public final class BattlefieldSectorSystem {
                 case 3 -> yellowPresence;
                 default -> 0;
             };
+        }
+    }
+
+    public static final class ControlPointObjective {
+        public final SectorDefinition sector;
+        public final ControlPoint controlPoint;
+        public final LocalHazard localHazard;
+        public final ControlState controlState;
+        public final Faction holder;
+        public final double capturePressure;
+        public final String objectiveLine;
+
+        ControlPointObjective(SectorSnapshot snapshot) {
+            this.sector = snapshot == null ? null : snapshot.sector;
+            this.controlPoint = sector == null ? ControlPoint.RELAY_SPINE : sector.controlPoint;
+            this.localHazard = sector == null ? LocalHazard.SAFE_ANCHORAGE : sector.localHazard;
+            this.controlState = snapshot == null ? ControlState.EMPTY : snapshot.controlState;
+            this.holder = snapshot == null ? null : snapshot.dominantFaction;
+            int top = snapshot == null ? 0 : Math.max(0, snapshot.dominantPresence);
+            int second = snapshot == null ? 0 : Math.max(0, snapshot.secondaryPresence);
+            this.capturePressure = (top + second <= 0) ? 0.0 : top / (double) (top + second);
+            this.objectiveLine = buildControlPointObjectiveLine(this);
         }
     }
 
@@ -458,6 +539,22 @@ public final class BattlefieldSectorSystem {
         return "Hostile";
     }
 
+    public static ControlPointObjective controlPointObjective(GameContext ctx, String sectorId) {
+        SectorSnapshot snapshot = snapshotForSector(ctx, sectorId);
+        if (snapshot == null) return null;
+        return new ControlPointObjective(snapshot);
+    }
+
+    public static String sectorHazardLine(SectorDefinition sector) {
+        if (sector == null || sector.localHazard == null) return "";
+        return "Hazard: " + sector.localHazard.label + " - " + sector.localHazard.tacticalEffect;
+    }
+
+    public static String sectorControlPointLine(SectorDefinition sector) {
+        if (sector == null || sector.controlPoint == null) return "";
+        return "Control: " + sector.controlPoint.label + " - " + sector.controlPoint.objectiveText;
+    }
+
     public static String currentSectorLine(GameContext ctx) {
         if (!isEnabled(ctx)) return "";
         SectorSnapshot current = currentSectorSnapshot(ctx);
@@ -472,7 +569,20 @@ public final class BattlefieldSectorSystem {
         if (selected != null && !selected.id.equalsIgnoreCase(current.sector.id)) {
             out.append("   Target: ").append(selected.label);
         }
+        out.append("   ").append(current.sector.localHazard.label);
+        out.append("   CP: ").append(current.sector.controlPoint.label);
         return out.toString();
+    }
+
+    private static String buildControlPointObjectiveLine(ControlPointObjective objective) {
+        if (objective == null || objective.sector == null) return "";
+        String holder = objective.holder == null ? "unclaimed" : objective.holder.teamName();
+        int pressure = (int) Math.round(MathUtil.clamp(objective.capturePressure, 0.0, 1.0) * 100.0);
+        return objective.sector.label + "  |  " + objective.controlPoint.label
+                + "  |  " + objective.localHazard.label
+                + "  |  " + objective.controlState
+                + "  |  holder " + holder
+                + "  |  pressure " + pressure + "%";
     }
 
     static SectorDefinition homeSector(GameContext ctx, Faction faction) {

@@ -352,6 +352,45 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void fleetTabExposesPreBattleFormationSelectionAndDeploymentPreview() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+        ctx.command.alliedFleetFormation = GameContext.FleetFormation.WEDGE;
+
+        List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
+        CampaignSystem.CampaignAction formation = actions.stream()
+                .filter(action -> "PRE_BATTLE_FORMATION".equals(action.id))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(formation);
+        assertTrue(formation.enabled);
+        assertTrue(formation.shortDescription.contains("WEDGE"));
+
+        assertTrue(formation.execute.execute(ctx));
+        assertEquals(GameContext.FleetFormation.LINE, ctx.command.alliedFleetFormation);
+
+        List<String> preview = CampaignSystem.tacticalDeploymentPreviewLines(ctx);
+        assertTrue(preview.stream().anyMatch(line -> line.startsWith("Pre-Battle Formation: LINE")));
+        assertTrue(preview.stream().anyMatch(line -> line.startsWith("Deployment Preview: Flagship left entry")));
+        assertTrue(CampaignSystem.campaignFleetManagerLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Deployment Zones: allies left lane")));
+    }
+
+    @Test
+    void tacticalObjectiveMarkersIncludeDeploymentPreviewForOpenSpaceContact() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicOvermapMode = false;
+        st.galaxyEncounterActive = true;
+        st.galaxyAmbientEncounterActive = false;
+        ctx.command.alliedFleetFormation = GameContext.FleetFormation.SCREEN;
+
+        List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        assertTrue(markers.stream().anyMatch(marker -> marker.label.equals("Deployment Preview: SCREEN")
+                && marker.subtitle.contains("escort coverage")));
+    }
+
+    @Test
     void shipyardPreviewAndStrategicAuthorityExposeLiveFleetBuildingContext() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignLocation shipyard = CampaignSystem.mainCampaignLocations(ctx).stream()
@@ -1159,7 +1198,9 @@ class CampaignStrategicCommandHudTest {
         int readinessBefore = ledger.readinessPercent;
         int fatigueBefore = ledger.crewFatigue;
 
-        CampaignSystem.selectCampaignFreeTravelTarget(ctx, 1600.0, 3200.0);
+        CampaignSystem.selectCampaignFreeTravelTarget(ctx,
+                Math.min(ctx.WORLD_W - 120.0, st.playerGalaxyX + 240.0),
+                Math.min(ctx.WORLD_H - 120.0, st.playerGalaxyY + 180.0));
         assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
         invokeTravelUpdate(ctx, st, 10.0);
 
@@ -1182,7 +1223,9 @@ class CampaignStrategicCommandHudTest {
         while (!"Combat Patrol".equals(CampaignSystem.campaignFleetPostureReadout(ctx))) {
             assertTrue(CampaignSystem.cycleSelectedFleetPosture(ctx));
         }
-        CampaignSystem.selectCampaignFreeTravelTarget(ctx, 1600.0, 3200.0);
+        CampaignSystem.selectCampaignFreeTravelTarget(ctx,
+                Math.min(ctx.WORLD_W - 120.0, st.playerGalaxyX + 240.0),
+                Math.min(ctx.WORLD_H - 120.0, st.playerGalaxyY + 180.0));
         assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
 
         invokeTravelUpdate(ctx, st, 16.0);

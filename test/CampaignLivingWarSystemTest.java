@@ -202,6 +202,62 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
+    void remoteNpcBattleAppearsAsObservedFromAfarIntel() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        setDouble(red, "x", 4900.0);
+        setDouble(red, "y", 4900.0);
+        setDouble(green, "x", 4860.0);
+        setDouble(green, "y", 4900.0);
+        setDouble(red, "strength", 30.0);
+        setDouble(green, "strength", 30.0);
+        st.playerGalaxyX = 0.0;
+        st.playerGalaxyY = 0.0;
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+
+        List<String> authority = CampaignSystem.campaignStrategicAuthorityLines(ctx);
+        assertTrue(authority.stream().anyMatch(line -> line.contains("OBSERVED FROM AFAR")
+                && line.contains("delayed intel")
+                && line.contains("Fleet Clash #")));
+    }
+
+    @Test
+    void resolvedNpcBattleLeavesStrategicBattleScarMarker() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        setDouble(red, "x", 2200.0);
+        setDouble(red, "y", 2200.0);
+        setDouble(green, "x", 2240.0);
+        setDouble(green, "y", 2200.0);
+        setDouble(red, "strength", 40.0);
+        setDouble(green, "strength", 40.0);
+        st.playerGalaxyX = 2200.0;
+        st.playerGalaxyY = 2200.0;
+        st.strategicOvermapMode = true;
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 17.0);
+
+        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
+        assertTrue(markers.stream().anyMatch(marker -> marker.label.startsWith("Battle Scar #")
+                && marker.subtitle.contains("BATTLE SCAR")
+                && marker.type == CampaignSystem.SupportMarkerType.SALVAGE));
+    }
+
+    @Test
     void factionDirectorBriefsPersistAcrossCheckpointRestore() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokePrivate("updateFactionDirectors",

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,6 +61,310 @@ class CampaignCompatibilityOverhaulTest {
                 "formation integrity should recover when the flagship and support screen stay nearby");
         assertTrue(Math.hypot(ctx.player.x - escort.x, ctx.player.y - escort.y) < ctx.player.radius + escort.radius + 90.0,
                 "the escorted titan should tuck back into the Mothership's shadow once formation is restored");
+    }
+
+    @Test
+    void protectFlagshipObjectiveMarksPlayerAndFailsBelowHullFloor() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        assertTrue(CampaignSystem.activateProtectFlagshipObjective(ctx, 0.50));
+
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Protect Flagship")
+                        && marker.subtitle.contains("above 50%")));
+
+        int startHp = ctx.player.hp;
+        ctx.player.hp = Math.max(1, (int) Math.floor(startHp * 0.45));
+        invokeUpdateObjective(ctx, GameContext.DT);
+
+        assertTrue(ctx.campaign.transitionLabel.contains("DEFEAT: FLAGSHIP CRIPPLED")
+                        || ctx.state == GameState.GAME_OVER,
+                "protect flagship objective should fail once the flagship drops below the hull floor");
+    }
+
+    @Test
+    void emergencyExtractionObjectiveRecoversDisabledAllyWhenFlagshipHoldsNearby() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        FleetShip disabled = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, ctx.player.x + 90.0, ctx.player.y);
+        disabled.name = "Disabled Test Frigate";
+        disabled.applyTemporaryDisable(10.0);
+        ctx.ships.add(disabled);
+
+        assertTrue(CampaignSystem.activateEmergencyExtractionObjective(ctx, disabled, 0.5));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Emergency Extraction")
+                        && marker.subtitle.contains("extraction")));
+
+        invokeUpdateObjective(ctx, 2.0);
+
+        assertFalse(ctx.campaign.emergencyExtractionObjectiveActive);
+        assertTrue(ctx.campaign.greenContractFavor > 0, "completed extraction should grant support favor");
+    }
+
+    @Test
+    void salvageUnderFireObjectiveCanRecoverWreckDespiteNearbyHostile() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        double wreckX = ctx.player.x + 80.0;
+        double wreckY = ctx.player.y;
+        addRecoverableWreck(ctx.campaign, wreckX, wreckY);
+        FleetShip hostile = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, wreckX + 180.0, wreckY);
+        hostile.name = "Hostile Salvage Interdictor";
+        ctx.ships.add(hostile);
+
+        assertTrue(CampaignSystem.activateSalvageUnderFireObjective(ctx, 1.0));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.subtitle.contains("SALVAGE UNDER FIRE")));
+
+        for (int i = 0; i < 420; i++) {
+            invokeUpdateRecoverableWreckSites(ctx);
+            ctx.campaign.sectorElapsed += GameContext.DT;
+        }
+
+        assertFalse(ctx.campaign.salvageUnderFireObjectiveActive);
+        assertEquals(1, ctx.campaign.recoverableWrecksClaimed);
+    }
+
+    @Test
+    void convoyLaneDefenseTracksCivilianTrafficQuotaAndFailsWhenBroken() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        ctx.ships.removeIf(ship -> ship != null && ship != ctx.player && ship.faction != Faction.ENEMY);
+
+        FleetShip liner = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_C, ctx.player.x + 120.0, ctx.player.y);
+        liner.name = "Civilian Liner";
+        FleetShip tender = new FleetShip(ShipRole.HAULER, Faction.TEAM_C, ctx.player.x + 210.0, ctx.player.y + 35.0);
+        tender.name = "Convoy Tender";
+        FleetShip tram = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_D, ctx.player.x + 300.0, ctx.player.y - 25.0);
+        tram.name = "Lane Tram";
+        ctx.ships.add(liner);
+        ctx.ships.add(tender);
+        ctx.ships.add(tram);
+
+        assertTrue(CampaignSystem.activateConvoyLaneDefenseObjective(ctx, 2));
+
+        assertEquals(3, ctx.campaign.objectiveAssetTotal);
+        assertEquals(2, ctx.campaign.objectiveAssetRequiredSurvivors);
+        assertTrue(ctx.campaign.convoyLaneDefenseObjectiveActive);
+        assertTrue(ctx.campaign.civilianTrafficConstraintActive);
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Convoy Lane Defense")
+                        && marker.subtitle.contains("Civilian traffic constraint")));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.subtitle.contains("avoid convoy losses")));
+
+        liner.hp = 0;
+        liner.alive = false;
+        tender.hp = 0;
+        tender.alive = false;
+        invokeDetectObjectiveAssetLosses(ctx);
+        invokeUpdateObjective(ctx, GameContext.DT);
+
+        assertTrue(ctx.campaign.transitionLabel.contains("DEFEAT")
+                        || ctx.state == GameState.GAME_OVER,
+                "convoy lane defense should fail once civilian survivors fall below the quota");
+    }
+
+    @Test
+    void minefieldBreachObjectiveRequiresPlannedRouteWaypoints() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        double firstX = ctx.player.x + 140.0;
+        double firstY = ctx.player.y + 20.0;
+        double secondX = ctx.player.x + 420.0;
+        double secondY = ctx.player.y - 40.0;
+
+        assertTrue(CampaignSystem.activateMinefieldBreachObjective(ctx,
+                List.of(new double[]{firstX, firstY}, new double[]{secondX, secondY}),
+                0.5));
+
+        assertEquals(2, ctx.campaign.minefieldBreachRoutePoints.size());
+        assertTrue(ctx.campaign.minefieldBreachObjectiveActive);
+        assertTrue(ctx.ships.stream().anyMatch(ship -> ship != null && ship.name.startsWith("Breach Mine Anchor")));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Minefield Breach Point")
+                        && marker.subtitle.contains("waypoint 1/2")));
+
+        ctx.player.x = firstX;
+        ctx.player.y = firstY;
+        invokeUpdateObjective(ctx, 1.1);
+        assertEquals(1, ctx.campaign.minefieldBreachRouteIndex);
+        assertTrue(ctx.campaign.minefieldBreachObjectiveActive);
+
+        ctx.player.x = secondX;
+        ctx.player.y = secondY;
+        invokeUpdateObjective(ctx, 1.1);
+
+        assertFalse(ctx.campaign.minefieldBreachObjectiveActive);
+        assertTrue(ctx.campaign.objectiveSecured || ctx.campaign.transitionLabel.contains("MINEFIELD BREACH ROUTE OPEN"),
+                "minefield breach should secure only after the planned route is completed");
+    }
+
+    @Test
+    void pursuitObjectiveCompletesWhenTargetEnginesAreDisabled() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        FleetShip runner = new FleetShip(ShipRole.MISSILE_BOAT, Faction.ENEMY, ctx.player.x + 360.0, ctx.player.y);
+        runner.name = "Fast Runner";
+        ctx.ships.add(runner);
+
+        assertTrue(CampaignSystem.activatePursuitObjective(ctx, runner,
+                ctx.player.x + 900.0, ctx.player.y, 180.0, 1.0));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Fast Runner")
+                        && marker.subtitle.contains("Disable engines")));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Escape Vector")));
+
+        runner.applyTemporaryDisable(4.0);
+        invokeUpdateObjective(ctx, 1.1);
+
+        assertFalse(ctx.campaign.pursuitObjectiveActive);
+        assertTrue(ctx.campaign.objectiveSecured || ctx.campaign.transitionLabel.contains("PURSUIT TARGET ENGINES DISABLED"),
+                "pursuit should complete when the target engines stay disabled long enough");
+    }
+
+    @Test
+    void pursuitObjectiveFailsWhenFastTargetReachesEscapeVector() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        FleetShip runner = new FleetShip(ShipRole.MISSILE_BOAT, Faction.ENEMY, ctx.player.x + 520.0, ctx.player.y);
+        runner.name = "Escaping Runner";
+        ctx.ships.add(runner);
+
+        assertTrue(CampaignSystem.activatePursuitObjective(ctx, runner,
+                ctx.player.x + 600.0, ctx.player.y, 140.0, 1.0));
+        runner.x = ctx.campaign.pursuitEscapeX;
+        runner.y = ctx.campaign.pursuitEscapeY;
+
+        invokeUpdateObjective(ctx, GameContext.DT);
+
+        assertTrue(ctx.campaign.transitionLabel.contains("DEFEAT: TARGET ESCAPED")
+                        || ctx.state == GameState.GAME_OVER,
+                "pursuit should fail when the target reaches the escape boundary");
+    }
+
+    @Test
+    void retreatCorridorObjectiveRewardsSurvivalInsteadOfKills() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        double corridorX = ctx.player.x + 500.0;
+        double corridorY = ctx.player.y;
+
+        assertTrue(CampaignSystem.activateRetreatCorridorObjective(ctx, corridorX, corridorY, 170.0, 1.0));
+        assertTrue(CampaignSystem.activeObjectiveMarkers(ctx).stream()
+                .anyMatch(marker -> marker.label.equals("Retreat Corridor")
+                        && marker.subtitle.contains("kills optional")));
+
+        ctx.campaign.kills = 99;
+        invokeUpdateObjective(ctx, 1.1);
+        assertEquals(0.0, ctx.campaign.retreatCorridorProgressSec, 0.01,
+                "retreat corridor should not progress from kill count alone");
+
+        ctx.player.x = corridorX;
+        ctx.player.y = corridorY;
+        invokeUpdateObjective(ctx, 1.1);
+
+        assertFalse(ctx.campaign.retreatCorridorObjectiveActive);
+        assertTrue(ctx.campaign.objectiveSecured || ctx.campaign.transitionLabel.contains("RETREAT CORRIDOR SECURED"),
+                "retreat corridor should secure when the flagship survives inside the extraction lane");
+    }
+
+    @Test
+    void tacticalPreviewsShowRetreatThresholdsAndCivilianHoldFirePressure() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        FleetShip hauler = new FleetShip(ShipRole.HAULER, Faction.ALLY, ctx.player.x + 120.0, ctx.player.y);
+        hauler.name = "Relief Hauler";
+        FleetShip cruiser = new FleetShip(ShipRole.CRUISER, Faction.ALLY, ctx.player.x + 240.0, ctx.player.y);
+        cruiser.name = "Line Cruiser";
+        FleetShip civilian = new FleetShip(ShipRole.TRANSPORT, Faction.TEAM_C, ctx.player.x + 80.0, ctx.player.y);
+        civilian.name = "Civilian Shuttle";
+        ctx.ships.add(hauler);
+        ctx.ships.add(cruiser);
+        ctx.ships.add(civilian);
+
+        List<String> retreatLines = CampaignSystem.shipSpecificRetreatThresholdLines(ctx);
+        assertTrue(retreatLines.stream().anyMatch(line -> line.contains("Relief Hauler")
+                && line.contains("62% hull")));
+        assertTrue(retreatLines.stream().anyMatch(line -> line.contains("Line Cruiser")
+                && line.contains("38% hull")));
+
+        assertTrue(CampaignSystem.activateHoldFireNearCiviliansObjective(ctx, 220.0));
+        ctx.command.tacticalMode = GameContext.TacticalMode.AGGRESSIVE;
+        ctx.lockedTarget = ctx.player;
+        invokeUpdateObjective(ctx, 1.1);
+        assertTrue(ctx.campaign.holdFireCivilianViolations > 0);
+        assertTrue(CampaignSystem.holdFireNearCiviliansPressureLines(ctx).stream()
+                .anyMatch(line -> line.contains("weapons free risk")));
+
+        ctx.command.tacticalMode = GameContext.TacticalMode.HOLD_FIRE;
+        assertTrue(CampaignSystem.holdFireNearCiviliansPressureLines(ctx).stream()
+                .anyMatch(line -> line.contains("holding fire")));
+    }
+
+    @Test
+    void salvageAndBoardingTargetsRewardDisablingInsteadOfDestroying() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 1.0;
+        FleetShip salvageTarget = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, ctx.player.x + 280.0, ctx.player.y);
+        salvageTarget.name = "Prize Frigate";
+        ctx.ships.add(salvageTarget);
+
+        assertTrue(CampaignSystem.activateDisableForSalvageTargetObjective(ctx, salvageTarget));
+        salvageTarget.applyTemporaryDisable(4.0);
+        invokeUpdateObjective(ctx, GameContext.DT);
+        assertFalse(ctx.campaign.disableSalvageTargetObjectiveActive);
+        assertTrue(ctx.campaign.objectiveSecured || ctx.campaign.transitionLabel.contains("SALVAGE TARGET DISABLED"));
+
+        ctx.campaign.objectiveSecured = false;
+        ctx.campaign.transitionLabel = "";
+        FleetShip boardingTarget = new FleetShip(ShipRole.MISSILE_BOAT, Faction.ENEMY, ctx.player.x + 160.0, ctx.player.y);
+        boardingTarget.name = "Boarding Prize";
+        boardingTarget.applyTemporaryDisable(4.0);
+        boardingTarget.hp = Math.max(1, (int) Math.round(boardingTarget.hpMax * 0.25));
+        ctx.ships.add(boardingTarget);
+        assertTrue(CampaignSystem.activateBoardingCaptureObjective(ctx, boardingTarget, 0.5));
+        ctx.player.x = boardingTarget.x;
+        ctx.player.y = boardingTarget.y;
+        invokeUpdateObjective(ctx, 1.1);
+        assertFalse(ctx.campaign.boardingCaptureObjectiveActive);
+        assertTrue(ctx.campaign.objectiveSecured || ctx.campaign.transitionLabel.contains("BOARDING TARGET CAPTURED"));
+    }
+
+    @Test
+    void environmentalInteractionReadoutNamesVolatileOreAndDebrisFields() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        startSector(ctx, 1);
+        ctx.asteroids.clear();
+        ctx.asteroids.add(new Asteroid(ctx.player.x + 200.0, ctx.player.y, 60.0, 520));
+        ctx.asteroids.add(new Asteroid(ctx.player.x + 420.0, ctx.player.y, 55.0, 100));
+
+        List<String> lines = CampaignSystem.environmentalInteractionLines(ctx);
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Volatile Ore  |  1")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Debris Fields  |  1")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("avoid civilian lanes")));
     }
 
     @Test
@@ -314,6 +619,49 @@ class CampaignCompatibilityOverhaulTest {
         for (int i = 0; i < ticks; i++) {
             CampaignSystem.update(ctx, GameContext.DT);
         }
+    }
+
+    private static void invokeUpdateObjective(GameContext ctx, double dt) throws Exception {
+        Method updateObjective = CampaignSystem.class.getDeclaredMethod(
+                "updateObjective",
+                GameContext.class,
+                double.class
+        );
+        updateObjective.setAccessible(true);
+        updateObjective.invoke(null, ctx, dt);
+    }
+
+    private static void invokeDetectObjectiveAssetLosses(GameContext ctx) throws Exception {
+        Method detectLosses = CampaignSystem.class.getDeclaredMethod(
+                "detectObjectiveAssetLosses",
+                GameContext.class
+        );
+        detectLosses.setAccessible(true);
+        detectLosses.invoke(null, ctx);
+    }
+
+    private static void addRecoverableWreck(CampaignSystem.CampaignState st, double x, double y) throws Exception {
+        Method addRecoverable = CampaignSystem.class.getDeclaredMethod(
+                "addRecoverableWreckSite",
+                CampaignSystem.CampaignState.class,
+                double.class,
+                double.class,
+                ShipRole.class,
+                String.class,
+                String.class
+        );
+        addRecoverable.setAccessible(true);
+        addRecoverable.invoke(null, st, x, y, ShipRole.FRIGATE, "Test Wreck", "Recover under fire");
+    }
+
+    private static void invokeUpdateRecoverableWreckSites(GameContext ctx) throws Exception {
+        Method updateRecoverable = CampaignSystem.class.getDeclaredMethod(
+                "updateRecoverableWreckSites",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        updateRecoverable.setAccessible(true);
+        updateRecoverable.invoke(null, ctx, ctx.campaign);
     }
 
     private static void clearAuthoredObjectiveHostiles(GameContext ctx) {

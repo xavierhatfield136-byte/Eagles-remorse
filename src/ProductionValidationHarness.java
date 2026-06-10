@@ -54,6 +54,7 @@ public final class ProductionValidationHarness {
         validateVoiceManifest(errors, report);
         validateScreenshotTargets(errors, report);
         validateExtractionArtifacts(resolvedRoot, errors, report);
+        validateAlphaPlaceholderReport(resolvedRoot, assetFiles, report);
 
         requireRegularFile(resolvedRoot, "docs/CAMPAIGN_SAVE_SCHEMA.md", errors, report);
         requireRegularFile(resolvedRoot, "config/balance_data_export.csv", errors, report);
@@ -146,6 +147,31 @@ public final class ProductionValidationHarness {
             else errors.add("extraction-pack: missing artifact " + pack.artifact);
         }
         report.add("extraction-pack artifacts=" + present + "/" + state.extractionPacks.size());
+    }
+
+    private static void validateAlphaPlaceholderReport(Path root, List<Path> assetFiles, List<String> report) throws IOException {
+        Path alphaReport = root.resolve("docs/ALPHA_ASSET_APPROVAL_REPORT.md").normalize();
+        int ownerReviewOpen = 0;
+        if (Files.isRegularFile(alphaReport)) {
+            for (String line : Files.readAllLines(alphaReport, StandardCharsets.UTF_8)) {
+                if (line.trim().startsWith("- [ ]")) ownerReviewOpen++;
+            }
+        }
+
+        long dropzoneAssets = assetFiles.stream()
+                .filter(ProductionValidationHarness::isArt)
+                .filter(path -> path.toString().replace('\\', '/').contains("environment_overhaul_dropzone/"))
+                .count();
+        long originalHudAssets = assetFiles.stream()
+                .filter(ProductionValidationHarness::isArt)
+                .filter(path -> path.toString().replace('\\', '/').contains("hud_panels/originals/"))
+                .count();
+
+        report.add("alpha-placeholder owner-review-open=" + ownerReviewOpen);
+        report.add("alpha-placeholder environment-dropzone-art=" + dropzoneAssets);
+        report.add("alpha-placeholder hud-originals-art=" + originalHudAssets);
+        report.add("alpha-placeholder decision-doc="
+                + (Files.isRegularFile(root.resolve("docs/PRODUCTION_COMPLETION_AUDIT.md").normalize()) ? "present" : "missing"));
     }
 
     private static int loadedRowCount(CommunityContentSystem.State state) {

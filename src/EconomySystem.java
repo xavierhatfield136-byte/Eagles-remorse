@@ -29,8 +29,8 @@ public final class EconomySystem {
     private static final double BASE_REPAIR_MIN_RANGE = 180.0;
     private static final double PLAYER_HAULER_SALE_RANGE = 120.0;
     private static final double TRANSPORT_SUPPORT_MIN_RANGE = 220.0;
-    private static final double TRANSPORT_ROOM_HEAL_FRAC_PER_SEC = 0.025;
-    private static final double TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC = 0.18;
+    private static final double TRANSPORT_ROOM_HEAL_FRAC_PER_SEC = 0.017;
+    private static final double TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC = 0.12;
     private static final double HAULER_TRANSFER_RANGE = 120.0;
     private static final double HAULER_TRANSFER_PER_SEC = 120.0;
     private static final double HAULER_SEARCH_RANGE = 1600.0;
@@ -52,7 +52,7 @@ public final class EconomySystem {
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> ESCORT_RESPAWN_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, HaulerLogisticsState>> HAULER_LOGISTICS = new WeakHashMap<>();
-    private static final int DEBRIS_PELLET_ORE_REWARD = 100;
+    private static final int DEBRIS_PELLET_ORE_REWARD = 65;
     private static final double SALVAGE_PICKUP_RADIUS_BONUS = 38.0;
 
     private enum CommanderPersonality {
@@ -940,8 +940,8 @@ public final class EconomySystem {
             double range = Math.max(BASE_REPAIR_MIN_RANGE, base.repairRange);
             double range2 = range * range;
             double supportMul = base.supportFieldMultiplier();
-            double hullPerSec = Math.max(0.0, base.repairHullPerSec * supportMul * 0.72);
-            double shieldPerSec = Math.max(0.0, base.repairShieldPerSec * supportMul * 0.82);
+            double hullPerSec = Math.max(0.0, base.repairHullPerSec * supportMul * 0.58);
+            double shieldPerSec = Math.max(0.0, base.repairShieldPerSec * supportMul * 0.66);
             if (hullPerSec <= 0.0 && shieldPerSec <= 0.0) continue;
 
             for (Ship ally : ctx.ships) {

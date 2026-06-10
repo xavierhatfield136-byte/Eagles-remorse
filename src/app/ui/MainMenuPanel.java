@@ -43,6 +43,7 @@ public final class MainMenuPanel extends JPanel {
 
     public MainMenuPanel(Consumer<GameConfig> onStart,
                          Runnable onCredits,
+                         Runnable onAlphaReadiness,
                          Runnable onQuit,
                          ResumeCampaignProvider resumeCampaignProvider,
                          SpaceBackgroundPainter spaceBackgroundPainter) {
@@ -103,6 +104,7 @@ public final class MainMenuPanel extends JPanel {
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Command School", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
+        JButton alphaReadiness = createMenuButton("Alpha Readiness", new Color(82, 92, 128), uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(188, 201, 216));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
@@ -186,6 +188,13 @@ public final class MainMenuPanel extends JPanel {
         credits.addActionListener(e -> {
             persistSettings.accept((GameMode) modeBox.getSelectedItem());
             onCredits.run();
+        });
+
+        alphaReadiness.addActionListener(e -> {
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
+            if (onAlphaReadiness != null) {
+                onAlphaReadiness.run();
+            }
         });
 
         quit.addActionListener(e -> {
@@ -324,6 +333,7 @@ public final class MainMenuPanel extends JPanel {
         campaignActions.add(tutorialStart);
         campaignActions.add(galaxyMapTest);
         campaignActions.add(experienceButton);
+        campaignActions.add(alphaReadiness);
 
         JPanel singlePlayerCard = createSectionPanel(new Color(48, 146, 197, 160), uiScale);
         singlePlayerCard.add(eyebrowLabel("Campaign", uiScale, new Color(115, 204, 225)));

@@ -268,6 +268,8 @@ public final class UiState {
     public final EnumMap<GameContext.CrewStation, Double> portraitExpressionTimerSec =
             new EnumMap<>(GameContext.CrewStation.class);
     public final List<CombatCallout> combatCallouts = new ArrayList<>();
+    public int tacticalReadabilityDamageCursor = 0;
+    public TacticalReadabilitySystem.CombatLogFilter combatLogFilter = TacticalReadabilitySystem.CombatLogFilter.ALL;
     public String hoverTooltipKey = "";
     public String hoverTooltipTitle = "";
     public String hoverTooltipBody = "";
