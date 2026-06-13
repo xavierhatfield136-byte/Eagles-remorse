@@ -155,7 +155,7 @@ class CampaignStrategicTravelPressureTest {
         st.selectedGalaxyLocationId = distress.id;
 
         List<String> lines = CampaignSystem.selectedLocationSidebarLines(ctx);
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Time Window: rescue warning in ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Time Limit: rescue warning in ")));
     }
 
     @Test

@@ -471,9 +471,9 @@ public final class FleetBuildingSystem {
                 new RefitModule("aegis-screen", ModuleSlot.DEFENSE, ModuleRarity.MILITARY,
                         new HullBudgets(2, 3, 2, 1, 2), "Blue", "shield recovery and escort resilience", false),
                 new RefitModule("long-lance-battery", ModuleSlot.WEAPON, ModuleRarity.RARE,
-                        new HullBudgets(4, 4, 4, 2, 3), "Red", "stand-off artillery pressure", false),
+                        new HullBudgets(4, 4, 4, 2, 3), "Red", "long-range artillery fire", false),
                 new RefitModule("green-logistics-suite", ModuleSlot.CARGO, ModuleRarity.INDUSTRIAL,
-                        new HullBudgets(2, 2, 1, 2, 1), "Green", "cargo throughput and field sustainment", false),
+                        new HullBudgets(2, 2, 1, 2, 1), "Green", "cargo capacity and field resupply", false),
                 new RefitModule("yellow-salvage-rig", ModuleSlot.SUPPORT, ModuleRarity.MILITARY,
                         new HullBudgets(2, 2, 2, 2, 2), "Yellow", "recovery and repair economy", false),
                 new RefitModule("captured-ew-suite", ModuleSlot.SENSOR, ModuleRarity.CAPTURED,
@@ -511,9 +511,9 @@ public final class FleetBuildingSystem {
 
     private static String[] identityFor(ShipRole role, HullFamily family) {
         return switch (family) {
-            case STEALTH -> text("ambush and reconnaissance", "isolated artillery", "sustained sensor pressure");
+            case STEALTH -> text("ambush and reconnaissance", "isolated artillery", "long sensor fights");
             case ARTILLERY -> text("long-range fire support", "slow capitals", "fast flankers without screens");
-            case LOGISTICS -> text("fleet sustainment and evacuation", "attrition", "direct combat");
+            case LOGISTICS -> text("fleet resupply and evacuation", "attrition", "direct combat");
             case MINING -> text("resource extraction and salvage processing", "campaign shortages", "raiders");
             case COMMAND -> text("local command and defense anchor", "uncoordinated attackers", "siege weapons");
             case TITAN -> text("faction-unique command centerpiece", "fleet-scale problems", "isolation and upkeep");

@@ -42,7 +42,7 @@ class CampaignStrategicStrikeCounterplayTest {
 
         Object searchGroup = firstSearchGroup(st);
         assertNotNull(searchGroup);
-        assertTrue(getBoolean(searchGroup, "visible"), "long-range strike should sharpen the search picture");
+        assertTrue(getBoolean(searchGroup, "visible"), "long-range strike should improve map intel");
     }
 
     @Test
@@ -322,7 +322,7 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
-    void tacticalStrikeTabCanLaunchStandOffStrikeAgainstSelectedHostileZone() throws Exception {
+    void tacticalStrikeTabDoesNotExposeStandOffStrikeActions() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
                 new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
@@ -345,11 +345,10 @@ class CampaignStrategicStrikeCounterplayTest {
 
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.tacticalMapVisibleActions(ctx);
         CampaignSystem.CampaignAction torpedo = actions.stream().filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id)).findFirst().orElse(null);
-        assertNotNull(torpedo);
-        assertTrue(torpedo.enabled, "selected hostile zone should permit a tactical torpedo strike");
         int torpedoesBefore = st.strategicTorpedoCharges;
-        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
-        assertTrue(st.strategicTorpedoCharges < torpedoesBefore, "tactical torpedo strike should spend a charge");
+        assertEquals(null, torpedo);
+        assertFalse(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+        assertEquals(torpedoesBefore, st.strategicTorpedoCharges, "hidden tactical torpedo action should not spend a charge");
     }
 
     @Test
@@ -384,7 +383,7 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
-    void tacticalTorpedoCanLockAndStrikeEnemyShipInAnotherSubzone() throws Exception {
+    void tacticalTorpedoActionIsBlockedEvenForRemoteEnemyShipSelection() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
                 new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
@@ -421,18 +420,17 @@ class CampaignStrategicStrikeCounterplayTest {
                 .filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id))
                 .findFirst()
                 .orElse(null);
-        assertNotNull(torpedo);
-        assertTrue(torpedo.enabled, "remote hostile ship should be strike-eligible from the tactical map");
         int projectilesBefore = ctx.projectiles.size();
         int torpedoesBefore = ctx.campaign.strategicTorpedoCharges;
-        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
-        assertTrue(ctx.campaign.strategicTorpedoCharges < torpedoesBefore, "remote tactical strike should actually fire");
-        assertTrue(ctx.projectiles.size() > projectilesBefore,
-                "tactical torpedo should become a physical inbound object instead of instant damage");
+        assertEquals(null, torpedo);
+        assertFalse(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+        assertEquals(torpedoesBefore, ctx.campaign.strategicTorpedoCharges, "blocked tactical torpedo should not spend a charge");
+        assertEquals(projectilesBefore, ctx.projectiles.size(),
+                "blocked tactical torpedo should not create inbound objects");
     }
 
     @Test
-    void tacticalStrikeCanUseHostileObjectiveSelectionWithoutSeparateCampaignContact() throws Exception {
+    void tacticalStrikeActionsStayHiddenForHostileObjectiveSelection() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
                 new ShipRole[]{ShipRole.CARRIER, ShipRole.STEALTH_SHIP, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
@@ -454,13 +452,12 @@ class CampaignStrategicStrikeCounterplayTest {
                 .filter(action -> "TACTICAL_TORPEDO_STRIKE".equals(action.id))
                 .findFirst()
                 .orElse(null);
-        assertNotNull(torpedo);
-        assertTrue(torpedo.enabled, "hostile tactical objective selection should be enough for strikes");
-        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
+        assertEquals(null, torpedo);
+        assertFalse(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_TORPEDO_STRIKE"));
     }
 
     @Test
-    void tacticalAtomicConfirmLaunchesAgainstTacticalSelection() throws Exception {
+    void tacticalAtomicActionDoesNotOpenConfirmationFromMapSelection() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
                 new ShipRole[]{ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
@@ -482,18 +479,18 @@ class CampaignStrategicStrikeCounterplayTest {
         ctx.ui.tacticalMapSelectionY = hostile.y;
         ctx.ui.tacticalMapSelectionHostile = true;
 
-        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_ATOMIC_STRIKE"));
-        assertTrue(ctx.ui.campaignActionConfirm.active);
-        int projectilesBefore = ctx.projectiles.size();
-        assertTrue(CampaignSystem.confirmCampaignAction(ctx));
+        assertFalse(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_ATOMIC_STRIKE"));
         assertFalse(ctx.ui.campaignActionConfirm.active);
-        assertEquals(0, ctx.campaign.strategicAtomicCharges);
-        assertTrue(ctx.projectiles.size() > projectilesBefore,
-                "confirmed tactical atomic strike should spawn a tactical inbound object");
+        int projectilesBefore = ctx.projectiles.size();
+        assertFalse(CampaignSystem.confirmCampaignAction(ctx));
+        assertFalse(ctx.ui.campaignActionConfirm.active);
+        assertEquals(1, ctx.campaign.strategicAtomicCharges);
+        assertEquals(projectilesBefore, ctx.projectiles.size(),
+                "blocked tactical atomic action should not spawn inbound objects");
     }
 
     @Test
-    void tacticalSortieAndAtomicStrikeCreateVisibleStrikeObjects() throws Exception {
+    void tacticalSortieAndAtomicActionsRemainUnavailableOnHiddenStrikeTab() throws Exception {
         GameContext sortieCtx = tacticalStrikeContext(
                 10,
                 new ShipRole[]{ShipRole.CARRIER, ShipRole.DRONE_CARRIER, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE}
@@ -504,20 +501,11 @@ class CampaignStrategicStrikeCounterplayTest {
         sortieCtx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
         int sortieProjectilesBefore = sortieCtx.projectiles.size();
         long bombersBefore = sortieCtx.ships.stream().filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY).count();
-        assertTrue(CampaignSystem.executeTacticalMapAction(sortieCtx, "TACTICAL_CARRIER_SORTIE"));
-        assertTrue(sortieCtx.projectiles.size() > sortieProjectilesBefore,
-                "carrier sortie should put payload objects into tactical space");
-        assertTrue(sortieCtx.ships.stream().filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY).count() > bombersBefore,
-                "carrier sortie should spawn visible friendly heavy bombers");
-        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(sortieCtx).toLowerCase().contains("heavy bomber"));
-        CampaignSystem.update(sortieCtx, 2.0);
-        Ship egressBomber = sortieCtx.ships.stream()
-                .filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY)
-                .findFirst()
-                .orElse(null);
-        assertNotNull(egressBomber);
-        assertTrue(Math.hypot(egressBomber.vx, egressBomber.vy) > egressBomber.desiredSpeedBase * 0.9,
-                "strike bombers should accelerate into egress after payload release");
+        assertFalse(CampaignSystem.executeTacticalMapAction(sortieCtx, "TACTICAL_CARRIER_SORTIE"));
+        assertEquals(sortieProjectilesBefore, sortieCtx.projectiles.size(),
+                "blocked carrier sortie should not put payload objects into tactical space");
+        assertEquals(bombersBefore, sortieCtx.ships.stream().filter(ship -> ship.role == ShipRole.BOMBER && ship.faction == Faction.ALLY).count(),
+                "blocked carrier sortie should not spawn friendly heavy bombers");
 
         GameContext atomicCtx = tacticalStrikeContext(
                 10,
@@ -528,12 +516,11 @@ class CampaignStrategicStrikeCounterplayTest {
         selectTacticalStrikeTarget(atomicCtx, atomicTarget);
         atomicCtx.ui.tacticalMapTab = UiState.TacticalMapTab.STRIKES;
         int atomicProjectilesBefore = atomicCtx.projectiles.size();
-        assertTrue(CampaignSystem.executeTacticalMapAction(atomicCtx, "TACTICAL_ATOMIC_STRIKE"));
-        assertTrue(atomicCtx.ui.campaignActionConfirm.active);
-        assertTrue(CampaignSystem.confirmCampaignAction(atomicCtx));
-        assertTrue(atomicCtx.projectiles.size() > atomicProjectilesBefore,
-                "atomic strike should spawn a visible inbound tactical device");
-        assertTrue(CampaignSystem.campaignStrikeBattleEventSummary(atomicCtx).toLowerCase().contains("atomic device"));
+        assertFalse(CampaignSystem.executeTacticalMapAction(atomicCtx, "TACTICAL_ATOMIC_STRIKE"));
+        assertFalse(atomicCtx.ui.campaignActionConfirm.active);
+        assertFalse(CampaignSystem.confirmCampaignAction(atomicCtx));
+        assertEquals(atomicProjectilesBefore, atomicCtx.projectiles.size(),
+                "blocked atomic action should not spawn a visible inbound tactical device");
     }
 
     @Test

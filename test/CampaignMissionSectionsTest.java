@@ -195,19 +195,18 @@ class CampaignMissionSectionsTest {
     }
 
     @Test
-    void sensorNetEntriesMixMissionAndSupportContacts() throws Exception {
+    void tacticalSupportMarkersStayInsideLoadedCombatArea() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
 
         startSector(ctx, 10);
 
-        List<GameRenderSystem.SensorNetEntry> entries = GameRenderSystem.sensorNetEntries(ctx, 4, 2);
-        assertFalse(entries.isEmpty(), "sensor net should surface actionable contacts during campaign sectors");
-        assertTrue(entries.stream().anyMatch(entry -> "MISSION".equals(entry.section)),
-                "sensor net should include mission-critical routing and objective contacts");
-        assertTrue(entries.stream().anyMatch(entry -> !"MISSION".equals(entry.section)),
-                "sensor net should also surface non-mission support contacts like anomaly, salvage, resource, or contact tracks");
+        int loaded = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
+        assertTrue(markers.stream().allMatch(marker ->
+                        CampaignSystem.missionSubzoneForPoint(ctx, ctx.campaign.sector, marker.x, marker.y) == loaded),
+                "tactical mission maps should not pull in distant support contacts from other subzones");
     }
 
     @Test
@@ -217,6 +216,7 @@ class CampaignMissionSectionsTest {
         SpawnSystem.initWorld(ctx);
 
         startSector(ctx, 10);
+        ctx.campaign.strategicOvermapMode = true;
 
         List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
         assertFalse(markers.isEmpty(), "campaign map should expose support contacts as live strategic markers");
@@ -234,6 +234,7 @@ class CampaignMissionSectionsTest {
         SpawnSystem.initWorld(ctx);
 
         startSector(ctx, 10);
+        ctx.campaign.strategicOvermapMode = true;
 
         CampaignSystem.CampaignSupportMarker expected = CampaignSystem.activeSupportMarkers(ctx).get(0);
         CampaignSystem.CampaignSupportMarker resolved =
@@ -283,6 +284,7 @@ class CampaignMissionSectionsTest {
         SpawnSystem.initWorld(ctx);
 
         startSector(ctx, 10);
+        ctx.campaign.strategicOvermapMode = true;
 
         List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
         assertTrue(markers.stream().anyMatch(marker ->

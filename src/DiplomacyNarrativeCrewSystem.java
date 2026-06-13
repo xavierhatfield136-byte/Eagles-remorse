@@ -100,15 +100,10 @@ public final class DiplomacyNarrativeCrewSystem {
     public static State bootstrap(long seed) {
         State state = new State();
         for (ReputationGroup group : ReputationGroup.values()) state.relationships.reputation.put(group, 50);
-        state.relationships.favors.add("Green relief fleet owes one escort");
-        state.relationships.obligations.add("Yellow brokers expect protected trade access");
-        state.relationships.factionRequests.add("Blue command requests a blockade break");
-        state.relationships.negotiationScenes.add("Lunar ceasefire channel opens under armed escort");
-        state.relationships.ceasefire = true;
-        state.relationships.temporaryAlliance = true;
-        state.relationships.betrayalRiskPercent = 22;
-        state.relationships.salvageRightsDispute = true;
-        state.relationships.diplomaticMissions.addAll(List.of("Summit escort", "Diplomatic courier screen"));
+        state.relationships.ceasefire = false;
+        state.relationships.temporaryAlliance = false;
+        state.relationships.betrayalRiskPercent = 0;
+        state.relationships.salvageRightsDispute = false;
 
         addCaptain(state, "voss", "Captain Nadi Voss", false);
         addCaptain(state, "rook", "Captain Sera Rook", true);
@@ -118,18 +113,12 @@ public final class DiplomacyNarrativeCrewSystem {
         addOfficer(state, CrewStation.TACTICAL, "Sera Rook", "tactical.png", Specialty.GUNNERY, "Press the flank before Red regroups.");
         addOfficer(state, CrewStation.ENGINEERING, "Tomas Vale", "engineering.png", Specialty.DAMAGE_CONTROL, "Refit before the next jump.");
         addOfficer(state, CrewStation.SCIENCE, "Ilya Marr", "science.png", Specialty.ANALYSIS, "Survey the anomaly before committing.");
-        state.newsBulletins.add("Shelter relay reports protected civilian traffic.");
-        state.crewCommentary.add("Engineering notes the fleet is carrying old damage into the next lane.");
-        state.dynamicMissionBriefings.add("Current war state: escort relief convoy through the contested belt.");
-        state.authoredStoryBeats.add("Lunar summit can trigger after rescue trust or blockade pressure.");
-        state.epilogueTimeline.add("Day 1: Southern Shelter convoy lanes reopened.");
         return state;
     }
 
     private static void addCaptain(State state, String id, String name, boolean rival) {
         NpcCaptain captain = new NpcCaptain(id, name);
         captain.rivalCommander = rival;
-        captain.encounterMemories.add("Initial contact logged");
         state.npcCaptains.put(id, captain);
     }
 
@@ -140,7 +129,6 @@ public final class DiplomacyNarrativeCrewSystem {
         officer.stress = 12;
         officer.tacticalRecommendation = opinion;
         officer.voicedBriefingAvailable = true;
-        officer.captainLogEntries.add("Commissioned into Blue command.");
         state.officers.put(station, officer);
     }
 

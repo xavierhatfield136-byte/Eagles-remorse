@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +37,17 @@ class CampaignLoreOverhaulTest {
         assertTrue(hasNamedShip(ctx, ShipRole.TRANSPORT_TITAN, "Green Ledger Titan"));
         assertTrue(hasNamedShip(ctx, ShipRole.BASE, "Green Exchange Spire"));
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Far Trade Anchorage".equals(l.label)));
+    }
+
+    @Test
+    void campaignStartDoesNotPlayLegacyEarthfallDialogue() {
+        GameContext ctx = initializedCampaignContext();
+
+        CampaignSystem.update(ctx, 0.1);
+
+        assertFalse(ctx.ui.voiceCaption.contains("Earth has fallen"));
+        assertFalse(ctx.ui.voiceCaption.contains("return home immediately"));
+        assertFalse(ctx.eventBanner.contains("URGENT SOL TRAFFIC"));
     }
 
     @Test

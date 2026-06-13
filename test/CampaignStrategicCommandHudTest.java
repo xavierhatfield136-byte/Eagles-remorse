@@ -50,7 +50,7 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
-    void commandHudSummariesExposeFleetResourcesAndStrikeControl() {
+    void commandHudSummariesExposeFleetResourcesAndRouteStatus() {
         GameContext ctx = initializedCampaignContext();
         List<String> fleet = CampaignSystem.campaignFleetManagerLines(ctx);
         List<String> fleetBoard = CampaignSystem.campaignFleetBoardSummaryLines(ctx);
@@ -60,9 +60,6 @@ class CampaignStrategicCommandHudTest {
         List<String> resources = CampaignSystem.campaignResourceManagerLines(ctx);
         List<String> resourceTrend = CampaignSystem.campaignResourceTrendLines(ctx);
         List<String> resourceWarnings = CampaignSystem.campaignResourceWarningLines(ctx);
-        List<String> strikes = CampaignSystem.campaignStrikeManagerLines(ctx);
-        List<String> strikeReadiness = CampaignSystem.campaignStrikeReadinessLines(ctx);
-        List<String> strikeConsequences = CampaignSystem.campaignStrikeConsequenceLines(ctx);
         List<String> navigation = CampaignSystem.campaignNavigationStationLines(ctx);
         List<String> receiver = CampaignSystem.campaignReceiverBoardLines(ctx);
         List<String> finder = CampaignSystem.campaignDirectionFinderLines(ctx);
@@ -78,24 +75,22 @@ class CampaignStrategicCommandHudTest {
         assertTrue(resources.stream().anyMatch(line -> line.startsWith("Fleet Strain: ")));
         assertTrue(resourceTrend.stream().anyMatch(line -> line.startsWith("Fuel State: ")));
         assertTrue(resourceWarnings.stream().anyMatch(line -> line.contains("ROUTE PREVIEW")));
-        assertTrue(strikes.stream().anyMatch(line -> line.startsWith("Overmap Role: ")));
-        assertTrue(strikeReadiness.stream().anyMatch(line -> line.startsWith("REMOTE STRIKES HELD")));
-        assertTrue(strikeConsequences.stream().anyMatch(line -> line.startsWith("Exposure: ")));
         assertTrue(navigation.stream().anyMatch(line -> line.contains("Map use:")));
         assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Reputation: ")));
-        assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Theater Shift: ")));
-        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Band: ")));
-        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Contact Pressure: ")));
-        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Recommendation: ")));
-        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Bearing: ")));
-        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Route Trend: ")));
-        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Current Callout: ")));
+        assertTrue(navigation.stream().anyMatch(line -> line.startsWith("Regional Situation: ")));
+        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Fleet State: ")));
+        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Destination: ")));
+        assertTrue(receiver.stream().anyMatch(line -> line.startsWith("Advice: ")));
+        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Selected: ")));
+        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Route Vector: ")));
+        assertTrue(finder.stream().anyMatch(line -> line.startsWith("Note: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Green Channel Favor: ")));
-        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Contact Net: ")));
+        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Contacts: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Reputation: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Crew: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Lead  | ")));
-        assertFalse(strikes.stream().anyMatch(line -> line.contains("Shift+LMB")));
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .noneMatch(action -> action.category == CampaignSystem.CampaignActionCategory.STRIKES));
     }
 
     @Test
@@ -110,7 +105,7 @@ class CampaignStrategicCommandHudTest {
         st.transitionSummaryTop = "Convoy survived under heavy fire.";
         st.transitionSummaryBottom = "Green repair crews opened a safer northern lane.";
         st.transitionRewardLine = "+supplies / +green favor";
-        st.transitionRouteImpactLine = "route pressure reduced";
+        st.transitionRouteImpactLine = "route danger reduced";
         st.lastTheaterOperationDebrief = "Red scouts redirected after losing the relay track.";
         st.campaignFuel = 37;
         st.campaignSupplies = 29;
@@ -331,7 +326,7 @@ class CampaignStrategicCommandHudTest {
         List<CampaignSystem.CampaignFleetRosterEntry> entries = CampaignSystem.campaignFleetRosterEntries(ctx);
         List<CampaignSystem.CampaignAction> actions = CampaignSystem.campaignVisibleActions(ctx);
 
-        assertTrue(fleet.stream().anyMatch(line -> line.contains("TAB opens persistent fleet management")));
+        assertTrue(fleet.stream().anyMatch(line -> line.contains("Fleet orders here affect")));
         assertFalse(roster.isEmpty());
         assertTrue(roster.stream().anyMatch(line -> line.contains("H ") && line.contains(" S ")));
         assertTrue(roster.stream().anyMatch(line -> line.contains("CARGO ")));
@@ -406,12 +401,12 @@ class CampaignStrategicCommandHudTest {
         assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Silhouette: ") && line.contains("combat zoom")));
 
         List<String> authority = CampaignSystem.campaignStrategicAuthorityLines(ctx);
-        assertTrue(authority.stream().anyMatch(line -> line.startsWith("LIVE AUTHORITY  |  Nodes ")));
-        assertTrue(authority.stream().anyMatch(line -> line.startsWith("TASK GROUPS  |  Friendly ")));
-        assertTrue(authority.stream().anyMatch(line -> line.startsWith("WAR TIMELINE  |  Battles ")));
-        assertTrue(authority.stream().anyMatch(line -> line.startsWith("DIRECTORS  |  ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("REGION CONTROL  |  Sites ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("FLEETS ON MAP  |  Friendly ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("ONGOING BATTLES  |  Battles ")));
+        assertTrue(authority.stream().anyMatch(line -> line.startsWith("FACTION PLANS  |  ")));
         assertTrue(CampaignSystem.campaignStrategicExpansionLines(ctx).stream()
-                .anyMatch(line -> line.startsWith("LIVE AUTHORITY  |  Nodes ")));
+                .anyMatch(line -> line.startsWith("REGION CONTROL  |  Sites ")));
     }
 
     @Test
@@ -429,7 +424,7 @@ class CampaignStrategicCommandHudTest {
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Why It Matters: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Gain: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("If Ignored: ")));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Action Window: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Available Action: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Risk: ")));
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Primary Recommendation: ")));
     }
@@ -452,6 +447,7 @@ class CampaignStrategicCommandHudTest {
         assertFalse(strikeActions.stream().anyMatch(action -> "CARRIER_SORTIE".equals(action.id)));
         assertFalse(strikeActions.stream().anyMatch(action -> "ATOMIC_STRIKE".equals(action.id)));
         assertTrue(strikeActions.stream().anyMatch(action -> "TRACK_TARGET".equals(action.id)));
+        assertTrue(strikeActions.stream().anyMatch(action -> "ENGAGE_COURSE".equals(action.id)));
         CampaignSystem.CampaignAction engageCourse = navActions.stream().filter(action -> "ENGAGE_COURSE".equals(action.id)).findFirst().orElse(null);
         assertNotNull(engageCourse);
         assertNotNull(engageCourse.disabledReason);
@@ -917,7 +913,7 @@ class CampaignStrategicCommandHudTest {
 
         List<String> lines = CampaignSystem.selectedLocationSidebarLines(ctx);
         assertTrue(lines.stream().anyMatch(line -> line.startsWith("Known Contact: Captain Nadi Voss")));
-        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Route State: ")));
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith("Travel Result: ")));
     }
 
     @Test
@@ -1104,7 +1100,7 @@ class CampaignStrategicCommandHudTest {
         assertTrue(CampaignSystem.completeMissionExtraction(ctx));
 
         assertTrue(st.greenContractFavor > favorBefore);
-        assertTrue(CampaignSystem.selectedLocationSidebarLines(ctx).stream().anyMatch(line -> line.startsWith("Route State: ")));
+        assertTrue(CampaignSystem.selectedLocationSidebarLines(ctx).stream().anyMatch(line -> line.startsWith("Travel Result: ")));
         assertTrue(CampaignSystem.campaignAfterActionPlateLines(ctx).stream().anyMatch(line -> line.contains("ROUTE")));
     }
 
@@ -1120,12 +1116,12 @@ class CampaignStrategicCommandHudTest {
         while (!"Recon Sweep".equals(CampaignSystem.campaignFleetPostureReadout(ctx))) {
             assertTrue(CampaignSystem.cycleSelectedFleetPosture(ctx));
         }
-        assertTrue(CampaignSystem.campaignDirectionFinderLines(ctx).stream().anyMatch(line -> line.startsWith("Route Trend: ")));
+        assertTrue(CampaignSystem.campaignDirectionFinderLines(ctx).stream().anyMatch(line -> line.startsWith("Travel Danger: ")));
 
         st.campaignSupplies = 20;
         assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));
         assertEquals(17, st.campaignSupplies);
-        assertTrue(CampaignSystem.campaignNavigationStationLines(ctx).stream().anyMatch(line -> line.startsWith("Posture: Recon Sweep")));
+        assertTrue(CampaignSystem.campaignNavigationStationLines(ctx).stream().anyMatch(line -> line.startsWith("Fleet Order: Recon Sweep")));
     }
 
     @Test
@@ -1412,7 +1408,11 @@ class CampaignStrategicCommandHudTest {
                     "campaignCommandTabChipLabel", UiState.CampaignCommandTab.class);
             galaxyLabelMethod.setAccessible(true);
             Rectangle[] galaxyRects = (Rectangle[]) galaxyRectsMethod.invoke(null, 0, 0, 292);
-            UiState.CampaignCommandTab[] commandTabs = UiState.CampaignCommandTab.values();
+            UiState.CampaignCommandTab[] commandTabs = new UiState.CampaignCommandTab[]{
+                    UiState.CampaignCommandTab.NAV,
+                    UiState.CampaignCommandTab.FLEET,
+                    UiState.CampaignCommandTab.RESOURCES
+            };
             for (int i = 0; i < commandTabs.length; i++) {
                 String label = (String) galaxyLabelMethod.invoke(null, commandTabs[i]);
                 assertTrue(fm.stringWidth(label) <= galaxyRects[i].width - 14,
@@ -1426,7 +1426,12 @@ class CampaignStrategicCommandHudTest {
                     "tacticalMapTabChipLabel", UiState.TacticalMapTab.class);
             tacticalLabelMethod.setAccessible(true);
             Rectangle[] tacticalRects = (Rectangle[]) tacticalRectsMethod.invoke(null, 0, 0, 292);
-            UiState.TacticalMapTab[] tacticalTabs = UiState.TacticalMapTab.values();
+            UiState.TacticalMapTab[] tacticalTabs = new UiState.TacticalMapTab[]{
+                    UiState.TacticalMapTab.MISSION,
+                    UiState.TacticalMapTab.FLEET,
+                    UiState.TacticalMapTab.RESOURCES,
+                    UiState.TacticalMapTab.CONTACTS
+            };
             for (int i = 0; i < tacticalTabs.length; i++) {
                 String label = (String) tacticalLabelMethod.invoke(null, tacticalTabs[i]);
                 assertTrue(fm.stringWidth(label) <= tacticalRects[i].width - 14,

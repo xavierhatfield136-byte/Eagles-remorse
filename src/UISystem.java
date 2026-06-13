@@ -1205,9 +1205,7 @@ public final class UISystem {
             }
             return;
         }
-        boolean strikeTargetingMode = ctx != null
-                && ctx.ui != null
-                && ctx.ui.tacticalMapTab == UiState.TacticalMapTab.STRIKES;
+        boolean strikeTargetingMode = false;
         if (e.isAltDown() && SwingUtilities.isLeftMouseButton(e)) {
             CampaignSystem.issueStrategicDivisionOrder(ctx, worldX, worldY);
             return;
@@ -1605,11 +1603,17 @@ public final class UISystem {
 
     static double strategicMapViewWidth(GameContext ctx) {
         if (ctx == null) return 0.0;
+        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            return Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.18);
+        }
         return Math.max(1.0, ctx.WORLD_W / strategicMapZoom(ctx));
     }
 
     static double strategicMapViewHeight(GameContext ctx) {
         if (ctx == null) return 0.0;
+        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            return Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.12);
+        }
         return Math.max(1.0, ctx.WORLD_H / strategicMapZoom(ctx));
     }
 
@@ -1617,8 +1621,13 @@ public final class UISystem {
         if (ctx == null || ctx.ui == null) return 0.0;
         double viewWidth = strategicMapViewWidth(ctx);
         double half = viewWidth * 0.5;
-        double fallback = half;
+        double fallback = (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null)
+                ? ctx.player.x
+                : half;
         double focus = Double.isFinite(ctx.ui.strategicMapFocusX) ? ctx.ui.strategicMapFocusX : fallback;
+        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null) {
+            focus = ctx.player.x;
+        }
         return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_W - half));
     }
 
@@ -1626,8 +1635,13 @@ public final class UISystem {
         if (ctx == null || ctx.ui == null) return 0.0;
         double viewHeight = strategicMapViewHeight(ctx);
         double half = viewHeight * 0.5;
-        double fallback = half;
+        double fallback = (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null)
+                ? ctx.player.y
+                : half;
         double focus = Double.isFinite(ctx.ui.strategicMapFocusY) ? ctx.ui.strategicMapFocusY : fallback;
+        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null) {
+            focus = ctx.player.y;
+        }
         return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_H - half));
     }
 

@@ -118,6 +118,46 @@ class CampaignObjectiveActivationTest {
     }
 
     @Test
+    void safeMissionExitCanRetreatDuringFirstTenSeconds() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() - 0.1;
+        assertTrue(CampaignSystem.canStartSafeMissionExit(ctx));
+
+        ctx.command.safeMissionExitPending = true;
+        int completedBefore = st.completedMainMissions;
+        st.sectorElapsed += 7.5;
+
+        assertTrue(CampaignSystem.completeSafeMissionExit(ctx));
+        assertTrue(CampaignSystem.isStrategicOvermapMode(ctx));
+        assertEquals(completedBefore, st.completedMainMissions,
+                "early safe exit should retreat without awarding mission completion");
+    }
+
+    @Test
+    void safeMissionExitWindowClosesAfterTenSecondsUntilObjectiveSecured() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() + 0.1;
+
+        assertFalse(CampaignSystem.canStartSafeMissionExit(ctx));
+        assertFalse(CampaignSystem.completeSafeMissionExit(ctx));
+        assertEquals("SAFE EXIT WINDOW CLOSED", CampaignSystem.extractionReadinessBanner(ctx));
+
+        st.objectiveSecured = true;
+        assertTrue(CampaignSystem.canStartSafeMissionExit(ctx));
+        assertTrue(CampaignSystem.canExtractFromCurrentSector(ctx));
+    }
+
+    @Test
     void sectorStartEmitsMissionBanterDuringLivePlay() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;

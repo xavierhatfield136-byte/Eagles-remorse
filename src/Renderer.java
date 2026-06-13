@@ -990,16 +990,16 @@ public class Renderer {
         Rectangle panelRect = getStrategicMapSidebarRect(viewW, viewH, true);
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Rectangle[] tabRects = galaxyCommandTabRects(inner.x, inner.y + 2, inner.width);
-        UiState.CampaignCommandTab[] tabs = UiState.CampaignCommandTab.values();
+        UiState.CampaignCommandTab[] tabs = visibleCampaignCommandTabs();
         for (int i = 0; i < tabs.length && i < tabRects.length; i++) {
             if (tabRects[i].contains(mouseX, mouseY)) {
                 return new HoverTooltip(
                         "campaign:tab:" + tabs[i].name(),
                         tabs[i].label(),
                         switch (tabs[i]) {
-                            case NAV -> "Navigation, destination readouts, route pressure, and movement orders.";
-                            case FLEET -> "Fleet posture, detachment control, readiness, and support allocation.";
-                            case RESOURCES -> "Fuel, supplies, ammo, salvage, ore, and route sustainability.";
+                            case NAV -> "Choose destinations, review travel danger, and issue movement orders.";
+                            case FLEET -> "Choose fleet orders, assign groups, review hull readiness, and call support.";
+                            case RESOURCES -> "Review fuel, supplies, ammo, salvage, ore, and how long the fleet can keep moving.";
                             case STRIKES -> "Recon quality, strike readiness, target windows, and launch authority.";
                         });
             }
@@ -1055,7 +1055,7 @@ public class Renderer {
         if (objective != null) {
             String body = defaultIfBlank(objective.subtitle, "No objective detail available")
                     + "\nType: " + objective.type.name().replace('_', ' ')
-                    + "\nStrategic value: objective pressure and theater control";
+                    + "\nWhy it matters: completing this objective makes the area safer for your fleet";
             return new HoverTooltip("campaign:map:objective:" + objective.type + ":" + objective.label, objective.label, body);
         }
 
@@ -1063,7 +1063,7 @@ public class Renderer {
         if (landmark != null) {
             String body = defaultIfBlank(landmark.subtitle, "No landmark detail available")
                     + "\nType: " + landmark.type.name().replace('_', ' ')
-                    + "\nStrategic value: route and theater orientation";
+                    + "\nWhy it matters: this landmark helps you choose where to travel next";
             return new HoverTooltip("campaign:map:landmark:" + landmark.type + ":" + landmark.label, landmark.label, body);
         }
         return null;
@@ -1073,7 +1073,7 @@ public class Renderer {
         Rectangle panelRect = getStrategicMapSidebarRect(viewW, viewH, false);
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Rectangle[] tabRects = tacticalMapTabRects(inner.x, inner.y + 2, inner.width);
-        UiState.TacticalMapTab[] tabs = UiState.TacticalMapTab.values();
+        UiState.TacticalMapTab[] tabs = visibleTacticalMapTabs();
         for (int i = 0; i < tabs.length && i < tabRects.length; i++) {
             if (tabRects[i].contains(mouseX, mouseY)) {
                 return new HoverTooltip(
@@ -1082,9 +1082,9 @@ public class Renderer {
                         switch (tabs[i]) {
                             case MISSION -> "Selected mission data, objectives, threats, and mission commands.";
                             case FLEET -> "Division readiness, hull condition, and local formation control.";
-                            case RESOURCES -> "Combat-use resources, readiness stocks, and sustainment pressure.";
+                            case RESOURCES -> "Resources available during this fight and supplies needed to keep fighting.";
                             case CONTACTS -> "Nearby contacts, support leads, and trackable local signals.";
-                            case STRIKES -> "Standoff torpedoes, sorties, atomics, and remote strike authority.";
+                            case STRIKES -> "Strike controls are disabled.";
                         });
             }
         }
@@ -1194,7 +1194,7 @@ public class Renderer {
             case 5 -> campaign
                     ? (fleetHub
                         ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
-                        : "Safely exit mission. Orders the flagship and escorting fleet to spool a warp, then returns to menu after the extraction snapshot saves ore and cargo.")
+                        : "Safe exit retreats to the strategic map during the first 10 seconds after entry. After that, complete the objective to extract.")
                     : "Safe campaign extraction is only available during Campaign Ops missions.";
             default -> "";
         };
@@ -1472,10 +1472,10 @@ public class Renderer {
             Rectangle tab = new Rectangle(tabX, tabY, tw, 24);
             if (tab.contains(mouseX, mouseY)) {
                 String body = switch (station) {
-                    case CAPTAIN -> "High-level battle posture. Captain directives push shipwide stance and allied fleet orders.";
+                    case CAPTAIN -> "Shipwide combat orders. Captain directives change your ship and allied fleet behavior.";
                     case HELM -> "Movement and spacing control. Helm automation handles intercepts, orbiting, and evasive maneuvering.";
                     case TACTICAL -> "Weapons release and lock discipline. Tactical automation decides how aggressively the ship fires.";
-                    case ENGINEERING -> "Power and damage-control authority. Engineering automation sets repair bias and overload posture.";
+                    case ENGINEERING -> "Power and damage control. Engineering automation chooses repairs, overload use, and power priorities.";
                     case SCIENCE -> "Sensors and locks. Science automation handles target acquisition and scanning.";
                 };
                 return new HoverTooltip("crew:" + station.name(), station.name(),
@@ -7462,7 +7462,7 @@ public class Renderer {
                 ly += 16;
                 g2.drawString("6 ESCORT  7 DEFEND  8 REPAIR  9 RTB  0 FORMATION", readoutX, ly);
                 ly += 16;
-                g2.drawString("Sets ship posture and allied fleet command.", readoutX, ly);
+                g2.drawString("Sets ship behavior and allied fleet orders.", readoutX, ly);
             }
             case HELM -> {
                 g2.setColor(new Color(200, 240, 255, 220));
@@ -7474,7 +7474,7 @@ public class Renderer {
                 g2.setColor(new Color(255, 210, 180, 220));
                 g2.drawString("1 HOLD FIRE  2 DEFENSIVE  3 AGGRESSIVE", readoutX, ly);
                 ly += 16;
-                g2.drawString("Controls lock discipline and firing posture.", readoutX, ly);
+                g2.drawString("Controls target locks and weapon fire behavior.", readoutX, ly);
             }
             case ENGINEERING -> {
                 g2.setColor(new Color(200, 255, 200, 220));
@@ -7488,7 +7488,7 @@ public class Renderer {
                 g2.setColor(new Color(220, 210, 255, 220));
                 g2.drawString("1 LOCK NEAREST  2 CLEAR LOCK", readoutX, ly);
                 ly += 16;
-                g2.drawString("Controls target acquisition and sensor posture.", readoutX, ly);
+                g2.drawString("Controls target selection and sensor behavior.", readoutX, ly);
             }
         }
 
@@ -8654,9 +8654,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 g2.drawString(sectorized
                         ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (galaxyMode
-                        ? "LMB: select destination or free course   Double-click/T: burn engines   TAB: fleet management   B: upgrades   H: hold   RMB: ping   wheel/Ctrl+/-: zoom"
+                        ? "LMB: select destination or free course   Double-click/T: burn engines   H: hold course   RMB: ping   wheel/Ctrl+/-: zoom"
                         : (CampaignSystem.usesMissionSubzones(ctx)
-                        ? "LMB: set local course or select contact   Command Bay: visible actions   RMB: local ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts/strikes"
+                        ? "LMB: set local course or select contact   Command Bay: visible actions   RMB: local ping   wheel/Ctrl+/-: zoom   tabs: mission/fleet/resources/contacts"
                         : "LMB: waypoint   MMB: recenter   RMB: ping   wheel/Ctrl+/-: zoom   Sensor power reveals anomalies")),
                 r.x + 18, r.y + r.height - 16);
 
@@ -8994,8 +8994,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         paintGalaxyConsolePanel(g2, panelRect, new Color(255, 196, 118, 164));
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Rectangle[] tabRects = tacticalMapTabRects(inner.x, inner.y + 2, inner.width);
-        UiState.TacticalMapTab activeTab = (ctx.ui == null) ? UiState.TacticalMapTab.MISSION : ctx.ui.tacticalMapTab;
-        UiState.TacticalMapTab[] tabs = UiState.TacticalMapTab.values();
+        UiState.TacticalMapTab activeTab = visibleTacticalMapTab(ctx);
+        UiState.TacticalMapTab[] tabs = visibleTacticalMapTabs();
         for (int i = 0; i < tabs.length && i < tabRects.length; i++) {
             boolean selected = tabs[i] == activeTab;
             Color accent = selected ? new Color(255, 204, 124, 224) : new Color(178, 214, 238, 172);
@@ -9048,7 +9048,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     }
 
     private static Rectangle[] tacticalMapTabRects(int x, int y, int width) {
-        UiState.TacticalMapTab[] tabs = UiState.TacticalMapTab.values();
+        UiState.TacticalMapTab[] tabs = visibleTacticalMapTabs();
         Rectangle[] rects = new Rectangle[tabs.length];
         int gap = 8;
         int tabW = Math.max(58, (width - gap * (tabs.length - 1)) / tabs.length);
@@ -9096,7 +9096,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static List<TacticalSectionBlock> tacticalSidebarBlocks(GameContext ctx) {
         ArrayList<TacticalSectionBlock> out = new ArrayList<>();
         if (ctx == null) return out;
-        UiState.TacticalMapTab tab = (ctx.ui == null) ? UiState.TacticalMapTab.MISSION : ctx.ui.tacticalMapTab;
+        UiState.TacticalMapTab tab = visibleTacticalMapTab(ctx);
         switch (tab) {
             case MISSION -> {
                 out.add(new TacticalSectionBlock("MISSION", tacticalMissionSummaryLines(ctx), new Color(255, 198, 126, 220)));
@@ -9116,12 +9116,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 out.add(new TacticalSectionBlock("TASK FORCES", sampleLines(CampaignSystem.strategicTaskForceSummaryLines(ctx), 4), new Color(255, 174, 146, 220)));
                 out.add(new TacticalSectionBlock("SUPPORT CONTACTS", sampleLines(buildStrategicSupportLines(buildStrategicSupportEntryList(ctx)), 4), new Color(156, 224, 255, 214)));
             }
-            case STRIKES -> {
-                out.add(new TacticalSectionBlock("TARGET WINDOW", tacticalStrikeSummaryLines(ctx), new Color(255, 174, 146, 220)));
-                out.add(new TacticalSectionBlock("READINESS", tacticalStrikeReadinessLines(ctx), new Color(255, 208, 142, 214)));
-            }
         }
         return out;
+    }
+
+    private static UiState.TacticalMapTab visibleTacticalMapTab(GameContext ctx) {
+        UiState.TacticalMapTab tab = (ctx == null || ctx.ui == null) ? UiState.TacticalMapTab.MISSION : ctx.ui.tacticalMapTab;
+        return tab == UiState.TacticalMapTab.STRIKES ? UiState.TacticalMapTab.MISSION : tab;
+    }
+
+    private static UiState.TacticalMapTab[] visibleTacticalMapTabs() {
+        return new UiState.TacticalMapTab[]{
+                UiState.TacticalMapTab.MISSION,
+                UiState.TacticalMapTab.FLEET,
+                UiState.TacticalMapTab.RESOURCES,
+                UiState.TacticalMapTab.CONTACTS
+        };
     }
 
     private static List<String> tacticalMissionSummaryLines(GameContext ctx) {
@@ -9145,7 +9155,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             return out;
         }
         String detail = CampaignSystem.hudObjectiveExpandedDetail(ctx);
-        out.add("Type: " + defaultIfBlank(objectiveValue(detail, "Theater:"), "Local campaign operation"));
+        out.add("Area: " + defaultIfBlank(objectiveValue(detail, "Theater:"), "Current mission area"));
         out.add("Primary Objective: " + defaultIfBlank(objectiveValue(detail, "Main Objective:"), "Advance the objective"));
         String secondary = objectiveValue(detail, "Optional:");
         if (secondary.isBlank()) secondary = objectiveValue(detail, "Current Task:");
@@ -9171,7 +9181,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         out.add("Status: " + (ctx.player.getOverShieldRemaining() > 0.0 ? "Shield Overcharge" : "Combat Ready"));
         out.add("Division: " + selectedDivisionReadout(ctx));
         out.add("Fleet Strain: " + CampaignSystem.campaignFleetStrainReadout(ctx));
-        out.add("Posture: " + CampaignSystem.campaignFleetPostureReadout(ctx));
+        out.add("Fleet Order: " + CampaignSystem.campaignFleetPostureReadout(ctx));
         return out;
     }
 
@@ -9235,7 +9245,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             out.add("Threat: " + (CampaignSystem.selectedCampaignContactHostile(ctx) ? "Hostile strike candidate" : "Contact not strike-eligible"));
         } else {
             out.add("Target: No hostile contact selected.");
-            out.add("Select a hostile map contact to open strike windows.");
+            out.add("Select a hostile map contact before using tactical strike weapons.");
         }
         return out;
     }
@@ -9247,7 +9257,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         out.add("Sorties Committed: " + Math.max(0, ctx.campaign.strategicSortiesLaunched));
         out.add("Atomic Ready: " + Math.max(0, ctx.campaign.strategicAtomicCharges));
         out.add("Ammo/Fuel: " + CampaignSystem.campaignAmmo(ctx) + " / " + CampaignSystem.campaignFuel(ctx));
-        out.add("Strike Heat: " + defaultIfBlank(CampaignSystem.lastStrikeReportTitle(ctx), "Cold"));
+        out.add("Enemy Alert From Strikes: " + defaultIfBlank(CampaignSystem.lastStrikeReportTitle(ctx), "Cold"));
         return out;
     }
 
@@ -9466,7 +9476,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Rectangle panelRect = getStrategicMapSidebarRect(viewW, viewH, false);
         Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panelRect.x, panelRect.y, panelRect.width, panelRect.height);
         Rectangle[] tabRects = tacticalMapTabRects(inner.x, inner.y + 2, inner.width);
-        UiState.TacticalMapTab[] tabs = UiState.TacticalMapTab.values();
+        UiState.TacticalMapTab[] tabs = visibleTacticalMapTabs();
         for (int i = 0; i < tabs.length && i < tabRects.length; i++) {
             if (tabRects[i].contains(mouseX, mouseY)) {
                 return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.TAB, "", tabs[i].name());
@@ -9600,68 +9610,21 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int drawGalaxyReceiverManualPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
         int h = 168;
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RECEIVER STATUS");
-        int dialCx = x + 64;
-        int dialCy = y + 82;
-        int dialR = 34;
-        g2.setColor(new Color(255, 230, 176, 145));
-        g2.drawArc(dialCx - dialR, dialCy - dialR, dialR * 2, dialR * 2, 24, 132);
-        g2.setColor(new Color(255, 210, 132, 220));
-        double needleFrac = navReceiverFraction(ctx);
-        double theta = Math.toRadians(204 - 132 * needleFrac);
-        int nx = dialCx + (int) Math.round(Math.cos(theta) * (dialR - 4));
-        int ny = dialCy - (int) Math.round(Math.sin(theta) * (dialR - 4));
-        g2.drawLine(dialCx, dialCy, nx, ny);
-        g2.fillOval(dialCx - 3, dialCy - 3, 6, 6);
-
-        g2.setFont(new Font("Consolas", Font.BOLD, 10));
-        g2.setColor(new Color(255, 220, 156, 220));
-        g2.drawString("TUNING", x + 36, y + 128);
-        g2.drawString("SIGNAL", x + 118, y + 44);
-
-        drawGalaxyMeter(g2, x + 116, y + 56, width - 128, "STRENGTH", navSignalFraction(ctx),
-                new Color(255, 198, 132, 220), safeNavLine(lines, 1, "Signal"));
-        drawGalaxyMeter(g2, x + 116, y + 80, width - 128, "TRACK", navTrackFraction(ctx),
-                new Color(132, 214, 255, 220), safeNavLine(lines, 2, "Track"));
-        drawGalaxyMeter(g2, x + 116, y + 104, width - 128, "LOCK", navLockFraction(ctx),
-                new Color(116, 224, 186, 220), safeNavLine(lines, 3, "Course"));
-
-        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
-        g2.setColor(new Color(210, 228, 242, 205));
-        g2.drawString(safeNavLine(lines, 0, "Band"), x + 12, y + 145);
-        drawGalaxyBoardLine(g2, x + 12, y + 158, width - 24, safeNavLine(lines, 4, "Best Lead"), new Color(198, 220, 236, 210));
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "TRAVEL STATUS");
+        int lineY = y + 34;
+        for (int i = 0; lines != null && i < Math.min(7, lines.size()); i++) {
+            drawGalaxyBoardLine(g2, x + 12, lineY + i * 18, width - 24, lines.get(i), new Color(214, 230, 244, 218));
+        }
         return y + h;
     }
 
     private static int drawGalaxyDirectionFinderPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
         int h = 178;
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "DIRECTION FINDER");
-        int dialCx = x + 58;
-        int dialCy = y + 78;
-        int dialR = 28;
-        g2.setColor(new Color(160, 220, 255, 145));
-        g2.drawOval(dialCx - dialR, dialCy - dialR, dialR * 2, dialR * 2);
-        g2.drawLine(dialCx, dialCy - dialR - 4, dialCx, dialCy + dialR + 4);
-        g2.drawLine(dialCx - dialR - 4, dialCy, dialCx + dialR + 4, dialCy);
-        double theta = Math.toRadians(navBearingAngle(ctx));
-        int nx = dialCx + (int) Math.round(Math.sin(theta) * (dialR - 3));
-        int ny = dialCy - (int) Math.round(Math.cos(theta) * (dialR - 3));
-        g2.setColor(new Color(118, 238, 220, 220));
-        g2.drawLine(dialCx, dialCy, nx, ny);
-        g2.fillOval(dialCx - 3, dialCy - 3, 6, 6);
-
-        drawGalaxyMeter(g2, x + 102, y + 42, width - 114, "BEARING", navBearingFraction(ctx),
-                new Color(132, 214, 255, 220), safeNavLine(lines, 0, "Bearing"));
-        drawGalaxyMeter(g2, x + 102, y + 66, width - 114, "EXPOSURE", navExposureFraction(ctx),
-                new Color(255, 182, 120, 220), safeNavLine(lines, 1, "Exposure"));
-        drawGalaxyMeter(g2, x + 102, y + 90, width - 114, "SWEEP", navSweepFraction(ctx),
-                new Color(118, 238, 220, 220), safeNavLine(lines, 3, "Sweep"));
-        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
-        g2.setColor(new Color(210, 228, 242, 205));
-        g2.drawString(fitShopText(g2.getFontMetrics(), safeNavLine(lines, 2, "Pressure"), width - 24), x + 12, y + 126);
-        drawGalaxyBoardLine(g2, x + 12, y + 140, width - 24, safeNavLine(lines, 4, "Modes"), new Color(198, 220, 236, 210));
-        drawGalaxyBoardLine(g2, x + 12, y + 154, width - 24, safeNavLine(lines, 5, "Relay"), new Color(198, 220, 236, 210));
-        drawGalaxyBoardLine(g2, x + 12, y + 168, width - 24, safeNavLine(lines, 7, "Enter Site"), new Color(198, 220, 236, 210));
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "SELECTED DESTINATION");
+        int lineY = y + 34;
+        for (int i = 0; lines != null && i < Math.min(8, lines.size()); i++) {
+            drawGalaxyBoardLine(g2, x + 12, lineY + i * 17, width - 24, lines.get(i), new Color(214, 230, 244, 218));
+        }
         return y + h;
     }
 
@@ -9748,7 +9711,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         String secondaryHeader;
         Color primaryAccent = new Color(184, 228, 255, 220);
         Color secondaryAccent = new Color(255, 196, 164, 220);
-        UiState.CampaignCommandTab tab = (ctx == null || ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
+        UiState.CampaignCommandTab tab = visibleCampaignCommandTab(ctx);
         switch (tab) {
             case FLEET -> {
                 primaryHeader = "FLEET MANAGER";
@@ -9768,15 +9731,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 resourceSecondary.addAll(CampaignSystem.campaignResourceWarningLines(ctx));
                 secondaryLines = resourceSecondary;
             }
-            case STRIKES -> {
-                primaryHeader = "LONG-RANGE STRIKE CONTROL";
-                primaryLines = CampaignSystem.campaignStrikeManagerLines(ctx);
-                secondaryHeader = "READINESS / CONSEQUENCES";
-                ArrayList<String> strikeSecondary = new ArrayList<>();
-                strikeSecondary.addAll(CampaignSystem.campaignStrikeReadinessLines(ctx));
-                strikeSecondary.addAll(CampaignSystem.campaignStrikeConsequenceLines(ctx));
-                secondaryLines = strikeSecondary;
-            }
             default -> {
                 primaryHeader = "CAMPAIGN SUMMARY";
                 primaryLines = CampaignSystem.campaignSummarySidebarLines(ctx);
@@ -9795,7 +9749,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             switch (tab) {
                 case FLEET -> drawGalaxyFleetBoard(g2, ctx, x, rowY, width, remaining);
                 case RESOURCES -> drawGalaxyResourceBoard(g2, ctx, x, rowY, width, remaining);
-                case STRIKES -> drawGalaxyStrikeBoard(g2, ctx, x, rowY, width, remaining);
                 default -> drawGalaxyNavigationBoard(g2, ctx, x, rowY, width, remaining);
             }
         }
@@ -9804,9 +9757,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawGalaxyCommandTabs(Graphics2D g2, GameContext ctx, int x, int y, int width) {
         if (g2 == null || ctx == null) return;
-        UiState.CampaignCommandTab active = (ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
+        UiState.CampaignCommandTab active = visibleCampaignCommandTab(ctx);
         Rectangle[] rects = galaxyCommandTabRects(x, y, width);
-        UiState.CampaignCommandTab[] tabs = UiState.CampaignCommandTab.values();
+        UiState.CampaignCommandTab[] tabs = visibleCampaignCommandTabs();
         for (int i = 0; i < tabs.length && i < rects.length; i++) {
             boolean selected = tabs[i] == active;
             Color accent = selected ? new Color(128, 236, 194, 220) : new Color(160, 190, 214, 180);
@@ -9824,20 +9777,32 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return switch (tab) {
             case NAV -> "NAV";
             case RESOURCES -> "RES";
-            case STRIKES -> "STRIKE";
             default -> tab.label().toUpperCase(Locale.US);
         };
     }
 
     private static Rectangle[] galaxyCommandTabRects(int x, int y, int width) {
         int gap = 8;
-        int count = UiState.CampaignCommandTab.values().length;
+        int count = visibleCampaignCommandTabs().length;
         int tabW = Math.max(66, (width - gap * (count - 1)) / count);
         Rectangle[] rects = new Rectangle[count];
         for (int i = 0; i < count; i++) {
             rects[i] = new Rectangle(x + i * (tabW + gap), y, tabW, 22);
         }
         return rects;
+    }
+
+    private static UiState.CampaignCommandTab visibleCampaignCommandTab(GameContext ctx) {
+        UiState.CampaignCommandTab tab = (ctx == null || ctx.ui == null) ? UiState.CampaignCommandTab.NAV : ctx.ui.campaignCommandTab;
+        return tab == UiState.CampaignCommandTab.STRIKES ? UiState.CampaignCommandTab.NAV : tab;
+    }
+
+    private static UiState.CampaignCommandTab[] visibleCampaignCommandTabs() {
+        return new UiState.CampaignCommandTab[]{
+                UiState.CampaignCommandTab.NAV,
+                UiState.CampaignCommandTab.FLEET,
+                UiState.CampaignCommandTab.RESOURCES
+        };
     }
 
     private static void drawGalaxyCommandActions(Graphics2D g2, GameContext ctx, Rectangle panelRect, int x, int y, int width, int maxBottomY) {
@@ -10252,7 +10217,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawGalaxyStrikeBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 64) return;
         int panelH = Math.min(height, 218);
-        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "CONTACT / STRIKE BOARD");
+        drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "CONTACT BOARD");
         List<String> readiness = CampaignSystem.campaignStrikeReadinessLines(ctx);
         int top = y + 34;
         for (int i = 0; i < readiness.size() && i < 4; i++) {
@@ -10262,13 +10227,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawGalaxyBoardLine(g2, x + 24, top + i * 18, width - 36, readiness.get(i), new Color(226, 236, 246, 220));
         }
         List<String> consequences = CampaignSystem.campaignStrikeConsequenceLines(ctx);
-        String strikeHeat = consequences.size() > 1 ? consequences.get(1) : "Strike Heat: COLD (0)";
-        drawGalaxyMeter(g2, x + 12, y + 112, width - 24, "INTEL LOCK", CampaignSystem.campaignIntelPercent(ctx),
+        String contactHeat = consequences.size() > 1 ? consequences.get(1) : "Contact Heat: COLD (0)";
+        drawGalaxyMeter(g2, x + 12, y + 112, width - 24, "MAP INTEL", CampaignSystem.campaignIntelPercent(ctx),
                 new Color(120, 220, 255, 220), CampaignSystem.campaignIntelReadout(ctx));
         drawGalaxyMeter(g2, x + 12, y + 134, width - 24, "EXPOSURE", CampaignSystem.campaignExposurePercent(ctx),
                 new Color(255, 182, 120, 220), CampaignSystem.campaignExposureReadout(ctx));
-        drawGalaxyMeter(g2, x + 12, y + 156, width - 24, "STRIKE HEAT", MathUtil.clamp(parseTrailingNumber(strikeHeat) / 100.0, 0.0, 1.0),
-                new Color(255, 140, 120, 220), strikeHeat);
+        drawGalaxyMeter(g2, x + 12, y + 156, width - 24, "ENEMY ALERT", MathUtil.clamp(parseTrailingNumber(contactHeat) / 100.0, 0.0, 1.0),
+                new Color(255, 140, 120, 220), contactHeat);
         int infoY = y + 190;
         for (int i = 0; i < consequences.size() && i < 4 && infoY + i * 14 <= y + panelH - 8; i++) {
             drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, consequences.get(i), new Color(214, 226, 238, 214));

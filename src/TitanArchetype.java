@@ -32,7 +32,7 @@ public enum TitanArchetype {
             TitanAvailability.EARLY_MID,
             10,
             0,
-            "Small Craft sustainment",
+            "Small Craft repair and rearm support",
             "-30% Small Craft repair/rearm time, +1 upgrade tier for deployed wings",
             "light carriers",
             "escort frigates",

@@ -647,7 +647,7 @@ public final class CommSystem {
         MissionSectionHint reserve = reserveSectionHint(ctx);
         if (reserve != null) {
             return new IntelSalePackage(reserve.label,
-                    "Reserve traffic is massing here. Expect reinforcements or route pressure.",
+                    "Reserve traffic is massing here. Expect reinforcements or a more dangerous route.",
                     reserve.x, reserve.y,
                     new java.awt.Color(255, 204, 132));
         }

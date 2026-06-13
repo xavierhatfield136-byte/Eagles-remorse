@@ -60,7 +60,7 @@ public final class AudioSystem {
 
     private enum VoiceCue {
         CAPTAIN_COMBAT_START("captain", "combat_start", 6.0, 3, 2,
-                "All stations, battle posture.",
+                "All stations, prepare for combat.",
                 "All hands, combat stations."),
         // NOTE: Using a new event id here intentionally avoids playing the legacy `combat_end` voice asset
         // (which included the removed wording). If/when new VO is recorded, drop it in as:
@@ -70,18 +70,18 @@ public final class AudioSystem {
                 "Area secure. Maintain readiness."),
         CAPTAIN_ORDER_PUSH("captain", "order_push", 4.0, 2, 3,
                 "Press the attack now.",
-                "Advance and maintain pressure.",
+                "Advance and keep firing.",
                 "Push forward. Do not let them regroup."),
         CAPTAIN_ORDER_RETREAT("captain", "order_retreat", 4.0, 3, 3,
                 "Break contact and fall back.",
                 "Disengage and regroup.",
                 "Retreat vector now."),
         CAPTAIN_ORDER_ESCORT("captain", "order_escort", 4.0, 2, 3,
-                "Escort posture. Protect the objective.",
+                "Escort the objective. Stay close.",
                 "Form escort screen around the asset.",
                 "Escort detail, tighten formation."),
         CAPTAIN_ORDER_DEFEND("captain", "order_defend", 4.0, 2, 3,
-                "Hold the line. Defensive posture.",
+                "Hold the line. Defensive formation.",
                 "Defensive stations. Hold position.",
                 "Maintain defense coverage."),
         CAPTAIN_ORDER_MINE("captain", "order_mine", 4.5, 2, 3,
@@ -1136,7 +1136,7 @@ public final class AudioSystem {
         return switch (command) {
             case ATTACK -> shipLabel + ", engage and press the attack.";
             case DEFEND -> shipLabel + ", hold the line and defend.";
-            case ESCORT -> shipLabel + ", assume escort posture.";
+            case ESCORT -> shipLabel + ", escort the objective.";
             case REPAIR -> shipLabel + ", peel off and begin repairs.";
             case RTB -> shipLabel + ", return to base.";
             case RETREAT -> shipLabel + ", break contact and fall back.";

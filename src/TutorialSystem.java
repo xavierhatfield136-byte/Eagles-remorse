@@ -721,7 +721,7 @@ public final class TutorialSystem {
                         st.powerAdjusted));
                 items.add(new ChecklistItem(
                         "[H] Change one crew directive or station mode.",
-                        "Open crew stations with H and alter any directive, mode, or automation posture.",
+                        "Open crew stations with H and change any crew order, mode, or automation setting.",
                         st.crewAdjusted));
                 items.add(new ChecklistItem(
                         "[H then Engineering 8] Suppress the scripted fire.",

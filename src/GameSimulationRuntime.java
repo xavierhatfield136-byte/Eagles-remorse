@@ -392,8 +392,8 @@ public final class GameSimulationRuntime {
         }
         ctx.command.safeMissionExitPending = false;
         ctx.command.playerTeleportCharging = false;
-       ctx.command.playerTeleportChargeRemaining = 0.0;
-        if (CampaignSystem.completeMissionExtraction(ctx)) {
+        ctx.command.playerTeleportChargeRemaining = 0.0;
+        if (CampaignSystem.completeSafeMissionExit(ctx)) {
             ctx.command.safeMissionExitReady = true;
             return;
         }
