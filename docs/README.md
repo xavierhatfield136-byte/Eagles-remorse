@@ -14,7 +14,9 @@ Start here. The docs are organized by purpose so the next work is visible withou
 
 - `STRATEGIC_CAMPAIGN_MAP_SPEC.md` - strategic-map rules.
 - `STRATEGIC_CAMPAIGN_SCRIPT.md` - authored campaign behavior and content.
+- `STRATEGIC_FLEET_BEHAVIOR_SYSTEM_SPEC.md` - canonical living-war fleet behavior, mission lifecycle, anti-idle, and faction personality spec.
 - `STRATEGIC_HUD_ACTION_FIRST_SPEC.md` - visible-action UI principles.
+- `OVERWORLD_MAP_AI_AUDIO_IMPLEMENTATION_CHECKLIST.md` - overworld readability, faction AI, battle consequence, and audio cleanup tracker.
 - `CAMPAIGN_OBJECTIVE_MARKERS_AND_MISSION_READABILITY.md` - objective readability findings.
 - `CAMPAIGN_SESSION_CHANGE_AUDIT_CHECKLIST.md` - retained manual playthrough checklist.
 - `CAMPAIGN_SAVE_SCHEMA.md` - expansion persistence fields.

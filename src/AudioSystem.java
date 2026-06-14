@@ -526,6 +526,30 @@ public final class AudioSystem {
         triggerSfx(ctx, SfxCue.UI_CLOSE);
     }
 
+    public static void onStrategicMapEvent(GameContext ctx, String eventKind, double sourceX, double sourceY) {
+        if (ctx == null || eventKind == null || eventKind.isBlank()) return;
+        RuntimeState st = stateFor(ctx);
+        double now = nowSec();
+        String key = "strategic." + eventKind.trim().toLowerCase(Locale.US);
+        Double cd = st.sfxCooldownUntil.get(key);
+        if (cd != null && now < cd) return;
+        double cooldown = switch (key) {
+            case "strategic.battle_start", "strategic.battle_end" -> 2.4;
+            case "strategic.node_control", "strategic.major_fleet_launch" -> 3.2;
+            case "strategic.route_warning" -> 1.3;
+            default -> 2.0;
+        };
+        st.sfxCooldownUntil.put(key, now + cooldown);
+        switch (key) {
+            case "strategic.battle_start" -> triggerSfxEvent(ctx, st, SfxCue.WARP_CHARGE_START.eventId, now);
+            case "strategic.battle_end" -> triggerSfxEvent(ctx, st, SfxCue.IMPACT_EXPLOSION.eventId, now);
+            case "strategic.node_control" -> triggerSfxEvent(ctx, st, SfxCue.WARP_EXIT.eventId, now);
+            case "strategic.major_fleet_launch" -> triggerSfxEvent(ctx, st, SfxCue.FLIGHT_LAUNCH.eventId, now);
+            case "strategic.route_warning" -> triggerSfxEvent(ctx, st, SfxCue.UI_OPEN.eventId, now);
+            default -> triggerSfxEvent(ctx, st, SfxCue.UI_CLOSE.eventId, now);
+        }
+    }
+
     public static void onWeaponPrimary(GameContext ctx) {
         triggerSfx(ctx, SfxCue.WEAPON_PRIMARY);
     }

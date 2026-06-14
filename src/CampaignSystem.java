@@ -6,16 +6,20 @@ import java.awt.Color;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Campaign progression layer for a 2-hour run:
@@ -309,6 +313,7 @@ public final class CampaignSystem {
         final double y;
         final double radius;
         boolean claimed;
+        double salvageValue;
         double lastThreatWarnAtSec = -1000.0;
         double underFireProgressSec = 0.0;
 
@@ -319,6 +324,7 @@ public final class CampaignSystem {
             this.x = x;
             this.y = y;
             this.radius = Math.max(120.0, radius);
+            this.salvageValue = Math.max(35.0, this.radius * 0.36);
         }
     }
 
@@ -1293,6 +1299,7 @@ public final class CampaignSystem {
         String playerIntervention = "";
         String outcomeReport = "";
         String winnerFollowUp = "";
+        String loserFollowUp = "";
 
         CampaignBattle(int id, CampaignForce a, CampaignForce b) {
             this.id = Math.max(1, id);
@@ -1444,6 +1451,12 @@ public final class CampaignSystem {
         PATROL,
         RECON,
         INTERCEPT,
+        ESCORT,
+        REINFORCE,
+        RAID,
+        REPAIR,
+        CAPTURE,
+        BLOCKADE,
         CONVOY
     }
 
@@ -1457,12 +1470,142 @@ public final class CampaignSystem {
         DESTROYED
     }
 
+    private enum CampaignForceWorkState {
+        TRAVELING,
+        WORKING,
+        REACTING,
+        FIGHTING,
+        RECOVERING,
+        WAITING_WITH_PURPOSE
+    }
+
+    private enum CampaignForceMissionState {
+        ASSIGNED,
+        TRAVELING,
+        ARRIVED,
+        WORKING,
+        COMPLETED,
+        FAILED,
+        RETREATING,
+        RECOVERING,
+        REASSIGNING
+    }
+
+    private enum CampaignForceStopReason {
+        NONE,
+        GUARDING,
+        MINING,
+        SALVAGING,
+        REPAIRING,
+        REFUELING,
+        TRADING,
+        LOADING,
+        UNLOADING,
+        SCANNING,
+        HIDING,
+        AMBUSHING,
+        BLOCKADING,
+        STAGING,
+        WAITING_FOR_ESCORT,
+        WAITING_FOR_REINFORCEMENTS,
+        RECOVERING_SURVIVORS,
+        RECOVERING,
+        HOLDING_LINE,
+        AVOIDING_SUPERIOR_THREAT
+    }
+
+    private enum CampaignForceReassignmentCondition {
+        NONE,
+        WORK_COMPLETE,
+        TARGET_DESTROYED,
+        TARGET_MISSING,
+        ROUTE_BLOCKED,
+        THREAT_TOO_STRONG,
+        LOW_FUEL,
+        LOW_AMMO,
+        LOW_REPAIR_CAPACITY,
+        LOW_CREW_READINESS,
+        CARGO_FULL,
+        CARGO_EMPTY,
+        TIMER_EXPIRED,
+        DIRECTOR_RECALL
+    }
+
     private enum CampaignFleetTemplate {
         SCOUT,
         PATROL,
         INTERCEPTOR,
         CONVOY
     }
+
+    private enum CampaignForceCargoKind {
+        NONE,
+        ORE,
+        SALVAGE,
+        TRADE_GOODS,
+        SUPPLIES,
+        LOOT
+    }
+
+    private static final class CampaignFactionDoctrine {
+        final String label;
+        final double defensiveBias;
+        final double escortPriority;
+        final double patrolPriority;
+        final double cautiousPursuitLimit;
+        final double rescuePriority;
+        final double civilianRiskTolerance;
+        final double profitPriority;
+        final double fleePowerRatio;
+        final double salvagePriority;
+        final double aggressionBias;
+        final double raidPriority;
+        final double raidAttackRatio;
+        final double retreatThreshold;
+
+        CampaignFactionDoctrine(String label,
+                                double defensiveBias,
+                                double escortPriority,
+                                double patrolPriority,
+                                double cautiousPursuitLimit,
+                                double rescuePriority,
+                                double civilianRiskTolerance,
+                                double profitPriority,
+                                double fleePowerRatio,
+                                double salvagePriority,
+                                double aggressionBias,
+                                double raidPriority,
+                                double raidAttackRatio,
+                                double retreatThreshold) {
+            this.label = label == null ? "Unknown Doctrine" : label;
+            this.defensiveBias = defensiveBias;
+            this.escortPriority = escortPriority;
+            this.patrolPriority = patrolPriority;
+            this.cautiousPursuitLimit = cautiousPursuitLimit;
+            this.rescuePriority = rescuePriority;
+            this.civilianRiskTolerance = civilianRiskTolerance;
+            this.profitPriority = profitPriority;
+            this.fleePowerRatio = fleePowerRatio;
+            this.salvagePriority = salvagePriority;
+            this.aggressionBias = aggressionBias;
+            this.raidPriority = raidPriority;
+            this.raidAttackRatio = raidAttackRatio;
+            this.retreatThreshold = retreatThreshold;
+        }
+    }
+
+    private static final CampaignFactionDoctrine GREEN_DOCTRINE = new CampaignFactionDoctrine(
+            "Green defensive escort doctrine",
+            0.82, 0.86, 0.78, 760.0, 0.88, 0.18,
+            0.22, 0.92, 0.34, 0.42, 0.30, 0.72, 42.0);
+    private static final CampaignFactionDoctrine YELLOW_DOCTRINE = new CampaignFactionDoctrine(
+            "Yellow profit-and-survival doctrine",
+            0.28, 0.42, 0.36, 520.0, 0.30, 0.24,
+            0.88, 1.05, 0.82, 0.26, 0.18, 0.62, 56.0);
+    private static final CampaignFactionDoctrine RED_DOCTRINE = new CampaignFactionDoctrine(
+            "Red scout-and-raid doctrine",
+            0.36, 0.20, 0.54, 1120.0, 0.16, 0.06,
+            0.18, 0.72, 0.24, 0.90, 0.86, 0.82, 34.0);
 
     private static final class CampaignFleetBase {
         final String id;
@@ -1517,7 +1660,37 @@ public final class CampaignSystem {
         public final double contactConfidence;
         public final double uncertaintyRadius;
         public final double lastKnownAgeSec;
+        public final double lastKnownVelocityX;
+        public final double lastKnownVelocityY;
+        public final double lastSeenSec;
         public final CampaignForceContactState contactState;
+        public final String mission;
+        public final String homeBaseId;
+        public final String destinationLocationId;
+        public final String workState;
+        public final String missionState;
+        public final String stopReason;
+        public final String reassignmentCondition;
+        public final double stationaryTimeSec;
+        public final double antiIdleTimerSec;
+        public final double taskDeadlineSec;
+        public final double workRemainingSec;
+        public final double cargoLoad;
+        public final double cargoCapacity;
+        public final String cargoKind;
+        public final double fuelLevel;
+        public final double ammoLevel;
+        public final double repairCapacity;
+        public final double crewReadiness;
+        public final double riskTolerance;
+        public final double operatingRadius;
+        public final String doctrineSummary;
+        public final String because;
+        public final String doing;
+        public final String next;
+        public final String statusLabel;
+        public final String intelLabel;
+        public final List<String> tooltipLines;
 
         CampaignForceSummary(CampaignForce force) {
             this.id = force == null ? 0 : force.id;
@@ -1539,7 +1712,37 @@ public final class CampaignSystem {
             this.contactConfidence = force == null ? 0.0 : force.contactConfidence;
             this.uncertaintyRadius = force == null ? 0.0 : force.uncertaintyRadius;
             this.lastKnownAgeSec = force == null ? 0.0 : force.lastKnownAgeSec;
+            this.lastKnownVelocityX = force == null ? 0.0 : force.lastKnownVelocityX;
+            this.lastKnownVelocityY = force == null ? 0.0 : force.lastKnownVelocityY;
+            this.lastSeenSec = force == null ? 0.0 : force.lastSeenSec;
             this.contactState = force == null ? CampaignForceContactState.STALE : force.contactState;
+            this.mission = force == null || force.mission == null ? "" : force.mission.name();
+            this.homeBaseId = force == null ? "" : force.homeBaseId;
+            this.destinationLocationId = force == null ? "" : force.destinationLocationId;
+            this.workState = force == null || force.workState == null ? "" : force.workState.name();
+            this.missionState = force == null || force.missionState == null ? "" : force.missionState.name();
+            this.stopReason = force == null || force.stopReason == null ? "" : force.stopReason.name();
+            this.reassignmentCondition = force == null || force.reassignmentCondition == null ? "" : force.reassignmentCondition.name();
+            this.stationaryTimeSec = force == null ? 0.0 : force.stationaryTimeSec;
+            this.antiIdleTimerSec = force == null ? 0.0 : force.antiIdleTimerSec;
+            this.taskDeadlineSec = force == null ? 0.0 : force.taskDeadlineSec;
+            this.workRemainingSec = force == null ? 0.0 : force.workRemainingSec;
+            this.cargoLoad = force == null ? 0.0 : force.cargoLoad;
+            this.cargoCapacity = force == null ? 0.0 : force.cargoCapacity;
+            this.cargoKind = force == null || force.cargoKind == null ? "" : force.cargoKind.name();
+            this.fuelLevel = force == null ? 0.0 : force.fuelLevel;
+            this.ammoLevel = force == null ? 0.0 : force.ammoLevel;
+            this.repairCapacity = force == null ? 0.0 : force.repairCapacity;
+            this.crewReadiness = force == null ? 0.0 : force.crewReadiness;
+            this.riskTolerance = force == null ? 0.0 : force.riskTolerance;
+            this.operatingRadius = force == null ? 0.0 : force.operatingRadius;
+            this.doctrineSummary = force == null ? "" : doctrineSummary(null, force);
+            this.because = force == null ? "" : fleetBecauseLine(force);
+            this.doing = force == null ? "" : fleetDoingLine(force);
+            this.next = force == null ? "" : fleetNextLine(force);
+            this.statusLabel = force == null ? "" : campaignForceCompactStatusLabel(null, force);
+            this.intelLabel = force == null ? "" : campaignForceIntelDisplayLabel(force);
+            this.tooltipLines = force == null ? List.of() : fleetTooltipLines(force);
         }
     }
 
@@ -1570,6 +1773,38 @@ public final class CampaignSystem {
         CampaignFleetMission mission = CampaignFleetMission.PATROL;
         CampaignFleetState state = CampaignFleetState.IDLE;
         CampaignFleetTemplate template = CampaignFleetTemplate.PATROL;
+        CampaignForceWorkState workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+        CampaignForceMissionState missionState = CampaignForceMissionState.ASSIGNED;
+        CampaignForceStopReason stopReason = CampaignForceStopReason.NONE;
+        CampaignForceReassignmentCondition reassignmentCondition = CampaignForceReassignmentCondition.NONE;
+        double stationaryTimeSec = 0.0;
+        double antiIdleTimerSec = 0.0;
+        double taskDeadlineSec = 0.0;
+        double workRemainingSec = 0.0;
+        double lastTaskUpdateSec = 0.0;
+        double lastStopReasonChangeSec = 0.0;
+        double lastLifecycleX = Double.NaN;
+        double lastLifecycleY = Double.NaN;
+        double lastAntiIdleResetX = Double.NaN;
+        double lastAntiIdleResetY = Double.NaN;
+        CampaignFleetMission lastAntiIdleMission = null;
+        CampaignForceMissionState lastAntiIdleMissionState = null;
+        CampaignForceWorkState lastAntiIdleWorkState = null;
+        CampaignForceStopReason lastAntiIdleStopReason = null;
+        int lastAntiIdleTargetForceId = -1;
+        String lastAntiIdleDestinationId = "";
+        double lastAntiIdleTargetX = Double.NaN;
+        double lastAntiIdleTargetY = Double.NaN;
+        double antiIdleReassignCooldownSec = 0.0;
+        double cargoLoad = 0.0;
+        double cargoCapacity = 0.0;
+        CampaignForceCargoKind cargoKind = CampaignForceCargoKind.NONE;
+        double fuelLevel = 100.0;
+        double ammoLevel = 100.0;
+        double repairCapacity = 100.0;
+        double crewReadiness = 100.0;
+        double riskTolerance = 50.0;
+        double operatingRadius = 900.0;
         int linkedSearchGroupId = 0;
         int parentForceId = 0;
         int targetForceId = 0;
@@ -1582,8 +1817,12 @@ public final class CampaignSystem {
         double lastKnownX;
         double lastKnownY;
         double lastKnownAgeSec = 0.0;
+        double lastKnownVelocityX = 0.0;
+        double lastKnownVelocityY = 0.0;
+        double lastSeenSec = 0.0;
         boolean visibleToPlayer = true;
         boolean simulationActive = true;
+        boolean protectedCivilianTraffic = false;
         CampaignForceContactState contactState = CampaignForceContactState.KNOWN;
         final List<double[]> routePoints = new ArrayList<>();
         final List<double[]> patrolWaypoints = new ArrayList<>();
@@ -3141,6 +3380,7 @@ public final class CampaignSystem {
         out.add("Travel: " + galaxyTravelSidebarReadout(ctx, travel));
         out.add("Hunt Status: " + huntedStatusReadout(ctx));
         out.add("Enemy Alert: " + enemyAlertReadout(ctx) + "  |  " + enemyAlertRegionReadout(ctx));
+        out.add("Alert / Pressure: " + enemyAlertReadout(ctx) + "  |  " + theaterPressureReadout(ctx));
         out.add("Selected Region: " + campaignSelectedTheaterLabel(st));
         out.add("Earth Gate: " + (earthPhaseUnlocked(st) ? "UNLOCKED" : ("LOCKED " + stabilizedTheaterCount(st) + "/" + earthPhaseMinStabilizedTheatersRequired())));
         return out;
@@ -6643,15 +6883,18 @@ public final class CampaignSystem {
                 ? selectedStrategicDestinationLabel(ctx)
                 : selected.name + "  |  " + dockingStatusReadout(ctx, selected);
         ArrayList<String> out = new ArrayList<>();
-        out.add("Fleet State: " + ((travel != null && travel.traveling) ? "TRAVELING" : "HOLDING"));
-        out.add("Destination: " + selectedLine);
-        out.add("Travel: " + galaxyTravelSidebarReadout(ctx, travel));
+        out.add("Objective: " + selectedLine);
+        out.add("Fleet: " + ((travel != null && travel.traveling) ? "TRAVELING" : "HOLDING")
+                + "  |  " + campaignFleetPostureReadout(ctx));
         out.add("Threat: " + enemyAlertReadout(ctx) + "  |  " + enemyAlertRegionReadout(ctx));
-        out.add("Intel: " + campaignIntelReadout(ctx) + "  |  Uncertain contacts " + uncertainContactCount(st));
+        out.add("Intel: " + campaignIntelReadout(ctx) + "  |  uncertain " + uncertainContactCount(st));
         out.add("Advice: " + bestLead);
         out.add((travel != null && travel.traveling)
                 ? ("Drive: " + (travel.freeTravel ? "free course" : "selected route"))
-                : "Drive: waiting for a selected route");
+                : "Drive: select a destination or free course");
+        out.add("Fleet State: " + ((travel != null && travel.traveling) ? "TRAVELING" : "HOLDING")
+                + "  |  " + campaignFleetPostureReadout(ctx));
+        out.add("Destination: " + selectedStrategicDestinationLabel(ctx));
         return out;
     }
 
@@ -6677,7 +6920,7 @@ public final class CampaignSystem {
         out.add("Exposure: " + campaignExposureReadout(ctx));
         out.add("Enter Site: " + (canEnterSelectedLocalEncounter(ctx) ? "READY" : "NO LOCAL CONTACT"));
         out.add("Regional Situation: " + theaterPressureReadout(ctx));
-        out.add("Note: " + campaignCrewCommentaryLines(ctx).get(0));
+        out.add("Note: Green traffic is denser here. We are not alone.");
         return out;
     }
 
@@ -6686,22 +6929,23 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Comms offline.");
         ArrayList<String> out = new ArrayList<>();
-        out.add("Green Channel Favor: " + st.greenContractFavor);
-        out.add("Yellow Leverage: " + st.yellowLiberationFavor);
-        out.add("Contacts: " + campaignRelationshipBoardLine(ctx));
-        out.add("Expansion " + DiplomacyNarrativeCrewSystem.commandBoardLines(st.diplomacyNarrative).get(0));
         out.add("Actionable Lead: " + campaignCrewCommentaryLines(ctx).get(0));
-        out.add("Reputation: " + campaignReputationReadout(ctx));
-        out.add("Regional Situation: " + theaterPressureReadout(ctx));
         if (!st.theaterWarRecentEvents.isEmpty()) {
             String latest = st.theaterWarRecentEvents.get(st.theaterWarRecentEvents.size() - 1);
-            out.add("War Feed: " + latest);
+            out.add("War Change: " + latest);
+        } else {
+            out.add("War Change: no major theater shift reported");
         }
-        List<String> commentary = campaignCrewCommentaryLines(ctx);
-        out.add("Crew: " + commentary.get(Math.min(1, commentary.size() - 1)));
-        List<String> rumor = campaignRumorBoardLines(ctx);
-        if (rumor.size() >= 3) out.add(rumor.get(2));
-        if (rumor.size() >= 5) out.add(rumor.get(4));
+        out.add("Green: " + st.greenDirectorBrief.replaceFirst("^Green:\\s*", ""));
+        out.add("Yellow: " + st.yellowDirectorBrief.replaceFirst("^Yellow:\\s*", ""));
+        out.add("Red: " + st.redDirectorBrief.replaceFirst("^Red:\\s*", ""));
+        out.add("Standing: " + campaignRelationshipBoardLine(ctx));
+        out.add("Reputation: " + campaignReputationReadout(ctx));
+        out.add("Green Channel Favor: " + st.greenContractFavor);
+        out.add("Contacts: " + campaignRelationshipBoardLine(ctx));
+        out.add("Crew: Radio room standing by for sweeps.");
+        out.add("Lead  |  " + campaignCrewCommentaryLines(ctx).get(0));
+        out.add("Expansion Reputation Mil " + campaignReputationReadout(ctx));
         return out;
     }
 
@@ -8241,6 +8485,9 @@ public final class CampaignSystem {
         st.dockedGalaxyLocationId = "";
         recordTransitVariation(ctx, st, originX, originY, destination.x, destination.y, destination.name, route);
         ensureRouteInterdictionPressure(ctx, st, originX, originY, destination.x, destination.y, route);
+        if (st.galaxyTravel.interceptionRisk >= 45.0f) {
+            AudioSystem.onStrategicMapEvent(ctx, "route_warning", destination.x, destination.y);
+        }
         EventSystem.showBanner(ctx,
                 "TRAVELING TO " + destination.name.toUpperCase(Locale.US)
                         + "  ETA " + (int) Math.ceil(st.galaxyTravel.durationSec) + "S"
@@ -8287,6 +8534,9 @@ public final class CampaignSystem {
         st.dockedGalaxyLocationId = "";
         recordTransitVariation(ctx, st, st.playerGalaxyX, st.playerGalaxyY, targetX, targetY, "Free Course", route);
         ensureRouteInterdictionPressure(ctx, st, st.playerGalaxyX, st.playerGalaxyY, targetX, targetY, route);
+        if (st.galaxyTravel.interceptionRisk >= 45.0f) {
+            AudioSystem.onStrategicMapEvent(ctx, "route_warning", targetX, targetY);
+        }
         EventSystem.showBanner(ctx,
                 "FREE NAVIGATION ENGAGED  ETA " + (int) Math.ceil(st.galaxyTravel.durationSec) + "S"
                         + "  RISK " + (int) Math.round(st.galaxyTravel.interceptionRisk) + "%",
@@ -9603,6 +9853,10 @@ public final class CampaignSystem {
                 || marker.type == ObjectiveMarkerType.BOSS_TARGET
                 || marker.type == ObjectiveMarkerType.PROTECTED_ASSET
                 || marker.type == ObjectiveMarkerType.DESTROY_TARGET
+                || "Intercept Pocket".equalsIgnoreCase(marker.label)
+                || "Allied Spawn Zone".equalsIgnoreCase(marker.label)
+                || "Neutral Transit Zone".equalsIgnoreCase(marker.label)
+                || "Hostile Contact Zone".equalsIgnoreCase(marker.label)
                 || (marker.type == ObjectiveMarkerType.OPTIONAL_OBJECTIVE
                 && marker.label != null
                 && marker.label.startsWith("Deployment Preview: "));
@@ -11509,6 +11763,9 @@ public final class CampaignSystem {
                 + positionReadout
                 + "  |  " + campaignForceDirectionLabel(force)
                 + "  |  intent " + campaignForceBehaviorReadout(force)
+                + "  |  origin " + campaignForceOriginLabel(st, force)
+                + "  |  mission " + campaignForceMissionLabel(force)
+                + "  |  target " + campaignForceDestinationLabel(st, force)
                 + (force.contactState == CampaignForceContactState.STALE
                 ? "  |  " + campaignForceLostContactReadout(st, force)
                 : "");
@@ -11522,8 +11779,120 @@ public final class CampaignSystem {
         if (force.kind == CampaignForceKind.STRIKE_DETACHMENT || force.intent == CampaignForceIntent.INTERCEPTING) priority += 12;
         if (force.kind == CampaignForceKind.BASE_DEFENSE) priority += 4;
         if (force.contactState == CampaignForceContactState.STALE) priority -= 8;
-        return new CampaignSupportMarker(type, force.name, subtitle, force.faction, markerX, markerY,
+        return new CampaignSupportMarker(type, campaignForceMapDisplayName(force), subtitle, force.faction, markerX, markerY,
                 Math.max(86.0, force.uncertaintyRadius), Math.max(16, priority));
+    }
+
+    private static String campaignForceOriginLabel(CampaignState st, CampaignForce force) {
+        if (force == null) return "unknown";
+        CampaignLocation source = campaignLocationById(st, force.sourceLocationId);
+        if (source == null) source = campaignLocationById(st, force.homeBaseId);
+        if (source != null) return source.name;
+        if (force.homeBaseId != null && !force.homeBaseId.isBlank()) return force.homeBaseId;
+        if (force.origin != null && !force.origin.isBlank()) return force.origin;
+        return "unknown origin";
+    }
+
+    private static String campaignForceDestinationLabel(CampaignState st, CampaignForce force) {
+        if (force == null) return "unknown";
+        CampaignLocation dest = campaignLocationById(st, force.destinationLocationId);
+        if (dest != null) return dest.name;
+        if (force.targetForceId > 0) {
+            CampaignForce target = campaignForceById(st, force.targetForceId);
+            if (target != null) return target.name;
+        }
+        if (Double.isFinite(force.targetX) && Double.isFinite(force.targetY)) {
+            return "X " + (int) Math.round(force.targetX) + " Y " + (int) Math.round(force.targetY);
+        }
+        return "mission route";
+    }
+
+    private static String campaignForceCompactStatusLabel(CampaignState st, CampaignForce force) {
+        if (force == null) return "Unknown Contact - Holding - Unknown";
+        String faction = campaignForceFactionConfidenceLabel(force);
+        String type = campaignForceRoleSignature(force);
+        String state = campaignForceBehaviorReadout(force);
+        String target = campaignForceDestinationLabel(st, force);
+        return titleCaseWords(faction + " " + type) + " - " + titleCaseWords(state) + " - " + titleCaseWords(target);
+    }
+
+    private static String campaignForceMapDisplayName(CampaignForce force) {
+        if (force == null) return "Unknown Contact";
+        if (force.contactState == CampaignForceContactState.KNOWN && force.contactConfidence >= 0.62) return force.name;
+        return campaignForceIntelDisplayLabel(force);
+    }
+
+    private static String campaignForceIntelDisplayLabel(CampaignForce force) {
+        if (force == null) return "Unknown Contact";
+        CampaignForceContactState state = force.contactState == null ? CampaignForceContactState.STALE : force.contactState;
+        if (state == CampaignForceContactState.KNOWN && force.contactConfidence >= 0.62) return force.name;
+        if (state == CampaignForceContactState.SUSPECTED && force.contactConfidence >= 0.34) {
+            return "Probable " + titleCaseWords(campaignForceFactionGuess(force)) + " " + titleCaseWords(campaignForceKindLabel(force.kind));
+        }
+        if (state == CampaignForceContactState.SUSPECTED) {
+            return fastContact(force) ? "Fast Small Contact" : "Unknown Contact";
+        }
+        return force.contactConfidence >= 0.20
+                ? "Unknown Contact - Moving " + titleCaseWords(estimatedForceVectorLabel(force))
+                : "Unknown Contact - Moving Fast - Low Intel";
+    }
+
+    private static String campaignForceFactionConfidenceLabel(CampaignForce force) {
+        if (force == null) return "Unknown";
+        String faction = switch (force.faction) {
+            case ENEMY -> force.contactConfidence >= 0.34 ? "Red" : "Unknown";
+            case TEAM_C, ALLY -> "Green";
+            case TEAM_D -> "Yellow";
+            case PLAYER -> "Player";
+            default -> "Neutral";
+        };
+        if (force.contactState != CampaignForceContactState.KNOWN || force.contactConfidence < 0.62) {
+            return "Probable " + faction;
+        }
+        return faction;
+    }
+
+    private static String campaignForceFactionGuess(CampaignForce force) {
+        if (force == null || force.contactConfidence < 0.24) return "Unknown";
+        return switch (force.faction) {
+            case ENEMY -> "Red";
+            case TEAM_C, ALLY -> "Green";
+            case TEAM_D -> "Yellow";
+            case PLAYER -> "Player";
+            default -> "Neutral";
+        };
+    }
+
+    private static boolean fastContact(CampaignForce force) {
+        return force != null && (force.speed >= 100.0 || force.kind == CampaignForceKind.STRIKE_DETACHMENT || force.kind == CampaignForceKind.PATROL_GROUP);
+    }
+
+    private static String titleCaseWords(String text) {
+        if (text == null || text.isBlank()) return "";
+        String[] parts = text.toLowerCase(Locale.US).replace('_', ' ').split("\\s+");
+        StringBuilder out = new StringBuilder();
+        for (String part : parts) {
+            if (part.isBlank()) continue;
+            if (!out.isEmpty()) out.append(' ');
+            out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return out.toString();
+    }
+
+    private static String campaignForceMissionLabel(CampaignForce force) {
+        if (force == null || force.mission == null) return "orders";
+        return switch (force.mission) {
+            case PATROL -> "patrol";
+            case RECON -> "recon";
+            case INTERCEPT -> "intercept";
+            case ESCORT -> "escort";
+            case REINFORCE -> "reinforce";
+            case RAID -> "raid";
+            case REPAIR -> "repair";
+            case CAPTURE -> "capture";
+            case BLOCKADE -> "blockade";
+            case CONVOY -> "convoy";
+        };
     }
 
     private static CampaignSupportMarker supportMarkerForMovingBlockadeLine(CampaignForce force) {
@@ -14192,6 +14561,9 @@ public final class CampaignSystem {
             out.add(force.name
                     + "  |  " + campaignForceBehaviorReadout(force)
                     + "  |  state " + (force.state == null ? CampaignFleetState.IDLE : force.state)
+                    + "  |  work " + (force.workState == null ? CampaignForceWorkState.WAITING_WITH_PURPOSE : force.workState)
+                    + "  |  stop " + (force.stopReason == null ? CampaignForceStopReason.NONE : force.stopReason)
+                    + "  |  doctrine " + doctrineSummary(st, force)
                     + "  |  ETA " + (int) Math.ceil(eta) + "s"
                     + "  |  contact " + (force.contactState == null ? CampaignForceContactState.STALE : force.contactState)
                     + "  |  src " + source
@@ -14199,6 +14571,24 @@ public final class CampaignSystem {
                     + "  |  route " + force.routePoints.size());
             if (out.size() >= 24) break;
         }
+        return out;
+    }
+
+    public static List<String> campaignFleetLifecycleInvalidReport(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("FLEET LIFECYCLE INVALID: unavailable");
+        ensureCampaignForceOwnership(ctx, st);
+        ArrayList<String> out = new ArrayList<>();
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            CampaignForceLifecycleValidation validation = validateFleetLifecycle(st, force);
+            if (validation.valid) continue;
+            out.add("INVALID: " + force.name
+                    + " | reason=" + validation.invalidReason
+                    + " | field=" + validation.blockingField
+                    + " | fix=" + validation.recommendedFix);
+        }
+        if (out.isEmpty()) out.add("FLEET LIFECYCLE CLEAN");
         return out;
     }
 
@@ -14240,15 +14630,236 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static List<String> campaignFleetLifecycleReport(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("FLEET LIFECYCLE: unavailable");
+        ensureCampaignForceOwnership(ctx, st);
+        ArrayList<String> out = new ArrayList<>();
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || isPlayerControlledCampaignForce(force)) continue;
+            if (!force.simulationActive) continue;
+            primeCampaignForceLifecycleDefaults(force);
+            CampaignForceLifecycleValidation validation = validateFleetLifecycle(st, force);
+            if (validation.valid) continue;
+            out.add("LIFECYCLE INVALID: " + force.name
+                    + " reason=" + validation.invalidReason
+                    + " field=" + validation.blockingField
+                    + " fix=" + validation.recommendedFix);
+        }
+        if (out.isEmpty()) out.add("FLEET LIFECYCLE: all active NPC fleets valid");
+        return out;
+    }
+
+    private static final class CampaignForceLifecycleValidation {
+        final boolean valid;
+        final String invalidReason;
+        final String blockingField;
+        final String recommendedFix;
+
+        CampaignForceLifecycleValidation(boolean valid, String invalidReason, String blockingField, String recommendedFix) {
+            this.valid = valid;
+            this.invalidReason = invalidReason == null ? "" : invalidReason;
+            this.blockingField = blockingField == null ? "" : blockingField;
+            this.recommendedFix = recommendedFix == null ? "" : recommendedFix;
+        }
+    }
+
+    private static CampaignForceLifecycleValidation lifecycleValid() {
+        return new CampaignForceLifecycleValidation(true, "", "", "");
+    }
+
+    private static CampaignForceLifecycleValidation lifecycleInvalid(String reason, String field, String fix) {
+        return new CampaignForceLifecycleValidation(false, reason, field, fix);
+    }
+
+    private static CampaignForceLifecycleValidation validateFleetLifecycle(CampaignState st, CampaignForce force) {
+        if (force == null) return lifecycleInvalid("missing force", "force", "skip null force");
+        if (force.destroyed || isPlayerControlledCampaignForce(force)) return lifecycleValid();
+        if (force.mission == null) return lifecycleInvalid("missing mission", "mission", "assign simple director mission");
+        if (force.workState == null) return lifecycleInvalid("missing work state", "workState", "prime lifecycle defaults");
+        if (force.missionState == null) return lifecycleInvalid("missing mission state", "missionState", "prime lifecycle defaults");
+        if (force.stopReason == null) return lifecycleInvalid("missing stop reason", "stopReason", "prime lifecycle defaults");
+        if (force.reassignmentCondition == null) return lifecycleInvalid("missing reassignment condition", "reassignmentCondition", "prime lifecycle defaults");
+        boolean hasDestination = force.destinationLocationId != null && !force.destinationLocationId.isBlank();
+        boolean hasTargetCoord = Double.isFinite(force.targetX) && Double.isFinite(force.targetY)
+                && (GameMath.dist2(force.x, force.y, force.targetX, force.targetY) > 18.0 * 18.0 || !force.routePoints.isEmpty());
+        boolean hasRoute = !force.routePoints.isEmpty() || !force.patrolWaypoints.isEmpty();
+        boolean hasWorkLocation = hasDestination || force.sourceLocationId != null && !force.sourceLocationId.isBlank();
+        boolean hasEscortedTarget = force.targetForceId > 0 && campaignForceById(st, force.targetForceId) != null;
+        if (force.workState == CampaignForceWorkState.TRAVELING && !hasDestination && !hasRoute && !hasTargetCoord) {
+            return lifecycleInvalid("traveling without destination or route", "routePoints", "assign route");
+        }
+        if ((force.intent == CampaignForceIntent.RETREATING || force.workState == CampaignForceWorkState.RECOVERING)
+                && !hasDestination) {
+            return lifecycleInvalid("recovering without safe destination", "destinationLocationId", "assign nearest support hub");
+        }
+        if (!hasDestination && !hasTargetCoord && !hasRoute && !hasWorkLocation && !hasEscortedTarget
+                && force.intent != CampaignForceIntent.GUARDING && force.intent != CampaignForceIntent.HOLDING) {
+            return lifecycleInvalid("mission has no destination target route or work location", "destination/target/route", "assign destination or route");
+        }
+        if (force.workState == CampaignForceWorkState.WAITING_WITH_PURPOSE && force.stopReason == CampaignForceStopReason.NONE) {
+            return lifecycleInvalid("waiting without stop reason", "stopReason", "assign valid stop reason");
+        }
+        if ((force.state == CampaignFleetState.IDLE || force.workState == CampaignForceWorkState.WAITING_WITH_PURPOSE)
+                && force.stopReason == CampaignForceStopReason.NONE
+                && force.stationaryTimeSec > 2.0) {
+            return lifecycleInvalid("stationary without stop reason", "stopReason", "assign work or reassign route");
+        }
+        if (hasWorkLocation
+                && force.routePoints.isEmpty()
+                && force.workState != CampaignForceWorkState.TRAVELING
+                && force.workState != CampaignForceWorkState.RECOVERING
+                && force.workState != CampaignForceWorkState.FIGHTING
+                && force.stationaryTimeSec > 12.0
+                && !isValidPoiStopReason(force.stopReason)) {
+            return lifecycleInvalid("stopped at POI without valid work", "stopReason", "assign guard extract raid repair trade scan hide or stage work");
+        }
+        if (force.workState == CampaignForceWorkState.WORKING
+                && force.workRemainingSec <= 0.0
+                && force.taskDeadlineSec <= 0.0
+                && !missionHasImplicitWorkCompletion(force)) {
+            return lifecycleInvalid("working without timer or completion condition", "workRemainingSec", "set work timer or completion condition");
+        }
+        if (isTimedStopReason(force.stopReason)
+                && force.workState != CampaignForceWorkState.TRAVELING
+                && force.workRemainingSec <= 0.0
+                && force.taskDeadlineSec <= 0.0
+                && force.missionState != CampaignForceMissionState.COMPLETED
+                && !missionHasImplicitWorkCompletion(force)) {
+            return lifecycleInvalid("stopped work timer expired without completion", "taskDeadlineSec", "complete work or assign new mission");
+        }
+        if ((force.mission == CampaignFleetMission.PATROL || force.mission == CampaignFleetMission.RECON)
+                && (force.intent == CampaignForceIntent.PATROLLING || force.intent == CampaignForceIntent.SEARCHING)
+                && force.patrolWaypoints.isEmpty()
+                && force.routePoints.isEmpty()
+                && force.workState != CampaignForceWorkState.RECOVERING
+                && force.intent != CampaignForceIntent.RETREATING) {
+            return lifecycleInvalid("patrol mission missing waypoint loop", "patrolWaypoints", "assign patrol waypoints or return to base");
+        }
+        if (force.intent == CampaignForceIntent.ESCORTING && force.targetForceId > 0) {
+            CampaignForce target = campaignForceById(st, force.targetForceId);
+            if (target == null || target.destroyed || target.missionState == CampaignForceMissionState.COMPLETED) {
+                return lifecycleInvalid("escort target missing", "targetForceId", "return to base or choose new escort");
+            }
+        }
+        if (force.mission == CampaignFleetMission.ESCORT && force.targetForceId <= 0) {
+            return lifecycleInvalid("escort target missing", "targetForceId", "return to base or choose new escort");
+        }
+        if ((force.kind == CampaignForceKind.MINING_GROUP
+                || force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC)
+                && force.cargoKind == CampaignForceCargoKind.NONE) {
+            return lifecycleInvalid("cargo mission missing cargo kind", "cargoKind", "initialize cargo settings");
+        }
+        if (force.mission == CampaignFleetMission.RAID
+                && force.intentTimerSec <= 0.0
+                && force.taskDeadlineSec <= 0.0
+                && force.targetForceId <= 0
+                && force.routePoints.isEmpty()) {
+            return lifecycleInvalid("raid timed out without target or fallback", "intentTimerSec", "route to alternate ambush point or return home");
+        }
+        if ((force.mission == CampaignFleetMission.RAID || force.mission == CampaignFleetMission.CAPTURE || force.mission == CampaignFleetMission.BLOCKADE)
+                && force.intentTimerSec <= 0.0
+                && force.taskDeadlineSec <= 0.0
+                && force.routePoints.isEmpty()) {
+            return lifecycleInvalid("combat mission missing timeout or route", "intentTimerSec", "set route and give-up timer");
+        }
+        if (force.workState == CampaignForceWorkState.FIGHTING
+                && force.state != CampaignFleetState.ENGAGING
+                && force.missionState != CampaignForceMissionState.RECOVERING
+                && force.missionState != CampaignForceMissionState.RETREATING
+                && force.missionState != CampaignForceMissionState.COMPLETED
+                && force.stopReason != CampaignForceStopReason.REPAIRING
+                && force.stopReason != CampaignForceStopReason.RECOVERING
+                && force.stopReason != CampaignForceStopReason.SALVAGING
+                && force.stopReason != CampaignForceStopReason.HOLDING_LINE
+                && force.stopReason != CampaignForceStopReason.AVOIDING_SUPERIOR_THREAT) {
+            return lifecycleInvalid("battle participant has no aftermath order", "missionState", "assign repair retreat salvage continue hold or destroy");
+        }
+        return lifecycleValid();
+    }
+
+    private static boolean missionHasImplicitWorkCompletion(CampaignForce force) {
+        if (force == null || force.mission == null) return false;
+        return switch (force.mission) {
+            case PATROL, RECON -> !force.patrolWaypoints.isEmpty() || !force.routePoints.isEmpty();
+            case CONVOY, ESCORT -> force.targetForceId > 0 || !force.routePoints.isEmpty();
+            case REPAIR -> force.targetForceId > 0 || force.hullIntegrity < 100.0 || force.readiness < 100.0 || force.repairCapacity < 100.0;
+            case RAID, INTERCEPT, CAPTURE, BLOCKADE, REINFORCE -> force.targetForceId > 0 || !force.routePoints.isEmpty();
+        };
+    }
+
+    private static boolean isTimedStopReason(CampaignForceStopReason stopReason) {
+        if (stopReason == null) return false;
+        return switch (stopReason) {
+            case MINING, SALVAGING, REPAIRING, REFUELING, TRADING, LOADING, UNLOADING,
+                 SCANNING, HIDING, AMBUSHING, BLOCKADING, STAGING, WAITING_FOR_ESCORT,
+                 WAITING_FOR_REINFORCEMENTS, RECOVERING_SURVIVORS -> true;
+            case NONE, GUARDING, RECOVERING, HOLDING_LINE, AVOIDING_SUPERIOR_THREAT -> false;
+        };
+    }
+
+    private static boolean isValidPoiStopReason(CampaignForceStopReason stopReason) {
+        if (stopReason == null) return false;
+        return switch (stopReason) {
+            case GUARDING, MINING, SALVAGING, REPAIRING, REFUELING, TRADING, LOADING, UNLOADING,
+                 SCANNING, HIDING, AMBUSHING, BLOCKADING, STAGING, RECOVERING_SURVIVORS -> true;
+            case NONE, WAITING_FOR_ESCORT, WAITING_FOR_REINFORCEMENTS, RECOVERING,
+                 HOLDING_LINE, AVOIDING_SUPERIOR_THREAT -> false;
+        };
+    }
+
+    private static String fleetBecauseLine(CampaignForce force) {
+        if (force == null) return "";
+        String mission = force.mission == null ? "orders" : force.mission.name().toLowerCase(Locale.US);
+        String origin = (force.homeBaseId != null && !force.homeBaseId.isBlank()) ? force.homeBaseId
+                : ((force.sourceLocationId != null && !force.sourceLocationId.isBlank()) ? force.sourceLocationId : "theater command");
+        return "Because: " + origin + " assigned " + mission + " work.";
+    }
+
+    private static String fleetDoingLine(CampaignForce force) {
+        if (force == null) return "";
+        String state = force.workState == null ? "waiting" : force.workState.name().toLowerCase(Locale.US).replace('_', ' ');
+        String stop = force.stopReason == null || force.stopReason == CampaignForceStopReason.NONE
+                ? ""
+                : " / " + force.stopReason.name().toLowerCase(Locale.US).replace('_', ' ');
+        return "Doing: " + state + stop + ".";
+    }
+
+    private static String fleetNextLine(CampaignForce force) {
+        if (force == null) return "";
+        String condition = force.reassignmentCondition == null ? CampaignForceReassignmentCondition.NONE.name() : force.reassignmentCondition.name();
+        if (force.cargoCapacity > 0.0 && force.cargoLoad >= force.cargoCapacity * 0.98) {
+            condition = CampaignForceReassignmentCondition.CARGO_FULL.name();
+        } else if (force.workRemainingSec > 0.0) {
+            condition = "WORK_TIMER_" + (int) Math.ceil(force.workRemainingSec) + "S";
+        }
+        return "Next: " + condition.toLowerCase(Locale.US).replace('_', ' ') + ".";
+    }
+
+    private static List<String> fleetTooltipLines(CampaignForce force) {
+        if (force == null) return List.of();
+        return List.of(
+                fleetBecauseLine(force),
+                fleetDoingLine(force),
+                fleetNextLine(force)
+        );
+    }
+
     private static int activeCampaignNpcForceCount(CampaignState st) {
         if (st == null) return 0;
         int count = 0;
         for (CampaignForce force : st.campaignForces) {
-            if (force != null && force.simulationActive && force.kind != CampaignForceKind.PLAYER_FLEET && !force.destroyed) {
+            if (force != null && force.simulationActive && !isPlayerControlledCampaignForce(force) && !force.destroyed) {
                 count++;
             }
         }
         return count;
+    }
+
+    private static boolean isPlayerControlledCampaignForce(CampaignForce force) {
+        return force != null && (force.kind == CampaignForceKind.PLAYER_FLEET || force.faction == Faction.PLAYER);
     }
 
     private static CampaignForce ensureCampaignForce(CampaignState st,
@@ -14269,6 +14880,7 @@ public final class CampaignSystem {
                     noteCampaignForceKnownPosition(force, x, y, 1.0, 110.0);
                 }
                 primeCampaignForceDefaults(force);
+                ensureRedForceNamedSource(st, force, x, y);
                 return force;
             }
         }
@@ -14279,8 +14891,59 @@ public final class CampaignSystem {
         }
         CampaignForce created = new CampaignForce(st.nextCampaignForceId++, kind, faction, resolved, origin, purpose, x, y);
         primeCampaignForceDefaults(created);
+        ensureRedForceNamedSource(st, created, x, y);
         st.campaignForces.add(created);
         return created;
+    }
+
+    private static void ensureRedForceNamedSource(CampaignState st, CampaignForce force, double x, double y) {
+        if (st == null || force == null || force.faction != Faction.ENEMY) return;
+        boolean missingSource = force.sourceLocationId == null || force.sourceLocationId.isBlank()
+                || "strategic-roaming-assignment".equals(force.sourceLocationId);
+        boolean missingHome = force.homeBaseId == null || force.homeBaseId.isBlank()
+                || "strategic-roaming-assignment".equals(force.homeBaseId);
+        if (!missingSource && !missingHome) return;
+        CampaignLocation source = nearestRedLaunchSource(st, x, y);
+        if (source == null) return;
+        if (missingSource) force.sourceLocationId = source.id;
+        if (missingHome) force.homeBaseId = source.id;
+    }
+
+    private static CampaignLocation nearestRedLaunchSource(CampaignState st, double x, double y) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || isUndiscoveredProceduralSite(location)) continue;
+            boolean redSource = location.type == CampaignLocationType.ENEMY_ACTIVITY
+                    || location.type == CampaignLocationType.HIDDEN_CACHE
+                    || location.name.toUpperCase(Locale.US).contains("RED")
+                    || location.name.toUpperCase(Locale.US).contains("GATE")
+                    || location.name.toUpperCase(Locale.US).contains("DEPOT");
+            if (!redSource) continue;
+            double score = GameMath.dist2(x, y, location.x, location.y);
+            if (location.type == CampaignLocationType.ENEMY_ACTIVITY) score *= 0.45;
+            if (location.type == CampaignLocationType.HIDDEN_CACHE) score *= 0.72;
+            if (score < bestScore) {
+                best = location;
+                bestScore = score;
+            }
+        }
+        if (best != null) return best;
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other.destroyed || other.faction != Faction.ENEMY || other.sourceLocationId == null
+                    || other.sourceLocationId.isBlank() || other.sourceLocationId.equals("strategic-roaming-assignment")) {
+                continue;
+            }
+            CampaignLocation source = campaignLocationById(st, other.sourceLocationId);
+            if (source == null) continue;
+            double score = GameMath.dist2(x, y, source.x, source.y);
+            if (score < bestScore) {
+                best = source;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     private static boolean campaignForceSyncShouldOverwritePosition(CampaignForce force) {
@@ -14299,6 +14962,9 @@ public final class CampaignSystem {
         force.template = templateForForceKind(force.kind, force.faction);
         if (!Double.isFinite(force.lastKnownX)) force.lastKnownX = force.x;
         if (!Double.isFinite(force.lastKnownY)) force.lastKnownY = force.y;
+        if (!Double.isFinite(force.lastKnownVelocityX)) force.lastKnownVelocityX = 0.0;
+        if (!Double.isFinite(force.lastKnownVelocityY)) force.lastKnownVelocityY = 0.0;
+        if (!Double.isFinite(force.lastSeenSec)) force.lastSeenSec = 0.0;
         force.contactConfidence = MathUtil.clamp(force.contactConfidence, 0.0, 1.0);
         force.uncertaintyRadius = Math.max(70.0, force.uncertaintyRadius);
         if (force.contactState == null) force.contactState = CampaignForceContactState.KNOWN;
@@ -14314,7 +14980,181 @@ public final class CampaignSystem {
         } else if (upper.contains("GARRISON") || upper.contains("DEFENSE") || upper.contains("GRID")) {
             force.intent = CampaignForceIntent.GUARDING;
         }
+        primeCampaignForceLifecycleDefaults(force);
         applyFleetTemplate(force, force.template);
+    }
+
+    private static void primeCampaignForceLifecycleDefaults(CampaignForce force) {
+        if (force == null) return;
+        if (force.workState == null) force.workState = workStateForIntent(force.intent);
+        if (force.missionState == null) force.missionState = missionStateForWorkState(force.workState);
+        if (force.stopReason == null) force.stopReason = stopReasonForIntent(force.intent);
+        if (force.reassignmentCondition == null) force.reassignmentCondition = CampaignForceReassignmentCondition.NONE;
+        if (force.state == CampaignFleetState.IDLE
+                && !force.routePoints.isEmpty()
+                && (force.workState == CampaignForceWorkState.TRAVELING
+                || (force.stopReason == CampaignForceStopReason.NONE && force.missionState == CampaignForceMissionState.TRAVELING))) {
+            force.state = CampaignFleetState.MOVING;
+            force.workState = CampaignForceWorkState.TRAVELING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.NONE;
+        } else if ((force.state == CampaignFleetState.IDLE || force.workState == CampaignForceWorkState.WAITING_WITH_PURPOSE)
+                && force.stopReason == CampaignForceStopReason.NONE
+                && force.routePoints.isEmpty()) {
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = stationaryStopReasonForIntent(force.intent);
+        }
+        CampaignForceCargoKind inferredCargo = cargoKindForForce(force);
+        if ((force.cargoKind == null || force.cargoKind == CampaignForceCargoKind.NONE)
+                && inferredCargo != CampaignForceCargoKind.NONE) {
+            force.cargoKind = inferredCargo;
+        }
+        if (force.faction == Faction.TEAM_D
+                && (force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC)) {
+            force.protectedCivilianTraffic = true;
+        }
+        if (force.cargoCapacity <= 0.0) {
+            force.cargoCapacity = switch (force.cargoKind) {
+                case NONE -> 0.0;
+                case ORE, TRADE_GOODS, SUPPLIES -> 100.0;
+                case SALVAGE, LOOT -> 60.0;
+            };
+        }
+        force.cargoLoad = MathUtil.clamp(force.cargoLoad, 0.0, Math.max(0.0, force.cargoCapacity));
+        force.fuelLevel = MathUtil.clamp(force.fuelLevel <= 0.0 ? 100.0 : force.fuelLevel, 0.0, 100.0);
+        force.ammoLevel = MathUtil.clamp(force.ammoLevel <= 0.0 ? 100.0 : force.ammoLevel, 0.0, 100.0);
+        force.repairCapacity = MathUtil.clamp(force.repairCapacity <= 0.0 ? 100.0 : force.repairCapacity, 0.0, 100.0);
+        force.crewReadiness = MathUtil.clamp(force.crewReadiness <= 0.0 ? 100.0 : force.crewReadiness, 0.0, 100.0);
+        if (force.riskTolerance <= 0.0) force.riskTolerance = defaultRiskTolerance(force);
+        force.riskTolerance = MathUtil.clamp(force.riskTolerance, 0.0, 100.0);
+        if (force.operatingRadius <= 0.0) force.operatingRadius = defaultOperatingRadius(force);
+        if (!Double.isFinite(force.lastLifecycleX)) force.lastLifecycleX = force.x;
+        if (!Double.isFinite(force.lastLifecycleY)) force.lastLifecycleY = force.y;
+        if (!Double.isFinite(force.lastAntiIdleResetX)) force.lastAntiIdleResetX = force.x;
+        if (!Double.isFinite(force.lastAntiIdleResetY)) force.lastAntiIdleResetY = force.y;
+        if (force.lastAntiIdleMission == null) force.lastAntiIdleMission = force.mission;
+        if (force.lastAntiIdleMissionState == null) force.lastAntiIdleMissionState = force.missionState;
+        if (force.lastAntiIdleWorkState == null) force.lastAntiIdleWorkState = force.workState;
+        if (force.lastAntiIdleStopReason == null) force.lastAntiIdleStopReason = force.stopReason;
+        if (force.lastAntiIdleDestinationId == null) force.lastAntiIdleDestinationId = force.destinationLocationId == null ? "" : force.destinationLocationId;
+    }
+
+    private static CampaignForceCargoKind cargoKindForForce(CampaignForce force) {
+        if (force == null) return CampaignForceCargoKind.NONE;
+        String upper = force.name == null ? "" : force.name.toUpperCase(Locale.US);
+        if (force.kind == CampaignForceKind.MINING_GROUP || upper.contains("MINER") || upper.contains("PROSPECT")) return CampaignForceCargoKind.ORE;
+        if (upper.contains("SALVAGE") || upper.contains("RECOVERY")) return CampaignForceCargoKind.SALVAGE;
+        if (force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC) return CampaignForceCargoKind.TRADE_GOODS;
+        return CampaignForceCargoKind.NONE;
+    }
+
+    private static double defaultRiskTolerance(CampaignForce force) {
+        if (force == null) return 50.0;
+        CampaignFactionDoctrine doctrine = doctrineForFaction(null, force.faction);
+        if (force.faction == Faction.ENEMY) {
+            return switch (force.kind) {
+                case STRIKE_DETACHMENT, TASK_FORCE -> 72.0 + doctrine.aggressionBias * 6.0;
+                case PATROL_GROUP -> 58.0 + doctrine.raidPriority * 4.0;
+                default -> 52.0 + doctrine.aggressionBias * 3.0;
+            };
+        }
+        if (force.faction == Faction.TEAM_D) {
+            return switch (force.kind) {
+                case CONVOY, TRADE_GROUP, MINING_GROUP, INSTALLATION_TRAFFIC -> doctrine.civilianRiskTolerance * 100.0;
+                case TASK_FORCE, PATROL_GROUP -> 44.0 + doctrine.profitPriority * 6.0;
+                default -> 30.0 + doctrine.salvagePriority * 5.0;
+            };
+        }
+        if (force.faction == Faction.TEAM_C || force.faction == Faction.ALLY) {
+            return switch (force.kind) {
+                case BASE_DEFENSE, PATROL_GROUP -> 50.0 + doctrine.defensiveBias * 8.0;
+                case STRIKE_DETACHMENT, TASK_FORCE -> 58.0 + doctrine.escortPriority * 8.0;
+                default -> 40.0 + doctrine.patrolPriority * 6.0;
+            };
+        }
+        return 45.0;
+    }
+
+    private static CampaignFactionDoctrine doctrineForFaction(CampaignState st, Faction faction) {
+        if (faction == Faction.ENEMY) return RED_DOCTRINE;
+        if (faction == Faction.TEAM_D || (st != null && faction == yellowSupportFaction(st))) return YELLOW_DOCTRINE;
+        if (faction == Faction.TEAM_C || faction == Faction.ALLY || (st != null && faction == greenSupportFaction(st))) return GREEN_DOCTRINE;
+        return GREEN_DOCTRINE;
+    }
+
+    private static CampaignFactionDoctrine doctrineForForce(CampaignState st, CampaignForce force) {
+        return doctrineForFaction(st, force == null ? null : force.faction);
+    }
+
+    private static String doctrineSummary(CampaignState st, CampaignForce force) {
+        CampaignFactionDoctrine doctrine = doctrineForForce(st, force);
+        return doctrine.label
+                + " escort=" + Math.round(doctrine.escortPriority * 100.0)
+                + " patrol=" + Math.round(doctrine.patrolPriority * 100.0)
+                + " fleeRatio=" + String.format(Locale.US, "%.2f", doctrine.fleePowerRatio)
+                + " raidRatio=" + String.format(Locale.US, "%.2f", doctrine.raidAttackRatio)
+                + " retreat=" + Math.round(doctrine.retreatThreshold);
+    }
+
+    private static double defaultOperatingRadius(CampaignForce force) {
+        if (force == null) return 900.0;
+        return switch (force.kind) {
+            case BASE_DEFENSE -> 420.0;
+            case MINING_GROUP -> 720.0;
+            case CONVOY, TRADE_GROUP, INSTALLATION_TRAFFIC -> 1100.0;
+            case STRIKE_DETACHMENT, TASK_FORCE -> 1450.0;
+            case PATROL_GROUP -> 980.0;
+            case PLAYER_FLEET -> 9999.0;
+            default -> 800.0;
+        };
+    }
+
+    private static CampaignForceWorkState workStateForIntent(CampaignForceIntent intent) {
+        return switch (intent == null ? CampaignForceIntent.HOLDING : intent) {
+            case INTERCEPTING, REINFORCING, ESCORTING, SEARCHING -> CampaignForceWorkState.REACTING;
+            case MINING, REPAIRING, DOCKING -> CampaignForceWorkState.WORKING;
+            case RETREATING, REGROUPING -> CampaignForceWorkState.RECOVERING;
+            case GUARDING, HOLDING -> CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            case PATROLLING -> CampaignForceWorkState.TRAVELING;
+        };
+    }
+
+    private static CampaignForceMissionState missionStateForWorkState(CampaignForceWorkState workState) {
+        return switch (workState == null ? CampaignForceWorkState.WAITING_WITH_PURPOSE : workState) {
+            case TRAVELING, REACTING -> CampaignForceMissionState.TRAVELING;
+            case WORKING, WAITING_WITH_PURPOSE -> CampaignForceMissionState.WORKING;
+            case FIGHTING -> CampaignForceMissionState.WORKING;
+            case RECOVERING -> CampaignForceMissionState.RECOVERING;
+        };
+    }
+
+    private static CampaignForceStopReason stopReasonForIntent(CampaignForceIntent intent) {
+        return switch (intent == null ? CampaignForceIntent.HOLDING : intent) {
+            case GUARDING -> CampaignForceStopReason.GUARDING;
+            case MINING -> CampaignForceStopReason.MINING;
+            case REPAIRING -> CampaignForceStopReason.REPAIRING;
+            case DOCKING -> CampaignForceStopReason.TRADING;
+            case RETREATING, REGROUPING -> CampaignForceStopReason.RECOVERING;
+            case HOLDING -> CampaignForceStopReason.HOLDING_LINE;
+            case SEARCHING, PATROLLING, INTERCEPTING, ESCORTING, REINFORCING -> CampaignForceStopReason.NONE;
+        };
+    }
+
+    private static CampaignForceStopReason stationaryStopReasonForIntent(CampaignForceIntent intent) {
+        return switch (intent == null ? CampaignForceIntent.HOLDING : intent) {
+            case SEARCHING, PATROLLING -> CampaignForceStopReason.SCANNING;
+            case INTERCEPTING, REINFORCING -> CampaignForceStopReason.STAGING;
+            case ESCORTING -> CampaignForceStopReason.WAITING_FOR_ESCORT;
+            case GUARDING -> CampaignForceStopReason.GUARDING;
+            case MINING -> CampaignForceStopReason.MINING;
+            case REPAIRING -> CampaignForceStopReason.REPAIRING;
+            case DOCKING -> CampaignForceStopReason.TRADING;
+            case RETREATING, REGROUPING -> CampaignForceStopReason.RECOVERING;
+            case HOLDING -> CampaignForceStopReason.HOLDING_LINE;
+        };
     }
 
     private static CampaignFleetMission missionForForceKind(CampaignForceKind kind) {
@@ -14323,6 +15163,14 @@ public final class CampaignSystem {
             case CONVOY, TRADE_GROUP, INSTALLATION_TRAFFIC, MINING_GROUP -> CampaignFleetMission.CONVOY;
             case TASK_FORCE, STRIKE_DETACHMENT -> CampaignFleetMission.INTERCEPT;
             case PLAYER_FLEET, LOCAL_FORCE, BASE_DEFENSE, PATROL_GROUP -> CampaignFleetMission.PATROL;
+        };
+    }
+
+    private static boolean isDirectorAssignedMission(CampaignFleetMission mission) {
+        if (mission == null) return false;
+        return switch (mission) {
+            case ESCORT, RAID, REPAIR, CAPTURE, BLOCKADE, REINFORCE -> true;
+            case PATROL, RECON, INTERCEPT, CONVOY -> false;
         };
     }
 
@@ -14403,9 +15251,17 @@ public final class CampaignSystem {
                                                        double confidence,
                                                        double uncertaintyRadius) {
         if (force == null) return;
+        double previousX = force.lastKnownX;
+        double previousY = force.lastKnownY;
+        double elapsed = Math.max(0.001, force.lastKnownAgeSec);
         if (Double.isFinite(x)) force.lastKnownX = x;
         if (Double.isFinite(y)) force.lastKnownY = y;
+        if (Double.isFinite(previousX) && Double.isFinite(previousY) && force.lastKnownAgeSec > 0.0) {
+            force.lastKnownVelocityX = (force.lastKnownX - previousX) / elapsed;
+            force.lastKnownVelocityY = (force.lastKnownY - previousY) / elapsed;
+        }
         force.lastKnownAgeSec = 0.0;
+        force.lastSeenSec = 0.0;
         force.contactConfidence = MathUtil.clamp(confidence, 0.0, 1.0);
         force.uncertaintyRadius = Math.max(70.0, uncertaintyRadius);
         force.contactState = force.contactConfidence >= 0.62
@@ -14580,7 +15436,33 @@ public final class CampaignSystem {
             double[] first = force.routePoints.get(0);
             force.targetX = first[0];
             force.targetY = first[1];
+            force.workState = CampaignForceWorkState.TRAVELING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.NONE;
+            if (force.state == CampaignFleetState.IDLE) {
+                force.state = CampaignFleetState.MOVING;
+            }
+            if (force.reassignmentCondition == null) {
+                force.reassignmentCondition = CampaignForceReassignmentCondition.NONE;
+            }
+            resetCampaignForceAntiIdle(force);
         }
+    }
+
+    private static void resetCampaignForceAntiIdle(CampaignForce force) {
+        if (force == null) return;
+        force.antiIdleTimerSec = 0.0;
+        force.antiIdleReassignCooldownSec = Math.max(force.antiIdleReassignCooldownSec, 1.0);
+        force.lastAntiIdleMission = force.mission;
+        force.lastAntiIdleMissionState = force.missionState;
+        force.lastAntiIdleWorkState = force.workState;
+        force.lastAntiIdleStopReason = force.stopReason;
+        force.lastAntiIdleTargetForceId = force.targetForceId;
+        force.lastAntiIdleDestinationId = force.destinationLocationId == null ? "" : force.destinationLocationId;
+        force.lastAntiIdleTargetX = force.targetX;
+        force.lastAntiIdleTargetY = force.targetY;
+        force.lastAntiIdleResetX = force.x;
+        force.lastAntiIdleResetY = force.y;
     }
 
     private static CampaignLocation nearestFriendlySupportHub(GameContext ctx, CampaignState st, Faction faction, double x, double y) {
@@ -14594,6 +15476,28 @@ public final class CampaignSystem {
             if (faction == Faction.ENEMY) continue;
             if (!isGreenAlignedLocation(location) && !isYellowAlignedLocation(location) && location.type != CampaignLocationType.REPAIR_SITE) continue;
             double d2 = GameMath.dist2(x, y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignLocation nearestSafeRecoveryHub(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (st == null || force == null) return null;
+        CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+        if (home != null) return home;
+        CampaignLocation source = campaignLocationById(st, force.sourceLocationId);
+        if (source != null) return source;
+        if (force.faction != Faction.ENEMY) {
+            return nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+        }
+        CampaignLocation best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.type != CampaignLocationType.ENEMY_ACTIVITY || isUndiscoveredProceduralSite(location)) continue;
+            double d2 = GameMath.dist2(force.x, force.y, location.x, location.y);
             if (d2 < bestD2) {
                 best = location;
                 bestD2 = d2;
@@ -14620,22 +15524,50 @@ public final class CampaignSystem {
     private static CampaignLocation nearestTradeTarget(CampaignState st, CampaignLocation source, Faction faction) {
         if (st == null || source == null) return null;
         CampaignLocation best = null;
-        double bestD2 = Double.POSITIVE_INFINITY;
+        double bestScore = Double.POSITIVE_INFINITY;
         for (CampaignLocation location : allCampaignLocations(st)) {
             if (location == null || location == source || location.id.equals(source.id)) continue;
-            boolean service = location.type == CampaignLocationType.REPAIR_SITE || (location.services != null && !location.services.isEmpty());
-            if (!service) continue;
+            if (!isTradeRouteEndpoint(location)) continue;
             if (faction != Faction.ENEMY) {
-                boolean okay = isGreenAlignedLocation(location) || isYellowAlignedLocation(location) || location.type == CampaignLocationType.REPAIR_SITE;
+                boolean okay = isGreenAlignedLocation(location)
+                        || isYellowAlignedLocation(location)
+                        || location.type == CampaignLocationType.REPAIR_SITE
+                        || location.type == CampaignLocationType.RESOURCE_ZONE
+                        || location.type == CampaignLocationType.HIDDEN_CACHE
+                        || location.type == CampaignLocationType.STORY_EVENT;
                 if (!okay) continue;
             }
-            double d2 = GameMath.dist2(source.x, source.y, location.x, location.y);
-            if (d2 < bestD2) {
+            double score = GameMath.dist2(source.x, source.y, location.x, location.y) * tradeEndpointPriorityMultiplier(location);
+            if (score < bestScore) {
                 best = location;
-                bestD2 = d2;
+                bestScore = score;
             }
         }
         return best;
+    }
+
+    private static boolean isTradeRouteEndpoint(CampaignLocation location) {
+        if (location == null) return false;
+        if (location.type == CampaignLocationType.REPAIR_SITE
+                || location.type == CampaignLocationType.RESOURCE_ZONE
+                || location.type == CampaignLocationType.HIDDEN_CACHE) return true;
+        if (location.type == CampaignLocationType.STORY_EVENT) {
+            String name = location.name == null ? "" : location.name.toUpperCase(Locale.US);
+            if (name.contains("ANCHOR") || name.contains("RELAY") || name.contains("BROKER")) return true;
+        }
+        return location.services != null && !location.services.isEmpty();
+    }
+
+    private static double tradeEndpointPriorityMultiplier(CampaignLocation location) {
+        if (location == null) return 1.0;
+        if (hasHubService(location, HubService.TRADE)) return 0.52;
+        if (hasHubService(location, HubService.SUPPLY) || hasHubService(location, HubService.FUEL)) return 0.60;
+        if (hasHubService(location, HubService.REPAIR)) return 0.66;
+        if (hasHubService(location, HubService.SHIPYARD)) return 0.72;
+        if (location.type == CampaignLocationType.RESOURCE_ZONE) return 0.78;
+        if (location.type == CampaignLocationType.REPAIR_SITE) return 0.82;
+        if (location.type == CampaignLocationType.HIDDEN_CACHE || location.type == CampaignLocationType.STORY_EVENT) return 0.92;
+        return 1.0;
     }
 
     private static void syncCampaignPlayerForce(GameContext ctx, CampaignState st) {
@@ -14675,6 +15607,7 @@ public final class CampaignSystem {
             force.linkedSearchGroupId = group.id;
             force.sourceLocationId = (group.anchorLocationId == null) ? "" : group.anchorLocationId;
             force.homeBaseId = force.sourceLocationId;
+            ensureRedForceNamedSource(st, force, group.x, group.y);
             force.intent = campaignForceIntentForSearchBehavior(group.behavior);
             force.mission = missionForForceKind(force.kind);
             force.targetX = group.targetX;
@@ -15263,12 +16196,30 @@ public final class CampaignSystem {
         for (int i = 0; i < redLimit; i++) {
             CampaignForceKind kind = redOps[i].contains("Convoy") ? CampaignForceKind.CONVOY : CampaignForceKind.TASK_FORCE;
             CampaignFleetTemplate tmpl = CampaignFleetTemplate.INTERCEPTOR;
-            CampaignFleetMission mission = redOps[i].contains("Convoy") ? CampaignFleetMission.CONVOY : CampaignFleetMission.INTERCEPT;
+            CampaignFleetMission mission = redChecklistMission(redOps[i]);
             CampaignForceIntent intent = redOps[i].contains("Net") || redOps[i].contains("Wall")
                     ? CampaignForceIntent.GUARDING : CampaignForceIntent.INTERCEPTING;
-            seedNamedChecklistFleet(st, redOps[i], kind, Faction.ENEMY, null, null,
-                    "Hostile strategic fleet executing dedicated theater operations", mission, tmpl, intent,
+            CampaignLocation source = switch (i % 3) {
+                case 1 -> enemyB;
+                case 2 -> enemyC;
+                default -> enemyA;
+            };
+            if (source == null) source = firstEnemyActivityLocation(st, 0);
+            TheaterId targetTheater = source == null ? theaterForPoint(st, fy - 1400.0 - i * 50.0) : theaterForPoint(st, source.y);
+            CampaignLocation destination = nearestTheaterRouteTarget(st, targetTheater, fx, fy);
+            seedNamedChecklistFleet(st, redOps[i], kind, Faction.ENEMY, source, destination,
+                    "Hostile strategic fleet executing dedicated " + mission.name().toLowerCase(Locale.US)
+                            + " operations from a named launch origin",
+                    mission, tmpl, intent,
                     fx + 600 + i * 70, fy - 1600 - i * 30, i * 0.43);
+            if (isMajorRedLaunchName(redOps[i])) {
+                String sourceName = source == null ? "unknown Red origin" : source.name;
+                String targetName = destination == null ? "frontier lane" : destination.name;
+                pushTheaterEvent(st, "MAJOR RED LAUNCH WARNING: " + redOps[i]
+                        + " source " + sourceName
+                        + " target " + targetName
+                        + " telemetry active");
+            }
         }
 
         String[] greenAllied = new String[]{
@@ -15281,7 +16232,7 @@ public final class CampaignSystem {
             CampaignForceKind kind = greenAllied[i].contains("Convoy") || greenAllied[i].contains("Tender")
                     ? CampaignForceKind.CONVOY : CampaignForceKind.PATROL_GROUP;
             CampaignFleetTemplate tmpl = CampaignFleetTemplate.PATROL;
-            CampaignFleetMission mission = greenAllied[i].contains("Convoy") ? CampaignFleetMission.CONVOY : CampaignFleetMission.PATROL;
+            CampaignFleetMission mission = greenChecklistMission(greenAllied[i]);
             CampaignForceIntent intent = greenAllied[i].contains("Counterattack") ? CampaignForceIntent.INTERCEPTING : CampaignForceIntent.GUARDING;
             seedNamedChecklistFleet(st, greenAllied[i], kind, greenSupportFaction(st), greenHub, yellowHub,
                     "Allied strategic fleet sustaining friendly lanes and emergency response", mission, tmpl, intent,
@@ -15296,7 +16247,7 @@ public final class CampaignSystem {
         int yellowLimit = Math.min(yellowNeutral.length, Math.max(2, st.sector / 2));
         for (int i = 0; i < yellowLimit; i++) {
             CampaignForceKind kind = yellowNeutral[i].contains("Fleet") ? CampaignForceKind.TRADE_GROUP : CampaignForceKind.CONVOY;
-            CampaignFleetMission mission = CampaignFleetMission.CONVOY;
+            CampaignFleetMission mission = yellowChecklistMission(yellowNeutral[i]);
             CampaignForceIntent intent = yellowNeutral[i].contains("Mercenary") ? CampaignForceIntent.REINFORCING : CampaignForceIntent.ESCORTING;
             seedNamedChecklistFleet(st, yellowNeutral[i], kind, yellowSupportFaction(st), yellowHub, greenHub,
                     "Neutral or contract traffic force with persistent strategic routeing", mission, CampaignFleetTemplate.CONVOY, intent,
@@ -15343,6 +16294,46 @@ public final class CampaignSystem {
                     CampaignFleetTemplate.CONVOY, CampaignForceIntent.ESCORTING,
                     fx - 300 - i * 80, fy + 1000 + i * 45, i * 0.33);
         }
+    }
+
+    private static CampaignFleetMission redChecklistMission(String name) {
+        String upper = name == null ? "" : name.toUpperCase(Locale.US);
+        if (upper.contains("CONVOY") || upper.contains("SUPPLY")) return CampaignFleetMission.CONVOY;
+        if (upper.contains("BLOCKADE") || upper.contains("WALL")) return CampaignFleetMission.BLOCKADE;
+        if (upper.contains("SIEGE") || upper.contains("ASSAULT") || upper.contains("SUPPRESSION")) return CampaignFleetMission.CAPTURE;
+        if (upper.contains("HUNTER") || upper.contains("PURSUIT")) return CampaignFleetMission.RAID;
+        if (upper.contains("NET") || upper.contains("PICKET") || upper.contains("SEARCH")) return CampaignFleetMission.RECON;
+        return CampaignFleetMission.INTERCEPT;
+    }
+
+    private static boolean isMajorRedLaunchName(String name) {
+        String upper = name == null ? "" : name.toUpperCase(Locale.US);
+        return upper.contains("SIEGE")
+                || upper.contains("CARRIER")
+                || upper.contains("DREADNOUGHT")
+                || upper.contains("ARMADA")
+                || upper.contains("SUPPRESSION")
+                || upper.contains("FLAGSHIP")
+                || upper.contains("ASSAULT")
+                || upper.contains("NORTHERN WALL");
+    }
+
+    private static CampaignFleetMission greenChecklistMission(String name) {
+        String upper = name == null ? "" : name.toUpperCase(Locale.US);
+        if (upper.contains("CONVOY")) return CampaignFleetMission.CONVOY;
+        if (upper.contains("TENDER") || upper.contains("REPAIR")) return CampaignFleetMission.REPAIR;
+        if (upper.contains("RELIEF") || upper.contains("EVACUATION") || upper.contains("SUPPORT")) return CampaignFleetMission.REINFORCE;
+        if (upper.contains("ESCORT")) return CampaignFleetMission.ESCORT;
+        if (upper.contains("COUNTERATTACK")) return CampaignFleetMission.INTERCEPT;
+        return CampaignFleetMission.PATROL;
+    }
+
+    private static CampaignFleetMission yellowChecklistMission(String name) {
+        String upper = name == null ? "" : name.toUpperCase(Locale.US);
+        if (upper.contains("MERCENARY") || upper.contains("ESCORT")) return CampaignFleetMission.ESCORT;
+        if (upper.contains("REPAIR")) return CampaignFleetMission.REPAIR;
+        if (upper.contains("DIPLOMATIC") || upper.contains("SUMMIT")) return CampaignFleetMission.RECON;
+        return CampaignFleetMission.CONVOY;
     }
 
     private static CampaignForce nearestEnemyForce(CampaignState st, CampaignForce self, double maxDistance) {
@@ -18129,6 +19120,10 @@ public final class CampaignSystem {
             if (!pending.warned) {
                 pending.warned = true;
                 UISystem.addPing(ctx, pending.sourceX, pending.sourceY, 3.2);
+                pushTheaterEvent(st, "MAJOR RED LAUNCH EARLY WARNING: " + pending.label
+                        + " source " + pendingLocationName(st, pending.sourceLocationId, "jump point")
+                        + " target " + pendingLocationName(st, pending.targetLocationId, "unknown lane")
+                        + " ETA " + Math.max(1, (int) Math.round(pending.etaSec)) + "s");
                 EventSystem.showBanner(ctx,
                         ("INCOMING HOSTILE FLEET: " + pending.label + "  ETA " + Math.max(1, (int) Math.round(pending.etaSec)) + "s")
                                 .toUpperCase(Locale.US),
@@ -18137,6 +19132,9 @@ public final class CampaignSystem {
             if (!pending.warnedMid && pending.etaSec <= 12.0) {
                 pending.warnedMid = true;
                 UISystem.addPing(ctx, pending.targetX, pending.targetY, 2.8);
+                pushTheaterEvent(st, "MAJOR RED LAUNCH MID-ROUTE CONTACT: " + pending.label
+                        + " closing on " + pendingLocationName(st, pending.targetLocationId, "target lane")
+                        + " ETA " + Math.max(1, (int) Math.round(pending.etaSec)) + "s");
                 EventSystem.showBanner(ctx,
                         ("HOSTILE FLEET CLOSING: " + pending.label + "  APPROACHING TARGET LANE").toUpperCase(Locale.US),
                         1.8);
@@ -18144,6 +19142,9 @@ public final class CampaignSystem {
             if (!pending.warnedFinal && pending.etaSec <= 5.0) {
                 pending.warnedFinal = true;
                 UISystem.addPing(ctx, pending.targetX, pending.targetY, 2.4);
+                pushTheaterEvent(st, "MAJOR RED LAUNCH FINAL ARRIVAL WARNING: " + pending.label
+                        + " entering " + pendingLocationName(st, pending.targetLocationId, "local space")
+                        + " ETA " + Math.max(1, (int) Math.round(pending.etaSec)) + "s");
                 EventSystem.showBanner(ctx,
                         ("ALARM: " + pending.label + "  ENTERING LOCAL SPACE").toUpperCase(Locale.US),
                         1.7);
@@ -18183,6 +19184,13 @@ public final class CampaignSystem {
         st.galaxySearchGroups.add(group);
         UISystem.addPing(ctx, group.x, group.y, 2.4);
         EventSystem.showBanner(ctx, ("HOSTILE FLEET ENTERED THEATER: " + pending.label).toUpperCase(Locale.US), 1.8);
+        AudioSystem.onStrategicMapEvent(ctx, "major_fleet_launch", group.x, group.y);
+    }
+
+    private static String pendingLocationName(CampaignState st, String locationId, String fallback) {
+        CampaignLocation location = campaignLocationById(st, locationId);
+        if (location != null && location.name != null && !location.name.isBlank()) return location.name;
+        return trimmedOrFallback(fallback, "unknown");
     }
 
     private static void initializeCampaignTheaterWar(CampaignState st) {
@@ -18296,6 +19304,7 @@ public final class CampaignSystem {
                 node.lastOwner = previousOwner;
                 pushTheaterEvent(st,
                         location.name + " captured by " + ((node.owner == TheaterNodeOwner.BLUE_GREEN) ? "Blue/Green" : "Red"));
+                AudioSystem.onStrategicMapEvent(ctx, "node_control", location.x, location.y);
                 DeepCampaignSimulationSystem.applyLiveStationDamage(st.deepCampaignExpansion, 2,
                         node.owner == TheaterNodeOwner.RED, node.owner == TheaterNodeOwner.RED);
             }
@@ -18309,43 +19318,276 @@ public final class CampaignSystem {
         st.factionDirectorAccumulatorSec += dt;
         if (st.factionDirectorAccumulatorSec < FACTION_DIRECTOR_TICK_SEC) return;
         st.factionDirectorAccumulatorSec = 0.0;
-        CampaignTheaterState hottest = null;
-        CampaignTheaterState weakestTrade = null;
-        for (CampaignTheaterState theater : st.campaignTheaters) {
-            if (theater == null) continue;
-            if (hottest == null || theater.danger > hottest.danger) hottest = theater;
-            if (weakestTrade == null || theater.tradeHealth < weakestTrade.tradeHealth) weakestTrade = theater;
-        }
-        if (hottest == null) return;
-        st.redDirectorBrief = "Red: pressure " + hottest.label + " with raids and siege screens";
-        st.greenDirectorBrief = "Green: reinforce " + hottest.label + " hubs and relief lanes";
-        st.yellowDirectorBrief = "Yellow: " + (weakestTrade != null && weakestTrade.tradeHealth < 42.0
-                ? "reroute trade away from " + weakestTrade.label
-                : "maintain escorted trade through " + hottest.label);
+        DirectorChoice greenPlan = topDirectorChoice(ctx, st, Faction.TEAM_C, null);
+        DirectorChoice yellowPlan = topDirectorChoice(ctx, st, Faction.TEAM_D, null);
+        DirectorChoice redPlan = topDirectorChoice(ctx, st, Faction.ENEMY, null);
+        if (greenPlan == null || yellowPlan == null || redPlan == null) return;
+        st.greenDirectorBrief = directorBrief("Green", greenPlan, topDirectorScoreSummary(ctx, st, Faction.TEAM_C));
+        st.yellowDirectorBrief = directorBrief("Yellow", yellowPlan, topDirectorScoreSummary(ctx, st, Faction.TEAM_D));
+        st.redDirectorBrief = directorBrief("Red", redPlan, topDirectorScoreSummary(ctx, st, Faction.ENEMY));
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || !force.simulationActive || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
             CampaignTheaterState local = campaignTheaterById(st, theaterForPoint(st, force.y));
             if (local == null) continue;
-            if (force.faction == Faction.ENEMY && local.id == hottest.id) {
-                force.intent = force.kind == CampaignForceKind.TASK_FORCE
-                        ? CampaignForceIntent.INTERCEPTING : CampaignForceIntent.SEARCHING;
+            DirectorChoice localPlan = topDirectorChoice(ctx, st, force.faction, local.id);
+            DirectorChoice factionPlan = switch (force.faction) {
+                case ENEMY -> redPlan;
+                case TEAM_C, ALLY -> greenPlan;
+                case TEAM_D -> yellowPlan;
+                default -> null;
+            };
+            if (localPlan == null) localPlan = factionPlan;
+            if (localPlan == null) continue;
+            if (force.supply < 32.0 || force.fuelLevel < 28.0) {
+                force.intent = CampaignForceIntent.RETREATING;
+                CampaignLocation support = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+                if (support != null) setCampaignForceRoute(force, force.x, force.y, support.x, support.y);
                 force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
-            } else if (force.faction == Faction.TEAM_C && local.id == hottest.id) {
-                force.intent = force.kind == CampaignForceKind.CONVOY
-                        ? CampaignForceIntent.ESCORTING : CampaignForceIntent.GUARDING;
+                continue;
+            }
+            if (factionPlan != null && factionPlan.theater != null && factionPlan.theater.id != local.id
+                    && !directorTheaterWithinOperatingRadius(ctx, force, factionPlan.theater)) {
+                continue;
+            }
+            if (force.faction == Faction.ENEMY) {
+                force.intent = redDirectorIntentFor(force, localPlan.job);
+                force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            } else if (force.faction == Faction.TEAM_C || force.faction == Faction.ALLY) {
+                force.intent = greenDirectorIntentFor(force, localPlan.job);
                 force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
             } else if (force.faction == Faction.TEAM_D
                     && (force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP)) {
-                if (local.danger >= 62.0 || local.tradeHealth <= 38.0) {
+                if (local.danger >= 62.0 || local.tradeHealth <= 38.0 || "smuggling-route".equals(localPlan.job)) {
                     force.intent = CampaignForceIntent.RETREATING;
                     CampaignLocation support = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
                     if (support != null) setCampaignForceRoute(force, force.x, force.y, support.x, support.y);
                 } else {
-                    force.intent = CampaignForceIntent.ESCORTING;
+                    force.intent = yellowDirectorIntentFor(force, localPlan.job);
                 }
                 force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
             }
         }
+    }
+
+    static List<String> campaignFactionDirectorScoreLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of();
+        return List.of(
+                "Green director scores " + directorScoreSummaryByJob(ctx, st, Faction.TEAM_C),
+                "Yellow director scores " + directorScoreSummaryByJob(ctx, st, Faction.TEAM_D),
+                "Red director scores " + directorScoreSummaryByJob(ctx, st, Faction.ENEMY)
+        );
+    }
+
+    private record DirectorChoice(Faction faction, String job, CampaignTheaterState theater, double score) {
+    }
+
+    private static String directorBrief(String label, DirectorChoice selected, String topSummary) {
+        if (selected == null || selected.theater == null) return label + ": awaiting scored theater picture";
+        String job = selected.job == null ? "patrol" : selected.job;
+        return label + ": selected " + job + " in " + selected.theater.label
+                + " score " + (int) Math.round(selected.score)
+                + "  top " + topSummary;
+    }
+
+    private static DirectorChoice topDirectorChoice(GameContext ctx, CampaignState st, Faction faction, TheaterId theaterFilter) {
+        DirectorChoice best = null;
+        for (DirectorChoice choice : directorChoices(ctx, st, faction, theaterFilter)) {
+            if (choice == null) continue;
+            if (best == null || choice.score > best.score) best = choice;
+        }
+        return best;
+    }
+
+    private static String topDirectorScoreSummary(GameContext ctx, CampaignState st, Faction faction) {
+        ArrayList<DirectorChoice> choices = directorChoices(ctx, st, faction, null);
+        choices.sort((a, b) -> Double.compare(b.score, a.score));
+        return choices.stream()
+                .limit(3)
+                .map(choice -> choice.job + ":" + (int) Math.round(choice.score) + "@" + theaterShortName(choice.theater))
+                .collect(Collectors.joining(","));
+    }
+
+    private static String directorScoreSummaryByJob(GameContext ctx, CampaignState st, Faction faction) {
+        ArrayList<DirectorChoice> choices = directorChoices(ctx, st, faction, null);
+        LinkedHashMap<String, DirectorChoice> bestByJob = new LinkedHashMap<>();
+        for (DirectorChoice choice : choices) {
+            if (choice == null || choice.job == null) continue;
+            DirectorChoice current = bestByJob.get(choice.job);
+            if (current == null || choice.score > current.score) bestByJob.put(choice.job, choice);
+        }
+        return bestByJob.values().stream()
+                .map(choice -> choice.job + ":" + (int) Math.round(choice.score) + "@" + theaterShortName(choice.theater))
+                .collect(Collectors.joining(","));
+    }
+
+    private static ArrayList<DirectorChoice> directorChoices(GameContext ctx, CampaignState st, Faction faction, TheaterId theaterFilter) {
+        ArrayList<DirectorChoice> out = new ArrayList<>();
+        if (st == null || faction == null) return out;
+        for (CampaignTheaterState theater : st.campaignTheaters) {
+            if (theater == null || (theaterFilter != null && theater.id != theaterFilter)) continue;
+            if (faction == Faction.ENEMY) addRedDirectorChoices(out, st, theater);
+            else if (faction == Faction.TEAM_D) addYellowDirectorChoices(out, st, theater);
+            else addGreenDirectorChoices(out, ctx, st, theater);
+        }
+        return out;
+    }
+
+    private static void addGreenDirectorChoices(ArrayList<DirectorChoice> out, GameContext ctx, CampaignState st, CampaignTheaterState theater) {
+        double playerSupport = playerTheaterBonus(ctx, st, theater);
+        out.add(new DirectorChoice(Faction.TEAM_C, "route-defense", theater,
+                theater.routeRisk * 0.55 + theater.danger * 0.30 + Math.max(0.0, -theater.controlScore) * 0.22));
+        out.add(new DirectorChoice(Faction.TEAM_C, "convoy-escort", theater,
+                theater.marketPressure * 0.40 + (100.0 - theater.tradeHealth) * 0.46 + theater.yellowActivity * 0.18));
+        out.add(new DirectorChoice(Faction.TEAM_C, "base-defense", theater,
+                theater.threatPressure * 0.38 + Math.max(0.0, -theater.controlScore) * 0.34 + (100.0 - theater.installationIntegrity) * 0.32));
+        out.add(new DirectorChoice(Faction.TEAM_C, "repair-rescue", theater,
+                (100.0 - theater.supplyState) * 0.46 + (100.0 - theater.installationIntegrity) * 0.34 + theater.danger * 0.18));
+        out.add(new DirectorChoice(Faction.TEAM_C, "controlled-assault", theater,
+                Math.max(0.0, -theater.controlScore) * 0.52 + theater.supplyState * 0.22 + theater.greenPresence * 0.22 - theater.danger * 0.10));
+        out.add(new DirectorChoice(Faction.TEAM_C, "player-support", theater,
+                playerSupport + theater.routeRisk * 0.22 + theater.danger * 0.18));
+    }
+
+    private static void addYellowDirectorChoices(ArrayList<DirectorChoice> out, CampaignState st, CampaignTheaterState theater) {
+        double resources = theaterNodeCount(st, theater.id, TheaterNodeType.RESOURCE_FIELD) * 14.0;
+        double salvage = recoverableWreckCountInTheater(st, theater.id) * 16.0;
+        out.add(new DirectorChoice(Faction.TEAM_D, "trade-profit", theater,
+                theater.tradeHealth * 0.48 + theater.supplyState * 0.20 - theater.routeRisk * 0.16));
+        out.add(new DirectorChoice(Faction.TEAM_D, "mining-profit", theater,
+                resources + theater.supplyState * 0.22 + Math.max(0.0, 100.0 - theater.danger) * 0.12));
+        out.add(new DirectorChoice(Faction.TEAM_D, "salvage-opportunity", theater,
+                salvage + theater.danger * 0.24 + theater.routeRisk * 0.18));
+        out.add(new DirectorChoice(Faction.TEAM_D, "smuggling-route", theater,
+                theater.routeRisk * 0.36 + theater.marketPressure * 0.24 + Math.max(0.0, -theater.controlScore) * 0.16));
+        out.add(new DirectorChoice(Faction.TEAM_D, "mercenary-contract", theater,
+                theater.danger * 0.30 + theater.marketPressure * 0.28 + (100.0 - theater.installationIntegrity) * 0.16));
+        out.add(new DirectorChoice(Faction.TEAM_D, "piracy-opportunity", theater,
+                theater.tradeHealth * 0.20 + theater.routeRisk * 0.26 + theater.redPresence * 0.22));
+    }
+
+    private static void addRedDirectorChoices(ArrayList<DirectorChoice> out, CampaignState st, CampaignTheaterState theater) {
+        double redAssets = theaterNodeOwnerCount(st, theater.id, TheaterNodeOwner.RED) * 10.0;
+        out.add(new DirectorChoice(Faction.ENEMY, "scouting", theater,
+                Math.max(0.0, 100.0 - theater.redPresence) * 0.18 + theater.routeRisk * 0.20 + theater.danger * 0.20));
+        out.add(new DirectorChoice(Faction.ENEMY, "raiding-weak-routes", theater,
+                theater.routeRisk * 0.36 + (100.0 - theater.supplyState) * 0.30 + theater.yellowActivity * 0.20));
+        out.add(new DirectorChoice(Faction.ENEMY, "hunting-high-value", theater,
+                theater.greenPresence * 0.28 + theater.yellowActivity * 0.22 + theater.marketPressure * 0.16));
+        out.add(new DirectorChoice(Faction.ENEMY, "blockading-chokepoints", theater,
+                theater.routeRisk * 0.34 + theater.marketPressure * 0.30 + redAssets));
+        out.add(new DirectorChoice(Faction.ENEMY, "staging-siege", theater,
+                Math.max(0.0, theater.controlScore) * 0.12 + theater.redPresence * 0.28 + theater.threatPressure * 0.30));
+        out.add(new DirectorChoice(Faction.ENEMY, "defending-red-assets", theater,
+                redAssets + Math.max(0.0, theater.controlScore) * 0.10 + theater.greenPresence * 0.24));
+        out.add(new DirectorChoice(Faction.ENEMY, "invasion-escalation", theater,
+                redEscalationForTheater(theater.id) * 18.0 + theater.threatPressure * 0.24 + Math.max(0.0, -theater.controlScore) * 0.28));
+    }
+
+    private static String theaterShortName(CampaignTheaterState theater) {
+        if (theater == null || theater.label == null || theater.label.isBlank()) return "theater";
+        return theater.label.replace(" Theater", "");
+    }
+
+    private static double playerTheaterBonus(GameContext ctx, CampaignState st, CampaignTheaterState theater) {
+        if (ctx == null || st == null || theater == null || ctx.WORLD_H <= 0) return 0.0;
+        double y = Double.isFinite(st.playerGalaxyY) ? st.playerGalaxyY : (ctx.player == null ? 0.0 : ctx.player.y);
+        double norm = MathUtil.clamp(y / Math.max(1.0, ctx.WORLD_H), 0.0, 1.0);
+        return norm >= theater.minYNorm && norm <= theater.maxYNorm ? 34.0 : 0.0;
+    }
+
+    private static int theaterNodeCount(CampaignState st, TheaterId theaterId, TheaterNodeType type) {
+        if (st == null || theaterId == null || type == null) return 0;
+        int count = 0;
+        for (StrategicNodeState node : st.strategicNodes) {
+            if (node != null && node.theaterId == theaterId && node.type == type) count++;
+        }
+        return count;
+    }
+
+    private static int theaterNodeOwnerCount(CampaignState st, TheaterId theaterId, TheaterNodeOwner owner) {
+        if (st == null || theaterId == null || owner == null) return 0;
+        int count = 0;
+        for (StrategicNodeState node : st.strategicNodes) {
+            if (node != null && node.theaterId == theaterId && node.owner == owner) count++;
+        }
+        return count;
+    }
+
+    private static int recoverableWreckCountInTheater(CampaignState st, TheaterId theaterId) {
+        if (st == null || theaterId == null) return 0;
+        int count = 0;
+        for (RecoverableWreckSite wreck : st.recoverableWreckSites) {
+            if (wreck != null && theaterForPoint(st, wreck.y) == theaterId) count++;
+        }
+        return count;
+    }
+
+    private static boolean directorTheaterWithinOperatingRadius(GameContext ctx, CampaignForce force, CampaignTheaterState theater) {
+        if (ctx == null || force == null || theater == null) return true;
+        double targetX = ctx.WORLD_W * 0.5;
+        double targetY = ctx.WORLD_H * ((theater.minYNorm + theater.maxYNorm) * 0.5);
+        double radius = Math.max(1.0, force.operatingRadius);
+        return GameMath.dist2(force.x, force.y, targetX, targetY) <= radius * radius;
+    }
+
+    private static CampaignForceIntent greenDirectorIntentFor(CampaignForce force, String job) {
+        if (force == null) return CampaignForceIntent.GUARDING;
+        if (isHeavyStrategicForce(force)
+                && !"base-defense".equals(job)
+                && !"controlled-assault".equals(job)
+                && !"repair-rescue".equals(job)
+                && !"player-support".equals(job)) {
+            return CampaignForceIntent.GUARDING;
+        }
+        return switch (job == null ? "" : job) {
+            case "convoy-escort" -> CampaignForceIntent.ESCORTING;
+            case "repair-rescue", "player-support", "controlled-assault" -> CampaignForceIntent.REINFORCING;
+            case "route-defense" -> CampaignForceIntent.PATROLLING;
+            default -> CampaignForceIntent.GUARDING;
+        };
+    }
+
+    private static CampaignForceIntent yellowDirectorIntentFor(CampaignForce force, String job) {
+        if (force == null) return CampaignForceIntent.ESCORTING;
+        return switch (job == null ? "" : job) {
+            case "mining-profit", "salvage-opportunity" -> CampaignForceIntent.MINING;
+            case "mercenary-contract" -> CampaignForceIntent.REINFORCING;
+            case "piracy-opportunity", "smuggling-route" -> CampaignForceIntent.SEARCHING;
+            default -> CampaignForceIntent.ESCORTING;
+        };
+    }
+
+    private static CampaignForceIntent redDirectorIntentFor(CampaignForce force, String job) {
+        if (force == null) return CampaignForceIntent.SEARCHING;
+        if (isHeavyStrategicForce(force)
+                && !"blockading-chokepoints".equals(job)
+                && !"staging-siege".equals(job)
+                && !"defending-red-assets".equals(job)
+                && !"invasion-escalation".equals(job)) {
+            return CampaignForceIntent.REINFORCING;
+        }
+        return switch (job == null ? "" : job) {
+            case "raiding-weak-routes", "hunting-high-value" -> CampaignForceIntent.INTERCEPTING;
+            case "blockading-chokepoints", "defending-red-assets" -> CampaignForceIntent.GUARDING;
+            case "staging-siege", "invasion-escalation" -> CampaignForceIntent.REINFORCING;
+            default -> CampaignForceIntent.SEARCHING;
+        };
+    }
+
+    private static boolean isHeavyStrategicForce(CampaignForce force) {
+        if (force == null) return false;
+        String upper = force.name == null ? "" : force.name.toUpperCase(Locale.US);
+        return force.kind == CampaignForceKind.TASK_FORCE
+                || force.kind == CampaignForceKind.STRIKE_DETACHMENT
+                || upper.contains("SIEGE")
+                || upper.contains("CARRIER")
+                || upper.contains("DREADNOUGHT")
+                || upper.contains("ARMADA")
+                || upper.contains("SUPPRESSION")
+                || upper.contains("FLAGSHIP")
+                || upper.contains("ASSAULT")
+                || upper.contains("BLOCKADE");
     }
 
     private static double redEscalationForTheater(TheaterId theaterId) {
@@ -18374,13 +19616,22 @@ public final class CampaignSystem {
                 double dist2 = GameMath.dist2(force.x, force.y, shipyard.x, shipyard.y);
                 double reinforceRadius = 900.0;
                 if (dist2 > reinforceRadius * reinforceRadius) continue;
-                force.strength = MathUtil.clamp(force.strength + SHIPYARD_REINFORCEMENT_RATE_PER_TICK * tickSeconds, 0.0, 100.0);
-                force.readiness = MathUtil.clamp(force.readiness + SHIPYARD_READINESS_RATE_PER_TICK * tickSeconds, 0.0, 100.0);
-                force.supply = MathUtil.clamp(force.supply + SHIPYARD_SUPPLY_RATE_PER_TICK * tickSeconds, 0.0, 100.0);
-                force.morale = MathUtil.clamp(force.morale + 0.55 * tickSeconds, 0.0, 100.0);
-                force.fuelPressure = MathUtil.clamp(force.fuelPressure - 0.70 * tickSeconds, 0.0, 100.0);
+                double output = shipyardOutputMultiplier(st, node);
+                force.strength = MathUtil.clamp(force.strength + SHIPYARD_REINFORCEMENT_RATE_PER_TICK * output * tickSeconds, 0.0, 100.0);
+                force.readiness = MathUtil.clamp(force.readiness + SHIPYARD_READINESS_RATE_PER_TICK * output * tickSeconds, 0.0, 100.0);
+                force.supply = MathUtil.clamp(force.supply + SHIPYARD_SUPPLY_RATE_PER_TICK * output * tickSeconds, 0.0, 100.0);
+                force.morale = MathUtil.clamp(force.morale + 0.55 * output * tickSeconds, 0.0, 100.0);
+                force.fuelPressure = MathUtil.clamp(force.fuelPressure - 0.70 * output * tickSeconds, 0.0, 100.0);
             }
         }
+    }
+
+    private static double shipyardOutputMultiplier(CampaignState st, StrategicNodeState node) {
+        if (st == null || node == null) return 1.0;
+        CampaignTheaterState theater = campaignTheaterById(st, node.theaterId);
+        if (theater == null) return 1.0;
+        double integrity = MathUtil.clamp(theater.installationIntegrity, 0.0, 100.0);
+        return MathUtil.clamp(0.25 + integrity / 100.0 * 0.75, 0.25, 1.0);
     }
 
     private static void recomputeCampaignTheaterStates(CampaignState st) {
@@ -18474,6 +19725,38 @@ public final class CampaignSystem {
             case RED_CONTROLLED -> "Red controlled";
             case CONTESTED -> "contested";
         };
+    }
+
+    public static List<String> campaignRegionalControlRatingLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of("REGIONAL CONTROL: unavailable");
+        ArrayList<String> out = new ArrayList<>();
+        for (CampaignTheaterState theater : st.campaignTheaters) {
+            if (theater == null) continue;
+            out.add(theater.label
+                    + " | " + theaterControlRatingLabel(theater)
+                    + " | score " + (int) Math.round(theater.controlScore)
+                    + " | mix " + regionalTrafficMixLabel(theater));
+        }
+        return out;
+    }
+
+    private static String theaterControlRatingLabel(CampaignTheaterState theater) {
+        if (theater == null) return "neutral/Yellow-dominated";
+        double score = theater.controlScore;
+        if (score >= 55.0) return "strong Green";
+        if (score >= 20.0) return "weak Green";
+        if (score <= -55.0) return "strong Red";
+        if (score <= -20.0) return "weak Red";
+        if (theater.tradeHealth >= 62.0 && theater.threatPressure < 42.0) return "neutral/Yellow-dominated";
+        return "contested";
+    }
+
+    private static String regionalTrafficMixLabel(CampaignTheaterState theater) {
+        if (theater == null) return "unknown";
+        if (theater.controlScore >= 45.0) return "more Green patrols and Yellow trade";
+        if (theater.controlScore <= -45.0) return "more Red patrols/blockades, less normal trade";
+        return "more clashes, caution, raiders, salvage, and distress";
     }
 
     private static TheaterNodeType theaterNodeTypeFor(CampaignLocation location) {
@@ -18592,12 +19875,20 @@ public final class CampaignSystem {
             refreshNpcForceContacts(st, force, dt);
             CampaignForceIntent previousIntent = force.intent;
             CampaignFleetState previousState = force.state;
+            updateCampaignForceLifecycleBeforeOrders(st, force, dt);
             updateCampaignForceOrders(ctx, st, force, dt);
+            if (!force.routePoints.isEmpty() && force.reassignmentCondition == CampaignForceReassignmentCondition.NONE) {
+                force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+            }
+            applyCampaignForceAntiIdle(ctx, st, force);
             recordCampaignForceAiTransition(ctx, st, force, previousIntent, previousState);
             if (!far && (!mid || st.campaignForceSimTickCount % 2 == 0)
                     || far && st.campaignForceSimTickCount % 4 == 0) {
                 advanceCampaignForcePosition(force, dt);
             }
+            updateCampaignForceLifecycleAfterMovement(st, force, dt);
+            assignDirectorAfterRepairResupplyComplete(ctx, st, force);
+            assignDirectorAfterStationWorkComplete(ctx, st, force);
             updateCampaignForceContactState(ctx, st, force, dt);
             mergeCampaignForceIfNeeded(st, force);
         }
@@ -18646,10 +19937,121 @@ public final class CampaignSystem {
     }
 
     private static void applyDestroyedCampaignForceMembershipCleanup(GameContext ctx, CampaignState st, CampaignForce force) {
+        applyRedScoutLossConsequences(ctx, st, force);
         int removedMembers = reconcileCampaignForceLiveMembership(ctx, st, force);
         if (removedMembers <= 0) return;
         force.strength = Math.max(0.0, force.strength - removedMembers * 8.0);
         force.readiness = Math.max(0.0, force.readiness - removedMembers * 6.0);
+    }
+
+    private static void applyRedScoutLossConsequences(GameContext ctx, CampaignState st, CampaignForce scout) {
+        if (ctx == null || st == null || scout == null || scout.faction != Faction.ENEMY) return;
+        if (!isRedReconScoutForce(scout)) return;
+        TheaterId theater = theaterForPoint(st, scout.y);
+        int degraded = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == scout || force.destroyed || force.faction != Faction.ENEMY) continue;
+            if (theaterForPoint(st, force.y) != theater && GameMath.dist2(force.x, force.y, scout.x, scout.y) > 2200.0 * 2200.0) continue;
+            degraded += degradeRedForceContactMemory(st, force, scout);
+        }
+        if (degraded > 0) {
+            pushTheaterEvent(st, "Red scout loss degraded " + theater.label + " raid accuracy across " + degraded + " contacts");
+        } else {
+            pushTheaterEvent(st, "Red scout loss left " + theater.label + " contact net uncertain");
+        }
+        dispatchReplacementRedScout(ctx, st, scout, theater);
+    }
+
+    private static boolean isRedReconScoutForce(CampaignForce force) {
+        if (force == null || force.faction != Faction.ENEMY) return false;
+        String upper = force.name == null ? "" : force.name.toUpperCase(Locale.US);
+        return force.mission == CampaignFleetMission.RECON
+                || upper.contains("SCOUT")
+                || upper.contains("RECON")
+                || upper.contains("PROBE");
+    }
+
+    private static int degradeRedForceContactMemory(CampaignState st, CampaignForce force, CampaignForce lostScout) {
+        if (st == null || force == null || lostScout == null || force.knownHostileContacts == null || force.knownHostileContacts.isEmpty()) return 0;
+        int degraded = 0;
+        for (NpcForceContact contact : force.knownHostileContacts.values()) {
+            if (contact == null || contact.forceId <= 0) continue;
+            CampaignForce target = campaignForceById(st, contact.forceId);
+            if (target == null || target.destroyed || target.faction == Faction.ENEMY) continue;
+            double distance = Math.hypot(contact.x - lostScout.x, contact.y - lostScout.y);
+            if (theaterForPoint(st, target.y) != theaterForPoint(st, lostScout.y) && distance > 2400.0) continue;
+            contact.confidence = MathUtil.clamp(contact.confidence * 0.58 - 0.06, 0.0, 1.0);
+            contact.ageSec = Math.max(contact.ageSec, 45.0);
+            contact.x += MathUtil.clamp((contact.x - lostScout.x) * 0.08, -120.0, 120.0);
+            contact.y += MathUtil.clamp((contact.y - lostScout.y) * 0.08, -120.0, 120.0);
+            degraded++;
+        }
+        if (force.mission == CampaignFleetMission.RAID || force.mission == CampaignFleetMission.INTERCEPT) {
+            CampaignForce best = nearestWeakKnownNonEnemyForce(st, force);
+            if (best == null) {
+                force.targetForceId = 0;
+                force.reassignmentCondition = CampaignForceReassignmentCondition.TARGET_MISSING;
+                force.taskDeadlineSec = Math.min(force.taskDeadlineSec <= 0.0 ? 45.0 : force.taskDeadlineSec, 45.0);
+            }
+        }
+        return degraded;
+    }
+
+    private static void dispatchReplacementRedScout(GameContext ctx, CampaignState st, CampaignForce lostScout, TheaterId theater) {
+        if (ctx == null || st == null || lostScout == null) return;
+        CampaignLocation source = nearestRedScoutReplacementSource(st, theater, lostScout.x, lostScout.y);
+        if (source == null) return;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction != Faction.ENEMY || force == lostScout) continue;
+            if (!isRedReconScoutForce(force)) continue;
+            if (source.id.equals(force.sourceLocationId) && GameMath.dist2(force.x, force.y, lostScout.x, lostScout.y) < 2600.0 * 2600.0) {
+                return;
+            }
+        }
+        String name = "Red Replacement Scout " + lostScout.id;
+        CampaignForce replacement = ensureCampaignForce(st, CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                name, trimmedOrFallback(source.name, "Red scout hangar"),
+                "Replace lost recon coverage from a named Red launch point", source.x, source.y);
+        if (replacement == null) return;
+        configureNamedFleetForce(st, replacement, CampaignFleetMission.RECON, CampaignFleetTemplate.SCOUT, CampaignForceIntent.PATROLLING);
+        replacement.sourceLocationId = source.id;
+        replacement.homeBaseId = source.id;
+        replacement.strength = Math.min(replacement.strength, Math.max(18.0, lostScout.strength + 12.0));
+        replacement.readiness = Math.max(replacement.readiness, 70.0);
+        replacement.supply = Math.max(replacement.supply, 70.0);
+        replacement.visibleToPlayer = false;
+        replacement.contactConfidence = Math.min(replacement.contactConfidence, 0.24);
+        replacement.contactState = CampaignForceContactState.STALE;
+        replacement.uncertaintyRadius = Math.max(replacement.uncertaintyRadius, 420.0);
+        double midX = (source.x + lostScout.x) * 0.5 + Math.sin(lostScout.id * 0.73) * 180.0;
+        double midY = (source.y + lostScout.y) * 0.5 + Math.cos(lostScout.id * 0.73) * 180.0;
+        setCampaignForceRoute(replacement, source.x, source.y, midX, midY, lostScout.x, lostScout.y);
+        replacement.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        replacement.intentTimerSec = Math.max(replacement.intentTimerSec, 90.0);
+        replacement.taskDeadlineSec = Math.max(replacement.taskDeadlineSec, 140.0);
+        replacement.lastTaskUpdateSec = st.sectorElapsed;
+        pushTheaterEvent(st, replacement.name + " launched from " + source.name + " to rebuild lost Red scout coverage");
+    }
+
+    private static CampaignLocation nearestRedScoutReplacementSource(CampaignState st, TheaterId theater, double x, double y) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || isUndiscoveredProceduralSite(location)) continue;
+            boolean redSource = location.type == CampaignLocationType.ENEMY_ACTIVITY
+                    || isRedLocationName(location.name)
+                    || (location.services != null && location.services.contains(HubService.SHIPYARD) && location.threatLevel >= 0.45f);
+            if (!redSource) continue;
+            double theaterPenalty = theaterForPoint(st, location.y) == theater ? 0.0 : 1200.0;
+            double score = Math.hypot(location.x - x, location.y - y) + theaterPenalty;
+            if (score < bestScore) {
+                best = location;
+                bestScore = score;
+            }
+        }
+        if (best != null) return best;
+        return firstEnemyActivityLocation(st, 0);
     }
 
     private static void updateCampaignForceSimulationTicked(GameContext ctx, CampaignState st, double dt) {
@@ -18666,6 +20068,1479 @@ public final class CampaignSystem {
                                 + " contactConf=" + Math.round(st.enemyPlayerContact.confidence * 100.0));
             }
         }
+    }
+
+    private static void updateCampaignForceLifecycleBeforeOrders(CampaignState st, CampaignForce force, double dt) {
+        if (st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        primeCampaignForceLifecycleDefaults(force);
+        double elapsed = Math.max(0.0, dt);
+        force.antiIdleReassignCooldownSec = Math.max(0.0, force.antiIdleReassignCooldownSec - elapsed);
+        if (force.taskDeadlineSec > 0.0) force.taskDeadlineSec = Math.max(0.0, force.taskDeadlineSec - elapsed);
+        if (force.workRemainingSec > 0.0) force.workRemainingSec = Math.max(0.0, force.workRemainingSec - elapsed);
+        force.fuelLevel = MathUtil.clamp(100.0 - force.fuelPressure, 0.0, 100.0);
+        force.ammoLevel = MathUtil.clamp(force.supply, 0.0, 100.0);
+        force.repairCapacity = MathUtil.clamp(force.hullIntegrity, 0.0, 100.0);
+        force.crewReadiness = MathUtil.clamp((force.readiness + force.morale) * 0.5, 0.0, 100.0);
+        CampaignForceMissionState beforeMissionState = force.missionState;
+        CampaignForceWorkState beforeWorkState = force.workState;
+        CampaignForceStopReason beforeStop = force.stopReason;
+        syncCampaignForceLifecycleFromIntent(force);
+        if (beforeMissionState != force.missionState || beforeWorkState != force.workState || beforeStop != force.stopReason) {
+            force.lastTaskUpdateSec = st.sectorElapsed;
+            force.lastStopReasonChangeSec = st.sectorElapsed;
+            resetCampaignForceAntiIdle(force);
+        }
+        boolean changed = force.lastAntiIdleMission != force.mission
+                || force.lastAntiIdleMissionState != force.missionState
+                || force.lastAntiIdleWorkState != force.workState
+                || force.lastAntiIdleStopReason != force.stopReason
+                || force.lastAntiIdleTargetForceId != force.targetForceId
+                || !Objects.equals(force.lastAntiIdleDestinationId, force.destinationLocationId == null ? "" : force.destinationLocationId)
+                || Math.hypot(force.targetX - force.lastAntiIdleTargetX, force.targetY - force.lastAntiIdleTargetY) > 8.0;
+        if (changed) {
+            resetCampaignForceAntiIdle(force);
+        } else {
+            force.antiIdleTimerSec += elapsed;
+        }
+    }
+
+    private static void updateCampaignForceLifecycleAfterMovement(CampaignState st, CampaignForce force, double dt) {
+        if (st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        double moved = (Double.isFinite(force.lastLifecycleX) && Double.isFinite(force.lastLifecycleY))
+                ? Math.hypot(force.x - force.lastLifecycleX, force.y - force.lastLifecycleY)
+                : Double.POSITIVE_INFINITY;
+        if (moved < Math.max(4.0, force.speed * Math.max(0.0, dt) * 0.12)) {
+            force.stationaryTimeSec += Math.max(0.0, dt);
+        } else {
+            force.stationaryTimeSec = 0.0;
+        }
+        force.lastLifecycleX = force.x;
+        force.lastLifecycleY = force.y;
+        if (force.workState == CampaignForceWorkState.WORKING && force.workRemainingSec <= 0.0 && force.taskDeadlineSec <= 0.0) {
+            if (force.stopReason == CampaignForceStopReason.MINING && force.cargoCapacity > 0.0) {
+                force.cargoLoad = Math.min(force.cargoCapacity, force.cargoLoad + 8.0 * Math.max(0.0, dt));
+                if (force.cargoLoad >= force.cargoCapacity * 0.98) {
+                    force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+                    force.missionState = CampaignForceMissionState.COMPLETED;
+                    CampaignLocation refinery = campaignLocationById(st, force.sourceLocationId);
+                    if (refinery == null) refinery = campaignLocationById(st, force.homeBaseId);
+                    if (refinery != null) {
+                        force.intent = CampaignForceIntent.DOCKING;
+                        force.destinationLocationId = refinery.id;
+                        setCampaignForceRoute(force, force.x, force.y, refinery.x, refinery.y);
+                        force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+                    }
+                }
+            } else if (force.stopReason == CampaignForceStopReason.SALVAGING && force.cargoCapacity > 0.0) {
+                double salvageAmount = 6.0 * Math.max(0.0, dt);
+                RecoverableWreckSite wreck = nearestActiveRecoverableWreckSite(st, force.x, force.y, 220.0);
+                if (wreck != null) {
+                    salvageAmount = Math.min(salvageAmount, Math.max(0.0, wreck.salvageValue));
+                    wreck.salvageValue = Math.max(0.0, wreck.salvageValue - salvageAmount);
+                    if (wreck.salvageValue <= 0.01) {
+                        wreck.claimed = true;
+                        st.recoverableWrecksClaimed++;
+                    }
+                }
+                force.cargoLoad = Math.min(force.cargoCapacity, force.cargoLoad + salvageAmount);
+                if (force.cargoLoad >= force.cargoCapacity * 0.98 || (wreck != null && wreck.claimed)) {
+                    force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+                    force.missionState = CampaignForceMissionState.COMPLETED;
+                    CampaignLocation station = campaignLocationById(st, force.sourceLocationId);
+                    if (station == null) station = campaignLocationById(st, force.homeBaseId);
+                    if (station != null) {
+                        force.intent = CampaignForceIntent.DOCKING;
+                        force.destinationLocationId = station.id;
+                        setCampaignForceRoute(force, force.x, force.y, station.x, station.y);
+                        force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+                    }
+                }
+            } else if (force.stopReason == CampaignForceStopReason.REPAIRING || force.stopReason == CampaignForceStopReason.REFUELING) {
+                force.fuelLevel = Math.min(100.0, force.fuelLevel + 10.0 * Math.max(0.0, dt));
+                force.ammoLevel = Math.min(100.0, force.ammoLevel + 10.0 * Math.max(0.0, dt));
+                force.repairCapacity = Math.min(100.0, force.repairCapacity + 8.0 * Math.max(0.0, dt));
+                force.crewReadiness = Math.min(100.0, force.crewReadiness + 6.0 * Math.max(0.0, dt));
+                force.fuelPressure = Math.max(0.0, 100.0 - force.fuelLevel);
+                force.supply = Math.max(force.supply, force.ammoLevel);
+                force.hullIntegrity = Math.max(force.hullIntegrity, force.repairCapacity);
+                force.readiness = Math.max(force.readiness, force.crewReadiness);
+                if (force.fuelLevel >= 99.0 && force.ammoLevel >= 99.0 && force.repairCapacity >= 99.0 && force.crewReadiness >= 99.0) {
+                    force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+                    force.missionState = CampaignForceMissionState.COMPLETED;
+                }
+            } else if (force.stopReason == CampaignForceStopReason.UNLOADING) {
+                force.cargoLoad = 0.0;
+                force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_EMPTY;
+                force.missionState = CampaignForceMissionState.COMPLETED;
+            } else if (force.stopReason == CampaignForceStopReason.SCANNING) {
+                advancePatrolAfterScan(st, force);
+            }
+        }
+    }
+
+    private static void assignDirectorAfterRepairResupplyComplete(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        if (force.missionState != CampaignForceMissionState.COMPLETED) return;
+        if (force.reassignmentCondition != CampaignForceReassignmentCondition.WORK_COMPLETE) return;
+        if (force.stopReason != CampaignForceStopReason.REPAIRING && force.stopReason != CampaignForceStopReason.REFUELING) return;
+        force.workRemainingSec = 0.0;
+        force.taskDeadlineSec = 0.0;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+        force.missionState = CampaignForceMissionState.REASSIGNING;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.DIRECTOR_RECALL;
+        if (!assignSimpleDirectorMission(ctx, st, force)) {
+            CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+            if (home != null) {
+                assignPatrolMission(st, force, List.of(
+                        new double[]{home.x, home.y},
+                        new double[]{home.x + 180.0, home.y + 120.0},
+                        new double[]{home.x - 160.0, home.y - 100.0}));
+                logSimpleDirectorAssignment(st, force, "patrol", "repair complete fallback near " + home.name);
+            }
+        }
+    }
+
+    private static void assignDirectorAfterStationWorkComplete(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        if (force.missionState != CampaignForceMissionState.COMPLETED) return;
+        if (force.stopReason != CampaignForceStopReason.TRADING
+                && force.stopReason != CampaignForceStopReason.LOADING
+                && force.stopReason != CampaignForceStopReason.UNLOADING) return;
+        force.workRemainingSec = 0.0;
+        force.taskDeadlineSec = 0.0;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+        force.missionState = CampaignForceMissionState.REASSIGNING;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.DIRECTOR_RECALL;
+        if (assignSimpleDirectorMission(ctx, st, force)) {
+            pushTheaterEvent(st, force.name + " completed station work and received new route orders");
+            return;
+        }
+        CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+        if (home == null) home = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+        if (home != null) {
+            assignPatrolMission(st, force, List.of(
+                    new double[]{home.x, home.y},
+                    new double[]{home.x + 180.0, home.y + 120.0},
+                    new double[]{home.x - 160.0, home.y - 100.0}));
+            logSimpleDirectorAssignment(st, force, "patrol", "station work fallback near " + home.name);
+        }
+    }
+
+    private static void advancePatrolAfterScan(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || force.patrolWaypoints.isEmpty()) return;
+        force.patrolWaypointIndex = (force.patrolWaypointIndex + 1) % force.patrolWaypoints.size();
+        double[] next = force.patrolWaypoints.get(force.patrolWaypointIndex);
+        force.intent = force.faction == Faction.ENEMY ? CampaignForceIntent.SEARCHING : CampaignForceIntent.PATROLLING;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        setCampaignForceRoute(force, force.x, force.y, next[0], next[1]);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void syncCampaignForceLifecycleFromIntent(CampaignForce force) {
+        if (force == null) return;
+        if (force.stopReason == CampaignForceStopReason.SCANNING) {
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            return;
+        }
+        if (force.state == CampaignFleetState.ENGAGING) {
+            force.workState = CampaignForceWorkState.FIGHTING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            return;
+        }
+        if (force.state == CampaignFleetState.RETREATING || force.intent == CampaignForceIntent.RETREATING || force.intent == CampaignForceIntent.REGROUPING) {
+            force.workState = CampaignForceWorkState.RECOVERING;
+            force.missionState = CampaignForceMissionState.RECOVERING;
+            if (force.stopReason == CampaignForceStopReason.NONE) force.stopReason = CampaignForceStopReason.RECOVERING;
+            return;
+        }
+        if (force.intent == CampaignForceIntent.MINING) {
+            force.workState = force.state == CampaignFleetState.MOVING ? CampaignForceWorkState.TRAVELING : CampaignForceWorkState.WORKING;
+            force.missionState = force.workState == CampaignForceWorkState.WORKING ? CampaignForceMissionState.WORKING : CampaignForceMissionState.TRAVELING;
+            if (force.workState == CampaignForceWorkState.WORKING) force.stopReason = CampaignForceStopReason.MINING;
+            return;
+        }
+        if (force.intent == CampaignForceIntent.REPAIRING || force.intent == CampaignForceIntent.DOCKING) {
+            force.workState = force.state == CampaignFleetState.MOVING ? CampaignForceWorkState.TRAVELING : CampaignForceWorkState.WORKING;
+            force.missionState = force.workState == CampaignForceWorkState.WORKING ? CampaignForceMissionState.WORKING : CampaignForceMissionState.TRAVELING;
+            if (force.workState == CampaignForceWorkState.WORKING) force.stopReason = force.intent == CampaignForceIntent.DOCKING ? CampaignForceStopReason.TRADING : CampaignForceStopReason.REPAIRING;
+            return;
+        }
+        if (force.intent == CampaignForceIntent.GUARDING || force.intent == CampaignForceIntent.HOLDING) {
+            force.workState = force.routePoints.isEmpty() ? CampaignForceWorkState.WAITING_WITH_PURPOSE : CampaignForceWorkState.TRAVELING;
+            force.missionState = force.routePoints.isEmpty() ? CampaignForceMissionState.WORKING : CampaignForceMissionState.TRAVELING;
+            if (force.workState == CampaignForceWorkState.WAITING_WITH_PURPOSE && force.stopReason == CampaignForceStopReason.NONE) {
+                force.stopReason = force.intent == CampaignForceIntent.GUARDING ? CampaignForceStopReason.GUARDING : CampaignForceStopReason.HOLDING_LINE;
+            }
+            return;
+        }
+        force.workState = force.routePoints.isEmpty() ? CampaignForceWorkState.WAITING_WITH_PURPOSE : CampaignForceWorkState.TRAVELING;
+        force.missionState = force.routePoints.isEmpty() ? CampaignForceMissionState.WORKING : CampaignForceMissionState.TRAVELING;
+        if (force.workState == CampaignForceWorkState.TRAVELING) {
+            force.stopReason = CampaignForceStopReason.NONE;
+        } else if (force.stopReason == CampaignForceStopReason.NONE) {
+            force.stopReason = stationaryStopReasonForIntent(force.intent);
+        }
+        if (!force.routePoints.isEmpty() && force.reassignmentCondition == CampaignForceReassignmentCondition.NONE) {
+            force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        }
+    }
+
+    private static void applyCampaignForceAntiIdle(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        CampaignForceLifecycleValidation validation = validateFleetLifecycle(st, force);
+        boolean expiredPurpose = force.stopReason != CampaignForceStopReason.NONE
+                && force.taskDeadlineSec <= 0.0
+                && force.workRemainingSec <= 0.0
+                && force.stationaryTimeSec > 18.0
+                && force.workState != CampaignForceWorkState.TRAVELING;
+        boolean idleTooLong = force.stopReason == CampaignForceStopReason.NONE && force.stationaryTimeSec > 12.0;
+        if (validation.valid && !expiredPurpose && !idleTooLong && force.missionState != CampaignForceMissionState.COMPLETED) return;
+        if (force.antiIdleReassignCooldownSec > 0.0 && validation.valid) return;
+        String reason = validation.valid
+                ? (force.missionState == CampaignForceMissionState.COMPLETED ? "mission complete" : (expiredPurpose ? "purpose timer expired" : "idle too long"))
+                : validation.invalidReason;
+        reassignInvalidCampaignForce(ctx, st, force, reason);
+    }
+
+    private static void reassignInvalidCampaignForce(GameContext ctx, CampaignState st, CampaignForce force, String reason) {
+        if (ctx == null || st == null || force == null) return;
+        String normalizedReason = reason == null ? "" : reason.toLowerCase(Locale.US);
+        if ((force.intent == CampaignForceIntent.RETREATING || force.workState == CampaignForceWorkState.RECOVERING
+                || normalizedReason.contains("safe destination"))
+                && (force.destinationLocationId == null || force.destinationLocationId.isBlank())) {
+            CampaignLocation safe = nearestSafeRecoveryHub(ctx, st, force);
+            if (safe != null) {
+                assignRetreatMission(st, force, safe.id);
+                logCampaignForceIdleFix(st, force, reason, "retreat " + safe.id);
+                return;
+            }
+        }
+        if ((force.mission == CampaignFleetMission.ESCORT || normalizedReason.contains("escort target"))
+                && (force.targetForceId <= 0 || campaignForceById(st, force.targetForceId) == null
+                || campaignForceById(st, force.targetForceId).destroyed)) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, force);
+            if (home != null) {
+                assignReturnToBaseMission(st, force, home.id);
+                logCampaignForceIdleFix(st, force, reason, "escort return " + home.id);
+                return;
+            }
+        }
+        if ((force.mission == CampaignFleetMission.PATROL || force.mission == CampaignFleetMission.RECON
+                || normalizedReason.contains("patrol mission"))
+                && force.patrolWaypoints.isEmpty()
+                && force.routePoints.isEmpty()) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, force);
+            if (home != null) {
+                assignPatrolMission(st, force, List.of(
+                        new double[]{home.x, home.y},
+                        new double[]{home.x + 220.0, home.y + 120.0},
+                        new double[]{home.x - 200.0, home.y - 140.0}));
+                logCampaignForceIdleFix(st, force, reason, "patrol loop " + home.id);
+                return;
+            }
+        }
+        if (force.mission == CampaignFleetMission.RAID
+                && (normalizedReason.contains("raid timed out") || normalizedReason.contains("combat mission"))) {
+            CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+            CampaignForce target = nearestWeakKnownNonEnemyForce(st, force);
+            if (target == null) target = nearestWeakNonEnemyForce(st, force);
+            if (target != null) {
+                assignRaidMission(st, force, target);
+                logCampaignForceIdleFix(st, force, reason, "raid target " + target.name);
+                return;
+            }
+            if (home != null) {
+                assignRetreatMission(st, force, home.id);
+                logCampaignForceIdleFix(st, force, reason, "raid return " + home.id);
+                return;
+            }
+        }
+        if (force.hullIntegrity < 62.0 || force.readiness < 54.0 || force.supply < 35.0 || force.fuelLevel < 35.0 || force.repairCapacity < 45.0) {
+            CampaignLocation repair = nearestSafeRecoveryHub(ctx, st, force);
+            if (repair != null) {
+                assignReturnToBaseMission(st, force, repair.id);
+                logCampaignForceIdleFix(st, force, reason, "return-to-base " + repair.id);
+                return;
+            }
+        }
+        CampaignForce hostile = nearestHostileCampaignForce(st, force.x, force.y, 720.0);
+        if (hostile != null && campaignFleetCombatPower(hostile) > campaignFleetCombatPower(force) * 1.25) {
+            CampaignLocation support = nearestSafeRecoveryHub(ctx, st, force);
+            if (support != null) {
+                assignRetreatMission(st, force, support.id);
+                logCampaignForceIdleFix(st, force, reason, "retreat " + support.id);
+                return;
+            }
+        }
+        if (force.kind == CampaignForceKind.MINING_GROUP && force.destinationLocationId != null && !force.destinationLocationId.isBlank()) {
+            assignMiningMission(st, force, force.destinationLocationId, force.sourceLocationId == null || force.sourceLocationId.isBlank() ? force.homeBaseId : force.sourceLocationId);
+            logCampaignForceIdleFix(st, force, reason, "mining " + force.destinationLocationId);
+            return;
+        }
+        if ((force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC)
+                && force.destinationLocationId != null && !force.destinationLocationId.isBlank()) {
+            CampaignLocation dest = campaignLocationById(st, force.destinationLocationId);
+            if (dest != null) {
+                setCampaignForceRoute(force, force.x, force.y, dest.x, dest.y);
+                force.intent = CampaignForceIntent.ESCORTING;
+                force.mission = CampaignFleetMission.CONVOY;
+                force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+                logCampaignForceIdleFix(st, force, reason, "convoy route " + dest.id);
+                return;
+            }
+        }
+        CampaignLocation poi = nearestCampaignPoi(st, force.x, force.y, 230.0);
+        if (poi != null && assignPoiWorkMission(ctx, st, force, poi)) {
+            logCampaignForceIdleFix(st, force, reason, "poi work " + poi.id);
+            return;
+        }
+        if (force.faction == Faction.ENEMY && hostile == null) {
+            assignRaidMission(st, force, nearestWeakNonEnemyForce(st, force));
+            logCampaignForceIdleFix(st, force, reason, "raid candidate");
+            return;
+        }
+        if (assignSimpleDirectorMission(ctx, st, force)) {
+            logCampaignForceIdleFix(st, force, reason, "simple director");
+            return;
+        }
+        CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+        if (home != null) {
+            assignPatrolMission(st, force, List.of(new double[]{home.x, home.y}, new double[]{force.x + 180.0, force.y + 120.0}, new double[]{force.x - 140.0, force.y - 100.0}));
+            logCampaignForceIdleFix(st, force, reason, "patrol home");
+            return;
+        }
+        assignFallbackRoamRoute(st, force, force.x, force.y);
+        force.intent = defaultCampaignForceIntent(force.kind, force.faction);
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.DIRECTOR_RECALL;
+        logCampaignForceIdleFix(st, force, reason, "fallback roam");
+    }
+
+    private static CampaignLocation nearestCampaignPoi(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || isUndiscoveredProceduralSite(location)) continue;
+            double d2 = GameMath.dist2(x, y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean assignPoiWorkMission(GameContext ctx, CampaignState st, CampaignForce force, CampaignLocation location) {
+        if (ctx == null || st == null || force == null || location == null || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
+        if (isShipyardLocation(location)) return assignShipyardPoiWork(ctx, st, force, location);
+        if (isRelayLocation(location)) return assignRelayPoiWork(st, force, location);
+        if (isStationLocation(location)) return assignStationPoiWork(ctx, st, force, location);
+        if (location.type == CampaignLocationType.RESOURCE_ZONE) return assignMiningSitePoiWork(ctx, st, force, location);
+        if (location.type == CampaignLocationType.SALVAGE_FIELD) return assignWreckPoiWork(ctx, st, force, location);
+        return false;
+    }
+
+    private static boolean assignMiningSitePoiWork(GameContext ctx, CampaignState st, CampaignForce force, CampaignLocation location) {
+        if (force.faction == Faction.ENEMY) {
+            CampaignForce target = nearestWeakNonEnemyForce(st, force);
+            if (target != null && GameMath.dist2(target.x, target.y, location.x, location.y) <= 620.0 * 620.0) {
+                assignRaidMission(st, force, target);
+            } else {
+                force.mission = CampaignFleetMission.RAID;
+                force.intent = CampaignForceIntent.INTERCEPTING;
+                force.stopReason = CampaignForceStopReason.AMBUSHING;
+                force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+                force.missionState = CampaignForceMissionState.WORKING;
+                force.workRemainingSec = Math.max(force.workRemainingSec, 18.0);
+                force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 34.0);
+            }
+            force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+            pushTheaterEvent(st, "POI WORK: Red raiding miners, damaging infrastructure, and ambushing routes at " + location.name);
+            return true;
+        }
+        if (force.faction == yellowSupportFaction(st) || force.kind == CampaignForceKind.MINING_GROUP) {
+            CampaignLocation refinery = nearestFriendlySupportHub(ctx, st, force.faction, location.x, location.y);
+            assignMiningMission(st, force, location.id, refinery == null ? force.homeBaseId : refinery.id);
+            pushTheaterEvent(st, "POI WORK: Yellow mining, loading cargo, selling rights, and requesting escort at " + location.name);
+            return true;
+        }
+        CampaignForce miner = nearestFriendlyMiningForce(st, force, location, 620.0);
+        if (miner != null) assignEscortMission(st, force, miner.id);
+        else {
+            force.mission = CampaignFleetMission.PATROL;
+            force.intent = CampaignForceIntent.GUARDING;
+            force.stopReason = CampaignForceStopReason.GUARDING;
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 20.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 38.0);
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+        pushTheaterEvent(st, "POI WORK: Green guarding mining site, escorting miners, repairing station, and clearing pirates at " + location.name);
+        return true;
+    }
+
+    private static boolean assignWreckPoiWork(GameContext ctx, CampaignState st, CampaignForce force, CampaignLocation location) {
+        if (force.faction == Faction.ENEMY) {
+            force.mission = CampaignFleetMission.RAID;
+            force.intent = CampaignForceIntent.SEARCHING;
+            force.stopReason = CampaignForceStopReason.AMBUSHING;
+            force.cargoKind = CampaignForceCargoKind.LOOT;
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 18.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 36.0);
+            force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+            pushTheaterEvent(st, "POI WORK: Red recovering black boxes, destroying evidence, ambushing rescue fleets, and looting weapons at " + location.name);
+            return true;
+        }
+        if (force.faction == yellowSupportFaction(st)) {
+            CampaignLocation station = nearestFriendlySupportHub(ctx, st, force.faction, location.x, location.y);
+            assignSalvageMission(st, force, location.x, location.y, station == null ? force.homeBaseId : station.id);
+            pushTheaterEvent(st, "POI WORK: Yellow salvaging parts, stealing cargo, selling recovered items, and competing with salvagers at " + location.name);
+            return true;
+        }
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.REPAIRING;
+        force.stopReason = CampaignForceStopReason.RECOVERING_SURVIVORS;
+        force.workState = CampaignForceWorkState.WORKING;
+        force.missionState = CampaignForceMissionState.WORKING;
+        force.workRemainingSec = Math.max(force.workRemainingSec, 18.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 36.0);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        pushTheaterEvent(st, "POI WORK: Green recovering survivors, salvaging military equipment, investigating battle, and securing technology at " + location.name);
+        return true;
+    }
+
+    private static boolean assignStationPoiWork(GameContext ctx, CampaignState st, CampaignForce force, CampaignLocation location) {
+        if (force.faction == Faction.ENEMY) {
+            assignBlockadeMission(st, force, location.id);
+            pushTheaterEvent(st, "POI WORK: Red raiding, blockading, infiltrating, bombarding, and scouting station approaches at " + location.name);
+            return true;
+        }
+        if (force.faction == yellowSupportFaction(st)) {
+            force.mission = CampaignFleetMission.CONVOY;
+            force.intent = CampaignForceIntent.DOCKING;
+            force.destinationLocationId = location.id;
+            force.stopReason = CampaignForceStopReason.TRADING;
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 14.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 30.0);
+            force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+            pushTheaterEvent(st, "POI WORK: Yellow trading, docking, selling information, hiring mercenaries, and transferring cargo at " + location.name);
+            return true;
+        }
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.REPAIRING;
+        force.destinationLocationId = location.id;
+        force.stopReason = location.services.contains(HubService.REPAIR) ? CampaignForceStopReason.REPAIRING : CampaignForceStopReason.GUARDING;
+        force.workState = CampaignForceWorkState.WORKING;
+        force.missionState = CampaignForceMissionState.WORKING;
+        force.workRemainingSec = Math.max(force.workRemainingSec, 16.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 34.0);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        pushTheaterEvent(st, "POI WORK: Green repairing, resupplying, guarding, escorting outbound convoys, and staging response at " + location.name);
+        return true;
+    }
+
+    private static boolean assignRelayPoiWork(CampaignState st, CampaignForce force, CampaignLocation location) {
+        force.mission = force.faction == Faction.ENEMY ? CampaignFleetMission.RECON : CampaignFleetMission.PATROL;
+        force.intent = force.faction == Faction.ENEMY ? CampaignForceIntent.SEARCHING : CampaignForceIntent.GUARDING;
+        force.destinationLocationId = location.id;
+        force.stopReason = force.faction == Faction.ENEMY ? CampaignForceStopReason.AMBUSHING : CampaignForceStopReason.SCANNING;
+        force.workState = CampaignForceWorkState.WORKING;
+        force.missionState = CampaignForceMissionState.WORKING;
+        force.workRemainingSec = Math.max(force.workRemainingSec, 14.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 32.0);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        String action = force.faction == Faction.ENEMY ? "Red jamming, capturing, destroying, and exploiting relay tracking"
+                : (force.faction == yellowSupportFaction(st) ? "Yellow selling data, smuggling information, and tapping communications"
+                : "Green defending communications, restoring damaged relay, and improving scanning");
+        pushTheaterEvent(st, "POI WORK: " + action + " at " + location.name);
+        return true;
+    }
+
+    private static boolean assignShipyardPoiWork(GameContext ctx, CampaignState st, CampaignForce force, CampaignLocation location) {
+        if (force.faction == Faction.ENEMY) {
+            assignBlockadeMission(st, force, location.id);
+            pushTheaterEvent(st, "POI WORK: Red attacking, blockading, sabotaging, and targeting repair convoys at " + location.name);
+            return true;
+        }
+        if (force.faction == yellowSupportFaction(st)) {
+            boolean assigned = assignStationPoiWork(ctx, st, force, location);
+            pushTheaterEvent(st, "POI WORK: Yellow buying repairs, trading parts, and offering contracts at " + location.name);
+            return assigned;
+        }
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.REINFORCING;
+        force.destinationLocationId = location.id;
+        force.stopReason = CampaignForceStopReason.STAGING;
+        force.workState = CampaignForceWorkState.WORKING;
+        force.missionState = CampaignForceMissionState.WORKING;
+        force.workRemainingSec = Math.max(force.workRemainingSec, 18.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 40.0);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        pushTheaterEvent(st, "POI WORK: Green shipyard repairing heavy fleets, building escorts, and staging assault/response groups at " + location.name);
+        return true;
+    }
+
+    private static boolean isStationLocation(CampaignLocation location) {
+        return location != null && (location.type == CampaignLocationType.REPAIR_SITE
+                || location.services != null && !location.services.isEmpty());
+    }
+
+    private static boolean isRelayLocation(CampaignLocation location) {
+        if (location == null) return false;
+        String name = location.name == null ? "" : location.name.toUpperCase(Locale.US);
+        return name.contains("RELAY")
+                || hasHubService(location, HubService.INTEL)
+                || location.type == CampaignLocationType.STORY_EVENT && name.contains("ECHO");
+    }
+
+    private static boolean isShipyardLocation(CampaignLocation location) {
+        return hasHubService(location, HubService.SHIPYARD);
+    }
+
+    private static boolean hasHubService(CampaignLocation location, HubService service) {
+        return location != null && service != null && location.services != null && location.services.contains(service);
+    }
+
+    private static CampaignForce nearestFriendlyMiningForce(CampaignState st, CampaignForce escort, CampaignLocation location, double radius) {
+        if (st == null || escort == null || location == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == escort || force.destroyed || force.kind != CampaignForceKind.MINING_GROUP) continue;
+            if (force.faction == Faction.ENEMY) continue;
+            double d2 = GameMath.dist2(force.x, force.y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static void logCampaignForceIdleFix(CampaignState st, CampaignForce force, String reason, String action) {
+        if (st == null || force == null) return;
+        String line = "IDLE FIX: " + force.name + " " + reason + " -> " + action;
+        pushTheaterEvent(st, line);
+        force.antiIdleReassignCooldownSec = 8.0;
+        resetCampaignForceAntiIdle(force);
+    }
+
+    private static void assignPatrolMission(CampaignState st, CampaignForce force, List<double[]> waypoints) {
+        if (st == null || force == null || waypoints == null || waypoints.isEmpty()) return;
+        force.mission = CampaignFleetMission.PATROL;
+        force.intent = force.faction == Faction.ENEMY ? CampaignForceIntent.SEARCHING : CampaignForceIntent.PATROLLING;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.patrolWaypoints.clear();
+        for (double[] waypoint : waypoints) {
+            if (waypoint == null || waypoint.length < 2 || !Double.isFinite(waypoint[0]) || !Double.isFinite(waypoint[1])) continue;
+            force.patrolWaypoints.add(new double[]{waypoint[0], waypoint[1]});
+        }
+        if (force.patrolWaypoints.isEmpty()) return;
+        force.patrolWaypointIndex = Math.max(0, Math.min(force.patrolWaypointIndex, force.patrolWaypoints.size() - 1));
+        double[] first = force.patrolWaypoints.get(force.patrolWaypointIndex);
+        setCampaignForceRoute(force, force.x, force.y, first[0], first[1]);
+        force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        force.taskDeadlineSec = 120.0;
+        force.workRemainingSec = 0.0;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignMiningMission(CampaignState st, CampaignForce force, String miningSiteId, String refineryId) {
+        if (st == null || force == null || miningSiteId == null || miningSiteId.isBlank()) return;
+        CampaignLocation site = campaignLocationById(st, miningSiteId);
+        if (site == null) return;
+        force.mission = CampaignFleetMission.CONVOY;
+        force.intent = CampaignForceIntent.MINING;
+        force.destinationLocationId = site.id;
+        force.sourceLocationId = refineryId == null ? force.sourceLocationId : refineryId;
+        if (force.homeBaseId == null || force.homeBaseId.isBlank()) force.homeBaseId = force.sourceLocationId;
+        force.cargoKind = CampaignForceCargoKind.ORE;
+        force.cargoCapacity = Math.max(force.cargoCapacity, 100.0);
+        if (GameMath.dist2(force.x, force.y, site.x, site.y) <= 130.0 * 130.0) {
+            force.routePoints.clear();
+            force.state = CampaignFleetState.SEARCHING;
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.MINING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, Math.max(8.0, (force.cargoCapacity - force.cargoLoad) / 8.0));
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, force.workRemainingSec + 12.0);
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, site.x, site.y);
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignSalvageMission(CampaignState st, CampaignForce force, double wreckX, double wreckY, String returnStationId) {
+        if (st == null || force == null || !Double.isFinite(wreckX) || !Double.isFinite(wreckY)) return;
+        force.mission = CampaignFleetMission.CONVOY;
+        force.intent = CampaignForceIntent.MINING;
+        force.destinationLocationId = "";
+        force.sourceLocationId = returnStationId == null ? force.sourceLocationId : returnStationId;
+        force.cargoKind = CampaignForceCargoKind.SALVAGE;
+        force.cargoCapacity = Math.max(force.cargoCapacity, 60.0);
+        if (GameMath.dist2(force.x, force.y, wreckX, wreckY) <= 130.0 * 130.0) {
+            force.routePoints.clear();
+            force.state = CampaignFleetState.SEARCHING;
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.SALVAGING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, Math.max(8.0, (force.cargoCapacity - force.cargoLoad) / 6.0));
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, force.workRemainingSec + 12.0);
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, wreckX, wreckY);
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.CARGO_FULL;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignEscortMission(CampaignState st, CampaignForce escort, int escortedForceId) {
+        if (st == null || escort == null || escortedForceId <= 0) return;
+        CampaignForce target = campaignForceById(st, escortedForceId);
+        if (target == null || target.destroyed || target.kind == CampaignForceKind.PLAYER_FLEET) return;
+        escort.mission = CampaignFleetMission.ESCORT;
+        escort.intent = CampaignForceIntent.ESCORTING;
+        escort.targetForceId = target.id;
+        escort.destinationLocationId = target.destinationLocationId == null ? "" : target.destinationLocationId;
+        escort.workState = CampaignForceWorkState.TRAVELING;
+        escort.missionState = CampaignForceMissionState.TRAVELING;
+        escort.stopReason = CampaignForceStopReason.NONE;
+        escort.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        escort.operatingRadius = Math.max(escort.operatingRadius, 760.0);
+        double leadX = Double.isFinite(target.targetX) ? target.targetX : target.x;
+        double leadY = Double.isFinite(target.targetY) ? target.targetY : target.y;
+        double dx = leadX - target.x;
+        double dy = leadY - target.y;
+        double len = Math.hypot(dx, dy);
+        double screenX = target.x + (len > 1e-6 ? dx / len * 140.0 : 90.0);
+        double screenY = target.y + (len > 1e-6 ? dy / len * 140.0 : 40.0);
+        setCampaignForceRoute(escort, escort.x, escort.y, screenX, screenY);
+        escort.intentTimerSec = Math.max(escort.intentTimerSec, 90.0);
+        escort.taskDeadlineSec = Math.max(escort.taskDeadlineSec, 120.0);
+        escort.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignRaidMission(CampaignState st, CampaignForce force, CampaignForce target) {
+        if (st == null || force == null) return;
+        force.mission = CampaignFleetMission.RAID;
+        force.intent = CampaignForceIntent.INTERCEPTING;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        if (target != null && !target.destroyed) {
+            force.targetForceId = target.id;
+            double angle = Math.atan2(target.y - force.y, target.x - force.x);
+            double flankX = target.x - Math.cos(angle) * 180.0 + Math.sin(angle) * 120.0;
+            double flankY = target.y - Math.sin(angle) * 180.0 - Math.cos(angle) * 120.0;
+            setCampaignForceRoute(force, force.x, force.y, flankX, flankY, target.x, target.y);
+            CampaignLocation source = campaignLocationById(st, force.sourceLocationId);
+            if (source == null) source = campaignLocationById(st, force.homeBaseId);
+            double eta = Math.max(1.0, Math.hypot(target.x - force.x, target.y - force.y) / Math.max(20.0, force.speed));
+            String sourceName = source == null ? trimmedOrFallback(force.origin, "unknown Red source") : source.name;
+            pushTheaterEvent(st, "RAID WARNING: " + force.name
+                    + " source " + sourceName
+                    + " target " + target.name
+                    + " ETA " + (int) Math.ceil(eta) + "s"
+                    + " actions ENGAGE_COURSE / INTERCEPT / SUPPORT");
+            assignRedScoutScreenAheadOf(st, force, target.x, target.y, "raider");
+        } else {
+            assignFallbackRoamRoute(st, force, force.x, force.y);
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        force.intentTimerSec = Math.max(force.intentTimerSec, 45.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 75.0);
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignHuntMission(CampaignState st, CampaignForce hunter, int targetForceId) {
+        if (st == null || hunter == null || targetForceId <= 0) return;
+        CampaignForce target = campaignForceById(st, targetForceId);
+        if (target == null || target.destroyed || target.kind == CampaignForceKind.PLAYER_FLEET) return;
+        hunter.mission = CampaignFleetMission.INTERCEPT;
+        hunter.intent = CampaignForceIntent.SEARCHING;
+        hunter.targetForceId = target.id;
+        hunter.workState = CampaignForceWorkState.TRAVELING;
+        hunter.missionState = CampaignForceMissionState.TRAVELING;
+        hunter.stopReason = CampaignForceStopReason.NONE;
+        NpcForceContact contact = hunter.knownHostileContacts == null ? null : hunter.knownHostileContacts.get(target.id);
+        double huntX = contact != null ? contact.x : (Double.isFinite(target.lastKnownX) ? target.lastKnownX : target.x);
+        double huntY = contact != null ? contact.y : (Double.isFinite(target.lastKnownY) ? target.lastKnownY : target.y);
+        double age = contact != null ? contact.ageSec : Math.max(0.0, target.lastKnownAgeSec);
+        if (contact == null && age > 0.0) {
+            huntX += MathUtil.clamp(target.lastKnownVelocityX * age, -360.0, 360.0);
+            huntY += MathUtil.clamp(target.lastKnownVelocityY * age, -360.0, 360.0);
+        }
+        double drift = Math.min(420.0, age * 8.0);
+        double angle = (hunter.id * 0.731 + target.id * 0.217) % (Math.PI * 2.0);
+        huntX = GameMath.clamp(huntX + Math.cos(angle) * drift, 0.0, Double.MAX_VALUE);
+        huntY = GameMath.clamp(huntY + Math.sin(angle) * drift, 0.0, Double.MAX_VALUE);
+        setCampaignForceRoute(hunter, hunter.x, hunter.y, huntX, huntY);
+        assignRedScoutScreenAheadOf(st, hunter, huntX, huntY, "hunter");
+        hunter.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        hunter.intentTimerSec = Math.max(hunter.intentTimerSec, 60.0);
+        hunter.taskDeadlineSec = Math.max(hunter.taskDeadlineSec, 90.0);
+        hunter.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignBlockadeMission(CampaignState st, CampaignForce force, String chokepointOrLocationId) {
+        if (st == null || force == null || chokepointOrLocationId == null || chokepointOrLocationId.isBlank()) return;
+        CampaignLocation target = campaignLocationById(st, chokepointOrLocationId);
+        if (target == null) return;
+        force.mission = CampaignFleetMission.BLOCKADE;
+        force.intent = CampaignForceIntent.GUARDING;
+        force.destinationLocationId = target.id;
+        force.targetX = target.x;
+        force.targetY = target.y;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        force.operatingRadius = Math.max(force.operatingRadius, 640.0);
+        force.intentTimerSec = Math.max(force.intentTimerSec, 90.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 150.0);
+        if (GameMath.dist2(force.x, force.y, target.x, target.y) <= 160.0 * 160.0) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.BLOCKADING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 30.0);
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, target.x, target.y);
+        }
+        assignRedScoutScreenAheadOf(st, force, target.x, target.y, "blockade");
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignSiegeMission(CampaignState st, CampaignForce force, String stagingPointId, String targetLocationId) {
+        if (st == null || force == null || stagingPointId == null || targetLocationId == null) return;
+        CampaignLocation staging = campaignLocationById(st, stagingPointId);
+        CampaignLocation target = campaignLocationById(st, targetLocationId);
+        if (staging == null || target == null) return;
+        force.mission = CampaignFleetMission.CAPTURE;
+        force.intent = CampaignForceIntent.REINFORCING;
+        force.sourceLocationId = staging.id;
+        force.destinationLocationId = target.id;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        force.operatingRadius = Math.max(force.operatingRadius, 1600.0);
+        force.intentTimerSec = Math.max(force.intentTimerSec, 180.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 240.0);
+        force.workRemainingSec = Math.max(force.workRemainingSec, 35.0);
+        force.targetX = target.x;
+        force.targetY = target.y;
+        if (GameMath.dist2(force.x, force.y, staging.x, staging.y) <= 150.0 * 150.0) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.STAGING;
+            force.state = CampaignFleetState.SEARCHING;
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, staging.x, staging.y);
+        }
+        double eta = Math.max(1.0, Math.hypot(target.x - force.x, target.y - force.y) / Math.max(20.0, force.speed));
+        pushTheaterEvent(st, "SIEGE WARNING: " + force.name + " source " + staging.name
+                + " target " + target.name + " ETA " + (int) Math.ceil(eta) + "s");
+        assignRedScoutScreenAheadOf(st, force, target.x, target.y, "siege");
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static boolean assignGreenAssaultMission(GameContext ctx, CampaignState st, CampaignForce force, String targetLocationId) {
+        if (ctx == null || st == null || force == null || targetLocationId == null || targetLocationId.isBlank()) return false;
+        if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) return false;
+        CampaignLocation target = campaignLocationById(st, targetLocationId);
+        if (target == null) return false;
+        CampaignLocation staging = nearestGreenResponseStagingHub(ctx, st, force, target.x, target.y);
+        if (staging == null) return false;
+        assignSiegeMission(st, force, staging.id, target.id);
+        force.intent = CampaignForceIntent.REINFORCING;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        double supportPower = nearbySameFactionSupportPower(st, force, staging.x, staging.y, 560.0);
+        boolean ready = campaignFleetCombatPower(force) >= 55.0 && supportPower >= 28.0;
+        if (!ready) {
+            force.routePoints.clear();
+            force.x = staging.x;
+            force.y = staging.y;
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.WAITING_FOR_REINFORCEMENTS;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 24.0);
+            pushTheaterEvent(st, "GREEN ASSAULT STAGING: " + force.name + " waiting at " + staging.name
+                    + " for strength/support before assaulting " + target.name);
+        } else {
+            pushTheaterEvent(st, "GREEN ASSAULT STAGING: " + force.name + " launching from " + staging.name
+                    + " toward " + target.name + " with support ready");
+        }
+        return true;
+    }
+
+    private static boolean assignRedInvasionMission(CampaignState st, CampaignForce spearhead, String stagingPointId) {
+        if (st == null || spearhead == null || spearhead.faction != Faction.ENEMY) return false;
+        CampaignLocation staging = campaignLocationById(st, stagingPointId);
+        if (staging == null) staging = nearestRedDefenseBase(st, spearhead.x, spearhead.y);
+        if (staging == null) return false;
+        List<CampaignLocation> targets = redInvasionTargets(st, staging, 3);
+        if (targets.isEmpty()) return false;
+        CampaignLocation primary = targets.get(0);
+        assignSiegeMission(st, spearhead, staging.id, primary.id);
+        spearhead.operatingRadius = Math.max(spearhead.operatingRadius, 1900.0);
+        int assigned = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == spearhead || force.destroyed || force.faction != Faction.ENEMY) continue;
+            if (force.kind == CampaignForceKind.PLAYER_FLEET || force.kind == CampaignForceKind.BASE_DEFENSE) continue;
+            if (GameMath.dist2(force.x, force.y, staging.x, staging.y) > 1900.0 * 1900.0) continue;
+            if (isRedReconScoutForce(force)) {
+                assignRedScoutScreenAheadOf(st, spearhead, primary.x, primary.y, "invasion");
+                assigned++;
+                continue;
+            }
+            CampaignLocation target = targets.get(Math.min(targets.size() - 1, assigned + 1));
+            if (assigned % 2 == 0) {
+                assignSiegeMission(st, force, staging.id, target.id);
+            } else {
+                CampaignForce victim = nearestWeakNonEnemyForce(st, force);
+                if (victim != null) assignRaidMission(st, force, victim);
+                else assignBlockadeMission(st, force, target.id);
+            }
+            assigned++;
+            if (assigned >= 4) break;
+        }
+        pushTheaterEvent(st, "RED INVASION: " + spearhead.name + " assembled from " + staging.name
+                + " to capture " + targets.stream().map(t -> t.name).collect(Collectors.joining(", "))
+                + " and establish forward bases");
+        pushTheaterEvent(st, "MULTI-FLEET SIEGE: Red invasion wings deploying scouts/raiders outward from " + staging.name);
+        return true;
+    }
+
+    private static List<CampaignLocation> redInvasionTargets(CampaignState st, CampaignLocation staging, int maxTargets) {
+        if (st == null || staging == null) return List.of();
+        ArrayList<CampaignLocation> targets = new ArrayList<>();
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.id.equals(staging.id) || isUndiscoveredProceduralSite(location)) continue;
+            if (location.type == CampaignLocationType.ENEMY_ACTIVITY) continue;
+            if (location.type != CampaignLocationType.MAIN_MISSION
+                    && location.type != CampaignLocationType.REPAIR_SITE
+                    && location.type != CampaignLocationType.RESOURCE_ZONE
+                    && (location.services == null || location.services.isEmpty())) continue;
+            targets.add(location);
+        }
+        targets.sort(Comparator.comparingDouble(location -> GameMath.dist2(staging.x, staging.y, location.x, location.y)));
+        if (targets.size() <= Math.max(1, maxTargets)) return List.copyOf(targets);
+        return List.copyOf(targets.subList(0, Math.max(1, maxTargets)));
+    }
+
+    private static boolean assignRedScoutScreenAheadOf(CampaignState st,
+                                                       CampaignForce mainForce,
+                                                       double targetX,
+                                                       double targetY,
+                                                       String operationLabel) {
+        if (st == null || mainForce == null || mainForce.faction != Faction.ENEMY || isRedReconScoutForce(mainForce)) return false;
+        if (!Double.isFinite(targetX) || !Double.isFinite(targetY)) return false;
+        CampaignForce scout = nearestAvailableRedScoutForScreen(st, mainForce, targetX, targetY);
+        if (scout == null) return false;
+        double dx = targetX - mainForce.x;
+        double dy = targetY - mainForce.y;
+        double len = Math.hypot(dx, dy);
+        double nx = len > 1e-6 ? dx / len : 1.0;
+        double ny = len > 1e-6 ? dy / len : 0.0;
+        double screenX = targetX - nx * 220.0 + ny * 80.0;
+        double screenY = targetY - ny * 220.0 - nx * 80.0;
+        scout.mission = CampaignFleetMission.RECON;
+        scout.intent = CampaignForceIntent.SEARCHING;
+        scout.targetForceId = mainForce.id;
+        scout.destinationLocationId = mainForce.destinationLocationId == null ? "" : mainForce.destinationLocationId;
+        scout.workState = CampaignForceWorkState.TRAVELING;
+        scout.missionState = CampaignForceMissionState.TRAVELING;
+        scout.stopReason = CampaignForceStopReason.NONE;
+        scout.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        scout.operatingRadius = Math.max(scout.operatingRadius, 1400.0);
+        scout.intentTimerSec = Math.max(scout.intentTimerSec, 75.0);
+        scout.taskDeadlineSec = Math.max(scout.taskDeadlineSec, 110.0);
+        setCampaignForceRoute(scout, scout.x, scout.y, screenX, screenY, targetX, targetY);
+        pushTheaterEvent(st, "RED SCOUT SCREEN: " + scout.name + " moving ahead of "
+                + mainForce.name + " " + trimmedOrFallback(operationLabel, "operation"));
+        return true;
+    }
+
+    private static CampaignForce nearestAvailableRedScoutForScreen(CampaignState st,
+                                                                   CampaignForce mainForce,
+                                                                   double targetX,
+                                                                   double targetY) {
+        if (st == null || mainForce == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        TheaterId theater = theaterForPoint(st, mainForce.y);
+        for (CampaignForce candidate : st.campaignForces) {
+            if (candidate == null || candidate == mainForce || candidate.destroyed || candidate.faction != Faction.ENEMY) continue;
+            if (!isRedReconScoutForce(candidate)) continue;
+            if (candidate.targetForceId == mainForce.id && candidate.mission == CampaignFleetMission.RECON) return null;
+            if (candidate.targetForceId > 0 && candidate.mission == CampaignFleetMission.RECON) continue;
+            double d2Main = GameMath.dist2(candidate.x, candidate.y, mainForce.x, mainForce.y);
+            double d2Target = GameMath.dist2(candidate.x, candidate.y, targetX, targetY);
+            if (theaterForPoint(st, candidate.y) != theater && d2Main > 2600.0 * 2600.0) continue;
+            double score = d2Main * 0.7 + d2Target * 0.3;
+            if (score < bestD2) {
+                best = candidate;
+                bestD2 = score;
+            }
+        }
+        return best;
+    }
+
+    private static boolean assignRedDefenseMission(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || force.faction != Faction.ENEMY || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
+        CampaignLocation base = nearestRedDefenseBase(st, force.x, force.y);
+        CampaignForce damaged = nearestDamagedRedForce(st, force, 920.0);
+        if (damaged != null) {
+            force.mission = CampaignFleetMission.REINFORCE;
+            force.intent = CampaignForceIntent.REINFORCING;
+            force.targetForceId = damaged.id;
+            force.destinationLocationId = damaged.destinationLocationId == null ? "" : damaged.destinationLocationId;
+            force.workState = CampaignForceWorkState.TRAVELING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.NONE;
+            force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+            force.operatingRadius = Math.max(force.operatingRadius, 900.0);
+            force.intentTimerSec = Math.max(force.intentTimerSec, 90.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 130.0);
+            setCampaignForceRoute(force, force.x, force.y, damaged.x, damaged.y);
+            pushTheaterEvent(st, "RED DEFENSE: " + force.name + " reinforcing damaged " + damaged.name);
+            return true;
+        }
+        if (base != null) {
+            CampaignForce intruder = nearestNonRedForce(st, base.x, base.y, 840.0);
+            if (intruder != null) {
+                assignHuntMission(st, force, intruder.id);
+                force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                pushTheaterEvent(st, "RED DEFENSE: " + force.name + " counterattacking " + intruder.name + " near " + base.name);
+                return true;
+            }
+            force.sourceLocationId = base.id;
+            force.homeBaseId = base.id;
+            force.destinationLocationId = base.id;
+            assignPatrolMission(st, force, List.of(
+                    new double[]{base.x + 220.0, base.y - 120.0},
+                    new double[]{base.x - 190.0, base.y + 140.0},
+                    new double[]{base.x + 80.0, base.y + 210.0}
+            ));
+            force.intent = CampaignForceIntent.GUARDING;
+            force.stopReason = CampaignForceStopReason.NONE;
+            pushTheaterEvent(st, "RED DEFENSE: " + force.name + " protecting Red base " + base.name);
+            return true;
+        }
+        return false;
+    }
+
+    private static CampaignLocation nearestRedDefenseBase(CampaignState st, double x, double y) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.type != CampaignLocationType.ENEMY_ACTIVITY || isUndiscoveredProceduralSite(location)) continue;
+            double d2 = GameMath.dist2(x, y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestDamagedRedForce(CampaignState st, CampaignForce defender, double radius) {
+        if (st == null || defender == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce candidate : st.campaignForces) {
+            if (candidate == null || candidate == defender || candidate.destroyed || candidate.faction != Faction.ENEMY) continue;
+            if (candidate.kind == CampaignForceKind.PLAYER_FLEET || isRedReconScoutForce(candidate)) continue;
+            if (candidate.hullIntegrity >= 58.0 && candidate.readiness >= 52.0 && candidate.strength >= 38.0) continue;
+            double d2 = GameMath.dist2(defender.x, defender.y, candidate.x, candidate.y);
+            if (d2 < bestD2) {
+                best = candidate;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestNonRedForce(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction == Faction.ENEMY || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            double d2 = GameMath.dist2(force.x, force.y, x, y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static void assignRepairRescueMission(CampaignState st, CampaignForce force, int damagedAllyId) {
+        if (st == null || force == null || damagedAllyId <= 0) return;
+        CampaignForce ally = campaignForceById(st, damagedAllyId);
+        if (ally == null || ally.destroyed || ally.kind == CampaignForceKind.PLAYER_FLEET) return;
+        if (ally == force || ally.faction == Faction.ENEMY || force.faction == Faction.ENEMY) return;
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.REINFORCING;
+        force.targetForceId = ally.id;
+        force.destinationLocationId = ally.destinationLocationId == null ? "" : ally.destinationLocationId;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        force.operatingRadius = Math.max(force.operatingRadius, 760.0);
+        force.intentTimerSec = Math.max(force.intentTimerSec, 120.0);
+        force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 180.0);
+        if (GameMath.dist2(force.x, force.y, ally.x, ally.y) <= 130.0 * 130.0) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = ally.strength < 22.0 ? CampaignForceStopReason.RECOVERING_SURVIVORS : CampaignForceStopReason.REPAIRING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 10.0);
+            force.state = CampaignFleetState.SEARCHING;
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, ally.x, ally.y);
+        }
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignReturnToBaseMission(CampaignState st, CampaignForce force, String baseId) {
+        if (st == null || force == null || baseId == null || baseId.isBlank()) return;
+        CampaignLocation base = campaignLocationById(st, baseId);
+        if (base == null) return;
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.REPAIRING;
+        force.destinationLocationId = base.id;
+        force.homeBaseId = force.homeBaseId == null || force.homeBaseId.isBlank() ? base.id : force.homeBaseId;
+        force.workState = CampaignForceWorkState.RECOVERING;
+        force.missionState = CampaignForceMissionState.RECOVERING;
+        force.stopReason = CampaignForceStopReason.RECOVERING;
+        if (GameMath.dist2(force.x, force.y, base.x, base.y) <= 120.0 * 120.0) {
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = force.fuelLevel < 80.0 ? CampaignForceStopReason.REFUELING : CampaignForceStopReason.REPAIRING;
+            force.workRemainingSec = Math.max(8.0, (400.0 - force.fuelLevel - force.ammoLevel - force.repairCapacity - force.crewReadiness) / 20.0);
+            force.taskDeadlineSec = force.workRemainingSec + 12.0;
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, base.x, base.y);
+            force.stopReason = CampaignForceStopReason.RECOVERING;
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static void assignRetreatMission(CampaignState st, CampaignForce force, String safeDestinationId) {
+        if (st == null || force == null || safeDestinationId == null || safeDestinationId.isBlank()) return;
+        CampaignLocation safe = campaignLocationById(st, safeDestinationId);
+        if (safe == null) return;
+        force.mission = CampaignFleetMission.REPAIR;
+        force.intent = CampaignForceIntent.RETREATING;
+        force.destinationLocationId = safe.id;
+        force.workState = CampaignForceWorkState.RECOVERING;
+        force.missionState = CampaignForceMissionState.RETREATING;
+        if (force.riskTolerance < 35.0 && force.cargoLoad > 0.0) {
+            force.cargoLoad = Math.max(0.0, force.cargoLoad * 0.75);
+        }
+        double[] avoid = retreatAvoidanceWaypoint(st, force, safe.x, safe.y);
+        if (avoid != null) {
+            setCampaignForceRoute(force, force.x, force.y, avoid[0], avoid[1], safe.x, safe.y);
+        } else {
+            setCampaignForceRoute(force, force.x, force.y, safe.x, safe.y);
+        }
+        force.stopReason = CampaignForceStopReason.AVOIDING_SUPERIOR_THREAT;
+        if (force.hullIntegrity < 42.0 || force.readiness < 36.0) {
+            force.speed = Math.max(55.0, Math.min(force.speed, campaignForceBaseSpeed(force.kind, force.faction) * 0.72));
+        }
+        if (force.visibleToPlayer || force.contactConfidence > 0.12 || force.lastKnownAgeSec < 90.0) {
+            noteCampaignForceKnownPosition(force, force.x, force.y, Math.max(force.contactConfidence, 0.28), 220.0);
+            force.contactConfidence = Math.max(force.contactConfidence, 0.28);
+            force.uncertaintyRadius = Math.min(Math.max(force.uncertaintyRadius, 180.0), 360.0);
+        }
+        force.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+        force.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static double[] retreatAvoidanceWaypoint(CampaignState st, CampaignForce force, double safeX, double safeY) {
+        if (st == null || force == null) return null;
+        double bestX = Double.NaN;
+        double bestY = Double.NaN;
+        double bestDistance = 520.0;
+        for (NpcForceContact contact : force.knownHostileContacts.values()) {
+            if (contact == null || contact.confidence < 0.18 || contact.ageSec > 240.0) continue;
+            double d = distancePointToSegment(contact.x, contact.y, force.x, force.y, safeX, safeY);
+            if (d < bestDistance) {
+                bestDistance = d;
+                bestX = contact.x;
+                bestY = contact.y;
+            }
+        }
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other == force || other.destroyed || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (!campaignForcesAreOpposed(force, other)) continue;
+            double d = distancePointToSegment(other.x, other.y, force.x, force.y, safeX, safeY);
+            if (d < bestDistance) {
+                bestDistance = d;
+                bestX = other.x;
+                bestY = other.y;
+            }
+        }
+        if (!Double.isFinite(bestX) || !Double.isFinite(bestY)) return null;
+        double vx = safeX - force.x;
+        double vy = safeY - force.y;
+        double len = Math.hypot(vx, vy);
+        if (len < 1.0) return null;
+        double midX = (force.x + safeX) * 0.5;
+        double midY = (force.y + safeY) * 0.5;
+        double cross = vx * (bestY - force.y) - vy * (bestX - force.x);
+        double side = cross >= 0.0 ? -1.0 : 1.0;
+        double lateral = MathUtil.clamp(360.0 + (520.0 - bestDistance) * 0.45, 360.0, 620.0);
+        double px = -vy / len;
+        double py = vx / len;
+        return new double[]{midX + px * lateral * side, midY + py * lateral * side};
+    }
+
+    private static boolean campaignForcesAreOpposed(CampaignForce a, CampaignForce b) {
+        if (a == null || b == null || a.faction == b.faction) return false;
+        if (a.faction == Faction.ENEMY) return b.faction == Faction.TEAM_C || b.faction == Faction.ALLY;
+        if (b.faction == Faction.ENEMY) return true;
+        return false;
+    }
+
+    private static boolean assignSimpleDirectorMission(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
+        if (force.hullIntegrity < 62.0 || force.readiness < 54.0 || force.supply < 35.0 || force.fuelLevel < 35.0 || force.repairCapacity < 45.0) {
+            CampaignLocation repair = nearestSafeRecoveryHub(ctx, st, force);
+            if (repair != null) {
+                assignReturnToBaseMission(st, force, repair.id);
+                logSimpleDirectorAssignment(st, force, "repair", "damaged or low supply");
+                return true;
+            }
+        }
+        if (force.faction == Faction.ENEMY) {
+            String upperName = force.name == null ? "" : force.name.toUpperCase(Locale.US);
+            if ((force.kind == CampaignForceKind.BASE_DEFENSE
+                    || upperName.contains("DEFENSE")
+                    || upperName.contains("GARRISON"))
+                    && assignRedDefenseMission(st, force)) {
+                logSimpleDirectorAssignment(st, force, "red-defense", "base defense and local reinforcement");
+                return true;
+            }
+            if (force.kind == CampaignForceKind.TASK_FORCE
+                    && (upperName.contains("INVASION") || upperName.contains("SIEGE"))
+                    && assignRedInvasionMission(st, force, force.homeBaseId)) {
+                logSimpleDirectorAssignment(st, force, "red-invasion", "multi-fleet siege escalation");
+                return true;
+            }
+            CampaignForce target = nearestWeakKnownNonEnemyForce(st, force);
+            if (target == null) target = nearestWeakNonEnemyForce(st, force);
+            if (target != null) {
+                assignRaidMission(st, force, target);
+                logSimpleDirectorAssignment(st, force, "raid", "weak known target " + target.name);
+                return true;
+            }
+            CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+            if (home != null) {
+                assignPatrolMission(st, force, List.of(
+                        new double[]{home.x, home.y},
+                        new double[]{home.x + 260.0, home.y - 160.0},
+                        new double[]{home.x - 240.0, home.y + 120.0}));
+                logSimpleDirectorAssignment(st, force, "scout-patrol", "target intel stale near " + home.name);
+                return true;
+            }
+            return false;
+        }
+        if ((force.faction == greenSupportFaction(st) || force.faction == Faction.ALLY)
+                && (force.kind == CampaignForceKind.PATROL_GROUP
+                || force.kind == CampaignForceKind.TASK_FORCE
+                || force.kind == CampaignForceKind.BASE_DEFENSE
+                || force.kind == CampaignForceKind.LOCAL_FORCE)) {
+            CampaignForce damaged = nearestDamagedReachableFriendlyForce(st, force, 1350.0);
+            if (damaged != null) {
+                assignRepairRescueMission(st, force, damaged.id);
+                logSimpleDirectorAssignment(st, force, "rescue", "damaged friendly " + damaged.name);
+                return true;
+            }
+            CampaignForce vulnerable = nearestVulnerableUnescortedForce(st, force, 1250.0);
+            if (vulnerable != null) {
+                assignEscortMission(st, force, vulnerable.id);
+                logSimpleDirectorAssignment(st, force, "escort", "vulnerable traffic " + vulnerable.name);
+                return true;
+            }
+        }
+        RecoverableWreckSite wreck = nearestRecoverableWreckSite(st, force.x, force.y);
+        if (force.faction == yellowSupportFaction(st)
+                && wreck != null
+                && isYellowSalvageCandidate(force)) {
+            CampaignLocation station = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+            String stationId = station == null ? force.homeBaseId : station.id;
+            assignSalvageMission(st, force, wreck.x, wreck.y, stationId);
+            logSimpleDirectorAssignment(st, force, "salvage", "recoverable wreck " + wreck.label);
+            return true;
+        }
+        if (force.kind == CampaignForceKind.MINING_GROUP) {
+            CampaignLocation resource = campaignLocationById(st, force.destinationLocationId);
+            if (resource == null) resource = nearestResourceLocation(st, force.x, force.y);
+            if (resource != null) {
+                String refinery = force.homeBaseId == null || force.homeBaseId.isBlank() ? force.sourceLocationId : force.homeBaseId;
+                assignMiningMission(st, force, resource.id, refinery);
+                logSimpleDirectorAssignment(st, force, "mine", "resource site " + resource.name);
+                return true;
+            }
+        }
+        if (force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC) {
+            CampaignLocation source = campaignLocationById(st, force.homeBaseId);
+            if (source == null) source = campaignLocationById(st, force.sourceLocationId);
+            CampaignLocation destination = campaignLocationById(st, force.destinationLocationId);
+            if (destination == null && source != null) destination = nearestTradeTarget(st, source, force.faction);
+            if (destination == null) destination = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+            if (source != null && destination != null && !source.id.equals(destination.id)) {
+                force.mission = CampaignFleetMission.CONVOY;
+                force.intent = CampaignForceIntent.ESCORTING;
+                force.destinationLocationId = destination.id;
+                setCampaignForceRoute(force, force.x, force.y, destination.x, destination.y, source.x, source.y);
+                logSimpleDirectorAssignment(st, force, "trade", "route " + source.name + " to " + destination.name);
+                return true;
+            }
+        }
+        CampaignLocation home = campaignLocationById(st, force.homeBaseId);
+        if (home == null) home = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+        if (home != null) {
+            assignPatrolMission(st, force, List.of(
+                    new double[]{home.x, home.y},
+                    new double[]{home.x + 220.0, home.y + 120.0},
+                    new double[]{home.x - 200.0, home.y - 140.0}));
+            logSimpleDirectorAssignment(st, force, "patrol", "home coverage near " + home.name);
+            return true;
+        }
+        return false;
+    }
+
+    private static CampaignForce nearestDamagedReachableFriendlyForce(CampaignState st, CampaignForce rescuer, double radius) {
+        if (st == null || rescuer == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce candidate : st.campaignForces) {
+            if (candidate == null || candidate == rescuer || candidate.destroyed || candidate.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (candidate.faction == Faction.ENEMY || candidate.faction == Faction.PLAYER) continue;
+            if (candidate.faction != rescuer.faction
+                    && candidate.faction != Faction.ALLY
+                    && candidate.faction != yellowSupportFaction(st)) continue;
+            boolean physicallyDamaged = candidate.hullIntegrity < 58.0 || candidate.readiness < 54.0;
+            boolean criticallyWeakAndDegraded = candidate.strength < 34.0
+                    && (candidate.hullIntegrity < 75.0 || candidate.readiness < 70.0);
+            if (!physicallyDamaged && !criticallyWeakAndDegraded) continue;
+            if (campaignForceHasRepairRescue(st, candidate.id)) continue;
+            double d2 = GameMath.dist2(rescuer.x, rescuer.y, candidate.x, candidate.y);
+            if (d2 < bestD2) {
+                best = candidate;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestVulnerableUnescortedForce(CampaignState st, CampaignForce escort, double radius) {
+        if (st == null || escort == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce candidate : st.campaignForces) {
+            if (candidate == null || candidate == escort || candidate.destroyed || candidate.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (candidate.faction == Faction.ENEMY || candidate.faction == Faction.PLAYER) continue;
+            if (candidate.faction != yellowSupportFaction(st) && candidate.faction != Faction.ALLY) continue;
+            if (candidate.kind != CampaignForceKind.MINING_GROUP
+                    && candidate.kind != CampaignForceKind.CONVOY
+                    && candidate.kind != CampaignForceKind.TRADE_GROUP
+                    && candidate.kind != CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+            if (campaignFleetCombatPower(candidate) > campaignFleetCombatPower(escort) * doctrineForForce(st, escort).escortPriority) continue;
+            if (campaignForceHasEscort(st, candidate.id)) continue;
+            double d2 = GameMath.dist2(escort.x, escort.y, candidate.x, candidate.y);
+            if (d2 < bestD2) {
+                best = candidate;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean campaignForceHasEscort(CampaignState st, int targetForceId) {
+        if (st == null || targetForceId <= 0) return false;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.mission != CampaignFleetMission.ESCORT) continue;
+            if (force.targetForceId == targetForceId) return true;
+        }
+        return false;
+    }
+
+    private static boolean campaignForceHasRepairRescue(CampaignState st, int targetForceId) {
+        if (st == null || targetForceId <= 0) return false;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.mission != CampaignFleetMission.REPAIR) continue;
+            if (force.targetForceId == targetForceId) return true;
+        }
+        return false;
+    }
+
+    private static void logSimpleDirectorAssignment(CampaignState st, CampaignForce force, String selected, String reason) {
+        if (st == null || force == null) return;
+        pushTheaterEvent(st, "DIRECTOR SIMPLE: " + force.name
+                + " top=" + simpleDirectorTopCandidateLine(st, force)
+                + " selected=" + trimmedOrFallback(selected, "patrol")
+                + " reason=" + trimmedOrFallback(reason, "valid fallback order"));
+    }
+
+    private static String simpleDirectorTopCandidateLine(CampaignState st, CampaignForce force) {
+        if (st == null || force == null) return "patrol:1";
+        ArrayList<String> scores = new ArrayList<>();
+        double repair = Math.max(0.0, 100.0 - Math.min(Math.min(force.hullIntegrity, force.readiness), Math.min(force.supply, force.fuelLevel)));
+        if (force.repairCapacity < 45.0) repair = Math.max(repair, 55.0);
+        scores.add("repair:" + (int) Math.round(repair));
+        CampaignForce weak = nearestWeakKnownNonEnemyForce(st, force);
+        if (weak == null) weak = nearestWeakNonEnemyForce(st, force);
+        scores.add("raid:" + (weak == null ? 0 : (int) Math.round(raidTargetPriority(weak) * 14.0)));
+        CampaignForce damaged = nearestDamagedReachableFriendlyForce(st, force, 1350.0);
+        scores.add("rescue:" + (damaged == null ? 0 : (int) Math.round(100.0 - Math.min(damaged.hullIntegrity, damaged.readiness))));
+        CampaignForce vulnerable = nearestVulnerableUnescortedForce(st, force, 1250.0);
+        scores.add("escort:" + (vulnerable == null ? 0 : (int) Math.round(Math.max(8.0, 70.0 - vulnerable.strength))));
+        RecoverableWreckSite wreck = nearestRecoverableWreckSite(st, force.x, force.y);
+        scores.add("salvage:" + (wreck == null ? 0 : (int) Math.round(Math.min(80.0, wreck.salvageValue))));
+        scores.add("mine:" + (force.kind == CampaignForceKind.MINING_GROUP ? 48 : 0));
+        scores.add("trade:" + ((force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC) ? 42 : 0));
+        scores.add("patrol:" + (force.faction == Faction.ENEMY ? 34 : 30));
+        scores.sort((a, b) -> Integer.compare(parseDirectorScore(b), parseDirectorScore(a)));
+        return scores.stream().limit(3).collect(Collectors.joining(","));
+    }
+
+    private static int parseDirectorScore(String score) {
+        if (score == null) return 0;
+        int idx = score.lastIndexOf(':');
+        if (idx < 0 || idx >= score.length() - 1) return 0;
+        try {
+            return Integer.parseInt(score.substring(idx + 1));
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
+
+    private static boolean isYellowSalvageCandidate(CampaignForce force) {
+        if (force == null) return false;
+        String upper = force.name == null ? "" : force.name.toUpperCase(Locale.US);
+        return upper.contains("SALVAGE")
+                || upper.contains("RECOVERY")
+                || force.cargoKind == CampaignForceCargoKind.SALVAGE
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.LOCAL_FORCE;
+    }
+
+    private static RecoverableWreckSite nearestRecoverableWreckSite(CampaignState st, double x, double y) {
+        if (st == null || st.recoverableWreckSites.isEmpty()) return null;
+        RecoverableWreckSite best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (RecoverableWreckSite wreck : st.recoverableWreckSites) {
+            if (wreck == null || wreck.claimed || wreck.salvageValue <= 0.0) continue;
+            double d2 = GameMath.dist2(x, y, wreck.x, wreck.y);
+            if (d2 < bestD2) {
+                best = wreck;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static RecoverableWreckSite nearestActiveRecoverableWreckSite(CampaignState st, double x, double y, double radius) {
+        if (st == null || st.recoverableWreckSites.isEmpty()) return null;
+        RecoverableWreckSite best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (RecoverableWreckSite wreck : st.recoverableWreckSites) {
+            if (wreck == null || wreck.claimed || wreck.salvageValue <= 0.0) continue;
+            double d2 = GameMath.dist2(x, y, wreck.x, wreck.y);
+            if (d2 < bestD2) {
+                best = wreck;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestWeakKnownNonEnemyForce(CampaignState st, CampaignForce hunter) {
+        if (st == null || hunter == null || hunter.knownHostileContacts == null || hunter.knownHostileContacts.isEmpty()) return null;
+        CampaignForce best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (NpcForceContact contact : hunter.knownHostileContacts.values()) {
+            if (contact == null || contact.forceId <= 0 || contact.confidence < 0.12) continue;
+            CampaignForce other = campaignForceById(st, contact.forceId);
+            if (other == null || other == hunter || other.destroyed || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (other.faction == hunter.faction || other.faction == Faction.ENEMY) continue;
+            if (redShouldIgnoreCovertSmuggler(hunter, other, contact.confidence)) continue;
+            if (campaignFleetCombatPower(other) > campaignFleetCombatPower(hunter) * doctrineForForce(st, hunter).raidAttackRatio) continue;
+            double distancePenalty = GameMath.dist2(hunter.x, hunter.y, contact.x, contact.y) / (1800.0 * 1800.0);
+            double score = raidTargetPriority(other) * 4.0 + contact.confidence * 2.0 - distancePenalty;
+            if (score > bestScore) {
+                best = other;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestWeakNonEnemyForce(CampaignState st, CampaignForce hunter) {
+        if (st == null || hunter == null) return null;
+        CampaignForce best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other == hunter || other.destroyed || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (other.faction == hunter.faction || other.faction == Faction.ENEMY) continue;
+            if (redShouldIgnoreCovertSmuggler(hunter, other, 0.0)) continue;
+            if (campaignFleetCombatPower(other) > campaignFleetCombatPower(hunter) * doctrineForForce(st, hunter).raidAttackRatio) continue;
+            double d2 = GameMath.dist2(hunter.x, hunter.y, other.x, other.y);
+            double score = raidTargetPriority(other) * 4.0 - d2 / (1800.0 * 1800.0);
+            if (score > bestScore) {
+                best = other;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static boolean redShouldIgnoreCovertSmuggler(CampaignForce hunter, CampaignForce target, double contactConfidence) {
+        if (hunter == null || hunter.faction != Faction.ENEMY || target == null || !isYellowSmugglerForce(target)) return false;
+        double stealth = Math.max(target.stealthRating, target.visibleToPlayer ? 0.0 : 45.0);
+        return stealth >= 55.0 && contactConfidence < 0.82;
+    }
+
+    private static double raidTargetPriority(CampaignForce target) {
+        if (target == null) return 0.0;
+        double priority = switch (target.kind) {
+            case MINING_GROUP -> 9.0;
+            case CONVOY, TRADE_GROUP -> 8.0;
+            case INSTALLATION_TRAFFIC -> 6.5;
+            case BASE_DEFENSE -> 4.0;
+            case PATROL_GROUP, LOCAL_FORCE -> 3.0;
+            case TASK_FORCE, STRIKE_DETACHMENT -> 2.0;
+            case PLAYER_FLEET -> 0.0;
+        };
+        if (target.hullIntegrity < 58.0 || target.readiness < 54.0) priority += 2.0;
+        if (target.supply < 35.0 || target.fuelLevel < 35.0) priority += 1.0;
+        return priority;
     }
 
     private static void maintainMinimumVisibleFleetContacts(GameContext ctx, CampaignState st) {
@@ -18792,16 +21667,20 @@ public final class CampaignSystem {
             return;
         }
         if (force.linkedSearchGroupId > 0) return;
-        double sensorRange = playerSensorRange;
+        double relayCoverage = relayCoverageStrength(st, force.x, force.y);
+        double sensorRange = playerSensorRange * (1.0 + relayCoverage * 0.45);
         if (dist <= sensorRange) {
-            double confidence = MathUtil.clamp(1.0 - dist / Math.max(1.0, sensorRange) + st.campaignIntelLevel / 180.0, 0.35, 0.92);
+            double confidence = MathUtil.clamp(1.0 - dist / Math.max(1.0, sensorRange)
+                    + st.campaignIntelLevel / 180.0
+                    + relayCoverage * 0.18, 0.35, 0.96);
             noteCampaignForceKnownPosition(force, force.x, force.y, confidence, 130.0 + Math.max(0.0, sensorRange - dist) * 0.08);
             recordEnemyPlayerContact(st, px, py, confidence);
             return;
         }
         force.lastKnownAgeSec = Math.max(0.0, force.lastKnownAgeSec + Math.max(0.0, dt));
-        force.contactConfidence = MathUtil.clamp(force.contactConfidence - Math.max(0.0, dt) * 0.015, 0.12, 0.78);
-        force.uncertaintyRadius = Math.min(980.0, Math.max(150.0, force.uncertaintyRadius + Math.max(0.0, dt) * 18.0));
+        force.lastSeenSec = Math.max(0.0, force.lastSeenSec + Math.max(0.0, dt));
+        force.contactConfidence = MathUtil.clamp(force.contactConfidence - Math.max(0.0, dt) * Math.max(0.004, 0.015 - relayCoverage * 0.006), 0.12, 0.78);
+        force.uncertaintyRadius = Math.min(980.0, Math.max(150.0, force.uncertaintyRadius + Math.max(0.0, dt) * Math.max(6.0, 18.0 - relayCoverage * 7.0)));
         force.contactState = force.lastKnownAgeSec > 30.0 || force.contactConfidence < 0.28
                 ? CampaignForceContactState.STALE
                 : CampaignForceContactState.SUSPECTED;
@@ -18968,6 +21847,7 @@ public final class CampaignSystem {
         if (battle.playerAwareness) {
             EventSystem.showBanner(ctx, ("WAR CONTACT: " + report).toUpperCase(Locale.US), 1.4);
             UISystem.addPing(ctx, battle.x, battle.y, 2.4);
+            AudioSystem.onStrategicMapEvent(ctx, "battle_start", battle.x, battle.y);
             maybeShowCampaignBattleIntervention(ctx, st, battle);
         }
     }
@@ -19082,6 +21962,8 @@ public final class CampaignSystem {
                 battle.stage = CampaignBattleStage.RESOLVED;
                 battle.resolved = true;
                 if (!battle.outcomeReport.isBlank()) pushTheaterEvent(st, battle.outcomeReport);
+                dispatchBattleAftermathSalvage(ctx, st, battle);
+                if (battle.playerAwareness) AudioSystem.onStrategicMapEvent(ctx, "battle_end", battle.x, battle.y);
             }
         }
         st.campaignBattles.removeIf(battle -> battle == null
@@ -19143,9 +22025,11 @@ public final class CampaignSystem {
         applyCampaignBattleLoss(st, strongest, winnerLoss, false);
         applyCampaignBattleLoss(st, weakest, loserLoss, true);
         battle.winnerFollowUp = chooseCampaignBattleWinnerFollowUp(strongest, weakest);
+        battle.loserFollowUp = chooseCampaignBattleLoserFollowUp(st, weakest);
         battle.outcomeReport = strongest.name + " broke " + weakest.name + " near " + theaterForPoint(st, battle.y).label
-                + " and will " + battle.winnerFollowUp;
+                + " and will " + battle.winnerFollowUp + "; loser " + battle.loserFollowUp;
         applyCampaignBattleRegionalConsequences(st, battle, strongest, weakest);
+        dispatchBattleAftermathReactions(st, battle, strongest, weakest);
     }
 
     private static String chooseCampaignBattleWinnerFollowUp(CampaignForce winner, CampaignForce loser) {
@@ -19169,6 +22053,28 @@ public final class CampaignSystem {
         winner.intent = CampaignForceIntent.PATROLLING;
         winner.state = CampaignFleetState.MOVING;
         return "continue mission";
+    }
+
+    private static String chooseCampaignBattleLoserFollowUp(CampaignState st, CampaignForce loser) {
+        if (loser == null) return "scattered";
+        if (loser.destroyed || loser.strength <= 1.0) return "destroyed";
+        if (loser.kind == CampaignForceKind.CONVOY
+                || loser.kind == CampaignForceKind.TRADE_GROUP
+                || loser.kind == CampaignForceKind.MINING_GROUP
+                || loser.kind == CampaignForceKind.INSTALLATION_TRAFFIC) {
+            loser.intent = CampaignForceIntent.RETREATING;
+            loser.state = CampaignFleetState.RETREATING;
+            pushTheaterEvent(st, loser.name + " distress: survivors fleeing battle aftermath");
+            return "distress and survivors";
+        }
+        if (loser.readiness < 32.0 || loser.hullIntegrity < 38.0) {
+            loser.intent = CampaignForceIntent.RETREATING;
+            loser.state = CampaignFleetState.RETREATING;
+            return "damaged retreat";
+        }
+        loser.intent = CampaignForceIntent.REGROUPING;
+        loser.state = CampaignFleetState.RETREATING;
+        return "scattered and regrouping";
     }
 
     private static void applyCampaignBattleLoss(CampaignState st, CampaignForce force, double loss, boolean loser) {
@@ -19200,14 +22106,131 @@ public final class CampaignSystem {
         theater.danger = MathUtil.clamp(theater.danger + 6.0 + battle.importance * 8.0, 0.0, 100.0);
         theater.threatPressure = MathUtil.clamp(theater.threatPressure
                 + (winner != null && winner.faction == Faction.ENEMY ? 6.0 : -4.0), 0.0, 100.0);
+        double controlDelta = 0.0;
+        if (winner != null && loser != null) {
+            controlDelta = winner.faction == Faction.ENEMY ? -6.0 : (loser.faction == Faction.ENEMY ? 5.0 : 0.0);
+            controlDelta *= MathUtil.clamp(0.75 + battle.importance * 0.50, 0.75, 1.35);
+            theater.controlScore = MathUtil.clamp(theater.controlScore + controlDelta, -100.0, 100.0);
+            theater.controlState = theaterControlStateForScore(theater.controlScore);
+            double intelDelta = loser.faction == Faction.ENEMY ? 2.5 : (winner.faction == Faction.ENEMY ? -1.5 : 0.4);
+            st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + intelDelta, 0.0, 100.0);
+        }
         if (loser != null && (loser.kind == CampaignForceKind.CONVOY || loser.kind == CampaignForceKind.TRADE_GROUP)) {
             theater.tradeHealth = MathUtil.clamp(theater.tradeHealth - 12.0, 0.0, 100.0);
             theater.supplyState = MathUtil.clamp(theater.supplyState - 6.0, 0.0, 100.0);
             theater.routeRisk = MathUtil.clamp(theater.routeRisk + 14.0, 0.0, 100.0);
             theater.marketPressure = MathUtil.clamp(theater.marketPressure + 10.0, 0.0, 100.0);
             pushTheaterEvent(st, loser.name + " lost on the " + theater.id.label + " lane");
+        } else if (loser != null && loser.kind == CampaignForceKind.PATROL_GROUP && loser.faction == Faction.ENEMY) {
+            theater.routeRisk = MathUtil.clamp(theater.routeRisk - 6.0, 0.0, 100.0);
         } else if (loser != null && loser.kind == CampaignForceKind.PATROL_GROUP) {
             theater.routeRisk = MathUtil.clamp(theater.routeRisk + 8.0, 0.0, 100.0);
+        }
+        applyCampaignBattleLocationServiceDisruption(st, battle, theater, winner);
+        applyRegionalTrafficMixFromControl(theater);
+    }
+
+    private static void applyCampaignBattleLocationServiceDisruption(CampaignState st, CampaignBattle battle,
+                                                                      CampaignTheaterState theater,
+                                                                      CampaignForce winner) {
+        if (st == null || battle == null || theater == null) return;
+        for (CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location == null || location.services.isEmpty()) continue;
+            double dist = Math.hypot(location.x - battle.x, location.y - battle.y);
+            if (dist > 260.0) continue;
+            location.scarNote = "Battle damage is straining local services.";
+            location.routeNote = "Service traffic delayed by battle debris and repair triage.";
+            theater.supplyState = MathUtil.clamp(theater.supplyState - 8.0, 0.0, 100.0);
+            theater.marketPressure = MathUtil.clamp(theater.marketPressure + 7.0, 0.0, 100.0);
+            if (winner != null && winner.faction == Faction.ENEMY) {
+                theater.tradeHealth = MathUtil.clamp(theater.tradeHealth - 7.0, 0.0, 100.0);
+                theater.routeRisk = MathUtil.clamp(theater.routeRisk + 9.0, 0.0, 100.0);
+            }
+            pushTheaterEvent(st, location.name + " services degraded by nearby battle");
+            return;
+        }
+    }
+
+    private static void dispatchBattleAftermathReactions(CampaignState st, CampaignBattle battle, CampaignForce winner, CampaignForce loser) {
+        if (st == null || battle == null) return;
+        int reactions = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (battle.participantForceIds.contains(force.id)) continue;
+            double dist = Math.hypot(force.x - battle.x, force.y - battle.y);
+            if (dist > 760.0) continue;
+            if (force.faction == greenSupportFaction(st) || force.faction == Faction.ALLY) {
+                if (loser != null && loser.faction != Faction.ENEMY
+                        && (loser.strength < 38.0 || loser.intent == CampaignForceIntent.RETREATING)) {
+                    assignRepairRescueMission(st, force, loser.id);
+                    pushTheaterEvent(st, force.name + " reacting to battle aftermath with rescue orders");
+                } else if (winner != null && winner.faction == Faction.ENEMY) {
+                    force.intent = CampaignForceIntent.REINFORCING;
+                    force.state = CampaignFleetState.PURSUING;
+                    force.targetForceId = winner.id;
+                    setCampaignForceRoute(force, force.x, force.y, winner.x, winner.y);
+                    pushTheaterEvent(st, force.name + " reinforcing after nearby battle");
+                } else {
+                    force.intent = CampaignForceIntent.GUARDING;
+                    force.state = CampaignFleetState.SEARCHING;
+                }
+            } else if (force.faction == yellowSupportFaction(st)) {
+                if (winner != null && winner.faction == Faction.ENEMY) {
+                    CampaignLocation safe = nearestFriendlySupportHub(null, st, force.faction, force.x, force.y);
+                    if (safe != null) assignRetreatMission(st, force, safe.id);
+                    pushTheaterEvent(st, force.name + " rerouting away from battle aftermath");
+                } else if (force.cargoKind == CampaignForceCargoKind.SALVAGE || isYellowSalvageCandidate(force)) {
+                    assignSalvageMission(st, force, battle.x, battle.y, force.homeBaseId);
+                    pushTheaterEvent(st, force.name + " moving to sell salvage intel from battle aftermath");
+                }
+            } else if (force.faction == Faction.ENEMY) {
+                if (winner != null && winner.faction == Faction.ENEMY) {
+                    if (loser != null && loser.destroyed) {
+                        assignSalvageMission(st, force, battle.x, battle.y, force.homeBaseId);
+                        force.mission = CampaignFleetMission.RAID;
+                        pushTheaterEvent(st, force.name + " looting battle aftermath under Red cover");
+                    } else {
+                        force.intent = CampaignForceIntent.REINFORCING;
+                        force.state = CampaignFleetState.MOVING;
+                        setCampaignForceRoute(force, force.x, force.y, battle.x, battle.y);
+                        pushTheaterEvent(st, force.name + " reinforcing Red battle aftermath");
+                    }
+                } else if (loser != null && loser.faction == Faction.ENEMY && loser.strength < 24.0) {
+                    force.intent = CampaignForceIntent.SEARCHING;
+                    force.state = CampaignFleetState.SEARCHING;
+                    setCampaignForceRoute(force, force.x, force.y, battle.x, battle.y);
+                    pushTheaterEvent(st, force.name + " recovering Red evidence from battle aftermath");
+                } else if (winner != null && force.strength >= 45.0) {
+                    force.mission = CampaignFleetMission.RAID;
+                    force.intent = CampaignForceIntent.INTERCEPTING;
+                    force.state = CampaignFleetState.PURSUING;
+                    force.targetForceId = winner.id;
+                    setCampaignForceRoute(force, force.x, force.y, winner.x, winner.y);
+                    pushTheaterEvent(st, force.name + " ambushing responders after unfavorable battle");
+                } else {
+                    force.intent = CampaignForceIntent.SEARCHING;
+                    force.state = CampaignFleetState.SEARCHING;
+                    pushTheaterEvent(st, force.name + " avoiding unfavorable battle aftermath");
+                }
+            }
+            reactions++;
+            if (reactions >= 3) return;
+        }
+    }
+
+    private static void applyRegionalTrafficMixFromControl(CampaignTheaterState theater) {
+        if (theater == null) return;
+        if (theater.controlScore >= 45.0) {
+            theater.routeRisk = MathUtil.clamp(theater.routeRisk - 5.0, 0.0, 100.0);
+            theater.tradeHealth = MathUtil.clamp(theater.tradeHealth + 5.0, 0.0, 100.0);
+            theater.threatPressure = MathUtil.clamp(theater.threatPressure - 4.0, 0.0, 100.0);
+        } else if (theater.controlScore <= -45.0) {
+            theater.routeRisk = MathUtil.clamp(theater.routeRisk + 7.0, 0.0, 100.0);
+            theater.tradeHealth = MathUtil.clamp(theater.tradeHealth - 6.0, 0.0, 100.0);
+            theater.threatPressure = MathUtil.clamp(theater.threatPressure + 5.0, 0.0, 100.0);
+        } else if (Math.abs(theater.controlScore) < 20.0) {
+            theater.routeRisk = MathUtil.clamp(theater.routeRisk + 2.0, 0.0, 100.0);
+            theater.marketPressure = MathUtil.clamp(theater.marketPressure + 1.5, 0.0, 100.0);
         }
     }
 
@@ -19348,12 +22371,93 @@ public final class CampaignSystem {
     private static void updateCampaignForceOrders(GameContext ctx, CampaignState st, CampaignForce force, double dt) {
         if (ctx == null || st == null || force == null) return;
         force.intentTimerSec = Math.max(0.0, force.intentTimerSec - Math.max(0.0, dt));
-        if (!isOpeningWaveForce(force)) {
+        if (!isOpeningWaveForce(force) && !isDirectorAssignedMission(force.mission)) {
             force.mission = missionForForceKind(force.kind);
         }
         if (force.linkedSearchGroupId > 0) return;
         if (force.kind == CampaignForceKind.PLAYER_FLEET) return;
+        if (force.mission == CampaignFleetMission.PATROL
+                && (force.supply < 30.0 || force.fuelLevel < 28.0 || force.readiness < 32.0)) {
+            CampaignLocation recovery = nearestSafeRecoveryHub(ctx, st, force);
+            if (recovery != null) {
+                assignReturnToBaseMission(st, force, recovery.id);
+                pushTheaterEvent(st, force.name + " breaking patrol for recovery at " + recovery.name);
+                return;
+            }
+        }
+        if (applySalvageContestBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (force.workState == CampaignForceWorkState.WORKING
+                && !(force.mission == CampaignFleetMission.REPAIR && force.targetForceId > 0)
+                && (force.stopReason == CampaignForceStopReason.SCANNING
+                || force.stopReason == CampaignForceStopReason.MINING
+                || force.stopReason == CampaignForceStopReason.SALVAGING
+                || force.stopReason == CampaignForceStopReason.REPAIRING
+                || force.stopReason == CampaignForceStopReason.RECOVERING_SURVIVORS
+                || force.stopReason == CampaignForceStopReason.REFUELING
+                || force.stopReason == CampaignForceStopReason.UNLOADING)
+                && (force.workRemainingSec > 0.0 || force.taskDeadlineSec > 0.0)) {
+            force.state = CampaignFleetState.SEARCHING;
+            return;
+        }
+        if (force.mission == CampaignFleetMission.ESCORT && maintainEscortMission(ctx, st, force)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.RAID && maintainRaidMission(ctx, st, force, dt)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.INTERCEPT
+                && force.targetForceId > 0
+                && maintainHuntMission(ctx, st, force)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.REINFORCE
+                && force.targetForceId > 0
+                && maintainGreenResponseMission(ctx, st, force)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.BLOCKADE && maintainBlockadeMission(ctx, st, force, dt)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.CAPTURE && maintainSiegeMission(ctx, st, force, dt)) {
+            return;
+        }
+        if (force.mission == CampaignFleetMission.REPAIR
+                && force.targetForceId > 0
+                && maintainRepairRescueMission(ctx, st, force, dt)) {
+            return;
+        }
+        if (isGreenResponseCandidate(st, force) && applyGreenResponseTriggerScan(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyMiningEscortLossBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyMiningDistressBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
         if (applyUnsupportedForceDoctrine(st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyGreenSmugglerInspectionBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyYellowSmugglerBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyYellowPirateBehavior(ctx, st, force)) {
+            force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
+            return;
+        }
+        if (applyYellowMercenaryContractBehavior(ctx, st, force)) {
             force.intentTimerSec = Math.max(force.intentTimerSec, 8.0);
             return;
         }
@@ -19392,6 +22496,19 @@ public final class CampaignSystem {
             force.targetY = st.enemyPlayerContact.y + Math.sin(angle) * jitter;
             setCampaignForceRoute(force, force.x, force.y, force.targetX, force.targetY);
             force.state = (force.intent == CampaignForceIntent.INTERCEPTING) ? CampaignFleetState.PURSUING : CampaignFleetState.SEARCHING;
+            return;
+        }
+        CampaignLocation activeMiningSite = campaignLocationById(st, force.destinationLocationId);
+        if (force.kind == CampaignForceKind.MINING_GROUP
+                && force.intent == CampaignForceIntent.MINING
+                && activeMiningSite != null
+                && GameMath.dist2(force.x, force.y, activeMiningSite.x, activeMiningSite.y) <= 130.0 * 130.0) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.MINING;
+            force.state = CampaignFleetState.SEARCHING;
+            force.intentTimerSec = Math.max(force.intentTimerSec, 4.0);
             return;
         }
         CampaignLocation source = campaignLocationById(st, force.sourceLocationId);
@@ -19451,6 +22568,25 @@ public final class CampaignSystem {
         applySprintOneFleetBehavior(ctx, st, force, dt);
     }
 
+    private static boolean applyMiningEscortLossBehavior(GameContext ctx, CampaignState st, CampaignForce miner) {
+        if (ctx == null || st == null || miner == null || miner.kind != CampaignForceKind.MINING_GROUP) return false;
+        if (miner.targetForceId <= 0) return false;
+        CampaignForce escort = campaignForceById(st, miner.targetForceId);
+        if (escort != null && !escort.destroyed) return false;
+        CampaignTheaterState local = campaignTheaterById(st, theaterForPoint(st, miner.y));
+        if (local != null && local.controlScore >= 55.0) {
+            miner.targetForceId = 0;
+            miner.reassignmentCondition = CampaignForceReassignmentCondition.WORK_COMPLETE;
+            return false;
+        }
+        CampaignLocation safe = nearestFriendlySupportHub(ctx, st, miner.faction, miner.x, miner.y);
+        if (safe == null) return false;
+        assignRetreatMission(st, miner, safe.id);
+        miner.targetForceId = 0;
+        pushTheaterEvent(st, miner.name + " distress: escort lost, fleeing to " + safe.name);
+        return true;
+    }
+
     private static boolean applyUnsupportedForceDoctrine(CampaignState st, CampaignForce force) {
         if (st == null || force == null || force.faction != Faction.ENEMY) return false;
         if (force.kind == CampaignForceKind.PATROL_GROUP || force.kind == CampaignForceKind.STRIKE_DETACHMENT) return false;
@@ -19470,14 +22606,415 @@ public final class CampaignSystem {
         return false;
     }
 
+    private static boolean applyYellowPirateBehavior(GameContext ctx, CampaignState st, CampaignForce pirate) {
+        if (ctx == null || st == null || pirate == null || !isYellowPirateForce(pirate)) return false;
+        CampaignForce defender = nearestGreenResponder(st, pirate.x, pirate.y, 520.0);
+        if (defender != null && campaignFleetCombatPower(defender) > campaignFleetCombatPower(pirate) * 0.82) {
+            CampaignLocation hideout = nearestFriendlySupportHub(ctx, st, pirate.faction, pirate.x, pirate.y);
+            pirate.intent = CampaignForceIntent.RETREATING;
+            pirate.state = CampaignFleetState.RETREATING;
+            pirate.workState = CampaignForceWorkState.RECOVERING;
+            pirate.missionState = CampaignForceMissionState.RETREATING;
+            pirate.stopReason = CampaignForceStopReason.HIDING;
+            if (hideout != null) {
+                pirate.destinationLocationId = hideout.id;
+                setCampaignForceRoute(pirate, pirate.x, pirate.y, hideout.x, hideout.y);
+                pirate.stopReason = CampaignForceStopReason.HIDING;
+            }
+            pushTheaterEvent(st, pirate.name + " broke pirate run as " + defender.name + " closed");
+            return true;
+        }
+        CampaignForce target = nearestWeakYellowPirateTarget(st, pirate, 680.0);
+        if (target == null) return false;
+        double d2 = GameMath.dist2(pirate.x, pirate.y, target.x, target.y);
+        if (d2 > 170.0 * 170.0) {
+            pirate.mission = CampaignFleetMission.RAID;
+            pirate.intent = CampaignForceIntent.INTERCEPTING;
+            pirate.state = CampaignFleetState.PURSUING;
+            pirate.workState = CampaignForceWorkState.TRAVELING;
+            pirate.missionState = CampaignForceMissionState.TRAVELING;
+            pirate.stopReason = CampaignForceStopReason.AMBUSHING;
+            pirate.targetForceId = target.id;
+            setCampaignForceRoute(pirate, pirate.x, pirate.y, target.x, target.y);
+            pirate.stopReason = CampaignForceStopReason.AMBUSHING;
+            return true;
+        }
+        applyCampaignRaidSuccess(st, pirate, target);
+        pirate.intent = CampaignForceIntent.RETREATING;
+        pirate.state = CampaignFleetState.RETREATING;
+        pirate.workState = CampaignForceWorkState.RECOVERING;
+        pirate.missionState = CampaignForceMissionState.RETREATING;
+        pirate.stopReason = CampaignForceStopReason.HIDING;
+        CampaignLocation hideout = nearestFriendlySupportHub(ctx, st, pirate.faction, pirate.x, pirate.y);
+        if (hideout != null) {
+            pirate.destinationLocationId = hideout.id;
+            setCampaignForceRoute(pirate, pirate.x, pirate.y, hideout.x, hideout.y);
+            pirate.stopReason = CampaignForceStopReason.HIDING;
+        }
+        return true;
+    }
+
+    private static boolean isYellowPirateForce(CampaignForce force) {
+        if (force == null || force.faction != Faction.TEAM_D || force.destroyed) return false;
+        String text = ((force.name == null ? "" : force.name) + " " + (force.purpose == null ? "" : force.purpose)).toUpperCase(Locale.US);
+        return text.contains("PIRATE") || text.contains("ROGUE") || text.contains("WOLFPACK");
+    }
+
+    private static boolean applyYellowSmugglerBehavior(GameContext ctx, CampaignState st, CampaignForce smuggler) {
+        if (ctx == null || st == null || smuggler == null || !isYellowSmugglerForce(smuggler)) return false;
+        smuggler.stealthRating = Math.max(smuggler.stealthRating, 72.0);
+        CampaignForce inspector = nearestGreenInspectionForce(st, smuggler.x, smuggler.y, 620.0);
+        CampaignForce red = nearestHostileCampaignForce(st, smuggler.x, smuggler.y, 540.0);
+        if (inspector != null || red != null) {
+            CampaignLocation hideout = nearestSmugglerHideout(st, smuggler.x, smuggler.y);
+            smuggler.mission = CampaignFleetMission.CONVOY;
+            smuggler.intent = CampaignForceIntent.RETREATING;
+            smuggler.state = CampaignFleetState.RETREATING;
+            smuggler.workState = CampaignForceWorkState.RECOVERING;
+            smuggler.missionState = CampaignForceMissionState.RETREATING;
+            smuggler.stopReason = CampaignForceStopReason.HIDING;
+            smuggler.reassignmentCondition = inspector != null
+                    ? CampaignForceReassignmentCondition.THREAT_TOO_STRONG
+                    : CampaignForceReassignmentCondition.ROUTE_BLOCKED;
+            if (hideout != null) {
+                smuggler.destinationLocationId = hideout.id;
+                double[] bend = smugglerIndirectWaypoint(st, smuggler, hideout.x, hideout.y);
+                setCampaignForceRoute(smuggler, smuggler.x, smuggler.y, bend[0], bend[1], hideout.x, hideout.y);
+                smuggler.stopReason = CampaignForceStopReason.HIDING;
+                if (GameMath.dist2(smuggler.x, smuggler.y, hideout.x, hideout.y) <= 130.0 * 130.0) {
+                    smuggler.routePoints.clear();
+                    smuggler.workState = CampaignForceWorkState.WORKING;
+                    smuggler.missionState = CampaignForceMissionState.WORKING;
+                    smuggler.stopReason = CampaignForceStopReason.HIDING;
+                    smuggler.workRemainingSec = Math.max(smuggler.workRemainingSec, 16.0);
+                }
+            }
+            String pressure = inspector != null ? inspector.name : red.name;
+            pushTheaterEvent(st, smuggler.name + " hid contraband route from " + pressure);
+            return true;
+        }
+        CampaignLocation destination = campaignLocationById(st, smuggler.destinationLocationId);
+        if (destination == null) destination = nearestSmugglerHideout(st, smuggler.x, smuggler.y);
+        if (destination == null) return false;
+        if (!smuggler.routePoints.isEmpty() && smuggler.intentTimerSec > 0.0) return false;
+        smuggler.mission = CampaignFleetMission.CONVOY;
+        smuggler.intent = CampaignForceIntent.ESCORTING;
+        smuggler.state = CampaignFleetState.MOVING;
+        smuggler.workState = CampaignForceWorkState.TRAVELING;
+        smuggler.missionState = CampaignForceMissionState.TRAVELING;
+        smuggler.stopReason = CampaignForceStopReason.NONE;
+        smuggler.cargoKind = CampaignForceCargoKind.LOOT;
+        smuggler.cargoCapacity = Math.max(smuggler.cargoCapacity, 60.0);
+        smuggler.cargoLoad = Math.max(smuggler.cargoLoad, 18.0);
+        double[] bend = smugglerIndirectWaypoint(st, smuggler, destination.x, destination.y);
+        setCampaignForceRoute(smuggler, smuggler.x, smuggler.y, bend[0], bend[1], destination.x, destination.y);
+        pushTheaterEvent(st, smuggler.name + " threaded an indirect broker route toward " + destination.name);
+        return true;
+    }
+
+    private static boolean applyGreenSmugglerInspectionBehavior(GameContext ctx, CampaignState st, CampaignForce inspector) {
+        if (ctx == null || st == null || inspector == null || inspector.destroyed) return false;
+        if (inspector.faction != greenSupportFaction(st) && inspector.faction != Faction.ALLY) return false;
+        if (inspector.kind != CampaignForceKind.PATROL_GROUP
+                && inspector.kind != CampaignForceKind.BASE_DEFENSE
+                && inspector.kind != CampaignForceKind.LOCAL_FORCE) return false;
+        CampaignForce smuggler = nearestYellowSmuggler(st, inspector.x, inspector.y, Math.max(520.0, inspector.operatingRadius * 0.55));
+        if (smuggler == null) return false;
+        double d2 = GameMath.dist2(inspector.x, inspector.y, smuggler.x, smuggler.y);
+        inspector.mission = CampaignFleetMission.RECON;
+        inspector.intent = CampaignForceIntent.SEARCHING;
+        inspector.targetForceId = smuggler.id;
+        if (d2 > 135.0 * 135.0) {
+            inspector.state = CampaignFleetState.PURSUING;
+            inspector.workState = CampaignForceWorkState.REACTING;
+            inspector.missionState = CampaignForceMissionState.TRAVELING;
+            inspector.stopReason = CampaignForceStopReason.SCANNING;
+            setCampaignForceRoute(inspector, inspector.x, inspector.y, smuggler.x, smuggler.y);
+            pushTheaterEvent(st, inspector.name + " opened local inspection on " + smuggler.name);
+            return true;
+        }
+        inspector.state = CampaignFleetState.SEARCHING;
+        inspector.workState = CampaignForceWorkState.WORKING;
+        inspector.missionState = CampaignForceMissionState.WORKING;
+        inspector.stopReason = CampaignForceStopReason.SCANNING;
+        inspector.workRemainingSec = Math.max(inspector.workRemainingSec, 10.0);
+        smuggler.workState = CampaignForceWorkState.WORKING;
+        smuggler.missionState = CampaignForceMissionState.WORKING;
+        smuggler.stopReason = CampaignForceStopReason.HIDING;
+        smuggler.cargoLoad = Math.max(0.0, smuggler.cargoLoad - 8.0);
+        smuggler.reassignmentCondition = CampaignForceReassignmentCondition.ROUTE_BLOCKED;
+        pushTheaterEvent(st, inspector.name + " inspected " + smuggler.name + " without widening Yellow hostility");
+        return true;
+    }
+
+    private static boolean isYellowSmugglerForce(CampaignForce force) {
+        if (force == null || force.faction != Faction.TEAM_D || force.destroyed) return false;
+        String text = ((force.name == null ? "" : force.name) + " " + (force.purpose == null ? "" : force.purpose)).toUpperCase(Locale.US);
+        return text.contains("SMUGGLER")
+                || text.contains("SMUGGLE")
+                || text.contains("RUNNER")
+                || text.contains("CONTRABAND")
+                || (force.cargoKind == CampaignForceCargoKind.LOOT && force.stealthRating >= 45.0);
+    }
+
+    private static CampaignForce nearestYellowSmuggler(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || !isYellowSmugglerForce(force)) continue;
+            double d2 = GameMath.dist2(force.x, force.y, x, y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestGreenInspectionForce(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.kind != CampaignForceKind.PATROL_GROUP
+                    && force.kind != CampaignForceKind.BASE_DEFENSE
+                    && force.kind != CampaignForceKind.LOCAL_FORCE) continue;
+            double d2 = GameMath.dist2(force.x, force.y, x, y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignLocation nearestSmugglerHideout(CampaignState st, double x, double y) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || isUndiscoveredProceduralSite(location)) continue;
+            boolean hideout = location.type == CampaignLocationType.HIDDEN_CACHE
+                    || location.type == CampaignLocationType.SALVAGE_FIELD
+                    || location.type == CampaignLocationType.RESOURCE_ZONE
+                    || location.type == CampaignLocationType.DISTRESS_SIGNAL;
+            if (!hideout) continue;
+            double score = Math.hypot(location.x - x, location.y - y);
+            if (location.type == CampaignLocationType.HIDDEN_CACHE) score *= 0.55;
+            if (location.type == CampaignLocationType.SALVAGE_FIELD) score *= 0.75;
+            if (score < bestScore) {
+                best = location;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static double[] smugglerIndirectWaypoint(CampaignState st, CampaignForce smuggler, double destX, double destY) {
+        double dx = destX - smuggler.x;
+        double dy = destY - smuggler.y;
+        double len = Math.max(1.0, Math.hypot(dx, dy));
+        double side = (Math.floorMod(smuggler.id, 2) == 0) ? 1.0 : -1.0;
+        double lateral = MathUtil.clamp(260.0 + smuggler.stealthRating * 2.5, 260.0, 560.0);
+        double midX = (smuggler.x + destX) * 0.5;
+        double midY = (smuggler.y + destY) * 0.5;
+        double bendX = midX + (-dy / len) * lateral * side;
+        double bendY = midY + (dx / len) * lateral * side;
+        return new double[]{
+                GameMath.clamp(bendX, 0.0, Double.MAX_VALUE),
+                GameMath.clamp(bendY, 0.0, Double.MAX_VALUE)
+        };
+    }
+
+    private static boolean applyPlayerCivilianTrafficAttackConsequences(CampaignState st, CampaignForce target) {
+        if (st == null || target == null || target.destroyed || !isYellowCivilianTraffic(target)) return false;
+        int yellowLoss = target.protectedCivilianTraffic ? 2 : 1;
+        st.yellowLiberationFavor = Math.max(0, st.yellowLiberationFavor - yellowLoss);
+        pushTheaterEvent(st, "Yellow trust dropped after Blue attacked civilian traffic: " + target.name);
+        if (target.protectedCivilianTraffic || hasGreenEscortForTarget(st, target)) {
+            st.greenContractFavor = Math.max(0, st.greenContractFavor - 1);
+            pushTheaterEvent(st, "Green opinion dropped over protected civilian strike near " + target.name);
+        }
+        if (st.yellowLiberationFavor <= 0) {
+            int hostileMercs = setNearbyYellowMercenariesHostileToPlayer(st, target.x, target.y, 1250.0);
+            if (hostileMercs > 0) {
+                pushTheaterEvent(st, hostileMercs + " Yellow mercenary contacts turned hostile after trust collapse");
+            }
+        }
+        return true;
+    }
+
+    private static boolean isYellowCivilianTraffic(CampaignForce force) {
+        if (force == null || force.faction != Faction.TEAM_D) return false;
+        return force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC
+                || force.protectedCivilianTraffic;
+    }
+
+    private static boolean hasGreenEscortForTarget(CampaignState st, CampaignForce target) {
+        if (st == null || target == null) return false;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            if (force.faction != Faction.TEAM_C && force.faction != Faction.ALLY) continue;
+            if (force.mission == CampaignFleetMission.ESCORT && force.targetForceId == target.id) return true;
+            if (GameMath.dist2(force.x, force.y, target.x, target.y) <= 320.0 * 320.0
+                    && (force.kind == CampaignForceKind.PATROL_GROUP || force.kind == CampaignForceKind.BASE_DEFENSE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int setNearbyYellowMercenariesHostileToPlayer(CampaignState st, double x, double y, double radius) {
+        if (st == null) return 0;
+        CampaignForce player = campaignForceByName(st, "Blue Command Fleet");
+        int playerId = player == null ? campaignPlayerForceId(st) : player.id;
+        int changed = 0;
+        double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || !isYellowMercenaryForce(force)) continue;
+            if (GameMath.dist2(force.x, force.y, x, y) > r2) continue;
+            force.mission = CampaignFleetMission.INTERCEPT;
+            force.intent = CampaignForceIntent.INTERCEPTING;
+            force.state = CampaignFleetState.PURSUING;
+            force.workState = CampaignForceWorkState.REACTING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.AMBUSHING;
+            force.targetForceId = playerId;
+            if (player != null) {
+                setCampaignForceRoute(force, force.x, force.y, player.x, player.y);
+                force.stopReason = CampaignForceStopReason.AMBUSHING;
+            }
+            changed++;
+        }
+        return changed;
+    }
+
+    private static CampaignForce nearestWeakYellowPirateTarget(CampaignState st, CampaignForce pirate, double radius) {
+        if (st == null || pirate == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        double piratePower = campaignFleetCombatPower(pirate);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == pirate || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction == Faction.ENEMY) continue;
+            if (force.kind != CampaignForceKind.CONVOY
+                    && force.kind != CampaignForceKind.TRADE_GROUP
+                    && force.kind != CampaignForceKind.MINING_GROUP
+                    && force.kind != CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+            if (campaignFleetCombatPower(force) > piratePower * 0.78) continue;
+            double d2 = GameMath.dist2(force.x, force.y, pirate.x, pirate.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean applyYellowMercenaryContractBehavior(GameContext ctx, CampaignState st, CampaignForce mercenary) {
+        if (ctx == null || st == null || mercenary == null || !isYellowMercenaryForce(mercenary)) return false;
+        CampaignForce pirate = nearestYellowPirateThreateningTrader(st, mercenary.x, mercenary.y, 720.0);
+        if (pirate != null) {
+            double ownPower = campaignFleetCombatPower(mercenary);
+            double piratePower = campaignFleetCombatPower(pirate);
+            if (piratePower > ownPower * 1.18 || mercenary.riskTolerance < 32.0) {
+                CampaignLocation safe = nearestFriendlySupportHub(ctx, st, mercenary.faction, mercenary.x, mercenary.y);
+                if (safe != null) assignRetreatMission(st, mercenary, safe.id);
+                mercenary.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                pushTheaterEvent(st, mercenary.name + " declined trader-defense contract against " + pirate.name);
+                return true;
+            }
+            mercenary.mission = CampaignFleetMission.ESCORT;
+            mercenary.intent = CampaignForceIntent.INTERCEPTING;
+            mercenary.state = CampaignFleetState.PURSUING;
+            mercenary.workState = CampaignForceWorkState.REACTING;
+            mercenary.missionState = CampaignForceMissionState.TRAVELING;
+            mercenary.stopReason = CampaignForceStopReason.STAGING;
+            mercenary.targetForceId = pirate.id;
+            setCampaignForceRoute(mercenary, mercenary.x, mercenary.y, pirate.x, pirate.y);
+            mercenary.stopReason = CampaignForceStopReason.STAGING;
+            pushTheaterEvent(st, mercenary.name + " defended Yellow trader from " + pirate.name);
+            return true;
+        }
+        CampaignForce hostile = nearestHostileCampaignForce(st, mercenary.x, mercenary.y, 760.0);
+        if (hostile == null) return false;
+        double ownPower = campaignFleetCombatPower(mercenary);
+        double hostilePower = campaignFleetCombatPower(hostile);
+        if (hostilePower > ownPower * 1.25 || mercenary.riskTolerance < 35.0) {
+            CampaignLocation safe = nearestFriendlySupportHub(ctx, st, mercenary.faction, mercenary.x, mercenary.y);
+            if (safe != null) assignRetreatMission(st, mercenary, safe.id);
+            mercenary.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            pushTheaterEvent(st, mercenary.name + " contract failed against " + hostile.name + " and withdrew");
+            return true;
+        }
+        mercenary.mission = CampaignFleetMission.REINFORCE;
+        mercenary.intent = CampaignForceIntent.REINFORCING;
+        mercenary.state = CampaignFleetState.PURSUING;
+        mercenary.workState = CampaignForceWorkState.REACTING;
+        mercenary.missionState = CampaignForceMissionState.TRAVELING;
+        mercenary.stopReason = CampaignForceStopReason.STAGING;
+        mercenary.targetForceId = hostile.id;
+        setCampaignForceRoute(mercenary, mercenary.x, mercenary.y, hostile.x, hostile.y);
+        mercenary.stopReason = CampaignForceStopReason.STAGING;
+        pushTheaterEvent(st, mercenary.name + " accepted battle-support contract against " + hostile.name);
+        return true;
+    }
+
+    private static boolean isYellowMercenaryForce(CampaignForce force) {
+        if (force == null || force.faction != Faction.TEAM_D || force.destroyed) return false;
+        String text = ((force.name == null ? "" : force.name) + " " + (force.purpose == null ? "" : force.purpose)).toUpperCase(Locale.US);
+        return text.contains("MERCENARY") || text.contains("CONTRACT");
+    }
+
+    private static CampaignForce nearestYellowPirateThreateningTrader(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce pirate : st.campaignForces) {
+            if (pirate == null || !isYellowPirateForce(pirate)) continue;
+            CampaignForce target = pirate.targetForceId > 0 ? campaignForceById(st, pirate.targetForceId) : null;
+            boolean pursuingKnownTrader = target != null
+                    && !target.destroyed
+                    && target.faction == Faction.TEAM_D
+                    && (target.kind == CampaignForceKind.CONVOY
+                    || target.kind == CampaignForceKind.TRADE_GROUP
+                    || target.kind == CampaignForceKind.INSTALLATION_TRAFFIC);
+            boolean prowlingNearWeakTrader = nearestWeakYellowPirateTarget(st, pirate, 340.0) != null;
+            if (!pursuingKnownTrader && !prowlingNearWeakTrader) continue;
+            double d2 = GameMath.dist2(pirate.x, pirate.y, x, y);
+            if (d2 < bestD2) {
+                best = pirate;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
     private static boolean applyAlliedRoutePressureBehavior(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.faction == Faction.ENEMY) return false;
         if (force.kind == CampaignForceKind.PLAYER_FLEET || force.kind == CampaignForceKind.MINING_GROUP) return false;
         CampaignForce hostile = nearestHostileCampaignForce(st, force.x, force.y, 820.0);
         CampaignTheaterState local = campaignTheaterById(st, theaterForPoint(st, force.y));
         boolean playerNearby = Math.hypot(force.x - st.playerGalaxyX, force.y - st.playerGalaxyY) <= 950.0;
-        if (force.faction == yellowSupportFaction(st)
-                && (force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.CONVOY)
+        boolean yellowCivilian = force.faction == yellowSupportFaction(st)
+                && (force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.CONVOY);
+        boolean largeRedOnLane = hostile != null
+                && hostile.strength >= 72.0
+                && distancePointToSegment(hostile.x, hostile.y, force.x, force.y, force.targetX, force.targetY) <= 220.0;
+        if (yellowCivilian && largeRedOnLane) {
+            CampaignLocation support = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+            if (support != null) {
+                assignRetreatMission(st, force, support.id);
+                pushTheaterEvent(st, force.name + " rerouting away from Red battlefront on trade lane");
+                return true;
+            }
+        }
+        if (yellowCivilian
                 && local != null && (local.danger >= 58.0 || local.routeRisk >= 62.0)
                 && nearbySameFactionSupport(st, force, 640.0) == null) {
             CampaignLocation support = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
@@ -19485,6 +23022,7 @@ public final class CampaignSystem {
             force.state = playerNearby ? CampaignFleetState.MOVING : CampaignFleetState.RETREATING;
             if (playerNearby) {
                 setCampaignForceRoute(force, force.x, force.y, st.playerGalaxyX, st.playerGalaxyY);
+                pushTheaterEvent(st, force.name + " requesting escort through high-risk trade lane");
             } else if (support != null) {
                 setCampaignForceRoute(force, force.x, force.y, support.x, support.y);
             }
@@ -19524,6 +23062,964 @@ public final class CampaignSystem {
         return false;
     }
 
+    private static boolean applySalvageContestBehavior(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.stopReason != CampaignForceStopReason.SALVAGING) return false;
+        if (force.cargoKind != CampaignForceCargoKind.SALVAGE && !isYellowSalvageCandidate(force)) return false;
+        CampaignForce contender = nearestWreckContestMilitaryForce(st, force, 380.0);
+        if (contender == null) return false;
+        double ownPower = campaignFleetCombatPower(force);
+        double contenderPower = campaignFleetCombatPower(contender);
+        boolean redThreat = contender.faction == Faction.ENEMY;
+        boolean outmatched = contenderPower > ownPower * (redThreat ? 0.78 : 1.05);
+        if (force.faction == Faction.TEAM_D
+                && (contender.faction == greenSupportFaction(st) || contender.faction == Faction.ALLY)
+                && force.riskTolerance >= 45.0
+                && !outmatched) {
+            force.cargoKind = CampaignForceCargoKind.SALVAGE;
+            force.cargoCapacity = Math.max(force.cargoCapacity, 60.0);
+            force.cargoLoad = MathUtil.clamp(force.cargoLoad + 12.0, 0.0, force.cargoCapacity);
+            st.greenContractFavor = Math.max(0, st.greenContractFavor - 1);
+            CampaignLocation station = campaignLocationById(st, force.sourceLocationId);
+            if (station == null) station = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+            if (station != null) assignRetreatMission(st, force, station.id);
+            force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            pushTheaterEvent(st, force.name + " stole Green wreck salvage from " + contender.name + " and sparked local conflict");
+            return true;
+        }
+        if (force.riskTolerance < 35.0 || (redThreat && outmatched)) {
+            CampaignLocation station = campaignLocationById(st, force.sourceLocationId);
+            if (station == null) station = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+            if (station != null) {
+                assignRetreatMission(st, force, station.id);
+                pushTheaterEvent(st, force.name + " fled contested wreck from " + contender.name);
+                return true;
+            }
+        }
+        if (force.riskTolerance < 62.0 && outmatched) {
+            force.intent = CampaignForceIntent.HOLDING;
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.HIDING;
+            force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 8.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 18.0);
+            pushTheaterEvent(st, force.name + " hid salvage crews as " + contender.name + " contested the wreck");
+            return true;
+        }
+        force.intent = CampaignForceIntent.INTERCEPTING;
+        force.workState = CampaignForceWorkState.REACTING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        force.targetForceId = contender.id;
+        setCampaignForceRoute(force, force.x, force.y, contender.x, contender.y);
+        pushTheaterEvent(st, force.name + " chose to fight for contested salvage against " + contender.name);
+        return true;
+    }
+
+    private static CampaignForce nearestWreckContestMilitaryForce(CampaignState st, CampaignForce salvager, double radius) {
+        if (st == null || salvager == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == salvager || force.destroyed || !force.simulationActive) continue;
+            if (force.kind != CampaignForceKind.PATROL_GROUP
+                    && force.kind != CampaignForceKind.TASK_FORCE
+                    && force.kind != CampaignForceKind.STRIKE_DETACHMENT
+                    && force.kind != CampaignForceKind.BASE_DEFENSE) continue;
+            boolean contests = force.faction == Faction.ENEMY || force.faction == greenSupportFaction(st) || force.faction == Faction.ALLY;
+            if (!contests || force.faction == salvager.faction) continue;
+            double d2 = GameMath.dist2(force.x, force.y, salvager.x, salvager.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean applyMiningDistressBehavior(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (ctx == null || st == null || force == null || force.faction == Faction.ENEMY) return false;
+        if (force.kind != CampaignForceKind.MINING_GROUP
+                && force.kind != CampaignForceKind.CONVOY
+                && force.kind != CampaignForceKind.TRADE_GROUP
+                && force.kind != CampaignForceKind.INSTALLATION_TRAFFIC) {
+            return false;
+        }
+        CampaignForce hostile = nearestHostileCampaignForce(st, force.x, force.y, 620.0);
+        if (hostile == null) return false;
+        double hostilePower = campaignFleetCombatPower(hostile);
+        double ownPower = campaignFleetCombatPower(force);
+        CampaignFactionDoctrine doctrine = doctrineForForce(st, force);
+        if (hostilePower < ownPower * doctrine.fleePowerRatio
+                && force.riskTolerance >= doctrine.civilianRiskTolerance * 100.0) return false;
+        CampaignLocation safe = nearestFriendlySupportHub(ctx, st, force.faction, force.x, force.y);
+        if (safe == null) safe = campaignLocationById(st, force.homeBaseId);
+        if (safe == null) return false;
+        force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+        assignRetreatMission(st, force, safe.id);
+        pushTheaterEvent(st, force.name + " distress: fleeing " + hostile.name + " toward " + safe.name);
+        UISystem.addPing(ctx, force.x, force.y, 1.8);
+        CampaignForce responder = nearestGreenResponder(st, force.x, force.y, 950.0);
+        if (responder != null) {
+            assignGreenResponseMission(ctx, st, responder, hostile, force.x, force.y);
+            st.yellowLiberationFavor += 1;
+            st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 2.0, 0.0, 100.0);
+            pushTheaterEvent(st, responder.name + " responding to distress near " + theaterForPoint(st, force.y).label);
+            pushTheaterEvent(st, force.name + " rescue credited: Yellow leverage and route intel improved");
+        }
+        return true;
+    }
+
+    private static void assignGreenResponseMission(GameContext ctx,
+                                                   CampaignState st,
+                                                   CampaignForce responder,
+                                                   CampaignForce hostile,
+                                                   double incidentX,
+                                                   double incidentY) {
+        if (ctx == null || st == null || responder == null || hostile == null) return;
+        CampaignLocation staging = nearestGreenResponseStagingHub(ctx, st, responder, incidentX, incidentY);
+        if (staging != null) {
+            responder.sourceLocationId = staging.id;
+            responder.homeBaseId = staging.id;
+            responder.x = staging.x;
+            responder.y = staging.y;
+            noteCampaignForceKnownPosition(responder, responder.x, responder.y, 1.0, 100.0);
+        }
+        responder.mission = CampaignFleetMission.REINFORCE;
+        responder.intent = CampaignForceIntent.REINFORCING;
+        responder.state = CampaignFleetState.PURSUING;
+        responder.workState = CampaignForceWorkState.TRAVELING;
+        responder.missionState = CampaignForceMissionState.TRAVELING;
+        responder.stopReason = CampaignForceStopReason.NONE;
+        responder.targetForceId = hostile.id;
+        responder.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+        responder.intentTimerSec = Math.max(responder.intentTimerSec, 90.0);
+        responder.taskDeadlineSec = Math.max(responder.taskDeadlineSec, 140.0);
+        if (staging != null) {
+            setCampaignForceRoute(responder, staging.x, staging.y, hostile.x, hostile.y);
+            pushTheaterEvent(st, responder.name + " launched from " + staging.name + " for Green response");
+        } else {
+            setCampaignForceRoute(responder, responder.x, responder.y, hostile.x, hostile.y);
+        }
+        responder.lastTaskUpdateSec = st.sectorElapsed;
+    }
+
+    private static boolean applyGreenResponseTriggerScan(GameContext ctx, CampaignState st, CampaignForce candidate) {
+        if (ctx == null || st == null || !isGreenResponseCandidate(st, candidate)) return false;
+        CampaignForce hostile = bestGreenResponseTriggerHostile(st, candidate);
+        if (hostile == null || campaignForceHasGreenResponse(st, hostile.id)) return false;
+        String reason = greenResponseTriggerReason(st, hostile, candidate);
+        if (reason.isBlank()) return false;
+        double ix = Double.isFinite(hostile.targetX) ? hostile.targetX : hostile.x;
+        double iy = Double.isFinite(hostile.targetY) ? hostile.targetY : hostile.y;
+        CampaignForce victim = campaignForceById(st, hostile.targetForceId);
+        if (victim != null && !victim.destroyed) {
+            ix = victim.x;
+            iy = victim.y;
+        }
+        assignGreenResponseMission(ctx, st, candidate, hostile, ix, iy);
+        pushTheaterEvent(st, "GREEN RESPONSE TRIGGER: " + reason + " -> " + candidate.name + " launched against " + hostile.name);
+        return true;
+    }
+
+    private static boolean isGreenResponseCandidate(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || force.destroyed || !force.simulationActive) return false;
+        if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) return false;
+        if (force.kind == CampaignForceKind.PLAYER_FLEET
+                || force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.MINING_GROUP) return false;
+        if (force.mission == CampaignFleetMission.REINFORCE && force.targetForceId > 0) return false;
+        return campaignFleetCombatPower(force) >= 24.0;
+    }
+
+    private static CampaignForce bestGreenResponseTriggerHostile(CampaignState st, CampaignForce responder) {
+        if (st == null || responder == null) return null;
+        CampaignForce best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignForce hostile : st.campaignForces) {
+            if (hostile == null || hostile.destroyed || hostile.faction != Faction.ENEMY || hostile.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            String reason = greenResponseTriggerReason(st, hostile, responder);
+            if (reason.isBlank()) continue;
+            double d2 = GameMath.dist2(responder.x, responder.y, hostile.x, hostile.y);
+            if (d2 > Math.max(900.0, responder.operatingRadius * 1.45) * Math.max(900.0, responder.operatingRadius * 1.45)) continue;
+            double score = d2;
+            if (reason.contains("convoy")) score *= 0.62;
+            if (reason.contains("base")) score *= 0.72;
+            if (reason.contains("player-reported")) score *= 0.86;
+            if (score < bestScore) {
+                best = hostile;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static String greenResponseTriggerReason(CampaignState st, CampaignForce hostile, CampaignForce responder) {
+        if (st == null || hostile == null || hostile.faction != Faction.ENEMY) return "";
+        CampaignForce target = campaignForceById(st, hostile.targetForceId);
+        if (hostile.mission == CampaignFleetMission.RAID && target != null && !target.destroyed
+                && target.faction != Faction.ENEMY
+                && (target.kind == CampaignForceKind.CONVOY
+                || target.kind == CampaignForceKind.TRADE_GROUP
+                || target.kind == CampaignForceKind.INSTALLATION_TRAFFIC
+                || target.kind == CampaignForceKind.MINING_GROUP)) {
+            return "Red attacking convoy";
+        }
+        CampaignLocation threatenedBase = nearestGreenResponseBase(st, hostile.x, hostile.y, 840.0);
+        if (threatenedBase != null) {
+            return "friendly base threatened at " + threatenedBase.name;
+        }
+        CampaignLocation protectedZone = nearestGreenProtectedLocation(st, hostile.x, hostile.y, 620.0);
+        if (protectedZone != null) return "Red entered protected zone " + protectedZone.name;
+        CampaignForce damaged = nearestBadlyDamagedGreenForceNear(st, hostile.x, hostile.y, 760.0);
+        if (damaged != null) return "badly damaged Green fleet " + damaged.name;
+        if (hostile.visibleToPlayer && hostile.contactConfidence >= 0.72) return "player-reported contact";
+        return "";
+    }
+
+    private static boolean campaignForceHasGreenResponse(CampaignState st, int hostileForceId) {
+        if (st == null || hostileForceId <= 0) return false;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.mission != CampaignFleetMission.REINFORCE) continue;
+            if (force.targetForceId != hostileForceId) continue;
+            if (force.faction == greenSupportFaction(st) || force.faction == Faction.ALLY) return true;
+        }
+        return false;
+    }
+
+    private static CampaignLocation nearestGreenProtectedLocation(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || isUndiscoveredProceduralSite(location)) continue;
+            if (!isGreenAlignedLocation(location) && location.type != CampaignLocationType.REPAIR_SITE) continue;
+            double d2 = GameMath.dist2(x, y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignLocation nearestGreenResponseBase(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!isGreenResponseStagingHub(location)) continue;
+            double d2 = GameMath.dist2(x, y, location.x, location.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestBadlyDamagedGreenForceNear(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction == Faction.ENEMY || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.hullIntegrity >= 42.0 && force.readiness >= 42.0 && force.strength >= 28.0) continue;
+            double d2 = GameMath.dist2(force.x, force.y, x, y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean maintainGreenResponseMission(GameContext ctx, CampaignState st, CampaignForce responder) {
+        if (ctx == null || st == null || responder == null || responder.mission != CampaignFleetMission.REINFORCE) return false;
+        if (responder.faction != greenSupportFaction(st) && responder.faction != Faction.ALLY) return false;
+        CampaignForce hostile = campaignForceById(st, responder.targetForceId);
+        CampaignLocation staging = campaignLocationById(st, responder.homeBaseId);
+        if (staging == null) staging = campaignLocationById(st, responder.sourceLocationId);
+        boolean overextended = staging != null
+                && GameMath.dist2(responder.x, responder.y, staging.x, staging.y) > Math.max(1.0, responder.operatingRadius) * Math.max(1.0, responder.operatingRadius);
+        if (hostile == null || hostile.destroyed || overextended) {
+            if (staging != null) {
+                assignReturnToBaseMission(st, responder, staging.id);
+                responder.targetForceId = 0;
+                responder.reassignmentCondition = overextended
+                        ? CampaignForceReassignmentCondition.THREAT_TOO_STRONG
+                        : CampaignForceReassignmentCondition.TARGET_MISSING;
+                pushTheaterEvent(st, responder.name + " returning to staging at " + staging.name + " after response");
+            } else {
+                responder.targetForceId = 0;
+                responder.intent = CampaignForceIntent.PATROLLING;
+                assignFallbackRoamRoute(st, responder, responder.x, responder.y);
+            }
+            return true;
+        }
+        responder.intent = CampaignForceIntent.REINFORCING;
+        responder.state = CampaignFleetState.PURSUING;
+        responder.workState = CampaignForceWorkState.TRAVELING;
+        responder.missionState = CampaignForceMissionState.TRAVELING;
+        responder.stopReason = CampaignForceStopReason.NONE;
+        setCampaignForceRoute(responder, responder.x, responder.y, hostile.x, hostile.y);
+        return true;
+    }
+
+    private static CampaignLocation nearestGreenResponseStagingHub(GameContext ctx,
+                                                                   CampaignState st,
+                                                                   CampaignForce responder,
+                                                                   double x,
+                                                                   double y) {
+        if (st == null) return null;
+        CampaignLocation home = campaignLocationById(st, responder == null ? "" : responder.homeBaseId);
+        if (isGreenResponseStagingHub(home)) return home;
+        CampaignLocation source = campaignLocationById(st, responder == null ? "" : responder.sourceLocationId);
+        if (isGreenResponseStagingHub(source)) return source;
+        CampaignLocation best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!isGreenResponseStagingHub(location)) continue;
+            double score = Math.hypot(location.x - x, location.y - y);
+            if (location.services.contains(HubService.SHIPYARD)) score *= 0.72;
+            if (location.services.contains(HubService.INTEL) || location.type == CampaignLocationType.STORY_EVENT) score *= 0.82;
+            if (score < bestScore) {
+                best = location;
+                bestScore = score;
+            }
+        }
+        if (best != null) return best;
+        return nearestFriendlySupportHub(ctx, st, greenSupportFaction(st), x, y);
+    }
+
+    private static boolean isGreenResponseStagingHub(CampaignLocation location) {
+        if (location == null || isUndiscoveredProceduralSite(location)) return false;
+        boolean service = location.services != null && !location.services.isEmpty();
+        boolean responseService = service && (location.services.contains(HubService.SHIPYARD)
+                || location.services.contains(HubService.REPAIR)
+                || location.services.contains(HubService.SUPPLY)
+                || location.services.contains(HubService.INTEL));
+        return responseService && (isGreenAlignedLocation(location) || location.type == CampaignLocationType.REPAIR_SITE
+                || location.type == CampaignLocationType.STORY_EVENT);
+    }
+
+    private static boolean maintainEscortMission(GameContext ctx, CampaignState st, CampaignForce escort) {
+        if (ctx == null || st == null || escort == null || escort.mission != CampaignFleetMission.ESCORT) return false;
+        CampaignForce target = campaignForceById(st, escort.targetForceId);
+        if (target == null || target.destroyed || target.missionState == CampaignForceMissionState.COMPLETED) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, escort);
+            if (home != null) {
+                assignReturnToBaseMission(st, escort, home.id);
+            } else {
+                assignFallbackRoamRoute(st, escort, escort.x, escort.y);
+                escort.intent = defaultCampaignForceIntent(escort.kind, escort.faction);
+            }
+            return true;
+        }
+        CampaignForce hostile = nearestHostileCampaignForce(st, target.x, target.y, 620.0);
+        double escortPower = campaignFleetCombatPower(escort);
+        if (hostile != null) {
+            double hostilePower = campaignFleetCombatPower(hostile);
+            double escortToTargetD2 = GameMath.dist2(escort.x, escort.y, target.x, target.y);
+            CampaignFactionDoctrine doctrine = doctrineForForce(st, escort);
+            double pursuitLimit = Math.min(Math.max(1.0, escort.operatingRadius), doctrine.cautiousPursuitLimit);
+            if (hostilePower <= escortPower * doctrine.raidAttackRatio
+                    && escortToTargetD2 <= pursuitLimit * pursuitLimit) {
+                escort.intent = CampaignForceIntent.INTERCEPTING;
+                escort.workState = CampaignForceWorkState.REACTING;
+                escort.missionState = CampaignForceMissionState.TRAVELING;
+                escort.targetForceId = target.id;
+                setCampaignForceRoute(escort, escort.x, escort.y, hostile.x, hostile.y);
+                escort.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                return true;
+            }
+            escort.intent = CampaignForceIntent.ESCORTING;
+            escort.workState = CampaignForceWorkState.TRAVELING;
+            escort.missionState = CampaignForceMissionState.TRAVELING;
+            escort.targetForceId = target.id;
+            escort.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            if (st.sectorElapsed - escort.lastTaskUpdateSec > 8.0) {
+                pushTheaterEvent(st, escort.name + " holding escort screen near " + target.name + " against stronger contact");
+                escort.lastTaskUpdateSec = st.sectorElapsed;
+            }
+        }
+        double desiredX = target.x;
+        double desiredY = target.y;
+        if (Double.isFinite(target.targetX) && Double.isFinite(target.targetY)) {
+            double dx = target.targetX - target.x;
+            double dy = target.targetY - target.y;
+            double len = Math.hypot(dx, dy);
+            if (len > 1e-6) {
+                desiredX += dx / len * 120.0;
+                desiredY += dy / len * 120.0;
+            }
+        }
+        double d2 = GameMath.dist2(escort.x, escort.y, desiredX, desiredY);
+        if (d2 > 260.0 * 260.0 || escort.routePoints.isEmpty()) {
+            escort.intent = CampaignForceIntent.ESCORTING;
+            escort.targetForceId = target.id;
+            setCampaignForceRoute(escort, escort.x, escort.y, desiredX, desiredY);
+        } else {
+            escort.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            escort.missionState = CampaignForceMissionState.WORKING;
+            escort.stopReason = CampaignForceStopReason.GUARDING;
+        }
+        return true;
+    }
+
+    private static boolean maintainHuntMission(GameContext ctx, CampaignState st, CampaignForce hunter) {
+        if (ctx == null || st == null || hunter == null || hunter.targetForceId <= 0) return false;
+        CampaignForce target = campaignForceById(st, hunter.targetForceId);
+        if (target == null || target.destroyed || hunter.intentTimerSec <= 0.0 && hunter.taskDeadlineSec <= 0.0) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, hunter);
+            if (home != null) {
+                assignPatrolMission(st, hunter, List.of(
+                        new double[]{home.x, home.y},
+                        new double[]{home.x + 260.0, home.y - 160.0},
+                        new double[]{home.x - 220.0, home.y + 140.0}));
+            } else {
+                assignFallbackRoamRoute(st, hunter, hunter.x, hunter.y);
+                hunter.intent = defaultCampaignForceIntent(hunter.kind, hunter.faction);
+            }
+            hunter.targetForceId = 0;
+            return true;
+        }
+        if (hunter.faction == Faction.ENEMY && targetNearFriendlyDefense(ctx, st, target)) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, hunter);
+            if (home != null) {
+                assignPatrolMission(st, hunter, List.of(
+                        new double[]{home.x, home.y},
+                        new double[]{home.x + 240.0, home.y - 140.0},
+                        new double[]{home.x - 220.0, home.y + 120.0}));
+            } else {
+                assignFallbackRoamRoute(st, hunter, hunter.x, hunter.y);
+            }
+            hunter.targetForceId = 0;
+            pushTheaterEvent(st, hunter.name + " broke off hunt near defended traffic");
+            return true;
+        }
+        double targetPower = campaignFleetCombatPower(target);
+        double hunterPower = campaignFleetCombatPower(hunter);
+        if (hunterPower >= targetPower * doctrineForForce(st, hunter).raidAttackRatio) {
+            hunter.intent = CampaignForceIntent.INTERCEPTING;
+            hunter.workState = CampaignForceWorkState.TRAVELING;
+            hunter.missionState = CampaignForceMissionState.TRAVELING;
+            setCampaignForceRoute(hunter, hunter.x, hunter.y, target.x, target.y);
+            hunter.reassignmentCondition = CampaignForceReassignmentCondition.TIMER_EXPIRED;
+        } else {
+            hunter.intent = CampaignForceIntent.REINFORCING;
+            hunter.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            hunter.missionState = CampaignForceMissionState.WORKING;
+            hunter.stopReason = CampaignForceStopReason.WAITING_FOR_REINFORCEMENTS;
+            hunter.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            hunter.workRemainingSec = Math.max(hunter.workRemainingSec, 8.0);
+            hunter.taskDeadlineSec = Math.max(hunter.taskDeadlineSec, 18.0);
+            pushTheaterEvent(st, hunter.name + " shadowing stronger contact " + target.name + " and calling support");
+        }
+        return true;
+    }
+
+    private static boolean maintainRaidMission(GameContext ctx, CampaignState st, CampaignForce raider, double dt) {
+        if (ctx == null || st == null || raider == null || raider.mission != CampaignFleetMission.RAID) return false;
+        CampaignForce target = campaignForceById(st, raider.targetForceId);
+        if (target == null || target.destroyed || (raider.intentTimerSec <= 0.0 && raider.taskDeadlineSec <= 0.0 && raider.routePoints.isEmpty())) {
+            CampaignForce fallbackTarget = nearestWeakKnownNonEnemyForce(st, raider);
+            if (fallbackTarget == null) fallbackTarget = nearestWeakNonEnemyForce(st, raider);
+            if (fallbackTarget != null && fallbackTarget != target) {
+                assignRaidMission(st, raider, fallbackTarget);
+                return true;
+            }
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, raider);
+            if (home != null) assignRetreatMission(st, raider, home.id);
+            raider.targetForceId = 0;
+            return true;
+        }
+        CampaignForce reinforcement = nearestGreenReinforcementForRaid(st, raider, target, 560.0);
+        if (reinforcement != null
+                && campaignFleetCombatPower(raider) < campaignFleetCombatPower(reinforcement) * 1.15) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, raider);
+            if (home != null) assignRetreatMission(st, raider, home.id);
+            pushTheaterEvent(st, raider.name + " broke off raid as " + reinforcement.name + " arrived");
+            return true;
+        }
+        double d2 = GameMath.dist2(raider.x, raider.y, target.x, target.y);
+        if (d2 > 140.0 * 140.0) {
+            raider.intent = CampaignForceIntent.INTERCEPTING;
+            raider.workState = CampaignForceWorkState.TRAVELING;
+            raider.missionState = CampaignForceMissionState.TRAVELING;
+            raider.stopReason = CampaignForceStopReason.NONE;
+            if (raider.routePoints.isEmpty() || d2 > 240.0 * 240.0) {
+                double angle = Math.atan2(target.y - raider.y, target.x - raider.x);
+                double ambushX = target.x - Math.cos(angle) * 120.0 + Math.sin(angle) * 80.0;
+                double ambushY = target.y - Math.sin(angle) * 120.0 - Math.cos(angle) * 80.0;
+                setCampaignForceRoute(raider, raider.x, raider.y, ambushX, ambushY, target.x, target.y);
+            }
+            return true;
+        }
+        double raiderPower = campaignFleetCombatPower(raider);
+        double targetPower = campaignFleetCombatPower(target);
+        if (raiderPower >= targetPower * doctrineForForce(st, raider).raidAttackRatio) {
+            applyCampaignRaidSuccess(st, raider, target);
+            if (isGreenCivilianTraffic(st, target)) {
+                CampaignForce responder = nearestGreenResponder(st, target.x, target.y, 950.0);
+                if (responder != null) {
+                    assignGreenResponseMission(ctx, st, responder, raider, target.x, target.y);
+                    pushTheaterEvent(st, target.name + " distress: Green response launched after Red raid");
+                }
+            }
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, raider);
+            if (home != null) assignRetreatMission(st, raider, home.id);
+            return true;
+        }
+        raider.intent = CampaignForceIntent.REINFORCING;
+        raider.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+        raider.missionState = CampaignForceMissionState.WORKING;
+        raider.stopReason = CampaignForceStopReason.WAITING_FOR_REINFORCEMENTS;
+        raider.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+        raider.workRemainingSec = Math.max(raider.workRemainingSec, Math.max(6.0, dt));
+        raider.taskDeadlineSec = Math.max(raider.taskDeadlineSec, 16.0);
+        return true;
+    }
+
+    private static void applyCampaignRaidSuccess(CampaignState st, CampaignForce raider, CampaignForce target) {
+        if (st == null || raider == null || target == null) return;
+        target.strength = Math.max(0.0, target.strength - 16.0);
+        target.readiness = Math.max(0.0, target.readiness - 18.0);
+        target.supply = Math.max(0.0, target.supply - 10.0);
+        target.morale = Math.max(0.0, target.morale - 12.0);
+        if (target.cargoLoad > 0.0) target.cargoLoad = Math.max(0.0, target.cargoLoad * 0.55);
+        target.intent = CampaignForceIntent.RETREATING;
+        target.state = CampaignFleetState.RETREATING;
+        raider.cargoKind = CampaignForceCargoKind.LOOT;
+        raider.cargoCapacity = Math.max(raider.cargoCapacity, 80.0);
+        raider.cargoLoad = MathUtil.clamp(raider.cargoLoad + 24.0, 0.0, raider.cargoCapacity);
+        CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, target.y));
+        if (theater != null) {
+            theater.danger = MathUtil.clamp(theater.danger + 5.0, 0.0, 100.0);
+            theater.threatPressure = MathUtil.clamp(theater.threatPressure + 6.0, 0.0, 100.0);
+            theater.routeRisk = MathUtil.clamp(theater.routeRisk + (target.kind == CampaignForceKind.MINING_GROUP ? 12.0 : 8.0), 0.0, 100.0);
+            if (target.kind == CampaignForceKind.CONVOY || target.kind == CampaignForceKind.TRADE_GROUP || target.kind == CampaignForceKind.MINING_GROUP) {
+                theater.tradeHealth = MathUtil.clamp(theater.tradeHealth - 6.0, 0.0, 100.0);
+            }
+        }
+        pushTheaterEvent(st, raider.name + " raided " + target.name + " and withdrew with loot");
+        if (target.faction == Faction.TEAM_D
+                && (target.kind == CampaignForceKind.MINING_GROUP
+                || target.kind == CampaignForceKind.CONVOY
+                || target.kind == CampaignForceKind.TRADE_GROUP
+                || target.kind == CampaignForceKind.INSTALLATION_TRAFFIC)) {
+            pushTheaterEvent(st, target.name + " distress: raided by " + raider.name + " and fleeing");
+        }
+    }
+
+    private static boolean isGreenCivilianTraffic(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || force.destroyed) return false;
+        if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) return false;
+        return force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC
+                || force.kind == CampaignForceKind.MINING_GROUP;
+    }
+
+    private static boolean launchGreenResponseToSiege(GameContext ctx, CampaignState st, CampaignForce siege, CampaignLocation target) {
+        if (ctx == null || st == null || siege == null || target == null || siege.faction != Faction.ENEMY) return false;
+        if (!isGreenAlignedLocation(target) && target.type != CampaignLocationType.REPAIR_SITE) return false;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.mission == CampaignFleetMission.REINFORCE && force.targetForceId == siege.id) return false;
+        }
+        CampaignForce responder = nearestGreenResponder(st, target.x, target.y, 1050.0);
+        if (responder == null) return false;
+        assignGreenResponseMission(ctx, st, responder, siege, target.x, target.y);
+        pushTheaterEvent(st, "SIEGE RESPONSE: " + responder.name + " launching against " + siege.name + " near " + target.name);
+        return true;
+    }
+
+    private static CampaignForce nearestGreenReinforcementForRaid(CampaignState st, CampaignForce raider, CampaignForce target, double radius) {
+        if (st == null || raider == null || target == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == raider || force == target || force.destroyed || !force.simulationActive) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.kind == CampaignForceKind.PLAYER_FLEET || force.kind == CampaignForceKind.MINING_GROUP) continue;
+            double d2 = GameMath.dist2(force.x, force.y, target.x, target.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean maintainRepairRescueMission(GameContext ctx, CampaignState st, CampaignForce rescue, double dt) {
+        if (ctx == null || st == null || rescue == null || rescue.mission != CampaignFleetMission.REPAIR || rescue.targetForceId <= 0) {
+            return false;
+        }
+        CampaignForce ally = campaignForceById(st, rescue.targetForceId);
+        if (ally == null || ally.destroyed) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, rescue);
+            if (home != null) assignReturnToBaseMission(st, rescue, home.id);
+            rescue.targetForceId = 0;
+            rescue.reassignmentCondition = CampaignForceReassignmentCondition.TARGET_MISSING;
+            return true;
+        }
+        CampaignForce hostile = nearestHostileCampaignForce(st, ally.x, ally.y, 520.0);
+        if (hostile != null) {
+            double alliedPower = campaignFleetCombatPower(rescue) + campaignFleetCombatPower(ally) * 0.55;
+            double hostilePower = campaignFleetCombatPower(hostile);
+            if (hostilePower > alliedPower * 0.86) {
+                CampaignLocation safe = nearestFriendlySupportHub(ctx, st, ally.faction, ally.x, ally.y);
+                if (safe != null) {
+                    assignRetreatMission(st, ally, safe.id);
+                    assignEscortMission(st, rescue, ally.id);
+                    rescue.stopReason = CampaignForceStopReason.AVOIDING_SUPERIOR_THREAT;
+                    rescue.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                    pushTheaterEvent(st, rescue.name + " evacuating " + ally.name + " from stronger contact");
+                } else {
+                    rescue.intent = CampaignForceIntent.REINFORCING;
+                    rescue.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+                    rescue.missionState = CampaignForceMissionState.WORKING;
+                    rescue.stopReason = CampaignForceStopReason.WAITING_FOR_ESCORT;
+                    rescue.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                }
+                rescue.lastTaskUpdateSec = st.sectorElapsed;
+                return true;
+            }
+            if (GameMath.dist2(hostile.x, hostile.y, rescue.x, rescue.y) <= 170.0 * 170.0
+                    && campaignFleetCombatPower(rescue) > hostilePower * 1.25) {
+                rescue.intent = CampaignForceIntent.INTERCEPTING;
+                rescue.workState = CampaignForceWorkState.REACTING;
+                rescue.missionState = CampaignForceMissionState.TRAVELING;
+                rescue.stopReason = CampaignForceStopReason.NONE;
+                setCampaignForceRoute(rescue, rescue.x, rescue.y, hostile.x, hostile.y);
+                return true;
+            }
+        }
+        double d2 = GameMath.dist2(rescue.x, rescue.y, ally.x, ally.y);
+        if (d2 > 135.0 * 135.0) {
+            rescue.intent = CampaignForceIntent.REINFORCING;
+            rescue.workState = CampaignForceWorkState.TRAVELING;
+            rescue.missionState = CampaignForceMissionState.TRAVELING;
+            rescue.stopReason = CampaignForceStopReason.NONE;
+            setCampaignForceRoute(rescue, rescue.x, rescue.y, ally.x, ally.y);
+            return true;
+        }
+
+        rescue.routePoints.clear();
+        rescue.intent = CampaignForceIntent.REPAIRING;
+        rescue.workState = CampaignForceWorkState.WORKING;
+        rescue.missionState = CampaignForceMissionState.WORKING;
+        rescue.stopReason = ally.strength < 22.0 ? CampaignForceStopReason.RECOVERING_SURVIVORS : CampaignForceStopReason.REPAIRING;
+        rescue.workRemainingSec = Math.max(rescue.workRemainingSec, 8.0);
+        rescue.taskDeadlineSec = Math.max(rescue.taskDeadlineSec, rescue.workRemainingSec + 10.0);
+        rescue.state = CampaignFleetState.SEARCHING;
+        double seconds = Math.max(0.0, dt);
+        ally.strength = MathUtil.clamp(ally.strength + seconds * 1.35, 0.0, 100.0);
+        ally.readiness = MathUtil.clamp(ally.readiness + seconds * 1.55, 0.0, 100.0);
+        ally.hullIntegrity = MathUtil.clamp(ally.hullIntegrity + seconds * 1.45, 0.0, 100.0);
+        ally.supply = MathUtil.clamp(ally.supply + seconds * 1.15, 0.0, 100.0);
+        ally.repairCapacity = MathUtil.clamp(ally.repairCapacity - seconds * 0.35, 0.0, 100.0);
+        boolean stable = ally.strength >= 35.0 && ally.readiness >= 58.0 && ally.hullIntegrity >= 58.0;
+        if (stable) {
+            CampaignLocation safe = nearestFriendlySupportHub(ctx, st, ally.faction, ally.x, ally.y);
+            if (safe != null) {
+                assignRetreatMission(st, ally, safe.id);
+                assignEscortMission(st, rescue, ally.id);
+                pushTheaterEvent(st, rescue.name + " stabilized " + ally.name + " and is escorting it to " + safe.name);
+            }
+        }
+        rescue.lastTaskUpdateSec = st.sectorElapsed;
+        return true;
+    }
+
+    private static boolean maintainSiegeMission(GameContext ctx, CampaignState st, CampaignForce force, double dt) {
+        if (ctx == null || st == null || force == null || force.mission != CampaignFleetMission.CAPTURE) return false;
+        CampaignLocation staging = campaignLocationById(st, force.sourceLocationId);
+        CampaignLocation target = campaignLocationById(st, force.destinationLocationId);
+        if (target == null) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, force);
+            if (home != null) assignRetreatMission(st, force, home.id);
+            return true;
+        }
+        CampaignLocation fallback = campaignLocationById(st, force.homeBaseId);
+        if (fallback == null) fallback = staging;
+        if (force.hullIntegrity < 44.0 || force.readiness < 38.0 || force.strength < 30.0) {
+            if (fallback != null) assignRetreatMission(st, force, fallback.id);
+            force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+            pushTheaterEvent(st, force.name + " siege aborted by damage and falling back");
+            return true;
+        }
+        launchGreenResponseToSiege(ctx, st, force, target);
+        if (staging != null && force.stopReason != CampaignForceStopReason.BLOCKADING) {
+            double stagingD2 = GameMath.dist2(force.x, force.y, staging.x, staging.y);
+            double targetD2 = GameMath.dist2(force.x, force.y, target.x, target.y);
+            if (targetD2 > 220.0 * 220.0 && stagingD2 > 155.0 * 155.0 && force.workState != CampaignForceWorkState.TRAVELING) {
+                setCampaignForceRoute(force, force.x, force.y, staging.x, staging.y);
+                force.intent = CampaignForceIntent.REINFORCING;
+                force.workState = CampaignForceWorkState.TRAVELING;
+                force.missionState = CampaignForceMissionState.TRAVELING;
+                force.stopReason = CampaignForceStopReason.NONE;
+                return true;
+            }
+            double supportPower = nearbySameFactionSupportPower(st, force, staging.x, staging.y, 520.0);
+            double requiredSupport = Math.max(45.0, campaignFleetCombatPower(force) * 0.45);
+            if (targetD2 > 220.0 * 220.0 && stagingD2 <= 155.0 * 155.0
+                    && supportPower < requiredSupport
+                    && force.workRemainingSec > 0.0) {
+                force.routePoints.clear();
+                force.intent = CampaignForceIntent.REINFORCING;
+                force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+                force.missionState = CampaignForceMissionState.WORKING;
+                force.stopReason = CampaignForceStopReason.STAGING;
+                force.workRemainingSec = Math.max(0.0, force.workRemainingSec - Math.max(0.0, dt));
+                force.taskDeadlineSec = Math.max(force.taskDeadlineSec, force.workRemainingSec + 12.0);
+                force.state = CampaignFleetState.SEARCHING;
+                return true;
+            }
+            if (targetD2 > 220.0 * 220.0) {
+                force.intent = CampaignForceIntent.INTERCEPTING;
+                force.workState = CampaignForceWorkState.TRAVELING;
+                force.missionState = CampaignForceMissionState.TRAVELING;
+                force.stopReason = CampaignForceStopReason.NONE;
+                setCampaignForceRoute(force, force.x, force.y, target.x, target.y);
+                double eta = Math.max(1.0, Math.hypot(target.x - force.x, target.y - force.y) / Math.max(20.0, force.speed));
+                pushTheaterEvent(st, "SIEGE ADVANCING: " + force.name + " from " + staging.name
+                        + " toward " + target.name + " ETA " + (int) Math.ceil(eta) + "s");
+                return true;
+            }
+        }
+        double targetD2 = GameMath.dist2(force.x, force.y, target.x, target.y);
+        if (targetD2 <= 220.0 * 220.0) {
+            double attackPower = campaignFleetCombatPower(force) + nearbySameFactionSupportPower(st, force, force.x, force.y, 520.0) * 0.35;
+            double defensePower = nearbyOpposingForcePower(st, force.faction, force.x, force.y, 520.0);
+            double requiredAttackRatio = assaultAttackRatioForForce(st, force);
+            if (attackPower < defensePower * requiredAttackRatio) {
+                force.intent = CampaignForceIntent.REINFORCING;
+                force.state = CampaignFleetState.ENGAGING;
+                force.workState = CampaignForceWorkState.FIGHTING;
+                force.missionState = CampaignForceMissionState.WORKING;
+                force.stopReason = CampaignForceStopReason.WAITING_FOR_REINFORCEMENTS;
+                force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                force.workRemainingSec = Math.max(force.workRemainingSec, 10.0);
+                force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 20.0);
+                return true;
+            }
+            if (force.faction != Faction.ENEMY) {
+                force.mission = CampaignFleetMission.PATROL;
+                force.intent = CampaignForceIntent.GUARDING;
+                force.destinationLocationId = target.id;
+                force.routePoints.clear();
+                force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+                force.missionState = CampaignForceMissionState.WORKING;
+                force.stopReason = CampaignForceStopReason.HOLDING_LINE;
+                force.workRemainingSec = Math.max(force.workRemainingSec, 28.0);
+                force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 70.0);
+                CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, target.y));
+                if (theater != null) {
+                    theater.installationIntegrity = MathUtil.clamp(theater.installationIntegrity + 6.0, 0.0, 100.0);
+                    theater.controlScore = MathUtil.clamp(theater.controlScore + 8.0, -100.0, 100.0);
+                    theater.controlState = theaterControlStateForScore(theater.controlScore);
+                    applyRegionalTrafficMixFromControl(theater);
+                }
+                pushTheaterEvent(st, "GREEN ASSAULT HOLD: " + force.name + " captured and is holding " + target.name);
+                return true;
+            }
+            assignBlockadeMission(st, force, target.id);
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.BLOCKADING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 18.0);
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, target.y));
+            if (theater != null) {
+                theater.installationIntegrity = MathUtil.clamp(theater.installationIntegrity - 8.0, 0.0, 100.0);
+                theater.controlScore = MathUtil.clamp(theater.controlScore - 6.0, -100.0, 100.0);
+                theater.controlState = theaterControlStateForScore(theater.controlScore);
+                applyRegionalTrafficMixFromControl(theater);
+            }
+            pushTheaterEvent(st, force.name + " converted siege pressure into blockade at " + target.name);
+            return true;
+        }
+        return true;
+    }
+
+    private static double assaultAttackRatioForForce(CampaignState st, CampaignForce force) {
+        if (force == null) return 0.82;
+        CampaignFactionDoctrine doctrine = doctrineForForce(st, force);
+        double ratio = doctrine.raidAttackRatio;
+        if (force.mission == CampaignFleetMission.CAPTURE && force.faction == Faction.ENEMY) {
+            ratio = Math.max(0.58, ratio - 0.16 - doctrine.aggressionBias * 0.08);
+        }
+        return MathUtil.clamp(ratio, 0.52, 1.15);
+    }
+
+    private static boolean targetNearFriendlyDefense(GameContext ctx, CampaignState st, CampaignForce target) {
+        if (ctx == null || st == null || target == null) return false;
+        CampaignLocation home = campaignLocationById(st, target.homeBaseId);
+        if (home == null) home = campaignLocationById(st, target.sourceLocationId);
+        if (home != null && GameMath.dist2(target.x, target.y, home.x, home.y) <= 320.0 * 320.0) return true;
+        CampaignLocation hub = nearestFriendlySupportHub(ctx, st, target.faction, target.x, target.y);
+        return hub != null && GameMath.dist2(target.x, target.y, hub.x, hub.y) <= 260.0 * 260.0;
+    }
+
+    private static double nearbySameFactionSupportPower(CampaignState st, CampaignForce force, double x, double y, double radius) {
+        if (st == null || force == null) return 0.0;
+        double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        double total = 0.0;
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other == force || other.destroyed || !other.simulationActive) continue;
+            if (other.faction != force.faction || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (GameMath.dist2(other.x, other.y, x, y) <= r2) total += campaignFleetCombatPower(other);
+        }
+        return total;
+    }
+
+    private static double nearbyOpposingForcePower(CampaignState st, Faction faction, double x, double y, double radius) {
+        if (st == null) return 0.0;
+        double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        double total = 0.0;
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other.destroyed || !other.simulationActive || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (other.faction == faction || other.faction == Faction.PLAYER) continue;
+            if (faction != Faction.ENEMY && other.faction != Faction.ENEMY) continue;
+            if (GameMath.dist2(other.x, other.y, x, y) <= r2) total += campaignFleetCombatPower(other);
+        }
+        return total;
+    }
+
+    private static boolean maintainBlockadeMission(GameContext ctx, CampaignState st, CampaignForce force, double dt) {
+        if (ctx == null || st == null || force == null || force.mission != CampaignFleetMission.BLOCKADE) return false;
+        CampaignLocation target = campaignLocationById(st, force.destinationLocationId);
+        if (target == null) {
+            CampaignLocation home = nearestSafeRecoveryHub(ctx, st, force);
+            if (home != null) assignRetreatMission(st, force, home.id);
+            return true;
+        }
+        double d2 = GameMath.dist2(force.x, force.y, target.x, target.y);
+        if (d2 > 180.0 * 180.0 && force.routePoints.isEmpty()) {
+            setCampaignForceRoute(force, force.x, force.y, target.x, target.y);
+            force.workState = CampaignForceWorkState.TRAVELING;
+            force.missionState = CampaignForceMissionState.TRAVELING;
+            force.stopReason = CampaignForceStopReason.NONE;
+            return true;
+        }
+        if (d2 <= 180.0 * 180.0) {
+            force.routePoints.clear();
+            force.intent = CampaignForceIntent.GUARDING;
+            force.workState = CampaignForceWorkState.WAITING_WITH_PURPOSE;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.BLOCKADING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 8.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, 18.0);
+            force.state = CampaignFleetState.SEARCHING;
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, force.y));
+            if (theater != null) {
+                theater.routeRisk = MathUtil.clamp(theater.routeRisk + Math.max(0.0, dt) * 1.2, 0.0, 100.0);
+                theater.tradeHealth = MathUtil.clamp(theater.tradeHealth - Math.max(0.0, dt) * 0.8, 0.0, 100.0);
+                double controlDrift = force.faction == Faction.ENEMY ? -0.45 : 0.30;
+                theater.controlScore = MathUtil.clamp(theater.controlScore + Math.max(0.0, dt) * controlDrift, -100.0, 100.0);
+                theater.controlState = theaterControlStateForScore(theater.controlScore);
+                applyRegionalTrafficMixFromControl(theater);
+            }
+            CampaignForce weakTraffic = nearestWeakBlockadeTraffic(st, force, 420.0);
+            if (weakTraffic != null) {
+                force.intent = CampaignForceIntent.INTERCEPTING;
+                force.workState = CampaignForceWorkState.REACTING;
+                force.missionState = CampaignForceMissionState.TRAVELING;
+                force.targetForceId = weakTraffic.id;
+                setCampaignForceRoute(force, force.x, force.y, weakTraffic.x, weakTraffic.y);
+                return true;
+            }
+            CampaignForce challenger = force.faction == Faction.ENEMY
+                    ? nearestGreenAssaultChallenger(st, force, 520.0)
+                    : nearestHostileCampaignForce(st, force.x, force.y, 520.0);
+            if (challenger != null && campaignFleetCombatPower(challenger) > campaignFleetCombatPower(force) * 1.2) {
+                CampaignLocation home = nearestSafeRecoveryHub(ctx, st, force);
+                if (home != null) {
+                    assignRetreatMission(st, force, home.id);
+                } else {
+                    force.stopReason = CampaignForceStopReason.WAITING_FOR_REINFORCEMENTS;
+                    force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
+                }
+                CampaignTheaterState clearanceTheater = campaignTheaterById(st, theaterForPoint(st, force.y));
+                if (clearanceTheater != null && force.faction == Faction.ENEMY
+                        && (challenger.faction == greenSupportFaction(st) || challenger.faction == Faction.ALLY)) {
+                    clearanceTheater.controlScore = MathUtil.clamp(clearanceTheater.controlScore + 7.0, -100.0, 100.0);
+                    clearanceTheater.routeRisk = MathUtil.clamp(clearanceTheater.routeRisk - 10.0, 0.0, 100.0);
+                    clearanceTheater.controlState = theaterControlStateForScore(clearanceTheater.controlScore);
+                    applyRegionalTrafficMixFromControl(clearanceTheater);
+                }
+                pushTheaterEvent(st, challenger.name + " challenged blockade by " + force.name);
+                return true;
+            }
+        }
+        return true;
+    }
+
+    private static CampaignForce nearestGreenAssaultChallenger(CampaignState st, CampaignForce blockade, double radius) {
+        if (st == null || blockade == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force == blockade || force.destroyed || !force.simulationActive) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.kind == CampaignForceKind.PLAYER_FLEET || force.kind == CampaignForceKind.MINING_GROUP) continue;
+            boolean assaultOrder = force.mission == CampaignFleetMission.CAPTURE
+                    || force.mission == CampaignFleetMission.INTERCEPT
+                    || force.mission == CampaignFleetMission.REINFORCE
+                    || force.intent == CampaignForceIntent.INTERCEPTING
+                    || force.intent == CampaignForceIntent.REINFORCING;
+            if (!assaultOrder) continue;
+            double d2 = GameMath.dist2(force.x, force.y, blockade.x, blockade.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestWeakBlockadeTraffic(CampaignState st, CampaignForce blockade, double radius) {
+        if (st == null || blockade == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other == blockade || other.destroyed || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (other.faction == blockade.faction) continue;
+            if (other.kind != CampaignForceKind.CONVOY
+                    && other.kind != CampaignForceKind.TRADE_GROUP
+                    && other.kind != CampaignForceKind.MINING_GROUP
+                    && other.kind != CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+            if (campaignFleetCombatPower(other) > campaignFleetCombatPower(blockade) * 0.72) continue;
+            double d2 = GameMath.dist2(other.x, other.y, blockade.x, blockade.y);
+            if (d2 < bestD2) {
+                best = other;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignForce nearestGreenResponder(CampaignState st, double x, double y, double radius) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction != greenSupportFaction(st) && force.faction != Faction.ALLY) continue;
+            if (force.intent == CampaignForceIntent.RETREATING || force.intent == CampaignForceIntent.REPAIRING) continue;
+            double d2 = GameMath.dist2(x, y, force.x, force.y);
+            if (d2 < bestD2 && d2 <= Math.max(1.0, force.operatingRadius) * Math.max(1.0, force.operatingRadius)) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
     private static CampaignForce nearbySameFactionSupport(CampaignState st, CampaignForce force, double radius) {
         if (st == null || force == null) return null;
         double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
@@ -19559,12 +24055,26 @@ public final class CampaignSystem {
         double dist = Math.hypot(force.x - hostile.x, force.y - hostile.y);
         boolean yellow = force.faction == Faction.TEAM_D;
         boolean red = force.faction == Faction.ENEMY;
+        boolean scout = red && (force.mission == CampaignFleetMission.RECON
+                || (force.name != null && force.name.toUpperCase(Locale.US).contains("SCOUT")));
         double doctrineRetreat = liveDoctrineRetreatThreshold(st, force);
         if (acceptsLiveSurrender(st, force) && (hostile.strength < 15.0 || hostile.morale < 20.0)) {
             hostile.intent = CampaignForceIntent.RETREATING;
             hostile.state = CampaignFleetState.RETREATING;
             force.intent = CampaignForceIntent.HOLDING;
             force.state = CampaignFleetState.SEARCHING;
+            return true;
+        }
+        if (scout && hostilePower > ownPower * 0.35) {
+            force.intent = CampaignForceIntent.SEARCHING;
+            force.state = CampaignFleetState.SEARCHING;
+            force.targetForceId = 0;
+            double dx = force.x - hostile.x;
+            double dy = force.y - hostile.y;
+            double len = Math.max(1.0, Math.hypot(dx, dy));
+            setCampaignForceRoute(force, force.x, force.y, force.x + dx / len * 420.0, force.y + dy / len * 420.0);
+            force.workState = CampaignForceWorkState.REACTING;
+            force.reassignmentCondition = CampaignForceReassignmentCondition.THREAT_TOO_STRONG;
             return true;
         }
         if (yellow && ratio < 1.45 || ratio < 0.68 || force.readiness < Math.max(38.0, doctrineRetreat - 6.0) || force.supply < 24.0
@@ -19581,6 +24091,25 @@ public final class CampaignSystem {
             force.targetForceId = hostile.id;
             return true;
         }
+        CampaignTheaterState hostileTheater = campaignTheaterById(st, theaterForPoint(st, hostile.y));
+        boolean strongRedControl = hostileTheater != null && hostileTheater.controlScore <= -45.0;
+        if (!red && force.faction == greenSupportFaction(st)
+                && (dist > doctrineForForce(st, force).cautiousPursuitLimit || strongRedControl)) {
+            force.targetForceId = 0;
+            if (!force.patrolWaypoints.isEmpty()) {
+                returnPatrolToCurrentWaypoint(force);
+            } else {
+                force.intent = CampaignForceIntent.GUARDING;
+                force.state = CampaignFleetState.SEARCHING;
+                CampaignLocation support = nearestFriendlySupportHub(null, st, force.faction, force.x, force.y);
+                if (support != null) {
+                    setCampaignForceRoute(force, force.x, force.y, support.x, support.y);
+                } else {
+                    assignFallbackRoamRoute(st, force, force.x, force.y);
+                }
+            }
+            return true;
+        }
         if (dist > 230.0 && ratio < 1.25 && !red) {
             force.intent = CampaignForceIntent.SEARCHING;
             force.state = CampaignFleetState.PURSUING;
@@ -19591,7 +24120,21 @@ public final class CampaignSystem {
         force.state = CampaignFleetState.PURSUING;
         force.targetForceId = hostile.id;
         setCampaignForceRoute(force, force.x, force.y, hostile.x, hostile.y);
+        force.workState = CampaignForceWorkState.REACTING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
         return true;
+    }
+
+    private static void returnPatrolToCurrentWaypoint(CampaignForce force) {
+        if (force == null || force.patrolWaypoints.isEmpty()) return;
+        int index = Math.max(0, Math.min(force.patrolWaypoints.size() - 1, force.patrolWaypointIndex));
+        double[] waypoint = force.patrolWaypoints.get(index);
+        force.intent = CampaignForceIntent.PATROLLING;
+        force.state = CampaignFleetState.MOVING;
+        force.workState = CampaignForceWorkState.TRAVELING;
+        force.missionState = CampaignForceMissionState.TRAVELING;
+        force.stopReason = CampaignForceStopReason.NONE;
+        setCampaignForceRoute(force, force.x, force.y, waypoint[0], waypoint[1]);
     }
 
     private static double liveDoctrineRetreatThreshold(CampaignState st, CampaignForce force) {
@@ -19624,18 +24167,47 @@ public final class CampaignSystem {
         } else {
             force.state = CampaignFleetState.IDLE;
         }
+        double arrivalRadius = Math.max(24.0, force.speed * Math.max(0.0, dt) * 1.6);
+        if (dist <= arrivalRadius
+                && !force.routePoints.isEmpty()
+                && (force.intent == CampaignForceIntent.REPAIRING
+                || force.intent == CampaignForceIntent.RETREATING
+                || force.intent == CampaignForceIntent.REGROUPING)) {
+            force.routePoints.clear();
+            force.intent = CampaignForceIntent.REPAIRING;
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = force.fuelLevel < 80.0 ? CampaignForceStopReason.REFUELING : CampaignForceStopReason.REPAIRING;
+            double missing = Math.max(0.0, 400.0 - force.fuelLevel - force.ammoLevel - force.repairCapacity - force.crewReadiness);
+            force.workRemainingSec = Math.max(4.0, missing / 24.0);
+            force.taskDeadlineSec = force.workRemainingSec + 8.0;
+            force.state = CampaignFleetState.SEARCHING;
+            return;
+        }
         if (!force.routePoints.isEmpty() && dist <= Math.max(18.0, force.speed * Math.max(0.0, dt) * 1.5)) {
             force.currentRouteIndex = (force.currentRouteIndex + 1) % force.routePoints.size();
             double[] next = force.routePoints.get(force.currentRouteIndex);
             force.targetX = next[0];
             force.targetY = next[1];
         }
-        if (!force.patrolWaypoints.isEmpty() && dist <= Math.max(24.0, force.speed * Math.max(0.0, dt) * 1.6)) {
-            force.patrolWaypointIndex = (force.patrolWaypointIndex + 1) % force.patrolWaypoints.size();
-            double[] waypoint = force.patrolWaypoints.get(force.patrolWaypointIndex);
-            force.targetX = waypoint[0];
-            force.targetY = waypoint[1];
-            setCampaignForceRoute(force, force.x, force.y, waypoint[0], waypoint[1]);
+        if (!force.patrolWaypoints.isEmpty() && dist <= arrivalRadius) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.SCANNING;
+            force.workRemainingSec = 3.0;
+            force.taskDeadlineSec = 6.0;
+            force.state = CampaignFleetState.SEARCHING;
+        }
+        if (dist <= arrivalRadius
+                && force.intent == CampaignForceIntent.DOCKING
+                && force.cargoLoad > 0.0) {
+            force.routePoints.clear();
+            force.workState = CampaignForceWorkState.WORKING;
+            force.missionState = CampaignForceMissionState.WORKING;
+            force.stopReason = CampaignForceStopReason.UNLOADING;
+            force.workRemainingSec = Math.max(force.workRemainingSec, 4.0);
+            force.taskDeadlineSec = Math.max(force.taskDeadlineSec, force.workRemainingSec + 4.0);
             force.state = CampaignFleetState.SEARCHING;
         }
     }
@@ -19684,6 +24256,60 @@ public final class CampaignSystem {
         if (location == null) return;
         String detail = force.name + " was broken and its route memory still stains the lane.";
         setLocationScar(location, detail);
+        addRecoverableWreckSite(st, force.x, force.y, salvageRecoveryRoleForSector(st, DiscoveryKind.WRECK_FIELD),
+                force.name + " Wreck",
+                "Battle aftermath: recoverable wreckage from " + force.name + ".");
+    }
+
+    private static void dispatchBattleAftermathSalvage(GameContext ctx, CampaignState st, CampaignBattle battle) {
+        if (ctx == null || st == null || battle == null) return;
+        addRecoverableWreckSite(st, battle.x, battle.y, salvageRecoveryRoleForSector(st, DiscoveryKind.WRECK_FIELD),
+                "Battle Scar #" + battle.id + " Recovery Frame",
+                "Battle aftermath: salvage crews can strip wreckage from the fleet clash.");
+        CampaignForce salvage = nearestAvailableYellowSalvageForce(st, battle.x, battle.y);
+        if (salvage == null) {
+            CampaignLocation hub = nearestFriendlySupportHub(ctx, st, yellowSupportFaction(st), battle.x, battle.y);
+            if (hub != null) {
+                salvage = ensureCampaignForce(st,
+                        CampaignForceKind.TRADE_GROUP,
+                        yellowSupportFaction(st),
+                        "Yellow Salvage Crew " + battle.id,
+                        hub.name,
+                        "Recover battle wreckage and return salvage cargo",
+                        hub.x,
+                        hub.y);
+                if (salvage != null) {
+                    salvage.homeBaseId = hub.id;
+                    salvage.sourceLocationId = hub.id;
+                }
+            }
+        }
+        if (salvage != null) {
+            assignSalvageMission(st, salvage, battle.x, battle.y,
+                    salvage.homeBaseId == null || salvage.homeBaseId.isBlank() ? salvage.sourceLocationId : salvage.homeBaseId);
+            pushTheaterEvent(st, salvage.name + " dispatched to Battle Scar #" + battle.id);
+        }
+    }
+
+    private static CampaignForce nearestAvailableYellowSalvageForce(CampaignState st, double x, double y) {
+        if (st == null) return null;
+        CampaignForce best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (force.faction != yellowSupportFaction(st)) continue;
+            if (force.intent == CampaignForceIntent.RETREATING || force.intent == CampaignForceIntent.REPAIRING) continue;
+            if (force.cargoKind != CampaignForceCargoKind.SALVAGE
+                    && force.kind != CampaignForceKind.TRADE_GROUP
+                    && force.kind != CampaignForceKind.CONVOY
+                    && force.kind != CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+            double d2 = GameMath.dist2(x, y, force.x, force.y);
+            if (d2 < bestD2) {
+                best = force;
+                bestD2 = d2;
+            }
+        }
+        return best;
     }
 
     private static void updateStrategicIntelAndExposure(GameContext ctx, CampaignState st, double dt) {
@@ -33099,7 +37725,30 @@ public final class CampaignSystem {
                     .append(force.patrolWaypointIndex).append('|')
                     .append(serializeCampaignForceRoute(force.patrolWaypoints)).append('|')
                     .append(String.format(Locale.US, "%.4f", force.morale)).append('|')
-                    .append(String.format(Locale.US, "%.4f", force.fuelPressure));
+                    .append(String.format(Locale.US, "%.4f", force.fuelPressure)).append('|')
+                    .append((force.workState == null ? CampaignForceWorkState.WAITING_WITH_PURPOSE : force.workState).name()).append('|')
+                    .append((force.missionState == null ? CampaignForceMissionState.ASSIGNED : force.missionState).name()).append('|')
+                    .append((force.stopReason == null ? CampaignForceStopReason.NONE : force.stopReason).name()).append('|')
+                    .append((force.reassignmentCondition == null ? CampaignForceReassignmentCondition.NONE : force.reassignmentCondition).name()).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.stationaryTimeSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.antiIdleTimerSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.taskDeadlineSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.workRemainingSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.lastTaskUpdateSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.lastStopReasonChangeSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.cargoLoad)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.cargoCapacity)).append('|')
+                    .append((force.cargoKind == null ? CampaignForceCargoKind.NONE : force.cargoKind).name()).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.fuelLevel)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.ammoLevel)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.repairCapacity)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.crewReadiness)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.riskTolerance)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.operatingRadius)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.lastKnownVelocityX)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.lastKnownVelocityY)).append('|')
+                    .append(String.format(Locale.US, "%.4f", force.lastSeenSec)).append('|')
+                    .append(force.protectedCivilianTraffic);
         }
         return sb.toString();
     }
@@ -33236,7 +37885,8 @@ public final class CampaignSystem {
                     .append(battle.interventionPrompted).append('|')
                     .append(battle.interventionResolved).append('|')
                     .append(encodeCheckpointText(battle.playerIntervention)).append('|')
-                    .append(encodeCheckpointText(battle.winnerFollowUp));
+                    .append(encodeCheckpointText(battle.winnerFollowUp)).append('|')
+                    .append(encodeCheckpointText(battle.loserFollowUp));
         }
         return sb.toString();
     }
@@ -33265,6 +37915,7 @@ public final class CampaignSystem {
                 if (parts.length >= 14) battle.interventionResolved = Boolean.parseBoolean(parts[13]);
                 if (parts.length >= 15) battle.playerIntervention = decodeCheckpointText(parts[14]);
                 if (parts.length >= 16) battle.winnerFollowUp = decodeCheckpointText(parts[15]);
+                if (parts.length >= 17) battle.loserFollowUp = decodeCheckpointText(parts[16]);
                 st.campaignBattles.add(battle);
                 highestId = Math.max(highestId, battle.id);
             }
@@ -33342,6 +37993,30 @@ public final class CampaignSystem {
                 if (parts.length >= 40) restoreCampaignForcePatrolRoute(force, parts[39]);
                 if (parts.length >= 41) force.morale = MathUtil.clamp(parseDouble(parts[40], force.morale), 0.0, 100.0);
                 if (parts.length >= 42) force.fuelPressure = MathUtil.clamp(parseDouble(parts[41], force.fuelPressure), 0.0, 100.0);
+                if (parts.length >= 43) force.workState = parseEnum(parts[42], workStateForIntent(force.intent));
+                if (parts.length >= 44) force.missionState = parseEnum(parts[43], missionStateForWorkState(force.workState));
+                if (parts.length >= 45) force.stopReason = parseEnum(parts[44], stopReasonForIntent(force.intent));
+                if (parts.length >= 46) force.reassignmentCondition = parseEnum(parts[45], CampaignForceReassignmentCondition.NONE);
+                if (parts.length >= 47) force.stationaryTimeSec = Math.max(0.0, parseDouble(parts[46], 0.0));
+                if (parts.length >= 48) force.antiIdleTimerSec = Math.max(0.0, parseDouble(parts[47], 0.0));
+                if (parts.length >= 49) force.taskDeadlineSec = Math.max(0.0, parseDouble(parts[48], 0.0));
+                if (parts.length >= 50) force.workRemainingSec = Math.max(0.0, parseDouble(parts[49], 0.0));
+                if (parts.length >= 51) force.lastTaskUpdateSec = Math.max(0.0, parseDouble(parts[50], 0.0));
+                if (parts.length >= 52) force.lastStopReasonChangeSec = Math.max(0.0, parseDouble(parts[51], 0.0));
+                if (parts.length >= 53) force.cargoLoad = Math.max(0.0, parseDouble(parts[52], 0.0));
+                if (parts.length >= 54) force.cargoCapacity = Math.max(0.0, parseDouble(parts[53], 0.0));
+                if (parts.length >= 55) force.cargoKind = parseEnum(parts[54], cargoKindForForce(force));
+                if (parts.length >= 56) force.fuelLevel = MathUtil.clamp(parseDouble(parts[55], force.fuelLevel), 0.0, 100.0);
+                if (parts.length >= 57) force.ammoLevel = MathUtil.clamp(parseDouble(parts[56], force.ammoLevel), 0.0, 100.0);
+                if (parts.length >= 58) force.repairCapacity = MathUtil.clamp(parseDouble(parts[57], force.repairCapacity), 0.0, 100.0);
+                if (parts.length >= 59) force.crewReadiness = MathUtil.clamp(parseDouble(parts[58], force.crewReadiness), 0.0, 100.0);
+                if (parts.length >= 60) force.riskTolerance = MathUtil.clamp(parseDouble(parts[59], force.riskTolerance), 0.0, 100.0);
+                if (parts.length >= 61) force.operatingRadius = Math.max(1.0, parseDouble(parts[60], force.operatingRadius));
+                if (parts.length >= 62) force.lastKnownVelocityX = parseDouble(parts[61], 0.0);
+                if (parts.length >= 63) force.lastKnownVelocityY = parseDouble(parts[62], 0.0);
+                if (parts.length >= 64) force.lastSeenSec = Math.max(0.0, parseDouble(parts[63], force.lastKnownAgeSec));
+                if (parts.length >= 65) force.protectedCivilianTraffic = Boolean.parseBoolean(parts[64]);
+                primeCampaignForceLifecycleDefaults(force);
                 st.campaignForces.add(force);
                 highestForceId = Math.max(highestForceId, force.id);
             }

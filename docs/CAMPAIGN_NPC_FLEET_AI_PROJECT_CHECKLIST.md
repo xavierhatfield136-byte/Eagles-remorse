@@ -4,6 +4,8 @@ This project is about the campaign-layer fleets the player can meet in space: ho
 
 The goal is for NPC fleets to feel like persistent operational actors: they organize, choose routes, hold contact, react to the player, and create readable decisions before combat.
 
+For the deeper living-war lifecycle contract, faction personalities, anti-idle rules, and mission templates, use `STRATEGIC_FLEET_BEHAVIOR_SYSTEM_SPEC.md` as the canonical design reference.
+
 ## P0 Contact Persistence And No Vanishing
 
 - [x] Prevent hostile campaign fleets from despawning while they are visible, recently seen, pursuing, or close enough for recon to matter.

@@ -9610,9 +9610,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int drawGalaxyReceiverManualPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
         int h = 168;
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "TRAVEL STATUS");
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "MISSION INTEL");
         int lineY = y + 34;
-        for (int i = 0; lines != null && i < Math.min(7, lines.size()); i++) {
+        for (int i = 0; lines != null && i < Math.min(6, lines.size()); i++) {
             drawGalaxyBoardLine(g2, x + 12, lineY + i * 18, width - 24, lines.get(i), new Color(214, 230, 244, 218));
         }
         return y + h;
@@ -9620,9 +9620,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int drawGalaxyDirectionFinderPanel(Graphics2D g2, int x, int y, int width, List<String> lines, GameContext ctx) {
         int h = 178;
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "SELECTED DESTINATION");
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "ROUTE / THREAT");
         int lineY = y + 34;
-        for (int i = 0; lines != null && i < Math.min(8, lines.size()); i++) {
+        for (int i = 0; lines != null && i < Math.min(7, lines.size()); i++) {
             drawGalaxyBoardLine(g2, x + 12, lineY + i * 17, width - 24, lines.get(i), new Color(214, 230, 244, 218));
         }
         return y + h;
@@ -9630,7 +9630,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawGalaxyCommsPanel(Graphics2D g2, int x, int y, int width, int height, List<String> lines) {
         int h = Math.max(144, Math.min(height, 220));
-        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RADIO / COMMS");
+        drawGalaxyInstrumentPanel(g2, x, y, width, h, "RECENT CHANGES");
         int top = y + 34;
         for (int i = 0; i < Math.min(4, lines.size()); i++) {
             Color lamp = (i == 0) ? new Color(132, 236, 170, 220)
@@ -11210,6 +11210,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Set<String> occupiedLabels = new HashSet<>();
         for (CampaignSystem.CampaignObjectiveMarker marker : markers) {
             if (marker == null) continue;
+            if (!shouldDrawObjectiveMarkerAtZoom(ctx, marker)) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
             drawStrategicObjectiveMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
@@ -11226,6 +11227,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Set<String> occupiedLabels = new HashSet<>();
         for (CampaignSystem.CampaignLandmark marker : markers) {
             if (marker == null) continue;
+            if (!shouldDrawLandmarkAtZoom(ctx, marker)) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
             drawStrategicLandmarkMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
@@ -11241,12 +11243,82 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         markers.sort(Comparator.comparingInt((CampaignSystem.CampaignSupportMarker marker) -> marker.priority).reversed());
 
         Set<String> occupiedLabels = new HashSet<>();
+        Map<CampaignSystem.CampaignSupportMarker, StrategicSupportLabelLayout> labelLayouts =
+                strategicSupportMarkerLabelLayouts(g2, ctx, mapRect, markers, worldMinX, worldMinY, worldW, worldH);
         for (CampaignSystem.CampaignSupportMarker marker : markers) {
             if (marker == null) continue;
+            if (!shouldDrawSupportMarkerAtZoom(ctx, marker)) continue;
             String key = marker.type + "|" + marker.label + "|" + Math.round(marker.x / 25.0) + "|" + Math.round(marker.y / 25.0);
             if (!occupiedLabels.add(key)) continue;
-            drawStrategicSupportMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker);
+            drawStrategicSupportMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker,
+                    labelLayouts.get(marker));
         }
+    }
+
+    private static boolean shouldDrawObjectiveMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignObjectiveMarker marker) {
+        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
+        double zoom = UISystem.strategicMapZoom(ctx);
+        if (zoom < 2.15) {
+            return marker.priority >= 70
+                    || marker.type == CampaignSystem.ObjectiveMarkerType.PRIMARY_OBJECTIVE
+                    || marker.type == CampaignSystem.ObjectiveMarkerType.NEXT_ROUTE;
+        }
+        if (zoom < 3.05) {
+            return marker.priority >= 48
+                    || marker.type == CampaignSystem.ObjectiveMarkerType.PRIMARY_OBJECTIVE
+                    || marker.type == CampaignSystem.ObjectiveMarkerType.NEXT_ROUTE
+                    || marker.type == CampaignSystem.ObjectiveMarkerType.ESCORT_TARGET;
+        }
+        return true;
+    }
+
+    private static boolean shouldDrawSupportMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
+        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
+        double zoom = UISystem.strategicMapZoom(ctx);
+        if (zoom < 2.15) {
+            return marker.priority >= 70
+                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
+                    || marker.type == CampaignSystem.SupportMarkerType.HAZARD
+                    || marker.type == CampaignSystem.SupportMarkerType.SALVAGE && isBattleScarMarker(marker);
+        }
+        if (zoom < 3.05) {
+            return marker.priority >= 50
+                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
+                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE
+                    || marker.type == CampaignSystem.SupportMarkerType.HAZARD
+                    || marker.type == CampaignSystem.SupportMarkerType.INTEL
+                    || marker.type == CampaignSystem.SupportMarkerType.SALVAGE && isBattleScarMarker(marker);
+        }
+        if (CampaignSystem.isCampaignWarMapSimplified(ctx)) {
+            return marker.priority >= 36
+                    || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
+                    || marker.type == CampaignSystem.SupportMarkerType.HAZARD
+                    || marker.type == CampaignSystem.SupportMarkerType.FACTION_CONTACT;
+        }
+        return true;
+    }
+
+    private static boolean isBattleScarMarker(CampaignSystem.CampaignSupportMarker marker) {
+        return marker != null && marker.label != null && marker.label.startsWith("Battle Scar #");
+    }
+
+    private static boolean shouldDrawLandmarkAtZoom(GameContext ctx, CampaignSystem.CampaignLandmark marker) {
+        if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
+        if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
+        double zoom = UISystem.strategicMapZoom(ctx);
+        if (zoom < 2.15) {
+            return marker.type == CampaignSystem.LandmarkType.PLANET
+                    || marker.type == CampaignSystem.LandmarkType.STAR
+                    || marker.type == CampaignSystem.LandmarkType.FRONT
+                    || marker.type == CampaignSystem.LandmarkType.CORRIDOR;
+        }
+        if (zoom < 3.05) {
+            return marker.type != CampaignSystem.LandmarkType.COLONY
+                    || !marker.discoveryDerived;
+        }
+        return true;
     }
 
     private static void drawStrategicObjectiveMarker(Graphics2D g2,
@@ -11330,7 +11402,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                    double worldMinY,
                                                    double worldW,
                                                    double worldH,
-                                                   CampaignSystem.CampaignSupportMarker marker) {
+                                                   CampaignSystem.CampaignSupportMarker marker,
+                                                   StrategicSupportLabelLayout labelLayout) {
         if (g2 == null || mapRect == null || marker == null) return;
         int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
         int py = mapRect.y + (int) Math.round(((marker.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
@@ -11359,11 +11432,69 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         drawStrategicSupportMarkerGlyph(g2, marker.type, px, py, radius);
 
-        if (shouldShowSupportMarkerLabel(ctx, marker, selected)
-                && (!CampaignSystem.isCampaignWarMapSimplified(ctx) || selected)
-                && marker.label != null && !marker.label.isBlank()) {
+        if (labelLayout != null) {
             g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
-            FontMetrics fm = g2.getFontMetrics();
+            Rectangle bounds = labelLayout.bounds();
+            int tx = labelLayout.textX();
+            int ty = labelLayout.textY();
+            g2.setColor(new Color(0, 0, 0, 138));
+            g2.fillRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
+            g2.setColor(withAlpha(accent, 214));
+            g2.drawRoundRect(bounds.x, bounds.y, bounds.width, bounds.height, 8, 8);
+            g2.drawString(labelLayout.text(), tx, ty);
+        }
+
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    record StrategicSupportLabelLayout(CampaignSystem.CampaignSupportMarker marker,
+                                       String text,
+                                       Rectangle bounds,
+                                       int textX,
+                                       int textY) {
+    }
+
+    static List<StrategicSupportLabelLayout> strategicSupportMarkerLabelLayoutsForTest(Graphics2D g2,
+                                                                                       GameContext ctx,
+                                                                                       Rectangle mapRect,
+                                                                                       List<CampaignSystem.CampaignSupportMarker> markers,
+                                                                                       double worldMinX,
+                                                                                       double worldMinY,
+                                                                                       double worldW,
+                                                                                       double worldH) {
+        return new ArrayList<>(strategicSupportMarkerLabelLayouts(g2, ctx, mapRect, markers,
+                worldMinX, worldMinY, worldW, worldH).values());
+    }
+
+    private static Map<CampaignSystem.CampaignSupportMarker, StrategicSupportLabelLayout> strategicSupportMarkerLabelLayouts(
+            Graphics2D g2,
+            GameContext ctx,
+            Rectangle mapRect,
+            List<CampaignSystem.CampaignSupportMarker> markers,
+            double worldMinX,
+            double worldMinY,
+            double worldW,
+            double worldH) {
+        Map<CampaignSystem.CampaignSupportMarker, StrategicSupportLabelLayout> layouts = new LinkedHashMap<>();
+        if (g2 == null || ctx == null || mapRect == null || markers == null || markers.isEmpty()) return layouts;
+        Font oldFont = g2.getFont();
+        g2.setFont(STRATEGIC_MAP_OBJECTIVE_FONT);
+        FontMetrics fm = g2.getFontMetrics();
+        ArrayList<Rectangle> occupied = new ArrayList<>();
+        for (CampaignSystem.CampaignSupportMarker marker : markers) {
+            if (marker == null || marker.label == null || marker.label.isBlank()) continue;
+            if (!shouldDrawSupportMarkerAtZoom(ctx, marker)) continue;
+            boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
+            if (!shouldShowSupportMarkerLabel(ctx, marker, selected)
+                    || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !selected)) {
+                continue;
+            }
+            int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
+            int py = mapRect.y + (int) Math.round(((marker.y - worldMinY) / Math.max(1.0, worldH)) * mapRect.height);
+            px = MathUtil.clamp(px, mapRect.x + 8, mapRect.x + mapRect.width - 8);
+            py = MathUtil.clamp(py, mapRect.y + 8, mapRect.y + mapRect.height - 8);
             String shortLabel = strategicSupportShortLabel(marker).trim().toUpperCase(Locale.US);
             int maxWidth = Math.max(88, mapRect.width / 6);
             while (fm.stringWidth(shortLabel) > maxWidth && shortLabel.length() > 14) {
@@ -11374,17 +11505,48 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
             int tw = fm.stringWidth(shortLabel);
             int tx = Math.max(mapRect.x + 6, Math.min(mapRect.x + mapRect.width - tw - 6, px - tw / 2));
-            int ty = strategicSupportLabelY(mapRect, marker, py);
-            g2.setColor(new Color(0, 0, 0, 138));
-            g2.fillRoundRect(tx - 4, ty - 10, tw + 8, 15, 8, 8);
-            g2.setColor(withAlpha(accent, 214));
-            g2.drawRoundRect(tx - 4, ty - 10, tw + 8, 15, 8, 8);
-            g2.drawString(shortLabel, tx, ty + 1);
+            int ty = strategicSupportLabelY(mapRect, marker, py) + 1;
+            Rectangle bounds = new Rectangle(tx - 4, ty - 11, tw + 8, 15);
+            bounds = placeStrategicSupportLabel(bounds, occupied, mapRect);
+            occupied.add(bounds);
+            layouts.put(marker, new StrategicSupportLabelLayout(marker, shortLabel, bounds, bounds.x + 4, bounds.y + 11));
         }
-
-        g2.setComposite(oldComposite);
-        g2.setStroke(oldStroke);
         g2.setFont(oldFont);
+        return layouts;
+    }
+
+    private static Rectangle placeStrategicSupportLabel(Rectangle preferred,
+                                                        List<Rectangle> occupied,
+                                                        Rectangle mapRect) {
+        if (preferred == null || mapRect == null) return preferred;
+        int minX = mapRect.x + 4;
+        int maxX = mapRect.x + mapRect.width - preferred.width - 4;
+        int minY = mapRect.y + 6;
+        int maxY = mapRect.y + mapRect.height - preferred.height - 6;
+        int baseX = MathUtil.clamp(preferred.x, minX, maxX);
+        int baseY = MathUtil.clamp(preferred.y, minY, maxY);
+        int[] offsets = {0, -18, 18, -36, 36, -54, 54, -72, 72, -90, 90};
+        for (int offset : offsets) {
+            Rectangle candidate = new Rectangle(baseX, MathUtil.clamp(baseY + offset, minY, maxY),
+                    preferred.width, preferred.height);
+            if (!intersectsAnyStrategicLabel(candidate, occupied)) return candidate;
+        }
+        for (int offset : offsets) {
+            Rectangle candidate = new Rectangle(MathUtil.clamp(baseX + 18, minX, maxX),
+                    MathUtil.clamp(baseY + offset, minY, maxY), preferred.width, preferred.height);
+            if (!intersectsAnyStrategicLabel(candidate, occupied)) return candidate;
+        }
+        return new Rectangle(baseX, baseY, preferred.width, preferred.height);
+    }
+
+    private static boolean intersectsAnyStrategicLabel(Rectangle candidate, List<Rectangle> occupied) {
+        if (candidate == null || occupied == null) return false;
+        Rectangle padded = new Rectangle(candidate);
+        padded.grow(2, 2);
+        for (Rectangle existing : occupied) {
+            if (existing != null && padded.intersects(existing)) return true;
+        }
+        return false;
     }
 
     private static String strategicSupportShortLabel(CampaignSystem.CampaignSupportMarker marker) {

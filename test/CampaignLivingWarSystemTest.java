@@ -55,6 +55,7 @@ class CampaignLivingWarSystemTest {
         assertTrue(getBoolean(battle, "attritionApplied"));
         assertFalse(getObject(battle, "outcomeReport").toString().isBlank());
         assertFalse(getObject(battle, "winnerFollowUp").toString().isBlank());
+        assertFalse(getObject(battle, "loserFollowUp").toString().isBlank());
         assertFalse(st.theaterWarRecentEvents.isEmpty());
 
         CampaignSystem.CampaignLocation location = st.galaxyAreasOfInterest.get(0);
@@ -249,7 +250,13 @@ class CampaignLivingWarSystemTest {
                 ctx, st, red, green);
         invokePrivate("updateCampaignBattles",
                 new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
-                ctx, st, 17.0);
+                ctx, st, 6.8);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 0.3);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 10.0);
 
         List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
         assertTrue(markers.stream().anyMatch(marker -> marker.label.startsWith("Battle Scar #")
@@ -269,6 +276,98 @@ class CampaignLivingWarSystemTest {
         assertTrue(restored.campaign.redDirectorBrief.startsWith("Red:"));
         assertTrue(restored.campaign.greenDirectorBrief.startsWith("Green:"));
         assertTrue(restored.campaign.yellowDirectorBrief.startsWith("Yellow:"));
+    }
+
+    @Test
+    void factionDirectorScorecardsExposeRequiredRegionalJobs() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        invokePrivate("updateFactionDirectors",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, ctx.campaign, 12.0);
+
+        List<String> lines = CampaignSystem.campaignFactionDirectorScoreLines(ctx);
+        String green = lines.stream().filter(line -> line.startsWith("Green")).findFirst().orElse("");
+        String yellow = lines.stream().filter(line -> line.startsWith("Yellow")).findFirst().orElse("");
+        String red = lines.stream().filter(line -> line.startsWith("Red")).findFirst().orElse("");
+
+        assertTrue(green.contains("route-defense") && green.contains("convoy-escort")
+                && green.contains("base-defense") && green.contains("repair-rescue")
+                && green.contains("controlled-assault") && green.contains("player-support"));
+        assertTrue(yellow.contains("trade-profit") && yellow.contains("mining-profit")
+                && yellow.contains("salvage-opportunity") && yellow.contains("smuggling-route")
+                && yellow.contains("mercenary-contract") && yellow.contains("piracy-opportunity"));
+        assertTrue(red.contains("scouting") && red.contains("raiding-weak-routes")
+                && red.contains("hunting-high-value") && red.contains("blockading-chokepoints")
+                && red.contains("staging-siege") && red.contains("defending-red-assets")
+                && red.contains("invasion-escalation"));
+        assertTrue(ctx.campaign.greenDirectorBrief.contains("selected") && ctx.campaign.greenDirectorBrief.contains("top"));
+        assertTrue(ctx.campaign.yellowDirectorBrief.contains("selected") && ctx.campaign.yellowDirectorBrief.contains("top"));
+        assertTrue(ctx.campaign.redDirectorBrief.contains("selected") && ctx.campaign.redDirectorBrief.contains("top"));
+    }
+
+    @Test
+    void factionDirectorsReserveHeavyFleetsAndRespectSupplyAndOperatingRadius() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object southernId = invokePrivate("theaterForPoint",
+                new Class[]{CampaignSystem.CampaignState.class, double.class}, st, 4300.0);
+        Object earthId = invokePrivate("theaterForPoint",
+                new Class[]{CampaignSystem.CampaignState.class, double.class}, st, 500.0);
+        Object southern = invokePrivate("campaignTheaterById",
+                new Class[]{CampaignSystem.CampaignState.class, findNestedClass("TheaterId")}, st, southernId);
+        Object earth = invokePrivate("campaignTheaterById",
+                new Class[]{CampaignSystem.CampaignState.class, findNestedClass("TheaterId")}, st, earthId);
+        setDouble(southern, "routeRisk", 95.0);
+        setDouble(southern, "supplyState", 12.0);
+        setDouble(southern, "yellowActivity", 100.0);
+        setDouble(southern, "threatPressure", 8.0);
+        setDouble(southern, "redPresence", 10.0);
+        setDouble(southern, "marketPressure", 0.0);
+        setDouble(southern, "danger", 30.0);
+        setDouble(earth, "danger", 96.0);
+        setDouble(earth, "routeRisk", 96.0);
+        setDouble(earth, "threatPressure", 96.0);
+        setDouble(earth, "supplyState", 65.0);
+
+        Object heavyRed = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Red Dreadnought Director Reserve", "Southern depot", "Reserve heavy fleet", 2400.0, 4300.0);
+        Object lowSupplyRed = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Red Low Supply Director Patrol", "Southern depot", "Low supply patrol", 2300.0, 4300.0);
+        Object greenReserve = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
+                "Green Radius Limited Assault Reserve", "Southern yard", "Regional reserve", 2450.0, 4300.0);
+
+        setDouble(heavyRed, "supply", 90.0);
+        setDouble(heavyRed, "fuelLevel", 90.0);
+        setDouble(heavyRed, "operatingRadius", 1400.0);
+        setDouble(lowSupplyRed, "supply", 18.0);
+        setDouble(lowSupplyRed, "fuelLevel", 18.0);
+        setDouble(greenReserve, "supply", 90.0);
+        setDouble(greenReserve, "fuelLevel", 90.0);
+        setDouble(greenReserve, "operatingRadius", 60.0);
+        setObject(greenReserve, "intent", Enum.valueOf(
+                (Class<Enum>) getObject(greenReserve, "intent").getClass(), "HOLDING"));
+
+        invokePrivate("updateFactionDirectors",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 12.0);
+
+        String heavyIntent = getObject(heavyRed, "intent").toString();
+        assertFalse("INTERCEPTING".equals(heavyIntent) || "SEARCHING".equals(heavyIntent) || "PATROLLING".equals(heavyIntent),
+                "heavy Red fleet should reserve for siege/blockade/invasion/defense work instead of becoming a random raider");
+        assertEquals("RETREATING", getObject(lowSupplyRed, "intent").toString(),
+                "low supply fleets should route to recovery before accepting scored regional work");
+        String greenIntent = getObject(greenReserve, "intent").toString();
+        assertFalse("REINFORCING".equals(greenIntent) || "ESCORTING".equals(greenIntent),
+                "regional director should not pull a heavy Green reserve outside its operating radius");
     }
 
     @Test
@@ -367,6 +466,11 @@ class CampaignLivingWarSystemTest {
             assertFalse(getObject(force, "homeBaseId").toString().isBlank(), name + " should declare a home base");
             assertFalse(((List<?>) getObject(force, "routePoints")).isEmpty(), name + " should have a route");
             assertFalse("HOLDING".equals(getObject(force, "intent").toString()), name + " should have an active intent");
+            assertFalse(getObject(force, "mission").toString().isBlank(), name + " should have a mission");
+            if (name.startsWith("Red ")) {
+                assertFalse("strategic-roaming-assignment".equals(getObject(force, "homeBaseId").toString()),
+                        name + " should launch from a named Red origin when seeded late-campaign");
+            }
         }
         assertEquals(expected, found);
 
@@ -381,6 +485,251 @@ class CampaignLivingWarSystemTest {
             }
         }
         assertTrue(restoredNorthernWall);
+    }
+
+    @Test
+    void redMajorFleetLaunchesFromNamedSourceAwayFromPlayerWithWarningTelemetry() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sector = 24;
+        st.sectorElapsed = 121.0;
+        st.playerGalaxyX = 2400.0;
+        st.playerGalaxyY = 2400.0;
+
+        invokePrivate("syncCampaignForceSimulationSeeds",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, st);
+
+        Set<String> majorNames = Set.of(
+                "Red Siege Fleet",
+                "Red Carrier Strike Group",
+                "Red Dreadnought Task Force",
+                "Red Pursuit Armada",
+                "Red Planetary Suppression Fleet",
+                "Red Flagship Fleet",
+                "Red Northern Wall");
+        boolean foundMajor = false;
+        for (Object force : st.campaignForces) {
+            String name = getObject(force, "name").toString();
+            if (!majorNames.contains(name)) continue;
+            foundMajor = true;
+            assertFalse(getObject(force, "sourceLocationId").toString().isBlank(), name + " should have a named source");
+            assertFalse("strategic-roaming-assignment".equals(getObject(force, "homeBaseId").toString()));
+            assertFalse(((List<?>) getObject(force, "routePoints")).isEmpty(), name + " should expose route telemetry");
+            assertTrue(Math.hypot(getDouble(force, "x") - st.playerGalaxyX, getDouble(force, "y") - st.playerGalaxyY) > 600.0,
+                    name + " should not spawn next to the player");
+            assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("MAJOR RED LAUNCH WARNING")
+                            && line.contains(name)
+                            && line.contains("source")
+                            && line.contains("target")
+                            && line.contains("telemetry")),
+                    name + " should emit source and warning telemetry");
+        }
+        assertTrue(foundMajor, "late campaign should seed at least one major Red fleet");
+    }
+
+    @Test
+    void campaignForceSummariesExposeMissionOriginAndDestination() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sector = 24;
+        st.sectorElapsed = 121.0;
+        invokePrivate("syncCampaignForceSimulationSeeds",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, st);
+
+        CampaignSystem.CampaignForceSummary red = CampaignSystem.campaignForceSummaries(ctx).stream()
+                .filter(summary -> summary.name.startsWith("Red "))
+                .filter(summary -> !summary.mission.isBlank())
+                .filter(summary -> !summary.homeBaseId.isBlank())
+                .filter(summary -> !summary.destinationLocationId.isBlank()
+                        || summary.targetX != summary.x
+                        || summary.targetY != summary.y)
+                .findFirst()
+                .orElseThrow();
+
+        assertFalse(red.mission.isBlank());
+        assertFalse(red.homeBaseId.isBlank());
+        assertFalse("strategic-roaming-assignment".equals(red.homeBaseId));
+        assertFalse(red.destinationLocationId.isBlank() && red.targetX == red.x && red.targetY == red.y);
+    }
+
+    @Test
+    void strategicBattleEventsEmitPrioritizedAudioTelemetry() throws Exception {
+        AudioSystem.setTelemetryOnly(true);
+        try {
+            GameContext ctx = initializedCampaignContext();
+            CampaignSystem.CampaignState st = ctx.campaign;
+            Object red = firstForceForFaction(st, Faction.ENEMY);
+            Object green = ensureGreenRegressionPatrol(st);
+            setDouble(red, "x", 2200.0);
+            setDouble(red, "y", 2200.0);
+            setDouble(green, "x", 2240.0);
+            setDouble(green, "y", 2200.0);
+            setDouble(red, "strength", 80.0);
+            setDouble(green, "strength", 80.0);
+            st.playerGalaxyX = 2200.0;
+            st.playerGalaxyY = 2200.0;
+
+            invokePrivate("formCampaignBattle",
+                    new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                            findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                    ctx, st, red, green);
+            invokePrivate("updateCampaignBattles",
+                    new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                    ctx, st, 17.0);
+
+            assertTrue(ctx.audioEvents.stream().anyMatch(event -> event.eventId.contains("warp.charge_start")),
+                    "battle start should emit a strategic alert cue");
+            assertTrue(ctx.audioEvents.stream().anyMatch(event -> event.eventId.contains("impact.explosion")),
+                    "battle end should emit a resolved-battle cue");
+        } finally {
+            AudioSystem.setTelemetryOnly(false);
+        }
+    }
+
+    @Test
+    void resolvedStrategicBattleCreatesWreckAndYellowSalvageAssignment() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        int wrecksBefore = st.recoverableWreckSites.size();
+        setDouble(red, "x", 2200.0);
+        setDouble(red, "y", 2200.0);
+        setDouble(green, "x", 2240.0);
+        setDouble(green, "y", 2200.0);
+        setDouble(red, "strength", 80.0);
+        setDouble(green, "strength", 80.0);
+        st.playerGalaxyX = 2200.0;
+        st.playerGalaxyY = 2200.0;
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 11.0);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 6.0);
+
+        assertTrue(st.recoverableWreckSites.size() > wrecksBefore,
+                "resolved battle should add a recoverable wreck or battle scar");
+        Object salvageForce = null;
+        for (Object force : st.campaignForces) {
+            if (force == null) continue;
+            if (getObject(force, "name").toString().contains("Salvage")
+                    && "SALVAGE".equals(getObject(force, "cargoKind").toString())) {
+                salvageForce = force;
+                break;
+            }
+        }
+        assertNotNull(salvageForce, "battle aftermath should assign or create a Yellow salvage-capable force");
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("Battle Scar")
+                        || line.contains("salvage")),
+                "battle aftermath should be visible in the theater event feed");
+
+        Object wreck = st.recoverableWreckSites.get(st.recoverableWreckSites.size() - 1);
+        double wreckX = getDouble(wreck, "x");
+        double wreckY = getDouble(wreck, "y");
+        CampaignSystem.CampaignLocation returnHub = (CampaignSystem.CampaignLocation) invokePrivate("nearestFriendlySupportHub",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, Faction.class, double.class, double.class},
+                ctx, st, Faction.TEAM_D, wreckX, wreckY);
+        assertNotNull(returnHub, "battle salvage test needs a Yellow support hub for the return leg");
+        setObject(salvageForce, "sourceLocationId", returnHub.id);
+        setDouble(salvageForce, "x", wreckX + 10.0);
+        setDouble(salvageForce, "y", wreckY + 10.0);
+        setDouble(salvageForce, "cargoLoad", 0.0);
+        setDouble(salvageForce, "cargoCapacity", 10.0);
+        invokePrivate("assignSalvageMission",
+                new Class[]{CampaignSystem.CampaignState.class, findNestedClass("CampaignForce"),
+                        double.class, double.class, String.class},
+                st, salvageForce, wreckX, wreckY, returnHub.id);
+        setDouble(salvageForce, "cargoCapacity", 10.0);
+        setDouble(salvageForce, "workRemainingSec", 0.0);
+        setDouble(salvageForce, "taskDeadlineSec", 0.0);
+        invokePrivate("updateCampaignForceLifecycleAfterMovement",
+                new Class[]{CampaignSystem.CampaignState.class, findNestedClass("CampaignForce"), double.class},
+                st, salvageForce, 2.0);
+
+        assertEquals("DOCKING", getObject(salvageForce, "intent").toString(),
+                "full salvage cargo should leave the battle scar and return to a hub");
+        assertEquals(returnHub.id, getObject(salvageForce, "destinationLocationId"));
+        assertFalse(((List<?>) getObject(salvageForce, "routePoints")).isEmpty());
+    }
+
+    @Test
+    void greenRedBattleProducesScarControlShiftAndNearbyFleetReaction() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = firstForceForFaction(st, Faction.ENEMY);
+        Object green = ensureGreenRegressionPatrol(st);
+        Object reserve = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
+                "Green Aftermath Reserve", "Green relay reserve", "React to battle aftermath", 2540.0, 2200.0);
+        int wrecksBefore = st.recoverableWreckSites.size();
+        Object theaterId = invokePrivate("theaterForPoint",
+                new Class[]{CampaignSystem.CampaignState.class, double.class}, st, 2200.0);
+        Object theater = invokePrivate("campaignTheaterById",
+                new Class[]{CampaignSystem.CampaignState.class, theaterId.getClass()},
+                st, theaterId);
+        double controlBefore = getDouble(theater, "controlScore");
+        for (Object force : st.campaignForces) {
+            if (force == null) continue;
+            if (force == red || force == green || force == reserve) continue;
+            setDouble(force, "x", 4200.0);
+            setDouble(force, "y", 4200.0);
+        }
+        setDouble(red, "x", 2200.0);
+        setDouble(red, "y", 2200.0);
+        setDouble(green, "x", 2240.0);
+        setDouble(green, "y", 2200.0);
+        setDouble(reserve, "x", 2540.0);
+        setDouble(reserve, "y", 2200.0);
+        setDouble(red, "strength", 180.0);
+        setDouble(red, "readiness", 100.0);
+        setDouble(red, "supply", 100.0);
+        setDouble(red, "hullIntegrity", 100.0);
+        setDouble(red, "morale", 100.0);
+        setDouble(red, "fuelPressure", 0.0);
+        setDouble(green, "strength", 35.0);
+        setDouble(green, "readiness", 18.0);
+        setDouble(green, "supply", 18.0);
+        setDouble(green, "hullIntegrity", 18.0);
+        setDouble(green, "morale", 18.0);
+        setDouble(reserve, "strength", 78.0);
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 6.8);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 0.3);
+        invokePrivate("updateCampaignBattles",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 10.0);
+
+        assertTrue(st.recoverableWreckSites.size() > wrecksBefore,
+                "resolved Green/Red battle should leave a battle scar or wreck marker");
+        assertTrue(getDouble(theater, "controlScore") < controlBefore,
+                "Red victory should shift regional control toward Red");
+        boolean reserveReacted = getObject(reserve, "targetForceId").equals(getObject(green, "id"))
+                || getObject(reserve, "targetForceId").equals(getObject(red, "id"));
+        assertTrue(reserveReacted || st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("reacting to battle aftermath")
+                        || line.contains("reinforcing after nearby battle")),
+                "nearby Green force should react to battle aftermath");
+        assertTrue("REPAIR".equals(getObject(reserve, "mission").toString())
+                        || "REINFORCING".equals(getObject(reserve, "intent").toString())
+                        || "GUARDING".equals(getObject(reserve, "intent").toString()),
+                "battle-created wrecks should attract at least one valid follow-up behavior");
     }
 
     @Test
@@ -447,6 +796,54 @@ class CampaignLivingWarSystemTest {
         queuePendingReinforcement(ctx, st);
         assertEquals(searchGroupsBefore, st.galaxySearchGroups.size());
         assertEquals(1, st.pendingHostileReinforcements.size());
+    }
+
+    @Test
+    void newlyCreatedRedForceBackfillsNamedSource() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Red Source Backfill Regression Fleet", "unresolved hostile contact",
+                "Verify source backfill", 2650.0, 1620.0);
+
+        String sourceId = getObject(red, "sourceLocationId").toString();
+        String homeId = getObject(red, "homeBaseId").toString();
+        assertFalse(sourceId.isBlank());
+        assertFalse(homeId.isBlank());
+        assertFalse("strategic-roaming-assignment".equals(sourceId));
+        assertFalse("strategic-roaming-assignment".equals(homeId));
+        assertNotNull(invokePrivate("campaignLocationById",
+                new Class[]{CampaignSystem.CampaignState.class, String.class}, st, sourceId));
+    }
+
+    @Test
+    void pendingMajorRedLaunchEmitsEarlyMidAndFinalWarnings() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        queuePendingReinforcement(ctx, st);
+        Object pending = st.pendingHostileReinforcements.get(0);
+
+        invokePrivate("updatePendingHostileReinforcements",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 0.1);
+        setDouble(pending, "etaSec", 12.0);
+        invokePrivate("updatePendingHostileReinforcements",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 0.1);
+        setDouble(pending, "etaSec", 5.0);
+        invokePrivate("updatePendingHostileReinforcements",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 0.1);
+
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("MAJOR RED LAUNCH EARLY WARNING")
+                && line.contains("source") && line.contains("target") && line.contains("ETA")));
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("MAJOR RED LAUNCH MID-ROUTE CONTACT")
+                && line.contains("ETA")));
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("MAJOR RED LAUNCH FINAL ARRIVAL WARNING")
+                && line.contains("ETA")));
     }
 
     @Test
@@ -574,5 +971,11 @@ class CampaignLivingWarSystemTest {
         Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         field.setDouble(target, value);
+    }
+
+    private static void setObject(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }
