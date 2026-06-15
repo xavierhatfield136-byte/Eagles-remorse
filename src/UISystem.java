@@ -13,6 +13,7 @@ public final class UISystem {
     private static final double STRATEGIC_GALAXY_MAP_MIN_ZOOM = 1.85;
     private static final double STRATEGIC_MAP_MAX_ZOOM = 18.0;
     private static final double STRATEGIC_MAP_ZOOM_STEP = 1.22;
+    private static final double MISSION_MAP_MIN_ZOOM = 0.42;
 
     private enum PrimaryOverlay {
         NONE,
@@ -1604,13 +1605,18 @@ public final class UISystem {
     }
 
     private static double strategicMapMinZoom(GameContext ctx) {
+        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            return MISSION_MAP_MIN_ZOOM;
+        }
         return CampaignSystem.isStrategicOvermapMode(ctx) ? STRATEGIC_GALAXY_MAP_MIN_ZOOM : STRATEGIC_MAP_MIN_ZOOM;
     }
 
     static double strategicMapViewWidth(GameContext ctx) {
         if (ctx == null) return 0.0;
         if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
-            return Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.18);
+            double baseZoom = Math.max(1.0, STRATEGIC_MAP_MIN_ZOOM);
+            double zoom = Math.max(MISSION_MAP_MIN_ZOOM, strategicMapZoom(ctx));
+            return Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.18 * baseZoom / zoom);
         }
         return Math.max(1.0, ctx.WORLD_W / strategicMapZoom(ctx));
     }
@@ -1618,7 +1624,9 @@ public final class UISystem {
     static double strategicMapViewHeight(GameContext ctx) {
         if (ctx == null) return 0.0;
         if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
-            return Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.12);
+            double baseZoom = Math.max(1.0, STRATEGIC_MAP_MIN_ZOOM);
+            double zoom = Math.max(MISSION_MAP_MIN_ZOOM, strategicMapZoom(ctx));
+            return Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.12 * baseZoom / zoom);
         }
         return Math.max(1.0, ctx.WORLD_H / strategicMapZoom(ctx));
     }
@@ -1631,9 +1639,6 @@ public final class UISystem {
                 ? campaignMapFocusAnchorX(ctx)
                 : ((CampaignSystem.usesMissionSubzones(ctx) && ctx.player != null) ? ctx.player.x : half);
         double focus = Double.isFinite(ctx.ui.strategicMapFocusX) ? ctx.ui.strategicMapFocusX : fallback;
-        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null) {
-            focus = ctx.player.x;
-        }
         return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_W - half));
     }
 
@@ -1645,9 +1650,6 @@ public final class UISystem {
                 ? campaignMapFocusAnchorY(ctx)
                 : ((CampaignSystem.usesMissionSubzones(ctx) && ctx.player != null) ? ctx.player.y : half);
         double focus = Double.isFinite(ctx.ui.strategicMapFocusY) ? ctx.ui.strategicMapFocusY : fallback;
-        if (CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx) && ctx.player != null) {
-            focus = ctx.player.y;
-        }
         return GameMath.clamp(focus, half, Math.max(half, ctx.WORLD_H - half));
     }
 
@@ -1707,7 +1709,7 @@ public final class UISystem {
         if (subzone < 0) return false;
         double zoomForWidth = ctx.WORLD_W / Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.75);
         double zoomForHeight = ctx.WORLD_H / Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.55);
-        ctx.ui.strategicMapZoom = MathUtil.clamp(Math.min(zoomForWidth, zoomForHeight), 1.65, 9.0);
+        ctx.ui.strategicMapZoom = MathUtil.clamp(Math.min(zoomForWidth, zoomForHeight), 1.15, 9.0);
         double focusX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         double focusY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         if (ctx.player != null && Double.isFinite(ctx.player.x) && Double.isFinite(ctx.player.y)) {

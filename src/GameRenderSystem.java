@@ -27,6 +27,33 @@ public final class GameRenderSystem {
         }
     }
 
+    private static final class OrePatchEntry {
+        double x;
+        double y;
+        double weight;
+        int ore;
+        int asteroids;
+
+        void add(Asteroid asteroid) {
+            if (asteroid == null) return;
+            double asteroidWeight = Math.max(1.0, asteroid.ore + Math.max(0.0, asteroid.radius - 18.0) * 8.0);
+            if (asteroid.rich || asteroid.oreMax >= 650) asteroidWeight *= 1.35;
+            x += asteroid.x * asteroidWeight;
+            y += asteroid.y * asteroidWeight;
+            weight += asteroidWeight;
+            ore += Math.max(0, asteroid.ore);
+            asteroids++;
+        }
+
+        double centerX() {
+            return weight <= 0.0 ? x : x / weight;
+        }
+
+        double centerY() {
+            return weight <= 0.0 ? y : y / weight;
+        }
+    }
+
     private GameRenderSystem(){}
 
     private static final java.util.WeakHashMap<Ship, Integer> LAST_HP = new java.util.WeakHashMap<>();
@@ -837,7 +864,10 @@ if (DevTools.isDebugOverlay()) {
         if (ctx == null) return out;
 
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
-        java.util.List<CampaignSystem.CampaignObjectiveMarker> markers = CampaignSystem.activeObjectiveMarkers(ctx);
+        boolean showMissionOrePatches = CampaignSystem.usesMissionSubzones(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx);
+        java.util.List<CampaignSystem.CampaignObjectiveMarker> markers = showMissionOrePatches
+                ? java.util.List.of()
+                : CampaignSystem.activeObjectiveMarkers(ctx);
         int missionCount = 0;
         for (CampaignSystem.CampaignObjectiveMarker marker : markers) {
             if (marker == null) continue;
@@ -857,9 +887,11 @@ if (DevTools.isDebugOverlay()) {
             if (missionCount >= Math.max(0, maxMissionEntries)) break;
         }
 
+        java.util.LinkedHashMap<String, Integer> countsBySection = new java.util.LinkedHashMap<>();
+        appendMissionOrePatchEntries(ctx, out, seen, countsBySection, maxSignalsPerSection, showMissionOrePatches);
+
         java.util.EnumMap<FogOfWarSystem.SensorInterestKind, Integer> countsByKind =
                 new java.util.EnumMap<>(FogOfWarSystem.SensorInterestKind.class);
-        java.util.LinkedHashMap<String, Integer> countsBySection = new java.util.LinkedHashMap<>();
         for (FogOfWarSystem.SensorInterestSignal signal : FogOfWarSystem.sensorInterestSignals(ctx)) {
             if (signal == null) continue;
             String section = sensorNetSection(signal.kind);
@@ -883,6 +915,56 @@ if (DevTools.isDebugOverlay()) {
         appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         return out;
+    }
+
+    private static void appendMissionOrePatchEntries(GameContext ctx,
+                                                     java.util.List<SensorNetEntry> out,
+                                                     java.util.Set<String> seen,
+                                                     java.util.Map<String, Integer> countsBySection,
+                                                     int maxSignalsPerSection,
+                                                     boolean showMissionOrePatches) {
+        if (ctx == null || ctx.asteroids == null || ctx.asteroids.isEmpty()) return;
+        if (!showMissionOrePatches) return;
+
+        java.util.LinkedHashMap<Long, OrePatchEntry> patches = new java.util.LinkedHashMap<>();
+        double clusterSize = 760.0;
+        for (Asteroid asteroid : ctx.asteroids) {
+            if (asteroid == null || asteroid.ore <= 0) continue;
+            if (!isInLoadedRenderZone(ctx, asteroid.x, asteroid.y)) continue;
+            long cx = (long) Math.floor(asteroid.x / clusterSize);
+            long cy = (long) Math.floor(asteroid.y / clusterSize);
+            long key = (cx << 32) ^ (cy & 0xffffffffL);
+            patches.computeIfAbsent(key, ignored -> new OrePatchEntry()).add(asteroid);
+        }
+        if (patches.isEmpty()) return;
+
+        java.util.ArrayList<OrePatchEntry> ordered = new java.util.ArrayList<>(patches.values());
+        ordered.removeIf(patch -> patch == null || patch.ore <= 0 || patch.asteroids <= 0);
+        ordered.sort((a, b) -> Integer.compare(b.ore, a.ore));
+
+        String section = "RESOURCE";
+        int count = countsBySection.getOrDefault(section, 0);
+        int limit = Math.max(0, maxSignalsPerSection);
+        for (int i = 0; i < ordered.size() && count < limit; i++) {
+            OrePatchEntry patch = ordered.get(i);
+            double x = GameMath.clamp(patch.centerX(), 0.0, ctx.WORLD_W);
+            double y = GameMath.clamp(patch.centerY(), 0.0, ctx.WORLD_H);
+            String label = "Ore Patch " + (char) ('A' + Math.min(25, i));
+            String key = section + "|ORE_PATCH|" + Math.round(x / 50.0) + "|" + Math.round(y / 50.0);
+            if (!seen.add(key)) continue;
+            int dist = (ctx.player == null) ? 0 : (int) Math.round(Math.hypot(x - ctx.player.x, y - ctx.player.y));
+            out.add(new SensorNetEntry(
+                    section,
+                    label,
+                    dist + "m  ORE " + patch.ore,
+                    x,
+                    y,
+                    new Color(255, 210, 118),
+                    "ORE PATCH ROUTE SET: " + label.toUpperCase(java.util.Locale.US)
+            ));
+            count++;
+        }
+        countsBySection.put(section, count);
     }
 
     private static String trimOverlayLine(String text, int maxWidthPx) {
