@@ -154,6 +154,14 @@ class CommSystemTest {
 
         CommSystem.tryHailCurrentContact(ctx);
 
+        assertTrue(ctx.ui.commTradeMenu.active, "trade hail should open a selectable trade menu first");
+        assertEquals(trader.id, ctx.ui.commTradeMenu.targetId);
+        assertTrue(ctx.ui.commTradeMenu.options.stream().anyMatch(option -> "SELL_ORE".equals(option.id)));
+        assertEquals(60, ctx.player.cargo, "opening the trade menu should not auto-transfer cargo");
+
+        assertTrue(CommSystem.chooseTradeMenuOption(ctx, 0));
+
+        assertFalse(ctx.ui.commTradeMenu.active);
         assertEquals(20, ctx.player.cargo, "trade should move a bounded ore batch");
         assertTrue(ctx.credits > creditsBefore, "trade should pay the player");
         assertTrue(ctx.command.shipCommActionCooldowns.getOrDefault(trader.id, 0.0) > 0.0,

@@ -1,6 +1,9 @@
 import org.junit.jupiter.api.Test;
 
+import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,6 +27,46 @@ class RendererHudLayoutTest {
         assertTrue(panel.x >= 0 && panel.y >= 0, "tutorial panel should stay on-screen");
         assertTrue(panel.x + panel.width <= 1280, "tutorial panel should fit horizontally");
         assertTrue(panel.y + panel.height <= 720, "tutorial panel should fit vertically");
+    }
+
+    @Test
+    void strikePanelSitsAboveBeamWhenRoomAllows() {
+        List<Rectangle> panels = Renderer.combatHudPanelRects(1280, 720, true, true);
+        Rectangle beam = panels.get(0);
+        Rectangle strike = panels.get(panels.size() - 1);
+
+        assertTrue(strike.y + strike.height <= beam.y,
+                "strike menu should sit above the beam mode menu when there is room");
+    }
+
+    @Test
+    void powerManagementOverlayRendersInsideAlphaView() {
+        BufferedImage image = new BufferedImage(1280, 720, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = image.createGraphics();
+        try {
+            g2.setClip(0, 0, image.getWidth(), image.getHeight());
+            Renderer.drawPowerManagementOverlay(g2, new Player(ShipRole.MOTHERSHIP, 640.0, 360.0), 0);
+        } finally {
+            g2.dispose();
+        }
+
+        assertTrue(image.getRGB(image.getWidth() / 2, image.getHeight() / 2) != 0,
+                "power management overlay should paint visible panel content");
+    }
+
+    @Test
+    void commissioningCardsFitInsideEnlargedHullArea() throws Exception {
+        Rectangle panel = Renderer.getShopOverlayRect(1280, 720);
+        Method hullAreaMethod = Renderer.class.getDeclaredMethod("getShopHullArea", Rectangle.class);
+        hullAreaMethod.setAccessible(true);
+        Method cardMethod = Renderer.class.getDeclaredMethod("getShopHullCardRect", Rectangle.class, int.class);
+        cardMethod.setAccessible(true);
+        Rectangle hullArea = (Rectangle) hullAreaMethod.invoke(null, panel);
+
+        for (int slot = 0; slot < 8; slot++) {
+            Rectangle card = (Rectangle) cardMethod.invoke(null, panel, slot);
+            assertTrue(hullArea.contains(card), "commissioning card should stay inside the hull bay");
+        }
     }
 
     private static void assertPanelLayoutReadable(int viewW, int viewH, boolean cloak, boolean strike) {

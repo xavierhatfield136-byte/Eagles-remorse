@@ -38,6 +38,16 @@ class HotkeyRegistryTest {
         GameContext ctx = new GameContext(null);
         assertTrue(HotkeyRegistry.currentContextLegend(ctx).stream().anyMatch(row -> row.contains("RT/LMB fire")));
         HotkeyRegistry.noteKeyboardInput();
+        assertTrue(HotkeyRegistry.currentContextLegend(ctx).stream().anyMatch(row -> row.contains("H crew")));
+    }
+
+    @Test
+    void hudHelpKeepsCrewOrdersOutOfReferenceRows() {
+        String help = HotkeyRegistry.renderedHelpText(true, GameContext.HudDetail.FULL).toLowerCase(java.util.Locale.US);
+
+        assertTrue(help.contains("combat"));
+        assertTrue(help.contains("nav"));
+        assertTrue(!help.contains("crew order"));
     }
 
 }

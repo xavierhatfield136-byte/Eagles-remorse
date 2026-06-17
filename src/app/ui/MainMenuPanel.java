@@ -173,6 +173,9 @@ public final class MainMenuPanel extends JPanel {
                 return;
             }
             GameConfig launch = new GameConfig(mode, w, h, true, seed, false, playerTeamId, resumeCampaign);
+            if (mode == GameMode.CAMPAIGN_OPS && !resumeCampaign) {
+                launch = launch.withAutoLaunchCampaignStartSite(true);
+            }
             onStart.accept(launch.withExperience(experience[0]));
         };
         experienceButton.addActionListener(e -> {

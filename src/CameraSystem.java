@@ -46,6 +46,7 @@ public final class CameraSystem {
 
     public static void updateManualPan(GameContext ctx, double dt) {
         if (ctx == null || dt <= 0.0) return;
+        if (ctx.ui != null && ctx.ui.mapOpen) return;
         double panX = 0.0;
         double panY = 0.0;
         if (ctx.cameraPanLeft) panX -= 1.0;

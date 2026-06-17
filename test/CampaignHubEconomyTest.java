@@ -57,6 +57,7 @@ class CampaignHubEconomyTest {
         st.campaignFuel = 10;
         st.campaignSupplies = 10;
         int startingCredits = ctx.credits;
+        int fleetBefore = st.persistentBlueFleet.size();
 
         assertTrue(openHubService(ctx, "TRADE"));
         assertTrue(confirmHubService(ctx));
@@ -65,6 +66,10 @@ class CampaignHubEconomyTest {
         assertTrue(st.campaignFuel > 10);
         assertTrue(st.campaignSupplies > 10);
         assertTrue(st.campaignSalvage < 18);
+        assertTrue(st.persistentBlueFleet.size() > fleetBefore, "trade desk should hire help when credits and command room allow it");
+        Object hired = st.persistentBlueFleet.get(st.persistentBlueFleet.size() - 1);
+        assertTrue(getString(hired, "name").contains("Escort"));
+        assertTrue(getString(hired, "serviceHistory").contains("HIRED AT"));
     }
 
     @Test

@@ -405,7 +405,14 @@ class CampaignForceOwnershipTest {
         assertTrue(control != null, "expected the installation control ship");
         assertTrue(tender != null, "expected harbor traffic");
         assertTrue(st.objectivePhaseLabel.contains("Entered from west edge"));
-        assertTrue(ctx.player.x < st.galaxyAmbientPocketCenterX, "player should enter from the route side");
+        boolean greenStation = (location.name != null && location.name.toUpperCase().contains("GREEN"))
+                || (location.detail != null && location.detail.toUpperCase().contains("GREEN"));
+        if (greenStation) {
+            double playerStationDistance = Math.hypot(ctx.player.x - control.x, ctx.player.y - control.y);
+            assertTrue(playerStationDistance <= 260.0, "Green station sites should start the player near the station");
+        } else {
+            assertTrue(ctx.player.x < st.galaxyAmbientPocketCenterX, "player should enter from the route side");
+        }
         assertTrue(control.x > st.galaxyAmbientPocketCenterX, "installation should sit deeper in the pocket");
         assertTrue(tender.x < control.x, "traffic should remain closer to the approach lane than the station core");
     }
@@ -638,10 +645,21 @@ class CampaignForceOwnershipTest {
         setField(force, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
         setField(force, "contactConfidence", 0.86);
         setField(force, "uncertaintyRadius", 180.0);
+        setField(force, "targetX", destination.x);
+        setField(force, "targetY", destination.y);
+        @SuppressWarnings("unchecked")
+        List<double[]> routePoints = (List<double[]>) readField(force, "routePoints");
+        routePoints.add(new double[]{destination.x, destination.y});
 
         List<String> warnings = CampaignSystem.selectedRouteForceWarningLines(ctx);
         assertTrue(warnings.stream().anyMatch(line -> line.contains("Test Route Interceptor")),
                 "expected plotted route to warn about the intercepting force");
+
+        setField(force, "contactState", CampaignSystem.CampaignForceContactState.STALE);
+        warnings = CampaignSystem.selectedRouteForceWarningLines(ctx);
+        assertTrue(warnings.stream().noneMatch(line -> line.contains("Test Route Interceptor")),
+                "stale force contacts should not keep drawing intercept warnings");
+        setField(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
 
         CampaignSystem.selectCampaignContactTarget(ctx,
                 "Test Route Interceptor",

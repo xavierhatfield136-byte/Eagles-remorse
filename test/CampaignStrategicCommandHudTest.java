@@ -410,6 +410,82 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void stationServicesExposeConversationOptionsAndNoStationPurchase() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignLocation station = firstFriendlyServiceLocation(ctx);
+        assertNotNull(station);
+
+        assertEquals("REQUEST SUPPORT", CampaignSystem.hubServiceActionLabel(ctx, station, CampaignSystem.HubService.REPAIR));
+        assertEquals("REQUEST TRADE", CampaignSystem.hubServiceActionLabel(ctx, station, CampaignSystem.HubService.TRADE));
+        assertEquals("REQUEST REPLENISHMENT", CampaignSystem.hubServiceActionLabel(ctx, station, CampaignSystem.HubService.SUPPLY));
+        assertEquals("JOB BOARD", CampaignSystem.hubServiceActionLabel(ctx, station, CampaignSystem.HubService.CONTRACTS));
+
+        List<String> trade = CampaignSystem.hubServicePreviewLines(ctx, station, CampaignSystem.HubService.TRADE);
+        assertTrue(trade.stream().anyMatch(line -> line.contains("Request Trade")));
+        assertTrue(trade.stream().anyMatch(line -> line.contains("sell salvage/ore") || line.contains("buy stores")));
+
+        List<String> support = CampaignSystem.hubServicePreviewLines(ctx, station, CampaignSystem.HubService.REPAIR);
+        assertTrue(support.stream().anyMatch(line -> line.contains("Request Support")));
+        assertTrue(support.stream().anyMatch(line -> line.contains("escort coordination") || line.contains("emergency reinforcements")));
+
+        List<String> replenishment = CampaignSystem.hubServicePreviewLines(ctx, station, CampaignSystem.HubService.STRIKE_REARM);
+        assertTrue(replenishment.stream().anyMatch(line -> line.contains("torpedoes")));
+        assertTrue(replenishment.stream().anyMatch(line -> line.contains("atomic")));
+
+        List<String> jobs = CampaignSystem.hubServicePreviewLines(ctx, station, CampaignSystem.HubService.CONTRACTS);
+        assertTrue(jobs.stream().anyMatch(line -> line.contains("Bounty / Job Board")));
+        assertTrue(jobs.stream().anyMatch(line -> line.contains("hidden objectives") || line.contains("exploration")));
+
+        CampaignSystem.CampaignLocation shipyard = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location != null && location.services.contains(CampaignSystem.HubService.SHIPYARD))
+                .findFirst()
+                .orElse(station);
+        List<String> shipyardLines = CampaignSystem.hubServicePreviewLines(ctx, shipyard, CampaignSystem.HubService.SHIPYARD);
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.contains("Station hulls are not for sale")));
+        assertTrue(shipyardLines.stream().noneMatch(line -> line.contains("Current Yard Offer: BASE")
+                || line.contains("Current Yard Offer: STATIC_TURRET")
+                || line.contains("Current Yard Offer: MOBILE_STATION")));
+    }
+
+    @Test
+    void stationTradeAddsOreAndGreenHubEntryStartsNearStation() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation tradeHub = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location != null && location.services.contains(CampaignSystem.HubService.TRADE))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(tradeHub);
+
+        ctx.credits = 1000;
+        st.campaignSalvage = 20;
+        int oreBefore = CampaignSystem.currentCampaignOre(ctx);
+        assertTrue(invokeHubService(ctx, st, tradeHub, "TRADE"));
+        assertTrue(CampaignSystem.currentCampaignOre(ctx) > oreBefore, "Request Trade should be able to buy ore through the market exchange");
+
+        GameContext greenCtx = initializedCampaignContext();
+        CampaignSystem.CampaignState greenState = greenCtx.campaign;
+        CampaignSystem.CampaignLocation greenStation = CampaignSystem.mainCampaignLocations(greenCtx).stream()
+                .filter(location -> location != null
+                        && location.services != null
+                        && !location.services.isEmpty()
+                        && ((location.name != null && location.name.toUpperCase().contains("GREEN"))
+                        || (location.detail != null && location.detail.toUpperCase().contains("GREEN"))))
+                .findFirst()
+                .orElse(firstFriendlyServiceLocation(greenCtx));
+        assertNotNull(greenStation);
+
+        invokePrepareAmbientEncounter(greenCtx, greenState, greenStation);
+        Ship stationShip = greenCtx.ships.stream()
+                .filter(ship -> ship != null && ship.role == ShipRole.BASE && ship.name != null && ship.name.contains(greenStation.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(stationShip, "Green station site should spawn a station/base control hull");
+        double distance = Math.hypot(greenCtx.player.x - stationShip.x, greenCtx.player.y - stationShip.y);
+        assertTrue(distance <= 260.0, "player should spawn near the friendly Green station");
+    }
+
+    @Test
     void selectedLocationSidebarSurfacesWhyActionAndRisk() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignLocation selected = CampaignSystem.mainCampaignLocations(ctx).stream()
@@ -1575,6 +1651,19 @@ class CampaignStrategicCommandHudTest {
         );
         method.setAccessible(true);
         method.invoke(null, ctx, st);
+    }
+
+    private static void invokePrepareAmbientEncounter(GameContext ctx,
+                                                      CampaignSystem.CampaignState st,
+                                                      CampaignSystem.CampaignLocation location) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "prepareAmbientCampaignLocationEncounterWorld",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                CampaignSystem.CampaignLocation.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, location);
     }
 
     private static void invokeGalaxySearchUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {

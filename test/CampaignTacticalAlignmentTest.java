@@ -54,8 +54,10 @@ class CampaignTacticalAlignmentTest {
 
         Object group = firstSearchGroup(st);
         assertNotNull(group);
+        st.sectorElapsed = 999.0;
         setDouble(group, "x", st.playerGalaxyX);
         setDouble(group, "y", st.playerGalaxyY);
+        setString(group, "anchorLocationId", "");
 
         invokeDetectionUpdate(ctx, st, 0.1);
 
@@ -153,6 +155,12 @@ class CampaignTacticalAlignmentTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.setDouble(target, value);
+    }
+
+    private static void setString(Object target, String fieldName, String value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 
 }

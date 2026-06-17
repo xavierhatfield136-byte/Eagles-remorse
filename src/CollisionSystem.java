@@ -347,6 +347,7 @@ public class CollisionSystem {
 
         for (Ship s : ships) {
             if (s == null || !s.alive) continue;
+            if (s.role == ShipRole.MINER) continue;
             for (Asteroid a : asteroids) {
                 double dx = s.x - a.x;
                 double dy = s.y - a.y;

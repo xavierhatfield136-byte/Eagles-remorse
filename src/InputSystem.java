@@ -47,6 +47,9 @@ public final class InputSystem {
                 if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
+                if (UISystem.handleCommTradeMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (UISystem.handleHudPanelClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
@@ -147,7 +150,10 @@ public final class InputSystem {
                         return;
                     }
                 }
-                handleCameraPanKeyPressed(ctx, keyCode);
+                if (GameplayActions.tryHandleCommTradeMenuHotkey(ctx, keyCode)) {
+                    e.consume();
+                    return;
+                }
                 if (GameplayActions.tryHandleStrategicEncounterHotkey(ctx, e)) {
                     e.consume();
                     return;
@@ -160,6 +166,7 @@ public final class InputSystem {
                     e.consume();
                     return;
                 }
+                handleCameraPanKeyPressed(ctx, keyCode);
                 if (GameplayActions.tryHandlePowerOverlayHotkey(ctx, keyCode)) {
                     e.consume();
                     return;

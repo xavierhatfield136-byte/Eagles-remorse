@@ -97,15 +97,22 @@ class CampaignMissionSectionsTest {
 
         startSector(ctx, 2);
 
-        String detail = CampaignSystem.hudObjectiveDetail(ctx);
-        assertTrue(detail.contains("Win State: Reach T-0 with at least 2 convoys alive"));
-        assertTrue(detail.contains("Timer State: T-")
-                        && detail.contains("Extraction at T-0 is a win if convoy quota holds"),
-                "sector 2 should explicitly say that the timer ends in extraction success when the convoy quota survives");
+        String compact = CampaignSystem.hudObjectiveDetail(ctx);
+        assertTrue(compact.contains("Keep the flagship alive."));
+        assertTrue(compact.contains("Reach Earth."));
+        assertTrue(compact.contains("Help Green forces."));
+        assertTrue(compact.contains("Help Yellow forces."));
+        assertTrue(compact.contains("Weaken Red control."));
+        assertTrue(compact.contains("Build enough strength for the final battle."));
+
+        String detail = CampaignSystem.hudObjectiveExpandedDetail(ctx);
+        assertTrue(detail.contains("Win State: Destroy the required enemy targets"));
+        assertTrue(detail.contains("Pace: No objective timer"),
+                "sector 2 should explicitly say that objectives no longer auto-resolve on a timer");
         assertTrue(detail.contains("Current Task: Clear TRAP LANE")
                         || detail.contains("Current Task: Clear DIRTY CROSSING")
-                        || detail.contains("Current Task: Hold the convoy lane"),
-                "sector 2 should tell the player both the extraction win state and the immediate pocket task");
+                        || detail.contains("Current Task: Clear "),
+                "sector 2 should tell the player the immediate pocket task");
     }
 
     @Test
@@ -133,7 +140,7 @@ class CampaignMissionSectionsTest {
             startSector(ctx, sector);
 
             if (ctx.campaign.objectiveType != CampaignSystem.ObjectiveType.DESTROY) continue;
-            String detail = CampaignSystem.hudObjectiveDetail(ctx);
+            String detail = CampaignSystem.hudObjectiveExpandedDetail(ctx);
             boolean mentionsMarked = detail.toLowerCase().contains("marked");
             boolean hasMarkers = CampaignSystem.activeObjectiveMarkers(ctx).stream()
                     .anyMatch(marker -> marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET);
@@ -151,7 +158,7 @@ class CampaignMissionSectionsTest {
         startSector(ctx, 10);
         ctx.campaign.activeMissionSection = 1;
 
-        String detail = CampaignSystem.hudObjectiveDetail(ctx);
+        String detail = CampaignSystem.hudObjectiveExpandedDetail(ctx);
         assertTrue(detail.contains("Current Task: Clear BREACH POINT"),
                 "the HUD should keep the player focused on the active pressure lane without asking for warp-like pocket moves");
         assertTrue(detail.contains("Next Move: Break the pressure around BREACH POINT, then roll the fleet toward SUPPORT WAKE while side pockets stay open."),

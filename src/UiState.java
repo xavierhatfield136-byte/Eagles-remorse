@@ -184,6 +184,22 @@ public final class UiState {
         public String body = "";
     }
 
+    public static final class CommTradeOption {
+        public String id = "";
+        public String label = "";
+        public String detail = "";
+        public boolean enabled = true;
+    }
+
+    public static final class CommTradeMenu {
+        public boolean active = false;
+        public int targetId = -1;
+        public String title = "";
+        public String body = "";
+        public int selectedIndex = 0;
+        public final List<CommTradeOption> options = new ArrayList<>();
+    }
+
     public boolean shopOpen = false;
     public ShopHullCategory shopHullCategory = ShopHullCategory.ESCORT;
     public int shopHullPage = 0;
@@ -205,6 +221,7 @@ public final class UiState {
     private final Deque<StrategicEncounterPrompt> queuedStrategicEncounterPrompts = new ArrayDeque<>();
     public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
     public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
+    public final CommTradeMenu commTradeMenu = new CommTradeMenu();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
     public int campaignFleetFocusSlotId = -1;
@@ -283,7 +300,7 @@ public final class UiState {
 
     public boolean hasBlockingOverlay() {
         return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
-                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active;
+                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active;
     }
 
     public void showStrategicEncounterPrompt(int taskForceId, String title, String body,
@@ -460,6 +477,43 @@ public final class UiState {
         campaignActionConfirm.actionId = "";
         campaignActionConfirm.title = "";
         campaignActionConfirm.body = "";
+    }
+
+    public void showCommTradeMenu(int targetId, String title, String body, List<CommTradeOption> options) {
+        commTradeMenu.active = true;
+        commTradeMenu.targetId = targetId;
+        commTradeMenu.title = (title == null || title.isBlank()) ? "TRADE CHANNEL" : title.trim();
+        commTradeMenu.body = (body == null) ? "" : body.trim();
+        commTradeMenu.options.clear();
+        if (options != null) {
+            for (CommTradeOption option : options) {
+                if (option == null) continue;
+                CommTradeOption copy = new CommTradeOption();
+                copy.id = (option.id == null) ? "" : option.id.trim();
+                copy.label = (option.label == null || option.label.isBlank()) ? copy.id : option.label.trim();
+                copy.detail = (option.detail == null) ? "" : option.detail.trim();
+                copy.enabled = option.enabled;
+                commTradeMenu.options.add(copy);
+            }
+        }
+        commTradeMenu.selectedIndex = firstEnabledCommTradeOptionIndex();
+    }
+
+    public void clearCommTradeMenu() {
+        commTradeMenu.active = false;
+        commTradeMenu.targetId = -1;
+        commTradeMenu.title = "";
+        commTradeMenu.body = "";
+        commTradeMenu.selectedIndex = 0;
+        commTradeMenu.options.clear();
+    }
+
+    public int firstEnabledCommTradeOptionIndex() {
+        for (int i = 0; i < commTradeMenu.options.size(); i++) {
+            CommTradeOption option = commTradeMenu.options.get(i);
+            if (option != null && option.enabled) return i;
+        }
+        return 0;
     }
 
     public void clearSelectedCampaignContact() {

@@ -301,6 +301,7 @@ public final class GameRenderSystem {
             TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
             drawVoiceCaption(ctx, g2, viewportW, viewportH);
             drawModifierChips(ctx, g2, viewportW);
+            Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
 
             if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
                 drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
@@ -912,9 +913,31 @@ if (DevTools.isDebugOverlay()) {
             countsBySection.put(section, countsBySection.getOrDefault(section, 0) + 1);
         }
         appendCampaignPulseEntries(ctx, out, seen, countsBySection, maxSignalsPerSection);
+        appendCampaignSensorSummaryEntry(ctx, out, seen);
         appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         return out;
+    }
+
+    private static void appendCampaignSensorSummaryEntry(GameContext ctx,
+                                                         java.util.List<SensorNetEntry> out,
+                                                         java.util.Set<String> seen) {
+        java.util.List<String> lines = CampaignSystem.campaignSensorNetSummaryLines(ctx);
+        if (lines.isEmpty()) return;
+        String forecast = lines.get(0);
+        String loss = lines.size() > 1 ? lines.get(1) : "";
+        if (!seen.add("SENSOR|CAMPAIGN_SUMMARY")) return;
+        double x = (ctx != null && ctx.player != null) ? ctx.player.x : 0.0;
+        double y = (ctx != null && ctx.player != null) ? ctx.player.y : 0.0;
+        out.add(new SensorNetEntry(
+                "SENSOR",
+                "Campaign Sensor Net",
+                forecast + (loss.isBlank() ? "" : " | " + loss),
+                x,
+                y,
+                new Color(132, 220, 255),
+                "SENSOR NET SUMMARY"
+        ));
     }
 
     private static void appendMissionOrePatchEntries(GameContext ctx,

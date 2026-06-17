@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignMiningDepositTest {
 
@@ -83,6 +84,37 @@ class CampaignMiningDepositTest {
         } finally {
             Faction.clearCampaignAlliances();
         }
+    }
+
+    @Test
+    void minersDoNotCollideWithMineableAsteroids() {
+        GameContext ctx = campaignContext();
+        Ship miner = new FleetShip(ShipRole.MINER, Faction.ALLY, 2500.0, 2500.0);
+        ctx.ships.add(miner);
+        ctx.asteroids.add(new Asteroid(2500.0, 2500.0, 60.0, 500));
+
+        CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
+
+        assertEquals(2500.0, miner.x, 1e-9);
+        assertEquals(2500.0, miner.y, 1e-9);
+    }
+
+    @Test
+    void tacticalCampaignSpawnsSafeMineableAsteroidAboutOncePerMinute() {
+        GameContext ctx = campaignContext();
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.sectorElapsed = 61.0;
+        ctx.campaign.nextTacticalOreAsteroidAtSec = 60.0;
+        int before = ctx.asteroids.size();
+
+        assertTrue(CampaignSystem.updatePeriodicTacticalOreSpawn(ctx, ctx.campaign));
+
+        assertEquals(before + 1, ctx.asteroids.size());
+        Asteroid spawned = ctx.asteroids.get(ctx.asteroids.size() - 1);
+        assertTrue(spawned.ore > 0, "periodic tactical asteroid should be mineable");
+        assertTrue(GameMath.dist2(spawned.x, spawned.y, ctx.player.x, ctx.player.y) >= 720.0 * 720.0,
+                "periodic tactical asteroid should not spawn directly on the player");
+        assertEquals(121.0, ctx.campaign.nextTacticalOreAsteroidAtSec, 1e-9);
     }
 
     private static GameContext campaignContext() {

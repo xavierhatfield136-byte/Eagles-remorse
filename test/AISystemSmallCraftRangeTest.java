@@ -72,4 +72,22 @@ class AISystemSmallCraftRangeTest {
                         || Math.hypot(friendlyTwo.vx, friendlyTwo.vy) > 0.0001,
                 "friendly fighters should keep moving without a friendly capital ship");
     }
+
+    @Test
+    void fighterCommitsToHostileSmallCraftBeforeLargerTargets() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 2600, 1800, true, 45L, false));
+        FleetShip fighter = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 500.0, 900.0);
+        FleetShip bomber = new FleetShip(ShipRole.BOMBER, Faction.ENEMY, 760.0, 900.0);
+        FleetShip frigate = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, 650.0, 900.0);
+        ctx.ships.clear();
+        ctx.ships.add(fighter);
+        ctx.ships.add(bomber);
+        ctx.ships.add(frigate);
+        ctx.entityQuery.rebuild(ctx);
+
+        AISystem.update(ctx, 1.0 / 60.0);
+
+        assertEquals(bomber.id, fighter.aiCommittedTargetId,
+                "fighters should aggressively intercept hostile small craft before heavier hulls");
+    }
 }

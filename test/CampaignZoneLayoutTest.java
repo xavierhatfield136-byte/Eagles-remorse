@@ -158,10 +158,36 @@ class CampaignZoneLayoutTest {
         }
     }
 
+    @Test
+    void tacticalCampaignSpawnGracePushesRedShipsAwayFromPlayer() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 99L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+        ctx.campaign.sectorElapsed = 2.0;
+
+        Ship spawned = invokeSpawnEnemyAtPoint(ctx, ShipRole.PATROL, ctx.player.x + 30.0, ctx.player.y + 20.0);
+        double dist = Math.hypot(spawned.x - ctx.player.x, spawned.y - ctx.player.y);
+        assertTrue(dist >= 900.0,
+                "Red ships spawned during the opening grace period should not pile directly onto the player");
+    }
+
     private static void startSector(GameContext ctx, int sector) throws Exception {
         Method startSector = CampaignSystem.class.getDeclaredMethod("startSector", GameContext.class, int.class);
         startSector.setAccessible(true);
         startSector.invoke(null, ctx, sector);
+    }
+
+    private static Ship invokeSpawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "spawnEnemyAtPoint",
+                GameContext.class,
+                ShipRole.class,
+                double.class,
+                double.class
+        );
+        method.setAccessible(true);
+        return (Ship) method.invoke(null, ctx, role, x, y);
     }
 
     private static void invokeForceSimulation(GameContext ctx, double dt) throws Exception {

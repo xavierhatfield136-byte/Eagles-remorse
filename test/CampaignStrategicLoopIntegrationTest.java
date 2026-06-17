@@ -55,8 +55,10 @@ class CampaignStrategicLoopIntegrationTest {
         double alertBeforeIntercept = st.enemyAlertLevel;
         int suppliesBeforeIntercept = st.campaignSupplies;
         Object group = firstSearchGroup(st);
+        st.sectorElapsed = 999.0;
         setDouble(group, "x", st.playerGalaxyX);
         setDouble(group, "y", st.playerGalaxyY);
+        setString(group, "anchorLocationId", "");
         invokeDetectionUpdate(ctx, st, 0.1);
         assertTrue(ctx.ui.strategicEncounterPrompt.active);
         assertEquals(UiState.StrategicEncounterPrompt.Kind.GALAXY_SEARCH_GROUP, ctx.ui.strategicEncounterPrompt.kind);
@@ -118,6 +120,66 @@ class CampaignStrategicLoopIntegrationTest {
         assertTrue(summary.stream().anyMatch(line -> line.startsWith("Alert / Pressure: ")));
     }
 
+    @Test
+    void localSiteSuppressesRemoteCampaignBattleInterventionPrompts() throws Exception {
+        GameContext ctx = initializedPlayerFacingCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation loaded = findLocation(ctx, "poi-01");
+        CampaignSystem.CampaignLocation remote = findLocation(ctx, "poi-20");
+
+        assertNotNull(loaded);
+        assertNotNull(remote);
+        assertFalse(CampaignSystem.isStrategicOvermapMode(ctx));
+        assertEquals(loaded.id, st.activeGalaxyEncounterLocationId);
+
+        Object remoteGreen = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.PATROL_GROUP,
+                Faction.TEAM_C,
+                "Remote Green Test Patrol",
+                remote.name,
+                "Remote prompt regression friendly",
+                remote.x,
+                remote.y);
+        Object remoteRed = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Remote Red Test Patrol",
+                remote.name,
+                "Remote prompt regression hostile",
+                remote.x + 12.0,
+                remote.y + 12.0);
+        Object remoteBattle = newCampaignBattle(st, remoteGreen, remoteRed);
+
+        invokeMaybeShowCampaignBattleIntervention(ctx, st, remoteBattle);
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active,
+                "loaded local sites should not offer join prompts for battles in a different overmap zone");
+
+        Object localGreen = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.PATROL_GROUP,
+                Faction.TEAM_C,
+                "Local Green Test Patrol",
+                loaded.name,
+                "Local prompt regression friendly",
+                loaded.x,
+                loaded.y);
+        Object localRed = ensureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Local Red Test Patrol",
+                loaded.name,
+                "Local prompt regression hostile",
+                loaded.x + 10.0,
+                loaded.y + 10.0);
+        Object localBattle = newCampaignBattle(st, localGreen, localRed);
+
+        invokeMaybeShowCampaignBattleIntervention(ctx, st, localBattle);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active,
+                "battles anchored to the loaded local site should still offer an intervention prompt");
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE, ctx.ui.strategicEncounterPrompt.kind);
+    }
+
     private static GameContext initializedCampaignContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
@@ -129,6 +191,14 @@ class CampaignStrategicLoopIntegrationTest {
         GameContext ctx = new GameContext(new GameConfig(
                 GameMode.CAMPAIGN_OPS, 5000, 5000, true, 2468L, false,
                 0, false, 1, "", "", "galaxy_map_test"));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        return ctx;
+    }
+
+    private static GameContext initializedPlayerFacingCampaignContext() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false)
+                .withAutoLaunchCampaignStartSite(true));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;
@@ -186,6 +256,56 @@ class CampaignStrategicLoopIntegrationTest {
         method.invoke(null, ctx, st, dt);
     }
 
+    private static Object ensureCampaignForce(CampaignSystem.CampaignState st,
+                                              CampaignSystem.CampaignForceKind kind,
+                                              Faction faction,
+                                              String name,
+                                              String origin,
+                                              String purpose,
+                                              double x,
+                                              double y) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "ensureCampaignForceWithoutDeploymentCost",
+                CampaignSystem.CampaignState.class,
+                CampaignSystem.CampaignForceKind.class,
+                Faction.class,
+                String.class,
+                String.class,
+                String.class,
+                double.class,
+                double.class
+        );
+        method.setAccessible(true);
+        return method.invoke(null, st, kind, faction, name, origin, purpose, x, y);
+    }
+
+    private static Object newCampaignBattle(CampaignSystem.CampaignState st, Object a, Object b) throws Exception {
+        Class<?> forceClass = Class.forName("CampaignSystem$CampaignForce");
+        Class<?> battleClass = Class.forName("CampaignSystem$CampaignBattle");
+        java.lang.reflect.Constructor<?> ctor = battleClass.getDeclaredConstructor(int.class, forceClass, forceClass);
+        ctor.setAccessible(true);
+        Object battle = ctor.newInstance(st.nextCampaignBattleId++, a, b);
+        Field battlesField = CampaignSystem.CampaignState.class.getDeclaredField("campaignBattles");
+        battlesField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<Object> battles = (List<Object>) battlesField.get(st);
+        battles.add(battle);
+        return battle;
+    }
+
+    private static void invokeMaybeShowCampaignBattleIntervention(GameContext ctx,
+                                                                  CampaignSystem.CampaignState st,
+                                                                  Object battle) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "maybeShowCampaignBattleIntervention",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                Class.forName("CampaignSystem$CampaignBattle")
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, battle);
+    }
+
     private static Object firstSearchGroup(CampaignSystem.CampaignState st) throws Exception {
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("galaxySearchGroups");
         field.setAccessible(true);
@@ -213,6 +333,12 @@ class CampaignStrategicLoopIntegrationTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.setDouble(target, value);
+    }
+
+    private static void setString(Object target, String fieldName, String value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 
     private static int parsePercentLine(List<String> lines, String prefix) {

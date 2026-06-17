@@ -86,6 +86,47 @@ public final class GameplayActions {
         CommSystem.cycleIntent(ctx, dir);
     }
 
+    public static boolean tryHandleCommTradeMenuHotkey(GameContext ctx, int keyCode) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
+        int count = ctx.ui.commTradeMenu.options.size();
+        if (keyCode >= java.awt.event.KeyEvent.VK_1 && keyCode <= java.awt.event.KeyEvent.VK_9) {
+            int idx = keyCode - java.awt.event.KeyEvent.VK_1;
+            if (idx < count) {
+                ctx.ui.commTradeMenu.selectedIndex = idx;
+                CommSystem.chooseTradeMenuOption(ctx, idx);
+            }
+            return true;
+        }
+        if (keyCode == java.awt.event.KeyEvent.VK_UP) {
+            stepCommTradeSelection(ctx, -1);
+            return true;
+        }
+        if (keyCode == java.awt.event.KeyEvent.VK_DOWN) {
+            stepCommTradeSelection(ctx, 1);
+            return true;
+        }
+        if (keyCode == java.awt.event.KeyEvent.VK_ENTER || keyCode == java.awt.event.KeyEvent.VK_SPACE) {
+            CommSystem.chooseTradeMenuOption(ctx, ctx.ui.commTradeMenu.selectedIndex);
+            return true;
+        }
+        return false;
+    }
+
+    private static void stepCommTradeSelection(GameContext ctx, int dir) {
+        int count = ctx.ui.commTradeMenu.options.size();
+        if (count <= 0) return;
+        int idx = Math.floorMod(ctx.ui.commTradeMenu.selectedIndex + (dir < 0 ? -1 : 1), count);
+        for (int guard = 0; guard < count; guard++) {
+            UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(idx);
+            if (option != null && option.enabled) {
+                ctx.ui.commTradeMenu.selectedIndex = idx;
+                return;
+            }
+            idx = Math.floorMod(idx + (dir < 0 ? -1 : 1), count);
+        }
+        ctx.ui.commTradeMenu.selectedIndex = idx;
+    }
+
     public static void pingAtCursor(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
         UISystem.pingAtCursor(ctx, controls);
@@ -409,6 +450,10 @@ public final class GameplayActions {
     public static boolean tryHandleMapHotkey(GameContext ctx, int keyCode) {
         if (ctx == null || !ctx.ui.mapOpen) return false;
         switch (keyCode) {
+            case java.awt.event.KeyEvent.VK_LEFT -> ctx.cameraPanLeft = true;
+            case java.awt.event.KeyEvent.VK_RIGHT -> ctx.cameraPanRight = true;
+            case java.awt.event.KeyEvent.VK_UP -> ctx.cameraPanUp = true;
+            case java.awt.event.KeyEvent.VK_DOWN -> ctx.cameraPanDown = true;
             case java.awt.event.KeyEvent.VK_1 ->
                     UISystem.setTacticalSectorScale(ctx, UiState.TacticalSectorScalePreset.COMPACT);
             case java.awt.event.KeyEvent.VK_2 ->

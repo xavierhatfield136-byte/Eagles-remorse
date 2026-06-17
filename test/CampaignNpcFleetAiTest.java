@@ -91,6 +91,7 @@ class CampaignNpcFleetAiTest {
     void hostileInterdictionForceClosesDuringEarthwardTravel() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 999.0;
         CampaignSystem.CampaignLocation northernObjective = findLocation(ctx, "poi-22");
         assertNotNull(northernObjective);
 
@@ -111,7 +112,19 @@ class CampaignNpcFleetAiTest {
         }
 
         double endDistance = Math.hypot(getDouble(force, "x") - st.playerGalaxyX, getDouble(force, "y") - st.playerGalaxyY);
-        assertTrue(endDistance < startDistance * 0.88, "interdiction force should close distance during active travel");
+        assertTrue(endDistance < startDistance * 0.88, "interdiction force should close distance during active travel"
+                + "; start=" + startDistance
+                + " end=" + endDistance
+                + " pos=" + getDouble(force, "x") + "," + getDouble(force, "y")
+                + " player=" + st.playerGalaxyX + "," + st.playerGalaxyY
+                + " target=" + getDouble(force, "targetX") + "," + getDouble(force, "targetY")
+                + " intent=" + fieldString(force, "intent")
+                + " state=" + fieldString(force, "state")
+                + " mission=" + fieldString(force, "mission")
+                + " work=" + fieldString(force, "workState")
+                + " stop=" + fieldString(force, "stopReason")
+                + " active=" + getBoolean(force, "simulationActive")
+                + " route=" + ((List<?>) getObject(force, "routePoints")).size());
         assertTrue("INTERCEPTING".equals(fieldString(force, "intent")));
     }
 
@@ -239,6 +252,7 @@ class CampaignNpcFleetAiTest {
     void alliedFleetsRespondToNearbyHostilePressure() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 999.0;
         invokeForceSimulation(ctx, st, 0.2);
         Object hostile = forceNamed(st, "Red Frontier Interdiction Screen");
         Object green = forceNamed(st, "Green Frontier Relay Patrol");
@@ -261,8 +275,128 @@ class CampaignNpcFleetAiTest {
         assertTrue("ESCORTING".equals(intent) || "REINFORCING".equals(intent) || "GUARDING".equals(intent),
                 "green patrol should react to nearby hostile pressure; intent=" + intent
                         + " state=" + fieldString(green, "state")
+                        + " faction=" + fieldString(green, "faction")
+                        + " mission=" + fieldString(green, "mission")
+                        + " active=" + getBoolean(green, "simulationActive")
+                        + " pos=" + getDouble(green, "x") + "," + getDouble(green, "y")
+                        + " hostilePos=" + getDouble(hostile, "x") + "," + getDouble(hostile, "y")
+                        + " dist=" + Math.hypot(getDouble(green, "x") - getDouble(hostile, "x"), getDouble(green, "y") - getDouble(hostile, "y"))
+                        + " route=" + ((List<?>) getObject(green, "routePoints")).size()
                         + " debug=" + CampaignSystem.campaignFleetAiDebugLines(ctx));
         assertTrue(CampaignSystem.campaignFleetAiDebugLines(ctx).stream().anyMatch(line -> line.startsWith("FLEET AI DEBUG")));
+    }
+
+    @Test
+    void battlePromptOnlyEligibleInPlayersCurrentCampaignZone() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 999.0;
+        st.strategicOvermapMode = true;
+        invokeForceSimulation(ctx, st, 0.2);
+        Object red = forceNamed(st, "Red Frontier Picket Patrol");
+        Object green = forceNamed(st, "Green Local Defense Patrol");
+        assertNotNull(red);
+        assertNotNull(green);
+
+        st.playerGalaxyY = ctx.WORLD_H * 0.84;
+        setDouble(red, "x", st.playerGalaxyX + 80.0);
+        setDouble(green, "x", st.playerGalaxyX + 120.0);
+        setDouble(red, "y", ctx.WORLD_H * 0.84);
+        setDouble(green, "y", ctx.WORLD_H * 0.84);
+        Object localBattle = invokeCreateCampaignBattle(901, red, green);
+        assertTrue(invokeCampaignBattleCanPromptPlayer(ctx, st, localBattle),
+                "same-zone battles should remain eligible for intervention prompts");
+
+        setDouble(red, "y", ctx.WORLD_H * 0.16);
+        setDouble(green, "y", ctx.WORLD_H * 0.16);
+        Object remoteBattle = invokeCreateCampaignBattle(902, red, green);
+        assertFalse(invokeCampaignBattleCanPromptPlayer(ctx, st, remoteBattle),
+                "remote-zone battles should not create player-facing intervention prompts");
+        assertTrue("DIFFERENT_ZONE".equals(fieldString(remoteBattle, "playerPromptSuppressedReason")));
+    }
+
+    @Test
+    void remoteBattlesStillSimulateAndLogWithoutPromptingPlayer() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 999.0;
+        st.strategicOvermapMode = true;
+        invokeForceSimulation(ctx, st, 0.2);
+        Object red = forceNamed(st, "Red Lunar Interdiction Screen");
+        Object green = forceNamed(st, "Green Southern Relay Patrol");
+        if (green == null) green = forceNamed(st, "Green Local Defense Patrol");
+        assertNotNull(red);
+        assertNotNull(green);
+
+        st.playerGalaxyY = ctx.WORLD_H * 0.84;
+        setBoolean(red, "simulationActive", true);
+        setBoolean(green, "simulationActive", true);
+        setDouble(red, "x", st.playerGalaxyX + 220.0);
+        setDouble(green, "x", st.playerGalaxyX + 250.0);
+        setDouble(red, "y", ctx.WORLD_H * 0.16);
+        setDouble(green, "y", ctx.WORLD_H * 0.16);
+        setEnumByName(red, "state", "MOVING");
+        setEnumByName(green, "state", "MOVING");
+        setDouble(red, "strength", 90.0);
+        setDouble(green, "strength", 88.0);
+        ctx.ui.clearStrategicEncounterPrompt();
+
+        invokeForceSimulation(ctx, st, 0.2);
+
+        assertFalse(ctx.ui.strategicEncounterPrompt.active,
+                "remote-zone NPC battles should not open an intervention modal");
+        assertTrue(((List<?>) st.campaignBattles).stream().anyMatch(battle -> !getBooleanUnchecked(battle, "resolved")),
+                "remote-zone battles should still form and simulate");
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("engaged")),
+                "remote-zone battles should remain visible as passive Sensor Net / war-log entries");
+    }
+
+    @Test
+    void southernRedPressureLaunchesLimitedGreenCounterSortie() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 999.0;
+        CampaignSystem.CampaignLocation greenBase = findLocation(ctx, "poi-01");
+        assertNotNull(greenBase);
+        Object red = invokeEnsureCampaignForce(st,
+                CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Red Southern Sortie Pressure Test",
+                "southern raider lane",
+                "Roaming Red pressure in the starter zone",
+                greenBase.x + 620.0,
+                greenBase.y + 80.0);
+        assertNotNull(red);
+        setBoolean(red, "simulationActive", true);
+        setDouble(red, "strength", 64.0);
+        setDouble(red, "readiness", 74.0);
+        setDouble(red, "supply", 70.0);
+        setDouble(red, "x", greenBase.x + 620.0);
+        setDouble(red, "y", greenBase.y + 80.0);
+        setDouble(red, "targetX", st.playerGalaxyX);
+        setDouble(red, "targetY", st.playerGalaxyY);
+        setEnumByName(red, "mission", "RAID");
+        setEnumByName(red, "intent", "INTERCEPTING");
+        for (Object force : campaignForces(st)) {
+            if (force == null || force == red || !"ENEMY".equals(fieldString(force, "faction"))) continue;
+            setDouble(force, "y", ctx.WORLD_H * 0.18);
+            setDouble(force, "strength", 8.0);
+        }
+
+        invokeUpdateGreenCounterSorties(ctx, st);
+
+        long assigned = campaignForces(st).stream()
+                .filter(force -> force != null
+                        && "COUNTER_SORTIE".equals(fieldString(force, "mission"))
+                        && getIntUnchecked(force, "targetForceId") == getIntUnchecked(red, "id"))
+                .count();
+        assertTrue(assigned == 1,
+                "southern Red pressure should launch exactly one Green counter-sortie against that target");
+        long activeSouthSorties = campaignForces(st).stream()
+                .filter(force -> force != null && "COUNTER_SORTIE".equals(fieldString(force, "mission")))
+                .count();
+        assertTrue(activeSouthSorties <= 2, "Green counter-sorties should be capped so Red activity remains alive");
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("Green counter-task force launched")));
     }
 
     @Test
@@ -276,6 +410,60 @@ class CampaignNpcFleetAiTest {
         assertTrue(CampaignSystem.campaignFleetAiDebugLines(ctx).stream().anyMatch(line -> line.startsWith("FLEET AI DEBUG")));
         assertTrue(CampaignSystem.campaignFleetAiAnomalyReport(ctx).stream()
                 .anyMatch(line -> line.contains("no idle") || line.contains("IDLE") || line.contains("VISIBLE")));
+    }
+
+    @Test
+    void visibleFarFleetMovesEverySimulationTickAsHighPriorityContact() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        invokeForceSimulation(ctx, st, 0.2);
+        Object force = forceNamed(st, "Red Frontier Interdiction Screen");
+        assertNotNull(force);
+
+        setBoolean(force, "simulationActive", true);
+        setBoolean(force, "visibleToPlayer", true);
+        setDouble(force, "x", st.playerGalaxyX + 6200.0);
+        setDouble(force, "y", st.playerGalaxyY);
+        setDouble(force, "targetX", st.playerGalaxyX + 6400.0);
+        setDouble(force, "targetY", st.playerGalaxyY);
+        setDouble(force, "speed", 100.0);
+        setEnumByName(force, "intent", "INTERCEPTING");
+        setEnumByName(force, "workState", "TRAVELING");
+        setEnumByName(force, "missionState", "TRAVELING");
+        ((List<?>) getObject(force, "routePoints")).clear();
+        @SuppressWarnings("unchecked")
+        List<double[]> route = (List<double[]>) getObject(force, "routePoints");
+        route.add(new double[]{st.playerGalaxyX + 6400.0, st.playerGalaxyY});
+        setInt(force, "currentRouteIndex", 0);
+        setEnumByName(force, "reassignmentCondition", "TIMER_EXPIRED");
+        int tickBefore = st.campaignForceSimTickCount;
+        double xBefore = getDouble(force, "x");
+
+        invokeForceSimulation(ctx, st, 0.2);
+
+        assertTrue(st.campaignForceSimTickCount == tickBefore || st.campaignForceSimTickCount == tickBefore + 1);
+        assertTrue(getDouble(force, "x") > xBefore,
+                "visible/pursuing far contacts should move on every simulation update instead of waiting for distance throttling");
+    }
+
+    @Test
+    void fleetDebugReadoutExposesMovementContractFields() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        invokeForceSimulation(ctx, st, 0.2);
+
+        List<String> debug = CampaignSystem.campaignFleetAiDebugLines(ctx);
+
+        assertTrue(debug.stream().anyMatch(line -> line.contains("faction ")
+                        && line.contains("mission ")
+                        && line.contains("state ")
+                        && line.contains("work ")
+                        && line.contains("reassign ")
+                        && line.contains("target ")
+                        && line.contains("route ")
+                        && line.contains("battle ")
+                        && line.contains("prompt ")),
+                "debug readout should expose the fields needed to inspect overmap fleet movement");
     }
 
     @Test
@@ -4098,6 +4286,17 @@ class CampaignNpcFleetAiTest {
         method.invoke(null, ctx, st, force, dt);
     }
 
+    private static void invokeUpdateGreenCounterSorties(GameContext ctx,
+                                                        CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "updateGreenCounterSorties",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
+    }
+
     private static void invokeAssignMiningMission(CampaignSystem.CampaignState st,
                                                   Object force,
                                                   String miningSiteId,
@@ -4402,6 +4601,19 @@ class CampaignNpcFleetAiTest {
         Object battle = constructor.newInstance(id, a, b);
         setDouble(battle, "importance", 1.0);
         return battle;
+    }
+
+    private static boolean invokeCampaignBattleCanPromptPlayer(GameContext ctx,
+                                                               CampaignSystem.CampaignState st,
+                                                               Object battle) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "campaignBattleCanPromptPlayer",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                battle.getClass()
+        );
+        method.setAccessible(true);
+        return (Boolean) method.invoke(null, ctx, st, battle);
     }
 
     private static void invokeApplyCampaignBattleRegionalConsequences(CampaignSystem.CampaignState st,
@@ -4925,6 +5137,14 @@ class CampaignNpcFleetAiTest {
         return field.getInt(target);
     }
 
+    private static int getIntUnchecked(Object target, String fieldName) {
+        try {
+            return getInt(target, fieldName);
+        } catch (Exception ex) {
+            throw new AssertionError(ex);
+        }
+    }
+
     private static void setDouble(Object target, String fieldName, double value) throws Exception {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
@@ -4941,6 +5161,14 @@ class CampaignNpcFleetAiTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getBoolean(target);
+    }
+
+    private static boolean getBooleanUnchecked(Object target, String fieldName) {
+        try {
+            return getBoolean(target, fieldName);
+        } catch (Exception ex) {
+            throw new AssertionError(ex);
+        }
     }
 
     private static void setBoolean(Object target, String fieldName, boolean value) throws Exception {

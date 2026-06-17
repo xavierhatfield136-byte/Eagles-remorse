@@ -485,7 +485,8 @@ public final class AISystem {
         boolean needsRearm = ship.needsStrikeCraftRearm();
         Ship target = null;
         if (!needsRearm) {
-            target = periodicClosestRetargetTarget(ctx, ship);
+            target = aggressiveFighterInterceptTarget(ctx, ship);
+            if (!isAlive(target)) target = periodicClosestRetargetTarget(ctx, ship);
             if (!isAlive(target)) target = CarrierSystem.preferredTargetForCraft(ctx, ship, null);
             if (!isAlive(target)) target = preferredEnemyTargetCached(ctx, ship);
             if (!isAlive(target)) target = immediateThreatCached(ctx, ship, Math.max(180.0, preferredRange(ship) * 0.78));
@@ -503,9 +504,16 @@ public final class AISystem {
     private static void executeCarrierCraftIntent(GameContext ctx, Ship ship, double dt, ShipIntent intent) {
         if (ctx == null || ship == null || intent == null) return;
         if (intent.type == IntentType.FIGHT && isAlive(intent.target)) {
-            double d = Math.hypot(intent.target.x - ship.x, intent.target.y - ship.y);
-            fireIfAble(ctx, ship, intent.target, dt, d);
+            fight(ctx, ship, intent.target, dt);
         }
+    }
+
+    private static Ship aggressiveFighterInterceptTarget(GameContext ctx, Ship ship) {
+        if (ctx == null || ship == null || ship.role != ShipRole.FIGHTER || ship.faction == null) return null;
+        Ship smallCraft = TargetingSystem.findClosestHostileSmallCraft(ctx, ship, ship.x, ship.y,
+                Math.max(1100.0, preferredRange(ship) * 2.8));
+        if (isAlive(smallCraft)) return smallCraft;
+        return null;
     }
 
     private static ShipPerception perceiveCombatSituation(GameContext ctx, FleetState fleetState, Ship ship, double dt) {
@@ -2104,6 +2112,12 @@ public final class AISystem {
 
     private static Ship selectEngagementTarget(GameContext ctx, FleetState state, Ship seeker, double dt) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
+        Ship fighterIntercept = aggressiveFighterInterceptTarget(ctx, seeker);
+        if (isAlive(fighterIntercept) && TargetingSystem.isDetectableToObserver(seeker, fighterIntercept)) {
+            clearEngagementScanBackoff(seeker);
+            commitToTarget(seeker, fighterIntercept, targetCommitDuration(seeker, fighterIntercept, SquadObjective.INTERCEPT));
+            return fighterIntercept;
+        }
         Ship shared = sharedTargetForTeam(state, seeker);
         Ship immediate = scanImmediateThreatWithBackoff(
                 ctx, seeker, Math.max(0.0, dt), Math.max(210.0, preferredRange(seeker) * 0.62));
@@ -2441,6 +2455,11 @@ public final class AISystem {
 
     private static Ship findBestReachableEnemyTarget(GameContext ctx, FleetState state, Ship seeker, Ship sharedHint, Ship preferredHint) {
         if (ctx == null || seeker == null || seeker.faction == null) return null;
+        Ship fighterIntercept = aggressiveFighterInterceptTarget(ctx, seeker);
+        if (isAlive(fighterIntercept)
+                && TargetingSystem.isDetectableToObserver(seeker, fighterIntercept)) {
+            return fighterIntercept;
+        }
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         double focusBias = factionSharedFocusBias(seeker.faction);
@@ -2464,6 +2483,7 @@ public final class AISystem {
                 if (enemy == committed) score += 170.0 + Math.max(0.0, seeker.aiTargetCommitTimer) * 32.0;
                 if (d < 240.0) score += 360.0;
                 score += threatPriority(seeker.role, enemy.role) * 72.0;
+                score += aggressiveFighterTargetBias(seeker, enemy);
                 score += targetVulnerabilityScore(seeker, enemy);
                 score += targetAngleAdvantageScore(seeker, enemy);
                 score -= hostileBasePressurePenalty(ctx, seeker, enemy);
@@ -2503,6 +2523,17 @@ public final class AISystem {
             releaseShipScratch(nearby);
         }
         return best;
+    }
+
+    private static double aggressiveFighterTargetBias(Ship seeker, Ship enemy) {
+        if (seeker == null || enemy == null || seeker.role != ShipRole.FIGHTER) return 0.0;
+        double score = 0.0;
+        if (enemy.role == ShipRole.FIGHTER) score += 760.0;
+        else if (enemy.role == ShipRole.BOMBER) score += 720.0;
+        else if (enemy.role == ShipRole.DRONE || enemy.role == ShipRole.PD_CRAFT) score += 520.0;
+        else if (enemy.isSmallCraft()) score += 420.0;
+        if (enemy.carrierOwnerId >= 0) score += 180.0;
+        return score;
     }
 
     static double sectorTargetPriorityBias(GameContext ctx, Ship seeker, Ship target) {

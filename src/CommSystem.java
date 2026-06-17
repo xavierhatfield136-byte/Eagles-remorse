@@ -245,29 +245,16 @@ public final class CommSystem {
         if (!isTradeCapable(target)) {
             return outcome("We are fleet-local, not a merchant hull. No trade ledger available on this channel.");
         }
-        CommOutcome intelOutcome = intelTradeOutcome(ctx, target, 120,
-                "Blue logistics can sell you a quick intel package if you need route data more than ore settlement.",
-                "BLUE INTEL PACKAGE SOLD");
-        if (intelOutcome != null) return intelOutcome;
-        return executeTrade(ctx, target,
-                "Trade channel is open. Bring salvage or ore when the shooting eases.",
-                "Trade complete. Clearing cargo and crediting your account now.");
+        openTradeMenu(ctx, target, TradeCounterparty.FRIENDLY);
+        return outcome("Trade channel open. Select a ledger item from the trade menu.",
+                "TRADE MENU OPEN");
     }
 
     private static CommOutcome alliedTradeOutcome(GameContext ctx, Ship target) {
-        CommOutcome contractOutcome = alliedContractHireOutcome(ctx, target);
-        if (contractOutcome != null) {
-            return contractOutcome;
-        }
-        CommOutcome intelOutcome = intelTradeOutcome(ctx, target,
-                (target.faction == Faction.TEAM_D) ? 180 : 160,
-                "We can move a paid intel packet if you need target vectors more than ore settlement.",
-                (target.faction == Faction.TEAM_D) ? "YELLOW INTEL PACKAGE SOLD" : "GREEN INTEL PACKAGE SOLD");
-        if (intelOutcome != null) return intelOutcome;
         if (isTradeCapable(target) || target.faction == Faction.TEAM_C) {
-            return executeTrade(ctx, target,
-                    "Trade window available. Keep your weapons cool and we can talk terms.",
-                    "Terms accepted. We are moving credits over and keeping the lane clear.");
+            openTradeMenu(ctx, target, TradeCounterparty.ALLIED);
+            return outcome("Trade channel open. Select a ledger item from the trade menu.",
+                    "TRADE MENU OPEN");
         }
         return outcome("No trade inventory on this hull. We are a combat contact, not a broker.");
     }
@@ -282,24 +269,209 @@ public final class CommSystem {
             return outcome("Negative. We are under fire and not opening our holds for an unknown warship right now.",
                     "TRADE REFUSED UNDER FIRE");
         }
-        int intelCost = underFire ? 220 : 180;
-        CommOutcome intelOutcome = intelTradeOutcome(ctx, target, intelCost,
-                underFire
-                        ? "We can sell you a hazard-priced intel packet if you need vectors more than cargo exchange."
-                        : "We can sell you route and contact intel if that is more useful than moving ore right now.",
-                underFire ? "HAZARD INTEL PACKAGE SOLD" : "INTEL PACKAGE SOLD");
-        if (intelOutcome != null) return intelOutcome;
-        double priceMul = underFire
-                ? MathUtil.clamp(0.72 + memory.trust * 0.35, 0.72, 0.92)
-                : MathUtil.clamp(1.0 + memory.trust * 0.10, 1.0, 1.10);
-        return executeTrade(ctx, target,
-                underFire
-                        ? "Trade channel open, but hazard premiums apply while rounds are still crossing the lane."
-                        : "Trade channel open. Keep your escorts steady and we can do business.",
-                underFire
-                        ? "Exchange complete. We kept our margin and you kept the lane from collapsing."
-                        : "Exchange complete. Stay clear of any incoming firing lane.",
-                priceMul);
+        openTradeMenu(ctx, target, underFire ? TradeCounterparty.NEUTRAL_UNDER_FIRE : TradeCounterparty.NEUTRAL);
+        return outcome("Trade channel open. Select a ledger item from the trade menu.",
+                "TRADE MENU OPEN");
+    }
+
+    private enum TradeCounterparty {
+        FRIENDLY,
+        ALLIED,
+        NEUTRAL,
+        NEUTRAL_UNDER_FIRE
+    }
+
+    private static void openTradeMenu(GameContext ctx, Ship target, TradeCounterparty counterparty) {
+        if (ctx == null || ctx.ui == null || target == null) return;
+        List<UiState.CommTradeOption> options = tradeOptionsFor(ctx, target, counterparty);
+        String speaker = speakerFor(target);
+        String body = switch (counterparty) {
+            case FRIENDLY -> "Blue logistics desk. Choose what you want moved through this channel.";
+            case ALLIED -> "Allied broker channel. Pick cargo sale, paid intel, or a contract if this hull can offer one.";
+            case NEUTRAL_UNDER_FIRE -> "Hazard pricing is active while fire crosses the lane.";
+            case NEUTRAL -> "Civilian exchange window. Select the deal before the channel closes.";
+        };
+        ctx.ui.showCommTradeMenu(target.id, "REQUEST TRADE: " + speaker, body, options);
+    }
+
+    private static List<UiState.CommTradeOption> tradeOptionsFor(GameContext ctx, Ship target, TradeCounterparty counterparty) {
+        java.util.ArrayList<UiState.CommTradeOption> options = new java.util.ArrayList<>();
+        boolean coolingDown = commActionCoolingDown(ctx, target);
+        int cargo = (ctx == null || ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
+        double payoutMul = tradePayoutMulFor(ctx, target, counterparty);
+        int expectedCredits = expectedOreSaleCredits(ctx, Math.min(TRADE_ORE_BATCH, cargo), payoutMul);
+        options.add(tradeOption("SELL_ORE",
+                "Sell ore cargo",
+                cargo > 0
+                        ? "Sell up to " + TRADE_ORE_BATCH + " ore for about " + expectedCredits + " credits."
+                        : "No ore is currently in your holds.",
+                !coolingDown && cargo > 0));
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS) {
+            int intelCost = intelCostFor(target, counterparty);
+            options.add(tradeOption("BUY_INTEL",
+                    "Buy route intel",
+                    "Purchase local vectors and contact intel for " + intelCost + " credits.",
+                    !coolingDown && cargo <= 0 && ctx.credits >= intelCost && bestIntelSalePackage(ctx, target) != null));
+        }
+        if (counterparty == TradeCounterparty.ALLIED && canOfferContractHire(ctx, target)) {
+            int contractCost = contractHireCreditCost(target.role);
+            options.add(tradeOption("HIRE_ESCORT",
+                    "Hire escort",
+                    contractCost > 0
+                            ? "Pay " + contractCost + " credits to bring this hull into your squad."
+                            : "This hull has no contract ledger.",
+                    !coolingDown && contractCost > 0 && ctx != null && ctx.credits >= contractCost));
+        }
+        options.add(tradeOption("CANCEL", "Close channel", "Leave the trade menu without exchanging cargo.", true));
+        return options;
+    }
+
+    private static UiState.CommTradeOption tradeOption(String id, String label, String detail, boolean enabled) {
+        UiState.CommTradeOption option = new UiState.CommTradeOption();
+        option.id = id;
+        option.label = label;
+        option.detail = detail;
+        option.enabled = enabled;
+        return option;
+    }
+
+    public static boolean chooseTradeMenuOption(GameContext ctx, int optionIndex) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
+        if (optionIndex < 0 || optionIndex >= ctx.ui.commTradeMenu.options.size()) return false;
+        UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(optionIndex);
+        if (option == null || !option.enabled) {
+            EventSystem.showBanner(ctx, "TRADE OPTION UNAVAILABLE", 0.9);
+            return true;
+        }
+        Ship target = shipById(ctx, ctx.ui.commTradeMenu.targetId);
+        String optionId = option.id == null ? "" : option.id.trim();
+        if ("CANCEL".equals(optionId)) {
+            ctx.ui.clearCommTradeMenu();
+            EventSystem.showBanner(ctx, "TRADE CHANNEL CLOSED", 0.8);
+            return true;
+        }
+        if (target == null || !isHailable(ctx, target)) {
+            ctx.ui.clearCommTradeMenu();
+            EventSystem.showBanner(ctx, "TRADE CONTACT LOST", 1.1);
+            return true;
+        }
+
+        CommOutcome outcome = executeTradeMenuOption(ctx, target, optionId);
+        if (outcome == null) {
+            outcome = outcome("That ledger item is not available on this channel right now.",
+                    "TRADE OPTION UNAVAILABLE");
+        }
+        ctx.ui.clearCommTradeMenu();
+        String speaker = speakerFor(target);
+        postHailMessage(ctx, target.faction, speaker, outcome.response(), 8.0);
+        ctx.ui.showCommResult((outcome.banner() == null || outcome.banner().isBlank()) ? "TRADE RESULT" : outcome.banner(),
+                outcome.response(), target.id, 4.5);
+        if (ctx.ui.voiceCaptionsEnabled) {
+            ctx.ui.voiceCaption = speaker + ": " + outcome.response();
+            ctx.ui.voiceCaptionT = 2.8;
+        }
+        if (outcome.banner() != null && !outcome.banner().isBlank()) {
+            EventSystem.showBanner(ctx, outcome.banner(), 0.9);
+        }
+        return true;
+    }
+
+    private static CommOutcome executeTradeMenuOption(GameContext ctx, Ship target, String optionId) {
+        TradeCounterparty counterparty = counterpartyFor(ctx, target);
+        return switch (optionId) {
+            case "SELL_ORE" -> executeTrade(ctx, target,
+                    tradeBaseReply(counterparty),
+                    tradeSuccessReply(counterparty),
+                    tradePayoutMulFor(ctx, target, counterparty));
+            case "BUY_INTEL" -> intelTradeOutcome(ctx, target,
+                    intelCostFor(target, counterparty),
+                    intelOfferReply(counterparty),
+                    intelSuccessBanner(target, counterparty));
+            case "HIRE_ESCORT" -> alliedContractHireOutcome(ctx, target);
+            default -> outcome("Trade channel closed.");
+        };
+    }
+
+    private static TradeCounterparty counterpartyFor(GameContext ctx, Ship target) {
+        if (ctx == null || ctx.player == null || target == null || target.faction == null) return TradeCounterparty.NEUTRAL;
+        boolean friendly = target.faction.isFriendlyTo(ctx.player.faction);
+        boolean sameTeam = target.faction.teamId() == ctx.player.faction.teamId();
+        if (friendly && sameTeam) return TradeCounterparty.FRIENDLY;
+        if (friendly) return TradeCounterparty.ALLIED;
+        return isUnderFirePressure(ctx, target, 820.0) ? TradeCounterparty.NEUTRAL_UNDER_FIRE : TradeCounterparty.NEUTRAL;
+    }
+
+    private static Ship shipById(GameContext ctx, int id) {
+        if (ctx == null || ctx.ships == null || id <= 0) return null;
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ship.id == id) return ship;
+        }
+        return null;
+    }
+
+    private static int expectedOreSaleCredits(GameContext ctx, int moved, double payoutMul) {
+        if (ctx == null || moved <= 0) return 0;
+        double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx)
+                * TRADE_PRICE_BONUS * MathUtil.clamp(payoutMul, 0.55, 1.25);
+        int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
+        return GameContext.scaleCreditEarnings(baseCredits);
+    }
+
+    private static double tradePayoutMulFor(GameContext ctx, Ship target, TradeCounterparty counterparty) {
+        if (counterparty == TradeCounterparty.NEUTRAL || counterparty == TradeCounterparty.NEUTRAL_UNDER_FIRE) {
+            CommandState.CommFactionMemory memory = memoryFor(ctx, target == null ? null : target.faction);
+            return counterparty == TradeCounterparty.NEUTRAL_UNDER_FIRE
+                    ? MathUtil.clamp(0.72 + memory.trust * 0.35, 0.72, 0.92)
+                    : MathUtil.clamp(1.0 + memory.trust * 0.10, 1.0, 1.10);
+        }
+        return 1.0;
+    }
+
+    private static int intelCostFor(Ship target, TradeCounterparty counterparty) {
+        return switch (counterparty) {
+            case FRIENDLY -> 120;
+            case ALLIED -> (target != null && target.faction == Faction.TEAM_D) ? 180 : 160;
+            case NEUTRAL_UNDER_FIRE -> 220;
+            case NEUTRAL -> 180;
+        };
+    }
+
+    private static String tradeBaseReply(TradeCounterparty counterparty) {
+        return switch (counterparty) {
+            case FRIENDLY -> "Trade channel is open. Bring salvage or ore when the shooting eases.";
+            case ALLIED -> "Trade window available. Keep your weapons cool and we can talk terms.";
+            case NEUTRAL_UNDER_FIRE -> "Trade channel open, but hazard premiums apply while rounds are still crossing the lane.";
+            case NEUTRAL -> "Trade channel open. Keep your escorts steady and we can do business.";
+        };
+    }
+
+    private static String tradeSuccessReply(TradeCounterparty counterparty) {
+        return switch (counterparty) {
+            case FRIENDLY -> "Trade complete. Clearing cargo and crediting your account now.";
+            case ALLIED -> "Terms accepted. We are moving credits over and keeping the lane clear.";
+            case NEUTRAL_UNDER_FIRE -> "Exchange complete. We kept our margin and you kept the lane from collapsing.";
+            case NEUTRAL -> "Exchange complete. Stay clear of any incoming firing lane.";
+        };
+    }
+
+    private static String intelOfferReply(TradeCounterparty counterparty) {
+        return switch (counterparty) {
+            case FRIENDLY -> "Blue logistics can sell you a quick intel package if you need route data more than ore settlement.";
+            case ALLIED -> "We can move a paid intel packet if you need target vectors more than ore settlement.";
+            case NEUTRAL_UNDER_FIRE -> "We can sell you a hazard-priced intel packet if you need vectors more than cargo exchange.";
+            case NEUTRAL -> "We can sell you route and contact intel if that is more useful than moving ore right now.";
+        };
+    }
+
+    private static String intelSuccessBanner(Ship target, TradeCounterparty counterparty) {
+        return switch (counterparty) {
+            case FRIENDLY -> "BLUE INTEL PACKAGE SOLD";
+            case ALLIED -> (target != null && target.faction == Faction.TEAM_D)
+                    ? "YELLOW INTEL PACKAGE SOLD"
+                    : "GREEN INTEL PACKAGE SOLD";
+            case NEUTRAL_UNDER_FIRE -> "HAZARD INTEL PACKAGE SOLD";
+            case NEUTRAL -> "INTEL PACKAGE SOLD";
+        };
     }
 
     private static CommOutcome alliedContractHireOutcome(GameContext ctx, Ship target) {
@@ -409,6 +581,7 @@ public final class CommSystem {
     private static CommOutcome stateIntentOutcome(GameContext ctx, Ship target, String baseReply) {
         Ship intel = nearestHostileToTarget(ctx, target, 2200.0);
         if (!isAliveHostileTo(target, intel)) {
+            CampaignSystem.noteYellowStateIntentNeutrality(ctx, target);
             DiscoveryIntelHint discoveryHint = nearestDiscoveryHint(ctx, target, 2600.0);
             if (discoveryHint != null) {
                 pushIntelPing(ctx, discoveryHint.x, discoveryHint.y, teamCodeFor(target));

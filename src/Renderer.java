@@ -605,10 +605,10 @@ public class Renderer {
     public static Rectangle getShopOverlayRect(int viewW, int viewH) {
         int padX = 36;
         int padY = 44;
-        int w = Math.min(1180, Math.max(820, viewW - padX * 2));
-        int h = Math.min(640, Math.max(560, viewH - padY * 2));
+        int w = Math.min(1260, Math.max(820, viewW - padX * 2));
+        int h = Math.min(Math.min(720, viewH - 16), Math.max(560, viewH - padY * 2));
         int x = (viewW - w) / 2;
-        int y = Math.max(28, (viewH - h) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
     }
 
@@ -925,12 +925,12 @@ public class Renderer {
             return switch (index) {
                 case 0 -> "FLEET";
                 case 1 -> "UPGRADE";
-                case 4 -> "HELP";
+                case 4 -> "CREW";
                 case 5 -> "SAFE EXIT";
                 default -> CORE_MENU_LABELS[index];
             };
         }
-        if (index == 4) return "HELP";
+        if (index == 4) return "CREW";
         return CORE_MENU_LABELS[index];
     }
 
@@ -1214,11 +1214,11 @@ public class Renderer {
                     : "Base upgrade console. Spend credits and ore on fortification, shields, turret systems, mining, and hangar tier. Hotkey: B.";
             case 2 -> "Strategic map. Set waypoints and inspect the wider battlespace. Hotkey: M.";
             case 3 -> "Power routing. Rebalance propulsion, shields, tactical, sensors, engineering, and supercharge buses. Hotkey: O.";
-            case 4 -> "Help and operations. Review controls, combat reference, Captain/Helm/Tactical/Engineering/Science automation, and voice mix. Hotkey: H.";
+            case 4 -> "Crew stations. Issue Captain, Helm, Tactical, Engineering, and Science orders without opening the reference controls. Hotkey: H.";
             case 5 -> campaign
                     ? (fleetHub
                         ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
-                        : "Safe exit retreats to the strategic map during the first 10 seconds after entry. After that, complete the objective to extract.")
+                        : "Safe exit retreats to the strategic map whenever you are ready to leave the live mission.")
                     : "Safe campaign extraction is only available during Campaign Ops missions.";
             default -> "";
         };
@@ -1625,7 +1625,6 @@ public class Renderer {
         for (int i = 0; i < CORE_MENU_LABELS.length; i++) {
             Rectangle br = getCoreMenuButtonRect(viewW, viewH, i);
             boolean disabled = controlsDisabled
-                    || (!showcase && campaignActive && !fleetHub && (i == 0 || i == 1))
                     || (!showcase && !campaignActive && i == 1 && !baseAvailable)
                     || (!showcase && i == 5 && (!campaignActive || fleetHub || ctx.ui.hasBlockingOverlay() || CampaignSystem.isTransitioning(ctx)));
             boolean active = i < open.length && open[i];
@@ -1688,7 +1687,7 @@ public class Renderer {
 
     public static void drawControlsScreen(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
         if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.controlsScreenOpen) return;
-        int w = Math.min(900, viewW - 64);
+        int w = Math.min(1080, Math.max(520, viewW - 64));
         int h = Math.min(620, viewH - 64);
         int x = (viewW - w) / 2;
         int y = (viewH - h) / 2;
@@ -1700,13 +1699,20 @@ public class Renderer {
         g2.drawString("SEARCHABLE CONTROLS  Ctrl+H close", x + 18, y + 28);
         g2.setFont(new Font("Consolas", Font.PLAIN, 13));
         g2.drawString("Search: " + ctx.ui.controlsSearchQuery + "_", x + 18, y + 50);
-        g2.drawString("Arrows select, Enter rebind keyboard, Ctrl+1..6 restore scope defaults", x + 360, y + 50);
+        int referenceW = Math.min(330, Math.max(250, w / 3));
+        Rectangle reference = new Rectangle(x + w - referenceW - 18, y + 72, referenceW, h - 112);
+        int listRight = reference.x - 20;
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Arrows select, Enter rebind keyboard, Ctrl+1..6 restore scope defaults",
+                Math.max(120, listRight - (x + 360))), x + 360, y + 50);
+        drawControlsReferencePanel(g2, ctx, reference);
         int rowY = y + 76;
         int index = 0;
         for (HotkeyRegistry.Binding binding : HotkeyRegistry.search(ctx.ui.controlsSearchQuery)) {
             g2.setColor(index == ctx.ui.controlsSelectedIndex ? new Color(255, 230, 155) : new Color(160, 210, 255));
-            g2.drawString(String.format(Locale.US, "%-14s %-26s %s",
-                    binding.scope().name(), binding.action(), binding.label()), x + 18, rowY);
+            String row = String.format(Locale.US, "%-14s %-26s %s",
+                    binding.scope().name(), binding.action(), binding.label());
+            g2.drawString(fitShopText(g2.getFontMetrics(), row, Math.max(180, listRight - x - 24)), x + 18, rowY);
             rowY += 16;
             index++;
             if (rowY > y + h - 48) break;
@@ -1717,6 +1723,51 @@ public class Renderer {
                 ? (warnings.isEmpty() ? "No binding conflicts." : "Conflict: " + warnings.get(0))
                 : "Press a key for " + ctx.ui.controlsCaptureAction;
         g2.drawString(status, x + 18, y + h - 20);
+    }
+
+    private static void drawControlsReferencePanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
+        if (g2 == null || ctx == null || rect == null || rect.width <= 0 || rect.height <= 0) return;
+        g2.setColor(new Color(18, 28, 42, 215));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+        g2.setColor(new Color(120, 185, 255, 125));
+        g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
+
+        int pad = 12;
+        int textX = rect.x + pad;
+        int textW = rect.width - pad * 2;
+        int cursorY = rect.y + 20;
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(222, 238, 255, 225));
+        g2.drawString("MISSION REFERENCE", textX, cursorY);
+        cursorY += 18;
+
+        String tutorialTitle = TutorialSystem.hudTitle(ctx);
+        boolean tutorialActive = tutorialTitle != null && !tutorialTitle.isBlank();
+        String title = tutorialActive ? tutorialTitle : CampaignSystem.hudObjectiveTitle(ctx);
+        String detail = tutorialActive ? TutorialSystem.hudDetail(ctx) : CampaignSystem.hudObjectiveDetail(ctx);
+        String status = "Status: " + ((ctx.state == null) ? "UNKNOWN" : ctx.state.name());
+        String hint = TutorialSystem.contextHint(ctx);
+        ArrayList<String> rows = new ArrayList<>();
+        rows.add("Current mission: " + ((title == null || title.isBlank()) ? "No active objective" : title));
+        rows.add(status);
+        if (detail != null && !detail.isBlank()) rows.add("Brief: " + detail.replace('\n', ' '));
+        if (hint != null && !hint.isBlank()) rows.add("Tutorial: " + hint);
+        List<String> legend = HotkeyRegistry.currentContextLegend(ctx);
+        if (!legend.isEmpty()) rows.add("Extra: " + String.join("  |  ", legend.subList(0, Math.min(3, legend.size()))));
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        for (String row : rows) {
+            for (String line : wrapHudText(fm, row, textW)) {
+                if (cursorY > rect.y + rect.height - 12) return;
+                g2.setColor(line.startsWith("Current mission:")
+                        ? new Color(255, 232, 164, 220)
+                        : new Color(202, 219, 236, 205));
+                g2.drawString(fitShopText(fm, line, textW), textX, cursorY);
+                cursorY += 14;
+            }
+            cursorY += 4;
+        }
     }
 
 
@@ -1789,7 +1840,7 @@ public class Renderer {
         int x = panel.x + 24;
         int y = panel.y + 156;
         int w = Math.min(396, Math.max(332, (int) Math.round(panel.width * 0.34)));
-        int h = panel.height - 188;
+        int h = panel.height - 204;
         return new Rectangle(x, y, w, h);
     }
 
@@ -1848,7 +1899,8 @@ public class Renderer {
         int cols = 4;
         int gap = 10;
         int cardW = (area.width - gap * (cols - 1)) / cols;
-        int cardH = 136;
+        int rows = Math.max(1, (SHOP_HULL_PAGE_SIZE + cols - 1) / cols);
+        int cardH = Math.max(138, Math.min(164, (area.height - 64 - gap * (rows - 1)) / rows));
         int col = Math.max(0, slot % cols);
         int row = Math.max(0, slot / cols);
         int x = area.x + col * (cardW + gap);
@@ -4831,8 +4883,12 @@ public class Renderer {
         if (layout == null) return new Rectangle(0, 0, 0, 0);
         int w = layout.beamRect.width;
         int h = Math.max(88, (int) Math.round(layout.beamRect.height * 0.72));
-        int x = Math.max(12, layout.beamRect.x - w - 12);
-        int y = layout.beamRect.y;
+        int x = layout.beamRect.x;
+        int y = layout.beamRect.y - h - 10;
+        if (y < 12) {
+            x = Math.max(12, layout.beamRect.x - w - 12);
+            y = layout.beamRect.y;
+        }
         if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
         if (y + h > viewH - 12) y = Math.max(12, viewH - h - 12);
         return new Rectangle(x, y, w, h);
@@ -5904,6 +5960,91 @@ public class Renderer {
                 baseline += lineH;
             }
         }
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    public static Rectangle commTradeMenuRect(int viewW, int viewH) {
+        int w = Math.min(520, Math.max(360, viewW - 80));
+        int h = 260;
+        int x = Math.max(16, (viewW - w) / 2);
+        int y = Math.max(54, Math.min(viewH - h - 96, viewH / 2 - h / 2));
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle commTradeMenuOptionRect(int viewW, int viewH, int index) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        int rowH = 42;
+        int y = panel.y + 82 + Math.max(0, index) * (rowH + 8);
+        return new Rectangle(panel.x + 18, y, panel.width - 36, rowH);
+    }
+
+    public static Rectangle commTradeMenuCloseRect(int viewW, int viewH) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        return new Rectangle(panel.x + panel.width - 86, panel.y + panel.height - 34, 68, 22);
+    }
+
+    public static void drawCommTradeMenu(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return;
+        UiState.CommTradeMenu menu = ctx.ui.commTradeMenu;
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setColor(new Color(0, 0, 0, 128));
+        g2.fillRect(0, 0, viewW, viewH);
+        if (!paintThemedHudFrame(g2, panel.x, panel.y, panel.width, panel.height,
+                new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME, 14)) {
+            g2.setColor(new Color(9, 13, 20, 232));
+            g2.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 14, 14);
+            g2.setColor(new Color(255, 214, 150, 200));
+            g2.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 14, 14);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 18));
+        g2.setColor(new Color(255, 236, 186, 235));
+        g2.drawString(fitShopText(g2.getFontMetrics(), menu.title, inner.width), inner.x, inner.y);
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        FontMetrics bodyFm = g2.getFontMetrics();
+        g2.setColor(new Color(221, 232, 244, 210));
+        int y = inner.y + 22;
+        for (String line : limitHudLines(wrapHudText(bodyFm, menu.body, inner.width), 2)) {
+            g2.drawString(line, inner.x, y);
+            y += 14;
+        }
+
+        int rows = Math.min(4, menu.options.size());
+        for (int i = 0; i < rows; i++) {
+            UiState.CommTradeOption option = menu.options.get(i);
+            Rectangle row = commTradeMenuOptionRect(viewW, viewH, i);
+            boolean selected = i == menu.selectedIndex;
+            boolean enabled = option != null && option.enabled;
+            Color accent = enabled ? new Color(126, 190, 255) : new Color(120, 132, 148);
+            g2.setColor(selected ? new Color(35, 54, 76, 230) : new Color(12, 20, 31, 210));
+            g2.fillRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+            g2.setColor(withAlpha(accent, selected ? 230 : 120));
+            g2.drawRoundRect(row.x, row.y, row.width, row.height, 10, 10);
+
+            g2.setFont(new Font("Consolas", Font.BOLD, 12));
+            g2.setColor(enabled ? new Color(244, 248, 255, 230) : new Color(166, 174, 184, 190));
+            String label = (option == null || option.label == null) ? "Option" : option.label;
+            g2.drawString((i + 1) + ". " + fitShopText(g2.getFontMetrics(), label, row.width - 28),
+                    row.x + 10, row.y + 16);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+            g2.setColor(enabled ? new Color(202, 218, 235, 205) : new Color(135, 144, 154, 170));
+            String detail = (option == null || option.detail == null) ? "" : option.detail;
+            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 20),
+                    row.x + 10, row.y + 33);
+        }
+
+        Rectangle close = commTradeMenuCloseRect(viewW, viewH);
+        drawHudStatusChip(g2, "ESC", close.x, close.y + 14, close.width, 20, new Color(255, 214, 150), false);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(224, 232, 242, 175));
+        g2.drawString("Use 1-4, arrows, Enter, or click.", inner.x, panel.y + panel.height - 14);
 
         g2.setFont(oldFont);
         g2.setColor(oldColor);
@@ -7062,8 +7203,8 @@ public class Renderer {
         if (g2 == null || player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(700, clip.width - 110);
-        int h = 462;
+        int w = Math.min(860, Math.max(560, clip.width - 80));
+        int h = Math.min(520, Math.max(462, clip.height - 70));
         int x = (clip.width - w) / 2;
         int y = Math.max(54, (clip.height - h) / 2);
 
@@ -7083,7 +7224,7 @@ public class Renderer {
         double[] values = player.powerBusFractions();
 
         int rowY = inner.y + 66;
-        int barW = 330;
+        int barW = Math.min(430, Math.max(330, inner.width - 338));
         int barH = 16;
         for (int i = 0; i < labels.length; i++) {
             Ship.PowerBus bus = Ship.PowerBus.values()[i];
@@ -7145,46 +7286,58 @@ public class Renderer {
         int py = y + 278;
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(255, 255, 255, 210));
-        g2.drawString("Combat Effects", x + 20, py);
+        g2.drawString("Combat Effects", inner.x, py);
         py += 20;
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(200, 245, 220, 220));
-        g2.drawString("Mobility: " + signedPct(speedMul) + "   Weapon Damage: " + signedPct(weaponDmg), x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Mobility: " + signedPct(speedMul) + "   Weapon Damage: " + signedPct(weaponDmg),
+                inner.width), inner.x, py);
         py += 16;
         g2.setColor(new Color(255, 225, 180, 220));
-        g2.drawString("Fire Rate: " + signedPct(weaponCycle) + "   Sensor Range: " + signedPct(sensor), x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Fire Rate: " + signedPct(weaponCycle) + "   Sensor Range: " + signedPct(sensor),
+                inner.width), inner.x, py);
         py += 16;
         g2.setColor(new Color(180, 225, 255, 220));
-        g2.drawString("Shield Effectiveness: " + signedPct(shield) + "   Super Recharge: " + signedPct(superCharge), x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Shield Effectiveness: " + signedPct(shield) + "   Super Recharge: " + signedPct(superCharge),
+                inner.width), inner.x, py);
         py += 16;
-        g2.drawString("Shield Gate: " + shieldGateReadout(player) + "   Super: "
-                + (int) Math.round(player.getSuperweaponRechargeProgress() * 100.0) + "%", x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Shield Gate: " + shieldGateReadout(player) + "   Super: "
+                        + (int) Math.round(player.getSuperweaponRechargeProgress() * 100.0) + "%",
+                inner.width), inner.x, py);
         py += 20;
 
         String overload = player.isOverloadActive()
                 ? "ACTIVE"
                 : (player.isOverloadAvailable() ? "READY" : "COOLDOWN");
         g2.setColor(new Color(255, 214, 150, 225));
-        g2.drawString("Overload " + overload + "  Bus " + player.overloadBus().name()
-                + "  Heat " + (int) Math.round(player.overloadHeat() * 100.0) + "%  Debt "
-                + (int) Math.round(player.overloadStressDebt() * 100.0) + "%  CD "
-                + (int) Math.ceil(player.overloadCooldownRemaining()) + "s", x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Overload " + overload + "  Bus " + player.overloadBus().name()
+                        + "  Heat " + (int) Math.round(player.overloadHeat() * 100.0) + "%  Debt "
+                        + (int) Math.round(player.overloadStressDebt() * 100.0) + "%  CD "
+                        + (int) Math.ceil(player.overloadCooldownRemaining()) + "s",
+                inner.width), inner.x, py);
         py += 18;
         String emergencyStatus = player.isEmergencyThrustActive() ? "ACTIVE" : "STANDBY";
         g2.setColor(new Color(255, 190, 150, 225));
-        g2.drawString("Emergency Thrust " + emergencyStatus
-                + "  Heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%  CD "
-                + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s  Propulsion "
-                + (int) Math.round(player.propulsionRoomIntegrity() * 100.0) + "%", x + 20, py);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Emergency Thrust " + emergencyStatus
+                        + "  Heat " + (int) Math.round(player.emergencyThrustHeat() * 100.0) + "%  CD "
+                        + (int) Math.ceil(player.emergencyThrustCooldownRemaining()) + "s  Propulsion "
+                        + (int) Math.round(player.propulsionRoomIntegrity() * 100.0) + "%",
+                inner.width), inner.x, py);
         py += 18;
         g2.setColor(new Color(200, 255, 200, 220));
-        g2.drawString("Repair Priority: " + player.engineeringPriority().name(), x + 20, py);
+        g2.drawString("Repair Priority: " + player.engineeringPriority().name(), inner.x, py);
         py += 20;
 
         g2.setFont(new Font("Consolas", Font.BOLD, 12));
         g2.setColor(new Color(225, 240, 255, 220));
-        g2.drawString("Subsystem States", x + 20, py);
+        g2.drawString("Subsystem States", inner.x, py);
         py += 16;
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         StringBuilder stateLine = new StringBuilder();
@@ -7202,12 +7355,12 @@ public class Renderer {
         if (stateLine.length() > 0) stateRows.add(stateLine.toString());
         g2.setColor(new Color(220, 230, 245, 210));
         for (int i = 0; i < stateRows.size() && i < 2; i++) {
-            g2.drawString(stateRows.get(i), x + 20, py);
+            g2.drawString(fitShopText(g2.getFontMetrics(), stateRows.get(i), inner.width), inner.x, py);
             py += 14;
         }
 
         g2.setColor(new Color(255, 255, 255, 145));
-        g2.drawString("Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT", x + 20, y + h - 18);
+        g2.drawString("Presets: F1 BALANCED   F2 ATTACK   F3 DEFENSE   F4 PURSUIT", inner.x, y + h - 18);
     }
 
     public static void drawFlightDeckOverlay(Graphics2D g2, Ship carrier, int focusSlot) {
@@ -7341,12 +7494,12 @@ public class Renderer {
         int x = (clip.width - w) / 2;
         int y = Math.max(34, (clip.height - h) / 2);
 
-        drawHudPanelFrame(g2, x, y, w, h, "HELP AND OPERATIONS", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
+        drawHudPanelFrame(g2, x, y, w, h, "CREW STATIONS", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         g2.setColor(new Color(255, 240, 180, 230));
         g2.setFont(new Font("Consolas", Font.BOLD, 18));
-        g2.drawString("HELP AND OPERATIONS", inner.x, inner.y);
+        g2.drawString("CREW STATIONS", inner.x, inner.y);
 
         g2.setColor(new Color(255, 255, 255, 170));
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
@@ -9361,13 +9514,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         out.add("Secondary Objective: " + defaultIfBlank(secondary, "Stabilize the district"));
         out.add("Win State: " + defaultIfBlank(objectiveValue(detail, "Win State:"), "Complete the operation"));
         out.add("Failure Risk: " + defaultIfBlank(objectiveValue(detail, "Failure Risk:"), "Do not lose mission-critical assets"));
-        String time = objectiveValue(detail, "Time:");
-        if (time.isBlank()) time = objectiveValue(detail, "Timer:");
-        if (time.isBlank() && ctx.campaign != null) {
-            int left = (int) Math.ceil(Math.max(0.0, ctx.campaign.sectorTimeLimit - ctx.campaign.sectorElapsed));
-            time = left + " seconds remaining";
-        }
-        out.add("Time Limit: " + defaultIfBlank(time, "Open engagement"));
+        String pace = objectiveValue(detail, "Pace:");
+        out.add("Pace: " + defaultIfBlank(pace, "Open engagement"));
         out.add("Threat: " + defaultIfBlank(objectiveValue(detail, "Threat:"), "Hostile task forces active"));
         return out;
     }
@@ -10436,6 +10584,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int infoY = y + 190;
         for (int i = 0; i < consequences.size() && i < 4 && infoY + i * 14 <= y + panelH - 8; i++) {
             drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, consequences.get(i), new Color(214, 226, 238, 214));
+        }
+        List<String> sensor = CampaignSystem.campaignSensorNetSummaryLines(ctx);
+        int sensorY = y + panelH - 34;
+        for (int i = 0; i < sensor.size() && i < 2; i++) {
+            drawGalaxyBoardLine(g2, x + 12, sensorY + i * 14, width - 24, sensor.get(i), new Color(156, 224, 255, 214));
         }
     }
 

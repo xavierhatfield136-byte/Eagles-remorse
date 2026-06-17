@@ -211,6 +211,7 @@ public final class UISystem {
     public static void closeAllOverlays(GameContext ctx) {
         if (ctx == null) return;
         boolean hadOverlay = ctx.ui.hasBlockingOverlay();
+        ctx.ui.clearCommTradeMenu();
         ctx.ui.shopOpen = false;
         ctx.ui.baseMenuOpen = false;
         ctx.ui.mapOpen = false;
@@ -221,6 +222,25 @@ public final class UISystem {
         clearManualCombatInputs(ctx);
         if (!ctx.gameOver) ctx.state = stateAfterOverlayClose(ctx);
         if (hadOverlay) AudioSystem.onUiClose(ctx);
+    }
+
+    public static boolean handleCommTradeMenuClick(GameContext ctx, MouseEvent e, int viewW, int viewH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.commTradeMenu.active) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return true;
+        for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
+            Rectangle rect = Renderer.commTradeMenuOptionRect(viewW, viewH, i);
+            if (rect.contains(e.getX(), e.getY())) {
+                ctx.ui.commTradeMenu.selectedIndex = i;
+                CommSystem.chooseTradeMenuOption(ctx, i);
+                return true;
+            }
+        }
+        Rectangle close = Renderer.commTradeMenuCloseRect(viewW, viewH);
+        if (close.contains(e.getX(), e.getY())) {
+            ctx.ui.clearCommTradeMenu();
+            EventSystem.showBanner(ctx, "TRADE CHANNEL CLOSED", 0.8);
+        }
+        return true;
     }
 
     public static void toggleShop(GameContext ctx) {

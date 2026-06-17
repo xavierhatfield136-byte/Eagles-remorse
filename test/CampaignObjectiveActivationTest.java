@@ -67,7 +67,7 @@ class CampaignObjectiveActivationTest {
     }
 
     @Test
-    void sectorTwoTimeoutSucceedsWhenConvoyQuotaSurvives() throws Exception {
+    void sectorTwoTimerExpiryDoesNotAutoResolveWhenConvoyQuotaSurvives() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -79,9 +79,11 @@ class CampaignObjectiveActivationTest {
 
         CampaignSystem.update(ctx, 0.10);
 
-        assertFalse(ctx.gameOver, "sector 2 should resolve as a success if the convoy quota survives to extraction");
-        assertTrue(CampaignSystem.isSectorObjectiveSecured(ctx),
-                "convoy extraction at timeout should secure the sector and open the post-objective window");
+        assertFalse(ctx.gameOver, "objective timers should not defeat the player at T-0");
+        assertFalse(CampaignSystem.isSectorObjectiveSecured(ctx),
+                "objective timers should not auto-secure the sector at T-0");
+        assertTrue(CampaignSystem.canStartSafeMissionExit(ctx),
+                "player should still be able to leave at their own pace after the old timer expires");
     }
 
     @Test
@@ -101,7 +103,7 @@ class CampaignObjectiveActivationTest {
     }
 
     @Test
-    void genericTimeoutFailureCallsOutUnfinishedObjective() throws Exception {
+    void genericTimerExpiryDoesNotFailUnfinishedObjective() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -113,8 +115,9 @@ class CampaignObjectiveActivationTest {
 
         CampaignSystem.update(ctx, 0.10);
 
-        assertTrue(ctx.gameOver, "non-extraction sectors should still fail on unresolved timeout");
-        assertEquals("DEFEAT: T-0 BEFORE OBJECTIVE COMPLETE", ctx.gameOverText);
+        assertFalse(ctx.gameOver, "non-extraction sectors should not fail on unresolved objective timer expiry");
+        assertFalse(CampaignSystem.isSectorObjectiveSecured(ctx),
+                "timer expiry should leave the objective active instead of resolving it");
     }
 
     @Test
@@ -170,7 +173,7 @@ class CampaignObjectiveActivationTest {
     }
 
     @Test
-    void safeMissionExitWindowClosesAfterTenSecondsUntilObjectiveSecured() throws Exception {
+    void safeMissionExitStaysAvailableAfterFormerTenSecondWindow() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
@@ -179,13 +182,10 @@ class CampaignObjectiveActivationTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         st.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() + 0.1;
 
-        assertFalse(CampaignSystem.canStartSafeMissionExit(ctx));
-        assertFalse(CampaignSystem.completeSafeMissionExit(ctx));
-        assertEquals("SAFE EXIT WINDOW CLOSED", CampaignSystem.extractionReadinessBanner(ctx));
-
-        st.objectiveSecured = true;
         assertTrue(CampaignSystem.canStartSafeMissionExit(ctx));
-        assertTrue(CampaignSystem.canExtractFromCurrentSector(ctx));
+        assertEquals("SAFE EXIT READY", CampaignSystem.extractionReadinessBanner(ctx));
+        assertTrue(CampaignSystem.completeSafeMissionExit(ctx));
+        assertTrue(CampaignSystem.isStrategicOvermapMode(ctx));
     }
 
     @Test

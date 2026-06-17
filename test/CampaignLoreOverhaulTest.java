@@ -19,24 +19,26 @@ class CampaignLoreOverhaulTest {
     }
 
     @Test
-    void campaignStartUsesTradeHubLoreAndStarterBlueFleet() {
-        GameContext ctx = initializedCampaignContext();
+    void campaignStartLoadsFirstLocalSiteAndStarterBlueFleet() {
+        GameContext ctx = initializedPlayerFacingCampaignContext();
 
         assertNotNull(ctx.campaign);
         assertEquals(ShipRole.MOTHERSHIP, ctx.player.role);
-        assertTrue(CampaignSystem.hudObjectiveTitle(ctx).contains("TRADE HUB COLLAPSE"));
-        assertTrue(CampaignSystem.hudObjectiveTitle(ctx).contains("ANCHORAGE FIRESTORM"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Far Trade Anchorage"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Far Trade Anchorage"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("arcology crowns"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("Hold the trade-hub evacuation lanes"));
-        assertTrue(ctx.campaign.introSequenceActive);
+        assertFalse(CampaignSystem.isStrategicOvermapMode(ctx), "fresh campaign should start inside the first local site");
+        assertFalse(ctx.ui.mapOpen, "fresh campaign should not open on the overworld map");
+        assertTrue(ctx.campaign.galaxyEncounterActive);
+        assertTrue(ctx.campaign.galaxyAmbientEncounterActive);
+        assertEquals("poi-01", ctx.campaign.currentGalaxyLocationId);
+        assertEquals("poi-01", ctx.campaign.selectedGalaxyLocationId);
+        assertEquals("poi-01", ctx.campaign.activeGalaxyEncounterLocationId);
+        assertTrue(ctx.asteroids.size() >= 8, "opening site should immediately expose mineable ore");
+        assertTrue(ctx.ships.stream().anyMatch(ship -> ship != null && ship.role == ShipRole.MINER),
+                "opening site should include local mining or starter mining activity");
+        assertFalse(ctx.campaign.introSequenceActive);
         assertEquals(4, ctx.campaign.persistentBlueFleet.size());
         assertTrue(hasNamedShip(ctx, ShipRole.MINER, "Blue Prospector One"));
-        assertTrue(hasNamedShip(ctx, ShipRole.MOBILE_STATION_TITAN, "Green Harbor Forge"));
-        assertTrue(hasNamedShip(ctx, ShipRole.TRANSPORT_TITAN, "Green Ledger Titan"));
-        assertTrue(hasNamedShip(ctx, ShipRole.BASE, "Green Exchange Spire"));
-        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Far Trade Anchorage".equals(l.label)));
+        assertTrue(hasNamedShip(ctx, ShipRole.BASE, "Green Anchorage Pelagos Control"));
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Green Anchorage Pelagos".equals(l.label)));
     }
 
     @Test
@@ -83,13 +85,13 @@ class CampaignLoreOverhaulTest {
         startSector(ctx, 21);
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Luna".equals(l.label)));
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earthrise".equals(l.label)));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Luna / Earthrise"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("foundry guns"));
+        assertTrue(CampaignSystem.hudObjectiveExpandedDetail(ctx).contains("Luna Perimeter"));
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> l.subtitle.contains("foundry")));
 
         startSector(ctx, 24);
         assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> "Earth".equals(l.label)));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("AO: Earth / Earth High Orbit"));
-        assertTrue(CampaignSystem.hudObjectiveDetail(ctx).contains("city webs"));
+        assertTrue(CampaignSystem.hudObjectiveExpandedDetail(ctx).contains("Earth High Orbit"));
+        assertTrue(CampaignSystem.landmarks(ctx).stream().anyMatch(l -> l.subtitle.contains("city")));
     }
 
     @Test
@@ -193,6 +195,16 @@ class CampaignLoreOverhaulTest {
     private static GameContext initializedCampaignContext() {
         CampaignCheckpointStore.clear();
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        return ctx;
+    }
+
+    private static GameContext initializedPlayerFacingCampaignContext() {
+        CampaignCheckpointStore.clear();
+        GameConfig config = new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false)
+                .withAutoLaunchCampaignStartSite(true);
+        GameContext ctx = new GameContext(config);
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
         return ctx;

@@ -118,7 +118,7 @@ public final class HotkeyRegistry {
         else if (ctx.ui.mapOpen) rows.add("LMB waypoint  RMB ping  Ctrl +/- zoom");
         else {
             rows.add("WASD move  " + glyph("primaryDown") + "/LMB fire");
-            rows.add(glyph("toggleMap") + " map  " + glyph("toggleCrewStations") + " help");
+            rows.add(glyph("toggleMap") + " map  " + glyph("toggleCrewStations") + " crew");
         }
         return rows;
     }
@@ -160,14 +160,13 @@ public final class HotkeyRegistry {
                 + "/RMB secondary | " + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " tactical");
         rows.add("NAV: WASD move | arrows pan | " + label("toggleShop") + " fleet management | "
                 + label("toggleBaseMenu") + " command upgrades | " + label("toggleMap") + " map | "
-                + label("cycleHudDetail") + " HUD" + (mode == GameContext.HudDetail.FULL ? " | " + label("toggleCrewStations") + " crew" : ""));
-        rows.add("SYSTEMS: " + (mode == GameContext.HudDetail.COMPACT ? label("toggleCrewStations") + " crew | " : "")
-                + label("togglePowerManagement") + " power | " + label("toggleBaseMenu") + " base | "
+                + label("cycleHudDetail") + " HUD");
+        rows.add("SYSTEMS: " + label("togglePowerManagement") + " power | " + label("toggleBaseMenu") + " base | "
                 + label("pingAtCursor") + " ping | " + label("setWaypoint") + " waypoint");
         rows.add("COMMS: " + label("cycleCommIntent") + " cycle intent | " + label("hailContact") + " hail target");
         rows.add("SPECIAL: " + label("miningDown") + " mine | " + label("shieldOvercharge") + " overcharge | "
                 + label("toggleEmergencyThrust") + " thrust | " + label("cyclePowerPreset") + " preset | "
-                + label("cycleCrewOrder") + " crew order | " + label("toggleTurretAuto") + " auto-lock");
+                + label("toggleTurretAuto") + " auto-lock");
         rows.add("EXTRAS: " + label("superweapon") + " superweapon | " + label("cycleXrayFilter") + " xray filter | "
                 + label("clearXrayFocus") + " xray clear | " + label("battlefieldWarp") + "/BKSP warp | Ctrl +/-/0 zoom");
         if (carrier) {

@@ -92,6 +92,33 @@ class CampaignMapDisciplineTest {
         assertEquals(GameState.MAP, ctx.state);
     }
 
+    @Test
+    void openMapArrowPanMovesMapWithoutMovingBattlefieldCamera() {
+        GameContext ctx = strategicMapContext();
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 2500.0, 2500.0);
+        ctx.ui.strategicMapFocusX = 2500.0;
+        ctx.ui.strategicMapFocusY = 2500.0;
+        ctx.cameraPanRight = true;
+
+        CameraSystem.updateManualPan(ctx, 1.0);
+        UISystem.updateStrategicMapCameraPan(ctx, 1.0);
+
+        assertEquals(0.0, ctx.cameraOffsetX, 1e-9, "map-focused arrows should not move the battlefield camera");
+        assertTrue(UISystem.strategicMapFocusX(ctx) > 2500.0, "map-focused arrows should pan the map");
+    }
+
+    @Test
+    void closedMapArrowPanMovesBattlefieldCamera() {
+        GameContext ctx = strategicMapContext();
+        ctx.ui.mapOpen = false;
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 2500.0, 2500.0);
+        ctx.cameraPanRight = true;
+
+        CameraSystem.updateManualPan(ctx, 1.0);
+
+        assertTrue(ctx.cameraOffsetX > 0.0, "battlefield-focused arrows should pan the camera");
+    }
+
     private static GameContext strategicMapContext() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         CampaignSystem.CampaignState st = new CampaignSystem.CampaignState();
