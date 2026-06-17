@@ -208,6 +208,8 @@ public final class CampaignCheckpointStore {
         public String campaignTheaters = "";
         public String strategicNodes = "";
         public String theaterWarRecentEvents = "";
+        public String completedCampaignBoardMissionIds = "";
+        public String expiredCampaignBoardMissionIds = "";
         public double theaterWarTickAccumulatorSec = 0.0;
         public int theaterWarTickIndex = 0;
         public String selectedTheaterId = "";
@@ -369,6 +371,8 @@ public final class CampaignCheckpointStore {
             campaignTheaters = (campaignTheaters == null) ? "" : campaignTheaters.trim();
             strategicNodes = (strategicNodes == null) ? "" : strategicNodes.trim();
             theaterWarRecentEvents = (theaterWarRecentEvents == null) ? "" : theaterWarRecentEvents.trim();
+            completedCampaignBoardMissionIds = (completedCampaignBoardMissionIds == null) ? "" : completedCampaignBoardMissionIds.trim();
+            expiredCampaignBoardMissionIds = (expiredCampaignBoardMissionIds == null) ? "" : expiredCampaignBoardMissionIds.trim();
             theaterWarTickAccumulatorSec = Math.max(0.0, finiteOr(theaterWarTickAccumulatorSec, 0.0));
             theaterWarTickIndex = Math.max(0, theaterWarTickIndex);
             selectedTheaterId = safeName(selectedTheaterId, "");
@@ -566,6 +570,8 @@ public final class CampaignCheckpointStore {
                 cp.campaignTheaters = props.getProperty("campaignTheaters", cp.campaignTheaters);
                 cp.strategicNodes = props.getProperty("strategicNodes", cp.strategicNodes);
                 cp.theaterWarRecentEvents = props.getProperty("theaterWarRecentEvents", cp.theaterWarRecentEvents);
+                cp.completedCampaignBoardMissionIds = props.getProperty("completedCampaignBoardMissionIds", cp.completedCampaignBoardMissionIds);
+                cp.expiredCampaignBoardMissionIds = props.getProperty("expiredCampaignBoardMissionIds", cp.expiredCampaignBoardMissionIds);
                 cp.theaterWarTickAccumulatorSec = parseDouble(props, "theaterWarTickAccumulatorSec", cp.theaterWarTickAccumulatorSec);
                 cp.theaterWarTickIndex = parseInt(props, "theaterWarTickIndex", cp.theaterWarTickIndex);
                 cp.selectedTheaterId = props.getProperty("selectedTheaterId", cp.selectedTheaterId);
@@ -820,6 +826,8 @@ public final class CampaignCheckpointStore {
             props.setProperty("campaignTheaters", cp.campaignTheaters);
             props.setProperty("strategicNodes", cp.strategicNodes);
             props.setProperty("theaterWarRecentEvents", cp.theaterWarRecentEvents);
+            props.setProperty("completedCampaignBoardMissionIds", cp.completedCampaignBoardMissionIds);
+            props.setProperty("expiredCampaignBoardMissionIds", cp.expiredCampaignBoardMissionIds);
             props.setProperty("theaterWarTickAccumulatorSec", String.valueOf(cp.theaterWarTickAccumulatorSec));
             props.setProperty("theaterWarTickIndex", String.valueOf(cp.theaterWarTickIndex));
             props.setProperty("selectedTheaterId", cp.selectedTheaterId);

@@ -7,6 +7,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,6 +79,95 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
+    void strategicMapZoomRulesKeepMajorFacilitiesAndCullMinorClutter() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+        ctx.ui.strategicMapZoom = 1.85;
+        CampaignSystem.CampaignObjectiveMarker major = new CampaignSystem.CampaignObjectiveMarker(
+                CampaignSystem.ObjectiveMarkerType.PRIMARY_OBJECTIVE,
+                "Earthfall Bastion",
+                "major facility",
+                Faction.ENEMY,
+                2400.0,
+                800.0,
+                120.0,
+                82);
+        CampaignSystem.CampaignObjectiveMarker minor = new CampaignSystem.CampaignObjectiveMarker(
+                CampaignSystem.ObjectiveMarkerType.PROTECTED_ASSET,
+                "Minor Prospecting Camp",
+                "minor facility",
+                Faction.TEAM_D,
+                2600.0,
+                980.0,
+                80.0,
+                24);
+
+        assertTrue(shouldDrawObjectiveMarker(ctx, major), "major facilities should remain visible at far zoom");
+        assertFalse(shouldDrawObjectiveMarker(ctx, minor), "minor facilities should hide at far zoom");
+
+        ctx.ui.selectedCampaignContactLabel = minor.label;
+        ctx.ui.selectedCampaignContactX = minor.x;
+        ctx.ui.selectedCampaignContactY = minor.y;
+        assertTrue(shouldDrawObjectiveMarker(ctx, minor), "selected minor facilities should remain visible");
+
+        ctx.ui.selectedCampaignContactLabel = "";
+        ctx.ui.selectedCampaignContactX = Double.NaN;
+        ctx.ui.selectedCampaignContactY = Double.NaN;
+        ctx.ui.strategicMapZoom = 3.4;
+        assertTrue(shouldDrawObjectiveMarker(ctx, minor), "minor facilities should return at close zoom");
+    }
+
+    @Test
+    void strategicMapSelectionRulesPreserveExistingClickBehavior() throws Exception {
+        GameContext strategic = initializedCampaignContext();
+        strategic.campaign.strategicOvermapMode = true;
+        strategic.ui.selectedCampaignContactLabel = "Relay Contact";
+        strategic.ui.selectedCampaignContactX = 1200.0;
+        strategic.ui.selectedCampaignContactY = 1600.0;
+
+        assertTrue(isSelectedMapMarker(strategic, "Other", 1210.0, 1610.0),
+                "strategic contact click/selection should match nearby markers");
+        assertTrue(isSelectedMapMarker(strategic, "Relay Contact", 3000.0, 3000.0),
+                "strategic contact click/selection should match marker label");
+
+        GameContext tactical = initializedCampaignContext();
+        tactical.campaign.enabled = false;
+        tactical.campaign.strategicOvermapMode = false;
+        tactical.ui.tacticalMapSelectionLabel = "Kill Pocket";
+        tactical.ui.tacticalMapSelectionX = 1800.0;
+        tactical.ui.tacticalMapSelectionY = 1900.0;
+
+        assertTrue(isSelectedMapMarker(tactical, "Other", 1810.0, 1905.0),
+                "tactical selection should still match nearby map actions");
+        assertTrue(isSelectedMapMarker(tactical, "Kill Pocket", 1000.0, 1000.0),
+                "tactical selection should still match marker label");
+    }
+
+    @Test
+    void campaignLocationControlViewSeparatesControlColorFromSiteType() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+
+        CampaignSystem.CampaignLocation red = locationContaining(ctx, "RED CORRIDOR BREAKPOINT");
+        CampaignSystem.CampaignLocation green = locationContaining(ctx, "GREEN ANCHORAGE");
+        CampaignSystem.CampaignLocation yellow = locationContaining(ctx, "YELLOW COMMERCE");
+
+        CampaignSystem.CampaignLocationControlView redView = CampaignSystem.campaignLocationControlView(ctx, red);
+        CampaignSystem.CampaignLocationControlView greenView = CampaignSystem.campaignLocationControlView(ctx, green);
+        CampaignSystem.CampaignLocationControlView yellowView = CampaignSystem.campaignLocationControlView(ctx, yellow);
+
+        assertEquals(CampaignSystem.CampaignControlVisualState.RED, redView.control);
+        assertEquals(CampaignSystem.CampaignControlVisualState.GREEN, greenView.control);
+        assertEquals(CampaignSystem.CampaignControlVisualState.YELLOW, yellowView.control);
+        assertTrue(redView.siteType.toUpperCase(java.util.Locale.US).contains("CHECKPOINT")
+                        || redView.siteType.toUpperCase(java.util.Locale.US).contains("DEFENSE"),
+                "hostile control should not erase the site's tactical type");
+        assertTrue(yellowView.status.toUpperCase(java.util.Locale.US).contains("YELLOW"),
+                "yellow trade locations should render as neutral Yellow control, not Red by default");
+    }
+
+    @Test
     void galaxyLeftPanelReadsAsMissionIntelligence() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -93,6 +183,32 @@ class CampaignStrategicUiReadabilityTest {
         assertTrue(changes.stream().anyMatch(line -> line.startsWith("War Change: ")));
         assertTrue(intel.size() <= 8, "mission intel should stay glanceable");
         assertTrue(route.size() <= 8, "route threat block should stay glanceable");
+    }
+
+    @Test
+    void strategicMapOverlayFiltersCoverFacilitiesMissionsFleetsRoutesAndIntel() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.FACILITIES.name();
+        assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Facilities Filter  |")));
+
+        st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.MISSIONS.name();
+        assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Missions Filter  |")));
+
+        st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.FLEETS.name();
+        assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Fleets Filter  |")));
+
+        st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.ROUTES.name();
+        assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Routes Filter  |")));
+
+        st.selectedStrategicOverlayId = StrategicCampaignExpansionSystem.MapOverlay.INTEL.name();
+        assertTrue(CampaignSystem.strategicOverlayInsightLines(ctx).stream()
+                .anyMatch(line -> line.startsWith("Intel Filter  |")));
     }
 
     @Test
@@ -205,10 +321,24 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
+    void campaignMapRendersAtStandardAndUltrawideWithoutBlanking() {
+        BufferedImage standard = ScreenshotRegressionHarness.capture("campaign-map", 1280, 720);
+        BufferedImage ultrawide = ScreenshotRegressionHarness.capture("campaign-map", 1920, 720);
+
+        assertEquals(1280, standard.getWidth());
+        assertEquals(720, standard.getHeight());
+        assertEquals(1920, ultrawide.getWidth());
+        assertEquals(720, ultrawide.getHeight());
+        assertTrue(opaquePixels(standard) > 300_000, "standard campaign map should render substantial content");
+        assertTrue(opaquePixels(ultrawide) > 450_000, "ultrawide campaign map should render substantial content");
+    }
+
+    @Test
     void lifecycleInvalidReportListsBrokenFleetWithReasonAndFix() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokeForceSimulation(ctx, ctx.campaign, 0.2);
-        Object force = forceNamed(ctx.campaign, "Red Frontier Picket Patrol");
+        Object force = firstForceForFaction(ctx.campaign, Faction.ENEMY);
+        String forceName = fieldString(force, "name");
         setEnumByName(force, "mission", "RAID");
         setEnumByName(force, "intent", "INTERCEPTING");
         setEnumByName(force, "workState", "WAITING_WITH_PURPOSE");
@@ -221,7 +351,7 @@ class CampaignStrategicUiReadabilityTest {
 
         List<String> report = CampaignSystem.campaignFleetLifecycleInvalidReport(ctx);
 
-        assertTrue(report.stream().anyMatch(line -> line.startsWith("INVALID: Red Frontier Picket Patrol")
+        assertTrue(report.stream().anyMatch(line -> line.startsWith("INVALID: " + forceName)
                         && line.contains("reason=")
                         && line.contains("fix=")),
                 "debug report should list invalid lifecycle failures with a reason and fix");
@@ -251,6 +381,15 @@ class CampaignStrategicUiReadabilityTest {
         return ctx;
     }
 
+    private static CampaignSystem.CampaignLocation locationContaining(GameContext ctx, String token) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && location.name.toUpperCase(java.util.Locale.US).contains(token)) {
+                return location;
+            }
+        }
+        throw new AssertionError("missing campaign location containing " + token);
+    }
+
     private static void invokeForceSimulation(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
         java.lang.reflect.Method method = CampaignSystem.class.getDeclaredMethod(
                 "updateCampaignForceSimulation",
@@ -262,11 +401,11 @@ class CampaignStrategicUiReadabilityTest {
         method.invoke(null, ctx, st, dt);
     }
 
-    private static Object forceNamed(CampaignSystem.CampaignState st, String name) {
+    private static Object firstForceForFaction(CampaignSystem.CampaignState st, Faction faction) {
         for (Object force : st.campaignForces) {
-            if (force != null && name.equals(fieldString(force, "name"))) return force;
+            if (force != null && getObject(force, "faction") == faction) return force;
         }
-        throw new AssertionError("missing force " + name);
+        throw new AssertionError("missing force for faction " + faction);
     }
 
     private static String fieldString(Object target, String fieldName) {
@@ -302,5 +441,36 @@ class CampaignStrategicUiReadabilityTest {
         field.setAccessible(true);
         Class<?> enumType = field.getType();
         field.set(target, Enum.valueOf((Class<? extends Enum>) enumType.asSubclass(Enum.class), value));
+    }
+
+    private static boolean shouldDrawObjectiveMarker(GameContext ctx,
+                                                     CampaignSystem.CampaignObjectiveMarker marker) throws Exception {
+        java.lang.reflect.Method method = Renderer.class.getDeclaredMethod(
+                "shouldDrawObjectiveMarkerAtZoom",
+                GameContext.class,
+                CampaignSystem.CampaignObjectiveMarker.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, marker);
+    }
+
+    private static boolean isSelectedMapMarker(GameContext ctx, String label, double x, double y) throws Exception {
+        java.lang.reflect.Method method = Renderer.class.getDeclaredMethod(
+                "isSelectedMapMarker",
+                GameContext.class,
+                String.class,
+                double.class,
+                double.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, label, x, y);
+    }
+
+    private static int opaquePixels(BufferedImage image) {
+        int count = 0;
+        for (int y = 0; y < image.getHeight(); y += 2) {
+            for (int x = 0; x < image.getWidth(); x += 2) {
+                if (((image.getRGB(x, y) >>> 24) & 0xff) > 12) count += 4;
+            }
+        }
+        return count;
     }
 }

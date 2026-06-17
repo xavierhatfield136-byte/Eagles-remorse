@@ -5,6 +5,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.List;
@@ -298,9 +299,6 @@ public final class TutorialSystem {
         ChecklistItem next = nextIncompleteItem(items);
 
         int panelW = Math.max(280, Math.min(350, viewportW / 4));
-        int margin = 18;
-        int x = margin;
-        int y = margin;
         int contentW = panelW - 24;
 
         Graphics2D gx = (Graphics2D) g2.create();
@@ -327,6 +325,9 @@ public final class TutorialSystem {
         }
         int footerH = (next == null) ? 28 : 42;
         int panelH = headerH + summaryH + checklistH + footerH + 22;
+        Rectangle panelRect = tutorialOverlayPanelRect(viewportW, viewportH, panelW, panelH);
+        int x = panelRect.x;
+        int y = panelRect.y;
 
         gx.translate(x, y);
         gx.setColor(new Color(0, 0, 0, 108));
@@ -415,6 +416,31 @@ public final class TutorialSystem {
         gx.setColor(new Color(176, 188, 206, 188));
         gx.drawString("Lessons advance automatically. F10 returns to menu.", 14, panelH - 10);
         gx.dispose();
+    }
+
+    static Rectangle tutorialOverlayPanelRect(int viewportW, int viewportH, int panelW, int panelH) {
+        int margin = 18;
+        int w = Math.max(260, Math.min(panelW, Math.max(260, viewportW - margin * 2)));
+        int h = Math.max(120, Math.min(panelH, Math.max(120, viewportH - margin * 2)));
+        Rectangle coreMenu = Renderer.getCoreMenuBarRect(viewportW, viewportH);
+        Rectangle rightHudReserve = new Rectangle(Math.max(margin, viewportW - 250), margin, 232,
+                Math.max(170, Math.min(360, viewportH - margin * 2)));
+        Rectangle[] candidates = new Rectangle[]{
+                new Rectangle(margin, Math.max(margin, coreMenu.y - h - margin), w, h),
+                new Rectangle(margin, margin, w, h),
+                new Rectangle(margin, Math.min(Math.max(margin, coreMenu.y - h - margin), viewportH - h - margin), w, h),
+                new Rectangle(Math.max(margin, viewportW - w - margin), Math.max(margin, coreMenu.y - h - margin), w, h)
+        };
+        for (Rectangle candidate : candidates) {
+            if (candidate.x < margin || candidate.y < margin) continue;
+            if (candidate.x + candidate.width > viewportW - margin) continue;
+            if (candidate.y + candidate.height > viewportH - margin) continue;
+            if (candidate.intersects(coreMenu)) continue;
+            if (candidate.intersects(rightHudReserve)) continue;
+            return candidate;
+        }
+        int fallbackY = Math.max(margin, Math.min(coreMenu.y - h - margin, viewportH - h - margin));
+        return new Rectangle(margin, fallbackY, w, h);
     }
 
     public static void drawMinimapOverlay(GameContext ctx, Graphics2D g2, int viewW, int viewH) {

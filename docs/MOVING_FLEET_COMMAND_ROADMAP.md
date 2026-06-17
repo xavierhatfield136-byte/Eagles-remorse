@@ -180,4 +180,4 @@ Completed 2D board:
 
 ## Non-Goal For This Phase
 
-- [x] 3D presentation is explicitly deferred for later.
+- [x] Alternate-client presentation work is explicitly deferred for later.

@@ -177,10 +177,7 @@ These are not blockers for the 2D playable alpha:
 - advanced lineage systems;
 - full localization;
 - complex challenge modes;
-- final art and audio replacement pass;
-- full 3D conversion.
-
-The 3D feasibility lane is intentionally retained in `FUTURE_3D_TRACK.md`.
+- final art and audio replacement pass.
 
 ## Finalization Queue
 

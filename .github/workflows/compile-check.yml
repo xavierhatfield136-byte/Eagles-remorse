@@ -17,6 +17,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
 
       - name: Compile check
         shell: pwsh

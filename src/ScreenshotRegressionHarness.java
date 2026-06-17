@@ -108,13 +108,19 @@ public final class ScreenshotRegressionHarness {
     }
 
     public static BufferedImage capture(String target) {
+        return capture(target, VIEW_W, VIEW_H);
+    }
+
+    public static BufferedImage capture(String target, int viewW, int viewH) {
         GameContext ctx = contextForTarget(target);
-        BufferedImage image = new BufferedImage(VIEW_W, VIEW_H, BufferedImage.TYPE_INT_ARGB);
+        int safeW = Math.max(320, viewW);
+        int safeH = Math.max(240, viewH);
+        BufferedImage image = new BufferedImage(safeW, safeH, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            GameRenderSystem.render(ctx, g2, VIEW_W, VIEW_H);
+            GameRenderSystem.render(ctx, g2, safeW, safeH);
         } finally {
             g2.dispose();
         }

@@ -14,8 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ShowcaseSpawnLayoutTest {
 
     @Test
-    void showcaseSpawnsFullFactionBlocksWithReadableNames() {
-        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+    void showcaseSpawnsOneFactionBlockWithReadableNames() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false,
+                Faction.TEAM_C.teamId()));
         SpawnSystem.initWorld(ctx);
 
         assertNotNull(ctx.player);
@@ -23,24 +24,28 @@ class ShowcaseSpawnLayoutTest {
         assertEquals(0, ctx.teamBases.size());
         assertNull(ctx.allyBase);
         assertNull(ctx.enemyBase);
+        assertEquals(Faction.TEAM_C, ctx.command.showcaseFaction);
 
         int expectedPerFaction = ShipRole.values().length;
         for (Faction faction : Faction.fourTeamFactions()) {
             long factionShipCount = ctx.ships.stream()
                     .filter(s -> s != null && s.faction == faction)
                     .count();
-            assertEquals(expectedPerFaction, factionShipCount, "unexpected showcase count for " + faction);
+            int expected = faction == Faction.TEAM_C ? expectedPerFaction : 0;
+            assertEquals(expected, factionShipCount, "unexpected showcase count for " + faction);
 
-            assertTrue(ctx.ships.stream().anyMatch(s -> s != null && s.faction == faction && s.role == ShipRole.BASE));
-            assertTrue(ctx.ships.stream().anyMatch(s -> s != null && s.faction == faction && s.role == ShipRole.MOTHERSHIP));
-            assertFalse(ctx.ships.stream().anyMatch(s -> s != null
-                    && s.faction == faction
-                    && (s.name == null || !s.name.startsWith(faction.teamName() + " "))));
+            if (faction == Faction.TEAM_C) {
+                assertTrue(ctx.ships.stream().anyMatch(s -> s != null && s.faction == faction && s.role == ShipRole.BASE));
+                assertTrue(ctx.ships.stream().anyMatch(s -> s != null && s.faction == faction && s.role == ShipRole.MOTHERSHIP));
+                assertFalse(ctx.ships.stream().anyMatch(s -> s != null
+                        && s.faction == faction
+                        && (s.name == null || !s.name.startsWith(faction.teamName() + " "))));
+            }
         }
     }
 
     @Test
-    void showcaseOpeningCameraRevealsEveryFactionBlock() {
+    void showcaseOpeningCameraRevealsSelectedFactionBlock() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
         SpawnSystem.initWorld(ctx);
         CameraSystem.update(ctx, 1280, 720);
@@ -49,14 +54,12 @@ class ShowcaseSpawnLayoutTest {
         double viewH = CameraSystem.worldViewHeight(ctx, 720);
         assertTrue(ctx.zoom < 0.5, "showcase should start zoomed out enough for the whole gallery");
 
-        for (Faction faction : Faction.fourTeamFactions()) {
-            long visible = ctx.ships.stream()
-                    .filter(s -> s != null && s.faction == faction)
-                    .filter(s -> s.x >= ctx.camX && s.x <= ctx.camX + viewW)
-                    .filter(s -> s.y >= ctx.camY && s.y <= ctx.camY + viewH)
-                    .count();
-            assertEquals(ShipRole.values().length, visible, "opening showcase camera should reveal " + faction.teamName());
-        }
+        long visible = ctx.ships.stream()
+                .filter(s -> s != null && s.faction == Faction.ALLY)
+                .filter(s -> s.x >= ctx.camX && s.x <= ctx.camX + viewW)
+                .filter(s -> s.y >= ctx.camY && s.y <= ctx.camY + viewH)
+                .count();
+        assertEquals(ShipRole.values().length, visible, "opening showcase camera should reveal selected faction");
 
         assertEquals(ctx.ships.size(), GameRenderSystem.renderScopedShips(ctx, ctx.ships).size(),
                 "showcase rendering should not hide factions behind battlefield sector scoping");
@@ -69,7 +72,25 @@ class ShowcaseSpawnLayoutTest {
         } finally {
             g2.dispose();
         }
-        assertTrue(ctx.perf.drawnShips >= ShipRole.values().length * Faction.fourTeamFactions().length,
-                "showcase tactical render should draw every faction block");
+        assertTrue(ctx.perf.drawnShips >= ShipRole.values().length,
+                "showcase tactical render should draw selected faction block");
+    }
+
+    @Test
+    void showcaseSwitchingTeamsReplacesPriorShips() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+
+        int blueCount = ctx.ships.size();
+        SpawnSystem.loadShowcaseTeam(ctx, Faction.ENEMY);
+
+        assertEquals(blueCount, ctx.ships.size(), "switching showcase teams should not duplicate ships");
+        assertEquals(Faction.ENEMY, ctx.command.showcaseFaction);
+        assertEquals(ShipRole.values().length, ctx.ships.stream()
+                .filter(s -> s != null && s.faction == Faction.ENEMY)
+                .count());
+        assertEquals(0, ctx.ships.stream()
+                .filter(s -> s != null && s.faction == Faction.ALLY)
+                .count());
     }
 }

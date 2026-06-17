@@ -73,7 +73,7 @@ Pass condition:
 
 ### 6. Packaging Validation
 - [ ] Ensure JDK tools are available (`javac`, `jar`) or `JAVA_HOME` points to JDK.
-- [ ] Run: `powershell -ExecutionPolicy Bypass -File scripts\package.ps1`.
+- [ ] Run: `./gradlew packageWindows`.
 - [ ] Verify artifact exists: `build/dist/space-game-0.8.0-rc1.jar`.
 - [ ] Run packaged build once: `java -jar build/dist/space-game-0.8.0-rc1.jar`.
 - [ ] Verify packaged build startup/menu/title/credits path works.

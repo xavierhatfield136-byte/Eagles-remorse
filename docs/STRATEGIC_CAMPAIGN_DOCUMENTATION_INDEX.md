@@ -11,4 +11,4 @@ Start with:
 2. `NEXT_STEPS_TO_PLAYABLE_ALPHA.md`
 3. `CURRENT_CAMPAIGN_STATE.md`
 
-Use `DOCUMENTATION_AUDIT.md` to find older strategic plans, completed implementation checklists, asset workflows, and the intentionally preserved future 3D lane.
+Use `DOCUMENTATION_AUDIT.md` to find older strategic plans, completed implementation checklists, and asset workflows.

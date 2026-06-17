@@ -910,6 +910,17 @@ public class Renderer {
 
     private static String coreMenuLabel(GameContext ctx, int index) {
         if (index < 0 || index >= CORE_MENU_LABELS.length) return "";
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
+            return switch (index) {
+                case 0 -> "BLUE";
+                case 1 -> "RED";
+                case 2 -> "GREEN";
+                case 3 -> "YELLOW";
+                case 4 -> "HELP";
+                case 5 -> "EXIT";
+                default -> CORE_MENU_LABELS[index];
+            };
+        }
         if (CampaignSystem.isCampaignActive(ctx)) {
             return switch (index) {
                 case 0 -> "FLEET";
@@ -1175,6 +1186,19 @@ public class Renderer {
     private static HoverTooltip coreMenuHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         int index = coreMenuButtonAt(viewW, viewH, mouseX, mouseY);
         if (index < 0) return null;
+        boolean showcase = ctx != null && ctx.config != null && ctx.config.mode == GameMode.SHOWCASE;
+        if (showcase) {
+            String body = switch (index) {
+                case 0 -> "Load only the Blue team showcase ships.";
+                case 1 -> "Load only the Red team showcase ships.";
+                case 2 -> "Load only the Green team showcase ships.";
+                case 3 -> "Load only the Yellow team showcase ships.";
+                case 4 -> "Open help and controls.";
+                case 5 -> "Return to the main menu.";
+                default -> "";
+            };
+            return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
+        }
         boolean campaign = CampaignSystem.isCampaignActive(ctx);
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
         String body = switch (index) {
@@ -1590,6 +1614,7 @@ public class Renderer {
         };
         boolean campaignActive = CampaignSystem.isCampaignActive(ctx);
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
+        boolean showcase = ctx.config != null && ctx.config.mode == GameMode.SHOWCASE;
         boolean baseAvailable = campaignActive ? fleetHub : CampaignSystem.currentBaseUpgradeAnchor(ctx) != null;
         boolean controlsDisabled = ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER;
 
@@ -1600,10 +1625,19 @@ public class Renderer {
         for (int i = 0; i < CORE_MENU_LABELS.length; i++) {
             Rectangle br = getCoreMenuButtonRect(viewW, viewH, i);
             boolean disabled = controlsDisabled
-                    || (campaignActive && !fleetHub && (i == 0 || i == 1))
-                    || (!campaignActive && i == 1 && !baseAvailable)
-                    || (i == 5 && (!campaignActive || fleetHub || ctx.ui.hasBlockingOverlay() || CampaignSystem.isTransitioning(ctx)));
+                    || (!showcase && campaignActive && !fleetHub && (i == 0 || i == 1))
+                    || (!showcase && !campaignActive && i == 1 && !baseAvailable)
+                    || (!showcase && i == 5 && (!campaignActive || fleetHub || ctx.ui.hasBlockingOverlay() || CampaignSystem.isTransitioning(ctx)));
             boolean active = i < open.length && open[i];
+            if (showcase && ctx.command != null && i <= 3) {
+                Faction buttonFaction = switch (i) {
+                    case 1 -> Faction.ENEMY;
+                    case 2 -> Faction.TEAM_C;
+                    case 3 -> Faction.TEAM_D;
+                    default -> Faction.ALLY;
+                };
+                active = ctx.command.showcaseFaction == buttonFaction;
+            }
             String menuLabel = coreMenuLabel(ctx, i);
 
             Color fill;
@@ -8699,18 +8733,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         if (galaxyMode) {
             drawGalaxyBackdrop(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignLocationControlHalos(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
-            if (asteroids != null) {
-                g2.setColor(new Color(200, 200, 200, 80));
-                for (Asteroid a : asteroids) {
-                    if (a == null) continue;
-                    if (a.x < worldMinX || a.x > worldMaxX || a.y < worldMinY || a.y > worldMaxY) continue;
-                    Point p = W2M.apply(a.x, a.y);
-                    g2.fillRect(p.x, p.y, 2, 2);
-                }
-            }
+            drawTacticalMissionMapEntityLayer(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH,
+                    ships, asteroids, salvage, fog, (player == null) ? null : player.faction);
             if (salvage != null) {
                 g2.setColor(new Color(255, 255, 255, 120));
                 for (Salvage s : salvage) {
@@ -8718,17 +8746,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                     if (s.x < worldMinX || s.x > worldMaxX || s.y < worldMinY || s.y > worldMaxY) continue;
                     Point p = W2M.apply(s.x, s.y);
                     g2.fillOval(p.x - 1, p.y - 1, 3, 3);
-                }
-            }
-            if (ships != null) {
-                for (Ship s : ships) {
-                    if (s == null || !s.alive) continue;
-                    if (s.x < worldMinX || s.x > worldMaxX || s.y < worldMinY || s.y > worldMaxY) continue;
-                    Point p = W2M.apply(s.x, s.y);
-                    Color c = factionMapColor(s.faction, (s == player), 200);
-                    int rr = (s.role == ShipRole.BASE) ? 4 : 2;
-                    g2.setColor(c);
-                    g2.fillOval(p.x - rr, p.y - rr, rr * 2, rr * 2);
                 }
             }
             if (fog != null) {
@@ -8811,6 +8828,70 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static void drawTacticalMissionMapEntityLayer(Graphics2D g2,
+                                                          GameContext ctx,
+                                                          Rectangle mapRect,
+                                                          double worldMinX,
+                                                          double worldMinY,
+                                                          double worldW,
+                                                          double worldH,
+                                                          List<Ship> ships,
+                                                          List<Asteroid> asteroids,
+                                                          List<Salvage> salvage,
+                                                          FogOfWarSystem.State fog,
+                                                          Faction perspective) {
+        if (g2 == null || mapRect == null || worldW <= 0.0 || worldH <= 0.0) return;
+        Graphics2D mg = (Graphics2D) g2.create();
+        try {
+            mg.setClip(mapRect.x, mapRect.y, mapRect.width, mapRect.height);
+            mg.translate(mapRect.x, mapRect.y);
+            mg.scale(mapRect.width / Math.max(1.0, worldW), mapRect.height / Math.max(1.0, worldH));
+            mg.translate(-worldMinX, -worldMinY);
+            mg.setColor(new Color(120, 190, 230, 18));
+            int gridStep = 500;
+            double startX = Math.floor(worldMinX / gridStep) * gridStep;
+            double startY = Math.floor(worldMinY / gridStep) * gridStep;
+            for (double x = startX; x <= worldMinX + worldW; x += gridStep) {
+                mg.drawLine((int) Math.round(x), (int) Math.round(worldMinY),
+                        (int) Math.round(x), (int) Math.round(worldMinY + worldH));
+            }
+            for (double y = startY; y <= worldMinY + worldH; y += gridStep) {
+                mg.drawLine((int) Math.round(worldMinX), (int) Math.round(y),
+                        (int) Math.round(worldMinX + worldW), (int) Math.round(y));
+            }
+            drawTacticalAsteroids(mg, asteroids, ctx == null ? null : ctx.player,
+                    worldMinX, worldMinY, worldMinX + worldW, worldMinY + worldH);
+            drawTacticalProjectiles(mg, ships, ctx == null ? null : ctx.projectiles,
+                    worldMinX, worldMinY, worldMinX + worldW, worldMinY + worldH, fog, perspective);
+            drawTacticalShips(mg, ships, worldMinX, worldMinY, worldMinX + worldW, worldMinY + worldH, fog, perspective);
+            drawTacticalMapSalvage(mg, salvage, worldMinX, worldMinY, worldMinX + worldW, worldMinY + worldH);
+        } finally {
+            mg.dispose();
+        }
+    }
+
+    private static void drawTacticalMapSalvage(Graphics2D g2,
+                                               List<Salvage> salvage,
+                                               double minX,
+                                               double minY,
+                                               double maxX,
+                                               double maxY) {
+        if (g2 == null || salvage == null) return;
+        Stroke oldStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.setColor(new Color(240, 248, 255, 150));
+        for (Salvage s : salvage) {
+            if (s == null || !s.alive()) continue;
+            if (s.x < minX || s.x > maxX || s.y < minY || s.y > maxY) continue;
+            int x = (int) Math.round(s.x);
+            int y = (int) Math.round(s.y);
+            g2.drawRect(x - 5, y - 5, 10, 10);
+            g2.drawLine(x - 8, y, x + 8, y);
+            g2.drawLine(x, y - 8, x, y + 8);
+        }
+        g2.setStroke(oldStroke);
+    }
+
     private static void drawGalaxyBackdrop(Graphics2D g2, GameContext ctx, Rectangle rect,
                                            double worldMinX, double worldMinY, double worldW, double worldH) {
         if (g2 == null || rect == null) return;
@@ -8891,41 +8972,159 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (g2 == null || mapRect == null) return;
         int x = mapRect.x + 10;
         int y = mapRect.y + mapRect.height - 56;
-        g2.setColor(new Color(8, 12, 20, 168));
-        g2.fillRoundRect(x - 6, y - 16, 330, 48, 12, 12);
+        g2.setColor(new Color(8, 12, 20, 178));
+        g2.fillRoundRect(x - 6, y - 16, 470, 48, 12, 12);
         g2.setColor(new Color(180, 214, 248, 78));
-        g2.drawRoundRect(x - 6, y - 16, 330, 48, 12, 12);
+        g2.drawRoundRect(x - 6, y - 16, 470, 48, 12, 12);
         g2.setFont(new Font("Consolas", Font.BOLD, 10));
         g2.setColor(new Color(228, 236, 244, 220));
         g2.drawString("LEGEND", x, y - 4);
-        drawHudStatusChip(g2, "BG CONTROLLED", x, y + 8, 102, 16, new Color(120, 236, 188, 210), false);
-        drawHudStatusChip(g2, "CONTESTED", x + 108, y + 8, 82, 16, new Color(210, 220, 238, 210), false);
-        drawHudStatusChip(g2, "R/Y CONTROLLED", x + 194, y + 8, 120, 16, new Color(255, 170, 150, 210), false);
+        drawHudStatusChip(g2, "GREEN", x, y + 8, 58, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.GREEN, 220), false);
+        drawHudStatusChip(g2, "YELLOW", x + 64, y + 8, 66, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.YELLOW, 220), false);
+        drawHudStatusChip(g2, "RED", x + 136, y + 8, 48, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.RED, 220), false);
+        drawHudStatusChip(g2, "CONTESTED", x + 190, y + 8, 82, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.CONTESTED, 220), false);
+        drawHudStatusChip(g2, "UNKNOWN", x + 278, y + 8, 74, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.UNKNOWN, 220), false);
+        g2.setColor(new Color(190, 214, 236, 190));
+        g2.drawString("color = control, icon = site type", x + 272, y - 4);
         if (CampaignSystem.isCampaignWarMapSimplified(ctx)) {
             g2.setColor(new Color(255, 226, 176, 210));
-            g2.drawString("SIMPLIFIED MODE ACTIVE", x + 140, y - 4);
+            g2.drawString("SIMPLIFIED MODE ACTIVE", x + 350, y + 20);
         }
+    }
+
+    private static void drawCampaignLocationControlHalos(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                         double worldMinX, double worldMinY,
+                                                         double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignLocation> pois = CampaignSystem.mainCampaignLocations(ctx);
+        if (pois.isEmpty()) return;
+        Composite oldComposite = g2.getComposite();
+        Stroke oldStroke = g2.getStroke();
+        for (CampaignSystem.CampaignLocation location : pois) {
+            if (location == null || !location.discovered) continue;
+            CampaignSystem.CampaignLocationControlView view = CampaignSystem.campaignLocationControlView(ctx, location);
+            CampaignSystem.CampaignControlVisualState control = (view == null)
+                    ? CampaignSystem.CampaignControlVisualState.UNKNOWN
+                    : view.control;
+            if (control == CampaignSystem.CampaignControlVisualState.UNKNOWN) continue;
+            int px = strategicMapPixelX(mapRect, worldMinX, worldW, location.x);
+            int py = strategicMapPixelY(mapRect, worldMinY, worldH, location.y);
+            int radius = campaignControlHaloRadius(location, control);
+            Color controlColor = campaignControlColor(control, 255);
+            float fillAlpha = switch (control) {
+                case RED -> 0.18f;
+                case CONTESTED -> 0.15f;
+                case GREEN -> 0.13f;
+                case YELLOW -> 0.11f;
+                case UNKNOWN -> 0.08f;
+            };
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, fillAlpha));
+            g2.setColor(controlColor);
+            g2.fillOval(px - radius, py - radius, radius * 2, radius * 2);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, control == CampaignSystem.CampaignControlVisualState.RED ? 0.55f : 0.36f));
+            g2.setStroke(control == CampaignSystem.CampaignControlVisualState.CONTESTED
+                    ? new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10.0f, new float[]{8.0f, 6.0f}, 0.0f)
+                    : new BasicStroke(control == CampaignSystem.CampaignControlVisualState.RED ? 1.8f : 1.2f));
+            g2.setColor(controlColor);
+            g2.drawOval(px - radius, py - radius, radius * 2, radius * 2);
+            if (control == CampaignSystem.CampaignControlVisualState.RED && location.threatLevel >= 0.50f) {
+                g2.setStroke(new BasicStroke(1.0f));
+                g2.drawOval(px - radius - 8, py - radius - 8, (radius + 8) * 2, (radius + 8) * 2);
+            }
+        }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+    }
+
+    private static int campaignControlHaloRadius(CampaignSystem.CampaignLocation location,
+                                                 CampaignSystem.CampaignControlVisualState control) {
+        int base = (location != null && location.primaryMission) ? 86 : 64;
+        if (location != null) base += MathUtil.clamp((int) Math.round(location.threatLevel * 28.0), 0, 34);
+        if (control == CampaignSystem.CampaignControlVisualState.RED) base += 18;
+        if (control == CampaignSystem.CampaignControlVisualState.CONTESTED) base += 10;
+        return base;
     }
 
     private static void drawCampaignRouteNetwork(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                  double worldMinX, double worldMinY, double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
-        List<CampaignSystem.CampaignLocation> pois = CampaignSystem.mainCampaignLocations(ctx);
-        if (pois.size() < 2) return;
+        List<CampaignSystem.CampaignRouteSegment> segments = CampaignSystem.campaignRouteSegments(ctx);
+        if (segments.isEmpty()) return;
         Stroke oldStroke = g2.getStroke();
-        g2.setStroke(new BasicStroke(1.4f));
-        g2.setColor(new Color(110, 170, 220, 84));
-        for (int i = 1; i < pois.size(); i++) {
-            CampaignSystem.CampaignLocation a = pois.get(i - 1);
-            CampaignSystem.CampaignLocation b = pois.get(i);
-            if (a == null || b == null) continue;
-            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, a.x);
-            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, a.y);
-            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, b.x);
-            int by = strategicMapPixelY(mapRect, worldMinY, worldH, b.y);
+        for (CampaignSystem.CampaignRouteSegment segment : segments) {
+            if (segment == null) continue;
+            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, segment.fromX);
+            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, segment.fromY);
+            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, segment.toX);
+            int by = strategicMapPixelY(mapRect, worldMinY, worldH, segment.toY);
+            g2.setStroke(campaignRouteStroke(segment));
+            g2.setColor(campaignRouteColor(segment.control, segment.kind, segment.danger));
             g2.drawLine(ax, ay, bx, by);
+            if (segment.kind == CampaignSystem.CampaignRouteSegmentKind.BLOCKADE_LINE
+                    || segment.control == CampaignSystem.CampaignControlVisualState.RED) {
+                drawRouteWarningTicks(g2, ax, ay, bx, by, campaignControlColor(CampaignSystem.CampaignControlVisualState.RED, 170));
+            }
         }
         g2.setStroke(oldStroke);
+    }
+
+    private static Stroke campaignRouteStroke(CampaignSystem.CampaignRouteSegment segment) {
+        CampaignSystem.CampaignRouteSegmentKind kind = segment == null || segment.kind == null
+                ? CampaignSystem.CampaignRouteSegmentKind.LOCAL_ZONE : segment.kind;
+        return switch (kind) {
+            case LOCAL_ZONE -> new BasicStroke(1.05f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+            case SUPPLY_LINE -> new BasicStroke(1.45f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+            case CONTESTED_LANE -> new BasicStroke(1.75f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{8.0f, 7.0f}, 0.0f);
+            case BLOCKADE_LINE -> new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{10.0f, 5.0f, 2.0f, 5.0f}, 0.0f);
+            case PLAYER_PLOTTED -> new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{14.0f, 6.0f}, 0.0f);
+        };
+    }
+
+    private static Color campaignRouteColor(CampaignSystem.CampaignControlVisualState state,
+                                            CampaignSystem.CampaignRouteSegmentKind kind,
+                                            double danger) {
+        CampaignSystem.CampaignControlVisualState routeState = state == null
+                ? CampaignSystem.CampaignControlVisualState.UNKNOWN : state;
+        CampaignSystem.CampaignRouteSegmentKind routeKind = kind == null
+                ? CampaignSystem.CampaignRouteSegmentKind.LOCAL_ZONE : kind;
+        int boost = MathUtil.clamp((int) Math.round(danger * 0.45), 0, 42);
+        int alphaBoost = switch (routeKind) {
+            case PLAYER_PLOTTED -> 56;
+            case BLOCKADE_LINE -> 42;
+            case CONTESTED_LANE -> 28;
+            case SUPPLY_LINE -> 18;
+            case LOCAL_ZONE -> 0;
+        };
+        return switch (routeState) {
+            case GREEN -> new Color(96, 220, 176, MathUtil.clamp(86 + alphaBoost, 64, 178));
+            case YELLOW -> new Color(236, 188, 92, MathUtil.clamp(96 + alphaBoost, 70, 188));
+            case RED -> new Color(255, 90 + boost / 4, 86, MathUtil.clamp(112 + boost + alphaBoost, 92, 222));
+            case CONTESTED -> new Color(236, 160, 132, MathUtil.clamp(108 + boost + alphaBoost, 86, 210));
+            case UNKNOWN -> routeKind == CampaignSystem.CampaignRouteSegmentKind.PLAYER_PLOTTED
+                    ? new Color(138, 216, 255, 164)
+                    : new Color(130, 166, 202, MathUtil.clamp(60 + alphaBoost, 44, 130));
+        };
+    }
+
+    private static void drawRouteWarningTicks(Graphics2D g2, int ax, int ay, int bx, int by, Color color) {
+        if (g2 == null || color == null) return;
+        double dx = bx - ax;
+        double dy = by - ay;
+        double len = Math.hypot(dx, dy);
+        if (len < 80.0) return;
+        double nx = -dy / len;
+        double ny = dx / len;
+        g2.setColor(color);
+        for (double t = 0.28; t < 0.78; t += 0.22) {
+            int cx = (int) Math.round(ax + dx * t);
+            int cy = (int) Math.round(ay + dy * t);
+            int rr = 5;
+            g2.drawLine((int) Math.round(cx - nx * rr), (int) Math.round(cy - ny * rr),
+                    (int) Math.round(cx + nx * rr), (int) Math.round(cy + ny * rr));
+        }
     }
 
     private static void drawCampaignTravelPath(Graphics2D g2, GameContext ctx, Rectangle mapRect,
@@ -11341,7 +11540,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Stroke oldStroke = g2.getStroke();
         Font oldFont = g2.getFont();
         Composite oldComposite = g2.getComposite();
-        Color accent = strategicMarkerColor(marker);
+        CampaignSystem.CampaignLocation markerLocation = campaignLocationForMarker(ctx, marker);
+        CampaignSystem.CampaignLocationControlView controlView = (markerLocation == null)
+                ? null
+                : CampaignSystem.campaignLocationControlView(ctx, markerLocation);
+        Color accent = strategicMarkerColor(ctx, marker, controlView);
         Color fill = withAlpha(accent, strategicMarkerFillAlpha(marker.type));
         boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
         int sizeBoost = selected ? 2 : markerPriorityBoost(marker.priority);
@@ -11357,6 +11560,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setColor(withAlpha(accent, 232));
         g2.drawOval(px - outerRadius, py - outerRadius, outerRadius * 2, outerRadius * 2);
         g2.drawOval(px - innerRadius, py - innerRadius, innerRadius * 2, innerRadius * 2);
+        if (controlView != null) {
+            drawCampaignControlRing(g2, controlView.control, px, py, outerRadius, markerLocation);
+        }
         g2.drawLine(px - crossRadius, py, px - innerRadius - 2, py);
         g2.drawLine(px + innerRadius + 2, py, px + crossRadius, py);
         g2.drawLine(px, py - crossRadius, px, py - innerRadius - 2);
@@ -11366,7 +11572,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setColor(withAlpha(accent, (int) Math.round(120 + pulse * 80)));
             g2.drawOval(px - outerRadius - 6, py - outerRadius - 6, (outerRadius + 6) * 2, (outerRadius + 6) * 2);
         }
-        drawStrategicMarkerCenterGlyph(g2, marker.type, px, py);
+        drawStrategicMarkerCenterGlyph(g2, marker.type, markerLocation, px, py);
 
         boolean simplified = CampaignSystem.isCampaignWarMapSimplified(ctx);
         if (label != null && !label.isBlank() && (!simplified || selected)) {
@@ -11387,6 +11593,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.fillRoundRect(tx - 5, ty - 11, tw + 10, 16, 10, 10);
             g2.setColor(withAlpha(accent, 235));
             g2.drawRoundRect(tx - 5, ty - 11, tw + 10, 16, 10, 10);
+            if (controlView != null && controlView.control == CampaignSystem.CampaignControlVisualState.CONTESTED) {
+                g2.setColor(campaignControlColor(CampaignSystem.CampaignControlVisualState.RED, 190));
+                g2.drawLine(tx - 3, ty + 5, tx + tw + 3, ty - 11);
+                g2.setColor(withAlpha(accent, 235));
+            }
             g2.drawString(shortLabel, tx, ty + 1);
         }
 
@@ -11674,7 +11885,25 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return 0;
     }
 
+    private static CampaignSystem.CampaignLocation campaignLocationForMarker(GameContext ctx,
+                                                                             CampaignSystem.CampaignObjectiveMarker marker) {
+        if (ctx == null || marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        CampaignSystem.CampaignLocation byPoint = CampaignSystem.nearestCampaignLocation(ctx, marker.x, marker.y, 80.0);
+        if (byPoint != null && byPoint.name != null && marker.label != null
+                && byPoint.name.equalsIgnoreCase(marker.label)) return byPoint;
+        return byPoint;
+    }
+
     private static Color strategicMarkerColor(CampaignSystem.CampaignObjectiveMarker marker) {
+        return strategicMarkerColor(null, marker, null);
+    }
+
+    private static Color strategicMarkerColor(GameContext ctx,
+                                              CampaignSystem.CampaignObjectiveMarker marker,
+                                              CampaignSystem.CampaignLocationControlView controlView) {
+        if (CampaignSystem.isStrategicGalaxyMapMode(ctx) && controlView != null) {
+            return campaignControlColor(controlView.control, 232);
+        }
         if (marker != null && marker.faction != null
                 && (marker.type == CampaignSystem.ObjectiveMarkerType.PROTECTED_ASSET
                 || marker.type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET
@@ -11692,6 +11921,57 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             case CAPTURE_ZONE -> new Color(205, 170, 255);
             case OPTIONAL_OBJECTIVE -> new Color(255, 210, 120);
         };
+    }
+
+    private static Color campaignControlColor(CampaignSystem.CampaignControlVisualState state, int alpha) {
+        int a = MathUtil.clamp(alpha, 0, 255);
+        return switch (state == null ? CampaignSystem.CampaignControlVisualState.UNKNOWN : state) {
+            case GREEN -> new Color(88, 238, 156, a);
+            case YELLOW -> new Color(248, 196, 92, a);
+            case RED -> new Color(255, 86, 82, a);
+            case CONTESTED -> new Color(244, 132, 110, a);
+            case UNKNOWN -> new Color(178, 196, 214, a);
+        };
+    }
+
+    private static void drawCampaignControlRing(Graphics2D g2,
+                                                CampaignSystem.CampaignControlVisualState control,
+                                                int px,
+                                                int py,
+                                                int outerRadius,
+                                                CampaignSystem.CampaignLocation location) {
+        if (g2 == null || control == null) return;
+        Stroke oldStroke = g2.getStroke();
+        Color accent = campaignControlColor(control, 235);
+        int r = outerRadius + 4;
+        if (control == CampaignSystem.CampaignControlVisualState.CONTESTED) {
+            g2.setStroke(new BasicStroke(1.7f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{5.0f, 4.0f}, 0.0f));
+            g2.setColor(campaignControlColor(CampaignSystem.CampaignControlVisualState.RED, 220));
+            g2.drawArc(px - r, py - r, r * 2, r * 2, 25, 150);
+            g2.setColor(campaignControlColor(CampaignSystem.CampaignControlVisualState.GREEN, 220));
+            g2.drawArc(px - r, py - r, r * 2, r * 2, 205, 150);
+            g2.setStroke(oldStroke);
+            return;
+        }
+        g2.setStroke(new BasicStroke(control == CampaignSystem.CampaignControlVisualState.RED ? 2.2f : 1.7f));
+        g2.setColor(accent);
+        g2.drawOval(px - r, py - r, r * 2, r * 2);
+        if (control == CampaignSystem.CampaignControlVisualState.RED) {
+            g2.drawOval(px - r - 5, py - r - 5, (r + 5) * 2, (r + 5) * 2);
+            if (location != null && location.threatLevel >= 0.55f) {
+                int tickR = r + 9;
+                for (int i = 0; i < 8; i++) {
+                    double ang = i * Math.PI / 4.0;
+                    int x0 = px + (int) Math.round(Math.cos(ang) * (tickR - 3));
+                    int y0 = py + (int) Math.round(Math.sin(ang) * (tickR - 3));
+                    int x1 = px + (int) Math.round(Math.cos(ang) * (tickR + 4));
+                    int y1 = py + (int) Math.round(Math.sin(ang) * (tickR + 4));
+                    g2.drawLine(x0, y0, x1, y1);
+                }
+            }
+        }
+        g2.setStroke(oldStroke);
     }
 
     private static Color strategicSupportMarkerColor(CampaignSystem.CampaignSupportMarker marker) {
@@ -11783,9 +12063,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawStrategicMarkerCenterGlyph(Graphics2D g2,
                                                        CampaignSystem.ObjectiveMarkerType type,
+                                                       CampaignSystem.CampaignLocation location,
                                                        int px,
                                                        int py) {
         if (g2 == null || type == null) return;
+        if (drawCampaignFacilityGlyph(g2, location, px, py)) return;
         if (type == CampaignSystem.ObjectiveMarkerType.DESTROY_TARGET) {
             g2.drawLine(px - 4, py - 4, px + 4, py + 4);
             g2.drawLine(px - 4, py + 4, px + 4, py - 4);
@@ -11801,6 +12083,81 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         } else {
             g2.fillOval(px - 2, py - 2, 4, 4);
         }
+    }
+
+    private static boolean drawCampaignFacilityGlyph(Graphics2D g2,
+                                                     CampaignSystem.CampaignLocation location,
+                                                     int px,
+                                                     int py) {
+        if (g2 == null || location == null || location.facilityType == null
+                || location.facilityType == CampaignSystem.CampaignFacilityType.UNKNOWN) {
+            return false;
+        }
+        int r = Math.max(3, MathUtil.clamp(location.strategicValue + 2, 3, 7));
+        switch (location.facilityType) {
+            case FORTRESS -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py, px + r, py);
+                g2.drawLine(px, py - r, px, py + r);
+            }
+            case RESUPPLY_BASE, FUEL_DEPOT -> {
+                g2.drawRect(px - r, py - r / 2, r * 2, r);
+                g2.drawLine(px - r, py - r - 2, px + r, py - r - 2);
+                g2.drawLine(px - r, py + r + 2, px + r, py + r + 2);
+            }
+            case MINING_OPERATION -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py + r, px + r, py - r);
+                g2.drawLine(px - r / 2, py - r, px + r, py + r / 2);
+            }
+            case REPAIR_YARD, SHIPYARD -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r - 2, py, px + r + 2, py);
+                g2.drawLine(px, py - r - 2, px, py + r + 2);
+                if (location.facilityType == CampaignSystem.CampaignFacilityType.SHIPYARD) {
+                    g2.drawLine(px - r, py + r, px + r, py - r);
+                }
+            }
+            case RELAY, SENSOR_TOWER, LISTENING_POST -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px, py - r - 3, px, py + r + 3);
+                g2.drawLine(px - r - 2, py, px + r + 2, py);
+            }
+            case CIVILIAN_HUB -> {
+                g2.drawOval(px - r, py - r, r * 2, r * 2);
+                g2.drawRect(px - r / 2, py - r / 2, r, r);
+            }
+            case REBEL_HIDEOUT -> {
+                g2.drawLine(px - r, py + r, px, py - r);
+                g2.drawLine(px, py - r, px + r, py + r);
+                g2.drawLine(px - r, py + r, px + r, py + r);
+            }
+            case BLOCKADE -> {
+                g2.drawLine(px - r - 1, py - r, px + r + 1, py + r);
+                g2.drawLine(px - r - 1, py + r, px + r + 1, py - r);
+                g2.drawLine(px - r - 2, py, px + r + 2, py);
+            }
+            case PRISON_CAMP -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                for (int i = -r + 2; i <= r - 2; i += 3) {
+                    g2.drawLine(px + i, py - r, px + i, py + r);
+                }
+            }
+            case DERELICT_BATTLEFIELD -> {
+                g2.drawRect(px - r, py - r, r * 2, r * 2);
+                g2.drawLine(px - r, py - r, px + r, py + r);
+                g2.drawLine(px - r, py + r, px + r, py - r);
+            }
+            case BOSS_STAGING_AREA -> {
+                g2.drawOval(px - r - 1, py - r - 1, (r + 1) * 2, (r + 1) * 2);
+                g2.drawLine(px - r - 4, py, px + r + 4, py);
+                g2.drawLine(px, py - r - 4, px, py + r + 4);
+            }
+            case UNKNOWN -> {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void drawStrategicSupportMarkerGlyph(Graphics2D g2,

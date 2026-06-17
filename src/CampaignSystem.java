@@ -53,7 +53,8 @@ public final class CampaignSystem {
     private static final double CAMPAIGN_FORCE_SIM_TICK_SEC = 0.20; // 5 Hz
     private static final int CAMPAIGN_FORCE_MAX_ACTIVE_NPC = 96;
     private static final double CAMPAIGN_FORCE_ENCOUNTER_RANGE = 240.0;
-    private static final double CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC = 30.0;
+    private static final double CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC = 180.0;
+    private static final double CAMPAIGN_START_SPAWN_PROTECTION_RADIUS = 2600.0;
     private static final double SAFE_MISSION_EXIT_ENTRY_WINDOW_SEC = 10.0;
     private static final double CAMPAIGN_FORCE_WARNING_RANGE = CAMPAIGN_FORCE_ENCOUNTER_RANGE * 2.4;
     private static final double CAMPAIGN_FORCE_DANGER_RANGE = CAMPAIGN_FORCE_ENCOUNTER_RANGE * 1.5;
@@ -505,6 +506,9 @@ public final class CampaignSystem {
         public final double controlScore;
         public final double supplyState;
         public final double threatPressure;
+        public final double greenInfluence;
+        public final double yellowInfluence;
+        public final double redInfluence;
 
         TheaterBand(String id,
                     String label,
@@ -513,7 +517,10 @@ public final class CampaignSystem {
                     String controlToken,
                     double controlScore,
                     double supplyState,
-                    double threatPressure) {
+                    double threatPressure,
+                    double greenInfluence,
+                    double yellowInfluence,
+                    double redInfluence) {
             this.id = (id == null || id.isBlank()) ? "FRONTIER" : id.trim();
             this.label = (label == null || label.isBlank()) ? this.id : label.trim();
             this.minYNorm = MathUtil.clamp(minYNorm, 0.0, 1.0);
@@ -522,6 +529,161 @@ public final class CampaignSystem {
             this.controlScore = MathUtil.clamp(controlScore, -100.0, 100.0);
             this.supplyState = MathUtil.clamp(supplyState, 0.0, 100.0);
             this.threatPressure = MathUtil.clamp(threatPressure, 0.0, 100.0);
+            this.greenInfluence = MathUtil.clamp(greenInfluence, 0.0, 100.0);
+            this.yellowInfluence = MathUtil.clamp(yellowInfluence, 0.0, 100.0);
+            this.redInfluence = MathUtil.clamp(redInfluence, 0.0, 100.0);
+        }
+    }
+
+    public enum CampaignControlVisualState {
+        GREEN,
+        YELLOW,
+        RED,
+        CONTESTED,
+        UNKNOWN
+    }
+
+    public static final class CampaignLocationControlView {
+        public final CampaignControlVisualState control;
+        public final String siteType;
+        public final String status;
+        public final double contestProgress;
+        public final double threatPressure;
+
+        CampaignLocationControlView(CampaignControlVisualState control,
+                                    String siteType,
+                                    String status,
+                                    double contestProgress,
+                                    double threatPressure) {
+            this.control = (control == null) ? CampaignControlVisualState.UNKNOWN : control;
+            this.siteType = (siteType == null || siteType.isBlank()) ? "Site" : siteType.trim();
+            this.status = (status == null || status.isBlank()) ? this.control.name() : status.trim();
+            this.contestProgress = MathUtil.clamp(contestProgress, -120.0, 120.0);
+            this.threatPressure = MathUtil.clamp(threatPressure, 0.0, 100.0);
+        }
+    }
+
+    public static final class CampaignMissionBoardEntry {
+        public final String id;
+        public final Faction faction;
+        public final String family;
+        public final String targetLocationId;
+        public final String objective;
+        public final String risk;
+        public final String reward;
+        public final String timePressure;
+        public final String opposition;
+        public final int reputationDelta;
+        public final int redHostilityDelta;
+
+        CampaignMissionBoardEntry(String id,
+                                  Faction faction,
+                                  String family,
+                                  String targetLocationId,
+                                  String objective,
+                                  String risk,
+                                  String reward,
+                                  String timePressure,
+                                  String opposition,
+                                  int reputationDelta,
+                                  int redHostilityDelta) {
+            this.id = trimmedOrFallback(id, "board-mission");
+            this.faction = faction == null ? Faction.TEAM_C : faction;
+            this.family = trimmedOrFallback(family, "operation");
+            this.targetLocationId = targetLocationId == null ? "" : targetLocationId.trim();
+            this.objective = trimmedOrFallback(objective, "Support local operations");
+            this.risk = trimmedOrFallback(risk, "Moderate");
+            this.reward = trimmedOrFallback(reward, "Favor and supplies");
+            this.timePressure = trimmedOrFallback(timePressure, "Open");
+            this.opposition = trimmedOrFallback(opposition, "Unknown");
+            this.reputationDelta = Math.max(0, reputationDelta);
+            this.redHostilityDelta = Math.max(0, redHostilityDelta);
+        }
+
+        public String line() {
+            return factionBoardName(faction) + "  |  " + family + "  |  " + objective
+                    + "  |  risk " + risk
+                    + "  |  reward " + reward
+                    + "  |  pressure " + timePressure
+                    + "  |  opposition " + opposition;
+        }
+    }
+
+    public enum CampaignRouteSegmentKind {
+        LOCAL_ZONE,
+        SUPPLY_LINE,
+        CONTESTED_LANE,
+        BLOCKADE_LINE,
+        PLAYER_PLOTTED
+    }
+
+    public static final class CampaignRouteSegment {
+        public final CampaignRouteSegmentKind kind;
+        public final CampaignControlVisualState control;
+        public final String fromLocationId;
+        public final String toLocationId;
+        public final double fromX;
+        public final double fromY;
+        public final double toX;
+        public final double toY;
+        public final double danger;
+        public final boolean playerRoute;
+
+        CampaignRouteSegment(CampaignRouteSegmentKind kind,
+                             CampaignControlVisualState control,
+                             String fromLocationId,
+                             String toLocationId,
+                             double fromX,
+                             double fromY,
+                             double toX,
+                             double toY,
+                             double danger,
+                             boolean playerRoute) {
+            this.kind = kind == null ? CampaignRouteSegmentKind.LOCAL_ZONE : kind;
+            this.control = control == null ? CampaignControlVisualState.UNKNOWN : control;
+            this.fromLocationId = fromLocationId == null ? "" : fromLocationId.trim();
+            this.toLocationId = toLocationId == null ? "" : toLocationId.trim();
+            this.fromX = fromX;
+            this.fromY = fromY;
+            this.toX = toX;
+            this.toY = toY;
+            this.danger = MathUtil.clamp(danger, 0.0, 100.0);
+            this.playerRoute = playerRoute;
+        }
+    }
+
+    public static final class CampaignFinalBattleReadiness {
+        public final int readinessScore;
+        public final int greenSupport;
+        public final int yellowSupport;
+        public final int capturedShipyards;
+        public final int capturedRelays;
+        public final int destroyedRedFortresses;
+        public final int liberatedYellowHubs;
+        public final int remainingRedDefenses;
+        public final String summary;
+        public final List<String> lines;
+
+        CampaignFinalBattleReadiness(int readinessScore,
+                                     int greenSupport,
+                                     int yellowSupport,
+                                     int capturedShipyards,
+                                     int capturedRelays,
+                                     int destroyedRedFortresses,
+                                     int liberatedYellowHubs,
+                                     int remainingRedDefenses,
+                                     String summary,
+                                     List<String> lines) {
+            this.readinessScore = (int) Math.round(MathUtil.clamp(readinessScore, 0, 100));
+            this.greenSupport = Math.max(0, greenSupport);
+            this.yellowSupport = Math.max(0, yellowSupport);
+            this.capturedShipyards = Math.max(0, capturedShipyards);
+            this.capturedRelays = Math.max(0, capturedRelays);
+            this.destroyedRedFortresses = Math.max(0, destroyedRedFortresses);
+            this.liberatedYellowHubs = Math.max(0, liberatedYellowHubs);
+            this.remainingRedDefenses = Math.max(0, remainingRedDefenses);
+            this.summary = trimmedOrFallback(summary, "Earth assault readiness unknown");
+            this.lines = lines == null ? List.of() : List.copyOf(lines);
         }
     }
 
@@ -534,6 +696,32 @@ public final class CampaignSystem {
         HIDDEN_CACHE,
         STORY_EVENT,
         REPAIR_SITE
+    }
+
+    public enum CampaignFacilityType {
+        UNKNOWN,
+        FORTRESS,
+        RESUPPLY_BASE,
+        MINING_OPERATION,
+        REPAIR_YARD,
+        SHIPYARD,
+        RELAY,
+        LISTENING_POST,
+        CIVILIAN_HUB,
+        REBEL_HIDEOUT,
+        BLOCKADE,
+        PRISON_CAMP,
+        FUEL_DEPOT,
+        DERELICT_BATTLEFIELD,
+        SENSOR_TOWER,
+        BOSS_STAGING_AREA
+    }
+
+    public enum CampaignIntelLevel {
+        UNKNOWN,
+        PARTIAL,
+        GOOD,
+        FULL
     }
 
     public enum HubService {
@@ -568,10 +756,10 @@ public final class CampaignSystem {
     }
 
     private enum TheaterId {
-        SOUTHERN("Southern Theater"),
-        FRONTIER("Frontier Theater"),
-        LUNAR("Lunar Theater"),
-        EARTH("Earth Theater");
+        SOUTHERN("Southern Zone - Green Controlled"),
+        FRONTIER("Lower-Middle Zone - Yellow Controlled"),
+        LUNAR("Upper-Middle Zone - Red Occupied"),
+        EARTH("Northern Zone - Red Core");
 
         final String label;
 
@@ -612,6 +800,9 @@ public final class CampaignSystem {
         double redPresence = 0.0;
         double greenPresence = 0.0;
         double yellowActivity = 0.0;
+        double greenInfluence = 0.0;
+        double yellowInfluence = 0.0;
+        double redInfluence = 0.0;
         double danger = 50.0;
         double tradeHealth = 70.0;
         double routeRisk = 30.0;
@@ -624,6 +815,7 @@ public final class CampaignSystem {
             this.label = (label == null || label.isBlank()) ? this.id.label : label.trim();
             this.minYNorm = MathUtil.clamp(minYNorm, 0.0, 1.0);
             this.maxYNorm = MathUtil.clamp(maxYNorm, 0.0, 1.0);
+            applyStartingInfluence(this);
         }
     }
 
@@ -682,9 +874,31 @@ public final class CampaignSystem {
         public final int missionIndex;
         public final String detail;
         public final List<HubService> services;
+        public String facilityId = "";
+        public String legacyPoiId = "";
+        public String zoneId = "";
+        public CampaignFacilityType facilityType = CampaignFacilityType.UNKNOWN;
+        public Faction ownerFaction = Faction.ALLY;
+        public CampaignControlVisualState controlState = CampaignControlVisualState.UNKNOWN;
+        public int strategicValue = 1;
+        public double defenseStrength = 0.0;
+        public double resourceValue = 0.0;
+        public final List<String> missionTags = new ArrayList<>();
+        public final List<Integer> linkedFleetIds = new ArrayList<>();
+        public final List<String> linkedRouteIds = new ArrayList<>();
+        public boolean canChangeOwner = true;
+        public boolean canSpawnFleets = false;
+        public String alertState = "quiet";
+        public String displayLabel = "";
+        public String longDetail = "";
+        public double lastChangedAtSec = 0.0;
+        public double intelStaleAtSec = 0.0;
+        public CampaignIntelLevel fleetIntelLevel = CampaignIntelLevel.UNKNOWN;
+        public CampaignIntelLevel intelLevel = CampaignIntelLevel.UNKNOWN;
         public boolean discovered;
         public boolean completed;
         public boolean consumed;
+        public boolean destroyed;
         public String scarNote = "";
         public String routeNote = "";
         public String recurringContactId = "";
@@ -717,6 +931,13 @@ public final class CampaignSystem {
             this.primaryMission = primaryMission;
             this.missionIndex = Math.max(0, missionIndex);
             this.detail = (detail == null) ? "" : detail.trim();
+            this.facilityId = this.id;
+            this.legacyPoiId = this.id.startsWith("poi-") ? this.id : "";
+            this.facilityType = defaultFacilityTypeForLocationType(this.type);
+            this.ownerFaction = defaultOwnerFactionForLocation(this.type, this.name);
+            this.strategicValue = defaultStrategicValueForFacility(this.facilityType, primaryMission);
+            this.intelLevel = primaryMission ? CampaignIntelLevel.FULL : CampaignIntelLevel.GOOD;
+            initializeFacilityOperationalFields(this);
             ArrayList<HubService> resolvedServices = new ArrayList<>();
             if (services != null) {
                 for (HubService service : services) {
@@ -3162,9 +3383,15 @@ public final class CampaignSystem {
         if (selected == null) return List.of("No route selected.");
         ensureGalaxyFleetPosition(st, current);
         GalaxyRouteAssessment assessment = analyzeRoute(st, ctx, st.playerGalaxyX, st.playerGalaxyY, selected);
+        double displayRisk = assessment.interceptionRisk;
+        if (st.galaxyTravel != null
+                && st.galaxyTravel.traveling
+                && selected.id.equals(st.galaxyTravel.destinationId)) {
+            displayRisk = st.galaxyTravel.interceptionRisk;
+        }
         ArrayList<String> out = new ArrayList<>();
         out.add("Route Tempo: " + routeTempoLabel(assessment) + "  ETA " + (int) Math.ceil(assessment.durationSec) + "s");
-        out.add("Threat Exposure: " + routeExposureLabel(assessment) + "  Risk " + (int) Math.round(assessment.interceptionRisk) + "%");
+        out.add("Threat Exposure: " + routeExposureLabel(assessment) + "  Risk " + (int) Math.round(displayRisk) + "%");
         out.add(routeForecastLine(ctx, st, assessment));
         out.addAll(campaignTransitVariationLines(ctx));
         out.add(routeNotesLine(assessment));
@@ -3459,6 +3686,11 @@ public final class CampaignSystem {
             case DANGER -> List.of(dangerOverlayInsightLine(st));
             case TRADE -> List.of(tradeOverlayInsightLine(st));
             case HOSTILE_ROUTES -> List.of(hostileRoutesOverlayInsightLine(st));
+            case FACILITIES -> List.of(facilitiesOverlayInsightLine(st));
+            case MISSIONS -> List.of(missionsOverlayInsightLine(ctx, st));
+            case FLEETS -> List.of(fleetsOverlayInsightLine(st));
+            case ROUTES -> List.of(routesOverlayInsightLine(ctx));
+            case INTEL -> List.of(intelOverlayInsightLine(st));
         };
     }
 
@@ -3582,6 +3814,93 @@ public final class CampaignSystem {
         return "Hostile Routes Overlay  |  patrol routes " + patrolRoutes
                 + "  hostile shadows " + hostileRoutes
                 + "  blockade lines " + blockade;
+    }
+
+    private static String facilitiesOverlayInsightLine(CampaignState st) {
+        int major = 0;
+        int minor = 0;
+        int hidden = 0;
+        int red = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed) continue;
+            if (!location.discovered) {
+                hidden++;
+                continue;
+            }
+            if (location.ownerFaction == Faction.ENEMY) red++;
+            if (location.strategicValue >= 3 || location.primaryMission) major++;
+            else minor++;
+        }
+        return "Facilities Filter  |  major " + major + "  minor " + minor + "  hidden " + hidden + "  Red-held " + red;
+    }
+
+    private static String missionsOverlayInsightLine(GameContext ctx, CampaignState st) {
+        int green = campaignFactionMissionBoard(ctx, Faction.TEAM_C).size();
+        int yellow = campaignFactionMissionBoard(ctx, Faction.TEAM_D).size();
+        int urgent = 0;
+        for (Faction faction : List.of(Faction.TEAM_C, Faction.TEAM_D)) {
+            for (CampaignMissionBoardEntry entry : campaignFactionMissionBoard(ctx, faction)) {
+                if (entry != null && "urgent".equalsIgnoreCase(entry.timePressure)) urgent++;
+            }
+        }
+        return "Missions Filter  |  Green " + green + "  Yellow " + yellow
+                + "  urgent " + urgent + "  expired " + st.expiredCampaignBoardMissionIds.size();
+    }
+
+    private static String fleetsOverlayInsightLine(CampaignState st) {
+        int friendly = 0;
+        int yellow = 0;
+        int red = 0;
+        int hidden = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed) continue;
+            if (force.faction == Faction.ENEMY) red++;
+            else if (force.faction == Faction.TEAM_D) yellow++;
+            else friendly++;
+            if (!campaignForceVisibleOnMap(force)) hidden++;
+        }
+        return "Fleets Filter  |  Green/Blue " + friendly + "  Yellow " + yellow + "  Red " + red + "  hidden/stale " + hidden;
+    }
+
+    private static String routesOverlayInsightLine(GameContext ctx) {
+        List<CampaignRouteSegment> segments = campaignRouteSegments(ctx);
+        int local = 0;
+        int supply = 0;
+        int contested = 0;
+        int blockade = 0;
+        int player = 0;
+        for (CampaignRouteSegment segment : segments) {
+            if (segment == null) continue;
+            switch (segment.kind) {
+                case LOCAL_ZONE -> local++;
+                case SUPPLY_LINE -> supply++;
+                case CONTESTED_LANE -> contested++;
+                case BLOCKADE_LINE -> blockade++;
+                case PLAYER_PLOTTED -> player++;
+            }
+        }
+        return "Routes Filter  |  local " + local + "  supply " + supply
+                + "  contested " + contested + "  blockade " + blockade + "  plotted " + player;
+    }
+
+    private static String intelOverlayInsightLine(CampaignState st) {
+        int unknown = 0;
+        int partial = 0;
+        int good = 0;
+        int full = 0;
+        int stale = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed) continue;
+            if (location.intelStaleAtSec > 0.0) stale++;
+            switch (location.intelLevel == null ? CampaignIntelLevel.UNKNOWN : location.intelLevel) {
+                case UNKNOWN -> unknown++;
+                case PARTIAL -> partial++;
+                case GOOD -> good++;
+                case FULL -> full++;
+            }
+        }
+        return "Intel Filter  |  unknown " + unknown + "  partial " + partial
+                + "  good " + good + "  full " + full + "  stale " + stale;
     }
 
     private static void synchronizeStrategicExpansionFromLive(CampaignState st) {
@@ -3753,6 +4072,173 @@ public final class CampaignSystem {
         return out;
     }
 
+    public static List<CampaignMissionBoardEntry> campaignFactionMissionBoard(GameContext ctx, Faction faction) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (st == null) return List.of();
+        Faction boardFaction = (faction == Faction.TEAM_D) ? Faction.TEAM_D : Faction.TEAM_C;
+        ArrayList<CampaignMissionBoardEntry> out = new ArrayList<>();
+        if (boardFaction == Faction.TEAM_C) {
+            addGreenMissionBoardEntries(st, out);
+        } else {
+            addYellowMissionBoardEntries(st, out);
+        }
+        out.removeIf(entry -> entry == null
+                || st.completedCampaignBoardMissionIds.contains(entry.id)
+                || st.expiredCampaignBoardMissionIds.contains(entry.id));
+        out.sort(Comparator
+                .comparingInt((CampaignMissionBoardEntry entry) -> -missionBoardPriority(st, entry))
+                .thenComparing(entry -> entry.id));
+        while (out.size() > 6) out.remove(out.size() - 1);
+        return List.copyOf(out);
+    }
+
+    public static List<String> campaignFactionMissionBoardLines(GameContext ctx, Faction faction) {
+        ArrayList<String> out = new ArrayList<>();
+        for (CampaignMissionBoardEntry entry : campaignFactionMissionBoard(ctx, faction)) {
+            out.add(entry.line());
+        }
+        if (out.isEmpty()) out.add(factionBoardName(faction) + " board quiet  |  improve intel or discover facilities");
+        return out;
+    }
+
+    public static List<String> campaignWarSupportReadoutLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return List.of("War support unavailable.");
+        ArrayList<String> out = new ArrayList<>();
+        out.add("Green reputation " + st.greenContractFavor + "  |  " + supportTierName(st.greenContractFavor)
+                + "  |  " + supportTierBenefits(Faction.TEAM_C, st.greenContractFavor));
+        out.add("Yellow reputation " + st.yellowLiberationFavor + "  |  " + supportTierName(st.yellowLiberationFavor)
+                + "  |  " + supportTierBenefits(Faction.TEAM_D, st.yellowLiberationFavor));
+        out.add("Red hostility " + campaignRedHostility(ctx) + "  |  " + redHostilityBand(campaignRedHostility(ctx)));
+        out.add("Support limits  |  early tiers capped, capital aid waits for tier 4+, final commitment tier 5");
+        out.add("Intel sources  |  recon, relays, sensors, reputation, patrols, listening posts, captured sites, rescues, Yellow reports, Green briefings");
+        return List.copyOf(out);
+    }
+
+    public static List<String> campaignIntelSourceLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        int greenTier = st == null ? 0 : supportTierIndex(st.greenContractFavor);
+        int yellowTier = st == null ? 0 : supportTierIndex(st.yellowLiberationFavor);
+        int friendlyPatrols = st == null ? 0 : countVisibleIntelPatrols(st, false);
+        int redPatrols = st == null ? 0 : countVisibleIntelPatrols(st, true);
+        int capturedIntelSites = st == null ? 0 : countCapturedIntelFacilities(st);
+        int rescued = st == null ? 0 : rescuedBlueShipCount(st);
+        return List.of(
+                "Recon flights  |  signal sweeps and tactical recon raise local facility and fleet intel",
+                "Friendly relays  |  allied relay control widens the known route picture",
+                "Sensor towers  |  captured or scanned sensors expose defenses and fleet activity",
+                "Allied reputation  |  Green tier " + greenTier + " and Yellow tier " + yellowTier + " unlock better briefings",
+                "Patrol fleets  |  friendly patrol reports " + friendlyPatrols + "  hostile patrol tracks " + redPatrols,
+                "Listening posts  |  known listening sites convert rumor contacts into mission hooks",
+                "Captured facilities  |  secured intel sites " + capturedIntelSites + " improve regional certainty",
+                "Rescued civilians or prisoners  |  rescue outcomes and Blue survivors " + rescued + " reveal hidden leads",
+                "Yellow rebel reports  |  Yellow missions and favor expose sabotage, prisons, and civilian risks",
+                "Green command briefings  |  Green missions and favor expose Red positions and convoy threats"
+        );
+    }
+
+    public static List<String> campaignEnemyEscalationLines(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return List.of("Red escalation unavailable.");
+        int hostility = campaignRedHostility(ctx);
+        int lostRedAssets = countLostRedAssets(st);
+        int remainingCore = countRedCoreDefenses(st);
+        return List.of(
+                "Red escalation " + hostility + "  |  " + redHostilityBand(hostility),
+                "Lost Red assets " + lostRedAssets + "  |  remaining core defenses " + remainingCore,
+                "Countermove: " + redEscalationCountermove(hostility, lostRedAssets, remainingCore)
+        );
+    }
+
+    public static CampaignFinalBattleReadiness campaignFinalBattleReadiness(GameContext ctx) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (st == null) {
+            return new CampaignFinalBattleReadiness(0, 0, 0, 0, 0, 0, 0, 0,
+                    "Earth assault readiness unavailable", List.of());
+        }
+        int green = st.greenContractFavor;
+        int yellow = st.yellowLiberationFavor;
+        int shipyards = countFacilities(st, null, CampaignFacilityType.SHIPYARD, true, false);
+        int relays = countCapturedRelayLikeFacilities(st);
+        int destroyedFortresses = countDestroyedRedFortresses(st);
+        int liberatedYellow = countLiberatedYellowHubs(st);
+        int redDefense = countRedCoreDefenses(st);
+        int redSensors = countFacilities(st, Faction.ENEMY, CampaignFacilityType.SENSOR_TOWER, false, false);
+        int redShipyards = countFacilities(st, Faction.ENEMY, CampaignFacilityType.SHIPYARD, false, false);
+        int alliedRouteStability = alliedRouteStabilityScore(st);
+        int playerFleetReadiness = finalBattlePlayerFleetReadiness(ctx, st);
+        int greenCapital = supportTierIndex(green) >= 4 ? 1 : 0;
+        int yellowSabotage = supportTierIndex(yellow) >= 4 ? 1 : 0;
+        int rescuedBlue = rescuedBlueShipCount(st);
+        int score = (int) Math.round(MathUtil.clamp(
+                green * 4.0
+                        + yellow * 4.0
+                        + shipyards * 9.0
+                        + relays * 6.0
+                        + destroyedFortresses * 10.0
+                        + liberatedYellow * 5.0
+                        + rescuedBlue * 4.0
+                        + greenCapital * 8.0
+                        + yellowSabotage * 7.0
+                        + alliedRouteStability * 0.30
+                        + playerFleetReadiness * 0.25
+                        + Math.max(0.0, 34.0 - redDefense * 4.0 - redSensors * 2.0 - redShipyards * 3.0),
+                0.0, 100.0));
+        String summary = score >= 78 ? "Coalition assault ready"
+                : score >= 55 ? "Earth assault viable with heavy losses"
+                : score >= 32 ? "Earth assault possible but under-supported"
+                : "Earth assault underprepared";
+        ArrayList<String> lines = new ArrayList<>();
+        lines.add("Readiness " + score + "/100  |  " + summary);
+        lines.add("Green " + green + "  Yellow " + yellow + "  Blue rescued ships " + rescuedBlue);
+        lines.add("Shipyards " + shipyards + "  Relays " + relays + "  Yellow hubs " + liberatedYellow);
+        lines.add("Green capital support " + greenCapital + "  Yellow rebel sabotage " + yellowSabotage
+                + "  Allied route stability " + alliedRouteStability + "%");
+        lines.add("Player fleet readiness " + playerFleetReadiness + "%  |  Red fortresses " + redDefense
+                + "  sensors " + redSensors + "  shipyards " + redShipyards);
+        lines.add("Final battle frame: coalition mass against the immovable Earthfall core.");
+        lines.add("Red core defenses remain scary; low-completion path stays viable above readiness 32.");
+        return new CampaignFinalBattleReadiness(score, green, yellow, shipyards, relays,
+                destroyedFortresses, liberatedYellow, redDefense, summary, lines);
+    }
+
+    public static int campaignRedHostility(GameContext ctx) {
+        CampaignState st = state(ctx);
+        if (st == null) return 0;
+        double redCore = st.campaignTheaters.stream()
+                .filter(Objects::nonNull)
+                .mapToDouble(theater -> theater.redInfluence)
+                .average()
+                .orElse(50.0);
+        return (int) Math.round(MathUtil.clamp(st.enemyAlertLevel * 0.58
+                + st.strategicExposureLevel * 0.18
+                + redCore * 0.24, 0.0, 100.0));
+    }
+
+    public static boolean completeCampaignBoardMission(GameContext ctx, String missionId) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || missionId == null || missionId.isBlank()) return false;
+        CampaignMissionBoardEntry entry = null;
+        for (Faction faction : List.of(Faction.TEAM_C, Faction.TEAM_D)) {
+            for (CampaignMissionBoardEntry candidate : campaignFactionMissionBoard(ctx, faction)) {
+                if (candidate.id.equals(missionId)) {
+                    entry = candidate;
+                    break;
+                }
+            }
+            if (entry != null) break;
+        }
+        if (entry == null) return false;
+        CampaignLocation target = campaignLocationById(st, entry.targetLocationId);
+        if (target == null || target.destroyed) return false;
+        applyCampaignBoardMissionReward(ctx, st, entry, target);
+        st.completedCampaignBoardMissionIds.add(entry.id);
+        return true;
+    }
+
     public static List<String> campaignProductionReadinessLines(GameContext ctx) {
         CampaignState st = state(ctx);
         return ProductionReadinessLongevitySystem.commandBoardLines((st == null) ? null : st.productionReadiness);
@@ -3813,8 +4299,656 @@ public final class CampaignSystem {
                 + "  score " + (int) Math.round(theater.controlScore)
                 + "  supply " + (int) Math.round(theater.supplyState)
                 + "  threat " + (int) Math.round(theater.threatPressure)
+                + "  G/Y/R " + (int) Math.round(theater.greenInfluence)
+                + "/" + (int) Math.round(theater.yellowInfluence)
+                + "/" + (int) Math.round(theater.redInfluence)
                 + "  danger " + (int) Math.round(theater.danger)
                 + "  trade " + (int) Math.round(theater.tradeHealth);
+    }
+
+    private static void addGreenMissionBoardEntries(CampaignState st, ArrayList<CampaignMissionBoardEntry> out) {
+        if (st == null || out == null) return;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!missionBoardCanUseLocation(location)) continue;
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, location.y));
+            if (location.ownerFaction == Faction.ENEMY) {
+                String family = switch (location.facilityType) {
+                    case MINING_OPERATION -> "capture mining site";
+                    case SHIPYARD, FORTRESS, BLOCKADE, BOSS_STAGING_AREA -> "attack Red position";
+                    case LISTENING_POST, SENSOR_TOWER, RELAY -> "destroy Red scouts";
+                    default -> "attack Red position";
+                };
+                out.add(new CampaignMissionBoardEntry("green-" + location.facilityId + "-assault",
+                        Faction.TEAM_C,
+                        family,
+                        location.id,
+                        "Break Red control at " + location.name,
+                        missionRiskLabel(location, theater),
+                        "+2 Green favor, Red influence reduced",
+                        missionTimePressureLabel(theater),
+                        expectedOppositionLabel(location, theater),
+                        2,
+                        5));
+            } else if (location.ownerFaction == Faction.TEAM_C && theater != null && theater.redInfluence >= 28.0) {
+                out.add(new CampaignMissionBoardEntry("green-" + location.facilityId + "-defense",
+                        Faction.TEAM_C,
+                        "defend Green base",
+                        location.id,
+                        "Defend " + location.name + " from Red pressure",
+                        missionRiskLabel(location, theater),
+                        "+1 Green favor, support route stabilized",
+                        theater.redInfluence >= 55.0 ? "urgent" : "active",
+                        "Red patrols and raiders",
+                        1,
+                        3));
+            } else if (location.facilityType == CampaignFacilityType.MINING_OPERATION && location.ownerFaction != Faction.TEAM_C) {
+                out.add(new CampaignMissionBoardEntry("green-" + location.facilityId + "-mine",
+                        Faction.TEAM_C,
+                        "capture mining site",
+                        location.id,
+                        "Secure resources at " + location.name,
+                        missionRiskLabel(location, theater),
+                        "+1 Green favor, resource flow improved",
+                        "open",
+                        expectedOppositionLabel(location, theater),
+                        1,
+                        2));
+            }
+        }
+        addGreenScoutStrikeEntries(st, out);
+        addGreenEscortAndLiberationEntries(st, out);
+    }
+
+    private static void addYellowMissionBoardEntries(CampaignState st, ArrayList<CampaignMissionBoardEntry> out) {
+        if (st == null || out == null) return;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!missionBoardCanUseLocation(location)) continue;
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, location.y));
+            if (location.ownerFaction == Faction.ENEMY) {
+                String family = switch (location.facilityType) {
+                    case PRISON_CAMP -> "rescue prisoners";
+                    case FUEL_DEPOT, SHIPYARD, RELAY, SENSOR_TOWER -> "sabotage Red facility";
+                    case CIVILIAN_HUB, REBEL_HIDEOUT -> "liberate Yellow settlement";
+                    default -> "rebel against Red";
+                };
+                out.add(new CampaignMissionBoardEntry("yellow-" + location.facilityId + "-uprising",
+                        Faction.TEAM_D,
+                        family,
+                        location.id,
+                        "Support Yellow action at " + location.name,
+                        missionRiskLabel(location, theater),
+                        "+2 Yellow favor, local Red control reduced",
+                        missionTimePressureLabel(theater),
+                        expectedOppositionLabel(location, theater),
+                        2,
+                        4));
+            } else if (location.ownerFaction == Faction.TEAM_D
+                    && (location.facilityType == CampaignFacilityType.CIVILIAN_HUB
+                    || location.facilityType == CampaignFacilityType.MINING_OPERATION
+                    || location.facilityType == CampaignFacilityType.SHIPYARD)) {
+                out.add(new CampaignMissionBoardEntry("yellow-" + location.facilityId + "-protect",
+                        Faction.TEAM_D,
+                        location.facilityType == CampaignFacilityType.MINING_OPERATION ? "protect mining operation" : "defend civilian hub",
+                        location.id,
+                        "Protect " + location.name + " from occupation pressure",
+                        missionRiskLabel(location, theater),
+                        "+1 Yellow favor, better local intel",
+                        theater != null && theater.redInfluence >= 45.0 ? "urgent" : "active",
+                        "Red scouts and raiders",
+                        1,
+                        3));
+            }
+        }
+        addYellowRefugeeEscortEntries(st, out);
+    }
+
+    private static void addGreenScoutStrikeEntries(CampaignState st, ArrayList<CampaignMissionBoardEntry> out) {
+        if (st == null || out == null) return;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction != Faction.ENEMY) continue;
+            if (force.kind != CampaignForceKind.PATROL_GROUP && force.kind != CampaignForceKind.STRIKE_DETACHMENT) continue;
+            if (force.contactState != CampaignForceContactState.KNOWN || force.contactConfidence < 0.45) continue;
+            CampaignLocation nearest = nearestKnownFacility(st, force.x, force.y, Faction.TEAM_C);
+            if (nearest == null) continue;
+            out.add(new CampaignMissionBoardEntry("green-force-" + force.id + "-scout",
+                    Faction.TEAM_C,
+                    "destroy Red scouts",
+                    nearest.id,
+                    "Destroy " + force.name + " near " + nearest.name,
+                    force.strength >= 60.0 ? "high" : "moderate",
+                    "+1 Green favor, Red patrol pressure reduced",
+                    "active",
+                    campaignForceKindLabel(force.kind),
+                    1,
+                    4));
+            if (out.size() >= 8) return;
+        }
+    }
+
+    private static void addGreenEscortAndLiberationEntries(CampaignState st, ArrayList<CampaignMissionBoardEntry> out) {
+        if (st == null || out == null) return;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!missionBoardCanUseLocation(location)) continue;
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, location.y));
+            if (location.ownerFaction == Faction.TEAM_C && facilityHasServiceValue(location)) {
+                out.add(new CampaignMissionBoardEntry("green-" + location.facilityId + "-convoy",
+                        Faction.TEAM_C,
+                        "escort Green convoy",
+                        location.id,
+                        "Escort logistics traffic from " + location.name,
+                        missionRiskLabel(location, theater),
+                        "+1 Green favor, allied route stability",
+                        theater != null && theater.redInfluence >= 48.0 ? "urgent" : "active",
+                        "Red raiders and route hunters",
+                        1,
+                        2));
+            } else if (location.ownerFaction == Faction.TEAM_D
+                    && (location.facilityType == CampaignFacilityType.CIVILIAN_HUB
+                    || location.facilityType == CampaignFacilityType.PRISON_CAMP
+                    || location.facilityType == CampaignFacilityType.REBEL_HIDEOUT)) {
+                out.add(new CampaignMissionBoardEntry("green-" + location.facilityId + "-liberate-yellow",
+                        Faction.TEAM_C,
+                        "liberate Yellow settlement",
+                        location.id,
+                        "Break pressure around " + location.name,
+                        missionRiskLabel(location, theater),
+                        "+1 Green favor, Yellow support improved",
+                        theater != null && theater.redInfluence >= 45.0 ? "urgent" : "active",
+                        "Red occupation detachments",
+                        1,
+                        3));
+            }
+            if (out.size() >= 10) return;
+        }
+    }
+
+    private static void addYellowRefugeeEscortEntries(CampaignState st, ArrayList<CampaignMissionBoardEntry> out) {
+        if (st == null || out == null) return;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!missionBoardCanUseLocation(location)) continue;
+            if (location.ownerFaction != Faction.TEAM_D || location.facilityType != CampaignFacilityType.CIVILIAN_HUB) continue;
+            out.add(new CampaignMissionBoardEntry("yellow-" + location.facilityId + "-refugees",
+                    Faction.TEAM_D,
+                    "escort refugees",
+                    location.id,
+                    "Escort refugees from " + location.name,
+                    missionRiskLabel(location, campaignTheaterById(st, theaterForPoint(st, location.y))),
+                    "+1 Yellow favor, civilian route stabilized",
+                    "active",
+                    "Red patrol screen",
+                    1,
+                    2));
+            if (out.size() >= 8) return;
+        }
+    }
+
+    private static boolean missionBoardCanUseLocation(CampaignLocation location) {
+        if (location == null || location.destroyed || !location.discovered) return false;
+        if (location.intelLevel == CampaignIntelLevel.UNKNOWN || location.intelLevel == CampaignIntelLevel.PARTIAL) return false;
+        if (location.facilityType == null || location.facilityType == CampaignFacilityType.UNKNOWN) return false;
+        return !location.completed || location.primaryMission;
+    }
+
+    private static int missionBoardPriority(CampaignState st, CampaignMissionBoardEntry entry) {
+        CampaignLocation location = campaignLocationById(st, entry == null ? "" : entry.targetLocationId);
+        CampaignTheaterState theater = location == null ? null : campaignTheaterById(st, theaterForPoint(st, location.y));
+        int score = location == null ? 0 : location.strategicValue * 10;
+        if (theater != null) score += (int) Math.round(theater.redInfluence * 0.45);
+        if (entry != null && entry.timePressure.toLowerCase(Locale.US).contains("urgent")) score += 18;
+        return score;
+    }
+
+    private static String missionRiskLabel(CampaignLocation location, CampaignTheaterState theater) {
+        double risk = (location == null ? 0.35 : location.threatLevel) * 62.0
+                + (theater == null ? 20.0 : theater.redInfluence * 0.38)
+                + (location == null ? 0.0 : location.strategicValue * 4.0);
+        if (risk >= 72.0) return "extreme";
+        if (risk >= 54.0) return "high";
+        if (risk >= 34.0) return "moderate";
+        return "low";
+    }
+
+    private static String missionTimePressureLabel(CampaignTheaterState theater) {
+        if (theater == null) return "active";
+        if (theater.redInfluence >= 70.0 || theater.threatPressure >= 72.0) return "urgent";
+        if (theater.redInfluence >= 45.0 || theater.routeRisk >= 50.0) return "active";
+        return "open";
+    }
+
+    private static String expectedOppositionLabel(CampaignLocation location, CampaignTheaterState theater) {
+        if (location == null) return "unknown contacts";
+        String base = switch (location.facilityType == null ? CampaignFacilityType.UNKNOWN : location.facilityType) {
+            case FORTRESS, BOSS_STAGING_AREA -> "heavy garrison";
+            case SHIPYARD -> "yard defense fleet";
+            case BLOCKADE -> "blockade group";
+            case SENSOR_TOWER, LISTENING_POST, RELAY -> "scout screen";
+            case PRISON_CAMP, FUEL_DEPOT -> "guard detachment";
+            case MINING_OPERATION -> "security patrol";
+            default -> "local patrols";
+        };
+        if (theater != null && theater.redInfluence >= 70.0) return "elite " + base;
+        return base;
+    }
+
+    private static CampaignLocation nearestKnownFacility(CampaignState st, double x, double y, Faction preferredOwner) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (!missionBoardCanUseLocation(location)) continue;
+            if (preferredOwner != null && location.ownerFaction != preferredOwner) continue;
+            double d2 = GameMath.dist2(location.x, location.y, x, y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static void applyCampaignBoardMissionReward(GameContext ctx,
+                                                        CampaignState st,
+                                                        CampaignMissionBoardEntry entry,
+                                                        CampaignLocation target) {
+        if (ctx == null || st == null || entry == null || target == null) return;
+        if (entry.faction == Faction.TEAM_D) {
+            st.yellowLiberationFavor += entry.reputationDelta;
+        } else {
+            st.greenContractFavor += entry.reputationDelta;
+        }
+        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + entry.redHostilityDelta, 0.0, 100.0);
+        st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + entry.redHostilityDelta * 0.55, 0.0, 100.0);
+        applyFacilityMissionOutcome(ctx, st, entry, target);
+        maybeSpawnCampaignSupportReward(ctx, st, entry.faction);
+        maybeSpawnRedEscalationResponse(ctx, st);
+        recomputeCampaignTheaterStates(st);
+        invalidateCampaignRouteSegmentCache(st);
+        pushTheaterEvent(st, factionBoardName(entry.faction) + " mission complete: " + entry.objective);
+        EventSystem.showBanner(ctx, factionBoardName(entry.faction).toUpperCase(Locale.US)
+                + " MISSION COMPLETE  FAVOR +" + entry.reputationDelta, 2.0);
+    }
+
+    private static void applyFacilityMissionOutcome(GameContext ctx,
+                                                    CampaignState st,
+                                                    CampaignMissionBoardEntry entry,
+                                                    CampaignLocation target) {
+        Faction newOwner = entry.faction == Faction.TEAM_D || entry.family.contains("Yellow settlement")
+                ? Faction.TEAM_D : Faction.TEAM_C;
+        boolean flipsOwnership = target.ownerFaction == Faction.ENEMY
+                || entry.family.contains("capture")
+                || entry.family.contains("liberate")
+                || entry.family.contains("rebel");
+        if (flipsOwnership) {
+            target.ownerFaction = newOwner;
+            target.discovered = true;
+            target.intelLevel = CampaignIntelLevel.FULL;
+            target.intelQuality = ContactIntelQuality.TARGET_QUALITY;
+            target.lastChangedAtSec = Math.max(target.lastChangedAtSec, st.theaterWarTickIndex);
+            initializeFacilityOperationalFields(target);
+            StrategicNodeState node = strategicNodeForLocation(st, target.id);
+            if (node != null) {
+                node.lastOwner = node.owner;
+                node.owner = TheaterNodeOwner.BLUE_GREEN;
+                node.contestProgress = Math.max(45.0, Math.abs(node.contestProgress));
+                node.takeoverCooldownSec = Math.max(node.takeoverCooldownSec, 45.0);
+            }
+            CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, target.y));
+            if (theater != null) {
+                if (newOwner == Faction.TEAM_D) {
+                    theater.yellowInfluence = MathUtil.clamp(theater.yellowInfluence + 8.0 + target.strategicValue, 0.0, 100.0);
+                } else {
+                    theater.greenInfluence = MathUtil.clamp(theater.greenInfluence + 8.0 + target.strategicValue, 0.0, 100.0);
+                }
+                theater.redInfluence = MathUtil.clamp(theater.redInfluence - 8.0 - target.strategicValue, 0.0, 100.0);
+                applyNormalizedInfluence(theater, theater.greenInfluence, theater.yellowInfluence, theater.redInfluence);
+            }
+            pushTheaterEvent(st, "OWNERSHIP SHIFT: " + target.name + " now supports " + factionBoardName(newOwner));
+        }
+        if (entry.family.contains("sabotage") && target.ownerFaction == Faction.ENEMY) {
+            target.destroyed = target.facilityType == CampaignFacilityType.FUEL_DEPOT
+                    || target.facilityType == CampaignFacilityType.SENSOR_TOWER
+                    || target.facilityType == CampaignFacilityType.LISTENING_POST;
+            if (target.destroyed) {
+                target.lastChangedAtSec = Math.max(target.lastChangedAtSec, st.theaterWarTickIndex);
+                initializeFacilityOperationalFields(target);
+            }
+        }
+        if (entry.family.contains("defend") || entry.family.contains("protect") || entry.family.contains("escort")) {
+            target.supportRouteStabilized = true;
+            improveFacilityIntel(target, CampaignIntelLevel.FULL);
+            initializeFacilityOperationalFields(target);
+        }
+    }
+
+    private static void maybeSpawnCampaignSupportReward(GameContext ctx, CampaignState st, Faction faction) {
+        if (ctx == null || st == null) return;
+        int favor = faction == Faction.TEAM_D ? st.yellowLiberationFavor : st.greenContractFavor;
+        if (favor < 2) return;
+        String key = faction == Faction.TEAM_D ? "yellow-support-tier-" + (favor / 2) : "green-support-tier-" + (favor / 2);
+        String name = faction == Faction.TEAM_D ? "Yellow Rebel Strike Group" : "Green Support Escort";
+        for (CampaignForce force : st.campaignForces) {
+            if (force != null && key.equals(force.sourceLocationId)) return;
+        }
+        CampaignLocation home = firstSupportHomeForFaction(st, faction);
+        double x = home == null ? st.playerGalaxyX + 160.0 : home.x;
+        double y = home == null ? st.playerGalaxyY + 120.0 : home.y;
+        CampaignForce support = ensureCampaignForce(st,
+                faction == Faction.TEAM_D ? CampaignForceKind.STRIKE_DETACHMENT : CampaignForceKind.PATROL_GROUP,
+                faction,
+                name + " " + Math.max(1, favor / 2),
+                home == null ? "allied support channel" : home.name,
+                "Visible support reward from reputation tier " + supportTierName(favor),
+                x,
+                y);
+        if (support == null) return;
+        support.sourceLocationId = key;
+        support.homeBaseId = home == null ? "" : home.id;
+        support.strength = Math.max(support.strength, faction == Faction.TEAM_D ? 58.0 : 48.0);
+        support.readiness = Math.max(support.readiness, 76.0);
+        support.supply = Math.max(support.supply, 72.0);
+        support.visibleToPlayer = true;
+        support.contactState = CampaignForceContactState.KNOWN;
+        support.contactConfidence = 1.0;
+        configureNamedFleetForce(st, support,
+                faction == Faction.TEAM_D ? CampaignFleetMission.INTERCEPT : CampaignFleetMission.ESCORT,
+                faction == Faction.TEAM_D ? CampaignFleetTemplate.INTERCEPTOR : CampaignFleetTemplate.PATROL,
+                faction == Faction.TEAM_D ? CampaignForceIntent.INTERCEPTING : CampaignForceIntent.ESCORTING);
+        assignFallbackRoamRoute(st, support, x, y);
+        pushTheaterEvent(st, "SUPPORT COMMITTED: " + support.name + " from " + factionBoardName(faction));
+    }
+
+    private static void maybeSpawnRedEscalationResponse(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        int hostility = campaignRedHostility(ctx);
+        if (hostility < 40) return;
+        int tier = Math.min(5, Math.max(1, hostility / 20));
+        String key = "red-escalation-tier-" + tier;
+        for (CampaignForce force : st.campaignForces) {
+            if (force != null && key.equals(force.sourceLocationId)) return;
+        }
+        CampaignLocation home = firstRedEscalationHome(st);
+        if (home == null) return;
+        CampaignForce hunter = ensureCampaignForce(st,
+                CampaignForceKind.STRIKE_DETACHMENT,
+                Faction.ENEMY,
+                "Red Escalation Hunter " + tier,
+                home.name,
+                redEscalationCountermove(hostility, countLostRedAssets(st), countRedCoreDefenses(st)),
+                home.x,
+                home.y);
+        if (hunter == null) return;
+        hunter.sourceLocationId = key;
+        hunter.homeBaseId = home.id;
+        hunter.destinationLocationId = st.currentGalaxyLocationId == null ? "" : st.currentGalaxyLocationId;
+        hunter.strength = Math.max(hunter.strength, 52.0 + tier * 9.0);
+        hunter.readiness = Math.max(hunter.readiness, 70.0 + tier * 3.0);
+        hunter.supply = Math.max(hunter.supply, 68.0);
+        hunter.visibleToPlayer = hostility < 70;
+        hunter.contactState = hostility >= 70 ? CampaignForceContactState.SUSPECTED : CampaignForceContactState.KNOWN;
+        hunter.contactConfidence = hostility >= 70 ? 0.46 : 0.82;
+        configureNamedFleetForce(st, hunter, CampaignFleetMission.INTERCEPT, CampaignFleetTemplate.INTERCEPTOR, CampaignForceIntent.INTERCEPTING);
+        setCampaignForceRoute(hunter, hunter.x, hunter.y,
+                MathUtil.clamp(st.playerGalaxyX, 0.0, Math.max(1.0, ctx.WORLD_W)),
+                MathUtil.clamp(st.playerGalaxyY, 0.0, Math.max(1.0, ctx.WORLD_H)));
+        pushTheaterEvent(st, "RED ESCALATION: " + hunter.name + " launched from " + home.name);
+    }
+
+    private static CampaignLocation firstRedEscalationHome(CampaignState st) {
+        if (st == null) return null;
+        CampaignLocation best = null;
+        int bestValue = -1;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || location.ownerFaction != Faction.ENEMY) continue;
+            if (location.facilityType != CampaignFacilityType.FORTRESS
+                    && location.facilityType != CampaignFacilityType.SHIPYARD
+                    && location.facilityType != CampaignFacilityType.BOSS_STAGING_AREA
+                    && location.facilityType != CampaignFacilityType.BLOCKADE) continue;
+            if (location.strategicValue > bestValue) {
+                best = location;
+                bestValue = location.strategicValue;
+            }
+        }
+        return best;
+    }
+
+    private static int countFacilities(CampaignState st,
+                                       Faction owner,
+                                       CampaignFacilityType type,
+                                       boolean capturedByAllies,
+                                       boolean lostByRed) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null) continue;
+            if (type != null && location.facilityType != type) continue;
+            if (owner != null && location.ownerFaction != owner) continue;
+            if (capturedByAllies && (location.ownerFaction == Faction.ENEMY || location.destroyed)) continue;
+            if (lostByRed && location.ownerFaction == Faction.ENEMY && !location.destroyed) continue;
+            count++;
+        }
+        return count;
+    }
+
+    private static int countCapturedRelayLikeFacilities(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.ownerFaction == Faction.ENEMY || location.destroyed) continue;
+            if (location.facilityType == CampaignFacilityType.RELAY
+                    || location.facilityType == CampaignFacilityType.SENSOR_TOWER
+                    || location.facilityType == CampaignFacilityType.LISTENING_POST) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countCapturedIntelFacilities(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || location.ownerFaction == Faction.ENEMY) continue;
+            if (location.facilityType == CampaignFacilityType.RELAY
+                    || location.facilityType == CampaignFacilityType.LISTENING_POST
+                    || location.facilityType == CampaignFacilityType.SENSOR_TOWER) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countVisibleIntelPatrols(CampaignState st, boolean hostile) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || !campaignForceVisibleOnMap(force)) continue;
+            boolean isHostile = force.faction == Faction.ENEMY;
+            if (isHostile != hostile) continue;
+            if (force.mission == CampaignFleetMission.RECON
+                    || force.mission == CampaignFleetMission.PATROL
+                    || force.kind == CampaignForceKind.PATROL_GROUP
+                    || force.kind == CampaignForceKind.BASE_DEFENSE) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countDestroyedRedFortresses(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || !location.destroyed) continue;
+            if (location.facilityType == CampaignFacilityType.FORTRESS
+                    || location.facilityType == CampaignFacilityType.BOSS_STAGING_AREA) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countLostRedAssets(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null) continue;
+            boolean startedRed = location.legacyPoiId != null && !location.legacyPoiId.isBlank()
+                    && (isRedLocationName(location.name)
+                    || "UPPER".equalsIgnoreCase(location.zoneId)
+                    || "NORTHERN".equalsIgnoreCase(location.zoneId));
+            if (!startedRed) continue;
+            if (location.destroyed || location.ownerFaction != Faction.ENEMY) count++;
+        }
+        return count;
+    }
+
+    private static int countLiberatedYellowHubs(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.ownerFaction != Faction.TEAM_D || location.destroyed) continue;
+            if (location.facilityType == CampaignFacilityType.CIVILIAN_HUB
+                    || location.facilityType == CampaignFacilityType.REBEL_HIDEOUT
+                    || location.facilityType == CampaignFacilityType.PRISON_CAMP) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int countRedCoreDefenses(CampaignState st) {
+        if (st == null) return 0;
+        int count = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || location.ownerFaction != Faction.ENEMY) continue;
+            if (!"NORTHERN".equalsIgnoreCase(location.zoneId) && !"EARTH".equalsIgnoreCase(location.zoneId)) continue;
+            if (location.facilityType == CampaignFacilityType.FORTRESS
+                    || location.facilityType == CampaignFacilityType.SHIPYARD
+                    || location.facilityType == CampaignFacilityType.SENSOR_TOWER
+                    || location.facilityType == CampaignFacilityType.BOSS_STAGING_AREA) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String redEscalationCountermove(int hostility, int lostRedAssets, int remainingCore) {
+        if (hostility >= 80) return "assassin fleets hunting Blue command and allied shipyards";
+        if (lostRedAssets >= 4) return "counteroffensives against captured facilities";
+        if (remainingCore <= 2) return "fortress upgrades around Earth defense assets";
+        if (hostility >= 60) return "hunter fleets and reinforced patrol density";
+        if (hostility >= 40) return "shipyard reinforcement and scout pressure";
+        return "monitoring allied support growth";
+    }
+
+    private static CampaignLocation firstSupportHomeForFaction(CampaignState st, Faction faction) {
+        if (st == null) return null;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || !location.discovered) continue;
+            if (location.ownerFaction == faction && facilityCanGenerateFleet(location)) return location;
+        }
+        return null;
+    }
+
+    private static void improveFacilityIntel(CampaignLocation location, CampaignIntelLevel targetLevel) {
+        if (location == null || targetLevel == null) return;
+        if (location.intelLevel.ordinal() < targetLevel.ordinal()) location.intelLevel = targetLevel;
+        if (targetLevel.ordinal() >= CampaignIntelLevel.GOOD.ordinal()
+                && location.intelQuality.ordinal() < ContactIntelQuality.IDENTIFIED.ordinal()) {
+            location.intelQuality = ContactIntelQuality.IDENTIFIED;
+        }
+    }
+
+    private static void improveFacilityIntel(CampaignLocation location, ContactIntelQuality quality) {
+        if (location == null || quality == null) return;
+        CampaignIntelLevel level = switch (quality) {
+            case UNKNOWN -> CampaignIntelLevel.UNKNOWN;
+            case CLASSIFIED -> CampaignIntelLevel.PARTIAL;
+            case IDENTIFIED, TRACKED -> CampaignIntelLevel.GOOD;
+            case TARGET_QUALITY -> CampaignIntelLevel.FULL;
+        };
+        improveFacilityIntel(location, level);
+    }
+
+    private static String supportTierName(int favor) {
+        int tier = supportTierIndex(favor);
+        return switch (tier) {
+            case 0 -> "Unknown fleet";
+            case 1 -> "Discounts and supply drops";
+            case 2 -> "Temporary escorts and better intel";
+            case 3 -> "Strike groups and emergency reinforcement";
+            case 4 -> "Permanent allied ships";
+            default -> "Final battle coalition commitment";
+        };
+    }
+
+    private static int supportTierIndex(int favor) {
+        return MathUtil.clamp(favor / 2, 0, 5);
+    }
+
+    private static String supportTierBenefits(Faction faction, int favor) {
+        int tier = supportTierIndex(favor);
+        return switch (tier) {
+            case 0 -> "no reliable support";
+            case 1 -> "discounts, small supply drops";
+            case 2 -> "temporary escorts, better intel";
+            case 3 -> faction == Faction.TEAM_D
+                    ? "rebel strike groups, emergency relief"
+                    : "strike groups, emergency reinforcement";
+            case 4 -> faction == Faction.TEAM_D
+                    ? "permanent rebel ships, sabotage cells"
+                    : "permanent allied ships, capital support";
+            default -> "final battle coalition commitment";
+        };
+    }
+
+    private static int rescuedBlueShipCount(CampaignState st) {
+        if (st == null) return 0;
+        int rescued = Math.max(0, st.bossDropsCollected);
+        for (PersistentFleetEntry entry : st.persistentBlueFleet) {
+            if (entry != null && !entry.destroyed) rescued += 1 + Math.max(0, entry.rescues);
+        }
+        return rescued;
+    }
+
+    private static int alliedRouteStabilityScore(CampaignState st) {
+        if (st == null) return 0;
+        int total = 0;
+        int stable = 0;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location.destroyed || !location.discovered) continue;
+            if (location.ownerFaction == Faction.ENEMY) continue;
+            total++;
+            if (location.supportRouteStabilized
+                    || location.facilityType == CampaignFacilityType.RELAY
+                    || location.facilityType == CampaignFacilityType.RESUPPLY_BASE
+                    || !location.services.isEmpty()) {
+                stable++;
+            }
+        }
+        return total <= 0 ? 0 : MathUtil.clamp((int) Math.round(stable * 100.0 / total), 0, 100);
+    }
+
+    private static int finalBattlePlayerFleetReadiness(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return 0;
+        int ships = Math.max(1, st.persistentBlueFleet.size() + 1);
+        int supplies = MathUtil.clamp(st.campaignSupplies, 0, 100);
+        int fuel = MathUtil.clamp(st.campaignFuel, 0, 100);
+        int ammo = MathUtil.clamp(st.campaignAmmo, 0, 100);
+        int hull = ctx.player == null ? 50 : MathUtil.clamp((int) Math.round(ctx.player.hp * 100.0 / Math.max(1, ctx.player.hpMax)), 0, 100);
+        return MathUtil.clamp((int) Math.round(ships * 8.0 + supplies * 0.22 + fuel * 0.18 + ammo * 0.12 + hull * 0.20), 0, 100);
+    }
+
+    private static String redHostilityBand(int hostility) {
+        if (hostility >= 80) return "counteroffensive";
+        if (hostility >= 60) return "hunter fleets active";
+        if (hostility >= 40) return "reinforcing";
+        if (hostility >= 20) return "watching";
+        return "dormant";
+    }
+
+    private static String factionBoardName(Faction faction) {
+        return faction == Faction.TEAM_D ? "Yellow" : "Green";
     }
 
     public static List<TheaterBand> campaignTheaterBands(GameContext ctx) {
@@ -3831,9 +4965,328 @@ public final class CampaignSystem {
                     theaterControlShortToken(theater.controlState),
                     theater.controlScore,
                     theater.supplyState,
-                    theater.threatPressure));
+                    theater.threatPressure,
+                    theater.greenInfluence,
+                    theater.yellowInfluence,
+                    theater.redInfluence));
         }
         return out;
+    }
+
+    public static String campaignInfluenceBandLabel(double influence) {
+        double value = MathUtil.clamp(influence, 0.0, 100.0);
+        if (value >= 90.0) return "firm control";
+        if (value >= 55.0) return "occupied/held";
+        if (value >= 35.0) return "contested";
+        if (value >= 15.0) return "losing control";
+        return "nearly liberated/collapsed";
+    }
+
+    public static List<CampaignRouteSegment> campaignRouteSegments(GameContext ctx) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null) return List.of();
+        String cacheKey = campaignRouteSegmentCacheKey(st);
+        if (cacheKey.equals(st.cachedCampaignRouteSegmentKey) && st.cachedCampaignRouteSegments != null) {
+            return st.cachedCampaignRouteSegments;
+        }
+        ArrayList<CampaignRouteSegment> out = new ArrayList<>();
+        HashSet<String> seen = new HashSet<>();
+        addLocalZoneRouteSegments(st, out, seen);
+        addSupplyRouteSegments(st, out, seen);
+        addContestedRouteSegments(st, out, seen);
+        addBlockadeRouteSegments(st, out, seen);
+        addPlayerRouteSegment(ctx, st, out);
+        List<CampaignRouteSegment> result = List.copyOf(out);
+        st.cachedCampaignRouteSegmentKey = cacheKey;
+        st.cachedCampaignRouteSegments = result;
+        return result;
+    }
+
+    private static String campaignRouteSegmentCacheKey(CampaignState st) {
+        if (st == null) return "";
+        return st.theaterWarTickIndex + "|"
+                + st.galaxyMainPois.size() + "|"
+                + st.galaxyAreasOfInterest.size() + "|"
+                + st.campaignForces.size() + "|"
+                + st.selectedGalaxyLocationId + "|"
+                + Math.round(st.selectedFreeGalaxyTargetX) + "|"
+                + Math.round(st.selectedFreeGalaxyTargetY) + "|"
+                + Math.round(st.playerGalaxyX) + "|"
+                + Math.round(st.playerGalaxyY) + "|"
+                + st.galaxyTravel.traveling + "|"
+                + st.galaxyTravel.destinationId + "|"
+                + Math.round(st.galaxyTravel.progress * 1000.0);
+    }
+
+    private static void invalidateCampaignRouteSegmentCache(CampaignState st) {
+        if (st == null) return;
+        st.cachedCampaignRouteSegmentKey = "";
+        st.cachedCampaignRouteSegments = List.of();
+    }
+
+    private static void addLocalZoneRouteSegments(CampaignState st,
+                                                  ArrayList<CampaignRouteSegment> out,
+                                                  HashSet<String> seen) {
+        if (st == null || out == null || seen == null) return;
+        for (TheaterId theater : TheaterId.values()) {
+            ArrayList<CampaignLocation> zone = discoveredFacilitiesInTheater(st, theater);
+            zone.sort(Comparator.comparingDouble(location -> location.x));
+            int added = 0;
+            for (CampaignLocation from : zone) {
+                CampaignLocation to = nearestUnlinkedZoneNeighbor(st, from, zone, seen);
+                if (to == null) continue;
+                addRouteSegment(st, out, seen, CampaignRouteSegmentKind.LOCAL_ZONE, from, to,
+                        routeControlBetween(st, from, to), localRouteDanger(st, from, to), false);
+                if (++added >= Math.max(2, zone.size() / 2)) break;
+            }
+        }
+    }
+
+    private static void addSupplyRouteSegments(CampaignState st,
+                                               ArrayList<CampaignRouteSegment> out,
+                                               HashSet<String> seen) {
+        if (st == null || out == null || seen == null) return;
+        for (TheaterId theater : TheaterId.values()) {
+            ArrayList<CampaignLocation> supply = discoveredFacilitiesInTheater(st, theater);
+            supply.removeIf(location -> location.ownerFaction == Faction.ENEMY
+                    || (!facilityHasServiceValue(location)
+                    && location.facilityType != CampaignFacilityType.MINING_OPERATION
+                    && location.facilityType != CampaignFacilityType.RELAY));
+            supply.sort(Comparator.comparingDouble(location -> location.y));
+            for (int i = 1; i < supply.size(); i++) {
+                CampaignLocation a = supply.get(i - 1);
+                CampaignLocation b = supply.get(i);
+                addRouteSegment(st, out, seen, CampaignRouteSegmentKind.SUPPLY_LINE, a, b,
+                        routeControlBetween(st, a, b), localRouteDanger(st, a, b) * 0.72, false);
+            }
+        }
+    }
+
+    private static void addContestedRouteSegments(CampaignState st,
+                                                  ArrayList<CampaignRouteSegment> out,
+                                                  HashSet<String> seen) {
+        if (st == null || out == null || seen == null) return;
+        for (CampaignTheaterState theater : st.campaignTheaters) {
+            if (theater == null || (theater.redInfluence < 28.0 && theater.yellowInfluence < 28.0)) continue;
+            ArrayList<CampaignLocation> zone = discoveredFacilitiesInTheater(st, theater.id);
+            CampaignLocation allied = highestValueFacility(zone, false);
+            CampaignLocation red = highestValueRedFacility(zone);
+            if (allied != null && red != null) {
+                addRouteSegment(st, out, seen, CampaignRouteSegmentKind.CONTESTED_LANE, allied, red,
+                        CampaignControlVisualState.CONTESTED, theater.threatPressure, false);
+            }
+        }
+    }
+
+    private static void addBlockadeRouteSegments(CampaignState st,
+                                                 ArrayList<CampaignRouteSegment> out,
+                                                 HashSet<String> seen) {
+        if (st == null || out == null || seen == null) return;
+        for (CampaignLocation blockade : allCampaignLocations(st)) {
+            if (blockade == null || !blockade.discovered || blockade.destroyed) continue;
+            if (blockade.facilityType != CampaignFacilityType.BLOCKADE || blockade.ownerFaction != Faction.ENEMY) continue;
+            CampaignLocation target = nearestNonRedFacility(st, blockade);
+            if (target == null) continue;
+            addRouteSegment(st, out, seen, CampaignRouteSegmentKind.BLOCKADE_LINE, blockade, target,
+                    CampaignControlVisualState.RED, Math.max(68.0, blockade.threatLevel * 100.0), false);
+        }
+        for (CampaignForce force : st.campaignForces) {
+            if (!isMovingBlockadeForce(force)) continue;
+            out.add(new CampaignRouteSegment(CampaignRouteSegmentKind.BLOCKADE_LINE,
+                    CampaignControlVisualState.RED,
+                    force.homeBaseId,
+                    force.destinationLocationId,
+                    forceMarkerX(force),
+                    forceMarkerY(force),
+                    force.targetX,
+                    force.targetY,
+                    Math.max(70.0, force.strength),
+                    false));
+        }
+    }
+
+    private static void addPlayerRouteSegment(GameContext ctx, CampaignState st, ArrayList<CampaignRouteSegment> out) {
+        if (ctx == null || st == null || out == null) return;
+        CampaignLocation selected = selectedCampaignLocation(ctx);
+        double tx;
+        double ty;
+        String targetId;
+        if (selected != null) {
+            tx = selected.x;
+            ty = selected.y;
+            targetId = selected.id;
+        } else if (hasSelectedFreeTravelTarget(ctx)) {
+            tx = selectedFreeTravelTargetX(ctx);
+            ty = selectedFreeTravelTargetY(ctx);
+            targetId = "free-target";
+        } else if (st.galaxyTravel != null && st.galaxyTravel.traveling) {
+            tx = st.galaxyTravel.targetX;
+            ty = st.galaxyTravel.targetY;
+            targetId = st.galaxyTravel.destinationId;
+        } else {
+            return;
+        }
+        if (!Double.isFinite(tx) || !Double.isFinite(ty)) return;
+        double danger = selected == null
+                ? MathUtil.clamp(st.galaxyTravel == null ? 0.0 : st.galaxyTravel.interceptionRisk, 0.0, 100.0)
+                : analyzeRoute(st, ctx, st.playerGalaxyX, st.playerGalaxyY, selected).interceptionRisk;
+        out.add(new CampaignRouteSegment(CampaignRouteSegmentKind.PLAYER_PLOTTED,
+                CampaignControlVisualState.UNKNOWN,
+                st.currentGalaxyLocationId,
+                targetId,
+                st.playerGalaxyX,
+                st.playerGalaxyY,
+                tx,
+                ty,
+                danger,
+                true));
+    }
+
+    private static ArrayList<CampaignLocation> discoveredFacilitiesInTheater(CampaignState st, TheaterId theater) {
+        ArrayList<CampaignLocation> out = new ArrayList<>();
+        if (st == null || theater == null) return out;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || !location.discovered || location.destroyed) continue;
+            if (location.facilityType == CampaignFacilityType.UNKNOWN) continue;
+            if (theaterForPoint(st, location.y) == theater) out.add(location);
+        }
+        return out;
+    }
+
+    private static CampaignLocation nearestUnlinkedZoneNeighbor(CampaignState st,
+                                                                CampaignLocation from,
+                                                                ArrayList<CampaignLocation> zone,
+                                                                HashSet<String> seen) {
+        if (from == null || zone == null) return null;
+        CampaignLocation best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        for (CampaignLocation candidate : zone) {
+            if (candidate == null || candidate == from) continue;
+            if (seen != null && seen.contains(routeSegmentKey(from.id, candidate.id, CampaignRouteSegmentKind.LOCAL_ZONE))) continue;
+            double d2 = GameMath.dist2(from.x, from.y, candidate.x, candidate.y);
+            double sameOwnerBonus = from.ownerFaction == candidate.ownerFaction ? -120000.0 : 0.0;
+            double score = d2 + sameOwnerBonus;
+            if (score < bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignLocation highestValueFacility(ArrayList<CampaignLocation> locations, boolean redOnly) {
+        CampaignLocation best = null;
+        int bestValue = -1;
+        if (locations == null) return null;
+        for (CampaignLocation location : locations) {
+            if (location == null) continue;
+            if (redOnly && location.ownerFaction != Faction.ENEMY) continue;
+            if (!redOnly && location.ownerFaction == Faction.ENEMY) continue;
+            if (location.strategicValue > bestValue) {
+                best = location;
+                bestValue = location.strategicValue;
+            }
+        }
+        return best;
+    }
+
+    private static CampaignLocation highestValueRedFacility(ArrayList<CampaignLocation> locations) {
+        return highestValueFacility(locations, true);
+    }
+
+    private static CampaignLocation nearestNonRedFacility(CampaignState st, CampaignLocation from) {
+        if (st == null || from == null) return null;
+        CampaignLocation best = null;
+        double bestD2 = Double.POSITIVE_INFINITY;
+        for (CampaignLocation location : allCampaignLocations(st)) {
+            if (location == null || location == from || !location.discovered || location.destroyed) continue;
+            if (location.ownerFaction == Faction.ENEMY) continue;
+            if (theaterForPoint(st, location.y) != theaterForPoint(st, from.y)) continue;
+            double d2 = GameMath.dist2(location.x, location.y, from.x, from.y);
+            if (d2 < bestD2) {
+                best = location;
+                bestD2 = d2;
+            }
+        }
+        return best;
+    }
+
+    private static boolean facilityHasServiceValue(CampaignLocation location) {
+        return location != null && !location.services.isEmpty();
+    }
+
+    private static double localRouteDanger(CampaignState st, CampaignLocation a, CampaignLocation b) {
+        CampaignTheaterState theater = a == null ? null : campaignTheaterById(st, theaterForPoint(st, a.y));
+        double threat = ((a == null ? 0.0 : a.threatLevel) + (b == null ? 0.0 : b.threatLevel)) * 50.0;
+        double theaterRisk = theater == null ? 25.0 : theater.routeRisk * 0.55 + theater.redInfluence * 0.35;
+        return MathUtil.clamp(threat + theaterRisk, 0.0, 100.0);
+    }
+
+    private static CampaignControlVisualState routeControlBetween(CampaignState st, CampaignLocation a, CampaignLocation b) {
+        if (st == null || a == null || b == null) return CampaignControlVisualState.UNKNOWN;
+        CampaignControlVisualState ac = locationControlState(st, a, strategicNodeForLocation(st, a == null ? "" : a.id),
+                a == null ? null : campaignTheaterById(st, theaterForPoint(st, a.y)));
+        CampaignControlVisualState bc = locationControlState(st, b, strategicNodeForLocation(st, b == null ? "" : b.id),
+                b == null ? null : campaignTheaterById(st, theaterForPoint(st, b.y)));
+        if (ac == CampaignControlVisualState.RED || bc == CampaignControlVisualState.RED) return CampaignControlVisualState.RED;
+        if (ac == CampaignControlVisualState.CONTESTED || bc == CampaignControlVisualState.CONTESTED) return CampaignControlVisualState.CONTESTED;
+        if (ac == CampaignControlVisualState.YELLOW || bc == CampaignControlVisualState.YELLOW) return CampaignControlVisualState.YELLOW;
+        if (ac == CampaignControlVisualState.GREEN && bc == CampaignControlVisualState.GREEN) return CampaignControlVisualState.GREEN;
+        return CampaignControlVisualState.UNKNOWN;
+    }
+
+    private static void addRouteSegment(CampaignState st,
+                                        ArrayList<CampaignRouteSegment> out,
+                                        HashSet<String> seen,
+                                        CampaignRouteSegmentKind kind,
+                                        CampaignLocation from,
+                                        CampaignLocation to,
+                                        CampaignControlVisualState control,
+                                        double danger,
+                                        boolean playerRoute) {
+        if (out == null || seen == null || from == null || to == null) return;
+        String key = routeSegmentKey(from.id, to.id, kind);
+        if (!seen.add(key)) return;
+        out.add(new CampaignRouteSegment(kind, control, from.id, to.id, from.x, from.y, to.x, to.y, danger, playerRoute));
+    }
+
+    private static String routeSegmentKey(String a, String b, CampaignRouteSegmentKind kind) {
+        String left = a == null ? "" : a;
+        String right = b == null ? "" : b;
+        if (left.compareTo(right) > 0) {
+            String tmp = left;
+            left = right;
+            right = tmp;
+        }
+        return (kind == null ? CampaignRouteSegmentKind.LOCAL_ZONE : kind).name() + "|" + left + "|" + right;
+    }
+
+    public static CampaignLocationControlView campaignLocationControlView(GameContext ctx, CampaignLocation location) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        return campaignLocationControlView(st, location);
+    }
+
+    private static CampaignLocationControlView campaignLocationControlView(CampaignState st, CampaignLocation location) {
+        if (location == null) {
+            return new CampaignLocationControlView(CampaignControlVisualState.UNKNOWN, "Unknown", "Unknown control", 0.0, 0.0);
+        }
+        StrategicNodeState node = strategicNodeForLocation(st, location.id);
+        CampaignTheaterState theater = (node == null) ? campaignTheaterById(st, theaterForPoint(st, location.y))
+                : campaignTheaterById(st, node.theaterId);
+        CampaignControlVisualState control = locationControlState(st, location, node, theater);
+        String siteType = campaignLocationSiteTypeLabel(location, node);
+        String status = switch (control) {
+            case GREEN -> "Allied control";
+            case YELLOW -> "Yellow neutral control";
+            case RED -> "Hostile control";
+            case CONTESTED -> "Contested control";
+            case UNKNOWN -> "Unknown control";
+        };
+        double contest = (node == null) ? 0.0 : node.contestProgress;
+        double threat = (theater == null) ? location.threatLevel * 100.0 : theater.threatPressure;
+        return new CampaignLocationControlView(control, siteType, status, contest, threat);
     }
 
     public static List<String> selectedLocationSidebarLines(GameContext ctx) {
@@ -3848,8 +5301,20 @@ public final class CampaignSystem {
         }
         ArrayList<String> out = new ArrayList<>();
         out.add("Type: " + selected.type.name().replace('_', ' '));
+        out.add("Facility: " + facilityTypeReadoutForIntel(selected)
+                + "  |  Owner " + facilityOwnerLabel(selected.ownerFaction)
+                + "  |  Value " + selected.strategicValue + "/5"
+                + "  |  Intel " + facilityIntelLabel(selected.intelLevel)
+                + facilityIdentityHookSuffix(selected));
+        out.add("Defense: " + facilityDefenseReadoutForIntel(selected)
+                + "  |  Resources " + facilityResourceReadoutForIntel(selected)
+                + "  |  Alert " + trimmedOrFallback(selected.alertState, "unknown"));
+        out.add("Services: " + facilityServicesReadoutForIntel(selected)
+                + "  |  Hooks " + facilityMissionHooksReadoutForIntel(selected)
+                + "  |  Garrison: " + facilityGarrisonReadoutForIntel(selected)
+                + "  |  Fleet Intel " + facilityIntelLabel(selected.fleetIntelLevel));
         out.add("Alignment: " + selectedLocationAlignmentLabel(selected) + "  |  Intel " + contactIntelQualityLabel(selected.intelQuality));
-        out.add("Threat: " + threatReadoutForSidebar(selected.threatLevel) + "  |  Fleet Order " + campaignFleetPostureReadout(ctx));
+        out.add("Threat: " + threatReadoutForSidebar(selected.threatLevel) + "  |  Strategic " + selected.strategicValue + "/5");
         if (requiresEarthPhaseUnlock(selected) && !earthPhaseUnlocked(st)) {
             out.add("Earth Gate: LOCKED  |  Stabilize " + earthPhaseMinStabilizedTheatersRequired()
                     + " theaters (" + stabilizedTheaterCount(st) + "/" + earthPhaseMinStabilizedTheatersRequired() + ")");
@@ -3889,6 +5354,69 @@ public final class CampaignSystem {
         return out;
     }
 
+    private static String facilityTypeReadoutForIntel(CampaignLocation location) {
+        if (location == null) return "Unknown contact";
+        CampaignIntelLevel intel = location.intelLevel == null ? CampaignIntelLevel.UNKNOWN : location.intelLevel;
+        return switch (intel) {
+            case UNKNOWN -> "Unknown contact";
+            case PARTIAL -> "Probable " + facilityTypeLabel(location.facilityType);
+            case GOOD, FULL -> facilityTypeLabel(location.facilityType);
+        };
+    }
+
+    private static String facilityIdentityHookSuffix(CampaignLocation location) {
+        if (location == null) return "";
+        CampaignIntelLevel intel = location.intelLevel == null ? CampaignIntelLevel.UNKNOWN : location.intelLevel;
+        if (intel == CampaignIntelLevel.UNKNOWN || intel == CampaignIntelLevel.PARTIAL) return "  |  Hooks hidden";
+        if (intel == CampaignIntelLevel.FULL) return "  |  Garrison: " + facilityGarrisonReadoutForIntel(location);
+        return "";
+    }
+
+    private static String facilityDefenseReadoutForIntel(CampaignLocation location) {
+        if (location == null || location.intelLevel == CampaignIntelLevel.UNKNOWN) return "unknown";
+        if (location.intelLevel == CampaignIntelLevel.PARTIAL) return roughStrengthBand(location.defenseStrength);
+        return String.valueOf((int) Math.round(location.defenseStrength));
+    }
+
+    private static String facilityResourceReadoutForIntel(CampaignLocation location) {
+        if (location == null || location.intelLevel == CampaignIntelLevel.UNKNOWN) return "unknown";
+        if (location.intelLevel == CampaignIntelLevel.PARTIAL) return roughStrengthBand(location.resourceValue);
+        return String.valueOf((int) Math.round(location.resourceValue));
+    }
+
+    private static String facilityServicesReadoutForIntel(CampaignLocation location) {
+        if (location == null || location.intelLevel == CampaignIntelLevel.UNKNOWN) return "unknown";
+        if (location.services == null || location.services.isEmpty()) return "none";
+        if (location.intelLevel == CampaignIntelLevel.PARTIAL) return "probable service traffic";
+        ArrayList<String> labels = new ArrayList<>();
+        for (HubService service : location.services) {
+            if (service != null) labels.add(service.name().replace('_', ' ').toLowerCase(Locale.US));
+            if (labels.size() >= 3) break;
+        }
+        return labels.isEmpty() ? "none" : String.join(", ", labels);
+    }
+
+    private static String facilityMissionHooksReadoutForIntel(CampaignLocation location) {
+        if (location == null || location.intelLevel == CampaignIntelLevel.UNKNOWN
+                || location.intelLevel == CampaignIntelLevel.PARTIAL) return "hidden";
+        if (location.missionTags.isEmpty()) return "none";
+        return String.join(", ", location.missionTags.subList(0, Math.min(3, location.missionTags.size())));
+    }
+
+    private static String facilityGarrisonReadoutForIntel(CampaignLocation location) {
+        if (location == null || location.intelLevel == CampaignIntelLevel.UNKNOWN
+                || location.intelLevel == CampaignIntelLevel.PARTIAL) return "unknown";
+        if (location.linkedFleetIds.isEmpty()) return "none";
+        return location.linkedFleetIds.size() + " linked fleet" + (location.linkedFleetIds.size() == 1 ? "" : "s");
+    }
+
+    private static String roughStrengthBand(double value) {
+        if (value >= 74.0) return "heavy";
+        if (value >= 48.0) return "medium";
+        if (value >= 22.0) return "light";
+        return "trace";
+    }
+
     private static void addCompactBattleContextToSelectedSidebar(ArrayList<String> out, List<String> context) {
         if (out == null || context == null || context.isEmpty()) return;
         int added = 0;
@@ -3902,23 +5430,24 @@ public final class CampaignSystem {
 
     private static void trimSelectedLocationSidebarLines(ArrayList<String> out) {
         if (out == null) return;
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Type: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Alignment: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Available Actions: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Support: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Battle Reason: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Hub Safety: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Danger Trend: ")) {}
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Route: ")) {}
+        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Alignment: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Threat Exposure: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Route Warning: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Recovery Route: ")) {}
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Region Note: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Site Plan: ")) {}
         while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Scar: ")) {}
-        while (out.size() > 15 && removeFirstSidebarLineStartingWith(out, "Known Contact: ")) {}
         while (out.size() > 15 && removeLastSidebarLineNotStartingWith(out,
                 "Why It Matters: ", "Gain: ", "If Ignored: ", "Available Action: ", "Risk: ",
-                "Primary Recommendation: ", "Contact State: ", "Site Memory: ", "Time Limit: ",
-                "Travel Result: ")) {}
+                "Route: ", "Primary Recommendation: ", "Contact State: ", "Site Memory: ", "Time Limit: ",
+                "Travel Result: ", "Known Contact: ", "Region Note: ", "Scan Detail: ",
+                "Threat: ", "Docking: ")) {}
         while (out.size() > 15) out.remove(out.size() - 1);
     }
 
@@ -6016,7 +7545,11 @@ public final class CampaignSystem {
         if (ctx == null || st == null || !st.enabled || ctx.ui == null) return List.of();
         ArrayList<CampaignAction> out = new ArrayList<>();
         UiState.TacticalMapTab tab = ctx.ui.tacticalMapTab;
-        if (tab == UiState.TacticalMapTab.STRIKES) tab = UiState.TacticalMapTab.MISSION;
+        boolean exposeStandaloneStrikeActions = tab == UiState.TacticalMapTab.STRIKES
+                && tacticalStrikeTabExposesActions(ctx);
+        if (tab == UiState.TacticalMapTab.STRIKES && !exposeStandaloneStrikeActions) {
+            tab = UiState.TacticalMapTab.MISSION;
+        }
         boolean hasSelection = hasTacticalMapSelection(ctx);
         boolean hasHostileContact = hasTacticalHostileStrikeSelection(ctx)
                 || (hasSelectedCampaignContactTarget(ctx) && selectedCampaignContactHostile(ctx));
@@ -6208,7 +7741,7 @@ public final class CampaignSystem {
                     CampaignSystem::holdSelectedDivisionPosition));
         }
 
-        if (tab == UiState.TacticalMapTab.STRIKES) {
+        if (exposeStandaloneStrikeActions) {
             out.add(action("TACTICAL_TRACK_TARGET",
                     "TRACK TARGET",
                     hasHostileContact ? selectedCampaignContactLabel(ctx) : "No hostile contact selected.",
@@ -8131,6 +9664,13 @@ public final class CampaignSystem {
                 && ctx.player.role == ShipRole.MOTHERSHIP;
     }
 
+    private static boolean tacticalStrikeTabExposesActions(GameContext ctx) {
+        if (ctx == null || ctx.config == null || ctx.player == null) return false;
+        if (ctx.player.role != ShipRole.MOTHERSHIP) return false;
+        return ctx.config.mode == GameMode.CUSTOM_BATTLES
+                || ctx.config.mode == GameMode.SHOOTING_RANGE;
+    }
+
     public static boolean confirmCampaignAction(GameContext ctx) {
         if (ctx == null || ctx.ui == null || !ctx.ui.campaignActionConfirm.active) return false;
         String actionId = ctx.ui.campaignActionConfirm.actionId;
@@ -8817,6 +10357,7 @@ public final class CampaignSystem {
             boolean newlyDiscovered = !location.discovered;
             location.discovered = true;
             location.intelQuality = ContactIntelQuality.IDENTIFIED;
+            improveFacilityIntel(location, ContactIntelQuality.IDENTIFIED);
             if (newlyDiscovered) trafficHits++;
             UISystem.addPing(ctx, location.x, location.y, 2.0);
         }
@@ -8889,6 +10430,7 @@ public final class CampaignSystem {
             location.intelQuality = (st.campaignIntelLevel >= 62.0 || dist <= 520.0)
                     ? ContactIntelQuality.IDENTIFIED
                     : ContactIntelQuality.CLASSIFIED;
+            improveFacilityIntel(location, location.intelQuality);
             if (ctx.ui != null) UISystem.addPing(ctx, location.x, location.y, 2.8);
             hits++;
         }
@@ -13333,12 +14875,17 @@ public final class CampaignSystem {
         public boolean bossDropFlagCore = false;
         public int bossDropsCollected = 0;
         public boolean strategicOvermapMode = false;
+        public boolean facilityFleetGenerationActive = false;
         public boolean strategicBootstrapLocked = false;
         public final List<CampaignLocation> galaxyMainPois = new ArrayList<>();
         public final List<CampaignLocation> galaxyAreasOfInterest = new ArrayList<>();
         public final List<CampaignTheaterState> campaignTheaters = new ArrayList<>();
         public final List<StrategicNodeState> strategicNodes = new ArrayList<>();
         public final List<String> theaterWarRecentEvents = new ArrayList<>();
+        public final java.util.LinkedHashSet<String> completedCampaignBoardMissionIds = new java.util.LinkedHashSet<>();
+        public final java.util.LinkedHashSet<String> expiredCampaignBoardMissionIds = new java.util.LinkedHashSet<>();
+        public List<CampaignRouteSegment> cachedCampaignRouteSegments = List.of();
+        public String cachedCampaignRouteSegmentKey = "";
         public double theaterWarTickAccumulatorSec = 0.0;
         public int theaterWarTickIndex = 0;
         public String selectedTheaterId = "";
@@ -13566,63 +15113,103 @@ public final class CampaignSystem {
         if (st == null || !st.galaxyMainPois.isEmpty()) return;
         String[] names = {
                 "Green Anchorage Pelagos",
+                "Green Resupply Base Hecate",
+                "Green Patrol Station Carina",
+                "Green Mining Operation Delta",
+                "Green Repair Yard Vesta",
+                "Green Forward Fort Thessa",
                 "Yellow Exchange Ilex",
-                "Frontier Shipyard Carina",
-                "Broker Relay Morrow",
-                "Green Repair Port Hecate",
                 "Yellow Commerce Spine Oris",
-                "Dustline Listening Bastion",
+                "Yellow Rebel Cell Nysa",
+                "Yellow Refugee Convoy Haven Oriel",
+                "Yellow Civilian Shipworks Myr",
+                "Yellow Mining Colony Ashkel",
                 "Red Corridor Breakpoint",
-                "Green Drydock Vesta",
-                "Yellow Logistics Harbor Nysa",
-                "Refinery Port Ashkel",
-                "Coalition Relay Kharon",
-                "Contract Shipworks Myr",
-                "Yellow Escort Haven Oriel",
-                "Frontier Arsenal Kharon Gate",
-                "Green Stronghold Thessa",
-                "Breakchain Recovery Ring",
-                "Resistance Foundry Aster",
-                "Luna Trade Anchorage",
-                "Earthlane Forward Bastion",
-                "Luna Perimeter Shipyard",
-                "Inner Defense Relay Crown",
-                "Earthrise Resistance Port",
-                "Earth High Orbit"
+                "Red Listening Bastion Kharon",
+                "Red Fuel Depot Furnace",
+                "Red Prison Station Breakchain",
+                "Red Forward Shipyard Aster",
+                "Red Blockade Anchor Crown",
+                "Red Fortress Luna Gate",
+                "Red Dreadnought Yard Typhon",
+                "Red Sensor Array Crown",
+                "Red Orbital Battery Helios",
+                "Earthrise Resistance Staging Port",
+                "Earth High Orbit Boss Bastion"
         };
         String[] details = {
-                "Green Team base  |  southern anchorage and coalition launch point.",
-                "Yellow Team commerce hub  |  early trade and salvage exchange.",
-                "Shipyard  |  first major build yard on the road north.",
-                "Relay hub  |  long-range traffic and contract routing.",
-                "Repair outpost  |  safer refit stop before the frontier.",
-                "Yellow Team market port  |  resupply and carrier logistics.",
-                "Listening bastion  |  intel-rich choke point on the northern climb.",
-                "Hostile breakpoint  |  first hard gate on the route home.",
-                "Green Team drydock  |  escorts, repairs, and fleet reshaping.",
-                "Yellow Team logistics harbor  |  convoy economy under pressure.",
-                "Industrial fuel port  |  ore refining and missile stores.",
-                "Coalition relay base  |  navigational handoff deeper north.",
-                "Contract shipworks  |  hard-choice detour for stronger hulls.",
-                "Yellow Team haven  |  recovering crews and civilian lanes.",
-                "Forward arsenal  |  fortified line before the inner war zone.",
-                "Green Team stronghold  |  last dependable southern ally.",
-                "Recovery ring  |  graveyard route with high-value detours.",
-                "Resistance foundry  |  improvised build and repair capability.",
-                "Luna trade anchorage  |  commerce under extreme search pressure.",
-                "Earthlane bastion  |  strategic bottleneck before the final climb.",
-                "Luna perimeter shipyard  |  late-game repair and heavy construction.",
-                "Inner defense relay  |  command traffic near Earth.",
-                "Resistance port  |  uprising staging base over Earth.",
-                "Home approach  |  final objective and return to Earth."
+                "Green Zone facility  |  fleet anchorage, coalition launch point, and safe repair traffic.",
+                "Green Zone facility  |  fuel, ammunition, and convoy stores for southern operations.",
+                "Green Zone facility  |  patrol command and escort tasking against Red scouts.",
+                "Green Zone facility  |  ore extraction site that feeds allied ship construction.",
+                "Green Zone facility  |  repair, refit, and volunteer crew staging.",
+                "Green Zone facility  |  fortified forward base guarding the Yellow border.",
+                "Yellow Zone facility  |  civilian trade exchange under Red pressure.",
+                "Yellow Zone facility  |  commercial route hub and rumor market.",
+                "Yellow Zone facility  |  rebel mission board for sabotage and rescue work.",
+                "Yellow Zone facility  |  refugee and trade convoy assembly point.",
+                "Yellow Zone facility  |  civilian shipyard secretly helping the rebellion.",
+                "Yellow Zone facility  |  mining colony taxed by Red occupation patrols.",
+                "Red Occupied Zone facility  |  hostile checkpoint anchoring the occupation line.",
+                "Red Occupied Zone facility  |  listening post and sensor trap network.",
+                "Red Occupied Zone facility  |  fuel depot sustaining Red patrol fleets.",
+                "Red Occupied Zone facility  |  prison site and forced-labor transfer station.",
+                "Red Occupied Zone facility  |  forward yard producing occupation hulls.",
+                "Red Occupied Zone facility  |  blockade anchor holding Yellow routes closed.",
+                "Red Core facility  |  major fortress guarding the Earth approach.",
+                "Red Core facility  |  elite dreadnought yard and capital reinforcement source.",
+                "Red Core facility  |  deep sensor array tracking allied fleet movement.",
+                "Red Core facility  |  orbital battery line protecting Earth.",
+                "Red Core facility  |  resistance staging port for the final coalition push.",
+                "Red Core facility  |  final Earth objective and boss staging bastion."
+        };
+        CampaignFacilityType[] facilityTypes = {
+                CampaignFacilityType.RELAY,
+                CampaignFacilityType.RESUPPLY_BASE,
+                CampaignFacilityType.RELAY,
+                CampaignFacilityType.MINING_OPERATION,
+                CampaignFacilityType.REPAIR_YARD,
+                CampaignFacilityType.FORTRESS,
+                CampaignFacilityType.CIVILIAN_HUB,
+                CampaignFacilityType.CIVILIAN_HUB,
+                CampaignFacilityType.REBEL_HIDEOUT,
+                CampaignFacilityType.CIVILIAN_HUB,
+                CampaignFacilityType.SHIPYARD,
+                CampaignFacilityType.MINING_OPERATION,
+                CampaignFacilityType.BLOCKADE,
+                CampaignFacilityType.LISTENING_POST,
+                CampaignFacilityType.FUEL_DEPOT,
+                CampaignFacilityType.PRISON_CAMP,
+                CampaignFacilityType.SHIPYARD,
+                CampaignFacilityType.BLOCKADE,
+                CampaignFacilityType.FORTRESS,
+                CampaignFacilityType.SHIPYARD,
+                CampaignFacilityType.SENSOR_TOWER,
+                CampaignFacilityType.FORTRESS,
+                CampaignFacilityType.REBEL_HIDEOUT,
+                CampaignFacilityType.BOSS_STAGING_AREA
+        };
+        Faction[] ownerFactions = {
+                Faction.TEAM_C, Faction.TEAM_C, Faction.TEAM_C, Faction.TEAM_C,
+                Faction.TEAM_C, Faction.TEAM_C, Faction.TEAM_D, Faction.TEAM_D,
+                Faction.TEAM_D, Faction.TEAM_D, Faction.TEAM_D, Faction.TEAM_D,
+                Faction.ENEMY, Faction.ENEMY, Faction.ENEMY, Faction.ENEMY,
+                Faction.ENEMY, Faction.ENEMY, Faction.ENEMY, Faction.ENEMY,
+                Faction.ENEMY, Faction.ENEMY, Faction.TEAM_D, Faction.ENEMY
+        };
+        int[] strategicValues = {
+                4, 3, 2, 3, 4, 4,
+                3, 3, 4, 2, 4, 3,
+                4, 3, 3, 4, 4, 4,
+                5, 5, 4, 5, 5, 5
         };
         double[][] poiNorm = {
-                {0.42, 0.92}, {0.58, 0.88}, {0.30, 0.85}, {0.67, 0.82},
-                {0.20, 0.78}, {0.50, 0.75}, {0.75, 0.72}, {0.39, 0.69},
-                {0.14, 0.64}, {0.61, 0.62}, {0.79, 0.58}, {0.31, 0.55},
-                {0.54, 0.50}, {0.22, 0.47}, {0.72, 0.43}, {0.44, 0.39},
-                {0.16, 0.34}, {0.60, 0.30}, {0.82, 0.25}, {0.36, 0.21},
-                {0.68, 0.16}, {0.24, 0.12}, {0.52, 0.08}, {0.50, 0.03}
+                {0.43, 0.92}, {0.22, 0.86}, {0.64, 0.86}, {0.30, 0.78},
+                {0.53, 0.78}, {0.76, 0.74}, {0.24, 0.66}, {0.53, 0.66},
+                {0.78, 0.64}, {0.35, 0.58}, {0.63, 0.56}, {0.15, 0.52},
+                {0.36, 0.46}, {0.68, 0.45}, {0.18, 0.39}, {0.48, 0.37},
+                {0.80, 0.35}, {0.58, 0.28}, {0.27, 0.21}, {0.68, 0.19},
+                {0.46, 0.13}, {0.82, 0.11}, {0.25, 0.07}, {0.55, 0.04}
         };
         for (int sector = 1; sector <= 24; sector++) {
             SectorLore lore = loreFor(sector);
@@ -13638,9 +15225,17 @@ public final class CampaignSystem {
                     sector,
                     details[sector - 1] + "  |  Mission: " + lore.title,
                     hubServicesForMainPoi(sector));
+            poi.facilityId = String.format(Locale.US, "facility-%02d", sector);
+            poi.legacyPoiId = poi.id;
+            poi.zoneId = campaignZoneIdForLegacySector(sector);
+            poi.facilityType = facilityTypes[sector - 1];
+            poi.ownerFaction = ownerFactions[sector - 1];
+            poi.strategicValue = MathUtil.clamp(strategicValues[sector - 1], 1, 5);
+            poi.intelLevel = CampaignIntelLevel.FULL;
             if (!poi.services.isEmpty()) {
                 poi.recurringContactId = (sector % 2 == 0) ? "MARR" : "VOSS";
             }
+            initializeFacilityOperationalFields(poi);
             st.galaxyMainPois.add(poi);
         }
         addGalaxyArea(st, campaignArea(ctx, "aoi-cache-1", "Ghost Cache", 0.10, 0.90,
@@ -13680,6 +15275,155 @@ public final class CampaignSystem {
         initializeCampaignTheaterWar(st);
     }
 
+    private static String campaignZoneIdForLegacySector(int sector) {
+        if (sector <= 6) return TheaterId.SOUTHERN.name();
+        if (sector <= 12) return TheaterId.FRONTIER.name();
+        if (sector <= 18) return TheaterId.LUNAR.name();
+        return TheaterId.EARTH.name();
+    }
+
+    private static CampaignFacilityType defaultFacilityTypeForLocationType(CampaignLocationType type) {
+        return switch (type == null ? CampaignLocationType.STORY_EVENT : type) {
+            case MAIN_MISSION, STORY_EVENT -> CampaignFacilityType.RELAY;
+            case RESOURCE_ZONE -> CampaignFacilityType.MINING_OPERATION;
+            case SALVAGE_FIELD -> CampaignFacilityType.DERELICT_BATTLEFIELD;
+            case DISTRESS_SIGNAL -> CampaignFacilityType.CIVILIAN_HUB;
+            case ENEMY_ACTIVITY -> CampaignFacilityType.BLOCKADE;
+            case HIDDEN_CACHE -> CampaignFacilityType.REBEL_HIDEOUT;
+            case REPAIR_SITE -> CampaignFacilityType.REPAIR_YARD;
+        };
+    }
+
+    private static Faction defaultOwnerFactionForLocation(CampaignLocationType type, String name) {
+        String lower = (name == null) ? "" : name.toLowerCase(Locale.US);
+        if (type == CampaignLocationType.ENEMY_ACTIVITY || lower.contains("red ")) return Faction.ENEMY;
+        if (lower.contains("yellow ") || type == CampaignLocationType.DISTRESS_SIGNAL) return Faction.TEAM_D;
+        if (lower.contains("green ") || type == CampaignLocationType.REPAIR_SITE) return Faction.TEAM_C;
+        return Faction.ALLY;
+    }
+
+    private static int defaultStrategicValueForFacility(CampaignFacilityType type, boolean primaryMission) {
+        int base = switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case FORTRESS, SHIPYARD, BOSS_STAGING_AREA -> 5;
+            case RELAY, SENSOR_TOWER, REPAIR_YARD, BLOCKADE, PRISON_CAMP -> 3;
+            case RESUPPLY_BASE, MINING_OPERATION, FUEL_DEPOT, CIVILIAN_HUB -> 2;
+            case REBEL_HIDEOUT, LISTENING_POST, DERELICT_BATTLEFIELD -> 2;
+            case UNKNOWN -> 1;
+        };
+        return MathUtil.clamp(primaryMission ? Math.max(base, 3) : base, 1, 5);
+    }
+
+    private static void initializeFacilityOperationalFields(CampaignLocation location) {
+        if (location == null) return;
+        CampaignFacilityType type = location.facilityType == null ? CampaignFacilityType.UNKNOWN : location.facilityType;
+        location.controlState = controlStateForOwner(location.ownerFaction);
+        location.defenseStrength = defaultDefenseStrengthForFacility(type, location.threatLevel, location.strategicValue);
+        location.resourceValue = defaultResourceValueForFacility(type, location.strategicValue);
+        location.canChangeOwner = type != CampaignFacilityType.UNKNOWN;
+        location.canSpawnFleets = facilityTypeCanSpawnFleets(type, location.primaryMission, location.strategicValue);
+        location.alertState = defaultFacilityAlertState(location);
+        location.displayLabel = facilityDisplayLabel(location);
+        location.longDetail = facilityLongDetail(location);
+        location.fleetIntelLevel = location.intelLevel;
+        location.missionTags.clear();
+        location.missionTags.addAll(defaultMissionTagsForFacility(type, location.ownerFaction));
+        location.linkedRouteIds.clear();
+        location.linkedRouteIds.addAll(defaultRouteLinksForFacility(location));
+    }
+
+    private static CampaignControlVisualState controlStateForOwner(Faction faction) {
+        if (faction == Faction.ENEMY) return CampaignControlVisualState.RED;
+        if (faction == Faction.TEAM_D) return CampaignControlVisualState.YELLOW;
+        if (faction == Faction.TEAM_C || faction == Faction.ALLY || faction == Faction.PLAYER) return CampaignControlVisualState.GREEN;
+        return CampaignControlVisualState.UNKNOWN;
+    }
+
+    private static double defaultDefenseStrengthForFacility(CampaignFacilityType type, float threat, int strategicValue) {
+        double base = switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case FORTRESS, BOSS_STAGING_AREA -> 86.0;
+            case SHIPYARD -> 78.0;
+            case BLOCKADE, PRISON_CAMP, SENSOR_TOWER -> 66.0;
+            case RELAY, REPAIR_YARD, RESUPPLY_BASE, FUEL_DEPOT -> 48.0;
+            case CIVILIAN_HUB, MINING_OPERATION, LISTENING_POST -> 36.0;
+            case REBEL_HIDEOUT, DERELICT_BATTLEFIELD -> 28.0;
+            case UNKNOWN -> 18.0;
+        };
+        return MathUtil.clamp(base + Math.max(0.0, threat) * 22.0 + MathUtil.clamp(strategicValue, 1, 5) * 3.0, 0.0, 100.0);
+    }
+
+    private static double defaultResourceValueForFacility(CampaignFacilityType type, int strategicValue) {
+        double base = switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case MINING_OPERATION -> 82.0;
+            case SHIPYARD, FUEL_DEPOT -> 70.0;
+            case RESUPPLY_BASE, REPAIR_YARD, CIVILIAN_HUB -> 56.0;
+            case RELAY, SENSOR_TOWER, LISTENING_POST -> 42.0;
+            case FORTRESS, BOSS_STAGING_AREA, BLOCKADE, PRISON_CAMP -> 34.0;
+            case REBEL_HIDEOUT, DERELICT_BATTLEFIELD -> 28.0;
+            case UNKNOWN -> 14.0;
+        };
+        return MathUtil.clamp(base + MathUtil.clamp(strategicValue, 1, 5) * 4.0, 0.0, 100.0);
+    }
+
+    private static boolean facilityTypeCanSpawnFleets(CampaignFacilityType type, boolean primaryMission, int strategicValue) {
+        if (primaryMission || strategicValue >= 3) return true;
+        return switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case FORTRESS, RESUPPLY_BASE, MINING_OPERATION, REPAIR_YARD, SHIPYARD, RELAY, CIVILIAN_HUB,
+                    REBEL_HIDEOUT, BLOCKADE, PRISON_CAMP, FUEL_DEPOT, SENSOR_TOWER, BOSS_STAGING_AREA -> true;
+            case LISTENING_POST, DERELICT_BATTLEFIELD, UNKNOWN -> false;
+        };
+    }
+
+    private static String defaultFacilityAlertState(CampaignLocation location) {
+        if (location == null) return "unknown";
+        if (location.destroyed) return "destroyed";
+        if (location.ownerFaction == Faction.ENEMY && location.threatLevel >= 0.65f) return "high alert";
+        if (location.ownerFaction == Faction.ENEMY) return "hostile watch";
+        if (location.supportRouteStabilized) return "secured";
+        if (location.threatLevel >= 0.45f) return "pressured";
+        return "quiet";
+    }
+
+    private static String facilityDisplayLabel(CampaignLocation location) {
+        if (location == null) return "Unknown Facility";
+        String type = facilityTypeLabel(location.facilityType);
+        String name = trimmedOrFallback(location.name, "Facility");
+        return type + ": " + name;
+    }
+
+    private static String facilityLongDetail(CampaignLocation location) {
+        if (location == null) return "";
+        return trimmedOrFallback(location.detail, "No facility detail recorded.")
+                + "  |  Defense " + (int) Math.round(location.defenseStrength)
+                + "  |  Resources " + (int) Math.round(location.resourceValue)
+                + "  |  Strategic value " + MathUtil.clamp(location.strategicValue, 1, 5) + "/5";
+    }
+
+    private static List<String> defaultMissionTagsForFacility(CampaignFacilityType type, Faction owner) {
+        ArrayList<String> tags = new ArrayList<>();
+        switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case FORTRESS, BOSS_STAGING_AREA -> tags.addAll(List.of("attack", "siege", "weaken-red-control"));
+            case RESUPPLY_BASE, FUEL_DEPOT -> tags.addAll(List.of("raid", "sabotage", "supply"));
+            case MINING_OPERATION -> tags.addAll(List.of("capture", "protect", "resource"));
+            case REPAIR_YARD, SHIPYARD -> tags.addAll(List.of("defend", "capture", "reinforcement"));
+            case RELAY, LISTENING_POST, SENSOR_TOWER -> tags.addAll(List.of("recon", "intel", "sabotage"));
+            case CIVILIAN_HUB -> tags.addAll(List.of("defend", "evacuate", "liberate"));
+            case REBEL_HIDEOUT -> tags.addAll(List.of("support", "uprising", "raid"));
+            case BLOCKADE -> tags.addAll(List.of("break-blockade", "escort", "attack"));
+            case PRISON_CAMP -> tags.addAll(List.of("rescue", "liberate", "sabotage"));
+            case DERELICT_BATTLEFIELD -> tags.addAll(List.of("salvage", "recon", "ambush"));
+            case UNKNOWN -> tags.add("recon");
+        }
+        if (owner == Faction.ENEMY) tags.add("red-hostile");
+        if (owner == Faction.TEAM_C) tags.add("green-support");
+        if (owner == Faction.TEAM_D) tags.add("yellow-support");
+        return List.copyOf(tags);
+    }
+
+    private static List<String> defaultRouteLinksForFacility(CampaignLocation location) {
+        if (location == null || location.id == null || location.id.isBlank()) return List.of();
+        return List.of("local:" + location.id, "supply:" + location.zoneId);
+    }
+
     private static void seedProceduralMinorSites(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         Random seeded = new Random((ctx.config == null ? 0L : ctx.config.seed) ^ 0x4D41504C41594552L);
@@ -13700,6 +15444,8 @@ public final class CampaignSystem {
             CampaignLocation site = new CampaignLocation(id, naming[0], point[0], point[1], type, threat, false, 0, naming[1]);
             site.discovered = false;
             site.intelQuality = ContactIntelQuality.UNKNOWN;
+            site.intelLevel = CampaignIntelLevel.UNKNOWN;
+            site.fleetIntelLevel = CampaignIntelLevel.UNKNOWN;
             site.recurringContactId = switch (type) {
                 case DISTRESS_SIGNAL, REPAIR_SITE -> "VOSS";
                 case ENEMY_ACTIVITY -> "ROOK";
@@ -14073,6 +15819,7 @@ public final class CampaignSystem {
     private static void configureGalaxyMapTestScenario(GameContext ctx, CampaignState st) {
         if (ctx == null || st == null) return;
         st.strategicOvermapMode = true;
+        st.facilityFleetGenerationActive = true;
         ctx.credits = Math.max(ctx.credits, GameContext.scaleCreditEarnings(4200));
         setCampaignOre(ctx, st, 280);
         st.strategicTorpedoCharges = STARTING_TORPEDO_INVENTORY;
@@ -14896,6 +16643,35 @@ public final class CampaignSystem {
         return created;
     }
 
+    private static CampaignForce ensureCampaignForceWithoutDeploymentCost(CampaignState st,
+                                                                          CampaignForceKind kind,
+                                                                          Faction faction,
+                                                                          String name,
+                                                                          String origin,
+                                                                          String purpose,
+                                                                          double x,
+                                                                          double y) {
+        if (st == null) return null;
+        String resolved = (name == null || name.isBlank()) ? "Campaign Force" : name.trim();
+        for (CampaignForce force : st.campaignForces) {
+            if (force != null && force.name.equalsIgnoreCase(resolved) && force.faction == faction && force.kind == kind) {
+                if (campaignForceSyncShouldOverwritePosition(force)) {
+                    force.x = x;
+                    force.y = y;
+                    noteCampaignForceKnownPosition(force, x, y, 1.0, 110.0);
+                }
+                primeCampaignForceDefaults(force);
+                ensureRedForceNamedSource(st, force, x, y);
+                return force;
+            }
+        }
+        CampaignForce created = new CampaignForce(st.nextCampaignForceId++, kind, faction, resolved, origin, purpose, x, y);
+        primeCampaignForceDefaults(created);
+        ensureRedForceNamedSource(st, created, x, y);
+        st.campaignForces.add(created);
+        return created;
+    }
+
     private static void ensureRedForceNamedSource(CampaignState st, CampaignForce force, double x, double y) {
         if (st == null || force == null || force.faction != Faction.ENEMY) return;
         boolean missingSource = force.sourceLocationId == null || force.sourceLocationId.isBlank()
@@ -15711,6 +17487,171 @@ public final class CampaignSystem {
         }
     }
 
+    private static void syncFacilityGeneratedFleets(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null) return;
+        if (!st.strategicOvermapMode || !st.facilityFleetGenerationActive) return;
+        for (CampaignLocation facility : allCampaignLocations(st)) {
+            if (!facilityCanGenerateFleet(facility)) continue;
+            Faction faction = facilityFleetFaction(facility);
+            CampaignForceKind kind = facilityFleetKind(facility);
+            CampaignFleetMission mission = facilityFleetMission(facility, faction);
+            CampaignForceIntent intent = facilityFleetIntent(facility, faction);
+            String name = facilityFleetName(facility, kind);
+            CampaignForce force = ensureCampaignForce(st, kind, faction, name,
+                    trimmedOrFallback(facility.name, "Facility"),
+                    facilityFleetPurpose(facility, mission),
+                    facility.x,
+                    facility.y);
+            if (force == null) continue;
+            configureNamedFleetForce(st, force, mission, templateForForceKind(kind, faction), intent);
+            assignCampaignForceHomeBase(force, facility, facility.facilityId);
+            linkFleetToFacility(facility, force);
+            double valueBoost = MathUtil.clamp(facility.strategicValue, 1, 5) * 6.0;
+            force.strength = Math.max(force.strength, 38.0 + valueBoost + (faction == Faction.ENEMY ? 8.0 : 0.0));
+            force.readiness = Math.max(force.readiness, 48.0 + valueBoost);
+            force.supply = Math.max(force.supply, 50.0 + valueBoost);
+            force.fuelLevel = Math.max(force.fuelLevel, 52.0 + valueBoost);
+            force.operatingRadius = Math.max(force.operatingRadius, 520.0 + facility.strategicValue * 160.0);
+            if (force.destinationLocationId.isBlank()) {
+                CampaignLocation destination = facilityFleetDestination(st, facility, faction, kind);
+                if (destination != null && !destination.id.equals(facility.id)) {
+                    force.destinationLocationId = destination.id;
+                    setCampaignForceRoute(force, facility.x, facility.y, destination.x, destination.y, facility.x, facility.y);
+                } else if (force.routePoints.isEmpty()) {
+                    assignFallbackRoamRoute(st, force, facility.x, facility.y);
+                }
+            }
+        }
+    }
+
+    private static boolean facilityCanGenerateFleet(CampaignLocation facility) {
+        if (facility == null || facility.destroyed || !facility.discovered) return false;
+        if (isUndiscoveredProceduralSite(facility)) return false;
+        if (facility.facilityType == null || facility.facilityType == CampaignFacilityType.UNKNOWN) return false;
+        return facility.primaryMission || facility.strategicValue >= 3 || !facility.services.isEmpty();
+    }
+
+    private static void linkFleetToFacility(CampaignLocation facility, CampaignForce force) {
+        if (facility == null || force == null || force.id <= 0) return;
+        if (!facility.linkedFleetIds.contains(force.id)) facility.linkedFleetIds.add(force.id);
+        facility.canSpawnFleets = true;
+        facility.fleetIntelLevel = maxIntelLevel(facility.fleetIntelLevel, facility.intelLevel);
+    }
+
+    private static CampaignIntelLevel maxIntelLevel(CampaignIntelLevel a, CampaignIntelLevel b) {
+        CampaignIntelLevel left = a == null ? CampaignIntelLevel.UNKNOWN : a;
+        CampaignIntelLevel right = b == null ? CampaignIntelLevel.UNKNOWN : b;
+        return left.ordinal() >= right.ordinal() ? left : right;
+    }
+
+    private static Faction facilityFleetFaction(CampaignLocation facility) {
+        if (facility == null || facility.ownerFaction == null) return Faction.ALLY;
+        return facility.ownerFaction;
+    }
+
+    private static CampaignForceKind facilityFleetKind(CampaignLocation facility) {
+        CampaignFacilityType type = facility == null || facility.facilityType == null
+                ? CampaignFacilityType.UNKNOWN
+                : facility.facilityType;
+        return switch (type) {
+            case FORTRESS, BOSS_STAGING_AREA, SENSOR_TOWER -> CampaignForceKind.BASE_DEFENSE;
+            case SHIPYARD -> CampaignForceKind.BASE_DEFENSE;
+            case RESUPPLY_BASE, CIVILIAN_HUB -> CampaignForceKind.TRADE_GROUP;
+            case MINING_OPERATION -> CampaignForceKind.MINING_GROUP;
+            case REPAIR_YARD, RELAY, LISTENING_POST -> CampaignForceKind.PATROL_GROUP;
+            case BLOCKADE, PRISON_CAMP, FUEL_DEPOT -> CampaignForceKind.STRIKE_DETACHMENT;
+            case REBEL_HIDEOUT -> CampaignForceKind.PATROL_GROUP;
+            case DERELICT_BATTLEFIELD -> CampaignForceKind.LOCAL_FORCE;
+            case UNKNOWN -> CampaignForceKind.LOCAL_FORCE;
+        };
+    }
+
+    private static CampaignFleetMission facilityFleetMission(CampaignLocation facility, Faction faction) {
+        CampaignFacilityType type = facility == null || facility.facilityType == null
+                ? CampaignFacilityType.UNKNOWN
+                : facility.facilityType;
+        return switch (type) {
+            case FORTRESS, SENSOR_TOWER, BOSS_STAGING_AREA -> CampaignFleetMission.PATROL;
+            case SHIPYARD, REPAIR_YARD, RESUPPLY_BASE -> CampaignFleetMission.REINFORCE;
+            case CIVILIAN_HUB -> CampaignFleetMission.CONVOY;
+            case MINING_OPERATION -> CampaignFleetMission.CONVOY;
+            case RELAY, LISTENING_POST -> CampaignFleetMission.RECON;
+            case BLOCKADE -> CampaignFleetMission.BLOCKADE;
+            case PRISON_CAMP, FUEL_DEPOT -> faction == Faction.ENEMY ? CampaignFleetMission.RAID : CampaignFleetMission.PATROL;
+            case REBEL_HIDEOUT -> CampaignFleetMission.RAID;
+            case DERELICT_BATTLEFIELD -> CampaignFleetMission.RECON;
+            case UNKNOWN -> CampaignFleetMission.PATROL;
+        };
+    }
+
+    private static CampaignForceIntent facilityFleetIntent(CampaignLocation facility, Faction faction) {
+        CampaignFleetMission mission = facilityFleetMission(facility, faction);
+        return switch (mission) {
+            case CONVOY, ESCORT -> CampaignForceIntent.ESCORTING;
+            case REINFORCE -> CampaignForceIntent.REINFORCING;
+            case RAID, INTERCEPT -> faction == Faction.ENEMY ? CampaignForceIntent.INTERCEPTING : CampaignForceIntent.REINFORCING;
+            case BLOCKADE -> CampaignForceIntent.GUARDING;
+            case RECON -> faction == Faction.ENEMY ? CampaignForceIntent.SEARCHING : CampaignForceIntent.PATROLLING;
+            case REPAIR -> CampaignForceIntent.REPAIRING;
+            case CAPTURE -> CampaignForceIntent.REINFORCING;
+            case PATROL -> faction == Faction.ENEMY ? CampaignForceIntent.SEARCHING : CampaignForceIntent.PATROLLING;
+        };
+    }
+
+    private static String facilityFleetName(CampaignLocation facility, CampaignForceKind kind) {
+        String base = trimmedOrFallback(facility == null ? "" : facility.name, "Facility");
+        String suffix = switch (kind == null ? CampaignForceKind.LOCAL_FORCE : kind) {
+            case BASE_DEFENSE -> "Defense Fleet";
+            case MINING_GROUP -> "Mining Fleet";
+            case CONVOY, TRADE_GROUP -> "Convoy Fleet";
+            case STRIKE_DETACHMENT -> "Strike Fleet";
+            case PATROL_GROUP -> "Patrol Fleet";
+            case TASK_FORCE -> "Task Force";
+            case INSTALLATION_TRAFFIC -> "Traffic Fleet";
+            case PLAYER_FLEET -> "Command Fleet";
+            case LOCAL_FORCE -> "Local Fleet";
+        };
+        return base + " " + suffix;
+    }
+
+    private static String facilityFleetPurpose(CampaignLocation facility, CampaignFleetMission mission) {
+        String site = trimmedOrFallback(facility == null ? "" : facility.name, "the facility");
+        return switch (mission == null ? CampaignFleetMission.PATROL : mission) {
+            case PATROL -> "Patrol routes around " + site;
+            case RECON -> "Scout and report contacts near " + site;
+            case INTERCEPT -> "Intercept threats moving near " + site;
+            case ESCORT, CONVOY -> "Move traffic and protect convoys from " + site;
+            case REINFORCE -> "Reinforce nearby allied operations from " + site;
+            case RAID -> "Raid vulnerable routes from " + site;
+            case REPAIR -> "Recover damaged ships around " + site;
+            case CAPTURE -> "Support control operations near " + site;
+            case BLOCKADE -> "Hold blockade pressure around " + site;
+        };
+    }
+
+    private static CampaignLocation facilityFleetDestination(CampaignState st,
+                                                             CampaignLocation facility,
+                                                             Faction faction,
+                                                             CampaignForceKind kind) {
+        if (st == null || facility == null) return null;
+        if (kind == CampaignForceKind.MINING_GROUP) {
+            CampaignLocation resource = nearestResourceLocation(st, facility.x, facility.y);
+            if (resource != null) return resource;
+        }
+        if (kind == CampaignForceKind.TRADE_GROUP || kind == CampaignForceKind.CONVOY) {
+            CampaignLocation trade = nearestTradeTarget(st, facility, faction);
+            if (trade != null) return trade;
+        }
+        TheaterId theater = theaterForPoint(st, facility.y);
+        if (faction == Faction.ENEMY) {
+            CampaignLocation target = nearestTheaterRouteTarget(st, theater, facility.x, facility.y);
+            if (target != null) return target;
+        }
+        CampaignLocation enemy = nearestTheaterLocation(st, theater, CampaignLocationType.ENEMY_ACTIVITY, facility.x, facility.y);
+        if (enemy != null && kind != CampaignForceKind.BASE_DEFENSE) return enemy;
+        return nearestTheaterRouteTarget(st, theater, facility.x, facility.y);
+    }
+
     private static void configureFriendlyStrategicForce(GameContext ctx,
                                                         CampaignState st,
                                                         CampaignForce force,
@@ -15856,10 +17797,55 @@ public final class CampaignSystem {
         syncCampaignPlayerForce(ctx, st);
         syncCampaignSearchGroupsToForces(ctx, st);
         syncFriendlyStrategicSupportForces(ctx, st);
+        syncFacilityGeneratedFleets(ctx, st);
         syncSprintOneCoreFleets(ctx, st);
         syncRemainingChecklistFleets(ctx, st);
         syncAmbientTheaterFleets(ctx, st);
+        enforceOpeningSpawnProtection(ctx, st);
         assignCampaignForceSimulationSlots(st);
+    }
+
+    private static void enforceOpeningSpawnProtection(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.sectorElapsed >= CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC) return;
+        double minRadius = CAMPAIGN_START_SPAWN_PROTECTION_RADIUS;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.faction != Faction.ENEMY
+                    || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            double[] pos = protectedOpeningContactPosition(ctx, st, force.id, force.x, force.y, minRadius);
+            if (pos == null) continue;
+            force.x = pos[0];
+            force.y = pos[1];
+            force.destinationLocationId = "";
+            force.intent = CampaignForceIntent.PATROLLING;
+            if (force.routePoints.isEmpty()) {
+                setCampaignForceRoute(force, force.x, force.y, force.x + 260.0, force.y - 120.0, force.x, force.y);
+            }
+        }
+        for (GalaxySearchGroup group : st.galaxySearchGroups) {
+            if (group == null || !group.hostile) continue;
+            double[] pos = protectedOpeningContactPosition(ctx, st, group.id + 1000, group.x, group.y, minRadius);
+            if (pos == null) continue;
+            group.x = pos[0];
+            group.y = pos[1];
+            group.lastKnownX = pos[0];
+            group.lastKnownY = pos[1];
+            group.behavior = GalaxySearchBehavior.PATROLLING;
+            group.stateTimer = Math.max(group.stateTimer, 18.0);
+        }
+    }
+
+    private static double[] protectedOpeningContactPosition(GameContext ctx, CampaignState st, int salt,
+                                                            double x, double y, double minRadius) {
+        if (ctx == null || st == null) return null;
+        double dx = x - st.playerGalaxyX;
+        double dy = y - st.playerGalaxyY;
+        double dist = Math.hypot(dx, dy);
+        if (dist >= minRadius) return null;
+        double angle = dist > 1.0 ? Math.atan2(dy, dx) : ((salt * 57.295779513) % (Math.PI * 2.0));
+        double radius = minRadius + 320.0 + Math.abs(salt % 7) * 90.0;
+        double px = MathUtil.clamp(st.playerGalaxyX + Math.cos(angle) * radius, 160.0, Math.max(160.0, ctx.WORLD_W - 160.0));
+        double py = MathUtil.clamp(st.playerGalaxyY + Math.sin(angle) * radius, 160.0, Math.max(160.0, ctx.WORLD_H - 160.0));
+        return new double[]{px, py};
     }
 
     private static void syncSprintOneCoreFleets(GameContext ctx, CampaignState st) {
@@ -15969,7 +17955,7 @@ public final class CampaignSystem {
             CampaignLocation yellowAnchor = nearestTheaterServiceLocation(st, theater, yellowSupportFaction(st), cx, cy);
             CampaignLocation routeTarget = nearestTheaterRouteTarget(st, theater, cx, cy);
 
-            String theaterName = theater.label.replace(" Theater", "");
+            String theaterName = theaterForceNameToken(theater);
             CampaignForce redInterdict = ensureCampaignForce(st, CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
                     "Red " + theaterName + " Interdiction Screen",
                     redAnchor == null ? theater.label + " red patrol lane" : redAnchor.name,
@@ -16036,6 +18022,15 @@ public final class CampaignSystem {
                         CampaignForceIntent.ESCORTING);
             }
         }
+    }
+
+    private static String theaterForceNameToken(TheaterId theater) {
+        return switch (theater == null ? TheaterId.FRONTIER : theater) {
+            case SOUTHERN -> "Southern";
+            case FRONTIER -> "Frontier";
+            case LUNAR -> "Lunar";
+            case EARTH -> "Earth";
+        };
     }
 
     private static CampaignLocation nearestTheaterLocation(CampaignState st,
@@ -16140,7 +18135,7 @@ public final class CampaignSystem {
         double sx = source == null ? fallbackX : source.x;
         double sy = source == null ? fallbackY : source.y;
         String origin = source == null ? "Strategic roaming assignment" : trimmedOrFallback(source.name, "Strategic lane");
-        CampaignForce force = ensureCampaignForce(st, kind, faction, name, origin, purpose, sx, sy);
+        CampaignForce force = ensureCampaignForceWithoutDeploymentCost(st, kind, faction, name, origin, purpose, sx, sy);
         if (force == null) return;
         configureNamedFleetForce(st, force, mission, template, intent);
         if (source != null) {
@@ -16221,13 +18216,14 @@ public final class CampaignSystem {
                         + " telemetry active");
             }
         }
+        refreshMajorRedLaunchWarnings(st, redOps);
 
         String[] greenAllied = new String[]{
                 "Green Counterattack Group", "Green Escort Squadron", "Repair Tender Fleet", "Green Relief Convoy",
                 "Green Home Guard Fleet", "Late-Game Carrier Support Group (Allied)", "Late-Game Titan Escort Screen",
                 "Green Evacuation Operation"
         };
-        int greenLimit = Math.min(greenAllied.length, Math.max(2, st.sector / 3));
+        int greenLimit = st.sector >= 24 ? greenAllied.length : Math.min(greenAllied.length, Math.max(2, st.sector / 3));
         for (int i = 0; i < greenLimit; i++) {
             CampaignForceKind kind = greenAllied[i].contains("Convoy") || greenAllied[i].contains("Tender")
                     ? CampaignForceKind.CONVOY : CampaignForceKind.PATROL_GROUP;
@@ -16244,7 +18240,7 @@ public final class CampaignSystem {
                 "Yellow Repair Caravan", "Yellow Trade Summit Operation", "VIP Diplomatic Fleet", "Prisoner Transport",
                 "False Convoy", "Black Market Escort Fleet", "Deep Space Fuel Convoy"
         };
-        int yellowLimit = Math.min(yellowNeutral.length, Math.max(2, st.sector / 2));
+        int yellowLimit = st.sector >= 24 ? yellowNeutral.length : Math.min(yellowNeutral.length, Math.max(2, st.sector / 2));
         for (int i = 0; i < yellowLimit; i++) {
             CampaignForceKind kind = yellowNeutral[i].contains("Fleet") ? CampaignForceKind.TRADE_GROUP : CampaignForceKind.CONVOY;
             CampaignFleetMission mission = yellowChecklistMission(yellowNeutral[i]);
@@ -16259,7 +18255,7 @@ public final class CampaignSystem {
                 "Stealth Ambush Pack", "Ghost Contact", "Silent Fleet", "Automated Drone Swarm",
                 "Rogue AI Fleet", "Last Stand Fleet", "Pirate Wolfpack"
         };
-        int pirateLimit = Math.min(pirateRogue.length, Math.max(2, st.sector / 2));
+        int pirateLimit = st.sector >= 24 ? pirateRogue.length : Math.min(pirateRogue.length, Math.max(2, st.sector / 2));
         for (int i = 0; i < pirateLimit; i++) {
             seedNamedChecklistFleet(st, pirateRogue[i], CampaignForceKind.TASK_FORCE, Faction.ENEMY, pirateAnchor, yellowHub,
                     "Irregular hostile pack pursuing opportunistic raids and evasive withdrawal", CampaignFleetMission.INTERCEPT,
@@ -16272,7 +18268,7 @@ public final class CampaignSystem {
                 "Nebula Patrol", "Asteroid Belt Mining Guard", "Relay Maintenance Fleet", "Mine-Layer Fleet",
                 "Mine-Sweeper Fleet", "Distress Call Fleet", "Damaged Supercapital"
         };
-        int reconLimit = Math.min(reconEnv.length, Math.max(2, st.sector / 2));
+        int reconLimit = st.sector >= 24 ? reconEnv.length : Math.min(reconEnv.length, Math.max(2, st.sector / 2));
         for (int i = 0; i < reconLimit; i++) {
             CampaignForceKind kind = reconEnv[i].contains("Mining") ? CampaignForceKind.MINING_GROUP : CampaignForceKind.PATROL_GROUP;
             Faction faction = reconEnv[i].contains("Red") || reconEnv[i].contains("Decoy") ? Faction.ENEMY : greenSupportFaction(st);
@@ -16286,13 +18282,29 @@ public final class CampaignSystem {
         String[] logistics = new String[]{
                 "Fuel Tanker Group", "Ammo Tender Group", "Salvage Fleet", "Red Relief Convoy"
         };
-        int logisticsLimit = Math.min(logistics.length, Math.max(1, st.sector / 5));
+        int logisticsLimit = st.sector >= 24 ? logistics.length : Math.min(logistics.length, Math.max(1, st.sector / 5));
         for (int i = 0; i < logisticsLimit; i++) {
             Faction faction = logistics[i].startsWith("Red") ? Faction.ENEMY : yellowSupportFaction(st);
             seedNamedChecklistFleet(st, logistics[i], CampaignForceKind.CONVOY, faction, yellowHub, resource,
                     "Logistics fleet continuously cycling strategic cargo and support stores", CampaignFleetMission.CONVOY,
                     CampaignFleetTemplate.CONVOY, CampaignForceIntent.ESCORTING,
                     fx - 300 - i * 80, fy + 1000 + i * 45, i * 0.33);
+        }
+    }
+
+    private static void refreshMajorRedLaunchWarnings(CampaignState st, String[] redOps) {
+        if (st == null || redOps == null) return;
+        for (String name : redOps) {
+            if (!isMajorRedLaunchName(name)) continue;
+            CampaignForce force = campaignForceByName(st, name);
+            if (force == null) continue;
+            String sourceName = campaignForceOriginLabel(st, force);
+            String targetName = campaignForceDestinationLabel(st, force);
+            String event = "MAJOR RED LAUNCH WARNING: " + name
+                    + " source " + sourceName
+                    + " target " + targetName
+                    + " telemetry active";
+            if (!st.theaterWarRecentEvents.contains(event)) pushTheaterEvent(st, event);
         }
     }
 
@@ -16791,7 +18803,7 @@ public final class CampaignSystem {
                     x, y, 120.0, 90.0, true);
             usedForceIds.add(force.id);
             hostileSlot++;
-            if (hostileSlot >= 2) break;
+            if (hostileSlot >= 3) break;
         }
 
         int friendlySlot = 0;
@@ -16812,7 +18824,7 @@ public final class CampaignSystem {
                     x, y, 110.0, 80.0, false);
             usedForceIds.add(force.id);
             friendlySlot++;
-            if (friendlySlot >= 2) break;
+            if (friendlySlot >= 3) break;
         }
         return spawned;
     }
@@ -17820,7 +19832,7 @@ public final class CampaignSystem {
         if (st == null || !st.enabled || st.landmarks.isEmpty()) return List.of();
         ArrayList<CampaignLandmark> out = new ArrayList<>();
         HashSet<String> seen = new HashSet<>();
-        double detectionRange = strategicDetectionRange(ctx, st);
+        double detectionRange = maxStrategicSensorRange(ctx, st);
         for (CampaignLandmark landmark : st.landmarks) {
             if (landmark == null || landmark.discoveryDerived) continue;
             if (!st.galaxyEncounterActive
@@ -19310,7 +21322,55 @@ public final class CampaignSystem {
             }
         }
         applyShipyardReinforcementTick(st, tickSeconds);
+        updateCampaignBoardUrgencies(ctx, st);
         recomputeCampaignTheaterStates(st);
+    }
+
+    private static void updateCampaignBoardUrgencies(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.theaterWarTickIndex <= 0 || st.theaterWarTickIndex % 3 != 0) return;
+        for (Faction faction : List.of(Faction.TEAM_C, Faction.TEAM_D)) {
+            for (CampaignMissionBoardEntry entry : campaignFactionMissionBoard(ctx, faction)) {
+                if (entry == null || !"urgent".equalsIgnoreCase(entry.timePressure)) continue;
+                if (st.completedCampaignBoardMissionIds.contains(entry.id)
+                        || st.expiredCampaignBoardMissionIds.contains(entry.id)) continue;
+                CampaignLocation target = campaignLocationById(st, entry.targetLocationId);
+                if (target == null || target.destroyed) continue;
+                target.escalationStage = Math.max(target.escalationStage, 0) + 1;
+                target.intelStaleAtSec = Math.max(target.intelStaleAtSec, st.theaterWarTickIndex);
+                target.alertState = "urgent pressure";
+                if (target.escalationStage < 3) continue;
+                st.expiredCampaignBoardMissionIds.add(entry.id);
+                applyIgnoredUrgentMissionConsequence(st, entry, target);
+            }
+        }
+    }
+
+    private static void applyIgnoredUrgentMissionConsequence(CampaignState st,
+                                                             CampaignMissionBoardEntry entry,
+                                                             CampaignLocation target) {
+        if (st == null || entry == null || target == null) return;
+        target.supportRouteStabilized = false;
+        target.defenseStrength = MathUtil.clamp(target.defenseStrength + 8.0, 0.0, 100.0);
+        target.alertState = "mission lapsed";
+        target.lastChangedAtSec = Math.max(target.lastChangedAtSec, st.theaterWarTickIndex);
+        st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + Math.max(2, entry.redHostilityDelta), 0.0, 100.0);
+        CampaignTheaterState theater = campaignTheaterById(st, theaterForPoint(st, target.y));
+        if (theater != null) {
+            theater.redInfluence = MathUtil.clamp(theater.redInfluence + 4.0 + target.strategicValue, 0.0, 100.0);
+            if (entry.faction == Faction.TEAM_D) {
+                theater.yellowInfluence = MathUtil.clamp(theater.yellowInfluence - 3.0, 0.0, 100.0);
+            } else {
+                theater.greenInfluence = MathUtil.clamp(theater.greenInfluence - 3.0, 0.0, 100.0);
+            }
+            applyNormalizedInfluence(theater, theater.greenInfluence, theater.yellowInfluence, theater.redInfluence);
+        }
+        StrategicNodeState node = strategicNodeForLocation(st, target.id);
+        if (node != null) {
+            node.contestProgress = MathUtil.clamp(node.contestProgress - 18.0, -120.0, 120.0);
+            node.takeoverCooldownSec = Math.max(node.takeoverCooldownSec, 30.0);
+        }
+        pushTheaterEvent(st, "URGENT MISSION LAPSED: " + entry.objective + " increased Red pressure");
+        invalidateCampaignRouteSegmentCache(st);
     }
 
     private static void updateFactionDirectors(GameContext ctx, CampaignState st, double dt) {
@@ -19640,6 +21700,9 @@ public final class CampaignSystem {
             if (theater == null) continue;
             double previousSupply = theater.supplyState;
             double previousThreat = theater.threatPressure;
+            double greenInfluenceRaw = startingGreenInfluence(theater.id);
+            double yellowInfluenceRaw = startingYellowInfluence(theater.id);
+            double redInfluenceRaw = startingRedInfluence(theater.id);
             double blueNodeScore = 0.0;
             double redNodeScore = 0.0;
             double contestedNodeScore = 0.0;
@@ -19648,10 +21711,32 @@ public final class CampaignSystem {
             for (StrategicNodeState node : st.strategicNodes) {
                 if (node == null || node.theaterId != theater.id) continue;
                 double weight = theaterNodeWeight(node.type);
+                CampaignLocation nodeLocation = campaignLocationById(st, node.locationId);
                 switch (node.owner) {
-                    case BLUE_GREEN -> blueNodeScore += weight;
-                    case RED -> redNodeScore += weight;
-                    case CONTESTED, NEUTRAL -> contestedNodeScore += weight;
+                    case BLUE_GREEN -> {
+                        blueNodeScore += weight;
+                        if (nodeLocation != null && nodeLocation.ownerFaction == Faction.TEAM_D) {
+                            yellowInfluenceRaw += weight * 2.2;
+                        } else {
+                            greenInfluenceRaw += weight * 2.2;
+                        }
+                        redInfluenceRaw -= weight * 0.9;
+                    }
+                    case RED -> {
+                        redNodeScore += weight;
+                        redInfluenceRaw += weight * 2.4;
+                        greenInfluenceRaw -= weight * 0.6;
+                        yellowInfluenceRaw -= weight * 0.6;
+                    }
+                    case CONTESTED, NEUTRAL -> {
+                        contestedNodeScore += weight;
+                        redInfluenceRaw += weight * 0.5;
+                        if (nodeLocation != null && nodeLocation.ownerFaction == Faction.TEAM_D) {
+                            yellowInfluenceRaw += weight * 0.8;
+                        } else {
+                            greenInfluenceRaw += weight * 0.5;
+                        }
+                    }
                 }
                 if (node.type == TheaterNodeType.LOGISTICS_HUB || node.type == TheaterNodeType.SHIPYARD) {
                     if (node.owner == TheaterNodeOwner.BLUE_GREEN) blueLogistics += weight;
@@ -19676,9 +21761,14 @@ public final class CampaignSystem {
                 if (group == null || theaterForPoint(st, group.y) != theater.id) continue;
                 redForceScore += 0.30 + MathUtil.clamp(group.threatLevel, 0.0, 1.0) * 0.80;
             }
+            greenInfluenceRaw += greenForceScore * 10.0 + Math.max(0.0, blueForceScore - greenForceScore - yellowForceScore) * 4.0;
+            yellowInfluenceRaw += yellowForceScore * 10.0;
+            redInfluenceRaw += redForceScore * 10.0;
+            applyNormalizedInfluence(theater, greenInfluenceRaw, yellowInfluenceRaw, redInfluenceRaw);
             double target = (blueNodeScore - redNodeScore)
                     + (blueForceScore - redForceScore) * 9.5
                     - contestedNodeScore * 0.18;
+            target = target * 0.52 + ((theater.greenInfluence + theater.yellowInfluence * 0.55) - theater.redInfluence) * 0.48;
             target = MathUtil.clamp(target, -100.0, 100.0);
             TheaterControlState previousState = theater.controlState;
             theater.controlScore = MathUtil.clamp(theater.controlScore + (target - theater.controlScore) * 0.32, -100.0, 100.0);
@@ -19716,6 +21806,58 @@ public final class CampaignSystem {
         if (score >= 20.0) return TheaterControlState.BLUE_GREEN_CONTROLLED;
         if (score <= -20.0) return TheaterControlState.RED_CONTROLLED;
         return TheaterControlState.CONTESTED;
+    }
+
+    private static void applyStartingInfluence(CampaignTheaterState theater) {
+        if (theater == null) return;
+        theater.greenInfluence = startingGreenInfluence(theater.id);
+        theater.yellowInfluence = startingYellowInfluence(theater.id);
+        theater.redInfluence = startingRedInfluence(theater.id);
+    }
+
+    private static double startingGreenInfluence(TheaterId id) {
+        return switch (id == null ? TheaterId.FRONTIER : id) {
+            case SOUTHERN -> 85.0;
+            case FRONTIER -> 25.0;
+            case LUNAR -> 5.0;
+            case EARTH -> 0.0;
+        };
+    }
+
+    private static double startingYellowInfluence(TheaterId id) {
+        return switch (id == null ? TheaterId.FRONTIER : id) {
+            case SOUTHERN -> 10.0;
+            case FRONTIER -> 55.0;
+            case LUNAR -> 15.0;
+            case EARTH -> 5.0;
+        };
+    }
+
+    private static double startingRedInfluence(TheaterId id) {
+        return switch (id == null ? TheaterId.FRONTIER : id) {
+            case SOUTHERN -> 5.0;
+            case FRONTIER -> 20.0;
+            case LUNAR -> 80.0;
+            case EARTH -> 95.0;
+        };
+    }
+
+    private static void applyNormalizedInfluence(CampaignTheaterState theater,
+                                                 double greenRaw,
+                                                 double yellowRaw,
+                                                 double redRaw) {
+        if (theater == null) return;
+        greenRaw = Math.max(0.0, greenRaw);
+        yellowRaw = Math.max(0.0, yellowRaw);
+        redRaw = Math.max(0.0, redRaw);
+        double total = greenRaw + yellowRaw + redRaw;
+        if (total <= 1e-6) {
+            applyStartingInfluence(theater);
+            return;
+        }
+        theater.greenInfluence = MathUtil.clamp(greenRaw / total * 100.0, 0.0, 100.0);
+        theater.yellowInfluence = MathUtil.clamp(yellowRaw / total * 100.0, 0.0, 100.0);
+        theater.redInfluence = MathUtil.clamp(redRaw / total * 100.0, 0.0, 100.0);
     }
 
     private static String theaterControlSummary(TheaterControlState state) {
@@ -19759,6 +21901,123 @@ public final class CampaignSystem {
         return "more clashes, caution, raiders, salvage, and distress";
     }
 
+    private static CampaignControlVisualState locationControlState(CampaignState st,
+                                                                   CampaignLocation location,
+                                                                   StrategicNodeState node,
+                                                                   CampaignTheaterState theater) {
+        if (location == null) return CampaignControlVisualState.UNKNOWN;
+        if (!location.discovered || location.intelQuality == ContactIntelQuality.UNKNOWN && !location.primaryMission) {
+            return CampaignControlVisualState.UNKNOWN;
+        }
+        if (location.type == CampaignLocationType.ENEMY_ACTIVITY || isRedLocationName(location.name)) {
+            return CampaignControlVisualState.RED;
+        }
+        if (isGreenLocationName(location.name) || location.type == CampaignLocationType.REPAIR_SITE) {
+            if (node != null && node.owner == TheaterNodeOwner.RED && Math.abs(node.contestProgress) > 70.0) {
+                return CampaignControlVisualState.RED;
+            }
+            if (node != null && node.owner == TheaterNodeOwner.CONTESTED && Math.abs(node.contestProgress) < 52.0) {
+                return CampaignControlVisualState.CONTESTED;
+            }
+            return CampaignControlVisualState.GREEN;
+        }
+        if (isYellowLocationName(location.name) || location.services.contains(HubService.TRADE)
+                || location.services.contains(HubService.CONTRACTS) || location.services.contains(HubService.FUEL)) {
+            if (node != null && node.owner == TheaterNodeOwner.RED && Math.abs(node.contestProgress) > 76.0) {
+                return CampaignControlVisualState.RED;
+            }
+            if (theater != null && theater.threatPressure >= 72.0 && location.threatLevel >= 0.45f) {
+                return CampaignControlVisualState.CONTESTED;
+            }
+            return CampaignControlVisualState.YELLOW;
+        }
+        if (node != null) {
+            if (node.owner == TheaterNodeOwner.BLUE_GREEN) return CampaignControlVisualState.GREEN;
+            if (node.owner == TheaterNodeOwner.RED) return CampaignControlVisualState.RED;
+            if (node.owner == TheaterNodeOwner.CONTESTED) return CampaignControlVisualState.CONTESTED;
+        }
+        if (location.primaryMission && location.missionIndex >= 20) return CampaignControlVisualState.RED;
+        if (location.threatLevel >= 0.70f) return CampaignControlVisualState.RED;
+        if (location.threatLevel >= 0.42f) return CampaignControlVisualState.CONTESTED;
+        return CampaignControlVisualState.UNKNOWN;
+    }
+
+    private static String campaignLocationSiteTypeLabel(CampaignLocation location, StrategicNodeState node) {
+        if (location == null) return "Unknown";
+        if (location.facilityType != null && location.facilityType != CampaignFacilityType.UNKNOWN) {
+            return facilityTypeLabel(location.facilityType);
+        }
+        String upper = location.name == null ? "" : location.name.toUpperCase(Locale.US);
+        if (upper.contains("SHIPYARD")) return "Shipyard";
+        if (upper.contains("DRYDOCK")) return "Drydock";
+        if (upper.contains("REPAIR")) return "Repair Port";
+        if (upper.contains("RELAY")) return "Relay";
+        if (upper.contains("REFINERY")) return "Refinery";
+        if (upper.contains("BASTION")) return "Listening Bastion";
+        if (upper.contains("EXCHANGE")) return "Exchange";
+        if (upper.contains("ANCHORAGE")) return "Anchorage";
+        if (upper.contains("BREAKPOINT") || upper.contains("CORRIDOR")) return "Checkpoint";
+        if (upper.contains("BROKER")) return "Broker Contact";
+        if (node != null) {
+            return switch (node.type) {
+                case SHIPYARD -> "Shipyard";
+                case RELAY -> "Relay";
+                case LOGISTICS_HUB -> "Logistics Hub";
+                case DEFENSE_ANCHOR -> "Defense Anchor";
+                case RESOURCE_FIELD -> "Resource Field";
+            };
+        }
+        return switch (location.type) {
+            case RESOURCE_ZONE -> "Resource Field";
+            case SALVAGE_FIELD -> "Salvage Field";
+            case DISTRESS_SIGNAL -> "Distress Signal";
+            case ENEMY_ACTIVITY -> "Hostile Contact";
+            case HIDDEN_CACHE -> "Hidden Cache";
+            case REPAIR_SITE -> "Repair Port";
+            case MAIN_MISSION -> "Mission Site";
+            case STORY_EVENT -> "Relay Site";
+        };
+    }
+
+    private static String facilityTypeLabel(CampaignFacilityType type) {
+        return switch (type == null ? CampaignFacilityType.UNKNOWN : type) {
+            case UNKNOWN -> "Unknown facility";
+            case FORTRESS -> "Fortress";
+            case RESUPPLY_BASE -> "Resupply base";
+            case MINING_OPERATION -> "Mining operation";
+            case REPAIR_YARD -> "Repair yard";
+            case SHIPYARD -> "Shipyard";
+            case RELAY -> "Relay";
+            case LISTENING_POST -> "Listening post";
+            case CIVILIAN_HUB -> "Civilian hub";
+            case REBEL_HIDEOUT -> "Rebel hideout";
+            case BLOCKADE -> "Checkpoint blockade";
+            case PRISON_CAMP -> "Prison camp";
+            case FUEL_DEPOT -> "Fuel depot";
+            case DERELICT_BATTLEFIELD -> "Derelict battlefield";
+            case SENSOR_TOWER -> "Sensor tower";
+            case BOSS_STAGING_AREA -> "Boss staging area";
+        };
+    }
+
+    private static String facilityOwnerLabel(Faction faction) {
+        return switch (faction == null ? Faction.ALLY : faction) {
+            case ENEMY -> "Red";
+            case TEAM_D -> "Yellow";
+            case TEAM_C, ALLY, PLAYER -> "Green";
+            default -> "Neutral";
+        };
+    }
+
+    private static String facilityIntelLabel(CampaignIntelLevel level) {
+        return switch (level == null ? CampaignIntelLevel.UNKNOWN : level) {
+            case UNKNOWN -> "Unknown";
+            case PARTIAL -> "Partial";
+            case GOOD -> "Good";
+            case FULL -> "Full";
+        };
+    }
+
     private static TheaterNodeType theaterNodeTypeFor(CampaignLocation location) {
         if (location == null) return TheaterNodeType.RELAY;
         if (location.services.contains(HubService.SHIPYARD)) return TheaterNodeType.SHIPYARD;
@@ -19778,11 +22037,18 @@ public final class CampaignSystem {
 
     private static TheaterNodeOwner initialTheaterNodeOwner(CampaignLocation location) {
         if (location == null) return TheaterNodeOwner.NEUTRAL;
+        if (location.ownerFaction == Faction.ENEMY) return TheaterNodeOwner.RED;
+        if (location.ownerFaction == Faction.TEAM_C
+                || location.ownerFaction == Faction.TEAM_D
+                || location.ownerFaction == Faction.ALLY
+                || location.ownerFaction == Faction.PLAYER) {
+            return TheaterNodeOwner.BLUE_GREEN;
+        }
         if (location.type == CampaignLocationType.ENEMY_ACTIVITY || isRedLocationName(location.name)) return TheaterNodeOwner.RED;
         if (isGreenLocationName(location.name) || location.type == CampaignLocationType.REPAIR_SITE) {
             return TheaterNodeOwner.BLUE_GREEN;
         }
-        if (isYellowLocationName(location.name)) return TheaterNodeOwner.RED;
+        if (isYellowLocationName(location.name)) return TheaterNodeOwner.BLUE_GREEN;
         if (!location.primaryMission) return TheaterNodeOwner.NEUTRAL;
         if (location.missionIndex >= 20) return TheaterNodeOwner.RED;
         if (location.missionIndex <= 4) return TheaterNodeOwner.BLUE_GREEN;
@@ -23795,7 +26061,7 @@ public final class CampaignSystem {
         double targetD2 = GameMath.dist2(force.x, force.y, target.x, target.y);
         if (targetD2 <= 220.0 * 220.0) {
             double attackPower = campaignFleetCombatPower(force) + nearbySameFactionSupportPower(st, force, force.x, force.y, 520.0) * 0.35;
-            double defensePower = nearbyOpposingForcePower(st, force.faction, force.x, force.y, 520.0);
+            double defensePower = nearbyCombatOpposingForcePower(st, force.faction, force.x, force.y, 520.0);
             double requiredAttackRatio = assaultAttackRatioForForce(st, force);
             if (attackPower < defensePower * requiredAttackRatio) {
                 force.intent = CampaignForceIntent.REINFORCING;
@@ -23888,6 +26154,38 @@ public final class CampaignSystem {
             if (GameMath.dist2(other.x, other.y, x, y) <= r2) total += campaignFleetCombatPower(other);
         }
         return total;
+    }
+
+    private static double nearbyCombatOpposingForcePower(CampaignState st, Faction faction, double x, double y, double radius) {
+        if (st == null) return 0.0;
+        double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
+        double total = 0.0;
+        for (CampaignForce other : st.campaignForces) {
+            if (other == null || other.destroyed || !other.simulationActive || other.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            if (other.faction == faction || other.faction == Faction.PLAYER) continue;
+            if (faction != Faction.ENEMY && other.faction != Faction.ENEMY) continue;
+            if (!isCombatCampaignForce(other)) continue;
+            if (GameMath.dist2(other.x, other.y, x, y) <= r2) total += campaignFleetCombatPower(other);
+        }
+        return total;
+    }
+
+    private static boolean isCombatCampaignForce(CampaignForce force) {
+        if (force == null) return false;
+        if (force.kind == CampaignForceKind.STRIKE_DETACHMENT
+                || force.kind == CampaignForceKind.PATROL_GROUP
+                || force.kind == CampaignForceKind.TASK_FORCE
+                || force.kind == CampaignForceKind.BASE_DEFENSE
+                || force.kind == CampaignForceKind.LOCAL_FORCE) {
+            return true;
+        }
+        return force.mission == CampaignFleetMission.INTERCEPT
+                || force.mission == CampaignFleetMission.CAPTURE
+                || force.mission == CampaignFleetMission.REINFORCE
+                || force.mission == CampaignFleetMission.BLOCKADE
+                || force.intent == CampaignForceIntent.INTERCEPTING
+                || force.intent == CampaignForceIntent.REINFORCING
+                || force.intent == CampaignForceIntent.GUARDING;
     }
 
     private static boolean maintainBlockadeMission(GameContext ctx, CampaignState st, CampaignForce force, double dt) {
@@ -24938,6 +27236,7 @@ public final class CampaignSystem {
         CampaignLocation site = new CampaignLocation(id, name, px, py, type, threat, false, 0, detail);
         site.discovered = true;
         site.intelQuality = ContactIntelQuality.CLASSIFIED;
+        site.intelLevel = CampaignIntelLevel.PARTIAL;
         site.recurringContactId = (recurringId == null) ? "" : recurringId;
         site.chainType = chainType == null ? DiscoveryChainType.NONE : chainType;
         site.chainStage = Math.max(1, stage);
@@ -25145,6 +27444,7 @@ public final class CampaignSystem {
         site.recurringContactId = recurringId;
         site.discovered = true;
         site.intelQuality = ContactIntelQuality.CLASSIFIED;
+        site.intelLevel = CampaignIntelLevel.PARTIAL;
         assignDiscoveryChainSeed(site, name, type);
         addGalaxyArea(st, site);
         st.selectedGalaxyLocationId = site.id;
@@ -25680,6 +27980,7 @@ public final class CampaignSystem {
     private static void updateGalaxyDetectionAndInterception(GameContext ctx, CampaignState st, double dt) {
         if (ctx == null || st == null || st.galaxySearchGroups.isEmpty()) return;
         if (ctx.ui != null && (ctx.ui.strategicEncounterPrompt.active || ctx.ui.campaignHubMenu.active)) return;
+        if (st.sectorElapsed < CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC) return;
         ensureGalaxyFleetPosition(st, currentCampaignLocation(ctx));
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
@@ -25831,7 +28132,12 @@ public final class CampaignSystem {
         if (st == null || st.campaignTheaters.isEmpty()) return 0;
         int count = 0;
         for (CampaignTheaterState theater : st.campaignTheaters) {
-            if (theater != null && theater.controlState == TheaterControlState.BLUE_GREEN_CONTROLLED) count++;
+            if (theater != null
+                    && theater.controlState == TheaterControlState.BLUE_GREEN_CONTROLLED
+                    && theater.controlScore >= 45.0
+                    && theater.redInfluence <= 35.0) {
+                count++;
+            }
         }
         return count;
     }
@@ -26940,6 +29246,7 @@ public final class CampaignSystem {
     private static void activateStrategicOvermapLayer(GameContext ctx, CampaignState st, String banner) {
         if (ctx == null || st == null) return;
         st.strategicOvermapMode = true;
+        st.facilityFleetGenerationActive = true;
         st.manualEncounterCommitInProgress = false;
         st.objectiveSecured = false;
         st.awaitingEpisodeLaunch = false;
@@ -28321,9 +30628,13 @@ public final class CampaignSystem {
                                                           StrategicTaskForce taskForce,
                                                           int playerSubzone) {
         if (ctx == null || st == null || taskForce == null || !taskForce.hostile || !taskForce.spawnsEncounter) return;
-        if (st.manualEncounterCommitInProgress) return;
+        if (st.sectorElapsed < CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC) return;
         int contactSubzone = friendlyStrategicContactSubzone(ctx, st, taskForce, playerSubzone);
         if (contactSubzone < 0) return;
+        if (st.manualEncounterCommitInProgress) {
+            updateManualEncounterTaskForceArrival(ctx, st, taskForce, contactSubzone);
+            return;
+        }
         StrategicRoleProfile roleProfile = friendlyStrategicRoleProfileInSubzone(ctx, st, contactSubzone);
         if (taskForce.kind == StrategicTaskForceKind.STEALTH) {
             double enemyStrength = strategicTaskForceThreat(taskForce, st.sector);
@@ -28356,6 +30667,32 @@ public final class CampaignSystem {
             taskForce.encounterResolved = true;
             EventSystem.showBanner(ctx, "CONTACT CLEARED: " + taskForce.label.toUpperCase(Locale.US), 1.4);
         }
+    }
+
+    private static void updateManualEncounterTaskForceArrival(GameContext ctx, CampaignState st,
+                                                              StrategicTaskForce taskForce,
+                                                              int contactSubzone) {
+        if (ctx == null || st == null || taskForce == null || taskForce.encounterResolved) return;
+        if (taskForce.encounterSpawned) {
+            pruneStrategicTaskForceShips(ctx, taskForce);
+            if (taskForce.spawnedShipIds.isEmpty()) {
+                taskForce.encounterResolved = true;
+                EventSystem.showBanner(ctx, "CONTACT CLEARED: " + taskForce.label.toUpperCase(Locale.US), 1.4);
+            }
+            return;
+        }
+        pullNearbyStrategicDivisionsToContact(st, contactSubzone);
+        spawnStrategicTaskForceEncounter(ctx, st, taskForce);
+        if (taskForce.spawnedShipIds.isEmpty()) return;
+        taskForce.encounterSpawned = true;
+        taskForce.transitRemainingSec = 0.0;
+        taskForce.dwellRemainingSec = 999.0;
+        st.strategicOvermapMode = false;
+        st.galaxyEncounterActive = true;
+        st.galaxyAmbientEncounterActive = false;
+        EventSystem.showBanner(ctx,
+                "NEW ENEMY TASK FORCE HAS ARRIVED: " + taskForce.label.toUpperCase(Locale.US),
+                2.0);
     }
 
     private static int friendlyStrategicContactSubzone(GameContext ctx,
@@ -37109,6 +39446,8 @@ public final class CampaignSystem {
         cp.campaignTheaters = serializeCampaignTheaters(st);
         cp.strategicNodes = serializeStrategicNodes(st);
         cp.theaterWarRecentEvents = serializeTheaterWarRecentEvents(st);
+        cp.completedCampaignBoardMissionIds = serializeCheckpointStringSet(st.completedCampaignBoardMissionIds);
+        cp.expiredCampaignBoardMissionIds = serializeCheckpointStringSet(st.expiredCampaignBoardMissionIds);
         cp.theaterWarTickAccumulatorSec = st.theaterWarTickAccumulatorSec;
         cp.theaterWarTickIndex = st.theaterWarTickIndex;
         cp.selectedTheaterId = (st.selectedTheaterId == null) ? "" : st.selectedTheaterId;
@@ -37279,6 +39618,8 @@ public final class CampaignSystem {
         restoreCampaignTheaters(st, cp.campaignTheaters);
         restoreStrategicNodes(st, cp.strategicNodes);
         restoreTheaterWarRecentEvents(st, cp.theaterWarRecentEvents);
+        restoreCheckpointStringSet(st.completedCampaignBoardMissionIds, cp.completedCampaignBoardMissionIds);
+        restoreCheckpointStringSet(st.expiredCampaignBoardMissionIds, cp.expiredCampaignBoardMissionIds);
         st.theaterWarTickAccumulatorSec = Math.max(0.0, cp.theaterWarTickAccumulatorSec);
         st.theaterWarTickIndex = Math.max(0, cp.theaterWarTickIndex);
         st.selectedTheaterId = (cp.selectedTheaterId == null) ? "" : cp.selectedTheaterId;
@@ -37299,7 +39640,7 @@ public final class CampaignSystem {
         st.communityContent = CommunityContentSystem.restore(cp.communityContentState, 0L);
         if (st.campaignTheaters.isEmpty() || st.strategicNodes.isEmpty()) {
             initializeCampaignTheaterWar(st);
-        } else {
+        } else if (cp.campaignTheaters == null || cp.campaignTheaters.isBlank()) {
             recomputeCampaignTheaterStates(st);
         }
         ctx.miningBaseMul = Math.max(0.0, cp.miningBaseMul);
@@ -37346,7 +39687,23 @@ public final class CampaignSystem {
                     .append(String.format(Locale.US, "%.4f", location.unresolvedAgeSec)).append('|')
                     .append(location.escalationStage).append('|')
                     .append(String.format(Locale.US, "%.4f", location.missionOuterThreatSuppression)).append('|')
-                    .append(String.format(Locale.US, "%.4f", location.missionOuterThreatDisruptionSec));
+                    .append(String.format(Locale.US, "%.4f", location.missionOuterThreatDisruptionSec)).append('|')
+                    .append(location.destroyed).append('|')
+                    .append(location.ownerFaction == null ? Faction.ALLY.name() : location.ownerFaction.name()).append('|')
+                    .append(location.intelLevel == null ? CampaignIntelLevel.UNKNOWN.name() : location.intelLevel.name()).append('|')
+                    .append(location.controlState == null ? CampaignControlVisualState.UNKNOWN.name() : location.controlState.name()).append('|')
+                    .append(String.format(Locale.US, "%.4f", location.defenseStrength)).append('|')
+                    .append(String.format(Locale.US, "%.4f", location.resourceValue)).append('|')
+                    .append(encodeCheckpointText(String.join(",", location.missionTags))).append('|')
+                    .append(encodeCheckpointText(joinIntegerList(location.linkedFleetIds))).append('|')
+                    .append(location.canChangeOwner).append('|')
+                    .append(location.canSpawnFleets).append('|')
+                    .append(encodeCheckpointText(location.alertState)).append('|')
+                    .append(encodeCheckpointText(location.displayLabel)).append('|')
+                    .append(encodeCheckpointText(location.longDetail)).append('|')
+                    .append(String.format(Locale.US, "%.4f", location.lastChangedAtSec)).append('|')
+                    .append(String.format(Locale.US, "%.4f", location.intelStaleAtSec)).append('|')
+                    .append(location.fleetIntelLevel == null ? CampaignIntelLevel.UNKNOWN.name() : location.fleetIntelLevel.name());
         }
         return sb.toString();
     }
@@ -37375,6 +39732,54 @@ public final class CampaignSystem {
             if (parts.length >= 14) location.escalationStage = Math.max(0, parseInt(parts[13], 0));
             if (parts.length >= 15) location.missionOuterThreatSuppression = MathUtil.clamp(parseDouble(parts[14], location.primaryMission ? 0.0 : 1.0), 0.0, 1.0);
             if (parts.length >= 16) location.missionOuterThreatDisruptionSec = Math.max(0.0, parseDouble(parts[15], 0.0));
+            if (parts.length >= 17) location.destroyed = Boolean.parseBoolean(parts[16]);
+            if (parts.length >= 18) location.ownerFaction = parseEnum(parts[17], location.ownerFaction);
+            if (parts.length >= 19) location.intelLevel = parseEnum(parts[18], location.intelLevel);
+            if (parts.length >= 20) location.controlState = parseEnum(parts[19], location.controlState);
+            if (parts.length >= 21) location.defenseStrength = MathUtil.clamp(parseDouble(parts[20], location.defenseStrength), 0.0, 100.0);
+            if (parts.length >= 22) location.resourceValue = MathUtil.clamp(parseDouble(parts[21], location.resourceValue), 0.0, 100.0);
+            if (parts.length >= 23) restoreStringList(location.missionTags, decodeCheckpointText(parts[22]));
+            if (parts.length >= 24) restoreIntegerList(location.linkedFleetIds, decodeCheckpointText(parts[23]));
+            if (parts.length >= 25) location.canChangeOwner = Boolean.parseBoolean(parts[24]);
+            if (parts.length >= 26) location.canSpawnFleets = Boolean.parseBoolean(parts[25]);
+            if (parts.length >= 27) location.alertState = decodeCheckpointText(parts[26]);
+            if (parts.length >= 28) location.displayLabel = decodeCheckpointText(parts[27]);
+            if (parts.length >= 29) location.longDetail = decodeCheckpointText(parts[28]);
+            if (parts.length >= 30) location.lastChangedAtSec = Math.max(0.0, parseDouble(parts[29], location.lastChangedAtSec));
+            if (parts.length >= 31) location.intelStaleAtSec = Math.max(0.0, parseDouble(parts[30], location.intelStaleAtSec));
+            if (parts.length >= 32) location.fleetIntelLevel = parseEnum(parts[31], location.fleetIntelLevel);
+            if (parts.length < 20) initializeFacilityOperationalFields(location);
+        }
+    }
+
+    private static String joinIntegerList(List<Integer> values) {
+        if (values == null || values.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Integer value : values) {
+            if (value == null) continue;
+            if (sb.length() > 0) sb.append(',');
+            sb.append(value);
+        }
+        return sb.toString();
+    }
+
+    private static void restoreStringList(List<String> target, String raw) {
+        if (target == null) return;
+        target.clear();
+        if (raw == null || raw.isBlank()) return;
+        for (String value : raw.split(",")) {
+            if (value == null || value.isBlank()) continue;
+            target.add(value.trim());
+        }
+    }
+
+    private static void restoreIntegerList(List<Integer> target, String raw) {
+        if (target == null) return;
+        target.clear();
+        if (raw == null || raw.isBlank()) return;
+        for (String value : raw.split(",")) {
+            int parsed = parseInt(value.trim(), -1);
+            if (parsed > 0 && !target.contains(parsed)) target.add(parsed);
         }
     }
 
@@ -37396,7 +39801,10 @@ public final class CampaignSystem {
                     .append(String.format(Locale.US, "%.4f", theater.tradeHealth)).append('|')
                     .append(String.format(Locale.US, "%.4f", theater.routeRisk)).append('|')
                     .append(String.format(Locale.US, "%.4f", theater.marketPressure)).append('|')
-                    .append(String.format(Locale.US, "%.4f", theater.installationIntegrity));
+                    .append(String.format(Locale.US, "%.4f", theater.installationIntegrity)).append('|')
+                    .append(String.format(Locale.US, "%.4f", theater.greenInfluence)).append('|')
+                    .append(String.format(Locale.US, "%.4f", theater.yellowInfluence)).append('|')
+                    .append(String.format(Locale.US, "%.4f", theater.redInfluence));
         }
         return sb.toString();
     }
@@ -37427,6 +39835,11 @@ public final class CampaignSystem {
             if (parts.length >= 11) theater.routeRisk = MathUtil.clamp(parseDouble(parts[10], theater.routeRisk), 0.0, 100.0);
             if (parts.length >= 12) theater.marketPressure = MathUtil.clamp(parseDouble(parts[11], theater.marketPressure), 0.0, 100.0);
             if (parts.length >= 13) theater.installationIntegrity = MathUtil.clamp(parseDouble(parts[12], theater.installationIntegrity), 0.0, 100.0);
+            if (parts.length >= 16) {
+                theater.greenInfluence = MathUtil.clamp(parseDouble(parts[13], theater.greenInfluence), 0.0, 100.0);
+                theater.yellowInfluence = MathUtil.clamp(parseDouble(parts[14], theater.yellowInfluence), 0.0, 100.0);
+                theater.redInfluence = MathUtil.clamp(parseDouble(parts[15], theater.redInfluence), 0.0, 100.0);
+            }
         }
     }
 
@@ -38237,6 +40650,27 @@ public final class CampaignSystem {
         for (String part : raw.split(",")) {
             int value = parseInt(part, 0);
             if (value > 0) out.add(value);
+        }
+    }
+
+    private static String serializeCheckpointStringSet(Collection<String> values) {
+        if (values == null || values.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String value : values) {
+            if (value == null || value.isBlank()) continue;
+            if (sb.length() > 0) sb.append(',');
+            sb.append(encodeCheckpointText(value.trim()));
+        }
+        return sb.toString();
+    }
+
+    private static void restoreCheckpointStringSet(Set<String> out, String raw) {
+        if (out == null) return;
+        out.clear();
+        if (raw == null || raw.isBlank()) return;
+        for (String part : raw.split(",")) {
+            String value = decodeCheckpointText(part);
+            if (!value.isBlank()) out.add(value);
         }
     }
 

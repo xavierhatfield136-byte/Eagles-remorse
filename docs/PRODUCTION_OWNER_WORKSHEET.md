@@ -159,9 +159,8 @@
   - RAM target: under 4 GB for alpha.
   - Save/load completes within a few seconds.
 
-## 9. Future 3D Direction
+## 9. Project Scope
 
-- After the 2D game is finished, build a 3D version using the completed game as the gameplay baseline.
-- Preserve the existing 3D sandbox launcher and feasibility checks while finishing the 2D alpha.
-- Continue generating and organizing 3D assets separately from approved 2D release assets.
-- Treat 3D conversion as a post-alpha track unless a shared-core architecture issue would make later migration materially harder.
+- Keep the current project focused on the 2D Java/Swing game.
+- Do not keep prototype clients, model viewers, or 3D asset pipelines in the main repository unless they directly support the 2D release.
+- Treat any future alternate client as a separate project after the 2D game is complete.

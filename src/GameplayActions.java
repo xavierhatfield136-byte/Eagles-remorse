@@ -282,7 +282,11 @@ public final class GameplayActions {
     }
 
     public static boolean trySafeMissionExit(GameContext ctx) {
-        if (ctx == null || !CampaignSystem.isCampaignActive(ctx) || CampaignSystem.isFleetHubSession(ctx)) return false;
+        if (ctx == null) return false;
+        if (!CampaignSystem.isCampaignActive(ctx) || CampaignSystem.isFleetHubSession(ctx)) {
+            requestSafeExitToMenu(ctx, "SAFE EXIT: RETURNING TO MENU");
+            return true;
+        }
         if (!canIssueCombatAction(ctx)) return false;
         if (CampaignSystem.isTransitioning(ctx)) {
             EventSystem.showBanner(ctx, "SAFE EXIT UNAVAILABLE DURING TRANSITION", 1.3);
@@ -331,6 +335,25 @@ public final class GameplayActions {
         AudioSystem.onWarpChargeStart(ctx, player);
         EventSystem.showBanner(ctx, "SAFE EXIT MISSION WARP CHARGING (7.5S)", 1.4);
         return true;
+    }
+
+    private static void requestSafeExitToMenu(GameContext ctx, String banner) {
+        if (ctx == null || ctx.command == null) return;
+        if (ctx.player != null && ctx.player.isWarpCharging()) {
+            ctx.player.cancelBattlefieldWarp();
+        }
+        if (ctx.ui != null) {
+            UISystem.closeAllOverlays(ctx);
+            ctx.ui.clearStrategicEncounterPrompt();
+            ctx.ui.clearCampaignHubMenu();
+        }
+        ctx.gameOver = false;
+        ctx.command.safeMissionExitPending = false;
+        ctx.command.playerTeleportCharging = false;
+        ctx.command.playerTeleportChargeRemaining = 0.0;
+        ctx.command.safeMissionExitReady = true;
+        ctx.state = GameState.RUNNING;
+        EventSystem.showBanner(ctx, banner, 0.5);
     }
 
     static void cancelSafeMissionExit(GameContext ctx, String banner, double seconds) {

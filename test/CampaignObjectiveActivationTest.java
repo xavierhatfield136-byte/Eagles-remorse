@@ -139,6 +139,37 @@ class CampaignObjectiveActivationTest {
     }
 
     @Test
+    void runtimeCampaignSafeExitReturnsToOvermapInsteadOfMenuReadyFlag() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() - 0.1;
+        ctx.command.safeMissionExitPending = true;
+
+        GameSimulationRuntime runtime = new GameSimulationRuntime(ctx);
+        Method completeSafeMissionExit = GameSimulationRuntime.class.getDeclaredMethod("completeSafeMissionExit", Ship.class);
+        completeSafeMissionExit.setAccessible(true);
+        completeSafeMissionExit.invoke(runtime, ctx.player);
+
+        assertTrue(CampaignSystem.isStrategicOvermapMode(ctx));
+        assertFalse(ctx.command.safeMissionExitReady,
+                "campaign safe exit should stay on the strategic overmap instead of asking GamePanel to return to menu");
+    }
+
+    @Test
+    void nonCampaignSafeExitRequestsMenuFallback() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        SpawnSystem.initWorld(ctx);
+
+        assertTrue(GameplayActions.trySafeMissionExit(ctx));
+        assertTrue(ctx.command.safeMissionExitReady,
+                "showcase/test safe exit should use the menu fallback route");
+    }
+
+    @Test
     void safeMissionExitWindowClosesAfterTenSecondsUntilObjectiveSecured() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;

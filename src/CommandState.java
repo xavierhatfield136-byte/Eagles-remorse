@@ -50,4 +50,5 @@ public final class CommandState {
     public TitanArchetype shootingRangeTitanArchetype = null;
     public double shootingRangeOriginX = Double.NaN;
     public double shootingRangeOriginY = Double.NaN;
+    public Faction showcaseFaction = Faction.ALLY;
 }

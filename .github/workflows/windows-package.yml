@@ -21,6 +21,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
 
       - name: Install WiX
         shell: pwsh

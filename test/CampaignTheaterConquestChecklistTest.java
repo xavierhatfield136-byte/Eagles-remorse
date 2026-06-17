@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,6 +32,41 @@ class CampaignTheaterConquestChecklistTest {
         assertEquals("BLUE_GREEN_CONTROLLED", blue.toString());
         assertEquals("CONTESTED", contested.toString());
         assertEquals("RED_CONTROLLED", red.toString());
+    }
+
+    @Test
+    void theaterBandsExposeRegionalInfluenceAtAGlance() {
+        GameContext ctx = initCampaign();
+        List<CampaignSystem.TheaterBand> bands = CampaignSystem.campaignTheaterBands(ctx);
+
+        assertEquals(4, bands.size());
+        assertInfluenceDominance(bands.get(0), "GREEN");
+        assertInfluenceDominance(bands.get(1), "YELLOW");
+        assertInfluenceDominance(bands.get(2), "RED");
+        assertInfluenceDominance(bands.get(3), "RED");
+    }
+
+    @Test
+    void startingZoneInfluenceValuesMatchCampaignSpecification() throws Exception {
+        Class<?> theaterIdClass = Class.forName("CampaignSystem$TheaterId");
+        Object southern = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "SOUTHERN");
+        Object frontier = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "FRONTIER");
+        Object lunar = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "LUNAR");
+        Object earth = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "EARTH");
+
+        assertInfluenceSeed(southern, 85.0, 10.0, 5.0);
+        assertInfluenceSeed(frontier, 25.0, 55.0, 20.0);
+        assertInfluenceSeed(lunar, 5.0, 15.0, 80.0);
+        assertInfluenceSeed(earth, 0.0, 5.0, 95.0);
+    }
+
+    @Test
+    void influenceBandsMapToReadableControlLanguage() throws Exception {
+        assertEquals("firm control", influenceBand(95.0));
+        assertEquals("occupied/held", influenceBand(60.0));
+        assertEquals("contested", influenceBand(40.0));
+        assertEquals("losing control", influenceBand(20.0));
+        assertEquals("nearly liberated/collapsed", influenceBand(5.0));
     }
 
     @Test
@@ -132,6 +168,265 @@ class CampaignTheaterConquestChecklistTest {
     }
 
     @Test
+    void earthBossStaysInNorthernRedCoreAndCompatibilityPath() {
+        GameContext ctx = initCampaign();
+        bootOvermap(ctx);
+        CampaignSystem.CampaignLocation earthGateMission = earthMission(ctx);
+
+        assertNotNull(earthGateMission, "expected an Earth-phase mission node");
+        assertEquals("poi-24", earthGateMission.id, "legacy final POI should remain as the compatibility path");
+        assertEquals("poi-24", earthGateMission.legacyPoiId);
+        assertEquals("EARTH", earthGateMission.zoneId);
+        assertEquals(CampaignSystem.CampaignFacilityType.BOSS_STAGING_AREA, earthGateMission.facilityType);
+        assertEquals(Faction.ENEMY, earthGateMission.ownerFaction);
+        assertEquals(CampaignSystem.CampaignControlVisualState.RED, earthGateMission.controlState);
+        assertEquals(5, earthGateMission.strategicValue);
+    }
+
+    @Test
+    void factionMissionBoardsGenerateFromFacilitiesAndRewardWarProgress() {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+
+        List<CampaignSystem.CampaignMissionBoardEntry> green = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C);
+        List<CampaignSystem.CampaignMissionBoardEntry> yellow = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_D);
+
+        assertTrue(green.size() >= 3, "Green board should produce multiple facility/fleet-driven missions");
+        assertTrue(yellow.size() >= 3, "Yellow board should produce multiple facility/fleet-driven missions");
+        assertTrue(green.stream().anyMatch(entry -> entry.reward.contains("Green favor")));
+        assertTrue(yellow.stream().anyMatch(entry -> entry.reward.contains("Yellow favor")));
+
+        CampaignSystem.CampaignMissionBoardEntry entry = green.stream()
+                .filter(candidate -> candidate.family.contains("attack") || candidate.family.contains("capture"))
+                .findFirst()
+                .orElse(green.get(0));
+        CampaignSystem.CampaignLocation target = findLocationById(ctx, entry.targetLocationId);
+        assertNotNull(target);
+        Faction beforeOwner = target.ownerFaction;
+        int favorBefore = st.greenContractFavor;
+        int supportBefore = supportForceCount(st, Faction.TEAM_C);
+
+        assertTrue(CampaignSystem.completeCampaignBoardMission(ctx, entry.id));
+
+        assertTrue(st.greenContractFavor > favorBefore, "Green mission should award reputation");
+        assertTrue(CampaignSystem.campaignRedHostility(ctx) > 0, "anti-Red mission should increase hostility");
+        if (beforeOwner == Faction.ENEMY) {
+            assertEquals(Faction.TEAM_C, target.ownerFaction, "facility assault should flip ownership");
+        }
+        assertTrue(supportForceCount(st, Faction.TEAM_C) > supportBefore,
+                "first support threshold should visibly commit an allied force");
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("OWNERSHIP SHIFT")
+                        || line.contains("SUPPORT COMMITTED")),
+                "board outcome should leave a visible theater event");
+    }
+
+    @Test
+    void facilityIntelControlsMissionBoardVisibility() throws Exception {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+        CampaignSystem.CampaignLocation redFacility = findLocationById(ctx, "poi-19");
+        assertNotNull(redFacility);
+
+        redFacility.intelLevel = CampaignSystem.CampaignIntelLevel.UNKNOWN;
+        setField(redFacility, "intelQuality", enumConstant(fieldType(redFacility, "intelQuality"), "UNKNOWN"));
+        List<CampaignSystem.CampaignMissionBoardEntry> hiddenBoard = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C);
+        assertFalse(hiddenBoard.stream().anyMatch(entry -> redFacility.id.equals(entry.targetLocationId)),
+                "unknown facilities should not generate precise board strikes");
+
+        st.playerGalaxyX = redFacility.x;
+        st.playerGalaxyY = redFacility.y;
+        st.campaignSupplies = 20;
+        st.campaignIntelLevel = 75.0;
+        assertTrue(CampaignSystem.requestCampaignTrafficAudit(ctx));
+
+        List<CampaignSystem.CampaignMissionBoardEntry> revealedBoard = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C);
+        assertTrue(revealedBoard.stream().anyMatch(entry -> redFacility.id.equals(entry.targetLocationId)),
+                "improved intel should unlock missions against the facility");
+        assertTrue(redFacility.intelLevel.ordinal() >= CampaignSystem.CampaignIntelLevel.GOOD.ordinal());
+    }
+
+    @Test
+    void intelSourceReadoutCoversAllDiscoveryChannels() {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+        st.greenContractFavor = 6;
+        st.yellowLiberationFavor = 6;
+
+        List<String> sources = CampaignSystem.campaignIntelSourceLines(ctx);
+
+        assertIntelSource(sources, "Recon flights");
+        assertIntelSource(sources, "Friendly relays");
+        assertIntelSource(sources, "Sensor towers");
+        assertIntelSource(sources, "Allied reputation");
+        assertIntelSource(sources, "Patrol fleets");
+        assertIntelSource(sources, "Listening posts");
+        assertIntelSource(sources, "Captured facilities");
+        assertIntelSource(sources, "Rescued civilians or prisoners");
+        assertIntelSource(sources, "Yellow rebel reports");
+        assertIntelSource(sources, "Green command briefings");
+        assertTrue(CampaignSystem.campaignWarSupportReadoutLines(ctx).stream()
+                .anyMatch(line -> line.contains("Intel sources")));
+    }
+
+    @Test
+    void facilityOperationalFieldsAndSidebarRespectIntelLevels() {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+        CampaignSystem.CampaignLocation facility = findLocationById(ctx, "poi-20");
+        assertNotNull(facility);
+
+        assertTrue(facility.defenseStrength > 0.0);
+        assertTrue(facility.resourceValue > 0.0);
+        assertFalse(facility.missionTags.isEmpty());
+        assertFalse(facility.displayLabel.isBlank());
+        assertFalse(facility.longDetail.isBlank());
+        assertEquals(CampaignSystem.CampaignControlVisualState.RED, facility.controlState);
+
+        st.selectedGalaxyLocationId = facility.id;
+        facility.intelLevel = CampaignSystem.CampaignIntelLevel.UNKNOWN;
+        List<String> unknownLines = CampaignSystem.selectedLocationSidebarLines(ctx);
+        assertTrue(unknownLines.stream().anyMatch(line -> line.contains("Unknown contact")));
+        assertTrue(unknownLines.stream().anyMatch(line -> line.contains("Defense: unknown")));
+
+        facility.intelLevel = CampaignSystem.CampaignIntelLevel.PARTIAL;
+        List<String> partialLines = CampaignSystem.selectedLocationSidebarLines(ctx);
+        assertTrue(partialLines.stream().anyMatch(line -> line.contains("Probable")));
+        assertTrue(partialLines.stream().anyMatch(line -> line.contains("Hooks hidden")));
+
+        facility.intelLevel = CampaignSystem.CampaignIntelLevel.FULL;
+        List<String> fullLines = CampaignSystem.selectedLocationSidebarLines(ctx);
+        assertTrue(fullLines.stream().anyMatch(line -> line.contains("Garrison:")));
+        assertTrue(fullLines.stream().anyMatch(line -> line.contains("Strategic 5/5") || line.contains("Strategic 4/5")));
+    }
+
+    @Test
+    void missionBoardStateTracksCompletedAndIgnoredUrgentMissions() throws Exception {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+
+        CampaignSystem.CampaignMissionBoardEntry complete = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C).get(0);
+        assertTrue(CampaignSystem.completeCampaignBoardMission(ctx, complete.id));
+        assertTrue(st.completedCampaignBoardMissionIds.contains(complete.id));
+        assertFalse(CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C).stream()
+                .anyMatch(entry -> entry.id.equals(complete.id)));
+
+        CampaignSystem.CampaignLocation greenBase = firstFacilityOwnedBy(st, Faction.TEAM_C);
+        assertNotNull(greenBase);
+        Object theater = theaterForLocation(ctx, st, greenBase);
+        assertNotNull(theater);
+        setDoubleField(theater, "redInfluence", 70.0);
+        setDoubleField(theater, "greenInfluence", 20.0);
+        setDoubleField(theater, "yellowInfluence", 10.0);
+        greenBase.escalationStage = 2;
+
+        CampaignSystem.CampaignMissionBoardEntry urgent = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C).stream()
+                .filter(entry -> greenBase.id.equals(entry.targetLocationId))
+                .filter(entry -> "urgent".equalsIgnoreCase(entry.timePressure))
+                .findFirst()
+                .orElseThrow();
+        double alertBefore = st.enemyAlertLevel;
+        st.theaterWarTickIndex = 3;
+        invokePrivate("updateCampaignBoardUrgencies",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class},
+                ctx, st);
+
+        assertTrue(st.expiredCampaignBoardMissionIds.contains(urgent.id));
+        assertTrue(st.enemyAlertLevel > alertBefore);
+        assertFalse(CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C).stream()
+                .anyMatch(entry -> entry.id.equals(urgent.id)));
+    }
+
+    @Test
+    void redEscalationAndFinalReadinessReactToCampaignProgress() {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+
+        CampaignSystem.CampaignFinalBattleReadiness before = CampaignSystem.campaignFinalBattleReadiness(ctx);
+        st.greenContractFavor = 8;
+        st.yellowLiberationFavor = 6;
+        st.enemyAlertLevel = 72.0;
+        CampaignSystem.CampaignLocation redShipyard = findLocationById(ctx, "poi-20");
+        CampaignSystem.CampaignLocation redRelay = findLocationById(ctx, "poi-21");
+        CampaignSystem.CampaignLocation redFortress = findLocationById(ctx, "poi-24");
+        CampaignSystem.CampaignLocation yellowHub = findLocationById(ctx, "poi-09");
+        assertNotNull(redShipyard);
+        assertNotNull(redRelay);
+        assertNotNull(redFortress);
+        assertNotNull(yellowHub);
+        redShipyard.ownerFaction = Faction.TEAM_C;
+        redRelay.ownerFaction = Faction.TEAM_C;
+        redFortress.destroyed = true;
+        yellowHub.ownerFaction = Faction.TEAM_D;
+
+        CampaignSystem.CampaignFinalBattleReadiness after = CampaignSystem.campaignFinalBattleReadiness(ctx);
+
+        assertTrue(after.readinessScore >= before.readinessScore,
+                "captured shipyards, relays, and support should not reduce Earth readiness");
+        assertTrue(after.greenSupport > before.greenSupport);
+        assertTrue(after.yellowSupport > before.yellowSupport);
+        assertTrue(after.capturedShipyards > before.capturedShipyards);
+        assertTrue(after.capturedRelays > before.capturedRelays);
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("Shipyards")));
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("Green capital support")));
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("Yellow rebel sabotage")));
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("Player fleet readiness")));
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("coalition mass")
+                && line.contains("immovable Earthfall core")));
+        assertTrue(after.lines.stream().anyMatch(line -> line.contains("Red core defenses remain scary")));
+        assertTrue(CampaignSystem.campaignWarSupportReadoutLines(ctx).stream()
+                .anyMatch(line -> line.contains("capital support")
+                        || line.contains("sabotage cells")
+                        || line.contains("final battle coalition commitment")));
+        assertTrue(CampaignSystem.campaignEnemyEscalationLines(ctx).stream()
+                        .anyMatch(line -> line.contains("hunter")
+                                || line.contains("counter")
+                                || line.contains("reinforcement")
+                                || line.contains("assassin")
+                                || line.contains("fortress")),
+                "high hostility should expose Red escalation behavior");
+    }
+
+    @Test
+    void finalEarthBattleStagesMassiveAlliedFleetAgainstRedCore() throws Exception {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+        int shipsBefore = ctx.ships.size();
+
+        invokePrivate("spawnSector24", new Class[]{GameContext.class, CampaignSystem.CampaignState.class}, ctx, st);
+
+        int alliedCapitalShips = 0;
+        int alliedTotal = 0;
+        int earthfallCore = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive) continue;
+            boolean spawnedNow = ctx.ships.indexOf(ship) >= shipsBefore;
+            if (!spawnedNow) continue;
+            String name = ship.name == null ? "" : ship.name;
+            if (ship.faction == Faction.TEAM_C || ship.faction == Faction.ALLY || ship.faction == Faction.TEAM_D) {
+                alliedTotal++;
+                if (name.contains("Titan") || name.contains("Battlecruiser") || name.contains("Cruiser")) {
+                    alliedCapitalShips++;
+                }
+            }
+            if (ship.faction == Faction.ENEMY && (name.contains("Earthfall") || name.contains("MOTHERSHIP"))) {
+                earthfallCore++;
+            }
+        }
+
+        assertTrue(st.bossTargetId > 0, "final battle should assign the Earthfall boss target");
+        assertTrue(alliedTotal >= 7, "late-game player side should stage a visibly large allied fleet");
+        assertTrue(alliedCapitalShips >= 5, "final push should include capital reinforcements, not only escorts");
+        assertTrue(earthfallCore >= 3, "Earthfall core should stage as an immovable Red command group");
+    }
+
+    @Test
     void routeSanitizerRemovesInvalidForceRoutePointsAfterLoad() throws Exception {
         GameContext ctx = initCampaign();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -162,6 +457,41 @@ class CampaignTheaterConquestChecklistTest {
     }
 
     @Test
+    void campaignRouteSegmentsReplaceOldLinearPoiSpine() {
+        GameContext ctx = initCampaign();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        bootOvermap(ctx);
+        CampaignSystem.CampaignLocation selected = findLocationById(ctx, "poi-12");
+        assertNotNull(selected);
+        st.selectedGalaxyLocationId = selected.id;
+
+        List<CampaignSystem.CampaignRouteSegment> segments = CampaignSystem.campaignRouteSegments(ctx);
+        assertSame(segments, CampaignSystem.campaignRouteSegments(ctx),
+                "route segment layout should be cached while route-relevant state is unchanged");
+        EnumSet<CampaignSystem.CampaignRouteSegmentKind> kinds = EnumSet.noneOf(CampaignSystem.CampaignRouteSegmentKind.class);
+        int oldSpineLinks = 0;
+        for (CampaignSystem.CampaignRouteSegment segment : segments) {
+            assertNotNull(segment);
+            assertTrue(Double.isFinite(segment.fromX) && Double.isFinite(segment.fromY));
+            assertTrue(Double.isFinite(segment.toX) && Double.isFinite(segment.toY));
+            assertTrue(segment.danger >= 0.0 && segment.danger <= 100.0);
+            kinds.add(segment.kind);
+            if (isOldSequentialPoiLink(segment)) oldSpineLinks++;
+        }
+
+        assertTrue(kinds.contains(CampaignSystem.CampaignRouteSegmentKind.LOCAL_ZONE));
+        assertTrue(kinds.contains(CampaignSystem.CampaignRouteSegmentKind.SUPPLY_LINE));
+        assertTrue(kinds.contains(CampaignSystem.CampaignRouteSegmentKind.CONTESTED_LANE));
+        assertTrue(kinds.contains(CampaignSystem.CampaignRouteSegmentKind.BLOCKADE_LINE));
+        assertTrue(kinds.contains(CampaignSystem.CampaignRouteSegmentKind.PLAYER_PLOTTED));
+        assertTrue(oldSpineLinks < 10, "route graph should no longer be the old poi-01 through poi-24 spine");
+
+        st.selectedGalaxyLocationId = "poi-18";
+        assertNotSame(segments, CampaignSystem.campaignRouteSegments(ctx),
+                "changing the selected route target should invalidate route segment cache");
+    }
+
+    @Test
     void theaterWarLongRunStaysStableAndBounded() throws Exception {
         GameContext ctx = initCampaign();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -181,6 +511,12 @@ class CampaignTheaterConquestChecklistTest {
             assertTrue(getDoubleField(theater, "supplyState") <= 100.0);
             assertTrue(getDoubleField(theater, "threatPressure") >= 0.0);
             assertTrue(getDoubleField(theater, "threatPressure") <= 100.0);
+            assertTrue(getDoubleField(theater, "greenInfluence") >= 0.0);
+            assertTrue(getDoubleField(theater, "greenInfluence") <= 100.0);
+            assertTrue(getDoubleField(theater, "yellowInfluence") >= 0.0);
+            assertTrue(getDoubleField(theater, "yellowInfluence") <= 100.0);
+            assertTrue(getDoubleField(theater, "redInfluence") >= 0.0);
+            assertTrue(getDoubleField(theater, "redInfluence") <= 100.0);
         }
     }
 
@@ -228,9 +564,45 @@ class CampaignTheaterConquestChecklistTest {
                     .append((int) Math.round(getDoubleField(theater, "controlScore"))).append('|')
                     .append((int) Math.round(getDoubleField(theater, "supplyState"))).append('|')
                     .append((int) Math.round(getDoubleField(theater, "threatPressure"))).append('|')
+                    .append((int) Math.round(getDoubleField(theater, "greenInfluence"))).append('|')
+                    .append((int) Math.round(getDoubleField(theater, "yellowInfluence"))).append('|')
+                    .append((int) Math.round(getDoubleField(theater, "redInfluence"))).append('|')
                     .append(getField(theater, "controlState")).append(';');
         }
         return sb.toString();
+    }
+
+    private static void assertInfluenceSeed(Object theaterId,
+                                            double green,
+                                            double yellow,
+                                            double red) throws Exception {
+        assertEquals(green, invokePrivate("startingGreenInfluence", new Class[]{theaterId.getClass()}, theaterId));
+        assertEquals(yellow, invokePrivate("startingYellowInfluence", new Class[]{theaterId.getClass()}, theaterId));
+        assertEquals(red, invokePrivate("startingRedInfluence", new Class[]{theaterId.getClass()}, theaterId));
+    }
+
+    private static String influenceBand(double value) {
+        return CampaignSystem.campaignInfluenceBandLabel(value);
+    }
+
+    private static void assertInfluenceDominance(CampaignSystem.TheaterBand band, String dominant) {
+        assertNotNull(band);
+        assertTrue(band.greenInfluence >= 0.0 && band.greenInfluence <= 100.0);
+        assertTrue(band.yellowInfluence >= 0.0 && band.yellowInfluence <= 100.0);
+        assertTrue(band.redInfluence >= 0.0 && band.redInfluence <= 100.0);
+        double total = band.greenInfluence + band.yellowInfluence + band.redInfluence;
+        assertEquals(100.0, total, 0.75);
+        switch (dominant) {
+            case "GREEN" -> assertTrue(band.greenInfluence > band.yellowInfluence && band.greenInfluence > band.redInfluence);
+            case "YELLOW" -> assertTrue(band.yellowInfluence > band.greenInfluence && band.yellowInfluence > band.redInfluence);
+            case "RED" -> assertTrue(band.redInfluence > band.greenInfluence && band.redInfluence > band.yellowInfluence);
+            default -> throw new AssertionError("unknown dominant influence " + dominant);
+        }
+    }
+
+    private static void assertIntelSource(List<String> lines, String label) {
+        assertTrue(lines.stream().anyMatch(line -> line.startsWith(label + "  |")),
+                "missing intel source label: " + label);
     }
 
     private static String nodeSnapshot(CampaignSystem.CampaignState st) throws Exception {
@@ -242,6 +614,44 @@ class CampaignTheaterConquestChecklistTest {
                     .append((int) Math.round(getDoubleField(node, "contestProgress"))).append(';');
         }
         return sb.toString();
+    }
+
+    private static CampaignSystem.CampaignLocation firstFacilityOwnedBy(CampaignSystem.CampaignState st, Faction faction) {
+        for (CampaignSystem.CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && location.ownerFaction == faction && !location.destroyed) return location;
+        }
+        for (CampaignSystem.CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location != null && location.ownerFaction == faction && !location.destroyed) return location;
+        }
+        return null;
+    }
+
+    private static Object theaterForLocation(GameContext ctx,
+                                             CampaignSystem.CampaignState st,
+                                             CampaignSystem.CampaignLocation location) throws Exception {
+        for (Object theater : st.campaignTheaters) {
+            double min = getDoubleField(theater, "minYNorm");
+            double max = getDoubleField(theater, "maxYNorm");
+            double yNorm = location.y / Math.max(1.0, ctx.WORLD_H);
+            if (yNorm >= min && yNorm <= max) return theater;
+        }
+        return null;
+    }
+
+    private static boolean isOldSequentialPoiLink(CampaignSystem.CampaignRouteSegment segment) {
+        if (segment == null) return false;
+        int a = poiNumber(segment.fromLocationId);
+        int b = poiNumber(segment.toLocationId);
+        return a > 0 && b > 0 && Math.abs(a - b) == 1;
+    }
+
+    private static int poiNumber(String id) {
+        if (id == null || !id.startsWith("poi-")) return -1;
+        try {
+            return Integer.parseInt(id.substring(4));
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
     }
 
     private static GameContext initCampaign() {
@@ -261,11 +671,38 @@ class CampaignTheaterConquestChecklistTest {
         for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
             if (location == null || !location.primaryMission) continue;
             if (location.missionIndex >= 23) {
-                best = location;
-                break;
+                if (best == null || location.missionIndex > best.missionIndex) {
+                    best = location;
+                }
             }
         }
         return best;
+    }
+
+    private static CampaignSystem.CampaignLocation findLocationById(GameContext ctx, String id) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && location.id.equals(id)) return location;
+        }
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
+            if (location != null && location.id.equals(id)) return location;
+        }
+        return null;
+    }
+
+    private static int supportForceCount(CampaignSystem.CampaignState st, Faction faction) {
+        int count = 0;
+        for (Object force : st.campaignForces) {
+            try {
+                if (force != null
+                        && faction.toString().equals(String.valueOf(getField(force, "faction")))
+                        && String.valueOf(getField(force, "name")).contains("Support")) {
+                    count++;
+                }
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+        return count;
     }
 
     private static void forceBlueControlOnFirstTheaters(CampaignSystem.CampaignState st, int count) throws Exception {
@@ -273,6 +710,10 @@ class CampaignTheaterConquestChecklistTest {
         for (Object theater : st.campaignTheaters) {
             if (theater == null) continue;
             setField(theater, "controlState", enumConstant(fieldType(theater, "controlState"), "BLUE_GREEN_CONTROLLED"));
+            setDoubleField(theater, "controlScore", 58.0);
+            setDoubleField(theater, "greenInfluence", 70.0);
+            setDoubleField(theater, "yellowInfluence", 20.0);
+            setDoubleField(theater, "redInfluence", 10.0);
             done++;
             if (done >= count) break;
         }

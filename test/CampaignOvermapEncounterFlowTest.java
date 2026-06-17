@@ -79,7 +79,7 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
-    void tacticalManualEntrySuppressesSecondStrategicTaskForcePrompt() throws Exception {
+    void tacticalManualEntryAutoJoinsSecondStrategicTaskForce() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object taskForce = firstStrategicTaskForce(st);
@@ -99,6 +99,8 @@ class CampaignOvermapEncounterFlowTest {
         method.invoke(null, ctx, st, taskForce, 0);
 
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
+        assertTrue(getBoolean(taskForce, "encounterSpawned"));
+        assertTrue(ctx.eventBanner.contains("NEW ENEMY TASK FORCE HAS ARRIVED"));
     }
 
     @Test
@@ -331,6 +333,12 @@ class CampaignOvermapEncounterFlowTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(target);
+    }
+
+    private static boolean getBoolean(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getBoolean(target);
     }
 
     private static void setObject(Object target, String fieldName, Object value) throws Exception {

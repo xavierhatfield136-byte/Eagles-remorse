@@ -397,4 +397,47 @@ class RendererHoverTooltipTest {
         assertEquals(0, ctx.perf.drawnSalvage, "tactical view should skip salvage rendering for FPS");
         assertEquals(0, ctx.perf.drawnProjectiles, "tactical view should skip projectile rendering for FPS");
     }
+
+    @Test
+    void missionMapUsesTacticalOutlineEntityLayerInsteadOfDotOnlyLayer() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
+        ctx.ui.mapOpen = true;
+        ctx.ui.strategicMapZoom = 2.2;
+        ctx.ui.strategicMapFocusX = 2500.0;
+        ctx.ui.strategicMapFocusY = 2500.0;
+        ctx.player = new Player(ShipRole.FRIGATE, 2500.0, 2500.0);
+        ctx.player.faction = Faction.ALLY;
+        ctx.ships.clear();
+        ctx.ships.add(ctx.player);
+        Ship capital = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 2500.0, 2500.0);
+        capital.name = "Map Outline Test Cruiser";
+        ctx.ships.add(capital);
+
+        BufferedImage canvas = new BufferedImage(1280, 720, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            GameRenderSystem.render(ctx, g2, 1280, 720);
+        } finally {
+            g2.dispose();
+        }
+
+        Rectangle inner = Renderer.getStrategicMapInnerRect(1280, 720);
+        int cx = inner.x + inner.width / 2;
+        int cy = inner.y + inner.height / 2;
+        int changed = 0;
+        for (int y = cy - 38; y <= cy + 38; y++) {
+            for (int x = cx - 38; x <= cx + 38; x++) {
+                int argb = canvas.getRGB(x, y);
+                int alpha = (argb >>> 24) & 0xff;
+                int r = (argb >>> 16) & 0xff;
+                int g = (argb >>> 8) & 0xff;
+                int b = argb & 0xff;
+                if (alpha > 90 && (r > 90 || g > 120 || b > 150)) changed++;
+            }
+        }
+
+        assertTrue(ctx.perf.renderMapMs > 0.0, "mission map overlay should render");
+        assertTrue(changed > 140,
+                "mission map should draw a visible tactical ship silhouette, not only a tiny dot");
+    }
 }

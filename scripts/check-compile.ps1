@@ -72,21 +72,10 @@ function Compile-Target {
 }
 
 $legacyPath = Join-Path $root "src"
-$corePath = Join-Path $root "core\src"
-$swingPath = Join-Path $root "client-swing\src"
-$client3dPath = Join-Path $root "client-3dimentions\src"
 
 $legacyOut = Join-Path $buildRoot "legacy-src"
-$coreOut = Join-Path $buildRoot "core"
-$swingOut = Join-Path $buildRoot "client-swing"
-$client3dOut = Join-Path $buildRoot "client-3dimentions"
 
 Compile-Target -Name "legacy-src" -Path $legacyPath -OutDir $legacyOut | Out-Null
-Compile-Target -Name "core" -Path $corePath -OutDir $coreOut -ClassPath $legacyOut | Out-Null
-
-$sharedCp = "$legacyOut;$coreOut"
-Compile-Target -Name "client-swing" -Path $swingPath -OutDir $swingOut -ClassPath $sharedCp | Out-Null
-Compile-Target -Name "client-3dimentions" -Path $client3dPath -OutDir $client3dOut -ClassPath $sharedCp | Out-Null
 
 Write-Host ""
 Write-Host "Compile checks complete."

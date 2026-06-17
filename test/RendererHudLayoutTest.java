@@ -15,6 +15,17 @@ class RendererHudLayoutTest {
         assertPanelLayoutReadable(900, 540, false, true);
     }
 
+    @Test
+    void tutorialPanelAvoidsCoreMenuAtAlphaViewSize() {
+        Rectangle panel = TutorialSystem.tutorialOverlayPanelRect(1280, 720, 350, 360);
+        Rectangle coreMenu = Renderer.getCoreMenuBarRect(1280, 720);
+
+        assertFalse(panel.intersects(coreMenu), "tutorial hints should not cover the core action bar");
+        assertTrue(panel.x >= 0 && panel.y >= 0, "tutorial panel should stay on-screen");
+        assertTrue(panel.x + panel.width <= 1280, "tutorial panel should fit horizontally");
+        assertTrue(panel.y + panel.height <= 720, "tutorial panel should fit vertically");
+    }
+
     private static void assertPanelLayoutReadable(int viewW, int viewH, boolean cloak, boolean strike) {
         List<Rectangle> panels = Renderer.combatHudPanelRects(viewW, viewH, cloak, strike);
         Rectangle coreMenu = Renderer.getCoreMenuBarRect(viewW, viewH);

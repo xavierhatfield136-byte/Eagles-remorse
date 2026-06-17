@@ -4,7 +4,7 @@ Date: 2026-02-23
 
 ## Goal
 
-Make hulls look significantly higher quality in the current 2D renderer without waiting for full 3D production assets.
+Make hulls look significantly higher quality in the current 2D renderer.
 
 ## What Was Implemented
 
@@ -93,4 +93,4 @@ Faction key mapping:
    - `dreadnought`
 2. Tune layer alpha values per role once real layered assets are in place.
 3. Add subtle emissive pulse timing tied to ship state (combat/idle) if desired.
-4. Continue M5 3D asset track in parallel for final model-based hull fidelity.
+4. Keep future hull work focused on 2D readability, authored damage layers, and zoom-safe silhouettes.

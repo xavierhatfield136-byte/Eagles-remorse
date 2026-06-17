@@ -1,6 +1,9 @@
+import app.config.GameConfig;
+import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AISystemSmallCraftRangeTest {
@@ -45,5 +48,28 @@ class AISystemSmallCraftRangeTest {
                 "sensor contact should keep the target in the sustained engagement envelope");
         assertTrue(sustainedRange > practicalGunRange,
                 "the sustained engagement envelope should extend beyond the coarse gun range gate");
+    }
+
+    @Test
+    void fighterOnlyTeamsDoNotFormUpAroundAFighterFlagship() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 2400, 1800, true, 44L, false));
+        FleetShip friendlyOne = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 400.0, 900.0);
+        FleetShip friendlyTwo = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 430.0, 940.0);
+        FleetShip hostile = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 610.0, 905.0);
+        ctx.ships.clear();
+        ctx.ships.add(friendlyOne);
+        ctx.ships.add(friendlyTwo);
+        ctx.ships.add(hostile);
+        ctx.entityQuery.rebuild(ctx);
+
+        AISystem.update(ctx, 1.0 / 60.0);
+
+        assertFalse(ctx.command.fleetCommandShips.containsKey(Faction.ALLY),
+                "fighter-only teams should not elect a fighter as fleet command anchor");
+        assertTrue(friendlyOne.aiCommittedTargetId == hostile.id || friendlyTwo.aiCommittedTargetId == hostile.id,
+                "at least one friendly fighter should commit to the hostile instead of circling a friendly fighter");
+        assertTrue(Math.hypot(friendlyOne.vx, friendlyOne.vy) > 0.0001
+                        || Math.hypot(friendlyTwo.vx, friendlyTwo.vy) > 0.0001,
+                "friendly fighters should keep moving without a friendly capital ship");
     }
 }

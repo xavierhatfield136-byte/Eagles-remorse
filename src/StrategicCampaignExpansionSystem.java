@@ -16,7 +16,7 @@ public final class StrategicCampaignExpansionSystem {
     public enum Intervention { JOIN, IGNORE, STRIKE, OBSERVE, EVACUATE, BLOCKADE_RUN, RELIEF, PURSUIT, SURRENDER }
     public enum TaskOrder { HOLD, ROUTE, PATROL_LOOP, ESCORT, GARRISON, CONVOY, REPAIR_RESUPPLY, SCOUT, AMBUSH, BLOCKADE }
     public enum RulesOfEngagement { CONSERVE_FORCE, DEFENSIVE, BALANCED, AGGRESSIVE }
-    public enum MapOverlay { LOGISTICS, SENSORS, CONTROL, DANGER, TRADE, HOSTILE_ROUTES }
+    public enum MapOverlay { LOGISTICS, SENSORS, CONTROL, DANGER, TRADE, HOSTILE_ROUTES, FACILITIES, MISSIONS, FLEETS, ROUTES, INTEL }
 
     public static final class StarSystem {
         public final String id;

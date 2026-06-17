@@ -79,9 +79,120 @@ class CampaignZoneLayoutTest {
                 "campaign sectors should distribute enemy contacts across the zone instead of one local cluster");
     }
 
+    @Test
+    void legacyMainPoisKeepStableIdsWhileExposingFacilityMetadata() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 99L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        assertEquals(24, CampaignSystem.mainCampaignLocations(ctx).size());
+        for (int i = 0; i < 24; i++) {
+            CampaignSystem.CampaignLocation location = CampaignSystem.mainCampaignLocations(ctx).get(i);
+            String legacyId = String.format(java.util.Locale.US, "poi-%02d", i + 1);
+            assertEquals(legacyId, location.id);
+            assertEquals(legacyId, location.legacyPoiId);
+            assertEquals(String.format(java.util.Locale.US, "facility-%02d", i + 1), location.facilityId);
+            assertTrue(location.zoneId != null && !location.zoneId.isBlank(),
+                    "main campaign facility should expose a zone id");
+            assertTrue(location.facilityType != CampaignSystem.CampaignFacilityType.UNKNOWN,
+                    "main campaign facility should expose an explicit facility type");
+            assertTrue(location.strategicValue >= 1 && location.strategicValue <= 5,
+                    "strategic value should stay in the 1-5 rating range");
+            assertEquals(CampaignSystem.CampaignIntelLevel.FULL, location.intelLevel);
+        }
+    }
+
+    @Test
+    void proceduralMinorSitesStartAsHiddenFacilitiesWithUnknownIntel() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 99L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        assertTrue(CampaignSystem.campaignAreasOfInterest(ctx).stream()
+                .filter(location -> location != null && location.id.startsWith("aoi-proc-"))
+                .allMatch(location -> !location.discovered
+                        && location.facilityType != CampaignSystem.CampaignFacilityType.UNKNOWN
+                        && location.intelLevel == CampaignSystem.CampaignIntelLevel.UNKNOWN));
+    }
+
+    @Test
+    void strategicOvermapFacilitiesGenerateHomeBasedFleets() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 99L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.campaign.facilityFleetGenerationActive = true;
+
+        invokeForceSimulation(ctx, 0.25);
+
+        boolean found = false;
+        for (Object force : ctx.campaign.campaignForces) {
+            if (fieldString(force, "name").equals("Green Anchorage Pelagos Patrol Fleet")
+                    && fieldString(force, "homeBaseId").equals("poi-01")
+                    && fieldString(force, "sourceLocationId").equals("poi-01")) {
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "strategic overmap should generate a home-based fleet from the Green anchorage facility");
+    }
+
+    @Test
+    void openingCampaignForcesStayOutsideProtectedStartRadius() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 99L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.campaign.facilityFleetGenerationActive = true;
+        ctx.campaign.sectorElapsed = 0.0;
+
+        invokeForceSimulation(ctx, 0.25);
+
+        for (Object force : ctx.campaign.campaignForces) {
+            if (!"ENEMY".equals(fieldString(force, "faction"))) continue;
+            double x = fieldDouble(force, "x");
+            double y = fieldDouble(force, "y");
+            double dist = Math.hypot(x - ctx.campaign.playerGalaxyX, y - ctx.campaign.playerGalaxyY);
+            assertTrue(dist >= 2500.0,
+                    "opening Red campaign force should not spawn directly on the player: " + fieldString(force, "name"));
+        }
+    }
+
     private static void startSector(GameContext ctx, int sector) throws Exception {
         Method startSector = CampaignSystem.class.getDeclaredMethod("startSector", GameContext.class, int.class);
         startSector.setAccessible(true);
         startSector.invoke(null, ctx, sector);
+    }
+
+    private static void invokeForceSimulation(GameContext ctx, double dt) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "updateCampaignForceSimulation",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                double.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, ctx.campaign, dt);
+    }
+
+    private static String fieldString(Object target, String fieldName) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            Object value = field.get(target);
+            return value == null ? "" : value.toString();
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static double fieldDouble(Object target, String fieldName) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.getDouble(target);
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
     }
 }

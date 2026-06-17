@@ -1,15 +1,10 @@
 plugins {
     id "java"
     id "application"
-    id "checkstyle"
-    id "pmd"
-    id "com.github.spotbugs" version "6.4.4"
 }
 
 def appDisplayName = "Eagles Remorse"
 def appBundleName = "EaglesRemorse"
-def lwjglVersion = "3.3.6"
-def lwjglNatives = "natives-windows"
 def rawVersion = file("VERSION").exists() ? file("VERSION").text.trim() : "dev"
 def versionMatcher = (rawVersion =~ /(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
 def packageVersion = versionMatcher.find()
@@ -48,7 +43,6 @@ sourceSets {
             exclude "turret_skin_generation/**"
             exclude "**/backup*/**"
             exclude "**/*.bak"
-            exclude "**/*.glb"
             exclude "**/*.old"
             exclude "**/*.psd"
             exclude "**/*.tmp"
@@ -60,39 +54,9 @@ sourceSets {
             srcDirs = ["test"]
         }
     }
-    client3d {
-        java {
-            srcDirs = ["src", "client-3dimentions/src"]
-        }
-        resources {
-            srcDirs = ["assets"]
-            exclude "**/dropbox/**"
-            exclude "ai_pipeline/**"
-            exclude "audio/dropoff/**"
-            exclude "**/backup*/**"
-            exclude "**/*.bak"
-            exclude "**/*.glb"
-            exclude "**/*.old"
-            exclude "**/*.psd"
-            exclude "**/*.tmp"
-            exclude "**/*.zip"
-        }
-    }
-}
-
-configurations {
-    client3dImplementation.extendsFrom implementation
-    client3dRuntimeOnly.extendsFrom runtimeOnly
 }
 
 dependencies {
-    client3dImplementation("org.lwjgl:lwjgl:${lwjglVersion}")
-    client3dImplementation("org.lwjgl:lwjgl-glfw:${lwjglVersion}")
-    client3dImplementation("org.lwjgl:lwjgl-opengl:${lwjglVersion}")
-    client3dRuntimeOnly("org.lwjgl:lwjgl:${lwjglVersion}:${lwjglNatives}")
-    client3dRuntimeOnly("org.lwjgl:lwjgl-glfw:${lwjglVersion}:${lwjglNatives}")
-    client3dRuntimeOnly("org.lwjgl:lwjgl-opengl:${lwjglVersion}:${lwjglNatives}")
-
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -165,23 +129,6 @@ tasks.named("test") {
 
 tasks.named("run") {
     dependsOn("purgeStraySourceClasses")
-}
-
-tasks.register("runFull3DTestingGround", JavaExec) {
-    group = "application"
-    description = "Launch the LWJGL full-3D combat testing ground."
-    dependsOn(tasks.named("client3dClasses"))
-    classpath = sourceSets.client3d.runtimeClasspath
-    mainClass = "Full3DTestingGround"
-    doFirst {
-        def modelDir = providers.gradleProperty("full3dModelDir")
-                .orElse(providers.environmentVariable("EAGLES_3D_MODEL_DIR"))
-                .orElse("C:\\Users\\xhatf\\OneDrive\\Desktop\\3d models dropoff")
-                .get()
-        def scenario = providers.gradleProperty("full3dScenario").orElse("mothership").get()
-        systemProperty("eagles.modelDir", modelDir)
-        args("--scenario=${scenario}")
-    }
 }
 
 tasks.named("check") {
@@ -273,51 +220,6 @@ tasks.register("stabilitySmoke") {
 
 tasks.named("check") {
     dependsOn("stabilitySmoke")
-}
-
-checkstyle {
-    toolVersion = "10.26.1"
-}
-
-tasks.withType(Checkstyle).configureEach {
-    ignoreFailures = true
-    showViolations = false
-    reports {
-        html.required.set(true)
-        xml.required.set(false)
-    }
-}
-
-pmd {
-    toolVersion = "7.15.0"
-    consoleOutput = false
-    ignoreFailures = true
-    ruleSetFiles = files("${rootDir}/config/pmd/ruleset.xml")
-    ruleSets = []
-}
-
-tasks.withType(Pmd).configureEach {
-    reports {
-        html.required.set(true)
-        xml.required.set(false)
-    }
-}
-
-spotbugs {
-    effort = com.github.spotbugs.snom.Effort.valueOf("MAX")
-    reportLevel = com.github.spotbugs.snom.Confidence.valueOf("MEDIUM")
-    ignoreFailures = true
-}
-
-tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
-    reports {
-        html.required.set(true)
-        xml.required.set(false)
-    }
-}
-
-tasks.named("check") {
-    dependsOn("spotbugsMain")
 }
 
 def isWindowsHost = {

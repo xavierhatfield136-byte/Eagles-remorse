@@ -22,7 +22,7 @@ Deliver a major simulation and presentation upgrade centered on:
 ## Scope Boundaries
 - In scope: gameplay, UI, audio, data models, telemetry, balancing.
 - In scope: deterministic logic for room hits and subsystem consequences.
-- Out of scope for this checklist: full 3D client migration and model pipeline.
+- Out of scope for this checklist: alternate-client migration and external model pipelines.
 - Out of scope for this checklist: networking/multiplayer sync.
 
 ## Success Metrics (Program-Level)

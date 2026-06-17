@@ -25,15 +25,6 @@ Start here. The docs are organized by purpose so the next work is visible withou
 - `TACTICAL_COMBAT_DEPTH.md` - tactical feature reference.
 - `PERFORMANCE_GUARDRAILS.md` - performance verification commands.
 
-## Future 3D Lane
-
-- `FUTURE_3D_TRACK.md` - active policy for preserving the post-alpha 3D feasibility track.
-- `scripts/run-3d-sandbox.ps1` - retained sandbox launcher.
-- `archive/legacy/THREE_D_MIGRATION_TASK_BOARD.md` - historical migration board.
-- `archive/legacy/M2_3D_SANDBOX_VALIDATION.md` - historical sandbox validation checklist.
-
-The 3D sandbox stays in place intentionally. It is a feasibility and architecture guardrail while the 2D game is finished, not an alpha blocker.
-
 ## Asset Workflow
 
 - `SHIP_SKINS.md`

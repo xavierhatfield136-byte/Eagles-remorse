@@ -13,7 +13,8 @@ Owner: Codex implementation run
 - `java -cp build/classes/java/main Phase9DeterminismHarness --strict --seed=90210 --seconds=300`
 - `powershell -ExecutionPolicy Bypass -File scripts/run-checklist-v2.ps1 -AudioSeconds 180`
 - `java -cp build/classes/java/main CrewPortraitPipelineHarness --strict`
-- `java -cp build/classes/java/main VoiceRoleLineCountHarness --strict --min-lines=12`
+- `java -cp build/classes/java/main VoiceCoverageHarness --strict`
+- `java -cp build/classes/java/main VoiceAssetQualityHarness --strict`
 
 ## Results
 
@@ -74,7 +75,7 @@ Source: `build/reports/phase9_campaign_smoke.json`
   - total portraits: `20`
   - base set complete: `true`
   - issues: none
-- Voice per-role line minimum (`VoiceRoleLineCountHarness --strict --min-lines=12`): pass
+- Voice coverage and asset quality (`VoiceCoverageHarness --strict`, `VoiceAssetQualityHarness --strict`): pass
   - captain: `15`
   - helm: `12`
   - tactical: `12`

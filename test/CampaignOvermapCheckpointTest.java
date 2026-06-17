@@ -95,6 +95,9 @@ class CampaignOvermapCheckpointTest {
         mission.supportRouteStabilized = true;
         mission.unresolvedAgeSec = 88.0;
         mission.escalationStage = 1;
+        mission.ownerFaction = Faction.TEAM_D;
+        mission.intelLevel = CampaignSystem.CampaignIntelLevel.FULL;
+        mission.destroyed = true;
         aoi.discovered = false;
         aoi.consumed = true;
         setObject(aoi, "intelQuality", enumConstant(findNestedEnum("ContactIntelQuality"), "CLASSIFIED"));
@@ -192,6 +195,9 @@ class CampaignOvermapCheckpointTest {
         assertTrue(restoredMission.supportRouteStabilized);
         assertEquals(88.0, restoredMission.unresolvedAgeSec, 1e-9);
         assertEquals(1, restoredMission.escalationStage);
+        assertEquals(Faction.TEAM_D, restoredMission.ownerFaction);
+        assertEquals(CampaignSystem.CampaignIntelLevel.FULL, restoredMission.intelLevel);
+        assertTrue(restoredMission.destroyed);
         assertFalse(restoredAoi.discovered);
         assertTrue(restoredAoi.consumed);
         assertEquals("CLASSIFIED", getObject(restoredAoi, "intelQuality").toString());

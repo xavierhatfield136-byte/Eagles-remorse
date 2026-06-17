@@ -13,7 +13,7 @@ The project uses the included Gradle wrapper, so a separate Gradle install is no
 
 - `src/` - game source and harness entry points
 - `assets/` - game art and other runtime assets
-- `config/` - static analysis configuration
+- `config/` - runtime tuning and content-pack fixtures
 - `docs/` - design and supporting notes
 
 ## Build

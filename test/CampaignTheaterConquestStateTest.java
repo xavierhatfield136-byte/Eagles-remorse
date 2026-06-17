@@ -25,6 +25,9 @@ class CampaignTheaterConquestStateTest {
         setDouble(firstTheater, "controlScore", 73.5);
         setDouble(firstTheater, "supplyState", 68.0);
         setDouble(firstTheater, "threatPressure", 41.0);
+        setDouble(firstTheater, "greenInfluence", 77.0);
+        setDouble(firstTheater, "yellowInfluence", 18.0);
+        setDouble(firstTheater, "redInfluence", 5.0);
         setObject(firstTheater, "controlState", enumConstant(fieldType(firstTheater, "controlState"), "BLUE_GREEN_CONTROLLED"));
 
         Object firstNode = st.strategicNodes.get(0);
@@ -54,6 +57,9 @@ class CampaignTheaterConquestStateTest {
         assertTrue(getDouble(restoredTheater, "controlScore") > 0.0);
         assertTrue(getDouble(restoredTheater, "supplyState") >= 0.0);
         assertTrue(getDouble(restoredTheater, "threatPressure") >= 0.0);
+        assertEquals(77.0, getDouble(restoredTheater, "greenInfluence"), 0.001);
+        assertEquals(18.0, getDouble(restoredTheater, "yellowInfluence"), 0.001);
+        assertEquals(5.0, getDouble(restoredTheater, "redInfluence"), 0.001);
         assertNotNull(getObject(restoredTheater, "controlState"));
         Object restoredNode = restoredState.strategicNodes.get(0);
         assertEquals("BLUE_GREEN", getObject(restoredNode, "owner").toString());

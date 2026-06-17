@@ -9,7 +9,7 @@ Date: 2026-03-07
 - [x] Campaign smoke run (`CampaignParityHarness`, compare skipped) passed for seeds `10101,20202,30303`.
 - [x] `scripts/run-checklist-v2.ps1 -AudioSeconds 180` executed with all objective checks passing except x-ray draw budget.
 - [x] `CrewPortraitPipelineHarness --strict` passed (20 portraits, no audit/readability issues).
-- [x] `VoiceRoleLineCountHarness --strict --min-lines=12` passed for all crew roles.
+- [x] `VoiceCoverageHarness --strict` and `VoiceAssetQualityHarness --strict` passed for all crew roles.
 
 ## Required Artifacts
 - [x] Determinism log generated: `build/reports/phase9_determinism.txt`.

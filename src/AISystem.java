@@ -757,11 +757,13 @@ public final class AISystem {
             out.members.computeIfAbsent(teamId, k -> new ArrayList<>()).add(s);
             out.teamFactions.putIfAbsent(teamId, s.faction);
 
-            double score = flagshipScore(s);
-            Double current = bestScore.get(teamId);
-            if (current == null || score > current) {
-                bestScore.put(teamId, score);
-                out.flagships.put(teamId, s);
+            if (canLeadFleetFormation(s)) {
+                double score = flagshipScore(s);
+                Double current = bestScore.get(teamId);
+                if (current == null || score > current) {
+                    bestScore.put(teamId, score);
+                    out.flagships.put(teamId, s);
+                }
             }
         }
 
@@ -1660,6 +1662,13 @@ public final class AISystem {
     private static double flagshipScore(Ship s) {
         if (s == null) return 0.0;
         return roleWeightForFlagship(s.role) * 1000.0 + s.hpMax * 3.0 + s.radius * 8.0 + s.id * 0.0001;
+    }
+
+    private static boolean canLeadFleetFormation(Ship s) {
+        if (!isAlive(s)) return false;
+        if (s.isSmallCraft()) return false;
+        if (s.role == ShipRole.MINER) return false;
+        return s.role != ShipRole.HAULER && s.role != ShipRole.TRANSPORT;
     }
 
     private static double roleWeightForFlagship(ShipRole role) {
@@ -3606,19 +3615,20 @@ public final class AISystem {
     }
 
     private static Ship findFlagshipForFaction(GameContext ctx, Faction faction, Ship fallback) {
-        if (ctx == null || faction == null || ctx.ships == null) return fallback;
+        if (ctx == null || faction == null || ctx.ships == null) return null;
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         for (Ship ship : ctx.ships) {
             if (!isAlive(ship) || ship.faction == null) continue;
             if (ship.faction.teamId() != faction.teamId()) continue;
+            if (!canLeadFleetFormation(ship)) continue;
             double score = flagshipScore(ship);
             if (score > bestScore) {
                 bestScore = score;
                 best = ship;
             }
         }
-        return isAlive(best) ? best : fallback;
+        return isAlive(best) ? best : null;
     }
 
     private static int fireIfAble(GameContext ctx, Ship s, Ship target, double dt, double dist) {

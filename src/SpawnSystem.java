@@ -1007,6 +1007,12 @@ public final class SpawnSystem {
     }
 
     private static void initShowcase(GameContext ctx) {
+        loadShowcaseTeam(ctx, Faction.forTeamId(ctx.config.playerTeamId));
+    }
+
+    public static void loadShowcaseTeam(GameContext ctx, Faction faction) {
+        if (ctx == null) return;
+        Faction showcaseFaction = normalizeShowcaseFaction(faction);
         ctx.ships.clear();
         ctx.projectiles.clear();
         ctx.asteroids.clear();
@@ -1017,19 +1023,16 @@ public final class SpawnSystem {
         ctx.enemyBase = null;
 
         ShipRole[] roles = ShipRole.values();
-        Faction[] factions = Faction.fourTeamFactions();
         int rolesPerFaction = roles.length;
         int blockCols = Math.max(4, (int) Math.ceil(Math.sqrt(rolesPerFaction)));
         int blockRows = (int) Math.ceil(rolesPerFaction / (double) blockCols);
         double spacing = 210.0;
-        double blockGapX = 340.0;
-        double blockGapY = 320.0;
         double blockW = (blockCols - 1) * spacing;
         double blockH = (blockRows - 1) * spacing;
-        double galleryW = blockW * 2.0 + blockGapX;
-        double galleryH = blockH * 2.0 + blockGapY;
+        double galleryW = blockW;
+        double galleryH = blockH;
         double startX = GameMath.clamp((ctx.WORLD_W - galleryW) * 0.5, 120.0, ctx.WORLD_W - 120.0 - galleryW);
-        double startY = GameMath.clamp((ctx.WORLD_H - galleryH - 420.0) * 0.5, 180.0, ctx.WORLD_H - 180.0 - galleryH);
+        double startY = GameMath.clamp((ctx.WORLD_H - galleryH - 320.0) * 0.5, 180.0, ctx.WORLD_H - 180.0 - galleryH);
 
         double galleryCenterX = startX + galleryW * 0.5;
         double galleryCenterY = startY + galleryH * 0.5;
@@ -1047,29 +1050,21 @@ public final class SpawnSystem {
 
         double maxShowcaseY = playerY;
 
-        for (int factionIndex = 0; factionIndex < factions.length; factionIndex++) {
-            Faction faction = factions[factionIndex];
-            int blockCol = factionIndex % 2;
-            int blockRow = factionIndex / 2;
-            double blockStartX = startX + blockCol * (blockW + blockGapX);
-            double blockStartY = startY + blockRow * (blockH + blockGapY);
+        for (int roleIndex = 0; roleIndex < roles.length; roleIndex++) {
+            ShipRole role = roles[roleIndex];
+            int row = roleIndex / blockCols;
+            int col = roleIndex % blockCols;
+            double sx = GameMath.clamp(startX + col * spacing, 80.0, ctx.WORLD_W - 80.0);
+            double sy = GameMath.clamp(startY + row * spacing, 80.0, ctx.WORLD_H - 180.0);
 
-            for (int roleIndex = 0; roleIndex < roles.length; roleIndex++) {
-                ShipRole role = roles[roleIndex];
-                int row = roleIndex / blockCols;
-                int col = roleIndex % blockCols;
-                double sx = GameMath.clamp(blockStartX + col * spacing, 80.0, ctx.WORLD_W - 80.0);
-                double sy = GameMath.clamp(blockStartY + row * spacing, 80.0, ctx.WORLD_H - 180.0);
+            Ship s = new FleetShip(role, showcaseFaction, sx, sy);
+            s.name = showcaseShipName(showcaseFaction, role);
+            s.vx = 0;
+            s.vy = 0;
+            s.angle = 0.0; // face right
 
-                Ship s = new FleetShip(role, faction, sx, sy);
-                s.name = showcaseShipName(faction, role);
-                s.vx = 0;
-                s.vy = 0;
-                s.angle = 0.0; // face right
-
-                ctx.ships.add(s);
-                if (sy > maxShowcaseY) maxShowcaseY = sy;
-            }
+            ctx.ships.add(s);
+            if (sy > maxShowcaseY) maxShowcaseY = sy;
         }
 
         double projectileY = Math.min(ctx.WORLD_H - 140.0, maxShowcaseY + 120.0);
@@ -1093,8 +1088,16 @@ public final class SpawnSystem {
         ctx.credits = 100;
         ctx.enemyWaveTimer = Double.POSITIVE_INFINITY;
         ctx.nextEventTimer = Double.POSITIVE_INFINITY;
-        ctx.eventBanner = "SHOWCASE MODE  -  AI OFF  -  FULL FLEET DISPLAY";
+        ctx.command.showcaseFaction = showcaseFaction;
+        ctx.eventBanner = "SHOWCASE MODE  -  " + showcaseFaction.teamName().toUpperCase(Locale.US)
+                + " TEAM  -  AI OFF";
         ctx.eventBannerT = 9999.0;
+    }
+
+    private static Faction normalizeShowcaseFaction(Faction faction) {
+        if (faction == Faction.PLAYER) return Faction.ALLY;
+        if (faction == Faction.ENEMY || faction == Faction.TEAM_C || faction == Faction.TEAM_D) return faction;
+        return Faction.ALLY;
     }
 
     private static String showcaseShipName(Faction faction, ShipRole role) {

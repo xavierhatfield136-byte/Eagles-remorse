@@ -419,6 +419,21 @@ public final class UISystem {
         int idx = Renderer.coreMenuButtonAt(viewportW, viewportH, e.getX(), e.getY());
         if (idx < 0) return false;
 
+        if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
+            switch (idx) {
+                case 0 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.ALLY);
+                case 1 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.ENEMY);
+                case 2 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.TEAM_C);
+                case 3 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.TEAM_D);
+                case 4 -> toggleCrewStations(ctx);
+                case 5 -> GameplayActions.trySafeMissionExit(ctx);
+                default -> {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         switch (idx) {
             case 0 -> toggleShop(ctx);
             case 1 -> toggleBaseMenu(ctx);
