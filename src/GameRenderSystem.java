@@ -214,6 +214,7 @@ public final class GameRenderSystem {
 
             Renderer.drawWorldMarkers(worldG, renderShips, ctx.lockedTarget, ctx.command.fleetCommandShips, ctx.command.fleetSharedTargets,
                     viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
+            Renderer.drawSelectedCommsContactWorld(worldG, ctx);
             if (CampaignSystem.isFleetHubSession(ctx)) {
                 drawFleetSelectionMarker(worldG, CampaignSystem.fleetSelectedShip(ctx));
             }
@@ -301,6 +302,8 @@ public final class GameRenderSystem {
             TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
             drawVoiceCaption(ctx, g2, viewportW, viewportH);
             drawModifierChips(ctx, g2, viewportW);
+            Renderer.drawCommsPanel(g2, ctx, viewportW, viewportH);
+            Renderer.drawCommsContextMenu(g2, ctx, viewportW, viewportH);
             Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
 
             if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {

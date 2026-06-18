@@ -2700,8 +2700,12 @@ public final class CampaignSystem {
                 lines.add("Cost: " + cost + " credits  |  " + supplyCost + " supplies  |  " + salvageCost + " salvage");
             }
             case TRADE -> {
+                int availableOre = currentCampaignOre(ctx);
+                int sellOre = campaignOreSaleAmount(ctx);
+                int payout = campaignOreSaleCredits(ctx, location, sellOre);
                 lines.add("Request Trade");
-                lines.add("Trading desk handles sell salvage/ore, buy stores, hire help, and ship purchase referrals.");
+                lines.add("Trading desk buys ore directly from fleet stores.");
+                lines.add("Selected ore sale: " + sellOre + " / " + availableOre + " ore  |  Payout: " + payout + " credits");
                 lines.add("Market Bias: " + (profile.alignment == HubAlignment.YELLOW ? "Yellow commerce premium" : "standard frontier exchange"));
             }
             case SHIPYARD -> {
@@ -9133,7 +9137,11 @@ public final class CampaignSystem {
         HubProfile profile = hubProfile(ctx, location);
         return switch (service) {
             case REPAIR -> "C " + GameContext.scaleCreditEarnings((int) Math.round((80 + damagedPersistentFleetCount(ctx, st) * 28) * profile.priceMul));
-            case TRADE -> "SELL SALVAGE";
+            case TRADE -> {
+                int amount = campaignOreSaleAmount(ctx);
+                int payout = campaignOreSaleCredits(ctx, location, amount);
+                yield amount <= 0 ? "NO ORE" : ("SELL " + amount + " ORE  +" + payout + "C");
+            }
             case REFIT -> "C " + GameContext.scaleCreditEarnings((int) Math.round(110 * profile.priceMul));
             case SHIPYARD -> "BUILD READY";
             case SUPPLY -> "C " + GameContext.scaleCreditEarnings((int) Math.round(90 * profile.priceMul));
@@ -10578,7 +10586,7 @@ public final class CampaignSystem {
                 case HOSTILE -> 0.76;
                 default -> 1.0;
             };
-            int credits = GameContext.scaleCreditEarnings((int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 240 : 170) * (1.0 - strainPenalty * 0.25) * relationshipMul * stabilityMul));
+            int credits = GameContext.scaleCreditReward((int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 240 : 170) * (1.0 - strainPenalty * 0.25) * relationshipMul * stabilityMul));
             int fuel = Math.max(16, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 36 : 24) * (1.0 - strainPenalty * 0.30) * relationshipMul * stabilityMul));
             int salvage = Math.max(6, (int) Math.round(((reputation == CampaignReputationState.RAIDER_THREAT) ? 12 : 8) * (1.0 - strainPenalty * 0.20) * relationshipMul * stabilityMul));
             ctx.credits += credits;
@@ -16082,28 +16090,30 @@ public final class CampaignSystem {
                 yield true;
             }
             case TRADE -> {
-                int soldSalvage = Math.min(st.campaignSalvage, 12 + (int) Math.round(profile.tradeMul * 6.0));
-                if (soldSalvage <= 0) {
-                    EventSystem.showBanner(ctx, "NO SALVAGE READY FOR MARKET SALE", 1.3);
+                int soldOre = campaignOreSaleAmount(ctx);
+                if (soldOre <= 0 || currentCampaignOre(ctx) <= 0) {
+                    EventSystem.showBanner(ctx, "NO ORE READY FOR MARKET SALE", 1.3);
                     yield false;
                 }
-                int sale = GameContext.scaleCreditEarnings((int) Math.round(soldSalvage * 10 * profile.tradeMul));
-                int fuelGain = Math.max(4, (int) Math.round(soldSalvage * 0.7 * profile.logisticsMul));
-                int supplyGain = Math.max(3, (int) Math.round(soldSalvage * 0.5 * profile.logisticsMul));
-                int oreGain = Math.max(1, (int) Math.round(soldSalvage * 0.35 * profile.tradeMul));
-                st.campaignSalvage -= soldSalvage;
+                int sale = campaignOreSaleCredits(ctx, location, soldOre);
+                if (sale <= 0 || !spendCampaignOre(ctx, soldOre)) {
+                    EventSystem.showBanner(ctx, "ORE SALE FAILED", 1.3);
+                    yield false;
+                }
+                int fuelGain = Math.max(2, (int) Math.round(soldOre * 0.08 * profile.logisticsMul));
+                int supplyGain = Math.max(1, (int) Math.round(soldOre * 0.06 * profile.logisticsMul));
                 ctx.credits += sale;
                 HubTradeHireResult hire = tryHireHubTradeEscort(ctx, st, location, profile);
                 st.campaignFuel += fuelGain;
                 st.campaignSupplies += supplyGain;
-                setCampaignOre(ctx, st, currentCampaignOre(ctx) + oreGain);
                 adjustFleetStrain(st, -6.0);
+                ctx.ui.campaignOreSaleAmount = MathUtil.clamp(ctx.ui.campaignOreSaleAmount, 1, Math.max(1, currentCampaignOre(ctx)));
                 setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
                 setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
                 setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
                 String hireText = hire.hired ? ("  HIRED " + hire.role.name() + " -" + hire.cost + "C") : "";
-                EventSystem.showBanner(ctx, "MARKET TRADE COMPLETE  +" + sale + " CREDITS  +" + oreGain
-                        + " ORE  +" + fuelGain + " FUEL" + hireText, 1.6);
+                EventSystem.showBanner(ctx, "ORE SOLD: " + soldOre + "  +" + sale + " CREDITS  +"
+                        + fuelGain + " FUEL  +" + supplyGain + " SUP" + hireText, 1.6);
                 yield true;
             }
             case SHIPYARD -> {
@@ -16204,7 +16214,7 @@ public final class CampaignSystem {
                 yield true;
             }
             case CONTRACTS -> {
-                int payout = GameContext.scaleCreditEarnings((int) Math.round((profile.alignment == HubAlignment.GREEN ? 135 : 105) * profile.quality));
+                int payout = GameContext.scaleCreditReward((int) Math.round((profile.alignment == HubAlignment.GREEN ? 135 : 105) * profile.quality));
                 int supplies = (profile.alignment == HubAlignment.GREEN) ? 6 : 3;
                 ctx.credits += payout;
                 st.campaignSupplies += supplies;
@@ -16230,7 +16240,7 @@ public final class CampaignSystem {
                     EventSystem.showBanner(ctx, "NO SALVAGE TO SELL", 1.3);
                     yield false;
                 }
-                int payout = GameContext.scaleCreditEarnings((int) Math.round(soldSalvage * 11 * profile.tradeMul));
+                int payout = GameContext.scaleCreditReward((int) Math.round(soldSalvage * 11 * profile.tradeMul));
                 ctx.credits += payout;
                 st.campaignSalvage -= soldSalvage;
                 adjustFleetStrain(st, -3.0);
@@ -20348,6 +20358,47 @@ public final class CampaignSystem {
         setCampaignOre(ctx, st, currentCampaignOre(ctx) + delta);
     }
 
+    public static int campaignOreSaleAmount(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 0;
+        int available = currentCampaignOre(ctx);
+        if (available <= 0) return 0;
+        int selected = MathUtil.clamp(ctx.ui.campaignOreSaleAmount, 1, available);
+        ctx.ui.campaignOreSaleAmount = selected;
+        return selected;
+    }
+
+    public static int campaignOreSaleCredits(GameContext ctx, CampaignLocation location, int amount) {
+        int sold = Math.max(0, Math.min(amount, currentCampaignOre(ctx)));
+        if (sold <= 0) return 0;
+        HubProfile profile = hubProfile(ctx, location);
+        double base = sold * GameContext.ORE_PRICE * oreCreditMul(ctx) * profile.tradeMul;
+        return GameContext.scaleCreditReward((int) Math.round(base));
+    }
+
+    public static void setCampaignOreSaleFraction(GameContext ctx, double fraction) {
+        if (ctx == null || ctx.ui == null) return;
+        int available = currentCampaignOre(ctx);
+        if (available <= 0) {
+            ctx.ui.campaignOreSaleAmount = 0;
+            return;
+        }
+        int selected = (int) Math.round(MathUtil.clamp(fraction, 0.0, 1.0) * available);
+        ctx.ui.campaignOreSaleAmount = MathUtil.clamp(selected, 1, available);
+    }
+
+    public static boolean adjustCampaignOreSaleAmount(GameContext ctx, int step) {
+        if (ctx == null || ctx.ui == null) return false;
+        int available = currentCampaignOre(ctx);
+        if (available <= 0) {
+            ctx.ui.campaignOreSaleAmount = 0;
+            return false;
+        }
+        int magnitude = Math.max(1, Math.abs(step));
+        int scaledStep = magnitude >= 10 ? step : step * Math.max(1, available / 20);
+        ctx.ui.campaignOreSaleAmount = MathUtil.clamp(ctx.ui.campaignOreSaleAmount + scaledStep, 1, available);
+        return true;
+    }
+
     public static boolean suppressAutoLock(GameContext ctx) {
         CampaignState st = state(ctx);
         return st != null && st.enabled && st.disableAutoLock;
@@ -20763,25 +20814,25 @@ public final class CampaignSystem {
             case TRANSPORT -> 46;
 
             case DREADNOUGHT -> 210;
-            case CARRIER -> 184;
-            case DRONE_CARRIER -> 196;
-            case SUPERSHIP -> 320;
+            case CARRIER -> 230;
+            case DRONE_CARRIER -> 240;
+            case SUPERSHIP -> 360;
 
-            case TRANSPORT_TITAN -> 260;
-            case BULWARK_TITAN -> 300;
-            case CARRIER_SUPPORT_TITAN -> 315;
-            case VANGUARD_TITAN -> 330;
-            case INTERDICTION_TITAN -> 340;
-            case COMMAND_INTEL_TITAN -> 320;
-            case BOARDING_RECOVERY_TITAN -> 330;
-            case ARTILLERY_TITAN -> 360;
-            case SHIELD_BASTION_TITAN -> 380;
-            case FLEET_TELEPORTER_TITAN -> 350;
-            case ELITE_SUPERSHIP_COMMAND_TITAN -> 410;
-            case ELITE_REINFORCEMENTS_TITAN -> 420;
-            case MOBILE_STATION_TITAN -> 430;
-            case HYPERWEAPON_TITAN -> 480;
-            case MOTHERSHIP -> 720;
+            case TRANSPORT_TITAN -> 420;
+            case BULWARK_TITAN -> 470;
+            case CARRIER_SUPPORT_TITAN -> 490;
+            case VANGUARD_TITAN -> 500;
+            case INTERDICTION_TITAN -> 540;
+            case COMMAND_INTEL_TITAN -> 560;
+            case BOARDING_RECOVERY_TITAN -> 560;
+            case ARTILLERY_TITAN -> 580;
+            case SHIELD_BASTION_TITAN -> 620;
+            case FLEET_TELEPORTER_TITAN -> 640;
+            case ELITE_SUPERSHIP_COMMAND_TITAN -> 720;
+            case ELITE_REINFORCEMENTS_TITAN -> 740;
+            case MOBILE_STATION_TITAN -> 760;
+            case HYPERWEAPON_TITAN -> 840;
+            case MOTHERSHIP -> 1200;
 
             default -> {
                 int base = Math.max(18, (int) Math.round(Math.max(0, creditCost) * 0.10));
@@ -20794,27 +20845,27 @@ public final class CampaignSystem {
     public static int marketCreditCostForRole(ShipRole role) {
         if (role == null) return 0;
         return switch (role) {
-            case PATROL -> 140;
+            case PATROL -> 120;
             case PICKET -> 180;
             case FRIGATE -> 220;
             case ARTILLERY_SHIP -> 320;
-            case MISSILE_BOAT -> 300;
-            case CIWS_CORVETTE -> 250;
-            case MINER -> 160;
+            case MISSILE_BOAT -> 340;
+            case CIWS_CORVETTE -> 300;
+            case MINER -> 180;
 
             case LIGHT_CRUISER -> 700;
             case MEDIUM_CRUISER -> 950;
             case CRUISER -> 1100;
-            case BATTLECRUISER -> 1600;
-            case BATTLESHIP -> 2200;
-            case STEALTH_SHIP -> 1200;
+            case BATTLECRUISER -> 1700;
+            case BATTLESHIP -> 2300;
+            case STEALTH_SHIP -> 1300;
             case TRANSPORT -> 460;
-            case HAULER -> 260;
+            case HAULER -> 300;
 
-            case DREADNOUGHT -> 3200;
-            case CARRIER -> 2800;
-            case DRONE_CARRIER -> 3000;
-            case SUPERSHIP -> 5200;
+            case DREADNOUGHT -> 3000;
+            case CARRIER -> 2600;
+            case DRONE_CARRIER -> 2700;
+            case SUPERSHIP -> 4200;
 
             case TRANSPORT_TITAN -> TitanArchetype.TRANSPORT.costCredits();
             case BULWARK_TITAN -> TitanArchetype.BULWARK.costCredits();
@@ -20830,7 +20881,7 @@ public final class CampaignSystem {
             case ELITE_REINFORCEMENTS_TITAN -> TitanArchetype.ELITE_REINFORCEMENTS.costCredits();
             case MOBILE_STATION_TITAN -> TitanArchetype.MOBILE_STATION.costCredits();
             case HYPERWEAPON_TITAN -> TitanArchetype.HYPERWEAPON.costCredits();
-            case MOTHERSHIP -> 7200;
+            case MOTHERSHIP -> 12000;
 
             default -> 0;
         };
@@ -27714,7 +27765,7 @@ public final class CampaignSystem {
                 return extendAmbientSummary(summary, "broker lead", "Cache chain opened a broker rendezvous");
             }
         } else if (location.chainStage >= 2) {
-            ctx.credits += GameContext.scaleCreditEarnings(90);
+            ctx.credits += GameContext.scaleCreditReward(90);
             st.yellowLiberationFavor += 1;
             setLocationRouteState(location, "Broker traffic now leaks safer trade windows along this route", true);
             setLocationRecurringContact(location, "MARR", "Marr's brokers now treat your route as worth feeding");
@@ -32524,7 +32575,7 @@ public final class CampaignSystem {
         }
         adjustFleetStrain(st, (ratio >= 1.20) ? 3.0 : (ratio >= 0.9 ? 7.0 : 13.0));
         if (location != null && location.primaryMission) {
-            int credits = GameContext.scaleCreditEarnings(120 + (int) Math.round(location.threatLevel * 90.0f));
+            int credits = GameContext.scaleCreditReward(120 + (int) Math.round(location.threatLevel * 90.0f));
             ctx.credits += credits;
         }
     }
@@ -33826,7 +33877,7 @@ public final class CampaignSystem {
         st.sideObjectiveLabel = side.label;
         st.sideObjectiveGoal = Math.max(0.0, side.goal);
         st.sideObjectiveProgress = 0.0;
-        st.sideObjectiveRewardCredits = GameContext.scaleCreditEarnings(Math.max(0, side.rewardCredits));
+        st.sideObjectiveRewardCredits = GameContext.scaleCreditReward(Math.max(0, side.rewardCredits));
         st.sideObjectiveProtectedShipId = -1;
         st.sideObjectiveProtectedShipStartHp = 0;
         st.sideObjectiveCompleted = false;
@@ -38114,7 +38165,7 @@ public final class CampaignSystem {
         int salvageSector = mainSector + 1;
         if (salvageSector <= st.totalSectors) {
             SectorLore lore = loreFor(salvageSector);
-            int credits = GameContext.scaleCreditEarnings(120 + st.sector * 18);
+            int credits = GameContext.scaleCreditReward(120 + st.sector * 18);
             int ore = 45 + st.sector * 5;
             st.routeChoices.add(new CampaignRouteChoice(
                     CampaignRouteKind.SALVAGE,
@@ -38129,7 +38180,7 @@ public final class CampaignSystem {
         int strikeSector = mainSector + 2;
         if (strikeSector <= st.totalSectors && st.sector >= 3) {
             SectorLore lore = loreFor(strikeSector);
-            int credits = GameContext.scaleCreditEarnings(210 + st.sector * 26);
+            int credits = GameContext.scaleCreditReward(210 + st.sector * 26);
             st.routeChoices.add(new CampaignRouteChoice(
                     CampaignRouteKind.DEEP_STRIKE,
                     strikeSector,
@@ -38207,7 +38258,7 @@ public final class CampaignSystem {
         reconcileDetachedCampaignForceParents(st);
 
         int bonusBase = (int) Math.round((250 + st.sector * 70) * st.sectorCreditBonusMul);
-        int bonus = GameContext.scaleCreditEarnings(bonusBase);
+        int bonus = GameContext.scaleCreditReward(bonusBase);
         int sideBonus = resolveSideObjectiveBonusOnClear(ctx, st);
         ctx.credits += bonus;
         if (sideBonus > 0) ctx.credits += sideBonus;
@@ -38397,7 +38448,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null || location == null) return null;
         CampaignInstallationThreatCase installationThreat = installationThreatCaseById(st, st.activeInstallationThreatCaseId);
         if (installationThreat != null && installationThreat.active && location.id.equals(installationThreat.locationId)) {
-            int credits = GameContext.scaleCreditEarnings(90 + (int) Math.round(installationThreat.threatLevel * 120.0));
+            int credits = GameContext.scaleCreditReward(90 + (int) Math.round(installationThreat.threatLevel * 120.0));
             ctx.credits += credits;
             st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 6.0 + installationThreat.threatLevel * 6.0, 0.0, 100.0);
             st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - 3.0);
@@ -38459,12 +38510,12 @@ public final class CampaignSystem {
             }
             case SALVAGE_FIELD -> {
                 if (!location.consumed) {
-                    int credits = GameContext.scaleCreditEarnings(100 + (int) Math.round(location.threatLevel * 110.0f));
+                    int credits = GameContext.scaleCreditReward(100 + (int) Math.round(location.threatLevel * 110.0f));
                     int salvage = 0;
                     double controlDelta = 8.0;
                     switch (mode) {
                         case FAST_STRIP -> {
-                            credits += GameContext.scaleCreditEarnings(40);
+                            credits += GameContext.scaleCreditReward(40);
                             controlDelta = 6.0;
                             st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 8.0, 0.0, 100.0);
                             adjustFleetStrain(st, 2.0);
@@ -38478,7 +38529,7 @@ public final class CampaignSystem {
                             setLocationScar(location, "The wreck lane now reads as cold metal, stripped hulks, and missing flight logs.");
                         }
                         case MARK_FOR_ALLIES -> {
-                            credits = Math.max(GameContext.scaleCreditEarnings(60), credits - GameContext.scaleCreditEarnings(30));
+                            credits = Math.max(GameContext.scaleCreditReward(60), credits - GameContext.scaleCreditReward(30));
                             salvage = 4;
                             controlDelta = 16.0;
                             st.yellowLiberationFavor += 1;
@@ -38726,7 +38777,7 @@ public final class CampaignSystem {
                                 hired > 0 ? ("+" + hired + " hired ship" + (hired == 1 ? "" : "s")) : "",
                                 "Open hub lane remains stable");
                     }
-                    int credits = GameContext.scaleCreditEarnings(80 + (int) Math.round(location.threatLevel * 55.0f));
+                    int credits = GameContext.scaleCreditReward(80 + (int) Math.round(location.threatLevel * 55.0f));
                     ctx.credits += credits;
                     st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 7.0, 0.0, 100.0);
                     st.strategicExposureLevel = Math.max(0.0, st.strategicExposureLevel - 2.0);
@@ -38939,7 +38990,7 @@ public final class CampaignSystem {
 
     private static String resolveSector13Outcome(GameContext ctx, CampaignState st, int survivors) {
         if (survivors >= st.objectiveAssetTotal) {
-            int credits = GameContext.scaleCreditEarnings(140);
+            int credits = GameContext.scaleCreditReward(140);
             ctx.credits += credits;
             st.greenContractFavor += 1;
             st.branchScore += 1;
@@ -38960,7 +39011,7 @@ public final class CampaignSystem {
 
     private static String resolveSector21Outcome(GameContext ctx, CampaignState st, int survivors) {
         if (survivors >= st.objectiveAssetTotal) {
-            int credits = GameContext.scaleCreditEarnings(180);
+            int credits = GameContext.scaleCreditReward(180);
             ctx.credits += credits;
             st.yellowLiberationFavor += 1;
             st.branchScore += 1;
@@ -38993,7 +39044,7 @@ public final class CampaignSystem {
                     st.unlockAuxGunGranted = true;
                     unlock = "UNLOCK: AUX GUN MODULE";
                 } else {
-                    duplicateBonus = GameContext.scaleCreditEarnings(160);
+                    duplicateBonus = GameContext.scaleCreditReward(160);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -39003,7 +39054,7 @@ public final class CampaignSystem {
                     st.unlockMissileTierGranted = 1;
                     unlock = "UNLOCK: MISSILE RACK";
                 } else {
-                    duplicateBonus = GameContext.scaleCreditEarnings(200);
+                    duplicateBonus = GameContext.scaleCreditReward(200);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -39014,7 +39065,7 @@ public final class CampaignSystem {
                     st.unlockCiwsGranted = true;
                     unlock = "UNLOCK: CIWS SUITE";
                 } else {
-                    duplicateBonus = GameContext.scaleCreditEarnings(220);
+                    duplicateBonus = GameContext.scaleCreditReward(220);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -39024,7 +39075,7 @@ public final class CampaignSystem {
                     st.unlockHullGranted = true;
                     unlock = "UNLOCK: REINFORCED HULL PACKAGE";
                 } else {
-                    duplicateBonus = GameContext.scaleCreditEarnings(260);
+                    duplicateBonus = GameContext.scaleCreditReward(260);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -39034,7 +39085,7 @@ public final class CampaignSystem {
                     st.unlockMissileTierGranted = 2;
                     unlock = "UNLOCK: HEAVY MISSILE PACKAGE";
                 } else {
-                    duplicateBonus = GameContext.scaleCreditEarnings(300);
+                    duplicateBonus = GameContext.scaleCreditReward(300);
                     unlock = "TECH CACHE: +" + duplicateBonus + " CREDITS";
                 }
             }
@@ -39111,7 +39162,7 @@ public final class CampaignSystem {
 
     private static String grantStoryResources(GameContext ctx, int credits, int ore, String label) {
         if (ctx == null || ctx.player == null) return "";
-        int creditReward = GameContext.scaleCreditEarnings(Math.max(0, credits));
+        int creditReward = GameContext.scaleCreditReward(Math.max(0, credits));
         int oreReward = Math.max(0, ore);
         ctx.credits += creditReward;
         grantCampaignOre(ctx, oreReward);

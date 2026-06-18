@@ -1,7 +1,7 @@
 public enum TitanArchetype {
     TRANSPORT(
             "Transport Titan",
-            1400,
+            4800,
             TitanAvailability.EARLY,
             10,
             0,
@@ -15,7 +15,7 @@ public enum TitanArchetype {
             "interdiction escort"),
     BULWARK(
             "Bulwark Titan",
-            1800,
+            5200,
             TitanAvailability.EARLY,
             10,
             0,
@@ -28,7 +28,7 @@ public enum TitanArchetype {
             "support carrier"),
     CARRIER_SUPPORT(
             "Carrier Support Titan",
-            1900,
+            5400,
             TitanAvailability.EARLY_MID,
             10,
             0,
@@ -42,7 +42,7 @@ public enum TitanArchetype {
             "screen cruiser"),
     VANGUARD(
             "Vanguard Titan",
-            2100,
+            5600,
             TitanAvailability.EARLY_MID,
             10,
             0,
@@ -55,7 +55,7 @@ public enum TitanArchetype {
             "support escort"),
     INTERDICTION(
             "Interdiction Titan",
-            2300,
+            6000,
             TitanAvailability.MID,
             10,
             0,
@@ -69,7 +69,7 @@ public enum TitanArchetype {
             "strike carrier"),
     COMMAND_INTEL(
             "Command / Intel Titan",
-            2400,
+            6200,
             TitanAvailability.MID,
             10,
             0,
@@ -83,7 +83,7 @@ public enum TitanArchetype {
             "signals ship"),
     BOARDING_RECOVERY(
             "Boarding / Recovery Titan",
-            2450,
+            6200,
             TitanAvailability.MID,
             10,
             0,
@@ -97,7 +97,7 @@ public enum TitanArchetype {
             "support carrier"),
     ARTILLERY(
             "Artillery Titan",
-            2500,
+            6400,
             TitanAvailability.MID,
             10,
             0,
@@ -110,7 +110,7 @@ public enum TitanArchetype {
             "shield support ship"),
     SHIELD_BASTION(
             "Shield Bastion Titan",
-            2600,
+            6700,
             TitanAvailability.MID_LATE,
             10,
             0,
@@ -123,7 +123,7 @@ public enum TitanArchetype {
             "command escort"),
     FLEET_TELEPORTER(
             "Fleet Teleporter Titan",
-            2900,
+            7000,
             TitanAvailability.MID_LATE,
             10,
             0,
@@ -138,7 +138,7 @@ public enum TitanArchetype {
             "supply ship"),
     ELITE_SUPERSHIP_COMMAND(
             "Elite Supership Command Titan",
-            3200,
+            7800,
             TitanAvailability.LATE,
             0,
             5,
@@ -149,7 +149,7 @@ public enum TitanArchetype {
             "support command escort"),
     ELITE_REINFORCEMENTS(
             "Elite Reinforcements Titan",
-            3300,
+            8000,
             TitanAvailability.LATE,
             6,
             0,
@@ -162,7 +162,7 @@ public enum TitanArchetype {
             "assault reserve"),
     MOBILE_STATION(
             "Mobile Station Titan",
-            3400,
+            8200,
             TitanAvailability.LATE,
             10,
             0,
@@ -176,7 +176,7 @@ public enum TitanArchetype {
             "escort carrier"),
     HYPERWEAPON(
             "Hyperweapon Titan",
-            3800,
+            9000,
             TitanAvailability.LATE,
             10,
             0,

@@ -20,6 +20,7 @@ public final class UISystem {
         SHOP,
         BASE_MENU,
         MAP,
+        COMMS,
         POWER_MANAGEMENT,
         CREW_STATIONS,
         FLIGHT_DECK
@@ -192,6 +193,7 @@ public final class UISystem {
             case SHOP -> ctx.ui.shopOpen;
             case BASE_MENU -> ctx.ui.baseMenuOpen;
             case MAP -> ctx.ui.mapOpen;
+            case COMMS -> ctx.ui.commsOpen;
             case POWER_MANAGEMENT -> ctx.ui.powerManagementOpen;
             case CREW_STATIONS -> ctx.ui.crewStationsOpen;
             case FLIGHT_DECK -> ctx.ui.flightDeckOpen;
@@ -203,6 +205,7 @@ public final class UISystem {
         ctx.ui.shopOpen = keep == PrimaryOverlay.SHOP;
         ctx.ui.baseMenuOpen = keep == PrimaryOverlay.BASE_MENU;
         ctx.ui.mapOpen = keep == PrimaryOverlay.MAP;
+        ctx.ui.commsOpen = keep == PrimaryOverlay.COMMS;
         ctx.ui.powerManagementOpen = keep == PrimaryOverlay.POWER_MANAGEMENT;
         ctx.ui.crewStationsOpen = keep == PrimaryOverlay.CREW_STATIONS;
         ctx.ui.flightDeckOpen = keep == PrimaryOverlay.FLIGHT_DECK;
@@ -212,6 +215,8 @@ public final class UISystem {
         if (ctx == null) return;
         boolean hadOverlay = ctx.ui.hasBlockingOverlay();
         ctx.ui.clearCommTradeMenu();
+        ctx.ui.clearCommsContextMenu();
+        ctx.ui.commsOpen = false;
         ctx.ui.shopOpen = false;
         ctx.ui.baseMenuOpen = false;
         ctx.ui.mapOpen = false;
@@ -227,6 +232,22 @@ public final class UISystem {
     public static boolean handleCommTradeMenuClick(GameContext ctx, MouseEvent e, int viewW, int viewH) {
         if (ctx == null || ctx.ui == null || e == null || !ctx.ui.commTradeMenu.active) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return true;
+        Rectangle minus = Renderer.commTradeQuantityMinusRect(viewW, viewH);
+        Rectangle plus = Renderer.commTradeQuantityPlusRect(viewW, viewH);
+        Rectangle slider = Renderer.commTradeQuantitySliderRect(viewW, viewH);
+        if (minus.contains(e.getX(), e.getY())) {
+            CommSystem.adjustTradeQuantity(ctx, -1);
+            return true;
+        }
+        if (plus.contains(e.getX(), e.getY())) {
+            CommSystem.adjustTradeQuantity(ctx, 1);
+            return true;
+        }
+        if (slider.contains(e.getX(), e.getY())) {
+            double f = (e.getX() - slider.x) / (double) Math.max(1, slider.width);
+            CommSystem.setTradeQuantityFraction(ctx, f);
+            return true;
+        }
         for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
             Rectangle rect = Renderer.commTradeMenuOptionRect(viewW, viewH, i);
             if (rect.contains(e.getX(), e.getY())) {
@@ -239,6 +260,93 @@ public final class UISystem {
         if (close.contains(e.getX(), e.getY())) {
             ctx.ui.clearCommTradeMenu();
             EventSystem.showBanner(ctx, "TRADE CHANNEL CLOSED", 0.8);
+        }
+        return true;
+    }
+
+    public static boolean handleCommsContextMenuClick(GameContext ctx, MouseEvent e, int viewW, int viewH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.commsContextMenu.active) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) {
+            if (SwingUtilities.isRightMouseButton(e)) ctx.ui.clearCommsContextMenu();
+            return true;
+        }
+        Rectangle close = Renderer.commsContextCloseRect(ctx, viewW, viewH);
+        if (close.contains(e.getX(), e.getY())) {
+            ctx.ui.clearCommsContextMenu();
+            return true;
+        }
+        java.util.List<CommSystem.CommsActionView> actions =
+                CommSystem.actionsFor(ctx, ctx.ui.commsContextMenu.targetId);
+        for (int i = 0; i < actions.size(); i++) {
+            Rectangle rect = Renderer.commsContextActionRect(ctx, viewW, viewH, i);
+            if (!rect.contains(e.getX(), e.getY())) continue;
+            CommSystem.CommsActionView action = actions.get(i);
+            if (action != null && action.enabled) {
+                int targetId = ctx.ui.commsContextMenu.targetId;
+                ctx.ui.commsSelectedContactId = targetId;
+                ctx.ui.clearCommsContextMenu();
+                CommSystem.performVisibleAction(ctx, targetId, action.id);
+            } else {
+                String reason = (action == null || action.disabledReason == null || action.disabledReason.isBlank())
+                        ? "COMMS ACTION UNAVAILABLE"
+                        : action.disabledReason.toUpperCase(Locale.US);
+                EventSystem.showBanner(ctx, reason, 1.2);
+            }
+            return true;
+        }
+        ctx.ui.clearCommsContextMenu();
+        return true;
+    }
+
+    public static boolean tryOpenCommsContextAtWorld(GameContext ctx, double worldX, double worldY, int screenX, int screenY) {
+        if (ctx == null || ctx.ui == null) return false;
+        Ship target = CommSystem.nearestCommsContactAt(ctx, worldX, worldY, 260.0);
+        if (target == null) return false;
+        ctx.ui.commsSelectedContactId = target.id;
+        ctx.ui.showCommsContextMenu(target.id, screenX, screenY);
+        EventSystem.showBanner(ctx, "COMMS CONTEXT: " + target.name.toUpperCase(Locale.US), 0.8);
+        return true;
+    }
+
+    public static boolean handleCommsPanelClick(GameContext ctx, MouseEvent e, int viewW, int viewH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.commsOpen) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return true;
+        Rectangle close = Renderer.commsPanelCloseRect(viewW, viewH);
+        if (close.contains(e.getX(), e.getY())) {
+            toggleCommsPanel(ctx);
+            return true;
+        }
+        UiState.CommsFilter[] filters = UiState.CommsFilter.values();
+        for (int i = 0; i < filters.length; i++) {
+            if (Renderer.commsFilterTabRect(viewW, viewH, i).contains(e.getX(), e.getY())) {
+                ctx.ui.commsFilter = filters[i];
+                ctx.ui.commsSelectedContactId = -1;
+                CommSystem.selectedContactView(ctx);
+                return true;
+            }
+        }
+        java.util.List<CommSystem.CommsContactView> contacts = CommSystem.contactViews(ctx, ctx.ui.commsFilter);
+        int rows = Math.min(7, contacts.size());
+        for (int i = 0; i < rows; i++) {
+            if (Renderer.commsContactRowRect(viewW, viewH, i).contains(e.getX(), e.getY())) {
+                ctx.ui.commsSelectedContactId = contacts.get(i).shipId;
+                return true;
+            }
+        }
+        java.util.List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, ctx.ui.commsSelectedContactId);
+        for (int i = 0; i < actions.size(); i++) {
+            if (Renderer.commsActionButtonRect(viewW, viewH, i).contains(e.getX(), e.getY())) {
+                CommSystem.CommsActionView action = actions.get(i);
+                if (action != null && action.enabled) {
+                    CommSystem.performVisibleAction(ctx, ctx.ui.commsSelectedContactId, action.id);
+                } else {
+                    String reason = (action == null || action.disabledReason == null || action.disabledReason.isBlank())
+                            ? "COMMS ACTION UNAVAILABLE"
+                            : action.disabledReason.toUpperCase(Locale.US);
+                    EventSystem.showBanner(ctx, reason, 1.2);
+                }
+                return true;
+            }
         }
         return true;
     }
@@ -256,6 +364,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             ctx.ui.mapOpen = true;
             ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
             clearManualCombatInputs(ctx);
@@ -270,6 +379,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             clearManualCombatInputs(ctx);
             if (CampaignSystem.usesPersistentFleetShop(ctx) && ctx.player != null && ctx.ui.fleetSelectedShipId <= 0) {
                 ctx.ui.fleetSelectedShipId = ctx.player.id;
@@ -299,6 +409,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             clearManualCombatInputs(ctx);
             BattlefieldSectorSystem.ensureSelection(ctx);
             BattlefieldSectorSystem.ensureLoadedSector(ctx);
@@ -330,6 +441,7 @@ public final class UISystem {
                 ctx.ui.powerManagementOpen = false;
                 ctx.ui.crewStationsOpen = false;
                 ctx.ui.flightDeckOpen = false;
+                ctx.ui.commsOpen = false;
                 clearManualCombatInputs(ctx);
                 ctx.state = GameState.BASE_MENU;
                 AudioSystem.onUiOpen(ctx);
@@ -361,6 +473,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.BASE_MENU;
             AudioSystem.onUiOpen(ctx);
@@ -382,6 +495,7 @@ public final class UISystem {
             ctx.ui.mapOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.POWER_MANAGEMENT;
             AudioSystem.onUiOpen(ctx);
@@ -403,6 +517,7 @@ public final class UISystem {
             ctx.ui.mapOpen = false;
             ctx.ui.powerManagementOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.CREW_STATIONS;
             AudioSystem.onUiOpen(ctx);
@@ -423,6 +538,7 @@ public final class UISystem {
             ctx.ui.mapOpen = false;
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
+            ctx.ui.commsOpen = false;
             ctx.ui.flightDeckFocus = Math.max(0, Math.min(4, ctx.ui.flightDeckFocus));
             clearManualCombatInputs(ctx);
             ctx.state = GameState.FLIGHT_DECK;
@@ -432,6 +548,34 @@ public final class UISystem {
             AudioSystem.onUiClose(ctx);
         }
     }
+
+    public static void toggleCommsPanel(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+
+        ctx.ui.commsOpen = !ctx.ui.commsOpen;
+        ctx.ui.clearCommsContextMenu();
+        if (ctx.ui.commsOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
+            if (ctx.ui.commsSelectedContactId <= 0 && ctx.lockedTarget != null) {
+                ctx.ui.commsSelectedContactId = ctx.lockedTarget.id;
+            }
+            CommSystem.selectedContactView(ctx);
+            clearManualCombatInputs(ctx);
+            if (!ctx.gameOver) ctx.state = stateAfterOverlayClose(ctx);
+            AudioSystem.onUiOpen(ctx);
+            EventSystem.showBanner(ctx, "COMMS PANEL OPEN", 0.8);
+        } else {
+            if (!ctx.gameOver) ctx.state = stateAfterOverlayClose(ctx);
+            AudioSystem.onUiClose(ctx);
+        }
+    }
+
     public static boolean handleCoreMenuClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
         if (ctx == null || e == null) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
@@ -447,6 +591,7 @@ public final class UISystem {
                 case 3 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.TEAM_D);
                 case 4 -> toggleCrewStations(ctx);
                 case 5 -> GameplayActions.trySafeMissionExit(ctx);
+                case 6 -> toggleCommsPanel(ctx);
                 default -> {
                     return false;
                 }
@@ -461,6 +606,7 @@ public final class UISystem {
             case 3 -> togglePowerManagement(ctx);
             case 4 -> toggleCrewStations(ctx);
             case 5 -> GameplayActions.trySafeMissionExit(ctx);
+            case 6 -> toggleCommsPanel(ctx);
             default -> {
                 return false;
             }
@@ -1117,6 +1263,14 @@ public final class UISystem {
                     return false;
                 }
             }
+            case ORE_SALE_AMOUNT -> {
+                try {
+                    CampaignSystem.setCampaignOreSaleFraction(ctx, Double.parseDouble(target.valueId));
+                    return true;
+                } catch (Exception ignored) {
+                    return false;
+                }
+            }
             case CONFIRM -> {
                 if (ctx.ui.campaignActionConfirm.active) {
                     return CampaignSystem.confirmCampaignAction(ctx);
@@ -1140,6 +1294,16 @@ public final class UISystem {
     public static boolean handleCampaignMapWheel(GameContext ctx, MouseWheelEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.ui == null || e == null || !ctx.ui.mapOpen) return false;
         if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
+        if (ctx.ui.campaignHubMenu.active) {
+            try {
+                CampaignSystem.HubService service = CampaignSystem.HubService.valueOf(ctx.ui.campaignHubMenu.serviceId);
+                if (service == CampaignSystem.HubService.TRADE) {
+                    return CampaignSystem.adjustCampaignOreSaleAmount(ctx, -e.getWheelRotation());
+                }
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
         if (ctx.ui.campaignCommandTab != UiState.CampaignCommandTab.FLEET) return false;
         if (!Renderer.campaignFleetRosterContains(ctx, viewportW, viewportH, e.getX(), e.getY())) return false;
         int visibleRows = Renderer.campaignFleetRosterVisibleRows(ctx, viewportW, viewportH);
@@ -1155,6 +1319,11 @@ public final class UISystem {
         double ny = (e.getY() - rect.y) / (double) rect.height;
         double worldX = strategicMapWorldXAt(ctx, nx);
         double worldY = strategicMapWorldYAt(ctx, ny);
+        if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)
+                && SwingUtilities.isRightMouseButton(e)
+                && tryOpenCommsContextAtWorld(ctx, worldX, worldY, e.getX(), e.getY())) {
+            return;
+        }
         if (SwingUtilities.isMiddleMouseButton(e)) {
             focusStrategicMapAt(ctx, worldX, worldY);
             EventSystem.showBanner(ctx, "MAP FOCUS SHIFTED", 0.9);
@@ -1902,24 +2071,24 @@ public final class UISystem {
         focusShopHullRole(ctx, role);
         if (CampaignSystem.usesPersistentFleetShop(ctx)) {
             switch (role) {
-                case PATROL -> tryBuyCampaignHull(ctx, ShipRole.PATROL, 0, 0);
+                case PATROL -> tryBuyCampaignHull(ctx, ShipRole.PATROL, 120, 0);
                 case PICKET -> tryBuyCampaignHull(ctx, ShipRole.PICKET, 180, 0);
-                case FRIGATE -> tryBuyCampaignHull(ctx, ShipRole.FRIGATE, 0, 0);
-                case MINER -> tryBuyCampaignHull(ctx, ShipRole.MINER, 160, 0);
+                case FRIGATE -> tryBuyCampaignHull(ctx, ShipRole.FRIGATE, 220, 0);
+                case MINER -> tryBuyCampaignHull(ctx, ShipRole.MINER, 180, 0);
                 case ARTILLERY_SHIP -> tryBuyCampaignHull(ctx, ShipRole.ARTILLERY_SHIP, 320, 0);
-                case MISSILE_BOAT -> tryBuyCampaignHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
-                case CIWS_CORVETTE -> tryBuyCampaignHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
+                case MISSILE_BOAT -> tryBuyCampaignHull(ctx, ShipRole.MISSILE_BOAT, 340, 0);
+                case CIWS_CORVETTE -> tryBuyCampaignHull(ctx, ShipRole.CIWS_CORVETTE, 300, 0);
                 case LIGHT_CRUISER -> tryBuyCampaignHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
                 case MEDIUM_CRUISER -> tryBuyCampaignHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
                 case CRUISER -> tryBuyCampaignHull(ctx, ShipRole.CRUISER, 1100, 1);
-                case HAULER -> tryBuyCampaignHull(ctx, ShipRole.HAULER, 260, 1);
-                case BATTLECRUISER -> tryBuyCampaignHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
-                case BATTLESHIP -> tryBuyCampaignHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
-                case STEALTH_SHIP -> tryBuyCampaignHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
-                case DREADNOUGHT -> tryBuyCampaignHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
-                case CARRIER -> tryBuyCampaignHull(ctx, ShipRole.CARRIER, 2800, 3);
-                case DRONE_CARRIER -> tryBuyCampaignHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
-                case SUPERSHIP -> tryBuyCampaignHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
+                case HAULER -> tryBuyCampaignHull(ctx, ShipRole.HAULER, 300, 1);
+                case BATTLECRUISER -> tryBuyCampaignHull(ctx, ShipRole.BATTLECRUISER, 1700, 2);
+                case BATTLESHIP -> tryBuyCampaignHull(ctx, ShipRole.BATTLESHIP, 2300, 2);
+                case STEALTH_SHIP -> tryBuyCampaignHull(ctx, ShipRole.STEALTH_SHIP, 1300, 2);
+                case DREADNOUGHT -> tryBuyCampaignHull(ctx, ShipRole.DREADNOUGHT, 3000, 3);
+                case CARRIER -> tryBuyCampaignHull(ctx, ShipRole.CARRIER, 2600, 3);
+                case DRONE_CARRIER -> tryBuyCampaignHull(ctx, ShipRole.DRONE_CARRIER, 2700, 3);
+                case SUPERSHIP -> tryBuyCampaignHull(ctx, ShipRole.SUPERSHIP, 4200, 3);
                 case TRANSPORT_TITAN -> tryBuyCampaignHull(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3);
                 case BULWARK_TITAN -> tryBuyCampaignHull(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3);
                 case CARRIER_SUPPORT_TITAN -> tryBuyCampaignHull(ctx, ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3);
@@ -1941,24 +2110,24 @@ public final class UISystem {
             return;
         }
         switch (role) {
-            case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 0, 0);
+            case PATROL -> trySwapHull(ctx, ShipRole.PATROL, 120, 0);
             case PICKET -> trySwapHull(ctx, ShipRole.PICKET, 180, 0);
-            case FRIGATE -> trySwapHull(ctx, ShipRole.FRIGATE, 0, 0);
-            case MINER -> trySwapHull(ctx, ShipRole.MINER, 160, 0);
+            case FRIGATE -> trySwapHull(ctx, ShipRole.FRIGATE, 220, 0);
+            case MINER -> trySwapHull(ctx, ShipRole.MINER, 180, 0);
             case ARTILLERY_SHIP -> trySwapHull(ctx, ShipRole.ARTILLERY_SHIP, 320, 0);
-            case MISSILE_BOAT -> trySwapHull(ctx, ShipRole.MISSILE_BOAT, 300, 0);
-            case CIWS_CORVETTE -> trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 250, 0);
+            case MISSILE_BOAT -> trySwapHull(ctx, ShipRole.MISSILE_BOAT, 340, 0);
+            case CIWS_CORVETTE -> trySwapHull(ctx, ShipRole.CIWS_CORVETTE, 300, 0);
             case LIGHT_CRUISER -> trySwapHull(ctx, ShipRole.LIGHT_CRUISER, 700, 1);
             case MEDIUM_CRUISER -> trySwapHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
             case CRUISER -> trySwapHull(ctx, ShipRole.CRUISER, 1100, 1);
-            case HAULER -> trySwapHull(ctx, ShipRole.HAULER, 260, 1);
-            case BATTLECRUISER -> trySwapHull(ctx, ShipRole.BATTLECRUISER, 1600, 2);
-            case BATTLESHIP -> trySwapHull(ctx, ShipRole.BATTLESHIP, 2200, 2);
-            case STEALTH_SHIP -> trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1200, 2);
-            case DREADNOUGHT -> trySwapHull(ctx, ShipRole.DREADNOUGHT, 3200, 3);
-            case CARRIER -> trySwapHull(ctx, ShipRole.CARRIER, 2800, 3);
-            case DRONE_CARRIER -> trySwapHull(ctx, ShipRole.DRONE_CARRIER, 3000, 3);
-            case SUPERSHIP -> trySwapHull(ctx, ShipRole.SUPERSHIP, 5200, 3);
+            case HAULER -> trySwapHull(ctx, ShipRole.HAULER, 300, 1);
+            case BATTLECRUISER -> trySwapHull(ctx, ShipRole.BATTLECRUISER, 1700, 2);
+            case BATTLESHIP -> trySwapHull(ctx, ShipRole.BATTLESHIP, 2300, 2);
+            case STEALTH_SHIP -> trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1300, 2);
+            case DREADNOUGHT -> trySwapHull(ctx, ShipRole.DREADNOUGHT, 3000, 3);
+            case CARRIER -> trySwapHull(ctx, ShipRole.CARRIER, 2600, 3);
+            case DRONE_CARRIER -> trySwapHull(ctx, ShipRole.DRONE_CARRIER, 2700, 3);
+            case SUPERSHIP -> trySwapHull(ctx, ShipRole.SUPERSHIP, 4200, 3);
             case TRANSPORT_TITAN -> trySwapHull(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3);
             case BULWARK_TITAN -> trySwapHull(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3);
             case CARRIER_SUPPORT_TITAN -> trySwapHull(ctx, ShipRole.CARRIER_SUPPORT_TITAN, TitanArchetype.CARRIER_SUPPORT.costCredits(), 3);
@@ -1973,7 +2142,7 @@ public final class UISystem {
             case ELITE_REINFORCEMENTS_TITAN -> trySwapHull(ctx, ShipRole.ELITE_REINFORCEMENTS_TITAN, TitanArchetype.ELITE_REINFORCEMENTS.costCredits(), 3);
             case MOBILE_STATION_TITAN -> trySwapHull(ctx, ShipRole.MOBILE_STATION_TITAN, TitanArchetype.MOBILE_STATION.costCredits(), 3);
             case HYPERWEAPON_TITAN -> trySwapHull(ctx, ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3);
-            case MOTHERSHIP -> trySwapHull(ctx, ShipRole.MOTHERSHIP, 7200, 3);
+            case MOTHERSHIP -> trySwapHull(ctx, ShipRole.MOTHERSHIP, 12000, 3);
             default -> {
             }
         }

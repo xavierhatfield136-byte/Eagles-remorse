@@ -197,7 +197,16 @@ public final class UiState {
         public String title = "";
         public String body = "";
         public int selectedIndex = 0;
+        public int quantity = 1;
+        public String tab = "Goods";
         public final List<CommTradeOption> options = new ArrayList<>();
+    }
+
+    public static final class CommsContextMenu {
+        public boolean active = false;
+        public int targetId = -1;
+        public int screenX = 0;
+        public int screenY = 0;
     }
 
     public boolean shopOpen = false;
@@ -205,6 +214,9 @@ public final class UiState {
     public int shopHullPage = 0;
     public boolean baseMenuOpen = false;
     public boolean mapOpen = false;
+    public boolean commsOpen = false;
+    public int commsSelectedContactId = -1;
+    public CommsFilter commsFilter = CommsFilter.ALL;
     public boolean powerManagementOpen = false;
     public boolean crewStationsOpen = false;
     public boolean flightDeckOpen = false;
@@ -222,6 +234,7 @@ public final class UiState {
     public final CampaignHubMenu campaignHubMenu = new CampaignHubMenu();
     public final CampaignActionConfirm campaignActionConfirm = new CampaignActionConfirm();
     public final CommTradeMenu commTradeMenu = new CommTradeMenu();
+    public final CommsContextMenu commsContextMenu = new CommsContextMenu();
     public int fleetSelectedShipId = -1;
     public int fleetSelectedTurretIndex = -1;
     public int campaignFleetFocusSlotId = -1;
@@ -232,6 +245,7 @@ public final class UiState {
     public int powerManagementFocus = 0;
     public int flightDeckFocus = 0;
     public int selectedStrategicDivisionGroupId = 0;
+    public int campaignOreSaleAmount = 50;
     public CampaignCommandTab campaignCommandTab = CampaignCommandTab.NAV;
     public TacticalMapTab tacticalMapTab = TacticalMapTab.MISSION;
     public boolean campaignWarMapSimplified = false;
@@ -298,9 +312,28 @@ public final class UiState {
     public String objectiveHoverTitle = "";
     public String objectiveHoverBody = "";
 
+    public enum CommsFilter {
+        ALL("All"),
+        FRIENDLY("Friendly"),
+        NEUTRAL("Neutral"),
+        ENEMY("Enemy"),
+        UNKNOWN("?");
+
+        private final String label;
+
+        CommsFilter(String label) {
+            this.label = (label == null || label.isBlank()) ? name() : label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
     public boolean hasBlockingOverlay() {
-        return shopOpen || baseMenuOpen || mapOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
-                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active;
+        return shopOpen || baseMenuOpen || mapOpen || commsOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
+                || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active
+                || commsContextMenu.active;
     }
 
     public void showStrategicEncounterPrompt(int taskForceId, String title, String body,
@@ -497,6 +530,8 @@ public final class UiState {
             }
         }
         commTradeMenu.selectedIndex = firstEnabledCommTradeOptionIndex();
+        commTradeMenu.quantity = 1;
+        commTradeMenu.tab = "Goods";
     }
 
     public void clearCommTradeMenu() {
@@ -505,7 +540,23 @@ public final class UiState {
         commTradeMenu.title = "";
         commTradeMenu.body = "";
         commTradeMenu.selectedIndex = 0;
+        commTradeMenu.quantity = 1;
+        commTradeMenu.tab = "Goods";
         commTradeMenu.options.clear();
+    }
+
+    public void showCommsContextMenu(int targetId, int screenX, int screenY) {
+        commsContextMenu.active = true;
+        commsContextMenu.targetId = targetId;
+        commsContextMenu.screenX = screenX;
+        commsContextMenu.screenY = screenY;
+    }
+
+    public void clearCommsContextMenu() {
+        commsContextMenu.active = false;
+        commsContextMenu.targetId = -1;
+        commsContextMenu.screenX = 0;
+        commsContextMenu.screenY = 0;
     }
 
     public int firstEnabledCommTradeOptionIndex() {

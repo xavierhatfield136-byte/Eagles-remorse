@@ -12,12 +12,12 @@ class TitanFleetSystemTest {
 
     @Test
     void purchaseTitanDeductsCreditsAndAddsCommandCapacity() {
-        GameContext ctx = campaignContext(1, 5000);
+        GameContext ctx = campaignContext(1, 6000);
 
         TitanFleetSystem.PurchaseResult result = TitanFleetSystem.purchaseTitan(ctx, TitanArchetype.BULWARK);
 
         assertEquals(TitanFleetSystem.PurchaseResult.PURCHASED, result);
-        assertEquals(3200, ctx.credits);
+        assertEquals(800, ctx.credits);
         assertEquals(1, TitanFleetSystem.ownedTitanCount(ctx));
         assertEquals(10, TitanFleetSystem.totalStandardShipCommandCapacity(ctx));
         assertEquals(0, TitanFleetSystem.totalEliteSupershipCommandCapacity(ctx));
@@ -36,7 +36,7 @@ class TitanFleetSystemTest {
 
     @Test
     void purchaseTitanHonorsMothershipCap() {
-        GameContext ctx = campaignContext(12, 30000);
+        GameContext ctx = campaignContext(12, 50000);
 
         for (int i = 0; i < TitanFleetSystem.mothershipTitanCap(); i++) {
             assertEquals(TitanFleetSystem.PurchaseResult.PURCHASED,

@@ -171,11 +171,16 @@ public class GameContext {
     public int credits = 10000;
     public static final int ORE_PRICE = 4;
     public static final double CREDIT_EARNINGS_MUL = 1.5;
+    public static final double CAMPAIGN_CREDIT_REWARD_MUL = 2.0;
     public int resourceGoal = 600;
 
     public static int scaleCreditEarnings(int baseCredits) {
         if (baseCredits <= 0) return 0;
         return (int) Math.round(baseCredits * CREDIT_EARNINGS_MUL);
+    }
+
+    public static int scaleCreditReward(int baseCredits) {
+        return (int) Math.round(scaleCreditEarnings(baseCredits) * CAMPAIGN_CREDIT_REWARD_MUL);
     }
 
     // Base upgrades

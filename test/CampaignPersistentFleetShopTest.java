@@ -46,10 +46,10 @@ class CampaignPersistentFleetShopTest {
         assertEquals(14, CampaignSystem.campaignOreCost(ShipRole.MINER, 160, 0));
         assertEquals(34, CampaignSystem.campaignOreCost(ShipRole.HAULER, 260, 1));
 
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 160, 0));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 260, 1));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 180, 0));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 300, 1));
 
-        assertEquals(9_580, ctx.credits);
+        assertEquals(9_520, ctx.credits);
         assertEquals(1_952, ctx.player.cargo);
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE));
@@ -97,12 +97,12 @@ class CampaignPersistentFleetShopTest {
     void standardSupershipUnlocksWithMidCampaignFlagshipEliteBerth() {
         GameContext earlyCtx = campaignShopContext(250_000, 25_000, 4, 5);
         assertEquals(0, CampaignSystem.campaignEliteCommandCapacity(earlyCtx));
-        assertFalse(CampaignSystem.purchasePersistentBlueShip(earlyCtx, ShipRole.SUPERSHIP, 3600, 3));
+        assertFalse(CampaignSystem.purchasePersistentBlueShip(earlyCtx, ShipRole.SUPERSHIP, 4200, 3));
 
         GameContext midCtx = campaignShopContext(250_000, 25_000, 4, 6);
         assertEquals(1, CampaignSystem.campaignEliteCommandCapacity(midCtx));
         assertTrue(CampaignSystem.flagshipSupershipBerthOnline(midCtx));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(midCtx, ShipRole.SUPERSHIP, 3600, 3));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(midCtx, ShipRole.SUPERSHIP, 4200, 3));
         assertEquals(1, CampaignSystem.livePersistentFleetCount(midCtx, ShopHullCategory.CAPITAL));
         assertEquals(1, CampaignSystem.campaignEliteCommandUsed(midCtx));
     }
@@ -159,8 +159,8 @@ class CampaignPersistentFleetShopTest {
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.BULWARK_TITAN, TitanArchetype.BULWARK.costCredits(), 3));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 260, 1));
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.DREADNOUGHT, 3200, 3));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 300, 1));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.DREADNOUGHT, 3000, 3));
 
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE));

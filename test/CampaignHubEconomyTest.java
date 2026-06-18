@@ -44,7 +44,7 @@ class CampaignHubEconomyTest {
     }
 
     @Test
-    void yellowTradeConvertsSalvageIntoCreditsAndFuel() throws Exception {
+    void yellowTradeSellsSelectedOreForCreditsAndFuel() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         CampaignSystem.CampaignLocation yellowHub = findLocation(ctx, "poi-02");
@@ -56,6 +56,10 @@ class CampaignHubEconomyTest {
         st.campaignSalvage = 18;
         st.campaignFuel = 10;
         st.campaignSupplies = 10;
+        CampaignSystem.grantCampaignOre(ctx, 200);
+        CampaignSystem.setCampaignOreSaleFraction(ctx, 0.5);
+        int startingOre = CampaignSystem.currentCampaignOre(ctx);
+        int selectedOre = CampaignSystem.campaignOreSaleAmount(ctx);
         int startingCredits = ctx.credits;
         int fleetBefore = st.persistentBlueFleet.size();
 
@@ -65,7 +69,8 @@ class CampaignHubEconomyTest {
         assertTrue(ctx.credits > startingCredits);
         assertTrue(st.campaignFuel > 10);
         assertTrue(st.campaignSupplies > 10);
-        assertTrue(st.campaignSalvage < 18);
+        assertEquals(18, st.campaignSalvage);
+        assertEquals(startingOre - selectedOre, CampaignSystem.currentCampaignOre(ctx));
         assertTrue(st.persistentBlueFleet.size() > fleetBefore, "trade desk should hire help when credits and command room allow it");
         Object hired = st.persistentBlueFleet.get(st.persistentBlueFleet.size() - 1);
         assertTrue(getString(hired, "name").contains("Escort"));

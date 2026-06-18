@@ -45,13 +45,14 @@ public class Renderer {
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
     private static long frameShieldRenderNs = 0L;
 
-    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT"};
+    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT", "COMMS"};
     private static final String[] CORE_MENU_HOTKEYS = {
             HotkeyRegistry.label("toggleShop"),
             HotkeyRegistry.label("toggleBaseMenu"),
             HotkeyRegistry.label("toggleMap"),
             HotkeyRegistry.label("togglePowerManagement"),
             HotkeyRegistry.label("toggleCrewStations"),
+            "",
             ""
     };
     private static final long XRAY_PERCENT_REFRESH_NS = 180_000_000L;
@@ -257,6 +258,7 @@ public class Renderer {
             TAB,
             ACTION,
             FLEET_ROSTER,
+            ORE_SALE_AMOUNT,
             CONFIRM,
             CLOSE
         }
@@ -429,25 +431,25 @@ public class Renderer {
     private static final int SHOP_HULL_PAGE_SIZE = 8;
 
     private static final ShopHullOffer[] SHOP_HULL_OFFERS = new ShopHullOffer[]{
-            new ShopHullOffer(ShipRole.PATROL, 0, 0, ShopHullCategory.ESCORT,
+            new ShopHullOffer(ShipRole.PATROL, 120, 0, ShopHullCategory.ESCORT,
                     "Fast scout and skirmish frame",
                     "Long sensor reach and clean entry-point mobility."),
             new ShopHullOffer(ShipRole.PICKET, 180, 0, ShopHullCategory.ESCORT,
                     "Interceptor picket hull",
                     "Ambush pursuit frame with stronger standoff control."),
-            new ShopHullOffer(ShipRole.FRIGATE, 0, 0, ShopHullCategory.ESCORT,
+            new ShopHullOffer(ShipRole.FRIGATE, 220, 0, ShopHullCategory.ESCORT,
                     "Balanced fleet-standard frigate",
                     "Reliable baseline hull for general combat upgrades."),
-            new ShopHullOffer(ShipRole.MINER, 160, 0, ShopHullCategory.ESCORT,
+            new ShopHullOffer(ShipRole.MINER, 180, 0, ShopHullCategory.ESCORT,
                     "Ore extraction utility hull",
                     "Low-cost mining ship that keeps the fleet stores flowing."),
             new ShopHullOffer(ShipRole.ARTILLERY_SHIP, 320, 0, ShopHullCategory.ESCORT,
                     "Budget long-range gun platform",
                     "Cheap reach for keeping pressure on distant targets."),
-            new ShopHullOffer(ShipRole.MISSILE_BOAT, 300, 0, ShopHullCategory.ESCORT,
+            new ShopHullOffer(ShipRole.MISSILE_BOAT, 340, 0, ShopHullCategory.ESCORT,
                     "Compact launcher skirmisher",
                     "Punches above size with burst missile pressure."),
-            new ShopHullOffer(ShipRole.CIWS_CORVETTE, 250, 0, ShopHullCategory.ESCORT,
+            new ShopHullOffer(ShipRole.CIWS_CORVETTE, 300, 0, ShopHullCategory.ESCORT,
                     "Escort flak and defense net",
                     "Best early frame for anti-missile and anti-craft screens."),
 
@@ -460,29 +462,29 @@ public class Renderer {
             new ShopHullOffer(ShipRole.CRUISER, 1100, 1, ShopHullCategory.LINE,
                     "Missile cruiser",
                     "Long-range salvo ship with sustained rack pressure."),
-            new ShopHullOffer(ShipRole.HAULER, 260, 1, ShopHullCategory.LINE,
+            new ShopHullOffer(ShipRole.HAULER, 300, 1, ShopHullCategory.LINE,
                     "Bulk logistics hauler",
                     "Moves ore off miners fast and keeps the command ship topped up."),
-            new ShopHullOffer(ShipRole.BATTLECRUISER, 1600, 2, ShopHullCategory.LINE,
+            new ShopHullOffer(ShipRole.BATTLECRUISER, 1700, 2, ShopHullCategory.LINE,
                     "Fast capital hunter",
                     "Aggressive heavy hull for breakthrough pushes."),
-            new ShopHullOffer(ShipRole.BATTLESHIP, 2200, 2, ShopHullCategory.LINE,
+            new ShopHullOffer(ShipRole.BATTLESHIP, 2300, 2, ShopHullCategory.LINE,
                     "Line-breaking heavy capital",
                     "Dense broadside hull built to win frontal exchanges."),
-            new ShopHullOffer(ShipRole.STEALTH_SHIP, 1200, 2, ShopHullCategory.LINE,
+            new ShopHullOffer(ShipRole.STEALTH_SHIP, 1300, 2, ShopHullCategory.LINE,
                     "Raid and ambush specialist",
                     "High-risk strike hull for flanks and precision kills."),
 
-            new ShopHullOffer(ShipRole.DREADNOUGHT, 3200, 3, ShopHullCategory.CAPITAL,
+            new ShopHullOffer(ShipRole.DREADNOUGHT, 3000, 3, ShopHullCategory.CAPITAL,
                     "Siege capital",
                     "Slow, hard-killing warship for attrition fights."),
-            new ShopHullOffer(ShipRole.CARRIER, 2800, 3, ShopHullCategory.CAPITAL,
+            new ShopHullOffer(ShipRole.CARRIER, 2600, 3, ShopHullCategory.CAPITAL,
                     "Strike-carrier capital",
                     "Launches and sustains wings while anchoring the line."),
-            new ShopHullOffer(ShipRole.DRONE_CARRIER, 3000, 3, ShopHullCategory.CAPITAL,
+            new ShopHullOffer(ShipRole.DRONE_CARRIER, 2700, 3, ShopHullCategory.CAPITAL,
                     "Drone warfare carrier",
                     "Swarm-focused carrier with strong automated pressure."),
-            new ShopHullOffer(ShipRole.SUPERSHIP, 5200, 3, ShopHullCategory.CAPITAL,
+            new ShopHullOffer(ShipRole.SUPERSHIP, 4200, 3, ShopHullCategory.CAPITAL,
                     "Elite super-capital",
                     "Prestige hull with flagship-grade lethality."),
 
@@ -528,7 +530,7 @@ public class Renderer {
             new ShopHullOffer(ShipRole.HYPERWEAPON_TITAN, TitanArchetype.HYPERWEAPON.costCredits(), 3, ShopHullCategory.TITAN,
                     TitanArchetype.HYPERWEAPON.roleLabel(),
                     TitanArchetype.HYPERWEAPON.commandBonusSummary()),
-            new ShopHullOffer(ShipRole.MOTHERSHIP, 7200, 3, ShopHullCategory.TITAN,
+            new ShopHullOffer(ShipRole.MOTHERSHIP, 12000, 3, ShopHullCategory.TITAN,
                     "Fleet anchor and command citadel",
                     "Grand carrier, repair harbor, apex flagship, and picket-launch citadel.")
     };
@@ -878,7 +880,7 @@ public class Renderer {
     public static Rectangle getCoreMenuBarRect(int viewW, int viewH) {
         int margin = 10;
         int h = 42;
-        int maxW = 740;
+        int maxW = 850;
         int avail = Math.max(220, viewW - margin * 2);
         int w = Math.min(maxW, avail);
         int x = (viewW - w) / 2;
@@ -918,6 +920,7 @@ public class Renderer {
                 case 3 -> "YELLOW";
                 case 4 -> "HELP";
                 case 5 -> "EXIT";
+                case 6 -> "COMMS";
                 default -> CORE_MENU_LABELS[index];
             };
         }
@@ -927,6 +930,7 @@ public class Renderer {
                 case 1 -> "UPGRADE";
                 case 4 -> "CREW";
                 case 5 -> "SAFE EXIT";
+                case 6 -> "COMMS";
                 default -> CORE_MENU_LABELS[index];
             };
         }
@@ -942,6 +946,7 @@ public class Renderer {
         else if (ctx.ui.powerManagementOpen) tooltip = powerManagementHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
         else if (ctx.ui.flightDeckOpen) tooltip = flightDeckHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
         else if (ctx.ui.crewStationsOpen) tooltip = crewStationsHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
+        else if (ctx.ui.commsOpen) tooltip = commsPanelHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
         if (tooltip != null) return tooltip;
 
         tooltip = campaignMapHoverTooltipAt(ctx, viewW, viewH, mouseX, mouseY);
@@ -1195,6 +1200,7 @@ public class Renderer {
                 case 3 -> "Load only the Yellow team showcase ships.";
                 case 4 -> "Open help and controls.";
                 case 5 -> "Return to the main menu.";
+                case 6 -> "Open visible fleet communications and trade contacts.";
                 default -> "";
             };
             return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
@@ -1220,6 +1226,7 @@ public class Renderer {
                         ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
                         : "Safe exit retreats to the strategic map whenever you are ready to leave the live mission.")
                     : "Safe campaign extraction is only available during Campaign Ops missions.";
+            case 6 -> "Communication panel. Review nearby hailable contacts, hail ships, request trade, ask for escort support, warn enemies, or mark a contact.";
             default -> "";
         };
         return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
@@ -1234,6 +1241,38 @@ public class Renderer {
                 ? "OBJECTIVE"
                 : ctx.ui.objectiveHoverTitle;
         return new HoverTooltip("hud:objective", title, body);
+    }
+
+    private static HoverTooltip commsPanelHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commsOpen) return null;
+        UiState.CommsFilter[] filters = UiState.CommsFilter.values();
+        for (int i = 0; i < filters.length; i++) {
+            if (commsFilterTabRect(viewW, viewH, i).contains(mouseX, mouseY)) {
+                return new HoverTooltip("comms:filter:" + filters[i].name(), filters[i].label(),
+                        "Filter the contact list by current diplomatic disposition.");
+            }
+        }
+        List<CommSystem.CommsContactView> contacts = CommSystem.contactViews(ctx, ctx.ui.commsFilter);
+        for (int i = 0; i < Math.min(7, contacts.size()); i++) {
+            if (commsContactRowRect(viewW, viewH, i).contains(mouseX, mouseY)) {
+                CommSystem.CommsContactView c = contacts.get(i);
+                return new HoverTooltip("comms:contact:" + c.shipId, c.name,
+                        c.disposition + " " + c.factionLabel + "\nRange: " + c.range
+                                + "\nComms: " + c.commsStatus + "\nTrade: " + c.tradeStatus);
+            }
+        }
+        List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, ctx.ui.commsSelectedContactId);
+        for (int i = 0; i < actions.size(); i++) {
+            if (commsActionButtonRect(viewW, viewH, i).contains(mouseX, mouseY)) {
+                CommSystem.CommsActionView a = actions.get(i);
+                String body = a.detail;
+                if (!a.enabled && a.disabledReason != null && !a.disabledReason.isBlank()) {
+                    body = (body == null || body.isBlank() ? "" : body + "\n") + "Disabled: " + a.disabledReason;
+                }
+                return new HoverTooltip("comms:action:" + a.id, a.label, body);
+            }
+        }
+        return null;
     }
 
     private static HoverTooltip shopHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
@@ -1610,7 +1649,8 @@ public class Renderer {
                 ctx.ui.mapOpen,
                 ctx.ui.powerManagementOpen,
                 ctx.ui.crewStationsOpen,
-                false
+                false,
+                ctx.ui.commsOpen
         };
         boolean campaignActive = CampaignSystem.isCampaignActive(ctx);
         boolean fleetHub = CampaignSystem.isFleetHubSession(ctx);
@@ -5965,9 +6005,289 @@ public class Renderer {
         g2.setColor(oldColor);
     }
 
+    public static Rectangle commsPanelRect(int viewW, int viewH) {
+        int w = Math.min(860, Math.max(520, viewW - 96));
+        int h = Math.min(500, Math.max(380, viewH - 150));
+        int x = Math.max(16, (viewW - w) / 2);
+        int y = Math.max(42, (viewH - h) / 2 - 16);
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle commsPanelCloseRect(int viewW, int viewH) {
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        return new Rectangle(panel.x + panel.width - 88, panel.y + panel.height - 34, 70, 22);
+    }
+
+    public static Rectangle commsFilterTabRect(int viewW, int viewH, int index) {
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        int pad = 18;
+        int gap = 7;
+        int count = UiState.CommsFilter.values().length;
+        int w = Math.max(58, (panel.width - pad * 2 - gap * (count - 1)) / count);
+        return new Rectangle(panel.x + pad + Math.max(0, index) * (w + gap), panel.y + 48, w, 24);
+    }
+
+    public static Rectangle commsContactRowRect(int viewW, int viewH, int index) {
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        int x = panel.x + 18;
+        int y = panel.y + 92 + Math.max(0, index) * 46;
+        int w = Math.max(220, (panel.width - 54) / 2);
+        return new Rectangle(x, y, w, 38);
+    }
+
+    public static Rectangle commsActionButtonRect(int viewW, int viewH, int index) {
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        int leftW = Math.max(220, (panel.width - 54) / 2);
+        int x = panel.x + 30 + leftW;
+        int y = panel.y + 224 + Math.max(0, index) * 30;
+        int w = panel.x + panel.width - 18 - x;
+        return new Rectangle(x, y, w, 24);
+    }
+
+    public static void drawCommsPanel(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.commsOpen) return;
+        Rectangle panel = commsPanelRect(viewW, viewH);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setColor(new Color(0, 0, 0, 118));
+        g2.fillRect(0, 0, viewW, viewH);
+        if (!paintThemedHudFrame(g2, panel.x, panel.y, panel.width, panel.height,
+                new Color(136, 204, 255, 220), ThemeArt.HUD_SPECIAL_FRAME, 14)) {
+            g2.setColor(new Color(8, 13, 21, 235));
+            g2.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 14, 14);
+            g2.setColor(new Color(136, 204, 255, 190));
+            g2.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 14, 14);
+        }
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        g2.setFont(new Font("Consolas", Font.BOLD, 20));
+        g2.setColor(new Color(238, 248, 255, 238));
+        g2.drawString("COMMS / CONTACTS", inner.x, inner.y + 4);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(178, 210, 236, 205));
+        g2.drawString("Visible bridge channel for nearby detected ships", inner.x, inner.y + 22);
+
+        UiState.CommsFilter[] filters = UiState.CommsFilter.values();
+        for (int i = 0; i < filters.length; i++) {
+            Rectangle tab = commsFilterTabRect(viewW, viewH, i);
+            boolean selected = ctx.ui.commsFilter == filters[i];
+            drawHudStatusChip(g2, filters[i].label().toUpperCase(Locale.US), tab.x, tab.y + 16, tab.width, tab.height,
+                    selected ? new Color(137, 214, 255, 230) : new Color(140, 160, 185, 190), selected);
+        }
+
+        int leftW = Math.max(220, (panel.width - 54) / 2);
+        int rightX = panel.x + 30 + leftW;
+        int rightW = panel.x + panel.width - 18 - rightX;
+        int listTitleY = panel.y + 88;
+        g2.setFont(new Font("Consolas", Font.BOLD, 13));
+        g2.setColor(new Color(224, 239, 255, 230));
+        g2.drawString("CONTACT LIST", panel.x + 18, listTitleY);
+        g2.drawString("SELECTED CONTACT", rightX, listTitleY);
+
+        List<CommSystem.CommsContactView> contacts = CommSystem.contactViews(ctx, ctx.ui.commsFilter);
+        CommSystem.CommsContactView selected = CommSystem.selectedContactView(ctx);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        if (contacts.isEmpty()) {
+            g2.setColor(new Color(176, 190, 204, 205));
+            g2.drawString("No detected contacts on this filter.", panel.x + 20, panel.y + 126);
+        }
+        int rows = Math.min(7, contacts.size());
+        for (int i = 0; i < rows; i++) {
+            CommSystem.CommsContactView c = contacts.get(i);
+            Rectangle row = commsContactRowRect(viewW, viewH, i);
+            boolean isSelected = selected != null && c.shipId == selected.shipId;
+            Color accent = factionHudColor(c.faction, 220);
+            g2.setColor(isSelected ? new Color(35, 58, 78, 230) : new Color(11, 20, 31, 205));
+            g2.fillRoundRect(row.x, row.y, row.width, row.height, 8, 8);
+            g2.setColor(withAlpha(accent, isSelected ? 230 : 130));
+            g2.drawRoundRect(row.x, row.y, row.width, row.height, 8, 8);
+            g2.setFont(new Font("Consolas", Font.BOLD, 11));
+            g2.setColor(new Color(242, 248, 255, 230));
+            g2.drawString(fitShopText(g2.getFontMetrics(), c.name, row.width - 18), row.x + 9, row.y + 14);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+            g2.setColor(new Color(190, 211, 230, 205));
+            String detail = c.factionLabel + " | " + c.disposition + " | R " + c.range + " | " + c.commsStatus;
+            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 18), row.x + 9, row.y + 29);
+        }
+
+        if (selected == null) {
+            g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+            g2.setColor(new Color(176, 190, 204, 205));
+            g2.drawString("Select a contact to open action buttons.", rightX, panel.y + 122);
+        } else {
+            drawCommsContactDetails(g2, selected, rightX, panel.y + 108, rightW);
+            List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, selected.shipId);
+            g2.setFont(new Font("Consolas", Font.BOLD, 12));
+            g2.setColor(new Color(224, 239, 255, 230));
+            g2.drawString("AVAILABLE ACTIONS", rightX, panel.y + 214);
+            for (int i = 0; i < actions.size(); i++) {
+                drawCommsAction(g2, actions.get(i), commsActionButtonRect(viewW, viewH, i));
+            }
+        }
+
+        drawCommsLog(g2, ctx, panel.x + 18, panel.y + panel.height - 112, panel.width - 36, 68);
+        Rectangle close = commsPanelCloseRect(viewW, viewH);
+        drawHudStatusChip(g2, "CLOSE", close.x, close.y + 14, close.width, 20, new Color(180, 205, 230, 220), false);
+
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    private static void drawCommsContactDetails(Graphics2D g2, CommSystem.CommsContactView c, int x, int y, int w) {
+        Color accent = factionHudColor(c.faction, 220);
+        g2.setColor(new Color(10, 18, 29, 188));
+        g2.fillRoundRect(x, y, w, 92, 8, 8);
+        g2.setColor(withAlpha(accent, 170));
+        g2.drawRoundRect(x, y, w, 92, 8, 8);
+        g2.setFont(new Font("Consolas", Font.BOLD, 13));
+        g2.setColor(new Color(244, 249, 255, 235));
+        g2.drawString(fitShopText(g2.getFontMetrics(), c.name, w - 18), x + 9, y + 17);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(202, 222, 239, 215));
+        String[] rows = {
+                "Faction: " + c.factionLabel + "   Disposition: " + c.disposition,
+                "Range: " + c.range + "   Role: " + c.roleLabel,
+                "Comms: " + c.commsStatus + "   Trade: " + c.tradeStatus,
+                "Threat: " + c.threat
+        };
+        int ty = y + 34;
+        for (String row : rows) {
+            g2.drawString(fitShopText(g2.getFontMetrics(), row, w - 18), x + 9, ty);
+            ty += 14;
+        }
+    }
+
+    private static void drawCommsAction(Graphics2D g2, CommSystem.CommsActionView action, Rectangle rect) {
+        if (action == null || rect == null) return;
+        Color accent = action.enabled ? new Color(128, 202, 255, 220) : new Color(126, 136, 148, 170);
+        g2.setColor(action.enabled ? new Color(18, 31, 46, 218) : new Color(18, 20, 24, 178));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 8, 8);
+        g2.setColor(withAlpha(accent, action.enabled ? 210 : 105));
+        g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 8, 8);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(action.enabled ? new Color(240, 248, 255, 232) : new Color(154, 162, 172, 185));
+        g2.drawString(fitShopText(g2.getFontMetrics(), action.label, rect.width - 16), rect.x + 8, rect.y + 16);
+    }
+
+    private static void drawCommsLog(Graphics2D g2, GameContext ctx, int x, int y, int w, int h) {
+        g2.setColor(new Color(6, 11, 18, 178));
+        g2.fillRoundRect(x, y, w, h, 8, 8);
+        g2.setColor(new Color(110, 155, 190, 120));
+        g2.drawRoundRect(x, y, w, h, 8, 8);
+        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+        g2.setColor(new Color(220, 236, 250, 220));
+        g2.drawString("COMMS LOG", x + 8, y + 15);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        if (ctx == null || ctx.fleetCommLog == null || ctx.fleetCommLog.isEmpty()) {
+            g2.setColor(new Color(165, 180, 196, 185));
+            g2.drawString("No recent transmissions.", x + 8, y + 32);
+            return;
+        }
+        int start = Math.max(0, ctx.fleetCommLog.size() - 3);
+        int ty = y + 31;
+        for (int i = start; i < ctx.fleetCommLog.size(); i++) {
+            GameContext.FleetCommMessage msg = ctx.fleetCommLog.get(i);
+            if (msg == null) continue;
+            g2.setColor(factionHudColor(msg.faction, 205));
+            String line = msg.channel + ": " + msg.text;
+            g2.drawString(fitShopText(g2.getFontMetrics(), line, w - 16), x + 8, ty);
+            ty += 14;
+        }
+    }
+
+    public static Rectangle commsContextMenuRect(GameContext ctx, int viewW, int viewH) {
+        int x = (ctx == null || ctx.ui == null) ? viewW / 2 : ctx.ui.commsContextMenu.screenX;
+        int y = (ctx == null || ctx.ui == null) ? viewH / 2 : ctx.ui.commsContextMenu.screenY;
+        int rows = (ctx == null || ctx.ui == null) ? 1 : Math.min(9, CommSystem.actionsFor(ctx, ctx.ui.commsContextMenu.targetId).size());
+        int w = 230;
+        int h = 44 + rows * 28 + 34;
+        x = MathUtil.clamp(x, 8, Math.max(8, viewW - w - 8));
+        y = MathUtil.clamp(y, 8, Math.max(8, viewH - h - 52));
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle commsContextActionRect(GameContext ctx, int viewW, int viewH, int index) {
+        Rectangle panel = commsContextMenuRect(ctx, viewW, viewH);
+        return new Rectangle(panel.x + 10, panel.y + 38 + Math.max(0, index) * 28, panel.width - 20, 23);
+    }
+
+    public static Rectangle commsContextCloseRect(GameContext ctx, int viewW, int viewH) {
+        Rectangle panel = commsContextMenuRect(ctx, viewW, viewH);
+        return new Rectangle(panel.x + panel.width - 72, panel.y + panel.height - 28, 62, 20);
+    }
+
+    public static void drawCommsContextMenu(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.commsContextMenu.active) return;
+        Rectangle panel = commsContextMenuRect(ctx, viewW, viewH);
+        List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, ctx.ui.commsContextMenu.targetId);
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        if (!paintThemedHudFrame(g2, panel.x, panel.y, panel.width, panel.height,
+                new Color(136, 204, 255, 220), ThemeArt.HUD_STANDARD_PANEL, 12)) {
+            g2.setColor(new Color(8, 13, 21, 238));
+            g2.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 12, 12);
+            g2.setColor(new Color(136, 204, 255, 170));
+            g2.drawRoundRect(panel.x, panel.y, panel.width, panel.height, 12, 12);
+        }
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(238, 248, 255, 238));
+        g2.drawString("COMMS ACTIONS", panel.x + 12, panel.y + 21);
+        int rows = Math.min(9, actions.size());
+        for (int i = 0; i < rows; i++) {
+            drawCommsAction(g2, actions.get(i), commsContextActionRect(ctx, viewW, viewH, i));
+        }
+        Rectangle close = commsContextCloseRect(ctx, viewW, viewH);
+        drawHudStatusChip(g2, "CANCEL", close.x, close.y + 14, close.width, 20, new Color(180, 205, 230, 220), false);
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
+    }
+
+    public static void drawSelectedCommsContactWorld(Graphics2D g2, GameContext ctx) {
+        if (g2 == null || ctx == null || ctx.ui == null || ctx.ui.commsSelectedContactId <= 0 || ctx.ships == null) return;
+        Ship target = null;
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ship.id == ctx.ui.commsSelectedContactId) {
+                target = ship;
+                break;
+            }
+        }
+        if (target == null || !target.alive || target.dying || target.hp <= 0) return;
+        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() / 240_000_000.0);
+        int r = (int) Math.round(Math.max(34.0, target.radius + 22.0 + pulse * 7.0));
+        Color accent = factionHudColor(target.faction, 215);
+        Stroke oldStroke = g2.getStroke();
+        g2.setStroke(new BasicStroke(2.0f));
+        g2.setColor(withAlpha(accent, 150));
+        if (ctx.player != null && ctx.player.alive) {
+            g2.drawLine((int) Math.round(ctx.player.x), (int) Math.round(ctx.player.y),
+                    (int) Math.round(target.x), (int) Math.round(target.y));
+        }
+        g2.setColor(withAlpha(accent, 230));
+        g2.drawOval((int) Math.round(target.x) - r, (int) Math.round(target.y) - r, r * 2, r * 2);
+        g2.drawLine((int) Math.round(target.x - r - 10), (int) Math.round(target.y),
+                (int) Math.round(target.x - r + 8), (int) Math.round(target.y));
+        g2.drawLine((int) Math.round(target.x + r - 8), (int) Math.round(target.y),
+                (int) Math.round(target.x + r + 10), (int) Math.round(target.y));
+        g2.setStroke(oldStroke);
+    }
+
+    public static Rectangle commTradeQuantityMinusRect(int viewW, int viewH) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        return new Rectangle(panel.x + 18, panel.y + panel.height - 70, 34, 24);
+    }
+
+    public static Rectangle commTradeQuantityPlusRect(int viewW, int viewH) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        return new Rectangle(panel.x + panel.width - 52, panel.y + panel.height - 70, 34, 24);
+    }
+
+    public static Rectangle commTradeQuantitySliderRect(int viewW, int viewH) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        return new Rectangle(panel.x + 62, panel.y + panel.height - 65, panel.width - 124, 14);
+    }
+
     public static Rectangle commTradeMenuRect(int viewW, int viewH) {
-        int w = Math.min(520, Math.max(360, viewW - 80));
-        int h = 260;
+        int w = Math.min(660, Math.max(420, viewW - 80));
+        int h = 390;
         int x = Math.max(16, (viewW - w) / 2);
         int y = Math.max(54, Math.min(viewH - h - 96, viewH / 2 - h / 2));
         return new Rectangle(x, y, w, h);
@@ -5975,8 +6295,8 @@ public class Renderer {
 
     public static Rectangle commTradeMenuOptionRect(int viewW, int viewH, int index) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        int rowH = 42;
-        int y = panel.y + 82 + Math.max(0, index) * (rowH + 8);
+        int rowH = 34;
+        int y = panel.y + 154 + Math.max(0, index) * (rowH + 7);
         return new Rectangle(panel.x + 18, y, panel.width - 36, rowH);
     }
 
@@ -6016,6 +6336,27 @@ public class Renderer {
             y += 14;
         }
 
+        int readoutY = panel.y + 74;
+        int playerCargo = (ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
+        String[] tabs = {"Goods", "Ships", "Crew", "Services", "Intel", "Contracts"};
+        int tx = inner.x;
+        for (String tab : tabs) {
+            int tw = Math.max(58, g2.getFontMetrics().stringWidth(tab.toUpperCase(Locale.US)) + 18);
+            boolean selectedTab = tab.equalsIgnoreCase(menu.tab);
+            drawHudStatusChip(g2, tab.toUpperCase(Locale.US), tx, readoutY + 14, tw, 20,
+                    selectedTab ? new Color(255, 214, 150, 230) : new Color(150, 165, 185, 185), selectedTab);
+            tx += tw + 6;
+        }
+
+        g2.setFont(new Font("Consolas", Font.PLAIN, 12));
+        g2.setColor(new Color(236, 244, 255, 218));
+        g2.drawString("Player Credits: " + ctx.credits + "     Player Ore: " + playerCargo,
+                inner.x, panel.y + 122);
+        g2.setColor(new Color(188, 206, 224, 200));
+        g2.drawString("Reputation: " + tradeReputationReadout(ctx, menu.targetId)
+                        + "     Market Mood: " + tradeMoodReadout(ctx, menu.targetId),
+                inner.x, panel.y + 139);
+
         int rows = Math.min(4, menu.options.size());
         for (int i = 0; i < rows; i++) {
             UiState.CommTradeOption option = menu.options.get(i);
@@ -6031,23 +6372,91 @@ public class Renderer {
             g2.setFont(new Font("Consolas", Font.BOLD, 12));
             g2.setColor(enabled ? new Color(244, 248, 255, 230) : new Color(166, 174, 184, 190));
             String label = (option == null || option.label == null) ? "Option" : option.label;
-            g2.drawString((i + 1) + ". " + fitShopText(g2.getFontMetrics(), label, row.width - 28),
+            g2.drawString((i + 1) + ". " + fitShopText(g2.getFontMetrics(), label, row.width - 32),
                     row.x + 10, row.y + 16);
             g2.setFont(new Font("Consolas", Font.PLAIN, 11));
             g2.setColor(enabled ? new Color(202, 218, 235, 205) : new Color(135, 144, 154, 170));
             String detail = (option == null || option.detail == null) ? "" : option.detail;
-            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 20),
-                    row.x + 10, row.y + 33);
+            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 20), row.x + 10, row.y + 30);
         }
+
+        UiState.CommTradeOption selectedOption = (menu.selectedIndex >= 0 && menu.selectedIndex < menu.options.size())
+                ? menu.options.get(menu.selectedIndex)
+                : null;
+        String item = selectedOption == null ? "None" : selectedOption.label;
+        String price = "Final Result: ";
+        if (selectedOption != null && "SELL_ORE".equals(selectedOption.id)) {
+            price += "+" + CommSystem.selectedOreSaleCredits(ctx) + " credits";
+        } else if (selectedOption != null && selectedOption.detail != null) {
+            price += selectedOption.detail;
+        }
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(255, 236, 186, 230));
+        g2.drawString("Selected Item: " + fitShopText(g2.getFontMetrics(), item, inner.width - 180),
+                inner.x, panel.y + panel.height - 104);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(218, 228, 240, 210));
+        g2.drawString(fitShopText(g2.getFontMetrics(), price, inner.width), inner.x, panel.y + panel.height - 88);
+
+        Rectangle minus = commTradeQuantityMinusRect(viewW, viewH);
+        Rectangle plus = commTradeQuantityPlusRect(viewW, viewH);
+        Rectangle slider = commTradeQuantitySliderRect(viewW, viewH);
+        int qty = CommSystem.tradeQuantity(ctx);
+        int maxQty = CommSystem.maxTradeQuantity(ctx);
+        drawHudStatusChip(g2, "-", minus.x, minus.y + 16, minus.width, 22, new Color(255, 214, 150, 220), false);
+        drawHudStatusChip(g2, "+", plus.x, plus.y + 16, plus.width, 22, new Color(255, 214, 150, 220), false);
+        g2.setColor(new Color(20, 28, 40, 220));
+        g2.fillRoundRect(slider.x, slider.y, slider.width, slider.height, 8, 8);
+        g2.setColor(new Color(255, 214, 150, 150));
+        g2.drawRoundRect(slider.x, slider.y, slider.width, slider.height, 8, 8);
+        int fillW = (maxQty <= 1) ? 0 : (int) Math.round((qty - 1) / (double) Math.max(1, maxQty - 1) * slider.width);
+        g2.setColor(new Color(255, 214, 150, 170));
+        g2.fillRoundRect(slider.x, slider.y, Math.max(4, fillW), slider.height, 8, 8);
+        g2.setColor(new Color(240, 248, 255, 220));
+        g2.drawString("Quantity: " + qty + " / " + maxQty, slider.x + 8, slider.y - 4);
 
         Rectangle close = commTradeMenuCloseRect(viewW, viewH);
         drawHudStatusChip(g2, "ESC", close.x, close.y + 14, close.width, 20, new Color(255, 214, 150), false);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(224, 232, 242, 175));
-        g2.drawString("Use 1-4, arrows, Enter, or click.", inner.x, panel.y + panel.height - 14);
+        g2.drawString("Use 1-4, arrows, Enter, click, or mouse wheel to set quantity.", inner.x, panel.y + panel.height - 14);
 
         g2.setFont(oldFont);
         g2.setColor(oldColor);
+    }
+
+    private static String tradeReputationReadout(GameContext ctx, int targetId) {
+        Ship target = null;
+        if (ctx != null && ctx.ships != null) {
+            for (Ship ship : ctx.ships) {
+                if (ship != null && ship.id == targetId) {
+                    target = ship;
+                    break;
+                }
+            }
+        }
+        if (target == null || target.faction == null || ctx == null || ctx.player == null || ctx.player.faction == null) return "Unknown";
+        if (target.faction.teamId() == ctx.player.faction.teamId()) return "Fleet";
+        if (target.faction.isFriendlyTo(ctx.player.faction)) return "Allied";
+        return target.faction == Faction.ENEMY ? "Hostile" : "Neutral";
+    }
+
+    private static String tradeMoodReadout(GameContext ctx, int targetId) {
+        Ship target = null;
+        if (ctx != null && ctx.ships != null) {
+            for (Ship ship : ctx.ships) {
+                if (ship != null && ship.id == targetId) {
+                    target = ship;
+                    break;
+                }
+            }
+        }
+        if (target == null) return "Unknown";
+        double hull = target.hpMax <= 0 ? 1.0 : target.hp / (double) target.hpMax;
+        if (hull < 0.45 || target.totalFireIntensity() > 0.6) return "Nervous";
+        if (target.faction == Faction.TEAM_D) return "Cautious";
+        if (target.faction == Faction.TEAM_C) return "Professional";
+        return "Stable";
     }
 
     public static void drawStrategicEncounterOverlay(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -11006,6 +11415,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Rectangle overlay = campaignHubOverlayRect(viewW, viewH);
             Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
             Rectangle confirmRect = new Rectangle(overlay.x + 18, overlay.y + overlay.height - 38, 122, 22);
+            CampaignSystem.HubService service = campaignHubService(ctx);
+            Rectangle oreSaleSliderRect = campaignOreSaleSliderRect(ctx, viewW, viewH, service);
+            if (oreSaleSliderRect.contains(mouseX, mouseY)) {
+                double frac = (mouseX - oreSaleSliderRect.x) / (double) Math.max(1, oreSaleSliderRect.width);
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.ORE_SALE_AMOUNT, "", String.valueOf(frac));
+            }
             if (confirmRect.contains(mouseX, mouseY)) {
                 return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.CONFIRM, ctx.ui.campaignHubMenu.serviceId);
             }
@@ -11160,6 +11575,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.drawString(line, inner.x, rowY);
             rowY += 16;
         }
+        if (service == CampaignSystem.HubService.TRADE) {
+            drawCampaignOreSaleSlider(g2, ctx, location, viewW, viewH);
+        }
         drawHudStatusChip(g2, "CONFIRM", inner.x, rect.y + rect.height - 38, 122, 22, hubAccent(location, 220), true);
         drawHudStatusChip(g2, "BACK", rect.x + rect.width - 92, rect.y + rect.height - 38, 78, 22, new Color(180, 200, 220, 220), false);
         g2.setFont(oldFont);
@@ -11195,6 +11613,44 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int w = Math.min(520, Math.max(380, viewW / 2));
         int h = Math.min(280, Math.max(220, viewH / 3));
         return new Rectangle((viewW - w) / 2, (viewH - h) / 2, w, h);
+    }
+
+    private static Rectangle campaignOreSaleSliderRect(GameContext ctx, int viewW, int viewH,
+                                                       CampaignSystem.HubService service) {
+        if (ctx == null || service != CampaignSystem.HubService.TRADE) return new Rectangle();
+        Rectangle rect = campaignHubOverlayRect(viewW, viewH);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, rect.x, rect.y, rect.width, rect.height);
+        int y = rect.y + rect.height - 76;
+        return new Rectangle(inner.x, y, Math.max(80, inner.width - 8), 18);
+    }
+
+    private static void drawCampaignOreSaleSlider(Graphics2D g2, GameContext ctx,
+                                                  CampaignSystem.CampaignLocation location,
+                                                  int viewW, int viewH) {
+        if (g2 == null || ctx == null) return;
+        Rectangle track = campaignOreSaleSliderRect(ctx, viewW, viewH, CampaignSystem.HubService.TRADE);
+        int available = CampaignSystem.currentCampaignOre(ctx);
+        int amount = CampaignSystem.campaignOreSaleAmount(ctx);
+        int payout = CampaignSystem.campaignOreSaleCredits(ctx, location, amount);
+        double frac = available <= 0 ? 0.0 : MathUtil.clamp(amount / (double) Math.max(1, available), 0.0, 1.0);
+        Color accent = hubAccent(location, 220);
+        int labelY = track.y - 8;
+        Font oldFont = g2.getFont();
+        Color oldColor = g2.getColor();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(214, 226, 238, 210));
+        g2.drawString("Ore sale amount: " + amount + "/" + available + "   payout +" + payout + " credits", track.x, labelY);
+        g2.setColor(new Color(20, 30, 42, 210));
+        g2.fillRoundRect(track.x, track.y, track.width, track.height, 10, 10);
+        g2.setColor(withAlpha(accent, 92));
+        g2.fillRoundRect(track.x, track.y, (int) Math.round(track.width * frac), track.height, 10, 10);
+        g2.setColor(withAlpha(accent, 210));
+        g2.drawRoundRect(track.x, track.y, track.width, track.height, 10, 10);
+        int knobX = track.x + (int) Math.round(track.width * frac);
+        g2.setColor(new Color(242, 248, 255, available > 0 ? 235 : 130));
+        g2.fillOval(knobX - 5, track.y - 3, 10, track.height + 6);
+        g2.setFont(oldFont);
+        g2.setColor(oldColor);
     }
 
     private static Rectangle campaignActionConfirmOverlayRect(int viewW, int viewH) {

@@ -1,4 +1,6 @@
 import app.config.GameMode;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -10,8 +12,310 @@ public final class CommSystem {
     private static final double SURRENDER_COOLDOWN_SECONDS = 16.0;
     private static final int TRADE_ORE_BATCH = 40;
     private static final double TRADE_PRICE_BONUS = 1.25;
+    private static final double COMMS_WEAK_RANGE = 9000.0;
 
     private CommSystem() {}
+
+    public static final class CommsContactView {
+        public final int shipId;
+        public final String name;
+        public final Faction faction;
+        public final String factionLabel;
+        public final String disposition;
+        public final String roleLabel;
+        public final int range;
+        public final String commsStatus;
+        public final String tradeStatus;
+        public final String threat;
+        public final boolean canHail;
+        public final boolean canTrade;
+        public final boolean canRequestEscort;
+        public final boolean canWarnAway;
+        public final boolean canDemandSurrender;
+        public final String unavailableReason;
+
+        private CommsContactView(Ship ship, String disposition, int range, String commsStatus,
+                                 String tradeStatus, String threat, boolean canHail, boolean canTrade,
+                                 boolean canRequestEscort, boolean canWarnAway, boolean canDemandSurrender,
+                                 String unavailableReason) {
+            this.shipId = ship == null ? -1 : ship.id;
+            this.name = speakerFor(ship);
+            this.faction = ship == null ? null : ship.faction;
+            this.factionLabel = (ship == null || ship.faction == null) ? "Unknown" : ship.faction.teamName();
+            this.disposition = (disposition == null || disposition.isBlank()) ? "Unknown" : disposition;
+            this.roleLabel = (ship == null || ship.role == null) ? "Unknown" : ship.role.name().replace('_', ' ');
+            this.range = Math.max(0, range);
+            this.commsStatus = (commsStatus == null || commsStatus.isBlank()) ? "NO RESPONSE" : commsStatus;
+            this.tradeStatus = (tradeStatus == null || tradeStatus.isBlank()) ? "No ledger" : tradeStatus;
+            this.threat = (threat == null || threat.isBlank()) ? "Unknown" : threat;
+            this.canHail = canHail;
+            this.canTrade = canTrade;
+            this.canRequestEscort = canRequestEscort;
+            this.canWarnAway = canWarnAway;
+            this.canDemandSurrender = canDemandSurrender;
+            this.unavailableReason = (unavailableReason == null) ? "" : unavailableReason.trim();
+        }
+    }
+
+    public static final class CommsActionView {
+        public final String id;
+        public final String label;
+        public final String detail;
+        public final boolean enabled;
+        public final String disabledReason;
+
+        private CommsActionView(String id, String label, String detail, boolean enabled, String disabledReason) {
+            this.id = (id == null) ? "" : id.trim();
+            this.label = (label == null || label.isBlank()) ? this.id : label.trim();
+            this.detail = (detail == null) ? "" : detail.trim();
+            this.enabled = enabled;
+            this.disabledReason = (disabledReason == null) ? "" : disabledReason.trim();
+        }
+    }
+
+    public static List<CommsContactView> contactViews(GameContext ctx, UiState.CommsFilter filter) {
+        ArrayList<CommsContactView> contacts = new ArrayList<>();
+        if (ctx == null || ctx.player == null || ctx.ships == null) return contacts;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == ctx.player) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            boolean detected = ship.faction != null && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ship);
+            if (!detected) continue;
+            CommsContactView view = contactViewFor(ctx, ship);
+            if (view != null && matchesFilter(view, filter)) contacts.add(view);
+        }
+        contacts.sort(Comparator
+                .comparingInt((CommsContactView c) -> contactSortBand(c))
+                .thenComparingInt(c -> c.range)
+                .thenComparing(c -> c.name, String.CASE_INSENSITIVE_ORDER));
+        return contacts;
+    }
+
+    public static CommsContactView selectedContactView(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return null;
+        Ship selected = shipById(ctx, ctx.ui.commsSelectedContactId);
+        if (isHailable(ctx, selected)) return contactViewFor(ctx, selected);
+        List<CommsContactView> contacts = contactViews(ctx, ctx.ui.commsFilter);
+        if (contacts.isEmpty()) {
+            ctx.ui.commsSelectedContactId = -1;
+            return null;
+        }
+        ctx.ui.commsSelectedContactId = contacts.get(0).shipId;
+        return contacts.get(0);
+    }
+
+    public static List<CommsActionView> actionsFor(GameContext ctx, int shipId) {
+        ArrayList<CommsActionView> actions = new ArrayList<>();
+        CommsContactView contact = contactViewFor(ctx, shipById(ctx, shipId));
+        if (contact == null) {
+            actions.add(new CommsActionView("HAIL", "Hail", "Open a basic identification channel.", false,
+                    "No selected contact."));
+            return actions;
+        }
+        String noComms = contact.canHail ? "" : defaultIfBlank(contact.unavailableReason, "Comms are unavailable.");
+        actions.add(new CommsActionView("HAIL", "Hail", "Ask the contact to identify itself.", contact.canHail, noComms));
+        actions.add(new CommsActionView("ASK_STATUS", "Ask Status", "Ask for current local status and intent.",
+                contact.canHail, noComms));
+        actions.add(new CommsActionView("ASK_THREATS", "Ask About Threats", "Ask the contact to share nearby hostile traffic.",
+                contact.canHail, noComms));
+        actions.add(new CommsActionView("REQUEST_TRADE", "Request Trade", "Open the trader ledger when this contact has goods or services.",
+                contact.canTrade, contact.canHail ? "This contact has no trade ledger." : noComms));
+        actions.add(new CommsActionView("BUY_INTEL", "Buy Intel", "Open the trade ledger for route, contact, or rumor intel.",
+                contact.canTrade, contact.canHail ? "This contact does not sell intel." : noComms));
+        actions.add(new CommsActionView("REQUEST_ESCORT", "Request Escort", "Ask a friendly or allied contact to screen your fleet.",
+                contact.canRequestEscort, contact.canHail ? "Only friendly military contacts can escort." : noComms));
+        actions.add(new CommsActionView("REPORT_RED_FLEET", "Report Red Fleet", "Forward your marked hostile contact to allied command.",
+                contact.canRequestEscort, contact.canHail ? "Only friendly military channels can accept fleet reports." : noComms));
+        actions.add(new CommsActionView("WARN_AWAY", "Warn Away", "Tell the contact to clear your lane.",
+                contact.canWarnAway, contact.canHail ? "Warning away is reserved for non-friendly contacts." : noComms));
+        actions.add(new CommsActionView("DEMAND_SURRENDER", "Demand Surrender", "Order a hostile or weakened contact to stand down.",
+                contact.canDemandSurrender, contact.canHail ? "Only hostile contacts can be pressured to surrender." : noComms));
+        actions.add(new CommsActionView("DECLARE_FRIENDLY", "Declare Friendly Intent", "Tell a neutral contact you are keeping weapons cold.",
+                contact.canHail && "Neutral".equals(contact.disposition), contact.canHail ? "Only neutral contacts need this declaration." : noComms));
+        actions.add(new CommsActionView("OFFER_PROTECTION", "Offer Protection", "Offer to screen a civilian or trader through local danger.",
+                contact.canHail && (contact.canTrade || "Neutral".equals(contact.disposition)), contact.canHail ? "Only civilian or trade contacts accept protection offers." : noComms));
+        actions.add(new CommsActionView("MARK_CONTACT", "Mark Contact", "Set this contact as the active fleet mark.", true, ""));
+        actions.add(new CommsActionView("TRACK_CONTACT", "Track Contact", "Mark the contact and keep its map waypoint pinned.", true, ""));
+        actions.add(new CommsActionView("CENTER_CONTACT", "Center On Contact", "Pan the local camera toward this contact.", true, ""));
+        return actions;
+    }
+
+    public static Ship nearestCommsContactAt(GameContext ctx, double worldX, double worldY, double radius) {
+        if (ctx == null || ctx.ships == null || radius <= 0.0) return null;
+        Ship best = null;
+        double bestD2 = radius * radius;
+        for (Ship ship : ctx.ships) {
+            if (!isHailable(ctx, ship)) continue;
+            double d2 = GameMath.dist2(worldX, worldY, ship.x, ship.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = ship;
+            }
+        }
+        return best;
+    }
+
+    public static boolean validCommsTarget(GameContext ctx, int shipId) {
+        return isHailable(ctx, shipById(ctx, shipId));
+    }
+
+    public static int tradeQuantity(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return 1;
+        return MathUtil.clamp(ctx.ui.commTradeMenu.quantity, 1, Math.max(1, maxTradeQuantity(ctx)));
+    }
+
+    public static int maxTradeQuantity(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return 1;
+        UiState.CommTradeOption option = selectedTradeOption(ctx);
+        if (option == null) return 1;
+        String id = option.id == null ? "" : option.id.trim();
+        if ("SELL_ORE".equals(id)) {
+            int cargo = (ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
+            return Math.max(1, Math.min(TRADE_ORE_BATCH, cargo));
+        }
+        return 1;
+    }
+
+    public static boolean setTradeQuantityFraction(GameContext ctx, double fraction) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
+        int max = maxTradeQuantity(ctx);
+        int amount = 1 + (int) Math.round(MathUtil.clamp(fraction, 0.0, 1.0) * Math.max(0, max - 1));
+        ctx.ui.commTradeMenu.quantity = MathUtil.clamp(amount, 1, max);
+        return true;
+    }
+
+    public static boolean adjustTradeQuantity(GameContext ctx, int delta) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
+        int max = maxTradeQuantity(ctx);
+        ctx.ui.commTradeMenu.quantity = MathUtil.clamp(ctx.ui.commTradeMenu.quantity + delta, 1, max);
+        return true;
+    }
+
+    public static int selectedOreSaleCredits(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return 0;
+        Ship target = shipById(ctx, ctx.ui.commTradeMenu.targetId);
+        TradeCounterparty counterparty = counterpartyFor(ctx, target);
+        return expectedOreSaleCredits(ctx, tradeQuantity(ctx), tradePayoutMulFor(ctx, target, counterparty));
+    }
+
+    public static boolean performVisibleAction(GameContext ctx, int shipId, String actionId) {
+        if (ctx == null || ctx.ui == null) return false;
+        Ship target = shipById(ctx, shipId);
+        String id = (actionId == null) ? "" : actionId.trim().toUpperCase(Locale.US);
+        if (target == null || (!"MARK_CONTACT".equals(id) && !"CENTER_CONTACT".equals(id) && !isHailable(ctx, target))) {
+            EventSystem.showBanner(ctx, "COMMS CONTACT LOST", 1.0);
+            return true;
+        }
+        switch (id) {
+            case "MARK_CONTACT", "TRACK_CONTACT" -> {
+                markContact(ctx, target);
+                return true;
+            }
+            case "CENTER_CONTACT" -> {
+                centerOnContact(ctx, target);
+                return true;
+            }
+            case "REQUEST_TRADE" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.REQUEST_TRADE);
+            case "BUY_INTEL" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.REQUEST_TRADE);
+            case "REQUEST_ESCORT" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.REQUEST_SUPPORT);
+            case "REPORT_RED_FLEET" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.REQUEST_SUPPORT);
+            case "WARN_AWAY" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.WARN_OFF);
+            case "DEMAND_SURRENDER" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.DEMAND_SURRENDER);
+            case "ASK_STATUS", "ASK_THREATS", "DECLARE_FRIENDLY", "OFFER_PROTECTION" ->
+                    executeVisibleCommIntent(ctx, target, UiState.CommIntent.STATE_INTENT);
+            case "HAIL" -> executeVisibleCommIntent(ctx, target, UiState.CommIntent.IDENTIFY);
+            default -> EventSystem.showBanner(ctx, "UNKNOWN COMMS ACTION", 0.9);
+        }
+        return true;
+    }
+
+    private static void executeVisibleCommIntent(GameContext ctx, Ship target, UiState.CommIntent intent) {
+        CommOutcome outcome = responseFor(ctx, target, intent);
+        String speaker = speakerFor(target);
+        postHailMessage(ctx, target.faction, speaker, outcome.response(), 8.0);
+        if (ctx.ui.voiceCaptionsEnabled) {
+            ctx.ui.voiceCaption = speaker + ": " + outcome.response();
+            ctx.ui.voiceCaptionT = 2.8;
+        }
+        String title = (outcome.banner() == null || outcome.banner().isBlank())
+                ? "COMM " + intent.label().toUpperCase(Locale.US)
+                : outcome.banner();
+        ctx.ui.showCommResult(title, outcome.response(), target.id, 4.5);
+        applyFactionMemoryFromHail(ctx, target, intent, outcome);
+        EventSystem.showBanner(ctx, title, 0.9);
+    }
+
+    private static void markContact(GameContext ctx, Ship target) {
+        if (ctx == null || target == null) return;
+        ctx.lockedTarget = target;
+        if (ctx.ui != null) {
+            ctx.ui.waypointX = GameMath.clamp(target.x, 0.0, ctx.WORLD_W);
+            ctx.ui.waypointY = GameMath.clamp(target.y, 0.0, ctx.WORLD_H);
+        }
+        UISystem.addPing(ctx, target.x, target.y, 2.2);
+        postHailMessage(ctx, target.faction, "COMMS", "Marked " + speakerFor(target) + " for fleet tracking.", 6.0);
+        EventSystem.showBanner(ctx, "CONTACT MARKED: " + speakerFor(target).toUpperCase(Locale.US), 0.9);
+    }
+
+    private static void centerOnContact(GameContext ctx, Ship target) {
+        if (ctx == null || target == null) return;
+        ctx.cameraOffsetX = target.x - (ctx.player == null ? target.x : ctx.player.x);
+        ctx.cameraOffsetY = target.y - (ctx.player == null ? target.y : ctx.player.y);
+        UISystem.addPing(ctx, target.x, target.y, 1.6);
+        EventSystem.showBanner(ctx, "CENTERED ON " + speakerFor(target).toUpperCase(Locale.US), 0.8);
+    }
+
+    private static CommsContactView contactViewFor(GameContext ctx, Ship ship) {
+        if (ctx == null || ctx.player == null || ship == null) return null;
+        boolean canHail = isHailable(ctx, ship);
+        double dist = Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y);
+        boolean friendly = ship.faction != null && ctx.player.faction != null && ship.faction.isFriendlyTo(ctx.player.faction);
+        boolean sameTeam = friendly && ship.faction.teamId() == ctx.player.faction.teamId();
+        boolean hostile = ship.faction == Faction.ENEMY || (ship.faction != null && ctx.player.faction != null && !ship.faction.isFriendlyTo(ctx.player.faction));
+        boolean trader = canHail && isTradeCapable(ship) && ship.faction != Faction.ENEMY;
+        String disposition = sameTeam ? "Friendly" : (friendly ? "Cooperative" : (hostile ? "Hostile" : "Neutral"));
+        String comms = !canHail ? "COMMS_NO_RESPONSE" : (dist > COMMS_WEAK_RANGE ? "COMMS_WEAK" : (trader ? "COMMS_TRADE_AVAILABLE" : "COMMS_AVAILABLE"));
+        String trade = trader ? "Available" : "No ledger";
+        String threat = threatLabel(ctx, ship, hostile);
+        String reason = canHail ? "" : "Target is not detected, alive, or in channel range.";
+        boolean canEscort = canHail && friendly && ship.role != ShipRole.MINER && ship.role != ShipRole.HAULER && ship.role != ShipRole.TRANSPORT;
+        return new CommsContactView(ship, disposition, (int) Math.round(dist), comms, trade, threat, canHail, trader,
+                canEscort, canHail && !friendly, canHail && hostile, reason);
+    }
+
+    private static boolean matchesFilter(CommsContactView view, UiState.CommsFilter filter) {
+        if (view == null) return false;
+        UiState.CommsFilter f = (filter == null) ? UiState.CommsFilter.ALL : filter;
+        return switch (f) {
+            case ALL -> true;
+            case FRIENDLY -> "Friendly".equals(view.disposition) || "Cooperative".equals(view.disposition);
+            case NEUTRAL -> "Neutral".equals(view.disposition);
+            case ENEMY -> "Hostile".equals(view.disposition);
+            case UNKNOWN -> view.faction == null || "Unknown".equalsIgnoreCase(view.factionLabel);
+        };
+    }
+
+    private static int contactSortBand(CommsContactView c) {
+        if (c == null) return 9;
+        if (c.canTrade) return 0;
+        if ("Friendly".equals(c.disposition) || "Cooperative".equals(c.disposition)) return 1;
+        if ("Neutral".equals(c.disposition)) return 2;
+        if ("Hostile".equals(c.disposition)) return 3;
+        return 4;
+    }
+
+    private static String threatLabel(GameContext ctx, Ship ship, boolean hostile) {
+        if (ship == null) return "Unknown";
+        double hull = (ship.hpMax <= 0) ? 1.0 : ship.hp / (double) ship.hpMax;
+        if (!hostile) return hull < 0.45 ? "Low / Damaged" : "Low";
+        if (ship.role != null && (ship.role.isCapitalCombatant() || ship.role.isCarrierHull())) return hull < 0.35 ? "High / Damaged" : "High";
+        if (ship.isSmallCraft()) return "Low";
+        return hull < 0.35 ? "Medium / Damaged" : "Medium";
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value.trim();
+    }
 
     public static void cycleIntent(GameContext ctx, int dir) {
         if (ctx == null || ctx.ui == null) return;
@@ -283,6 +587,7 @@ public final class CommSystem {
 
     private static void openTradeMenu(GameContext ctx, Ship target, TradeCounterparty counterparty) {
         if (ctx == null || ctx.ui == null || target == null) return;
+        ctx.ui.clearCommsContextMenu();
         List<UiState.CommTradeOption> options = tradeOptionsFor(ctx, target, counterparty);
         String speaker = speakerFor(target);
         String body = switch (counterparty) {
@@ -335,6 +640,13 @@ public final class CommSystem {
         return option;
     }
 
+    private static UiState.CommTradeOption selectedTradeOption(GameContext ctx) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return null;
+        int idx = MathUtil.clamp(ctx.ui.commTradeMenu.selectedIndex, 0, Math.max(0, ctx.ui.commTradeMenu.options.size() - 1));
+        if (idx < 0 || idx >= ctx.ui.commTradeMenu.options.size()) return null;
+        return ctx.ui.commTradeMenu.options.get(idx);
+    }
+
     public static boolean chooseTradeMenuOption(GameContext ctx, int optionIndex) {
         if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
         if (optionIndex < 0 || optionIndex >= ctx.ui.commTradeMenu.options.size()) return false;
@@ -379,7 +691,7 @@ public final class CommSystem {
     private static CommOutcome executeTradeMenuOption(GameContext ctx, Ship target, String optionId) {
         TradeCounterparty counterparty = counterpartyFor(ctx, target);
         return switch (optionId) {
-            case "SELL_ORE" -> executeTrade(ctx, target,
+            case "SELL_ORE" -> executeTrade(ctx, target, tradeQuantity(ctx),
                     tradeBaseReply(counterparty),
                     tradeSuccessReply(counterparty),
                     tradePayoutMulFor(ctx, target, counterparty));
@@ -414,7 +726,7 @@ public final class CommSystem {
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx)
                 * TRADE_PRICE_BONUS * MathUtil.clamp(payoutMul, 0.55, 1.25);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-        return GameContext.scaleCreditEarnings(baseCredits);
+        return GameContext.scaleCreditReward(baseCredits);
     }
 
     private static double tradePayoutMulFor(GameContext ctx, Ship target, TradeCounterparty counterparty) {
@@ -694,10 +1006,11 @@ public final class CommSystem {
     }
 
     private static CommOutcome executeTrade(GameContext ctx, Ship target, String baseReply, String successReply) {
-        return executeTrade(ctx, target, baseReply, successReply, 1.0);
+        return executeTrade(ctx, target, TRADE_ORE_BATCH, baseReply, successReply, 1.0);
     }
 
-    private static CommOutcome executeTrade(GameContext ctx, Ship target, String baseReply, String successReply, double payoutMul) {
+    private static CommOutcome executeTrade(GameContext ctx, Ship target, int requestedAmount,
+                                            String baseReply, String successReply, double payoutMul) {
         if (ctx == null || ctx.player == null || target == null) return outcome(baseReply);
         if (commActionCoolingDown(ctx, target)) {
             return outcome("Trade channel is still settling from the last exchange. Call back in a few seconds.",
@@ -707,16 +1020,16 @@ public final class CommSystem {
             return outcome(baseReply + " We are reading no ore in your holds.");
         }
 
-        int moved = Math.min(TRADE_ORE_BATCH, Math.max(0, ctx.player.cargo));
+        int moved = MathUtil.clamp(requestedAmount, 1, Math.min(TRADE_ORE_BATCH, Math.max(0, ctx.player.cargo)));
         if (moved <= 0) return outcome(baseReply);
         ctx.player.cargo = Math.max(0, ctx.player.cargo - moved);
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx)
                 * TRADE_PRICE_BONUS * MathUtil.clamp(payoutMul, 0.55, 1.25);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+        ctx.credits += GameContext.scaleCreditReward(baseCredits);
         putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
         return outcome(successReply + " Purchased " + moved + " ore.",
-                "TRADE COMPLETE +" + GameContext.scaleCreditEarnings(baseCredits) + "C");
+                "TRADE COMPLETE +" + GameContext.scaleCreditReward(baseCredits) + "C");
     }
 
     private static boolean commActionCoolingDown(GameContext ctx, Ship target) {

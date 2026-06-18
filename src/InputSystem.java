@@ -14,6 +14,10 @@ public final class InputSystem {
         panel.addMouseWheelListener(e -> {
             int rot = e.getWheelRotation();
             if (rot == 0) return;
+            if (ctx.ui.commTradeMenu.active) {
+                CommSystem.adjustTradeQuantity(ctx, -rot);
+                return;
+            }
             if (ctx.ui.mapOpen) {
                 if (UISystem.handleCampaignMapWheel(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
@@ -50,6 +54,12 @@ public final class InputSystem {
                 if (UISystem.handleCommTradeMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
+                if (UISystem.handleCommsContextMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
+                if (UISystem.handleCommsPanelClick(ctx, e, panel.viewportW(), panel.viewportH())) {
+                    return;
+                }
                 if (UISystem.handleHudPanelClick(ctx, e, panel.viewportW(), panel.viewportH())) {
                     return;
                 }
@@ -70,8 +80,18 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.state == GameState.PAUSED) return;
-                if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.powerManagementOpen
+                if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.commsOpen || ctx.ui.powerManagementOpen
                         || ctx.ui.crewStationsOpen || ctx.ui.flightDeckOpen) return;
+
+                if (SwingUtilities.isRightMouseButton(e)
+                        && UISystem.tryOpenCommsContextAtWorld(
+                        ctx,
+                        CameraSystem.screenToWorldX(ctx, e.getX()),
+                        CameraSystem.screenToWorldY(ctx, e.getY()),
+                        e.getX(),
+                        e.getY())) {
+                    return;
+                }
 
                 if (ctx.state == GameState.FLEET) {
                     if (SwingUtilities.isLeftMouseButton(e)) {

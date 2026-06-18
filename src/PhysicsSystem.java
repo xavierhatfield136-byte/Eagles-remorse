@@ -467,7 +467,7 @@ public final class PhysicsSystem {
             if (!TeamSystem.isHostileToPlayer(ctx, s.faction)) continue;
 
             int baseReward = Math.max(0, (int) Math.round(Math.max(0, s.bountyValue) * 0.5));
-            int reward = GameContext.scaleCreditEarnings(baseReward);
+            int reward = GameContext.scaleCreditReward(baseReward);
             if (reward > 0) ctx.credits += reward;
             s.playerKillCreditPaid = true;
             s.bountyClaimed = true;

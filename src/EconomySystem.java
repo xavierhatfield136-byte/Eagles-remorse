@@ -213,7 +213,7 @@ public final class EconomySystem {
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
         priceMul *= CampaignSystem.oreCreditMul(ctx);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+        ctx.credits += GameContext.scaleCreditReward(baseCredits);
     }
 
     private static void handlePlayerHaulerSales(GameContext ctx) {
@@ -232,7 +232,7 @@ public final class EconomySystem {
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
         priceMul *= CampaignSystem.oreCreditMul(ctx);
         int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-        ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+        ctx.credits += GameContext.scaleCreditReward(baseCredits);
         EventSystem.showBanner(ctx, "HAULER PURCHASED " + moved + " ORE", 0.9);
     }
 
@@ -1831,20 +1831,23 @@ public final class EconomySystem {
         return switch (role) {
             case PATROL -> 120;
             case PICKET -> 180;
-            case FRIGATE -> 240;
+            case FRIGATE -> 220;
             case ARTILLERY_SHIP -> 320;
-            case CIWS_CORVETTE -> 250;
-            case MISSILE_BOAT -> 300;
+            case CIWS_CORVETTE -> 300;
+            case MISSILE_BOAT -> 340;
+            case MINER -> 180;
             case LIGHT_CRUISER -> 700;
             case MEDIUM_CRUISER -> 950;
             case CRUISER -> 1100;
-            case BATTLECRUISER -> 1600;
-            case BATTLESHIP -> 2200;
-            case STEALTH_SHIP -> 1200;
-            case DREADNOUGHT -> 3200;
-            case CARRIER -> 2800;
-            case DRONE_CARRIER -> 3000;
-            case SUPERSHIP -> 5200;
+            case BATTLECRUISER -> 1700;
+            case BATTLESHIP -> 2300;
+            case STEALTH_SHIP -> 1300;
+            case HAULER -> 300;
+            case TRANSPORT -> 460;
+            case DREADNOUGHT -> 3000;
+            case CARRIER -> 2600;
+            case DRONE_CARRIER -> 2700;
+            case SUPERSHIP -> 4200;
             case PD_CRAFT -> 170;
             case FIGHTER -> 140;
             case BOMBER -> 190;
@@ -2114,7 +2117,7 @@ public final class EconomySystem {
             double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul;
             priceMul *= CampaignSystem.oreCreditMul(ctx);
             int baseCredits = (int) Math.round(moved * GameContext.ORE_PRICE * priceMul);
-            ctx.credits += GameContext.scaleCreditEarnings(baseCredits);
+            ctx.credits += GameContext.scaleCreditReward(baseCredits);
         }
         int heal = (int) Math.round(18 * dt);
         if (heal > 0) miner.healHull(heal);
