@@ -5,6 +5,8 @@ import app.support.AppInfo;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 /**
  * Packaged Swing shell for the title, menu, credits, and active game view.
@@ -40,7 +42,18 @@ public final class AppShell {
         this.device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
 
         frame = new JFrame(AppInfo.windowTitle());
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                removeActiveGameView();
+                if (quitAction != null) {
+                    quitAction.run();
+                } else {
+                    frame.dispose();
+                }
+            }
+        });
 
         cards = new CardLayout();
         root = new JPanel(cards);

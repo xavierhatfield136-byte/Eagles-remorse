@@ -188,6 +188,7 @@ public final class UiState {
         public String id = "";
         public String label = "";
         public String detail = "";
+        public String tab = "Goods";
         public boolean enabled = true;
     }
 
@@ -525,6 +526,7 @@ public final class UiState {
                 copy.id = (option.id == null) ? "" : option.id.trim();
                 copy.label = (option.label == null || option.label.isBlank()) ? copy.id : option.label.trim();
                 copy.detail = (option.detail == null) ? "" : option.detail.trim();
+                copy.tab = (option.tab == null || option.tab.isBlank()) ? "Goods" : option.tab.trim();
                 copy.enabled = option.enabled;
                 commTradeMenu.options.add(copy);
             }

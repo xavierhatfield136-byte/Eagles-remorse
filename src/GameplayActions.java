@@ -88,12 +88,13 @@ public final class GameplayActions {
 
     public static boolean tryHandleCommTradeMenuHotkey(GameContext ctx, int keyCode) {
         if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
-        int count = ctx.ui.commTradeMenu.options.size();
+        int count = CommSystem.visibleTradeOptions(ctx).size();
         if (keyCode >= java.awt.event.KeyEvent.VK_1 && keyCode <= java.awt.event.KeyEvent.VK_9) {
             int idx = keyCode - java.awt.event.KeyEvent.VK_1;
             if (idx < count) {
-                ctx.ui.commTradeMenu.selectedIndex = idx;
-                CommSystem.chooseTradeMenuOption(ctx, idx);
+                int optionIndex = CommSystem.optionIndexForVisibleTradeRow(ctx, idx);
+                ctx.ui.commTradeMenu.selectedIndex = optionIndex;
+                CommSystem.chooseTradeMenuOption(ctx, optionIndex);
             }
             return true;
         }
@@ -113,18 +114,21 @@ public final class GameplayActions {
     }
 
     private static void stepCommTradeSelection(GameContext ctx, int dir) {
-        int count = ctx.ui.commTradeMenu.options.size();
+        java.util.List<UiState.CommTradeOption> visible = CommSystem.visibleTradeOptions(ctx);
+        int count = visible.size();
         if (count <= 0) return;
-        int idx = Math.floorMod(ctx.ui.commTradeMenu.selectedIndex + (dir < 0 ? -1 : 1), count);
+        int currentVisible = Math.max(0, visible.indexOf(ctx.ui.commTradeMenu.options.get(
+                MathUtil.clamp(ctx.ui.commTradeMenu.selectedIndex, 0, Math.max(0, ctx.ui.commTradeMenu.options.size() - 1)))));
+        int idx = Math.floorMod(currentVisible + (dir < 0 ? -1 : 1), count);
         for (int guard = 0; guard < count; guard++) {
-            UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(idx);
+            UiState.CommTradeOption option = visible.get(idx);
             if (option != null && option.enabled) {
-                ctx.ui.commTradeMenu.selectedIndex = idx;
+                ctx.ui.commTradeMenu.selectedIndex = ctx.ui.commTradeMenu.options.indexOf(option);
                 return;
             }
             idx = Math.floorMod(idx + (dir < 0 ? -1 : 1), count);
         }
-        ctx.ui.commTradeMenu.selectedIndex = idx;
+        if (!visible.isEmpty()) ctx.ui.commTradeMenu.selectedIndex = ctx.ui.commTradeMenu.options.indexOf(visible.get(idx));
     }
 
     public static void pingAtCursor(GameContext ctx, PlayerControl controls) {

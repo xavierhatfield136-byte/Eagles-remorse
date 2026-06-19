@@ -10,9 +10,13 @@ public final class CommSystem {
     private static final double WARN_OFF_ORDER_SECONDS = 14.0;
     private static final double TRADE_COOLDOWN_SECONDS = 12.0;
     private static final double SURRENDER_COOLDOWN_SECONDS = 16.0;
-    private static final int TRADE_ORE_BATCH = 40;
     private static final double TRADE_PRICE_BONUS = 1.25;
     private static final double COMMS_WEAK_RANGE = 9000.0;
+    private static final String TAB_GOODS = "Goods";
+    private static final String TAB_SHIPS = "Ships";
+    private static final String TAB_SERVICES = "Services";
+    private static final String TAB_INTEL = "Intel";
+    private static final String TAB_CONTRACTS = "Contracts";
 
     private CommSystem() {}
 
@@ -171,9 +175,61 @@ public final class CommSystem {
         String id = option.id == null ? "" : option.id.trim();
         if ("SELL_ORE".equals(id)) {
             int cargo = (ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
-            return Math.max(1, Math.min(TRADE_ORE_BATCH, cargo));
+            return Math.max(1, cargo);
         }
         return 1;
+    }
+
+    public static List<UiState.CommTradeOption> visibleTradeOptions(GameContext ctx) {
+        ArrayList<UiState.CommTradeOption> out = new ArrayList<>();
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return out;
+        String tab = normalizedTradeTab(ctx.ui.commTradeMenu.tab);
+        for (UiState.CommTradeOption option : ctx.ui.commTradeMenu.options) {
+            if (option == null) continue;
+            if (tab.equals(normalizedTradeTab(option.tab))) out.add(option);
+        }
+        if (out.isEmpty()) {
+            for (UiState.CommTradeOption option : ctx.ui.commTradeMenu.options) {
+                if (option != null && "CANCEL".equals(option.id)) out.add(option);
+            }
+        }
+        return out;
+    }
+
+    public static int optionIndexForVisibleTradeRow(GameContext ctx, int visibleRow) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active || visibleRow < 0) return -1;
+        String tab = normalizedTradeTab(ctx.ui.commTradeMenu.tab);
+        int seen = 0;
+        for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
+            UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(i);
+            if (option == null || !tab.equals(normalizedTradeTab(option.tab))) continue;
+            if (seen == visibleRow) return i;
+            seen++;
+        }
+        return -1;
+    }
+
+    public static boolean setTradeTab(GameContext ctx, String tab) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.commTradeMenu.active) return false;
+        ctx.ui.commTradeMenu.tab = normalizedTradeTab(tab);
+        int first = firstEnabledTradeOptionIndexForTab(ctx, ctx.ui.commTradeMenu.tab);
+        ctx.ui.commTradeMenu.selectedIndex = Math.max(0, first);
+        ctx.ui.commTradeMenu.quantity = 1;
+        primeTradeQuantityForSelection(ctx);
+        return true;
+    }
+
+    public static boolean isTradeOptionSelected(GameContext ctx, UiState.CommTradeOption option) {
+        if (ctx == null || ctx.ui == null || option == null) return false;
+        int idx = ctx.ui.commTradeMenu.options.indexOf(option);
+        return idx >= 0 && idx == ctx.ui.commTradeMenu.selectedIndex;
+    }
+
+    private static void primeTradeQuantityForSelection(GameContext ctx) {
+        UiState.CommTradeOption option = selectedTradeOption(ctx);
+        if (option != null && "SELL_ORE".equals(option.id)) {
+            ctx.ui.commTradeMenu.quantity = maxTradeQuantity(ctx);
+        }
     }
 
     public static boolean setTradeQuantityFraction(GameContext ctx, double fraction) {
@@ -597,6 +653,7 @@ public final class CommSystem {
             case NEUTRAL -> "Civilian exchange window. Select the deal before the channel closes.";
         };
         ctx.ui.showCommTradeMenu(target.id, "REQUEST TRADE: " + speaker, body, options);
+        primeTradeQuantityForSelection(ctx);
     }
 
     private static List<UiState.CommTradeOption> tradeOptionsFor(GameContext ctx, Ship target, TradeCounterparty counterparty) {
@@ -604,36 +661,47 @@ public final class CommSystem {
         boolean coolingDown = commActionCoolingDown(ctx, target);
         int cargo = (ctx == null || ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
         double payoutMul = tradePayoutMulFor(ctx, target, counterparty);
-        int expectedCredits = expectedOreSaleCredits(ctx, Math.min(TRADE_ORE_BATCH, cargo), payoutMul);
-        options.add(tradeOption("SELL_ORE",
+        int expectedCredits = expectedOreSaleCredits(ctx, cargo, payoutMul);
+        options.add(tradeOption("SELL_ORE", TAB_GOODS,
                 "Sell ore cargo",
                 cargo > 0
-                        ? "Sell up to " + TRADE_ORE_BATCH + " ore for about " + expectedCredits + " credits."
+                        ? "Sell up to " + cargo + " ore for about " + expectedCredits + " credits."
                         : "No ore is currently in your holds.",
                 !coolingDown && cargo > 0));
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS) {
+            for (ShipRole role : localShipMarketRoles(target, counterparty)) {
+                int cost = CampaignSystem.marketCreditCostForRole(role);
+                options.add(tradeOption("BUY_SHIP_" + role.name(), TAB_SHIPS,
+                        "Buy " + role.name().replace('_', ' ').toLowerCase(Locale.US),
+                        "Commission for " + cost + " credits plus yard ore.",
+                        !coolingDown && cost > 0 && ctx.credits >= cost));
+            }
+        }
+        if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS) {
             int intelCost = intelCostFor(target, counterparty);
-            options.add(tradeOption("BUY_INTEL",
-                    "Buy route intel",
-                    "Purchase local vectors and contact intel for " + intelCost + " credits.",
-                    !coolingDown && cargo <= 0 && ctx.credits >= intelCost && bestIntelSalePackage(ctx, target) != null));
+            options.add(tradeOption("BUY_INTEL", TAB_INTEL,
+                    "Reveal random event",
+                    "Reveal a nearby overworld event for " + intelCost + " credits.",
+                    !coolingDown && ctx.credits >= intelCost && bestIntelSalePackage(ctx, target) != null));
         }
         if (counterparty == TradeCounterparty.ALLIED && canOfferContractHire(ctx, target)) {
-            int contractCost = contractHireCreditCost(target.role);
-            options.add(tradeOption("HIRE_ESCORT",
-                    "Hire escort",
+            int contractCost = hostileContractCreditCost(ctx, target);
+            options.add(tradeOption("MARK_HOSTILE_CONTRACT", TAB_CONTRACTS,
+                    "Mark hostile force",
                     contractCost > 0
-                            ? "Pay " + contractCost + " credits to bring this hull into your squad."
-                            : "This hull has no contract ledger.",
-                    !coolingDown && contractCost > 0 && ctx != null && ctx.credits >= contractCost));
+                            ? "Pay " + contractCost + " credits to mark a hostile force on the map."
+                            : "No hostile contract is available.",
+                    !coolingDown && contractCost > 0 && ctx != null && ctx.credits >= contractCost
+                            && nearestContractHostile(ctx, target, 5200.0) != null));
         }
-        options.add(tradeOption("CANCEL", "Close channel", "Leave the trade menu without exchanging cargo.", true));
+        options.add(tradeOption("CANCEL", TAB_SERVICES, "Close channel", "Leave the trade menu without exchanging cargo.", true));
         return options;
     }
 
-    private static UiState.CommTradeOption tradeOption(String id, String label, String detail, boolean enabled) {
+    private static UiState.CommTradeOption tradeOption(String id, String tab, String label, String detail, boolean enabled) {
         UiState.CommTradeOption option = new UiState.CommTradeOption();
         option.id = id;
+        option.tab = tab;
         option.label = label;
         option.detail = detail;
         option.enabled = enabled;
@@ -657,6 +725,7 @@ public final class CommSystem {
         }
         Ship target = shipById(ctx, ctx.ui.commTradeMenu.targetId);
         String optionId = option.id == null ? "" : option.id.trim();
+        ctx.ui.commTradeMenu.selectedIndex = optionIndex;
         if ("CANCEL".equals(optionId)) {
             ctx.ui.clearCommTradeMenu();
             EventSystem.showBanner(ctx, "TRADE CHANNEL CLOSED", 0.8);
@@ -699,9 +768,80 @@ public final class CommSystem {
                     intelCostFor(target, counterparty),
                     intelOfferReply(counterparty),
                     intelSuccessBanner(target, counterparty));
-            case "HIRE_ESCORT" -> alliedContractHireOutcome(ctx, target);
-            default -> outcome("Trade channel closed.");
+            case "MARK_HOSTILE_CONTRACT" -> hostileContractMarkOutcome(ctx, target);
+            default -> {
+                if (optionId != null && optionId.startsWith("BUY_SHIP_")) {
+                    yield buyShipTradeOutcome(ctx, target, optionId.substring("BUY_SHIP_".length()));
+                }
+                yield outcome("Trade channel closed.");
+            }
         };
+    }
+
+    private static int firstEnabledTradeOptionIndexForTab(GameContext ctx, String tab) {
+        if (ctx == null || ctx.ui == null) return 0;
+        String normalized = normalizedTradeTab(tab);
+        int fallback = -1;
+        for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
+            UiState.CommTradeOption option = ctx.ui.commTradeMenu.options.get(i);
+            if (option == null || !normalized.equals(normalizedTradeTab(option.tab))) continue;
+            if (fallback < 0) fallback = i;
+            if (option.enabled) return i;
+        }
+        return fallback < 0 ? ctx.ui.firstEnabledCommTradeOptionIndex() : fallback;
+    }
+
+    private static String normalizedTradeTab(String tab) {
+        if (tab == null || tab.isBlank()) return TAB_GOODS;
+        String value = tab.trim();
+        for (String candidate : tradeTabs()) {
+            if (candidate.equalsIgnoreCase(value)) return candidate;
+        }
+        return TAB_GOODS;
+    }
+
+    public static String[] tradeTabs() {
+        return new String[]{TAB_GOODS, TAB_SHIPS, TAB_SERVICES, TAB_INTEL, TAB_CONTRACTS};
+    }
+
+    private static ShipRole[] localShipMarketRoles(Ship target, TradeCounterparty counterparty) {
+        if (counterparty == TradeCounterparty.NEUTRAL || counterparty == TradeCounterparty.NEUTRAL_UNDER_FIRE) {
+            return new ShipRole[]{ShipRole.PATROL, ShipRole.MINER, ShipRole.HAULER};
+        }
+        if (target != null && target.faction == Faction.TEAM_D) {
+            return new ShipRole[]{ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE};
+        }
+        if (target != null && target.faction == Faction.TEAM_C) {
+            return new ShipRole[]{ShipRole.MINER, ShipRole.HAULER, ShipRole.FRIGATE};
+        }
+        return new ShipRole[]{ShipRole.PATROL, ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.MINER};
+    }
+
+    private static CommOutcome buyShipTradeOutcome(GameContext ctx, Ship target, String roleName) {
+        if (ctx == null || ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return null;
+        ShipRole role = parseShipRole(roleName);
+        if (role == null) return null;
+        int cost = CampaignSystem.marketCreditCostForRole(role);
+        if (cost <= 0) return null;
+        int creditsBefore = ctx.credits;
+        boolean purchased = CampaignSystem.purchasePersistentBlueShip(ctx, role, cost, 0);
+        if (!purchased) {
+            return outcome("Shipyard cannot complete that commission on this channel right now.",
+                    "SHIP PURCHASE UNAVAILABLE");
+        }
+        putCommActionCooldown(ctx, target, TRADE_COOLDOWN_SECONDS);
+        return outcome("Shipyard commission accepted. " + role.name().replace('_', ' ')
+                        + " joins your persistent fleet roster.",
+                "SHIP PURCHASED -" + Math.max(0, creditsBefore - ctx.credits) + "C");
+    }
+
+    private static ShipRole parseShipRole(String roleName) {
+        if (roleName == null || roleName.isBlank()) return null;
+        try {
+            return ShipRole.valueOf(roleName.trim().toUpperCase(Locale.US));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 
     private static TradeCounterparty counterpartyFor(GameContext ctx, Ship target) {
@@ -823,7 +963,6 @@ public final class CommSystem {
                                                  String offerReply, String successBanner) {
         if (ctx == null || ctx.player == null || target == null) return null;
         if (ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return null;
-        if (ctx.player.cargo > 0) return null;
         if (commActionCoolingDown(ctx, target)) {
             return outcome("Trade channel is still settling from the last exchange. Call back in a few seconds.",
                     "TRADE CHANNEL COOLDOWN");
@@ -843,6 +982,57 @@ public final class CommSystem {
         return outcome("Intel package sold for " + creditCost + " credits. Vectoring you toward " + intel.label + ". "
                         + intel.subtitle,
                 successBanner + " -" + creditCost + "C");
+    }
+
+    private static CommOutcome hostileContractMarkOutcome(GameContext ctx, Ship broker) {
+        if (ctx == null || broker == null || ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return null;
+        if (commActionCoolingDown(ctx, broker)) {
+            return outcome("Contract board is still settling from the last exchange. Call again in a few seconds.",
+                    "CONTRACT CHANNEL COOLDOWN");
+        }
+        Ship hostile = nearestContractHostile(ctx, broker, 5200.0);
+        if (hostile == null) {
+            return outcome("No hostile force is clean enough to post on the board right now.",
+                    "NO HOSTILE CONTRACT");
+        }
+        int cost = hostileContractCreditCost(ctx, broker);
+        if (ctx.credits < cost) {
+            return outcome("We can post a hostile contract for " + cost + " credits, but your ledger is short.",
+                    "CONTRACT COST " + cost + "C");
+        }
+        ctx.credits -= cost;
+        ctx.lockedTarget = hostile;
+        pushIntelPing(ctx, hostile.x, hostile.y, teamCodeFor(broker));
+        UISystem.addPing(ctx, hostile.x, hostile.y, 3.5);
+        EventSystem.showWorldCallout(ctx, hostile.x, hostile.y,
+                "CONTRACT TARGET: " + speakerFor(hostile), new java.awt.Color(255, 132, 120), 3.5);
+        putCommActionCooldown(ctx, broker, TRADE_COOLDOWN_SECONDS);
+        return outcome("Contract posted. Hostile force " + speakerFor(hostile)
+                        + " is marked on the map. Go sink it.",
+                "HOSTILE CONTRACT MARKED -" + cost + "C");
+    }
+
+    private static int hostileContractCreditCost(GameContext ctx, Ship broker) {
+        CommandState.CommFactionMemory memory = memoryFor(ctx, broker == null ? null : broker.faction);
+        double discount = MathUtil.clamp(1.0 - memory.trust * 0.18 - memory.cooperation * 0.12, 0.72, 1.10);
+        return Math.max(120, GameContext.scaleCreditEarnings((int) Math.round(220 * discount)));
+    }
+
+    private static Ship nearestContractHostile(GameContext ctx, Ship broker, double maxDist) {
+        if (ctx == null || ctx.ships == null || broker == null) return null;
+        Ship best = null;
+        double bestD2 = Math.max(300.0, maxDist) * Math.max(300.0, maxDist);
+        for (Ship ship : ctx.ships) {
+            if (ship == null || ship == broker || ship == ctx.player) continue;
+            if (!ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.faction == null || broker.faction == null || broker.faction.isFriendlyTo(ship.faction)) continue;
+            double d2 = GameMath.dist2(broker.x, broker.y, ship.x, ship.y);
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = ship;
+            }
+        }
+        return best;
     }
 
     private static CommOutcome hostileWarnOutcome(GameContext ctx, Ship target, double hullFrac) {
@@ -1006,7 +1196,8 @@ public final class CommSystem {
     }
 
     private static CommOutcome executeTrade(GameContext ctx, Ship target, String baseReply, String successReply) {
-        return executeTrade(ctx, target, TRADE_ORE_BATCH, baseReply, successReply, 1.0);
+        int cargo = (ctx == null || ctx.player == null) ? 1 : Math.max(1, ctx.player.cargo);
+        return executeTrade(ctx, target, cargo, baseReply, successReply, 1.0);
     }
 
     private static CommOutcome executeTrade(GameContext ctx, Ship target, int requestedAmount,
@@ -1020,7 +1211,7 @@ public final class CommSystem {
             return outcome(baseReply + " We are reading no ore in your holds.");
         }
 
-        int moved = MathUtil.clamp(requestedAmount, 1, Math.min(TRADE_ORE_BATCH, Math.max(0, ctx.player.cargo)));
+        int moved = MathUtil.clamp(requestedAmount, 1, Math.max(0, ctx.player.cargo));
         if (moved <= 0) return outcome(baseReply);
         ctx.player.cargo = Math.max(0, ctx.player.cargo - moved);
         double priceMul = ctx.orePriceMul * ctx.orePriceBaseMul * CampaignSystem.oreCreditMul(ctx)
@@ -1119,16 +1310,16 @@ public final class CommSystem {
 
     private static IntelSalePackage bestIntelSalePackage(GameContext ctx, Ship source) {
         if (ctx == null || source == null) return null;
+        DiscoveryIntelHint discovery = nearestDiscoveryHint(ctx, source, 5200.0);
+        if (discovery != null) {
+            return new IntelSalePackage(discovery.label,
+                    "Nearby random event signal. Investigate the new overworld map vector when ready.",
+                    discovery.x, discovery.y,
+                    new java.awt.Color(150, 220, 255));
+        }
         ObjectiveIntelHint objective = highestPriorityObjectiveHint(ctx, source, 5200.0);
         if (objective != null) {
             return new IntelSalePackage(objective.label, objective.subtitle, objective.x, objective.y, objective.color);
-        }
-        DiscoveryIntelHint discovery = nearestDiscoveryHint(ctx, source, 4200.0);
-        if (discovery != null) {
-            return new IntelSalePackage(discovery.label,
-                    "Weak signal pocket. Could be salvage, anomaly debris, or a side-route advantage.",
-                    discovery.x, discovery.y,
-                    new java.awt.Color(150, 220, 255));
         }
         MissionSectionHint reserve = reserveSectionHint(ctx);
         if (reserve != null) {

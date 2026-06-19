@@ -162,7 +162,7 @@ class CommSystemTest {
         assertTrue(CommSystem.chooseTradeMenuOption(ctx, 0));
 
         assertFalse(ctx.ui.commTradeMenu.active);
-        assertEquals(20, ctx.player.cargo, "trade should move a bounded ore batch");
+        assertEquals(0, ctx.player.cargo, "trade should allow selling the entire ore stockpile");
         assertTrue(ctx.credits > creditsBefore, "trade should pay the player");
         assertTrue(ctx.command.shipCommActionCooldowns.getOrDefault(trader.id, 0.0) > 0.0,
                 "trade should create an anti-spam cooldown");

@@ -27,6 +27,7 @@ public class GamePanel extends JPanel implements ActionListener {
     private final PlayerControl controls;
     private boolean controllerPrimaryHeld = false;
     private boolean controllerSecondaryHeld = false;
+    private boolean checkpointPersistedForShutdown = false;
 
     public GamePanel(GameConfig config, Runnable exitToMenu) {
         this(config, exitToMenu, null);
@@ -125,6 +126,7 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     public void shutdown() {
+        persistCheckpointForShutdown();
         if (timer.isRunning()) timer.stop();
     }
 
@@ -135,8 +137,14 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     private void exitToMenu() {
-        CampaignSystem.persistCheckpointForMenuExit(ctx);
+        persistCheckpointForShutdown();
         if (exitToMenu != null) exitToMenu.run();
+    }
+
+    private void persistCheckpointForShutdown() {
+        if (checkpointPersistedForShutdown) return;
+        CampaignSystem.persistCheckpointForMenuExit(ctx);
+        checkpointPersistedForShutdown = true;
     }
 
     // Key bindings live here so Swing can bind to this component, but the logic is in systems.

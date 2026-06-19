@@ -6006,42 +6006,47 @@ public class Renderer {
     }
 
     public static Rectangle commsPanelRect(int viewW, int viewH) {
-        int w = Math.min(860, Math.max(520, viewW - 96));
-        int h = Math.min(500, Math.max(380, viewH - 150));
+        int w = Math.min(1040, Math.max(640, viewW - 64));
+        int h = Math.min(620, Math.max(430, viewH - 96));
         int x = Math.max(16, (viewW - w) / 2);
-        int y = Math.max(42, (viewH - h) / 2 - 16);
+        int y = Math.max(24, (viewH - h) / 2 - 10);
         return new Rectangle(x, y, w, h);
     }
 
     public static Rectangle commsPanelCloseRect(int viewW, int viewH) {
         Rectangle panel = commsPanelRect(viewW, viewH);
-        return new Rectangle(panel.x + panel.width - 88, panel.y + panel.height - 34, 70, 22);
+        return new Rectangle(panel.x + panel.width - 100, panel.y + panel.height - 38, 82, 24);
     }
 
     public static Rectangle commsFilterTabRect(int viewW, int viewH, int index) {
         Rectangle panel = commsPanelRect(viewW, viewH);
-        int pad = 18;
-        int gap = 7;
+        int pad = 22;
+        int gap = 9;
         int count = UiState.CommsFilter.values().length;
-        int w = Math.max(58, (panel.width - pad * 2 - gap * (count - 1)) / count);
-        return new Rectangle(panel.x + pad + Math.max(0, index) * (w + gap), panel.y + 48, w, 24);
+        int w = Math.max(68, (panel.width - pad * 2 - gap * (count - 1)) / count);
+        return new Rectangle(panel.x + pad + Math.max(0, index) * (w + gap), panel.y + 52, w, 26);
     }
 
     public static Rectangle commsContactRowRect(int viewW, int viewH, int index) {
         Rectangle panel = commsPanelRect(viewW, viewH);
-        int x = panel.x + 18;
-        int y = panel.y + 92 + Math.max(0, index) * 46;
-        int w = Math.max(220, (panel.width - 54) / 2);
-        return new Rectangle(x, y, w, 38);
+        int x = panel.x + 22;
+        int y = panel.y + 104 + Math.max(0, index) * 50;
+        int w = Math.max(260, (panel.width - 70) / 2);
+        return new Rectangle(x, y, w, 42);
     }
 
     public static Rectangle commsActionButtonRect(int viewW, int viewH, int index) {
         Rectangle panel = commsPanelRect(viewW, viewH);
-        int leftW = Math.max(220, (panel.width - 54) / 2);
-        int x = panel.x + 30 + leftW;
-        int y = panel.y + 224 + Math.max(0, index) * 30;
-        int w = panel.x + panel.width - 18 - x;
-        return new Rectangle(x, y, w, 24);
+        int leftW = Math.max(260, (panel.width - 70) / 2);
+        int x = panel.x + 38 + leftW;
+        int rightW = panel.x + panel.width - 22 - x;
+        int columns = rightW >= 360 ? 2 : 1;
+        int gap = columns > 1 ? 8 : 0;
+        int col = Math.max(0, index) % columns;
+        int row = Math.max(0, index) / columns;
+        int w = (rightW - gap * (columns - 1)) / columns;
+        int y = panel.y + 244 + row * 32;
+        return new Rectangle(x + col * (w + gap), y, w, 26);
     }
 
     public static void drawCommsPanel(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -6074,13 +6079,13 @@ public class Renderer {
                     selected ? new Color(137, 214, 255, 230) : new Color(140, 160, 185, 190), selected);
         }
 
-        int leftW = Math.max(220, (panel.width - 54) / 2);
-        int rightX = panel.x + 30 + leftW;
-        int rightW = panel.x + panel.width - 18 - rightX;
-        int listTitleY = panel.y + 88;
+        int leftW = Math.max(260, (panel.width - 70) / 2);
+        int rightX = panel.x + 38 + leftW;
+        int rightW = panel.x + panel.width - 22 - rightX;
+        int listTitleY = panel.y + 98;
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(224, 239, 255, 230));
-        g2.drawString("CONTACT LIST", panel.x + 18, listTitleY);
+        g2.drawString("CONTACT LIST", panel.x + 22, listTitleY);
         g2.drawString("SELECTED CONTACT", rightX, listTitleY);
 
         List<CommSystem.CommsContactView> contacts = CommSystem.contactViews(ctx, ctx.ui.commsFilter);
@@ -6088,7 +6093,7 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         if (contacts.isEmpty()) {
             g2.setColor(new Color(176, 190, 204, 205));
-            g2.drawString("No detected contacts on this filter.", panel.x + 20, panel.y + 126);
+            g2.drawString("No detected contacts on this filter.", panel.x + 24, panel.y + 138);
         }
         int rows = Math.min(7, contacts.size());
         for (int i = 0; i < rows; i++) {
@@ -6112,19 +6117,19 @@ public class Renderer {
         if (selected == null) {
             g2.setFont(new Font("Consolas", Font.PLAIN, 12));
             g2.setColor(new Color(176, 190, 204, 205));
-            g2.drawString("Select a contact to open action buttons.", rightX, panel.y + 122);
+            g2.drawString("Select a contact to open action buttons.", rightX, panel.y + 136);
         } else {
-            drawCommsContactDetails(g2, selected, rightX, panel.y + 108, rightW);
+            drawCommsContactDetails(g2, selected, rightX, panel.y + 118, rightW);
             List<CommSystem.CommsActionView> actions = CommSystem.actionsFor(ctx, selected.shipId);
             g2.setFont(new Font("Consolas", Font.BOLD, 12));
             g2.setColor(new Color(224, 239, 255, 230));
-            g2.drawString("AVAILABLE ACTIONS", rightX, panel.y + 214);
+            g2.drawString("AVAILABLE ACTIONS", rightX, panel.y + 234);
             for (int i = 0; i < actions.size(); i++) {
                 drawCommsAction(g2, actions.get(i), commsActionButtonRect(viewW, viewH, i));
             }
         }
 
-        drawCommsLog(g2, ctx, panel.x + 18, panel.y + panel.height - 112, panel.width - 36, 68);
+        drawCommsLog(g2, ctx, panel.x + 22, panel.y + panel.height - 124, panel.width - 44, 76);
         Rectangle close = commsPanelCloseRect(viewW, viewH);
         drawHudStatusChip(g2, "CLOSE", close.x, close.y + 14, close.width, 20, new Color(180, 205, 230, 220), false);
 
@@ -6135,9 +6140,9 @@ public class Renderer {
     private static void drawCommsContactDetails(Graphics2D g2, CommSystem.CommsContactView c, int x, int y, int w) {
         Color accent = factionHudColor(c.faction, 220);
         g2.setColor(new Color(10, 18, 29, 188));
-        g2.fillRoundRect(x, y, w, 92, 8, 8);
+        g2.fillRoundRect(x, y, w, 104, 8, 8);
         g2.setColor(withAlpha(accent, 170));
-        g2.drawRoundRect(x, y, w, 92, 8, 8);
+        g2.drawRoundRect(x, y, w, 104, 8, 8);
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(244, 249, 255, 235));
         g2.drawString(fitShopText(g2.getFontMetrics(), c.name, w - 18), x + 9, y + 17);
@@ -6198,8 +6203,8 @@ public class Renderer {
         int x = (ctx == null || ctx.ui == null) ? viewW / 2 : ctx.ui.commsContextMenu.screenX;
         int y = (ctx == null || ctx.ui == null) ? viewH / 2 : ctx.ui.commsContextMenu.screenY;
         int rows = (ctx == null || ctx.ui == null) ? 1 : Math.min(9, CommSystem.actionsFor(ctx, ctx.ui.commsContextMenu.targetId).size());
-        int w = 230;
-        int h = 44 + rows * 28 + 34;
+        int w = Math.min(340, Math.max(290, viewW - 32));
+        int h = 52 + rows * 34 + 42;
         x = MathUtil.clamp(x, 8, Math.max(8, viewW - w - 8));
         y = MathUtil.clamp(y, 8, Math.max(8, viewH - h - 52));
         return new Rectangle(x, y, w, h);
@@ -6207,12 +6212,12 @@ public class Renderer {
 
     public static Rectangle commsContextActionRect(GameContext ctx, int viewW, int viewH, int index) {
         Rectangle panel = commsContextMenuRect(ctx, viewW, viewH);
-        return new Rectangle(panel.x + 10, panel.y + 38 + Math.max(0, index) * 28, panel.width - 20, 23);
+        return new Rectangle(panel.x + 14, panel.y + 44 + Math.max(0, index) * 34, panel.width - 28, 28);
     }
 
     public static Rectangle commsContextCloseRect(GameContext ctx, int viewW, int viewH) {
         Rectangle panel = commsContextMenuRect(ctx, viewW, viewH);
-        return new Rectangle(panel.x + panel.width - 72, panel.y + panel.height - 28, 62, 20);
+        return new Rectangle(panel.x + panel.width - 90, panel.y + panel.height - 34, 76, 22);
     }
 
     public static void drawCommsContextMenu(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -6272,37 +6277,47 @@ public class Renderer {
 
     public static Rectangle commTradeQuantityMinusRect(int viewW, int viewH) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        return new Rectangle(panel.x + 18, panel.y + panel.height - 70, 34, 24);
+        return new Rectangle(panel.x + 24, panel.y + panel.height - 78, 38, 26);
     }
 
     public static Rectangle commTradeQuantityPlusRect(int viewW, int viewH) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        return new Rectangle(panel.x + panel.width - 52, panel.y + panel.height - 70, 34, 24);
+        return new Rectangle(panel.x + panel.width - 62, panel.y + panel.height - 78, 38, 26);
     }
 
     public static Rectangle commTradeQuantitySliderRect(int viewW, int viewH) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        return new Rectangle(panel.x + 62, panel.y + panel.height - 65, panel.width - 124, 14);
+        return new Rectangle(panel.x + 74, panel.y + panel.height - 72, panel.width - 148, 16);
     }
 
     public static Rectangle commTradeMenuRect(int viewW, int viewH) {
-        int w = Math.min(660, Math.max(420, viewW - 80));
-        int h = 390;
-        int x = Math.max(16, (viewW - w) / 2);
-        int y = Math.max(54, Math.min(viewH - h - 96, viewH / 2 - h / 2));
+        int w = Math.min(920, Math.max(620, viewW - 32));
+        int h = Math.min(620, Math.max(470, viewH - 44));
+        int x = Math.max(8, (viewW - w) / 2);
+        int y = Math.max(10, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle commTradeMenuTabRect(int viewW, int viewH, int index) {
+        Rectangle panel = commTradeMenuRect(viewW, viewH);
+        int count = CommSystem.tradeTabs().length;
+        int gap = 8;
+        int x = panel.x + 24;
+        int y = panel.y + 88;
+        int w = Math.max(76, (panel.width - 48 - gap * (count - 1)) / count);
+        return new Rectangle(x + Math.max(0, index) * (w + gap), y, w, 24);
     }
 
     public static Rectangle commTradeMenuOptionRect(int viewW, int viewH, int index) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        int rowH = 34;
-        int y = panel.y + 154 + Math.max(0, index) * (rowH + 7);
-        return new Rectangle(panel.x + 18, y, panel.width - 36, rowH);
+        int rowH = 42;
+        int y = panel.y + 172 + Math.max(0, index) * (rowH + 8);
+        return new Rectangle(panel.x + 24, y, panel.width - 48, rowH);
     }
 
     public static Rectangle commTradeMenuCloseRect(int viewW, int viewH) {
         Rectangle panel = commTradeMenuRect(viewW, viewH);
-        return new Rectangle(panel.x + panel.width - 86, panel.y + panel.height - 34, 68, 22);
+        return new Rectangle(panel.x + panel.width - 104, panel.y + panel.height - 38, 80, 24);
     }
 
     public static void drawCommTradeMenu(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -6336,32 +6351,32 @@ public class Renderer {
             y += 14;
         }
 
-        int readoutY = panel.y + 74;
+        int readoutY = panel.y + 84;
         int playerCargo = (ctx.player == null) ? 0 : Math.max(0, ctx.player.cargo);
-        String[] tabs = {"Goods", "Ships", "Crew", "Services", "Intel", "Contracts"};
-        int tx = inner.x;
-        for (String tab : tabs) {
-            int tw = Math.max(58, g2.getFontMetrics().stringWidth(tab.toUpperCase(Locale.US)) + 18);
+        String[] tabs = CommSystem.tradeTabs();
+        for (int i = 0; i < tabs.length; i++) {
+            String tab = tabs[i];
+            Rectangle tabRect = commTradeMenuTabRect(viewW, viewH, i);
             boolean selectedTab = tab.equalsIgnoreCase(menu.tab);
-            drawHudStatusChip(g2, tab.toUpperCase(Locale.US), tx, readoutY + 14, tw, 20,
+            drawHudStatusChip(g2, tab.toUpperCase(Locale.US), tabRect.x, tabRect.y + 16, tabRect.width, tabRect.height,
                     selectedTab ? new Color(255, 214, 150, 230) : new Color(150, 165, 185, 185), selectedTab);
-            tx += tw + 6;
         }
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(236, 244, 255, 218));
         g2.drawString("Player Credits: " + ctx.credits + "     Player Ore: " + playerCargo,
-                inner.x, panel.y + 122);
+                inner.x, panel.y + 136);
         g2.setColor(new Color(188, 206, 224, 200));
         g2.drawString("Reputation: " + tradeReputationReadout(ctx, menu.targetId)
                         + "     Market Mood: " + tradeMoodReadout(ctx, menu.targetId),
-                inner.x, panel.y + 139);
+                inner.x, panel.y + 153);
 
-        int rows = Math.min(4, menu.options.size());
+        List<UiState.CommTradeOption> visibleOptions = CommSystem.visibleTradeOptions(ctx);
+        int rows = Math.min(6, visibleOptions.size());
         for (int i = 0; i < rows; i++) {
-            UiState.CommTradeOption option = menu.options.get(i);
+            UiState.CommTradeOption option = visibleOptions.get(i);
             Rectangle row = commTradeMenuOptionRect(viewW, viewH, i);
-            boolean selected = i == menu.selectedIndex;
+            boolean selected = CommSystem.isTradeOptionSelected(ctx, option);
             boolean enabled = option != null && option.enabled;
             Color accent = enabled ? new Color(126, 190, 255) : new Color(120, 132, 148);
             g2.setColor(selected ? new Color(35, 54, 76, 230) : new Color(12, 20, 31, 210));
@@ -6373,11 +6388,11 @@ public class Renderer {
             g2.setColor(enabled ? new Color(244, 248, 255, 230) : new Color(166, 174, 184, 190));
             String label = (option == null || option.label == null) ? "Option" : option.label;
             g2.drawString((i + 1) + ". " + fitShopText(g2.getFontMetrics(), label, row.width - 32),
-                    row.x + 10, row.y + 16);
+                    row.x + 12, row.y + 18);
             g2.setFont(new Font("Consolas", Font.PLAIN, 11));
             g2.setColor(enabled ? new Color(202, 218, 235, 205) : new Color(135, 144, 154, 170));
             String detail = (option == null || option.detail == null) ? "" : option.detail;
-            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 20), row.x + 10, row.y + 30);
+            g2.drawString(fitShopText(g2.getFontMetrics(), detail, row.width - 24), row.x + 12, row.y + 34);
         }
 
         UiState.CommTradeOption selectedOption = (menu.selectedIndex >= 0 && menu.selectedIndex < menu.options.size())
@@ -6393,10 +6408,10 @@ public class Renderer {
         g2.setFont(new Font("Consolas", Font.BOLD, 12));
         g2.setColor(new Color(255, 236, 186, 230));
         g2.drawString("Selected Item: " + fitShopText(g2.getFontMetrics(), item, inner.width - 180),
-                inner.x, panel.y + panel.height - 104);
+                inner.x, panel.y + panel.height - 116);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(218, 228, 240, 210));
-        g2.drawString(fitShopText(g2.getFontMetrics(), price, inner.width), inner.x, panel.y + panel.height - 88);
+        g2.drawString(fitShopText(g2.getFontMetrics(), price, inner.width), inner.x, panel.y + panel.height - 98);
 
         Rectangle minus = commTradeQuantityMinusRect(viewW, viewH);
         Rectangle plus = commTradeQuantityPlusRect(viewW, viewH);
@@ -6413,13 +6428,16 @@ public class Renderer {
         g2.setColor(new Color(255, 214, 150, 170));
         g2.fillRoundRect(slider.x, slider.y, Math.max(4, fillW), slider.height, 8, 8);
         g2.setColor(new Color(240, 248, 255, 220));
-        g2.drawString("Quantity: " + qty + " / " + maxQty, slider.x + 8, slider.y - 4);
+        String quantityLabel = "SELL_ORE".equals(selectedOption == null ? "" : selectedOption.id)
+                ? "Ore to sell: " + qty + " / " + maxQty
+                : "Quantity: " + qty + " / " + maxQty;
+        g2.drawString(quantityLabel, slider.x + 8, slider.y - 5);
 
         Rectangle close = commTradeMenuCloseRect(viewW, viewH);
         drawHudStatusChip(g2, "ESC", close.x, close.y + 14, close.width, 20, new Color(255, 214, 150), false);
         g2.setFont(new Font("Consolas", Font.PLAIN, 11));
         g2.setColor(new Color(224, 232, 242, 175));
-        g2.drawString("Use 1-4, arrows, Enter, click, or mouse wheel to set quantity.", inner.x, panel.y + panel.height - 14);
+        g2.drawString("Use 1-6, arrows, Enter, click, or mouse wheel to set quantity.", inner.x, panel.y + panel.height - 16);
 
         g2.setFont(oldFont);
         g2.setColor(oldColor);

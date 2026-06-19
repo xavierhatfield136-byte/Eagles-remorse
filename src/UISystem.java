@@ -235,6 +235,14 @@ public final class UISystem {
         Rectangle minus = Renderer.commTradeQuantityMinusRect(viewW, viewH);
         Rectangle plus = Renderer.commTradeQuantityPlusRect(viewW, viewH);
         Rectangle slider = Renderer.commTradeQuantitySliderRect(viewW, viewH);
+        String[] tabs = CommSystem.tradeTabs();
+        for (int i = 0; i < tabs.length; i++) {
+            Rectangle tab = Renderer.commTradeMenuTabRect(viewW, viewH, i);
+            if (tab.contains(e.getX(), e.getY())) {
+                CommSystem.setTradeTab(ctx, tabs[i]);
+                return true;
+            }
+        }
         if (minus.contains(e.getX(), e.getY())) {
             CommSystem.adjustTradeQuantity(ctx, -1);
             return true;
@@ -248,11 +256,12 @@ public final class UISystem {
             CommSystem.setTradeQuantityFraction(ctx, f);
             return true;
         }
-        for (int i = 0; i < ctx.ui.commTradeMenu.options.size(); i++) {
+        for (int i = 0; i < CommSystem.visibleTradeOptions(ctx).size(); i++) {
             Rectangle rect = Renderer.commTradeMenuOptionRect(viewW, viewH, i);
             if (rect.contains(e.getX(), e.getY())) {
-                ctx.ui.commTradeMenu.selectedIndex = i;
-                CommSystem.chooseTradeMenuOption(ctx, i);
+                int optionIndex = CommSystem.optionIndexForVisibleTradeRow(ctx, i);
+                ctx.ui.commTradeMenu.selectedIndex = optionIndex;
+                CommSystem.chooseTradeMenuOption(ctx, optionIndex);
                 return true;
             }
         }
