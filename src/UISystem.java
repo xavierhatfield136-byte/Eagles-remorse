@@ -436,7 +436,7 @@ public final class UISystem {
     public static void toggleTacticalView(GameContext ctx) {
         if (ctx == null) return;
         ctx.ui.tacticalViewEnabled = !ctx.ui.tacticalViewEnabled;
-        EventSystem.showBanner(ctx, "TACTICAL FPS VIEW: " + (ctx.ui.tacticalViewEnabled ? "ON" : "OFF"), 1.0);
+        EventSystem.showBanner(ctx, "INTERNAL TACTICAL VIEW: " + (ctx.ui.tacticalViewEnabled ? "ON" : "OFF"), 1.0);
     }
 
     public static void toggleBaseMenu(GameContext ctx) {
@@ -1118,6 +1118,7 @@ public final class UISystem {
                 || ctx.player.roomFireIntensity(roomId) > 0.01;
         if (damaged) {
             ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
+            ctx.player.setCrewManualPriorityRoom(roomId);
             ctx.player.suppressFireInRoom(roomId);
         }
 
@@ -1171,11 +1172,33 @@ public final class UISystem {
                     default -> CampaignSystem.launchSelectedCampaignTorpedoStrike(ctx);
                 }
             }
+            case INTERNAL_VIEW -> toggleTacticalView(ctx);
+            case CREW_PRIORITY_AUTO -> setCrewPriority(ctx, Ship.CrewPriority.AUTO_REPAIR);
+            case CREW_PRIORITY_FIRE -> setCrewPriority(ctx, Ship.CrewPriority.FIRE_SUPPRESSION);
+            case CREW_PRIORITY_REACTOR -> setCrewPriority(ctx, Ship.CrewPriority.REACTOR);
+            case CREW_PRIORITY_ENGINES -> setCrewPriority(ctx, Ship.CrewPriority.ENGINES);
+            case CREW_PRIORITY_WEAPONS -> setCrewPriority(ctx, Ship.CrewPriority.WEAPONS);
+            case CREW_PRIORITY_SHIELDS -> setCrewPriority(ctx, Ship.CrewPriority.SHIELDS);
+            case CREW_PRIORITY_SENSORS -> setCrewPriority(ctx, Ship.CrewPriority.SENSORS);
+            case CREW_PRIORITY_BATTLE -> setCrewPriority(ctx, Ship.CrewPriority.BATTLE_STATIONS);
+            case CREW_PRIORITY_CANCEL -> setCrewPriority(ctx, Ship.CrewPriority.AUTO_REPAIR);
             default -> {
                 return false;
             }
         }
         return true;
+    }
+
+    private static void setCrewPriority(GameContext ctx, Ship.CrewPriority priority) {
+        if (ctx == null || ctx.player == null) return;
+        ctx.player.setCrewPriority(priority);
+        if (priority == Ship.CrewPriority.BATTLE_STATIONS) {
+            ctx.player.crewOrder = Ship.CrewOrder.GUNNERY;
+        } else if (priority != null && priority != Ship.CrewPriority.AUTO_REPAIR) {
+            ctx.player.crewOrder = Ship.CrewOrder.DAMAGE_CONTROL;
+        }
+        String label = (priority == null) ? "AUTO REPAIR" : priority.name().replace('_', ' ');
+        EventSystem.showBanner(ctx, "CREW PRIORITY: " + label, 0.9);
     }
 
     public static boolean handleFleetNetClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {

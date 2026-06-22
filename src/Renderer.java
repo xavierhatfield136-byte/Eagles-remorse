@@ -242,7 +242,17 @@ public class Renderer {
             STRIKE_SELECT_TORPEDO,
             STRIKE_SELECT_AIRWING,
             STRIKE_SELECT_NUCLEAR,
-            STRIKE_LAUNCH
+            STRIKE_LAUNCH,
+            INTERNAL_VIEW,
+            CREW_PRIORITY_AUTO,
+            CREW_PRIORITY_FIRE,
+            CREW_PRIORITY_REACTOR,
+            CREW_PRIORITY_ENGINES,
+            CREW_PRIORITY_WEAPONS,
+            CREW_PRIORITY_SHIELDS,
+            CREW_PRIORITY_SENSORS,
+            CREW_PRIORITY_BATTLE,
+            CREW_PRIORITY_CANCEL
         }
 
         public final Kind kind;
@@ -428,7 +438,7 @@ public class Renderer {
     private static final int SHOP_UPGRADE_GUN = 5;
     private static final int SHOP_UPGRADE_MISSILE = 6;
     private static final int SHOP_UPGRADE_CIWS = 7;
-    private static final int SHOP_HULL_PAGE_SIZE = 8;
+    private static final int SHOP_HULL_PAGE_SIZE = 6;
 
     private static final ShopHullOffer[] SHOP_HULL_OFFERS = new ShopHullOffer[]{
             new ShopHullOffer(ShipRole.PATROL, 120, 0, ShopHullCategory.ESCORT,
@@ -1878,9 +1888,9 @@ public class Renderer {
 
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
         int x = panel.x + 24;
-        int y = panel.y + 156;
-        int w = Math.min(396, Math.max(332, (int) Math.round(panel.width * 0.34)));
-        int h = panel.height - 204;
+        int y = panel.y + 196;
+        int w = Math.min(404, Math.max(340, (int) Math.round(panel.width * 0.33)));
+        int h = panel.height - 244;
         return new Rectangle(x, y, w, h);
     }
 
@@ -1936,11 +1946,11 @@ public class Renderer {
 
     private static Rectangle getShopHullCardRect(Rectangle panel, int slot) {
         Rectangle area = getShopHullArea(panel);
-        int cols = 4;
-        int gap = 10;
+        int cols = 3;
+        int gap = 12;
         int cardW = (area.width - gap * (cols - 1)) / cols;
         int rows = Math.max(1, (SHOP_HULL_PAGE_SIZE + cols - 1) / cols);
-        int cardH = Math.max(138, Math.min(164, (area.height - 64 - gap * (rows - 1)) / rows));
+        int cardH = Math.max(116, Math.min(136, (area.height - 64 - gap * (rows - 1)) / rows));
         int col = Math.max(0, slot % cols);
         int row = Math.max(0, slot / cols);
         int x = area.x + col * (cardW + gap);
@@ -4740,6 +4750,17 @@ public class Renderer {
     public static HudPanelClickTarget hudPanelClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
         CombatHudPanelLayout layout = combatHudPanelLayout(viewW, viewH, ctx.player.isStealth);
+        Rectangle crewPanel = crewPriorityPanelRect(viewW, viewH, layout, showCombatStrikePanel(ctx));
+        if (crewPanel.contains(mouseX, mouseY)) {
+            if (crewInternalViewRect(crewPanel).contains(mouseX, mouseY)) {
+                return new HudPanelClickTarget(HudPanelClickTarget.Kind.INTERNAL_VIEW);
+            }
+            for (int i = 0; i < CREW_PRIORITY_KINDS.length; i++) {
+                if (crewPriorityButtonRect(crewPanel, i).contains(mouseX, mouseY)) {
+                    return new HudPanelClickTarget(CREW_PRIORITY_KINDS[i]);
+                }
+            }
+        }
         if (showCombatStrikePanel(ctx)) {
             Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
             if (strikeRect != null && strikeRect.width > 0 && strikeRect.height > 0 && strikeRect.contains(mouseX, mouseY)) {
@@ -4780,6 +4801,58 @@ public class Renderer {
             if (cloakActive.contains(mouseX, mouseY)) return new HudPanelClickTarget(HudPanelClickTarget.Kind.CLOAK_ACTIVE);
         }
         return null;
+    }
+
+    private static final HudPanelClickTarget.Kind[] CREW_PRIORITY_KINDS = {
+            HudPanelClickTarget.Kind.CREW_PRIORITY_AUTO,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_FIRE,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_REACTOR,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_ENGINES,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_WEAPONS,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_SHIELDS,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_SENSORS,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_BATTLE,
+            HudPanelClickTarget.Kind.CREW_PRIORITY_CANCEL
+    };
+
+    private static final String[] CREW_PRIORITY_LABELS = {
+            "AUTO", "FIRE", "CORE", "ENG", "WPN", "SHD", "SNS", "BTL", "CLR"
+    };
+
+    private static Rectangle crewPriorityPanelRect(int viewW, int viewH, CombatHudPanelLayout layout, boolean includeStrike) {
+        if (layout == null) return new Rectangle(0, 0, 0, 0);
+        int w = layout.beamRect.width;
+        int h = 118;
+        int x = layout.beamRect.x;
+        int y = layout.beamRect.y - h - 10;
+        if (includeStrike) {
+            Rectangle strike = combatStrikePanelRect(viewW, viewH, layout);
+            if (strike != null && strike.width > 0 && strike.height > 0) y = strike.y - h - 10;
+        }
+        if (y < 12) {
+            x = Math.max(12, layout.beamRect.x - w - 12);
+            y = layout.beamRect.y;
+        }
+        if (x + w > viewW - 12) x = Math.max(12, viewW - w - 12);
+        if (y + h > viewH - 12) y = Math.max(12, viewH - h - 12);
+        return new Rectangle(x, y, w, h);
+    }
+
+    private static Rectangle crewInternalViewRect(Rectangle panel) {
+        return new Rectangle(panel.x + 12, panel.y + 24, panel.width - 24, 22);
+    }
+
+    private static Rectangle crewPriorityButtonRect(Rectangle panel, int index) {
+        int cols = 4;
+        int gap = 5;
+        int row = index / cols;
+        int col = index % cols;
+        int x0 = panel.x + 12;
+        int y0 = panel.y + 52;
+        int usableW = panel.width - 24 - gap * (cols - 1);
+        int bw = Math.max(20, usableW / cols);
+        int bh = 16;
+        return new Rectangle(x0 + col * (bw + gap), y0 + row * (bh + gap), bw, bh);
     }
 
     private static Rectangle beamRapidRect(Rectangle panel) {
@@ -4830,6 +4903,7 @@ public class Renderer {
             Rectangle strikeRect = combatStrikePanelRect(viewW, viewH, layout);
             drawCombatStrikeSelectionPanel(g2, ctx, strikeRect);
         }
+        drawCrewPriorityPanel(g2, ctx, crewPriorityPanelRect(viewW, viewH, layout, showCombatStrikePanel(ctx)));
     }
 
     private static boolean showCombatStrikePanel(GameContext ctx) {
@@ -4894,6 +4968,52 @@ public class Renderer {
                 "Top: preserve charge", "Bottom: cloak active", player.cloakWantsActive()
                         ? new Color(122, 255, 116, 220)
                         : new Color(108, 194, 255, 220));
+    }
+
+    private static void drawCrewPriorityPanel(Graphics2D g2, GameContext ctx, Rectangle rect) {
+        if (g2 == null || ctx == null || ctx.player == null || rect == null || rect.width <= 0 || rect.height <= 0) return;
+        drawHudPanelFrame(g2, rect.x, rect.y, rect.width, rect.height, "INTERNAL CREW", new Color(145, 226, 190, 220));
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        FontMetrics fm = g2.getFontMetrics();
+
+        Rectangle view = crewInternalViewRect(rect);
+        boolean internalActive = ctx.ui != null && ctx.ui.tacticalViewEnabled;
+        Color viewAccent = internalActive ? new Color(124, 236, 180, 220) : new Color(150, 190, 230, 160);
+        drawHudStatusChip(g2, internalActive ? "INTERNAL VIEW ON" : "INTERNAL VIEW", view.x, view.y, view.width, view.height,
+                viewAccent, internalActive);
+
+        Ship.CrewPriority active = ctx.player.crewPriority();
+        for (int i = 0; i < CREW_PRIORITY_LABELS.length; i++) {
+            Rectangle b = crewPriorityButtonRect(rect, i);
+            Ship.CrewPriority priority = crewPriorityForHudButton(i);
+            boolean selected = i != 8 && active == priority;
+            Color fill = selected ? new Color(90, 210, 164, 220) : new Color(18, 32, 44, 190);
+            Color edge = selected ? new Color(205, 255, 226, 230) : new Color(120, 180, 216, 150);
+            g2.setColor(fill);
+            g2.fillRoundRect(b.x, b.y, b.width, b.height, 6, 6);
+            g2.setColor(edge);
+            g2.drawRoundRect(b.x, b.y, b.width, b.height, 6, 6);
+            String label = CREW_PRIORITY_LABELS[i];
+            int tx = b.x + Math.max(2, (b.width - fm.stringWidth(label)) / 2);
+            int ty = b.y + Math.max(fm.getAscent(), (b.height + fm.getAscent() - fm.getDescent()) / 2);
+            g2.setColor(selected ? new Color(8, 20, 18, 235) : new Color(218, 238, 248, 218));
+            g2.drawString(label, tx, ty);
+        }
+        g2.setFont(oldFont);
+    }
+
+    private static Ship.CrewPriority crewPriorityForHudButton(int index) {
+        return switch (index) {
+            case 1 -> Ship.CrewPriority.FIRE_SUPPRESSION;
+            case 2 -> Ship.CrewPriority.REACTOR;
+            case 3 -> Ship.CrewPriority.ENGINES;
+            case 4 -> Ship.CrewPriority.WEAPONS;
+            case 5 -> Ship.CrewPriority.SHIELDS;
+            case 6 -> Ship.CrewPriority.SENSORS;
+            case 7 -> Ship.CrewPriority.BATTLE_STATIONS;
+            default -> Ship.CrewPriority.AUTO_REPAIR;
+        };
     }
 
     private static void drawCombatModeImagePanel(Graphics2D g2, Rectangle rect, String title, String active, Color accent, HudPanelVisual visual) {
@@ -5233,8 +5353,6 @@ public class Renderer {
             int lineCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE);
             int capitalCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.CAPITAL);
             int titanHullCount = CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.TITAN);
-            int standardCommand = CampaignSystem.campaignStandardCommandCapacity(ctx);
-            int standardUsed = CampaignSystem.campaignStandardCommandUsed(ctx);
             int eliteCommand = CampaignSystem.campaignEliteCommandCapacity(ctx);
             int eliteUsed = CampaignSystem.campaignEliteCommandUsed(ctx);
             String fleetLine = "Fleet: E " + escortCount
@@ -5242,8 +5360,7 @@ public class Renderer {
                     + "   C " + capitalCount
                     + "   T " + titanHullCount + "/" + CampaignSystem.persistentFleetCap(ctx, ShopHullCategory.TITAN);
             statusLines.add(fleetLine);
-            String commandLine = "Command: Grid " + titanHullCount + "/" + TitanFleetSystem.mothershipTitanCap()
-                    + "   Std " + standardUsed + "/" + standardCommand
+            String commandLine = "Command: Titans " + titanHullCount + "/" + TitanFleetSystem.mothershipTitanCap()
                     + "   Elite " + eliteUsed + "/" + eliteCommand;
             statusLines.add(commandLine);
             CampaignSystem.CampaignRouteChoice route = CampaignSystem.selectedRouteChoice(ctx);
@@ -7038,17 +7155,19 @@ public class Renderer {
 
     private static void drawFleetCapUpgradeButtons(Graphics2D g2, GameContext ctx, Rectangle panel) {
         if (g2 == null || panel == null || ctx == null) return;
+        Rectangle content = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         g2.setFont(new Font("Consolas", Font.BOLD, 11));
         g2.setColor(new Color(204, 220, 238, 190));
-        g2.drawString("FLEET DOCTRINE", panel.x + 22, panel.y + 108);
-        Rectangle rect = new Rectangle(panel.x + 22, panel.y + 116, 752, 28);
+        int y = content.y + 74;
+        g2.drawString("FLEET DOCTRINE", content.x, y);
+        Rectangle rect = new Rectangle(content.x, y + 8, Math.min(790, Math.max(520, content.width - 360)), 32);
         g2.setColor(new Color(16, 22, 34, 216));
         g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
         g2.setColor(new Color(118, 214, 255, 92));
         g2.drawRoundRect(rect.x, rect.y, rect.width, rect.height, 12, 12);
         g2.setFont(new Font("Consolas", Font.PLAIN, 10));
         g2.setColor(new Color(188, 208, 230, 200));
-        String line = "Growth gates: shipyard tier, credits/ore, mission unlocks, and titan berth doctrine.";
+        String line = "Growth gates: shipyard tier, credits/ore, mission unlocks, and titan berth doctrine. Standard fleet grid limits are removed.";
         g2.drawString(fitShopText(g2.getFontMetrics(), line, rect.width - 20), rect.x + 10, rect.y + 18);
     }
 
@@ -7494,19 +7613,15 @@ public class Renderer {
         boolean mobileStationOk = !campaignShop
                 || !CampaignSystem.campaignNeedsMobileStation(offer.role)
                 || CampaignSystem.hasOperationalMobileStation(ctx);
-        int standardCost = campaignShop ? CampaignSystem.campaignStandardCommandCost(offer.role) : 0;
         int eliteCost = campaignShop ? CampaignSystem.campaignEliteCommandCost(offer.role) : 0;
-        int standardUsed = campaignShop ? CampaignSystem.campaignStandardCommandUsed(ctx) : 0;
-        int standardCapacity = campaignShop ? CampaignSystem.campaignStandardCommandCapacity(ctx) : 0;
         int eliteUsed = campaignShop ? CampaignSystem.campaignEliteCommandUsed(ctx) : 0;
         int eliteCapacity = campaignShop ? CampaignSystem.campaignEliteCommandCapacity(ctx) : 0;
-        boolean standardCommandOk = !campaignShop || standardCost <= 0 || (standardUsed + standardCost) <= standardCapacity;
         boolean eliteCommandOk = !campaignShop || eliteCost <= 0 || (eliteCapacity > 0 && (eliteUsed + eliteCost) <= eliteCapacity);
         boolean current = player.role == offer.role;
         boolean tierOk = hangarTier >= displayTier;
         boolean affordable = credits >= offer.cost;
         boolean oreAffordable = !campaignShop || CampaignSystem.currentCampaignOre(ctx) >= oreCost;
-        boolean commandOk = standardCommandOk && eliteCommandOk;
+        boolean commandOk = eliteCommandOk;
         boolean enabled = !current && tierOk && sectorOk && mobileStationOk && commandOk && affordable && oreAffordable;
         Color accent = current ? new Color(255, 214, 126) : new Color(126, 186, 255);
 
@@ -7536,8 +7651,6 @@ public class Renderer {
                     : "Needs elite command titan")
                 : (campaignShop && !eliteCommandOk)
                 ? ("Elite grid " + eliteUsed + "/" + eliteCapacity + " committed")
-                : (campaignShop && !standardCommandOk)
-                ? ("Std grid " + standardUsed + "/" + standardCapacity + " committed")
                 : (campaignShop ? ("Ready to commission   Live " + fleetBand.label() + " hulls: " + bandCount) : "Ready for swap"));
         String costLine = campaignShop
                 ? ("Tier " + displayTier + "   Cost $" + offer.cost + " + " + oreCost + " ore")
@@ -7552,7 +7665,6 @@ public class Renderer {
         else if (campaignShop && !mobileStationOk) buttonLabel = "NEED STATION";
         else if (campaignShop && eliteCost > 0 && eliteCapacity <= 0) buttonLabel = "NEED ELITE";
         else if (campaignShop && !eliteCommandOk) buttonLabel = "ELITE FULL";
-        else if (campaignShop && !standardCommandOk) buttonLabel = "GRID FULL";
         else if (!affordable) buttonLabel = "NEED $" + offer.cost;
         else if (!oreAffordable) buttonLabel = "NEED " + oreCost + " ORE";
         else if (campaignShop) buttonLabel = (offer.cost <= 0) ? "BUY FREE" : ("BUY $" + offer.cost);
@@ -8520,6 +8632,10 @@ public class Renderer {
         }
         g2.setStroke(oldStroke);
 
+        if (interactive) {
+            drawCrewTeamXrayMarkers(g2, ship, drawCells, cellPolygons);
+        }
+
         ShipRoomLayout.RoomId detailRoom = (interactive && hoveredRoom != null) ? hoveredRoom : focusedRoom;
         if (detailRoom != null) {
             boolean present = false;
@@ -8569,6 +8685,58 @@ public class Renderer {
         String filterLabel = (filterMode == null) ? "ALL" : filterMode.name();
         String focusLabel = (focusedRoom == null) ? "NONE" : xrayRoomDisplayLabel(focusedRoom);
         g2.drawString("FILTER[" + filterLabel + "] ` cycle   ' clear   CLICK room = focus/protect   FOCUS: " + focusLabel, x + 10, y + h - 22);
+    }
+
+    private static void drawCrewTeamXrayMarkers(Graphics2D g2, Ship ship,
+                                                List<ShipRoomLayout.VisualCell> cells,
+                                                List<Polygon> polygons) {
+        if (g2 == null || ship == null || cells == null || polygons == null) return;
+        List<Ship.CrewTeamSnapshot> teams = ship.crewTeamSnapshots();
+        if (teams.isEmpty()) return;
+        for (Ship.CrewTeamSnapshot team : teams) {
+            if (team == null || team.currentRoom == null) continue;
+            Point a = xrayVisualRoomCenter(cells, polygons, team.currentRoom);
+            if (a == null) continue;
+            Point b = (team.nextRoom == null) ? null : xrayVisualRoomCenter(cells, polygons, team.nextRoom);
+            double t = MathUtil.clamp(team.moveProgress, 0.0, 1.0);
+            int x = (b == null) ? a.x : (int) Math.round(a.x + (b.x - a.x) * t);
+            int y = (b == null) ? a.y : (int) Math.round(a.y + (b.y - a.y) * t);
+            Color fill = switch (team.role) {
+                case ENGINEERING -> new Color(110, 196, 255, 230);
+                case FIRE_SUPPRESSION -> new Color(255, 150, 82, 232);
+                case DAMAGE_CONTROL -> new Color(130, 245, 170, 232);
+            };
+            String label = switch (team.role) {
+                case ENGINEERING -> "E";
+                case FIRE_SUPPRESSION -> "F";
+                case DAMAGE_CONTROL -> "D";
+            };
+            int r = 5;
+            g2.setColor(new Color(4, 10, 14, 210));
+            g2.fillOval(x - r - 1, y - r - 1, (r + 1) * 2, (r + 1) * 2);
+            g2.setColor(fill);
+            g2.fillOval(x - r, y - r, r * 2, r * 2);
+            g2.setColor(new Color(245, 255, 248, 235));
+            g2.drawOval(x - r, y - r, r * 2, r * 2);
+            g2.setFont(XRAY_REPAIR_FONT);
+            FontMetrics fm = g2.getFontMetrics();
+            g2.setColor(new Color(6, 20, 18, 235));
+            g2.drawString(label, x - fm.stringWidth(label) / 2, y + fm.getAscent() / 2 - 1);
+        }
+    }
+
+    private static Point xrayVisualRoomCenter(List<ShipRoomLayout.VisualCell> cells, List<Polygon> polygons,
+                                              ShipRoomLayout.RoomId roomId) {
+        if (cells == null || polygons == null || roomId == null) return null;
+        for (int i = 0; i < cells.size() && i < polygons.size(); i++) {
+            ShipRoomLayout.VisualCell cell = cells.get(i);
+            if (cell == null || cell.roomId != roomId) continue;
+            Polygon p = polygons.get(i);
+            if (p == null || p.npoints < 3) continue;
+            Rectangle b = p.getBounds();
+            return new Point((int) Math.round(b.getCenterX()), (int) Math.round(b.getCenterY()));
+        }
+        return null;
     }
 
     private static Rectangle xrayMapRect(int panelX, int panelY, int panelW, int panelH) {
@@ -12069,6 +12237,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         markers.sort(Comparator.comparingInt((CampaignSystem.CampaignSupportMarker marker) -> marker.priority).reversed());
 
         Set<String> occupiedLabels = new HashSet<>();
+        drawConfirmedCampaignInterceptLines(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH);
         Map<CampaignSystem.CampaignSupportMarker, StrategicSupportLabelLayout> labelLayouts =
                 strategicSupportMarkerLabelLayouts(g2, ctx, mapRect, markers, worldMinX, worldMinY, worldW, worldH);
         for (CampaignSystem.CampaignSupportMarker marker : markers) {
@@ -12079,6 +12248,53 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawStrategicSupportMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker,
                     labelLayouts.get(marker));
         }
+    }
+
+    private static void drawConfirmedCampaignInterceptLines(Graphics2D g2,
+                                                            GameContext ctx,
+                                                            Rectangle mapRect,
+                                                            double worldMinX,
+                                                            double worldMinY,
+                                                            double worldW,
+                                                            double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignInterceptLine> lines = CampaignSystem.confirmedPlayerInterceptLines(ctx);
+        if (lines.isEmpty()) return;
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        Font oldFont = g2.getFont();
+        Shape oldClip = g2.getClip();
+        g2.setClip(mapRect.x, mapRect.y, mapRect.width, mapRect.height);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.84f));
+        g2.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(new Color(255, 76, 72, 220));
+        for (CampaignSystem.CampaignInterceptLine line : lines) {
+            if (line == null) continue;
+            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, line.fromX);
+            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, line.fromY);
+            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, line.toX);
+            int by = strategicMapPixelY(mapRect, worldMinY, worldH, line.toY);
+            g2.drawLine(ax, ay, bx, by);
+            drawRouteWarningTicks(g2, ax, ay, bx, by, new Color(255, 122, 116, 190));
+            double dx = bx - ax;
+            double dy = by - ay;
+            double len = Math.hypot(dx, dy);
+            if (len >= 36.0) {
+                double ux = dx / len;
+                double uy = dy / len;
+                int nx = (int) Math.round(bx - ux * 18.0);
+                int ny = (int) Math.round(by - uy * 18.0);
+                Polygon arrow = new Polygon(
+                        new int[]{bx, (int) Math.round(nx - uy * 6.0), (int) Math.round(nx + uy * 6.0)},
+                        new int[]{by, (int) Math.round(ny + ux * 6.0), (int) Math.round(ny - ux * 6.0)},
+                        3);
+                g2.fillPolygon(arrow);
+            }
+        }
+        g2.setClip(oldClip);
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
     }
 
     private static boolean shouldDrawObjectiveMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignObjectiveMarker marker) {

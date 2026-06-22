@@ -319,6 +319,79 @@ class CampaignStrategicStrikeCounterplayTest {
         assertEquals(lastX, marker.x, 1e-6);
         assertEquals(lastY, marker.y, 1e-6);
         assertTrue(marker.subtitle.contains("44s old"));
+        assertTrue(marker.subtitle.contains("Last-known sensor memory"));
+        assertFalse(marker.subtitle.contains("Vectoring toward the fleet"),
+                "lost search-group shadows should not describe live player-chase vectors");
+    }
+
+    @Test
+    void staleCampaignForceDoesNotDrawLivePursuitOrMovementVectors() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object force = firstEnemyCampaignForce(st);
+        assertNotNull(force);
+
+        double realX = st.playerGalaxyX + 3800.0;
+        double realY = st.playerGalaxyY + 1200.0;
+        double lastX = st.playerGalaxyX + 360.0;
+        double lastY = st.playerGalaxyY + 210.0;
+        setObject(force, "intent", enumConstant(Class.forName("CampaignSystem$CampaignForceIntent"), "INTERCEPTING"));
+        setObject(force, "state", enumConstant(Class.forName("CampaignSystem$CampaignFleetState"), "PURSUING"));
+        setObject(force, "contactState", enumConstant(Class.forName("CampaignSystem$CampaignForceContactState"), "STALE"));
+        setDouble(force, "contactConfidence", 0.50);
+        setDouble(force, "x", realX);
+        setDouble(force, "y", realY);
+        setDouble(force, "lastKnownX", lastX);
+        setDouble(force, "lastKnownY", lastY);
+        setDouble(force, "lastKnownAgeSec", 24.0);
+        setDouble(force, "targetX", st.playerGalaxyX);
+        setDouble(force, "targetY", st.playerGalaxyY);
+        setBoolean(force, "visibleToPlayer", false);
+        setBoolean(force, "simulationActive", true);
+
+        assertTrue(CampaignSystem.confirmedPlayerInterceptLines(ctx).isEmpty(),
+                "last-known contacts must not draw live player-intercept lines");
+
+        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
+        CampaignSystem.CampaignSupportMarker lastKnown = markers.stream()
+                .filter(marker -> marker != null && marker.label.contains("Last Known Contact"))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(lastKnown, "stale force should remain visible as last-known intel");
+        assertEquals(lastX, lastKnown.x, 1e-6);
+        assertEquals(lastY, lastKnown.y, 1e-6);
+        assertTrue(lastKnown.subtitle.contains("Last Known") || lastKnown.subtitle.contains("last seen"),
+                "last-known subtitle should identify memory state instead of live movement");
+        assertFalse(markers.stream().anyMatch(marker -> marker != null && marker.label.contains("Moving Blockade Line")),
+                "last-known contacts must not draw live movement/blockade vectors");
+
+        String readout = String.join("\n", CampaignSystem.campaignNearbyContactReadouts(ctx, 8).stream()
+                .map(contact -> contact.title + " " + contact.detail)
+                .toList());
+        assertTrue(readout.contains("Last Known"), "sensor readout should label stale force memory");
+        assertFalse(readout.toLowerCase().contains("pursuit / intercept"),
+                "sensor readout must not advertise stale contacts as active pursuers");
+    }
+
+    @Test
+    void lostSearchGroupDoesNotPutCampaignIntoBeingHuntedState() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+
+        setDouble(group, "x", st.playerGalaxyX + 90.0);
+        setDouble(group, "y", st.playerGalaxyY + 60.0);
+        setDouble(group, "lastKnownX", st.playerGalaxyX - 500.0);
+        setDouble(group, "lastKnownY", st.playerGalaxyY - 300.0);
+        setDouble(group, "lastKnownAgeSec", 48.0);
+        setDouble(group, "trackIntegrity", 80.0);
+        setBoolean(group, "visible", true);
+        setObject(group, "behavior", enumConstant(Class.forName("CampaignSystem$GalaxySearchBehavior"), "INTERCEPTING"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
+
+        assertEquals("Clear", CampaignSystem.campaignHuntStatusReadout(ctx),
+                "lost search-group shadows must not make the map report active pursuit");
     }
 
     @Test
@@ -638,6 +711,19 @@ class CampaignStrategicStrikeCounterplayTest {
         return groups.isEmpty() ? null : groups.get(0);
     }
 
+    private static Object firstEnemyCampaignForce(CampaignSystem.CampaignState st) throws Exception {
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("campaignForces");
+        field.setAccessible(true);
+        List<?> forces = (List<?>) field.get(st);
+        for (Object force : forces) {
+            if (force == null) continue;
+            Object faction = getObject(force, "faction");
+            Object kind = getObject(force, "kind");
+            if ("ENEMY".equals(String.valueOf(faction)) && !"PLAYER_FLEET".equals(String.valueOf(kind))) return force;
+        }
+        return null;
+    }
+
     private static int strategicStrikeObjectCount(CampaignSystem.CampaignState st) throws Exception {
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicStrikeObjects");
         field.setAccessible(true);
@@ -705,6 +791,12 @@ class CampaignStrategicStrikeCounterplayTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getBoolean(target);
+    }
+
+    private static Object getObject(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(target);
     }
 
     private static void setBoolean(Object target, String fieldName, boolean value) throws Exception {

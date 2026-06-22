@@ -28,6 +28,8 @@ public final class AudioSystem {
     private static final int MAX_AUDIO_EVENT_LOG = 8192;
     private static final double WORLD_SFX_HEARING_RADIUS = 1400.0;
     private static final double WORLD_SFX_HEARING_RADIUS2 = WORLD_SFX_HEARING_RADIUS * WORLD_SFX_HEARING_RADIUS;
+    private static final double NPC_WARP_AUDIBLE_RADIUS = 620.0;
+    private static final double NPC_WARP_AUDIBLE_RADIUS2 = NPC_WARP_AUDIBLE_RADIUS * NPC_WARP_AUDIBLE_RADIUS;
     private static final Random RNG = new Random();
     private static final WeakHashMap<GameContext, RuntimeState> STATE = new WeakHashMap<>();
     private static final Map<String, Double> VOICE_COOLDOWN_SEC_BY_KEY = new HashMap<>();
@@ -702,17 +704,23 @@ public final class AudioSystem {
             touchWarpSpoolLoop(ctx, st, now, Double.NaN, Double.NaN);
             return;
         }
+        if (!shouldPlayWarpSfx(ctx, source)) return;
         triggerSfx(ctx, st, SfxCue.WARP_CHARGE_START, now, source.x, source.y);
         touchWarpSpoolLoop(ctx, st, now, source.x, source.y);
     }
 
     public static void onWarpExit(GameContext ctx, Ship source) {
-        stopWarpSpoolLoop();
         RuntimeState st = stateFor(ctx);
-        if (st != null) st.warpSpoolLoopUntilSec = 0.0;
         if (source == null) {
+            stopWarpSpoolLoop();
+            if (st != null) st.warpSpoolLoopUntilSec = 0.0;
             triggerSfx(ctx, SfxCue.WARP_EXIT);
             return;
+        }
+        if (!shouldPlayWarpSfx(ctx, source)) return;
+        if (source == ctx.player) {
+            stopWarpSpoolLoop();
+            if (st != null) st.warpSpoolLoopUntilSec = 0.0;
         }
         triggerSfx(ctx, SfxCue.WARP_EXIT, source.x, source.y);
     }
@@ -1260,7 +1268,7 @@ public final class AudioSystem {
             for (Ship ship : ctx.ships) {
                 if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
                 if (!ship.isWarpCharging()) continue;
-                if (ctx.player != null && !shouldPlayWorldSfxAt(ctx, ship.x, ship.y)) continue;
+                if (ctx.player != null && !shouldPlayWarpSfx(ctx, ship)) continue;
                 warpCharging = true;
                 break;
             }
@@ -1473,7 +1481,9 @@ public final class AudioSystem {
         boolean hasAsset = (pick != null && (pick.file() != null || pick.resourcePath() != null));
         if (hasAsset) {
             variant = pick.variantIndex();
-            double gain = spec.gainDb() + sfxVoiceDuckingDb(ctx, spec.priority());
+            double gain = spec.gainDb()
+                    + sfxVoiceDuckingDb(ctx, spec.priority())
+                    + worldSfxAttenuationDb(ctx, sourceX, sourceY);
             playAssetAsync(pick.file(), pick.resourcePath(), false, gain, spec.priority());
         }
         st.lastSfxVariantByEvent.put(spec.eventId(), variant);
@@ -1903,7 +1913,41 @@ public final class AudioSystem {
     private static boolean shouldPlayWorldSfxAt(GameContext ctx, double sourceX, double sourceY) {
         if (!Double.isFinite(sourceX) || !Double.isFinite(sourceY)) return true;
         if (ctx == null || ctx.player == null) return true;
-        return GameMath.dist2(sourceX, sourceY, ctx.player.x, ctx.player.y) <= WORLD_SFX_HEARING_RADIUS2;
+        return GameMath.dist2(sourceX, sourceY, audioListenerX(ctx), audioListenerY(ctx)) <= WORLD_SFX_HEARING_RADIUS2;
+    }
+
+    private static boolean shouldPlayWarpSfx(GameContext ctx, Ship source) {
+        if (ctx == null || source == null) return true;
+        if (source == ctx.player) return true;
+        if (!Double.isFinite(source.x) || !Double.isFinite(source.y)) return false;
+        double zoom = CameraSystem.normalizedZoom(ctx);
+        if (zoom < 0.45) return false;
+        double dist2 = GameMath.dist2(source.x, source.y, audioListenerX(ctx), audioListenerY(ctx));
+        return dist2 <= NPC_WARP_AUDIBLE_RADIUS2;
+    }
+
+    private static double worldSfxAttenuationDb(GameContext ctx, double sourceX, double sourceY) {
+        if (ctx == null || !Double.isFinite(sourceX) || !Double.isFinite(sourceY)) return 0.0;
+        double distance = Math.sqrt(GameMath.dist2(sourceX, sourceY, audioListenerX(ctx), audioListenerY(ctx)));
+        double distanceT = MathUtil.clamp(distance / WORLD_SFX_HEARING_RADIUS, 0.0, 1.0);
+        double attenuation = -18.0 * distanceT * distanceT;
+        double zoom = CameraSystem.normalizedZoom(ctx);
+        if (zoom < 0.35) attenuation -= 8.0;
+        else if (zoom < 0.55) attenuation -= 5.0;
+        else if (zoom < 0.78) attenuation -= 2.5;
+        return attenuation;
+    }
+
+    private static double audioListenerX(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return 0.0;
+        if (CampaignSystem.hasCinematicFocus(ctx)) return CampaignSystem.cinematicFocusX(ctx);
+        return ctx.player.x + ctx.cameraOffsetX;
+    }
+
+    private static double audioListenerY(GameContext ctx) {
+        if (ctx == null || ctx.player == null) return 0.0;
+        if (CampaignSystem.hasCinematicFocus(ctx)) return CampaignSystem.cinematicFocusY(ctx);
+        return ctx.player.y + ctx.cameraOffsetY;
     }
 
     private static double roleThrottleSeconds(int priority) {

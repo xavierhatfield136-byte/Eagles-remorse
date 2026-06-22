@@ -91,6 +91,21 @@ class WeaponDoctrineBalanceTest {
     }
 
     @Test
+    void greenShipsAlwaysUseConcentratedBeamFamily() {
+        FleetShip ship = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_C, 0.0, 0.0);
+        Turret gun = firstGun(ship);
+        assertTrue(gun != null, "expected a primary gun on the Team C frigate");
+
+        ship.primaryWeaponFamily = Ship.PrimaryWeaponFamily.ENERGY_BOLT;
+        ship.applyPrimaryWeaponFamily();
+
+        assertEquals(Ship.PrimaryWeaponFamily.BEAM_BOLT, ship.primaryWeaponFamily);
+        assertTrue(ship.usesVolleyPrimaryFire(), "Green ships should fire concentrated beam volleys");
+        assertTrue(!ship.usesStaggeredPrimaryFire(), "Green ships should not use rapid-fire beam staggering");
+        assertEquals(Ship.BEAM_BOLT_RELOAD_SECONDS, gun.cooldown, 1e-6);
+    }
+
+    @Test
     void blueProjectilesGainDamageWithFlightDistance() {
         FleetShip ship = new FleetShip(ShipRole.PICKET, Faction.ALLY, 0.0, 0.0);
         Turret gun = firstGun(ship);

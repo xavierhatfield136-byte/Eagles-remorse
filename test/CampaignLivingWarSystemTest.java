@@ -820,6 +820,109 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
+    void sensorNetPrioritizesRealNearbyContactsAndFiltersGhosts() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object hunter = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Red Sensor Regression Hunter", "red regression yard", "Intercept player", 2580.0, 2500.0);
+        setDouble(hunter, "x", 2580.0);
+        setDouble(hunter, "y", 2500.0);
+        setDouble(hunter, "targetX", 2500.0);
+        setDouble(hunter, "targetY", 2500.0);
+        setDouble(hunter, "strength", 132.0);
+        setDouble(hunter, "readiness", 94.0);
+        setDouble(hunter, "contactConfidence", 0.92);
+        setObject(hunter, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
+
+        Object destroyed = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Destroyed Sensor Regression Ghost", "red regression yard", "Should be hidden", 2520.0, 2520.0);
+        setObject(destroyed, "destroyed", true);
+
+        Object stale = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Stale Sensor Regression Ghost", "red regression yard", "Should be hidden", 2540.0, 2540.0);
+        setDouble(stale, "strength", 12.0);
+        setDouble(stale, "contactConfidence", 0.05);
+        setDouble(stale, "lastKnownAgeSec", 80.0);
+        setDouble(stale, "lastKnownX", 2540.0);
+        setDouble(stale, "lastKnownY", 2540.0);
+        setObject(stale, "contactState", enumConstant(findNestedClass("CampaignForceContactState"), "STALE"));
+
+        List<CampaignSystem.CampaignContactReadout> contacts = CampaignSystem.campaignNearbyContactReadouts(ctx, 8);
+        assertTrue(contacts.stream().anyMatch(contact -> contact.title.equals("Red Sensor Regression Hunter")
+                && contact.detail.contains("Confirmed")
+                && contact.detail.contains("severe threat")));
+        assertFalse(contacts.stream().anyMatch(contact -> contact.title.contains("Destroyed Sensor Regression Ghost")));
+        assertFalse(contacts.stream().anyMatch(contact -> contact.title.contains("Stale Sensor Regression Ghost")));
+
+        List<GameRenderSystem.SensorNetEntry> entries = GameRenderSystem.sensorNetEntries(ctx, 0, 0);
+        assertTrue(entries.stream().anyMatch(entry -> "NEARBY CONTACTS".equals(entry.section)
+                && entry.title.equals("Red Sensor Regression Hunter")));
+    }
+
+    @Test
+    void confirmedInterceptLinesExcludeDestroyedAndStaleContacts() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object confirmed = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Confirmed Intercept Regression Fleet", "red regression yard", "Intercept player", 2700.0, 2500.0);
+        setDouble(confirmed, "x", 2700.0);
+        setDouble(confirmed, "y", 2500.0);
+        setDouble(confirmed, "targetX", 2500.0);
+        setDouble(confirmed, "targetY", 2500.0);
+        setDouble(confirmed, "contactConfidence", 0.95);
+        setObject(confirmed, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
+        setObject(confirmed, "state", enumConstant(findNestedClass("CampaignFleetState"), "PURSUING"));
+        setObject(confirmed, "contactState", enumConstant(findNestedClass("CampaignForceContactState"), "KNOWN"));
+
+        Object stale = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Stale Intercept Regression Fleet", "red regression yard", "Fake intercept", 2760.0, 2500.0);
+        setDouble(stale, "contactConfidence", 0.9);
+        setObject(stale, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
+        setObject(stale, "state", enumConstant(findNestedClass("CampaignFleetState"), "PURSUING"));
+        setObject(stale, "contactState", enumConstant(findNestedClass("CampaignForceContactState"), "STALE"));
+
+        Object destroyed = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Destroyed Intercept Regression Fleet", "red regression yard", "Fake intercept", 2820.0, 2500.0);
+        setDouble(destroyed, "contactConfidence", 0.95);
+        setObject(destroyed, "intent", CampaignSystem.CampaignForceIntent.INTERCEPTING);
+        setObject(destroyed, "state", enumConstant(findNestedClass("CampaignFleetState"), "PURSUING"));
+        setObject(destroyed, "contactState", enumConstant(findNestedClass("CampaignForceContactState"), "KNOWN"));
+        setObject(destroyed, "destroyed", true);
+        st.activeGalaxyEncounterForceIds.add((Integer) getObject(destroyed, "id"));
+
+        List<CampaignSystem.CampaignInterceptLine> lines = CampaignSystem.confirmedPlayerInterceptLines(ctx);
+        assertTrue(lines.stream().anyMatch(line -> line.label.equals("Confirmed Intercept Regression Fleet")));
+        assertFalse(lines.stream().anyMatch(line -> line.label.contains("Stale Intercept")));
+        assertFalse(lines.stream().anyMatch(line -> line.label.contains("Destroyed Intercept")));
+        assertFalse(st.activeGalaxyEncounterForceIds.contains((Integer) getObject(destroyed, "id")),
+                "cleanup should remove destroyed active encounter force refs");
+    }
+
+    @Test
     void pendingMajorRedLaunchEmitsEarlyMidAndFinalWarnings() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;

@@ -450,7 +450,84 @@ public abstract class Ship {
         ENGINEERING,
         DAMAGE_CONTROL
     }
+
+    public enum CrewPriority {
+        AUTO_REPAIR,
+        FIRE_SUPPRESSION,
+        REACTOR,
+        ENGINES,
+        WEAPONS,
+        SHIELDS,
+        SENSORS,
+        BATTLE_STATIONS,
+        MANUAL_ROOM
+    }
+
+    public enum CrewTeamRole {
+        DAMAGE_CONTROL,
+        ENGINEERING,
+        FIRE_SUPPRESSION
+    }
+
+    public enum CrewTeamTask {
+        IDLE,
+        MOVING,
+        REPAIRING,
+        FIREFIGHTING,
+        RESTORING_SYSTEM,
+        OPERATING
+    }
+
+    public static final class CrewTeamSnapshot {
+        public final int id;
+        public final CrewTeamRole role;
+        public final CrewTeamTask task;
+        public final CrewPriority priority;
+        public final ShipRoomLayout.RoomId currentRoom;
+        public final ShipRoomLayout.RoomId targetRoom;
+        public final ShipRoomLayout.RoomId nextRoom;
+        public final double moveProgress;
+
+        private CrewTeamSnapshot(CrewTeam team, CrewPriority priority) {
+            this.id = team.id;
+            this.role = team.role;
+            this.task = team.task;
+            this.priority = priority;
+            this.currentRoom = team.currentRoom;
+            this.targetRoom = team.targetRoom;
+            this.nextRoom = team.nextRoom();
+            this.moveProgress = MathUtil.clamp(team.moveProgress, 0.0, 1.0);
+        }
+    }
+
+    private static final class CrewTeam {
+        final int id;
+        final CrewTeamRole role;
+        ShipRoomLayout.RoomId currentRoom;
+        ShipRoomLayout.RoomId targetRoom;
+        CrewTeamTask task = CrewTeamTask.IDLE;
+        final ArrayList<ShipRoomLayout.RoomId> path = new ArrayList<>();
+        int pathIndex = 0;
+        double moveProgress = 0.0;
+
+        CrewTeam(int id, CrewTeamRole role, ShipRoomLayout.RoomId currentRoom) {
+            this.id = id;
+            this.role = role;
+            this.currentRoom = currentRoom;
+            this.targetRoom = currentRoom;
+        }
+
+        ShipRoomLayout.RoomId nextRoom() {
+            int nextIdx = pathIndex + 1;
+            if (nextIdx < 0 || nextIdx >= path.size()) return null;
+            return path.get(nextIdx);
+        }
+    }
+
     public CrewOrder crewOrder = CrewOrder.BALANCED;
+    private final ArrayList<CrewTeam> crewTeams = new ArrayList<>();
+    private CrewPriority crewPriority = CrewPriority.AUTO_REPAIR;
+    private ShipRoomLayout.RoomId crewManualPriorityRoom = null;
     private double crewFatigue = 0.0;      // retained for save/compat, no gameplay effect
     private double crewCasualtyRate = 0.0; // 0..1
     private double crewReadiness = 1.0;    // 0..1
@@ -917,6 +994,10 @@ public abstract class Ship {
     }
 
     public void applyPrimaryWeaponFamily() {
+        if (!(this instanceof Player) && faction == Faction.TEAM_C) {
+            primaryWeaponFamily = PrimaryWeaponFamily.BEAM_BOLT;
+        }
+
         for (Turret t : turrets) {
             if (t == null) continue;
             if (t.kind != Turret.Kind.GUN) continue;
@@ -2571,6 +2652,42 @@ public abstract class Ship {
         engineeringPriority = (priority == null) ? EngineeringPriority.BALANCED : priority;
     }
 
+    public CrewPriority crewPriority() {
+        return (crewPriority == null) ? CrewPriority.AUTO_REPAIR : crewPriority;
+    }
+
+    public void setCrewPriority(CrewPriority priority) {
+        crewPriority = (priority == null) ? CrewPriority.AUTO_REPAIR : priority;
+        if (crewPriority != CrewPriority.MANUAL_ROOM) crewManualPriorityRoom = null;
+        retaskCrewTeams();
+    }
+
+    public void setCrewManualPriorityRoom(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null || ShipRoomLayout.roomForId(role, faction, roomId) == null) {
+            crewManualPriorityRoom = null;
+            crewPriority = CrewPriority.AUTO_REPAIR;
+        } else {
+            crewManualPriorityRoom = roomId;
+            crewPriority = CrewPriority.MANUAL_ROOM;
+        }
+        retaskCrewTeams();
+    }
+
+    public ShipRoomLayout.RoomId crewManualPriorityRoom() {
+        return crewManualPriorityRoom;
+    }
+
+    public List<CrewTeamSnapshot> crewTeamSnapshots() {
+        ensureCrewTeamsInitialized();
+        ArrayList<CrewTeamSnapshot> out = new ArrayList<>(crewTeams.size());
+        CrewPriority priority = crewPriority();
+        for (CrewTeam team : crewTeams) {
+            if (team == null) continue;
+            out.add(new CrewTeamSnapshot(team, priority));
+        }
+        return Collections.unmodifiableList(out);
+    }
+
     public PowerBus overloadBus() {
         return overloadBus;
     }
@@ -4169,6 +4286,8 @@ public abstract class Ship {
             }
         }
 
+        updateCrewTeams(dt);
+
         double fireLoad = totalFireIntensity();
         int fireRooms = activeFireRoomCount();
         if (fireRooms > 0) {
@@ -4189,6 +4308,280 @@ public abstract class Ship {
         crewShieldMul = MathUtil.clamp(base * shields, 0.30, 1.35);
         crewWeaponMul = MathUtil.clamp(base * weapons, 0.28, 1.35);
         crewSystemMul = MathUtil.clamp(base * systems, 0.30, 1.35);
+    }
+
+    private void ensureCrewTeamsInitialized() {
+        ensureRoomSystemsInitialized();
+        if (!crewTeams.isEmpty()) return;
+        ShipRoomLayout.RoomId start = ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.CREW_QUARTERS) != null
+                ? ShipRoomLayout.RoomId.CREW_QUARTERS
+                : (ShipRoomLayout.roomForId(role, faction, ShipRoomLayout.RoomId.BRIDGE) != null
+                ? ShipRoomLayout.RoomId.BRIDGE
+                : firstCrewAccessibleRoom());
+        if (start == null) return;
+        crewTeams.add(new CrewTeam(1, CrewTeamRole.DAMAGE_CONTROL, start));
+        crewTeams.add(new CrewTeam(2, CrewTeamRole.ENGINEERING, start));
+        crewTeams.add(new CrewTeam(3, CrewTeamRole.FIRE_SUPPRESSION, start));
+    }
+
+    private ShipRoomLayout.RoomId firstCrewAccessibleRoom() {
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def != null && def.id != null && !ShipRoomLayout.isArmorRoom(def.id)) return def.id;
+        }
+        return null;
+    }
+
+    private void updateCrewTeams(double dt) {
+        if (dt <= 0.0 || !alive || dying) return;
+        ensureCrewTeamsInitialized();
+        if (crewTeams.isEmpty()) return;
+
+        java.util.EnumSet<ShipRoomLayout.RoomId> claimed = java.util.EnumSet.noneOf(ShipRoomLayout.RoomId.class);
+        for (CrewTeam team : crewTeams) {
+            if (team == null) continue;
+            ShipRoomLayout.RoomId target = selectCrewTeamTarget(team, claimed);
+            assignCrewTeamTarget(team, target);
+            if (target != null) claimed.add(target);
+            advanceCrewTeam(team, dt);
+            performCrewTeamWork(team, dt);
+        }
+    }
+
+    private void retaskCrewTeams() {
+        for (CrewTeam team : crewTeams) {
+            if (team == null) continue;
+            team.targetRoom = null;
+            team.path.clear();
+            team.pathIndex = 0;
+            team.moveProgress = 0.0;
+        }
+    }
+
+    private ShipRoomLayout.RoomId selectCrewTeamTarget(CrewTeam team, java.util.EnumSet<ShipRoomLayout.RoomId> claimed) {
+        CrewPriority priority = crewPriority();
+        if (priority == CrewPriority.MANUAL_ROOM && crewManualPriorityRoom != null
+                && crewRoomNeedsWork(crewManualPriorityRoom)) return crewManualPriorityRoom;
+
+        if (priority == CrewPriority.FIRE_SUPPRESSION || team.role == CrewTeamRole.FIRE_SUPPRESSION) {
+            ShipRoomLayout.RoomId fire = bestFireCrewTarget(claimed);
+            if (fire != null) return fire;
+        }
+
+        ShipRoomLayout.RoomId systemTarget = switch (priority) {
+            case REACTOR -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.REACTOR, ShipRoomLayout.RoomId.POWER_CONDUITS);
+            case ENGINES -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.ENGINES, ShipRoomLayout.RoomId.PORT_ENGINES,
+                    ShipRoomLayout.RoomId.STARBOARD_ENGINES, ShipRoomLayout.RoomId.WARP_DRIVE);
+            case WEAPONS -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.MAIN_WEAPON, ShipRoomLayout.RoomId.PORT_BATTERY,
+                    ShipRoomLayout.RoomId.STARBOARD_BATTERY, ShipRoomLayout.RoomId.MISSILE_LAUNCHERS, ShipRoomLayout.RoomId.MAGAZINES);
+            case SHIELDS -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.INTEGRITY_FIELD,
+                    ShipRoomLayout.RoomId.BOW_SHIELD_STRIP, ShipRoomLayout.RoomId.DORSAL_SHIELD_STRIP, ShipRoomLayout.RoomId.VENTRAL_SHIELD_STRIP,
+                    ShipRoomLayout.RoomId.AFT_SHIELD_STRIP);
+            case SENSORS -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.SENSORS, ShipRoomLayout.RoomId.BRIDGE);
+            case BATTLE_STATIONS -> bestCrewTargetForRooms(claimed, ShipRoomLayout.RoomId.BRIDGE,
+                    ShipRoomLayout.RoomId.MAIN_WEAPON, ShipRoomLayout.RoomId.PORT_BATTERY, ShipRoomLayout.RoomId.STARBOARD_BATTERY);
+            default -> null;
+        };
+        if (systemTarget != null) return systemTarget;
+
+        ShipRoomLayout.RoomId disrupted = bestDisruptedCrewTarget(claimed);
+        if (disrupted != null) return disrupted;
+        ShipRoomLayout.RoomId damaged = bestDamagedCrewTarget(claimed);
+        if (damaged != null) return damaged;
+        return bestOperatingStationForTeam(team);
+    }
+
+    private boolean crewRoomNeedsWork(ShipRoomLayout.RoomId roomId) {
+        if (roomId == null) return false;
+        return roomFireIntensity(roomId) > 0.03
+                || isRoomDisrupted(roomId)
+                || roomHealthFraction(roomId) < 0.995;
+    }
+
+    private ShipRoomLayout.RoomId bestFireCrewTarget(java.util.EnumSet<ShipRoomLayout.RoomId> claimed) {
+        ShipRoomLayout.RoomId best = null;
+        double bestScore = 0.05;
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null || claimed.contains(def.id)) continue;
+            double fire = roomFireIntensity(def.id);
+            if (fire > bestScore) {
+                bestScore = fire;
+                best = def.id;
+            }
+        }
+        return best;
+    }
+
+    private ShipRoomLayout.RoomId bestDisruptedCrewTarget(java.util.EnumSet<ShipRoomLayout.RoomId> claimed) {
+        ShipRoomLayout.RoomId best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null || claimed.contains(def.id) || !isRoomDisrupted(def.id)) continue;
+            double score = (def.critical ? 4.0 : 0.0) + (def.primarySystem != null ? 2.0 : 0.0)
+                    + roomDisruptionRepairProgress(def.id) + (1.0 - roomHealthFraction(def.id));
+            if (score > bestScore) {
+                bestScore = score;
+                best = def.id;
+            }
+        }
+        return best;
+    }
+
+    private ShipRoomLayout.RoomId bestDamagedCrewTarget(java.util.EnumSet<ShipRoomLayout.RoomId> claimed) {
+        ShipRoomLayout.RoomId best = null;
+        double bestScore = 0.006;
+        for (ShipRoomLayout.RoomDef def : ShipRoomLayout.profileFor(role, faction)) {
+            if (def == null || def.id == null || claimed.contains(def.id)) continue;
+            if (ShipRoomLayout.isArmorRoom(def.id)) continue;
+            double missing = 1.0 - roomHealthFraction(def.id);
+            double score = missing + (def.critical ? 0.20 : 0.0) + (def.primarySystem != null ? 0.10 : 0.0);
+            if (missing > 0.005 && score > bestScore) {
+                bestScore = score;
+                best = def.id;
+            }
+        }
+        return best;
+    }
+
+    private ShipRoomLayout.RoomId bestCrewTargetForRooms(java.util.EnumSet<ShipRoomLayout.RoomId> claimed,
+                                                         ShipRoomLayout.RoomId... rooms) {
+        ShipRoomLayout.RoomId best = null;
+        double bestScore = 0.0;
+        if (rooms == null) return null;
+        for (ShipRoomLayout.RoomId roomId : rooms) {
+            if (roomId == null || claimed.contains(roomId)) continue;
+            if (ShipRoomLayout.roomForId(role, faction, roomId) == null) continue;
+            double score = (1.0 - roomHealthFraction(roomId)) * 2.0
+                    + roomFireIntensity(roomId) * 2.5
+                    + (isRoomDisrupted(roomId) ? 1.25 + roomDisruptionRepairProgress(roomId) : 0.0);
+            if (score > bestScore + 1e-6) {
+                bestScore = score;
+                best = roomId;
+            }
+        }
+        return best;
+    }
+
+    private ShipRoomLayout.RoomId bestOperatingStationForTeam(CrewTeam team) {
+        if (team == null) return firstCrewAccessibleRoom();
+        ShipRoomLayout.RoomId preferred = switch (team.role) {
+            case ENGINEERING -> ShipRoomLayout.RoomId.REACTOR;
+            case FIRE_SUPPRESSION -> ShipRoomLayout.RoomId.SERVICE_BAY;
+            case DAMAGE_CONTROL -> ShipRoomLayout.RoomId.CREW_QUARTERS;
+        };
+        if (ShipRoomLayout.roomForId(role, faction, preferred) != null) return preferred;
+        return firstCrewAccessibleRoom();
+    }
+
+    private void assignCrewTeamTarget(CrewTeam team, ShipRoomLayout.RoomId target) {
+        if (team == null) return;
+        if (target == null) target = team.currentRoom;
+        if (target == team.targetRoom && !team.path.isEmpty()) return;
+        team.targetRoom = target;
+        team.path.clear();
+        team.path.addAll(crewPath(team.currentRoom, target));
+        team.pathIndex = 0;
+        team.moveProgress = 0.0;
+        team.task = (team.currentRoom == target) ? CrewTeamTask.IDLE : CrewTeamTask.MOVING;
+    }
+
+    private List<ShipRoomLayout.RoomId> crewPath(ShipRoomLayout.RoomId from, ShipRoomLayout.RoomId to) {
+        if (from == null || to == null) return List.of();
+        if (from == to) return List.of(from);
+        java.util.ArrayDeque<ShipRoomLayout.RoomId> queue = new java.util.ArrayDeque<>();
+        java.util.EnumMap<ShipRoomLayout.RoomId, ShipRoomLayout.RoomId> prev =
+                new java.util.EnumMap<>(ShipRoomLayout.RoomId.class);
+        queue.add(from);
+        prev.put(from, from);
+        while (!queue.isEmpty()) {
+            ShipRoomLayout.RoomId current = queue.removeFirst();
+            if (current == to) break;
+            ShipRoomLayout.RoomDef def = ShipRoomLayout.roomForId(role, faction, current);
+            if (def == null || def.neighbors == null) continue;
+            for (ShipRoomLayout.RoomId neighbor : def.neighbors) {
+                if (neighbor == null || prev.containsKey(neighbor)) continue;
+                if (ShipRoomLayout.roomForId(role, faction, neighbor) == null) continue;
+                prev.put(neighbor, current);
+                queue.addLast(neighbor);
+            }
+        }
+        if (!prev.containsKey(to)) return List.of(from, to);
+        ArrayList<ShipRoomLayout.RoomId> out = new ArrayList<>();
+        ShipRoomLayout.RoomId step = to;
+        while (step != null && step != from) {
+            out.add(0, step);
+            step = prev.get(step);
+        }
+        out.add(0, from);
+        return out;
+    }
+
+    private void advanceCrewTeam(CrewTeam team, double dt) {
+        if (team == null || team.currentRoom == null || team.targetRoom == null) return;
+        if (team.currentRoom == team.targetRoom) return;
+        if (team.path.isEmpty() || team.pathIndex >= team.path.size() - 1) {
+            team.path.clear();
+            team.path.addAll(crewPath(team.currentRoom, team.targetRoom));
+            team.pathIndex = 0;
+        }
+        ShipRoomLayout.RoomId next = team.nextRoom();
+        if (next == null) return;
+        team.task = CrewTeamTask.MOVING;
+        double roomsPerSecond = 0.72 + 0.28 * crewReadiness();
+        team.moveProgress += dt * roomsPerSecond;
+        while (team.moveProgress >= 1.0 && next != null) {
+            team.moveProgress -= 1.0;
+            team.currentRoom = next;
+            team.pathIndex++;
+            if (team.currentRoom == team.targetRoom) {
+                team.moveProgress = 0.0;
+                break;
+            }
+            next = team.nextRoom();
+        }
+    }
+
+    private void performCrewTeamWork(CrewTeam team, double dt) {
+        if (team == null || team.currentRoom == null || team.currentRoom != team.targetRoom) return;
+        ShipRoomLayout.RoomId roomId = team.currentRoom;
+        double readiness = 0.72 + 0.56 * crewReadiness();
+        if (roomFireIntensity(roomId) > 0.03) {
+            team.task = CrewTeamTask.FIREFIGHTING;
+            applyFireSuppression(roomId, dt * (0.17 + (team.role == CrewTeamRole.FIRE_SUPPRESSION ? 0.13 : 0.06)) * readiness, true);
+            return;
+        }
+        if (isRoomDisrupted(roomId)) {
+            team.task = CrewTeamTask.RESTORING_SYSTEM;
+            repairRoomDisruption(roomId, dt * (team.role == CrewTeamRole.ENGINEERING ? 1.35 : 1.0) * readiness);
+            return;
+        }
+        if (roomHealthFraction(roomId) < 0.995) {
+            team.task = CrewTeamTask.REPAIRING;
+            repairRoomIntegrity(roomId, dt * (team.role == CrewTeamRole.DAMAGE_CONTROL ? 0.034 : 0.023) * readiness);
+            return;
+        }
+        team.task = CrewTeamTask.OPERATING;
+    }
+
+    private void repairRoomDisruption(ShipRoomLayout.RoomId roomId, double workSeconds) {
+        if (roomId == null || workSeconds <= 0.0) return;
+        ensureRoomSystemsInitialized();
+        Double progress = roomDisruptionRepairProgress.get(roomId);
+        if (progress == null) return;
+        double next = progress + workSeconds / ROOM_DISRUPTION_REPAIR_SECONDS;
+        if (next >= 1.0 - 1e-6) roomDisruptionRepairProgress.remove(roomId);
+        else roomDisruptionRepairProgress.put(roomId, next);
+    }
+
+    private void repairRoomIntegrity(ShipRoomLayout.RoomId roomId, double healFrac) {
+        if (roomId == null || healFrac <= 0.0) return;
+        ensureRoomSystemsInitialized();
+        Double maxValue = roomHpMax.get(roomId);
+        if (maxValue == null || maxValue <= 1e-9) return;
+        double cur = roomHp.getOrDefault(roomId, maxValue);
+        if (cur >= maxValue - 1e-9) return;
+        roomHp.put(roomId, Math.min(maxValue, cur + maxValue * healFrac));
+        enforceRoomSystemAvailability();
+        syncHullFromRoomIntegrity();
     }
 
     private void repairDamagedSystems(double amount) {

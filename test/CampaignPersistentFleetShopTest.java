@@ -67,16 +67,14 @@ class CampaignPersistentFleetShopTest {
     }
 
     @Test
-    void commandGridLimitsEarlyFleetSnowballUntilTitansExpandIt() {
+    void standardCommandGridNoLongerLimitsFleetCommissions() {
         GameContext ctx = campaignShopContext(250_000, 25_000, 3, 3);
 
         for (int i = 0; i < 5; i++) {
             assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.PATROL, 0, 0));
         }
-        assertFalse(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
-
-        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT_TITAN, TitanArchetype.TRANSPORT.costCredits(), 3));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.FRIGATE, 0, 0));
+        assertEquals(6, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
     }
 
     @Test

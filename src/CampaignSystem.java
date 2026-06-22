@@ -386,6 +386,15 @@ public final class CampaignSystem {
         STALE
     }
 
+    public enum CampaignContactCertainty {
+        CONFIRMED_REAL,
+        UNIDENTIFIED_REAL,
+        LAST_KNOWN,
+        PREDICTED,
+        LOST,
+        STALE
+    }
+
     private static final double STRATEGIC_DETECTION_RANGE_MUL = 1.5;
     private static final double CAMPAIGN_TACTICAL_SPAWN_GRACE_SEC = 10.0;
     private static final double CAMPAIGN_TACTICAL_SPAWN_SAFE_RADIUS = 900.0;
@@ -1892,6 +1901,7 @@ public final class CampaignSystem {
         public final double lastKnownVelocityY;
         public final double lastSeenSec;
         public final CampaignForceContactState contactState;
+        public final CampaignContactCertainty contactCertainty;
         public final String mission;
         public final String homeBaseId;
         public final String destinationLocationId;
@@ -1944,6 +1954,7 @@ public final class CampaignSystem {
             this.lastKnownVelocityY = force == null ? 0.0 : force.lastKnownVelocityY;
             this.lastSeenSec = force == null ? 0.0 : force.lastSeenSec;
             this.contactState = force == null ? CampaignForceContactState.STALE : force.contactState;
+            this.contactCertainty = campaignContactCertainty(force);
             this.mission = force == null || force.mission == null ? "" : force.mission.name();
             this.homeBaseId = force == null ? "" : force.homeBaseId;
             this.destinationLocationId = force == null ? "" : force.destinationLocationId;
@@ -2233,6 +2244,42 @@ public final class CampaignSystem {
                     : (hullFraction < 0.44 || shieldFraction < 0.28 ? "UNREADY" : "STRAINED");
             this.readinessLabel = condition + " H" + (int) Math.round(hullFraction * 100.0)
                     + " S" + (int) Math.round(shieldFraction * 100.0);
+        }
+    }
+
+    public static final class CampaignContactReadout {
+        public final String title;
+        public final String detail;
+        public final double x;
+        public final double y;
+        public final Color accent;
+        public final String banner;
+
+        CampaignContactReadout(String title, String detail, double x, double y, Color accent, String banner) {
+            this.title = (title == null || title.isBlank()) ? "Unknown Contact" : title.trim();
+            this.detail = (detail == null) ? "" : detail.trim();
+            this.x = x;
+            this.y = y;
+            this.accent = (accent == null) ? new Color(132, 220, 255) : accent;
+            this.banner = (banner == null || banner.isBlank()) ? "TRACK SET: " + this.title : banner.trim();
+        }
+    }
+
+    public static final class CampaignInterceptLine {
+        public final int forceId;
+        public final String label;
+        public final double fromX;
+        public final double fromY;
+        public final double toX;
+        public final double toY;
+
+        CampaignInterceptLine(int forceId, String label, double fromX, double fromY, double toX, double toY) {
+            this.forceId = Math.max(0, forceId);
+            this.label = (label == null || label.isBlank()) ? "Hostile Intercept" : label.trim();
+            this.fromX = fromX;
+            this.fromY = fromY;
+            this.toX = toX;
+            this.toY = toY;
         }
     }
 
@@ -3531,6 +3578,11 @@ public final class CampaignSystem {
     private static boolean campaignForceCanThreatenRoute(CampaignForce force) {
         if (force == null || force.destroyed || !force.simulationActive || force.faction != Faction.ENEMY) return false;
         if (force.strength <= 1.0) return false;
+        CampaignContactCertainty certainty = campaignContactCertainty(force);
+        if (certainty == CampaignContactCertainty.PREDICTED
+                || certainty == CampaignContactCertainty.LAST_KNOWN
+                || certainty == CampaignContactCertainty.LOST
+                || certainty == CampaignContactCertainty.STALE) return false;
         if (!force.visibleToPlayer && force.lastSeenSec <= 0.0) return false;
         if (force.contactState == CampaignForceContactState.STALE
                 || force.contactConfidence <= 0.05) return false;
@@ -3553,6 +3605,7 @@ public final class CampaignSystem {
     private static boolean isMovingBlockadeForce(CampaignForce force) {
         if (force == null || force.destroyed || !force.simulationActive || force.faction != Faction.ENEMY) return false;
         if (force.strength <= 1.0) return false;
+        if (!campaignForceCanDrawLiveMovementVector(force)) return false;
         CampaignForceIntent intent = force.intent == null ? CampaignForceIntent.HOLDING : force.intent;
         boolean blockadeIntent = intent == CampaignForceIntent.GUARDING
                 || intent == CampaignForceIntent.INTERCEPTING
@@ -6603,6 +6656,10 @@ public final class CampaignSystem {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Intercept Forecast: offline", "Loss Log: unavailable");
         ArrayList<String> out = new ArrayList<>();
+        for (CampaignContactReadout contact : campaignNearbyContactReadouts(ctx, 2)) {
+            out.add(contact.title + ": " + contact.detail);
+            if (out.size() >= 2) return out;
+        }
         CampaignTravelState travel = st.galaxyTravel;
         if (travel != null && travel.traveling) {
             double remaining = Math.max(0.0, travel.durationSec * (1.0 - MathUtil.clamp(travel.progress, 0.0, 1.0)));
@@ -6618,6 +6675,193 @@ public final class CampaignSystem {
         }
         out.add(campaignLossLogLine(st));
         return out;
+    }
+
+    public static List<CampaignContactReadout> campaignNearbyContactReadouts(GameContext ctx, int maxContacts) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || st.campaignForces.isEmpty() || maxContacts <= 0) return List.of();
+        double playerX = Double.isFinite(st.playerGalaxyX) ? st.playerGalaxyX : (ctx.player == null ? 0.0 : ctx.player.x);
+        double playerY = Double.isFinite(st.playerGalaxyY) ? st.playerGalaxyY : (ctx.player == null ? 0.0 : ctx.player.y);
+        ArrayList<CampaignForce> contacts = new ArrayList<>();
+        for (CampaignForce force : st.campaignForces) {
+            if (!validNearbySensorContact(force)) continue;
+            double x = forceMarkerX(force);
+            double y = forceMarkerY(force);
+            double distance = Math.hypot(x - playerX, y - playerY);
+            double maxRange = nearbySensorContactRange(ctx, st, force);
+            if (distance > maxRange) continue;
+            contacts.add(force);
+        }
+        contacts.sort((a, b) -> {
+            int cmp = Double.compare(
+                    nearbySensorContactScore(ctx, st, b, playerX, playerY),
+                    nearbySensorContactScore(ctx, st, a, playerX, playerY));
+            if (cmp != 0) return cmp;
+            return Double.compare(
+                    Math.hypot(forceMarkerX(a) - playerX, forceMarkerY(a) - playerY),
+                    Math.hypot(forceMarkerX(b) - playerX, forceMarkerY(b) - playerY));
+        });
+
+        ArrayList<CampaignContactReadout> out = new ArrayList<>();
+        for (CampaignForce force : contacts) {
+            double x = forceMarkerX(force);
+            double y = forceMarkerY(force);
+            double distance = Math.hypot(x - playerX, y - playerY);
+            String certainty = campaignContactCertaintyLabel(force);
+            String faction = campaignForceFactionConfidenceLabel(force);
+            String ships = campaignForceShipCountLabel(force);
+            String behavior = titleCaseWords(campaignForceBehaviorReadout(force));
+            String threat = campaignForceThreatLabel(force);
+            String movement = campaignForceDirectionLabel(force);
+            String detail = faction + " | " + ships + " | " + behavior
+                    + " | " + threat + " | " + certainty
+                    + " | " + (int) Math.round(distance) + "u"
+                    + " | " + movement;
+            out.add(new CampaignContactReadout(
+                    campaignForceMapDisplayName(force),
+                    detail,
+                    x,
+                    y,
+                    campaignContactAccent(force),
+                    "TRACK SET: " + campaignForceMapDisplayName(force).toUpperCase(Locale.US)
+            ));
+            if (out.size() >= maxContacts) break;
+        }
+        return out;
+    }
+
+    private static boolean validNearbySensorContact(CampaignForce force) {
+        if (!campaignForceVisibleOnMap(force)) return false;
+        if (force.kind == CampaignForceKind.PLAYER_FLEET) return false;
+        if (!force.simulationActive && force.state != CampaignFleetState.ENGAGING) return false;
+        if (!Double.isFinite(forceMarkerX(force)) || !Double.isFinite(forceMarkerY(force))) return false;
+        if (force.contactState == CampaignForceContactState.STALE
+                && force.contactConfidence < 0.18
+                && force.lastKnownAgeSec >= 45.0) return false;
+        return true;
+    }
+
+    private static double nearbySensorContactRange(GameContext ctx, CampaignState st, CampaignForce force) {
+        double base = maxStrategicSensorRange(ctx, st);
+        if (force != null && force.faction == Faction.ENEMY) base *= 1.15;
+        if (force != null && force.contactState == CampaignForceContactState.STALE) base *= 0.85;
+        return MathUtil.clamp(base, 4200.0, 22000.0);
+    }
+
+    private static double nearbySensorContactScore(GameContext ctx, CampaignState st, CampaignForce force, double playerX, double playerY) {
+        if (force == null) return -9999.0;
+        double distance = Math.hypot(forceMarkerX(force) - playerX, forceMarkerY(force) - playerY);
+        double range = Math.max(1.0, nearbySensorContactRange(ctx, st, force));
+        double score = 80.0 * MathUtil.clamp(1.0 - distance / range, 0.0, 1.0);
+        if (force.faction == Faction.ENEMY) score += 34.0;
+        if (campaignForceHasConfirmedRealTrack(force)
+                && (force.intent == CampaignForceIntent.INTERCEPTING || force.state == CampaignFleetState.PURSUING)) {
+            score += 42.0;
+        }
+        if (force.state == CampaignFleetState.ENGAGING) score += 22.0;
+        if (force.kind == CampaignForceKind.CONVOY || force.kind == CampaignForceKind.TRADE_GROUP || force.kind == CampaignForceKind.MINING_GROUP) score += 10.0;
+        score += MathUtil.clamp(force.strength, 0.0, 160.0) * 0.10;
+        if (force.contactState == CampaignForceContactState.SUSPECTED) score -= 8.0;
+        if (force.contactState == CampaignForceContactState.STALE) score -= 18.0 + Math.min(20.0, force.lastKnownAgeSec * 0.18);
+        return score;
+    }
+
+    private static String campaignContactCertaintyLabel(CampaignForce force) {
+        if (force == null) return "Lost";
+        return switch (campaignContactCertainty(force)) {
+            case CONFIRMED_REAL -> "Confirmed";
+            case UNIDENTIFIED_REAL -> "Unidentified";
+            case LAST_KNOWN -> "Last Known";
+            case PREDICTED -> "Predicted";
+            case LOST, STALE -> "Lost";
+        };
+    }
+
+    private static CampaignContactCertainty campaignContactCertainty(CampaignForce force) {
+        if (force == null || force.destroyed) return CampaignContactCertainty.STALE;
+        CampaignForceContactState state = force.contactState == null ? CampaignForceContactState.STALE : force.contactState;
+        double confidence = MathUtil.clamp(force.contactConfidence, 0.0, 1.0);
+        if (state == CampaignForceContactState.KNOWN && confidence >= 0.62 && force.simulationActive) {
+            return CampaignContactCertainty.CONFIRMED_REAL;
+        }
+        if (state == CampaignForceContactState.KNOWN || (state == CampaignForceContactState.SUSPECTED && confidence >= 0.34)) {
+            return CampaignContactCertainty.UNIDENTIFIED_REAL;
+        }
+        if (state == CampaignForceContactState.SUSPECTED) return CampaignContactCertainty.PREDICTED;
+        if (state == CampaignForceContactState.STALE && confidence >= 0.12 && force.lastKnownAgeSec < 75.0) {
+            return CampaignContactCertainty.LAST_KNOWN;
+        }
+        if (state == CampaignForceContactState.STALE && force.lastKnownAgeSec < 120.0) {
+            return CampaignContactCertainty.LOST;
+        }
+        return CampaignContactCertainty.STALE;
+    }
+
+    private static boolean campaignForceHasConfirmedRealTrack(CampaignForce force) {
+        return campaignContactCertainty(force) == CampaignContactCertainty.CONFIRMED_REAL
+                && Double.isFinite(force.x)
+                && Double.isFinite(force.y);
+    }
+
+    private static boolean campaignForceCanDrawLiveMovementVector(CampaignForce force) {
+        if (!campaignForceHasConfirmedRealTrack(force)) return false;
+        return Double.isFinite(force.targetX)
+                && Double.isFinite(force.targetY)
+                && Math.hypot(force.targetX - force.x, force.targetY - force.y) >= 120.0;
+    }
+
+    private static String campaignForceShipCountLabel(CampaignForce force) {
+        if (force == null) return "unknown ships";
+        int knownShips = force.shipIds == null ? 0 : force.shipIds.size();
+        if (knownShips > 0) return knownShips + (knownShips == 1 ? " ship" : " ships");
+        int estimate = Math.max(1, (int) Math.round(MathUtil.clamp(force.strength, 12.0, 180.0) / 24.0));
+        return estimate + (force.contactState == CampaignForceContactState.KNOWN ? " ships" : " signatures");
+    }
+
+    private static String campaignForceThreatLabel(CampaignForce force) {
+        if (force == null) return "unknown threat";
+        if (force.faction != Faction.ENEMY) {
+            if (force.faction == Faction.TEAM_D) return "neutral";
+            return "friendly";
+        }
+        double threat = MathUtil.clamp(force.strength * Math.max(0.30, force.readiness / 100.0), 0.0, 180.0);
+        if (campaignForceHasConfirmedRealTrack(force)
+                && (force.intent == CampaignForceIntent.INTERCEPTING || force.state == CampaignFleetState.PURSUING)) {
+            threat += 28.0;
+        }
+        if (threat >= 115.0) return "severe threat";
+        if (threat >= 72.0) return "high threat";
+        if (threat >= 36.0) return "medium threat";
+        return "low threat";
+    }
+
+    private static Color campaignContactAccent(CampaignForce force) {
+        if (force == null) return new Color(132, 220, 255);
+        Color base = switch (force.faction) {
+            case ENEMY -> new Color(255, 96, 92);
+            case TEAM_D -> new Color(247, 212, 92);
+            case TEAM_C, ALLY -> new Color(102, 224, 152);
+            case PLAYER -> new Color(132, 220, 255);
+            default -> new Color(186, 198, 214);
+        };
+        if (force.contactState == CampaignForceContactState.STALE) {
+            return mixColor(base, new Color(110, 124, 142), 0.45);
+        }
+        if (force.contactState == CampaignForceContactState.SUSPECTED) {
+            return mixColor(base, new Color(170, 190, 216), 0.30);
+        }
+        return base;
+    }
+
+    private static Color mixColor(Color a, Color b, double t) {
+        if (a == null) a = Color.WHITE;
+        if (b == null) b = Color.WHITE;
+        double clamped = MathUtil.clamp(t, 0.0, 1.0);
+        int r = (int) Math.round(a.getRed() + (b.getRed() - a.getRed()) * clamped);
+        int g = (int) Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * clamped);
+        int bl = (int) Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * clamped);
+        int alpha = (int) Math.round(a.getAlpha() + (b.getAlpha() - a.getAlpha()) * clamped);
+        return new Color(MathUtil.clamp(r, 0, 255), MathUtil.clamp(g, 0, 255), MathUtil.clamp(bl, 0, 255), MathUtil.clamp(alpha, 0, 255));
     }
 
     private static String campaignLossLogLine(CampaignState st) {
@@ -11599,6 +11843,7 @@ public final class CampaignSystem {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return List.of();
+        cleanupInvalidCampaignForceReferences(st);
         double detectionRange = strategicDetectionRange(ctx, st);
         if (isStrategicOvermapMode(st)) {
             ArrayList<CampaignSupportMarker> out = new ArrayList<>();
@@ -13382,11 +13627,16 @@ public final class CampaignSystem {
         if (DevTools.isDebugOverlay()) {
             subtitle += "  |  mission " + force.mission.name()
                     + "  |  state " + force.state.name()
+                    + "  |  id RF-" + force.id
+                    + "  |  certainty " + campaignContactCertainty(force).name()
+                    + "  |  realTrack " + campaignForceHasConfirmedRealTrack(force)
+                    + "  |  drawVector " + campaignForceCanDrawLiveMovementVector(force)
+                    + "  |  drawChase " + isConfirmedPlayerInterceptForce(st, force)
                     + "  |  routePts " + force.routePoints.size()
                     + "  |  target " + (int) Math.round(force.targetX) + "," + (int) Math.round(force.targetY);
         }
         int priority = force.faction == Faction.ENEMY ? 62 : 42;
-        if (force.kind == CampaignForceKind.STRIKE_DETACHMENT || force.intent == CampaignForceIntent.INTERCEPTING) priority += 12;
+        if (force.kind == CampaignForceKind.STRIKE_DETACHMENT || isConfirmedPlayerInterceptForce(st, force)) priority += 12;
         if (force.kind == CampaignForceKind.BASE_DEFENSE) priority += 4;
         if (force.contactState == CampaignForceContactState.STALE) priority -= 8;
         return new CampaignSupportMarker(type, campaignForceMapDisplayName(force), subtitle, force.faction, markerX, markerY,
@@ -13405,6 +13655,10 @@ public final class CampaignSystem {
 
     private static String campaignForceDestinationLabel(CampaignState st, CampaignForce force) {
         if (force == null) return "unknown";
+        CampaignContactCertainty certainty = campaignContactCertainty(force);
+        if (certainty == CampaignContactCertainty.LAST_KNOWN) return "last known position";
+        if (certainty == CampaignContactCertainty.PREDICTED) return "predicted area";
+        if (certainty == CampaignContactCertainty.LOST || certainty == CampaignContactCertainty.STALE) return "lost contact";
         CampaignLocation dest = campaignLocationById(st, force.destinationLocationId);
         if (dest != null) return dest.name;
         if (force.targetForceId > 0) {
@@ -13442,9 +13696,9 @@ public final class CampaignSystem {
         if (state == CampaignForceContactState.SUSPECTED) {
             return fastContact(force) ? "Fast Small Contact" : "Unknown Contact";
         }
-        return force.contactConfidence >= 0.20
-                ? "Unknown Contact - Moving " + titleCaseWords(estimatedForceVectorLabel(force))
-                : "Unknown Contact - Moving Fast - Low Intel";
+        return force.contactConfidence >= 0.20 && force.lastKnownAgeSec < 75.0
+                ? "Last Known Contact"
+                : "Lost Contact";
     }
 
     private static String campaignForceFactionConfidenceLabel(CampaignForce force) {
@@ -13546,6 +13800,42 @@ public final class CampaignSystem {
         return Double.isFinite(forceMarkerX(force)) && Double.isFinite(forceMarkerY(force));
     }
 
+    private static boolean isConfirmedPlayerInterceptForce(CampaignState st, CampaignForce force) {
+        if (st == null || force == null) return false;
+        if (force.destroyed || !force.simulationActive || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
+        if (force.faction != Faction.ENEMY) return false;
+        if (!campaignForceHasConfirmedRealTrack(force)) return false;
+        CampaignFleetState state = force.state == null ? CampaignFleetState.IDLE : force.state;
+        CampaignForceIntent intent = force.intent == null ? CampaignForceIntent.HOLDING : force.intent;
+        int playerForceId = campaignPlayerForceId(st);
+        boolean targetsPlayerForce = playerForceId > 0 && force.targetForceId == playerForceId;
+        boolean targetsPlayerPosition = force.targetForceId <= 0
+                && Double.isFinite(st.playerGalaxyX)
+                && Double.isFinite(st.playerGalaxyY)
+                && Double.isFinite(force.targetX)
+                && Double.isFinite(force.targetY)
+                && Math.hypot(force.targetX - st.playerGalaxyX, force.targetY - st.playerGalaxyY) <= 240.0;
+        if (!targetsPlayerForce && !targetsPlayerPosition) return false;
+        return intent == CampaignForceIntent.INTERCEPTING
+                && (state == CampaignFleetState.PURSUING || state == CampaignFleetState.MOVING || state == CampaignFleetState.SEARCHING);
+    }
+
+    public static List<CampaignInterceptLine> confirmedPlayerInterceptLines(GameContext ctx) {
+        ensureStrategicOvermapReady(ctx);
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || !st.enabled || st.campaignForces.isEmpty()) return List.of();
+        cleanupInvalidCampaignForceReferences(st);
+        double px = Double.isFinite(st.playerGalaxyX) ? st.playerGalaxyX : (ctx.player == null ? Double.NaN : ctx.player.x);
+        double py = Double.isFinite(st.playerGalaxyY) ? st.playerGalaxyY : (ctx.player == null ? Double.NaN : ctx.player.y);
+        if (!Double.isFinite(px) || !Double.isFinite(py)) return List.of();
+        ArrayList<CampaignInterceptLine> out = new ArrayList<>();
+        for (CampaignForce force : st.campaignForces) {
+            if (!isConfirmedPlayerInterceptForce(st, force)) continue;
+            out.add(new CampaignInterceptLine(force.id, force.name, force.x, force.y, px, py));
+        }
+        return out;
+    }
+
     private static double forceMarkerX(CampaignForce force) {
         if (force == null) return Double.NaN;
         return force.contactState == CampaignForceContactState.STALE ? force.lastKnownX : force.x;
@@ -13579,9 +13869,8 @@ public final class CampaignSystem {
         if (st != null && Double.isFinite(markerX) && Double.isFinite(markerY)) {
             range = "  |  last known range " + (int) Math.round(Math.hypot(markerX - st.playerGalaxyX, markerY - st.playerGalaxyY));
         }
-        return "lost bearing " + campaignForceDirectionLabel(force)
+        return "last seen " + (int) Math.round(Math.max(0.0, force.lastKnownAgeSec)) + "s ago"
                 + range
-                + "  |  est vector " + estimatedForceVectorLabel(force)
                 + "  |  sweep recommended";
     }
 
@@ -13597,6 +13886,10 @@ public final class CampaignSystem {
 
     private static String campaignForceBehaviorReadout(CampaignForce force) {
         if (force == null) return "holding";
+        CampaignContactCertainty certainty = campaignContactCertainty(force);
+        if (certainty == CampaignContactCertainty.LAST_KNOWN) return "last known";
+        if (certainty == CampaignContactCertainty.LOST || certainty == CampaignContactCertainty.STALE) return "lost contact";
+        if (certainty == CampaignContactCertainty.PREDICTED) return "predicted contact";
         CampaignForceIntent intent = force.intent == null ? CampaignForceIntent.HOLDING : force.intent;
         CampaignFleetState state = force.state == null ? CampaignFleetState.IDLE : force.state;
         if (intent == CampaignForceIntent.INTERCEPTING || state == CampaignFleetState.PURSUING) return "pursuit / intercept";
@@ -13638,6 +13931,12 @@ public final class CampaignSystem {
 
     private static SupportMarkerType campaignForceMarkerType(CampaignForce force) {
         if (force == null) return SupportMarkerType.FACTION_CONTACT;
+        CampaignContactCertainty certainty = campaignContactCertainty(force);
+        if (certainty == CampaignContactCertainty.LAST_KNOWN
+                || certainty == CampaignContactCertainty.LOST
+                || certainty == CampaignContactCertainty.STALE) {
+            return SupportMarkerType.INTEL;
+        }
         return switch (force.kind) {
             case BASE_DEFENSE -> SupportMarkerType.FORCE_BASE_DEFENSE;
             case MINING_GROUP -> SupportMarkerType.FORCE_MINING;
@@ -13653,6 +13952,10 @@ public final class CampaignSystem {
 
     private static String campaignForceDirectionLabel(CampaignForce force) {
         if (force == null) return "holding";
+        CampaignContactCertainty certainty = campaignContactCertainty(force);
+        if (certainty == CampaignContactCertainty.LAST_KNOWN) return "last seen position";
+        if (certainty == CampaignContactCertainty.PREDICTED) return "predicted area";
+        if (certainty == CampaignContactCertainty.LOST || certainty == CampaignContactCertainty.STALE) return "lost contact";
         double dx = force.targetX - force.x;
         double dy = force.targetY - force.y;
         double dist = Math.hypot(dx, dy);
@@ -13671,16 +13974,18 @@ public final class CampaignSystem {
 
     private static CampaignSupportMarker supportMarkerForGalaxySearchGroup(GalaxySearchGroup group) {
         if (group == null || !group.visible) return null;
-        String label = contactConfidenceLabel(group);
-        String subtitle = switch (group.behavior) {
-            case PATROLLING -> "Patrol sweep moving through this region";
-            case SEARCHING -> "Search formation widening sensor coverage";
-            case INVESTIGATING -> "Investigating suspicious traffic";
-            case INTERCEPTING -> "Vectoring toward the fleet";
-            case GUARDING -> "Holding a defensive screen";
-            case RETURNING -> "Returning to anchor point";
-        };
         boolean stale = group.contactConfidence == GalaxyContactConfidence.LOST_CONTACT;
+        String label = contactConfidenceLabel(group);
+        String subtitle = stale
+                ? "Last-known sensor memory; no live movement vector"
+                : switch (group.behavior) {
+                    case PATROLLING -> "Patrol sweep moving through this region";
+                    case SEARCHING -> "Search formation widening sensor coverage";
+                    case INVESTIGATING -> "Investigating suspicious traffic";
+                    case INTERCEPTING -> "Vectoring toward the fleet";
+                    case GUARDING -> "Holding a defensive screen";
+                    case RETURNING -> "Returning to anchor point";
+                };
         subtitle = contactIntelQualityLabel(group.intelQuality)
                 + (stale ? " last known " + (int) Math.round(group.lastKnownAgeSec) + "s old" : "")
                 + "  |  " + contactConfidenceReadout(group) + "  |  " + doctrineReadout(group) + "  |  " + subtitle;
@@ -16289,10 +16594,6 @@ public final class CampaignSystem {
         if (livePersistentFleetSlots(st, ShopHullCategory.ESCORT) >= persistentFleetCap(st, ShopHullCategory.ESCORT)) {
             return HubTradeHireResult.none();
         }
-        int commandCost = campaignStandardCommandCost(role);
-        if (commandCost > 0 && standardCommandUsed(st) + commandCost > standardCommandCapacity(st)) {
-            return HubTradeHireResult.none();
-        }
         int cost = GameContext.scaleCreditEarnings((int) Math.round(145 * profile.priceMul));
         if (ctx.credits < cost + GameContext.scaleCreditEarnings(80)) {
             return HubTradeHireResult.none();
@@ -17210,6 +17511,93 @@ public final class CampaignSystem {
             if (force != null && force.id == forceId) return force;
         }
         return null;
+    }
+
+    private static boolean isLiveCampaignForce(CampaignState st, int forceId) {
+        CampaignForce force = campaignForceById(st, forceId);
+        return force != null && !force.destroyed;
+    }
+
+    private static void cleanupInvalidCampaignForceReferences(CampaignState st) {
+        if (st == null) return;
+        st.activeGalaxyEncounterForceIds.removeIf(id -> id == null || !isLiveCampaignForce(st, id));
+        if (st.activeGalaxyEncounterParentForceId > 0 && !isLiveCampaignForce(st, st.activeGalaxyEncounterParentForceId)) {
+            st.activeGalaxyEncounterParentForceId = 0;
+        }
+        if (st.proximityAlertForceId > 0 && !isLiveCampaignForce(st, st.proximityAlertForceId)) {
+            st.proximityAlertForceId = 0;
+            st.proximityAlertStage = 0;
+        }
+        if (st.selectedCampaignTaskGroupId > 0 && !isLiveCampaignForce(st, st.selectedCampaignTaskGroupId)) {
+            st.selectedCampaignTaskGroupId = 0;
+        }
+
+        for (CampaignBattle battle : st.campaignBattles) {
+            if (battle == null) continue;
+            battle.participantForceIds.removeIf(id -> id == null || !isLiveCampaignForce(st, id));
+            if (!battle.resolved && battle.participantForceIds.size() < 2) {
+                battle.resolved = true;
+                battle.stage = CampaignBattleStage.RESOLVED;
+                if (battle.outcomeReport == null || battle.outcomeReport.isBlank()) {
+                    battle.outcomeReport = "Battle dissolved after force contact was lost";
+                }
+            }
+        }
+
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null) continue;
+            force.routePoints.removeIf(point -> point == null
+                    || point.length < 2
+                    || !Double.isFinite(point[0])
+                    || !Double.isFinite(point[1]));
+            force.patrolWaypoints.removeIf(point -> point == null
+                    || point.length < 2
+                    || !Double.isFinite(point[0])
+                    || !Double.isFinite(point[1]));
+            if (force.currentRouteIndex >= force.routePoints.size()) {
+                force.currentRouteIndex = Math.max(0, force.routePoints.size() - 1);
+            }
+            if (force.parentForceId > 0 && !isLiveCampaignForce(st, force.parentForceId)) {
+                force.parentForceId = 0;
+            }
+            if (force.targetForceId > 0 && !isLiveCampaignForce(st, force.targetForceId)) {
+                force.targetForceId = 0;
+                if (force.mission == CampaignFleetMission.ESCORT
+                        || force.mission == CampaignFleetMission.REPAIR
+                        || force.mission == CampaignFleetMission.COUNTER_SORTIE) {
+                    force.intent = CampaignForceIntent.REGROUPING;
+                    force.state = CampaignFleetState.SEARCHING;
+                    force.routePoints.clear();
+                }
+            }
+            if (force.knownHostileContacts != null && !force.knownHostileContacts.isEmpty()) {
+                force.knownHostileContacts.entrySet().removeIf(entry ->
+                        entry == null || entry.getValue() == null || !isLiveCampaignForce(st, entry.getKey()));
+            }
+            if (force.destroyed) {
+                force.routePoints.clear();
+                force.patrolWaypoints.clear();
+                force.knownHostileContacts.clear();
+                force.targetForceId = 0;
+                force.parentForceId = 0;
+                force.simulationActive = false;
+                force.contactState = CampaignForceContactState.STALE;
+                force.contactConfidence = 0.0;
+            }
+            if (force.contactState == CampaignForceContactState.STALE) {
+                force.targetForceId = 0;
+                if (force.lastKnownAgeSec >= 75.0 || force.contactConfidence < 0.12) {
+                    force.routePoints.clear();
+                    force.patrolWaypoints.clear();
+                    if (force.intent == CampaignForceIntent.INTERCEPTING) {
+                        force.intent = CampaignForceIntent.SEARCHING;
+                    }
+                    if (force.state == CampaignFleetState.PURSUING) {
+                        force.state = CampaignFleetState.SEARCHING;
+                    }
+                }
+            }
+        }
     }
 
     private static CampaignForce campaignForceBySelectedContact(GameContext ctx) {
@@ -21136,15 +21524,6 @@ public final class CampaignSystem {
         if (minSector > 1) {
             detail.append(", sector ").append(minSector);
         }
-        int standardCost = campaignStandardCommandCost(role);
-        if (standardCost > 0) {
-            detail.append(", standard command ").append(standardCost)
-                    .append(" (")
-                    .append(campaignStandardCommandUsed(ctx))
-                    .append("/")
-                    .append(campaignStandardCommandCapacity(ctx))
-                    .append(" committed)");
-        }
         int eliteCost = campaignEliteCommandCost(role);
         if (eliteCost > 0) {
             detail.append(", elite command ").append(eliteCost)
@@ -21223,14 +21602,6 @@ public final class CampaignSystem {
                 EventSystem.showBanner(ctx, "ELITE COMMAND CAP REACHED", 1.8);
                 return false;
             }
-        }
-
-        int standardCost = campaignStandardCommandCost(role);
-        int standardCapacity = standardCommandCapacity(st);
-        int standardUsed = standardCommandUsed(st);
-        if (standardCost > 0 && standardUsed + standardCost > standardCapacity) {
-            EventSystem.showBanner(ctx, "STANDARD COMMAND GRID FULL", 1.8);
-            return false;
         }
 
         int oreCost = campaignOreCost(role, creditCost, effectiveTier);
@@ -22373,6 +22744,7 @@ public final class CampaignSystem {
         if (ctx == null || st == null) return;
         ensureCampaignForceOwnership(ctx, st);
         syncCampaignForceSimulationSeeds(ctx, st);
+        cleanupInvalidCampaignForceReferences(st);
         decayEnemyPlayerContact(st, dt);
         for (CampaignForce force : st.campaignForces) {
             if (force == null) continue;
@@ -22565,6 +22937,10 @@ public final class CampaignSystem {
 
     private static void dispatchReplacementRedScout(GameContext ctx, CampaignState st, CampaignForce lostScout, TheaterId theater) {
         if (ctx == null || st == null || lostScout == null) return;
+        if (activeCampaignNpcForceCount(st) >= CAMPAIGN_FORCE_MAX_ACTIVE_NPC) {
+            pushTheaterEvent(st, "Red scout replacement held: active NPC fleet budget is full");
+            return;
+        }
         CampaignLocation source = nearestRedScoutReplacementSource(st, theater, lostScout.x, lostScout.y);
         if (source == null) return;
         for (CampaignForce force : st.campaignForces) {
@@ -25868,7 +26244,11 @@ public final class CampaignSystem {
             CampaignLocation staging = nearestGreenResponseStagingHub(ctx, st, null, red.x, red.y);
             if (staging == null) continue;
             CampaignForce green = findAvailableGreenSortieForce(st, staging, red);
-            if (green == null) green = spawnGreenCounterTaskForce(st, staging, red);
+            if (green == null
+                    && activeCampaignNpcForceCount(st) < CAMPAIGN_FORCE_MAX_ACTIVE_NPC
+                    && st.sector < 24) {
+                green = spawnGreenCounterTaskForce(st, staging, red);
+            }
             if (green == null) continue;
             assignGreenCounterSortie(st, green, red, staging);
             active++;
@@ -28606,6 +28986,7 @@ public final class CampaignSystem {
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || force.faction != Faction.ENEMY) continue;
             if (!force.visibleToPlayer) continue;
+            if (!campaignForceHasConfirmedRealTrack(force)) continue;
             double dist = Math.hypot(force.x - player.x, force.y - player.y);
             if (dist <= CAMPAIGN_FORCE_WARNING_RANGE && dist < bestD) {
                 best = force;
@@ -29508,6 +29889,7 @@ public final class CampaignSystem {
         boolean tracking = false;
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
             if (group == null || !group.hostile) continue;
+            if (!galaxySearchGroupHasLiveTrack(group)) continue;
             double playerDist = Math.hypot(group.x - st.playerGalaxyX, group.y - st.playerGalaxyY);
             if (group.behavior == GalaxySearchBehavior.INTERCEPTING && playerDist <= group.interceptRange * 1.6) {
                 intercepting = true;
@@ -29520,6 +29902,13 @@ public final class CampaignSystem {
         if (intercepting) return "Being Hunted";
         if (tracking) return "Tracked";
         return "Clear";
+    }
+
+    private static boolean galaxySearchGroupHasLiveTrack(GalaxySearchGroup group) {
+        if (group == null || !group.visible) return false;
+        if (group.contactConfidence == GalaxyContactConfidence.LOST_CONTACT
+                || group.contactConfidence == GalaxyContactConfidence.UNKNOWN_CONTACT) return false;
+        return group.trackIntegrity >= 12.0 || group.contactFadeSec > 0.0;
     }
 
     public static String campaignHuntStatusReadout(GameContext ctx) {

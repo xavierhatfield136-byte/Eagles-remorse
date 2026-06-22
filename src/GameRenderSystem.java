@@ -893,6 +893,7 @@ if (DevTools.isDebugOverlay()) {
 
         java.util.LinkedHashMap<String, Integer> countsBySection = new java.util.LinkedHashMap<>();
         appendMissionOrePatchEntries(ctx, out, seen, countsBySection, maxSignalsPerSection, showMissionOrePatches);
+        appendCampaignContactEntries(ctx, out, seen, countsBySection, Math.max(2, maxSignalsPerSection + 2));
 
         java.util.EnumMap<FogOfWarSystem.SensorInterestKind, Integer> countsByKind =
                 new java.util.EnumMap<>(FogOfWarSystem.SensorInterestKind.class);
@@ -920,6 +921,30 @@ if (DevTools.isDebugOverlay()) {
         appendCampaignSignalEntries(ctx, CampaignSystem.discoverySignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         appendCampaignSignalEntries(ctx, CampaignSystem.recoverableWreckSignalSites(ctx), out, seen, countsBySection, maxSignalsPerSection);
         return out;
+    }
+
+    private static void appendCampaignContactEntries(GameContext ctx,
+                                                     java.util.List<SensorNetEntry> out,
+                                                     java.util.Set<String> seen,
+                                                     java.util.Map<String, Integer> countsBySection,
+                                                     int maxContacts) {
+        java.util.List<CampaignSystem.CampaignContactReadout> contacts =
+                CampaignSystem.campaignNearbyContactReadouts(ctx, Math.max(0, maxContacts));
+        for (CampaignSystem.CampaignContactReadout contact : contacts) {
+            if (contact == null) continue;
+            String key = "CONTACT|" + contact.title + "|" + Math.round(contact.x) + "|" + Math.round(contact.y);
+            if (!seen.add(key)) continue;
+            out.add(new SensorNetEntry(
+                    "NEARBY CONTACTS",
+                    contact.title,
+                    contact.detail,
+                    contact.x,
+                    contact.y,
+                    contact.accent,
+                    contact.banner
+            ));
+            countsBySection.put("NEARBY CONTACTS", countsBySection.getOrDefault("NEARBY CONTACTS", 0) + 1);
+        }
     }
 
     private static void appendCampaignSensorSummaryEntry(GameContext ctx,

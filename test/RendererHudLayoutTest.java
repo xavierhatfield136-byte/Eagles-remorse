@@ -63,7 +63,7 @@ class RendererHudLayoutTest {
         cardMethod.setAccessible(true);
         Rectangle hullArea = (Rectangle) hullAreaMethod.invoke(null, panel);
 
-        for (int slot = 0; slot < 8; slot++) {
+        for (int slot = 0; slot < 6; slot++) {
             Rectangle card = (Rectangle) cardMethod.invoke(null, panel, slot);
             assertTrue(hullArea.contains(card), "commissioning card should stay inside the hull bay");
         }
