@@ -45,14 +45,19 @@ class CampaignPersistentFleetShopTest {
 
         assertEquals(14, CampaignSystem.campaignOreCost(ShipRole.MINER, 160, 0));
         assertEquals(34, CampaignSystem.campaignOreCost(ShipRole.HAULER, 260, 1));
+        assertEquals(46, CampaignSystem.campaignOreCost(ShipRole.TRANSPORT, 460, 1));
 
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.MINER, 180, 0));
         assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.HAULER, 300, 1));
+        assertTrue(CampaignSystem.purchasePersistentBlueShip(ctx, ShipRole.TRANSPORT, 460, 1));
 
-        assertEquals(9_520, ctx.credits);
-        assertEquals(1_952, ctx.player.cargo);
+        assertEquals(9_060, ctx.credits);
+        assertEquals(1_906, ctx.player.cargo);
         assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.ESCORT));
-        assertEquals(1, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE));
+        assertEquals(2, CampaignSystem.livePersistentFleetCount(ctx, ShopHullCategory.LINE));
+        assertTrue(ctx.ships.stream().anyMatch(ship -> ship != null
+                && ship.role == ShipRole.TRANSPORT
+                && ship.faction == Faction.ALLY));
     }
 
     @Test

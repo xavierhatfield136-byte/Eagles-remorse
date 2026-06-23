@@ -83,4 +83,54 @@ class TacticalReadabilitySystemTest {
                 900.0, 1, 30, 1.2, Faction.ALLY);
         assertTrue(TacticalReadabilitySystem.projectileClarityLine(pellet).contains("CIWS"));
     }
+
+    @Test
+    void tacticalCrisisWarningsSurfaceActionableDangerStates() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 45L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 2500.0, 2500.0);
+        ctx.campaign = new CampaignSystem.CampaignState();
+        ctx.player.hp = Math.max(1, ctx.player.hpMax / 5);
+        ctx.player.shield = 0.0;
+        ctx.campaign.campaignAmmo = 4;
+        ctx.campaign.fleetStrain = 90.0;
+        ctx.campaign.retreatCorridorObjectiveActive = true;
+        ctx.campaign.retreatCorridorProgressSec = 0.5;
+        ctx.campaign.retreatCorridorHoldSec = 4.0;
+
+        FleetShip disabledAlly = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, ctx.player.x + 120.0, ctx.player.y);
+        disabledAlly.name = "Disabled Ally";
+        disabledAlly.applyTemporaryDisable(8.0);
+        ctx.ships.add(disabledAlly);
+
+        FleetShip civilian = new FleetShip(ShipRole.TRANSPORT, Faction.ALLY, ctx.player.x + 180.0, ctx.player.y);
+        civilian.name = "Civilian Transport";
+        ctx.ships.add(civilian);
+
+        FleetShip bomber = new FleetShip(ShipRole.BOMBER, Faction.ENEMY, ctx.player.x + 260.0, ctx.player.y);
+        bomber.name = "Enemy Bomber";
+        ctx.ships.add(bomber);
+
+        Missile atomic = new Missile(ctx.player.x + 700.0, ctx.player.y, 0.0, ctx.player, GameContext.DT, Faction.ENEMY);
+        atomic.strikeVisual = Missile.StrikeVisual.ATOMIC;
+        ctx.projectiles.add(atomic);
+
+        String warnings = String.join("\n", TacticalReadabilitySystem.tacticalCrisisWarningLines(ctx));
+
+        assertTrue(warnings.contains("flagship in danger"));
+        assertTrue(warnings.contains("mothership hull critical"));
+        assertTrue(warnings.contains("point defense ammo collapse"));
+        assertTrue(warnings.contains("repair capacity exhausted"));
+        assertTrue(warnings.contains("nuclear strike incoming"));
+        assertTrue(warnings.contains("enemy strike craft inbound"));
+        assertTrue(warnings.contains("civilian ships under immediate threat"));
+        assertTrue(warnings.contains("ship disabled"));
+        assertTrue(warnings.contains("retreat corridor closing"));
+        assertTrue(warnings.contains("icon shield-alert"));
+        assertTrue(warnings.contains("icon incoming-strike"));
+        assertTrue(warnings.contains("icon ammo-empty"));
+        assertTrue(warnings.contains("icon exit-closing"));
+        assertTrue(warnings.contains("icon distress-beacon"));
+        assertTrue(warnings.contains("color red"));
+        assertTrue(warnings.contains("color amber"));
+    }
 }

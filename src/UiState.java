@@ -248,6 +248,9 @@ public final class UiState {
     public int selectedStrategicDivisionGroupId = 0;
     public int campaignOreSaleAmount = 50;
     public CampaignCommandTab campaignCommandTab = CampaignCommandTab.NAV;
+    public boolean campaignWarRoomOpen = false;
+    public CampaignCommandTab campaignWarRoomReturnTab = CampaignCommandTab.NAV;
+    public String campaignWarRoomDetailMode = "";
     public TacticalMapTab tacticalMapTab = TacticalMapTab.MISSION;
     public boolean campaignWarMapSimplified = false;
 

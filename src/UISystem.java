@@ -2114,6 +2114,7 @@ public final class UISystem {
                 case MEDIUM_CRUISER -> tryBuyCampaignHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
                 case CRUISER -> tryBuyCampaignHull(ctx, ShipRole.CRUISER, 1100, 1);
                 case HAULER -> tryBuyCampaignHull(ctx, ShipRole.HAULER, 300, 1);
+                case TRANSPORT -> tryBuyCampaignHull(ctx, ShipRole.TRANSPORT, 460, 1);
                 case BATTLECRUISER -> tryBuyCampaignHull(ctx, ShipRole.BATTLECRUISER, 1700, 2);
                 case BATTLESHIP -> tryBuyCampaignHull(ctx, ShipRole.BATTLESHIP, 2300, 2);
                 case STEALTH_SHIP -> tryBuyCampaignHull(ctx, ShipRole.STEALTH_SHIP, 1300, 2);
@@ -2153,6 +2154,7 @@ public final class UISystem {
             case MEDIUM_CRUISER -> trySwapHull(ctx, ShipRole.MEDIUM_CRUISER, 950, 1);
             case CRUISER -> trySwapHull(ctx, ShipRole.CRUISER, 1100, 1);
             case HAULER -> trySwapHull(ctx, ShipRole.HAULER, 300, 1);
+            case TRANSPORT -> trySwapHull(ctx, ShipRole.TRANSPORT, 460, 1);
             case BATTLECRUISER -> trySwapHull(ctx, ShipRole.BATTLECRUISER, 1700, 2);
             case BATTLESHIP -> trySwapHull(ctx, ShipRole.BATTLESHIP, 2300, 2);
             case STEALTH_SHIP -> trySwapHull(ctx, ShipRole.STEALTH_SHIP, 1300, 2);

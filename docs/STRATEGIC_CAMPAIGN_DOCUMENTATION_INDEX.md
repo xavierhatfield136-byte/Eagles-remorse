@@ -10,5 +10,7 @@ Start with:
 1. `README.md`
 2. `NEXT_STEPS_TO_PLAYABLE_ALPHA.md`
 3. `CURRENT_CAMPAIGN_STATE.md`
+4. `CAMPAIGN_CLARITY_AND_CONSEQUENCE_LAYER.md`
+5. `MASTER_CAMPAIGN_SYSTEMS_CHECKLIST.md`
 
 Use `DOCUMENTATION_AUDIT.md` to find older strategic plans, completed implementation checklists, and asset workflows.

@@ -34,7 +34,14 @@ public final class FleetBuildingSystem {
         AGGRESSIVE("presses damaged targets and accepts heat"),
         CAUTIOUS("preserves the hull and disengages early"),
         RESOURCEFUL("improvises repairs and salvage recoveries"),
-        DISCIPLINED("follows doctrine closely under pressure");
+        DISCIPLINED("follows doctrine closely under pressure"),
+        RECKLESS("charges openings and risks damage to draw fire"),
+        LOYAL("answers support calls and stays near threatened allies"),
+        BITTER("pushes hard against enemies that caused earlier losses"),
+        HEROIC("accepts danger to rescue civilians, captains, or damaged hulls"),
+        NERVOUS("breaks off sooner when hull or shields collapse"),
+        VETERAN("keeps formation steady during retreats and chaotic strikes"),
+        GREEN("leans toward convoy defense, repairs, and coalition support");
 
         public final String doctrinePreference;
 

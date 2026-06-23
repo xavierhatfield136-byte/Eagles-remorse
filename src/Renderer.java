@@ -475,6 +475,9 @@ public class Renderer {
             new ShopHullOffer(ShipRole.HAULER, 300, 1, ShopHullCategory.LINE,
                     "Bulk logistics hauler",
                     "Moves ore off miners fast and keeps the command ship topped up."),
+            new ShopHullOffer(ShipRole.TRANSPORT, 460, 1, ShopHullCategory.LINE,
+                    "Support transport and repair tender",
+                    "Logistics hull that stabilizes nearby allies and carries fleet stores."),
             new ShopHullOffer(ShipRole.BATTLECRUISER, 1700, 2, ShopHullCategory.LINE,
                     "Fast capital hunter",
                     "Aggressive heavy hull for breakthrough pushes."),
@@ -10674,8 +10677,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 secondaryLines = resourceSecondary;
             }
             default -> {
-                primaryHeader = "CAMPAIGN SUMMARY";
-                primaryLines = CampaignSystem.campaignSummarySidebarLines(ctx);
+                primaryHeader = "WAR ROOM";
+                primaryLines = CampaignSystem.campaignWarRoomLines(ctx);
                 secondaryHeader = (selected == null) ? "SELECTED COURSE" : selected.name.toUpperCase(Locale.US);
                 secondaryLines = CampaignSystem.selectedLocationSidebarLines(ctx);
                 primaryAccent = new Color(184, 228, 255, 220);
@@ -12248,6 +12251,135 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawStrategicSupportMarker(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH, marker,
                     labelLayouts.get(marker));
         }
+        drawFleetFormationCutouts(g2, ctx, mapRect, worldMinX, worldMinY, worldW, worldH);
+    }
+
+    private static void drawFleetFormationCutouts(Graphics2D g2,
+                                                  GameContext ctx,
+                                                  Rectangle mapRect,
+                                                  double worldMinX,
+                                                  double worldMinY,
+                                                  double worldW,
+                                                  double worldH) {
+        if (g2 == null || ctx == null || mapRect == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return;
+        ArrayList<CampaignSystem.FleetFormationCutout> cutouts = new ArrayList<>(CampaignSystem.selectedFleetFormationCutouts(ctx, 10));
+        double zoom = UISystem.strategicMapZoom(ctx);
+        if (zoom >= 3.10 && ctx.campaign != null) {
+            cutouts.addAll(CampaignSystem.nearbyHighIntelFleetFormationCutouts(
+                    ctx,
+                    ctx.campaign.playerGalaxyX,
+                    ctx.campaign.playerGalaxyY,
+                    1250.0,
+                    2,
+                    7));
+        }
+        if (cutouts.isEmpty()) return;
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        Font oldFont = g2.getFont();
+        Shape oldClip = g2.getClip();
+        g2.setClip(mapRect.x, mapRect.y, mapRect.width, mapRect.height);
+        HashSet<String> drawn = new HashSet<>();
+        for (CampaignSystem.FleetFormationCutout cutout : cutouts) {
+            if (cutout == null) continue;
+            String key = cutout.forceId + "|" + cutout.formationRole + "|" + Math.round(cutout.offsetX) + "|" + Math.round(cutout.offsetY);
+            if (!drawn.add(key)) continue;
+            int cx = strategicMapPixelX(mapRect, worldMinX, worldW, cutout.x);
+            int cy = strategicMapPixelY(mapRect, worldMinY, worldH, cutout.y);
+            int px = MathUtil.clamp(cx + (int) Math.round(cutout.offsetX), mapRect.x + 6, mapRect.x + mapRect.width - 6);
+            int py = MathUtil.clamp(cy + (int) Math.round(cutout.offsetY), mapRect.y + 6, mapRect.y + mapRect.height - 6);
+            drawFleetFormationCutout(g2, cutout, px, py, cx, cy);
+        }
+        g2.setClip(oldClip);
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawFleetFormationCutout(Graphics2D g2,
+                                                 CampaignSystem.FleetFormationCutout cutout,
+                                                 int px,
+                                                 int py,
+                                                 int parentX,
+                                                 int parentY) {
+        if (g2 == null || cutout == null) return;
+        Color accent = cutout.known && cutout.faction != null
+                ? factionMapColor(cutout.faction, false, 220)
+                : new Color(118, 128, 144, 190);
+        if (cutout.damaged) accent = mixColor(accent, new Color(120, 124, 132), 0.36);
+        if (cutout.disabled) accent = mixColor(accent, new Color(255, 200, 80), 0.28);
+        float alpha = cutout.disabled ? 0.62f : (cutout.damaged ? 0.74f : 0.88f);
+        int size = fleetCutoutSize(cutout.role);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        g2.setStroke(new BasicStroke(1.0f));
+        g2.setColor(new Color(0, 0, 0, 118));
+        g2.drawLine(parentX, parentY, px, py);
+        g2.setColor(new Color(0, 0, 0, 150));
+        g2.fillOval(px - size / 2 - 2, py - size / 2 - 2, size + 4, size + 4);
+        g2.setColor(withAlpha(accent, cutout.known ? 196 : 118));
+        if (cutout.known) {
+            drawFleetKnownCutoutShape(g2, cutout, px, py, size);
+        } else {
+            g2.fillOval(px - size / 2, py - size / 2, size, size);
+            g2.setColor(withAlpha(new Color(225, 232, 242), 190));
+            g2.setFont(new Font("Consolas", Font.BOLD, Math.max(9, size - 3)));
+            g2.drawString("?", px - 3, py + 4);
+        }
+        g2.setColor(withAlpha(accent, 232));
+        g2.drawOval(px - size / 2 - 1, py - size / 2 - 1, size + 2, size + 2);
+        if (cutout.damaged) {
+            g2.setColor(new Color(255, 224, 120, 210));
+            g2.drawLine(px - size / 3, py - 1, px, py + size / 3);
+            g2.drawLine(px, py + size / 3, px + size / 3, py - size / 4);
+        }
+        if (cutout.disabled) {
+            g2.setColor(new Color(255, 210, 86, 230));
+            g2.drawLine(px - 4, py - size / 2 - 5, px + 4, py - size / 2 - 5);
+            g2.drawLine(px, py - size / 2 - 8, px, py - size / 2 - 2);
+        }
+        if (cutout.retreating) {
+            g2.setColor(new Color(170, 210, 255, 210));
+            Polygon arrow = new Polygon(
+                    new int[]{px, px - 4, px + 4},
+                    new int[]{py + size / 2 + 8, py + size / 2 + 2, py + size / 2 + 2},
+                    3);
+            g2.fillPolygon(arrow);
+        }
+    }
+
+    private static int fleetCutoutSize(ShipRole role) {
+        if (role != null && (role.isCapitalCombatant() || role.isTitanOrMothership())) return 13;
+        if (role != null && role.isCarrierHull()) return 12;
+        if (role == ShipRole.HAULER || role == ShipRole.TRANSPORT || role == ShipRole.MINER) return 10;
+        if (role == ShipRole.FIGHTER || role == ShipRole.BOMBER || role == ShipRole.DRONE || role == ShipRole.PD_CRAFT) return 8;
+        return 9;
+    }
+
+    private static void drawFleetKnownCutoutShape(Graphics2D g2,
+                                                  CampaignSystem.FleetFormationCutout cutout,
+                                                  int px,
+                                                  int py,
+                                                  int size) {
+        if (g2 == null || cutout == null) return;
+        int half = Math.max(4, size / 2);
+        ShipRole role = cutout.role;
+        if (role != null && (role.isCapitalCombatant() || role.isTitanOrMothership() || role.isCarrierHull())) {
+            Polygon hull = new Polygon(
+                    new int[]{px, px + half, px + half / 2, px - half / 2, px - half},
+                    new int[]{py - half, py - half / 5, py + half, py + half, py - half / 5},
+                    5);
+            g2.fillPolygon(hull);
+            return;
+        }
+        if (role == ShipRole.HAULER || role == ShipRole.TRANSPORT || role == ShipRole.MINER) {
+            g2.fillRoundRect(px - half, py - half + 2, half * 2, Math.max(5, size - 3), 3, 3);
+            return;
+        }
+        Polygon escort = new Polygon(
+                new int[]{px, px + half, px, px - half},
+                new int[]{py - half, py, py + half, py},
+                4);
+        g2.fillPolygon(escort);
     }
 
     private static void drawConfirmedCampaignInterceptLines(Graphics2D g2,

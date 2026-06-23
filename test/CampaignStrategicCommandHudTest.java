@@ -94,12 +94,232 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void campaignClarityLayerRecordsReportsMemoryAndWarRoomReadouts() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.transitionSummaryTop = "Green convoy rescued before Red interception.";
+        st.transitionSummaryBottom = "Because Blue intercepted early, Green repair crews kept the lane open.";
+        st.transitionRewardLine = "42 ore, 6 supplies, survivor pods recovered";
+        st.lastTheaterOperationDebrief = "Green repair station morale increased and local Red pressure dropped.";
+
+        List<String> report = CampaignSystem.campaignAfterActionReportLines(ctx);
+        List<String> latest = CampaignSystem.campaignLatestAfterActionReportLines(ctx);
+        List<String> log = CampaignSystem.campaignCaptainLogLines(ctx, 4);
+        List<String> memory = CampaignSystem.campaignMemoryFlagLines(ctx, 4);
+        List<String> warRoom = CampaignSystem.campaignWarRoomLines(ctx);
+        List<String> ledger = CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+        List<String> fleetManager = CampaignSystem.campaignFleetManagerLines(ctx);
+        List<String> resources = CampaignSystem.campaignResourceManagerLines(ctx);
+        List<String> comms = CampaignSystem.campaignCommsBoardLines(ctx);
+
+        assertTrue(report.stream().anyMatch(line -> line.contains("Green convoy rescued")));
+        assertTrue(latest.stream().anyMatch(line -> line.startsWith("Why This Matters: ")));
+        assertTrue(log.stream().anyMatch(line -> line.toLowerCase().contains("after-action")));
+        assertTrue(log.stream().anyMatch(line -> line.contains("T+")));
+        assertTrue(memory.stream().anyMatch(line -> line.startsWith("Memory: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("War Room: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Actions: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("War Room Action: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.contains("Disabled:") || line.contains("Ready")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Optional Objectives: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Earth Approach: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Fleet Detail: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Supplies Detail: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Regional Detail: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Threat Detail: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Enemy Production: ")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Production Rules: ")
+                && line.contains("requires crew")
+                && line.contains("priority")
+                && line.contains("role")));
+        assertTrue(warRoom.stream().anyMatch(line -> line.startsWith("Recent Production: ")));
+        assertTrue(ledger.stream().anyMatch(line -> line.startsWith("Finite Fleet Ledger: ")));
+        assertTrue(fleetManager.stream().anyMatch(line -> line.startsWith("Fleet Economy: ")));
+        assertTrue(resources.stream().anyMatch(line -> line.startsWith("Latest Report: ")));
+        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Captain's Log: ")));
+        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Memory: ")));
+    }
+
+    @Test
+    void stationMemoryRecordsRepeatedServiceUseAndAffectsReadouts() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation hub = firstFriendlyServiceLocation(ctx);
+        assertNotNull(hub);
+        assertTrue(hub.services.contains(CampaignSystem.HubService.REPAIR));
+        st.selectedGalaxyLocationId = hub.id;
+        st.dockedGalaxyLocationId = hub.id;
+        ctx.credits = Math.max(ctx.credits, 5000);
+        st.campaignSupplies = Math.max(st.campaignSupplies, 200);
+        st.campaignSalvage = Math.max(st.campaignSalvage, 80);
+
+        assertTrue(CampaignSystem.executeSelectedHubService(ctx, CampaignSystem.HubService.REPAIR.name()));
+        assertTrue(CampaignSystem.executeSelectedHubService(ctx, CampaignSystem.HubService.REPAIR.name()));
+
+        String stationMemory = String.join("\n", CampaignSystem.stationMemoryLines(hub, 6));
+        String identity = String.join("\n", CampaignSystem.selectedHubIdentityLines(ctx));
+        String preview = String.join("\n", CampaignSystem.hubServicePreviewLines(ctx, hub, CampaignSystem.HubService.REPAIR));
+        String campaignMemory = String.join("\n", CampaignSystem.campaignMemoryFlagLines(ctx, 8));
+        String resolver = String.join("\n", CampaignSystem.campaignConsequenceResolverLines(ctx, 4));
+        String warRoom = String.join("\n", CampaignSystem.campaignWarRoomLines(ctx));
+
+        assertTrue(stationMemory.contains("repair crews"));
+        assertTrue(stationMemory.contains("rationing") || stationMemory.contains("cycled"));
+        assertTrue(identity.contains("Station State: "));
+        assertTrue(preview.contains("memory surcharge") || preview.contains("memory discount") || preview.contains("standard local prices"));
+        assertTrue(campaignMemory.contains("repeatedly used repairs"));
+        assertTrue(resolver.contains("Consequence: " + hub.name));
+        assertTrue(resolver.contains("station services now react"));
+        assertTrue(warRoom.contains("Consequence Resolver: Consequence:"));
+    }
+
+    @Test
+    void captainLogCanFilterAndPageOlderEntries() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        invokeAddCampaignLogEntry(st, "battle", "Manual battle won",
+                "Blue line held at Green Station.", "Green patrol morale increased.", true);
+        invokeAddCampaignLogEntry(st, "convoy", "Convoy saved",
+                "Yellow freighters reached the repair lane.", "Trade brokers lower prices.", true);
+        invokeAddCampaignLogEntry(st, "mining", "Mining site depleted",
+                "Prospectors stripped the easy ore.", "Mining forces search for a new pocket.", false);
+
+        List<String> newest = CampaignSystem.campaignCaptainLogLines(ctx, 3, 0, "");
+        List<String> older = CampaignSystem.campaignCaptainLogLines(ctx, 3, 1, "");
+        List<String> convoy = CampaignSystem.campaignCaptainLogLines(ctx, 6, 0, "convoy");
+        invokeAddCampaignLogEntry(st, "relay", "Relay decoded",
+                "Receiver crew decoded a minor relay burst.", "Map intel improved.", false);
+        invokeAddCampaignLogEntry(st, "relay", "Relay decoded",
+                "A second relay burst matched the first.", "Map intel improved.", false);
+        List<String> relay = CampaignSystem.campaignCaptainLogLines(ctx, 4, 0, "relay");
+
+        assertTrue(newest.get(0).contains("MINING"));
+        assertTrue(older.get(0).contains("CONVOY"));
+        assertTrue(convoy.stream().anyMatch(line -> line.contains("Convoy saved")));
+        assertTrue(convoy.stream().noneMatch(line -> line.contains("Mining site depleted")));
+        assertTrue(relay.stream().anyMatch(line -> line.contains("repeated")));
+        assertTrue(relay.stream().anyMatch(line -> line.contains("Follow-up:")));
+    }
+
+    @Test
+    void firstNinetyMinuteGuidanceExplainsEarlyCampaignNeeds() {
+        GameContext ctx = initializedCampaignContext();
+        String guidance = String.join("\n", CampaignSystem.campaignFirstNinetyMinuteGuidanceLines(ctx));
+        String warRoom = String.join("\n", CampaignSystem.campaignWarRoomLines(ctx));
+
+        assertTrue(guidance.contains("Objective"));
+        assertTrue(guidance.contains("safe station"));
+        assertTrue(guidance.contains("repair/trade/resupply"));
+        assertTrue(guidance.contains("sensors before contact"));
+        assertTrue(guidance.contains("Convoys"));
+        assertTrue(guidance.contains("Mining"));
+        assertTrue(guidance.contains("After-action reports"));
+        assertTrue(guidance.contains("War Room"));
+        assertTrue(guidance.contains("Green defends"));
+        assertTrue(guidance.contains("Red hunts from real bases"));
+        assertTrue(guidance.contains("finite inventories"));
+        assertTrue(guidance.contains("Dangerous regions"));
+        assertTrue(guidance.contains("Low supplies"));
+        assertTrue(guidance.contains("avoided"));
+        assertTrue(guidance.contains("strategically useful"));
+        assertTrue(warRoom.contains("Early Guidance: First 90:"));
+    }
+
+    @Test
+    void warRoomShortcutActionsOpenFocusModesAndReturnCleanly() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
+        invokeAddCampaignLogEntry(st, "convoy", "Convoy captain sends thanks",
+                "Green haulers survived the lane ambush.", "A station captain remembers Blue support.", true);
+
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> action.id.equals("OPEN_WAR_ROOM")));
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> action.id.equals("OPEN_CAPTAINS_LOG")));
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> action.id.equals("VIEW_BASE_STATUS")));
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> action.id.equals("VIEW_MINING_ROUTES")));
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "OPEN_CAPTAINS_LOG"));
+        assertTrue(ctx.ui.campaignWarRoomOpen);
+        assertEquals(UiState.CampaignCommandTab.NAV, ctx.ui.campaignCommandTab);
+        String logFocus = String.join("\n", CampaignSystem.campaignWarRoomLines(ctx));
+        assertTrue(logFocus.contains("War Room Focus: Captain's Log"));
+        assertTrue(logFocus.contains("Convoy captain sends thanks"));
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "REVIEW_KNOWN_CONTACTS"));
+        assertTrue(String.join("\n", CampaignSystem.campaignWarRoomLines(ctx))
+                .contains("War Room Focus: Known Contacts"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "VIEW_BASE_STATUS"));
+        assertTrue(String.join("\n", CampaignSystem.campaignWarRoomLines(ctx))
+                .contains("War Room Focus: Base Status"));
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "VIEW_MINING_ROUTES"));
+        assertTrue(String.join("\n", CampaignSystem.campaignWarRoomLines(ctx))
+                .contains("War Room Focus: Mining Routes"));
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "RETURN_TO_MAP"));
+        assertFalse(ctx.ui.campaignWarRoomOpen);
+        assertEquals(UiState.CampaignCommandTab.FLEET, ctx.ui.campaignCommandTab);
+    }
+
+    @Test
+    void authoredMissionChainsDeriveFromCampaignLogAndMemory() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        invokeAddCampaignLogEntry(st, "convoy", "Green convoy saved",
+                "Captain Vale sends thanks from a Green repair station.", "Green favor and station support improve.", true);
+        invokeAddCampaignLogEntry(st, "red", "Red fleet escaped",
+                "A damaged Red commander escaped into the northern lane.", "Red pressure increases later.", true);
+        invokeAddCampaignLogEntry(st, "yellow", "Yellow trade incident",
+                "Yellow traders were hit during the battle.", "Yellow trade prices increased.", true);
+        invokeAddCampaignLogEntry(st, "mining", "Red mining route raided",
+                "Ore convoy losses slowed Black Furnace Shipyard.", "Shipyard paused frigate construction.", true);
+        invokeAddCampaignLogEntry(st, "green", "Green miners protected",
+                "Green mining crews survived and resumed output.", "Green counter-task-force production resumed.", true);
+
+        String chains = String.join("\n", CampaignSystem.campaignAuthoredMissionChainLines(ctx, 8));
+        String consequences = String.join("\n", CampaignSystem.campaignRememberedConsequenceCatalogLines(ctx, 12));
+        String namedReturns = String.join("\n", CampaignSystem.campaignNamedReturnLines(ctx, 6));
+        String warRoom = String.join("\n", CampaignSystem.campaignWarRoomLines(ctx));
+
+        assertTrue(chains.contains("ACTIVE  |  Green convoy gratitude"));
+        assertTrue(chains.contains("captain appears at station"));
+        assertTrue(chains.contains("ACTIVE  |  Red commander return"));
+        assertTrue(chains.contains("stronger fleet returns"));
+        assertTrue(chains.contains("ACTIVE  |  Yellow trust repair"));
+        assertTrue(chains.contains("services normalize"));
+        assertTrue(chains.contains("ACTIVE  |  Red mining disruption"));
+        assertTrue(chains.contains("shipyard slows"));
+        assertTrue(chains.contains("ACTIVE  |  Green miner counterpush"));
+        assertTrue(chains.contains("counter-task-force launches"));
+        assertTrue(chains.contains("saved memory/log state"));
+        assertTrue(consequences.contains("Because you saved Convoy G-12"));
+        assertTrue(consequences.contains("Because Yellow traders were hit"));
+        assertTrue(consequences.contains("Because the Red commander escaped"));
+        assertTrue(consequences.contains("paused frigate construction"));
+        assertTrue(consequences.contains("Remembered Flags: convoy saved/abandoned/destroyed"));
+        assertTrue(consequences.contains("Consequence Effects: Green reinforcements"));
+        assertTrue(namedReturns.contains("crew losses estimated"));
+        assertTrue(namedReturns.contains("Rescued Captain Return"));
+        assertTrue(namedReturns.contains("Enemy Commander Return"));
+        assertTrue(namedReturns.contains("reckless, loyal, bitter, heroic, nervous, veteran, Green"));
+        assertTrue(warRoom.contains("Callback Chain: "));
+        assertTrue(warRoom.contains("Because Feedback: "));
+        assertTrue(warRoom.contains("Named Return: "));
+    }
+
+    @Test
     void afterActionReportConnectsBattleOutcomeToResourcesFleetAndTheater() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         CampaignSystem.CampaignLocation hub = firstFriendlyServiceLocation(ctx);
         assertNotNull(hub);
         st.activeGalaxyEncounterLocationId = hub.id;
+        st.selectedGalaxyLocationId = hub.id;
+        st.dockedGalaxyLocationId = hub.id;
         st.objectiveLabel = "Escort the damaged convoy to the exit lane";
         st.objectivePhaseLabel = "PHASE: Jump drive charging";
         st.transitionSummaryTop = "Convoy survived under heavy fire.";
@@ -116,8 +336,10 @@ class CampaignStrategicCommandHudTest {
         Object entry = st.persistentBlueFleet.get(0);
         setDoubleField(entry, "hullConditionFrac", 0.40);
         setDoubleField(entry, "shieldConditionFrac", 0.30);
+        setIntField(entry, "rescues", 3);
 
         String report = String.join("\n", CampaignSystem.campaignAfterActionReportLines(ctx));
+        String buttons = String.join("\n", CampaignSystem.campaignAfterActionFollowUpActionLines(ctx));
 
         assertTrue(report.contains("Battle Report: " + hub.name));
         assertTrue(report.contains("Objective: Escort the damaged convoy to the exit lane"));
@@ -128,6 +350,19 @@ class CampaignStrategicCommandHudTest {
         assertTrue(report.contains("Intel: "));
         assertTrue(report.contains("Theater Pressure: "));
         assertTrue(report.contains("Follow-On: Red scouts redirected"));
+        assertTrue(report.contains("Named Captains: Captain "));
+        assertTrue(report.contains("Named Ships: "));
+        assertTrue(report.contains("Crew Casualties: estimated "));
+        assertTrue(report.contains("Crew Rescued: 3"));
+        assertTrue(report.contains("Report Button: OPEN REPAIRS - Ready"));
+        assertTrue(report.contains("Report Button: INSPECT FLEET - Ready"));
+        assertTrue(buttons.contains("Disabled:"));
+        String log = String.join("\n", CampaignSystem.campaignCaptainLogLines(ctx, 4));
+        assertTrue(log.contains("Region/Location: " + hub.name));
+        assertTrue(log.contains("Factions: "));
+        assertTrue(log.contains("Ships: "));
+        assertTrue(log.contains("Captains: "));
+        assertTrue(log.contains("Base/Station: " + hub.name));
     }
 
     @Test
@@ -1651,6 +1886,25 @@ class CampaignStrategicCommandHudTest {
         );
         method.setAccessible(true);
         method.invoke(null, ctx, st);
+    }
+
+    private static void invokeAddCampaignLogEntry(CampaignSystem.CampaignState st,
+                                                  String category,
+                                                  String title,
+                                                  String detail,
+                                                  String consequence,
+                                                  boolean major) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "addCampaignLogEntry",
+                CampaignSystem.CampaignState.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                boolean.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, st, category, title, detail, consequence, major);
     }
 
     private static void invokePrepareAmbientEncounter(GameContext ctx,

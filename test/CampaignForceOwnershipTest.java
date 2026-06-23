@@ -73,6 +73,317 @@ class CampaignForceOwnershipTest {
     }
 
     @Test
+    void checkpointRoundTripPreservesCampaignClarityHistory() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.transitionSummaryTop = "Red interdiction force broken near the southern lane.";
+        st.transitionSummaryBottom = "Because Blue held the route, Green repair traffic can move again.";
+        st.transitionRewardLine = "salvage 42 / survivor pods recovered";
+        st.lastTheaterOperationDebrief = "Local Red pressure reduced and Green station morale increased.";
+
+        assertFalse(CampaignSystem.campaignAfterActionReportLines(ctx).isEmpty());
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        assertFalse(checkpoint.campaignAfterActionReports.isBlank());
+        assertFalse(checkpoint.campaignCaptainLog.isBlank());
+        assertFalse(checkpoint.campaignMemoryFlags.isBlank());
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+
+        assertTrue(CampaignSystem.campaignLatestAfterActionReportLines(restored).stream()
+                .anyMatch(line -> line.contains("Strategic Effect:")));
+        assertTrue(CampaignSystem.campaignCaptainLogLines(restored, 4).stream()
+                .anyMatch(line -> line.toLowerCase().contains("after-action")));
+        assertTrue(CampaignSystem.campaignMemoryFlagLines(restored, 4).stream()
+                .anyMatch(line -> line.startsWith("Memory:")));
+    }
+
+    @Test
+    void finiteEconomySeedsFactionPoolsBasesAndQueuesAcrossCheckpoint() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+        assertTrue(privateMapSize(st, "campaignShipPool") >= 450, "starting factions should have deep finite ship reserves");
+        assertTrue(campaignLocationHasPositiveInt(st, "oreStockpile"), "bases should start with ore stockpiles");
+        assertTrue(campaignLocationHasPositiveInt(st, "defenseGarrisonShips"), "bases should start with garrisons");
+
+        Object red = firstCampaignForceForFaction(st, Faction.ENEMY);
+        assertTrue(red != null, "expected a Red campaign force");
+        assertTrue(privateMapCountByField(st, "campaignShipPool", "forceId", (int) readField(red, "id")) > 0,
+                "active forces should claim hulls from the finite pool");
+
+        Object damagedRecord = firstShipPoolRecord(st, "TEAM_C", "DOCKED");
+        setField(damagedRecord, "status", enumConstant(findNestedClass("CampaignShipPoolStatus"), "DAMAGED"));
+        setField(damagedRecord, "condition", 32.0);
+        String baseId = readField(damagedRecord, "baseId").toString();
+        CampaignSystem.CampaignLocation base = campaignLocationById(st, baseId);
+        assertTrue(base != null, "damaged pool record should reference a real base");
+        base.repairSupplyStockpile = 200;
+        base.oreStockpile = 500;
+
+        invokePrivate("updateCampaignFiniteEconomyTick",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
+                ctx, st, 30.0);
+
+        assertTrue(privateListSize(st, "campaignBaseQueues") > 0, "damaged ships or shipyards should create real queues");
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        assertFalse(checkpoint.campaignShipPool.isBlank());
+        assertFalse(checkpoint.campaignBaseQueues.isBlank());
+        assertTrue(checkpoint.campaignFiniteEconomyInitialized);
+
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        assertEquals(privateMapSize(st, "campaignShipPool"), privateMapSize(restored.campaign, "campaignShipPool"));
+        assertTrue(CampaignSystem.campaignFiniteFleetLedgerLines(restored).stream()
+                .anyMatch(line -> line.contains(":") && line.contains(" / ")));
+    }
+
+    @Test
+    void taskForceInspectionUsesFinitePoolShipsAndIntelGatedFormationRoles() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+
+        Object red = firstCampaignForceForFaction(st, Faction.ENEMY);
+        assertTrue(red != null, "expected a Red campaign force");
+        int forceId = (int) readField(red, "id");
+        setField(red, "contactConfidence", 0.94);
+        setField(red, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        setField(red, "visibleToPlayer", true);
+        assertTrue(privateMapCountByField(st, "campaignShipPool", "forceId", forceId) > 0,
+                "expected finite pool hulls assigned to the selected force");
+
+        List<String> full = CampaignSystem.campaignTaskForceInspectionLines(ctx, forceId, 8);
+        assertTrue(full.stream().anyMatch(line -> line.contains("Task Force Inspection:")));
+        assertTrue(full.stream().anyMatch(line -> line.contains("Level 4 - Full Identification")));
+        assertTrue(full.stream().anyMatch(line -> line.contains("Formation View: selected fleet expands")));
+        assertTrue(full.stream().anyMatch(line -> line.contains("visual child cutouts only")));
+        assertTrue(full.stream().anyMatch(line -> line.contains("FLAGSHIP")
+                        || line.contains("VANGUARD")
+                        || line.contains("SCREEN_LEFT")
+                        || line.contains("SCREEN_RIGHT")
+                        || line.contains("REARGUARD")
+                        || line.contains("CARRIER_CORE")
+                        || line.contains("SUPPORT_REAR")
+                        || line.contains("TRANSPORT_GROUP")
+                        || line.contains("MINER_GROUP")
+                        || line.contains("SCOUT_WING")),
+                "expected fleet hulls to be assigned formation roles");
+
+        setField(red, "contactConfidence", 0.18);
+        setField(red, "contactState", CampaignSystem.CampaignForceContactState.SUSPECTED);
+        List<String> lowIntel = CampaignSystem.campaignTaskForceInspectionLines(ctx, forceId, 8);
+        assertTrue(lowIntel.stream().anyMatch(line -> line.contains("Level 0 - Unknown Contact")
+                        || line.contains("Level 1 - Estimated Size")),
+                "low-confidence contacts should not fully identify the task force");
+        assertTrue(lowIntel.stream().anyMatch(line -> line.contains("Formation View: locked")),
+                "low intel should hide exact formation silhouettes");
+    }
+
+    @Test
+    void selectedContactSidebarIncludesTaskForceInspectionPanel() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+
+        Object red = firstCampaignForceForFaction(st, Faction.ENEMY);
+        assertTrue(red != null, "expected a Red campaign force");
+        setField(red, "contactConfidence", 0.82);
+        setField(red, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        String name = readField(red, "name").toString();
+        double x = (double) readField(red, "x");
+        double y = (double) readField(red, "y");
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                name,
+                "Known force contact  |  task force  |  conf 82%",
+                "Known force contact",
+                x,
+                y,
+                true,
+                true);
+
+        List<String> detail = invokeSelectedContactSidebarLines(ctx);
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Force Owner: " + name)));
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Task Force Inspection:")));
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Intel Level:")));
+        assertTrue(detail.stream().anyMatch(line -> line.contains("Recommended Action:")));
+    }
+
+    @Test
+    void selectedFleetFormationCutoutsExpandFromOneStrategicMarkerWithoutEntities() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+
+        Object red = firstCampaignForceForFaction(st, Faction.ENEMY);
+        assertTrue(red != null, "expected a Red campaign force");
+        setField(red, "contactConfidence", 0.88);
+        setField(red, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        setField(red, "visibleToPlayer", true);
+        String name = readField(red, "name").toString();
+        double x = (double) readField(red, "x");
+        double y = (double) readField(red, "y");
+        int forceId = (int) readField(red, "id");
+
+        CampaignSystem.selectCampaignContactTarget(ctx, name, "Known force contact", "Known force contact", x, y, true, true);
+
+        List<CampaignSystem.FleetFormationCutout> cutouts = CampaignSystem.selectedFleetFormationCutouts(ctx, 8);
+        assertFalse(cutouts.isEmpty(), "selected high-intel fleet should unfold into visual cutouts");
+        assertTrue(cutouts.stream().allMatch(cutout -> cutout.forceId == forceId),
+                "cutouts should remain children of one campaign force");
+        assertTrue(cutouts.stream().anyMatch(cutout -> Math.abs(cutout.offsetX) > 0.1 || Math.abs(cutout.offsetY) > 0.1),
+                "formation cutouts should be positioned around the central marker");
+        assertEquals(0, liveHostileShipCountNearPlayer(ctx, 1200.0),
+                "inspection cutouts must not spawn independent tactical ships");
+
+        setField(red, "contactState", CampaignSystem.CampaignForceContactState.STALE);
+        assertTrue(CampaignSystem.selectedFleetFormationCutouts(ctx, 8).isEmpty(),
+                "stale contacts should collapse and refuse live formation expansion");
+    }
+
+    @Test
+    void encounterManifestUsesFinitePoolRolesFormationRolesAndDamage() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+
+        Object red = firstCampaignForceForFaction(st, Faction.ENEMY);
+        assertTrue(red != null, "expected a Red campaign force");
+        int forceId = (int) readField(red, "id");
+        Object poolRecord = firstShipPoolRecordForForce(st, forceId);
+        assertTrue(poolRecord != null, "expected force pool member");
+        setField(poolRecord, "role", ShipRole.BATTLESHIP);
+        setField(poolRecord, "condition", 41.0);
+        setField(poolRecord, "name", "Test Damaged Line Ship");
+
+        Object manifest = invokePrivate("encounterManifestForForce",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, red.getClass(), int.class},
+                ctx, st, red, 4);
+        Object ships = readField(manifest, "ships");
+        assertTrue(ships instanceof List<?> list && !list.isEmpty(), "expected manifest ships");
+        Object first = ((List<?>) ships).get(0);
+        assertEquals(ShipRole.BATTLESHIP, readField(first, "role"));
+        assertEquals("Test Damaged Line Ship", readField(first, "name"));
+        assertEquals("FLAGSHIP", String.valueOf(readField(first, "formationRole")));
+        assertEquals(41.0, (double) readField(first, "condition"), 1e-6);
+    }
+
+    @Test
+    void multipleFactionShipyardsIncreaseFinitePoolsOverCampaignTime() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.campaignFiniteFleetLedgerLines(ctx);
+
+        CampaignSystem.CampaignLocation redYard = firstLocationForFaction(st, Faction.ENEMY);
+        CampaignSystem.CampaignLocation greenYard = firstLocationForFaction(st, Faction.TEAM_C);
+        assertTrue(redYard != null, "expected a Red production base");
+        assertTrue(greenYard != null, "expected a Green production base");
+        prepareProductionYard(redYard);
+        prepareProductionYard(greenYard);
+
+        int redBefore = privateMapCountByField(st, "campaignShipPool", "faction", Faction.ENEMY);
+        int greenBefore = privateMapCountByField(st, "campaignShipPool", "faction", Faction.TEAM_C);
+
+        invokePrivate("maybeQueueBaseConstructionAndRepairs",
+                new Class[]{CampaignSystem.CampaignState.class},
+                st);
+
+        assertTrue(constructionQueueCountForBase(st, redYard.id) > 0, "Red yard should queue construction");
+        assertTrue(constructionQueueCountForBase(st, greenYard.id) > 0, "Green yard should queue construction");
+
+        invokePrivate("applyBaseProductionQueues",
+                new Class[]{CampaignSystem.CampaignState.class, double.class},
+                st, 10_000.0);
+
+        int redAfter = privateMapCountByField(st, "campaignShipPool", "faction", Faction.ENEMY);
+        int greenAfter = privateMapCountByField(st, "campaignShipPool", "faction", Faction.TEAM_C);
+
+        assertTrue(redAfter > redBefore, "Red finite pool should grow after shipyard completion");
+        assertTrue(greenAfter > greenBefore, "Green finite pool should grow after shipyard completion");
+        assertTrue(CampaignSystem.campaignCaptainLogLines(ctx, 6, 0, "Shipyard completed hull").stream()
+                .anyMatch(line -> line.contains("Shipyard completed hull")));
+    }
+
+    @Test
+    void miningSitesDepletePersistAndForceMinersToSearchForOre() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation base = firstFriendlyServiceLocation(ctx);
+        CampaignSystem.CampaignLocation ore = firstResourceLocation(st);
+        assertTrue(base != null, "expected a friendly base");
+        assertTrue(ore != null, "expected a resource zone");
+
+        ore.discovered = true;
+        ore.consumed = false;
+        ore.oreStockpile = 1;
+        int baseOreBefore = base.oreStockpile;
+
+        Object miner = createCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.TEAM_C,
+                "Test Depletion Miners", ore.x, ore.y);
+        setField(miner, "simulationActive", true);
+        setField(miner, "homeBaseId", base.id);
+        setField(miner, "sourceLocationId", base.id);
+        setField(miner, "destinationLocationId", ore.id);
+        setField(miner, "cargoKind", enumConstant(findNestedClass("CampaignForceCargoKind"), "ORE"));
+        setField(miner, "intent", CampaignSystem.CampaignForceIntent.MINING);
+        setField(miner, "cargoCapacity", 40.0);
+        setField(miner, "cargoLoad", 0.0);
+
+        invokePrivate("applyMiningAndHaulingEconomy",
+                new Class[]{CampaignSystem.CampaignState.class, double.class},
+                st, 30.0);
+
+        assertEquals(0, ore.oreStockpile);
+        assertTrue(ore.consumed, "depleted ore site should be marked consumed");
+        assertTrue(base.oreStockpile > baseOreBefore, "mined ore should reach the home base");
+        assertTrue(CampaignSystem.campaignMemoryFlagLines(ctx, 8).stream()
+                .anyMatch(line -> line.toLowerCase().contains("depleted")));
+
+        CampaignCheckpointStore.Checkpoint checkpoint = captureCheckpoint(ctx, 2);
+        GameContext restored = initializedCampaignContext();
+        assertTrue(applyCheckpoint(restored, checkpoint));
+        CampaignSystem.CampaignLocation restoredOre = campaignLocationById(restored.campaign, ore.id);
+        assertTrue(restoredOre != null);
+        assertEquals(0, restoredOre.oreStockpile);
+        assertTrue(restoredOre.consumed);
+    }
+
+    @Test
+    void oreConvoysMoveStockpilesIntoShipyardsForProduction() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation source = firstResourceLocation(st);
+        CampaignSystem.CampaignLocation yard = firstLocationForFaction(st, Faction.TEAM_C);
+        assertTrue(source != null, "expected a resource source");
+        assertTrue(yard != null, "expected a friendly shipyard destination");
+
+        source.oreStockpile = 200;
+        yard.facilityType = CampaignSystem.CampaignFacilityType.SHIPYARD;
+        yard.oreStockpile = 0;
+
+        Object convoy = createCampaignForce(st, CampaignSystem.CampaignForceKind.CONVOY, Faction.TEAM_C,
+                "Test Yard Ore Convoy", source.x, source.y);
+        setField(convoy, "simulationActive", true);
+        setField(convoy, "sourceLocationId", source.id);
+        setField(convoy, "destinationLocationId", yard.id);
+        setField(convoy, "cargoKind", enumConstant(findNestedClass("CampaignForceCargoKind"), "ORE"));
+        setField(convoy, "intent", CampaignSystem.CampaignForceIntent.ESCORTING);
+        setField(convoy, "cargoCapacity", 80.0);
+        setField(convoy, "cargoLoad", 0.0);
+
+        invokePrivate("applyMiningAndHaulingEconomy",
+                new Class[]{CampaignSystem.CampaignState.class, double.class},
+                st, 200.0);
+
+        assertTrue(source.oreStockpile < 200, "ore source stockpile should be hauled down");
+        assertTrue(yard.oreStockpile > 0, "shipyard stockpile should receive hauled ore");
+    }
+
+    @Test
     void olderCheckpointWithoutForceRegistryMigratesIntoOwnedLiveShips() throws Exception {
         GameContext ctx = initializedCampaignContext();
 
@@ -1063,6 +1374,12 @@ class CampaignForceOwnershipTest {
         method.invoke(null, ctx, st, location);
     }
 
+    private static Object invokePrivate(String methodName, Class<?>[] signature, Object... args) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(methodName, signature);
+        method.setAccessible(true);
+        return method.invoke(null, args);
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static int stageTrackedThreatNearInstallation(GameContext ctx, CampaignSystem.CampaignState st,
                                                           CampaignSystem.CampaignLocation location) throws Exception {
@@ -1399,6 +1716,163 @@ class CampaignForceOwnershipTest {
         return null;
     }
 
+    private static CampaignSystem.CampaignLocation campaignLocationById(CampaignSystem.CampaignState st, String id) {
+        if (st == null || id == null || id.isBlank()) return null;
+        for (CampaignSystem.CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && id.equals(location.id)) return location;
+        }
+        for (CampaignSystem.CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location != null && id.equals(location.id)) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstResourceLocation(CampaignSystem.CampaignState st) {
+        if (st == null) return null;
+        for (CampaignSystem.CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location != null && location.type == CampaignSystem.CampaignLocationType.RESOURCE_ZONE) return location;
+        }
+        for (CampaignSystem.CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && location.type == CampaignSystem.CampaignLocationType.RESOURCE_ZONE) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstLocationForFaction(CampaignSystem.CampaignState st, Faction faction) {
+        if (st == null || faction == null) return null;
+        for (CampaignSystem.CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && location.ownerFaction == faction) return location;
+        }
+        for (CampaignSystem.CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location != null && location.ownerFaction == faction) return location;
+        }
+        return null;
+    }
+
+    private static void prepareProductionYard(CampaignSystem.CampaignLocation location) {
+        location.facilityType = CampaignSystem.CampaignFacilityType.SHIPYARD;
+        location.stationServiceState = "online";
+        location.destroyed = false;
+        location.oreStockpile = 10_000;
+        location.repairSupplyStockpile = 10_000;
+        location.strategicValue = Math.max(location.strategicValue, 4);
+    }
+
+    private static int constructionQueueCountForBase(CampaignSystem.CampaignState st, String baseId) throws Exception {
+        Object value = readField(st, "campaignBaseQueues");
+        int count = 0;
+        if (value instanceof Iterable<?> iterable) {
+            for (Object entry : iterable) {
+                if (entry != null
+                        && baseId.equals(readField(entry, "baseId"))
+                        && "CONSTRUCTION".equals(String.valueOf(readField(entry, "type")))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static boolean campaignLocationHasPositiveInt(CampaignSystem.CampaignState st, String fieldName) throws Exception {
+        if (st == null) return false;
+        for (CampaignSystem.CampaignLocation location : st.galaxyMainPois) {
+            if (location != null && ((Integer) readField(location, fieldName)) > 0) return true;
+        }
+        for (CampaignSystem.CampaignLocation location : st.galaxyAreasOfInterest) {
+            if (location != null && ((Integer) readField(location, fieldName)) > 0) return true;
+        }
+        return false;
+    }
+
+    private static int privateMapSize(Object target, String fieldName) throws Exception {
+        Object value = readField(target, fieldName);
+        return value instanceof java.util.Map<?, ?> map ? map.size() : 0;
+    }
+
+    private static int privateListSize(Object target, String fieldName) throws Exception {
+        Object value = readField(target, fieldName);
+        return value instanceof java.util.List<?> list ? list.size() : 0;
+    }
+
+    private static int privateMapCountByField(Object target, String mapFieldName, String entryFieldName, int expected) throws Exception {
+        Object value = readField(target, mapFieldName);
+        if (!(value instanceof java.util.Map<?, ?> map)) return 0;
+        int count = 0;
+        for (Object entry : map.values()) {
+            if (entry != null && ((Integer) readField(entry, entryFieldName)) == expected) count++;
+        }
+        return count;
+    }
+
+    private static int privateMapCountByField(Object target, String mapFieldName, String entryFieldName, Object expected) throws Exception {
+        Object value = readField(target, mapFieldName);
+        if (!(value instanceof java.util.Map<?, ?> map)) return 0;
+        int count = 0;
+        for (Object entry : map.values()) {
+            if (entry != null && java.util.Objects.equals(readField(entry, entryFieldName), expected)) count++;
+        }
+        return count;
+    }
+
+    private static Object firstShipPoolRecord(CampaignSystem.CampaignState st, String factionName, String statusName) throws Exception {
+        Object value = readField(st, "campaignShipPool");
+        if (!(value instanceof java.util.Map<?, ?> map)) return null;
+        for (Object record : map.values()) {
+            if (record == null) continue;
+            if (factionName.equals(String.valueOf(readField(record, "faction")))
+                    && statusName.equals(String.valueOf(readField(record, "status")))) {
+                return record;
+            }
+        }
+        return null;
+    }
+
+    private static Object firstShipPoolRecordForForce(CampaignSystem.CampaignState st, int forceId) throws Exception {
+        Object value = readField(st, "campaignShipPool");
+        if (!(value instanceof java.util.Map<?, ?> map)) return null;
+        for (Object record : map.values()) {
+            if (record != null && ((Integer) readField(record, "forceId")) == forceId) return record;
+        }
+        return null;
+    }
+
+    private static Object firstCampaignForceForFaction(CampaignSystem.CampaignState st, Faction faction) throws Exception {
+        Object value = readField(st, "campaignForces");
+        if (!(value instanceof java.util.List<?> list)) return null;
+        for (Object force : list) {
+            if (force != null && readField(force, "faction") == faction) return force;
+        }
+        return null;
+    }
+
+    private static Object createCampaignForce(CampaignSystem.CampaignState st,
+                                              CampaignSystem.CampaignForceKind kind,
+                                              Faction faction,
+                                              String name,
+                                              double x,
+                                              double y) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "ensureCampaignForce",
+                CampaignSystem.CampaignState.class,
+                CampaignSystem.CampaignForceKind.class,
+                Faction.class,
+                String.class,
+                String.class,
+                String.class,
+                double.class,
+                double.class
+        );
+        method.setAccessible(true);
+        return method.invoke(null, st, kind, faction, name, "Test setup", "Test force", x, y);
+    }
+
+    private static Class<?> findNestedClass(String simpleName) {
+        for (Class<?> nested : CampaignSystem.class.getDeclaredClasses()) {
+            if (simpleName.equals(nested.getSimpleName())) return nested;
+        }
+        throw new IllegalArgumentException(simpleName);
+    }
+
     @SuppressWarnings("rawtypes")
     private static Object anchoredSearchGroupForLocation(CampaignSystem.CampaignState st, String locationId) throws Exception {
         java.lang.reflect.Field groupsField = CampaignSystem.CampaignState.class.getDeclaredField("galaxySearchGroups");
@@ -1569,6 +2043,11 @@ class CampaignForceOwnershipTest {
         java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Object enumConstant(Class<?> enumType, String enumName) {
+        return Enum.valueOf((Class<? extends Enum>) enumType.asSubclass(Enum.class), enumName);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

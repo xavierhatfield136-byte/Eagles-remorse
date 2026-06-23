@@ -8,13 +8,19 @@ Start here. The docs are organized by purpose so the next work is visible withou
 2. `PRODUCTION_OWNER_WORKSHEET.md` - the product decisions that define the alpha.
 3. `CURRENT_CAMPAIGN_STATE.md` - the shortest snapshot of the implemented campaign.
 4. `PRODUCTION_COMPLETION_AUDIT.md` - the standard for deciding whether a feature is truly live.
-5. `UNBOUNDED_GAME_EXPANSION_BACKLOG.md` - the exhaustive audit appendix. Use it for traceability, not daily execution.
+5. `CAMPAIGN_CLARITY_AND_CONSEQUENCE_LAYER.md` - the next living-war planning spec for finite fleets, After-Action Reports, War Room, memory, and consequence.
+6. `MASTER_CAMPAIGN_SYSTEMS_CHECKLIST.md` - the full checklist tracker for the living-war, finite-fleet, memory, and consequence overhaul.
+7. `FLEET_CONTACT_EXPANSION_TASK_FORCE_INSPECTION_CHECKLIST.md` - Silent Hunter-style task-force contact expansion and inspection checklist.
+8. `UNBOUNDED_GAME_EXPANSION_BACKLOG.md` - the exhaustive audit appendix. Use it for traceability, not daily execution.
 
 ## Alpha Reference Library
 
 - `STRATEGIC_CAMPAIGN_MAP_SPEC.md` - strategic-map rules.
 - `STRATEGIC_CAMPAIGN_SCRIPT.md` - authored campaign behavior and content.
 - `STRATEGIC_FLEET_BEHAVIOR_SYSTEM_SPEC.md` - canonical living-war fleet behavior, mission lifecycle, anti-idle, and faction personality spec.
+- `CAMPAIGN_CLARITY_AND_CONSEQUENCE_LAYER.md` - pre-implementation plan for finite inventories, base-driven sorties, campaign memory, reports, and War Room.
+- `MASTER_CAMPAIGN_SYSTEMS_CHECKLIST.md` - full task checklist for the campaign clarity and living-war overhaul.
+- `FLEET_CONTACT_EXPANSION_TASK_FORCE_INSPECTION_CHECKLIST.md` - task-force marker, intel, formation view, and inspection panel checklist.
 - `STRATEGIC_HUD_ACTION_FIRST_SPEC.md` - visible-action UI principles.
 - `OVERWORLD_MAP_AI_AUDIO_IMPLEMENTATION_CHECKLIST.md` - overworld readability, faction AI, battle consequence, and audio cleanup tracker.
 - `CAMPAIGN_OBJECTIVE_MARKERS_AND_MISSION_READABILITY.md` - objective readability findings.
