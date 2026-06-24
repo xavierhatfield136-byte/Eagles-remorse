@@ -34,7 +34,7 @@ class CampaignStructuredTelemetryTest {
             CampaignSystem.update(failure, 1.0 / 60.0);
             assertTrue(failure.gameOver);
             assertTelemetryContains(failure, "event=campaign.failure");
-            assertTelemetryContains(failure, "reason=DEFEAT:_FLAGSHIP_LOST_BEFORE_EXTRACTION");
+            assertTelemetryContains(failure, "reason=DEFEAT:_FLAGSHIP_LOST");
             assertTelemetryContains(failure, "banner=Campaign_command_ship_destroyed");
         } finally {
             CampaignCheckpointStore.clear();

@@ -632,6 +632,10 @@ class CampaignStrategicCommandHudTest {
         List<String> shipyardLines = CampaignSystem.hubServicePreviewLines(ctx, shipyard, CampaignSystem.HubService.SHIPYARD);
         assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Role: ")
                 && line.contains("Counter: ") && line.contains("Weakness: ")));
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.contains("Fleet Ore pays player purchases")
+                && line.contains("Yard Ore feeds local faction construction")));
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Fleet Ore: ")
+                && line.contains("Yard Ore: ") && line.contains("Required Fleet Ore: ")));
         assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Maintenance: ") && line.contains("Variant: ")));
         assertTrue(shipyardLines.stream().anyMatch(line -> line.startsWith("Silhouette: ") && line.contains("combat zoom")));
 
@@ -677,6 +681,8 @@ class CampaignStrategicCommandHudTest {
                 .orElse(station);
         List<String> shipyardLines = CampaignSystem.hubServicePreviewLines(ctx, shipyard, CampaignSystem.HubService.SHIPYARD);
         assertTrue(shipyardLines.stream().anyMatch(line -> line.contains("Station hulls are not for sale")));
+        assertTrue(shipyardLines.stream().anyMatch(line -> line.contains("Fleet Ore")
+                && line.contains("Yard Ore")));
         assertTrue(shipyardLines.stream().noneMatch(line -> line.contains("Current Yard Offer: BASE")
                 || line.contains("Current Yard Offer: STATIC_TURRET")
                 || line.contains("Current Yard Offer: MOBILE_STATION")));

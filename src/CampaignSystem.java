@@ -3001,7 +3001,7 @@ public final class CampaignSystem {
                 int sellOre = campaignOreSaleAmount(ctx);
                 int payout = campaignOreSaleCredits(ctx, location, sellOre);
                 lines.add("Request Trade");
-                lines.add("Trading desk buys ore directly from fleet stores.");
+                lines.add("Market exchange can buy stores or sell salvage/ore.");
                 lines.add("Selected ore sale: " + sellOre + " / " + availableOre + " ore  |  Payout: " + payout + " credits");
                 lines.add("Market Bias: " + (profile.alignment == HubAlignment.YELLOW ? "Yellow commerce premium" : "standard frontier exchange"));
             }
@@ -3015,10 +3015,13 @@ public final class CampaignSystem {
                 lines.add("Purchase Ships");
                 lines.add("Current Yard Offer: " + role.name());
                 lines.add("Station hulls are not for sale.");
+                lines.add("Fleet Ore pays player purchases; Yard Ore feeds local faction construction.");
+                lines.add("Fleet Ore: " + currentCampaignOre(ctx) + "  |  Yard Ore: " + Math.max(0, location.oreStockpile)
+                        + "  |  Required Fleet Ore: " + oreCost);
                 lines.add("Role: " + hull.battlefieldRole + "  |  Counter: " + hull.counter + "  |  Weakness: " + hull.weakness);
                 lines.add("Maintenance: " + hull.budgets.maintenance + "  |  Variant: " + hull.factionVariant);
                 lines.add("Silhouette: " + hull.silhouetteCheck);
-                lines.add("Cost: " + creditCost + " credits  |  " + oreCost + " ore  |  " + salvageCost + " salvage");
+                lines.add("Cost: " + creditCost + " credits  |  " + oreCost + " Fleet Ore  |  " + salvageCost + " salvage");
             }
             case SUPPLY -> {
                 lines.add("Request Replenishment");
@@ -7364,20 +7367,20 @@ public final class CampaignSystem {
                 false,
                 "",
                 actionCtx -> requestCampaignAllySupport(actionCtx, false)));
-        out.add(action("LAUNCH_STRIKE",
-                "LAUNCH STRIKE",
-                hasSelectedStrikeTarget ? "Open strategic strike controls for the selected hostile contact."
-                        : "No hostile contact selected.",
-                hasSelectedStrikeTarget ? "Switch to strike actions for torpedoes, carrier sorties, and atomic weapons."
-                        : "Select a hostile contact before opening strike controls.",
-                CampaignActionCategory.STRIKES,
-                true,
-                hasSelectedStrikeTarget,
-                hasSelectedStrikeTarget ? "" : "no hostile contact selected",
-                hasSelectedStrikeTarget ? CampaignActionState.WARNING : CampaignActionState.DISABLED,
-                false,
-                "",
-                actionCtx -> openCampaignCommandTab(actionCtx, UiState.CampaignCommandTab.STRIKES)));
+        if (hasSelectedStrikeTarget) {
+            out.add(action("LAUNCH_STRIKE",
+                    "LAUNCH STRIKE",
+                    "Open strategic strike controls for the selected hostile contact.",
+                    "Switch to strike actions for torpedoes, carrier sorties, and atomic weapons.",
+                    CampaignActionCategory.STRIKES,
+                    true,
+                    true,
+                    "",
+                    CampaignActionState.WARNING,
+                    false,
+                    "",
+                    actionCtx -> openCampaignCommandTab(actionCtx, UiState.CampaignCommandTab.STRIKES)));
+        }
         out.add(action("CONTACT_NEARBY_SHIPS",
                 "CONTACT NEARBY SHIPS",
                 "Review nearby contacts and traffic memory.",
@@ -14360,8 +14363,9 @@ public final class CampaignSystem {
         if (st != null && Double.isFinite(markerX) && Double.isFinite(markerY)) {
             range = "  |  last known range " + (int) Math.round(Math.hypot(markerX - st.playerGalaxyX, markerY - st.playerGalaxyY));
         }
-        return "last seen " + (int) Math.round(Math.max(0.0, force.lastKnownAgeSec)) + "s ago"
+        return "lost bearing; last seen " + (int) Math.round(Math.max(0.0, force.lastKnownAgeSec)) + "s ago"
                 + range
+                + "  |  est vector " + estimatedForceVectorLabel(force)
                 + "  |  sweep recommended";
     }
 
@@ -17512,8 +17516,27 @@ public final class CampaignSystem {
             case TRADE -> {
                 int soldOre = campaignOreSaleAmount(ctx);
                 if (soldOre <= 0 || currentCampaignOre(ctx) <= 0) {
-                    EventSystem.showBanner(ctx, "NO ORE READY FOR MARKET SALE", 1.3);
-                    yield false;
+                    int creditCost = GameContext.scaleCreditEarnings((int) Math.round(140 * priceMul));
+                    int salvageCost = Math.max(2, (int) Math.round(4 / profile.logisticsMul));
+                    if (ctx.credits < creditCost || st.campaignSalvage < salvageCost) {
+                        EventSystem.showBanner(ctx, "TRADE REQUIRES CREDITS AND SALVAGE", 1.3);
+                        yield false;
+                    }
+                    int oreGain = Math.max(18, (int) Math.round(28 * profile.logisticsMul));
+                    int fuelGain = Math.max(4, (int) Math.round(8 * profile.logisticsMul));
+                    int supplyGain = Math.max(3, (int) Math.round(6 * profile.supportMul));
+                    ctx.credits -= creditCost;
+                    st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
+                    setCampaignOre(ctx, st, currentCampaignOre(ctx) + oreGain);
+                    st.campaignFuel += fuelGain;
+                    st.campaignSupplies += supplyGain;
+                    adjustFleetStrain(st, -5.0);
+                    setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
+                    setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
+                    setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
+                    EventSystem.showBanner(ctx, "STORES BOUGHT: +" + oreGain + " ORE  +" + fuelGain
+                            + " FUEL  +" + supplyGain + " SUP  -" + creditCost + " CREDITS", 1.6);
+                    yield true;
                 }
                 int sale = campaignOreSaleCredits(ctx, location, soldOre);
                 if (sale <= 0 || !spendCampaignOre(ctx, soldOre)) {
@@ -20526,7 +20549,7 @@ public final class CampaignSystem {
             double x = centerX + sideX * roleOffset[0] * spacingX + forwardX * roleOffset[1] * spacingY;
             double y = centerY + sideY * roleOffset[0] * spacingX + forwardY * roleOffset[1] * spacingY;
             Ship ship = hostile
-                    ? spawnEnemyAtPoint(ctx, entry.role, x, y)
+                    ? spawnEnemyAtPoint(ctx, entry.role, x, y, entry.name)
                     : spawnCampaignShip(ctx, entry.role, manifest.faction == null ? Faction.ALLY : manifest.faction, x, y, entry.name);
             if (ship != null && entry.condition < 99.5) {
                 ship.hp = Math.max(1, Math.min(ship.hpMax, (int) Math.round(ship.hpMax * MathUtil.clamp(entry.condition / 100.0, 0.05, 1.0))));
@@ -21236,6 +21259,8 @@ public final class CampaignSystem {
         out.add("Build enough strength for the final battle.");
         String current = objectiveCurrentTaskLine(st);
         if (!current.isBlank()) out.add(current);
+        String assets = objectiveAssetHud(st);
+        if (!assets.isBlank()) out.add(assets.trim());
         return out;
     }
 
@@ -22116,8 +22141,6 @@ public final class CampaignSystem {
                                                                                   int maxShipsPerForce) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !Double.isFinite(centerX) || !Double.isFinite(centerY)) return List.of();
-        ensureCampaignForceOwnership(ctx, st);
-        reconcileCampaignFiniteEconomy(ctx, st);
         ArrayList<CampaignForce> candidates = new ArrayList<>();
         double r = Math.max(1.0, radius);
         double r2 = r * r;
@@ -22168,11 +22191,8 @@ public final class CampaignSystem {
                 + "  |  mission " + fleetMissionLabel(force));
         out.add("Movement: " + campaignForceDirectionLabel(force)
                 + (campaignForceCanDrawLiveMovementVector(force) ? "  |  live vector" : "  |  no live vector"));
-        out.add("Route: origin " + fleetLocationName(st, force.sourceLocationId, force.origin)
-                + "  |  destination " + fleetLocationName(st, force.destinationLocationId, "unassigned"));
-        out.add("Logistics: fuel " + (int) Math.round(MathUtil.clamp(force.fuelLevel, 0.0, 100.0)) + "%"
-                + "  |  ammo " + (int) Math.round(MathUtil.clamp(force.ammoLevel, 0.0, 100.0)) + "%"
-                + "  |  supply " + (int) Math.round(MathUtil.clamp(force.supply, 0.0, 100.0)) + "%");
+        out.add(fleetInspectionRouteLine(st, force, intel));
+        out.add(fleetInspectionLogisticsLine(force, intel));
         out.add("Threat: " + fleetThreatReadout(force, intel)
                 + "  |  strength " + (intel.ordinal() >= FleetContactIntelLevel.FACTION_THREAT.ordinal() ? Integer.toString((int) Math.round(force.strength)) : "unknown"));
         out.add("Ships: " + fleetShipCountReadout(total, intel)
@@ -22202,6 +22222,37 @@ public final class CampaignSystem {
         out.add("Recommended Action: " + fleetInspectionRecommendation(force, intel, total, damaged));
         out.add("Consequence If Ignored: " + fleetInspectionConsequence(force, intel));
         return out;
+    }
+
+    private static String fleetInspectionLogisticsLine(CampaignForce force, FleetContactIntelLevel intel) {
+        if (force == null) return "Logistics: unknown";
+        FleetContactIntelLevel resolved = (intel == null) ? FleetContactIntelLevel.UNKNOWN_CONTACT : intel;
+        if (resolved.ordinal() >= FleetContactIntelLevel.FORMATION_SILHOUETTES.ordinal()) {
+            return "Logistics: fuel " + (int) Math.round(MathUtil.clamp(force.fuelLevel, 0.0, 100.0)) + "%"
+                    + "  |  ammo " + (int) Math.round(MathUtil.clamp(force.ammoLevel, 0.0, 100.0)) + "%"
+                    + "  |  supply " + (int) Math.round(MathUtil.clamp(force.supply, 0.0, 100.0)) + "%";
+        }
+        if (resolved.ordinal() >= FleetContactIntelLevel.FACTION_THREAT.ordinal()) {
+            double avg = (MathUtil.clamp(force.fuelLevel, 0.0, 100.0)
+                    + MathUtil.clamp(force.ammoLevel, 0.0, 100.0)
+                    + MathUtil.clamp(force.supply, 0.0, 100.0)) / 3.0;
+            String band = avg >= 72.0 ? "heavy stores" : (avg >= 42.0 ? "adequate stores" : "strained stores");
+            return "Logistics: " + band;
+        }
+        return "Logistics: unknown";
+    }
+
+    private static String fleetInspectionRouteLine(CampaignState st, CampaignForce force, FleetContactIntelLevel intel) {
+        if (force == null) return "Route: unknown";
+        FleetContactIntelLevel resolved = (intel == null) ? FleetContactIntelLevel.UNKNOWN_CONTACT : intel;
+        if (resolved.ordinal() >= FleetContactIntelLevel.FORMATION_SILHOUETTES.ordinal()) {
+            return "Route: origin " + fleetLocationName(st, force.sourceLocationId, force.origin)
+                    + "  |  destination " + fleetLocationName(st, force.destinationLocationId, "unassigned");
+        }
+        if (resolved.ordinal() >= FleetContactIntelLevel.FACTION_THREAT.ordinal()) {
+            return "Route: vector " + campaignForceDirectionLabel(force) + "  |  endpoints unconfirmed";
+        }
+        return "Route: unknown";
     }
 
     private static List<FleetFormationCutout> fleetFormationCutouts(GameContext ctx,
@@ -22699,7 +22750,7 @@ public final class CampaignSystem {
         out.add("Faction Strength: Green favor " + st.greenContractFavor
                 + "  Yellow leverage " + st.yellowLiberationFavor
                 + "  Red collapse " + (st.redGlobalCollapseActive ? "active" : "not active"));
-        out.add("Regional Pressure: " + theaterPressureReadout(ctx));
+        out.add("Regional Danger: " + theaterPressureReadout(ctx));
         out.add("Green Status: " + campaignWarRoomRegionalDetailLine(st));
         out.add("Red Production: " + campaignWarRoomEnemyProductionLine(st));
         return out.subList(0, Math.min(out.size(), Math.max(1, maxLines)));
@@ -22764,7 +22815,7 @@ public final class CampaignSystem {
         out.add("First 90: War Room summarizes objective, fleet readiness, regional danger, economy, and available buttons.");
         out.add("First 90: Green defends and repairs, Yellow trades and reroutes, Red hunts from real bases.");
         out.add("First 90: Enemy ships matter because losses come out of finite inventories and replacement queues.");
-        out.add("First 90 Warning: Dangerous regions show route pressure and intercept forecasts before commitment.");
+        out.add("First 90 Warning: Dangerous regions show route danger and intercept forecasts before commitment.");
         out.add("First 90 Warning: Low supplies, repair needs, and likely Red intercepts appear in resource and threat warnings.");
         out.add("First 90 Warning: Battles can often be avoided by rerouting, waiting, scanning, or striking the source.");
         out.add("First 90 Warning: Battles are strategically useful when they defend Green/Yellow traffic or disrupt Red production.");
@@ -40278,7 +40329,7 @@ public final class CampaignSystem {
     private static boolean autoAdvanceImmediatelyOnObjectiveSecure(CampaignState st) {
         if (st == null) return false;
         return switch (st.sector) {
-            case 4, 13, 21 -> true;
+            case 1, 4, 13, 21 -> true;
             default -> false;
         };
     }
@@ -40703,8 +40754,15 @@ public final class CampaignSystem {
     }
 
     private static Ship spawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y) {
+        return spawnEnemyAtPoint(ctx, role, x, y, null);
+    }
+
+    private static Ship spawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y, String name) {
         double[] protectedSpawn = campaignTacticalSpawnProtectedPoint(ctx, Faction.ENEMY, x, y);
         Ship ship = SpawnSystem.spawnEnemy(ctx, role, protectedSpawn[0], protectedSpawn[1]);
+        if (ship != null && name != null && !name.isBlank()) {
+            ship.name = name.trim();
+        }
         primeCampaignEnemyForContact(ship);
         CampaignState st = state(ctx);
         if (st != null && ship != null) {
@@ -41148,7 +41206,8 @@ public final class CampaignSystem {
         if (updateRetreatCorridorObjective(ctx, st, dt)) return;
 
         switch (st.objectiveType) {
-            case SURVIVE -> st.objectiveProgress = Math.min(st.objectiveGoal, st.objectiveProgress + dt);
+            case SURVIVE -> st.objectiveProgress = Math.min(st.objectiveGoal,
+                    Math.max(st.objectiveProgress + dt, st.sectorElapsed));
             case DESTROY -> st.objectiveProgress = Math.min(st.objectiveGoal, st.kills);
             case BOSS, FINAL_BOSS -> {
                 Ship boss = findShipById(ctx, st.bossTargetId);

@@ -29,6 +29,7 @@ class CampaignOvermapEncounterFlowTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         st.introSequenceActive = false;
+        st.sectorElapsed = 0.0;
 
         double start = st.sectorElapsed;
         CampaignSystem.update(ctx, 10.0);
@@ -82,7 +83,7 @@ class CampaignOvermapEncounterFlowTest {
     void tacticalManualEntryAutoJoinsSecondStrategicTaskForce() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
-        Object taskForce = firstStrategicTaskForce(st);
+        Object taskForce = firstStrategicTaskForce(ctx, st);
         assertNotNull(taskForce);
         st.manualEncounterCommitInProgress = true;
         st.strategicOvermapMode = false;
@@ -258,6 +259,7 @@ class CampaignOvermapEncounterFlowTest {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
         ctx.campaignUnlockProfile = null;
         SpawnSystem.initWorld(ctx);
+        ctx.campaign.sectorElapsed = 240.0;
         return ctx;
     }
 
@@ -287,10 +289,20 @@ class CampaignOvermapEncounterFlowTest {
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("galaxySearchGroups");
         field.setAccessible(true);
         List<?> groups = (List<?>) field.get(st);
+        for (Object group : groups) {
+            if (group != null && getBoolean(group, "hostile")) return group;
+        }
         return groups.isEmpty() ? null : groups.get(0);
     }
 
-    private static Object firstStrategicTaskForce(CampaignSystem.CampaignState st) throws Exception {
+    private static Object firstStrategicTaskForce(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "initializeStrategicTaskForces",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
         Field field = CampaignSystem.CampaignState.class.getDeclaredField("strategicTaskForces");
         field.setAccessible(true);
         List<?> taskForces = (List<?>) field.get(st);

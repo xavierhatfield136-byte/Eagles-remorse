@@ -4,14 +4,18 @@ Start here. The docs are organized by purpose so the next work is visible withou
 
 ## Primary Roadmap
 
-1. `NEXT_STEPS_TO_PLAYABLE_ALPHA.md` - the streamlined implementation order for the Windows-first 2D playable alpha.
-2. `PRODUCTION_OWNER_WORKSHEET.md` - the product decisions that define the alpha.
-3. `CURRENT_CAMPAIGN_STATE.md` - the shortest snapshot of the implemented campaign.
-4. `PRODUCTION_COMPLETION_AUDIT.md` - the standard for deciding whether a feature is truly live.
-5. `CAMPAIGN_CLARITY_AND_CONSEQUENCE_LAYER.md` - the next living-war planning spec for finite fleets, After-Action Reports, War Room, memory, and consequence.
-6. `MASTER_CAMPAIGN_SYSTEMS_CHECKLIST.md` - the full checklist tracker for the living-war, finite-fleet, memory, and consequence overhaul.
-7. `FLEET_CONTACT_EXPANSION_TASK_FORCE_INSPECTION_CHECKLIST.md` - Silent Hunter-style task-force contact expansion and inspection checklist.
-8. `UNBOUNDED_GAME_EXPANSION_BACKLOG.md` - the exhaustive audit appendix. Use it for traceability, not daily execution.
+1. `1_0_OWNER_DECISIONS_AND_IMPLEMENTATION_ROADMAP.md` - binding 1.0 scope, owner decisions, release blockers, and implementation order.
+2. `1_0_MASTER_IMPLEMENTATION_CHECKLIST.md` - the large day-to-day implementation, testing, acceptance, and release tracker for 1.0.
+3. `1_0_OWNER_INPUT_WORKSHEET.md` - the completed owner questionnaire that supplies the 1.0 direction.
+4. `NEXT_STEPS_TO_PLAYABLE_ALPHA.md` - the streamlined implementation order for the Windows-first 2D playable alpha.
+5. `PRODUCTION_OWNER_WORKSHEET.md` - the product decisions that defined the alpha.
+6. `CURRENT_CAMPAIGN_STATE.md` - the shortest snapshot of the implemented campaign.
+7. `PRODUCTION_COMPLETION_AUDIT.md` - the standard for deciding whether a feature is truly live.
+8. `CAMPAIGN_CLARITY_AND_CONSEQUENCE_LAYER.md` - the next living-war planning spec for finite fleets, After-Action Reports, War Room, memory, and consequence.
+9. `MASTER_CAMPAIGN_SYSTEMS_CHECKLIST.md` - the full checklist tracker for the living-war, finite-fleet, memory, and consequence overhaul.
+10. `FLEET_CONTACT_EXPANSION_TASK_FORCE_INSPECTION_CHECKLIST.md` - Silent Hunter-style task-force contact expansion and inspection checklist.
+11. `GAME_AUDIT_REMEDIATION_CHECKLIST.md` - prioritized fixes from the June 2026 game audit.
+12. `UNBOUNDED_GAME_EXPANSION_BACKLOG.md` - the exhaustive audit appendix. Use it for traceability, not daily execution.
 
 ## Alpha Reference Library
 

@@ -13556,8 +13556,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
-
-    // IMPORTANT: This is the method that was likely stubbed/empty in your current project.
     public static void drawShip(Graphics2D g2, Ship ship) {
         ShipRenderer.drawShip(g2, ship);
     }

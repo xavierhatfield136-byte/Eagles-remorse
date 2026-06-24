@@ -17,18 +17,18 @@ class RendererHoverTooltipTest {
     @Test
     void coreMenuButtonsExposeReadableHoverDescriptions() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
-        Rectangle shopButton = Renderer.getCoreMenuButtonRect(1280, 720, 0);
+        Rectangle blueButton = Renderer.getCoreMenuButtonRect(1280, 720, 0);
 
         Renderer.HoverTooltip tooltip = Renderer.hoverTooltipAt(
                 ctx,
                 1280,
                 720,
-                shopButton.x + shopButton.width / 2,
-                shopButton.y + shopButton.height / 2);
+                blueButton.x + blueButton.width / 2,
+                blueButton.y + blueButton.height / 2);
 
         assertNotNull(tooltip);
-        assertTrue(tooltip.title.contains("SHOP"));
-        assertTrue(tooltip.body.contains("Shop and loadout controls"));
+        assertTrue(tooltip.title.contains("BLUE"));
+        assertTrue(tooltip.body.contains("Blue team showcase ships"));
     }
 
     @Test

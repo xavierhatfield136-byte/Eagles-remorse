@@ -1949,8 +1949,8 @@ public final class UISystem {
         double focusX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         double focusY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         if (ctx.player != null && Double.isFinite(ctx.player.x) && Double.isFinite(ctx.player.y)) {
-            focusX = (focusX + ctx.player.x) * 0.5;
-            focusY = (focusY + ctx.player.y) * 0.5;
+            focusX = ctx.player.x;
+            focusY = ctx.player.y;
         }
         focusStrategicMapAt(ctx, focusX, focusY);
         return true;

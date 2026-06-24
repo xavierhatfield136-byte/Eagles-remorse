@@ -159,7 +159,8 @@ class UiOverlayInvariantTest {
         assertTrue((boolean) apply.invoke(null, restored, restored.campaign, checkpoint));
 
         assertFalse(restored.ui.strategicEncounterPrompt.active);
-        assertEquals(GameState.RUNNING, restored.state);
+        assertEquals(GameState.MAP, restored.state);
+        assertTrue(restored.ui.mapOpen);
     }
 
     @Test

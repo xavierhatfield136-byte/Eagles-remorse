@@ -161,6 +161,8 @@ class CampaignForceOwnershipTest {
         assertTrue(full.stream().anyMatch(line -> line.contains("Level 4 - Full Identification")));
         assertTrue(full.stream().anyMatch(line -> line.contains("Formation View: selected fleet expands")));
         assertTrue(full.stream().anyMatch(line -> line.contains("visual child cutouts only")));
+        assertTrue(full.stream().anyMatch(line -> line.startsWith("Logistics: fuel ") && line.contains("%")),
+                "full intel should reveal exact logistics percentages");
         assertTrue(full.stream().anyMatch(line -> line.contains("FLAGSHIP")
                         || line.contains("VANGUARD")
                         || line.contains("SCREEN_LEFT")
@@ -181,6 +183,14 @@ class CampaignForceOwnershipTest {
                 "low-confidence contacts should not fully identify the task force");
         assertTrue(lowIntel.stream().anyMatch(line -> line.contains("Formation View: locked")),
                 "low intel should hide exact formation silhouettes");
+        assertTrue(lowIntel.stream().anyMatch(line -> line.equals("Logistics: unknown")),
+                "low intel should hide exact logistics values");
+        assertTrue(lowIntel.stream().noneMatch(line -> line.startsWith("Logistics: ") && line.contains("%")),
+                "low intel logistics should not include exact percentages");
+        assertTrue(lowIntel.stream().anyMatch(line -> line.equals("Route: unknown")),
+                "low intel should hide exact route endpoints");
+        assertTrue(lowIntel.stream().noneMatch(line -> line.startsWith("Route: origin ")),
+                "low intel route lines should not name origin or destination locations");
     }
 
     @Test
@@ -240,6 +250,19 @@ class CampaignForceOwnershipTest {
         assertEquals(0, liveHostileShipCountNearPlayer(ctx, 1200.0),
                 "inspection cutouts must not spawn independent tactical ships");
 
+        int oreBefore = CampaignSystem.currentCampaignOre(ctx);
+        int poolBefore = privateMapSize(st, "campaignShipPool");
+        int queuesBefore = privateListSize(st, "campaignBaseQueues");
+        List<CampaignSystem.FleetFormationCutout> nearby = CampaignSystem.nearbyHighIntelFleetFormationCutouts(ctx,
+                x, y, 10_000.0, 3, 8);
+        assertFalse(nearby.isEmpty(), "nearby high-intel cutouts should remain available as a read-only map view");
+        assertEquals(oreBefore, CampaignSystem.currentCampaignOre(ctx),
+                "render-time formation cutout reads must not reconcile or mutate campaign ore");
+        assertEquals(poolBefore, privateMapSize(st, "campaignShipPool"),
+                "render-time formation cutout reads must not claim or create finite-pool records");
+        assertEquals(queuesBefore, privateListSize(st, "campaignBaseQueues"),
+                "render-time formation cutout reads must not advance economy queues");
+
         setField(red, "contactState", CampaignSystem.CampaignForceContactState.STALE);
         assertTrue(CampaignSystem.selectedFleetFormationCutouts(ctx, 8).isEmpty(),
                 "stale contacts should collapse and refuse live formation expansion");
@@ -270,6 +293,15 @@ class CampaignForceOwnershipTest {
         assertEquals("Test Damaged Line Ship", readField(first, "name"));
         assertEquals("FLAGSHIP", String.valueOf(readField(first, "formationRole")));
         assertEquals(41.0, (double) readField(first, "condition"), 1e-6);
+
+        invokePrivate("spawnEncounterForceManifest",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class, manifest.getClass(),
+                        double.class, double.class, double.class, double.class, boolean.class},
+                ctx, st, manifest, ctx.player.x + 700.0, ctx.player.y, 1.0, 1.0, true);
+        assertTrue(ctx.ships.stream().anyMatch(ship -> ship != null
+                        && ship.faction == Faction.ENEMY
+                        && "Test Damaged Line Ship".equals(ship.name)),
+                "hostile tactical spawns should preserve persistent finite-pool ship names");
     }
 
     @Test

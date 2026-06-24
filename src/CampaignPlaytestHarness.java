@@ -199,9 +199,9 @@ public final class CampaignPlaytestHarness {
             late.campaign.introSequenceActive = false;
             late.campaign.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() + 2.0;
             late.campaign.objectiveSecured = false;
-            check(!CampaignSystem.canStartSafeMissionExit(late), report, name(), "safe exit still starts after entry window without objective");
-            check(!CampaignSystem.completeSafeMissionExit(late), report, name(), "safe exit completed after entry window without objective");
-            report.note(name(), "entry-window safe exit behavior verified");
+            check(CampaignSystem.canStartSafeMissionExit(late), report, name(), "safe exit unavailable after former entry window");
+            check(CampaignSystem.completeSafeMissionExit(late), report, name(), "safe exit failed after former entry window");
+            report.note(name(), "always-available safe exit behavior verified");
         }
     }
 

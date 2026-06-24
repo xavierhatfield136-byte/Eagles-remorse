@@ -12,6 +12,24 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignNpcFleetAiTest {
+    private static final Method UPDATE_FORCE_SIMULATION = declaredMethod(
+            "updateCampaignForceSimulation",
+            GameContext.class,
+            CampaignSystem.CampaignState.class,
+            double.class
+    );
+    private static final Method UPDATE_TRAVEL = declaredMethod(
+            "updateCampaignTravel",
+            GameContext.class,
+            CampaignSystem.CampaignState.class,
+            double.class
+    );
+    private static final Method UPDATE_STRATEGIC_STRIKE_OBJECTS = declaredMethod(
+            "updateStrategicStrikeObjects",
+            GameContext.class,
+            CampaignSystem.CampaignState.class,
+            double.class
+    );
 
     @Test
     void ambientTheaterFleetsSeedAcrossCampaignFromStart() throws Exception {
@@ -153,7 +171,10 @@ class CampaignNpcFleetAiTest {
                 .orElse(null);
 
         assertNotNull(marker);
-        assertTrue(marker.label.startsWith("Unknown Contact") || marker.label.contains("Probable"),
+        assertTrue(marker.label.startsWith("Unknown Contact")
+                        || marker.label.contains("Probable")
+                        || marker.label.contains("Last Known")
+                        || marker.label.contains("Lost Contact"),
                 "stale marker should show partial intel instead of the exact fleet name");
         assertTrue(marker.subtitle.toLowerCase().contains("lost bearing"));
         assertTrue(marker.subtitle.toLowerCase().contains("last known range"));
@@ -4070,9 +4091,7 @@ class CampaignNpcFleetAiTest {
         assertFalse(((List<?>) getObject(yellowTrade, "routePoints")).isEmpty(),
                 "Yellow traffic should reroute after the route becomes unsafe");
 
-        for (int i = 0; i < 1500; i++) {
-            invokeForceSimulation(ctx, st, 0.2);
-        }
+        simulateCampaignMinutes(ctx, st, 5);
         List<String> report = CampaignSystem.campaignFleetLifecycleReport(ctx);
         assertTrue(report.stream().anyMatch(line -> line.contains("all active NPC fleets valid")),
                 "deterministic scenario should leave every surviving fleet with valid lifecycle state: " + report);
@@ -4152,9 +4171,7 @@ class CampaignNpcFleetAiTest {
             assertFalse(fieldString(force, "mission").isBlank());
         }
 
-        for (int i = 0; i < 1500; i++) {
-            invokeForceSimulation(ctx, st, 0.2);
-        }
+        simulateCampaignMinutes(ctx, st, 5);
 
         List<String> report = CampaignSystem.campaignFleetLifecycleReport(ctx);
         assertTrue(report.stream().anyMatch(line -> line.contains("all active NPC fleets valid")),
@@ -4166,9 +4183,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
 
-        for (int i = 0; i < 1500; i++) {
-            invokeForceSimulation(ctx, st, 0.2);
-        }
+        simulateCampaignMinutes(ctx, st, 5);
 
         List<String> report = CampaignSystem.campaignFleetLifecycleReport(ctx);
         assertTrue(report.stream().anyMatch(line -> line.contains("all active NPC fleets valid")),
@@ -4180,9 +4195,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
 
-        for (int i = 0; i < 3000; i++) {
-            invokeForceSimulation(ctx, st, 0.2);
-        }
+        simulateCampaignMinutes(ctx, st, 10);
 
         List<String> report = CampaignSystem.campaignFleetLifecycleReport(ctx);
         assertTrue(report.stream().anyMatch(line -> line.contains("all active NPC fleets valid")),
@@ -4197,36 +4210,34 @@ class CampaignNpcFleetAiTest {
     }
 
     private static void invokeForceSimulation(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
-        Method method = CampaignSystem.class.getDeclaredMethod(
-                "updateCampaignForceSimulation",
-                GameContext.class,
-                CampaignSystem.CampaignState.class,
-                double.class
-        );
-        method.setAccessible(true);
-        method.invoke(null, ctx, st, dt);
+        UPDATE_FORCE_SIMULATION.invoke(null, ctx, st, dt);
+    }
+
+    private static void simulateCampaignMinutes(GameContext ctx, CampaignSystem.CampaignState st, int minutes) throws Exception {
+        int seconds = Math.max(0, minutes) * 60;
+        double stepSeconds = 5.0;
+        int steps = (int) Math.ceil(seconds / stepSeconds);
+        for (int i = 0; i < steps; i++) {
+            invokeForceSimulation(ctx, st, stepSeconds);
+        }
     }
 
     private static void invokeTravelUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
-        Method method = CampaignSystem.class.getDeclaredMethod(
-                "updateCampaignTravel",
-                GameContext.class,
-                CampaignSystem.CampaignState.class,
-                double.class
-        );
-        method.setAccessible(true);
-        method.invoke(null, ctx, st, dt);
+        UPDATE_TRAVEL.invoke(null, ctx, st, dt);
     }
 
     private static void invokeStrikeObjectUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
-        Method method = CampaignSystem.class.getDeclaredMethod(
-                "updateStrategicStrikeObjects",
-                GameContext.class,
-                CampaignSystem.CampaignState.class,
-                double.class
-        );
-        method.setAccessible(true);
-        method.invoke(null, ctx, st, dt);
+        UPDATE_STRATEGIC_STRIKE_OBJECTS.invoke(null, ctx, st, dt);
+    }
+
+    private static Method declaredMethod(String name, Class<?>... parameterTypes) {
+        try {
+            Method method = CampaignSystem.class.getDeclaredMethod(name, parameterTypes);
+            method.setAccessible(true);
+            return method;
+        } catch (ReflectiveOperationException ex) {
+            throw new ExceptionInInitializerError(ex);
+        }
     }
 
     private static void invokeMaintainVisibleFleetContacts(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {

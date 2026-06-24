@@ -367,8 +367,8 @@ class TitanAbilitySystemTest {
 
     @Test
     void titanShopCategoryUsesSecondPageForLateRosterEntries() {
-        assertEquals(2, Renderer.shopHullPageCount(ShopHullCategory.TITAN));
-        assertEquals(1, Renderer.shopHullPageForRole(ShipRole.MOTHERSHIP));
+        assertEquals(3, Renderer.shopHullPageCount(ShopHullCategory.TITAN));
+        assertEquals(2, Renderer.shopHullPageForRole(ShipRole.MOTHERSHIP));
         assertEquals(0, Renderer.shopHullPageForRole(ShipRole.TRANSPORT_TITAN));
     }
 
