@@ -78,9 +78,9 @@ public class Asteroid {
     }
 
     private int computeDurability() {
-        double sizeFactor = Math.max(8.0, collisionRadius()) * 2.4;
-        double oreFactor = Math.sqrt(Math.max(0, oreMax)) * 0.85;
-        int durability = (int) Math.round(26.0 + sizeFactor + oreFactor);
-        return Math.max(24, durability);
+        double sizeFactor = Math.max(8.0, collisionRadius()) * 4.2;
+        double oreFactor = Math.sqrt(Math.max(0, oreMax)) * 1.25;
+        int durability = (int) Math.round(48.0 + sizeFactor + oreFactor);
+        return Math.max(72, durability);
     }
 }

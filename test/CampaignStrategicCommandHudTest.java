@@ -19,6 +19,23 @@ import static org.junit.jupiter.api.Assertions.*;
 class CampaignStrategicCommandHudTest {
 
     @Test
+    void criticalCampaignCopyUsesPlayerFacingTerms() {
+        GameContext ctx = initializedCampaignContext();
+        String resources = String.join("\n", CampaignSystem.campaignResourceManagerLines(ctx));
+        String support = String.join("\n", CampaignSystem.campaignWarSupportReadoutLines(ctx));
+        String fleet = String.join("\n", CampaignSystem.campaignFleetRosterLines(ctx, 4));
+
+        assertTrue(resources.contains("Strike Availability"));
+        assertTrue(resources.contains("Recovery Resources"));
+        assertTrue(support.contains("Green reputation"));
+        assertTrue(support.contains("Yellow reputation"));
+        assertTrue(support.contains("Next Green threshold"));
+        assertTrue(fleet.contains("H ") && fleet.contains("S "));
+        assertFalse(resources.contains("Route Tempo"));
+        assertFalse(support.contains("Yellow leverage"));
+    }
+
+    @Test
     void freeTravelCanBeSelectedAndStartedWithoutPoi() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -84,7 +101,7 @@ class CampaignStrategicCommandHudTest {
         assertTrue(finder.stream().anyMatch(line -> line.startsWith("Selected: ")));
         assertTrue(finder.stream().anyMatch(line -> line.startsWith("Route Vector: ")));
         assertTrue(finder.stream().anyMatch(line -> line.startsWith("Note: ")));
-        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Green Channel Favor: ")));
+        assertTrue(comms.stream().anyMatch(line -> line.startsWith("Green Reputation: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Contacts: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Reputation: ")));
         assertTrue(comms.stream().anyMatch(line -> line.startsWith("Crew: ")));
@@ -575,8 +592,7 @@ class CampaignStrategicCommandHudTest {
                 && entry.configurationLabel.contains("variant")
                 && entry.configurationLabel.contains("combat zoom")));
         assertTrue(entries.stream().allMatch(entry -> entry.personnelLabel.contains("MORALE")));
-        assertTrue(entries.stream().anyMatch(entry -> entry.readinessLabel.startsWith("READY")
-                || entry.readinessLabel.startsWith("STRAINED") || entry.readinessLabel.startsWith("UNREADY")));
+        assertTrue(entries.stream().anyMatch(entry -> entry.readinessLabel.startsWith("COMBAT CONDITION ")));
         assertTrue(actions.stream().anyMatch(action -> "FLEET_COMMIT_NOW".equals(action.id)));
         assertTrue(actions.stream().anyMatch(action -> "FLEET_ASSIGN_FLAG".equals(action.id)));
     }
@@ -889,6 +905,87 @@ class CampaignStrategicCommandHudTest {
         assertTrue(CampaignSystem.currentCampaignOre(ctx) > oreBefore);
         assertTrue(CampaignSystem.transitionSummaryTop(ctx).contains("ORE RECOVERED"));
         assertTrue(CampaignSystem.transitionSummaryBottom(ctx).contains("Route detour paid off"));
+    }
+
+    @Test
+    void localSiteEntryClearsStaleSafeExitWarpState() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation resource = firstLocationOfType(ctx, "RESOURCE_ZONE");
+        assertNotNull(resource);
+
+        st.playerGalaxyX = resource.x;
+        st.playerGalaxyY = resource.y;
+        st.selectedGalaxyLocationId = resource.id;
+        assertTrue(ctx.player.beginBattlefieldWarp(ctx.player.x + 1000.0, ctx.player.y, 0.01));
+        ctx.command.safeMissionExitPending = true;
+        ctx.command.safeMissionExitReady = true;
+        ctx.command.playerTeleportCharging = true;
+        ctx.command.playerTeleportChargeRemaining = ctx.player.warpChargeRemaining();
+
+        assertTrue(CampaignSystem.launchSelectedLocalEncounter(ctx));
+
+        assertTrue(st.galaxyEncounterActive);
+        assertTrue(st.galaxyAmbientEncounterActive);
+        assertFalse(ctx.command.safeMissionExitPending);
+        assertFalse(ctx.command.safeMissionExitReady);
+        assertFalse(ctx.command.playerTeleportCharging);
+        assertEquals(0.0, ctx.command.playerTeleportChargeRemaining, 0.0001);
+        assertFalse(ctx.player.isWarpCharging());
+    }
+
+    @Test
+    void enterSiteMapButtonKeepsTacticalMissionRunningAcrossFrames() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation resource = firstLocationOfType(ctx, "RESOURCE_ZONE");
+        assertNotNull(resource);
+
+        st.playerGalaxyX = resource.x;
+        st.playerGalaxyY = resource.y;
+        st.selectedGalaxyLocationId = resource.id;
+        ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.NAV;
+        int viewW = 1280;
+        int viewH = 720;
+        Rectangle panel = Renderer.getStrategicMapSidebarRect(viewW, viewH, true);
+        Method actionRect = Renderer.class.getDeclaredMethod(
+                "galaxyActionRect",
+                GameContext.class,
+                Rectangle.class,
+                String.class
+        );
+        actionRect.setAccessible(true);
+        Rectangle rect = (Rectangle) actionRect.invoke(null, ctx, panel, "ENTER_SITE");
+        assertNotNull(rect);
+        MouseEvent click = new MouseEvent(
+                new Canvas(),
+                MouseEvent.MOUSE_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+                1,
+                false,
+                MouseEvent.BUTTON1
+        );
+
+        assertTrue(UISystem.handleCampaignMapUiClick(ctx, click, viewW, viewH));
+        assertFalse(ctx.ui.mapOpen);
+        assertEquals(GameState.RUNNING, ctx.state);
+
+        GameSimulationRuntime runtime = new GameSimulationRuntime(ctx);
+        long frame = System.nanoTime();
+        for (int i = 1; i <= 6; i++) {
+            runtime.advanceFrame(frame + i * 20_000_000L,
+                    new InputSnapshot(false, false, false, false, false, rect.x, rect.y),
+                    viewW,
+                    viewH,
+                    1.0);
+            assertFalse(ctx.ui.mapOpen, "map reopened on simulation frame " + i);
+            assertEquals(GameState.RUNNING, ctx.state, "game left tactical state on frame " + i);
+            assertFalse(st.strategicOvermapMode, "overmap mode restored on frame " + i);
+            assertTrue(st.galaxyAmbientEncounterActive, "site encounter stopped on frame " + i);
+        }
     }
 
     @Test
@@ -1523,7 +1620,7 @@ class CampaignStrategicCommandHudTest {
         assertEquals(st.campaignAmmo, ledger.stores.get(EconomyLogisticsIndustrySystem.Resource.AMMUNITION));
         assertEquals(st.campaignSupplies, ledger.stores.get(EconomyLogisticsIndustrySystem.Resource.PROVISIONS));
         assertTrue(CampaignSystem.campaignResourceManagerLines(ctx).stream()
-                .anyMatch(line -> line.startsWith("Expansion Ledger: Readiness ")));
+                .anyMatch(line -> line.startsWith("Expansion Ledger: Production Progress ")));
     }
 
     @Test

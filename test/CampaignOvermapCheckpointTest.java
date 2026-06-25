@@ -246,6 +246,9 @@ class CampaignOvermapCheckpointTest {
         st.playerGalaxyX = 7001.25;
         st.playerGalaxyY = 933.5;
         st.playerGalaxyHeadingDeg = -12.0;
+        st.selectedFreeGalaxyTargetX = 7444.5;
+        st.selectedFreeGalaxyTargetY = 811.25;
+        st.transientGalaxySiteSerial = 17;
         st.activeGalaxyEncounterSearchGroupId = 3;
         st.selectedFleetPostureId = "RESCUE_PRIORITY";
         st.fleetStrain = 33.0;
@@ -257,6 +260,7 @@ class CampaignOvermapCheckpointTest {
         st.strategicAtomicCharges = 1;
         st.galaxyTravel.originId = "poi-05";
         st.galaxyTravel.destinationId = "poi-06";
+        st.galaxyTravel.destinationLabel = "Telemetry Reach";
         st.galaxyTravel.progress = 0.625;
         st.galaxyTravel.durationSec = 22.0;
         st.galaxyTravel.traveling = true;
@@ -264,6 +268,7 @@ class CampaignOvermapCheckpointTest {
         st.galaxyTravel.targetX = 8120.0;
         st.galaxyTravel.targetY = 840.0;
         st.galaxyTravel.speed = 205.0;
+        st.galaxyTravel.freeTravel = true;
         st.transitEventCooldownSec = 1.75;
         st.transitEncounterPressure = 2.75;
         st.transitNextEncounterThreshold = 6.25;
@@ -290,6 +295,9 @@ class CampaignOvermapCheckpointTest {
         assertEquals(7001.25, loaded.playerGalaxyX, 1e-9);
         assertEquals(933.5, loaded.playerGalaxyY, 1e-9);
         assertEquals(-12.0, loaded.playerGalaxyHeadingDeg, 1e-9);
+        assertEquals(7444.5, loaded.selectedFreeGalaxyTargetX, 1e-9);
+        assertEquals(811.25, loaded.selectedFreeGalaxyTargetY, 1e-9);
+        assertEquals(17, loaded.transientGalaxySiteSerial);
         assertEquals(3, loaded.activeGalaxyEncounterSearchGroupId);
         assertEquals("RESCUE_PRIORITY", loaded.selectedFleetPostureId);
         assertEquals(33.0, loaded.fleetStrain, 1e-9);
@@ -302,12 +310,14 @@ class CampaignOvermapCheckpointTest {
         assertTrue(loaded.galaxyTravelTraveling);
         assertEquals("poi-05", loaded.galaxyTravelOriginId);
         assertEquals("poi-06", loaded.galaxyTravelDestinationId);
+        assertEquals("Telemetry Reach", loaded.galaxyTravelDestinationLabel);
         assertEquals(0.625, loaded.galaxyTravelProgress, 1e-9);
         assertEquals(22.0, loaded.galaxyTravelDurationSec, 1e-9);
         assertEquals(47.0, loaded.galaxyTravelInterceptionRisk, 1e-9);
         assertEquals(8120.0, loaded.galaxyTravelTargetX, 1e-9);
         assertEquals(840.0, loaded.galaxyTravelTargetY, 1e-9);
         assertEquals(205.0, loaded.galaxyTravelSpeed, 1e-9);
+        assertTrue(loaded.galaxyTravelFreeTravel);
         assertEquals(1.75, loaded.transitEventCooldownSec, 1e-9);
         assertEquals(2.75, loaded.transitEncounterPressure, 1e-9);
         assertEquals(6.25, loaded.transitNextEncounterThreshold, 1e-9);

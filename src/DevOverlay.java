@@ -26,7 +26,8 @@ public final class DevOverlay {
         g2.setFont(new Font("Consolas", Font.PLAIN, 14));
 
         List<String> expansionInspector = ExpansionIntegrationInspector.lines(ctx);
-        int lineCount = 33 + minerLines + expansionInspector.size();
+        List<String> campaignIntegrity = CampaignSystem.campaignIntegrityDiagnosticLines(ctx);
+        int lineCount = 33 + minerLines + expansionInspector.size() + campaignIntegrity.size();
         if (ctx != null && ctx.config != null && ctx.config.mode == GameMode.FOUR_TEAM_DOMINATION) {
             lineCount++;
         }
@@ -66,6 +67,11 @@ public final class DevOverlay {
         drawLine(g2, x, y, "Living War: " + CampaignSystem.campaignLivingWarDebugReadout(ctx));
 
         for (String line : expansionInspector) {
+            y += lineH;
+            drawLine(g2, x, y, line);
+        }
+
+        for (String line : campaignIntegrity) {
             y += lineH;
             drawLine(g2, x, y, line);
         }

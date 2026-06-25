@@ -37,6 +37,7 @@ final class ExperienceSettingsDialog {
         JComboBox<ExperienceSettings.InteractionMode> mining = new JComboBox<>(ExperienceSettings.InteractionMode.values());
         JComboBox<ExperienceSettings.InteractionMode> firing = new JComboBox<>(ExperienceSettings.InteractionMode.values());
         JComboBox<ExperienceSettings.InteractionMode> map = new JComboBox<>(ExperienceSettings.InteractionMode.values());
+        JLabel modifierPreview = new JLabel();
         mining.setSelectedItem(base.miningMode);
         firing.setSelectedItem(base.firingMode);
         map.setSelectedItem(base.mapMode);
@@ -48,7 +49,9 @@ final class ExperienceSettingsDialog {
             lethality.setValue((int) Math.round(values.combatLethality * 100.0));
             pressure.setValue((int) Math.round(values.strategicPressure * 100.0));
             attrition.setValue((int) Math.round(values.attrition * 100.0));
+            modifierPreview.setText(modifierPreview(values));
         });
+        modifierPreview.setText(modifierPreview(base));
 
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -57,6 +60,7 @@ final class ExperienceSettingsDialog {
         panel.add(row("Combat lethality", lethality));
         panel.add(row("Strategic pressure", pressure));
         panel.add(row("Attrition", attrition));
+        panel.add(modifierPreview);
         panel.add(Box.createVerticalStrut(8));
         panel.add(row("Colorblind palette", palette));
         panel.add(row("UI text scale", textScale));
@@ -117,5 +121,11 @@ final class ExperienceSettingsDialog {
 
     private static double number(JSlider slider) {
         return slider.getValue() / 100.0;
+    }
+
+    private static String modifierPreview(ExperienceSettings settings) {
+        return "<html><b>Rules shown before launch</b><br>"
+                + String.join("<br>", settings.modifierSummaryLines())
+                + "</html>";
     }
 }

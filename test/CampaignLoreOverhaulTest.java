@@ -13,6 +13,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignLoreOverhaulTest {
 
+    @Test
+    void ordinaryAmbientEncountersUseDeepSpaceWhileAuthoredOrbitKeepsPlanetBackdrop() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.galaxyAmbientEncounterActive = true;
+        ctx.campaign.activeGalaxyEncounterLocationId = "aoi-cache-1";
+        assertEquals("deep_space_encounter", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("space_nebula", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertFalse(Renderer.campaignBackdropReplacesNebula(ctx));
+
+        ctx.campaign.galaxyAmbientEncounterActive = false;
+        startSector(ctx, 24);
+        assertEquals("earth_high_orbit", Renderer.campaignBackdropDebugName(ctx));
+        assertEquals("homeworld_citylights", Renderer.campaignBackdropFieldModeDebugName(ctx));
+        assertTrue(Renderer.campaignBackdropReplacesNebula(ctx));
+    }
+
     @AfterEach
     void cleanupCheckpoint() {
         CampaignCheckpointStore.clear();

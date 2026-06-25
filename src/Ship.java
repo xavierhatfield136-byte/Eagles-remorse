@@ -2826,6 +2826,16 @@ public abstract class Ship {
         return Math.max(0.0, Math.min(1.0, crewReadiness));
     }
 
+    void applyPersistentCombatState(double armorFraction, double readinessFraction) {
+        crewReadiness = MathUtil.clamp(readinessFraction, 0.05, 1.0);
+        syncDefenseGateState(false);
+        double armor = MathUtil.clamp(armorFraction, 0.0, 1.0);
+        for (int face = 0; face < SHIELD_FACE_COUNT; face++) {
+            int cap = Math.max(0, armorGateHitsMax[face]);
+            armorGateHitsRemaining[face] = Math.max(0, Math.min(cap, (int) Math.round(cap * armor)));
+        }
+    }
+
     public double crewFatigue() {
         return 0.0;
     }

@@ -18,10 +18,11 @@ class ExpansionIntegrationInspectorTest {
 
         List<String> lines = ExpansionIntegrationInspector.lines(ctx);
 
-        assertTrue(lines.stream().anyMatch(line -> line.contains("developer/model-only audit")
+        assertTrue(lines.stream().anyMatch(line -> line.contains("projection/model-only audit")
                 && line.contains("active 8/8")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("ledger burden 7")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("reputation reasons 1")));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("MODEL-ONLY candidates")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("PROJECTION ONLY")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("DEFERRED MODEL")));
     }
 }

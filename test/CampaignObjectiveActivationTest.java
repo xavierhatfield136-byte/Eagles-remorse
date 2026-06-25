@@ -183,7 +183,7 @@ class CampaignObjectiveActivationTest {
         st.sectorElapsed = CampaignSystem.safeMissionExitEntryWindowSeconds() + 0.1;
 
         assertTrue(CampaignSystem.canStartSafeMissionExit(ctx));
-        assertEquals("SAFE EXIT READY", CampaignSystem.extractionReadinessBanner(ctx));
+        assertEquals("WITHDRAW TO STRATEGIC MAP READY", CampaignSystem.extractionReadinessBanner(ctx));
         assertTrue(CampaignSystem.completeSafeMissionExit(ctx));
         assertTrue(CampaignSystem.isStrategicOvermapMode(ctx));
     }

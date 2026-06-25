@@ -186,7 +186,7 @@ public final class FogOfWarSystem {
         Faction perspective = ctx.player.faction;
         for (Ship ship : ctx.ships) {
             if (!isRevealSource(ship, perspective)) continue;
-            revealFromSource(fog, ship);
+            revealFromSource(ctx, fog, ship);
         }
         for (Ship ship : ctx.ships) {
             if (!isTrackableHostile(ship, perspective)) continue;
@@ -550,9 +550,11 @@ public final class FogOfWarSystem {
                 && !ship.faction.isFriendlyTo(perspective);
     }
 
-    private static void revealFromSource(State fog, Ship source) {
+    private static void revealFromSource(GameContext ctx, State fog, Ship source) {
         if (fog == null || source == null) return;
-        double radius = SENSOR_BASE_RANGE * Math.max(0.16, source.sensorRangeMultiplier());
+        double radius = SENSOR_BASE_RANGE
+                * Math.max(0.16, source.sensorRangeMultiplier())
+                * CampaignSystem.tacticalSensorMultiplier(ctx);
         if (!Double.isFinite(radius) || radius <= 0.0) return;
         revealCircle(fog, source.x, source.y, radius);
     }

@@ -31,6 +31,8 @@ public final class EconomySystem {
     private static final double TRANSPORT_SUPPORT_MIN_RANGE = 220.0;
     private static final double TRANSPORT_ROOM_HEAL_FRAC_PER_SEC = 0.017;
     private static final double TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC = 0.12;
+    private static final double TRANSPORT_SUPPLY_COST_PER_SEC = 0.20;
+    private static final int TRANSPORT_SUPPORT_STACK_CAP = 2;
     private static final double HAULER_TRANSFER_RANGE = 120.0;
     private static final double HAULER_TRANSFER_PER_SEC = 120.0;
     private static final double HAULER_SEARCH_RANGE = 1600.0;
@@ -960,6 +962,8 @@ public final class EconomySystem {
 
     private static void applyTransportSupportAuras(GameContext ctx, double dt) {
         if (ctx == null || dt <= 0.0) return;
+        HashMap<Integer, Integer> supportStacks = new HashMap<>();
+        int activeTransports = 0;
         for (Ship transport : ctx.ships) {
             if (transport == null) continue;
             if (!transport.alive || transport.dying || transport.hp <= 0) continue;
@@ -969,13 +973,23 @@ public final class EconomySystem {
             double range = Math.max(TRANSPORT_SUPPORT_MIN_RANGE, transport.repairRange);
             double range2 = range * range;
             double supportMul = transport.supportFieldMultiplier();
+            ArrayList<Ship> supported = new ArrayList<>();
             for (Ship ally : ctx.ships) {
                 if (ally == null) continue;
                 if (!ally.alive || ally.dying || ally.hp <= 0) continue;
                 if (ally.faction == null || ally.faction.teamId() != transport.faction.teamId()) continue;
                 if (ally.role == ShipRole.BASE || ally.role == ShipRole.STATIC_TURRET) continue;
                 if (GameMath.dist2(ally.x, ally.y, transport.x, transport.y) > range2) continue;
-
+                if (!needsTransportInternalSupport(ally)) continue;
+                int stacks = supportStacks.getOrDefault(ally.id, 0);
+                if (stacks >= TRANSPORT_SUPPORT_STACK_CAP) continue;
+                supported.add(ally);
+            }
+            if (supported.isEmpty()) continue;
+            if (!CampaignSystem.consumeTransportRepairSupport(ctx, TRANSPORT_SUPPLY_COST_PER_SEC, dt)) continue;
+            activeTransports++;
+            for (Ship ally : supported) {
+                supportStacks.put(ally.id, supportStacks.getOrDefault(ally.id, 0) + 1);
                 ally.applySupportField(
                         TRANSPORT_ROOM_HEAL_FRAC_PER_SEC * supportMul,
                         TRANSPORT_FIRE_REDUCTION_FRAC_PER_SEC * supportMul,
@@ -983,6 +997,16 @@ public final class EconomySystem {
                 );
             }
         }
+        CampaignSystem.reportTransportRepairSupport(ctx, activeTransports);
+    }
+
+    private static boolean needsTransportInternalSupport(Ship ship) {
+        if (ship == null) return false;
+        for (Ship.RoomStatus room : ship.roomStatusSnapshot()) {
+            if (room == null || room.roomId == null || ShipRoomLayout.isArmorRoom(room.roomId)) continue;
+            if (room.hp + 1e-6 < room.hpMax || room.fireIntensity > 0.02 || room.disrupted) return true;
+        }
+        return false;
     }
 
     private static void updateNpcBaseUpgradePrograms(GameContext ctx, double dt) {

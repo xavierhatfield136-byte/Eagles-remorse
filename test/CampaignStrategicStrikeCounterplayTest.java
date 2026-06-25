@@ -15,6 +15,93 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CampaignStrategicStrikeCounterplayTest {
 
     @Test
+    void strikeAvailabilityContractShowsInventoryCostsIntelRiskAndRecovery() {
+        GameContext ctx = initializedCampaignContext();
+        List<CampaignSystem.StrikeAvailabilityBrief> briefs = CampaignSystem.campaignStrikeAvailability(ctx);
+
+        assertEquals(3, briefs.size());
+        for (CampaignSystem.StrikeAvailabilityBrief brief : briefs) {
+            assertFalse(brief.inventory.isBlank());
+            assertTrue(brief.resourceCost.contains("Ammo"));
+            assertTrue(brief.resourceCost.contains("Fuel"));
+            assertTrue(brief.resourceCost.contains("Supplies"));
+            assertFalse(brief.capacityCost.isBlank());
+            assertFalse(brief.requiredIntel.isBlank());
+            assertFalse(brief.estimatedEffect.isBlank());
+            assertFalse(brief.retaliationRisk.isBlank());
+            assertFalse(brief.unavailableReason.isBlank());
+            assertTrue(brief.replenishment.contains("Strike Rearm")
+                            || brief.replenishment.contains("Rearm at"),
+                    "strike recovery must be discoverable before launch");
+        }
+        assertTrue(briefs.stream()
+                .filter(brief -> "Carrier Sortie".equals(brief.strikeName))
+                .allMatch(brief -> brief.inventory.contains("reusable")));
+        assertTrue(briefs.stream()
+                .filter(brief -> !"Carrier Sortie".equals(brief.strikeName))
+                .allMatch(brief -> brief.inventory.contains("expendable")));
+    }
+
+    @Test
+    void failedStrikeValidationConsumesNothing() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicTorpedoCharges = 2;
+        st.campaignAmmo = 80;
+        st.campaignFuel = 70;
+        st.campaignSupplies = 60;
+
+        assertFalse(CampaignSystem.launchStrategicTorpedoStrike(ctx, -999999.0, -999999.0));
+        assertEquals(2, st.strategicTorpedoCharges);
+        assertEquals(80, st.campaignAmmo);
+        assertEquals(70, st.campaignFuel);
+        assertEquals(60, st.campaignSupplies);
+        assertEquals(0, st.strategicStrikeObjects.size());
+    }
+
+    @Test
+    void everyStrategicStrikeStartsAtTheLaunchingFleet() throws Exception {
+        assertStrategicStrikeStartsAtLauncher("TORPEDO");
+        assertStrategicStrikeStartsAtLauncher("SORTIE");
+        assertStrategicStrikeStartsAtLauncher("ATOMIC");
+    }
+
+    @Test
+    void tacticalMissilesUseAValidEntryVectorInsteadOfSpawningOnTarget() throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.CIWS_CORVETTE}
+        );
+        Ship target = firstLiveHostileShip(ctx);
+        assertNotNull(target);
+        ctx.player.x = target.x - 2400.0;
+        ctx.player.y = target.y + 300.0;
+
+        Missile torpedo = (Missile) invokePrivateStatic("spawnTacticalStrikeMissile",
+                new Class<?>[]{GameContext.class, Class.forName("CampaignSystem$StrategicStrikePayload"),
+                        Ship.class, double.class, double.class, double.class, int.class, double.class},
+                ctx, enumConstant(Class.forName("CampaignSystem$StrategicStrikePayload"), "TORPEDO"),
+                target, target.x, target.y, 0.0, 200, 120.0);
+        Missile atomic = (Missile) invokePrivateStatic("spawnTacticalStrikeMissile",
+                new Class<?>[]{GameContext.class, Class.forName("CampaignSystem$StrategicStrikePayload"),
+                        Ship.class, double.class, double.class, double.class, int.class, double.class},
+                ctx, enumConstant(Class.forName("CampaignSystem$StrategicStrikePayload"), "ATOMIC"),
+                target, target.x, target.y, 0.0, 400, 640.0);
+
+        assertNotNull(torpedo);
+        assertNotNull(atomic);
+        assertTrue(Math.hypot(torpedo.x - target.x, torpedo.y - target.y) >= 900.0);
+        assertTrue(Math.hypot(atomic.x - target.x, atomic.y - target.y) >= atomic.blastRadius + 300.0);
+        assertTrue(Math.hypot(torpedo.x - ctx.player.x, torpedo.y - ctx.player.y)
+                        < Math.hypot(target.x - ctx.player.x, target.y - ctx.player.y),
+                "torpedo must enter from the launching fleet's side of the target");
+        assertTrue(ctx.audioEvents.stream().anyMatch(event -> "sfx.weapon.torpedo_launch".equals(event.eventId)
+                        && event.variantSeed >= 0));
+        assertTrue(ctx.audioEvents.stream().anyMatch(event -> "sfx.weapon.missile_launch".equals(event.eventId)
+                        && event.variantSeed >= 0));
+    }
+
+    @Test
     void torpedoStrikeConsumesResourcesAndTriggersCounterplay() throws Exception {
         GameContext ctx = tacticalStrikeContext(
                 10,
@@ -305,7 +392,7 @@ class CampaignStrategicStrikeCounterplayTest {
         setDouble(group, "y", st.playerGalaxyY + 1300.0);
         setDouble(group, "lastKnownX", lastX);
         setDouble(group, "lastKnownY", lastY);
-        setDouble(group, "lastKnownAgeSec", 44.0);
+        setDouble(group, "lastKnownAgeSec", 24.0);
         setBoolean(group, "visible", true);
         setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
         setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "CLASSIFIED"));
@@ -318,7 +405,7 @@ class CampaignStrategicStrikeCounterplayTest {
         assertNotNull(marker);
         assertEquals(lastX, marker.x, 1e-6);
         assertEquals(lastY, marker.y, 1e-6);
-        assertTrue(marker.subtitle.contains("44s old"));
+        assertTrue(marker.subtitle.contains("24s old"));
         assertTrue(marker.subtitle.contains("Last-known sensor memory"));
         assertFalse(marker.subtitle.contains("Vectoring toward the fleet"),
                 "lost search-group shadows should not describe live player-chase vectors");
@@ -392,6 +479,38 @@ class CampaignStrategicStrikeCounterplayTest {
 
         assertEquals("Clear", CampaignSystem.campaignHuntStatusReadout(ctx),
                 "lost search-group shadows must not make the map report active pursuit");
+    }
+
+    @Test
+    void lostContactExpiryScalesWithIntelAndInvalidatesSelection() throws Exception {
+        String[] intelLevels = {"UNKNOWN", "CLASSIFIED", "IDENTIFIED", "TRACKED", "TARGET_QUALITY"};
+        double[] windows = {15.0, 30.0, 45.0, 60.0, 75.0};
+        for (int i = 0; i < intelLevels.length; i++) {
+            GameContext ctx = initializedCampaignContext();
+            Object group = firstSearchGroup(ctx.campaign);
+            assertNotNull(group);
+            setObject(group, "contactConfidence",
+                    enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
+            setObject(group, "intelQuality",
+                    enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), intelLevels[i]));
+            setBoolean(group, "visible", true);
+            setDouble(group, "lastKnownAgeSec", windows[i] - 0.5);
+            setDouble(group, "lastKnownX", ctx.campaign.playerGalaxyX + 300.0);
+            setDouble(group, "lastKnownY", ctx.campaign.playerGalaxyY + 200.0);
+            assertTrue(CampaignSystem.activeSupportMarkers(ctx).stream()
+                            .anyMatch(marker -> marker.subtitle.contains("Last-known sensor memory")),
+                    intelLevels[i] + " contact should remain actionable inside its memory window");
+
+            setDouble(group, "lastKnownAgeSec", windows[i] + 0.5);
+            assertFalse(CampaignSystem.activeSupportMarkers(ctx).stream()
+                            .anyMatch(marker -> marker.subtitle.contains("Last-known sensor memory")),
+                    intelLevels[i] + " contact should leave the normal HUD after expiry");
+
+            CampaignSystem.selectCampaignContactTarget(ctx, "Expired Contact", "", intelLevels[i],
+                    getDouble(group, "x"), getDouble(group, "y"), true, true);
+            assertFalse(CampaignSystem.hasSelectedCampaignContactTarget(ctx),
+                    "expired contact must not remain selectable for strikes or navigation");
+        }
     }
 
     @Test
@@ -729,6 +848,29 @@ class CampaignStrategicStrikeCounterplayTest {
         field.setAccessible(true);
         List<?> strikes = (List<?>) field.get(st);
         return strikes.size();
+    }
+
+    private static void assertStrategicStrikeStartsAtLauncher(String payload) throws Exception {
+        GameContext ctx = tacticalStrikeContext(
+                10,
+                new ShipRole[]{ShipRole.CARRIER, ShipRole.BATTLECRUISER, ShipRole.CIWS_CORVETTE}
+        );
+        Object taskForce = firstHostileTaskForce(ctx.campaign);
+        assertNotNull(taskForce);
+        double targetX = taskForceCenterX(ctx, ctx.campaign, taskForce);
+        double targetY = taskForceCenterY(ctx, ctx.campaign, taskForce);
+        boolean launched = switch (payload) {
+            case "TORPEDO" -> CampaignSystem.launchStrategicTorpedoStrike(ctx, targetX, targetY);
+            case "SORTIE" -> CampaignSystem.launchStrategicSortie(ctx, targetX, targetY);
+            case "ATOMIC" -> CampaignSystem.launchStrategicAtomicStrike(ctx, targetX, targetY);
+            default -> false;
+        };
+        assertTrue(launched);
+        assertFalse(ctx.campaign.strategicStrikeObjects.isEmpty());
+        Object strike = ctx.campaign.strategicStrikeObjects.get(0);
+        assertEquals(ctx.player.x, getDouble(strike, "x"), 1e-9);
+        assertEquals(ctx.player.y, getDouble(strike, "y"), 1e-9);
+        assertTrue(Math.hypot(getDouble(strike, "x") - targetX, getDouble(strike, "y") - targetY) > 100.0);
     }
 
     private static double taskForceCenterX(GameContext ctx, CampaignSystem.CampaignState st, Object taskForce) throws Exception {

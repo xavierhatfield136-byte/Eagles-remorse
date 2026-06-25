@@ -17,12 +17,12 @@ public final class ExpansionIntegrationInspector {
         int fleetArchiveEntries = CampaignSystem.campaignFleetArchiveLines(ctx, 999).size();
 
         ArrayList<String> out = new ArrayList<>();
-        out.add("EXPANSION INSPECTOR  developer/model-only audit  active " + active
-                + "/8  live-wired economy,diplomacy,fleet");
+        out.add("EXPANSION INSPECTOR  projection/model-only audit  active " + active
+                + "/8  live authority remains in CampaignState");
         out.add("Observed events: ledger burden " + economyEvents + "  reputation reasons " + diplomacyEvents
                 + "  fleet archive entries " + fleetArchiveEntries);
-        out.add("MODEL-ONLY candidates: strategic directors/task groups; operations templates; production catalogs");
-        out.add("MODEL-ONLY candidates: doctrine queue; deep stations/hazards/politics; community editor/content loader");
+        out.add("PROJECTION ONLY: expansion resource stores, strategic summaries, operations templates, production catalogs");
+        out.add("DEFERRED MODEL: doctrine queue, deep stations/hazards/politics, community editor/content loader");
         return out;
     }
 

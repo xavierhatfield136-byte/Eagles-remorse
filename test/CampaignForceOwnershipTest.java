@@ -344,7 +344,15 @@ class CampaignForceOwnershipTest {
     void miningSitesDepletePersistAndForceMinersToSearchForOre() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
-        CampaignSystem.CampaignLocation base = firstFriendlyServiceLocation(ctx);
+        CampaignSystem.CampaignLocation base = friendlyInstallationLocations(ctx).stream()
+                .filter(location -> location.facilityType == CampaignSystem.CampaignFacilityType.SHIPYARD
+                        || location.facilityType == CampaignSystem.CampaignFacilityType.MINING_OPERATION
+                        || location.facilityType == CampaignSystem.CampaignFacilityType.RESUPPLY_BASE
+                        || location.facilityType == CampaignSystem.CampaignFacilityType.CIVILIAN_HUB
+                        || location.facilityType == CampaignSystem.CampaignFacilityType.REPAIR_YARD
+                        || location.facilityType == CampaignSystem.CampaignFacilityType.FUEL_DEPOT)
+                .findFirst()
+                .orElse(null);
         CampaignSystem.CampaignLocation ore = firstResourceLocation(st);
         assertTrue(base != null, "expected a friendly base");
         assertTrue(ore != null, "expected a resource zone");
@@ -354,7 +362,7 @@ class CampaignForceOwnershipTest {
         ore.oreStockpile = 1;
         int baseOreBefore = base.oreStockpile;
 
-        Object miner = createCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.TEAM_C,
+        Object miner = createCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, base.ownerFaction,
                 "Test Depletion Miners", ore.x, ore.y);
         setField(miner, "simulationActive", true);
         setField(miner, "homeBaseId", base.id);
@@ -362,6 +370,7 @@ class CampaignForceOwnershipTest {
         setField(miner, "destinationLocationId", ore.id);
         setField(miner, "cargoKind", enumConstant(findNestedClass("CampaignForceCargoKind"), "ORE"));
         setField(miner, "intent", CampaignSystem.CampaignForceIntent.MINING);
+        setField(miner, "stopReason", enumConstant(findNestedClass("CampaignForceStopReason"), "MINING"));
         setField(miner, "cargoCapacity", 40.0);
         setField(miner, "cargoLoad", 0.0);
 
@@ -371,7 +380,18 @@ class CampaignForceOwnershipTest {
 
         assertEquals(0, ore.oreStockpile);
         assertTrue(ore.consumed, "depleted ore site should be marked consumed");
-        assertTrue(base.oreStockpile > baseOreBefore, "mined ore should reach the home base");
+        assertEquals(baseOreBefore, base.oreStockpile, "mined ore should remain in cargo until delivery");
+        assertTrue((double) readField(miner, "cargoLoad") > 0.0);
+        setField(miner, "destinationLocationId", base.id);
+        setField(miner, "stopReason", enumConstant(findNestedClass("CampaignForceStopReason"), "UNLOADING"));
+        setField(miner, "workState", enumConstant(findNestedClass("CampaignForceWorkState"), "WORKING"));
+        setField(miner, "missionState", enumConstant(findNestedClass("CampaignForceMissionState"), "WORKING"));
+        setField(miner, "workRemainingSec", 0.0);
+        setField(miner, "taskDeadlineSec", 0.0);
+        invokePrivate("updateCampaignForceLifecycleAfterMovement",
+                new Class[]{CampaignSystem.CampaignState.class, findNestedClass("CampaignForce"), double.class},
+                st, miner, 1.0);
+        assertTrue(base.oreStockpile > baseOreBefore, "delivered cargo should reach the home base");
         assertTrue(CampaignSystem.campaignMemoryFlagLines(ctx, 8).stream()
                 .anyMatch(line -> line.toLowerCase().contains("depleted")));
 

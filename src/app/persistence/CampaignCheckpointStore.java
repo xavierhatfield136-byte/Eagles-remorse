@@ -16,8 +16,10 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Persists resumable campaign checkpoints between sector transitions.
@@ -38,7 +40,7 @@ public final class CampaignCheckpointStore {
 
     private CampaignCheckpointStore() {}
 
-    private static final int CURRENT_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
     private static final int MAX_CAMPAIGN_SECTORS = 24;
     private static final Path SAVE_DIR = Paths.get("save");
     private static final Path CHECKPOINT_FILE = Paths.get(
@@ -65,6 +67,10 @@ public final class CampaignCheckpointStore {
 
     public static final class Checkpoint {
         public int version = CURRENT_VERSION;
+        public int sourceVersion = CURRENT_VERSION;
+        public boolean migrationApplied = false;
+        public String migrationRepairs = "";
+        public String migrationMessage = "";
 
         public int worldW = 5000;
         public int worldH = 5000;
@@ -160,6 +166,8 @@ public final class CampaignCheckpointStore {
         public double recentStrikePressure = 0.0;
         public boolean galaxyEncounterActive = false;
         public boolean galaxyAmbientEncounterActive = false;
+        public String activeMapModifiers = "NONE";
+        public int environmentHazardPulseIndex = -1;
         public int campaignFuel = 0;
         public int campaignSupplies = 0;
         public int campaignAmmo = 0;
@@ -175,6 +183,8 @@ public final class CampaignCheckpointStore {
         public double transitEventCooldownSec = 0.0;
         public double transitEncounterPressure = 0.0;
         public double transitNextEncounterThreshold = 6.0;
+        public int transitContactEventsThisLeg = 0;
+        public int transitContactTargetThisLeg = 0;
         public int transientGalaxySiteSerial = 0;
         public int strategicTorpedoCharges = 0;
         public int strategicSortiesLaunched = 0;
@@ -338,6 +348,8 @@ public final class CampaignCheckpointStore {
             travelAmmoAttritionRemainder = clamp(finiteOr(travelAmmoAttritionRemainder, 0.0), 0.0, 0.999999);
             transitEncounterPressure = Math.max(0.0, finiteOr(transitEncounterPressure, 0.0));
             transitNextEncounterThreshold = Math.max(4.0, finiteOr(transitNextEncounterThreshold, 6.0));
+            transitContactEventsThisLeg = Math.max(0, transitContactEventsThisLeg);
+            transitContactTargetThisLeg = Math.max(0, Math.min(8, transitContactTargetThisLeg));
             playerGalaxyX = finiteOr(playerGalaxyX, Double.NaN);
             playerGalaxyY = finiteOr(playerGalaxyY, Double.NaN);
             playerGalaxyHeadingDeg = finiteOr(playerGalaxyHeadingDeg, -90.0);
@@ -362,6 +374,9 @@ public final class CampaignCheckpointStore {
             nextCampaignLogEntryId = Math.max(1, nextCampaignLogEntryId);
             campaignCaptainLog = (campaignCaptainLog == null) ? "" : campaignCaptainLog.trim();
             campaignMemoryFlags = (campaignMemoryFlags == null) ? "" : campaignMemoryFlags.trim();
+            activeMapModifiers = (activeMapModifiers == null || activeMapModifiers.isBlank())
+                    ? "NONE" : activeMapModifiers.trim();
+            environmentHazardPulseIndex = Math.max(-1, environmentHazardPulseIndex);
             nextCampaignShipRecordId = Math.max(1, nextCampaignShipRecordId);
             nextCampaignBaseQueueId = Math.max(1, nextCampaignBaseQueueId);
             campaignEconomyTickAccumulatorSec = Math.max(0.0, finiteOr(campaignEconomyTickAccumulatorSec, 0.0));
@@ -444,7 +459,8 @@ public final class CampaignCheckpointStore {
             Checkpoint cp = new Checkpoint();
             try (InputStream in = Files.newInputStream(CHECKPOINT_FILE, StandardOpenOption.READ)) {
                 props.load(in);
-                cp.version = parseInt(props, "version", cp.version);
+                cp.version = parseInt(props, "version", 1);
+                cp.sourceVersion = cp.version;
                 cp.worldW = parseInt(props, "worldW", cp.worldW);
                 cp.worldH = parseInt(props, "worldH", cp.worldH);
                 cp.randomEvents = parseBoolean(props, "randomEvents", cp.randomEvents);
@@ -536,6 +552,8 @@ public final class CampaignCheckpointStore {
                 cp.recentStrikePressure = parseDouble(props, "recentStrikePressure", cp.recentStrikePressure);
                 cp.galaxyEncounterActive = parseBoolean(props, "galaxyEncounterActive", cp.galaxyEncounterActive);
                 cp.galaxyAmbientEncounterActive = parseBoolean(props, "galaxyAmbientEncounterActive", cp.galaxyAmbientEncounterActive);
+                cp.activeMapModifiers = props.getProperty("activeMapModifiers", cp.activeMapModifiers);
+                cp.environmentHazardPulseIndex = parseInt(props, "environmentHazardPulseIndex", cp.environmentHazardPulseIndex);
                 cp.campaignFuel = parseInt(props, "campaignFuel", cp.campaignFuel);
                 cp.campaignSupplies = parseInt(props, "campaignSupplies", cp.campaignSupplies);
                 cp.campaignAmmo = parseInt(props, "campaignAmmo", cp.campaignAmmo);
@@ -546,9 +564,14 @@ public final class CampaignCheckpointStore {
                 cp.playerGalaxyX = parseDouble(props, "playerGalaxyX", cp.playerGalaxyX);
                 cp.playerGalaxyY = parseDouble(props, "playerGalaxyY", cp.playerGalaxyY);
                 cp.playerGalaxyHeadingDeg = parseDouble(props, "playerGalaxyHeadingDeg", cp.playerGalaxyHeadingDeg);
+                cp.selectedFreeGalaxyTargetX = parseDouble(props, "selectedFreeGalaxyTargetX", cp.selectedFreeGalaxyTargetX);
+                cp.selectedFreeGalaxyTargetY = parseDouble(props, "selectedFreeGalaxyTargetY", cp.selectedFreeGalaxyTargetY);
                 cp.transitEventCooldownSec = parseDouble(props, "transitEventCooldownSec", cp.transitEventCooldownSec);
                 cp.transitEncounterPressure = parseDouble(props, "transitEncounterPressure", cp.transitEncounterPressure);
                 cp.transitNextEncounterThreshold = parseDouble(props, "transitNextEncounterThreshold", cp.transitNextEncounterThreshold);
+                cp.transitContactEventsThisLeg = parseInt(props, "transitContactEventsThisLeg", cp.transitContactEventsThisLeg);
+                cp.transitContactTargetThisLeg = parseInt(props, "transitContactTargetThisLeg", cp.transitContactTargetThisLeg);
+                cp.transientGalaxySiteSerial = parseInt(props, "transientGalaxySiteSerial", cp.transientGalaxySiteSerial);
                 cp.strategicTorpedoCharges = parseInt(props, "strategicTorpedoCharges", cp.strategicTorpedoCharges);
                 cp.strategicSortiesLaunched = parseInt(props, "strategicSortiesLaunched", cp.strategicSortiesLaunched);
                 cp.strategicAtomicCharges = parseInt(props, "strategicAtomicCharges", cp.strategicAtomicCharges);
@@ -590,9 +613,11 @@ public final class CampaignCheckpointStore {
                 cp.communityContentState = props.getProperty("communityContentState", cp.communityContentState);
                 cp.galaxyTravelOriginId = props.getProperty("galaxyTravelOriginId", cp.galaxyTravelOriginId);
                 cp.galaxyTravelDestinationId = props.getProperty("galaxyTravelDestinationId", cp.galaxyTravelDestinationId);
+                cp.galaxyTravelDestinationLabel = props.getProperty("galaxyTravelDestinationLabel", cp.galaxyTravelDestinationLabel);
                 cp.galaxyTravelProgress = parseDouble(props, "galaxyTravelProgress", cp.galaxyTravelProgress);
                 cp.galaxyTravelDurationSec = parseDouble(props, "galaxyTravelDurationSec", cp.galaxyTravelDurationSec);
                 cp.galaxyTravelTraveling = parseBoolean(props, "galaxyTravelTraveling", cp.galaxyTravelTraveling);
+                cp.galaxyTravelFreeTravel = parseBoolean(props, "galaxyTravelFreeTravel", cp.galaxyTravelFreeTravel);
                 cp.galaxyTravelInterceptionRisk = parseDouble(props, "galaxyTravelInterceptionRisk", cp.galaxyTravelInterceptionRisk);
                 cp.galaxyTravelTargetX = parseDouble(props, "galaxyTravelTargetX", cp.galaxyTravelTargetX);
                 cp.galaxyTravelTargetY = parseDouble(props, "galaxyTravelTargetY", cp.galaxyTravelTargetY);
@@ -626,9 +651,141 @@ public final class CampaignCheckpointStore {
                 ErrorLog.logException("[campaign] checkpoint_load_failed path=" + CHECKPOINT_FILE, ex);
                 return null;
             }
+            migrateCheckpoint(cp, props);
             cp.normalize();
             return cp.isUsable() ? cp : null;
         }
+    }
+
+    public static int currentVersion() {
+        return CURRENT_VERSION;
+    }
+
+    public static boolean verifyAndCommitMigration(Checkpoint cp) {
+        if (cp == null || !cp.migrationApplied) return true;
+        synchronized (IO_LOCK) {
+            if (!Files.exists(CHECKPOINT_FILE)) return false;
+            Path backup = CHECKPOINT_FILE.resolveSibling(
+                    CHECKPOINT_FILE.getFileName() + ".pre-migration-v" + Math.max(1, cp.sourceVersion) + ".bak");
+            try {
+                Files.copy(CHECKPOINT_FILE, backup, StandardCopyOption.REPLACE_EXISTING);
+                save(cp);
+                Checkpoint verified = load();
+                if (verified != null && verified.isUsable() && verified.version == CURRENT_VERSION) {
+                    return true;
+                }
+                Files.copy(backup, CHECKPOINT_FILE, StandardCopyOption.REPLACE_EXISTING);
+                return false;
+            } catch (IOException ex) {
+                ErrorLog.logException("[campaign] checkpoint_migration_verify_failed path=" + CHECKPOINT_FILE, ex);
+                try {
+                    if (Files.exists(backup)) {
+                        Files.copy(backup, CHECKPOINT_FILE, StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException restoreEx) {
+                    ErrorLog.logException("[campaign] checkpoint_migration_restore_failed path=" + CHECKPOINT_FILE, restoreEx);
+                }
+                return false;
+            }
+        }
+    }
+
+    private static void migrateCheckpoint(Checkpoint cp, Properties props) {
+        if (cp == null || props == null) return;
+        int sourceVersion = Math.max(1, cp.sourceVersion);
+        LinkedHashSet<String> repairs = new LinkedHashSet<>();
+
+        if (!props.containsKey("campaignFuel")) {
+            cp.campaignFuel = 120;
+            repairs.add("fuel reserve");
+        }
+        if (!props.containsKey("campaignSupplies")) {
+            cp.campaignSupplies = 90;
+            repairs.add("supply reserve");
+        }
+        if (!props.containsKey("campaignAmmo")) {
+            cp.campaignAmmo = 100;
+            repairs.add("ammunition reserve");
+        }
+        if (!props.containsKey("campaignSalvage")) {
+            cp.campaignSalvage = 0;
+            repairs.add("salvage ledger");
+        }
+        if (!props.containsKey("strategicTorpedoCharges")) {
+            cp.strategicTorpedoCharges = 2;
+            repairs.add("torpedo inventory");
+        }
+        if (!props.containsKey("strategicAtomicCharges")) {
+            cp.strategicAtomicCharges = 1;
+            repairs.add("atomic inventory");
+        }
+        if (!props.containsKey("persistentBlueFleet") || cp.persistentBlueFleet.isBlank()) {
+            cp.persistentBlueFleet = DEFAULT_PERSISTENT_BLUE_FLEET;
+            repairs.add("friendly fleet roster");
+        }
+        if (!props.containsKey("campaignYardOrders")) {
+            cp.campaignYardOrders = "";
+            cp.nextCampaignYardOrderId = 1;
+            repairs.add("production queue");
+        }
+        if (!props.containsKey("campaignOre")) {
+            cp.campaignOre = Math.max(24, cp.cargo);
+            repairs.add("mining cargo");
+        }
+        if (!props.containsKey("campaignTheaters") || !props.containsKey("strategicNodes")) {
+            cp.campaignTheaters = "";
+            cp.strategicNodes = "";
+            repairs.add("territory state");
+        }
+        if (!props.containsKey("diplomacyNarrativeState")) {
+            cp.diplomacyNarrativeState = "";
+            repairs.add("reputation history");
+        }
+        if (!props.containsKey("galaxyLocationStates")) {
+            cp.galaxyLocationStates = "";
+            repairs.add("environment state");
+        }
+        if (!props.containsKey("campaignForces")) {
+            cp.campaignForces = "";
+            cp.shipCampaignForceIds = "";
+            cp.nextCampaignForceId = 1;
+            repairs.add("faction fleets");
+        }
+
+        repairEnum(props, "playerFactionName", cp.playerFactionName,
+                Set.of("PLAYER", "ALLY", "ENEMY", "TEAM_C", "TEAM_D"), "PLAYER", repairs,
+                value -> cp.playerFactionName = value);
+        repairEnum(props, "branchRoute", cp.branchRoute,
+                Set.of("BALANCED", "GREEN", "YELLOW"), "BALANCED", repairs,
+                value -> cp.branchRoute = value);
+        repairEnum(props, "powerPresetName", cp.powerPresetName,
+                Set.of("BALANCED", "WEAPONS", "SHIELDS", "ENGINES"), "BALANCED", repairs,
+                value -> cp.powerPresetName = value);
+
+        cp.migrationApplied = sourceVersion < CURRENT_VERSION || !repairs.isEmpty();
+        cp.migrationRepairs = String.join(", ", repairs);
+        cp.migrationMessage = cp.migrationApplied
+                ? "SAVE RECOVERED FROM SCHEMA " + sourceVersion + "  |  REPAIRED "
+                + (repairs.isEmpty() ? "VERSION METADATA" : cp.migrationRepairs.toUpperCase())
+                : "";
+    }
+
+    private interface StringRepair {
+        void apply(String value);
+    }
+
+    private static void repairEnum(Properties props,
+                                   String key,
+                                   String current,
+                                   Set<String> allowed,
+                                   String fallback,
+                                   Set<String> repairs,
+                                   StringRepair repair) {
+        if (!props.containsKey(key)) return;
+        String value = current == null ? "" : current.trim().toUpperCase();
+        if (allowed.contains(value)) return;
+        repair.apply(fallback);
+        repairs.add(key + " enum");
     }
 
     public static Checkpoint loadSlot(String slotId) {
@@ -803,6 +960,8 @@ public final class CampaignCheckpointStore {
             props.setProperty("recentStrikePressure", String.valueOf(cp.recentStrikePressure));
             props.setProperty("galaxyEncounterActive", String.valueOf(cp.galaxyEncounterActive));
             props.setProperty("galaxyAmbientEncounterActive", String.valueOf(cp.galaxyAmbientEncounterActive));
+            props.setProperty("activeMapModifiers", cp.activeMapModifiers);
+            props.setProperty("environmentHazardPulseIndex", String.valueOf(cp.environmentHazardPulseIndex));
             props.setProperty("campaignFuel", String.valueOf(cp.campaignFuel));
             props.setProperty("campaignSupplies", String.valueOf(cp.campaignSupplies));
             props.setProperty("campaignAmmo", String.valueOf(cp.campaignAmmo));
@@ -813,9 +972,14 @@ public final class CampaignCheckpointStore {
             props.setProperty("playerGalaxyX", String.valueOf(cp.playerGalaxyX));
             props.setProperty("playerGalaxyY", String.valueOf(cp.playerGalaxyY));
             props.setProperty("playerGalaxyHeadingDeg", String.valueOf(cp.playerGalaxyHeadingDeg));
+            props.setProperty("selectedFreeGalaxyTargetX", String.valueOf(cp.selectedFreeGalaxyTargetX));
+            props.setProperty("selectedFreeGalaxyTargetY", String.valueOf(cp.selectedFreeGalaxyTargetY));
             props.setProperty("transitEventCooldownSec", String.valueOf(cp.transitEventCooldownSec));
             props.setProperty("transitEncounterPressure", String.valueOf(cp.transitEncounterPressure));
             props.setProperty("transitNextEncounterThreshold", String.valueOf(cp.transitNextEncounterThreshold));
+            props.setProperty("transitContactEventsThisLeg", String.valueOf(cp.transitContactEventsThisLeg));
+            props.setProperty("transitContactTargetThisLeg", String.valueOf(cp.transitContactTargetThisLeg));
+            props.setProperty("transientGalaxySiteSerial", String.valueOf(cp.transientGalaxySiteSerial));
             props.setProperty("strategicTorpedoCharges", String.valueOf(cp.strategicTorpedoCharges));
             props.setProperty("strategicSortiesLaunched", String.valueOf(cp.strategicSortiesLaunched));
             props.setProperty("strategicAtomicCharges", String.valueOf(cp.strategicAtomicCharges));
@@ -857,9 +1021,11 @@ public final class CampaignCheckpointStore {
             props.setProperty("communityContentState", cp.communityContentState);
             props.setProperty("galaxyTravelOriginId", cp.galaxyTravelOriginId);
             props.setProperty("galaxyTravelDestinationId", cp.galaxyTravelDestinationId);
+            props.setProperty("galaxyTravelDestinationLabel", cp.galaxyTravelDestinationLabel);
             props.setProperty("galaxyTravelProgress", String.valueOf(cp.galaxyTravelProgress));
             props.setProperty("galaxyTravelDurationSec", String.valueOf(cp.galaxyTravelDurationSec));
             props.setProperty("galaxyTravelTraveling", String.valueOf(cp.galaxyTravelTraveling));
+            props.setProperty("galaxyTravelFreeTravel", String.valueOf(cp.galaxyTravelFreeTravel));
             props.setProperty("galaxyTravelInterceptionRisk", String.valueOf(cp.galaxyTravelInterceptionRisk));
             props.setProperty("galaxyTravelTargetX", String.valueOf(cp.galaxyTravelTargetX));
             props.setProperty("galaxyTravelTargetY", String.valueOf(cp.galaxyTravelTargetY));

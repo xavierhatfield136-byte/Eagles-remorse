@@ -699,7 +699,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_C");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(escort);
         assertNotNull(target);
@@ -2664,7 +2664,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object hunter = forceNamed(st, "Red Frontier Picket Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_C");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(hunter);
         assertNotNull(target);
@@ -2695,7 +2695,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object hunter = forceNamed(st, "Red Frontier Picket Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_C");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(hunter);
         assertNotNull(target);

@@ -11,9 +11,50 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignMissionSectionsTest {
+
+    @Test
+    void everyAuthoredSectorHasCompleteAuthoritativeBriefing() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+
+        for (int sector = 1; sector <= 24; sector++) {
+            startSector(ctx, sector);
+            CampaignSystem.TacticalMissionBriefing briefing = CampaignSystem.tacticalMissionBriefing(ctx);
+            assertNotNull(briefing, "sector " + sector + " briefing");
+            assertFalse(briefing.primaryObjective.isBlank(), "sector " + sector + " primary objective");
+            assertFalse(briefing.successCondition.isBlank(), "sector " + sector + " success condition");
+            assertFalse(briefing.failureCondition.isBlank(), "sector " + sector + " failure condition");
+            assertFalse(briefing.protectedAssets.isEmpty(), "sector " + sector + " protected assets");
+            assertFalse(briefing.protectedAssets.stream().anyMatch(String::isBlank),
+                    "sector " + sector + " protected asset naming");
+            assertFalse(briefing.requiredQuota.isBlank(), "sector " + sector + " quota");
+            assertFalse(briefing.timer.isBlank(), "sector " + sector + " timer");
+            assertFalse(briefing.optionalObjective.isBlank(), "sector " + sector + " optional objective");
+            assertFalse(briefing.optionalReward.isBlank(), "sector " + sector + " optional reward");
+            assertFalse(briefing.enemyStrength.isBlank(), "sector " + sector + " enemy strength");
+            assertFalse(briefing.intelligenceCaveat.isBlank(), "sector " + sector + " intel caveat");
+            assertFalse(briefing.recommendedFirstAction.isBlank(), "sector " + sector + " first action");
+        }
+    }
+
+    @Test
+    void briefingCanBeReopenedFromTheTacticalMissionActionBay() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 1234L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 10);
+        ctx.campaign.missionIntroTimer = 0.0;
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.MISSION;
+
+        assertTrue(CampaignSystem.executeTacticalMapAction(ctx, "TACTICAL_REOPEN_BRIEFING"));
+        assertTrue(CampaignSystem.shouldShowMissionIntro(ctx));
+        assertTrue(ctx.campaign.missionIntroTimer >= 12.0);
+    }
 
     @Test
     void campaignSectorsSeedMissionSectionsAndDiscoveries() throws Exception {

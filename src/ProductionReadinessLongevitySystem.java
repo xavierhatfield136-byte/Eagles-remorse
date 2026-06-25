@@ -121,7 +121,7 @@ public final class ProductionReadinessLongevitySystem {
         state.longevity.slots.add(new SaveSlot("slot-1", "Primary campaign", "Southern Shelter checkpoint", 8, seed));
         state.longevity.slots.add(new SaveSlot("slot-2", "Iron command", "Challenge reserve", 8, seed + 1));
         state.longevity.slots.add(new SaveSlot("slot-3", "Sandbox", "Custom scenario", 8, seed + 2));
-        state.longevity.migrationFixtures.addAll(List.of("schema-v1", "schema-v4", "schema-v7", "schema-v8"));
+        state.longevity.migrationFixtures.addAll(List.of("schema-v1", "schema-v2-current"));
         state.longevity.battleReplayFiles.add("replay-open-space-intercept.erreplay");
         state.longevity.campaignEventLog.add("00:00 campaign bootstrap seed=" + seed);
         state.longevity.postCampaignStatistics.addAll(List.of("battles", "losses", "rescues", "allies", "doctrine", "ending"));
@@ -130,16 +130,35 @@ public final class ProductionReadinessLongevitySystem {
         state.longevity.scheduledScenarioSeeds.addAll(List.of(20260601L, 20260607L));
         state.longevity.customScenarioOptions.addAll(List.of("fleet", "factions", "location", "hazards", "difficulty", "seed"));
 
-        state.architecture.ownershipBoundaries.addAll(List.of("campaign simulation", "tactical simulation", "UI projection", "persistence", "presentation"));
+        state.architecture.ownershipBoundaries.addAll(List.of(
+                "campaign simulation",
+                "tactical simulation",
+                "UI projection",
+                "persistence",
+                "presentation",
+                "campaign fleets and finite inventory",
+                "campaign resources and facility economy",
+                "campaign territory ownership",
+                "campaign production queues",
+                "campaign mission objectives",
+                "tactical encounter projection",
+                "read-only UI projection",
+                "persistence and migration"));
         state.architecture.transitionApis.addAll(List.of("travel", "checkpoint", "encounter", "strike", "fleet refit", "modal ownership"));
         state.architecture.typedIds.addAll(List.of(
                 new TypedId("fleet", "fleet-blue-1"), new TypedId("battle", "battle-lunar-1"),
                 new TypedId("location", "poi-05"), new TypedId("ship", "ship-101"),
                 new TypedId("prompt", "prompt-intervention-1"), new TypedId("contract", "contract-escort")));
-        state.architecture.invariants.addAll(List.of("stale references", "duplicate ownership", "impossible overlays"));
+        state.architecture.invariants.addAll(List.of(
+                "stale references", "duplicate ownership", "duplicate resource deduction",
+                "negative conserved resources", "impossible overlays", "render paths are read-only"));
         state.architecture.structuredEvents.addAll(List.of("campaign.transition", "fleet.ownership", "strike.launch", "checkpoint.save"));
         state.architecture.scenarioFixtures.addAll(List.of("campaign-start", "mining-dock", "travel-intercept", "tactical-victory", "retreat-save-load"));
-        state.architecture.validators.addAll(List.of("asset validation", "missing asset report", "duplicate asset report", "content authoring validator"));
+        state.architecture.validators.addAll(List.of(
+                "order-of-battle", "fleet-provenance", "economy-conservation",
+                "production-queue", "territory-ownership", "mission-briefing-completeness",
+                "contact-validity", "strike-origin", "save-migration",
+                "asset validation", "content authoring validator"));
         state.architecture.assetReports.addAll(List.of("missing-assets.json", "duplicate-assets.json", "visual-regression/index.json"));
         state.architecture.performanceBudgets.put("frame-ms", 16);
         state.architecture.performanceBudgets.put("heap-mb", 1024);
@@ -150,7 +169,7 @@ public final class ProductionReadinessLongevitySystem {
         state.testing.longRunSuites.addAll(List.of("fleet director", "economy", "route risk forecast", "memory usage", "frame time"));
         state.testing.continuitySuites.addAll(List.of("encounter families", "persistent ship casualty reconciliation", "strike families", "sensor certainty decay"));
         state.testing.regressionChecks.addAll(List.of("accessibility screenshots", "save compatibility", "randomized campaign transition fuzz"));
-        state.testing.compatibilityFixtures.addAll(List.of("schema-v1.properties", "schema-v4.properties", "schema-v7.properties"));
+        state.testing.compatibilityFixtures.addAll(List.of("campaign_schema_v1.properties", "schema-v2-current"));
         return state;
     }
 

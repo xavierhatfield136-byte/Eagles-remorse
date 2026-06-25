@@ -518,6 +518,7 @@ public final class GameplayActions {
                         java.awt.event.KeyEvent.VK_SPACE -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN");
                 case java.awt.event.KeyEvent.VK_S -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT");
                 case java.awt.event.KeyEvent.VK_O -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "OBSERVE");
+                case java.awt.event.KeyEvent.VK_F -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "FOLLOW");
                 default -> false;
             };
         }

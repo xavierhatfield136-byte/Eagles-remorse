@@ -200,8 +200,8 @@ class CampaignTheaterConquestChecklistTest {
 
         assertTrue(green.size() >= 3, "Green board should produce multiple facility/fleet-driven missions");
         assertTrue(yellow.size() >= 3, "Yellow board should produce multiple facility/fleet-driven missions");
-        assertTrue(green.stream().anyMatch(entry -> entry.reward.contains("Green favor")));
-        assertTrue(yellow.stream().anyMatch(entry -> entry.reward.contains("Yellow favor")));
+        assertTrue(green.stream().anyMatch(entry -> entry.reward.contains("Green Reputation")));
+        assertTrue(yellow.stream().anyMatch(entry -> entry.reward.contains("Yellow Reputation")));
 
         CampaignSystem.CampaignMissionBoardEntry entry = green.stream()
                 .filter(candidate -> candidate.family.contains("attack") || candidate.family.contains("capture"))

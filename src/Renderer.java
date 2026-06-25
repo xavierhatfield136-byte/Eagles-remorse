@@ -942,7 +942,7 @@ public class Renderer {
                 case 0 -> "FLEET";
                 case 1 -> "UPGRADE";
                 case 4 -> "CREW";
-                case 5 -> "SAFE EXIT";
+                case 5 -> "WITHDRAW";
                 case 6 -> "COMMS";
                 default -> CORE_MENU_LABELS[index];
             };
@@ -3470,6 +3470,15 @@ public class Renderer {
 
     private static CampaignBackdropSpec resolveCampaignBackdropSpec(GameContext ctx) {
         if (ctx == null || !CampaignSystem.isCampaignActive(ctx)) return null;
+        if (CampaignSystem.isOrdinaryOpenSpaceEncounter(ctx)) {
+            return new CampaignBackdropSpec(
+                    "deep_space_encounter",
+                    0.0,
+                    new Color(8, 14, 24, 18),
+                    BackdropFieldMode.SPACE_NEBULA,
+                    null,
+                    null);
+        }
         int sector = CampaignSystem.activeSector(ctx);
         int stage = CampaignSystem.objectiveStage(ctx);
         double progress = CampaignSystem.objectiveProgressRatio(ctx);
@@ -5717,7 +5726,7 @@ public class Renderer {
                 + HotkeyRegistry.label("toggleCrewStations") + " CREW");
         out.add("F1-F5 STATIONS");
         out.add(HotkeyRegistry.label("togglePowerManagement") + " POWER / " + HotkeyRegistry.label("toggleBaseMenu") + " BASE");
-        out.add("SAFE EXIT BUTTON");
+        out.add("WITHDRAW TO STRATEGIC MAP BUTTON");
         out.add(HotkeyRegistry.label("pingAtCursor") + " PING / " + HotkeyRegistry.label("setWaypoint") + " WAYPOINT");
         out.add("CTRL +/-/0 ZOOM");
         out.add(HotkeyRegistry.label("battlefieldWarp") + "/BKSP WARP");
@@ -6640,7 +6649,7 @@ public class Renderer {
             case CAMPAIGN_FORCE ->
                     "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
             case CAMPAIGN_BATTLE ->
-                    "I ignore  |  J join battle  |  S strike support  |  O observe";
+                    "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
             case TASK_FORCE ->
                     "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
         };
@@ -6696,10 +6705,11 @@ public class Renderer {
 
         int chipY = y + h - 58;
         if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
-            drawHudStatusChip(g2, "I IGNORE", inner.x, chipY, 82, 22, new Color(132, 196, 255, 224), true);
-            drawHudStatusChip(g2, "J JOIN", inner.x + 92, chipY, 76, 22, new Color(255, 206, 122, 224), true);
-            drawHudStatusChip(g2, "S SUPPORT", inner.x + 178, chipY, 92, 22, new Color(190, 226, 152, 224), true);
-            drawHudStatusChip(g2, "O OBSERVE", inner.x + 280, chipY, 96, 22, new Color(190, 190, 220, 224), true);
+            drawHudStatusChip(g2, "F FOLLOW", inner.x, chipY, 82, 22, new Color(132, 196, 255, 224), true);
+            drawHudStatusChip(g2, "J JOIN", inner.x + 90, chipY, 76, 22, new Color(255, 206, 122, 224), true);
+            drawHudStatusChip(g2, "I IGNORE", inner.x + 174, chipY, 82, 22, new Color(190, 190, 220, 224), true);
+            drawHudStatusChip(g2, "S SUPPORT", inner.x + 264, chipY, 92, 22, new Color(190, 226, 152, 224), true);
+            drawHudStatusChip(g2, "O OBSERVE", inner.x + 364, chipY, 96, 22, new Color(190, 190, 220, 224), true);
         } else {
             drawHudStatusChip(g2, "A AUTO-RESOLVE", inner.x, chipY, 132, 22, new Color(132, 196, 255, 224), true);
             drawHudStatusChip(g2, "C TAKE COMMAND", inner.x + 146, chipY, 142, 22, new Color(255, 206, 122, 224), true);
@@ -10650,48 +10660,19 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static int drawGalaxyCommandContent(Graphics2D g2, GameContext ctx, CampaignSystem.CampaignLocation selected,
                                                 int x, int y, int width, int maxBottomY) {
-        List<String> primaryLines;
-        List<String> secondaryLines;
-        String primaryHeader;
-        String secondaryHeader;
+        CampaignMapPresentationModel.SidebarContent model = CampaignMapPresentationModel.sidebar(ctx);
         Color primaryAccent = new Color(184, 228, 255, 220);
         Color secondaryAccent = new Color(255, 196, 164, 220);
-        UiState.CampaignCommandTab tab = visibleCampaignCommandTab(ctx);
-        switch (tab) {
-            case FLEET -> {
-                primaryHeader = "FLEET MANAGER";
-                primaryLines = CampaignSystem.campaignFleetManagerLines(ctx);
-                secondaryHeader = "READINESS / DETACHMENTS";
-                ArrayList<String> fleetSecondary = new ArrayList<>();
-                fleetSecondary.addAll(CampaignSystem.campaignFleetConditionLines(ctx));
-                fleetSecondary.addAll(CampaignSystem.campaignFleetDetachmentLines(ctx));
-                secondaryLines = fleetSecondary;
-            }
-            case RESOURCES -> {
-                primaryHeader = "RESOURCE BOARD";
-                primaryLines = CampaignSystem.campaignResourceManagerLines(ctx);
-                secondaryHeader = "LOGISTICS / ROUTE";
-                ArrayList<String> resourceSecondary = new ArrayList<>();
-                resourceSecondary.addAll(CampaignSystem.campaignResourceTrendLines(ctx));
-                resourceSecondary.addAll(CampaignSystem.campaignResourceWarningLines(ctx));
-                secondaryLines = resourceSecondary;
-            }
-            default -> {
-                primaryHeader = "WAR ROOM";
-                primaryLines = CampaignSystem.campaignWarRoomLines(ctx);
-                secondaryHeader = (selected == null) ? "SELECTED COURSE" : selected.name.toUpperCase(Locale.US);
-                secondaryLines = CampaignSystem.selectedLocationSidebarLines(ctx);
-                primaryAccent = new Color(184, 228, 255, 220);
-                secondaryAccent = hubAccent(selected, 220);
-            }
-        }
-        int rowY = drawGalaxySidebarSection(g2, x, y, width, primaryHeader, primaryLines, primaryAccent, true);
+        if (model.tab() == UiState.CampaignCommandTab.NAV) secondaryAccent = hubAccent(selected, 220);
+        int rowY = drawGalaxySidebarSection(g2, x, y, width,
+                model.primaryHeader(), model.primaryLines(), primaryAccent, true);
         if (rowY < maxBottomY) {
-            rowY = drawGalaxySidebarSection(g2, x, rowY, width, secondaryHeader, secondaryLines, secondaryAccent, true);
+            rowY = drawGalaxySidebarSection(g2, x, rowY, width,
+                    model.secondaryHeader(), model.secondaryLines(), secondaryAccent, true);
         }
         int remaining = maxBottomY - rowY;
         if (remaining > 54) {
-            switch (tab) {
+            switch (model.tab()) {
                 case FLEET -> drawGalaxyFleetBoard(g2, ctx, x, rowY, width, remaining);
                 case RESOURCES -> drawGalaxyResourceBoard(g2, ctx, x, rowY, width, remaining);
                 default -> drawGalaxyNavigationBoard(g2, ctx, x, rowY, width, remaining);
@@ -11057,7 +11038,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         int maxRows = Math.max(1, (roster.height - 28) / rowH);
         int maxScroll = Math.max(0, entries.size() - maxRows);
         int scroll = (ctx.ui == null) ? 0 : MathUtil.clamp(ctx.ui.campaignFleetRosterScroll, 0, maxScroll);
-        if (ctx.ui != null) ctx.ui.campaignFleetRosterScroll = scroll;
         int y0 = roster.y + 28;
         Shape oldClip = g2.getClip();
         g2.setClip(roster.x, roster.y + 24, roster.width, roster.height - 26);
@@ -11133,21 +11113,22 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawGalaxyResourceBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 70) return;
+        CampaignMapPresentationModel.ResourceBoard model = CampaignMapPresentationModel.resources(ctx);
         int panelH = Math.min(height, 214);
         drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "RESOURCE BOARD");
-        drawGalaxyMeter(g2, x + 12, y + 34, width - 24, "FUEL", Math.min(1.0, CampaignSystem.campaignFuel(ctx) / 180.0), new Color(120, 220, 255, 220), String.valueOf(CampaignSystem.campaignFuel(ctx)));
-        drawGalaxyMeter(g2, x + 12, y + 56, width - 24, "SUPPLIES", Math.min(1.0, CampaignSystem.campaignSupplies(ctx) / 150.0), new Color(148, 224, 168, 220), String.valueOf(CampaignSystem.campaignSupplies(ctx)));
-        drawGalaxyMeter(g2, x + 12, y + 78, width - 24, "AMMO", Math.min(1.0, CampaignSystem.campaignAmmo(ctx) / 180.0), new Color(255, 206, 132, 220), String.valueOf(CampaignSystem.campaignAmmo(ctx)));
-        drawGalaxyMeter(g2, x + 12, y + 100, width - 24, "SALVAGE", Math.min(1.0, CampaignSystem.campaignSalvageStock(ctx) / 60.0), new Color(255, 150, 132, 220), String.valueOf(CampaignSystem.campaignSalvageStock(ctx)));
-        drawGalaxyMeter(g2, x + 12, y + 122, width - 24, "ORE", Math.min(1.0, CampaignSystem.currentCampaignOre(ctx) / 80.0), new Color(214, 198, 120, 220), String.valueOf(CampaignSystem.currentCampaignOre(ctx)));
+        drawGalaxyMeter(g2, x + 12, y + 34, width - 24, "FUEL", Math.min(1.0, model.fuel() / 180.0), new Color(120, 220, 255, 220), String.valueOf(model.fuel()));
+        drawGalaxyMeter(g2, x + 12, y + 56, width - 24, "SUPPLIES", Math.min(1.0, model.supplies() / 150.0), new Color(148, 224, 168, 220), String.valueOf(model.supplies()));
+        drawGalaxyMeter(g2, x + 12, y + 78, width - 24, "AMMO", Math.min(1.0, model.ammo() / 180.0), new Color(255, 206, 132, 220), String.valueOf(model.ammo()));
+        drawGalaxyMeter(g2, x + 12, y + 100, width - 24, "SALVAGE", Math.min(1.0, model.salvage() / 60.0), new Color(255, 150, 132, 220), String.valueOf(model.salvage()));
+        drawGalaxyMeter(g2, x + 12, y + 122, width - 24, "ORE", Math.min(1.0, model.ore() / 80.0), new Color(214, 198, 120, 220), String.valueOf(model.ore()));
 
-        List<String> trend = CampaignSystem.campaignResourceTrendLines(ctx);
+        List<String> trend = model.trendLines();
         int trendY = y + 154;
         for (int i = 0; i < trend.size() && i < 4; i++) {
             drawGalaxyBoardLine(g2, x + 12, trendY + i * 15, width - 24, trend.get(i), new Color(214, 226, 238, 214));
         }
 
-        List<String> warnings = CampaignSystem.campaignResourceWarningLines(ctx);
+        List<String> warnings = model.warningLines();
         int warnY = y + 154 + Math.min(4, trend.size()) * 15 + 8;
         for (int i = 0; i < warnings.size() && warnY + i * 15 <= y + panelH - 8; i++) {
             Color lamp = (warnings.get(i).contains("LOW") || warnings.get(i).contains("CRITICAL"))

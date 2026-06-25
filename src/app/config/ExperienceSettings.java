@@ -1,5 +1,7 @@
 package app.config;
 
+import java.util.List;
+
 /**
  * Player-facing first-hour, difficulty, and accessibility defaults.
  */
@@ -116,6 +118,25 @@ public final class ExperienceSettings {
         return out;
     }
 
+    public List<String> modifierSummaryLines() {
+        if (ironCommand) {
+            return List.of(
+                    "Enemy armor systems: +18%",
+                    "Enemy shield reboot delay: -38%",
+                    "Combat lethality: x" + formatMultiplier(combatLethality),
+                    "Strategic pressure: x" + formatMultiplier(strategicPressure),
+                    "Travel attrition: x" + formatMultiplier(attrition),
+                    "Checkpoint saves: sector transitions only"
+            );
+        }
+        return List.of(
+                "No faction-specific durability bonuses",
+                "Combat lethality: x" + formatMultiplier(combatLethality),
+                "Strategic pressure: x" + formatMultiplier(strategicPressure),
+                "Travel attrition: x" + formatMultiplier(attrition)
+        );
+    }
+
     public ExperienceSettings copy() {
         ExperienceSettings out = new ExperienceSettings();
         out.preset = preset;
@@ -158,5 +179,9 @@ public final class ExperienceSettings {
     private static double clamp(double value, double min, double max) {
         if (!Double.isFinite(value)) return 1.0;
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static String formatMultiplier(double value) {
+        return String.format(java.util.Locale.US, "%.2f", value);
     }
 }
