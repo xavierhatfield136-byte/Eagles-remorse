@@ -6,10 +6,13 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ScreenshotRegressionHarnessTest {
     @Test
     void productionScreenshotTargetsRenderAndMatchBaselines() throws Exception {
+        assumeTrue(System.getProperty("os.name", "").toLowerCase().contains("win"),
+                "approved visual signatures use Windows Java2D font rasterization");
         ScreenshotRegressionHarness.Result result = ScreenshotRegressionHarness.run(
                 ScreenshotRegressionHarness.DEFAULT_BASELINE,
                 Path.of("build", "reports", "test-visual-regression"),
