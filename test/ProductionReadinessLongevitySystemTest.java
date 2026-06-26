@@ -70,7 +70,10 @@ class ProductionReadinessLongevitySystemTest {
         assertFalse(state.architecture.validators.isEmpty());
         assertFalse(state.architecture.assetReports.isEmpty());
         assertTrue(state.architecture.automatedScreenshotCapture);
-        assertTrue(state.architecture.performanceBudgets.get("frame-ms") <= 16);
+        assertTrue(state.architecture.performanceBudgets.get("ordinary-frame-ms") <= 17);
+        assertTrue(state.architecture.performanceBudgets.get("largest-frame-ms") <= 34);
+        assertEquals(PerformanceBattleScale.LARGEST_SUPPORTED_TOTAL_SHIPS,
+                state.architecture.performanceBudgets.get("ships"));
         assertTrue(Files.isRegularFile(Path.of(state.architecture.saveSchemaDiffDoc)));
         assertTrue(Files.isRegularFile(Path.of(state.architecture.balanceExport)));
         assertTrue(Files.isRegularFile(Path.of(state.longevity.modCatalogPath)));

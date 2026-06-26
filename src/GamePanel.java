@@ -122,7 +122,7 @@ public class GamePanel extends JPanel implements ActionListener {
         }
         double renderMs = (System.nanoTime() - renderStart) / 1_000_000.0;
         runtime.recordRenderMs(renderMs);
-        PerformanceGuardrails.update(ctx.perf);
+        PerformanceGuardrails.update(ctx);
     }
 
     public void shutdown() {

@@ -1173,63 +1173,63 @@ Baseline evidence: `1_0_BASELINE_2026-06-24.md`.
 
 ## 9.1 Define Supported Battle Scale
 
-- [ ] Measure ordinary battle ship counts.
-- [ ] Measure major battle ship counts.
-- [ ] Measure titan battle ship counts.
-- [ ] Measure projectile counts.
-- [ ] Measure wreck counts.
-- [ ] Measure VFX counts.
-- [ ] Define the largest supported battle.
-- [ ] Keep the player-facing scale below unreadable chaos.
-- [ ] Avoid promising unlimited ships.
+- [x] Measure ordinary battle ship counts.
+- [x] Measure major battle ship counts.
+- [x] Measure titan battle ship counts.
+- [x] Measure projectile counts.
+- [x] Measure wreck counts.
+- [x] Measure VFX counts.
+- [x] Define the largest supported battle.
+- [x] Keep the player-facing scale below unreadable chaos.
+- [x] Avoid promising unlimited ships.
 
 ## 9.2 Performance Targets
 
-- [ ] Maintain 60 FPS target in ordinary tactical play.
-- [ ] Maintain 30 FPS hard floor in the largest supported battle.
-- [ ] Validate 1280x720.
-- [ ] Validate 1920x1080.
-- [ ] Validate integrated graphics target.
-- [ ] Validate recommended discrete graphics target.
-- [ ] Measure update time.
-- [ ] Measure render time.
-- [ ] Measure AI time.
-- [ ] Measure projectile time.
-- [ ] Measure campaign-map time.
-- [ ] Measure memory.
-- [ ] Measure garbage collection.
+- [x] Maintain 60 FPS target in ordinary tactical play.
+- [x] Maintain 30 FPS hard floor in the largest supported battle.
+- [x] Validate 1280x720.
+- [x] Validate 1920x1080.
+- [x] Validate integrated graphics target.
+- [x] Validate recommended discrete graphics target.
+- [x] Measure update time.
+- [x] Measure render time.
+- [x] Measure AI time.
+- [x] Measure projectile time.
+- [x] Measure campaign-map time.
+- [x] Measure memory.
+- [x] Measure garbage collection.
 
 ## 9.3 Stress Scenarios
 
-- [ ] Run 100 ships per side.
-- [ ] Run 160 ships per side.
-- [ ] Run capital-heavy battle.
-- [ ] Run titan-heavy battle.
-- [ ] Run missile-heavy battle.
-- [ ] Run wreck-heavy aftermath.
-- [ ] Run prolonged 30-minute tactical session.
-- [ ] Run repeated tactical entries.
-- [ ] Run long strategic campaign.
-- [ ] Run save/load during a large campaign state.
+- [x] Run 100 ships per side.
+- [x] Run 160 ships per side.
+- [x] Run capital-heavy battle.
+- [x] Run titan-heavy battle.
+- [x] Run missile-heavy battle.
+- [x] Run wreck-heavy aftermath.
+- [x] Run prolonged 30-minute tactical session.
+- [x] Run repeated tactical entries.
+- [x] Run long strategic campaign.
+- [x] Run save/load during a large campaign state.
 
 ## 9.4 Optimization Rules
 
-- [ ] Profile before optimizing.
-- [ ] Preserve gameplay correctness.
-- [ ] Preserve internal damage.
-- [ ] Preserve persistent fleet identity.
-- [ ] Prefer spatial indexing and bounded work.
-- [ ] Avoid invisible reductions that alter battle outcomes.
-- [ ] Allow explicit visual-detail settings.
-- [ ] Keep Tactical FPS View optional.
-- [ ] Document measured gains.
+- [x] Profile before optimizing.
+- [x] Preserve gameplay correctness.
+- [x] Preserve internal damage.
+- [x] Preserve persistent fleet identity.
+- [x] Prefer spatial indexing and bounded work.
+- [x] Avoid invisible reductions that alter battle outcomes.
+- [x] Allow explicit visual-detail settings.
+- [x] Keep Tactical FPS View optional.
+- [x] Document measured gains.
 
 ### Phase 9 Exit Criteria
 
-- [ ] Largest supported battle remains at or above 30 FPS on verified minimum
+- [x] Largest supported battle remains at or above 30 FPS on verified minimum
   hardware.
-- [ ] Ordinary battles target 60 FPS.
-- [ ] No progressive memory degradation blocks a full session.
+- [x] Ordinary battles target 60 FPS.
+- [x] No progressive memory degradation blocks a full session.
 
 # Phase 10 - Accessibility And Input Acceptance
 

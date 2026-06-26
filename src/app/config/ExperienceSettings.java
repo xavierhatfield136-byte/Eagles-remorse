@@ -60,6 +60,24 @@ public final class ExperienceSettings {
         }
     }
 
+    public enum VisualDetail {
+        AUTO("Auto"),
+        HIGH("High"),
+        MEDIUM("Medium"),
+        LOW("Low");
+
+        private final String label;
+
+        VisualDetail(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
     public Preset preset = Preset.STANDARD;
     public double commandComplexity = 1.0;
     public double combatLethality = 1.0;
@@ -80,6 +98,7 @@ public final class ExperienceSettings {
     public InteractionMode miningMode = InteractionMode.HOLD;
     public InteractionMode firingMode = InteractionMode.HOLD;
     public InteractionMode mapMode = InteractionMode.TOGGLE;
+    public VisualDetail visualDetail = VisualDetail.AUTO;
 
     public static ExperienceSettings defaults() {
         return forPreset(Preset.STANDARD);
@@ -133,7 +152,8 @@ public final class ExperienceSettings {
                 "No faction-specific durability bonuses",
                 "Combat lethality: x" + formatMultiplier(combatLethality),
                 "Strategic pressure: x" + formatMultiplier(strategicPressure),
-                "Travel attrition: x" + formatMultiplier(attrition)
+                "Travel attrition: x" + formatMultiplier(attrition),
+                "Visual detail: " + visualDetail
         );
     }
 
@@ -159,6 +179,7 @@ public final class ExperienceSettings {
         out.miningMode = miningMode;
         out.firingMode = firingMode;
         out.mapMode = mapMode;
+        out.visualDetail = visualDetail;
         return out;
     }
 
@@ -168,6 +189,7 @@ public final class ExperienceSettings {
         if (miningMode == null) miningMode = InteractionMode.HOLD;
         if (firingMode == null) firingMode = InteractionMode.HOLD;
         if (mapMode == null) mapMode = InteractionMode.TOGGLE;
+        if (visualDetail == null) visualDetail = VisualDetail.AUTO;
         commandComplexity = clamp(commandComplexity, 0.4, 1.8);
         combatLethality = clamp(combatLethality, 0.4, 1.8);
         strategicPressure = clamp(strategicPressure, 0.0, 1.8);

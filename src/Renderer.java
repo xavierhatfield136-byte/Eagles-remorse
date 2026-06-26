@@ -120,7 +120,6 @@ public class Renderer {
             }
             ShipSkinLibrary.getSkinSet(role, null);
         }
-
         String[] stationModules = {
                 "hull_fortification",
                 "shield_array",
@@ -2512,6 +2511,10 @@ public class Renderer {
             g2.fillRect(0, 0, viewW, viewH);
             return;
         }
+        if (PerformanceGuardrails.quality().ordinal() >= PerformanceGuardrails.VisualQuality.LOW.ordinal()) {
+            drawSimplePerformanceBackground(g2, camX, camY, viewW, viewH, seed);
+            return;
+        }
         CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
         BufferedImage campaignImage = EnvironmentSkinLibrary.campaignBackdrop(campaignBackdropImageKey(ctx));
         if (campaignImage == null) {
@@ -2541,6 +2544,29 @@ public class Renderer {
         drawTiledParallaxLayer(g2, bgStars, camX, camY, viewW, viewH, 0.16, backdropStarsAlpha(spec));
         drawTiledParallaxLayer(g2, bgDust, camX, camY, viewW, viewH, 0.24, backdropDustAlpha(spec));
         drawCampaignBackdropOverlay(g2, spec, camX, camY, viewW, viewH, seed);
+    }
+
+    private static void drawSimplePerformanceBackground(Graphics2D g2, double camX, double camY, int viewW, int viewH, long seed) {
+        if (g2 == null) return;
+        g2.setColor(new Color(1, 3, 8));
+        g2.fillRect(0, 0, viewW, viewH);
+        g2.setColor(new Color(80, 130, 180, 48));
+        int spacing = 160;
+        int ox = (int) Math.floorMod(Math.round(-camX * 0.08), spacing);
+        int oy = (int) Math.floorMod(Math.round(-camY * 0.08), spacing);
+        for (int x = ox; x < viewW; x += spacing) g2.drawLine(x, 0, x, viewH);
+        for (int y = oy; y < viewH; y += spacing) g2.drawLine(0, y, viewW, y);
+        g2.setColor(new Color(170, 210, 255, 120));
+        long base = seed ^ (((long) ((int) camX >> 8)) * 0x9E3779B97F4A7C15L)
+                ^ (((long) ((int) camY >> 8)) * 0xC2B2AE3D27D4EB4FL);
+        for (int i = 0; i < 80; i++) {
+            long v = base + i * 0x9E3779B97F4A7C15L;
+            v ^= (v >>> 33);
+            int x = (int) Math.floorMod(v, Math.max(1, viewW));
+            v ^= (v >>> 29);
+            int y = (int) Math.floorMod(v, Math.max(1, viewH));
+            g2.fillRect(x, y, 1, 1);
+        }
     }
 
     private static void drawCampaignBackgroundImage(Graphics2D g2, BufferedImage image,
@@ -2577,13 +2603,18 @@ public class Renderer {
                                 FogOfWarSystem.State fog, Faction perspective) {
         if (ships == null) return 0;
         int drawn = 0;
+        boolean lowDetailTokens = PerformanceGuardrails.quality().ordinal() >= PerformanceGuardrails.VisualQuality.LOW.ordinal();
         for (Ship s : ships) {
             if (s == null || !s.alive) continue;
             boolean visible = FogOfWarSystem.isVisibleToPerspective(fog, perspective, s);
             if (visible) {
                 if (!isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) continue;
                 boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
-                ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
+                if (lowDetailTokens && s != null && !isPlayerShip(s)) {
+                    drawPerformanceShipToken(g2, s);
+                } else {
+                    ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
+                }
                 drawn++;
             } else {
                 FogOfWarSystem.ContactGhost ghost = (fog == null) ? null : fog.contactGhost(s.id);
@@ -2594,6 +2625,38 @@ public class Renderer {
             }
         }
         return drawn;
+    }
+
+    private static boolean isPlayerShip(Ship ship) {
+        return ship instanceof Player;
+    }
+
+    private static void drawPerformanceShipToken(Graphics2D g2, Ship ship) {
+        if (g2 == null || ship == null || !ship.alive) return;
+        int x = (int) Math.round(ship.x);
+        int y = (int) Math.round(ship.y);
+        int r = (int) Math.max(3, Math.min(18, ship.radius * 0.42));
+        Color hull = factionHullColor(ship.faction);
+        Color trim = factionTrimColor(ship.faction);
+        Graphics2D g = (Graphics2D) g2.create();
+        try {
+            g.translate(x, y);
+            g.rotate(ship.angle);
+            Polygon wedge = new Polygon();
+            wedge.addPoint(r + 3, 0);
+            wedge.addPoint(-r, -Math.max(3, r / 2));
+            wedge.addPoint(-Math.max(2, r / 3), 0);
+            wedge.addPoint(-r, Math.max(3, r / 2));
+            g.setColor(new Color(hull.getRed(), hull.getGreen(), hull.getBlue(), 190));
+            g.fillPolygon(wedge);
+            g.setColor(new Color(trim.getRed(), trim.getGreen(), trim.getBlue(), 210));
+            g.drawPolygon(wedge);
+            if (ship.role != null && ship.role.isTitanOrMothership()) {
+                g.drawOval(-r - 2, -r - 2, (r + 2) * 2, (r + 2) * 2);
+            }
+        } finally {
+            g.dispose();
+        }
     }
 
     static int drawTacticalShips(Graphics2D g2, List<Ship> ships,
@@ -14984,7 +15047,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         private static final String SKIN_DIR = "assets/ship_skins";
         private static final String SKIN_RESOURCE_DIR = "ship_skins";
         private static final List<File> SKIN_ROOTS = resolveSkinRoots(SKIN_DIR);
-        private static final Map<String, ShipSkinSet> CACHE = new BoundedCache<>(192);
+        private static final Map<String, ShipSkinSet> CACHE = new BoundedCache<>(512);
         private static final Set<String> MISS = new HashSet<>();
 
         static boolean hasSkin(ShipRole role, Faction faction) {

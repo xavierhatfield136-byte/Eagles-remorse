@@ -46,6 +46,7 @@ public final class ExperienceSettingsStore {
             out.miningMode = enumValue(ExperienceSettings.InteractionMode.class, props.getProperty("miningMode"), out.miningMode);
             out.firingMode = enumValue(ExperienceSettings.InteractionMode.class, props.getProperty("firingMode"), out.firingMode);
             out.mapMode = enumValue(ExperienceSettings.InteractionMode.class, props.getProperty("mapMode"), out.mapMode);
+            out.visualDetail = enumValue(ExperienceSettings.VisualDetail.class, props.getProperty("visualDetail"), out.visualDetail);
         } catch (IOException ex) {
             ErrorLog.logException("[experience] load_failed path=" + FILE, ex);
         }
@@ -77,6 +78,7 @@ public final class ExperienceSettingsStore {
         props.setProperty("miningMode", settings.miningMode.name());
         props.setProperty("firingMode", settings.firingMode.name());
         props.setProperty("mapMode", settings.mapMode.name());
+        props.setProperty("visualDetail", settings.visualDetail.name());
         try {
             Files.createDirectories(FILE.getParent());
             try (OutputStream out = Files.newOutputStream(FILE)) {

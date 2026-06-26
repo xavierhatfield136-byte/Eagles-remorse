@@ -20,8 +20,8 @@ import java.util.Set;
 final class ShipPartLibrary {
     private static final String PART_DIR = "assets/ship_parts";
     private static final String PART_RESOURCE_DIR = "/ship_parts/";
-    private static final Map<String, PartSet> CACHE = lruCache(64);
-    private static final Map<String, PartSprite> IMAGE_CACHE = lruCache(16);
+    private static final Map<String, PartSet> CACHE = lruCache(768);
+    private static final Map<String, PartSprite> IMAGE_CACHE = lruCache(1024);
     private static final Set<String> IMAGE_MISS_CACHE = new HashSet<>();
     private static Map<String, double[]> DAMAGE_FOCUS_CACHE = null;
     private static boolean cachesPrewarmed = false;

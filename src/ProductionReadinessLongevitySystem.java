@@ -158,11 +158,13 @@ public final class ProductionReadinessLongevitySystem {
                 "order-of-battle", "fleet-provenance", "economy-conservation",
                 "production-queue", "territory-ownership", "mission-briefing-completeness",
                 "contact-validity", "strike-origin", "save-migration",
+                "phase-9-battle-scale", "phase-9-performance-report",
                 "asset validation", "content authoring validator"));
         state.architecture.assetReports.addAll(List.of("missing-assets.json", "duplicate-assets.json", "visual-regression/index.json"));
-        state.architecture.performanceBudgets.put("frame-ms", 16);
-        state.architecture.performanceBudgets.put("heap-mb", 1024);
-        state.architecture.performanceBudgets.put("ships", 320);
+        state.architecture.performanceBudgets.put("ordinary-frame-ms", (int) Math.ceil(PerformanceGuardrails.ORDINARY_FRAME_BUDGET_MS));
+        state.architecture.performanceBudgets.put("largest-frame-ms", (int) Math.ceil(PerformanceGuardrails.LARGEST_BATTLE_FRAME_BUDGET_MS));
+        state.architecture.performanceBudgets.put("heap-mb", PerformanceBattleScale.INTEGRATED_GRAPHICS_MIN_HEAP_MB);
+        state.architecture.performanceBudgets.put("ships", PerformanceBattleScale.LARGEST_SUPPORTED_TOTAL_SHIPS);
 
         state.testing.smokeScenarios.addAll(List.of("campaign start", "mining", "docking", "travel", "intercept", "tactical entry", "victory", "retreat", "save/load"));
         state.testing.permutationSuites.addAll(List.of("overlay state", "hotkey context", "faction hostility", "UI hitbox/render bounds"));

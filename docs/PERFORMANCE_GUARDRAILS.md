@@ -18,10 +18,22 @@ Decoded image libraries use bounded caches. `SpriteAtlasRegistry` builds compact
 
 - `gradlew performanceGuardrailSmoke`
 - `gradlew performanceGuardrailSoak`
+- `gradlew phase9Performance`
 - `gradlew saveLoadSoak`
 - `gradlew performanceGuardrailsCi`
 
 The smoke scenario runs a late-campaign-shaped battle with hundreds of ships and sustained missile traffic. The extended task increases battle duration for memory-soak runs. Save/load soak uses an isolated temporary checkpoint file.
+
+Phase 9 adds named battle-scale reports for ordinary tactical play, the largest
+supported alpha battle, and 100/160-per-side stress cases. These reports emit
+JSON under `build/reports/phase9_*.json` with ship, projectile, wreck, VFX,
+timing, heap, GC, asset-decode, gameplay disk-load, and frame-budget fields.
+
+As of the 2026-06-25 Phase 9 completion pass, the supported FPS envelope is
+intentionally conservative: ordinary tactical play is 14 ships per side, and the
+largest supported alpha battle is 50 ships per side using Low visual detail and
+Tactical FPS View. 100-per-side and 160-per-side battles remain stress reports,
+not minimum-hardware FPS promises.
 
 ## Alpha Release Gate
 

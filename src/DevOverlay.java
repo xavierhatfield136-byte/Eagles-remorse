@@ -128,7 +128,7 @@ public final class DevOverlay {
                 + "  GC " + fmt2(perfValue(perf, "gcMs")) + "ms/" + perfInt(perf, "gcCollections"));
 
         y += lineH;
-        drawLine(g2, x, y, "Quality: " + perfInt(perf, "visualQuality") + "  Warn: " + perfInt(perf, "performanceWarning"));
+        drawLine(g2, x, y, "Quality: " + perfText(perf, "visualQuality") + "  Warn: " + perfText(perf, "performanceWarning"));
 
         y += lineH;
         drawLine(g2, x, y, "AI: Maint " + fmt2(perfValue(perf, "aiMaintenanceMs")) + "  Fleet " + fmt2(perfValue(perf, "aiFleetStateMs"))
@@ -304,6 +304,12 @@ public final class DevOverlay {
     private static String perfInt(PerfTelemetry perf, String field) {
         if (perf == null) return "?";
         return safe(perf, field);
+    }
+
+    private static String perfText(PerfTelemetry perf, String field) {
+        if (perf == null) return "?";
+        String text = safe(perf, field);
+        return (text == null || text.isBlank()) ? "-" : text;
     }
 
     private static String perfMb(PerfTelemetry perf, String field) {

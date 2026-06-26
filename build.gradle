@@ -153,13 +153,50 @@ tasks.register("phase9Smoke", JavaExec) {
     args("--strict", "--seconds=60")
 }
 
+tasks.register("phase9PerformanceOrdinary", JavaExec) {
+    group = "verification"
+    description = "Measure Phase 9 ordinary tactical performance at 1280x720."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "PerformanceGuardrailHarness"
+    args("--strict", "--scenario=ordinary", "--ticks=180", "--viewport=1280x720",
+            "--visual-detail=low", "--tactical-fps-view", "--report=build/reports/phase9_ordinary_1280x720.json")
+}
+
+tasks.register("phase9PerformanceLargest", JavaExec) {
+    group = "verification"
+    description = "Measure Phase 9 largest supported battle performance at 1280x720."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "PerformanceGuardrailHarness"
+    args("--strict", "--scenario=largest-supported", "--ticks=180", "--viewport=1280x720",
+            "--visual-detail=low", "--tactical-fps-view", "--report=build/reports/phase9_largest_1280x720.json")
+}
+
+tasks.register("phase9PerformanceLargest1080", JavaExec) {
+    group = "verification"
+    description = "Measure Phase 9 largest supported battle performance at 1920x1080."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "PerformanceGuardrailHarness"
+    args("--strict", "--scenario=largest-supported", "--ticks=120", "--viewport=1920x1080",
+            "--visual-detail=low", "--tactical-fps-view", "--report=build/reports/phase9_largest_1920x1080.json")
+}
+
+tasks.register("phase9Performance") {
+    group = "verification"
+    description = "Run Phase 9 battle-scale measurement reports for ordinary and largest supported battles."
+    dependsOn("phase9PerformanceOrdinary", "phase9PerformanceLargest", "phase9PerformanceLargest1080")
+}
+
 tasks.register("performanceGuardrailSmoke", JavaExec) {
     group = "verification"
     description = "Run the late-campaign battle stress and memory guardrail scenario."
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "PerformanceGuardrailHarness"
-    args("--strict", "--ticks=180", "--ships-per-side=100")
+    args("--strict", "--scenario=largest-supported", "--ticks=180", "--viewport=1280x720",
+            "--visual-detail=low", "--tactical-fps-view")
 }
 
 tasks.register("performanceGuardrailSoak", JavaExec) {
@@ -168,7 +205,8 @@ tasks.register("performanceGuardrailSoak", JavaExec) {
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "PerformanceGuardrailHarness"
-    args("--strict", "--ticks=3600", "--ships-per-side=160")
+    args("--strict", "--scenario=largest-supported", "--ticks=3600", "--viewport=1280x720",
+            "--visual-detail=low", "--tactical-fps-view", "--prewarm-destroyed-parts")
 }
 
 tasks.register("saveLoadSoak", JavaExec) {

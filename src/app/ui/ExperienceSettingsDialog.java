@@ -37,10 +37,12 @@ final class ExperienceSettingsDialog {
         JComboBox<ExperienceSettings.InteractionMode> mining = new JComboBox<>(ExperienceSettings.InteractionMode.values());
         JComboBox<ExperienceSettings.InteractionMode> firing = new JComboBox<>(ExperienceSettings.InteractionMode.values());
         JComboBox<ExperienceSettings.InteractionMode> map = new JComboBox<>(ExperienceSettings.InteractionMode.values());
+        JComboBox<ExperienceSettings.VisualDetail> visualDetail = new JComboBox<>(ExperienceSettings.VisualDetail.values());
         JLabel modifierPreview = new JLabel();
         mining.setSelectedItem(base.miningMode);
         firing.setSelectedItem(base.firingMode);
         map.setSelectedItem(base.mapMode);
+        visualDetail.setSelectedItem(base.visualDetail);
         preset.addActionListener(e -> {
             ExperienceSettings.Preset selected = (ExperienceSettings.Preset) preset.getSelectedItem();
             if (selected == null || selected == ExperienceSettings.Preset.CUSTOM) return;
@@ -74,6 +76,7 @@ final class ExperienceSettingsDialog {
         panel.add(row("Mining input", mining));
         panel.add(row("Firing input", firing));
         panel.add(row("Map input", map));
+        panel.add(row("Visual detail", visualDetail));
 
         int result = JOptionPane.showConfirmDialog(parent, panel, "Difficulty And Accessibility",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
@@ -100,6 +103,7 @@ final class ExperienceSettingsDialog {
         out.miningMode = (ExperienceSettings.InteractionMode) mining.getSelectedItem();
         out.firingMode = (ExperienceSettings.InteractionMode) firing.getSelectedItem();
         out.mapMode = (ExperienceSettings.InteractionMode) map.getSelectedItem();
+        out.visualDetail = (ExperienceSettings.VisualDetail) visualDetail.getSelectedItem();
         out.normalize();
         return out;
     }

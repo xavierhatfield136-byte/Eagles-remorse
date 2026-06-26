@@ -1,3 +1,4 @@
+import app.config.ExperienceSettings;
 import app.state.AssetLoadGuard;
 import app.state.PerfTelemetry;
 import java.lang.management.GarbageCollectorMXBean;
@@ -15,8 +16,13 @@ public final class PerformanceGuardrails {
     }
 
     private static final double FRAME_BUDGET_MS = 16.67;
+    public static final int ORDINARY_TARGET_FPS = 60;
+    public static final int LARGEST_BATTLE_FLOOR_FPS = 30;
+    public static final double ORDINARY_FRAME_BUDGET_MS = 1000.0 / ORDINARY_TARGET_FPS;
+    public static final double LARGEST_BATTLE_FRAME_BUDGET_MS = 1000.0 / LARGEST_BATTLE_FLOOR_FPS;
     private static final long SPRITE_MEMORY_BUDGET_BYTES = 384L * 1024L * 1024L;
     private static VisualQuality quality = VisualQuality.HIGH;
+    private static ExperienceSettings.VisualDetail requestedVisualDetail = ExperienceSettings.VisualDetail.AUTO;
     private static int overBudgetFrames = 0;
     private static int recoveryFrames = 0;
     private static long lastGcCount = gcCount();
@@ -26,20 +32,12 @@ public final class PerformanceGuardrails {
 
     public static void update(PerfTelemetry perf) {
         if (perf == null) return;
-        double frame = Math.max(perf.frameMs, perf.renderMs);
-        if (frame > FRAME_BUDGET_MS * 1.20) {
-            overBudgetFrames++;
-            recoveryFrames = 0;
-        } else if (frame < FRAME_BUDGET_MS * 0.82) {
-            recoveryFrames++;
-            overBudgetFrames = Math.max(0, overBudgetFrames - 1);
+        if (requestedVisualDetail != null && requestedVisualDetail != ExperienceSettings.VisualDetail.AUTO) {
+            quality = qualityFor(requestedVisualDetail);
         }
-        if (overBudgetFrames >= 90) {
-            quality = stepDown(quality);
-            overBudgetFrames = 0;
-        } else if (recoveryFrames >= 360) {
-            quality = stepUp(quality);
-            recoveryFrames = 0;
+        double frame = Math.max(perf.frameMs, perf.renderMs);
+        if (requestedVisualDetail == null || requestedVisualDetail == ExperienceSettings.VisualDetail.AUTO) {
+            updateAdaptiveQuality(frame);
         }
 
         long gcCount = gcCount();
@@ -55,12 +53,27 @@ public final class PerformanceGuardrails {
         perf.spriteMemoryBytes = AssetLoadGuard.spriteMemoryBytes();
         perf.spriteMemoryBudgetBytes = SPRITE_MEMORY_BUDGET_BYTES;
         perf.cachedImageCount = AssetLoadGuard.trackedImageCount();
-        perf.visualQuality = quality.name();
+        perf.visualQuality = quality.name() + (requestedVisualDetail == ExperienceSettings.VisualDetail.AUTO ? " AUTO" : " MANUAL");
         perf.performanceWarning = AssetLoadGuard.lastWarning();
         if (perf.spriteMemoryBytes > SPRITE_MEMORY_BUDGET_BYTES) {
             perf.performanceWarning = "SPRITE MEMORY BUDGET EXCEEDED";
             quality = stepDown(quality);
         }
+    }
+
+    public static void update(GameContext ctx) {
+        applyExperienceSettings(ctx == null || ctx.config == null ? null : ctx.config.experience);
+        update(ctx == null ? null : ctx.perf);
+    }
+
+    public static void applyExperienceSettings(ExperienceSettings settings) {
+        requestedVisualDetail = (settings == null || settings.visualDetail == null)
+                ? ExperienceSettings.VisualDetail.AUTO
+                : settings.visualDetail;
+    }
+
+    public static ExperienceSettings.VisualDetail requestedVisualDetail() {
+        return requestedVisualDetail;
     }
 
     public static VisualQuality quality() { return quality; }
@@ -101,6 +114,33 @@ public final class PerformanceGuardrails {
         recoveryFrames = 0;
         lastGcCount = gcCount();
         lastGcMs = gcMs();
+        requestedVisualDetail = ExperienceSettings.VisualDetail.AUTO;
+    }
+
+    private static void updateAdaptiveQuality(double frame) {
+        if (frame > FRAME_BUDGET_MS * 1.20) {
+            overBudgetFrames++;
+            recoveryFrames = 0;
+        } else if (frame < FRAME_BUDGET_MS * 0.82) {
+            recoveryFrames++;
+            overBudgetFrames = Math.max(0, overBudgetFrames - 1);
+        }
+        if (overBudgetFrames >= 90) {
+            quality = stepDown(quality);
+            overBudgetFrames = 0;
+        } else if (recoveryFrames >= 360) {
+            quality = stepUp(quality);
+            recoveryFrames = 0;
+        }
+    }
+
+    private static VisualQuality qualityFor(ExperienceSettings.VisualDetail detail) {
+        if (detail == null) return VisualQuality.HIGH;
+        return switch (detail) {
+            case AUTO, HIGH -> VisualQuality.HIGH;
+            case MEDIUM -> VisualQuality.MEDIUM;
+            case LOW -> VisualQuality.LOW;
+        };
     }
 
     private static VisualQuality stepDown(VisualQuality value) {
