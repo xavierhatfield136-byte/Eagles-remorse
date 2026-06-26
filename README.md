@@ -71,12 +71,37 @@ Build both package types at once:
 
 Generated packages are written to `build/package/windows/`. If WiX is not installed, `packageWindows` still builds the portable app bundle plus ZIP and skips the `.exe` installer.
 
+## Package For Linux
+
+On a Linux host, create a portable archive with its own bundled Java runtime:
+
+```bash
+./gradlew phase11LinuxPackaging
+```
+
+The resulting `EaglesRemorse-<version>-linux-x64.tar.gz` is written to
+`build/package/linux/`. Extract it and run `EaglesRemorse/bin/EaglesRemorse`.
+
+Validate the packaged build and generate checksums:
+
+```powershell
+./gradlew phase11Packaging
+```
+
+Packaged saves, settings, and logs are written to the user's application-data
+folder, not the install directory. On Windows the default location is:
+
+```text
+%APPDATA%\Eagles Remorse
+```
+
 ## GitHub Packaging
 
-The repo includes a GitHub Actions workflow at `.github/workflows/windows-package.yml`.
+The repo includes native Windows and Linux packaging workflows in
+`.github/workflows/`.
 
 - Run it manually from the Actions tab with `workflow_dispatch`
-- Or publish a GitHub Release to have it build Windows packages and attach them as release assets
+- Or publish a GitHub Release to build both platform packages and attach them as release assets
 
 ## Notes
 

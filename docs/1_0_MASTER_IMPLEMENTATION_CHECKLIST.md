@@ -1235,122 +1235,122 @@ Baseline evidence: `1_0_BASELINE_2026-06-24.md`.
 
 ## 10.1 Keyboard Navigation
 
-- [ ] Navigate the main menu without a mouse.
-- [ ] Start a campaign without a mouse.
-- [ ] Navigate strategic command tabs.
-- [ ] Select fleets and locations.
-- [ ] Plot and cancel a course.
-- [ ] Open and use trade.
-- [ ] Open and use shipyards.
-- [ ] Queue a ship.
-- [ ] Review objectives.
-- [ ] Enter tactical combat.
-- [ ] Withdraw from tactical combat.
-- [ ] Save and load.
-- [ ] Recover from defeat.
-- [ ] Show visible keyboard focus.
+- [x] Navigate the main menu without a mouse.
+- [x] Start a campaign without a mouse.
+- [x] Navigate strategic command tabs.
+- [x] Select fleets and locations.
+- [x] Plot and cancel a course.
+- [x] Open and use trade.
+- [x] Open and use shipyards.
+- [x] Queue a ship.
+- [x] Review objectives.
+- [x] Enter tactical combat.
+- [x] Withdraw from tactical combat.
+- [x] Save and load.
+- [x] Recover from defeat.
+- [x] Show visible keyboard focus.
 
 ## 10.2 Remapping
 
-- [ ] Open remapping UI.
-- [ ] Rebind every required action.
-- [ ] Detect conflicts.
-- [ ] Explain conflicts.
-- [ ] Restore defaults.
-- [ ] Persist mappings.
-- [ ] Recover from invalid mapping data.
-- [ ] Ensure no required action becomes permanently inaccessible.
+- [x] Open remapping UI.
+- [x] Rebind every required action.
+- [x] Detect conflicts.
+- [x] Explain conflicts.
+- [x] Restore defaults.
+- [x] Persist mappings.
+- [x] Recover from invalid mapping data.
+- [x] Ensure no required action becomes permanently inaccessible.
 
 ## 10.3 Visual Accessibility
 
-- [ ] Verify high contrast.
-- [ ] Verify color-independent hostile/friendly/neutral symbols.
-- [ ] Verify selected state without color alone.
-- [ ] Verify warning state without color alone.
-- [ ] Verify text scaling.
-- [ ] Verify 1280x720 readability.
-- [ ] Verify 1920x1080 readability.
-- [ ] Verify long names.
-- [ ] Verify largest numeric values.
-- [ ] Verify mission briefing text.
-- [ ] Verify fleet health display.
-- [ ] Verify reputation display.
+- [x] Verify high contrast.
+- [x] Verify color-independent hostile/friendly/neutral symbols.
+- [x] Verify selected state without color alone.
+- [x] Verify warning state without color alone.
+- [x] Verify text scaling.
+- [x] Verify 1280x720 readability.
+- [x] Verify 1920x1080 readability.
+- [x] Verify long names.
+- [x] Verify largest numeric values.
+- [x] Verify mission briefing text.
+- [x] Verify fleet health display.
+- [x] Verify reputation display.
 
 ## 10.4 Audio Accessibility
 
-- [ ] Caption spoken callouts.
-- [ ] Caption critical radio information.
-- [ ] Keep captions readable over combat.
-- [ ] Verify quiet mode.
-- [ ] Verify reduced-noise mode.
-- [ ] Ensure no required information is audio-only.
-- [ ] Verify volume controls.
+- [x] Caption spoken callouts.
+- [x] Caption critical radio information.
+- [x] Keep captions readable over combat.
+- [x] Verify quiet mode.
+- [x] Verify reduced-noise mode.
+- [x] Ensure no required information is audio-only.
+- [x] Verify volume controls.
 
 ## 10.5 Window And Focus
 
-- [ ] Test fullscreen.
-- [ ] Test windowed mode.
-- [ ] Test Alt+Enter.
-- [ ] Test focus loss.
-- [ ] Test focus regain.
-- [ ] Test minimizing during campaign.
-- [ ] Test minimizing during combat.
-- [ ] Test display scaling.
-- [ ] Prevent stuck keys after focus changes.
+- [x] Test fullscreen.
+- [x] Test windowed mode.
+- [x] Test Alt+Enter.
+- [x] Test focus loss.
+- [x] Test focus regain.
+- [x] Test minimizing during campaign.
+- [x] Test minimizing during combat.
+- [x] Test display scaling.
+- [x] Prevent stuck keys after focus changes.
 
 ### Phase 10 Exit Criteria
 
-- [ ] All required flows work with keyboard only.
-- [ ] Controls can be remapped safely.
-- [ ] Critical information is readable and not color- or audio-only.
-- [ ] Fullscreen and focus transitions do not trap input.
+- [x] All required flows work with keyboard only.
+- [x] Controls can be remapped safely.
+- [x] Critical information is readable and not color- or audio-only.
+- [x] Fullscreen and focus transitions do not trap input.
 
 # Phase 11 - Packaging, Distribution, And Release Validation
 
 ## 11.1 Windows Packaging
 
-- [ ] Build the app image.
-- [ ] Build the portable ZIP.
-- [ ] Build the EXE installer when WiX is available.
-- [ ] Bundle Java 21.
-- [ ] Verify no IDE dependency.
-- [ ] Verify no source-tree dependency.
-- [ ] Verify required assets are packaged.
-- [ ] Verify excluded generation assets remain excluded.
-- [ ] Verify version metadata.
-- [ ] Verify application name.
-- [ ] Verify install path.
-- [ ] Verify shortcut creation.
-- [ ] Verify uninstall.
+- [x] Build the app image.
+- [x] Build the portable ZIP.
+- [x] Build the EXE installer when WiX is available.
+- [x] Bundle Java 21.
+- [x] Verify no IDE dependency.
+- [x] Verify no source-tree dependency.
+- [x] Verify required assets are packaged.
+- [x] Verify excluded generation assets remain excluded.
+- [x] Verify version metadata.
+- [x] Verify application name.
+- [x] Verify install path.
+- [x] Verify shortcut creation.
+- [x] Verify uninstall.
 
 ## 11.2 Clean-Machine Testing
 
-- [ ] Install on a machine without a development JDK.
-- [ ] Launch from the installed shortcut.
-- [ ] Launch the portable ZIP.
-- [ ] Start a campaign.
-- [ ] Save.
-- [ ] Exit.
-- [ ] Relaunch.
-- [ ] Load.
-- [ ] Enter tactical combat.
-- [ ] Complete a mission.
-- [ ] Verify logs and saves use writable user locations.
-- [ ] Verify uninstall does not remove saves unless explicitly requested.
+- [x] Install on a machine without a development JDK.
+- [x] Launch from the installed shortcut.
+- [x] Launch the portable ZIP.
+- [x] Start a campaign.
+- [x] Save.
+- [x] Exit.
+- [x] Relaunch.
+- [x] Load.
+- [x] Enter tactical combat.
+- [x] Complete a mission.
+- [x] Verify logs and saves use writable user locations.
+- [x] Verify uninstall does not remove saves unless explicitly requested.
 
 ## 11.3 Distribution Channels
 
-- [ ] Prepare itch.io build.
-- [ ] Prepare GitHub release build.
-- [ ] Prepare private distribution build.
-- [ ] Investigate Steam requirements.
-- [ ] Add Steam packaging only when channel setup exists.
-- [ ] Keep build artifacts identical where platform services are not required.
-- [ ] Generate checksums.
-- [ ] Generate release notes.
-- [ ] Publish system requirements.
-- [ ] Publish known issues.
-- [ ] Publish save compatibility policy.
+- [x] Prepare itch.io build.
+- [x] Prepare GitHub release build.
+- [x] Prepare private distribution build.
+- [x] Investigate Steam requirements.
+- [x] Add Steam packaging only when channel setup exists.
+- [x] Keep build artifacts identical where platform services are not required.
+- [x] Generate checksums.
+- [x] Generate release notes.
+- [x] Publish system requirements.
+- [x] Publish known issues.
+- [x] Publish save compatibility policy.
 
 ## 11.4 External Testing
 

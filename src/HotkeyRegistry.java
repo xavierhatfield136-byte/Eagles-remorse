@@ -25,6 +25,7 @@ public final class HotkeyRegistry {
     }
 
     public record Binding(Scope scope, String action, KeyStroke stroke, String label) {}
+    public record RemapResult(boolean accepted, String message) {}
 
     private static final Map<String, Binding> DEFAULT_BINDINGS = buildBindings();
     private static final Map<String, Binding> BINDINGS = loadBindings();
@@ -52,25 +53,51 @@ public final class HotkeyRegistry {
     }
 
     public static synchronized boolean remapKeyboard(String action, KeyStroke stroke) {
+        return remapKeyboardDetailed(action, stroke).accepted();
+    }
+
+    public static synchronized RemapResult remapKeyboardDetailed(String action, KeyStroke stroke) {
         Binding previous = BINDINGS.get(action);
-        if (previous == null || stroke == null) return false;
+        RemapResult validation = validateKeyboardCandidate(BINDINGS, previous, stroke);
+        if (!validation.accepted()) return validation;
         BINDINGS.put(action, new Binding(previous.scope(), action, stroke, keyLabel(stroke)));
         persist();
-        return true;
+        return new RemapResult(true, action + " rebound to " + keyLabel(stroke));
     }
 
     public static synchronized boolean remapMouse(String action, int button) {
-        if (!DEFAULT_MOUSE.containsKey(action) || button <= 0) return false;
+        return remapMouseDetailed(action, button).accepted();
+    }
+
+    public static synchronized RemapResult remapMouseDetailed(String action, int button) {
+        if (!DEFAULT_MOUSE.containsKey(action)) return new RemapResult(false, "Unknown mouse action: " + action);
+        if (button <= 0) return new RemapResult(false, "Mouse binding must use a real button.");
+        for (Map.Entry<String, Integer> entry : MOUSE.entrySet()) {
+            if (!entry.getKey().equals(action) && entry.getValue() == button) {
+                return new RemapResult(false, "Mouse button " + button + " is already assigned to " + entry.getKey() + ".");
+            }
+        }
         MOUSE.put(action, button);
         persist();
-        return true;
+        return new RemapResult(true, action + " rebound to mouse button " + button);
     }
 
     public static synchronized boolean remapController(String action, String button) {
-        if (!DEFAULT_CONTROLLER.containsKey(action) || button == null || button.isBlank()) return false;
-        CONTROLLER.put(action, button.trim().toUpperCase(Locale.US));
+        return remapControllerDetailed(action, button).accepted();
+    }
+
+    public static synchronized RemapResult remapControllerDetailed(String action, String button) {
+        if (!DEFAULT_CONTROLLER.containsKey(action)) return new RemapResult(false, "Unknown controller action: " + action);
+        if (button == null || button.isBlank()) return new RemapResult(false, "Controller binding must use a real button.");
+        String normalized = button.trim().toUpperCase(Locale.US);
+        for (Map.Entry<String, String> entry : CONTROLLER.entrySet()) {
+            if (!entry.getKey().equals(action) && normalized.equalsIgnoreCase(entry.getValue())) {
+                return new RemapResult(false, normalized + " is already assigned to " + entry.getKey() + ".");
+            }
+        }
+        CONTROLLER.put(action, normalized);
         persist();
-        return true;
+        return new RemapResult(true, action + " rebound to " + normalized);
     }
 
     public static synchronized void restoreDefaults(Scope scope) {
@@ -133,6 +160,10 @@ public final class HotkeyRegistry {
         return out;
     }
 
+    public static List<String> requiredActionIds() {
+        return List.copyOf(DEFAULT_BINDINGS.keySet());
+    }
+
     public static List<String> duplicateUnqualifiedBindings() {
         Map<String, String> owners = new LinkedHashMap<>();
         List<String> duplicates = new ArrayList<>();
@@ -157,7 +188,7 @@ public final class HotkeyRegistry {
         }
 
         rows.add("COMBAT: " + label("primaryDown") + "/LMB fire | " + label("secondaryDown")
-                + "/RMB secondary | " + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " tactical");
+                + "/RMB secondary | " + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " FPS view");
         rows.add("NAV: WASD move | arrows pan | " + label("toggleShop") + " fleet management | "
                 + label("toggleBaseMenu") + " command upgrades | " + label("toggleMap") + " map | "
                 + label("cycleHudDetail") + " HUD");
@@ -260,9 +291,25 @@ public final class HotkeyRegistry {
             String raw = props.getProperty("keyboard." + binding.action());
             if (raw == null || raw.isBlank()) continue;
             KeyStroke stroke = KeyStroke.getKeyStroke(raw);
-            if (stroke != null) out.put(binding.action(), new Binding(binding.scope(), binding.action(), stroke, keyLabel(stroke)));
+            Binding candidate = new Binding(binding.scope(), binding.action(), stroke, keyLabel(stroke));
+            if (validateKeyboardCandidate(out, binding, stroke).accepted()) out.put(binding.action(), candidate);
         }
         return out;
+    }
+
+    private static RemapResult validateKeyboardCandidate(Map<String, Binding> active,
+                                                         Binding previous,
+                                                         KeyStroke stroke) {
+        if (previous == null) return new RemapResult(false, "Unknown keyboard action.");
+        if (stroke == null) return new RemapResult(false, "Keyboard binding must use a real key.");
+        for (Binding other : active.values()) {
+            if (other.action().equals(previous.action())) continue;
+            if (other.scope() == previous.scope() && other.stroke().equals(stroke)) {
+                return new RemapResult(false, keyLabel(stroke) + " is already assigned to "
+                        + other.action() + " in " + previous.scope().name() + ".");
+            }
+        }
+        return new RemapResult(true, "OK");
     }
 
     private static Map<String, Integer> defaultMouseBindings() {

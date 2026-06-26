@@ -1,6 +1,7 @@
 import app.config.GameConfig;
 import app.config.GameMode;
 import app.persistence.CampaignCheckpointStore;
+import app.support.UserDataPaths;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -155,7 +156,8 @@ class CampaignFleetHubMenuRegressionTest {
         assertEquals(7, recovered.nextSector);
         assertEquals(70, recovered.campaignOre);
 
-        Files.writeString(Path.of("save/campaign_slots/broken.properties"), "\\u00\n");
+        Files.createDirectories(UserDataPaths.saveDir().resolve("campaign_slots"));
+        Files.writeString(UserDataPaths.saveDir().resolve("campaign_slots").resolve("broken.properties"), "\\u00\n");
         assertTrue(CampaignCheckpointStore.listSlots().stream()
                 .anyMatch(s -> "broken".equals(s.id) && !s.recoverable && s.summary.contains("Recovery available")));
     }

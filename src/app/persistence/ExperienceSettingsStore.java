@@ -2,19 +2,19 @@ package app.persistence;
 
 import app.config.ExperienceSettings;
 import app.support.ErrorLog;
+import app.support.UserDataPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Properties;
 
 /**
  * Persists difficulty and accessibility defaults independently of save files.
  */
 public final class ExperienceSettingsStore {
-    private static final Path FILE = Paths.get("save", "experience_settings.properties");
+    private static final Path FILE = UserDataPaths.saveDir().resolve("experience_settings.properties");
 
     private ExperienceSettingsStore() {}
 

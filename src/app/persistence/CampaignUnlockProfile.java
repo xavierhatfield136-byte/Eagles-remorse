@@ -1,6 +1,7 @@
 package app.persistence;
 
 import app.support.ErrorLog;
+import app.support.UserDataPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,7 +10,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Properties;
@@ -19,7 +19,7 @@ import java.util.Properties;
  */
 public final class CampaignUnlockProfile {
     private static final int CURRENT_VERSION = 1;
-    private static final Path SAVE_DIR = Paths.get("save");
+    private static final Path SAVE_DIR = UserDataPaths.saveDir();
     private static final Path PROFILE_FILE = SAVE_DIR.resolve("campaign_unlock_profile.properties");
     private static final Object IO_LOCK = new Object();
 

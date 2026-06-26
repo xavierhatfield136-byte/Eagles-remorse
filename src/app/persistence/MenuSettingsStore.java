@@ -2,6 +2,7 @@ package app.persistence;
 
 import app.config.GameMode;
 import app.support.ErrorLog;
+import app.support.UserDataPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,7 +11,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Properties;
@@ -21,7 +21,7 @@ import java.util.Properties;
 public final class MenuSettingsStore {
     private MenuSettingsStore() {}
 
-    private static final Path SAVE_DIR = Paths.get("save");
+    private static final Path SAVE_DIR = UserDataPaths.saveDir();
     private static final Path SETTINGS_FILE = SAVE_DIR.resolve("menu_settings.properties");
     private static final Object IO_LOCK = new Object();
 

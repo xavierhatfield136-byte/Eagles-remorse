@@ -57,6 +57,9 @@ public class GamePanel extends JPanel implements ActionListener {
         controls = InputSystem.install(this, ctx, this::exitToMenu, toggleFullscreen);
         addFocusListener(new FocusAdapter() {
             @Override public void focusLost(FocusEvent e) {
+                ExperienceRuntime.releaseHeldInputs(ctx);
+                controllerPrimaryHeld = false;
+                controllerSecondaryHeld = false;
                 if (ctx.experience.pauseOnFocusLoss && ctx.state == GameState.RUNNING) {
                     ctx.state = GameState.PAUSED;
                     EventSystem.showBanner(ctx, "PAUSED: WINDOW FOCUS LOST", 1.2);
@@ -253,8 +256,14 @@ public class GamePanel extends JPanel implements ActionListener {
         bind(im, am, "toMenu", this::exitToMenu);
         bind(im, am, "overlayDiagnostics", () -> UISystem.printOverlayDiagnostics(ctx));
         bind(im, am, "toggleControlsScreen", () -> GameplayActions.toggleControlsScreen(ctx));
-        bind(im, am, "skipOnboardingBeat", () -> FirstHourOnboardingSystem.skipCurrent(ctx));
-        bind(im, am, "toggleTutorialArchive", () -> FirstHourOnboardingSystem.toggleArchive(ctx));
+        bind(im, am, "skipOnboardingBeat", () -> {
+            if (TutorialSystem.isActive(ctx)) TutorialSystem.skipCurrent(ctx);
+            else FirstHourOnboardingSystem.skipCurrent(ctx);
+        });
+        bind(im, am, "toggleTutorialArchive", () -> {
+            if (TutorialSystem.isActive(ctx)) TutorialSystem.toggleArchive(ctx);
+            else FirstHourOnboardingSystem.toggleArchive(ctx);
+        });
         bind(im, am, "toggleTacticalOrders", () -> TacticalCombatDepthSystem.toggleOverlay(ctx));
         bind(im, am, "cycleTacticalOrder", () -> TacticalCombatDepthSystem.cycleOrder(ctx));
         bind(im, am, "toggleTacticalPause", () -> TacticalCombatDepthSystem.togglePause(ctx));

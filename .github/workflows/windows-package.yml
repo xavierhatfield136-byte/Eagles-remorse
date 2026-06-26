@@ -33,7 +33,7 @@ jobs:
 
       - name: Build Windows packages
         shell: pwsh
-        run: ./gradlew packageWindows
+        run: ./gradlew packageWindows phase11Packaging
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -42,6 +42,7 @@ jobs:
           path: |
             build/package/windows/*.exe
             build/package/windows/*.zip
+            build/package/windows/SHA256SUMS-windows.txt
 
       - name: Attach release assets
         if: github.event_name == 'release'
@@ -50,3 +51,4 @@ jobs:
           files: |
             build/package/windows/*.exe
             build/package/windows/*.zip
+            build/package/windows/SHA256SUMS-windows.txt

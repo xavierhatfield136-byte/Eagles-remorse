@@ -112,16 +112,25 @@ public final class ScreenshotRegressionHarness {
     }
 
     public static BufferedImage capture(String target, int viewW, int viewH) {
-        GameContext ctx = contextForTarget(target);
+        int previousShipId = Ship.beginDeterministicIdScope();
+        int previousAsteroidId = Asteroid.beginDeterministicIdScope();
+        GameContext ctx = null;
         int safeW = Math.max(320, viewW);
         int safeH = Math.max(240, viewH);
         BufferedImage image = new BufferedImage(safeW, safeH, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();
+        String previousRenderTime = System.getProperty("game.renderTimeSeconds");
         try {
+            System.setProperty("game.renderTimeSeconds", "42.0");
+            ctx = contextForTarget(target);
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             GameRenderSystem.render(ctx, g2, safeW, safeH);
         } finally {
+            if (previousRenderTime == null) System.clearProperty("game.renderTimeSeconds");
+            else System.setProperty("game.renderTimeSeconds", previousRenderTime);
+            Asteroid.endDeterministicIdScope(previousAsteroidId);
+            Ship.endDeterministicIdScope(previousShipId);
             g2.dispose();
         }
         return image;

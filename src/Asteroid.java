@@ -8,6 +8,16 @@
  */
 public class Asteroid {
     private static int NEXT_ID = 1;
+
+    static int beginDeterministicIdScope() {
+        int previous = NEXT_ID;
+        NEXT_ID = 1;
+        return previous;
+    }
+
+    static void endDeterministicIdScope(int previousNextId) {
+        NEXT_ID = Math.max(previousNextId, NEXT_ID);
+    }
     public final int id = NEXT_ID++;
 
     public double x, y;

@@ -72,6 +72,17 @@ public final class ExperienceRuntime {
         }
     }
 
+    public static void releaseHeldInputs(GameContext ctx) {
+        if (ctx == null) return;
+        ctx.miningKeyDown = false;
+        ctx.firingPrimaryManual = false;
+        ctx.firingSecondaryManual = false;
+        ctx.cameraPanLeft = false;
+        ctx.cameraPanRight = false;
+        ctx.cameraPanUp = false;
+        ctx.cameraPanDown = false;
+    }
+
     public static Color factionColor(Faction faction, boolean bright) {
         ExperienceSettings.ColorblindPalette palette = active.colorblindPalette;
         if (palette == ExperienceSettings.ColorblindPalette.STANDARD) return null;

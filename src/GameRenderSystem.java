@@ -98,9 +98,9 @@ public final class GameRenderSystem {
         }
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
-        boolean tacticalView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
+        boolean tacticalFpsView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
         Renderer.drawSpaceBackground(g2, ctx, ctx.camX, ctx.camY, viewportW, viewportH, seed);
-        if (!tacticalView) {
+        if (!tacticalFpsView) {
             drawModifierWorldTint(ctx, g2, viewportW, viewportH);
         }
         double zoom = CameraSystem.normalizedZoom(ctx);
@@ -109,17 +109,17 @@ public final class GameRenderSystem {
         double viewMinY = ctx.camY - cullPad;
         double viewMaxX = ctx.camX + CameraSystem.worldViewWidth(ctx, viewportW) + cullPad;
         double viewMaxY = ctx.camY + CameraSystem.worldViewHeight(ctx, viewportH) + cullPad;
-        FogOfWarSystem.State renderFog = FogOfWarSystem.isCombatFogEnabled(ctx) ? ctx.fogOfWar : null;
+        FogOfWarSystem.State renderFog = null;
 
         // World space
         Graphics2D worldG = (Graphics2D) g2.create();
         worldG.scale(zoom, zoom);
         worldG.translate(-ctx.camX, -ctx.camY);
 
-        worldG.setColor(tacticalView ? new Color(130, 180, 220, 28) : new Color(255, 255, 255, 28));
+        worldG.setColor(tacticalFpsView ? new Color(130, 180, 220, 28) : new Color(255, 255, 255, 28));
         worldG.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
 
-        if (!tacticalView && DevTools.isFancyVfxEnabled()) {
+        if (!tacticalFpsView && DevTools.isFancyVfxEnabled()) {
             updateDamageVfx(ctx);
         }
 
@@ -129,38 +129,30 @@ public final class GameRenderSystem {
         java.util.List<Salvage> renderSalvage = renderScopedSalvage(ctx, ctx.salvage);
         java.util.List<Projectile> renderProjectiles = renderScopedProjectiles(ctx, ctx.projectiles);
 
-        ctx.perf.drawnAsteroids = tacticalView
-                ? 0
-                : Renderer.drawAsteroids(worldG, renderAsteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        if (!tacticalView && DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
+        ctx.perf.drawnAsteroids = Renderer.drawAsteroids(worldG, renderAsteroids, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        if (!tacticalFpsView && DevTools.isDebugOverlay() && DevTools.isAsteroidHeatmapEnabled()) {
             Renderer.drawAsteroidDangerHeatmap(worldG, renderAsteroids, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
-        ctx.perf.drawnSalvage = tacticalView
-                ? 0
-                : Renderer.drawSalvage(worldG, renderSalvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
-        if (!tacticalView) {
+        ctx.perf.drawnSalvage = Renderer.drawSalvage(worldG, renderSalvage, viewMinX, viewMinY, viewMaxX, viewMaxY);
+        if (!tacticalFpsView) {
             drawTransportSupportAuras(ctx, worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY);
         }
 
         ctx.perf.totalVfx = VFX.activeCount();
         ctx.perf.totalExplosions = Explosion.active.size();
         ctx.perf.totalWreckChunks = WreckChunk.activeCount();
-        if (!tacticalView) {
+        if (!tacticalFpsView) {
             try {
                 ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
                         (x, y) -> isInLoadedRenderZone(ctx, x, y));
             } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
 
-            // Fog-based VFX culling: skip effect rendering in completely fogged regions
-            boolean fogCullEnabled = FogOfWarSystem.isCombatFogEnabled(ctx);
             ctx.perf.drawnExplosions = 0;
             try {
                 for (Explosion e : Explosion.active) {
                     if (e == null) continue;
                     if (!isInLoadedRenderZone(ctx, e.x, e.y)) continue;
                     if (!isExplosionVisible(e, viewMinX, viewMinY, viewMaxX, viewMaxY)) continue;
-                    // Additional culling: skip drawing if explosion is in fogged area
-                    if (fogCullEnabled && !ctx.fogOfWar.isVisibleAtWorld(e.x, e.y)) continue;
                     ctx.perf.drawnExplosions++;
                     if (ctx.experience.reducedFlash && e.kind != Explosion.Kind.SHIELD_HIT) {
                         continue;
@@ -184,31 +176,22 @@ public final class GameRenderSystem {
             ctx.perf.drawnExplosions = 0;
         }
 
-        if (!tacticalView) {
+        if (!tacticalFpsView) {
             ctx.perf.drawnWreckChunks = WreckChunk.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
                     (x, y) -> isInLoadedRenderZone(ctx, x, y));
         } else {
             ctx.perf.drawnWreckChunks = 0;
         }
 
-        if (!tacticalView) {
-            Renderer.drawCombatFogOverlay(worldG, ctx.WORLD_W, ctx.WORLD_H, renderFog,
-                    viewMinX, viewMinY, viewMaxX, viewMaxY, false);
-        }
-
         Faction perspective = (renderFog == null || ctx.player == null) ? null : ctx.player.faction;
         long shipRenderStart = System.nanoTime();
-        ctx.perf.drawnShips = tacticalView
-                ? Renderer.drawTacticalShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective)
-                : Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
+        ctx.perf.drawnShips = Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective, ctx);
         ctx.perf.renderShipsMs = (System.nanoTime() - shipRenderStart) / 1_000_000.0;
         ctx.perf.shieldRenderMs = Renderer.frameShieldRenderMs();
-        ctx.perf.drawnProjectiles = tacticalView
-                ? 0
-                : Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
+        ctx.perf.drawnProjectiles = Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
         ctx.perf.visibleSprites = ctx.perf.drawnShips + ctx.perf.drawnProjectiles + ctx.perf.drawnAsteroids
                 + ctx.perf.drawnSalvage + ctx.perf.drawnWreckChunks + ctx.perf.drawnVfx + ctx.perf.drawnExplosions;
-        if (!tacticalView) {
+        if (!tacticalFpsView) {
             Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
             Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog);
 
@@ -256,60 +239,55 @@ public final class GameRenderSystem {
         String overlayStatus = activeOverlayLabel(ctx);
         String contextHint = buildContextHint(ctx, docked);
 
-        if (tacticalView) {
-            ctx.perf.renderHudMs = 0.0;
+        long hudRenderStart = System.nanoTime();
+        Renderer.drawHUD(
+                g2,
+                ctx.player,
+                ctx.credits,
+                hangarTier,
+                (docked != null),
+                ctx.ui.shopOpen,
+                ctx.autoLockTurrets,
+                ctx.lockedTarget,
+                playerWingActive,
+                playerWingCap,
+                lockedWingActive,
+                lockedWingCap,
+                resRush,
+                allyOre,
+                enemyOre,
+                ctx.resourceGoal,
+                ctx.gameOverText,
+                objectiveTitle,
+                objectiveDetail,
+                ctx.eventBanner,
+                ctx.eventBannerT,
+                ctx.orePriceMul,
+                ctx.orePriceT,
+                ctx.miningMul,
+                ctx.miningT,
+                ctx.camX,
+                ctx.camY,
+                viewportW,
+                viewportH,
+                zoom,
+                stationStatus,
+                ctx,
+                ctx.ui.hudDetail,
+                contextHint,
+                overlayStatus
+
+        );
+        TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
+        drawVoiceCaption(ctx, g2, viewportW, viewportH);
+        drawModifierChips(ctx, g2, viewportW);
+        Renderer.drawCommsPanel(g2, ctx, viewportW, viewportH);
+        Renderer.drawCommsContextMenu(g2, ctx, viewportW, viewportH);
+        Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
+
+        ctx.perf.renderHudMs = (System.nanoTime() - hudRenderStart) / 1_000_000.0;
+        if (tacticalFpsView) {
             drawTacticalStatusOverlay(ctx, g2, viewportW, viewportH, zoom, stationStatus, overlayStatus);
-        } else {
-            long hudRenderStart = System.nanoTime();
-            Renderer.drawHUD(
-                    g2,
-                    ctx.player,
-                    ctx.credits,
-                    hangarTier,
-                    (docked != null),
-                    ctx.ui.shopOpen,
-                    ctx.autoLockTurrets,
-                    ctx.lockedTarget,
-                    playerWingActive,
-                    playerWingCap,
-                    lockedWingActive,
-                    lockedWingCap,
-                    resRush,
-                    allyOre,
-                    enemyOre,
-                    ctx.resourceGoal,
-                    ctx.gameOverText,
-                    objectiveTitle,
-                    objectiveDetail,
-                    ctx.eventBanner,
-                    ctx.eventBannerT,
-                    ctx.orePriceMul,
-                    ctx.orePriceT,
-                    ctx.miningMul,
-                    ctx.miningT,
-                    ctx.camX,
-                    ctx.camY,
-                    viewportW,
-                    viewportH,
-                    zoom,
-                    stationStatus,
-                    ctx,
-                    ctx.ui.hudDetail,
-                    contextHint,
-                    overlayStatus
-
-            );
-            TutorialSystem.drawOverlay(ctx, g2, viewportW, viewportH);
-            drawVoiceCaption(ctx, g2, viewportW, viewportH);
-            drawModifierChips(ctx, g2, viewportW);
-            Renderer.drawCommsPanel(g2, ctx, viewportW, viewportH);
-            Renderer.drawCommsContextMenu(g2, ctx, viewportW, viewportH);
-            Renderer.drawCommTradeMenu(g2, ctx, viewportW, viewportH);
-
-            if (!ctx.ui.mapOpen && FogOfWarSystem.isCombatFogEnabled(ctx)) {
-                drawFleetNetOverlay(ctx, g2, viewportW, viewportH);
-            }
-            ctx.perf.renderHudMs = (System.nanoTime() - hudRenderStart) / 1_000_000.0;
         }
 
         if (ctx.ui.mapOpen) {

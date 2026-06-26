@@ -1,5 +1,10 @@
 # Tutorial Overworld And Campaign Checklist
 
+> Update 2026-06-26: `COMMAND_SCHOOL_OVERWORLD_EXPANSION_CHECKLIST.md`
+> supersedes the older tactical-only Command School decision below. Command
+> School should now gain a safe sample overworld branch and an updated
+> in-mission tactical branch.
+
 Purpose: expand onboarding so a new player learns both the in-game tactical controls and the campaign overworld loop without being asked to read external docs.
 
 ## Definition Of Done

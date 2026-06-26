@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HyperweaponBehaviorTest {
@@ -83,6 +84,33 @@ class HyperweaponBehaviorTest {
         assertTrue(cruiser.dying || !cruiser.alive || cruiser.hp <= 0);
         assertTrue(titan.shield < titanShieldBefore || titan.shield <= 0.0);
         assertTrue(titan.hp <= titanHpBefore / 2);
+    }
+
+    @Test
+    void blueSupershipFiresAfterChargeAudioCompletes() {
+        FleetShip blueSupership = new FleetShip(ShipRole.SUPERSHIP, Faction.ALLY, 0.0, 0.0);
+        FleetShip target = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 720.0, 0.0);
+
+        assertEquals(Ship.SUPERWEAPON_CHARGE_SFX_SECONDS, blueSupership.superweaponChargeTime, 1e-6);
+        assertEquals(10.0, SfxManifest.byId("super.blue.charge").cooldownSec(), 1e-6);
+        assertNull(blueSupership.tryFireSuperweapon(target, GameContext.DT));
+        assertTrue(blueSupership.isSuperweaponCharging());
+
+        Projectile fired = null;
+        for (int i = 0; i < 9 * 60; i++) {
+            blueSupership.trackSuperweaponAim(target.x, target.y);
+            blueSupership.update(GameContext.DT);
+            fired = blueSupership.pollSuperweaponShot();
+            assertNull(fired, "blue supership should not fire before the 10-second charge audio completes");
+        }
+
+        for (int i = 0; i < 90 && fired == null; i++) {
+            blueSupership.trackSuperweaponAim(target.x, target.y);
+            blueSupership.update(GameContext.DT);
+            fired = blueSupership.pollSuperweaponShot();
+        }
+
+        assertNotNull(fired, "blue supership should fire as the charge audio completes");
     }
 
     @Test
@@ -265,7 +293,7 @@ class HyperweaponBehaviorTest {
     private static Projectile chargeAndFireSuperweapon(Ship shooter, double targetX, double targetY) {
         Projectile fired = shooter.tryFireSuperweaponAt(targetX, targetY, GameContext.DT);
         if (fired != null) return fired;
-        for (int i = 0; i < 480 && fired == null; i++) {
+        for (int i = 0; i < 720 && fired == null; i++) {
             shooter.trackSuperweaponAim(targetX, targetY);
             shooter.update(GameContext.DT);
             fired = shooter.pollSuperweaponShot();

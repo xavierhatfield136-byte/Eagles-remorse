@@ -48,7 +48,7 @@ class CrewInternalViewSystemTest {
         assertNotNull(cancel, "cancel priority button should have a HUD click target");
 
         assertTrue(UISystem.handleHudPanelClick(ctx, mouse(internal.x, internal.y), viewW, viewH));
-        assertTrue(ctx.ui.tacticalViewEnabled, "internal view HUD button should toggle tactical/internal view");
+        assertTrue(ctx.ui.tacticalViewEnabled, "FPS view HUD button should toggle the tactical FPS render mode");
 
         assertTrue(UISystem.handleHudPanelClick(ctx, mouse(fire.x, fire.y), viewW, viewH));
         assertTrue(ctx.player.crewPriority() == Ship.CrewPriority.FIRE_SUPPRESSION,

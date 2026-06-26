@@ -1,3 +1,5 @@
+import app.support.UserDataPaths;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,7 +11,7 @@ import java.util.Properties;
  * Persists keyboard, mouse, and controller remaps separately from campaign saves.
  */
 public final class ControlSettingsStore {
-    private static final Path FILE = Path.of("save", "control_settings.properties");
+    private static final Path FILE = UserDataPaths.saveDir().resolve("control_settings.properties");
 
     private ControlSettingsStore() {}
 

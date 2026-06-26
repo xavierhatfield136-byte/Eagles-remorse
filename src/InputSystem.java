@@ -44,8 +44,10 @@ public final class InputSystem {
                     return;
                 }
                 if (ctx.ui.controlsScreenOpen && !ctx.ui.controlsCaptureAction.isBlank()
-                        && HotkeyRegistry.remapMouse(ctx.ui.controlsCaptureAction, e.getButton())) {
-                    ctx.ui.controlsCaptureAction = "";
+                        && e.getButton() > 0) {
+                    HotkeyRegistry.RemapResult result = HotkeyRegistry.remapMouseDetailed(ctx.ui.controlsCaptureAction, e.getButton());
+                    ctx.ui.controlsStatusMessage = result.message();
+                    if (result.accepted()) ctx.ui.controlsCaptureAction = "";
                     return;
                 }
                 if (UISystem.handleCoreMenuClick(ctx, e, panel.viewportW(), panel.viewportH())) {
@@ -129,13 +131,19 @@ public final class InputSystem {
                 }
                 if (ctx.ui.controlsScreenOpen) {
                     if (!ctx.ui.controlsCaptureAction.isBlank()) {
-                        HotkeyRegistry.remapKeyboard(ctx.ui.controlsCaptureAction, KeyStroke.getKeyStrokeForEvent(e));
-                        ctx.ui.controlsCaptureAction = "";
+                        HotkeyRegistry.RemapResult result = HotkeyRegistry.remapKeyboardDetailed(
+                                ctx.ui.controlsCaptureAction,
+                                KeyStroke.getKeyStrokeForEvent(e));
+                        ctx.ui.controlsStatusMessage = result.message();
+                        if (result.accepted()) ctx.ui.controlsCaptureAction = "";
                         e.consume();
                         return;
                     }
                     if (e.isControlDown() && keyCode >= KeyEvent.VK_1 && keyCode <= KeyEvent.VK_6) {
                         HotkeyRegistry.restoreDefaults(HotkeyRegistry.Scope.values()[keyCode - KeyEvent.VK_1]);
+                        ctx.ui.controlsStatusMessage = "Restored "
+                                + HotkeyRegistry.Scope.values()[keyCode - KeyEvent.VK_1].name()
+                                + " defaults.";
                         e.consume();
                         return;
                     }
@@ -154,6 +162,7 @@ public final class InputSystem {
                         if (!found.isEmpty()) {
                             ctx.ui.controlsSelectedIndex = Math.min(ctx.ui.controlsSelectedIndex, found.size() - 1);
                             ctx.ui.controlsCaptureAction = found.get(ctx.ui.controlsSelectedIndex).action();
+                            ctx.ui.controlsStatusMessage = "Press a key for " + ctx.ui.controlsCaptureAction + ".";
                         }
                         e.consume();
                         return;

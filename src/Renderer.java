@@ -45,6 +45,22 @@ public class Renderer {
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
     private static long frameShieldRenderNs = 0L;
 
+    private static double animationTimeSeconds() {
+        String override = System.getProperty("game.renderTimeSeconds", "").trim();
+        if (!override.isEmpty()) {
+            try {
+                return Double.parseDouble(override);
+            } catch (NumberFormatException ignored) {
+                // Fall through to the live clock for malformed developer overrides.
+            }
+        }
+        return System.nanoTime() * 1e-9;
+    }
+
+    private static long animationTimeNanos() {
+        return (long) (animationTimeSeconds() * 1_000_000_000.0);
+    }
+
     private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT", "COMMS"};
     private static final String[] CORE_MENU_HOTKEYS = {
             HotkeyRegistry.label("toggleShop"),
@@ -1772,7 +1788,9 @@ public class Renderer {
         List<String> warnings = HotkeyRegistry.conflictWarnings();
         g2.setColor(warnings.isEmpty() ? new Color(140, 230, 170) : new Color(255, 170, 120));
         String status = ctx.ui.controlsCaptureAction.isBlank()
-                ? (warnings.isEmpty() ? "No binding conflicts." : "Conflict: " + warnings.get(0))
+                ? (!ctx.ui.controlsStatusMessage.isBlank()
+                ? ctx.ui.controlsStatusMessage
+                : (warnings.isEmpty() ? "No binding conflicts." : "Conflict: " + warnings.get(0)))
                 : "Press a key for " + ctx.ui.controlsCaptureAction;
         g2.drawString(status, x + 18, y + h - 20);
     }
@@ -2069,7 +2087,7 @@ public class Renderer {
         if (auraBounds.getWidth() <= 0.0 || auraBounds.getHeight() <= 0.0) return;
         double gradientRadius = Math.max(auraBounds.getWidth(), auraBounds.getHeight()) * 0.72;
 
-        double flicker = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * (4.6 + shieldFrac * 2.2));
+        double flicker = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * (4.6 + shieldFrac * 2.2));
         Color base = shieldTeamColor(ship);
 
         Graphics2D gx = (Graphics2D) g.create();
@@ -2365,7 +2383,7 @@ public class Renderer {
         if (screenSpan < WARP_FX_MIN_SCREEN_SPAN) return;
 
         double charge = ship.warpChargeProgress();
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 4.6 + ship.id * 0.21);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 4.6 + ship.id * 0.21);
         Color base = mixColor(factionTrimColor(ship.faction), new Color(120, 220, 255), 0.22);
         double anchorX = bounds.getCenterX() - bounds.getWidth() * 0.16;
         double anchorY = bounds.getCenterY();
@@ -2507,11 +2525,6 @@ public class Renderer {
 
     public static void drawSpaceBackground(Graphics2D g2, GameContext ctx, double camX, double camY, int viewW, int viewH, long seed) {
         if (ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled) {
-            g2.setColor(Color.BLACK);
-            g2.fillRect(0, 0, viewW, viewH);
-            return;
-        }
-        if (PerformanceGuardrails.quality().ordinal() >= PerformanceGuardrails.VisualQuality.LOW.ordinal()) {
             drawSimplePerformanceBackground(g2, camX, camY, viewW, viewH, seed);
             return;
         }
@@ -2601,18 +2614,25 @@ public class Renderer {
     public static int drawShips(Graphics2D g2, List<Ship> ships,
                                 double minX, double minY, double maxX, double maxY,
                                 FogOfWarSystem.State fog, Faction perspective) {
+        return drawShips(g2, ships, minX, minY, maxX, maxY, fog, perspective, null);
+    }
+
+    public static int drawShips(Graphics2D g2, List<Ship> ships,
+                                double minX, double minY, double maxX, double maxY,
+                                FogOfWarSystem.State fog, Faction perspective,
+                                GameContext ctx) {
         if (ships == null) return 0;
         int drawn = 0;
-        boolean lowDetailTokens = PerformanceGuardrails.quality().ordinal() >= PerformanceGuardrails.VisualQuality.LOW.ordinal();
+        boolean performanceTokenMode = performanceTokenMode(ctx);
         for (Ship s : ships) {
             if (s == null || !s.alive) continue;
             boolean visible = FogOfWarSystem.isVisibleToPerspective(fog, perspective, s);
             if (visible) {
                 if (!isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) continue;
-                boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
-                if (lowDetailTokens && s != null && !isPlayerShip(s)) {
-                    drawPerformanceShipToken(g2, s);
+                if (performanceTokenMode) {
+                    drawTacticalShip(g2, s);
                 } else {
+                    boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
                     ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
                 }
                 drawn++;
@@ -2629,6 +2649,32 @@ public class Renderer {
 
     private static boolean isPlayerShip(Ship ship) {
         return ship instanceof Player;
+    }
+
+    static boolean performanceTokenMode(GameContext ctx) {
+        return ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
+    }
+
+    static boolean shouldDrawPerformanceToken(GameContext ctx, Ship ship) {
+        if (ship == null || isPlayerShip(ship)) return false;
+        Player player = (ctx == null) ? null : ctx.player;
+        if (player == null || !player.alive) return true;
+        if (ctx.lockedTarget == ship) return false;
+
+        double dx = ship.x - player.x;
+        double dy = ship.y - player.y;
+        double dist = Math.hypot(dx, dy);
+        double nearFullDetail = Math.max(1050.0, player.radius * 7.5 + ship.radius * 4.5);
+        if (dist <= nearFullDetail) return false;
+        if (ship.role != null && ship.role.isTitanOrMothership() && dist <= 1900.0) return false;
+
+        double forwardX = Math.cos(player.angle);
+        double forwardY = Math.sin(player.angle);
+        if (dist > 0.0001) {
+            double dot = (dx * forwardX + dy * forwardY) / dist;
+            if (dot >= 0.30 && dist <= 2400.0) return false;
+        }
+        return true;
     }
 
     private static void drawPerformanceShipToken(Graphics2D g2, Ship ship) {
@@ -3533,6 +3579,10 @@ public class Renderer {
 
     private static CampaignBackdropSpec resolveCampaignBackdropSpec(GameContext ctx) {
         if (ctx == null || !CampaignSystem.isCampaignActive(ctx)) return null;
+        CampaignSystem.CampaignLocation stationLocation = CampaignSystem.activeMajorStationBackdropLocation(ctx);
+        if (stationLocation != null) {
+            return stationAnchorageBackdropSpec(ctx, stationLocation);
+        }
         if (CampaignSystem.isOrdinaryOpenSpaceEncounter(ctx)) {
             return new CampaignBackdropSpec(
                     "deep_space_encounter",
@@ -3706,6 +3756,112 @@ public class Renderer {
                             false, false, false, false, 0.08, 0.0));
             default -> null;
         };
+    }
+
+    private static CampaignBackdropSpec stationAnchorageBackdropSpec(GameContext ctx,
+                                                                     CampaignSystem.CampaignLocation location) {
+        long hash = stationBackdropHash(ctx, location);
+        String key = stationBackdropKey(location, hash);
+        Faction owner = location == null ? null : location.ownerFaction;
+        Color tint = switch (owner == null ? Faction.ALLY : owner) {
+            case TEAM_C -> new Color(8, 28, 18, 28);
+            case TEAM_D -> new Color(30, 24, 8, 28);
+            case ENEMY -> new Color(32, 10, 10, 30);
+            default -> new Color(10, 20, 26, 24);
+        };
+        BackdropFieldMode fieldMode = stationBackdropFieldMode(location, owner);
+        double blend = MathUtil.clamp(((hash >>> 12) & 1023L) / 1023.0, 0.0, 1.0);
+        double anchorX = 0.84 + (((hash >>> 24) & 255L) / 255.0) * 0.28;
+        double anchorY = 0.68 + (((hash >>> 32) & 255L) / 255.0) * 0.32;
+        double radius = 285.0 + (((hash >>> 40) & 255L) / 255.0) * 130.0;
+        boolean rings = ((hash >>> 8) & 1L) == 0L;
+        boolean cityLights = location != null && location.facilityType != CampaignSystem.CampaignFacilityType.RELAY;
+        Color base = switch (owner == null ? Faction.ALLY : owner) {
+            case TEAM_C -> new Color(60, 118, 96, 255);
+            case TEAM_D -> new Color(142, 118, 72, 255);
+            case ENEMY -> new Color(112, 72, 68, 255);
+            default -> new Color(58, 106, 122, 255);
+        };
+        Color highlight = switch (owner == null ? Faction.ALLY : owner) {
+            case TEAM_C -> new Color(196, 232, 216, 255);
+            case TEAM_D -> new Color(236, 218, 160, 255);
+            case ENEMY -> new Color(228, 156, 132, 255);
+            default -> new Color(190, 216, 230, 255);
+        };
+        Color atmosphere = switch (owner == null ? Faction.ALLY : owner) {
+            case TEAM_C -> new Color(140, 234, 190, 132);
+            case TEAM_D -> new Color(244, 210, 128, 124);
+            case ENEMY -> new Color(238, 120, 96, 118);
+            default -> new Color(156, 224, 232, 128);
+        };
+        Color glow = switch (owner == null ? Faction.ALLY : owner) {
+            case TEAM_C -> new Color(76, 184, 128, 58);
+            case TEAM_D -> new Color(220, 164, 72, 58);
+            case ENEMY -> new Color(220, 84, 64, 62);
+            default -> new Color(72, 160, 196, 54);
+        };
+        return new CampaignBackdropSpec(
+                key,
+                blend,
+                tint,
+                fieldMode,
+                new CelestialBackdropSpec(BackdropBodyKind.PLANET, anchorX, anchorY, radius, 0.014 + blend * 0.006,
+                        base, highlight, atmosphere, glow,
+                        rings, cityLights, true, owner == Faction.TEAM_C, 0.58 + blend * 0.28, 0.42 + blend * 0.26),
+                null);
+    }
+
+    private static String stationBackdropKey(CampaignSystem.CampaignLocation location, long hash) {
+        String[] green = {
+                "trade_hub_colony",
+                "contract_world_array",
+                "relay_halo_moon",
+                "jump_ring_frontier",
+                "exodus_gas_giant"
+        };
+        String[] yellow = {
+                "trade_spine_industrial_orbit",
+                "jump_ring_frontier",
+                "liberation_moon_orbit",
+                "trade_hub_colony",
+                "contract_world_array"
+        };
+        String[] red = {
+                "ash_gate_gas_giant",
+                "luna_earthrise_approach",
+                "earth_high_orbit",
+                "outer_sol_starline",
+                "burning_debris_wake"
+        };
+        Faction owner = location == null ? null : location.ownerFaction;
+        String[] pool = owner == Faction.ENEMY ? red : (owner == Faction.TEAM_D ? yellow : green);
+        return pool[Math.floorMod((int) (hash ^ (hash >>> 32)), pool.length)];
+    }
+
+    private static BackdropFieldMode stationBackdropFieldMode(CampaignSystem.CampaignLocation location, Faction owner) {
+        CampaignSystem.CampaignFacilityType facility = location == null ? null : location.facilityType;
+        if (owner == Faction.ENEMY && (facility == CampaignSystem.CampaignFacilityType.FORTRESS
+                || facility == CampaignSystem.CampaignFacilityType.BOSS_STAGING_AREA)) {
+            return BackdropFieldMode.LUNAR_INSTALLATION;
+        }
+        if (facility == CampaignSystem.CampaignFacilityType.SHIPYARD
+                || facility == CampaignSystem.CampaignFacilityType.CIVILIAN_HUB
+                || facility == CampaignSystem.CampaignFacilityType.REPAIR_YARD) {
+            return BackdropFieldMode.INDUSTRIAL_YARDS;
+        }
+        return BackdropFieldMode.COLONY_ARCOLOGY;
+    }
+
+    private static long stationBackdropHash(GameContext ctx, CampaignSystem.CampaignLocation location) {
+        long h = 1469598103934665603L;
+        h ^= (ctx == null || ctx.config == null) ? 0L : ctx.config.seed;
+        h *= 1099511628211L;
+        String id = location == null ? "" : location.id;
+        for (int i = 0; i < id.length(); i++) {
+            h ^= id.charAt(i);
+            h *= 1099511628211L;
+        }
+        return h;
     }
 
     private static Color scaleAlpha(Color color, double factor) {
@@ -3957,7 +4113,7 @@ public class Renderer {
                 double ny = Math.sin(ws.angle);
                 Color beam = beamColorForFaction(ws.faction);
                 Color hot = mixColor(beam, Color.WHITE, 0.76);
-                double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 9.5);
+                double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 9.5);
 
                 int len = (int) Math.round(Math.max(30.0, ws.radius * 5.6));
                 int tail = len / 2;
@@ -4071,7 +4227,7 @@ public class Renderer {
         boolean hyperLance = beam.isHyperLanceBeam();
         Color base = hyperLance ? new Color(122, 232, 255) : beamColorForFaction(beam.faction);
         Color hot = mixColor(base, Color.WHITE, hyperLance ? 0.82 : 0.72);
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 10.0);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 10.0);
         float width = (float) Math.max(1.6, beam.width * (hyperLance ? (0.92 + 0.18 * pulse) : (0.70 + 0.10 * pulse)));
 
         Stroke old = g2.getStroke();
@@ -4136,7 +4292,7 @@ public class Renderer {
     private static void drawDisruptorSlug(Graphics2D g2, DisruptorSlug slug) {
         if (g2 == null || slug == null || !slug.alive) return;
 
-        double time = System.nanoTime() * 1e-9;
+        double time = animationTimeSeconds();
         double motionAngle = Math.atan2(slug.vy, slug.vx);
         if (!Double.isFinite(motionAngle)) motionAngle = slug.angle;
         double nx = Math.cos(motionAngle);
@@ -4225,7 +4381,7 @@ public class Renderer {
     private static void drawDestabilizerPulse(Graphics2D g2, DestabilizerPulse pulse) {
         if (g2 == null || pulse == null || !pulse.alive) return;
 
-        double time = System.nanoTime() * 1e-9;
+        double time = animationTimeSeconds();
         double motionAngle = Math.atan2(pulse.vy, pulse.vx);
         if (!Double.isFinite(motionAngle)) motionAngle = pulse.angle;
         double nx = Math.cos(motionAngle);
@@ -4311,7 +4467,7 @@ public class Renderer {
 
         float chargeFrac = (float) Math.max(0.0, Math.min(1.0, player.getSuperweaponChargeProgress()));
         boolean charging = player.isSuperweaponCharging();
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.0);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 8.0);
 
         Stroke oldStroke = g2.getStroke();
         int warnAlpha = charging ? (int) Math.round(120 + 95 * Math.max(chargeFrac, pulse)) : 72;
@@ -4385,7 +4541,7 @@ public class Renderer {
         double ey = sy + Math.sin(aim) * len;
 
         float chargeFrac = (float) Math.max(0.0, Math.min(1.0, ship.getSuperweaponChargeProgress()));
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 8.6 + ship.id * 0.17);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 8.6 + ship.id * 0.17);
 
         Color base = npcSuperweaponCueColor(ship.faction);
         Color hot = mixColor(base, Color.WHITE, 0.58);
@@ -4739,7 +4895,7 @@ public class Renderer {
             g2.setFont(new Font("Consolas", Font.BOLD, 22));
             g2.setColor(new Color(255, 255, 255, 220));
             FontMetrics fm = g2.getFontMetrics();
-            int tx = (g2.getClipBounds().width - fm.stringWidth(msg)) / 2;
+            int tx = (viewW - fm.stringWidth(msg)) / 2;
             g2.drawString(msg, Math.max(10, tx), 52);
             g2.setFont(new Font("Consolas", Font.PLAIN, 14));
             g2.setColor(new Color(255, 255, 255, 220));
@@ -4752,7 +4908,7 @@ public class Renderer {
         if (eventBanner != null && !eventBanner.isBlank() && eventBannerT > 0) {
             int bw = 720;
             int bh = 34;
-            int bx = (g2.getClipBounds().width - bw) / 2;
+            int bx = (viewW - bw) / 2;
             int by = 60;  // Moved down from y=10 to avoid blocking menus
 
             int a = (int) Math.round(60 + 140 * Math.max(0.0, Math.min(1.0, eventBannerT / 3.0)));
@@ -5053,10 +5209,10 @@ public class Renderer {
         FontMetrics fm = g2.getFontMetrics();
 
         Rectangle view = crewInternalViewRect(rect);
-        boolean internalActive = ctx.ui != null && ctx.ui.tacticalViewEnabled;
-        Color viewAccent = internalActive ? new Color(124, 236, 180, 220) : new Color(150, 190, 230, 160);
-        drawHudStatusChip(g2, internalActive ? "INTERNAL VIEW ON" : "INTERNAL VIEW", view.x, view.y, view.width, view.height,
-                viewAccent, internalActive);
+        boolean fpsViewActive = ctx.ui != null && ctx.ui.tacticalViewEnabled;
+        Color viewAccent = fpsViewActive ? new Color(124, 236, 180, 220) : new Color(150, 190, 230, 160);
+        drawHudStatusChip(g2, fpsViewActive ? "FPS VIEW ON" : "FPS VIEW", view.x, view.y, view.width, view.height,
+                viewAccent, fpsViewActive);
 
         Ship.CrewPriority active = ctx.player.crewPriority();
         for (int i = 0; i < CREW_PRIORITY_LABELS.length; i++) {
@@ -5782,7 +5938,7 @@ public class Renderer {
         out.add(HotkeyRegistry.label("primaryDown") + "/LMB FIRE");
         out.add(HotkeyRegistry.label("secondaryDown") + "/RMB SECONDARY");
         out.add(HotkeyRegistry.label("lockUnderMouse") + "/MMB LOCK");
-        out.add(HotkeyRegistry.label("toggleTacticalView") + " TACTICAL");
+        out.add(HotkeyRegistry.label("toggleTacticalView") + " FPS VIEW");
         out.add("WASD MOVE / ARROWS PAN");
         out.add(HotkeyRegistry.label("toggleShop") + " SHOP / " + HotkeyRegistry.label("escape") + " PAUSE");
         out.add(HotkeyRegistry.label("toggleMap") + " MAP / " + HotkeyRegistry.label("cycleHudDetail") + " HUD / "
@@ -6448,7 +6604,7 @@ public class Renderer {
             }
         }
         if (target == null || !target.alive || target.dying || target.hp <= 0) return;
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() / 240_000_000.0);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeNanos() / 240_000_000.0);
         int r = (int) Math.round(Math.max(34.0, target.radius + 22.0 + pulse * 7.0));
         Color accent = factionHudColor(target.faction, 215);
         Stroke oldStroke = g2.getStroke();
@@ -7042,7 +7198,7 @@ public class Renderer {
 
     private static void drawWarpArrivalTell(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null) return;
-        double pulse = 0.45 + 0.55 * Math.sin(System.nanoTime() * 1e-9 * 4.4 + ship.id * 0.19);
+        double pulse = 0.45 + 0.55 * Math.sin(animationTimeSeconds() * 4.4 + ship.id * 0.19);
         double progress = ship.warpChargeProgress();
         int x = (int) Math.round(ship.warpExitX());
         int y = (int) Math.round(ship.warpExitY());
@@ -7065,7 +7221,7 @@ public class Renderer {
     private static void drawCommandShipBeacon(Graphics2D g2, Ship cmd, Faction faction, Ship sharedTarget,
                                              FogOfWarSystem.State fog, Faction perspective) {
         if (g2 == null || cmd == null) return;
-        double pulse = 0.5 + 0.5 * Math.sin(System.nanoTime() * 1e-9 * 3.2 + cmd.id * 0.31);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * 3.2 + cmd.id * 0.31);
         int x = (int) Math.round(cmd.x);
         int y = (int) Math.round(cmd.y - cmd.radius - 34);
         int r = (int) Math.round(8 + 5 * pulse);
@@ -8424,7 +8580,7 @@ public class Renderer {
         if (g2 == null || ship == null) return;
         if (w < 80 || h < 80) return;
 
-        long nowNanos = System.nanoTime();
+        long nowNanos = animationTimeNanos();
         GameContext.XrayFilterMode filterMode = (ctx == null || ctx.ui.xrayFilterMode == null)
                 ? GameContext.XrayFilterMode.ALL
                 : ctx.ui.xrayFilterMode;
@@ -8469,7 +8625,7 @@ public class Renderer {
                                                    String title, String subtitle, boolean interactive) {
         if (g2 == null || ship == null) return;
         if (w < 80 || h < 80) return;
-        long nowNanos = System.nanoTime();
+        long nowNanos = animationTimeNanos();
 
         String xrayTitle = (title == null || title.isBlank()) ? "TACTICAL X-RAY" : title;
         drawHudPanelFrame(g2, x, y, w, h, xrayTitle, new Color(150, 205, 255, 214), ThemeArt.HUD_SPECIAL_FRAME);
@@ -9138,11 +9294,12 @@ public class Renderer {
         int w = 520;
         int h = 284;
         int pad = 22;
-        int viewW = g2.getClipBounds().width;
+        Rectangle clip = g2.getClipBounds();
+        int viewW = clip == null ? 1280 : clip.width;
         int x = viewW - w - pad;
         int y = 240;
 
-        double t = System.nanoTime() / 1_000_000_000.0;
+        double t = animationTimeSeconds();
         int glowA = 55 + (int) Math.round(25 * (0.5 + 0.5 * Math.sin(t * 2.2)));
 
         // Outer glow
@@ -9559,6 +9716,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawGalaxyBackdrop(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignLocationControlHalos(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
             drawTacticalMissionMapEntityLayer(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH,
@@ -9809,7 +9967,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawHudStatusChip(g2, "CONTESTED", x + 190, y + 8, 82, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.CONTESTED, 220), false);
         drawHudStatusChip(g2, "UNKNOWN", x + 278, y + 8, 74, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.UNKNOWN, 220), false);
         g2.setColor(new Color(190, 214, 236, 190));
-        g2.drawString("color = control, icon = site type", x + 272, y - 4);
+        g2.drawString("color = control, icon = site type, arrows = invasions", x + 272, y - 4);
         if (CampaignSystem.isCampaignWarMapSimplified(ctx)) {
             g2.setColor(new Color(255, 226, 176, 210));
             g2.drawString("SIMPLIFIED MODE ACTIVE", x + 350, y + 20);
@@ -9890,6 +10048,101 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             }
         }
         g2.setStroke(oldStroke);
+    }
+
+    private static void drawCampaignInvasionArrows(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                   double worldMinX, double worldMinY, double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignInvasionArrow> arrows = CampaignSystem.campaignInvasionArrows(ctx);
+        if (arrows.isEmpty()) return;
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        int lane = 0;
+        for (CampaignSystem.CampaignInvasionArrow arrow : arrows) {
+            if (arrow == null) continue;
+            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, arrow.fromX);
+            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, arrow.fromY);
+            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, arrow.toX);
+            int by = strategicMapPixelY(mapRect, worldMinY, worldH, arrow.toY);
+            double dx = bx - ax;
+            double dy = by - ay;
+            double len = Math.hypot(dx, dy);
+            if (len < 18.0) continue;
+            double nx = -dy / len;
+            double ny = dx / len;
+            double offset = ((lane++ % 5) - 2) * 3.5;
+            ax += (int) Math.round(nx * offset);
+            ay += (int) Math.round(ny * offset);
+            bx += (int) Math.round(nx * offset);
+            by += (int) Math.round(ny * offset);
+
+            Color color = campaignInvasionArrowColor(arrow.faction, 230);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
+            g2.setStroke(new BasicStroke(6.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(campaignInvasionArrowColor(arrow.faction, 120));
+            g2.drawLine(ax, ay, bx, by);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.86f));
+            g2.setStroke(new BasicStroke(2.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{13.0f, 7.0f}, 0.0f));
+            g2.setColor(color);
+            g2.drawLine(ax, ay, bx, by);
+            drawCampaignInvasionArrowHead(g2, ax, ay, bx, by, color);
+
+            int mx = (ax + bx) / 2;
+            int my = (ay + by) / 2;
+            String tag = campaignInvasionArrowTag(arrow);
+            FontMetrics fm = g2.getFontMetrics();
+            int tw = fm.stringWidth(tag);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.78f));
+            g2.setColor(new Color(5, 8, 14, 185));
+            g2.fillRoundRect(mx - tw / 2 - 5, my - 15, tw + 10, 16, 8, 8);
+            g2.setComposite(AlphaComposite.SrcOver);
+            g2.setColor(campaignInvasionArrowColor(arrow.faction, 242));
+            g2.drawString(tag, mx - tw / 2, my - 4);
+        }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawCampaignInvasionArrowHead(Graphics2D g2, int ax, int ay, int bx, int by, Color color) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double len = Math.hypot(dx, dy);
+        if (g2 == null || color == null || len < 1.0) return;
+        double ux = dx / len;
+        double uy = dy / len;
+        double nx = -uy;
+        double ny = ux;
+        int size = 12;
+        Polygon head = new Polygon();
+        head.addPoint(bx, by);
+        head.addPoint((int) Math.round(bx - ux * size + nx * size * 0.55),
+                (int) Math.round(by - uy * size + ny * size * 0.55));
+        head.addPoint((int) Math.round(bx - ux * size - nx * size * 0.55),
+                (int) Math.round(by - uy * size - ny * size * 0.55));
+        g2.setColor(color);
+        g2.fillPolygon(head);
+    }
+
+    private static Color campaignInvasionArrowColor(Faction faction, int alpha) {
+        int a = MathUtil.clamp(alpha, 0, 255);
+        if (faction == Faction.ENEMY) return new Color(255, 88, 82, a);
+        if (faction == Faction.TEAM_D) return new Color(255, 202, 94, a);
+        if (faction == Faction.TEAM_C || faction == Faction.ALLY || faction == Faction.PLAYER) {
+            return new Color(96, 236, 154, a);
+        }
+        return new Color(170, 205, 236, a);
+    }
+
+    private static String campaignInvasionArrowTag(CampaignSystem.CampaignInvasionArrow arrow) {
+        if (arrow == null) return "INV";
+        String faction = arrow.faction == Faction.ENEMY ? "RED"
+                : (arrow.faction == Faction.TEAM_D ? "YELLOW" : "GREEN");
+        int eta = (int) Math.ceil(Math.max(0.0, arrow.etaSeconds));
+        return faction + " INV " + eta + "s";
     }
 
     private static Stroke campaignRouteStroke(CampaignSystem.CampaignRouteSegment segment) {
@@ -12587,7 +12840,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.drawLine(px, py - crossRadius, px, py - innerRadius - 2);
         g2.drawLine(px, py + innerRadius + 2, px, py + crossRadius);
         if (selected) {
-            double pulse = 0.55 + 0.45 * Math.sin(System.nanoTime() * 1e-9 * 5.4);
+            double pulse = 0.55 + 0.45 * Math.sin(animationTimeSeconds() * 5.4);
             g2.setColor(withAlpha(accent, (int) Math.round(120 + pulse * 80)));
             g2.drawOval(px - outerRadius - 6, py - outerRadius - 6, (outerRadius + 6) * 2, (outerRadius + 6) * 2);
         }
@@ -12656,7 +12909,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setStroke(new BasicStroke(1.3f));
         g2.setColor(withAlpha(accent, 210));
         if (selected) {
-            double pulse = 0.55 + 0.45 * Math.sin(System.nanoTime() * 1e-9 * 5.0);
+            double pulse = 0.55 + 0.45 * Math.sin(animationTimeSeconds() * 5.0);
             g2.drawOval(px - radius - 5, py - radius - 5, (radius + 5) * 2, (radius + 5) * 2);
             g2.setColor(withAlpha(accent, (int) Math.round(188 + pulse * 36)));
         }
@@ -13747,7 +14000,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Color hot = mixColor(base, Color.WHITE, beamBolt ? 0.80 : 0.70);
         Color spark = mixColor(hot, Color.WHITE, 0.42);
 
-        double time = System.nanoTime() * 1e-9;
+        double time = animationTimeSeconds();
         double pulse = 0.5 + 0.5 * Math.sin(time * (beamBolt ? 8.8 : 7.2) + len * 0.012);
         double phaseBase = time * (beamBolt ? 5.6 : 4.8) + len * 0.007;
         double widthScale = tactical ? 0.72 : 1.0;
@@ -16737,7 +16990,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g.setColor(new Color(205, 220, 240, 200));
         g.drawOval(-rr, -rr, rr * 2, rr * 2);
 
-        long t = System.nanoTime();
+        long t = animationTimeNanos();
         double a = (t % 2_000_000_000L) / 2_000_000_000.0 * Math.PI * 2.0;
         for (int i = 0; i < 3; i++) {
             double aa = a + i * (Math.PI * 2.0 / 3.0);

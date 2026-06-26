@@ -1714,6 +1714,7 @@ class CampaignForceOwnershipTest {
 
     private static boolean isFriendlyInstallationLocation(CampaignSystem.CampaignLocation location) {
         if (location == null) return false;
+        if (location.ownerFaction == Faction.ENEMY) return false;
         boolean installation = location.type == CampaignSystem.CampaignLocationType.REPAIR_SITE
                 || (location.services != null && !location.services.isEmpty());
         if (!installation) return false;

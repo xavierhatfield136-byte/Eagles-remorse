@@ -3,6 +3,7 @@ package app.persistence;
 import app.config.GameConfig;
 import app.config.GameMode;
 import app.support.ErrorLog;
+import app.support.UserDataPaths;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -42,7 +43,7 @@ public final class CampaignCheckpointStore {
 
     private static final int CURRENT_VERSION = 2;
     private static final int MAX_CAMPAIGN_SECTORS = 24;
-    private static final Path SAVE_DIR = Paths.get("save");
+    private static final Path SAVE_DIR = UserDataPaths.saveDir();
     private static final Path CHECKPOINT_FILE = Paths.get(
             System.getProperty("codex.checkpointFile", SAVE_DIR.resolve("campaign_checkpoint.properties").toString()));
     private static final String SLOT_PRIMARY = "primary";

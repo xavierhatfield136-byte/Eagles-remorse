@@ -1280,7 +1280,7 @@ public final class MainMenuPanel extends JPanel {
             setOpaque(false);
             setContentAreaFilled(false);
             setBorderPainted(false);
-            setFocusPainted(false);
+            setFocusPainted(true);
             setForeground(Color.WHITE);
             setFont(MenuDisplay.font("Consolas", Font.BOLD, 15, scale));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -1322,6 +1322,13 @@ public final class MainMenuPanel extends JPanel {
             g2.fillRoundRect(0, 0, w, Math.max(1, h / 2), 8, 8);
             g2.setColor(new Color(255, 255, 255, isEnabled() ? 70 : 24));
             g2.drawRoundRect(0, 0, w - 1, h - 1, 8, 8);
+            if (isFocusOwner()) {
+                g2.setStroke(new BasicStroke(2.4f));
+                g2.setColor(new Color(255, 232, 124, 235));
+                g2.drawRoundRect(3, 3, Math.max(1, w - 7), Math.max(1, h - 7), 8, 8);
+                g2.setColor(new Color(20, 26, 34, 210));
+                g2.drawRoundRect(6, 6, Math.max(1, w - 13), Math.max(1, h - 13), 6, 6);
+            }
             g2.dispose();
 
             super.paintComponent(g);

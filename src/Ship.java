@@ -13,6 +13,16 @@ import java.util.Random;
  */
 public abstract class Ship {
     private static int NEXT_ID = 1;
+
+    static int beginDeterministicIdScope() {
+        int previous = NEXT_ID;
+        NEXT_ID = 1;
+        return previous;
+    }
+
+    static void endDeterministicIdScope(int previousNextId) {
+        NEXT_ID = Math.max(previousNextId, NEXT_ID);
+    }
     private static final Object SHIP_RNG_LOCK = new Object();
     private static final InternalSystem[] INTERNAL_SYSTEM_VALUES = InternalSystem.values();
     private static final ShipRoomLayout.RoomId[] PROPULSION_ENGINE_ROOMS = {
@@ -228,7 +238,7 @@ public abstract class Ship {
     public double superweaponBeamDuration = 0.95;
     public double superweaponBeamTickInterval = 0.12;
     public double superweaponBeamDamageScale = 0.34;
-    private static final double SUPERWEAPON_SFX_CHARGE_SECONDS = 3.0;
+    public static final double SUPERWEAPON_CHARGE_SFX_SECONDS = 10.0;
     private static final double SUPERWEAPON_PROJECTILE_RATE_MULT = 3.0;
     private static final double SUPERWEAPON_RECHARGE_MIN_MULT = 0.25;
     private static final double SUPERWEAPON_RECHARGE_MAX_MULT = 2.05;
@@ -6573,12 +6583,6 @@ public abstract class Ship {
         queuedSuperweaponTarget = isValidSuperweaponTarget(target) ? target : null;
 
         double effectiveChargeTime = superweaponChargeTime;
-        if (hasSuperweapon && (role == ShipRole.SUPERSHIP
-                || role == ShipRole.ARTILLERY_TITAN
-                || role == ShipRole.HYPERWEAPON_TITAN)) {
-            effectiveChargeTime = SUPERWEAPON_SFX_CHARGE_SECONDS;
-            superweaponChargeTime = SUPERWEAPON_SFX_CHARGE_SECONDS;
-        }
 
         if (effectiveChargeTime > 0.0) {
             superweaponCharging = true;

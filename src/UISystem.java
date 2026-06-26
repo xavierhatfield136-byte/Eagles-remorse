@@ -436,7 +436,7 @@ public final class UISystem {
     public static void toggleTacticalView(GameContext ctx) {
         if (ctx == null) return;
         ctx.ui.tacticalViewEnabled = !ctx.ui.tacticalViewEnabled;
-        EventSystem.showBanner(ctx, "INTERNAL TACTICAL VIEW: " + (ctx.ui.tacticalViewEnabled ? "ON" : "OFF"), 1.0);
+        EventSystem.showBanner(ctx, "TACTICAL FPS VIEW: " + (ctx.ui.tacticalViewEnabled ? "ON" : "OFF"), 1.0);
     }
 
     public static void toggleBaseMenu(GameContext ctx) {

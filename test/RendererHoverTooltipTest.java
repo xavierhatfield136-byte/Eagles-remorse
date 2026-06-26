@@ -338,23 +338,27 @@ class RendererHoverTooltipTest {
     }
 
     @Test
-    void tacticalViewUsesBlackBackgroundAndGeometricShipSilhouettes() {
+    void tacticalFpsViewUsesSimpleBackgroundAndOnlyTokenizesNonCriticalShips() {
         GameContext ctx = new GameContext(new GameConfig(GameMode.SHOWCASE, 5000, 5000, true, 1234L, false));
         ctx.ui.tacticalViewEnabled = true;
+        ctx.player = new Player(ShipRole.FRIGATE, 110.0, 110.0);
+        ctx.player.angle = 0.0;
+        ctx.player.faction = Faction.ALLY;
 
-        Ship ship = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 110.0, 110.0);
+        Ship ship = new FleetShip(ShipRole.BATTLECRUISER, Faction.ENEMY, 170.0, 110.0);
         ship.name = "Blue Spear";
 
         BufferedImage canvas = new BufferedImage(220, 220, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = canvas.createGraphics();
         try {
             Renderer.drawSpaceBackground(g2, ctx, 0.0, 0.0, 220, 220, 1234L);
-            Renderer.drawTacticalShips(g2, java.util.List.of(ship), 0.0, 0.0, 220.0, 220.0);
+            Renderer.drawShips(g2, java.util.List.of(ctx.player, ship), 0.0, 0.0, 220.0, 220.0, null, null, ctx);
         } finally {
             g2.dispose();
         }
 
-        assertTrue((canvas.getRGB(5, 5) & 0x00FFFFFF) == 0, "tactical view should black out the background");
+        assertTrue((canvas.getRGB(5, 5) & 0x00FFFFFF) != 0, "FPS view should use the simple performance background, not pure black");
+        assertFalse(Renderer.shouldDrawPerformanceToken(ctx, ship), "near/front ships should keep readable full ship rendering");
 
         boolean foundShipPixel = false;
         for (int y = 70; y <= 150 && !foundShipPixel; y++) {
@@ -365,7 +369,7 @@ class RendererHoverTooltipTest {
                 }
             }
         }
-        assertTrue(foundShipPixel, "tactical ship rendering should still draw a visible geometric silhouette");
+        assertTrue(foundShipPixel, "FPS view should still draw nearby/front ships visibly");
     }
 
     @Test
@@ -392,10 +396,12 @@ class RendererHoverTooltipTest {
             g2.dispose();
         }
 
-        assertTrue(ctx.perf.drawnShips > 0, "tactical view should still render ship silhouettes");
-        assertEquals(0, ctx.perf.drawnAsteroids, "tactical view should skip asteroid rendering for FPS");
-        assertEquals(0, ctx.perf.drawnSalvage, "tactical view should skip salvage rendering for FPS");
-        assertEquals(0, ctx.perf.drawnProjectiles, "tactical view should skip projectile rendering for FPS");
+        assertTrue(ctx.perf.drawnShips > 0, "FPS view should still render ships");
+        assertTrue(ctx.perf.drawnAsteroids > 0, "FPS view should keep nearby asteroid rendering readable");
+        assertTrue(ctx.perf.drawnSalvage > 0, "FPS view should keep nearby salvage rendering readable");
+        assertTrue(ctx.perf.drawnProjectiles > 0, "FPS view should keep nearby projectile rendering readable");
+        assertEquals(0, ctx.perf.drawnVfx, "FPS view should skip heavy VFX for performance");
+        assertEquals(0, ctx.perf.drawnExplosions, "FPS view should skip heavy explosion rendering for performance");
     }
 
     @Test

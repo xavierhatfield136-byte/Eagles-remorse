@@ -225,6 +225,7 @@ public final class UiState {
     public String controlsSearchQuery = "";
     public int controlsSelectedIndex = 0;
     public String controlsCaptureAction = "";
+    public String controlsStatusMessage = "";
     public int overlayInvariantRepairCount = 0;
     public String overlayInvariantLastRepair = "";
     public boolean modalPauseOwned = false;

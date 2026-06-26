@@ -60,7 +60,6 @@ public final class SpawnSystem {
 
         if (ctx.config.mode == GameMode.TUTORIAL) {
             TutorialSystem.init(ctx, configuredPlayerFaction(ctx));
-            CampaignSystem.initTacticalStrikeState(ctx);
             return;
         }
 

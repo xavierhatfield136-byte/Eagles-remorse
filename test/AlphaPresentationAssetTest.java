@@ -5,6 +5,7 @@ import javax.sound.sampled.AudioInputStream;
 import java.io.File;
 import java.lang.reflect.Field;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -31,6 +32,24 @@ class AlphaPresentationAssetTest {
                 "ship death sound should be a longer layered detonation asset, not the old short tone");
         assertTrue(peakAmplitude(wav) < 0.995,
                 "replacement ship death sound should not be clipped");
+    }
+
+    @Test
+    void blueSuperweaponChargeAssetsMatchGameplayChargeTime() throws Exception {
+        File superCharge = new File("assets/audio/weapons/super_blue_charge_01.wav");
+        File hyperCharge = new File("assets/audio/weapons/hyper_blue_charge_01.wav");
+        assertTrue(superCharge.isFile());
+        assertTrue(hyperCharge.isFile());
+
+        assertEquals(Ship.SUPERWEAPON_CHARGE_SFX_SECONDS, durationSeconds(superCharge), 0.02);
+        assertEquals(Ship.SUPERWEAPON_CHARGE_SFX_SECONDS, durationSeconds(hyperCharge), 0.02);
+    }
+
+    private static double durationSeconds(File wav) throws Exception {
+        try (AudioInputStream in = javax.sound.sampled.AudioSystem.getAudioInputStream(wav)) {
+            AudioFormat fmt = in.getFormat();
+            return in.getFrameLength() / fmt.getFrameRate();
+        }
     }
 
     private static double peakAmplitude(File wav) throws Exception {

@@ -6,7 +6,6 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -18,8 +17,8 @@ public final class ErrorLog {
     private ErrorLog() {}
 
     private static final Object LOCK = new Object();
-    private static final Path SAVE_DIR = Paths.get("save");
-    private static final Path LOG_FILE = SAVE_DIR.resolve("error.log");
+    private static final Path LOG_DIR = UserDataPaths.logDir();
+    private static final Path LOG_FILE = LOG_DIR.resolve("error.log");
     private static final DateTimeFormatter TS_FORMAT = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     private static volatile boolean globalHandlerInstalled = false;
 
@@ -60,7 +59,7 @@ public final class ErrorLog {
 
         synchronized (LOCK) {
             try {
-                Files.createDirectories(SAVE_DIR);
+                Files.createDirectories(LOG_DIR);
                 Files.writeString(
                         LOG_FILE,
                         entry.toString(),

@@ -113,6 +113,10 @@ tasks.named("jar") {
 test {
     useJUnitPlatform()
     systemProperty "codex.disableAudio", "true"
+    systemProperty "game.userDataDir", layout.buildDirectory.dir("test-user-data").get().asFile.absolutePath
+    doFirst {
+        delete(layout.buildDirectory.dir("test-user-data"))
+    }
     // Simulation tests retain decoded visual assets and static effect state between classes.
     // Keep workers short-lived and sized for multipart sprite decode coverage.
     forkEvery = 3
@@ -189,6 +193,24 @@ tasks.register("phase9Performance") {
     dependsOn("phase9PerformanceOrdinary", "phase9PerformanceLargest", "phase9PerformanceLargest1080")
 }
 
+tasks.register("phase10Accessibility", JavaExec) {
+    group = "verification"
+    description = "Run the Phase 10 accessibility and input acceptance harness."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase10AccessibilityAcceptance"
+    args("--strict", "--report=build/reports/phase10_accessibility_acceptance.json")
+}
+
+tasks.register("phase11ReleaseContract", JavaExec) {
+    group = "verification"
+    description = "Validate Phase 11 release docs, packaging task definitions, channels, and user-data paths."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase11PackagingReleaseValidation"
+    args("--strict", "--report=build/reports/phase11_release_contract.json")
+}
+
 tasks.register("performanceGuardrailSmoke", JavaExec) {
     group = "verification"
     description = "Run the late-campaign battle stress and memory guardrail scenario."
@@ -253,7 +275,7 @@ tasks.register("performanceGuardrailsCi") {
 tasks.register("stabilitySmoke") {
     group = "verification"
     description = "Run the lightweight regression smoke suite."
-    dependsOn("phase4Smoke", "phase9Smoke", "test")
+    dependsOn("phase4Smoke", "phase9Smoke", "phase10Accessibility", "test")
 }
 
 tasks.named("check") {
@@ -262,6 +284,10 @@ tasks.named("check") {
 
 def isWindowsHost = {
     System.getProperty("os.name").toLowerCase(Locale.US).contains("win")
+}
+
+def isLinuxHost = {
+    System.getProperty("os.name").toLowerCase(Locale.US).contains("linux")
 }
 
 def commandExists = { String command ->
@@ -367,4 +393,82 @@ tasks.register("packageWindows") {
             logger.lifecycle("WiX was not found on PATH, so the EXE installer was skipped. Install WiX and run packageWindowsExe to build it.")
         }
     }
+}
+
+tasks.register("phase11Packaging", JavaExec) {
+    group = "verification"
+    description = "Build and validate the Phase 11 Windows app-image, portable ZIP, release docs, and checksums."
+    dependsOn("packageWindows")
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase11PackagingReleaseValidation"
+    args("--strict", "--built", "--report=build/reports/phase11_packaging_release_validation.json")
+}
+
+def linuxJpackageInputDir = layout.buildDirectory.dir("jpackage/linux-input")
+
+tasks.register("stageLinuxPackageInput", Sync) {
+    dependsOn(tasks.named("jar"))
+    from(tasks.named("jar"))
+    into(linuxJpackageInputDir)
+}
+
+tasks.register("packageLinuxAppImage", Exec) {
+    dependsOn(tasks.named("stageLinuxPackageInput"))
+    group = "distribution"
+    description = "Build a Linux app-image with a bundled Java runtime."
+    workingDir = rootDir
+    doFirst {
+        if (!isLinuxHost()) {
+            throw new GradleException("Linux packaging tasks can only run on Linux hosts.")
+        }
+        def packageDir = layout.buildDirectory.dir("package/linux").get().asFile
+        packageDir.mkdirs()
+        delete(new File(packageDir, appBundleName))
+        delete(linuxJpackageInputDir)
+        copy {
+            from(tasks.named("jar"))
+            into(linuxJpackageInputDir)
+        }
+    }
+    def jarTask = tasks.named("jar").get()
+    commandLine("jpackage",
+            "--type", "app-image",
+            "--input", linuxJpackageInputDir.get().asFile.absolutePath,
+            "--dest", layout.buildDirectory.dir("package/linux").get().asFile.absolutePath,
+            "--name", appBundleName,
+            "--main-jar", jarTask.archiveFileName.get(),
+            "--main-class", application.mainClass.get(),
+            "--app-version", packageVersion,
+            "--vendor", "xhatf",
+            "--description", appDisplayName,
+            "--java-options", "-Dfile.encoding=UTF-8")
+}
+
+tasks.register("packageLinuxTar", Tar) {
+    group = "distribution"
+    description = "Create a portable Linux tarball containing the app-image and bundled runtime."
+    dependsOn("packageLinuxAppImage")
+    compression = Compression.GZIP
+    archiveExtension = "tar.gz"
+    archiveFileName = "${appBundleName}-${project.version}-linux-x64.tar.gz"
+    destinationDirectory = layout.buildDirectory.dir("package/linux")
+    from(layout.buildDirectory.dir("package/linux/${appBundleName}")) {
+        into(appBundleName)
+    }
+}
+
+tasks.register("packageLinux") {
+    group = "distribution"
+    description = "Build the portable Linux app-image tarball."
+    dependsOn("packageLinuxTar")
+}
+
+tasks.register("phase11LinuxPackaging", JavaExec) {
+    group = "verification"
+    description = "Build and validate the Linux app-image, portable tarball, release docs, and checksums."
+    dependsOn("packageLinux")
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "Phase11PackagingReleaseValidation"
+    args("--strict", "--built", "--platform=linux",
+            "--report=build/reports/phase11_linux_packaging_release_validation.json")
 }

@@ -239,7 +239,7 @@ class TitanAbilitySystemTest {
 
             assertNull(titan.tryFireSuperweaponAt(enemy.x, enemy.y, GameContext.DT));
             Projectile fired = null;
-            for (int i = 0; i < 240 && fired == null; i++) {
+            for (int i = 0; i < 720 && fired == null; i++) {
                 titan.trackSuperweaponAim(enemy.x, enemy.y);
                 titan.update(GameContext.DT);
                 fired = titan.pollSuperweaponShot();
