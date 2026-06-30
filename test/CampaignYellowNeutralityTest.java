@@ -14,19 +14,21 @@ class CampaignYellowNeutralityTest {
     void yellowIsFriendlyInCampaignZoneUntilRedContextAppears() throws Exception {
         try {
             GameContext ctx = campaignZone();
-            FleetShip yellow = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 1220.0, 1000.0);
+            FleetShip yellow = new FleetShip(ShipRole.FRIGATE, Faction.BRIGHT_YELLOW, 1220.0, 1000.0);
             ctx.ships.add(yellow);
 
             refreshAlliances(ctx);
 
-            assertTrue(Faction.ALLY.isFriendlyTo(Faction.TEAM_D),
-                    "Yellow-only campaign pockets should not make Yellow attack the player");
+            assertTrue(Faction.ALLY.isFriendlyTo(Faction.BRIGHT_YELLOW),
+                    "Bright Yellow is a stable member of the player coalition");
 
             ctx.ships.add(new FleetShip(ShipRole.PATROL, Faction.ENEMY, 1500.0, 1000.0));
             refreshAlliances(ctx);
 
-            assertFalse(Faction.ALLY.isFriendlyTo(Faction.TEAM_D),
-                    "active Red context should keep unconverted Yellow independent");
+            assertTrue(Faction.ALLY.isFriendlyTo(Faction.BRIGHT_YELLOW),
+                    "Red presence must not rewrite Bright Yellow's coalition identity");
+            assertFalse(Faction.ALLY.isFriendlyTo(Faction.DARK_YELLOW),
+                    "Dark Orange-Yellow remains aligned with Red");
         } finally {
             Faction.clearCampaignAlliances();
         }
@@ -36,7 +38,7 @@ class CampaignYellowNeutralityTest {
     void stateIntentConvertsYellowOutOfFriendlyTargeting() {
         try {
             GameContext ctx = campaignZone();
-            FleetShip yellow = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_D, 1220.0, 1000.0);
+            FleetShip yellow = new FleetShip(ShipRole.FRIGATE, Faction.BRIGHT_YELLOW, 1220.0, 1000.0);
             FleetShip red = new FleetShip(ShipRole.PATROL, Faction.ENEMY, 1500.0, 1000.0);
             ctx.ships.add(yellow);
             ctx.ships.add(red);
@@ -44,8 +46,8 @@ class CampaignYellowNeutralityTest {
 
             CampaignSystem.noteYellowStateIntentNeutrality(ctx, yellow);
 
-            assertTrue(Faction.ALLY.isFriendlyTo(Faction.TEAM_D),
-                    "State Intent should convert Yellow contacts to neutral/friendly campaign status");
+            assertTrue(Faction.ALLY.isFriendlyTo(Faction.BRIGHT_YELLOW),
+                    "State Intent should preserve Bright Yellow coalition targeting");
             assertSame(red, TargetingSystem.findClosestEnemyToPoint(ctx, ctx.player, yellow.x, yellow.y, 900.0),
                     "friendly forces should target Red instead of converted Yellow");
         } finally {

@@ -30,7 +30,7 @@ class CommandSchoolOverworldExpansionTest {
         assertNotNull(ore);
         assertNotNull(red);
         assertEquals(Faction.ALLY, anchorage.ownerFaction);
-        assertEquals(Faction.TEAM_D, hub.ownerFaction);
+        assertEquals(Faction.BRIGHT_YELLOW, hub.ownerFaction);
         assertEquals(Faction.ENEMY, red.ownerFaction);
         assertEquals(CampaignSystem.CampaignLocationType.RESOURCE_ZONE, ore.type);
         assertFalse(CampaignSystem.persistCheckpointForMenuExit(ctx),

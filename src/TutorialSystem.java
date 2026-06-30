@@ -935,13 +935,13 @@ public final class TutorialSystem {
             case OVERWORLD_MAP_READING -> {
                 items.add(new ChecklistItem(
                         "[M] Review the sample overworld map.",
-                        "Keep the map open and read the Green, Yellow, Red, ore, and contact markers.",
+                        "Keep the map open and read Green, Bright Yellow [BYC/sunburst], Dark Orange-Yellow [DYC/split chevron], Red, ore, and contact markers.",
                         st.overworldMapReviewed));
             }
             case SITE_SELECTION -> {
                 items.add(new ChecklistItem(
                         "[LMB] Select Broker Practice Hub.",
-                        "Select the Yellow practice hub and read owner, services, threat, and enter-site status.",
+                        "Select the Bright Yellow [BYC/sunburst] practice hub and read owner, services, threat, and enter-site status.",
                         st.selectedTrainingSite));
             }
             case PLOT_MOVEMENT -> {

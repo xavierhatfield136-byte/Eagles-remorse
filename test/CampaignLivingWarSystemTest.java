@@ -377,7 +377,7 @@ class CampaignLivingWarSystemTest {
         Object convoy = invokePrivate("ensureCampaignForce",
                 new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
                         Faction.class, String.class, String.class, String.class, double.class, double.class},
-                st, CampaignSystem.CampaignForceKind.CONVOY, Faction.TEAM_D,
+                st, CampaignSystem.CampaignForceKind.CONVOY, Faction.BRIGHT_YELLOW,
                 "Yellow Regression Convoy", "Yellow test lane", "Run trade route", 2400.0, 2400.0);
         Object red = firstForceForFaction(st, Faction.ENEMY);
         assertTrue(convoy != null && red != null, "expected seeded Yellow convoy and Red force");
@@ -405,7 +405,7 @@ class CampaignLivingWarSystemTest {
             Object convoy = invokePrivate("ensureCampaignForce",
                     new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
                             Faction.class, String.class, String.class, String.class, double.class, double.class},
-                    st, CampaignSystem.CampaignForceKind.CONVOY, Faction.TEAM_D,
+                    st, CampaignSystem.CampaignForceKind.CONVOY, Faction.BRIGHT_YELLOW,
                     "Yellow Trade Convoy", "Yellow test lane", "Run trade route", 1000.0, 1000.0);
             Object green = invokePrivate("ensureCampaignForce",
                     new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
@@ -636,7 +636,7 @@ class CampaignLivingWarSystemTest {
         double wreckY = getDouble(wreck, "y");
         CampaignSystem.CampaignLocation returnHub = (CampaignSystem.CampaignLocation) invokePrivate("nearestFriendlySupportHub",
                 new Class[]{GameContext.class, CampaignSystem.CampaignState.class, Faction.class, double.class, double.class},
-                ctx, st, Faction.TEAM_D, wreckX, wreckY);
+                ctx, st, Faction.BRIGHT_YELLOW, wreckX, wreckY);
         assertNotNull(returnHub, "battle salvage test needs a Yellow support hub for the return leg");
         setObject(salvageForce, "sourceLocationId", returnHub.id);
         setDouble(salvageForce, "x", wreckX + 10.0);

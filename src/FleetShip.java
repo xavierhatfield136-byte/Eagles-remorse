@@ -1234,7 +1234,7 @@ public class FleetShip extends Ship {
             case SUPERSHIP -> {
                 if (faction == Faction.ENEMY) name = "Red Supership";
                 else if (faction == Faction.TEAM_C) name = "Green Supership";
-                else if (faction == Faction.TEAM_D) name = "Yellow Supership";
+                else if (faction != null && faction.isYellowLineage()) name = faction.teamName() + " Supership";
                 else name = "Blue Supership";
 
                 radius = 52;
@@ -1279,7 +1279,7 @@ public class FleetShip extends Ship {
                 superweaponPattern = switch (faction) {
                     case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
                     case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
-                    case TEAM_D -> SuperweaponPattern.MISSILE_BARRAGE;
+                    case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> SuperweaponPattern.MISSILE_BARRAGE;
                     default -> SuperweaponPattern.DESTABILIZER_PULSE;
                 };
 
@@ -2075,6 +2075,8 @@ public class FleetShip extends Ship {
             case ENEMY -> "Red";
             case TEAM_C -> "Green";
             case TEAM_D -> "Yellow";
+            case BRIGHT_YELLOW -> "Bright Yellow";
+            case DARK_YELLOW -> "Dark Orange-Yellow";
             default -> "Blue";
         };
         return prefix + " " + hullName;
@@ -2373,7 +2375,7 @@ public class FleetShip extends Ship {
         return switch (faction) {
             case ENEMY -> SuperweaponPattern.KINETIC_SLUG;
             case TEAM_C -> SuperweaponPattern.DIRECT_BEAM;
-            case TEAM_D -> SuperweaponPattern.MISSILE_BARRAGE;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> SuperweaponPattern.MISSILE_BARRAGE;
             default -> SuperweaponPattern.DESTABILIZER_PULSE;
         };
     }

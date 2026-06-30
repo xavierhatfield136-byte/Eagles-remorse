@@ -17,6 +17,22 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CampaignStrategicCommandHudTest {
+    @Test
+    void selectedTerritoryPanelShowsAdjacencyLegalityAndNonColorIdentity() {
+        GameContext ctx = initializedCampaignContext();
+        List<String> lines = CampaignSystem.campaignSelectedTerritoryLines(ctx);
+        String joined = String.join("\n", lines);
+        assertTrue(joined.contains("SELECTED TERRITORY"));
+        assertTrue(joined.contains("ADJACENT TERRITORIES"));
+        assertTrue(joined.contains("LEGAL INVASION EDGES"));
+        assertTrue(joined.contains("marker"));
+        assertTrue(joined.contains("CONTROL / SUPPLY"));
+        assertTrue(joined.contains("SUPPLY EFFECTS"));
+        List<CampaignSystem.CampaignTerritoryEdgeView> edges =
+                CampaignSystem.campaignSelectedTerritoryEdges(ctx);
+        assertFalse(edges.isEmpty());
+        assertTrue(edges.stream().allMatch(edge -> edge.explanation != null && !edge.explanation.isBlank()));
+    }
 
     @Test
     void criticalCampaignCopyUsesPlayerFacingTerms() {

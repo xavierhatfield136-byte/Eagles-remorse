@@ -195,7 +195,7 @@ class CampaignOvermapCheckpointTest {
         assertTrue(restoredMission.supportRouteStabilized);
         assertEquals(88.0, restoredMission.unresolvedAgeSec, 1e-9);
         assertEquals(1, restoredMission.escalationStage);
-        assertEquals(Faction.TEAM_D, restoredMission.ownerFaction);
+        assertEquals(Faction.DARK_YELLOW, restoredMission.ownerFaction);
         assertEquals(CampaignSystem.CampaignIntelLevel.FULL, restoredMission.intelLevel);
         assertTrue(restoredMission.destroyed);
         assertFalse(restoredAoi.discovered);

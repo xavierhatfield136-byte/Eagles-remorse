@@ -88,11 +88,16 @@ public final class ExperienceRuntime {
         if (palette == ExperienceSettings.ColorblindPalette.STANDARD) return null;
         boolean hostile = faction == Faction.ENEMY;
         boolean teamC = faction == Faction.TEAM_C;
-        boolean teamD = faction == Faction.TEAM_D;
+        boolean legacyYellow = faction == Faction.TEAM_D;
+        boolean brightYellow = faction == Faction.BRIGHT_YELLOW;
+        boolean darkYellow = faction == Faction.DARK_YELLOW;
         return switch (palette) {
-            case DEUTERANOPIA -> hostile ? new Color(245, 126, 48) : teamC ? new Color(85, 174, 255) : teamD ? new Color(245, 214, 88) : new Color(88, 198, 255);
-            case PROTANOPIA -> hostile ? new Color(244, 154, 48) : teamC ? new Color(78, 188, 255) : teamD ? new Color(238, 220, 98) : new Color(102, 194, 255);
-            case TRITANOPIA -> hostile ? new Color(255, 96, 142) : teamC ? new Color(90, 220, 156) : teamD ? new Color(240, 154, 226) : new Color(108, 214, 164);
+            case DEUTERANOPIA -> hostile ? new Color(245, 126, 48) : teamC ? new Color(85, 174, 255)
+                    : darkYellow ? new Color(190, 92, 38) : (brightYellow || legacyYellow) ? new Color(245, 214, 88) : new Color(88, 198, 255);
+            case PROTANOPIA -> hostile ? new Color(244, 154, 48) : teamC ? new Color(78, 188, 255)
+                    : darkYellow ? new Color(166, 104, 210) : (brightYellow || legacyYellow) ? new Color(238, 220, 98) : new Color(102, 194, 255);
+            case TRITANOPIA -> hostile ? new Color(255, 96, 142) : teamC ? new Color(90, 220, 156)
+                    : darkYellow ? new Color(210, 88, 64) : (brightYellow || legacyYellow) ? new Color(240, 154, 226) : new Color(108, 214, 164);
             default -> null;
         };
     }

@@ -1,0 +1,4 @@
+asset_path,category,origin,creator_or_performer,license,consent_reference,status,reviewer,synthetic
+assets/crew_portraits/**,portrait,legacy_alpha_unverified,unknown,unknown,unknown,frozen_legacy_not_for_expansion,project_owner,unknown
+assets/voice/**,crew_voice,legacy_alpha_unverified,unknown,unknown,unknown,frozen_legacy_not_for_expansion,project_owner,unknown
+

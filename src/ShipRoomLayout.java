@@ -732,7 +732,7 @@ public final class ShipRoomLayout {
             return;
         }
         addArmorRooms(hull, rooms);
-        if (faction == Faction.TEAM_D) {
+        if (faction != null && faction.isYellowLineage()) {
             addInnerArmorRooms(hull, rooms);
         }
     }
@@ -811,7 +811,7 @@ public final class ShipRoomLayout {
             case PLAYER, ALLY -> "ally";
             case ENEMY -> "enemy";
             case TEAM_C -> "team_c";
-            case TEAM_D -> "team_d";
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
         };
     }
 
@@ -987,7 +987,7 @@ public final class ShipRoomLayout {
         boolean topSide = v <= 0.5;
         double along = MathUtil.clamp((x + 1.0) * 0.5, 0.0, 1.0);
 
-        if (faction == Faction.TEAM_D && edgeFrac <= 0.18) {
+        if (faction != null && faction.isYellowLineage() && edgeFrac <= 0.18) {
             if (edgeFrac <= 0.09) {
                 RoomId outer = outerDefenseRoomForSpan(x, topSide, faction);
                 if (outer != null) return outer;
@@ -1232,7 +1232,7 @@ public final class ShipRoomLayout {
         double edgeFrac = Math.min(distTop, distBottom) / thickness;
         boolean topSide = distTop <= distBottom;
 
-        if (faction == Faction.TEAM_D && edgeFrac <= 0.22) {
+        if (faction != null && faction.isYellowLineage() && edgeFrac <= 0.22) {
             if (edgeFrac <= 0.10) {
                 RoomId outer = outerDefenseRoomForSpan(x, topSide, faction);
                 if (outer != null) return outer;
@@ -1552,7 +1552,7 @@ public final class ShipRoomLayout {
         if (aftCap != null) raw.add(aftCap);
         if (bowCap != null) raw.add(bowCap);
 
-        if (faction == Faction.TEAM_D) {
+        if (faction != null && faction.isYellowLineage()) {
             appendInnerArmorShellCells(raw, hull);
         }
     }

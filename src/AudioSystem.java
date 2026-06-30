@@ -2017,7 +2017,7 @@ public final class AudioSystem {
             case PLAYER, ALLY -> "blue";
             case ENEMY -> "red";
             case TEAM_C -> "green";
-            case TEAM_D -> "yellow";
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "yellow";
         };
     }
 

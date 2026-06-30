@@ -54,7 +54,7 @@ final class ShipDamagePatchLibrary {
             case PLAYER, ALLY -> "azure";
             case ENEMY -> "ember";
             case TEAM_C -> "emerald";
-            case TEAM_D -> "amber";
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "amber";
         };
     }
 

@@ -3185,7 +3185,7 @@ public abstract class Ship {
     }
 
     private boolean hasArmorLayer() {
-        if (faction == Faction.TEAM_D) return true;
+        if (faction != null && faction.isYellowLineage()) return true;
         return switch (role) {
             case FIGHTER, BOMBER, DRONE -> false;
             default -> true;
@@ -3505,7 +3505,7 @@ public abstract class Ship {
         ShipRoomLayout.RoomDef outer = ShipRoomLayout.roomForId(role, faction, outerId);
         if (outer != null && roomHp.getOrDefault(outer.id, 0.0) > 1e-6) return outer;
 
-        if (faction == Faction.TEAM_D) {
+        if (faction != null && faction.isYellowLineage()) {
             ShipRoomLayout.RoomId innerId = ShipRoomLayout.innerArmorRoomFor(requestedId);
             ShipRoomLayout.RoomDef inner = ShipRoomLayout.roomForId(role, faction, innerId);
             if (inner != null && roomHp.getOrDefault(inner.id, 0.0) > 1e-6) return inner;
@@ -6466,7 +6466,7 @@ public abstract class Ship {
     }
 
     private int configuredArmorGateHitCap() {
-        return (faction == Faction.TEAM_D && hasArmorLayer()) ? 5 : 0;
+        return (faction != null && faction.isYellowLineage() && hasArmorLayer()) ? 5 : 0;
     }
 
     private boolean consumeShieldGateHit(int face) {
@@ -6806,12 +6806,12 @@ public abstract class Ship {
 
     private double adjustedDisableDuration(double seconds) {
         if (seconds <= 0.0) return 0.0;
-        double mul = (faction == Faction.TEAM_D) ? 0.5 : 1.0;
+        double mul = (faction != null && faction.isYellowLineage()) ? 0.5 : 1.0;
         return seconds * mul;
     }
 
     private double disableDurationCap() {
-        if (faction == Faction.TEAM_D) return 10.0;
+        if (faction != null && faction.isYellowLineage()) return 10.0;
         if (faction == Faction.TEAM_C) return 20.0;
         return 15.0;
     }
@@ -7201,7 +7201,7 @@ public abstract class Ship {
     }
 
     private boolean isYellowHyperweaponTitan() {
-        return role == ShipRole.HYPERWEAPON_TITAN && faction == Faction.TEAM_D;
+        return role == ShipRole.HYPERWEAPON_TITAN && faction != null && faction.isYellowLineage();
     }
 
     private double hyperLanceBeamLength() {

@@ -332,7 +332,7 @@ final class ShipPartLibrary {
             case PLAYER, ALLY -> "ally";
             case ENEMY -> "enemy";
             case TEAM_C -> "team_c";
-            case TEAM_D -> "team_d";
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
         };
     }
 

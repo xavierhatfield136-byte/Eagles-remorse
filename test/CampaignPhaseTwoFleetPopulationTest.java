@@ -72,9 +72,11 @@ class CampaignPhaseTwoFleetPopulationTest {
 
         assertFactionInventory(records, Faction.ENEMY, 250, 20, 5, 20, 20);
         assertFactionInventory(records, Faction.TEAM_C, 180, 12, 3, 20, 20);
-        assertFactionInventory(records, Faction.TEAM_D, 170, 5, 2, 40, 12);
+        assertFactionInventory(records, Faction.BRIGHT_YELLOW, 170, 5, 2, 40, 12);
+        assertFactionInventory(records, Faction.DARK_YELLOW, 170, 5, 2, 40, 12);
 
-        for (Faction faction : List.of(Faction.ENEMY, Faction.TEAM_C, Faction.TEAM_D)) {
+        for (Faction faction : List.of(Faction.ENEMY, Faction.TEAM_C,
+                Faction.BRIGHT_YELLOW, Faction.DARK_YELLOW)) {
             Set<String> capitalBases = new HashSet<>();
             for (Object record : records) {
                 if (read(record, "faction") != faction) continue;
@@ -155,7 +157,7 @@ class CampaignPhaseTwoFleetPopulationTest {
         assertTrue(CampaignSystem.campaignForceSummaries(ctx).stream()
                 .anyMatch(force -> force.faction == Faction.TEAM_C));
         assertTrue(CampaignSystem.campaignForceSummaries(ctx).stream()
-                .anyMatch(force -> force.faction == Faction.TEAM_D));
+                .anyMatch(force -> force.faction == Faction.BRIGHT_YELLOW));
 
         Object capitalForce = firstActiveCapitalForce(ctx.campaign);
         assertNotNull(capitalForce);
@@ -265,7 +267,7 @@ class CampaignPhaseTwoFleetPopulationTest {
                 .anyMatch(line -> line.startsWith("Titan Hunt Opportunity:")));
 
         CampaignSystem.CampaignLocation yellowYard = ctx.campaign.galaxyMainPois.stream()
-                .filter(location -> location.ownerFaction == Faction.TEAM_D)
+                .filter(location -> location.ownerFaction == Faction.BRIGHT_YELLOW)
                 .findFirst()
                 .orElseThrow();
         int before = ctx.campaign.persistentBlueFleet.size();
@@ -278,7 +280,7 @@ class CampaignPhaseTwoFleetPopulationTest {
                 ctx, ctx.campaign, 10_000.0);
         assertEquals(before + 1, ctx.campaign.persistentBlueFleet.size());
         Object built = ctx.campaign.persistentBlueFleet.get(ctx.campaign.persistentBlueFleet.size() - 1);
-        assertEquals(Faction.TEAM_D.name(), read(built, "factionName"),
+        assertEquals(Faction.BRIGHT_YELLOW.name(), read(built, "factionName"),
                 "purchased Yellow hulls should retain producing-faction identity under Blue command");
     }
 

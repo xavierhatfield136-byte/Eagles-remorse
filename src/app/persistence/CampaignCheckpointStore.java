@@ -41,7 +41,7 @@ public final class CampaignCheckpointStore {
 
     private CampaignCheckpointStore() {}
 
-    private static final int CURRENT_VERSION = 2;
+    private static final int CURRENT_VERSION = 4;
     private static final int MAX_CAMPAIGN_SECTORS = 24;
     private static final Path SAVE_DIR = UserDataPaths.saveDir();
     private static final Path CHECKPOINT_FILE = Paths.get(
@@ -246,6 +246,11 @@ public final class CampaignCheckpointStore {
         public String economyExpansionState = "";
         public String diplomacyNarrativeState = "";
         public String operationsExpansionState = "";
+        public String flagshipOperationsState = "";
+        public String boardingRescueState = "";
+        public String alternativeCampaignState = "";
+        public String cooperativeCommandState = "";
+        public String warMemoryState = "";
         public String productionReadinessState = "";
         public String fleetDoctrineExpansionState = "";
         public String deepCampaignExpansionState = "";
@@ -391,6 +396,11 @@ public final class CampaignCheckpointStore {
             economyExpansionState = (economyExpansionState == null) ? "" : economyExpansionState.trim();
             diplomacyNarrativeState = (diplomacyNarrativeState == null) ? "" : diplomacyNarrativeState.trim();
             operationsExpansionState = (operationsExpansionState == null) ? "" : operationsExpansionState.trim();
+            flagshipOperationsState = (flagshipOperationsState == null) ? "" : flagshipOperationsState.trim();
+            boardingRescueState = (boardingRescueState == null) ? "" : boardingRescueState.trim();
+            alternativeCampaignState = (alternativeCampaignState == null) ? "" : alternativeCampaignState.trim();
+            cooperativeCommandState = (cooperativeCommandState == null) ? "" : cooperativeCommandState.trim();
+            warMemoryState = (warMemoryState == null) ? "" : warMemoryState.trim();
             productionReadinessState = (productionReadinessState == null) ? "" : productionReadinessState.trim();
             fleetDoctrineExpansionState = (fleetDoctrineExpansionState == null) ? "" : fleetDoctrineExpansionState.trim();
             deepCampaignExpansionState = (deepCampaignExpansionState == null) ? "" : deepCampaignExpansionState.trim();
@@ -608,6 +618,11 @@ public final class CampaignCheckpointStore {
                 cp.economyExpansionState = props.getProperty("economyExpansionState", cp.economyExpansionState);
                 cp.diplomacyNarrativeState = props.getProperty("diplomacyNarrativeState", cp.diplomacyNarrativeState);
                 cp.operationsExpansionState = props.getProperty("operationsExpansionState", cp.operationsExpansionState);
+                cp.flagshipOperationsState = props.getProperty("flagshipOperationsState", cp.flagshipOperationsState);
+                cp.boardingRescueState = props.getProperty("boardingRescueState", cp.boardingRescueState);
+                cp.alternativeCampaignState = props.getProperty("alternativeCampaignState", cp.alternativeCampaignState);
+                cp.cooperativeCommandState = props.getProperty("cooperativeCommandState", cp.cooperativeCommandState);
+                cp.warMemoryState = props.getProperty("warMemoryState", cp.warMemoryState);
                 cp.productionReadinessState = props.getProperty("productionReadinessState", cp.productionReadinessState);
                 cp.fleetDoctrineExpansionState = props.getProperty("fleetDoctrineExpansionState", cp.fleetDoctrineExpansionState);
                 cp.deepCampaignExpansionState = props.getProperty("deepCampaignExpansionState", cp.deepCampaignExpansionState);
@@ -742,6 +757,11 @@ public final class CampaignCheckpointStore {
             cp.diplomacyNarrativeState = "";
             repairs.add("reputation history");
         }
+        if (!props.containsKey("flagshipOperationsState")) repairs.add("flagship operations");
+        if (!props.containsKey("boardingRescueState")) repairs.add("boarding and rescue operations");
+        if (!props.containsKey("alternativeCampaignState")) repairs.add("alternative campaign identity");
+        if (!props.containsKey("cooperativeCommandState")) repairs.add("cooperative command seats");
+        if (!props.containsKey("warMemoryState")) repairs.add("structured war memory");
         if (!props.containsKey("galaxyLocationStates")) {
             cp.galaxyLocationStates = "";
             repairs.add("environment state");
@@ -754,7 +774,7 @@ public final class CampaignCheckpointStore {
         }
 
         repairEnum(props, "playerFactionName", cp.playerFactionName,
-                Set.of("PLAYER", "ALLY", "ENEMY", "TEAM_C", "TEAM_D"), "PLAYER", repairs,
+                Set.of("PLAYER", "ALLY", "ENEMY", "TEAM_C", "TEAM_D", "BRIGHT_YELLOW", "DARK_YELLOW"), "PLAYER", repairs,
                 value -> cp.playerFactionName = value);
         repairEnum(props, "branchRoute", cp.branchRoute,
                 Set.of("BALANCED", "GREEN", "YELLOW"), "BALANCED", repairs,
@@ -1016,6 +1036,11 @@ public final class CampaignCheckpointStore {
             props.setProperty("economyExpansionState", cp.economyExpansionState);
             props.setProperty("diplomacyNarrativeState", cp.diplomacyNarrativeState);
             props.setProperty("operationsExpansionState", cp.operationsExpansionState);
+            props.setProperty("flagshipOperationsState", cp.flagshipOperationsState);
+            props.setProperty("boardingRescueState", cp.boardingRescueState);
+            props.setProperty("alternativeCampaignState", cp.alternativeCampaignState);
+            props.setProperty("cooperativeCommandState", cp.cooperativeCommandState);
+            props.setProperty("warMemoryState", cp.warMemoryState);
             props.setProperty("productionReadinessState", cp.productionReadinessState);
             props.setProperty("fleetDoctrineExpansionState", cp.fleetDoctrineExpansionState);
             props.setProperty("deepCampaignExpansionState", cp.deepCampaignExpansionState);

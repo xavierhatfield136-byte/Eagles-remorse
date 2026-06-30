@@ -1766,11 +1766,11 @@ public final class UISystem {
 
     private static boolean isHostileCampaignSupportMarker(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
         if (marker == null) return false;
+        if (marker.type == CampaignSystem.SupportMarkerType.HAZARD) return true;
         if (marker.faction != null && ctx != null && ctx.player != null && ctx.player.faction != null) {
             return !marker.faction.isFriendlyTo(ctx.player.faction);
         }
-        return marker.type == CampaignSystem.SupportMarkerType.HAZARD
-                || marker.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
+        return marker.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
                 || marker.type == CampaignSystem.SupportMarkerType.FORCE_SEARCH
                 || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
                 || marker.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE;

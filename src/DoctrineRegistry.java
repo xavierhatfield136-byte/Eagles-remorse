@@ -58,7 +58,7 @@ public final class DoctrineRegistry {
             case PLAYER, ALLY -> ENERGY_NAVY;
             case ENEMY -> KINETIC_CONSORTIUM;
             case TEAM_C -> AEGIS_LATTICE;
-            case TEAM_D -> VIPER_BARRAGE;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> VIPER_BARRAGE;
         };
     }
 
@@ -114,7 +114,7 @@ public final class DoctrineRegistry {
         s.shieldStripRoomHpMultiplier = shieldStripMult;
         s.rebuildDefenseStateForCurrentStats();
 
-        if (durabilityFaction == Faction.TEAM_D) {
+        if (durabilityFaction != null && durabilityFaction.isYellowLineage()) {
             s.shieldRegen = 0.0;
             s.shieldActive = false;
             s.shield = 0.0;
@@ -128,7 +128,7 @@ public final class DoctrineRegistry {
         // Spawn ships "fresh" at their new max values.
         s.hp = s.hpMax;
         s.shield = s.shieldMax;
-        if (durabilityFaction == Faction.TEAM_D) {
+        if (durabilityFaction != null && durabilityFaction.isYellowLineage()) {
             s.shield = 0.0;
             s.shieldActive = false;
         } else if (s.shieldMax > 0) {

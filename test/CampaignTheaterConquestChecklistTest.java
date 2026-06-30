@@ -47,7 +47,9 @@ class CampaignTheaterConquestChecklistTest {
 
         assertEquals(4, bands.size());
         assertInfluenceDominance(bands.get(0), "GREEN");
-        assertInfluenceDominance(bands.get(1), "YELLOW");
+        assertInfluenceDominance(bands.get(1), "GREEN");
+        assertTrue(bands.get(1).yellowInfluence > bands.get(1).redInfluence,
+                "the split Yellow frontier should remain visibly Yellow-influenced while coalition and Red blocs contest it");
         assertInfluenceDominance(bands.get(2), "RED");
         assertInfluenceDominance(bands.get(3), "RED");
     }
@@ -196,7 +198,7 @@ class CampaignTheaterConquestChecklistTest {
         bootOvermap(ctx);
 
         List<CampaignSystem.CampaignMissionBoardEntry> green = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_C);
-        List<CampaignSystem.CampaignMissionBoardEntry> yellow = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.TEAM_D);
+        List<CampaignSystem.CampaignMissionBoardEntry> yellow = CampaignSystem.campaignFactionMissionBoard(ctx, Faction.BRIGHT_YELLOW);
 
         assertTrue(green.size() >= 3, "Green board should produce multiple facility/fleet-driven missions");
         assertTrue(yellow.size() >= 3, "Yellow board should produce multiple facility/fleet-driven missions");
@@ -367,7 +369,7 @@ class CampaignTheaterConquestChecklistTest {
         redShipyard.ownerFaction = Faction.TEAM_C;
         redRelay.ownerFaction = Faction.TEAM_C;
         redFortress.destroyed = true;
-        yellowHub.ownerFaction = Faction.TEAM_D;
+        yellowHub.ownerFaction = Faction.BRIGHT_YELLOW;
 
         CampaignSystem.CampaignFinalBattleReadiness after = CampaignSystem.campaignFinalBattleReadiness(ctx);
 
@@ -414,7 +416,7 @@ class CampaignTheaterConquestChecklistTest {
             boolean spawnedNow = ctx.ships.indexOf(ship) >= shipsBefore;
             if (!spawnedNow) continue;
             String name = ship.name == null ? "" : ship.name;
-            if (ship.faction == Faction.TEAM_C || ship.faction == Faction.ALLY || ship.faction == Faction.TEAM_D) {
+            if (ship.faction == Faction.TEAM_C || ship.faction == Faction.ALLY || ship.faction == Faction.BRIGHT_YELLOW) {
                 alliedTotal++;
                 if (name.contains("Titan") || name.contains("Battlecruiser") || name.contains("Cruiser")) {
                     alliedCapitalShips++;
@@ -594,11 +596,12 @@ class CampaignTheaterConquestChecklistTest {
         assertTrue(band.yellowInfluence >= 0.0 && band.yellowInfluence <= 100.0);
         assertTrue(band.redInfluence >= 0.0 && band.redInfluence <= 100.0);
         double total = band.greenInfluence + band.yellowInfluence + band.redInfluence;
+        String values = "green=" + band.greenInfluence + " yellow=" + band.yellowInfluence + " red=" + band.redInfluence;
         assertEquals(100.0, total, 0.75);
         switch (dominant) {
-            case "GREEN" -> assertTrue(band.greenInfluence > band.yellowInfluence && band.greenInfluence > band.redInfluence);
-            case "YELLOW" -> assertTrue(band.yellowInfluence > band.greenInfluence && band.yellowInfluence > band.redInfluence);
-            case "RED" -> assertTrue(band.redInfluence > band.greenInfluence && band.redInfluence > band.yellowInfluence);
+            case "GREEN" -> assertTrue(band.greenInfluence > band.yellowInfluence && band.greenInfluence > band.redInfluence, values);
+            case "YELLOW" -> assertTrue(band.yellowInfluence > band.greenInfluence && band.yellowInfluence > band.redInfluence, values);
+            case "RED" -> assertTrue(band.redInfluence > band.greenInfluence && band.redInfluence > band.yellowInfluence, values);
             default -> throw new AssertionError("unknown dominant influence " + dominant);
         }
     }

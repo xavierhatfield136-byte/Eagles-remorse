@@ -514,20 +514,20 @@ public final class CommSystem {
                 if (hullFrac < 0.45) yield outcome("We hear you, but we are already bleeding. We can screen lightly, not spearhead.");
                 applySupportOrder(ctx, target);
                 CommOutcome vector = objectiveSupportOutcome(ctx, target,
-                        (target.faction == Faction.TEAM_D)
-                                ? "Yellow flight copies. We are vectoring on "
+                        isYellowContact(target)
+                                ? target.faction.teamName() + " flight copies. We are vectoring on "
                                 : "Green channel copies. We are vectoring on ",
-                        (target.faction == Faction.TEAM_D)
-                                ? "YELLOW SUPPORT VECTOR LOCKED"
+                        isYellowContact(target)
+                                ? target.faction.teamName().toUpperCase(Locale.US) + " SUPPORT VECTOR LOCKED"
                                 : "GREEN SUPPORT VECTOR LOCKED");
                 if (vector != null && memory.cooperation > 0.10) yield vector;
-                if (target.faction == Faction.TEAM_D) {
+                if (isYellowContact(target)) {
                     if (memory.cooperation > 0.18) {
-                        yield outcome("Yellow flight copies. We are warping toward your hull, taking escort posture, and marking your target for the squadron.",
-                                "YELLOW SUPPORT WARPING IN");
+                        yield outcome(target.faction.teamName() + " flight copies. We are warping toward your hull, taking escort posture, and marking your target for the squadron.",
+                                target.faction.teamName().toUpperCase(Locale.US) + " SUPPORT WARPING IN");
                     }
-                    yield outcome("Yellow flight copies. We can scout ahead and draw the heavier reds onto a bad angle.",
-                            "YELLOW SCOUTS MOVING TO SUPPORT");
+                    yield outcome(target.faction.teamName() + " flight copies. We can scout ahead and draw the heavier reds onto a bad angle.",
+                            target.faction.teamName().toUpperCase(Locale.US) + " SCOUTS MOVING TO SUPPORT");
                 }
                 if (target.faction == Faction.TEAM_C) {
                     if (memory.cooperation > 0.18) {
@@ -543,9 +543,9 @@ public final class CommSystem {
             case REQUEST_TRADE -> alliedTradeOutcome(ctx, target);
             case WARN_OFF -> {
                 applyWarnOffOrder(ctx, target);
-                if (target.faction == Faction.TEAM_D) {
-                    yield outcome("Yellow copies. We will stay loose and leave your engagement lane open.",
-                            "YELLOW FLIGHT BREAKING OFF");
+                if (isYellowContact(target)) {
+                    yield outcome(target.faction.teamName() + " copies. We will stay loose and leave your engagement lane open.",
+                            target.faction.teamName().toUpperCase(Locale.US) + " FLIGHT BREAKING OFF");
                 }
                 yield outcome("Acknowledged. We will keep clear of your immediate line of fire.",
                         "ALLIED CONTACT PEELING OFF");
@@ -808,7 +808,7 @@ public final class CommSystem {
         if (counterparty == TradeCounterparty.NEUTRAL || counterparty == TradeCounterparty.NEUTRAL_UNDER_FIRE) {
             return new ShipRole[]{ShipRole.PATROL, ShipRole.MINER, ShipRole.HAULER};
         }
-        if (target != null && target.faction == Faction.TEAM_D) {
+        if (isYellowContact(target)) {
             return new ShipRole[]{ShipRole.PICKET, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE};
         }
         if (target != null && target.faction == Faction.TEAM_C) {
@@ -882,7 +882,7 @@ public final class CommSystem {
     private static int intelCostFor(Ship target, TradeCounterparty counterparty) {
         return switch (counterparty) {
             case FRIENDLY -> 120;
-            case ALLIED -> (target != null && target.faction == Faction.TEAM_D) ? 180 : 160;
+            case ALLIED -> isYellowContact(target) ? 180 : 160;
             case NEUTRAL_UNDER_FIRE -> 220;
             case NEUTRAL -> 180;
         };
@@ -918,7 +918,7 @@ public final class CommSystem {
     private static String intelSuccessBanner(Ship target, TradeCounterparty counterparty) {
         return switch (counterparty) {
             case FRIENDLY -> "BLUE INTEL PACKAGE SOLD";
-            case ALLIED -> (target != null && target.faction == Faction.TEAM_D)
+            case ALLIED -> isYellowContact(target)
                     ? "YELLOW INTEL PACKAGE SOLD"
                     : "GREEN INTEL PACKAGE SOLD";
             case NEUTRAL_UNDER_FIRE -> "HAZARD INTEL PACKAGE SOLD";
@@ -1056,8 +1056,8 @@ public final class CommSystem {
         if (target == null) return outcome(base);
         if (target.faction == Faction.TEAM_C) {
             base = "Green traffic here. We are protecting our margin and keeping one eye on red patrol routes.";
-        } else if (target.faction == Faction.TEAM_D) {
-            base = "Yellow flight here. We are probing weak points and trying not to get pinned by heavier red hulls.";
+        } else if (isYellowContact(target)) {
+            base = target.faction.teamName() + " flight here. Our transponder and insignia identify this command despite shared Yellow hulls.";
         }
         return stateIntentOutcome(ctx, target, base);
     }
@@ -1375,7 +1375,7 @@ public final class CommSystem {
     private static boolean canOfferContractHire(GameContext ctx, Ship target) {
         if (ctx == null || ctx.player == null || target == null || target.role == null || target.faction == null) return false;
         if (ctx.config == null || ctx.config.mode != GameMode.CAMPAIGN_OPS) return false;
-        if (target.faction != Faction.TEAM_C && target.faction != Faction.TEAM_D) return false;
+        if (target.faction != Faction.TEAM_C && !target.faction.isYellowLineage()) return false;
         if (!target.alive || target.dying || target.hp <= 0) return false;
         return switch (target.role) {
             case BASE, STATIC_TURRET, MOTHERSHIP,
@@ -1448,11 +1448,16 @@ public final class CommSystem {
             if (hullFrac < 0.45) return "Green broker screen here. We are hurt, but we can still trade fire for you.";
             return "Green traffic acknowledges. We can share the lane if you keep the pressure off our hulls.";
         }
-        if (target.faction == Faction.TEAM_D) {
-            if (hullFrac < 0.45) return "Yellow liberation channel received. We are pulling survivors out under fire.";
-            return "Yellow flight copies. Keep moving and the larger red elements may lose the trail.";
+        if (isYellowContact(target)) {
+            if (hullFrac < 0.45) return target.faction.teamName() + " [" + target.faction.transponderPrefix()
+                    + "/" + target.faction.insigniaKey() + "] channel received. We are pulling survivors out under fire.";
+            return target.faction.teamName() + " flight copies. Keep moving and the larger red elements may lose the trail.";
         }
         return "Friendly contact acknowledges. We are local and reading you clearly.";
+    }
+
+    private static boolean isYellowContact(Ship target) {
+        return target != null && target.faction != null && target.faction.isYellowLineage();
     }
 
     private static String identifyHostileResponse(Ship target, double hullFrac, double playerDist) {

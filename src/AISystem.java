@@ -2996,7 +2996,7 @@ public final class AISystem {
             case PLAYER, ALLY -> 0.0;
             case ENEMY -> 0.28;
             case TEAM_C -> -0.10;
-            case TEAM_D -> 0.16;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.16;
         };
     }
 
@@ -3006,7 +3006,7 @@ public final class AISystem {
             case PLAYER, ALLY -> 0.02;
             case ENEMY -> -0.10;
             case TEAM_C -> 0.34;
-            case TEAM_D -> -0.06;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.06;
         };
     }
 
@@ -3016,7 +3016,7 @@ public final class AISystem {
             case PLAYER, ALLY -> 0.35;
             case ENEMY -> 0.60;
             case TEAM_C -> 0.22;
-            case TEAM_D -> 0.95;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.95;
         };
     }
 
@@ -3026,7 +3026,7 @@ public final class AISystem {
             case PLAYER, ALLY -> 0.28;
             case ENEMY -> 0.55;
             case TEAM_C -> 0.20;
-            case TEAM_D -> 0.42;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.42;
         };
     }
 
@@ -3036,7 +3036,7 @@ public final class AISystem {
             case PLAYER, ALLY -> 0.0;
             case ENEMY -> -0.08;
             case TEAM_C -> 0.26;
-            case TEAM_D -> -0.24;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.24;
         };
     }
 
@@ -3047,7 +3047,7 @@ public final class AISystem {
         if (s.faction == Faction.TEAM_C) {
             hullWeight = 0.40;
             shieldWeight = 0.60;
-        } else if (s.faction == Faction.TEAM_D) {
+        } else if (s.faction != null && s.faction.isYellowLineage()) {
             hullWeight = 0.92;
             shieldWeight = 0.08;
         }
@@ -3442,7 +3442,7 @@ public final class AISystem {
                 fallbackShieldReq += 0.10;
                 if (selfShield < 0.24) forceFallback = true;
             }
-            if (s.faction == Faction.TEAM_D) {
+            if (s.faction != null && s.faction.isYellowLineage()) {
                 pushHullReq -= 0.05;
                 fallbackHullReq -= 0.10;
                 targetVulnReq += 0.04;
@@ -5191,7 +5191,7 @@ public final class AISystem {
                 case PLAYER, ALLY -> -0.02;
                 case ENEMY -> -0.12;
                 case TEAM_C -> 0.12;
-                case TEAM_D -> -0.08;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> -0.08;
             };
         }
         return bias;
@@ -5214,7 +5214,7 @@ public final class AISystem {
                 case PLAYER, ALLY -> 0.04;
                 case ENEMY -> 0.08;
                 case TEAM_C -> -0.10;
-                case TEAM_D -> 0.12;
+            case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> 0.12;
             };
         }
         return Math.max(0.48, Math.min(1.05, bias));

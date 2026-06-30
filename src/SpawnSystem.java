@@ -345,7 +345,7 @@ public final class SpawnSystem {
             };
         }
 
-        if (faction == Faction.TEAM_D) {
+        if (faction.isYellowLineage()) {
             // Yellow team: salvo-heavy fleet composition with frequent missile boats/cruisers.
             return switch (requested) {
                 case PATROL, PICKET, FRIGATE, CIWS_CORVETTE ->
@@ -961,6 +961,11 @@ public final class SpawnSystem {
         return ship;
     }
 
+    /** Exact catalog spawn used by campaign encounters, migration validation, and faction editors. */
+    public static Ship spawnCatalogShip(GameContext ctx, ShipRole role, Faction faction, double x, double y) {
+        return spawnExactTeamShip(ctx, role, faction, x, y);
+    }
+
     private static void spawnTeamStart(GameContext ctx, Faction team, Ship base) {
         double ox = (ctx.rng.nextDouble() - 0.5) * 180.0;
         double oy = (ctx.rng.nextDouble() - 0.5) * 180.0;
@@ -1095,7 +1100,7 @@ public final class SpawnSystem {
 
     private static Faction normalizeShowcaseFaction(Faction faction) {
         if (faction == Faction.PLAYER) return Faction.ALLY;
-        if (faction == Faction.ENEMY || faction == Faction.TEAM_C || faction == Faction.TEAM_D) return faction;
+        if (faction == Faction.ENEMY || faction == Faction.TEAM_C || faction.isYellowLineage()) return faction;
         return Faction.ALLY;
     }
 

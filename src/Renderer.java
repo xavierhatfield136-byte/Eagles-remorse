@@ -4579,6 +4579,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 96, 96);
             case TEAM_C -> new Color(154, 255, 138);
             case TEAM_D -> new Color(255, 198, 126);
+            case BRIGHT_YELLOW -> new Color(255, 230, 92);
+            case DARK_YELLOW -> new Color(214, 132, 48);
         };
     }
 
@@ -4769,6 +4771,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 122, 94);
             case TEAM_C -> new Color(146, 255, 118);
             case TEAM_D -> new Color(255, 186, 92);
+            case BRIGHT_YELLOW -> new Color(255, 226, 76);
+            case DARK_YELLOW -> new Color(212, 122, 40);
         };
         if (missile == null) return base;
         return switch (missile.role) {
@@ -4786,6 +4790,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 170, 112);
             case TEAM_C -> new Color(164, 255, 140);
             case TEAM_D -> new Color(255, 210, 128);
+            case BRIGHT_YELLOW -> new Color(255, 236, 126);
+            case DARK_YELLOW -> new Color(226, 146, 72);
         };
         if (missile == null) return base;
         return switch (missile.role) {
@@ -4803,6 +4809,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 188, 142);
             case TEAM_C -> new Color(190, 255, 172);
             case TEAM_D -> new Color(255, 220, 146);
+            case BRIGHT_YELLOW -> new Color(255, 240, 150);
+            case DARK_YELLOW -> new Color(226, 154, 88);
         };
     }
 
@@ -4813,6 +4821,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 150, 110);
             case TEAM_C -> new Color(136, 240, 112);
             case TEAM_D -> new Color(255, 194, 116);
+            case BRIGHT_YELLOW -> new Color(255, 224, 92);
+            case DARK_YELLOW -> new Color(204, 112, 44);
         };
     }
 
@@ -4823,6 +4833,8 @@ public class Renderer {
             case ENEMY -> new Color(255, 122, 96);
             case TEAM_C -> new Color(154, 255, 138);
             case TEAM_D -> new Color(255, 206, 118);
+            case BRIGHT_YELLOW -> new Color(255, 232, 104);
+            case DARK_YELLOW -> new Color(218, 126, 48);
         };
     }
 
@@ -9715,7 +9727,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (galaxyMode) {
             drawGalaxyBackdrop(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignLocationControlHalos(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignTerritoryOverlay(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignBattleScars(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawSelectedTerritoryEdges(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
@@ -10105,6 +10120,138 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setComposite(oldComposite);
         g2.setStroke(oldStroke);
         g2.setFont(oldFont);
+    }
+
+    private static void drawSelectedTerritoryEdges(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                   double worldMinX, double worldMinY, double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignTerritoryEdgeView> edges = CampaignSystem.campaignSelectedTerritoryEdges(ctx);
+        if (edges.isEmpty()) return;
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Composite oldComposite = g2.getComposite();
+        g2.setFont(new Font("Consolas", Font.BOLD, 9));
+        for (CampaignSystem.CampaignTerritoryEdgeView edge : edges) {
+            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, edge.fromX);
+            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, edge.fromY);
+            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, edge.toX);
+            int by = strategicMapPixelY(mapRect, worldMinY, worldH, edge.toY);
+            Color color = edge.legalInvasion ? new Color(116, 255, 170, 230)
+                    : (edge.blocked ? new Color(255, 104, 96, 220)
+                    : (edge.supplyCapable ? new Color(112, 190, 255, 190) : new Color(184, 190, 204, 170)));
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
+            g2.setStroke(new BasicStroke(6.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(color);
+            g2.drawLine(ax, ay, bx, by);
+            g2.setComposite(AlphaComposite.SrcOver);
+            g2.setStroke(edge.legalInvasion
+                    ? new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                    : new BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, new float[]{7.0f, 6.0f}, 0.0f));
+            g2.setColor(color);
+            g2.drawLine(ax, ay, bx, by);
+            if (edge.directed) drawCampaignInvasionArrowHead(g2, ax, ay, bx, by, color);
+            String label = edge.legalInvasion ? "LEGAL" : (edge.blocked ? "BLOCKED" : "ROUTE");
+            int mx = (ax + bx) / 2;
+            int my = (ay + by) / 2;
+            String reason = edge.legalInvasion || edge.explanation == null || edge.explanation.isBlank()
+                    ? "" : fitShopText(g2.getFontMetrics(), edge.explanation, 190);
+            int boxWidth = Math.max(50, reason.isBlank() ? 50 : g2.getFontMetrics().stringWidth(reason) + 10);
+            int boxHeight = reason.isBlank() ? 14 : 26;
+            g2.setColor(new Color(4, 8, 14, 205));
+            g2.fillRoundRect(mx - boxWidth / 2, my - 13, boxWidth, boxHeight, 7, 7);
+            g2.setColor(color);
+            g2.drawString(label, mx - g2.getFontMetrics().stringWidth(label) / 2, my - 3);
+            if (!reason.isBlank()) {
+                g2.setFont(new Font("Consolas", Font.PLAIN, 8));
+                g2.setColor(new Color(232, 236, 244, 225));
+                g2.drawString(reason, mx - g2.getFontMetrics().stringWidth(reason) / 2, my + 8);
+                g2.setFont(new Font("Consolas", Font.BOLD, 9));
+            }
+        }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    private static void drawCampaignTerritoryOverlay(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                     double worldMinX, double worldMinY, double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignTerritoryOverlayView> views = CampaignSystem.campaignTerritoryOverlayViews(ctx);
+        if (views.isEmpty()) return;
+        String overlay = ctx.campaign == null ? "CONTROL" : ctx.campaign.selectedStrategicOverlayId;
+        Font oldFont = g2.getFont(); Stroke oldStroke = g2.getStroke();
+        g2.setFont(new Font("Consolas", Font.BOLD, 8));
+        for (CampaignSystem.CampaignTerritoryOverlayView view : views) {
+            int x = strategicMapPixelX(mapRect, worldMinX, worldW, view.x());
+            int y = strategicMapPixelY(mapRect, worldMinY, worldH, view.y());
+            Color faction = factionMapColor(view.faction(), view.faction() == Faction.PLAYER, 220);
+            int radius = view.frontLine() ? 13 : 10;
+            Color stateColor = switch (view.controlState()) {
+                case SECURE, INTEGRATED -> faction;
+                case PRESSURED -> new Color(255, 205, 92, 225);
+                case CONTESTED -> new Color(255, 142, 74, 235);
+                case OCCUPIED -> new Color(210, 110, 230, 235);
+            };
+            if ("LOGISTICS".equals(overlay)) {
+                stateColor = switch (view.supplyState()) {
+                    case SUPPLIED -> new Color(90, 220, 150, 230);
+                    case STRAINED -> new Color(220, 210, 90, 230);
+                    case UNDERSUPPLIED -> new Color(255, 165, 74, 235);
+                    case ISOLATED -> new Color(255, 92, 92, 240);
+                    case COLLAPSING -> new Color(210, 80, 220, 240);
+                };
+            }
+            g2.setColor(new Color(4, 8, 14, 190)); g2.fillOval(x-radius-2,y-radius-2,(radius+2)*2,(radius+2)*2);
+            g2.setColor(stateColor); g2.setStroke(new BasicStroke(view.frontLine() ? 3f : 2f)); g2.drawOval(x-radius,y-radius,radius*2,radius*2);
+            if (view.supplySource()) { g2.drawLine(x-5,y,x+5,y); g2.drawLine(x,y-5,x,y+5); }
+            if (view.beachhead()) { g2.drawRect(x-6,y-6,12,12); }
+            if (view.activeOperation()) { g2.fillPolygon(new int[]{x,x-5,x+5},new int[]{y-9,y-1,y-1},3); }
+            drawCampaignFactionInsignia(g2, view.faction(), x, y, stateColor);
+            String tag = view.controlState().name().substring(0,1) + "/" + view.supplyState().name().substring(0,1);
+            g2.setColor(Color.WHITE); g2.drawString(tag, x-radius, y+radius+9);
+            if (view.faction() == Faction.BRIGHT_YELLOW) g2.drawLine(x-radius,y+2,x+radius,y-2);
+            if (view.faction() == Faction.DARK_YELLOW) { g2.drawLine(x-radius,y-radius,x+radius,y+radius); g2.drawLine(x-radius,y+radius,x+radius,y-radius); }
+        }
+        g2.setFont(oldFont); g2.setStroke(oldStroke);
+    }
+
+    private static void drawCampaignFactionInsignia(Graphics2D g2, Faction faction, int x, int y, Color color) {
+        if (g2 == null || faction == null || color == null) return;
+        g2.setColor(color);
+        g2.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        if (faction == Faction.BRIGHT_YELLOW) {
+            g2.drawOval(x - 3, y - 3, 6, 6);
+            g2.drawLine(x, y - 7, x, y - 5); g2.drawLine(x, y + 5, x, y + 7);
+            g2.drawLine(x - 7, y, x - 5, y); g2.drawLine(x + 5, y, x + 7, y);
+        } else if (faction == Faction.DARK_YELLOW) {
+            g2.drawPolyline(new int[]{x - 6, x, x + 6}, new int[]{y - 4, y + 1, y - 4}, 3);
+            g2.drawPolyline(new int[]{x - 6, x, x + 6}, new int[]{y, y + 5, y}, 3);
+        }
+    }
+
+    private static void drawCampaignBattleScars(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                double worldMinX, double worldMinY, double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignBattleScarView> scars = CampaignSystem.campaignBattleScarViews(ctx);
+        if (scars.isEmpty()) return;
+        Font oldFont = g2.getFont(); Stroke oldStroke = g2.getStroke();
+        g2.setFont(new Font("Consolas", Font.BOLD, 8));
+        g2.setStroke(new BasicStroke(1.6f));
+        for (CampaignSystem.CampaignBattleScarView scar : scars) {
+            int x = strategicMapPixelX(mapRect, worldMinX, worldW, scar.x());
+            int y = strategicMapPixelY(mapRect, worldMinY, worldH, scar.y());
+            Color color = scar.survivorWindowTicks() > 0 ? new Color(255, 208, 112, 235)
+                    : new Color(184, 190, 204, 205);
+            g2.setColor(new Color(3, 6, 10, 205)); g2.fillOval(x - 8, y - 8, 16, 16);
+            g2.setColor(color);
+            g2.drawLine(x - 6, y - 6, x + 6, y + 6);
+            g2.drawLine(x - 6, y + 6, x + 6, y - 6);
+            g2.drawOval(x - 8, y - 8, 16, 16);
+            String tag = scar.survivorWindowTicks() > 0 ? "RECENT BATTLE / SURVIVORS" : "BATTLE SCAR";
+            g2.drawString(tag, x + 10, y + 3);
+        }
+        g2.setFont(oldFont); g2.setStroke(oldStroke);
     }
 
     private static void drawCampaignInvasionArrowHead(Graphics2D g2, int ax, int ay, int bx, int by, Color color) {
@@ -11298,6 +11445,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (g2 == null || ctx == null || height < 48) return;
         int panelH = Math.max(170, height);
         drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "FLEET ROSTER / READINESS");
+        if (ctx.campaign != null && ctx.campaign.flagshipOperations.schematicVisible) {
+            drawFlagshipSchematicPanel(g2, ctx.campaign.flagshipOperations,
+                    new Rectangle(x + 10, y + 28, width - 20, panelH - 38));
+            return;
+        }
         List<String> summary = CampaignSystem.campaignFleetBoardSummaryLines(ctx);
         int boardY = y + 34;
         for (int i = 0; i < Math.min(3, summary.size()); i++) {
@@ -11332,6 +11484,45 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         Rectangle roster = new Rectangle(x + 10, y + 222, width - 20, Math.max(64, y + panelH - (y + 230)));
         drawGalaxyFleetRosterList(g2, ctx, roster);
+    }
+
+    private static void drawFlagshipSchematicPanel(Graphics2D g2, FlagshipOperationsSystem.State state, Rectangle panel) {
+        if (g2 == null || state == null || panel == null) return;
+        g2.setColor(new Color(5, 10, 17, 224)); g2.fillRoundRect(panel.x, panel.y, panel.width, panel.height, 10, 10);
+        List<FlagshipOperationsSystem.Compartment> rooms = new ArrayList<>(state.compartments.values());
+        int columns = Math.max(2, Math.min(5, (int) Math.ceil(Math.sqrt(Math.max(1, rooms.size())))));
+        int rows = Math.max(1, (int) Math.ceil(rooms.size() / (double) columns));
+        double zoom = MathUtil.clamp(state.schematicZoom, 0.65, 2.5);
+        int cellW = Math.max(82, (int) Math.round((panel.width - 24) / (double) columns * zoom));
+        int cellH = Math.max(54, (int) Math.round((panel.height - 44) / (double) rows * zoom));
+        int originX = panel.x + 12 + (int) Math.round(state.schematicPanX * panel.width * 0.3);
+        int originY = panel.y + 30 + (int) Math.round(state.schematicPanY * panel.height * 0.3);
+        Shape oldClip = g2.getClip(); g2.setClip(panel);
+        g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        g2.setColor(new Color(230, 240, 250, 230));
+        g2.drawString("FLAGSHIP SCHEMATIC  |  HAZARD / TEAM / POWER / ORDER  |  ZOOM "
+                + String.format(Locale.US, "%.2f", zoom), panel.x + 10, panel.y + 17);
+        for (int i = 0; i < rooms.size(); i++) {
+            FlagshipOperationsSystem.Compartment room = rooms.get(i);
+            int cx = originX + (i % columns) * cellW;
+            int cy = originY + (i / columns) * cellH;
+            int w = Math.max(68, cellW - 10), h = Math.max(44, cellH - 10);
+            boolean selected = room.id.equals(state.selectedCompartmentId);
+            Color accent = room.decompressed ? new Color(255, 100, 116)
+                    : (room.fire > 0.1 ? new Color(255, 174, 86)
+                    : (room.disrupted ? new Color(210, 140, 255) : new Color(104, 214, 178)));
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), selected ? 82 : 38));
+            g2.fillRoundRect(cx, cy, w, h, 9, 9);
+            g2.setColor(accent); g2.setStroke(new BasicStroke(selected ? 2.4f : 1.2f)); g2.drawRoundRect(cx, cy, w, h, 9, 9);
+            g2.drawString(fitShopText(g2.getFontMetrics(), room.label, w - 12), cx + 6, cy + 14);
+            g2.setFont(new Font("Consolas", Font.PLAIN, 8));
+            g2.drawString("HP " + Math.round(room.integrity * 100) + "%  PWR " + room.powerAllocated + "/" + room.powerDemand,
+                    cx + 6, cy + 27);
+            String hazard = room.decompressed ? "PRESSURE LOST" : (room.fire > 0.1 ? "FIRE " + String.format(Locale.US, "%.1f", room.fire) : room.offlineReason);
+            g2.drawString(fitShopText(g2.getFontMetrics(), hazard, w - 12), cx + 6, cy + 39);
+            g2.setFont(new Font("Consolas", Font.BOLD, 10));
+        }
+        g2.setClip(oldClip);
     }
 
     private static void drawGalaxyFleetRosterList(Graphics2D g2, GameContext ctx, Rectangle roster) {
@@ -15284,7 +15475,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case PLAYER, ALLY -> new HullLightingPreset(baseKey, baseRim, 62, 52, 30, 23);
                 case ENEMY -> new HullLightingPreset(baseKey, baseRim, 52, 40, 26, 26);
                 case TEAM_C -> new HullLightingPreset(baseKey, baseRim, 58, 46, 29, 24);
-                case TEAM_D -> new HullLightingPreset(baseKey, baseRim, 57, 48, 28, 24);
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> new HullLightingPreset(baseKey, baseRim, 57, 48, 28, 24);
             };
         }
 
@@ -15402,7 +15593,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case PLAYER, ALLY -> "ally";
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
-                case TEAM_D -> "team_d";
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
             };
         }
 
@@ -15506,7 +15697,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case PLAYER, ALLY -> "ally";
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
-                case TEAM_D -> "team_d";
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
             };
         }
 
@@ -15591,7 +15782,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 case PLAYER, ALLY -> "ally";
                 case ENEMY -> "enemy";
                 case TEAM_C -> "team_c";
-                case TEAM_D -> "team_d";
+                case TEAM_D, BRIGHT_YELLOW, DARK_YELLOW -> "team_d";
             };
         }
 
@@ -18121,7 +18312,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (f == Faction.ENEMY) return new Color(220, 80, 80);
         if (f == Faction.PLAYER) return new Color(70, 220, 120);
         if (f == Faction.TEAM_C) return new Color(86, 196, 102);
-        if (f == Faction.TEAM_D) return new Color(230, 166, 88);
+        if (f == Faction.DARK_YELLOW) return new Color(196, 104, 42);
+        if (f == Faction.BRIGHT_YELLOW || f == Faction.TEAM_D) return new Color(242, 206, 86);
         return new Color(120, 160, 245);
     }
 
@@ -18131,7 +18323,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (f == Faction.ENEMY) return new Color(255, 170, 170);
         if (f == Faction.PLAYER) return new Color(200, 255, 220);
         if (f == Faction.TEAM_C) return new Color(188, 255, 186);
-        if (f == Faction.TEAM_D) return new Color(255, 218, 160);
+        if (f == Faction.DARK_YELLOW) return new Color(255, 160, 92);
+        if (f == Faction.BRIGHT_YELLOW || f == Faction.TEAM_D) return new Color(255, 238, 145);
         return new Color(220, 230, 255);
     }
 
@@ -18142,7 +18335,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (f == Faction.ENEMY) base = new Color(255, 170, 170);
         else if (f == Faction.PLAYER) base = new Color(180, 255, 220);
         else if (f == Faction.TEAM_C) base = new Color(188, 255, 186);
-        else if (f == Faction.TEAM_D) base = new Color(255, 218, 160);
+        else if (f == Faction.DARK_YELLOW) base = new Color(235, 128, 62);
+        else if (f == Faction.BRIGHT_YELLOW || f == Faction.TEAM_D) base = new Color(255, 226, 112);
         else base = new Color(170, 220, 255);
         return withAlpha(base, alpha);
     }
@@ -18154,7 +18348,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (isPlayer || f == Faction.PLAYER) base = new Color(90, 255, 140);
         else if (f == Faction.ENEMY) base = new Color(255, 90, 90);
         else if (f == Faction.TEAM_C) base = new Color(114, 230, 116);
-        else if (f == Faction.TEAM_D) base = new Color(255, 188, 108);
+        else if (f == Faction.DARK_YELLOW) base = new Color(220, 112, 48);
+        else if (f == Faction.BRIGHT_YELLOW || f == Faction.TEAM_D) base = new Color(255, 214, 92);
         else base = new Color(140, 180, 255);
         return withAlpha(base, alpha);
     }

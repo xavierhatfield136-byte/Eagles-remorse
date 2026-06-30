@@ -1048,14 +1048,14 @@ public class CollisionSystem {
                 && shooter.role == ShipRole.HYPERWEAPON_TITAN
                 && shooter.faction != Faction.ENEMY
                 && shooter.faction != Faction.TEAM_C
-                && shooter.faction != Faction.TEAM_D;
+                && (shooter.faction == null || !shooter.faction.isYellowLineage());
     }
 
     private static boolean isYellowHyperweaponWarhead(Ship shooter, Missile missile) {
         return shooter != null
                 && missile != null
                 && shooter.role == ShipRole.HYPERWEAPON_TITAN
-                && shooter.faction == Faction.TEAM_D;
+                && shooter.faction != null && shooter.faction.isYellowLineage();
     }
 
     private static boolean canDisruptorFieldAffectShip(Ship shooter, Faction sourceFaction, Ship target) {

@@ -120,6 +120,6 @@ public class Missile extends Projectile {
     }
 
     private static double factionMissileSpeedMultiplier(Faction faction) {
-        return faction == Faction.TEAM_D ? YELLOW_SPEED_MULT : NON_YELLOW_SPEED_MULT;
+        return faction != null && faction.isYellowLineage() ? YELLOW_SPEED_MULT : NON_YELLOW_SPEED_MULT;
     }
 }

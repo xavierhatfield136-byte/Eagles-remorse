@@ -142,7 +142,8 @@ class CampaignMissionSectionsTest {
         assertTrue(compact.contains("Keep the flagship alive."));
         assertTrue(compact.contains("Reach Earth."));
         assertTrue(compact.contains("Help Green forces."));
-        assertTrue(compact.contains("Help Yellow forces."));
+        assertTrue(compact.contains("Help Bright Yellow [BYC/sunburst] forces"));
+        assertTrue(compact.contains("Dark Orange-Yellow [DYC/split chevron]"));
         assertTrue(compact.contains("Weaken Red control."));
         assertTrue(compact.contains("Build enough strength for the final battle."));
 

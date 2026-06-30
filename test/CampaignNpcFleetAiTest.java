@@ -41,7 +41,7 @@ class CampaignNpcFleetAiTest {
         List<?> forces = campaignForces(st);
         long enemies = forces.stream().filter(force -> force != null && "ENEMY".equals(fieldString(force, "faction"))).count();
         long green = forces.stream().filter(force -> force != null && "TEAM_C".equals(fieldString(force, "faction"))).count();
-        long yellow = forces.stream().filter(force -> force != null && "TEAM_D".equals(fieldString(force, "faction"))).count();
+        long yellow = forces.stream().filter(force -> force != null && "BRIGHT_YELLOW".equals(fieldString(force, "faction"))).count();
         long theaterInterdictionScreens = forces.stream()
                 .filter(force -> force != null && fieldString(force, "name").contains("Interdiction Screen"))
                 .count();
@@ -892,7 +892,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (miner == null) miner = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(miner);
         setBoolean(miner, "simulationActive", true);
@@ -1063,7 +1063,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (miner == null) miner = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(red);
         assertNotNull(miner);
@@ -1099,7 +1099,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object raider = forceNamed(st, "Red Frontier Picket Patrol");
         Object convoy = forceNamed(st, "Yellow Trade Convoy");
-        if (convoy == null) convoy = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        if (convoy == null) convoy = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         assertNotNull(raider);
         assertNotNull(convoy);
         setBoolean(raider, "simulationActive", true);
@@ -1137,7 +1137,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         Object patrol = forceNamed(st, "Green Local Defense Patrol");
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         assertNotNull(red);
         assertNotNull(patrol);
         assertNotNull(miner);
@@ -1182,7 +1182,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         CampaignSystem.CampaignLocation home = findLocation(ctx, "poi-21");
         assertNotNull(red);
         assertNotNull(miner);
@@ -1283,7 +1283,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         Object green = forceNamed(st, "Green Local Defense Patrol");
         CampaignSystem.CampaignLocation home = findLocation(ctx, "poi-21");
         assertNotNull(red);
@@ -1383,8 +1383,8 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object green = forceNamed(st, "Green Local Defense Patrol");
-        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
-        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
+        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         assertNotNull(green);
         assertNotNull(traffic);
         setBoolean(green, "simulationActive", true);
@@ -1482,7 +1482,7 @@ class CampaignNpcFleetAiTest {
         Object damagedYellow = invokeEnsureCampaignForce(
                 st,
                 CampaignSystem.CampaignForceKind.TRADE_GROUP,
-                Faction.TEAM_D,
+                Faction.BRIGHT_YELLOW,
                 "Yellow Damaged Relief Convoy",
                 base.id,
                 "Friendly Yellow convoy awaiting Green rescue",
@@ -1519,8 +1519,8 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
-        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
-        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
+        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         assertNotNull(escort);
         assertNotNull(traffic);
         setDouble(escort, "x", 1800.0);
@@ -1545,8 +1545,8 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
-        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
-        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
+        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         assertNotNull(escort);
         assertNotNull(traffic);
@@ -1575,8 +1575,8 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
-        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
-        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        Object traffic = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
+        if (traffic == null) traffic = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         assertNotNull(escort);
         assertNotNull(traffic);
         invokeAssignEscortMission(st, escort, getInt(traffic, "id"));
@@ -1613,7 +1613,7 @@ class CampaignNpcFleetAiTest {
         setDouble(green, "hullIntegrity", 92.0);
         setDouble(green, "repairCapacity", 92.0);
         for (Object force : campaignForces(st)) {
-            if (force != null && "TEAM_D".equals(fieldString(force, "faction"))) {
+            if (force != null && "BRIGHT_YELLOW".equals(fieldString(force, "faction"))) {
                 setDouble(force, "strength", 100.0);
             }
         }
@@ -1631,7 +1631,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         CampaignSystem.CampaignLocation resource = firstLocationOfType(ctx, "RESOURCE_ZONE");
         CampaignSystem.CampaignLocation refinery = findLocation(ctx, "poi-07");
         assertNotNull(miner);
@@ -1661,7 +1661,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         CampaignSystem.CampaignLocation source = findLocation(ctx, "poi-07");
         assertNotNull(source);
-        Object trader = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.CONVOY, Faction.TEAM_D,
+        Object trader = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.CONVOY, Faction.BRIGHT_YELLOW,
                 "Yellow Checklist Trade Convoy", source.id, "Trade route endpoint test", source.x, source.y);
         assertNotNull(trader);
         setBoolean(trader, "simulationActive", true);
@@ -1749,7 +1749,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
 
         Object green = invokeDoctrineForFaction(st, Faction.TEAM_C);
-        Object yellow = invokeDoctrineForFaction(st, Faction.TEAM_D);
+        Object yellow = invokeDoctrineForFaction(st, Faction.BRIGHT_YELLOW);
         Object red = invokeDoctrineForFaction(st, Faction.ENEMY);
 
         assertTrue(getDouble(green, "escortPriority") > getDouble(red, "escortPriority"));
@@ -2065,8 +2065,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object yellow = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
-        if (yellow == null) yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
+        Object yellow = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
+        if (yellow == null) yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         CampaignSystem.CampaignLocation safe = findLocation(ctx, "poi-07");
         assertNotNull(yellow);
@@ -2094,8 +2094,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
-        if (yellow == null) yellow = firstForceByKindAndFaction(st, "CONVOY", "TEAM_D");
+        Object yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
+        if (yellow == null) yellow = firstForceByKindAndFaction(st, "CONVOY", "BRIGHT_YELLOW");
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         CampaignSystem.CampaignLocation safe = findLocation(ctx, "poi-07");
         assertNotNull(yellow);
@@ -2126,8 +2126,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
-        if (yellow == null) yellow = firstForceByKindAndFaction(st, "CONVOY", "TEAM_D");
+        Object yellow = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
+        if (yellow == null) yellow = firstForceByKindAndFaction(st, "CONVOY", "BRIGHT_YELLOW");
         assertNotNull(yellow);
         setBoolean(yellow, "simulationActive", true);
         setDouble(yellow, "x", 2100.0);
@@ -2150,10 +2150,10 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object pirate = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_D,
+        Object pirate = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.BRIGHT_YELLOW,
                 "Yellow Pirate Skiff", "Broker shadow quay", "Pirate rogue ambush traffic", 2100.0, 2200.0);
-        Object trader = firstForceByKindAndFaction(st, "TRADE_GROUP", "TEAM_D");
-        if (trader == null) trader = firstForceByKindAndFaction(st, "CONVOY", "TEAM_D");
+        Object trader = firstForceByKindAndFaction(st, "TRADE_GROUP", "BRIGHT_YELLOW");
+        if (trader == null) trader = firstForceByKindAndFaction(st, "CONVOY", "BRIGHT_YELLOW");
         assertNotNull(pirate);
         assertNotNull(trader);
         setBoolean(pirate, "simulationActive", true);
@@ -2173,8 +2173,8 @@ class CampaignNpcFleetAiTest {
         assertTrue(getDouble(trader, "strength") < traderStrengthBefore);
         assertTrue("RETREATING".equals(fieldString(pirate, "intent")));
         assertTrue("LOOT".equals(fieldString(pirate, "cargoKind")));
-        assertTrue("TEAM_D".equals(fieldString(pirate, "faction")));
-        assertTrue("TEAM_D".equals(fieldString(trader, "faction")));
+        assertTrue("BRIGHT_YELLOW".equals(fieldString(pirate, "faction")));
+        assertTrue("BRIGHT_YELLOW".equals(fieldString(trader, "faction")));
     }
 
     @Test
@@ -2188,11 +2188,11 @@ class CampaignNpcFleetAiTest {
                 setDouble(force, "y", 7200.0);
             }
         }
-        Object pirate = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_D,
+        Object pirate = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.BRIGHT_YELLOW,
                 "Yellow Pirate Cutter", "Broker shadow quay", "Pirate rogue ambush traffic", 2220.0, 2200.0);
-        Object trader = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object trader = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Trader Meridian", "Yellow exchange berth", "Civilian trader", 2180.0, 2200.0);
-        Object merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Mercenary Shield", "Contract board", "Mercenary trader defense contract", 2060.0, 2200.0);
         setBoolean(pirate, "simulationActive", true);
         setBoolean(trader, "simulationActive", true);
@@ -2211,8 +2211,8 @@ class CampaignNpcFleetAiTest {
         assertTrue("INTERCEPTING".equals(fieldString(merc, "intent")));
         assertTrue(getInt(merc, "targetForceId") == getInt(pirate, "id"));
         assertFalse(((List<?>) getObject(merc, "routePoints")).isEmpty());
-        assertTrue("TEAM_D".equals(fieldString(pirate, "faction")));
-        assertTrue("TEAM_D".equals(fieldString(trader, "faction")));
+        assertTrue("BRIGHT_YELLOW".equals(fieldString(pirate, "faction")));
+        assertTrue("BRIGHT_YELLOW".equals(fieldString(trader, "faction")));
         assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("defended Yellow trader")));
     }
 
@@ -2230,7 +2230,7 @@ class CampaignNpcFleetAiTest {
                 setDouble(force, "y", hideout.y + 4000.0);
             }
         }
-        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Smuggler Runner", "Yellow broker den", "Move contraband through indirect routes",
                 hideout.x - 900.0, hideout.y - 520.0);
         setBoolean(smuggler, "simulationActive", true);
@@ -2270,7 +2270,7 @@ class CampaignNpcFleetAiTest {
         Object trader = forceNamed(st, "Yellow Trade Convoy");
         assertNotNull(inspector);
         assertNotNull(trader);
-        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Smuggler Skiff", "Yellow broker den", "Contraband courier avoiding customs inspection",
                 2200.0, 2200.0);
         setBoolean(inspector, "simulationActive", true);
@@ -2288,7 +2288,7 @@ class CampaignNpcFleetAiTest {
         assertTrue("SCANNING".equals(fieldString(inspector, "stopReason")));
         assertTrue("HIDING".equals(fieldString(smuggler, "stopReason")));
         assertTrue(getDouble(smuggler, "cargoLoad") < 30.0);
-        assertTrue("TEAM_D".equals(fieldString(trader, "faction")),
+        assertTrue("BRIGHT_YELLOW".equals(fieldString(trader, "faction")),
                 "local inspection should not make unrelated Yellow traffic hostile");
         assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("without widening Yellow hostility")));
     }
@@ -2300,7 +2300,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         assertNotNull(red);
-        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object smuggler = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Smuggler Needle", "Yellow broker den", "Contraband courier crossing Red territory",
                 3100.0, 3100.0);
         for (Object force : campaignForces(st)) {
@@ -2336,9 +2336,9 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object player = forceNamed(st, "Blue Command Fleet");
         assertNotNull(player);
-        Object civilian = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object civilian = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Civilian Liner", "Yellow exchange berth", "Protected civilian traffic", 2400.0, 2400.0);
-        Object merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Mercenary Escort", "Contract board", "Mercenary contract response", 2480.0, 2400.0);
         setBoolean(civilian, "simulationActive", true);
         setBoolean(merc, "simulationActive", true);
@@ -2366,7 +2366,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object civilian = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object civilian = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Protected Civilians", "Yellow exchange berth", "Protected civilian traffic", 2400.0, 2400.0);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
         assertNotNull(escort);
@@ -2396,7 +2396,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object merc = forceNamed(st, "Yellow Mercenary Fleet");
         if (merc == null) {
-            merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+            merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                     "Yellow Mercenary Fleet", "Contract board", "Mercenary contract battle support", 2100.0, 2200.0);
         }
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
@@ -2427,7 +2427,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object merc = forceNamed(st, "Yellow Mercenary Fleet");
         if (merc == null) {
-            merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+            merc = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                     "Yellow Mercenary Fleet", "Contract board", "Mercenary contract battle support", 2100.0, 2200.0);
         }
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
@@ -2455,7 +2455,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (miner == null) miner = firstForceByKind(st, "MINING_GROUP");
         Object escort = forceNamed(st, "Green Local Defense Patrol");
         assertNotNull(miner);
@@ -2482,7 +2482,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         Object red = forceNamed(st, "Red Frontier Picket Patrol");
         Object green = forceNamed(st, "Green Local Defense Patrol");
         CampaignSystem.CampaignLocation safe = findLocation(ctx, "poi-07");
@@ -2581,7 +2581,7 @@ class CampaignNpcFleetAiTest {
         assertNotNull(base);
         st.theaterWarRecentEvents.clear();
 
-        Object convoy = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.CONVOY, Faction.TEAM_D,
+        Object convoy = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.CONVOY, Faction.BRIGHT_YELLOW,
                 "Trigger Test Yellow Convoy", base.id, "Convoy under raid", 40000.0, 40000.0);
         Object convoyRaider = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
                 "Trigger Test Convoy Raider", "red-test", "Raiding convoy", 40080.0, 40040.0);
@@ -2728,9 +2728,9 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        CampaignSystem.CampaignLocation redHome = findLocation(ctx, "poi-21");
+        CampaignSystem.CampaignLocation redHome = findLocation(ctx, "poi-13");
         CampaignSystem.CampaignLocation targetLocation = findLocation(ctx, "poi-07");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         assertNotNull(redHome);
         assertNotNull(targetLocation);
@@ -2834,7 +2834,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object hunter = forceNamed(st, "Red Frontier Picket Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         CampaignSystem.CampaignLocation defense = findLocation(ctx, "poi-07");
         assertNotNull(hunter);
@@ -3042,7 +3042,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-21");
+        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-13");
         CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-07");
         Object siege = forceNamed(st, "Red Frontier Picket Patrol");
         Object support = forceNamed(st, "Red Frontier Interdiction Screen");
@@ -3153,8 +3153,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-21");
-        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-01");
+        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-13");
+        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-07");
         Object siege = forceNamed(st, "Red Frontier Picket Patrol");
         Object defense = forceNamed(st, "Green Local Defense Patrol");
         assertNotNull(staging);
@@ -3199,8 +3199,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-21");
-        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-01");
+        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-13");
+        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-07");
         Object siege = forceNamed(st, "Red Frontier Picket Patrol");
         Object responder = forceNamed(st, "Green Local Defense Patrol");
         assertNotNull(staging);
@@ -3247,8 +3247,8 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-21");
-        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-01");
+        CampaignSystem.CampaignLocation staging = findLocation(ctx, "poi-13");
+        CampaignSystem.CampaignLocation target = findLocation(ctx, "poi-07");
         Object siege = forceNamed(st, "Red Frontier Picket Patrol");
         assertNotNull(staging);
         assertNotNull(target);
@@ -3585,7 +3585,7 @@ class CampaignNpcFleetAiTest {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object miner = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (miner == null) miner = firstForceByKind(st, "MINING_GROUP");
         CampaignSystem.CampaignLocation resource = firstLocationOfType(ctx, "RESOURCE_ZONE");
         assertNotNull(miner);
@@ -3628,7 +3628,7 @@ class CampaignNpcFleetAiTest {
 
         Object greenMining = testForceAt(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
                 "Green POI Mining Guard", mining);
-        Object yellowMining = testForceAt(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.TEAM_D,
+        Object yellowMining = testForceAt(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow POI Mining Extractor", mining);
         Object redMining = testForceAt(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
                 "Red POI Mining Raider", mining);
@@ -3645,7 +3645,7 @@ class CampaignNpcFleetAiTest {
 
         Object greenWreck = testForceAt(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
                 "Green POI Wreck Recovery", wreck);
-        Object yellowWreck = testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object yellowWreck = testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow POI Wreck Salvager", wreck);
         Object redWreck = testForceAt(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
                 "Red POI Wreck Cleaner", wreck);
@@ -3684,7 +3684,7 @@ class CampaignNpcFleetAiTest {
                 testForceAt(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C, "Green POI Station Guard", station),
                 station));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
-                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D, "Yellow POI Station Trader", station),
+                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW, "Yellow POI Station Trader", station),
                 station));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
                 testForceAt(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY, "Red POI Station Blockade", station),
@@ -3694,7 +3694,7 @@ class CampaignNpcFleetAiTest {
                 testForceAt(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C, "Green POI Relay Tech", relay),
                 relay));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
-                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D, "Yellow POI Relay Broker", relay),
+                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW, "Yellow POI Relay Broker", relay),
                 relay));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
                 testForceAt(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY, "Red POI Relay Jammer", relay),
@@ -3704,7 +3704,7 @@ class CampaignNpcFleetAiTest {
                 testForceAt(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C, "Green POI Shipyard Stage", shipyard),
                 shipyard));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
-                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D, "Yellow POI Shipyard Buyer", shipyard),
+                testForceAt(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW, "Yellow POI Shipyard Buyer", shipyard),
                 shipyard));
         assertTrue(invokeAssignPoiWorkMission(ctx, st,
                 testForceAt(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY, "Red POI Shipyard Saboteur", shipyard),
@@ -3727,7 +3727,7 @@ class CampaignNpcFleetAiTest {
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
         Object escort = forceNamed(st, "Green Local Defense Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         if (target == null) target = firstForceByKind(st, "MINING_GROUP");
         CampaignSystem.CampaignLocation home = findLocation(ctx, "poi-07");
         assertNotNull(escort);
@@ -3841,7 +3841,7 @@ class CampaignNpcFleetAiTest {
         invokeForceSimulation(ctx, st, 0.2);
         Object scout = forceNamed(st, "Red Scout Pair");
         Object hunter = forceNamed(st, "Red Frontier Picket Patrol");
-        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "TEAM_D");
+        Object target = firstForceByKindAndFaction(st, "MINING_GROUP", "BRIGHT_YELLOW");
         assertNotNull(scout);
         assertNotNull(hunter);
         assertNotNull(target);
@@ -3926,7 +3926,7 @@ class CampaignNpcFleetAiTest {
             greenPatrol = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
                     "Green Scenario Patrol", greenBase.id, "Scenario relay patrol", greenBase.x, greenBase.y);
         }
-        Object miner = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.TEAM_D,
+        Object miner = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Scenario Miner", tradeStation.id, "Scenario mining loop", tradeStation.x, tradeStation.y);
         Object redScout = forceNamed(st, "Red Scout Pair");
         if (redScout == null) {
@@ -3940,7 +3940,7 @@ class CampaignNpcFleetAiTest {
         }
         Object greenResponse = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
                 "Green Scenario Response", greenRelay.id, "Scenario response fleet", greenRelay.x, greenRelay.y);
-        Object yellowTrade = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object yellowTrade = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Yellow Scenario Trade Route", tradeStation.id, "Scenario Yellow trade route", tradeStation.x + 80.0, tradeStation.y + 40.0);
 
         setBoolean(greenPatrol, "simulationActive", true);
@@ -4118,11 +4118,11 @@ class CampaignNpcFleetAiTest {
                 "Nine Job Green Escort", greenBase.id, "Nine job escort", greenBase.x + 80.0, greenBase.y + 50.0);
         Object greenResponse = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
                 "Nine Job Green Response", greenBase.id, "Nine job response", greenBase.x + 120.0, greenBase.y + 60.0);
-        Object yellowTrade = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object yellowTrade = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Nine Job Yellow Trade", yellowHub.id, "Nine job trade", yellowHub.x + 50.0, yellowHub.y + 40.0);
-        Object yellowMiner = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.TEAM_D,
+        Object yellowMiner = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.MINING_GROUP, Faction.BRIGHT_YELLOW,
                 "Nine Job Yellow Miner", yellowHub.id, "Nine job miner", yellowHub.x + 90.0, yellowHub.y + 60.0);
-        Object yellowSalvage = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.TEAM_D,
+        Object yellowSalvage = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TRADE_GROUP, Faction.BRIGHT_YELLOW,
                 "Nine Job Yellow Salvage", yellowHub.id, "Nine job salvage", yellowHub.x + 130.0, yellowHub.y + 80.0);
         Object redScout = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
                 "Nine Job Red Scout", redBase.id, "Nine job scout", redBase.x + 40.0, redBase.y + 40.0);
@@ -4130,7 +4130,7 @@ class CampaignNpcFleetAiTest {
                 "Nine Job Red Raider", redBase.id, "Nine job raid", redBase.x + 80.0, redBase.y + 60.0);
         Object redRepair = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
                 "Nine Job Red Repair", redBase.id, "Nine job return repair", redBase.x + 120.0, redBase.y + 80.0);
-        Object damagedFriendly = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_D,
+        Object damagedFriendly = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.BRIGHT_YELLOW,
                 "Nine Job Damaged Friendly", yellowHub.id, "Nine job rescue target", greenBase.x + 160.0, greenBase.y + 70.0);
 
         for (Object force : List.of(greenPatrol, greenEscort, greenResponse, yellowTrade, yellowMiner,

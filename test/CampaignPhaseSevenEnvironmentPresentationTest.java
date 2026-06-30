@@ -199,7 +199,7 @@ class CampaignPhaseSevenEnvironmentPresentationTest {
         CampaignSystem.CampaignLocation redNamed = locationContaining(ctx, "RED CORRIDOR BREAKPOINT");
         assertNotNull(redNamed);
 
-        redNamed.ownerFaction = Faction.TEAM_D;
+        redNamed.ownerFaction = Faction.BRIGHT_YELLOW;
 
         CampaignSystem.CampaignLocationControlView view = CampaignSystem.campaignLocationControlView(ctx, redNamed);
         assertEquals(CampaignSystem.CampaignControlVisualState.YELLOW, view.control,
@@ -216,7 +216,7 @@ class CampaignPhaseSevenEnvironmentPresentationTest {
         assertNotNull(yellow);
 
         green.ownerFaction = Faction.ALLY;
-        yellow.ownerFaction = Faction.TEAM_D;
+        yellow.ownerFaction = Faction.BRIGHT_YELLOW;
         forceStrategicNodeControl(ctx, green.id, "RED", -108.0);
         forceStrategicNodeControl(ctx, yellow.id, "RED", -108.0);
 
@@ -251,8 +251,30 @@ class CampaignPhaseSevenEnvironmentPresentationTest {
         GameContext ctx = initializedCampaignContext(7113L);
         CampaignSystem.CampaignState st = ctx.campaign;
         ctx.campaign.strategicOvermapMode = true;
-        CampaignSystem.CampaignLocation source = locationContaining(ctx, "RED FORTRESS LUNA GATE");
-        CampaignSystem.CampaignLocation target = locationContaining(ctx, "GREEN ANCHORAGE");
+        StrategicCampaignExpansionSystem.TravelLane legalLane = st.strategicExpansion.lanes.stream()
+                .filter(lane -> lane.discovered && !lane.blockaded && lane.infrastructureOperational
+                        && lane.militaryInvasionAllowed && lane.routeCapacity > 0)
+                .filter(lane -> CampaignSystem.mainCampaignLocations(ctx).stream().anyMatch(location -> location.id.equals(lane.from)))
+                .filter(lane -> CampaignSystem.mainCampaignLocations(ctx).stream().anyMatch(location -> location.id.equals(lane.to)))
+                .findFirst().orElseThrow();
+        String sourceId = legalLane.from;
+        String targetId = legalLane.to;
+        CampaignSystem.CampaignLocation source = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location.id.equals(sourceId)).findFirst().orElseThrow();
+        CampaignSystem.CampaignLocation target = CampaignSystem.mainCampaignLocations(ctx).stream()
+                .filter(location -> location.id.equals(targetId)).findFirst().orElseThrow();
+        source.ownerFaction = Faction.ENEMY;
+        target.ownerFaction = Faction.TEAM_C;
+        StrategicCampaignExpansionSystem.Territory sourceTerritory =
+                StrategicCampaignExpansionSystem.territory(st.strategicExpansion, source.id);
+        StrategicCampaignExpansionSystem.Territory targetTerritory =
+                StrategicCampaignExpansionSystem.territory(st.strategicExpansion, target.id);
+        sourceTerritory.owner = Faction.ENEMY.name();
+        sourceTerritory.controller = Faction.ENEMY.name();
+        sourceTerritory.supportsInvasionStaging = true;
+        sourceTerritory.supplyState = StrategicCampaignExpansionSystem.SupplyState.SUPPLIED;
+        targetTerritory.owner = Faction.TEAM_C.name();
+        targetTerritory.controller = Faction.TEAM_C.name();
         assertNotNull(source);
         assertNotNull(target);
 

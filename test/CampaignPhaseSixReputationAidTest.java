@@ -79,7 +79,7 @@ class CampaignPhaseSixReputationAidTest {
         assertTrue(forceNameExists(ctx.campaign, "Yellow Aid Detachment"));
         String memory = String.join("\n", CampaignSystem.campaignMemoryFlagLines(ctx, 12));
         assertTrue(memory.contains("original hull identity"));
-        assertTrue(memory.contains("Blue inventory to Yellow"));
+        assertTrue(memory.contains("Blue inventory to Bright Yellow"));
         assertTrue(String.join("\n", CampaignSystem.campaignBehaviorLedgerLines(ctx)).contains("ships 1"));
     }
 
