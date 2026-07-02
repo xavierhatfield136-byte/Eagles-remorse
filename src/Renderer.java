@@ -10045,7 +10045,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawCampaignRouteNetwork(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                  double worldMinX, double worldMinY, double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
-        List<CampaignSystem.CampaignRouteSegment> segments = CampaignSystem.campaignRouteSegments(ctx);
+        List<CampaignSystem.CampaignRouteSegment> segments = CampaignSystem.campaignRouteSegmentsForDisplay(ctx);
         if (segments.isEmpty()) return;
         Stroke oldStroke = g2.getStroke();
         for (CampaignSystem.CampaignRouteSegment segment : segments) {
@@ -10093,6 +10093,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             bx += (int) Math.round(nx * offset);
             by += (int) Math.round(ny * offset);
 
+            if (PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.FOCUSED_FACTION_ATTACKS)) {
+                drawCampaignBubbleArrow(g2, ax, ay, bx, by, arrow.faction);
+                continue;
+            }
+
             Color color = campaignInvasionArrowColor(arrow.faction, 230);
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.22f));
             g2.setStroke(new BasicStroke(6.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
@@ -10122,9 +10127,70 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setFont(oldFont);
     }
 
+    private static void drawCampaignBubbleArrow(Graphics2D g2, int ax, int ay, int bx, int by, Faction faction) {
+        Path2D.Double outline = campaignBubbleArrowOutline(ax, ay, bx, by);
+        if (g2 == null || outline == null) return;
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.16f));
+        g2.setStroke(new BasicStroke(12.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(campaignInvasionArrowColor(faction, 148));
+        g2.draw(outline);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.88f));
+        g2.setStroke(new BasicStroke(4.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(campaignInvasionArrowColor(faction, 244));
+        g2.draw(outline);
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+    }
+
+    private static Path2D.Double campaignBubbleArrowOutline(int ax, int ay, int bx, int by) {
+        double dx = bx - ax;
+        double dy = by - ay;
+        double len = Math.hypot(dx, dy);
+        if (len < 90.0) return null;
+        double ux = dx / len;
+        double uy = dy / len;
+        double nx = -uy;
+        double ny = ux;
+        // Leave both marker centers untouched so labels, events, and hit targets stay exposed.
+        double startInset = 24.0;
+        double endInset = 30.0;
+        double sx = ax + ux * startInset;
+        double sy = ay + uy * startInset;
+        double tx = bx - ux * endInset;
+        double ty = by - uy * endInset;
+        double usableLength = Math.hypot(tx - sx, ty - sy);
+        if (usableLength < 42.0) return null;
+        double headLength = Math.min(62.0, Math.max(32.0, usableLength * 0.28));
+        double shaftHalfWidth = Math.min(13.0, Math.max(8.0, usableLength * 0.05));
+        double headHalfWidth = Math.min(31.0, Math.max(20.0, usableLength * 0.12));
+        double shoulderX = tx - ux * headLength;
+        double shoulderY = ty - uy * headLength;
+        Path2D.Double path = new Path2D.Double();
+        path.moveTo(sx + nx * shaftHalfWidth, sy + ny * shaftHalfWidth);
+        path.lineTo(shoulderX + nx * shaftHalfWidth, shoulderY + ny * shaftHalfWidth);
+        path.lineTo(shoulderX + nx * headHalfWidth, shoulderY + ny * headHalfWidth);
+        path.lineTo(tx, ty);
+        path.lineTo(shoulderX - nx * headHalfWidth, shoulderY - ny * headHalfWidth);
+        path.lineTo(shoulderX - nx * shaftHalfWidth, shoulderY - ny * shaftHalfWidth);
+        path.lineTo(sx - nx * shaftHalfWidth, sy - ny * shaftHalfWidth);
+        path.closePath();
+        return path;
+    }
+
+    static Shape campaignBubbleArrowOutlineForTest(int ax, int ay, int bx, int by) {
+        return campaignBubbleArrowOutline(ax, ay, bx, by);
+    }
+
+    static void drawCampaignBubbleArrowForTest(Graphics2D g2, int ax, int ay, int bx, int by, Faction faction) {
+        drawCampaignBubbleArrow(g2, ax, ay, bx, by, faction);
+    }
+
     private static void drawSelectedTerritoryEdges(Graphics2D g2, GameContext ctx, Rectangle mapRect,
                                                    double worldMinX, double worldMinY, double worldW, double worldH) {
         if (g2 == null || ctx == null || mapRect == null) return;
+        if (!CampaignSystem.campaignSelectedTerritoryEdgesVisible(ctx)) return;
         List<CampaignSystem.CampaignTerritoryEdgeView> edges = CampaignSystem.campaignSelectedTerritoryEdges(ctx);
         if (edges.isEmpty()) return;
         Stroke oldStroke = g2.getStroke();
@@ -10277,7 +10343,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color campaignInvasionArrowColor(Faction faction, int alpha) {
         int a = MathUtil.clamp(alpha, 0, 255);
         if (faction == Faction.ENEMY) return new Color(255, 88, 82, a);
-        if (faction == Faction.TEAM_D) return new Color(255, 202, 94, a);
+        if (faction == Faction.DARK_YELLOW) return new Color(235, 128, 62, a);
+        if (faction == Faction.BRIGHT_YELLOW || faction == Faction.TEAM_D) return new Color(255, 202, 94, a);
         if (faction == Faction.TEAM_C || faction == Faction.ALLY || faction == Faction.PLAYER) {
             return new Color(96, 236, 154, a);
         }

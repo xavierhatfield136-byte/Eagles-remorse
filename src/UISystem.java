@@ -1363,7 +1363,7 @@ public final class UISystem {
         }
         if (CampaignSystem.isStrategicGalaxyMapMode(ctx)) {
             CampaignSystem.CampaignLocation clickedLocation =
-                    CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, 260.0);
+                    campaignLocationAtMapClick(ctx, worldX, worldY, rect);
             CampaignSystem.CampaignSupportMarker clickedSupport =
                     CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 110.0);
             if (shouldPreferCampaignSupportClick(clickedLocation, clickedSupport, worldX, worldY)) {
@@ -1398,7 +1398,7 @@ public final class UISystem {
                     return;
                 }
                 CampaignSystem.clearSelectedCampaignContact(ctx);
-                CampaignSystem.selectCampaignLocation(ctx, worldX, worldY);
+                CampaignSystem.selectCampaignLocation(ctx, clickedLocation.x, clickedLocation.y);
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
                     CampaignSystem.startTravelToSelectedLocation(ctx);
                 }
@@ -1716,6 +1716,23 @@ public final class UISystem {
                 false);
         addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
         EventSystem.showBanner(ctx, "WAYPOINT SET", 1.2);
+    }
+
+    static double campaignSiteHitRadiusWorld(GameContext ctx, Rectangle mapRect) {
+        if (ctx == null || mapRect == null || mapRect.width <= 0 || mapRect.height <= 0) return 0.0;
+        double worldPerPixelX = strategicMapViewWidth(ctx) / mapRect.width;
+        double worldPerPixelY = strategicMapViewHeight(ctx) / mapRect.height;
+        double markerRadius = Math.max(worldPerPixelX, worldPerPixelY) * 14.0;
+        return Math.max(28.0, Math.min(120.0, markerRadius));
+    }
+
+    static CampaignSystem.CampaignLocation campaignLocationAtMapClick(GameContext ctx,
+                                                                       double worldX,
+                                                                       double worldY,
+                                                                       Rectangle mapRect) {
+        double radius = campaignSiteHitRadiusWorld(ctx, mapRect);
+        if (radius <= 0.0) return null;
+        return CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, radius);
     }
 
     private static boolean shouldPreferCampaignSupportClick(CampaignSystem.CampaignLocation location,

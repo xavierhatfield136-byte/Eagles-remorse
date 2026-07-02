@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -80,11 +81,13 @@ class CampaignNpcFleetAiTest {
     }
 
     @Test
-    void recentlyKnownHostileForceIsRetainedInsteadOfVanishing() throws Exception {
+    void recentContactMemoryDoesNotResurrectShiplessHostileForce() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
-        Object force = forceNamed(st, "Red Frontier Picket Patrol");
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.LOCAL_FORCE,
+                Faction.ENEMY, "Disposable Memory Picket Patrol", "test-red-base",
+                "verify contact memory cannot preserve physical existence", st.playerGalaxyX + 400.0, st.playerGalaxyY);
         assertNotNull(force);
 
         setDouble(force, "strength", 0.0);
@@ -95,14 +98,13 @@ class CampaignNpcFleetAiTest {
         setDouble(force, "lastKnownAgeSec", 44.0);
         setBoolean(force, "visibleToPlayer", false);
         setEnumByName(force, "contactState", "STALE");
+        ((java.util.Set<?>) getObject(force, "shipIds")).clear();
+        setInt(force, "linkedSearchGroupId", 0);
 
         invokeForceSimulation(ctx, st, 0.2);
 
-        Object retained = forceNamed(st, "Red Frontier Picket Patrol");
-        assertNotNull(retained, "recent hostile contacts should remain as last-known contacts instead of vanishing");
-        assertTrue(!getBoolean(retained, "destroyed"));
-        assertTrue(getDouble(retained, "strength") >= 4.0);
-        assertTrue("STALE".equals(fieldString(retained, "contactState")));
+        assertNull(forceNamed(st, "Disposable Memory Picket Patrol"),
+                "contact memory must not manufacture a surviving physical fleet");
     }
 
     @Test
@@ -147,7 +149,7 @@ class CampaignNpcFleetAiTest {
     }
 
     @Test
-    void staleContactMarkerExplainsLostBearingAndSweepRecommendation() throws Exception {
+    void staleContactDoesNotEmitPlayerFacingFleetMarker() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
@@ -165,21 +167,10 @@ class CampaignNpcFleetAiTest {
         setEnumByName(force, "contactState", "STALE");
 
         List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
-        CampaignSystem.CampaignSupportMarker marker = markers.stream()
-                .filter(m -> m != null && m.subtitle.toLowerCase().contains("lost bearing"))
-                .findFirst()
-                .orElse(null);
-
-        assertNotNull(marker);
-        assertTrue(marker.label.startsWith("Unknown Contact")
-                        || marker.label.contains("Probable")
-                        || marker.label.contains("Last Known")
-                        || marker.label.contains("Lost Contact"),
-                "stale marker should show partial intel instead of the exact fleet name");
-        assertTrue(marker.subtitle.toLowerCase().contains("lost bearing"));
-        assertTrue(marker.subtitle.toLowerCase().contains("last known range"));
-        assertTrue(marker.subtitle.toLowerCase().contains("est vector"));
-        assertTrue(marker.subtitle.toLowerCase().contains("sweep recommended"));
+        assertTrue(markers.stream().noneMatch(m -> m != null
+                        && Math.hypot(m.x - getDoubleUnchecked(force, "lastKnownX"),
+                        m.y - getDoubleUnchecked(force, "lastKnownY")) <= 1.0),
+                "stale fleet memory must not produce a normal selectable map marker");
     }
 
     @Test
@@ -488,7 +479,7 @@ class CampaignNpcFleetAiTest {
     }
 
     @Test
-    void campaignDirectorMaintainsAtLeastThreeVisibleFleetGroupsAcrossMap() throws Exception {
+    void presentationDensityDoesNotRelocateRealCampaignForces() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
@@ -506,12 +497,22 @@ class CampaignNpcFleetAiTest {
             setEnumByName(force, "contactState", "STALE");
         }
 
+        List<double[]> before = campaignForces(st).stream()
+                .filter(force -> force != null && !"PLAYER_FLEET".equals(fieldString(force, "kind")))
+                .map(force -> new double[]{getDoubleUnchecked(force, "x"), getDoubleUnchecked(force, "y")})
+                .toList();
+
         invokeMaintainVisibleFleetContacts(ctx, st);
 
-        long visibleFleets = CampaignSystem.activeSupportMarkers(ctx).stream()
-                .filter(marker -> marker != null && marker.type.name().startsWith("FORCE_"))
-                .count();
-        assertTrue(visibleFleets >= 3, "campaign director should surface at least three visible fleet groups");
+        List<double[]> after = campaignForces(st).stream()
+                .filter(force -> force != null && !"PLAYER_FLEET".equals(fieldString(force, "kind")))
+                .map(force -> new double[]{getDoubleUnchecked(force, "x"), getDoubleUnchecked(force, "y")})
+                .toList();
+        assertEquals(before.size(), after.size());
+        for (int i = 0; i < before.size(); i++) {
+            assertEquals(before.get(i)[0], after.get(i)[0], 1e-9);
+            assertEquals(before.get(i)[1], after.get(i)[1], 1e-9);
+        }
     }
 
     @Test
@@ -2690,7 +2691,7 @@ class CampaignNpcFleetAiTest {
     }
 
     @Test
-    void huntMissionPredictsFromLastKnownVelocityWhenContactIsStale() throws Exception {
+    void stalePredictionRemainsNpcInternalAndDoesNotCreatePlayerFacingMarker() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
@@ -2721,6 +2722,12 @@ class CampaignNpcFleetAiTest {
         double predictedDistance = Math.hypot(last[0] - 1580.0, last[1] - 1140.0);
         assertTrue(predictedDistance < staleDistance,
                 "hunt route should project stale contacts using last-known velocity");
+        setBoolean(target, "visibleToPlayer", false);
+        setDouble(target, "contactConfidence", 0.18);
+        setEnumByName(target, "contactState", "STALE");
+        assertTrue(CampaignSystem.activeSupportMarkers(ctx).stream().noneMatch(marker -> marker != null
+                        && Math.hypot(marker.x - 1400.0, marker.y - 1200.0) <= 1.0),
+                "internal NPC prediction must not create a player-facing live marker");
     }
 
     @Test
@@ -3108,7 +3115,7 @@ class CampaignNpcFleetAiTest {
     }
 
     @Test
-    void redInvasionAssemblesWingsTargetsMultiplePoisAndDeploysScoutsRaiders() throws Exception {
+    void redInvasionAssemblesWingsAroundOneCommittedTargetAndDeploysScoutsRaiders() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         invokeForceSimulation(ctx, st, 0.2);
@@ -3138,14 +3145,20 @@ class CampaignNpcFleetAiTest {
         assertTrue(invokeAssignRedInvasionMission(st, spearhead, staging.id));
 
         assertTrue("CAPTURE".equals(fieldString(spearhead, "mission")));
-        assertFalse(fieldString(spearhead, "destinationLocationId").isBlank());
+        String committedTarget = fieldString(spearhead, "destinationLocationId");
+        assertFalse(committedTarget.isBlank());
         assertTrue("CAPTURE".equals(fieldString(wing, "mission"))
                 || "CAPTURE".equals(fieldString(raider, "mission")));
+        for (Object force : List.of(spearhead, wing, raider)) {
+            if ("CAPTURE".equals(fieldString(force, "mission"))) {
+                assertEquals(committedTarget, fieldString(force, "destinationLocationId"));
+            }
+        }
         assertTrue(hasRedScoutScreening(st, spearhead));
         assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("RED INVASION")
                 && line.contains("establish forward bases")));
-        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("MULTI-FLEET SIEGE")
-                && line.contains("scouts/raiders outward")));
+        assertTrue(st.theaterWarRecentEvents.stream().anyMatch(line -> line.contains("FOCUSED SIEGE")
+                && line.contains("supporting one target")));
     }
 
     @Test
@@ -5140,6 +5153,14 @@ class CampaignNpcFleetAiTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getDouble(target);
+    }
+
+    private static double getDoubleUnchecked(Object target, String fieldName) {
+        try {
+            return getDouble(target, fieldName);
+        } catch (Exception ex) {
+            throw new AssertionError(ex);
+        }
     }
 
     private static int getInt(Object target, String fieldName) throws Exception {

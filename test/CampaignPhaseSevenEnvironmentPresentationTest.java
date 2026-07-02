@@ -295,12 +295,19 @@ class CampaignPhaseSevenEnvironmentPresentationTest {
         setEnumByName(force, "workState", "TRAVELING");
         setDouble(force, "strength", 84.0);
         setDouble(force, "speed", 160.0);
+        FactionAttackCommitmentSystem.Result commitment = FactionAttackCommitmentSystem.request(
+                st.factionAttackCommitments,
+                new FactionAttackCommitmentSystem.Request(Faction.ENEMY,
+                        source.id, target.id, 0, 0.0, 300.0),
+                target.ownerFaction == null ? "NONE" : target.ownerFaction.name(),
+                ignored -> FactionAttackCommitmentSystem.Validation.allow());
+        assertTrue(commitment.accepted());
 
         List<CampaignSystem.CampaignInvasionArrow> arrows = CampaignSystem.campaignInvasionArrows(ctx);
         assertTrue(arrows.stream().anyMatch(arrow -> arrow.faction == Faction.ENEMY
                         && arrow.targetLocationId.equals(target.id)
-                        && arrow.label.toUpperCase(java.util.Locale.US).contains("INVASION")),
-                "moving capture forces between key sites should be exposed as invasion arrows on the map");
+                        && arrow.label.toUpperCase(java.util.Locale.US).contains("ATTACK")),
+                "active commitments should be exposed as attack arrows on the map");
     }
 
     private static GameContext initializedCampaignContext(long seed) {

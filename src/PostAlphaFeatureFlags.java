@@ -12,6 +12,7 @@ public final class PostAlphaFeatureFlags {
         TERRITORY_FRONTS(true), YELLOW_SPLIT(true), STRATEGIC_OPERATIONS(true),
         YELLOW_CIVIL_WAR(true), SUPPLY_PRESSURE(true), WAR_MEMORY(false),
         RIVAL_COMMANDERS(false), FLAGSHIP_OPERATIONS(false), BOARDING_RESCUE(false),
+        FOCUSED_FACTION_ATTACKS(false),
         ALTERNATIVE_CAMPAIGNS(false), COOPERATIVE_COMMAND_PROTOTYPE(false);
 
         final boolean safeDefault;
@@ -25,7 +26,10 @@ public final class PostAlphaFeatureFlags {
     private PostAlphaFeatureFlags() {}
 
     public static boolean enabled(Feature feature) {
-        return feature != null && VALUES.getOrDefault(feature, feature.safeDefault);
+        if (feature == null) return false;
+        String override = System.getProperty("game.feature." + feature.key(), "").trim();
+        if (!override.isEmpty()) return Boolean.parseBoolean(override);
+        return VALUES.getOrDefault(feature, feature.safeDefault);
     }
 
     public static EnumMap<Feature, Boolean> snapshot() { return new EnumMap<>(VALUES); }
@@ -47,4 +51,3 @@ public final class PostAlphaFeatureFlags {
         return values;
     }
 }
-

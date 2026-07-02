@@ -135,6 +135,7 @@ public final class CampaignCheckpointStore {
         public String campaignYardOrders = "";
         public int nextCampaignYardOrderId = 1;
         public String selectedStrategicOverlayId = "CONTROL";
+        public String factionAttackCommitments = "";
         public int selectedCampaignTaskGroupId = 0;
         public int escortCapUpgradeLevel = 0;
         public int lineCapUpgradeLevel = 0;
@@ -319,6 +320,7 @@ public final class CampaignCheckpointStore {
             campaignYardOrders = (campaignYardOrders == null) ? "" : campaignYardOrders.trim();
             nextCampaignYardOrderId = Math.max(1, nextCampaignYardOrderId);
             selectedStrategicOverlayId = safeName(selectedStrategicOverlayId, "CONTROL");
+            factionAttackCommitments = factionAttackCommitments == null ? "" : factionAttackCommitments.trim();
             selectedCampaignTaskGroupId = Math.max(0, selectedCampaignTaskGroupId);
             escortCapUpgradeLevel = clamp(escortCapUpgradeLevel, 0, 5);
             lineCapUpgradeLevel = clamp(lineCapUpgradeLevel, 0, 4);
@@ -531,6 +533,7 @@ public final class CampaignCheckpointStore {
                 cp.campaignYardOrders = props.getProperty("campaignYardOrders", cp.campaignYardOrders);
                 cp.nextCampaignYardOrderId = parseInt(props, "nextCampaignYardOrderId", cp.nextCampaignYardOrderId);
                 cp.selectedStrategicOverlayId = props.getProperty("selectedStrategicOverlayId", cp.selectedStrategicOverlayId);
+                cp.factionAttackCommitments = props.getProperty("factionAttackCommitments", cp.factionAttackCommitments);
                 cp.selectedCampaignTaskGroupId = parseInt(props, "selectedCampaignTaskGroupId", cp.selectedCampaignTaskGroupId);
                 cp.escortCapUpgradeLevel = parseInt(props, "escortCapUpgradeLevel", cp.escortCapUpgradeLevel);
                 cp.lineCapUpgradeLevel = parseInt(props, "lineCapUpgradeLevel", cp.lineCapUpgradeLevel);
@@ -949,6 +952,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("campaignYardOrders", cp.campaignYardOrders);
             props.setProperty("nextCampaignYardOrderId", String.valueOf(cp.nextCampaignYardOrderId));
             props.setProperty("selectedStrategicOverlayId", cp.selectedStrategicOverlayId);
+            props.setProperty("factionAttackCommitments", cp.factionAttackCommitments);
             props.setProperty("selectedCampaignTaskGroupId", String.valueOf(cp.selectedCampaignTaskGroupId));
             props.setProperty("escortCapUpgradeLevel", String.valueOf(cp.escortCapUpgradeLevel));
             props.setProperty("lineCapUpgradeLevel", String.valueOf(cp.lineCapUpgradeLevel));
