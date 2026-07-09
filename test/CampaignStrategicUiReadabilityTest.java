@@ -228,6 +228,22 @@ class CampaignStrategicUiReadabilityTest {
     }
 
     @Test
+    void disabledCampaignActionsAlwaysExposePlayerFacingReasons() {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = true;
+        ctx.ui.mapOpen = true;
+
+        for (UiState.CampaignCommandTab tab : UiState.CampaignCommandTab.values()) {
+            ctx.ui.campaignCommandTab = tab;
+            for (CampaignSystem.CampaignAction action : CampaignSystem.campaignVisibleActions(ctx)) {
+                if (action == null || action.enabled) continue;
+                assertFalse(action.disabledReason == null || action.disabledReason.isBlank(),
+                        "disabled action should explain itself: tab=" + tab + " id=" + action.id);
+            }
+        }
+    }
+
+    @Test
     void fleetDebugReadoutIncludesDoctrineAndLifecycleFields() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokeForceSimulation(ctx, ctx.campaign, 0.2);

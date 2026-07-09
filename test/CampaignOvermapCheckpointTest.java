@@ -78,6 +78,7 @@ class CampaignOvermapCheckpointTest {
         st.transitEventCooldownSec = 2.5;
         st.transitEncounterPressure = 3.25;
         st.transitNextEncounterThreshold = 5.75;
+        st.lastSensorSweepAtSec = 42.5;
 
         CampaignSystem.CampaignLocation mission = findLocation(ctx, "poi-06");
         CampaignSystem.CampaignLocation aoi = findLocation(ctx, "aoi-cache-1");
@@ -178,6 +179,7 @@ class CampaignOvermapCheckpointTest {
         assertEquals(2.5, restoredState.transitEventCooldownSec, 1e-9);
         assertEquals(3.25, restoredState.transitEncounterPressure, 1e-9);
         assertEquals(5.75, restoredState.transitNextEncounterThreshold, 1e-9);
+        assertEquals(42.5, restoredState.lastSensorSweepAtSec, 1e-9);
 
         CampaignSystem.CampaignLocation restoredMission = findLocation(restored, "poi-06");
         CampaignSystem.CampaignLocation restoredAoi = findLocation(restored, "aoi-cache-1");

@@ -228,6 +228,8 @@ public final class UiState {
     public String controlsStatusMessage = "";
     public int overlayInvariantRepairCount = 0;
     public String overlayInvariantLastRepair = "";
+    public boolean campaignTopHintsCollapsed = false;
+    public boolean campaignTopHintsPreferenceRemembered = false;
     public boolean modalPauseOwned = false;
     public GameState lastObservedGameState = null;
     public final List<String> stateTransitionHistory = new ArrayList<>();

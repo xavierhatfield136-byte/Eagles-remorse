@@ -159,11 +159,11 @@ tasks.register("phase9Smoke", JavaExec) {
 
 tasks.register("focusedFactionAttackSoak", JavaExec) {
     group = "verification"
-    description = "Run the multi-seed ten-minute focused faction attack invariant soak."
+    description = "Run the multi-seed twenty-minute owner-facing fleet and lawful-capture soak."
     dependsOn(tasks.named("classes"))
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "FocusedFactionAttackSoakHarness"
-    args("--seeds=3", "--seconds=600", "--report=build/reports/focused-faction-attack-soak.csv")
+    args("--seeds=3", "--seconds=1200", "--report=build/reports/focused-faction-attack-soak.csv")
 }
 
 tasks.register("phase9PerformanceOrdinary", JavaExec) {

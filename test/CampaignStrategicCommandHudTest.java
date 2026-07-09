@@ -1273,19 +1273,8 @@ class CampaignStrategicCommandHudTest {
         setObject(group, "contactConfidence", enumConstant(fieldType(group, "contactConfidence"), "POSSIBLE_PATROL"));
         setObject(group, "doctrine", enumConstant(fieldType(group, "doctrine"), "INTERDICTION_GROUP"));
 
-        List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.activeSupportMarkers(ctx);
-        CampaignSystem.CampaignSupportMarker hostile = markers.stream()
-                .filter(marker -> marker != null
-                        && marker.type == CampaignSystem.SupportMarkerType.HAZARD
-                        && (marker.subtitle.contains("Interdiction Group")
-                        || marker.subtitle.contains("Spoiler Screen")))
-                .findFirst()
-                .orElse(null);
-        assertNotNull(hostile);
-        assertTrue(hostile.label.toLowerCase().contains("distress burst")
-                || hostile.label.toLowerCase().contains("metallic debris"));
-        assertTrue(hostile.subtitle.contains("Interdiction Group")
-                || hostile.subtitle.contains("Spoiler Screen"));
+        assertTrue(CampaignSystem.campaignSensorSweepPreviewLines(ctx).stream()
+                .anyMatch(line -> line.contains("uncertain/stale contacts")));
 
         st.campaignIntelLevel = 70.0;
         assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));

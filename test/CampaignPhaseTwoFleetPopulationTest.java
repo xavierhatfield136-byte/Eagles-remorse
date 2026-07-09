@@ -422,16 +422,19 @@ class CampaignPhaseTwoFleetPopulationTest {
     }
 
     private static Object firstActiveCapitalForce(CampaignSystem.CampaignState st) throws Exception {
+        Object fallback = null;
         for (Object record : poolRecords(st)) {
             if (!isStatus(record, "ACTIVE")) continue;
             ShipRole role = (ShipRole) read(record, "role");
             if (!role.isCapitalCombatant() && !role.isTitanOrMothership()) continue;
             int forceId = (int) read(record, "forceId");
             for (Object force : forceList(st)) {
-                if ((int) read(force, "id") == forceId) return force;
+                if ((int) read(force, "id") != forceId) continue;
+                if (fallback == null) fallback = force;
+                if (forceRecords(st, force).size() >= 2) return force;
             }
         }
-        return null;
+        return fallback;
     }
 
     private static Object firstActiveTitanForce(CampaignSystem.CampaignState st) throws Exception {

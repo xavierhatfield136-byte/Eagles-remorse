@@ -55,6 +55,11 @@ class CampaignMapClarityMilestoneOneTest {
         setEnum(group, "intelQuality", "TRACKED");
         ctx.campaign.playerGalaxyX = getDouble(group, "x");
         ctx.campaign.playerGalaxyY = getDouble(group, "y");
+        CampaignSystem.recordCampaignFleetIntelObservation(ctx, getInt(force, "id"),
+                CampaignSystem.CampaignIntelObservationSource.PLAYER_SENSOR,
+                CampaignSystem.CampaignIntelPrecision.EXACT,
+                ctx.campaign.campaignIntelTick, ctx.campaign.campaignIntelTick,
+                0.9, getDouble(group, "x"), getDouble(group, "y"), 0.0);
 
         CampaignSystem.CampaignSupportMarker rawGroupMarker = rawSearchGroupMarker(group);
         assertNotNull(rawGroupMarker);

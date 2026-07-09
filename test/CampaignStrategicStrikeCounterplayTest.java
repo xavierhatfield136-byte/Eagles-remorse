@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -380,7 +381,7 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     @Test
-    void staleSearchGroupMarkersUseLastKnownPositionInsteadOfLiveCompliment() throws Exception {
+    void staleSearchGroupMemoryDoesNotRenderAsLiveMapContact() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object group = firstSearchGroup(st);
@@ -397,18 +398,9 @@ class CampaignStrategicStrikeCounterplayTest {
         setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
         setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "CLASSIFIED"));
 
-        CampaignSystem.CampaignSupportMarker marker = CampaignSystem.activeSupportMarkers(ctx).stream()
-                .filter(it -> it.type == CampaignSystem.SupportMarkerType.HAZARD)
-                .filter(it -> it.subtitle.contains("last known"))
-                .findFirst()
-                .orElse(null);
-        assertNotNull(marker);
-        assertEquals(lastX, marker.x, 1e-6);
-        assertEquals(lastY, marker.y, 1e-6);
-        assertTrue(marker.subtitle.contains("24s old"));
-        assertTrue(marker.subtitle.contains("Last-known sensor memory"));
-        assertFalse(marker.subtitle.contains("Vectoring toward the fleet"),
-                "lost search-group shadows should not describe live player-chase vectors");
+        assertFalse(CampaignSystem.activeSupportMarkers(ctx).stream()
+                        .anyMatch(it -> it.subtitle.contains("Last-known sensor memory")),
+                "lost search-group memory must not render as a physical fleet marker");
     }
 
     @Test
@@ -444,18 +436,14 @@ class CampaignStrategicStrikeCounterplayTest {
                 .filter(marker -> marker != null && marker.label.contains("Last Known Contact"))
                 .findFirst()
                 .orElse(null);
-        assertNotNull(lastKnown, "stale force should remain visible as last-known intel");
-        assertEquals(lastX, lastKnown.x, 1e-6);
-        assertEquals(lastY, lastKnown.y, 1e-6);
-        assertTrue(lastKnown.subtitle.contains("Last Known") || lastKnown.subtitle.contains("last seen"),
-                "last-known subtitle should identify memory state instead of live movement");
+        assertNull(lastKnown, "stale physical forces must not remain visible as live map contacts");
         assertFalse(markers.stream().anyMatch(marker -> marker != null && marker.label.contains("Moving Blockade Line")),
                 "last-known contacts must not draw live movement/blockade vectors");
 
-        String readout = String.join("\n", CampaignSystem.campaignNearbyContactReadouts(ctx, 8).stream()
+        String readout = String.join("\n", CampaignSystem.campaignNearbyContactReadouts(ctx, 32).stream()
+                .filter(contact -> Math.hypot(contact.x - lastX, contact.y - lastY) < 2.0)
                 .map(contact -> contact.title + " " + contact.detail)
                 .toList());
-        assertTrue(readout.contains("Last Known"), "sensor readout should label stale force memory");
         assertFalse(readout.toLowerCase().contains("pursuit / intercept"),
                 "sensor readout must not advertise stale contacts as active pursuers");
     }
@@ -497,9 +485,9 @@ class CampaignStrategicStrikeCounterplayTest {
             setDouble(group, "lastKnownAgeSec", windows[i] - 0.5);
             setDouble(group, "lastKnownX", ctx.campaign.playerGalaxyX + 300.0);
             setDouble(group, "lastKnownY", ctx.campaign.playerGalaxyY + 200.0);
-            assertTrue(CampaignSystem.activeSupportMarkers(ctx).stream()
+            assertFalse(CampaignSystem.activeSupportMarkers(ctx).stream()
                             .anyMatch(marker -> marker.subtitle.contains("Last-known sensor memory")),
-                    intelLevels[i] + " contact should remain actionable inside its memory window");
+                    intelLevels[i] + " memory must not be actionable as a live fleet contact");
 
             setDouble(group, "lastKnownAgeSec", windows[i] + 0.5);
             assertFalse(CampaignSystem.activeSupportMarkers(ctx).stream()

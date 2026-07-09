@@ -189,6 +189,26 @@ class CampaignStrategicTravelPressureTest {
     }
 
     @Test
+    void routeChoicesExplainSafeFastAndRewardTradeoffs() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.sector = 4;
+        invokeBuildRouteChoices(ctx, 5);
+
+        List<CampaignSystem.CampaignRouteChoice> choices = CampaignSystem.routeChoices(ctx);
+        assertTrue(choices.size() >= 3, "mid-campaign should expose main, salvage, and deep-strike route choices");
+        String joined = choices.stream()
+                .map(choice -> choice.title + " " + choice.detail)
+                .collect(java.util.stream.Collectors.joining("\n"))
+                .toLowerCase(java.util.Locale.US);
+
+        assertTrue(joined.contains("safest"), "main route should explain why it is the safe/default option");
+        assertTrue(joined.contains("slower") && joined.contains("salvage"),
+                "salvage route should explain the time/reward tradeoff");
+        assertTrue(joined.contains("fastest") && joined.contains("interception"),
+                "deep-strike route should explain the speed/risk tradeoff");
+    }
+
+    @Test
     void trafficAuditAddsLocalTrafficAndFalsePositiveReadouts() {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -398,12 +418,18 @@ class CampaignStrategicTravelPressureTest {
         setBoolean(force, "simulationActive", true);
         setEnum(force, "intent", "GUARDING");
         setEnum(force, "contactState", "KNOWN");
+        CampaignSystem.recordCampaignFleetIntelObservation(blockadeCtx, getInt(force, "id"),
+                CampaignSystem.CampaignIntelObservationSource.PLAYER_SENSOR,
+                CampaignSystem.CampaignIntelPrecision.EXACT,
+                blockade.campaignIntelTick, blockade.campaignIntelTick,
+                1.0, startX, startY, 0.0);
 
         assertTrue(CampaignSystem.selectCampaignFreeTravelTarget(blockadeCtx, targetX, targetY));
         assertTrue(CampaignSystem.startTravelToSelectedLocation(blockadeCtx));
 
         assertTrue(blockade.galaxyTravel.interceptionRisk > baselineRisk + 8.0,
-                "a moving blockade line crossing the plotted route should materially raise route risk");
+                "a moving blockade line crossing the plotted route should materially raise route risk baseline="
+                        + baselineRisk + " blockade=" + blockade.galaxyTravel.interceptionRisk);
         assertTrue(CampaignSystem.activeSupportMarkers(blockadeCtx).stream()
                 .anyMatch(marker -> marker.label.startsWith("Moving Blockade Line:")
                         && marker.subtitle.contains("MOVING BLOCKADE")));
@@ -541,6 +567,13 @@ class CampaignStrategicTravelPressureTest {
         return (double) method.invoke(null, ctx);
     }
 
+    private static void invokeBuildRouteChoices(GameContext ctx, int mainSector) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "buildRouteChoices", GameContext.class, CampaignSystem.CampaignState.class, int.class);
+        method.setAccessible(true);
+        method.invoke(null, ctx, ctx.campaign, mainSector);
+    }
+
     private static void invokeSearchUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "updateGalaxySearchGroups",
@@ -639,6 +672,12 @@ class CampaignStrategicTravelPressureTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getDouble(target);
+    }
+
+    private static int getInt(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getInt(target);
     }
 
     private static String getEnumName(Object target, String fieldName) throws Exception {

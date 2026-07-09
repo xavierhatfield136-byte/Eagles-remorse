@@ -90,4 +90,34 @@ class AISystemSmallCraftRangeTest {
         assertEquals(bomber.id, fighter.aiCommittedTargetId,
                 "fighters should aggressively intercept hostile small craft before heavier hulls");
     }
+
+    @Test
+    void opposingFightersFireOrRepositionInsteadOfOrbitingIndefinitely() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 2600, 1800, true, 46L, false));
+        FleetShip blue = new FleetShip(ShipRole.FIGHTER, Faction.ALLY, 900.0, 900.0);
+        FleetShip red = new FleetShip(ShipRole.FIGHTER, Faction.ENEMY, 1180.0, 900.0);
+        ctx.ships.clear();
+        ctx.ships.add(blue);
+        ctx.ships.add(red);
+        ctx.entityQuery.rebuild(ctx);
+
+        double initialDistance = Math.hypot(blue.x - red.x, blue.y - red.y);
+        int blueHp = blue.hp;
+        int redHp = red.hp;
+        double blueShield = blue.shield;
+        double redShield = red.shield;
+
+        for (int i = 0; i < 8 * 60; i++) {
+            AISystem.update(ctx, 1.0 / 60.0);
+            for (Ship ship : ctx.ships) ship.update(1.0 / 60.0);
+            ctx.entityQuery.rebuild(ctx);
+        }
+
+        double finalDistance = Math.hypot(blue.x - red.x, blue.y - red.y);
+        boolean damageExchanged = blue.hp < blueHp || red.hp < redHp || blue.shield < blueShield || red.shield < redShield;
+        boolean deliberateReposition = Math.abs(finalDistance - initialDistance) >= 48.0
+                && (blue.aiCommittedTargetId == red.id || red.aiCommittedTargetId == blue.id);
+        assertTrue(damageExchanged || deliberateReposition,
+                "opposing fighters must fire, disengage, or deliberately reposition instead of orbiting indefinitely");
+    }
 }

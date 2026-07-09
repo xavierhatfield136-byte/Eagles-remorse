@@ -5558,10 +5558,43 @@ public final class AISystem {
         if (s == anchor || s == ctx.player) return false;
         if (!s.canUseBattlefieldWarp() || s.isWarpCharging()) return s.isWarpCharging();
         if (isHeavilyDamagedForWarp(s)) return false;
-        double dist = Math.hypot(anchor.x - s.x, anchor.y - s.y);
+        double[] slot = escortWarpAnchorPoint(ctx, s, anchor);
+        double dist = Math.hypot(slot[0] - s.x, slot[1] - s.y);
         if (dist < Math.max(720.0, anchor.radius + 320.0)) return false;
-        double desiredOffset = Math.max(180.0, Math.min(320.0, s.radius + anchor.radius * 0.6));
-        return maybeStartBattlefieldWarp(ctx, s, anchor.x, anchor.y, desiredOffset);
+        double desiredOffset = Math.max(120.0, Math.min(260.0, s.radius + anchor.radius * 0.35));
+        return maybeStartBattlefieldWarp(ctx, s, slot[0], slot[1], desiredOffset);
+    }
+
+    private static double[] escortWarpAnchorPoint(GameContext ctx, Ship s, Ship anchor) {
+        if (s == null || anchor == null) return new double[]{0.0, 0.0};
+        int slot = reservedEscortSlotIndex(ctx, s, anchor);
+        double side = ((slot & 1) == 0) ? -1.0 : 1.0;
+        int rank = slot / 2;
+        double forward = anchor.radius + 210.0 + rank * 72.0;
+        double lateral = anchor.radius + 150.0 + rank * 64.0;
+        double fx = Math.cos(anchor.angle);
+        double fy = Math.sin(anchor.angle);
+        double rx = -fy;
+        double ry = fx;
+        return new double[]{
+                anchor.x + fx * forward + rx * side * lateral,
+                anchor.y + fy * forward + ry * side * lateral
+        };
+    }
+
+    private static int reservedEscortSlotIndex(GameContext ctx, Ship s, Ship anchor) {
+        if (s == null || anchor == null) return 0;
+        if (s.escortSlotIndex > 0) return s.escortSlotIndex;
+        if (ctx == null || ctx.ships == null || anchor.id <= 0) return Math.max(0, s.escortSlotIndex);
+        int slot = 0;
+        for (Ship other : ctx.ships) {
+            if (other == null || other == anchor) continue;
+            if (!isAlive(other)) continue;
+            if (other.escortAnchorId != anchor.id) continue;
+            if (other.id == s.id) return slot;
+            slot++;
+        }
+        return Math.max(0, slot);
     }
 
     private static boolean shouldJoinFlagshipWarp(GameContext ctx, Ship ship, Ship flagship) {

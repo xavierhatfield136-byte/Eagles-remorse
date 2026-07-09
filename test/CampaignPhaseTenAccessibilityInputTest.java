@@ -88,6 +88,19 @@ class CampaignPhaseTenAccessibilityInputTest {
     }
 
     @Test
+    void miningPromptShowsCurrentHoldOrToggleInteractionModeAtPointOfUse() {
+        ExperienceSettings hold = ExperienceSettings.defaults();
+        hold.miningMode = ExperienceSettings.InteractionMode.HOLD;
+        ExperienceRuntime.activate(hold);
+        assertEquals("ORE: Hold F", Renderer.asteroidMinePromptLabel());
+
+        ExperienceSettings toggle = ExperienceSettings.defaults();
+        toggle.miningMode = ExperienceSettings.InteractionMode.TOGGLE;
+        ExperienceRuntime.activate(toggle);
+        assertEquals("ORE: Toggle F", Renderer.asteroidMinePromptLabel());
+    }
+
+    @Test
     void visualAndAudioAccessibilitySettingsNormalizeAndExposeControls() {
         ExperienceSettings settings = ExperienceSettings.defaults();
         settings.uiTextScale = 99.0;

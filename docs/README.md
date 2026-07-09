@@ -2,6 +2,10 @@
 
 Start here. The docs are organized by purpose so the next work is visible without reading every historical checklist.
 
+## Current Stabilization North Star
+
+- `reports/Eagles_Remorse_Stabilization_and_Release_Proof_Master_Checklist.docx` - active 292-control stabilization, packaged-playtest, performance, polish, architecture, triage, and release-proof checklist. Governing rule: until P0 is complete, no new major features.
+
 ## Primary Roadmap
 
 1. `1_0_OWNER_DECISIONS_AND_IMPLEMENTATION_ROADMAP.md` - binding 1.0 scope, owner decisions, release blockers, and implementation order.
@@ -16,6 +20,9 @@ Start here. The docs are organized by purpose so the next work is visible withou
 10. `FLEET_CONTACT_EXPANSION_TASK_FORCE_INSPECTION_CHECKLIST.md` - Silent Hunter-style task-force contact expansion and inspection checklist.
 11. `GAME_AUDIT_REMEDIATION_CHECKLIST.md` - prioritized fixes from the June 2026 game audit.
 12. `UNBOUNDED_GAME_EXPANSION_BACKLOG.md` - the exhaustive audit appendix. Use it for traceability, not daily execution.
+13. `CAMPAIGN_MAP_REWORK_SOURCE_OF_TRUTH.md` - canonical provenance, completed work, conflict resolutions, and milestone roadmap for the current campaign map/intelligence/invasion rework.
+14. `CAMPAIGN_MAP_REWORK_IMPLEMENTATION_CHECKLIST.md` - actionable Milestones 2–11 checklist derived from the campaign map rework source of truth.
+15. `CAMPAIGN_FLEET_AUTHORITY.md` - canonical strategic fleet identity, position-writer, lifecycle, operation-assignment, and save/load decisions.
 
 ## Alpha Reference Library
 

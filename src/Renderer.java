@@ -1,4 +1,5 @@
 import app.ui.ThemeArt;
+import app.config.ExperienceSettings;
 import app.config.GameMode;
 import app.state.AssetLoadGuard;
 import app.state.BoundedCache;
@@ -3930,7 +3931,7 @@ public class Renderer {
 
     private static void drawAsteroidMinePrompt(Graphics2D g2, Asteroid asteroid) {
         if (g2 == null || asteroid == null) return;
-        String label = "ORE [F]";
+        String label = asteroidMinePromptLabel();
         Font oldFont = g2.getFont();
         Color oldColor = g2.getColor();
         g2.setFont(new Font("Consolas", Font.BOLD, 11));
@@ -3953,6 +3954,14 @@ public class Renderer {
 
         g2.setFont(oldFont);
         g2.setColor(oldColor);
+    }
+
+    static String asteroidMinePromptLabel() {
+        ExperienceSettings settings = ExperienceRuntime.active();
+        ExperienceSettings.InteractionMode mode = settings == null || settings.miningMode == null
+                ? ExperienceSettings.InteractionMode.HOLD
+                : settings.miningMode;
+        return (mode == ExperienceSettings.InteractionMode.TOGGLE) ? "ORE: Toggle F" : "ORE: Hold F";
     }
 
     // ------------------------------
@@ -9731,6 +9740,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawCampaignBattleScars(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignRouteNetwork(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawSelectedTerritoryEdges(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawPlayerCampaignSensorRange(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
@@ -9968,11 +9978,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static void drawCampaignWarLegend(Graphics2D g2, GameContext ctx, Rectangle mapRect) {
         if (g2 == null || mapRect == null) return;
         int x = mapRect.x + 10;
-        int y = mapRect.y + mapRect.height - 56;
+        int y = mapRect.y + mapRect.height - 78;
         g2.setColor(new Color(8, 12, 20, 178));
-        g2.fillRoundRect(x - 6, y - 16, 470, 48, 12, 12);
+        g2.fillRoundRect(x - 6, y - 16, 590, 70, 12, 12);
         g2.setColor(new Color(180, 214, 248, 78));
-        g2.drawRoundRect(x - 6, y - 16, 470, 48, 12, 12);
+        g2.drawRoundRect(x - 6, y - 16, 590, 70, 12, 12);
         g2.setFont(new Font("Consolas", Font.BOLD, 10));
         g2.setColor(new Color(228, 236, 244, 220));
         g2.drawString("LEGEND", x, y - 4);
@@ -9982,7 +9992,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawHudStatusChip(g2, "CONTESTED", x + 190, y + 8, 82, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.CONTESTED, 220), false);
         drawHudStatusChip(g2, "UNKNOWN", x + 278, y + 8, 74, 16, campaignControlColor(CampaignSystem.CampaignControlVisualState.UNKNOWN, 220), false);
         g2.setColor(new Color(190, 214, 236, 190));
-        g2.drawString("color = control, icon = site type, arrows = invasions", x + 272, y - 4);
+        g2.drawString("color = control, icon = site type", x + 272, y - 4);
+        List<String> entries = CampaignSystem.campaignMapLegendEntries(ctx);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 9));
+        g2.setColor(new Color(194, 218, 238, 205));
+        for (int i = 0; i < Math.min(3, entries.size()); i++) {
+            g2.drawString(entries.get(i), x + i * 194, y + 36);
+        }
+        if (entries.size() >= 6) {
+            g2.drawString(entries.get(3), x, y + 48);
+            g2.drawString(entries.get(4), x + 194, y + 48);
+            g2.drawString(entries.get(5), x + 388, y + 48);
+        }
         if (CampaignSystem.isCampaignWarMapSimplified(ctx)) {
             g2.setColor(new Color(255, 226, 176, 210));
             g2.drawString("SIMPLIFIED MODE ACTIVE", x + 350, y + 20);
@@ -10009,16 +10030,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int radius = campaignControlHaloRadius(location, control);
             Color controlColor = campaignControlColor(control, 255);
             float fillAlpha = switch (control) {
-                case RED -> 0.18f;
-                case CONTESTED -> 0.15f;
-                case GREEN -> 0.13f;
-                case YELLOW -> 0.11f;
-                case UNKNOWN -> 0.08f;
+                case RED -> 0.10f;
+                case CONTESTED -> 0.09f;
+                case GREEN -> 0.075f;
+                case YELLOW -> 0.065f;
+                case UNKNOWN -> 0.045f;
             };
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, fillAlpha));
             g2.setColor(controlColor);
             g2.fillOval(px - radius, py - radius, radius * 2, radius * 2);
-            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, control == CampaignSystem.CampaignControlVisualState.RED ? 0.55f : 0.36f));
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, control == CampaignSystem.CampaignControlVisualState.RED ? 0.34f : 0.24f));
             g2.setStroke(control == CampaignSystem.CampaignControlVisualState.CONTESTED
                     ? new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 10.0f, new float[]{8.0f, 6.0f}, 0.0f)
                     : new BasicStroke(control == CampaignSystem.CampaignControlVisualState.RED ? 1.8f : 1.2f));
@@ -10031,6 +10052,50 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
         g2.setComposite(oldComposite);
         g2.setStroke(oldStroke);
+    }
+
+    private static void drawPlayerCampaignSensorRange(Graphics2D g2,
+                                                      GameContext ctx,
+                                                      Rectangle mapRect,
+                                                      double worldMinX,
+                                                      double worldMinY,
+                                                      double worldW,
+                                                      double worldH) {
+        if (g2 == null || ctx == null || ctx.campaign == null || mapRect == null) return;
+        double x = ctx.campaign.playerGalaxyX;
+        double y = ctx.campaign.playerGalaxyY;
+        double range = CampaignSystem.playerCampaignSensorRange(ctx);
+        if (!Double.isFinite(x) || !Double.isFinite(y) || range <= 0.0) return;
+        int px = strategicMapPixelX(mapRect, worldMinX, worldW, x);
+        int py = strategicMapPixelY(mapRect, worldMinY, worldH, y);
+        int radius = campaignSensorSpherePixelRadius(range, mapRect, worldW, worldH);
+        Composite oldComposite = g2.getComposite();
+        Stroke oldStroke = g2.getStroke();
+        Font oldFont = g2.getFont();
+        Color sensor = new Color(92, 224, 255, 220);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.045f));
+        g2.setColor(sensor);
+        g2.fillOval(px - radius, py - radius, radius * 2, radius * 2);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.72f));
+        g2.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                10.0f, new float[]{7.0f, 5.0f}, 0.0f));
+        g2.drawOval(px - radius, py - radius, radius * 2, radius * 2);
+        g2.setFont(new Font("Consolas", Font.BOLD, 9));
+        g2.drawString("SENSOR SPHERE", px + 8, py - radius + 13);
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+        g2.setFont(oldFont);
+    }
+
+    static int campaignSensorSpherePixelRadius(double worldRadius,
+                                               Rectangle mapRect,
+                                               double worldW,
+                                               double worldH) {
+        if (mapRect == null || !Double.isFinite(worldRadius) || worldRadius <= 0.0) return 0;
+        double pixelsPerWorldUnit = Math.min(
+                mapRect.width / Math.max(1.0, worldW),
+                mapRect.height / Math.max(1.0, worldH));
+        return Math.max(8, (int) Math.round(worldRadius * pixelsPerWorldUnit));
     }
 
     private static int campaignControlHaloRadius(CampaignSystem.CampaignLocation location,
@@ -10249,6 +10314,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         Font oldFont = g2.getFont(); Stroke oldStroke = g2.getStroke();
         g2.setFont(new Font("Consolas", Font.BOLD, 8));
         for (CampaignSystem.CampaignTerritoryOverlayView view : views) {
+            if (!shouldDrawCampaignTerritoryOverlayView(view)) continue;
             int x = strategicMapPixelX(mapRect, worldMinX, worldW, view.x());
             int y = strategicMapPixelY(mapRect, worldMinY, worldH, view.y());
             Color faction = factionMapColor(view.faction(), view.faction() == Faction.PLAYER, 220);
@@ -10274,12 +10340,33 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (view.beachhead()) { g2.drawRect(x-6,y-6,12,12); }
             if (view.activeOperation()) { g2.fillPolygon(new int[]{x,x-5,x+5},new int[]{y-9,y-1,y-1},3); }
             drawCampaignFactionInsignia(g2, view.faction(), x, y, stateColor);
-            String tag = view.controlState().name().substring(0,1) + "/" + view.supplyState().name().substring(0,1);
+            String tag = campaignTerritoryOverlayTag(view);
             g2.setColor(Color.WHITE); g2.drawString(tag, x-radius, y+radius+9);
             if (view.faction() == Faction.BRIGHT_YELLOW) g2.drawLine(x-radius,y+2,x+radius,y-2);
             if (view.faction() == Faction.DARK_YELLOW) { g2.drawLine(x-radius,y-radius,x+radius,y+radius); g2.drawLine(x-radius,y+radius,x+radius,y-radius); }
         }
         g2.setFont(oldFont); g2.setStroke(oldStroke);
+    }
+
+    static boolean shouldDrawCampaignTerritoryOverlayView(CampaignSystem.CampaignTerritoryOverlayView view) {
+        if (view == null) return false;
+        return view.activeOperation()
+                || view.beachhead()
+                || view.supplySource()
+                || view.controlState() != StrategicCampaignExpansionSystem.TerritoryControlState.SECURE
+                && view.controlState() != StrategicCampaignExpansionSystem.TerritoryControlState.INTEGRATED
+                || view.supplyState() != StrategicCampaignExpansionSystem.SupplyState.SUPPLIED;
+    }
+
+    static String campaignTerritoryOverlayTag(CampaignSystem.CampaignTerritoryOverlayView view) {
+        if (view == null) return "";
+        if (view.activeOperation()) return "OPERATION";
+        if (view.beachhead()) return "BEACHHEAD";
+        if (view.controlState() == StrategicCampaignExpansionSystem.TerritoryControlState.CONTESTED) return "CONTESTED";
+        if (view.controlState() == StrategicCampaignExpansionSystem.TerritoryControlState.OCCUPIED) return "OCCUPIED";
+        if (view.controlState() == StrategicCampaignExpansionSystem.TerritoryControlState.PRESSURED) return "PRESSURED";
+        if (view.supplySource()) return "SUPPLY SOURCE";
+        return view.supplyState().name().replace('_', ' ');
     }
 
     private static void drawCampaignFactionInsignia(Graphics2D g2, Faction faction, int x, int y, Color color) {
@@ -11716,7 +11803,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawGalaxyStrikeBoard(Graphics2D g2, GameContext ctx, int x, int y, int width, int height) {
         if (g2 == null || ctx == null || height < 64) return;
-        int panelH = Math.min(height, 218);
+        int panelH = Math.min(height, 260);
         drawGalaxyInstrumentPanel(g2, x, y, width, panelH, "CONTACT BOARD");
         List<String> readiness = CampaignSystem.campaignStrikeReadinessLines(ctx);
         int top = y + 34;
@@ -11735,8 +11822,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         drawGalaxyMeter(g2, x + 12, y + 156, width - 24, "ENEMY ALERT", MathUtil.clamp(parseTrailingNumber(contactHeat) / 100.0, 0.0, 1.0),
                 new Color(255, 140, 120, 220), contactHeat);
         int infoY = y + 190;
-        for (int i = 0; i < consequences.size() && i < 4 && infoY + i * 14 <= y + panelH - 8; i++) {
-            drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, consequences.get(i), new Color(214, 226, 238, 214));
+        List<String> operations = CampaignSystem.campaignOperationInspectorLines(ctx);
+        List<String> infoLines = operations.isEmpty() ? consequences : operations;
+        for (int i = 0; i < infoLines.size() && i < 3 && infoY + i * 14 <= y + panelH - 42; i++) {
+            drawGalaxyBoardLine(g2, x + 12, infoY + i * 14, width - 24, infoLines.get(i),
+                    operations.isEmpty() ? new Color(214, 226, 238, 214) : new Color(255, 214, 142, 218));
         }
         List<String> sensor = CampaignSystem.campaignSensorNetSummaryLines(ctx);
         int sensorY = y + panelH - 34;
@@ -13002,12 +13092,13 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         return true;
     }
 
-    private static boolean shouldDrawSupportMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
+    static boolean shouldDrawSupportMarkerAtZoom(GameContext ctx, CampaignSystem.CampaignSupportMarker marker) {
         if (marker == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
         if (isSelectedMapMarker(ctx, marker.label, marker.x, marker.y)) return true;
         double zoom = UISystem.strategicMapZoom(ctx);
         if (zoom < 2.15) {
             return marker.priority >= 70
+                    || isPriorityCampaignFleetMarker(marker)
                     || marker.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
                     || marker.type == CampaignSystem.SupportMarkerType.HAZARD
                     || marker.type == CampaignSystem.SupportMarkerType.SALVAGE && isBattleScarMarker(marker);
@@ -13229,7 +13320,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (!shouldDrawSupportMarkerAtZoom(ctx, marker)) continue;
             boolean selected = isSelectedMapMarker(ctx, marker.label, marker.x, marker.y);
             if (!shouldShowSupportMarkerLabel(ctx, marker, selected)
-                    || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !selected)) {
+                    || (CampaignSystem.isCampaignWarMapSimplified(ctx) && !selected
+                    && !isPriorityCampaignFleetMarker(marker))) {
                 continue;
             }
             int px = mapRect.x + (int) Math.round(((marker.x - worldMinX) / Math.max(1.0, worldW)) * mapRect.width);
@@ -13292,6 +13384,9 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static String strategicSupportShortLabel(CampaignSystem.CampaignSupportMarker marker) {
         if (marker == null || marker.label == null) return "";
+        if (isPriorityCampaignFleetMarker(marker)) {
+            return campaignFleetMarkerFactionName(marker.faction) + " " + campaignFleetMarkerRoleName(marker.type);
+        }
         String label = marker.label.trim();
         if (label.endsWith("Outer Screen")) return "OUTER SCREEN";
         if (label.endsWith("Docked Strike Wing")) return "STRIKE WING";
@@ -13300,6 +13395,33 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         if (label.endsWith("Response Corvette Line")) return "RESPONSE LINE";
         if (label.endsWith("Defense Lattice")) return "DEFENSE LATTICE";
         return label;
+    }
+
+    private static boolean isPriorityCampaignFleetMarker(CampaignSystem.CampaignSupportMarker marker) {
+        return marker != null && marker.sourceForceId > 0 && marker.priority >= 54;
+    }
+
+    private static String campaignFleetMarkerFactionName(Faction faction) {
+        if (faction == Faction.ENEMY) return "RED";
+        if (faction == Faction.TEAM_C) return "GREEN";
+        if (faction == Faction.BRIGHT_YELLOW) return "YELLOW";
+        if (faction == Faction.DARK_YELLOW) return "DARK YELLOW";
+        if (faction == Faction.TEAM_D) return "YELLOW";
+        if (faction == Faction.PLAYER || faction == Faction.ALLY) return "BLUE";
+        return "UNKNOWN";
+    }
+
+    private static String campaignFleetMarkerRoleName(CampaignSystem.SupportMarkerType type) {
+        if (type == null) return "FLEET";
+        return switch (type) {
+            case FORCE_STRIKE -> "STRIKE";
+            case FORCE_SEARCH -> "SEARCH";
+            case FORCE_PATROL -> "PATROL";
+            case FORCE_CONVOY -> "CONVOY";
+            case FORCE_MINING -> "MINING";
+            case FORCE_BASE_DEFENSE -> "DEFENSE";
+            default -> "FLEET";
+        };
     }
 
     private static int strategicSupportLabelY(Rectangle mapRect,
@@ -13406,7 +13528,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                                                         boolean selected) {
         if (marker == null) return false;
         if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return true;
-        return selected;
+        return selected || isPriorityCampaignFleetMarker(marker);
     }
 
     private static int markerPriorityBoost(int priority) {

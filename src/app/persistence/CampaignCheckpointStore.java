@@ -41,7 +41,7 @@ public final class CampaignCheckpointStore {
 
     private CampaignCheckpointStore() {}
 
-    private static final int CURRENT_VERSION = 4;
+    private static final int CURRENT_VERSION = 5;
     private static final int MAX_CAMPAIGN_SECTORS = 24;
     private static final Path SAVE_DIR = UserDataPaths.saveDir();
     private static final Path CHECKPOINT_FILE = Paths.get(
@@ -166,6 +166,7 @@ public final class CampaignCheckpointStore {
         public double campaignIntelLevel = 0.0;
         public double strategicExposureLevel = 0.0;
         public double recentStrikePressure = 0.0;
+        public double lastSensorSweepAtSec = -1000.0;
         public boolean galaxyEncounterActive = false;
         public boolean galaxyAmbientEncounterActive = false;
         public String activeMapModifiers = "NONE";
@@ -199,6 +200,9 @@ public final class CampaignCheckpointStore {
         public String strategicDivisions = "";
         public String campaignForces = "";
         public String shipCampaignForceIds = "";
+        public long campaignIntelTick = 0L;
+        public String campaignFleetIntel = "";
+        public String campaignOperationIntel = "";
         public String enemyPlayerContact = "";
         public int nextPendingHostileReinforcementId = 1;
         public String pendingHostileReinforcements = "";
@@ -347,6 +351,7 @@ public final class CampaignCheckpointStore {
             campaignIntelLevel = clamp(finiteOr(campaignIntelLevel, 0.0), 0.0, 100.0);
             strategicExposureLevel = clamp(finiteOr(strategicExposureLevel, 0.0), 0.0, 100.0);
             recentStrikePressure = clamp(finiteOr(recentStrikePressure, 0.0), 0.0, 100.0);
+            lastSensorSweepAtSec = finiteOr(lastSensorSweepAtSec, -1000.0);
             campaignFuel = Math.max(0, campaignFuel);
             campaignSupplies = Math.max(0, campaignSupplies);
             campaignAmmo = Math.max(0, campaignAmmo);
@@ -372,6 +377,9 @@ public final class CampaignCheckpointStore {
             strategicDivisions = (strategicDivisions == null) ? "" : strategicDivisions.trim();
             campaignForces = (campaignForces == null) ? "" : campaignForces.trim();
             shipCampaignForceIds = (shipCampaignForceIds == null) ? "" : shipCampaignForceIds.trim();
+            campaignIntelTick = Math.max(0L, campaignIntelTick);
+            campaignFleetIntel = (campaignFleetIntel == null) ? "" : campaignFleetIntel.trim();
+            campaignOperationIntel = (campaignOperationIntel == null) ? "" : campaignOperationIntel.trim();
             enemyPlayerContact = (enemyPlayerContact == null) ? "" : enemyPlayerContact.trim();
             nextPendingHostileReinforcementId = Math.max(1, nextPendingHostileReinforcementId);
             pendingHostileReinforcements = (pendingHostileReinforcements == null) ? "" : pendingHostileReinforcements.trim();
@@ -572,6 +580,7 @@ public final class CampaignCheckpointStore {
                 cp.campaignSupplies = parseInt(props, "campaignSupplies", cp.campaignSupplies);
                 cp.campaignAmmo = parseInt(props, "campaignAmmo", cp.campaignAmmo);
                 cp.campaignSalvage = parseInt(props, "campaignSalvage", cp.campaignSalvage);
+                cp.lastSensorSweepAtSec = parseDouble(props, "lastSensorSweepAtSec", cp.lastSensorSweepAtSec);
                 cp.travelFuelAttritionRemainder = parseDouble(props, "travelFuelAttritionRemainder", cp.travelFuelAttritionRemainder);
                 cp.travelSupplyAttritionRemainder = parseDouble(props, "travelSupplyAttritionRemainder", cp.travelSupplyAttritionRemainder);
                 cp.travelAmmoAttritionRemainder = parseDouble(props, "travelAmmoAttritionRemainder", cp.travelAmmoAttritionRemainder);
@@ -597,6 +606,9 @@ public final class CampaignCheckpointStore {
                 cp.strategicDivisions = props.getProperty("strategicDivisions", cp.strategicDivisions);
                 cp.campaignForces = props.getProperty("campaignForces", cp.campaignForces);
                 cp.shipCampaignForceIds = props.getProperty("shipCampaignForceIds", cp.shipCampaignForceIds);
+                cp.campaignIntelTick = parseLong(props, "campaignIntelTick", cp.campaignIntelTick);
+                cp.campaignFleetIntel = props.getProperty("campaignFleetIntel", cp.campaignFleetIntel);
+                cp.campaignOperationIntel = props.getProperty("campaignOperationIntel", cp.campaignOperationIntel);
                 cp.enemyPlayerContact = props.getProperty("enemyPlayerContact", cp.enemyPlayerContact);
                 cp.nextPendingHostileReinforcementId = parseInt(props, "nextPendingHostileReinforcementId", cp.nextPendingHostileReinforcementId);
                 cp.pendingHostileReinforcements = props.getProperty("pendingHostileReinforcements", cp.pendingHostileReinforcements);
@@ -991,6 +1003,7 @@ public final class CampaignCheckpointStore {
             props.setProperty("campaignSupplies", String.valueOf(cp.campaignSupplies));
             props.setProperty("campaignAmmo", String.valueOf(cp.campaignAmmo));
             props.setProperty("campaignSalvage", String.valueOf(cp.campaignSalvage));
+            props.setProperty("lastSensorSweepAtSec", String.valueOf(cp.lastSensorSweepAtSec));
             props.setProperty("travelFuelAttritionRemainder", String.valueOf(cp.travelFuelAttritionRemainder));
             props.setProperty("travelSupplyAttritionRemainder", String.valueOf(cp.travelSupplyAttritionRemainder));
             props.setProperty("travelAmmoAttritionRemainder", String.valueOf(cp.travelAmmoAttritionRemainder));
@@ -1016,6 +1029,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("strategicDivisions", cp.strategicDivisions);
             props.setProperty("campaignForces", cp.campaignForces);
             props.setProperty("shipCampaignForceIds", cp.shipCampaignForceIds);
+            props.setProperty("campaignIntelTick", String.valueOf(cp.campaignIntelTick));
+            props.setProperty("campaignFleetIntel", cp.campaignFleetIntel);
+            props.setProperty("campaignOperationIntel", cp.campaignOperationIntel);
             props.setProperty("enemyPlayerContact", cp.enemyPlayerContact);
             props.setProperty("nextPendingHostileReinforcementId", String.valueOf(cp.nextPendingHostileReinforcementId));
             props.setProperty("pendingHostileReinforcements", cp.pendingHostileReinforcements);

@@ -302,11 +302,16 @@ class CampaignPhaseSevenEnvironmentPresentationTest {
                 target.ownerFaction == null ? "NONE" : target.ownerFaction.name(),
                 ignored -> FactionAttackCommitmentSystem.Validation.allow());
         assertTrue(commitment.accepted());
+        CampaignSystem.recordCampaignOperationIntelObservation(ctx, commitment.operationId(),
+                CampaignSystem.CampaignIntelObservationSource.OPERATION_INTEL,
+                CampaignSystem.CampaignIntelPrecision.STRATEGIC_ONLY,
+                st.campaignIntelTick, st.campaignIntelTick + 2,
+                0.8, target.x, target.y, 0.0);
 
         List<CampaignSystem.CampaignInvasionArrow> arrows = CampaignSystem.campaignInvasionArrows(ctx);
         assertTrue(arrows.stream().anyMatch(arrow -> arrow.faction == Faction.ENEMY
                         && arrow.targetLocationId.equals(target.id)
-                        && arrow.label.toUpperCase(java.util.Locale.US).contains("ATTACK")),
+                        && arrow.label.toUpperCase(java.util.Locale.US).contains("OPERATION")),
                 "active commitments should be exposed as attack arrows on the map");
     }
 

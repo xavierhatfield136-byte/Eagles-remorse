@@ -9,6 +9,7 @@ import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
@@ -173,7 +174,7 @@ class FocusedFactionAttackChecklistTest {
     }
 
     @Test
-    void ownershipBoundaryRequiresResolvingCommitmentAndMinimumDuration() {
+    void ownershipBoundaryRequiresResolvingCommitmentAndMinimumDuration() throws Exception {
         String property = "game.feature.focused_faction_attacks";
         String previous = System.getProperty(property);
         System.setProperty(property, "true");
@@ -184,19 +185,33 @@ class FocusedFactionAttackChecklistTest {
                     .filter(location -> location != null && !location.id.equals(origin.id)
                             && location.ownerFaction != Faction.ENEMY)
                     .findFirst().orElseThrow();
+            CampaignSystem.CampaignForceSummary attacker = CampaignSystem.campaignForceSummaries(ctx).stream()
+                    .filter(force -> force.faction == Faction.ENEMY)
+                    .findFirst().orElseThrow();
             assertFalse(CampaignSystem.committedOwnershipAuthorizedForTest(ctx, Faction.ENEMY, target.id));
             FactionAttackCommitmentSystem.Result result = FactionAttackCommitmentSystem.request(
                     ctx.campaign.factionAttackCommitments,
                     new FactionAttackCommitmentSystem.Request(Faction.ENEMY,
-                            origin.id, target.id, 0, 0, 120),
+                            origin.id, target.id, attacker.id, 0, 120),
                     target.ownerFaction.name(), ignored -> FactionAttackCommitmentSystem.Validation.allow());
             assertTrue(result.accepted());
-            FactionAttackCommitmentSystem.setPhase(ctx.campaign.factionAttackCommitments,
-                    result.operationId(), FactionAttackCommitmentSystem.Phase.RESOLVING);
+            prepareCaptureForce(ctx, attacker.id, result.operationId(), target);
+            assertTrue(FactionAttackCommitmentSystem.setPhase(ctx.campaign.factionAttackCommitments,
+                    result.operationId(), FactionAttackCommitmentSystem.Phase.ACTIVE));
+            assertTrue(FactionAttackCommitmentSystem.setPhase(ctx.campaign.factionAttackCommitments,
+                    result.operationId(), FactionAttackCommitmentSystem.Phase.ASSAULTING));
+            assertTrue(FactionAttackCommitmentSystem.setPhase(ctx.campaign.factionAttackCommitments,
+                    result.operationId(), FactionAttackCommitmentSystem.Phase.RESOLVING));
             ctx.campaign.sectorElapsed = 19.0;
             assertFalse(CampaignSystem.committedOwnershipAuthorizedForTest(ctx, Faction.ENEMY, target.id));
             ctx.campaign.sectorElapsed = 20.0;
             assertTrue(CampaignSystem.committedOwnershipAuthorizedForTest(ctx, Faction.ENEMY, target.id));
+            String evidence = CampaignSystem.committedOwnershipEvidenceForTest(ctx, Faction.ENEMY, target.id);
+            assertTrue(evidence.contains(result.operationId()));
+            assertTrue(evidence.contains("attacker=" + attacker.id));
+            assertTrue(evidence.contains("defender="));
+            assertTrue(evidence.contains("arrival=RESOLVING"));
+            assertTrue(evidence.contains("outcome"));
         } finally {
             if (previous == null) System.clearProperty(property);
             else System.setProperty(property, previous);
@@ -221,6 +236,11 @@ class FocusedFactionAttackChecklistTest {
                     target.ownerFaction == null ? "NONE" : target.ownerFaction.name(),
                     ignored -> FactionAttackCommitmentSystem.Validation.allow());
             assertTrue(result.accepted());
+            CampaignSystem.recordCampaignOperationIntelObservation(ctx, result.operationId(),
+                    CampaignSystem.CampaignIntelObservationSource.OPERATION_INTEL,
+                    CampaignSystem.CampaignIntelPrecision.STRATEGIC_ONLY,
+                    ctx.campaign.campaignIntelTick, ctx.campaign.campaignIntelTick + 2,
+                    0.8, target.x, target.y, 0.0);
             assertEquals(1, CampaignSystem.campaignInvasionArrows(ctx).size(),
                     "arrows must project commitments rather than unrelated fleet routes");
 
@@ -338,5 +358,50 @@ class FocusedFactionAttackChecklistTest {
 
     private static int alpha(BufferedImage image, int x, int y) {
         return (image.getRGB(x, y) >>> 24) & 0xff;
+    }
+
+    private static void prepareCaptureForce(GameContext ctx,
+                                            int forceId,
+                                            String operationId,
+                                            CampaignSystem.CampaignLocation target) throws Exception {
+        Field forcesField = ctx.campaign.getClass().getField("campaignForces");
+        Object force = null;
+        for (Object candidate : (List<?>) forcesField.get(ctx.campaign)) {
+            if (intField(candidate, "id") == forceId) {
+                force = candidate;
+                break;
+            }
+        }
+        if (force == null) throw new AssertionError("missing campaign force " + forceId);
+        setField(force, "assignedOperationId", operationId);
+        setField(force, "destinationLocationId", target.id);
+        setEnum(force, "mission", "CAPTURE");
+        setEnum(force, "state", "MOVING");
+        setEnum(force, "missionState", "ARRIVED");
+        setField(force, "x", target.x);
+        setField(force, "y", target.y);
+    }
+
+    private static int intField(Object target, String name) {
+        try {
+            Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            return field.getInt(target);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static void setField(Object target, String name, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void setEnum(Object target, String name, String value) throws Exception {
+        Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, Enum.valueOf((Class<? extends Enum>) field.getType(), value));
     }
 }
