@@ -447,9 +447,11 @@ class CampaignOvermapCheckpointTest {
     }
 
     private static Class<?> findNestedEnum(String simpleName) {
-        for (Class<?> nested : CampaignSystem.class.getDeclaredClasses()) {
-            if (nested != null && simpleName.equals(nested.getSimpleName())) {
-                return nested;
+        for (Class<?> owner = CampaignSystem.class; owner != null; owner = owner.getSuperclass()) {
+            for (Class<?> nested : owner.getDeclaredClasses()) {
+                if (nested != null && simpleName.equals(nested.getSimpleName())) {
+                    return nested;
+                }
             }
         }
         throw new AssertionError("Missing nested enum: " + simpleName);

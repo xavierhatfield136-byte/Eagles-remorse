@@ -290,8 +290,10 @@ class OwnerPlaytestVerticalSliceThreeTest {
     }
 
     private static Class<?> findNestedEnum(String simpleName) {
-        for (Class<?> nested : CampaignSystem.class.getDeclaredClasses()) {
-            if (nested.getSimpleName().equals(simpleName)) return nested;
+        for (Class<?> owner = CampaignSystem.class; owner != null; owner = owner.getSuperclass()) {
+            for (Class<?> nested : owner.getDeclaredClasses()) {
+                if (nested.getSimpleName().equals(simpleName)) return nested;
+            }
         }
         throw new AssertionError("missing nested enum " + simpleName);
     }

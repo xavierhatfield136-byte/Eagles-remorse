@@ -2,8 +2,12 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.awt.Canvas;
+import java.awt.Rectangle;
+import java.awt.event.MouseEvent;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,7 +38,10 @@ class CampaignOvermapEncounterFlowTest {
         double start = st.sectorElapsed;
         CampaignSystem.update(ctx, 10.0);
         assertEquals(start + 10.0, st.sectorElapsed, 0.001);
-        assertEquals(1.0, CampaignSystem.campaignTimeScale(ctx), 0.001);
+        assertEquals(1.0, CampaignSystem.campaignTimeScale(ctx), 0.001,
+                () -> "unexpected prompt: " + ctx.ui.strategicEncounterPrompt.kind
+                        + " title=" + ctx.ui.strategicEncounterPrompt.title
+                        + " location=" + ctx.ui.strategicEncounterPrompt.location);
 
         ctx.ui.showCampaignHubMenu("test-hub", "REPAIR");
         CampaignSystem.update(ctx, 10.0);
@@ -169,6 +176,506 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void visibleHostileCampaignForceAtPlayerMarkerCreatesDirectCombatPrompt() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object playerForce = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PLAYER_FLEET, Faction.ALLY,
+                "Blue Command Fleet", "Blue command flagship", "Lead the campaign fleet", 120.0, 120.0);
+        setDouble(playerForce, "x", 120.0);
+        setDouble(playerForce, "y", 120.0);
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Shadow", "Red route contact", "close with Blue command", 2500.0, 2500.0);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 60.0);
+        setDouble(hostile, "contactConfidence", 0.42);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.SUSPECTED);
+
+        invokeForceEncounterUpdate(ctx, st);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals(getInt(hostile, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
+        assertEquals(2500.0, getDouble(playerForce, "x"), 0.001,
+                "direct contact checks should sync the Blue force to the live overmap player marker");
+    }
+
+    @Test
+    void hostileFleetOverlapStartsCombatEvenDuringOpeningGrace() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 30.0;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
+                "Regression Red Opening Interceptor", "Red close intercept", "force contact with Blue command",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        setBoolean(hostile, "simulationActive", true);
+        setEnumByName(hostile, "mission", "INTERCEPT");
+        setEnumByName(hostile, "intent", "INTERCEPTING");
+        setEnumByName(hostile, "state", "MOVING");
+        setDouble(hostile, "strength", 62.0);
+        setDouble(hostile, "contactConfidence", 0.82);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        invokeForceEncounterUpdate(ctx, st);
+
+        assertTrue(ctx.ui.strategicEncounterPrompt.active,
+                "opening grace should not let a confirmed hostile overlap the player indefinitely");
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals(getInt(hostile, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
+    }
+
+    @Test
+    void alliedGreenAndRedFleetOverlapFormsNpcBattle() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.sectorElapsed = 30.0;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object red = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Stack Contact", "Red local intercept", "test hostile stacking",
+                2600.0, 2500.0);
+        Object green = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ALLY,
+                "Regression Green Stack Response", "Green response patrol", "test allied response",
+                2640.0, 2500.0);
+        setBoolean(red, "simulationActive", true);
+        setBoolean(green, "simulationActive", true);
+        setDouble(red, "strength", 70.0);
+        setDouble(green, "strength", 70.0);
+        setEnumByName(red, "intent", "INTERCEPTING");
+        setEnumByName(green, "intent", "INTERCEPTING");
+        setEnumByName(red, "state", "IDLE");
+        setEnumByName(green, "state", "IDLE");
+
+        invokeNpcBattleResolution(ctx, st, 0.2);
+
+        assertFalse(st.campaignBattles.isEmpty(), "overlapping allied and Red fleets should resolve into a battle");
+        assertEquals("ENGAGING", getObject(red, "state").toString());
+        assertEquals("ENGAGING", getObject(green, "state").toString());
+    }
+
+    @Test
+    void focusedAttackModeStillShowsPhysicalFleetInvasionArrows() throws Exception {
+        String previous = System.getProperty("game.feature.focused_faction_attacks");
+        System.setProperty("game.feature.focused_faction_attacks", "true");
+        try {
+            GameContext ctx = initializedCampaignContext();
+            CampaignSystem.CampaignState st = ctx.campaign;
+            CampaignSystem.CampaignLocation source = firstLocationOwnedBy(ctx, Faction.ENEMY);
+            CampaignSystem.CampaignLocation target = firstMainLocationOwnedBy(ctx, Faction.TEAM_C);
+            if (target == null) target = firstMainLocationOwnedBy(ctx, Faction.ALLY);
+            if (target == null) target = firstMainLocationNotOwnedBy(ctx, Faction.ENEMY);
+            assertNotNull(source);
+            assertNotNull(target);
+
+            Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                    "Regression Red Invasion Fleet", source.name, "raid a green zone",
+                    source.x, source.y);
+            setBoolean(force, "simulationActive", true);
+            setEnumByName(force, "mission", "RAID");
+            setEnumByName(force, "intent", "INTERCEPTING");
+            setEnumByName(force, "state", "MOVING");
+            setObject(force, "sourceLocationId", source.id);
+            setObject(force, "homeBaseId", source.id);
+            setObject(force, "destinationLocationId", target.id);
+            setDouble(force, "targetX", target.x);
+            setDouble(force, "targetY", target.y);
+            setDouble(force, "strength", 72.0);
+            setDouble(force, "contactConfidence", 0.92);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+            int forceId = getInt(force, "id");
+            String targetId = target.id;
+            assertTrue(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                            .anyMatch(arrow -> arrow.forceId == forceId
+                                    && arrow.faction == Faction.ENEMY
+                                    && targetId.equals(arrow.targetLocationId)),
+                    "focused attack visuals should still expose live fleets moving to invade a zone");
+        } finally {
+            if (previous == null) System.clearProperty("game.feature.focused_faction_attacks");
+            else System.setProperty("game.feature.focused_faction_attacks", previous);
+        }
+    }
+
+    @Test
+    void largeInvasionArrowsIgnoreSameFactionInternalMovement() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation source = firstMainLocationNotOwnedBy(ctx, Faction.ENEMY);
+        CampaignSystem.CampaignLocation target = anotherMainLocation(ctx, source);
+        assertNotNull(source);
+        assertNotNull(target);
+        source.ownerFaction = Faction.TEAM_C;
+        target.ownerFaction = Faction.TEAM_C;
+
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, source.ownerFaction,
+                "Regression Internal Movement Fleet", source.name, "move inside friendly territory",
+                source.x, source.y);
+        setBoolean(force, "simulationActive", true);
+        setEnumByName(force, "mission", "RAID");
+        setEnumByName(force, "intent", "INTERCEPTING");
+        setEnumByName(force, "state", "MOVING");
+        setObject(force, "sourceLocationId", source.id);
+        setObject(force, "homeBaseId", source.id);
+        setObject(force, "destinationLocationId", target.id);
+        setDouble(force, "targetX", target.x);
+        setDouble(force, "targetY", target.y);
+        setDouble(force, "strength", 64.0);
+        setDouble(force, "contactConfidence", 1.0);
+        setBoolean(force, "visibleToPlayer", true);
+        setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        int forceId = getInt(force, "id");
+        assertFalse(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                        .anyMatch(arrow -> arrow.forceId == forceId),
+                "same-faction movement should keep fleet movement arrows but not create large invasion arrows");
+    }
+
+    @Test
+    void largeInvasionArrowsRequireOffensiveCrossFactionMovement() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation source = firstLocationOwnedBy(ctx, Faction.ENEMY);
+        CampaignSystem.CampaignLocation target = firstMainLocationNotOwnedBy(ctx, Faction.ENEMY);
+        assertNotNull(source);
+        assertNotNull(target);
+
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Regression Red Logistics Fleet", source.name, "cross-faction reposition without invasion",
+                source.x, source.y);
+        setBoolean(force, "simulationActive", true);
+        setEnumByName(force, "mission", "REINFORCE");
+        setEnumByName(force, "intent", "REINFORCING");
+        setEnumByName(force, "state", "MOVING");
+        setObject(force, "sourceLocationId", source.id);
+        setObject(force, "homeBaseId", source.id);
+        setObject(force, "destinationLocationId", target.id);
+        setDouble(force, "targetX", target.x);
+        setDouble(force, "targetY", target.y);
+        setDouble(force, "strength", 68.0);
+        setDouble(force, "contactConfidence", 0.9);
+        setBoolean(force, "visibleToPlayer", true);
+        setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        int forceId = getInt(force, "id");
+        assertFalse(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                        .anyMatch(arrow -> arrow.forceId == forceId),
+                "cross-faction logistics and reinforcement should not be promoted to strategic invasion arrows");
+
+        setEnumByName(force, "mission", "RAID");
+        assertTrue(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                        .anyMatch(arrow -> arrow.forceId == forceId
+                                && arrow.faction == Faction.ENEMY
+                                && target.id.equals(arrow.targetLocationId)),
+                "an actual offensive cross-faction fleet should produce a large invasion arrow");
+    }
+
+    @Test
+    void counterSortiesAndEnemyActivityAnchorsDoNotCreateLargeInvasionArrows() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation source = firstMainLocationOwnedBy(ctx, Faction.TEAM_C);
+        CampaignSystem.CampaignLocation target = firstMainLocationOwnedBy(ctx, Faction.ENEMY);
+        CampaignSystem.CampaignLocation enemyActivity = findAreaOfInterest(ctx, "aoi-threat-1");
+        assertNotNull(source);
+        assertNotNull(target);
+        assertNotNull(enemyActivity);
+        enemyActivity.discovered = true;
+
+        Object sortie = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
+                "Regression Green Counter Sortie", source.name, "counter pressure",
+                source.x + 40.0, source.y);
+        setBoolean(sortie, "simulationActive", true);
+        setEnumByName(sortie, "mission", "COUNTER_SORTIE");
+        setEnumByName(sortie, "state", "MOVING");
+        setObject(sortie, "sourceLocationId", source.id);
+        setObject(sortie, "homeBaseId", source.id);
+        setObject(sortie, "destinationLocationId", target.id);
+        setDouble(sortie, "targetX", target.x);
+        setDouble(sortie, "targetY", target.y);
+        setDouble(sortie, "strength", 74.0);
+        setDouble(sortie, "contactConfidence", 0.95);
+        setBoolean(sortie, "visibleToPlayer", true);
+        setObject(sortie, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        int sortieId = getInt(sortie, "id");
+        assertFalse(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                        .anyMatch(arrow -> arrow.forceId == sortieId),
+                "counter-task fleets should keep normal movement arrows, not the large invasion arrow layer");
+
+        setEnumByName(sortie, "mission", "RAID");
+        setObject(sortie, "destinationLocationId", enemyActivity.id);
+        setDouble(sortie, "targetX", enemyActivity.x);
+        setDouble(sortie, "targetY", enemyActivity.y);
+
+        assertFalse(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                        .anyMatch(arrow -> arrow.forceId == sortieId),
+                "enemy activity markers are not territorial invasion endpoints");
+    }
+
+    @Test
+    void randomSiteClickWinsOverNearbyFleetMarkerAndCanBeEntered() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation site = firstRandomSite(ctx);
+        assertNotNull(site);
+        site.discovered = true;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Site-Side Patrol", "nearby patrol", "test click priority",
+                site.x + 58.0, site.y);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 42.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        int hostileId = getInt(hostile, "id");
+        CampaignSystem.recordCampaignFleetIntelObservation(ctx, hostileId,
+                CampaignSystem.CampaignIntelObservationSource.PLAYER_SENSOR,
+                CampaignSystem.CampaignIntelPrecision.EXACT,
+                st.campaignIntelTick,
+                st.campaignIntelTick + 20,
+                0.95,
+                site.x + 58.0,
+                site.y,
+                86.0);
+
+        clickGalaxyMap(ctx, site.x, site.y, 1);
+
+        CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
+        assertNotNull(selected);
+        assertEquals(site.id, selected.id,
+                () -> "clicked " + site.id + " " + site.name + " but selected " + selected.id + " " + selected.name);
+        assertFalse(CampaignSystem.hasSelectedCampaignContactTarget(ctx));
+
+        st.playerGalaxyX = site.x;
+        st.playerGalaxyY = site.y;
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        assertEquals(site.id, st.dockedGalaxyLocationId);
+    }
+
+    @Test
+    void nearbySiteActionsRemainAvailableWithoutExplicitSelection() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation site = firstRandomSite(ctx);
+        assertNotNull(site);
+        site.discovered = true;
+        st.selectedGalaxyLocationId = "";
+        st.selectedFreeGalaxyTargetX = Double.NaN;
+        st.selectedFreeGalaxyTargetY = Double.NaN;
+        st.playerGalaxyX = site.x;
+        st.playerGalaxyY = site.y;
+
+        CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
+        assertNotNull(selected);
+        assertEquals(site.id, selected.id);
+        assertTrue(CampaignSystem.canEnterSelectedLocalEncounter(ctx));
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> "ENTER_SITE".equals(action.id) && action.enabled));
+    }
+
+    @Test
+    void selectedFleetContactCanBeUsedAsNavigationCourse() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Fleet Course", "direct contact", "test fleet course",
+                st.playerGalaxyX + 500.0, st.playerGalaxyY + 40.0);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 48.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Fleet Course",
+                "Tracked contact",
+                "Tracked",
+                st.playerGalaxyX + 500.0,
+                st.playerGalaxyY + 40.0,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.campaignVisibleActions(ctx).stream()
+                .anyMatch(action -> "ENGAGE_COURSE".equals(action.id) && action.enabled));
+        assertTrue(CampaignSystem.startTravelToSelectedLocation(ctx));
+        assertTrue(st.galaxyTravel.traveling);
+        assertTrue(st.galaxyTravel.freeTravel);
+        assertEquals(st.playerGalaxyX + 500.0, st.galaxyTravel.targetX, 1e-9);
+    }
+
+    @Test
+    void selectedLiveEnemyFleetCanBeDirectlyEngagedButStaleGhostCannot() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2600.0;
+        st.playerGalaxyY = 2600.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Direct Engage", "direct contact", "test direct fleet engagement",
+                st.playerGalaxyX + 80.0, st.playerGalaxyY);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 55.0);
+        setDouble(hostile, "contactConfidence", 0.9);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Live Hostile Contact",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 80.0,
+                st.playerGalaxyY,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertTrue(ctx.ui.strategicEncounterPrompt.active);
+        assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE, ctx.ui.strategicEncounterPrompt.kind);
+        assertEquals(getInt(hostile, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
+
+        ctx.ui.clearStrategicEncounterPrompt();
+        CampaignSystem.clearSelectedCampaignContact(ctx);
+        Object stale = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Ghost Contact", "stale contact", "test stale contact rejection",
+                4800.0, 4800.0);
+        setBoolean(stale, "simulationActive", true);
+        setDouble(stale, "strength", 55.0);
+        setDouble(stale, "contactConfidence", 0.1);
+        setDouble(stale, "lastKnownAgeSec", 120.0);
+        setBoolean(stale, "visibleToPlayer", false);
+        setObject(stale, "contactState", CampaignSystem.CampaignForceContactState.STALE);
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Ghost Contact",
+                "STALE CONTACT",
+                "Last Known",
+                4800.0,
+                4800.0,
+                true,
+                true);
+
+        assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void destroyedConcreteFleetIsRemovedBeforeItCanBecomeOvermapGhost() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2600.0;
+        st.playerGalaxyY = 2600.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Defeated Concrete Fleet", "direct contact", "test defeated concrete force",
+                st.playerGalaxyX + 80.0, st.playerGalaxyY);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 55.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        Ship redShip = new FleetShip(ShipRole.PATROL, Faction.ENEMY, st.playerGalaxyX + 80.0, st.playerGalaxyY);
+        ctx.ships.add(redShip);
+        invokeRegisterShipWithCampaignForce(st, redShip, hostile);
+        st.galaxyEncounterActive = true;
+        st.activeGalaxyEncounterForceIds.add(getInt(hostile, "id"));
+        redShip.alive = false;
+        redShip.hp = 0;
+
+        invokeCampaignForceSimulation(ctx, st, 0.2);
+
+        assertTrue(getBoolean(hostile, "destroyed"), "force should be removed once its last real tactical member is gone");
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Defeated Concrete Fleet",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 80.0,
+                st.playerGalaxyY,
+                true,
+                true);
+
+        assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void takeCommandOfDirectFleetContactLaunchesTacticalBattleInsteadOfAutoResolve() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2700.0;
+        st.playerGalaxyY = 2700.0;
+
+        Object hostile = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Manual Fight", "direct contact", "test manual fleet fight",
+                st.playerGalaxyX + 70.0, st.playerGalaxyY);
+        setBoolean(hostile, "simulationActive", true);
+        setDouble(hostile, "strength", 62.0);
+        setDouble(hostile, "contactConfidence", 0.95);
+        setDouble(hostile, "lastKnownAgeSec", 0.0);
+        setBoolean(hostile, "visibleToPlayer", true);
+        setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Manual Fight",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 70.0,
+                st.playerGalaxyY,
+                true,
+                true);
+
+        assertTrue(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertFalse(st.strategicOvermapMode);
+        assertTrue(st.galaxyEncounterActive);
+        assertFalse(getBoolean(hostile, "destroyed"));
+    }
+
+    @Test
+    void campaignSeedsActiveLivingWarFleetsForRedGreenAndYellow() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        invokeCampaignForceSeedSync(ctx, ctx.campaign);
+
+        List<CampaignSystem.CampaignForceSummary> summaries = CampaignSystem.campaignForceSummaries(ctx);
+        long red = summaries.stream().filter(force -> force.faction == Faction.ENEMY).count();
+        long green = summaries.stream().filter(force -> force.faction == Faction.TEAM_C || force.faction == Faction.ALLY).count();
+        long yellow = summaries.stream().filter(force -> force.faction == Faction.BRIGHT_YELLOW || force.faction == Faction.TEAM_D).count();
+
+        assertTrue(red >= 6, "Red should maintain multiple active theater fleets");
+        assertTrue(green >= 6, "Green should maintain visible patrol, escort, and counter-task fleets");
+        assertTrue(yellow >= 6, "Yellow should maintain trade, security, and miner traffic");
+        assertTrue(summaries.stream().anyMatch(force -> force.name.contains("Counter Task Force")
+                        && (force.faction == Faction.TEAM_C || force.faction == Faction.ALLY)
+                        && force.destinationLocationId != null
+                        && !force.destinationLocationId.isBlank()),
+                "Green should project active counter-task forces with named destinations");
+        assertTrue(summaries.stream().anyMatch(force -> force.name.contains("Civilian Security")
+                        && (force.faction == Faction.BRIGHT_YELLOW || force.faction == Faction.TEAM_D)),
+                "Yellow should contribute visible civilian security traffic");
+    }
+
+    @Test
     void pointOfInterestDefenseContactFoldsIntoMissionPromptInsteadOfOpenSpaceClash() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -274,6 +781,82 @@ class CampaignOvermapEncounterFlowTest {
         method.invoke(null, ctx, st, dt);
     }
 
+    private static void invokeForceEncounterUpdate(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "updateCampaignForceEncounterTrigger",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
+    }
+
+    private static void invokeCampaignForceSeedSync(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "syncCampaignForceSimulationSeeds",
+                GameContext.class,
+                CampaignSystem.CampaignState.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st);
+    }
+
+    private static void invokeCampaignForceSimulation(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "updateCampaignForceSimulation",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                double.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, dt);
+    }
+
+    private static void invokeNpcBattleResolution(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "resolveNpcFactionFleetBattles",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                double.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, dt);
+    }
+
+    private static Object invokeEnsureCampaignForce(CampaignSystem.CampaignState st,
+                                                    CampaignSystem.CampaignForceKind kind,
+                                                    Faction faction,
+                                                    String name,
+                                                    String origin,
+                                                    String purpose,
+                                                    double x,
+                                                    double y) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "ensureCampaignForce",
+                CampaignSystem.CampaignState.class,
+                CampaignSystem.CampaignForceKind.class,
+                Faction.class,
+                String.class,
+                String.class,
+                String.class,
+                double.class,
+                double.class
+        );
+        method.setAccessible(true);
+        return method.invoke(null, st, kind, faction, name, origin, purpose, x, y);
+    }
+
+    private static void invokeRegisterShipWithCampaignForce(CampaignSystem.CampaignState st, Ship ship, Object force) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "registerShipWithCampaignForce",
+                CampaignSystem.CampaignState.class,
+                Ship.class,
+                force.getClass()
+        );
+        method.setAccessible(true);
+        method.invoke(null, st, ship, force);
+    }
+
     private static boolean launchGalaxySearchGroupEncounter(GameContext ctx, CampaignSystem.CampaignState st, Object group) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "launchGalaxySearchGroupEncounter",
@@ -316,11 +899,90 @@ class CampaignOvermapEncounterFlowTest {
         return null;
     }
 
+    private static CampaignSystem.CampaignLocation findMainLocation(GameContext ctx, String id) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && id.equals(location.id)) return location;
+        }
+        return null;
+    }
+
     private static CampaignSystem.CampaignLocation firstCombatMission(GameContext ctx) {
         for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
             if (location != null && location.primaryMission && "poi-08".equals(location.id)) return location;
         }
         return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstMainLocationOwnedBy(GameContext ctx, Faction faction) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && !location.destroyed && location.ownerFaction == faction) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstMainLocationNotOwnedBy(GameContext ctx, Faction faction) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && !location.destroyed && location.ownerFaction != null && location.ownerFaction != faction) {
+                return location;
+            }
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation anotherMainLocation(GameContext ctx,
+                                                                       CampaignSystem.CampaignLocation excluded) {
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && !location.destroyed && location != excluded) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstLocationOwnedBy(GameContext ctx, Faction faction) {
+        for (CampaignSystem.CampaignLocation location : allKnownCampaignLocations(ctx)) {
+            if (location != null && !location.destroyed && location.ownerFaction == faction) return location;
+        }
+        return null;
+    }
+
+    private static CampaignSystem.CampaignLocation firstRandomSite(GameContext ctx) {
+        CampaignSystem.CampaignLocation fallback = null;
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
+            if (location == null || location.destroyed) continue;
+            if (location.type == CampaignSystem.CampaignLocationType.RESOURCE_ZONE
+                    || location.type == CampaignSystem.CampaignLocationType.SALVAGE_FIELD
+                    || location.facilityType == CampaignSystem.CampaignFacilityType.DERELICT_BATTLEFIELD
+                    || location.facilityType == CampaignSystem.CampaignFacilityType.MINING_OPERATION) {
+                if (fallback == null) fallback = location;
+                CampaignSystem.CampaignLocation offsetHit =
+                        CampaignSystem.nearestCampaignLocation(ctx, location.x + 40.0, location.y, 120.0);
+                if (offsetHit == location) return location;
+            }
+        }
+        return fallback;
+    }
+
+    private static List<CampaignSystem.CampaignLocation> allKnownCampaignLocations(GameContext ctx) {
+        ArrayList<CampaignSystem.CampaignLocation> out = new ArrayList<>();
+        out.addAll(CampaignSystem.mainCampaignLocations(ctx));
+        out.addAll(CampaignSystem.campaignAreasOfInterest(ctx));
+        return out;
+    }
+
+    private static void clickGalaxyMap(GameContext ctx, double worldX, double worldY, int clickCount) {
+        int viewportW = 1000;
+        int viewportH = 800;
+        ctx.ui.mapOpen = true;
+        ctx.ui.strategicMapZoom = 2.2;
+        ctx.ui.strategicMapFocusX = worldX;
+        ctx.ui.strategicMapFocusY = worldY;
+        Rectangle rect = Renderer.getStrategicMapInnerRect(viewportW, viewportH, true);
+        double nx = (worldX - UISystem.strategicMapWorldMinX(ctx)) / UISystem.strategicMapViewWidth(ctx);
+        double ny = (worldY - UISystem.strategicMapWorldMinY(ctx)) / UISystem.strategicMapViewHeight(ctx);
+        int sx = rect.x + (int) Math.round(nx * rect.width);
+        int sy = rect.y + (int) Math.round(ny * rect.height);
+        MouseEvent event = new MouseEvent(new Canvas(), MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(),
+                MouseEvent.BUTTON1_DOWN_MASK, sx, sy, clickCount, false, MouseEvent.BUTTON1);
+        UISystem.handleMapClick(ctx, event, viewportW, viewportH);
     }
 
     private static void setDouble(Object target, String fieldName, double value) throws Exception {
@@ -333,6 +995,12 @@ class CampaignOvermapEncounterFlowTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.getInt(target);
+    }
+
+    private static double getDouble(Object target, String fieldName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.getDouble(target);
     }
 
     private static void setInt(Object target, String fieldName, int value) throws Exception {
@@ -356,6 +1024,20 @@ class CampaignOvermapEncounterFlowTest {
     private static void setObject(Object target, String fieldName, Object value) throws Exception {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static void setBoolean(Object target, String fieldName, boolean value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.setBoolean(target, value);
+    }
+
+    private static void setEnumByName(Object target, String fieldName, String enumName) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        Enum<?> value = Enum.valueOf((Class<? extends Enum>) field.getType(), enumName);
         field.set(target, value);
     }
 }

@@ -286,7 +286,8 @@ public class Renderer {
             FLEET_ROSTER,
             ORE_SALE_AMOUNT,
             CONFIRM,
-            CLOSE
+            CLOSE,
+            STRATEGIC_ENCOUNTER
         }
 
         public final Kind kind;
@@ -9742,6 +9743,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             drawSelectedTerritoryEdges(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawPlayerCampaignSensorRange(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignInvasionArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
+            drawCampaignFleetMovementArrows(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
             drawCampaignTravelPath(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH);
         } else {
             drawTacticalMissionMapEntityLayer(g2, ctx, m, worldMinX, worldMinY, visibleWorldW, visibleWorldH,
@@ -10190,6 +10192,58 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         g2.setComposite(oldComposite);
         g2.setStroke(oldStroke);
         g2.setFont(oldFont);
+    }
+
+    private static void drawCampaignFleetMovementArrows(Graphics2D g2, GameContext ctx, Rectangle mapRect,
+                                                        double worldMinX, double worldMinY, double worldW, double worldH) {
+        if (g2 == null || ctx == null || mapRect == null) return;
+        List<CampaignSystem.CampaignForceSummary> forces = CampaignSystem.campaignForceSummaries(ctx);
+        if (forces.isEmpty()) return;
+        Stroke oldStroke = g2.getStroke();
+        Composite oldComposite = g2.getComposite();
+        int lane = 0;
+        for (CampaignSystem.CampaignForceSummary force : forces) {
+            if (!shouldDrawCampaignFleetMovementArrow(force)) continue;
+            int ax = strategicMapPixelX(mapRect, worldMinX, worldW, force.x);
+            int ay = strategicMapPixelY(mapRect, worldMinY, worldH, force.y);
+            int bx = strategicMapPixelX(mapRect, worldMinX, worldW, force.targetX);
+            int by = strategicMapPixelY(mapRect, worldMinY, worldH, force.targetY);
+            double dx = bx - ax;
+            double dy = by - ay;
+            double len = Math.hypot(dx, dy);
+            if (len < 16.0) continue;
+            double nx = -dy / len;
+            double ny = dx / len;
+            double offset = ((lane++ % 3) - 1) * 2.4;
+            ax += (int) Math.round(nx * offset);
+            ay += (int) Math.round(ny * offset);
+            bx += (int) Math.round(nx * offset);
+            by += (int) Math.round(ny * offset);
+
+            Color color = campaignInvasionArrowColor(force.faction, 220);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.18f));
+            g2.setStroke(new BasicStroke(5.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(campaignInvasionArrowColor(force.faction, 118));
+            g2.drawLine(ax, ay, bx, by);
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, force.hostile ? 0.82f : 0.66f));
+            g2.setStroke(new BasicStroke(force.hostile ? 2.4f : 2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                    10.0f, force.hostile ? new float[]{11.0f, 5.0f} : new float[]{8.0f, 6.0f}, 0.0f));
+            g2.setColor(color);
+            g2.drawLine(ax, ay, bx, by);
+            drawCampaignInvasionArrowHead(g2, ax, ay, bx, by, color);
+        }
+        g2.setComposite(oldComposite);
+        g2.setStroke(oldStroke);
+    }
+
+    private static boolean shouldDrawCampaignFleetMovementArrow(CampaignSystem.CampaignForceSummary force) {
+        if (force == null) return false;
+        if (!Double.isFinite(force.x) || !Double.isFinite(force.y)
+                || !Double.isFinite(force.targetX) || !Double.isFinite(force.targetY)) return false;
+        if (GameMath.dist2(force.x, force.y, force.targetX, force.targetY) < 45.0 * 45.0) return false;
+        if (!force.hostile) return true;
+        return force.visibleToPlayer && force.contactState != CampaignSystem.CampaignForceContactState.STALE
+                && force.contactConfidence >= 0.18;
     }
 
     private static void drawCampaignBubbleArrow(Graphics2D g2, int ax, int ay, int bx, int by, Faction faction) {
@@ -12233,6 +12287,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     public static CampaignHubClickTarget campaignHubClickTargetAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.ui == null || !CampaignSystem.isStrategicGalaxyMapMode(ctx)) return null;
+        if (ctx.ui.strategicEncounterPrompt.active
+                && !ctx.ui.campaignHubMenu.active
+                && !ctx.ui.campaignActionConfirm.active) {
+            return strategicEncounterClickTargetAt(ctx, viewW, viewH, mouseX, mouseY);
+        }
         if (ctx.ui.campaignActionConfirm.active) {
             Rectangle overlay = campaignActionConfirmOverlayRect(viewW, viewH);
             Rectangle closeRect = new Rectangle(overlay.x + overlay.width - 92, overlay.y + overlay.height - 38, 78, 22);
@@ -12281,6 +12340,88 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (rect != null && rect.contains(mouseX, mouseY)) return target;
         }
         return null;
+    }
+
+    private static CampaignHubClickTarget strategicEncounterClickTargetAt(GameContext ctx,
+                                                                          int viewW,
+                                                                          int viewH,
+                                                                          int mouseX,
+                                                                          int mouseY) {
+        if (ctx == null || ctx.ui == null || !ctx.ui.strategicEncounterPrompt.active) return null;
+        UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        Rectangle[] chips = strategicEncounterChipRects(ctx, viewW, viewH);
+        if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
+            String[] actions = {"FOLLOW", "JOIN", "IGNORE", "SUPPORT", "OBSERVE"};
+            for (int i = 0; i < chips.length && i < actions.length; i++) {
+                if (chips[i].contains(mouseX, mouseY)) {
+                    return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.STRATEGIC_ENCOUNTER, "", actions[i]);
+                }
+            }
+            return null;
+        }
+        String[] actions = {"AUTO_RESOLVE", "TAKE_COMMAND", "DISMISS_STALE"};
+        for (int i = 0; i < chips.length && i < actions.length; i++) {
+            if (chips[i].contains(mouseX, mouseY)) {
+                return new CampaignHubClickTarget(CampaignHubClickTarget.Kind.STRATEGIC_ENCOUNTER, "", actions[i]);
+            }
+        }
+        return null;
+    }
+
+    private static Rectangle[] strategicEncounterChipRects(GameContext ctx, int viewW, int viewH) {
+        UiState.StrategicEncounterPrompt prompt = ctx.ui.strategicEncounterPrompt;
+        int w = Math.min(620, Math.max(420, viewW - 180));
+        int x = (viewW - w) / 2;
+        int y = Math.max(70, viewH / 2 - 130);
+        BufferedImage metricsImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D metrics = metricsImage.createGraphics();
+        Font titleFont = new Font("Consolas", Font.BOLD, 20);
+        Font bodyFont = new Font("Consolas", Font.PLAIN, 15);
+        Font footerFont = new Font("Consolas", Font.PLAIN, 12);
+        int titleLines = 1;
+        int bodyLines = 1;
+        int footerLines = 1;
+        try {
+            titleLines = Math.max(1, wrapHudText(metrics.getFontMetrics(titleFont), prompt.title, w - 52).size());
+            bodyLines = Math.max(1, wrapHudMultilineText(metrics.getFontMetrics(bodyFont), prompt.body, w - 52).size());
+            String footer = switch (prompt.kind) {
+                case CAMPAIGN_LOCATION ->
+                        "Auto-resolve stays on the galaxy map. Taking command opens one large tactical sector.";
+                case GALAXY_SEARCH_GROUP ->
+                        "Auto-resolve keeps the route moving. Taking command breaks the interception in tactical combat.";
+                case INSTALLATION_THREAT ->
+                        "Auto-resolve keeps the installation open. Taking command clears the hostile contact inside the harbor approach.";
+                case CAMPAIGN_FORCE ->
+                        "Auto-resolve avoids tactical deployment. Taking command opens a direct fleet-contact battle.";
+                case CAMPAIGN_BATTLE ->
+                        "F follow fleet  |  J join battle  |  I ignore  |  S offer support  |  O observe";
+                case TASK_FORCE ->
+                        "Auto-resolve is faster. Taking command opens a full tactical battle for this contact.";
+            };
+            footerLines = Math.max(1, wrapHudText(metrics.getFontMetrics(footerFont), footer, w - 52).size());
+        } finally {
+            metrics.dispose();
+        }
+        int infoLineCount = 0;
+        if (prompt.location != null && !prompt.location.isBlank()) infoLineCount++;
+        if (prompt.strengthReadout != null && !prompt.strengthReadout.isBlank()) infoLineCount++;
+        int h = 154 + titleLines * 24 + infoLineCount * 18 + bodyLines * 18 + footerLines * 14;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        int chipY = y + h - 58;
+        if (prompt.kind == UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_BATTLE) {
+            return new Rectangle[]{
+                    new Rectangle(inner.x, chipY, 82, 22),
+                    new Rectangle(inner.x + 90, chipY, 76, 22),
+                    new Rectangle(inner.x + 174, chipY, 82, 22),
+                    new Rectangle(inner.x + 264, chipY, 92, 22),
+                    new Rectangle(inner.x + 364, chipY, 96, 22)
+            };
+        }
+        return new Rectangle[]{
+                new Rectangle(inner.x, chipY, 132, 22),
+                new Rectangle(inner.x + 146, chipY, 142, 22),
+                new Rectangle(inner.x + 302, chipY, 132, 22)
+        };
     }
 
     public static boolean campaignFleetRosterContains(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {

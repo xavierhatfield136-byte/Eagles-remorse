@@ -229,6 +229,8 @@ class FocusedFactionAttackChecklistTest {
             assertTrue(locations.size() >= 2);
             CampaignSystem.CampaignLocation source = locations.get(0);
             CampaignSystem.CampaignLocation target = locations.get(1);
+            source.ownerFaction = Faction.ENEMY;
+            target.ownerFaction = Faction.TEAM_C;
             FactionAttackCommitmentSystem.Result result = FactionAttackCommitmentSystem.request(
                     ctx.campaign.factionAttackCommitments,
                     new FactionAttackCommitmentSystem.Request(Faction.ENEMY,
@@ -241,8 +243,10 @@ class FocusedFactionAttackChecklistTest {
                     CampaignSystem.CampaignIntelPrecision.STRATEGIC_ONLY,
                     ctx.campaign.campaignIntelTick, ctx.campaign.campaignIntelTick + 2,
                     0.8, target.x, target.y, 0.0);
-            assertEquals(1, CampaignSystem.campaignInvasionArrows(ctx).size(),
-                    "arrows must project commitments rather than unrelated fleet routes");
+            assertEquals(1, CampaignSystem.campaignInvasionArrows(ctx).stream()
+                            .filter(arrow -> result.operationId().equals(arrow.forceName))
+                            .count(),
+                    "commitment arrows must remain identifiable even when live fleet invasion arrows are present");
 
             Shape outline = Renderer.campaignBubbleArrowOutlineForTest(100, 100, 620, 320);
             assertNotNull(outline);

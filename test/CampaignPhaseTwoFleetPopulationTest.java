@@ -539,8 +539,10 @@ class CampaignPhaseTwoFleetPopulationTest {
     }
 
     private static Class<?> nested(String simpleName) {
-        for (Class<?> type : CampaignSystem.class.getDeclaredClasses()) {
-            if (simpleName.equals(type.getSimpleName())) return type;
+        for (Class<?> owner = CampaignSystem.class; owner != null; owner = owner.getSuperclass()) {
+            for (Class<?> type : owner.getDeclaredClasses()) {
+                if (simpleName.equals(type.getSimpleName())) return type;
+            }
         }
         throw new AssertionError("Missing nested class " + simpleName);
     }

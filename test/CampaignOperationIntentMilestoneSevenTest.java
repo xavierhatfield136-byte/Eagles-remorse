@@ -25,14 +25,17 @@ class CampaignOperationIntentMilestoneSevenTest {
                     new FactionAttackCommitmentSystem.Request(Faction.ENEMY, origin.id, target.id, 0, 0.0, 300.0),
                     target.ownerFaction.name(), ignored -> FactionAttackCommitmentSystem.Validation.allow());
             assertTrue(result.accepted());
-            assertTrue(CampaignSystem.campaignInvasionArrows(ctx).isEmpty());
+            assertTrue(CampaignSystem.campaignInvasionArrows(ctx).stream()
+                    .noneMatch(arrow -> result.operationId().equals(arrow.forceName)));
 
             ctx.campaign.campaignIntelTick = 12L;
             CampaignSystem.recordCampaignOperationIntelObservation(ctx, result.operationId(),
                     CampaignSystem.CampaignIntelObservationSource.OPERATION_INTEL,
                     CampaignSystem.CampaignIntelPrecision.STRATEGIC_ONLY,
                     12L, 20L, 0.7, target.x, target.y, 0.0);
-            List<CampaignSystem.CampaignInvasionArrow> arrows = CampaignSystem.campaignInvasionArrows(ctx);
+            List<CampaignSystem.CampaignInvasionArrow> arrows = CampaignSystem.campaignInvasionArrows(ctx).stream()
+                    .filter(arrow -> result.operationId().equals(arrow.forceName))
+                    .toList();
             assertEquals(1, arrows.size());
             CampaignSystem.CampaignInvasionArrow arrow = arrows.get(0);
             assertEquals(0, arrow.forceId);

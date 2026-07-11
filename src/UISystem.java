@@ -1247,17 +1247,20 @@ public final class UISystem {
         if (ctx == null || ctx.ui == null || e == null) return false;
         if (!SwingUtilities.isLeftMouseButton(e)) return false;
         boolean galaxyMode = CampaignSystem.isStrategicGalaxyMapMode(ctx);
-        if (galaxyMode
+        boolean encounterPromptBlocking = galaxyMode
                 && CampaignSystem.hasPendingStrategicEncounterChoice(ctx)
                 && !ctx.ui.campaignHubMenu.active
-                && !ctx.ui.campaignActionConfirm.active) return false;
+                && !ctx.ui.campaignActionConfirm.active;
 
         Renderer.CampaignHubClickTarget target = galaxyMode
                 ? Renderer.campaignHubClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY())
                 : Renderer.tacticalMapClickTargetAt(ctx, viewportW, viewportH, e.getX(), e.getY());
-        if (target == null) return false;
+        if (target == null) return encounterPromptBlocking;
 
         switch (target.kind) {
+            case STRATEGIC_ENCOUNTER -> {
+                return handleStrategicEncounterClick(ctx, target.valueId);
+            }
             case SERVICE -> {
                 try {
                     CampaignSystem.HubService service = CampaignSystem.HubService.valueOf(target.serviceId);
@@ -1323,6 +1326,21 @@ public final class UISystem {
         }
     }
 
+    private static boolean handleStrategicEncounterClick(GameContext ctx, String actionId) {
+        if (ctx == null || actionId == null || actionId.isBlank()) return false;
+        return switch (actionId) {
+            case "TAKE_COMMAND" -> CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx);
+            case "AUTO_RESOLVE" -> CampaignSystem.autoResolvePendingStrategicEncounter(ctx);
+            case "DISMISS_STALE" -> dismissStaleStrategicEncounterPrompt(ctx);
+            case "FOLLOW" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "FOLLOW");
+            case "JOIN" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "JOIN");
+            case "IGNORE" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "IGNORE");
+            case "SUPPORT" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "SUPPORT");
+            case "OBSERVE" -> CampaignSystem.resolvePendingCampaignBattleIntervention(ctx, "OBSERVE");
+            default -> false;
+        };
+    }
+
     public static boolean handleCampaignMapWheel(GameContext ctx, MouseWheelEvent e, int viewportW, int viewportH) {
         if (ctx == null || ctx.ui == null || e == null || !ctx.ui.mapOpen) return false;
         if (!CampaignSystem.isStrategicGalaxyMapMode(ctx)) return false;
@@ -1366,7 +1384,8 @@ public final class UISystem {
                     campaignLocationAtMapClick(ctx, worldX, worldY, rect);
             CampaignSystem.CampaignSupportMarker clickedSupport =
                     CampaignSystem.nearestSupportMarker(ctx, worldX, worldY, 110.0);
-            if (shouldPreferCampaignSupportClick(clickedLocation, clickedSupport, worldX, worldY)) {
+            double siteHitRadius = campaignSiteHitRadiusWorld(ctx, rect);
+            if (shouldPreferCampaignSupportClick(clickedLocation, clickedSupport, worldX, worldY, siteHitRadius)) {
                 if (SwingUtilities.isRightMouseButton(e)) {
                     addPing(ctx, clickedSupport.x, clickedSupport.y, 2.2);
                     EventSystem.showBanner(ctx, "CONTACT PING: " + clickedSupport.label.toUpperCase(), 1.2);
@@ -1389,6 +1408,9 @@ public final class UISystem {
                 ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
                 addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
                 EventSystem.showBanner(ctx, "CONTACT SELECTED: " + clickedSupport.label.toUpperCase(), 1.2);
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
+                    CampaignSystem.startTravelToSelectedLocation(ctx);
+                }
                 return;
             }
             if (clickedLocation != null) {
@@ -1398,7 +1420,7 @@ public final class UISystem {
                     return;
                 }
                 CampaignSystem.clearSelectedCampaignContact(ctx);
-                CampaignSystem.selectCampaignLocation(ctx, clickedLocation.x, clickedLocation.y);
+                CampaignSystem.selectCampaignLocationById(ctx, clickedLocation.id);
                 if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
                     CampaignSystem.startTravelToSelectedLocation(ctx);
                 }
@@ -1427,6 +1449,9 @@ public final class UISystem {
                 ctx.ui.waypointY = GameMath.clamp(clickedSupport.y, 0, ctx.WORLD_H);
                 addPing(ctx, ctx.ui.waypointX, ctx.ui.waypointY, 2.2);
                 EventSystem.showBanner(ctx, "CONTACT SELECTED: " + clickedSupport.label.toUpperCase(), 1.2);
+                if (SwingUtilities.isLeftMouseButton(e) && e.getClickCount() >= 2) {
+                    CampaignSystem.startTravelToSelectedLocation(ctx);
+                }
                 return;
             }
             if (SwingUtilities.isLeftMouseButton(e)) {
@@ -1722,8 +1747,8 @@ public final class UISystem {
         if (ctx == null || mapRect == null || mapRect.width <= 0 || mapRect.height <= 0) return 0.0;
         double worldPerPixelX = strategicMapViewWidth(ctx) / mapRect.width;
         double worldPerPixelY = strategicMapViewHeight(ctx) / mapRect.height;
-        double markerRadius = Math.max(worldPerPixelX, worldPerPixelY) * 14.0;
-        return Math.max(28.0, Math.min(120.0, markerRadius));
+        double markerRadius = Math.max(worldPerPixelX, worldPerPixelY) * 22.0;
+        return Math.max(42.0, Math.min(190.0, markerRadius));
     }
 
     static CampaignSystem.CampaignLocation campaignLocationAtMapClick(GameContext ctx,
@@ -1732,26 +1757,76 @@ public final class UISystem {
                                                                        Rectangle mapRect) {
         double radius = campaignSiteHitRadiusWorld(ctx, mapRect);
         if (radius <= 0.0) return null;
-        return CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, radius);
+        CampaignSystem.CampaignLocation nearest = CampaignSystem.nearestCampaignLocation(ctx, worldX, worldY, radius);
+        CampaignSystem.CampaignLocation localSite = nearestLocalSiteAtMapClick(ctx, worldX, worldY, radius);
+        if (localSite == null) return nearest;
+        if (nearest == null) return localSite;
+        double siteDist = Math.hypot(worldX - localSite.x, worldY - localSite.y);
+        double nearestDist = Math.hypot(worldX - nearest.x, worldY - nearest.y);
+        double localSiteRadius = Math.max(radius, 120.0);
+        if (siteDist <= localSiteRadius * 0.72 && nearestDist > radius * 0.22) return localSite;
+        return siteDist <= nearestDist + radius * 0.45 ? localSite : nearest;
+    }
+
+    private static CampaignSystem.CampaignLocation nearestLocalSiteAtMapClick(GameContext ctx,
+                                                                              double worldX,
+                                                                              double worldY,
+                                                                              double radius) {
+        CampaignSystem.CampaignLocation best = null;
+        double localSiteRadius = Math.max(1.0, Math.max(radius, 120.0));
+        double bestD2 = localSiteRadius * localSiteRadius;
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.campaignAreasOfInterest(ctx)) {
+            if (location == null || !location.discovered || location.destroyed) continue;
+            if (!isLocalCampaignSite(location)) continue;
+            double d2 = GameMath.dist2(worldX, worldY, location.x, location.y);
+            if (d2 > bestD2) continue;
+            best = location;
+            bestD2 = d2;
+        }
+        return best;
+    }
+
+    private static boolean isLocalCampaignSite(CampaignSystem.CampaignLocation location) {
+        if (location == null) return false;
+        return location.type == CampaignSystem.CampaignLocationType.RESOURCE_ZONE
+                || location.type == CampaignSystem.CampaignLocationType.SALVAGE_FIELD
+                || location.type == CampaignSystem.CampaignLocationType.HIDDEN_CACHE
+                || location.type == CampaignSystem.CampaignLocationType.DISTRESS_SIGNAL
+                || location.facilityType == CampaignSystem.CampaignFacilityType.MINING_OPERATION
+                || location.facilityType == CampaignSystem.CampaignFacilityType.DERELICT_BATTLEFIELD;
     }
 
     private static boolean shouldPreferCampaignSupportClick(CampaignSystem.CampaignLocation location,
                                                             CampaignSystem.CampaignSupportMarker support,
                                                             double worldX,
-                                                            double worldY) {
+                                                            double worldY,
+                                                            double siteHitRadius) {
         if (support == null) return false;
         if (location == null) return true;
         double supportDist2 = GameMath.dist2(worldX, worldY, support.x, support.y);
         double locationDist2 = GameMath.dist2(worldX, worldY, location.x, location.y);
-        if (support.faction == Faction.ENEMY
-                || support.type == CampaignSystem.SupportMarkerType.HAZARD
-                || support.type == CampaignSystem.SupportMarkerType.FORCE_PATROL
-                || support.type == CampaignSystem.SupportMarkerType.FORCE_SEARCH
-                || support.type == CampaignSystem.SupportMarkerType.FORCE_STRIKE
-                || support.type == CampaignSystem.SupportMarkerType.FORCE_BASE_DEFENSE) {
-            return supportDist2 <= locationDist2 * 1.6;
+        double directSupportRadius = isFleetLikeCampaignSupportMarker(support)
+                ? Math.max(34.0, Math.min(96.0, support.radius * 0.42))
+                : Math.max(26.0, Math.min(72.0, support.radius * 0.38));
+        if (supportDist2 <= directSupportRadius * directSupportRadius
+                && supportDist2 < Math.max(1.0, locationDist2 * 0.42)) {
+            return true;
+        }
+        double protectedSiteRadius = Math.max(42.0, Math.min(180.0, siteHitRadius));
+        if (locationDist2 <= protectedSiteRadius * protectedSiteRadius) return false;
+        if (isFleetLikeCampaignSupportMarker(support)) {
+            return supportDist2 <= directSupportRadius * directSupportRadius
+                    && supportDist2 < locationDist2 * 0.55;
         }
         return supportDist2 <= locationDist2;
+    }
+
+    private static boolean isFleetLikeCampaignSupportMarker(CampaignSystem.CampaignSupportMarker support) {
+        if (support == null || support.type == null) return false;
+        return switch (support.type) {
+            case FORCE_PATROL, FORCE_SEARCH, FORCE_STRIKE, FORCE_BASE_DEFENSE, FORCE_CONVOY, FORCE_MINING -> true;
+            default -> false;
+        };
     }
 
     private static void setTacticalMapSelection(GameContext ctx,

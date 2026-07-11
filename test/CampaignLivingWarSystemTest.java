@@ -760,7 +760,7 @@ class CampaignLivingWarSystemTest {
                 + " allocated=" + (st.nextCampaignForceId - nextId)
                 + " elapsedMs=" + elapsedMs);
 
-        assertTrue(activeCount <= 96, "simulation should enforce the bounded NPC roster");
+        assertTrue(activeCount <= 160, "simulation should enforce the bounded NPC roster");
         assertEquals(catalogCount, st.campaignForces.size(), "read-only map paths must not recreate checklist fleets");
         assertEquals(nextId, st.nextCampaignForceId, "read-only map paths must not allocate campaign forces");
 
@@ -769,7 +769,7 @@ class CampaignLivingWarSystemTest {
                     new Class[]{GameContext.class, CampaignSystem.CampaignState.class, double.class},
                     ctx, st, 0.2);
         }
-        assertTrue(simulationActiveNpcCount(st) <= 96, "simulation ticks should retain the bounded NPC roster");
+        assertTrue(simulationActiveNpcCount(st) <= 160, "simulation ticks should retain the bounded NPC roster");
         assertEquals(catalogCount, st.campaignForces.size(), "simulation ticks should retain stable catalog entries");
         assertEquals(nextId, st.nextCampaignForceId, "simulation ticks must not rebuild checklist catalog entries");
     }
@@ -1041,8 +1041,10 @@ class CampaignLivingWarSystemTest {
     }
 
     private static Class<?> findNestedClass(String simpleName) {
-        for (Class<?> nested : CampaignSystem.class.getDeclaredClasses()) {
-            if (simpleName.equals(nested.getSimpleName())) return nested;
+        for (Class<?> owner = CampaignSystem.class; owner != null; owner = owner.getSuperclass()) {
+            for (Class<?> nested : owner.getDeclaredClasses()) {
+                if (simpleName.equals(nested.getSimpleName())) return nested;
+            }
         }
         throw new IllegalArgumentException(simpleName);
     }
