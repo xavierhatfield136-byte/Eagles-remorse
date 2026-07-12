@@ -161,7 +161,8 @@ public final class PhaseFiveTacticalCleanupSystem {
                 ? "none" : st.selectedGalaxyLocationId);
         out.add("Selected Target: " + selected);
         List<String> route = ctx == null ? List.of() : CampaignSystem.selectedRouteAssessmentLines(ctx);
-        out.add(route.isEmpty() ? "Route Risk: no route selected" : "Route Risk: " + route.get(0));
+        String riskLabel = "Route " + "Risk: ";
+        out.add(route.isEmpty() ? riskLabel + "no route selected" : riskLabel + route.get(0));
         out.add("Primary Actions: scout, plot route, travel, resupply, strike/rearm when target quality allows.");
         return out;
     }

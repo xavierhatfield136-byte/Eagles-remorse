@@ -86,7 +86,7 @@ final class CampaignIntegritySystem {
                     && force.faction != Faction.PLAYER
                     && force.faction != Faction.ALLY
                     && force.strength >= 45.0
-                    && CampaignSystem.countPoolRecordsForForce(st, force.id) <= 0) {
+                    && !CampaignSystem.campaignForceHasInventoryProvenanceOrClaim(st, force)) {
                 problems.add("major force " + force.id + " has no inventory provenance");
             }
         }

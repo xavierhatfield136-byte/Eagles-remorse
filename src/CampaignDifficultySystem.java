@@ -52,7 +52,7 @@ public final class CampaignDifficultySystem {
                         "CampaignSystem travel forecast and resource deduction",
                         "scales fuel, supplies, and ammo losses during strategic travel"),
                 new RuntimeConsumer("tacticalOnly",
-                        "MainMenuPanel and CampaignSystem route pressure",
+                        "MainMenuPanel and CampaignSystem strategic tempo",
                         "changes Campaign Ops structure by suppressing strategic pressure/attrition"),
                 new RuntimeConsumer("commandOnly",
                         "ExperienceRuntime and GameplayActions",

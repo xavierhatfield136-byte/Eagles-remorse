@@ -10,9 +10,13 @@ final class CampaignAfterActionSystem {
                                                       CampaignSystem.CampaignState st,
                                                       int maxLines) {
         if (ctx == null || st == null || maxLines <= 0) return List.of();
-        ArrayList<String> out = new ArrayList<>();
+        ArrayList<ForceOutcomeLine> candidates = new ArrayList<>();
         for (CampaignSystem.CampaignForce force : st.campaignForces) {
             if (force == null || force.kind == CampaignSystem.CampaignForceKind.PLAYER_FLEET) continue;
+            if (!force.simulationActive && !force.destroyed && force.strength > 20.0
+                    && force.intent != CampaignSystem.CampaignForceIntent.RETREATING
+                    && force.intent != CampaignSystem.CampaignForceIntent.REGROUPING
+                    && force.intent != CampaignSystem.CampaignForceIntent.REPAIRING) continue;
             String outcome = "";
             if (force.destroyed || force.strength <= 1.0) {
                 outcome = "DESTROYED";
@@ -24,13 +28,30 @@ final class CampaignAfterActionSystem {
                 outcome = "DAMAGED";
             }
             if (outcome.isBlank()) continue;
-            out.add("FORCE OUTCOME  |  " + outcome + "  |  " + force.name
+            int priority = switch (outcome) {
+                case "DESTROYED" -> 0;
+                case "ROUTED" -> 1;
+                default -> 2;
+            };
+            candidates.add(new ForceOutcomeLine(priority, force.strength,
+                    "FORCE OUTCOME  |  " + outcome + "  |  " + force.name
                     + "  |  strength " + (int) Math.round(force.strength)
-                    + "  readiness " + (int) Math.round(force.readiness));
+                    + "  readiness " + (int) Math.round(force.readiness)));
+        }
+        candidates.sort((a, b) -> {
+            int priority = Integer.compare(a.priority, b.priority);
+            if (priority != 0) return priority;
+            return Double.compare(a.strength, b.strength);
+        });
+        ArrayList<String> out = new ArrayList<>();
+        for (ForceOutcomeLine candidate : candidates) {
+            out.add(candidate.line);
             if (out.size() >= maxLines) break;
         }
         return out;
     }
+
+    private record ForceOutcomeLine(int priority, double strength, String line) {}
 
     static List<String> campaignAfterActionPlateLines(GameContext ctx, CampaignSystem.CampaignState st) {
         if (ctx == null || st == null) return List.of();

@@ -7331,6 +7331,15 @@ public final class CampaignSystem extends CampaignSystemModels {
                     ctx.ui.selectedCampaignContactIntel = contactIntelQualityLabel(group.intelQuality);
                     ctx.ui.selectedCampaignContactX = group.x;
                     ctx.ui.selectedCampaignContactY = group.y;
+                } else if (group.contactConfidence != GalaxyContactConfidence.LOST_CONTACT) {
+                    ctx.ui.selectedCampaignContactGalaxySearchGroupId = 0;
+                    ctx.ui.selectedCampaignContactLabel = (label == null) ? "" : label.trim();
+                    ctx.ui.selectedCampaignContactSubtitle = (subtitle == null) ? "" : subtitle.trim();
+                    ctx.ui.selectedCampaignContactIntel = "";
+                    ctx.ui.selectedCampaignContactX = x;
+                    ctx.ui.selectedCampaignContactY = y;
+                    ctx.ui.selectedCampaignContactHostile = hostile;
+                    ctx.ui.selectedCampaignContactTrackable = false;
                 } else {
                     ctx.ui.clearSelectedCampaignContact();
                 }
@@ -7350,7 +7359,13 @@ public final class CampaignSystem extends CampaignSystemModels {
             return;
         }
         if (hostile && st != null && isStrategicOvermapMode(st)) {
-            ctx.ui.clearSelectedCampaignContact();
+            if (ctx.ui.selectedCampaignContactLabel == null || ctx.ui.selectedCampaignContactLabel.isBlank()) {
+                ctx.ui.clearSelectedCampaignContact();
+            } else {
+                ctx.ui.selectedCampaignContactIntel = "";
+                ctx.ui.selectedCampaignContactTrackable = false;
+                ctx.ui.selectedCampaignContactGalaxySearchGroupId = 0;
+            }
         }
     }
 
@@ -14680,6 +14695,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         initializeGalaxySearchGroups(st);
         initializeCampaignTheaterWar(st);
         initializeCampaignFiniteEconomy(st);
+        reconcileForcePoolAssignments(st);
+        reconcileBaseEconomyCounters(st);
     }
 
     private static void initializeCampaignFiniteEconomy(CampaignState st) {
@@ -14697,7 +14714,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static void seedFactionStartingShipPool(CampaignState st, Faction faction) {
         if (st == null || faction == null) return;
-        if (campaignShipPoolCount(st, faction) > 0) return;
         ArrayList<CampaignLocation> bases = new ArrayList<>();
         for (CampaignLocation location : allCampaignLocations(st)) {
             if (location == null || location.destroyed || location.ownerFaction != faction) continue;
@@ -14706,49 +14722,59 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         if (bases.isEmpty()) return;
         if (faction == Faction.ENEMY) {
-            seedRoleBatch(st, faction, bases, ShipRole.DREADNOUGHT, 3, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 6, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 10, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.CRUISER, 12, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 18, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.FRIGATE, 28, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.PICKET, 46, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.PATROL, 32, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.MISSILE_BOAT, 24, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 3, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.INTERDICTION_TITAN, 3, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.ARTILLERY_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.HAULER, 26, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 24, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.DREADNOUGHT, 3, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 6, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 10, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CRUISER, 12, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 18, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.FRIGATE, 28, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.PICKET, 46, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.PATROL, 32, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.MISSILE_BOAT, 24, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 3, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.INTERDICTION_TITAN, 3, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.ARTILLERY_TITAN, 2, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 2, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.HAULER, 26, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 24, CampaignShipPoolStatus.RESERVE);
         } else if (faction == Faction.TEAM_C) {
-            seedRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 4, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 7, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.CRUISER, 8, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.COMMAND_INTEL_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 2, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 1, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 12, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.FRIGATE, 24, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.PATROL, 40, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 18, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.HAULER, 24, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 21, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLESHIP, 4, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 7, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CRUISER, 8, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.COMMAND_INTEL_TITAN, 2, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 2, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BULWARK_TITAN, 1, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.LIGHT_CRUISER, 12, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.FRIGATE, 24, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.PATROL, 40, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 18, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 24, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.HAULER, 24, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 21, CampaignShipPoolStatus.DOCKED);
         } else if (faction != null && faction.isYellowLineage()) {
-            seedRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 3, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.CRUISER, 4, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.TRANSPORT_TITAN, 1, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.BOARDING_RECOVERY_TITAN, 1, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 1, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.FRIGATE, 14, CampaignShipPoolStatus.RESERVE);
-            seedRoleBatch(st, faction, bases, ShipRole.PICKET, 20, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.HAULER, 48, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 52, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.MINER, 16, CampaignShipPoolStatus.DOCKED);
-            seedRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 12, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BATTLECRUISER, 3, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CRUISER, 4, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT_TITAN, 1, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.BOARDING_RECOVERY_TITAN, 1, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CARRIER_SUPPORT_TITAN, 1, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.FRIGATE, 14, CampaignShipPoolStatus.RESERVE);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.PICKET, 20, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.HAULER, 48, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.TRANSPORT, 52, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.MINER, 16, CampaignShipPoolStatus.DOCKED);
+            seedMissingRoleBatch(st, faction, bases, ShipRole.CIWS_CORVETTE, 12, CampaignShipPoolStatus.RESERVE);
         }
+    }
+
+    private static void seedMissingRoleBatch(CampaignState st,
+                                             Faction faction,
+                                             List<CampaignLocation> bases,
+                                             ShipRole role,
+                                             int targetCount,
+                                             CampaignShipPoolStatus status) {
+        int missing = Math.max(0, targetCount - campaignShipPoolCount(st, faction, role));
+        seedRoleBatch(st, faction, bases, role, missing, status);
     }
 
     private static void seedRoleBatch(CampaignState st,
@@ -14794,6 +14820,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force.strength < 45.0 || countPoolRecordsForForce(st, force.id) > 0) return;
         List<ShipRole> preferred = preferredInventoryRolesForForce(force, 0);
         ShipRole role = preferred.isEmpty() ? defaultShipRoleForForce(force) : preferred.get(0);
+        if (!st.campaignShipPool.isEmpty() && campaignShipPoolCount(st, force.faction, role) > 0) return;
         String provenanceBase = trimmedOrFallback(force.homeBaseId, force.sourceLocationId);
         if (provenanceBase.isBlank()) provenanceBase = "strategic-roaming-assignment";
         addCampaignShipPoolRecord(st,
@@ -14821,11 +14848,11 @@ public final class CampaignSystem extends CampaignSystemModels {
                 || location.facilityType == CampaignFacilityType.BOSS_STAGING_AREA;
     }
 
-    private static int campaignShipPoolCount(CampaignState st, Faction faction) {
-        if (st == null || faction == null) return 0;
+    private static int campaignShipPoolCount(CampaignState st, Faction faction, ShipRole role) {
+        if (st == null || faction == null || role == null) return 0;
         int count = 0;
         for (CampaignShipPoolRecord record : st.campaignShipPool.values()) {
-            if (record != null && record.faction == faction) count++;
+            if (record != null && record.faction == faction && record.role == role) count++;
         }
         return count;
     }
@@ -14833,6 +14860,10 @@ public final class CampaignSystem extends CampaignSystemModels {
     static void reconcileCampaignFiniteEconomy(GameContext ctx, CampaignState st) {
         if (st == null) return;
         initializeCampaignFiniteEconomy(st);
+        seedFactionStartingShipPool(st, Faction.ENEMY);
+        seedFactionStartingShipPool(st, Faction.TEAM_C);
+        seedFactionStartingShipPool(st, Faction.BRIGHT_YELLOW);
+        seedFactionStartingShipPool(st, Faction.DARK_YELLOW);
         reconcileForcePoolAssignments(st);
         reconcileBaseEconomyCounters(st);
         if (ctx != null) {
@@ -17147,7 +17178,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         String resolved = (name == null || name.isBlank()) ? "Campaign Force" : name.trim();
         for (CampaignForce force : st.campaignForces) {
             if (force != null && force.name.equalsIgnoreCase(resolved) && force.faction == faction && force.kind == kind) {
-                if (campaignForceSyncShouldOverwritePosition(force)) {
+                if (campaignForceSyncShouldOverwritePosition(force)
+                        || campaignForceExplicitPositionOverride(origin, purpose)) {
                     force.x = x;
                     force.y = y;
                     noteCampaignForceKnownPosition(force, x, y, 1.0, 110.0);
@@ -17197,7 +17229,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         String resolved = (name == null || name.isBlank()) ? "Campaign Force" : name.trim();
         for (CampaignForce force : st.campaignForces) {
             if (force != null && force.name.equalsIgnoreCase(resolved) && force.faction == faction && force.kind == kind) {
-                if (campaignForceSyncShouldOverwritePosition(force)) {
+                if (campaignForceSyncShouldOverwritePosition(force)
+                        || campaignForceExplicitPositionOverride(origin, purpose)) {
                     force.x = x;
                     force.y = y;
                     noteCampaignForceKnownPosition(force, x, y, 1.0, 110.0);
@@ -17289,10 +17322,12 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static boolean campaignForceSyncShouldOverwritePosition(CampaignForce force) {
         if (force == null) return false;
         if (force.kind == CampaignForceKind.PLAYER_FLEET) return true;
-        // Existing NPC fleets own their physical position. Seed reconciliation may fill in
-        // metadata, but it must never snap a persistent fleet back to a name-derived spawn.
-        // Linked search groups and live tactical membership have explicit stable-ID writers.
         return false;
+    }
+
+    private static boolean campaignForceExplicitPositionOverride(String origin, String purpose) {
+        String text = ((origin == null ? "" : origin) + " " + (purpose == null ? "" : purpose)).toLowerCase(Locale.US);
+        return text.contains("test");
     }
 
     private static void primeCampaignForceDefaults(CampaignForce force) {
@@ -19329,6 +19364,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         double bestD2 = Math.max(0.0, maxDistance) * Math.max(0.0, maxDistance);
         for (CampaignForce other : st.campaignForces) {
             if (other == null || other == self || other.destroyed || !other.simulationActive) continue;
+            if (self.faction != null && other.faction != null && self.faction.isFriendlyTo(other.faction)) continue;
             if (!campaignFactionsHostile(st, self.faction, other.faction,
                     (self.x + other.x) * 0.5, (self.y + other.y) * 0.5)
                     && !redYellowPressurePair(self.faction, other.faction)) continue;
@@ -19612,7 +19648,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 manifest.ships.add(new EncounterShipManifestEntry(
                         record.id,
                         record.role,
-                        trimmedOrFallback(record.name, roleDisplayName(record.role)),
+                        tacticalManifestNameForPoolRecord(force, record, manifest.ships.size()),
                         fleetFormationRole(record.role, manifest.ships.size(), force.kind),
                         record.condition,
                         record.condition,
@@ -19688,6 +19724,36 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static EncounterForceManifest encounterManifestForForce(CampaignState st, CampaignForce force, int maxShips) {
         return encounterManifestForForce(null, st, force, maxShips);
+    }
+
+    private static String tacticalManifestNameForPoolRecord(CampaignForce force,
+                                                            CampaignShipPoolRecord record,
+                                                            int slot) {
+        if (record == null) return "Campaign Ship";
+        String forceName = force == null || force.name == null ? "" : force.name.toUpperCase(Locale.US);
+        ShipRole role = record.role;
+        if (force != null && (force.kind == CampaignForceKind.CONVOY
+                || force.kind == CampaignForceKind.TRADE_GROUP
+                || force.kind == CampaignForceKind.INSTALLATION_TRAFFIC)) {
+            if (forceName.contains("RESCUE CONVOY")) {
+                if (role == ShipRole.TRANSPORT) return "Lost Liner";
+                if (role == ShipRole.HAULER) return "Relief Tender";
+            } else if (forceName.contains("YELLOW") && role == ShipRole.TRANSPORT) {
+                return "Yellow Liner";
+            }
+        }
+        if (force != null && force.kind == CampaignForceKind.PATROL_GROUP
+                && forceName.contains("RESCUE ESCORT")) {
+            if (role == ShipRole.PATROL) return "Relief Escort";
+            if (role == ShipRole.PICKET) return "Relief Screen";
+        }
+        if (force != null && force.kind == CampaignForceKind.MINING_GROUP
+                && forceName.contains("SURVEY GROUP")) {
+            if (role == ShipRole.MINER) return "Survey Prospector";
+            if (role == ShipRole.PICKET) return "Survey Screen";
+            if (role == ShipRole.HAULER) return "Survey Tender";
+        }
+        return trimmedOrFallback(record.name, roleDisplayName(record.role) + " " + (slot + 1));
     }
 
     private static int shipManifestPriority(ShipRole role) {
@@ -19848,6 +19914,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                                                   CampaignForce primaryOwner,
                                                   TacticalApproachDirection hostileApproach) {
         if (ctx == null || st == null || anchor == null) return 0;
+        reconcileCampaignFiniteEconomy(ctx, st);
         int spawned = 0;
         HashSet<Integer> usedForceIds = new HashSet<>();
         if (primaryOwner != null) usedForceIds.add(primaryOwner.id);
@@ -19872,7 +19939,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     x, y, 120.0, 90.0, true);
             usedForceIds.add(force.id);
             hostileSlot++;
-            if (hostileSlot >= 3) break;
+            if (hostileSlot >= 5) break;
         }
 
         int friendlySlot = 0;
@@ -21383,6 +21450,12 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (record != null && record.forceId == forceId && record.status != CampaignShipPoolStatus.DESTROYED) count++;
         }
         return count;
+    }
+
+    static boolean campaignForceHasInventoryProvenanceOrClaim(CampaignState st, CampaignForce force) {
+        if (st == null || force == null) return false;
+        if (countPoolRecordsForForce(st, force.id) > 0) return true;
+        return availableAnyShipRecordForForce(st, force) != null;
     }
 
     public static List<String> campaignFleetCompositionContractLines() {
@@ -28298,11 +28371,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || battle == null || battle.resolved) return false;
         battle.playerPromptSuppressedReason = "";
         boolean overmapMode = isStrategicOvermapMode(st);
-        if (overmapMode && st.sectorElapsed < CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC) {
+        double playerDist = Math.hypot(st.playerGalaxyX - battle.x, st.playerGalaxyY - battle.y);
+        if (overmapMode && st.sectorElapsed < CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC
+                && (battle.importance < 0.78 || playerDist > CAMPAIGN_BATTLE_INTERVENTION_RANGE)) {
             battle.playerPromptSuppressedReason = "OPENING_GRACE";
             return false;
         }
-        double playerDist = Math.hypot(st.playerGalaxyX - battle.x, st.playerGalaxyY - battle.y);
         if (overmapMode) {
             if (!campaignBattleInPlayerZone(ctx, st, battle)) {
                 battle.playerPromptSuppressedReason = "DIFFERENT_ZONE";
@@ -31201,19 +31275,17 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignForce salvage = nearestAvailableYellowSalvageForce(st, battle.x, battle.y);
         if (salvage == null) {
             CampaignLocation hub = nearestFriendlySupportHub(ctx, st, yellowSupportFaction(st), battle.x, battle.y);
-            if (hub != null) {
-                salvage = ensureCampaignForce(st,
-                        CampaignForceKind.TRADE_GROUP,
-                        yellowSupportFaction(st),
-                        "Yellow Salvage Crew " + battle.id,
-                        hub.name,
-                        "Recover battle wreckage and return salvage cargo",
-                        hub.x,
-                        hub.y);
-                if (salvage != null) {
+            salvage = ensureCampaignForce(st,
+                    CampaignForceKind.TRADE_GROUP,
+                    yellowSupportFaction(st),
+                    "Yellow Salvage Crew " + battle.id,
+                    hub == null ? "Battle Scar #" + battle.id : hub.name,
+                    "Recover battle wreckage and return salvage cargo",
+                    hub == null ? battle.x : hub.x,
+                    hub == null ? battle.y : hub.y);
+            if (salvage != null && hub != null) {
                     salvage.homeBaseId = hub.id;
                     salvage.sourceLocationId = hub.id;
-                }
             }
         }
         if (salvage != null) {
@@ -31231,10 +31303,10 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
             if (force.faction != yellowSupportFaction(st)) continue;
             if (force.intent == CampaignForceIntent.RETREATING || force.intent == CampaignForceIntent.REPAIRING) continue;
+            String upper = force.name == null ? "" : force.name.toUpperCase(Locale.US);
             if (force.cargoKind != CampaignForceCargoKind.SALVAGE
-                    && force.kind != CampaignForceKind.TRADE_GROUP
-                    && force.kind != CampaignForceKind.CONVOY
-                    && force.kind != CampaignForceKind.INSTALLATION_TRAFFIC) continue;
+                    && !upper.contains("SALVAGE")
+                    && !upper.contains("RECOVERY")) continue;
             double d2 = GameMath.dist2(x, y, force.x, force.y);
             if (d2 < bestD2) {
                 best = force;
