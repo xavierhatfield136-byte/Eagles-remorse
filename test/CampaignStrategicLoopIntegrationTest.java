@@ -280,8 +280,8 @@ class CampaignStrategicLoopIntegrationTest {
     }
 
     private static Object newCampaignBattle(CampaignSystem.CampaignState st, Object a, Object b) throws Exception {
-        Class<?> forceClass = Class.forName("CampaignSystem$CampaignForce");
-        Class<?> battleClass = Class.forName("CampaignSystem$CampaignBattle");
+        Class<?> forceClass = Class.forName("CampaignSystemModels$CampaignForce");
+        Class<?> battleClass = Class.forName("CampaignSystemModels$CampaignBattle");
         java.lang.reflect.Constructor<?> ctor = battleClass.getDeclaredConstructor(int.class, forceClass, forceClass);
         ctor.setAccessible(true);
         Object battle = ctor.newInstance(st.nextCampaignBattleId++, a, b);
@@ -300,7 +300,7 @@ class CampaignStrategicLoopIntegrationTest {
                 "maybeShowCampaignBattleIntervention",
                 GameContext.class,
                 CampaignSystem.CampaignState.class,
-                Class.forName("CampaignSystem$CampaignBattle")
+                Class.forName("CampaignSystemModels$CampaignBattle")
         );
         method.setAccessible(true);
         method.invoke(null, ctx, st, battle);

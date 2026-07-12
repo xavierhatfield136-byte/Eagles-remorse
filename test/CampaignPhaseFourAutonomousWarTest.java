@@ -193,9 +193,9 @@ class CampaignPhaseFourAutonomousWarTest {
     }
 
     private static Object newBattle(int id, Object a, Object b) throws Exception {
-        Class<?> battleClass = Class.forName("CampaignSystem$CampaignBattle");
+        Class<?> battleClass = Class.forName("CampaignSystemModels$CampaignBattle");
         Constructor<?> constructor = battleClass.getDeclaredConstructor(
-                int.class, Class.forName("CampaignSystem$CampaignForce"), Class.forName("CampaignSystem$CampaignForce"));
+                int.class, Class.forName("CampaignSystemModels$CampaignForce"), Class.forName("CampaignSystemModels$CampaignForce"));
         constructor.setAccessible(true);
         return constructor.newInstance(id, a, b);
     }

@@ -84,7 +84,7 @@ class CampaignPhaseEightArchitectureTest {
     void finiteFleetInventoryIsNotBlockedByProjectionEconomyReserve() throws Exception {
         GameContext ctx = campaignContext();
         ctx.campaign.economyExpansion.aiDeploymentReserve = 0;
-        Class<?> kindType = Class.forName("CampaignSystem$CampaignForceKind");
+        Class<?> kindType = Class.forName("CampaignSystemModels$CampaignForceKind");
         Object patrolKind = Enum.valueOf(kindType.asSubclass(Enum.class), "PATROL_GROUP");
         Method ensure = CampaignSystem.class.getDeclaredMethod(
                 "ensureCampaignForce",

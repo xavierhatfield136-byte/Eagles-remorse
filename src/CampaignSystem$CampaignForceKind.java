@@ -1,0 +1,12 @@
+enum CampaignSystem$CampaignForceKind {
+    PLAYER_FLEET,
+    PATROL_GROUP,
+    TASK_FORCE,
+    BASE_DEFENSE,
+    CONVOY,
+    MINING_GROUP,
+    TRADE_GROUP,
+    INSTALLATION_TRAFFIC,
+    STRIKE_DETACHMENT,
+    LOCAL_FORCE
+}

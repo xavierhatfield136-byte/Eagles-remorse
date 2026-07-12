@@ -56,7 +56,7 @@ class CampaignTheaterConquestChecklistTest {
 
     @Test
     void startingZoneInfluenceValuesMatchCampaignSpecification() throws Exception {
-        Class<?> theaterIdClass = Class.forName("CampaignSystem$TheaterId");
+        Class<?> theaterIdClass = Class.forName("CampaignSystemModels$TheaterId");
         Object southern = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "SOUTHERN");
         Object frontier = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "FRONTIER");
         Object lunar = Enum.valueOf((Class<Enum>) theaterIdClass.asSubclass(Enum.class), "LUNAR");

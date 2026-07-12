@@ -157,7 +157,7 @@ class CampaignSensorSuiteTest {
     }
 
     private static Class<?> findNestedEnum(String simpleName) throws Exception {
-        return Class.forName("CampaignSystem$" + simpleName);
+        return Class.forName("CampaignSystemModels$" + simpleName);
     }
 
     private static Object enumConstant(Class<?> type, String name) {

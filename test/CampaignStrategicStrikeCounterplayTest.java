@@ -79,14 +79,14 @@ class CampaignStrategicStrikeCounterplayTest {
         ctx.player.y = target.y + 300.0;
 
         Missile torpedo = (Missile) invokePrivateStatic("spawnTacticalStrikeMissile",
-                new Class<?>[]{GameContext.class, Class.forName("CampaignSystem$StrategicStrikePayload"),
+                new Class<?>[]{GameContext.class, Class.forName("CampaignSystemModels$StrategicStrikePayload"),
                         Ship.class, double.class, double.class, double.class, int.class, double.class},
-                ctx, enumConstant(Class.forName("CampaignSystem$StrategicStrikePayload"), "TORPEDO"),
+                ctx, enumConstant(Class.forName("CampaignSystemModels$StrategicStrikePayload"), "TORPEDO"),
                 target, target.x, target.y, 0.0, 200, 120.0);
         Missile atomic = (Missile) invokePrivateStatic("spawnTacticalStrikeMissile",
-                new Class<?>[]{GameContext.class, Class.forName("CampaignSystem$StrategicStrikePayload"),
+                new Class<?>[]{GameContext.class, Class.forName("CampaignSystemModels$StrategicStrikePayload"),
                         Ship.class, double.class, double.class, double.class, int.class, double.class},
-                ctx, enumConstant(Class.forName("CampaignSystem$StrategicStrikePayload"), "ATOMIC"),
+                ctx, enumConstant(Class.forName("CampaignSystemModels$StrategicStrikePayload"), "ATOMIC"),
                 target, target.x, target.y, 0.0, 400, 640.0);
 
         assertNotNull(torpedo);
@@ -274,8 +274,8 @@ class CampaignStrategicStrikeCounterplayTest {
         setDouble(group, "x", st.playerGalaxyX + 180.0);
         setDouble(group, "y", st.playerGalaxyY + 80.0);
         setBoolean(group, "visible", true);
-        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "TRACKED"));
-        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "CONFIRMED_HOSTILE"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystemModels$ContactIntelQuality"), "TRACKED"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystemModels$GalaxyContactConfidence"), "CONFIRMED_HOSTILE"));
 
         CampaignSystem.selectCampaignContactTarget(ctx, "Tracked Return", "", "Tracked", getDouble(group, "x"), getDouble(group, "y"), true, true);
         ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.STRIKES;
@@ -290,7 +290,7 @@ class CampaignStrategicStrikeCounterplayTest {
         assertNotNull(track);
         assertTrue(track.enabled);
 
-        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "TARGET_QUALITY"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystemModels$ContactIntelQuality"), "TARGET_QUALITY"));
         CampaignSystem.selectCampaignContactTarget(ctx, "Tracked Return", "", "Target-Quality", getDouble(group, "x"), getDouble(group, "y"), true, true);
         assertEquals(lockedX, ctx.ui.selectedCampaignContactX);
         assertEquals(lockedY, ctx.ui.selectedCampaignContactY);
@@ -314,8 +314,8 @@ class CampaignStrategicStrikeCounterplayTest {
         setDouble(group, "y", st.playerGalaxyY + 220.0);
         setBoolean(group, "hostile", true);
         setBoolean(group, "visible", false);
-        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "POSSIBLE_PATROL"));
-        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "UNKNOWN"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystemModels$GalaxyContactConfidence"), "POSSIBLE_PATROL"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystemModels$ContactIntelQuality"), "UNKNOWN"));
         setDouble(group, "trackIntegrity", 18.0);
 
         assertTrue(CampaignSystem.requestCampaignSensorSweep(ctx));
@@ -395,8 +395,8 @@ class CampaignStrategicStrikeCounterplayTest {
         setDouble(group, "lastKnownY", lastY);
         setDouble(group, "lastKnownAgeSec", 24.0);
         setBoolean(group, "visible", true);
-        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
-        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), "CLASSIFIED"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystemModels$GalaxyContactConfidence"), "LOST_CONTACT"));
+        setObject(group, "intelQuality", enumConstant(Class.forName("CampaignSystemModels$ContactIntelQuality"), "CLASSIFIED"));
 
         assertFalse(CampaignSystem.activeSupportMarkers(ctx).stream()
                         .anyMatch(it -> it.subtitle.contains("Last-known sensor memory")),
@@ -414,9 +414,9 @@ class CampaignStrategicStrikeCounterplayTest {
         double realY = st.playerGalaxyY + 1200.0;
         double lastX = st.playerGalaxyX + 360.0;
         double lastY = st.playerGalaxyY + 210.0;
-        setObject(force, "intent", enumConstant(Class.forName("CampaignSystem$CampaignForceIntent"), "INTERCEPTING"));
-        setObject(force, "state", enumConstant(Class.forName("CampaignSystem$CampaignFleetState"), "PURSUING"));
-        setObject(force, "contactState", enumConstant(Class.forName("CampaignSystem$CampaignForceContactState"), "STALE"));
+        setObject(force, "intent", enumConstant(Class.forName("CampaignSystemModels$CampaignForceIntent"), "INTERCEPTING"));
+        setObject(force, "state", enumConstant(Class.forName("CampaignSystemModels$CampaignFleetState"), "PURSUING"));
+        setObject(force, "contactState", enumConstant(Class.forName("CampaignSystemModels$CampaignForceContactState"), "STALE"));
         setDouble(force, "contactConfidence", 0.50);
         setDouble(force, "x", realX);
         setDouble(force, "y", realY);
@@ -462,8 +462,8 @@ class CampaignStrategicStrikeCounterplayTest {
         setDouble(group, "lastKnownAgeSec", 48.0);
         setDouble(group, "trackIntegrity", 80.0);
         setBoolean(group, "visible", true);
-        setObject(group, "behavior", enumConstant(Class.forName("CampaignSystem$GalaxySearchBehavior"), "INTERCEPTING"));
-        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
+        setObject(group, "behavior", enumConstant(Class.forName("CampaignSystemModels$GalaxySearchBehavior"), "INTERCEPTING"));
+        setObject(group, "contactConfidence", enumConstant(Class.forName("CampaignSystemModels$GalaxyContactConfidence"), "LOST_CONTACT"));
 
         assertEquals("Clear", CampaignSystem.campaignHuntStatusReadout(ctx),
                 "lost search-group shadows must not make the map report active pursuit");
@@ -478,9 +478,9 @@ class CampaignStrategicStrikeCounterplayTest {
             Object group = firstSearchGroup(ctx.campaign);
             assertNotNull(group);
             setObject(group, "contactConfidence",
-                    enumConstant(Class.forName("CampaignSystem$GalaxyContactConfidence"), "LOST_CONTACT"));
+                    enumConstant(Class.forName("CampaignSystemModels$GalaxyContactConfidence"), "LOST_CONTACT"));
             setObject(group, "intelQuality",
-                    enumConstant(Class.forName("CampaignSystem$ContactIntelQuality"), intelLevels[i]));
+                    enumConstant(Class.forName("CampaignSystemModels$ContactIntelQuality"), intelLevels[i]));
             setBoolean(group, "visible", true);
             setDouble(group, "lastKnownAgeSec", windows[i] - 0.5);
             setDouble(group, "lastKnownX", ctx.campaign.playerGalaxyX + 300.0);
@@ -775,7 +775,7 @@ class CampaignStrategicStrikeCounterplayTest {
     }
 
     private static Object newPersistentEntry(int slotId, ShipRole role, String name) throws Exception {
-        Class<?> entryClass = Class.forName("CampaignSystem$PersistentFleetEntry");
+        Class<?> entryClass = Class.forName("CampaignSystemModels$PersistentFleetEntry");
         Constructor<?> ctor = entryClass.getDeclaredConstructor(int.class, ShipRole.class, String.class);
         ctor.setAccessible(true);
         return ctor.newInstance(slotId, role, name);
@@ -783,8 +783,8 @@ class CampaignStrategicStrikeCounterplayTest {
 
     private static Object newDiscoverySite(String label, String subtitle, String kind,
                                            double x, double y, double radius) throws Exception {
-        Class<?> kindClass = Class.forName("CampaignSystem$DiscoveryKind");
-        Class<?> siteClass = Class.forName("CampaignSystem$DiscoverySite");
+        Class<?> kindClass = Class.forName("CampaignSystemModels$DiscoveryKind");
+        Class<?> siteClass = Class.forName("CampaignSystemModels$DiscoverySite");
         Constructor<?> ctor = siteClass.getDeclaredConstructor(
                 String.class, String.class, kindClass, double.class, double.class, double.class);
         ctor.setAccessible(true);

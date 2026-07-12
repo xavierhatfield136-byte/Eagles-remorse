@@ -165,7 +165,7 @@ class CampaignStrategicFleetIdentityTest {
     }
 
     private static Object newPersistentEntry(int slotId, ShipRole role, String name) throws Exception {
-        Class<?> entryClass = Class.forName("CampaignSystem$PersistentFleetEntry");
+        Class<?> entryClass = Class.forName("CampaignSystemModels$PersistentFleetEntry");
         Constructor<?> ctor = entryClass.getDeclaredConstructor(int.class, ShipRole.class, String.class);
         ctor.setAccessible(true);
         return ctor.newInstance(slotId, role, name);

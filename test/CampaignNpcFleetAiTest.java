@@ -4619,7 +4619,7 @@ class CampaignNpcFleetAiTest {
     }
 
     private static Object invokeCreateCampaignBattle(int id, Object a, Object b) throws Exception {
-        Class<?> battleType = Class.forName("CampaignSystem$CampaignBattle");
+        Class<?> battleType = Class.forName("CampaignSystemModels$CampaignBattle");
         java.lang.reflect.Constructor<?> constructor = battleType.getDeclaredConstructor(int.class, a.getClass(), b.getClass());
         constructor.setAccessible(true);
         Object battle = constructor.newInstance(id, a, b);
@@ -4703,7 +4703,7 @@ class CampaignNpcFleetAiTest {
                 "assignPoiWorkMission",
                 GameContext.class,
                 CampaignSystem.CampaignState.class,
-                Class.forName("CampaignSystem$CampaignForce"),
+                Class.forName("CampaignSystemModels$CampaignForce"),
                 CampaignSystem.CampaignLocation.class
         );
         method.setAccessible(true);
@@ -4962,7 +4962,7 @@ class CampaignNpcFleetAiTest {
                                                  double radius,
                                                  double ttlSec,
                                                  boolean scout) throws Exception {
-        Class<?> relayType = Class.forName("CampaignSystem$SensorRelayNode");
+        Class<?> relayType = Class.forName("CampaignSystemModels$SensorRelayNode");
         java.lang.reflect.Constructor<?> constructor = relayType.getDeclaredConstructor(
                 int.class,
                 String.class,
@@ -4992,7 +4992,7 @@ class CampaignNpcFleetAiTest {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void invokeSeedNpcForceContact(Object observer, Object target, double confidence) throws Exception {
-        Class<?> contactType = Class.forName("CampaignSystem$NpcForceContact");
+        Class<?> contactType = Class.forName("CampaignSystemModels$NpcForceContact");
         java.lang.reflect.Constructor<?> constructor = contactType.getDeclaredConstructor(target.getClass(), double.class);
         constructor.setAccessible(true);
         Object contact = constructor.newInstance(target, confidence);

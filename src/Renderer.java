@@ -9636,12 +9636,16 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 ? BattlefieldSectorSystem.selectedSector(ctx)
                 : null;
 
+        boolean cleanSectorMap = sectorized && !galaxyMode;
+
         // Backdrop + glow border
         if (galaxyMode) {
             g2.setColor(new Color(6, 12, 22, 76));
             g2.fillRoundRect(r.x, r.y, r.width, r.height, 18, 18);
             g2.setColor(new Color(140, 200, 255, 42));
             g2.drawRoundRect(r.x, r.y, r.width, r.height, 18, 18);
+        } else if (cleanSectorMap) {
+            drawCleanMissionMapShell(g2, r);
         } else if (!paintThemedHudFrame(g2, r.x, r.y, r.width, r.height,
                 new Color(140, 200, 255, 188), ThemeArt.HUD_SPECIAL_FRAME, 22)) {
             g2.setColor(new Color(0, 0, 0, 205));
@@ -9659,6 +9663,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.fillRoundRect(m.x, m.y, m.width, m.height, 14, 14);
             g2.setColor(new Color(180, 224, 255, 46));
             g2.drawRoundRect(m.x, m.y, m.width, m.height, 14, 14);
+        } else if (cleanSectorMap) {
+            drawCleanMissionMapBoard(g2, m);
         } else if (!paintThemedHudFrame(g2, m.x, m.y, m.width, m.height,
                 new Color(124, 204, 255, 150), ThemeArt.HUD_STANDARD_PANEL, 16)) {
             g2.setColor(new Color(255, 255, 255, 22));
@@ -9668,7 +9674,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         // Subtle grid
-        g2.setColor(new Color(255, 255, 255, 22));
+        g2.setColor(cleanSectorMap ? new Color(220, 236, 248, 24) : new Color(255, 255, 255, 22));
         int step = 80;
         for (int x = m.x + step; x < m.x + m.width; x += step) g2.drawLine(x, m.y, x, m.y + m.height);
         for (int y = m.y + step; y < m.y + m.height; y += step) g2.drawLine(m.x, y, m.x + m.width, y);
@@ -9683,11 +9689,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
         // Title + help
         g2.setFont(new Font("Consolas", Font.BOLD, galaxyMode ? 18 : 16));
-        g2.setColor(new Color(255, 255, 255, 225));
+        g2.setColor(cleanSectorMap ? new Color(236, 244, 250, 235) : new Color(255, 255, 255, 225));
         g2.drawString(galaxyMode ? "GALACTIC ROUTE MAP" : "STRATEGIC MAP", r.x + 18, r.y + 28);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
-        g2.setColor(new Color(255, 255, 255, 170));
+        g2.setColor(cleanSectorMap ? new Color(196, 212, 224, 210) : new Color(255, 255, 255, 170));
                 g2.drawString(sectorized
                         ? "LMB: route warp   MMB: recenter   RMB: sector ping   wheel/Ctrl+/-: zoom   1/2/3: compact/standard/expanded"
                         : (galaxyMode
@@ -9702,7 +9708,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 (ctx == null || ctx.ui == null) ? null : ctx.ui.tacticalSectorScalePreset)
                 : bannerTopLine;
         if (mapHeader != null && !mapHeader.isBlank()) {
-            g2.setColor(new Color(140, 200, 255, 200));
+            g2.setColor(cleanSectorMap ? new Color(174, 214, 240, 225) : new Color(140, 200, 255, 200));
             g2.drawString(mapHeader, r.x + 190, r.y + 28);
         }
 
@@ -9829,12 +9835,38 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g2.setColor(new Color(255, 255, 255, 120));
             g2.drawRect(rx, ry, rw, rh);
         }
-        g2.setColor(new Color(140, 200, 255, 176));
+        g2.setColor(cleanSectorMap ? new Color(190, 216, 232, 205) : new Color(140, 200, 255, 176));
         g2.drawString(String.format(java.util.Locale.US, "MAP ZOOM %.2fx", mapZoom), r.x + r.width - 178, r.y + 28);
         if (galaxyMode) {
             g2.setColor(new Color(255, 224, 170, 190));
             g2.drawString("EARTH DIRECTION: NORTH", r.x + 240, r.y + 28);
         }
+    }
+
+    private static void drawCleanMissionMapShell(Graphics2D g2, Rectangle rect) {
+        if (g2 == null || rect == null) return;
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(new GradientPaint(rect.x, rect.y, new Color(15, 24, 34, 232),
+                rect.x, rect.y + rect.height, new Color(9, 16, 24, 224)));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 18, 18);
+        g2.setColor(new Color(182, 218, 238, 72));
+        g2.drawRoundRect(rect.x, rect.y, rect.width - 1, rect.height - 1, 18, 18);
+        g2.setColor(new Color(255, 255, 255, 18));
+        g2.drawRoundRect(rect.x + 2, rect.y + 2, Math.max(1, rect.width - 5), Math.max(1, rect.height - 5), 16, 16);
+        g2.setPaint(oldPaint);
+    }
+
+    private static void drawCleanMissionMapBoard(Graphics2D g2, Rectangle rect) {
+        if (g2 == null || rect == null) return;
+        Paint oldPaint = g2.getPaint();
+        g2.setPaint(new GradientPaint(rect.x, rect.y, new Color(5, 9, 14, 246),
+                rect.x, rect.y + rect.height, new Color(8, 13, 18, 242)));
+        g2.fillRoundRect(rect.x, rect.y, rect.width, rect.height, 10, 10);
+        g2.setColor(new Color(150, 196, 226, 62));
+        g2.drawRoundRect(rect.x, rect.y, rect.width - 1, rect.height - 1, 10, 10);
+        g2.setColor(new Color(255, 255, 255, 24));
+        g2.drawLine(rect.x + 2, rect.y + 2, rect.x + Math.max(2, rect.width - 3), rect.y + 2);
+        g2.setPaint(oldPaint);
     }
 
     private static void drawTacticalMissionMapEntityLayer(Graphics2D g2,
@@ -12788,7 +12820,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             if (currentSector != null && currentSector.id.equalsIgnoreCase(snapshot.sector.id)) {
                 g2.setStroke(new BasicStroke(2.2f));
-                g2.setColor(new Color(240, 248, 255, 190));
+                g2.setColor(new Color(232, 246, 255, 205));
                 g2.drawRect(sectorRect.x + 1, sectorRect.y + 1,
                         Math.max(0, sectorRect.width - 2), Math.max(0, sectorRect.height - 2));
             }
@@ -12803,11 +12835,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int labelX = sectorRect.x + 8;
             int labelY = sectorRect.y + 18;
             g2.setFont(new Font("Consolas", Font.BOLD, 11));
-            g2.setColor(new Color(255, 255, 255, 225));
+            g2.setColor(new Color(235, 245, 252, 235));
             g2.drawString(snapshot.sector.label, labelX, labelY);
 
             g2.setFont(new Font("Consolas", Font.PLAIN, 10));
-            g2.setColor(new Color(220, 230, 240, 190));
+            g2.setColor(new Color(210, 226, 238, 205));
             g2.drawString(BattlefieldSectorSystem.absoluteStatusLabel(snapshot), labelX, labelY + 13);
             if (ctx != null && ctx.player != null) {
                 String relativeStatus = BattlefieldSectorSystem.relativeStatusLabel(ctx, snapshot);
@@ -12838,27 +12870,27 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
     private static Color sectorFillColor(BattlefieldSectorSystem.SectorSnapshot snapshot) {
         if (snapshot == null) return new Color(255, 255, 255, 18);
         if (snapshot.controlState == BattlefieldSectorSystem.ControlState.EMPTY) {
-            return new Color(255, 255, 255, 12);
+            return new Color(255, 255, 255, 8);
         }
         if (snapshot.controlState == BattlefieldSectorSystem.ControlState.CONTESTED) {
-            return new Color(255, 186, 92, 28);
+            return new Color(255, 186, 92, 36);
         }
         if (snapshot.dominantFaction == null) {
             return new Color(160, 200, 255, 24);
         }
-        Color tint = factionMapColor(snapshot.dominantFaction, false, 30);
-        return new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 28);
+        Color tint = factionMapColor(snapshot.dominantFaction, false, 48);
+        return new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 38);
     }
 
     private static Color sectorBorderColor(BattlefieldSectorSystem.SectorSnapshot snapshot) {
         if (snapshot == null) return new Color(255, 255, 255, 60);
         if (snapshot.controlState == BattlefieldSectorSystem.ControlState.CONTESTED) {
-            return new Color(255, 206, 120, 110);
+            return new Color(255, 206, 120, 126);
         }
         if (snapshot.dominantFaction == null) {
-            return new Color(255, 255, 255, 60);
+            return new Color(210, 232, 246, 78);
         }
-        return factionMapColor(snapshot.dominantFaction, false, 96);
+        return factionMapColor(snapshot.dominantFaction, false, 118);
     }
 
     private static void drawCampaignSectorsOnMap(Graphics2D g2, Rectangle mapRect, GameContext ctx,

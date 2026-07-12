@@ -80,7 +80,7 @@ class CampaignReleaseTelemetryContractTest {
     }
 
     private static Object createForce(GameContext ctx, String kindName, String name, String purpose) throws Exception {
-        Class<?> kindClass = Class.forName("CampaignSystem$CampaignForceKind");
+        Class<?> kindClass = Class.forName("CampaignSystemModels$CampaignForceKind");
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "ensureCampaignForceWithoutDeploymentCost",
                 CampaignSystem.CampaignState.class,

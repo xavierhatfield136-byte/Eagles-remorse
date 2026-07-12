@@ -127,6 +127,38 @@ tasks.named("compileJava") {
     dependsOn("purgeStraySourceClasses")
 }
 
+tasks.named("compileJava", JavaCompile) {
+    doLast {
+        def outputDir = destinationDirectory.get().asFile
+        def campaignClass = new File(outputDir, "CampaignSystem.class")
+        if (!campaignClass.exists()) {
+            def javacExecutable = javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(21)
+            }.get().executablePath.asFile
+            ant.exec(executable: javacExecutable.absolutePath, failonerror: true) {
+                arg(value: "-source")
+                arg(value: "21")
+                arg(value: "-target")
+                arg(value: "21")
+                arg(value: "-d")
+                arg(value: outputDir.absolutePath)
+                arg(value: "-encoding")
+                arg(value: "UTF-8")
+                arg(value: "-g:none")
+                arg(value: "-proc:none")
+                arg(value: "-classpath")
+                arg(value: outputDir.absolutePath)
+                arg(value: "-sourcepath")
+                arg(value: file("src").absolutePath)
+                arg(value: file("src/CampaignSystem.java").absolutePath)
+            }
+        }
+        if (!campaignClass.exists()) {
+            throw new GradleException("compileJava completed without CampaignSystem.class")
+        }
+    }
+}
+
 tasks.named("test") {
     dependsOn("purgeStraySourceClasses")
 }

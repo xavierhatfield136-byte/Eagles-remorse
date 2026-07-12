@@ -41,7 +41,7 @@ class CampaignEncounterMapIdentityTest {
         assertNotNull(group);
 
         invokeCampaignPrivate("launchGalaxySearchGroupEncounter",
-                new Class<?>[]{GameContext.class, CampaignSystem.CampaignState.class, Class.forName("CampaignSystem$GalaxySearchGroup")},
+                new Class<?>[]{GameContext.class, CampaignSystem.CampaignState.class, Class.forName("CampaignSystemModels$GalaxySearchGroup")},
                 ctx, ctx.campaign, group);
 
         List<CampaignSystem.CampaignSupportMarker> markers = CampaignSystem.strategicTaskForceMarkers(ctx);
