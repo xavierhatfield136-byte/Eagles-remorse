@@ -13,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CampaignOvermapEncounterFlowTest {
@@ -109,6 +110,40 @@ class CampaignOvermapEncounterFlowTest {
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
         assertTrue(getBoolean(taskForce, "encounterSpawned"));
         assertTrue(ctx.eventBanner.contains("NEW ENEMY TASK FORCE HAS ARRIVED"));
+    }
+
+    @Test
+    void defeatedStrategicTaskForceIsRemovedFromOvermapAfterManualBattle() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object taskForce = firstStrategicTaskForce(ctx, st);
+        assertNotNull(taskForce);
+        int taskForceId = getInt(taskForce, "id");
+        String label = getObject(taskForce, "label").toString();
+
+        ctx.ui.showStrategicEncounterPrompt(taskForceId, "CONTACT: " + label, "", "", "");
+        assertTrue(CampaignSystem.takeCommandOfPendingStrategicEncounter(ctx));
+        assertTrue(getBoolean(taskForce, "encounterSpawned"));
+
+        @SuppressWarnings("unchecked")
+        java.util.Set<Integer> spawnedShipIds = (java.util.Set<Integer>) getObject(taskForce, "spawnedShipIds");
+        assertFalse(spawnedShipIds.isEmpty(), "manual task-force command should spawn tracked enemy ships");
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !spawnedShipIds.contains(ship.id)) continue;
+            ship.hp = 0;
+            ship.alive = false;
+            ship.dying = true;
+        }
+
+        invokeFinishGalaxyEncounterAndReturn(ctx, st);
+
+        assertTrue(getBoolean(taskForce, "encounterResolved"),
+                "defeated strategic task forces should be resolved before the overworld is shown again");
+        assertFalse(getBoolean(taskForce, "encounterSpawned"));
+        assertTrue(((java.util.Set<?>) getObject(taskForce, "spawnedShipIds")).isEmpty());
+        assertTrue(CampaignSystem.strategicTaskForceMarkers(ctx).stream()
+                        .noneMatch(marker -> marker != null && label.equals(marker.label)),
+                "resolved Red patrol/strike task forces should not keep overworld markers");
     }
 
     @Test
@@ -233,6 +268,86 @@ class CampaignOvermapEncounterFlowTest {
                 "opening grace should not let a confirmed hostile overlap the player indefinitely");
         assertEquals(UiState.StrategicEncounterPrompt.Kind.CAMPAIGN_FORCE, ctx.ui.strategicEncounterPrompt.kind);
         assertEquals(getInt(hostile, "id"), ctx.ui.strategicEncounterPrompt.campaignForceId);
+    }
+
+    @Test
+    void campaignForceEncounterPullsVisibleFleetsInsidePlayerSensorBubbleOnly() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+        double sensorRange = CampaignSystem.playerCampaignSensorRange(ctx);
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Primary Contact", "Red base lane", "primary intercept",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        Object nearby = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
+                "Regression Red Nearby Reinforcement", "Red base lane", "join sensor battle",
+                st.playerGalaxyX + Math.min(900.0, sensorRange - 240.0), st.playerGalaxyY + 80.0);
+        Object distant = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.STRIKE_DETACHMENT, Faction.ENEMY,
+                "Regression Red Distant Reinforcement", "Red base lane", "too far to join",
+                st.playerGalaxyX + sensorRange + 420.0, st.playerGalaxyY);
+        for (Object force : List.of(primary, nearby, distant)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 70.0);
+            setDouble(force, "readiness", 80.0);
+            setDouble(force, "contactConfidence", 0.92);
+            setDouble(force, "lastKnownAgeSec", 0.0);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        }
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
+                "the primary force should spawn into the tactical battle");
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(nearby, "id")),
+                "visible fleets inside the player sensor circle should join the same battle");
+        assertFalse(hasTacticalShipForCampaignForce(st, getInt(distant, "id")),
+                "fleets outside the player sensor circle must not be pulled into combat");
+    }
+
+    @Test
+    void sensorBubbleBattleJoinersAreCappedEvenWhenManyFleetsAreNearby() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Capped Primary", "Red base lane", "primary intercept",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        setBoolean(primary, "simulationActive", true);
+        setDouble(primary, "strength", 70.0);
+        setDouble(primary, "readiness", 80.0);
+        setDouble(primary, "contactConfidence", 0.92);
+        setBoolean(primary, "visibleToPlayer", true);
+        setObject(primary, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+
+        ArrayList<Object> nearbyForces = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                    "Regression Red Sensor Crowd " + i, "Red base lane", "crowded intercept",
+                    st.playerGalaxyX + 520.0 + i * 35.0, st.playerGalaxyY + (i % 3 - 1) * 80.0);
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 55.0);
+            setDouble(force, "readiness", 75.0);
+            setDouble(force, "contactConfidence", 0.92);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+            nearbyForces.add(force);
+        }
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+
+        int joined = 0;
+        for (Object force : nearbyForces) {
+            if (hasTacticalShipForCampaignForce(st, getInt(force, "id"))) joined++;
+        }
+        assertTrue(joined <= 7, "sensor bubble battles should cap hostile reinforcements");
+        assertTrue(joined < nearbyForces.size(), "the cap should prevent every nearby fleet from being dragged in");
     }
 
     @Test
@@ -489,6 +604,37 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void nearbySiteEntryRemainsPrimaryWhenStaleContactWasSelected() {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation site = firstRandomSite(ctx);
+        assertNotNull(site);
+        site.discovered = true;
+        st.selectedGalaxyLocationId = "";
+        st.selectedFreeGalaxyTargetX = Double.NaN;
+        st.selectedFreeGalaxyTargetY = Double.NaN;
+        st.playerGalaxyX = site.x;
+        st.playerGalaxyY = site.y;
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Stale Regression Contact",
+                "old ping",
+                "Stale",
+                site.x + 20.0,
+                site.y,
+                true,
+                false);
+
+        CampaignSystem.CampaignLocation selected = CampaignSystem.selectedCampaignLocation(ctx);
+        assertNotNull(selected);
+        assertEquals(site.id, selected.id);
+        assertTrue(CampaignSystem.canEnterSelectedLocalEncounter(ctx));
+        CampaignSystem.CampaignAction primary = CampaignSystem.campaignPrimaryAction(ctx);
+        assertNotNull(primary);
+        assertEquals("ENTER_SITE", primary.id);
+    }
+
+    @Test
     void selectedFleetContactCanBeUsedAsNavigationCourse() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -742,6 +888,43 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void defeatedSearchGroupFleetIsRemovedFromOvermapAfterManualBattle() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object group = firstSearchGroup(st);
+        assertNotNull(group);
+        int groupId = getInt(group, "id");
+
+        assertTrue(launchGalaxySearchGroupEncounter(ctx, st, group));
+        Object linkedForce = linkedForceForSearchGroup(st, groupId);
+        assertNotNull(linkedForce);
+        int forceId = getInt(linkedForce, "id");
+
+        int defeatedShips = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || st.shipCampaignForceIds.getOrDefault(ship.id, 0) != forceId) continue;
+            ship.hp = 0;
+            ship.alive = false;
+            ship.dying = true;
+            defeatedShips++;
+        }
+        assertTrue(defeatedShips > 0, "search group encounter should spawn ships owned by the linked campaign force");
+
+        invokeFinishGalaxyEncounterAndReturn(ctx, st);
+
+        assertFalse(st.campaignForces.contains(linkedForce),
+                "defeated linked forces should be removed before the overworld is shown again");
+        assertFalse(containsSearchGroup(st, groupId),
+                "the backing search group should be retired so its red map marker cannot be rebuilt");
+        assertNull(linkedForceForSearchGroup(st, groupId),
+                "no remaining campaign force should still point at the defeated search group");
+
+        CampaignSystem.syncCampaignForceSimulationSeedsForTest(ctx);
+        assertNull(linkedForceForSearchGroup(st, groupId),
+                "search-group force sync should not recreate a defeated patrol after return to overmap");
+    }
+
+    @Test
     void enemyActivityArrivalUsesTheSameStrategicEncounterPipeline() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -866,6 +1049,53 @@ class CampaignOvermapEncounterFlowTest {
         );
         method.setAccessible(true);
         return (boolean) method.invoke(null, ctx, st, group);
+    }
+
+    private static boolean launchCampaignForceEncounter(GameContext ctx, CampaignSystem.CampaignState st, Object force) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "launchCampaignForceEncounter",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                force.getClass()
+        );
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, ctx, st, force);
+    }
+
+    private static boolean hasTacticalShipForCampaignForce(CampaignSystem.CampaignState st, int forceId) {
+        for (Integer mappedForceId : st.shipCampaignForceIds.values()) {
+            if (mappedForceId != null && mappedForceId == forceId) return true;
+        }
+        return false;
+    }
+
+    private static void invokeFinishGalaxyEncounterAndReturn(GameContext ctx, CampaignSystem.CampaignState st) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "finishGalaxyEncounterAndReturn",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                int.class,
+                int.class,
+                String.class,
+                String.class,
+                String.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, 0, 0, "", "", "");
+    }
+
+    private static Object linkedForceForSearchGroup(CampaignSystem.CampaignState st, int groupId) throws Exception {
+        for (Object force : st.campaignForces) {
+            if (force != null && getInt(force, "linkedSearchGroupId") == groupId) return force;
+        }
+        return null;
+    }
+
+    private static boolean containsSearchGroup(CampaignSystem.CampaignState st, int groupId) throws Exception {
+        for (Object group : st.galaxySearchGroups) {
+            if (group != null && getInt(group, "id") == groupId) return true;
+        }
+        return false;
     }
 
     private static Object firstSearchGroup(CampaignSystem.CampaignState st) throws Exception {

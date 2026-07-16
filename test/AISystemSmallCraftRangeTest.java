@@ -2,11 +2,51 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AISystemSmallCraftRangeTest {
+
+    @Test
+    void campaignLocalAlliesDoNotJoinPlayerFormationGroup() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 4200, 2600, true, 140L, false));
+        ctx.campaign = new CampaignSystem.CampaignState();
+        ctx.campaign.enabled = true;
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 1200.0, 1300.0);
+        ctx.player.faction = Faction.ALLY;
+
+        FleetShip playerEscort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 1020.0, 1450.0);
+        playerEscort.minerHomeBase = ctx.player;
+        FleetShip localLeader = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 2100.0, 1300.0);
+        FleetShip localEscort = new FleetShip(ShipRole.PICKET, Faction.ALLY, 2180.0, 1400.0);
+
+        ctx.ships.clear();
+        ctx.ships.add(ctx.player);
+        ctx.ships.add(playerEscort);
+        ctx.ships.add(localLeader);
+        ctx.ships.add(localEscort);
+        ctx.entityQuery.rebuild(ctx);
+
+        Method buildFleetState = AISystem.class.getDeclaredMethod("buildFleetState", GameContext.class, double.class);
+        buildFleetState.setAccessible(true);
+        Object fleetState = buildFleetState.invoke(null, ctx, 1.0 / 60.0);
+        Field membersField = fleetState.getClass().getDeclaredField("members");
+        membersField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Map<Integer, List<Ship>> members = (Map<Integer, List<Ship>>) membersField.get(fleetState);
+
+        List<Ship> playerGroup = members.get(Faction.ALLY.teamId());
+        assertTrue(playerGroup != null && playerGroup.contains(ctx.player));
+        assertTrue(playerGroup.contains(playerEscort), "player-owned persistent escorts should stay in the Mothership formation");
+        assertFalse(playerGroup.contains(localLeader), "local friendly fleets should keep a separate formation anchor");
+        assertFalse(playerGroup.contains(localEscort), "local friendly escorts should not consume player formation slots");
+    }
 
     @Test
     void ciwsDogfightRangeUsesPracticalPelletReach() {
@@ -48,6 +88,48 @@ class AISystemSmallCraftRangeTest {
                 "sensor contact should keep the target in the sustained engagement envelope");
         assertTrue(sustainedRange > practicalGunRange,
                 "the sustained engagement envelope should extend beyond the coarse gun range gate");
+    }
+
+    @Test
+    void blueEscortGunAuthorityUsesMothershipSensorContact() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3200, 1800, true, 47L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);
+        ctx.player.faction = Faction.ALLY;
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 900.0);
+        FleetShip enemyCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 1700.0, 900.0);
+        Turret gun = escort.turrets.getFirst();
+
+        double oldCoarseGunRange = 460.0 * 1.04;
+        double authorized = AISystem.gunFireAuthorityRange(ctx, escort, gun, enemyCruiser, oldCoarseGunRange);
+
+        assertTrue(oldCoarseGunRange < 600.0, "test setup should stay outside the old escort gun gate");
+        assertTrue(TargetingSystem.isDetectableToObserver(ctx, ctx.player, enemyCruiser),
+                "the mothership should have the target on sensors");
+        assertTrue(authorized >= 1700.0,
+                "blue escorts should inherit mothership sensor fire authority instead of waiting for point-blank range");
+    }
+
+    @Test
+    void blueEscortFiresBeyondOldGunGateWhenMothershipHasContact() {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3200, 1800, true, 48L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);
+        ctx.player.faction = Faction.ALLY;
+        FleetShip escort = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 0.0, 900.0);
+        FleetShip enemyCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 1700.0, 900.0);
+        ctx.ships.clear();
+        ctx.ships.add(ctx.player);
+        ctx.ships.add(escort);
+        ctx.ships.add(enemyCruiser);
+        ctx.entityQuery.rebuild(ctx);
+
+        for (int i = 0; i < 3 * 60; i++) {
+            AISystem.update(ctx, 1.0 / 60.0);
+            for (Ship ship : ctx.ships) ship.update(1.0 / 60.0);
+            ctx.entityQuery.rebuild(ctx);
+        }
+
+        assertTrue(ctx.projectiles.stream().anyMatch(projectile -> projectile.sourceShipId == escort.id),
+                "blue escort should open fire using mothership-grade contact authority");
     }
 
     @Test

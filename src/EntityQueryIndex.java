@@ -6,15 +6,20 @@ import java.util.Map;
 public final class EntityQueryIndex {
     private static final double SHIP_CELL_SIZE = 320.0;
     private static final double MISSILE_CELL_SIZE = 192.0;
+    private static final double ASTEROID_CELL_SIZE = 320.0;
 
     private final LongBucketTable<Ship> shipCells = new LongBucketTable<>();
+    private final LongBucketTable<Ship> shipBroadPhaseCells = new LongBucketTable<>();
     private final LongBucketTable<Missile> missileCells = new LongBucketTable<>();
+    private final LongBucketTable<Asteroid> asteroidCells = new LongBucketTable<>();
     private final Map<Integer, Ship> shipById = new HashMap<>();
     private double maxShipBroadPhaseRadius = 0.0;
 
     public void rebuild(GameContext ctx) {
         shipCells.clear();
+        shipBroadPhaseCells.clear();
         missileCells.clear();
+        asteroidCells.clear();
         shipById.clear();
         maxShipBroadPhaseRadius = 0.0;
         if (ctx == null) return;
@@ -23,14 +28,22 @@ public final class EntityQueryIndex {
             Ship ship = ctx.ships.get(i);
             if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
             shipById.put(ship.id, ship);
-            maxShipBroadPhaseRadius = Math.max(maxShipBroadPhaseRadius, HullGeometry.broadPhaseRadius(ship));
+            double broadPhaseRadius = HullGeometry.broadPhaseRadius(ship);
+            maxShipBroadPhaseRadius = Math.max(maxShipBroadPhaseRadius, broadPhaseRadius);
             bucket(shipCells, SHIP_CELL_SIZE, ship.x, ship.y).add(ship);
+            bucketBroadPhaseShip(ship, broadPhaseRadius);
         }
 
         for (int i = 0; i < ctx.projectiles.size(); i++) {
             Projectile projectile = ctx.projectiles.get(i);
             if (!(projectile instanceof Missile missile) || !missile.alive) continue;
             bucket(missileCells, MISSILE_CELL_SIZE, missile.x, missile.y).add(missile);
+        }
+
+        for (int i = 0; i < ctx.asteroids.size(); i++) {
+            Asteroid asteroid = ctx.asteroids.get(i);
+            if (asteroid == null) continue;
+            bucketBroadPhaseAsteroid(asteroid);
         }
     }
 
@@ -94,6 +107,34 @@ public final class EntityQueryIndex {
         return out;
     }
 
+    public List<Ship> collectProjectileShipCandidates(double x, double y, double projectileRadius, List<Ship> out) {
+        out.clear();
+        if (shipBroadPhaseCells.isEmpty()) return out;
+        double r = Math.max(1.0, projectileRadius + 8.0);
+        int minCellX = cell(x - r, SHIP_CELL_SIZE);
+        int maxCellX = cell(x + r, SHIP_CELL_SIZE);
+        int minCellY = cell(y - r, SHIP_CELL_SIZE);
+        int maxCellY = cell(y + r, SHIP_CELL_SIZE);
+        java.util.HashSet<Integer> seen = null;
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                ArrayList<Ship> bucket = shipBroadPhaseCells.get(key(cx, cy));
+                if (bucket == null || bucket.isEmpty()) continue;
+                for (int i = 0; i < bucket.size(); i++) {
+                    Ship ship = bucket.get(i);
+                    if (ship == null) continue;
+                    if (seen == null) seen = new java.util.HashSet<>();
+                    if (!seen.add(ship.id)) continue;
+                    double rr = Math.max(0.0, projectileRadius) + HullGeometry.broadPhaseRadius(ship);
+                    if (GameMath.dist2(ship.x, ship.y, x, y) <= rr * rr) {
+                        out.add(ship);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     public List<Missile> collectMissilesNear(double x, double y, double radius, List<Missile> out) {
         out.clear();
         if (missileCells.isEmpty()) return out;
@@ -119,9 +160,66 @@ public final class EntityQueryIndex {
         return out;
     }
 
+    public List<Asteroid> collectAsteroidsNear(double x, double y, double radius, List<Asteroid> out) {
+        out.clear();
+        if (asteroidCells.isEmpty()) return out;
+        double r = Math.max(0.0, radius);
+        double r2 = r * r;
+        int minCellX = cell(x - r, ASTEROID_CELL_SIZE);
+        int maxCellX = cell(x + r, ASTEROID_CELL_SIZE);
+        int minCellY = cell(y - r, ASTEROID_CELL_SIZE);
+        int maxCellY = cell(y + r, ASTEROID_CELL_SIZE);
+        java.util.HashSet<Integer> seen = null;
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                ArrayList<Asteroid> bucket = asteroidCells.get(key(cx, cy));
+                if (bucket == null || bucket.isEmpty()) continue;
+                for (int i = 0; i < bucket.size(); i++) {
+                    Asteroid asteroid = bucket.get(i);
+                    if (asteroid == null) continue;
+                    if (seen == null) seen = new java.util.HashSet<>();
+                    if (!seen.add(asteroid.id)) continue;
+                    double rr = r + Math.max(0.0, asteroid.collisionRadius());
+                    if (GameMath.dist2(asteroid.x, asteroid.y, x, y) <= rr * rr) {
+                        out.add(asteroid);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     private static <T> ArrayList<T> bucket(LongBucketTable<T> buckets, double cellSize, double x, double y) {
         long key = key(cell(x, cellSize), cell(y, cellSize));
         return buckets.getOrCreate(key);
+    }
+
+    private void bucketBroadPhaseShip(Ship ship, double radius) {
+        if (ship == null) return;
+        double r = Math.max(0.0, radius);
+        int minCellX = cell(ship.x - r, SHIP_CELL_SIZE);
+        int maxCellX = cell(ship.x + r, SHIP_CELL_SIZE);
+        int minCellY = cell(ship.y - r, SHIP_CELL_SIZE);
+        int maxCellY = cell(ship.y + r, SHIP_CELL_SIZE);
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                shipBroadPhaseCells.getOrCreate(key(cx, cy)).add(ship);
+            }
+        }
+    }
+
+    private void bucketBroadPhaseAsteroid(Asteroid asteroid) {
+        if (asteroid == null) return;
+        double r = Math.max(0.0, asteroid.collisionRadius());
+        int minCellX = cell(asteroid.x - r, ASTEROID_CELL_SIZE);
+        int maxCellX = cell(asteroid.x + r, ASTEROID_CELL_SIZE);
+        int minCellY = cell(asteroid.y - r, ASTEROID_CELL_SIZE);
+        int maxCellY = cell(asteroid.y + r, ASTEROID_CELL_SIZE);
+        for (int cy = minCellY; cy <= maxCellY; cy++) {
+            for (int cx = minCellX; cx <= maxCellX; cx++) {
+                asteroidCells.getOrCreate(key(cx, cy)).add(asteroid);
+            }
+        }
     }
 
     private static int cell(double value, double cellSize) {

@@ -54,7 +54,9 @@ public final class CrewStationsSystem {
                 : ctx.command.captainDirective;
         boolean captainNavPriority = isCaptainNavigationDirective(directive) && ctx.command.captainAutomation;
         if (ctx.command.scienceAutomation) applyScienceAutomation(ctx);
-        if (ctx.command.engineeringAutomation) applyEngineeringAutomation(ctx);
+        if (ctx.command.engineeringAutomation && (ctx.ui == null || !ctx.ui.powerManagementOpen)) {
+            applyEngineeringAutomation(ctx);
+        }
         if (ctx.command.tacticalAutomation) applyTacticalAutomation(ctx, captainNavPriority, directive);
         else {
             ctx.firingPrimaryAuto = false;

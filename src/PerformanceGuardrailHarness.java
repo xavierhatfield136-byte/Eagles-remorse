@@ -56,12 +56,10 @@ public final class PerformanceGuardrailHarness {
         SpawnSystem.initWorld(ctx);
         clearDefaultBattle(ctx);
         Renderer.prewarmAssetCaches(ctx.config.mode);
-        if (prewarmDestroyedParts || ticks >= 1000) {
-            ShipPartLibrary.prewarmCaches();
-        }
         PerformanceGuardrails.applyExperienceSettings(ctx.config.experience);
         PerformanceGuardrails.update(ctx);
         seedStressBattle(ctx, scenario, shipsPerSide);
+        ShipPartLibrary.prewarmDamageCachesForShips(ctx.ships);
         centerCameraOnBattle(ctx, viewportW, viewportH);
         if (tacticalFpsView && ctx.ui != null) {
             ctx.ui.tacticalViewEnabled = true;
@@ -92,6 +90,11 @@ public final class PerformanceGuardrailHarness {
         double maxRenderShipsMs = 0.0;
         double maxRenderHudMs = 0.0;
         double maxRenderMapMs = 0.0;
+        AiPerfAverages aiPerf = new AiPerfAverages();
+        BroadPhysicsPerfAverages broadPhysicsPerf = new BroadPhysicsPerfAverages();
+        ProjectilePhysicsPerfAverages projectilePerf = new ProjectilePhysicsPerfAverages();
+        ShipRenderPerfAverages shipRenderPerf = new ShipRenderPerfAverages();
+        RenderPhasePerfAverages renderPhasePerf = new RenderPhasePerfAverages();
         int missilesPerBurst = missilesPerBurst(scenario);
         for (int tick = 0; tick < ticks; tick++) {
             if (missilesPerBurst > 0 && (tick % 12) == 0) seedMissilePressure(ctx, missilesPerBurst);
@@ -136,6 +139,11 @@ public final class PerformanceGuardrailHarness {
             maxRenderShipsMs = Math.max(maxRenderShipsMs, ctx.perf.renderShipsMs);
             maxRenderHudMs = Math.max(maxRenderHudMs, ctx.perf.renderHudMs);
             maxRenderMapMs = Math.max(maxRenderMapMs, ctx.perf.renderMapMs);
+            aiPerf.sample(ctx.perf);
+            broadPhysicsPerf.sample(ctx.perf);
+            projectilePerf.sample(ctx.perf);
+            shipRenderPerf.sample(ctx.perf);
+            renderPhasePerf.sample(ctx.perf);
         }
         double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
         SpriteAtlasRegistry.atlas("multipart");
@@ -170,11 +178,32 @@ public final class PerformanceGuardrailHarness {
                 + " estimatedFps=" + String.format(Locale.US, "%.1f", estimatedFps)
                 + " avgUpdateMs=" + String.format(Locale.US, "%.3f", avgUpdateMs)
                 + " avgRenderMs=" + String.format(Locale.US, "%.3f", avgRenderMs)
+                + " avgRenderBackgroundMs=" + String.format(Locale.US, "%.3f", renderPhasePerf.backgroundMs())
+                + " avgRenderProjectilesMs=" + String.format(Locale.US, "%.3f", renderPhasePerf.projectilesMs())
+                + " avgRenderWorldMarkersMs=" + String.format(Locale.US, "%.3f", renderPhasePerf.worldMarkersMs())
+                + " avgRenderVfxMs=" + String.format(Locale.US, "%.3f", renderPhasePerf.vfxMs())
+                + " avgRenderExplosionsMs=" + String.format(Locale.US, "%.3f", renderPhasePerf.explosionsMs())
                 + " maxRenderShipsMs=" + String.format(Locale.US, "%.3f", maxRenderShipsMs)
                 + " maxRenderHudMs=" + String.format(Locale.US, "%.3f", maxRenderHudMs)
                 + " maxRenderMapMs=" + String.format(Locale.US, "%.3f", maxRenderMapMs)
                 + " avgAiMs=" + String.format(Locale.US, "%.3f", avgAiMs)
+                + " avgAiFleetStateMs=" + String.format(Locale.US, "%.3f", aiPerf.fleetStateMs())
+                + " avgAiShipCombatMs=" + String.format(Locale.US, "%.3f", aiPerf.shipCombatMs())
+                + " avgAiAvoidanceMs=" + String.format(Locale.US, "%.3f", aiPerf.avoidanceMs())
                 + " avgProjectilePhysicsMs=" + String.format(Locale.US, "%.3f", avgPhysicsMs)
+                + " avgPhysicsShipUpdateMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.shipUpdateMs())
+                + " avgPhysicsSuperweaponPollMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.superweaponPollMs())
+                + " avgPhysicsPlayerWeaponMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.playerWeaponMs())
+                + " avgPhysicsPlayerTargetingMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.playerTargetingMs())
+                + " avgPhysicsPlayerAimMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.playerAimMs())
+                + " avgPhysicsPlayerPrimaryMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.playerPrimaryMs())
+                + " avgPhysicsPlayerSecondaryMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.playerSecondaryMs())
+                + " avgPhysicsPostCollisionMs=" + String.format(Locale.US, "%.3f", broadPhysicsPerf.postCollisionMs())
+                + " avgProjectileCiwsMs=" + String.format(Locale.US, "%.3f", projectilePerf.projectileCiwsMs())
+                + " avgProjectileVsShipMs=" + String.format(Locale.US, "%.3f", projectilePerf.projectileVsShipMs())
+                + " avgProjectileVsProjectileMs=" + String.format(Locale.US, "%.3f", projectilePerf.projectileVsProjectileMs())
+                + " avgShipSkinMs=" + String.format(Locale.US, "%.3f", shipRenderPerf.skinMs())
+                + " avgShipDamageMs=" + String.format(Locale.US, "%.3f", shipRenderPerf.damageMs())
                 + " avgCampaignMapMs=" + String.format(Locale.US, "%.3f", avgCampaignMapMs)
                 + " frameBudgetPass=" + frameBudgetPass
                 + " peakHeapMb=" + String.format(java.util.Locale.US, "%.2f", peakHeap / 1048576.0)
@@ -191,7 +220,8 @@ public final class PerformanceGuardrailHarness {
                     peakWreckChunks, peakVfx, peakExplosions, maxDrawnShips, maxDrawnProjectiles,
                     maxDrawnWreckChunks, maxDrawnVfx, elapsedMs, avgFrameMs, estimatedFps, avgUpdateMs,
                     avgRenderMs, maxRenderShipsMs, maxRenderHudMs, maxRenderMapMs, avgAiMs,
-                    avgPhysicsMs, avgCampaignMapMs, frameBudgetPass, pass, strict);
+                    aiPerf, broadPhysicsPerf, projectilePerf, shipRenderPerf, renderPhasePerf, avgPhysicsMs,
+                    avgCampaignMapMs, frameBudgetPass, pass, strict);
         }
         System.out.println("[performance-guardrail] checks: " + (pass ? "PASS" : "FAIL"));
         if (!pass && strict) System.exit(2);
@@ -304,7 +334,11 @@ public final class PerformanceGuardrailHarness {
                                     int maxDrawnProjectiles, int maxDrawnWreckChunks, int maxDrawnVfx,
                                     double elapsedMs, double avgFrameMs, double estimatedFps, double avgUpdateMs,
                                     double avgRenderMs, double maxRenderShipsMs, double maxRenderHudMs,
-                                    double maxRenderMapMs, double avgAiMs, double avgPhysicsMs,
+                                    double maxRenderMapMs, double avgAiMs, AiPerfAverages aiPerf,
+                                    BroadPhysicsPerfAverages broadPhysicsPerf,
+                                    ProjectilePhysicsPerfAverages projectilePerf, ShipRenderPerfAverages shipRenderPerf,
+                                    RenderPhasePerfAverages renderPhasePerf,
+                                    double avgPhysicsMs,
                                     double avgCampaignMapMs, boolean frameBudgetPass, boolean pass, boolean strict) {
         String json = "{\n"
                 + "  \"scenario\": \"" + scenario.id + "\",\n"
@@ -326,11 +360,61 @@ public final class PerformanceGuardrailHarness {
                 + "  \"estimatedFps\": " + fmt(estimatedFps) + ",\n"
                 + "  \"avgUpdateMs\": " + fmt(avgUpdateMs) + ",\n"
                 + "  \"avgRenderMs\": " + fmt(avgRenderMs) + ",\n"
+                + "  \"avgRenderBackgroundMs\": " + fmt(renderPhasePerf.backgroundMs()) + ",\n"
+                + "  \"avgRenderWorldCompositeMs\": " + fmt(renderPhasePerf.worldCompositeMs()) + ",\n"
+                + "  \"avgRenderVfxMs\": " + fmt(renderPhasePerf.vfxMs()) + ",\n"
+                + "  \"avgRenderExplosionsMs\": " + fmt(renderPhasePerf.explosionsMs()) + ",\n"
+                + "  \"avgRenderProjectilesMs\": " + fmt(renderPhasePerf.projectilesMs()) + ",\n"
+                + "  \"avgRenderWorldMarkersMs\": " + fmt(renderPhasePerf.worldMarkersMs()) + ",\n"
+                + "  \"avgRenderHudPhaseMs\": " + fmt(renderPhasePerf.hudMs()) + ",\n"
+                + "  \"maxSimplifiedProjectiles\": " + renderPhasePerf.maxSimplifiedProjectiles() + ",\n"
                 + "  \"maxRenderShipsMs\": " + fmt(maxRenderShipsMs) + ",\n"
                 + "  \"maxRenderHudMs\": " + fmt(maxRenderHudMs) + ",\n"
                 + "  \"maxRenderMapMs\": " + fmt(maxRenderMapMs) + ",\n"
+                + "  \"avgRenderShipSkinMs\": " + fmt(shipRenderPerf.skinMs()) + ",\n"
+                + "  \"avgRenderShipDetailMs\": " + fmt(shipRenderPerf.detailMs()) + ",\n"
+                + "  \"avgRenderShipEngineMs\": " + fmt(shipRenderPerf.engineMs()) + ",\n"
+                + "  \"avgRenderShipHardpointMs\": " + fmt(shipRenderPerf.hardpointMs()) + ",\n"
+                + "  \"avgRenderShipDamageMs\": " + fmt(shipRenderPerf.damageMs()) + ",\n"
+                + "  \"avgRenderShipEnergyMs\": " + fmt(shipRenderPerf.energyMs()) + ",\n"
+                + "  \"avgRenderShipNameMs\": " + fmt(shipRenderPerf.nameMs()) + ",\n"
+                + "  \"avgRenderShipTokenMs\": " + fmt(shipRenderPerf.tokenMs()) + ",\n"
                 + "  \"avgAiMs\": " + fmt(avgAiMs) + ",\n"
+                + "  \"avgAiMaintenanceMs\": " + fmt(aiPerf.maintenanceMs()) + ",\n"
+                + "  \"avgAiFleetStateMs\": " + fmt(aiPerf.fleetStateMs()) + ",\n"
+                + "  \"avgAiShipUtilityMs\": " + fmt(aiPerf.shipUtilityMs()) + ",\n"
+                + "  \"avgAiShipCombatMs\": " + fmt(aiPerf.shipCombatMs()) + ",\n"
+                + "  \"avgAiShipCombatTargetMs\": " + fmt(aiPerf.shipCombatTargetMs()) + ",\n"
+                + "  \"avgAiShipCombatFightMs\": " + fmt(aiPerf.shipCombatFightMs()) + ",\n"
+                + "  \"avgAiShipCombatFireMs\": " + fmt(aiPerf.shipCombatFireMs()) + ",\n"
+                + "  \"avgAiAvoidanceMs\": " + fmt(aiPerf.avoidanceMs()) + ",\n"
+                + "  \"avgAiFormationSyncMs\": " + fmt(aiPerf.formationSyncMs()) + ",\n"
+                + "  \"avgAiBoundsMs\": " + fmt(aiPerf.boundsMs()) + ",\n"
+                + "  \"avgAiCacheQueryMs\": " + fmt(aiPerf.cacheQueryMs()) + ",\n"
+                + "  \"avgAiIntentCacheHits\": " + fmt(aiPerf.intentCacheHits()) + ",\n"
+                + "  \"avgAiIntentCacheMisses\": " + fmt(aiPerf.intentCacheMisses()) + ",\n"
+                + "  \"avgAiIntentInvalidations\": " + fmt(aiPerf.intentInvalidations()) + ",\n"
+                + "  \"avgAiCheapTargetScores\": " + fmt(aiPerf.cheapTargetScores()) + ",\n"
+                + "  \"avgAiMediumTargetScores\": " + fmt(aiPerf.mediumTargetScores()) + ",\n"
+                + "  \"avgAiExpensiveTargetScores\": " + fmt(aiPerf.expensiveTargetScores()) + ",\n"
+                + "  \"avgAiMovementReuseFrames\": " + fmt(aiPerf.movementReuseFrames()) + ",\n"
                 + "  \"avgProjectilePhysicsMs\": " + fmt(avgPhysicsMs) + ",\n"
+                + "  \"avgPhysicsShipUpdateMs\": " + fmt(broadPhysicsPerf.shipUpdateMs()) + ",\n"
+                + "  \"avgPhysicsSuperweaponPollMs\": " + fmt(broadPhysicsPerf.superweaponPollMs()) + ",\n"
+                + "  \"avgPhysicsPlayerWeaponMs\": " + fmt(broadPhysicsPerf.playerWeaponMs()) + ",\n"
+                + "  \"avgPhysicsPlayerTargetingMs\": " + fmt(broadPhysicsPerf.playerTargetingMs()) + ",\n"
+                + "  \"avgPhysicsPlayerAimMs\": " + fmt(broadPhysicsPerf.playerAimMs()) + ",\n"
+                + "  \"avgPhysicsPlayerPrimaryMs\": " + fmt(broadPhysicsPerf.playerPrimaryMs()) + ",\n"
+                + "  \"avgPhysicsPlayerSecondaryMs\": " + fmt(broadPhysicsPerf.playerSecondaryMs()) + ",\n"
+                + "  \"avgPhysicsPostCollisionMs\": " + fmt(broadPhysicsPerf.postCollisionMs()) + ",\n"
+                + "  \"avgProjectileUpdateMs\": " + fmt(projectilePerf.projectileUpdateMs()) + ",\n"
+                + "  \"avgProjectileIndexMs\": " + fmt(projectilePerf.projectileIndexMs()) + ",\n"
+                + "  \"avgProjectileCiwsMs\": " + fmt(projectilePerf.projectileCiwsMs()) + ",\n"
+                + "  \"avgProjectileVsProjectileMs\": " + fmt(projectilePerf.projectileVsProjectileMs()) + ",\n"
+                + "  \"avgProjectileVsAsteroidMs\": " + fmt(projectilePerf.projectileVsAsteroidMs()) + ",\n"
+                + "  \"avgProjectileVsShipMs\": " + fmt(projectilePerf.projectileVsShipMs()) + ",\n"
+                + "  \"avgProjectileCleanupMs\": " + fmt(projectilePerf.projectileCleanupMs()) + ",\n"
+                + "  \"avgShipAsteroidMs\": " + fmt(projectilePerf.shipAsteroidMs()) + ",\n"
                 + "  \"avgCampaignMapMs\": " + fmt(avgCampaignMapMs) + ",\n"
                 + "  \"frameBudgetMs\": " + fmt(scenario.frameBudgetMs()) + ",\n"
                 + "  \"frameBudgetPass\": " + frameBudgetPass + ",\n"

@@ -261,8 +261,40 @@ public final class EconomySystem {
             if (s == null) continue;
             if (s.role != ShipRole.MINER) continue;
             if (!s.alive || s.dying || s.hp <= 0) continue;
+            if (holdCampaignFleetMinerNearFlagship(ctx, s, dt)) continue;
             updateMinerState(ctx, s, dt);
         }
+    }
+
+    private static boolean holdCampaignFleetMinerNearFlagship(GameContext ctx, Ship miner, double dt) {
+        if (ctx == null || miner == null || ctx.player == null || !CampaignSystem.isCampaignActive(ctx)) return false;
+        if (ctx.command != null && ctx.command.alliedFleetCommand == GameContext.FleetCommand.MINE) return false;
+        if (miner.minerHomeBase != ctx.player) return false;
+        if (miner.faction == null || ctx.player.faction == null || !miner.faction.isFriendlyTo(ctx.player.faction)) return false;
+
+        int slot = Math.floorMod(miner.id, 6);
+        double side = (slot % 2 == 0) ? -1.0 : 1.0;
+        double row = slot / 2.0;
+        double trail = Math.max(220.0, ctx.player.radius + 170.0) + row * 70.0;
+        double lateral = side * (170.0 + row * 34.0);
+        double tx = ctx.player.x - Math.cos(ctx.player.angle) * trail - Math.sin(ctx.player.angle) * lateral;
+        double ty = ctx.player.y - Math.sin(ctx.player.angle) * trail + Math.cos(ctx.player.angle) * lateral;
+        double dist = Math.hypot(miner.x - tx, miner.y - ty);
+        if (dist > 26.0) {
+            steerTo(miner, tx, ty, dt);
+        } else {
+            miner.vx = ctx.player.vx;
+            miner.vy = ctx.player.vy;
+        }
+        miner.angle = ctx.player.angle;
+        miner.minerTarget = null;
+        miner.minerState = Ship.MinerState.IDLE;
+        int loaded = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        if (loaded >= 0) {
+            miner.campaignMissionSubzone = loaded;
+            miner.campaignWarpSourceSubzone = -1;
+        }
+        return true;
     }
 
     private static void updateNpcHaulerLogistics(GameContext ctx, double dt) {

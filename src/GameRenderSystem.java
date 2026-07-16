@@ -99,10 +99,12 @@ public final class GameRenderSystem {
         // Background (screen space)
         long seed = (ctx.config != null ? ctx.config.seed : 12345L);
         boolean tacticalFpsView = ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
+        long renderPhaseStart = System.nanoTime();
         Renderer.drawSpaceBackground(g2, ctx, ctx.camX, ctx.camY, viewportW, viewportH, seed);
         if (!tacticalFpsView) {
             drawModifierWorldTint(ctx, g2, viewportW, viewportH);
         }
+        ctx.perf.renderBackgroundMs = (System.nanoTime() - renderPhaseStart) / 1_000_000.0;
         double zoom = CameraSystem.normalizedZoom(ctx);
         double cullPad = MATCH_RENDER_CULL_PAD_METERS;
         double viewMinX = ctx.camX - cullPad;
@@ -112,12 +114,14 @@ public final class GameRenderSystem {
         FogOfWarSystem.State renderFog = null;
 
         // World space
+        renderPhaseStart = System.nanoTime();
         Graphics2D worldG = (Graphics2D) g2.create();
         worldG.scale(zoom, zoom);
         worldG.translate(-ctx.camX, -ctx.camY);
 
         worldG.setColor(tacticalFpsView ? new Color(130, 180, 220, 28) : new Color(255, 255, 255, 28));
         worldG.drawRect(0, 0, ctx.WORLD_W, ctx.WORLD_H);
+        ctx.perf.renderWorldCompositeMs = (System.nanoTime() - renderPhaseStart) / 1_000_000.0;
 
         if (!tacticalFpsView && DevTools.isFancyVfxEnabled()) {
             updateDamageVfx(ctx);
@@ -142,12 +146,15 @@ public final class GameRenderSystem {
         ctx.perf.totalExplosions = Explosion.active.size();
         ctx.perf.totalWreckChunks = WreckChunk.activeCount();
         if (!tacticalFpsView) {
+            renderPhaseStart = System.nanoTime();
             try {
                 ctx.perf.drawnVfx = VFX.drawAll(worldG, viewMinX, viewMinY, viewMaxX, viewMaxY,
                         (x, y) -> isInLoadedRenderZone(ctx, x, y));
             } catch (Throwable ignored) { ctx.perf.drawnVfx = 0; }
+            ctx.perf.renderVfxMs = (System.nanoTime() - renderPhaseStart) / 1_000_000.0;
 
             ctx.perf.drawnExplosions = 0;
+            renderPhaseStart = System.nanoTime();
             try {
                 for (Explosion e : Explosion.active) {
                     if (e == null) continue;
@@ -171,9 +178,12 @@ public final class GameRenderSystem {
                     }
                 }
             } catch (Throwable ignored) {}
+            ctx.perf.renderExplosionsMs = (System.nanoTime() - renderPhaseStart) / 1_000_000.0;
         } else {
             ctx.perf.drawnVfx = 0;
             ctx.perf.drawnExplosions = 0;
+            ctx.perf.renderVfxMs = 0.0;
+            ctx.perf.renderExplosionsMs = 0.0;
         }
 
         if (!tacticalFpsView) {
@@ -188,9 +198,21 @@ public final class GameRenderSystem {
         ctx.perf.drawnShips = Renderer.drawShips(worldG, renderShips, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective, ctx);
         ctx.perf.renderShipsMs = (System.nanoTime() - shipRenderStart) / 1_000_000.0;
         ctx.perf.shieldRenderMs = Renderer.frameShieldRenderMs();
+        ctx.perf.renderShipSkinMs = Renderer.frameShipSkinMs();
+        ctx.perf.renderShipDetailMs = Renderer.frameShipDetailMs();
+        ctx.perf.renderShipEngineMs = Renderer.frameShipEngineMs();
+        ctx.perf.renderShipHardpointMs = Renderer.frameShipHardpointMs();
+        ctx.perf.renderShipDamageMs = Renderer.frameShipDamageMs();
+        ctx.perf.renderShipEnergyMs = Renderer.frameShipEnergyMs();
+        ctx.perf.renderShipNameMs = Renderer.frameShipNameMs();
+        ctx.perf.renderShipTokenMs = Renderer.frameShipTokenMs();
+        long projectileRenderStart = System.nanoTime();
         ctx.perf.drawnProjectiles = Renderer.drawProjectiles(worldG, renderShips, renderProjectiles, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog, perspective);
+        ctx.perf.renderProjectilesMs = (System.nanoTime() - projectileRenderStart) / 1_000_000.0;
+        ctx.perf.simplifiedProjectiles = Renderer.frameSimplifiedProjectiles();
         ctx.perf.visibleSprites = ctx.perf.drawnShips + ctx.perf.drawnProjectiles + ctx.perf.drawnAsteroids
                 + ctx.perf.drawnSalvage + ctx.perf.drawnWreckChunks + ctx.perf.drawnVfx + ctx.perf.drawnExplosions;
+        long markerRenderStart = System.nanoTime();
         if (!tacticalFpsView) {
             Renderer.drawSuperweaponAimCue(worldG, ctx.player, ctx.cursorWorldX, ctx.cursorWorldY);
             Renderer.drawNpcSuperweaponAimCues(worldG, renderShips, ctx.player, viewMinX, viewMinY, viewMaxX, viewMaxY, renderFog);
@@ -205,6 +227,7 @@ public final class GameRenderSystem {
             drawCampaignMarkers(ctx, worldG, viewMinX, viewMinY, viewMaxX, viewMaxY);
             TutorialSystem.drawWorldMarkers(ctx, worldG);
         }
+        ctx.perf.renderWorldMarkersMs = (System.nanoTime() - markerRenderStart) / 1_000_000.0;
         worldG.dispose();
 
         int allyOre = EconomySystem.getOreTotalForFaction(ctx, Faction.ALLY);
@@ -238,6 +261,7 @@ public final class GameRenderSystem {
                 + "S:" + (ctx.command.scienceAutomation ? "AI" : "MAN");
         String overlayStatus = activeOverlayLabel(ctx);
         String contextHint = buildContextHint(ctx, docked);
+        GameContext.HudDetail effectiveHudDetail = effectiveHudDetailForRenderPressure(ctx, ctx.ui.hudDetail);
 
         long hudRenderStart = System.nanoTime();
         Renderer.drawHUD(
@@ -273,7 +297,7 @@ public final class GameRenderSystem {
                 zoom,
                 stationStatus,
                 ctx,
-                ctx.ui.hudDetail,
+                effectiveHudDetail,
                 contextHint,
                 overlayStatus
 
@@ -355,6 +379,7 @@ public final class GameRenderSystem {
         }
 
         // Persistent quick-access overlays bar.
+        Renderer.drawFormationMenu(g2, ctx, viewportW, viewportH);
         Renderer.drawCoreMenuBar(g2, ctx, viewportW, viewportH);
         Renderer.drawCurrentContextLegend(g2, ctx, viewportW, viewportH);
         Renderer.drawControlsScreen(g2, ctx, viewportW, viewportH);
@@ -410,6 +435,7 @@ if (DevTools.isDebugOverlay()) {
         ctx.perf.drawnSalvage = 0;
         ctx.perf.drawnShips = 0;
         ctx.perf.drawnProjectiles = 0;
+        ctx.perf.simplifiedProjectiles = 0;
         ctx.perf.drawnVfx = 0;
         ctx.perf.drawnExplosions = 0;
         ctx.perf.drawnWreckChunks = 0;
@@ -418,8 +444,22 @@ if (DevTools.isDebugOverlay()) {
         ctx.perf.totalVfx = 0;
         ctx.perf.totalExplosions = 0;
         ctx.perf.totalWreckChunks = WreckChunk.activeCount();
+        ctx.perf.renderBackgroundMs = 0.0;
+        ctx.perf.renderWorldCompositeMs = 0.0;
+        ctx.perf.renderVfxMs = 0.0;
+        ctx.perf.renderExplosionsMs = 0.0;
+        ctx.perf.renderProjectilesMs = 0.0;
+        ctx.perf.renderWorldMarkersMs = 0.0;
         ctx.perf.renderShipsMs = 0.0;
         ctx.perf.shieldRenderMs = 0.0;
+        ctx.perf.renderShipSkinMs = 0.0;
+        ctx.perf.renderShipDetailMs = 0.0;
+        ctx.perf.renderShipEngineMs = 0.0;
+        ctx.perf.renderShipHardpointMs = 0.0;
+        ctx.perf.renderShipDamageMs = 0.0;
+        ctx.perf.renderShipEnergyMs = 0.0;
+        ctx.perf.renderShipNameMs = 0.0;
+        ctx.perf.renderShipTokenMs = 0.0;
         ctx.perf.renderHudMs = 0.0;
     }
 
@@ -437,6 +477,30 @@ if (DevTools.isDebugOverlay()) {
         if (ctx.ui.campaignActionConfirm.active) panels++;
         if (ctx.state == GameState.PAUSED) panels++;
         return panels;
+    }
+
+    private static GameContext.HudDetail effectiveHudDetailForRenderPressure(GameContext ctx, GameContext.HudDetail requested) {
+        GameContext.HudDetail detail = requested == null ? GameContext.HudDetail.COMPACT : requested;
+        if (ctx == null || ctx.ui == null) return detail;
+        if (ctx.ui.shopOpen || ctx.ui.baseMenuOpen || ctx.ui.mapOpen
+                || ctx.ui.powerManagementOpen || ctx.ui.crewStationsOpen || ctx.ui.flightDeckOpen) {
+            return detail;
+        }
+        int ships = ctx.ships == null ? 0 : ctx.ships.size();
+        int projectiles = ctx.projectiles == null ? 0 : ctx.projectiles.size();
+        if (CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx)) {
+            if (ships >= 260 || projectiles >= 520 || (ships >= 96 && projectiles >= 220)) {
+                return detail == GameContext.HudDetail.MINIMAL ? GameContext.HudDetail.COMPACT : detail;
+            }
+            return detail;
+        }
+        if (ships >= 260 || projectiles >= 520 || (ships >= 96 && projectiles >= 220)) {
+            return GameContext.HudDetail.MINIMAL;
+        }
+        if ((ships >= 180 || projectiles >= 360) && detail == GameContext.HudDetail.FULL) {
+            return GameContext.HudDetail.COMPACT;
+        }
+        return detail;
     }
 
     private static String activeOverlayLabel(GameContext ctx) {

@@ -30,6 +30,7 @@ public class CollisionSystem {
     public static void handleProjectilesVsShips(GameContext ctx, List<Projectile> projectiles, List<Ship> ships) {
         if (projectiles == null || ships == null) return;
         List<Ship> nearbyShips = new java.util.ArrayList<>();
+        boolean projectilePressure = projectiles.size() >= 560;
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
             // Team C point-defense lasers remain projectile-only; CIWS pellets can also hit small craft.
@@ -45,13 +46,13 @@ public class CollisionSystem {
             Ship shooter = resolveSourceShip(ctx, ships, p);
             Iterable<Ship> candidates = ships;
             if (ctx != null) {
-                double queryRadius = p.radius + ctx.entityQuery.maxShipBroadPhaseRadius();
-                ctx.entityQuery.collectAliveShipsNear(p.x, p.y, queryRadius, nearbyShips);
+                ctx.entityQuery.collectProjectileShipCandidates(p.x, p.y, p.radius, nearbyShips);
                 candidates = nearbyShips;
             }
             for (Ship s : candidates) {
                 if (!s.alive) continue;
                 if (s.faction.isFriendlyTo(p.faction)) continue;
+                if (projectilePressure && p instanceof CIWSPellet && !s.isSmallCraft()) continue;
                 if (!canProjectileDamageShip(ctx, shooter, p, s)) continue;
 
                 Missile interceptorMissile = (p instanceof Missile missile
@@ -374,6 +375,7 @@ public class CollisionSystem {
     /** Projectiles damage asteroids; most shots are consumed on impact. */
     public static void handleProjectilesVsAsteroids(GameContext ctx, List<Projectile> projectiles, List<Asteroid> asteroids) {
         if (projectiles == null || asteroids == null || asteroids.isEmpty()) return;
+        List<Asteroid> nearbyAsteroids = new java.util.ArrayList<>();
 
         for (Projectile p : projectiles) {
             if (!p.alive) continue;
@@ -381,12 +383,13 @@ public class CollisionSystem {
             if (p instanceof PointDefenseLaser) continue;
             if (p instanceof PhaserBeam) continue;
             SuperweaponShot ws = (p instanceof SuperweaponShot) ? (SuperweaponShot) p : null;
-            for (int ai = asteroids.size() - 1; ai >= 0; ai--) {
-                Asteroid a = asteroids.get(ai);
-                if (a == null) {
-                    asteroids.remove(ai);
-                    continue;
-                }
+            Iterable<Asteroid> candidates = new java.util.ArrayList<>(asteroids);
+            if (ctx != null) {
+                ctx.entityQuery.collectAsteroidsNear(p.x, p.y, p.radius, nearbyAsteroids);
+                candidates = nearbyAsteroids;
+            }
+            for (Asteroid a : candidates) {
+                if (a == null || a.hp <= 0) continue;
                 if (!circleHit(p.x, p.y, p.radius, a.x, a.y, a.collisionRadius())) continue;
 
                 if (ws != null) {
@@ -415,7 +418,7 @@ public class CollisionSystem {
                         ScreenShake.kick(Math.min(5.0, 1.2 + a.collisionRadius() * 0.06));
                     }
                     AudioSystem.onExplosion(ctx, a.x, a.y);
-                    asteroids.remove(ai);
+                    asteroids.remove(a);
                 }
 
                 if (p instanceof DisruptorSlug slug) {

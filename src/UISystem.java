@@ -217,6 +217,7 @@ public final class UISystem {
         ctx.ui.clearCommTradeMenu();
         ctx.ui.clearCommsContextMenu();
         ctx.ui.commsOpen = false;
+        ctx.ui.formationMenuOpen = false;
         ctx.ui.shopOpen = false;
         ctx.ui.baseMenuOpen = false;
         ctx.ui.mapOpen = false;
@@ -374,6 +375,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             ctx.ui.mapOpen = true;
             ctx.ui.campaignCommandTab = UiState.CampaignCommandTab.FLEET;
             clearManualCombatInputs(ctx);
@@ -389,6 +391,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             clearManualCombatInputs(ctx);
             if (CampaignSystem.usesPersistentFleetShop(ctx) && ctx.player != null && ctx.ui.fleetSelectedShipId <= 0) {
                 ctx.ui.fleetSelectedShipId = ctx.player.id;
@@ -419,6 +422,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             clearManualCombatInputs(ctx);
             BattlefieldSectorSystem.ensureSelection(ctx);
             BattlefieldSectorSystem.ensureLoadedSector(ctx);
@@ -451,6 +455,7 @@ public final class UISystem {
                 ctx.ui.crewStationsOpen = false;
                 ctx.ui.flightDeckOpen = false;
                 ctx.ui.commsOpen = false;
+                ctx.ui.formationMenuOpen = false;
                 clearManualCombatInputs(ctx);
                 ctx.state = GameState.BASE_MENU;
                 AudioSystem.onUiOpen(ctx);
@@ -483,6 +488,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.BASE_MENU;
             AudioSystem.onUiOpen(ctx);
@@ -505,6 +511,7 @@ public final class UISystem {
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.POWER_MANAGEMENT;
             AudioSystem.onUiOpen(ctx);
@@ -527,6 +534,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.flightDeckOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             clearManualCombatInputs(ctx);
             ctx.state = GameState.CREW_STATIONS;
             AudioSystem.onUiOpen(ctx);
@@ -548,6 +556,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.commsOpen = false;
+            ctx.ui.formationMenuOpen = false;
             ctx.ui.flightDeckFocus = Math.max(0, Math.min(4, ctx.ui.flightDeckFocus));
             clearManualCombatInputs(ctx);
             ctx.state = GameState.FLIGHT_DECK;
@@ -571,6 +580,7 @@ public final class UISystem {
             ctx.ui.powerManagementOpen = false;
             ctx.ui.crewStationsOpen = false;
             ctx.ui.flightDeckOpen = false;
+            ctx.ui.formationMenuOpen = false;
             if (ctx.ui.commsSelectedContactId <= 0 && ctx.lockedTarget != null) {
                 ctx.ui.commsSelectedContactId = ctx.lockedTarget.id;
             }
@@ -600,7 +610,8 @@ public final class UISystem {
                 case 3 -> SpawnSystem.loadShowcaseTeam(ctx, Faction.TEAM_D);
                 case 4 -> toggleCrewStations(ctx);
                 case 5 -> GameplayActions.trySafeMissionExit(ctx);
-                case 6 -> toggleCommsPanel(ctx);
+                case 6 -> toggleFormationMenu(ctx);
+                case 7 -> toggleCommsPanel(ctx);
                 default -> {
                     return false;
                 }
@@ -615,11 +626,49 @@ public final class UISystem {
             case 3 -> togglePowerManagement(ctx);
             case 4 -> toggleCrewStations(ctx);
             case 5 -> GameplayActions.trySafeMissionExit(ctx);
-            case 6 -> toggleCommsPanel(ctx);
+            case 6 -> toggleFormationMenu(ctx);
+            case 7 -> toggleCommsPanel(ctx);
             default -> {
                 return false;
             }
         }
+        return true;
+    }
+
+    public static void toggleFormationMenu(GameContext ctx) {
+        if (ctx == null || ctx.ui == null) return;
+        if (ctx.state == GameState.PAUSED || ctx.state == GameState.GAME_OVER) return;
+        ctx.ui.formationMenuOpen = !ctx.ui.formationMenuOpen;
+        if (ctx.ui.formationMenuOpen) {
+            ctx.ui.shopOpen = false;
+            ctx.ui.baseMenuOpen = false;
+            ctx.ui.mapOpen = false;
+            ctx.ui.powerManagementOpen = false;
+            ctx.ui.crewStationsOpen = false;
+            ctx.ui.flightDeckOpen = false;
+            ctx.ui.commsOpen = false;
+            clearManualCombatInputs(ctx);
+            EventSystem.showBanner(ctx, "FORMATION CONTROL OPEN", 0.8);
+        } else {
+            EventSystem.showBanner(ctx, "FORMATION CONTROL CLOSED", 0.6);
+        }
+    }
+
+    public static boolean handleFormationMenuClick(GameContext ctx, MouseEvent e, int viewportW, int viewportH) {
+        if (ctx == null || ctx.ui == null || e == null || !ctx.ui.formationMenuOpen) return false;
+        if (!SwingUtilities.isLeftMouseButton(e)) return true;
+        if (Renderer.formationMenuCloseRect(viewportW, viewportH).contains(e.getPoint())) {
+            ctx.ui.formationMenuOpen = false;
+            return true;
+        }
+        for (GameContext.FleetFormation formation : GameContext.FleetFormation.values()) {
+            Rectangle rect = Renderer.formationMenuOptionRect(viewportW, viewportH, formation);
+            if (!rect.contains(e.getPoint())) continue;
+            setAlliedFleetFormation(ctx, formation);
+            return true;
+        }
+        Rectangle panel = Renderer.formationMenuRect(viewportW, viewportH);
+        if (!panel.contains(e.getPoint())) ctx.ui.formationMenuOpen = false;
         return true;
     }
 
@@ -2850,7 +2899,12 @@ public final class UISystem {
         GameContext.FleetFormation[] values = GameContext.FleetFormation.values();
         int next = ctx.command.alliedFleetFormation.ordinal() + 1;
         if (next >= values.length) next = 0;
-        ctx.command.alliedFleetFormation = values[next];
+        setAlliedFleetFormation(ctx, values[next]);
+    }
+
+    public static void setAlliedFleetFormation(GameContext ctx, GameContext.FleetFormation formation) {
+        if (ctx == null || ctx.command == null || formation == null) return;
+        ctx.command.alliedFleetFormation = formation;
         AudioSystem.onCommandShipFormationOrder(ctx, ctx.player, ctx.command.alliedFleetFormation);
         EventSystem.showBanner(ctx, "FLEET FORMATION: " + ctx.command.alliedFleetFormation.name(), 1.0);
     }

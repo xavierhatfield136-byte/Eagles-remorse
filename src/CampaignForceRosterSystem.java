@@ -68,7 +68,6 @@ final class CampaignForceRosterSystem {
                                              CampaignSystem.CampaignForce force) {
         return force != null
                 && force.kind != CampaignSystem.CampaignForceKind.PLAYER_FLEET
-                && force.linkedSearchGroupId <= 0
                 && force.hadTacticalMembers
                 && force.shipIds.isEmpty()
                 && !hasRecoverablePoolMembers(st, force);
@@ -109,12 +108,11 @@ final class CampaignForceRosterSystem {
             }
 
             clearTacticalMembership(st, force, tacticalIds, live <= 0);
-            if (live <= 0 && force.linkedSearchGroupId <= 0) {
+            if (live <= 0) {
                 force.strength = 0.0;
                 force.readiness = 0.0;
                 force.hullIntegrity = 0.0;
-                CampaignSystem.markCampaignForceRemoved(force, "lost_all_tactical_members");
-                CampaignSystem.leaveCampaignForceScar(st, force);
+                CampaignSystem.markCampaignForceDefeated(st, force, "lost_all_tactical_members");
                 continue;
             }
 

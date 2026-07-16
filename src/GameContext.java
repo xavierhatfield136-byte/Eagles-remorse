@@ -98,6 +98,8 @@ public class GameContext {
     public Ship lockedTarget = null;
     public boolean autoLockTurrets = true;
     public int lockedIndexHint = 0;
+    public Ship playerAutoTargetCache = null;
+    public long playerAutoTargetCacheFrame = Long.MIN_VALUE;
 
     public final UiState ui = new UiState();
 

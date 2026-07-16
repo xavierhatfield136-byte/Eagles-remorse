@@ -216,6 +216,7 @@ public final class UiState {
     public boolean baseMenuOpen = false;
     public boolean mapOpen = false;
     public boolean commsOpen = false;
+    public boolean formationMenuOpen = false;
     public int commsSelectedContactId = -1;
     public CommsFilter commsFilter = CommsFilter.ALL;
     public boolean powerManagementOpen = false;
@@ -338,7 +339,7 @@ public final class UiState {
     }
 
     public boolean hasBlockingOverlay() {
-        return shopOpen || baseMenuOpen || mapOpen || commsOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
+        return shopOpen || baseMenuOpen || mapOpen || commsOpen || formationMenuOpen || powerManagementOpen || crewStationsOpen || flightDeckOpen || controlsScreenOpen
                 || strategicEncounterPrompt.active || campaignHubMenu.active || campaignActionConfirm.active || commTradeMenu.active
                 || commsContextMenu.active;
     }

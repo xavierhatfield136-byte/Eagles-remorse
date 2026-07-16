@@ -1,6 +1,6 @@
 import app.ui.ThemeArt;
-import app.config.ExperienceSettings;
 import app.config.GameMode;
+import app.config.ExperienceSettings;
 import app.state.AssetLoadGuard;
 import app.state.BoundedCache;
 import app.state.SpriteAtlasRegistry;
@@ -45,6 +45,17 @@ public class Renderer {
     private static final double WARP_FX_MIN_SCREEN_SPAN = 64.0;
     private static final double SHIELD_FX_MIN_MARK_FRESHNESS = 0.06;
     private static long frameShieldRenderNs = 0L;
+    private static long frameShipSkinNs = 0L;
+    private static long frameShipDetailNs = 0L;
+    private static long frameShipEngineNs = 0L;
+    private static long frameShipHardpointNs = 0L;
+    private static long frameShipDamageNs = 0L;
+    private static long frameShipEnergyNs = 0L;
+    private static long frameShipNameNs = 0L;
+    private static long frameShipTokenNs = 0L;
+    private static int frameSimplifiedProjectiles = 0;
+    private static final Map<String, BufferedImage> HUD_FRAME_CACHE = new BoundedCache<>(96);
+    private static final Map<String, BufferedImage> SPACE_BACKGROUND_CACHE = new BoundedCache<>(12);
 
     private static double animationTimeSeconds() {
         String override = System.getProperty("game.renderTimeSeconds", "").trim();
@@ -62,13 +73,14 @@ public class Renderer {
         return (long) (animationTimeSeconds() * 1_000_000_000.0);
     }
 
-    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT", "COMMS"};
+    private static final String[] CORE_MENU_LABELS = {"SHOP", "BASE", "MAP", "POWER", "CREW", "SAFE EXIT", "FORMATION", "COMMS"};
     private static final String[] CORE_MENU_HOTKEYS = {
             HotkeyRegistry.label("toggleShop"),
             HotkeyRegistry.label("toggleBaseMenu"),
             HotkeyRegistry.label("toggleMap"),
             HotkeyRegistry.label("togglePowerManagement"),
             HotkeyRegistry.label("toggleCrewStations"),
+            "",
             "",
             ""
     };
@@ -120,11 +132,30 @@ public class Renderer {
 
     public static void beginFramePerfCapture() {
         frameShieldRenderNs = 0L;
+        frameShipSkinNs = 0L;
+        frameShipDetailNs = 0L;
+        frameShipEngineNs = 0L;
+        frameShipHardpointNs = 0L;
+        frameShipDamageNs = 0L;
+        frameShipEnergyNs = 0L;
+        frameShipNameNs = 0L;
+        frameShipTokenNs = 0L;
+        frameSimplifiedProjectiles = 0;
     }
 
     public static double frameShieldRenderMs() {
         return frameShieldRenderNs / 1_000_000.0;
     }
+
+    public static double frameShipSkinMs() { return frameShipSkinNs / 1_000_000.0; }
+    public static double frameShipDetailMs() { return frameShipDetailNs / 1_000_000.0; }
+    public static double frameShipEngineMs() { return frameShipEngineNs / 1_000_000.0; }
+    public static double frameShipHardpointMs() { return frameShipHardpointNs / 1_000_000.0; }
+    public static double frameShipDamageMs() { return frameShipDamageNs / 1_000_000.0; }
+    public static double frameShipEnergyMs() { return frameShipEnergyNs / 1_000_000.0; }
+    public static double frameShipNameMs() { return frameShipNameNs / 1_000_000.0; }
+    public static double frameShipTokenMs() { return frameShipTokenNs / 1_000_000.0; }
+    public static int frameSimplifiedProjectiles() { return frameSimplifiedProjectiles; }
 
     public static void prewarmAssetCaches() {
         prewarmAssetCaches(null);
@@ -950,7 +981,8 @@ public class Renderer {
                 case 3 -> "YELLOW";
                 case 4 -> "HELP";
                 case 5 -> "EXIT";
-                case 6 -> "COMMS";
+                case 6 -> "FORMATION";
+                case 7 -> "COMMS";
                 default -> CORE_MENU_LABELS[index];
             };
         }
@@ -960,7 +992,8 @@ public class Renderer {
                 case 1 -> "UPGRADE";
                 case 4 -> "CREW";
                 case 5 -> "WITHDRAW";
-                case 6 -> "COMMS";
+                case 6 -> "FORMATION";
+                case 7 -> "COMMS";
                 default -> CORE_MENU_LABELS[index];
             };
         }
@@ -1230,7 +1263,8 @@ public class Renderer {
                 case 3 -> "Load only the Yellow team showcase ships.";
                 case 4 -> "Open help and controls.";
                 case 5 -> "Return to the main menu.";
-                case 6 -> "Open visible fleet communications and trade contacts.";
+                case 6 -> "Choose the fleet formation used by player-owned escorts.";
+                case 7 -> "Open visible fleet communications and trade contacts.";
                 default -> "";
             };
             return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
@@ -1256,7 +1290,8 @@ public class Renderer {
                         ? "Safe exit is only available during a live mission. In the fleet hub, use the normal menu exit."
                         : "Safe exit retreats to the strategic map whenever you are ready to leave the live mission.")
                     : "Safe campaign extraction is only available during Campaign Ops missions.";
-            case 6 -> "Communication panel. Review nearby hailable contacts, hail ships, request trade, ask for escort support, warn enemies, or mark a contact.";
+            case 6 -> "Formation control. Choose how player-owned escorts arrange around the Mothership.";
+            case 7 -> "Communication panel. Review nearby hailable contacts, hail ships, request trade, ask for escort support, warn enemies, or mark a contact.";
             default -> "";
         };
         return body.isBlank() ? null : new HoverTooltip("core:" + index, coreMenuLabel(ctx, index), body);
@@ -1680,6 +1715,7 @@ public class Renderer {
                 ctx.ui.powerManagementOpen,
                 ctx.ui.crewStationsOpen,
                 false,
+                ctx.ui.formationMenuOpen,
                 ctx.ui.commsOpen
         };
         boolean campaignActive = CampaignSystem.isCampaignActive(ctx);
@@ -1734,6 +1770,133 @@ public class Renderer {
         }
 
         g2.setFont(oldFont);
+    }
+
+    public static Rectangle formationMenuRect(int viewW, int viewH) {
+        Rectangle bar = getCoreMenuBarRect(viewW, viewH);
+        int w = Math.min(760, Math.max(520, viewW - 36));
+        int h = 250;
+        int x = Math.max(12, Math.min(viewW - w - 12, bar.x + bar.width / 2 - w / 2));
+        int y = Math.max(18, bar.y - h - 12);
+        return new Rectangle(x, y, w, h);
+    }
+
+    public static Rectangle formationMenuCloseRect(int viewW, int viewH) {
+        Rectangle panel = formationMenuRect(viewW, viewH);
+        return new Rectangle(panel.x + panel.width - 72, panel.y + 12, 54, 20);
+    }
+
+    public static Rectangle formationMenuOptionRect(int viewW, int viewH, GameContext.FleetFormation formation) {
+        Rectangle panel = formationMenuRect(viewW, viewH);
+        int idx = formation == null ? -1 : formation.ordinal();
+        if (idx < 0) return new Rectangle();
+        int pad = 18;
+        int gap = 10;
+        int cols = 2;
+        int cardW = (panel.width - pad * 2 - gap) / cols;
+        int cardH = 82;
+        int x = panel.x + pad + (idx % cols) * (cardW + gap);
+        int y = panel.y + 54 + (idx / cols) * (cardH + gap);
+        return new Rectangle(x, y, cardW, cardH);
+    }
+
+    public static void drawFormationMenu(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
+        if (g2 == null || ctx == null || ctx.ui == null || !ctx.ui.formationMenuOpen) return;
+        Rectangle panel = formationMenuRect(viewW, viewH);
+        Color accent = new Color(126, 224, 184, 205);
+        drawHudPanelFrame(g2, panel.x, panel.y, panel.width, panel.height, "FORMATION CONTROL", accent);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_STANDARD_PANEL, panel.x, panel.y, panel.width, panel.height);
+        Rectangle close = formationMenuCloseRect(viewW, viewH);
+
+        Font oldFont = g2.getFont();
+        g2.setFont(new Font("Consolas", Font.PLAIN, 11));
+        g2.setColor(new Color(222, 236, 248, 216));
+        String current = "Current: " + ((ctx.command == null || ctx.command.alliedFleetFormation == null)
+                ? GameContext.FleetFormation.WEDGE
+                : ctx.command.alliedFleetFormation).name();
+        g2.drawString(current + "   Player-owned escorts only. Local allied fleets keep their own anchors.",
+                inner.x, panel.y + 42);
+
+        g2.setColor(new Color(32, 42, 50, 210));
+        g2.fillRoundRect(close.x, close.y, close.width, close.height, 8, 8);
+        g2.setColor(new Color(210, 228, 238, 190));
+        g2.drawRoundRect(close.x, close.y, close.width, close.height, 8, 8);
+        g2.drawString("CLOSE", close.x + 10, close.y + 14);
+
+        for (GameContext.FleetFormation formation : GameContext.FleetFormation.values()) {
+            Rectangle card = formationMenuOptionRect(viewW, viewH, formation);
+            boolean active = ctx.command != null && ctx.command.alliedFleetFormation == formation;
+            drawFormationOptionCard(g2, card, formation, active);
+        }
+        g2.setFont(oldFont);
+    }
+
+    private static void drawFormationOptionCard(Graphics2D g2, Rectangle card, GameContext.FleetFormation formation, boolean active) {
+        Color accent = active ? new Color(126, 238, 178, 230) : new Color(126, 184, 238, 178);
+        g2.setColor(active ? new Color(30, 70, 54, 210) : new Color(10, 18, 28, 208));
+        g2.fillRoundRect(card.x, card.y, card.width, card.height, 8, 8);
+        g2.setColor(accent);
+        g2.drawRoundRect(card.x, card.y, card.width, card.height, 8, 8);
+
+        g2.setFont(new Font("Consolas", Font.BOLD, 12));
+        g2.setColor(new Color(238, 248, 255, 232));
+        g2.drawString(formation.name(), card.x + 12, card.y + 18);
+        g2.setFont(new Font("Consolas", Font.PLAIN, 10));
+        g2.setColor(new Color(214, 228, 238, 210));
+        String[] lines = formationDescription(formation);
+        int textW = Math.max(80, card.width - 138);
+        int y = card.y + 34;
+        for (String line : lines) {
+            g2.drawString(fitShopText(g2.getFontMetrics(), line, textW), card.x + 12, y);
+            y += 13;
+        }
+        drawFormationPreview(g2, formation, card.x + card.width - 104, card.y + 18, 82, 52, accent);
+    }
+
+    private static String[] formationDescription(GameContext.FleetFormation formation) {
+        return switch (formation == null ? GameContext.FleetFormation.WEDGE : formation) {
+            case WEDGE -> new String[]{"Default travel posture.", "Escorts trail and guard the flagship."};
+            case LINE -> new String[]{"Broad gun line.", "Keeps ships side-by-side for clean fire arcs."};
+            case ASSAULT -> new String[]{"Layered attack stack.", "Screens forward, heavy hulls press the center."};
+            case SCREEN -> new String[]{"Protective bubble.", "Spreads escorts around the Mothership."};
+        };
+    }
+
+    private static void drawFormationPreview(Graphics2D g2, GameContext.FleetFormation formation,
+                                             int x, int y, int w, int h, Color accent) {
+        int cx = x + w / 2;
+        int cy = y + h / 2;
+        g2.setColor(new Color(8, 14, 22, 180));
+        g2.fillRoundRect(x, y, w, h, 8, 8);
+        g2.setColor(withAlpha(accent, 80));
+        g2.drawRoundRect(x, y, w, h, 8, 8);
+        g2.setStroke(new BasicStroke(1.2f));
+        g2.setColor(new Color(235, 248, 255, 220));
+        Polygon mothership = new Polygon(
+                new int[]{cx + 13, cx - 9, cx - 13, cx - 9},
+                new int[]{cy, cy - 7, cy, cy + 7},
+                4);
+        g2.drawPolygon(mothership);
+        int[][] points = formationPreviewPoints(formation);
+        g2.setColor(withAlpha(accent, 210));
+        for (int[] p : points) {
+            int px = cx + p[0];
+            int py = cy + p[1];
+            Polygon escort = new Polygon(
+                    new int[]{px + 6, px - 4, px - 6, px - 4},
+                    new int[]{py, py - 4, py, py + 4},
+                    4);
+            g2.drawPolygon(escort);
+        }
+    }
+
+    private static int[][] formationPreviewPoints(GameContext.FleetFormation formation) {
+        return switch (formation == null ? GameContext.FleetFormation.WEDGE : formation) {
+            case LINE -> new int[][]{{-26, -18}, {-26, -6}, {-26, 6}, {-26, 18}, {-42, -12}, {-42, 12}};
+            case ASSAULT -> new int[][]{{24, -14}, {24, 14}, {4, -20}, {4, 20}, {-24, -12}, {-24, 12}};
+            case SCREEN -> new int[][]{{0, -22}, {22, -10}, {22, 10}, {0, 22}, {-24, 10}, {-24, -10}};
+            default -> new int[][]{{-20, -14}, {-20, 14}, {-38, -25}, {-38, 25}, {-54, -36}, {-54, 36}};
+        };
     }
 
     public static void drawCurrentContextLegend(Graphics2D g2, GameContext ctx, int viewW, int viewH) {
@@ -2071,83 +2234,28 @@ public class Renderer {
         if (!shouldRenderShieldFx(ship, hullBounds, g)) return;
 
         double shieldFrac = MathUtil.clamp(ship.shield / Math.max(1e-9, effectiveShieldMax), 0.0, 1.0);
-        double wear = 1.0 - shieldFrac;
-        float shellWidth = (float) Math.max(5.0, ship.radius * 0.24);
-        float auraWidth = shellWidth * 1.9f;
-        Area shellBase = createShieldShell(hullArea, shellWidth, visual);
-        Area auraBase = createShieldShell(hullArea, auraWidth, visual);
-        Area shell = new Area(shellBase);
-        Area aura = new Area(auraBase);
-        Area wearMask = createShieldWearMask(ship, shellBase, shellWidth, wear);
-        Rectangle2D wearBounds = (wearMask == null) ? null : wearMask.getBounds2D();
-        if (wearMask != null && wearBounds != null && wearBounds.getWidth() > 0.0 && wearBounds.getHeight() > 0.0) {
-            shell.subtract(new Area(wearMask));
-            aura.subtract(new Area(wearMask));
-        }
-
-        Rectangle2D auraBounds = aura.getBounds2D();
-        if (auraBounds.getWidth() <= 0.0 || auraBounds.getHeight() <= 0.0) return;
-        double gradientRadius = Math.max(auraBounds.getWidth(), auraBounds.getHeight()) * 0.72;
-
-        double flicker = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * (4.6 + shieldFrac * 2.2));
+        double freshness = Math.max(latestShieldImpactFreshness(ship),
+                ship.hasRecentShieldImpactTelemetry() ? ship.recentShieldImpactTelemetryFraction() : 0.0);
+        double pulse = 0.5 + 0.5 * Math.sin(animationTimeSeconds() * (5.4 + shieldFrac * 1.8));
+        float outlineWidth = (float) Math.max(2.0, ship.radius * 0.075);
+        float glowWidth = (float) Math.max(outlineWidth + 2.0f, ship.radius * 0.19);
         Color base = shieldTeamColor(ship);
 
         Graphics2D gx = (Graphics2D) g.create();
         Paint oldPaint = gx.getPaint();
         Stroke oldStroke = gx.getStroke();
-        gx.setPaint(new RadialGradientPaint(
-                new Point2D.Double(0.0, 0.0),
-                (float) gradientRadius,
-                new float[]{0.0f, 0.56f, 1.0f},
-                new Color[]{
-                        withAlpha(base, 0),
-                        withAlpha(mixColor(base, Color.WHITE, 0.14), (int) Math.round(26 + shieldFrac * 36)),
-                        withAlpha(mixColor(base, Color.WHITE, 0.36), (int) Math.round(18 + shieldFrac * 34))
-                }));
-        gx.fill(aura);
-        drawShieldScarPatches(gx, ship, auraBase, shellWidth, base, shieldFrac);
+        gx.setStroke(new BasicStroke(glowWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(base, (int) Math.round(30 + shieldFrac * 36 + freshness * 54 + pulse * 10)));
+        gx.draw(hullArea);
 
-        gx.setPaint(new RadialGradientPaint(
-                new Point2D.Double(0.0, 0.0),
-                (float) Math.max(10.0, gradientRadius * 0.86),
-                new float[]{0.0f, 0.50f, 1.0f},
-                new Color[]{
-                        withAlpha(base, 0),
-                        withAlpha(mixColor(base, Color.WHITE, 0.24), (int) Math.round(52 + shieldFrac * 64 + flicker * 18)),
-                        withAlpha(mixColor(base, Color.WHITE, 0.62), (int) Math.round(96 + shieldFrac * 92))
-                }));
-        gx.fill(shell);
+        gx.setStroke(new BasicStroke(Math.max(1.0f, outlineWidth), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.62),
+                (int) Math.round(92 + shieldFrac * 72 + freshness * 64)));
+        gx.draw(hullArea);
 
-        gx.setStroke(new BasicStroke(Math.max(1.1f, shellWidth * 0.18f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.52), (int) Math.round(92 + shieldFrac * 104)));
-        gx.draw(shell);
-
-        if (wearMask != null && wearBounds != null && wearBounds.getWidth() > 0.0 && wearBounds.getHeight() > 0.0) {
-            gx.setStroke(new BasicStroke(Math.max(0.9f, shellWidth * 0.12f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            gx.setColor(withAlpha(mixColor(base, Color.WHITE, 0.18), (int) Math.round(42 + wear * 126)));
-            gx.draw(wearMask);
-        }
-
-        if (ship.hasRecentShieldImpactTelemetry() && Double.isFinite(ship.recentShieldImpactAngle())) {
-            double localImpactAngle = MathUtil.normalizeAngle(ship.recentShieldImpactAngle() - ship.angle);
-            Point2D impactPoint = shieldImpactPoint(hullBounds, shellWidth * 0.85, localImpactAngle);
-            double fade = ship.recentShieldImpactTelemetryFraction();
-            double flareRadius = Math.max(8.0, ship.radius * (0.16 + 0.20 * fade));
-            gx.setPaint(new RadialGradientPaint(
-                    new Point2D.Double(impactPoint.getX(), impactPoint.getY()),
-                    (float) flareRadius,
-                    new float[]{0.0f, 0.42f, 1.0f},
-                    new Color[]{
-                            withAlpha(Color.WHITE, (int) Math.round(128 + fade * 96)),
-                            withAlpha(mixColor(base, Color.WHITE, 0.34), (int) Math.round(86 + fade * 104)),
-                            withAlpha(base, 0)
-                    }));
-            gx.fill(new Ellipse2D.Double(
-                    impactPoint.getX() - flareRadius,
-                    impactPoint.getY() - flareRadius,
-                    flareRadius * 2.0,
-                    flareRadius * 2.0));
-        }
+        gx.setStroke(new BasicStroke(Math.max(0.75f, outlineWidth * 0.42f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        gx.setColor(withAlpha(Color.WHITE, (int) Math.round(34 + freshness * 96 + pulse * 18)));
+        gx.draw(hullArea);
 
         gx.setPaint(oldPaint);
         gx.setStroke(oldStroke);
@@ -2178,139 +2286,19 @@ public class Renderer {
         return span * screenScale >= SHIELD_FX_MIN_SCREEN_SPAN;
     }
 
-    private static Area createShieldShell(Area hullArea, float width) {
-        return createShieldShell(hullArea, width, null);
-    }
-
-    private static Area createShieldShell(Area hullArea, float width, ShipVisual visual) {
-        if (hullArea == null || width <= 0.0f) return new Area();
-        int key = Math.max(1, Math.round(width * 100.0f));
-        if (visual != null && visual.shieldShellCache != null) {
-            Area cached = visual.shieldShellCache.get(key);
-            if (cached != null) return new Area(cached);
-        }
-        Area shell = new Area(new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(hullArea));
-        shell.subtract(new Area(hullArea));
-        if (visual != null && visual.shieldShellCache != null) {
-            visual.shieldShellCache.put(key, new Area(shell));
-        }
-        return shell;
-    }
-
-    private static void drawShieldScarPatches(Graphics2D g,
-                                              Ship ship,
-                                              Area shellArea,
-                                              float shellWidth,
-                                              Color base,
-                                              double shieldFrac) {
-        if (g == null || ship == null || shellArea == null || base == null) return;
+    private static double latestShieldImpactFreshness(Ship ship) {
+        if (ship == null) return 0.0;
         List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
-        if (marks.isEmpty()) return;
-        Paint oldPaint = g.getPaint();
-        try {
-            int start = Math.max(0, marks.size() - 8);
-            for (int i = start; i < marks.size(); i++) {
-                Ship.ShieldImpactMark mark = marks.get(i);
-                if (mark == null) continue;
-                Area patch = createShieldScarPatch(mark, shellWidth);
-                patch.intersect(new Area(shellArea));
-                Rectangle2D bounds = patch.getBounds2D();
-                if (bounds.getWidth() <= 0.0 || bounds.getHeight() <= 0.0) continue;
-                Point2D center = shieldScarCenter(mark, shellWidth);
-                double patchRadius = Math.max(mark.patchRadius(), shellWidth * 1.4);
-                int midAlpha = (int) Math.round(30 + mark.severity() * 48 + mark.freshness() * 56 + shieldFrac * 22);
-                int edgeAlpha = (int) Math.round(18 + mark.severity() * 32 + shieldFrac * 18);
-                g.setPaint(new RadialGradientPaint(
-                        new Point2D.Double(center.getX(), center.getY()),
-                        (float) Math.max(shellWidth * 1.3, patchRadius * 1.15),
-                        new float[]{0.0f, 0.46f, 1.0f},
-                        new Color[]{
-                                withAlpha(Color.WHITE, MathUtil.clamp(midAlpha + 34, 0, 210)),
-                                withAlpha(mixColor(base, Color.WHITE, 0.48), MathUtil.clamp(midAlpha, 0, 190)),
-                                withAlpha(base, MathUtil.clamp(edgeAlpha, 0, 140))
-                        }));
-                g.fill(patch);
-            }
-        } finally {
-            g.setPaint(oldPaint);
-        }
-    }
-
-    private static Area createShieldWearMask(Ship ship, Area shellArea, float shellWidth, double wear) {
-        if (ship == null || shellArea == null || wear <= 0.10) return null;
-        List<Ship.ShieldImpactMark> marks = ship.shieldImpactMarks();
-        if (marks.isEmpty()) return null;
-        Area out = new Area();
-        for (int i = 0; i < marks.size(); i++) {
+        if (marks == null || marks.isEmpty()) return 0.0;
+        double freshness = 0.0;
+        for (int i = marks.size() - 1; i >= 0; i--) {
             Ship.ShieldImpactMark mark = marks.get(i);
-            if (mark == null) continue;
-            double clusterWeight = Math.max(0.0, mark.severity() * (0.58 + wear * 1.85) + mark.freshness() * 0.18 - 0.08);
-            if (clusterWeight <= 0.10) continue;
-            int holeCount = Math.max(1, (int) Math.round(clusterWeight * 4.2));
-            Random rng = new Random(shieldWearSeed(ship, i));
-            Point2D center = shieldScarCenter(mark, shellWidth);
-            double nx = mark.normalX();
-            double ny = mark.normalY();
-            double tx = -ny;
-            double ty = nx;
-            double spreadAlong = Math.max(shellWidth * 0.55, mark.patchRadius() * 0.34);
-            double spreadOut = Math.max(shellWidth * 0.22, shellWidth * wear * 1.1);
-            for (int j = 0; j < holeCount; j++) {
-                double tangentOffset = (rng.nextDouble() - 0.5) * 2.0 * spreadAlong;
-                double normalOffset = (rng.nextDouble() - 0.35) * spreadOut;
-                double cx = center.getX() + tx * tangentOffset + nx * normalOffset;
-                double cy = center.getY() + ty * tangentOffset + ny * normalOffset;
-                double baseSize = Math.max(shellWidth * 0.22, ship.radius * (0.026 + clusterWeight * 0.085));
-                double holeW = baseSize * (0.70 + rng.nextDouble() * (0.55 + clusterWeight * 0.70));
-                double holeH = baseSize * (0.48 + rng.nextDouble() * (0.42 + clusterWeight * 0.55));
-                double rotation = Math.atan2(ty, tx) + (rng.nextDouble() - 0.5) * 0.48;
-                out.add(createShieldHole(cx, cy, holeW, holeH, rotation));
+            if (mark != null) {
+                freshness = Math.max(freshness, mark.freshness());
+                if (freshness >= 1.0) break;
             }
         }
-        out.intersect(new Area(shellArea));
-        return out;
-    }
-
-    private static long shieldWearSeed(Ship ship, int index) {
-        long seed = ship.id * 0x9E3779B97F4A7C15L ^ ((long) (index + 1) * 0xBF58476D1CE4E5B9L);
-        if (ship.role != null) seed ^= ((long) ship.role.ordinal() + 1L) * 0x94D049BB133111EBL;
-        if (ship.faction != null) seed ^= ((long) ship.faction.ordinal() + 1L) * 0x369DEA0F31A53F85L;
-        return seed;
-    }
-
-    private static Area createShieldScarPatch(Ship.ShieldImpactMark mark, float shellWidth) {
-        Point2D center = shieldScarCenter(mark, shellWidth);
-        double radius = Math.max(mark.patchRadius(), shellWidth * 1.3);
-        double width = Math.max(shellWidth * 2.0, radius * 1.55);
-        double height = Math.max(shellWidth * 1.3, radius * 0.64);
-        Ellipse2D.Double ellipse = new Ellipse2D.Double(-width, -height, width * 2.0, height * 2.0);
-        double rotation = Math.atan2(mark.normalY(), mark.normalX()) + Math.PI * 0.5;
-        AffineTransform tx = new AffineTransform();
-        tx.translate(center.getX(), center.getY());
-        tx.rotate(rotation);
-        return new Area(tx.createTransformedShape(ellipse));
-    }
-
-    private static Area createShieldHole(double cx, double cy, double radiusX, double radiusY, double rotation) {
-        Ellipse2D.Double ellipse = new Ellipse2D.Double(-radiusX, -radiusY, radiusX * 2.0, radiusY * 2.0);
-        AffineTransform tx = new AffineTransform();
-        tx.translate(cx, cy);
-        tx.rotate(rotation);
-        return new Area(tx.createTransformedShape(ellipse));
-    }
-
-    private static Point2D shieldScarCenter(Ship.ShieldImpactMark mark, float shellWidth) {
-        double offset = shellWidth * 0.62;
-        return new Point2D.Double(
-                mark.localX() + mark.normalX() * offset,
-                mark.localY() + mark.normalY() * offset
-        );
-    }
-
-    private static Point2D shieldImpactPoint(Rectangle2D hullBounds, double shellInset, double angle) {
-        double rx = hullBounds.getWidth() * 0.5 + shellInset + 1.5;
-        double ry = hullBounds.getHeight() * 0.5 + shellInset + 1.5;
-        return new Point2D.Double(Math.cos(angle) * rx, Math.sin(angle) * ry);
+        return MathUtil.clamp(freshness, 0.0, 1.0);
     }
 
     private static void drawShieldFaceTelemetry(Graphics2D g, Ship ship, int face, double centerAngle,
@@ -2530,6 +2518,36 @@ public class Renderer {
             drawSimplePerformanceBackground(g2, camX, camY, viewW, viewH, seed);
             return;
         }
+        if (g2 == null || viewW <= 0 || viewH <= 0) return;
+        String cacheKey = spaceBackgroundCacheKey(ctx, camX, camY, viewW, viewH, seed);
+        BufferedImage cached = SPACE_BACKGROUND_CACHE.get(cacheKey);
+        if (cached == null) {
+            cached = new BufferedImage(viewW, viewH, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D bg = cached.createGraphics();
+            try {
+                drawSpaceBackgroundUncached(bg, ctx, camX, camY, viewW, viewH, seed);
+            } finally {
+                bg.dispose();
+            }
+            SPACE_BACKGROUND_CACHE.put(cacheKey, cached);
+        }
+        g2.drawImage(cached, 0, 0, null);
+    }
+
+    private static String spaceBackgroundCacheKey(GameContext ctx, double camX, double camY,
+                                                  int viewW, int viewH, long seed) {
+        long bucketX = Math.round(camX / 96.0);
+        long bucketY = Math.round(camY / 96.0);
+        String backdrop = campaignBackdropImageKey(ctx) + "|" + campaignBackdropBaseImageKey(ctx);
+        CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
+        String specKey = spec == null ? "default"
+                : spec.key + ":" + spec.fieldMode.debugName + ":" + Math.round(spec.phaseBlend * 100.0)
+                + ":" + spec.ambientTint.getRGB();
+        return viewW + "x" + viewH + "|" + seed + "|" + bucketX + "|" + bucketY + "|" + backdrop + "|" + specKey;
+    }
+
+    private static void drawSpaceBackgroundUncached(Graphics2D g2, GameContext ctx, double camX, double camY,
+                                                    int viewW, int viewH, long seed) {
         CampaignBackdropSpec spec = resolveCampaignBackdropSpec(ctx);
         BufferedImage campaignImage = EnvironmentSkinLibrary.campaignBackdrop(campaignBackdropImageKey(ctx));
         if (campaignImage == null) {
@@ -2626,17 +2644,23 @@ public class Renderer {
         if (ships == null) return 0;
         int drawn = 0;
         boolean performanceTokenMode = performanceTokenMode(ctx);
+        boolean highDensityShips = highDensityShipRendering(ctx, ships);
         for (Ship s : ships) {
             if (s == null || !s.alive) continue;
             boolean visible = FogOfWarSystem.isVisibleToPerspective(fog, perspective, s);
             if (visible) {
                 if (!isWorldCircleVisible(s.x, s.y, shipDrawCullRadius(s), minX, minY, maxX, maxY)) continue;
                 if (performanceTokenMode) {
-                    drawTacticalShip(g2, s);
-                } else {
-                    boolean simplified = PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
-                    ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
+                    drawPerformanceShipToken(g2, s);
+                    drawn++;
+                    continue;
                 }
+                boolean simplified = performanceTokenMode
+                        || PerformanceGuardrails.simplifyDistantShip(s, (minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                if (!simplified && highDensityShips && shouldSimplifyHighDensityShip(ctx, s, minX, minY, maxX, maxY)) {
+                    simplified = true;
+                }
+                ShipRenderer.drawShip(g2, s, !simplified, !simplified, !simplified);
                 drawn++;
             } else {
                 FogOfWarSystem.ContactGhost ghost = (fog == null) ? null : fog.contactGhost(s.id);
@@ -2657,54 +2681,49 @@ public class Renderer {
         return ctx != null && ctx.ui != null && ctx.ui.tacticalViewEnabled;
     }
 
-    static boolean shouldDrawPerformanceToken(GameContext ctx, Ship ship) {
-        if (ship == null || isPlayerShip(ship)) return false;
-        Player player = (ctx == null) ? null : ctx.player;
-        if (player == null || !player.alive) return true;
-        if (ctx.lockedTarget == ship) return false;
-
-        double dx = ship.x - player.x;
-        double dy = ship.y - player.y;
-        double dist = Math.hypot(dx, dy);
-        double nearFullDetail = Math.max(1050.0, player.radius * 7.5 + ship.radius * 4.5);
-        if (dist <= nearFullDetail) return false;
-        if (ship.role != null && ship.role.isTitanOrMothership() && dist <= 1900.0) return false;
-
-        double forwardX = Math.cos(player.angle);
-        double forwardY = Math.sin(player.angle);
-        if (dist > 0.0001) {
-            double dot = (dx * forwardX + dy * forwardY) / dist;
-            if (dot >= 0.30 && dist <= 2400.0) return false;
+    private static boolean highDensityShipRendering(GameContext ctx, List<Ship> ships) {
+        if (ctx == null || ships == null) return false;
+        int live = 0;
+        for (Ship ship : ships) {
+            if (ship != null && ship.alive && !ship.dying && ship.hp > 0) live++;
         }
-        return true;
+        return live >= 180 || (ctx.projectiles != null && ctx.projectiles.size() >= 420);
+    }
+
+    private static boolean shouldAutoDrawPerformanceToken(GameContext ctx, Ship ship, boolean highDensityShips,
+                                                          double minX, double minY, double maxX, double maxY) {
+        return false;
+    }
+
+    private static boolean shouldDrawMassPerformanceToken(GameContext ctx, Ship ship, boolean highDensityShips) {
+        return false;
+    }
+
+    private static boolean allowAutomaticShipTokens(GameContext ctx) {
+        return false;
+    }
+
+    private static boolean shouldSimplifyHighDensityShip(GameContext ctx, Ship ship,
+                                                         double minX, double minY, double maxX, double maxY) {
+        if (ship == null || isPlayerShip(ship)) return false;
+        if (ctx != null && ctx.lockedTarget == ship) return false;
+        if (ship.role != null && ship.role.isTitanOrMothership()) return false;
+        double viewW = Math.max(1.0, maxX - minX);
+        double viewH = Math.max(1.0, maxY - minY);
+        double screenSpan = (ship.radius * 2.0) / Math.max(viewW, viewH) * 1920.0;
+        if (screenSpan <= 70.0) return true;
+        Player player = (ctx == null) ? null : ctx.player;
+        if (player == null || !player.alive) return false;
+        return Math.hypot(ship.x - player.x, ship.y - player.y) >= Math.max(900.0, player.radius * 6.0 + ship.radius * 3.0);
+    }
+
+    static boolean shouldDrawPerformanceToken(GameContext ctx, Ship ship) {
+        return false;
     }
 
     private static void drawPerformanceShipToken(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null || !ship.alive) return;
-        int x = (int) Math.round(ship.x);
-        int y = (int) Math.round(ship.y);
-        int r = (int) Math.max(3, Math.min(18, ship.radius * 0.42));
-        Color hull = factionHullColor(ship.faction);
-        Color trim = factionTrimColor(ship.faction);
-        Graphics2D g = (Graphics2D) g2.create();
-        try {
-            g.translate(x, y);
-            g.rotate(ship.angle);
-            Polygon wedge = new Polygon();
-            wedge.addPoint(r + 3, 0);
-            wedge.addPoint(-r, -Math.max(3, r / 2));
-            wedge.addPoint(-Math.max(2, r / 3), 0);
-            wedge.addPoint(-r, Math.max(3, r / 2));
-            g.setColor(new Color(hull.getRed(), hull.getGreen(), hull.getBlue(), 190));
-            g.fillPolygon(wedge);
-            g.setColor(new Color(trim.getRed(), trim.getGreen(), trim.getBlue(), 210));
-            g.drawPolygon(wedge);
-            if (ship.role != null && ship.role.isTitanOrMothership()) {
-                g.drawOval(-r - 2, -r - 2, (r + 2) * 2, (r + 2) * 2);
-            }
-        } finally {
-            g.dispose();
-        }
+        drawTacticalShip(g2, ship);
     }
 
     static int drawTacticalShips(Graphics2D g2, List<Ship> ships,
@@ -4036,15 +4055,26 @@ public class Renderer {
         
         // Count CIWS pellets to determine if we should use simplified rendering in heavy combat
         int ciwsPelletCount = 0;
+        int liveProjectileCount = 0;
         for (Projectile p : projectiles) {
+            if (p == null || !p.alive) continue;
+            liveProjectileCount++;
             if (p instanceof CIWSPellet) ciwsPelletCount++;
         }
         boolean heavyCombatwithCIWS = ciwsPelletCount > 80;
+        boolean projectileRenderPressure = liveProjectileCount >= 360 || ciwsPelletCount >= 120;
+        ArrayList<Projectile> simplifiedBatch = projectileRenderPressure ? new ArrayList<>() : null;
         
         int drawn = 0;
         for (Projectile p : projectiles) {
-            if (!p.alive) continue;
+            if (p == null || !p.alive) continue;
             if (!isProjectileVisible(p, fog, perspective, minX, minY, maxX, maxY)) continue;
+            if (shouldDrawSimplifiedProjectile(p, projectileRenderPressure, liveProjectileCount)) {
+                simplifiedBatch.add(p);
+                frameSimplifiedProjectiles++;
+                drawn++;
+                continue;
+            }
 
             if (p instanceof CIWSPellet pellet) {
                 int r = (int) Math.round(Math.max(1.0, pellet.radius));
@@ -4199,7 +4229,107 @@ public class Renderer {
                 drawn++;
             }
         }
+        if (simplifiedBatch != null && !simplifiedBatch.isEmpty()) {
+            drawSimplifiedProjectileBatch(g2, simplifiedBatch);
+        }
         return drawn;
+    }
+
+    private static boolean shouldDrawSimplifiedProjectile(Projectile projectile, boolean pressure, int liveProjectileCount) {
+        if (!pressure || projectile == null) return false;
+        if (projectile instanceof PhaserBeam || projectile instanceof PointDefenseLaser
+                || projectile instanceof DestabilizerPulse || projectile instanceof SuperweaponShot) {
+            return false;
+        }
+        if (projectile instanceof Missile missile) {
+            return liveProjectileCount >= 520 && missile.role != Turret.MissileRole.INTERCEPT;
+        }
+        return projectile instanceof EnergyBolt || projectile instanceof CIWSPellet || projectile instanceof DisruptorSlug
+                || liveProjectileCount >= 520;
+    }
+
+    private static void drawSimplifiedProjectile(Graphics2D g2, Projectile projectile) {
+        if (g2 == null || projectile == null) return;
+        int x = (int) Math.round(projectile.x);
+        int y = (int) Math.round(projectile.y);
+        int r = Math.max(1, (int) Math.round(projectile.radius));
+        double speed = Math.hypot(projectile.vx, projectile.vy);
+        double nx = speed > 1e-6 ? projectile.vx / speed : 1.0;
+        double ny = speed > 1e-6 ? projectile.vy / speed : 0.0;
+        Color core = projectileCoreColor(projectile.faction);
+        if (projectile instanceof Missile) {
+            r = Math.max(2, r + 1);
+            core = mixColor(core, Color.WHITE, 0.22);
+        } else if (projectile instanceof EnergyBolt) {
+            core = mixColor(core, Color.WHITE, 0.34);
+        }
+        int trailLen = projectile instanceof Missile ? 14 : 8;
+        Stroke old = g2.getStroke();
+        g2.setStroke(new BasicStroke(projectile instanceof Missile ? 1.8f : 1.2f,
+                BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(core, projectile instanceof Missile ? 178 : 132));
+        g2.drawLine(
+                (int) Math.round(projectile.x - nx * trailLen),
+                (int) Math.round(projectile.y - ny * trailLen),
+                x,
+                y);
+        g2.setStroke(old);
+        g2.setColor(withAlpha(core, projectile instanceof Missile ? 232 : 214));
+        g2.fillOval(x - r, y - r, r * 2, r * 2);
+    }
+
+    private static void drawSimplifiedProjectileBatch(Graphics2D g2, List<Projectile> projectiles) {
+        if (g2 == null || projectiles == null || projectiles.isEmpty()) return;
+        Stroke old = g2.getStroke();
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.ALLY, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.ENEMY, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.TEAM_C, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.TEAM_D, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.BRIGHT_YELLOW, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.DARK_YELLOW, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.PLAYER, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, null, false);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.ALLY, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.ENEMY, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.TEAM_C, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.TEAM_D, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.BRIGHT_YELLOW, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.DARK_YELLOW, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, Faction.PLAYER, true);
+        drawSimplifiedProjectileBatchGroup(g2, projectiles, null, true);
+        g2.setStroke(old);
+    }
+
+    private static void drawSimplifiedProjectileBatchGroup(Graphics2D g2, List<Projectile> projectiles,
+                                                           Faction faction, boolean missiles) {
+        Color core = projectileCoreColor(faction);
+        if (missiles) core = mixColor(core, Color.WHITE, 0.22);
+        g2.setStroke(new BasicStroke(missiles ? 1.8f : 1.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.setColor(withAlpha(core, missiles ? 178 : 132));
+        for (Projectile projectile : projectiles) {
+            if (projectile == null) continue;
+            if ((projectile instanceof Missile) != missiles) continue;
+            if (projectile.faction != faction) continue;
+            int x = (int) Math.round(projectile.x);
+            int y = (int) Math.round(projectile.y);
+            double speed = Math.hypot(projectile.vx, projectile.vy);
+            double nx = speed > 1e-6 ? projectile.vx / speed : 1.0;
+            double ny = speed > 1e-6 ? projectile.vy / speed : 0.0;
+            int trailLen = missiles ? 14 : 8;
+            g2.drawLine((int) Math.round(projectile.x - nx * trailLen),
+                    (int) Math.round(projectile.y - ny * trailLen), x, y);
+        }
+        g2.setColor(withAlpha(core, missiles ? 232 : 214));
+        for (Projectile projectile : projectiles) {
+            if (projectile == null) continue;
+            if ((projectile instanceof Missile) != missiles) continue;
+            if (projectile.faction != faction) continue;
+            int r = Math.max(1, (int) Math.round(projectile.radius));
+            if (missiles) r = Math.max(2, r + 1);
+            int x = (int) Math.round(projectile.x);
+            int y = (int) Math.round(projectile.y);
+            g2.fillOval(x - r, y - r, r * 2, r * 2);
+        }
     }
 
     static int drawTacticalProjectiles(Graphics2D g2, List<Projectile> projectiles,
@@ -5648,9 +5778,10 @@ public class Renderer {
             statusLines.add("Status: " + gameOverText);
         }
 
+        boolean campaignTactical = CampaignSystem.isCampaignActive(ctx) && !CampaignSystem.isStrategicOvermapMode(ctx);
         int maxLines = switch ((detail == null) ? GameContext.HudDetail.COMPACT : detail) {
-            case MINIMAL -> Math.min(1, statusLines.size());
-            case COMPACT -> Math.min(2, statusLines.size());
+            case MINIMAL -> Math.min(campaignTactical ? 4 : 1, statusLines.size());
+            case COMPACT -> Math.min(campaignTactical ? 6 : 2, statusLines.size());
             case FULL -> statusLines.size();
         };
         return limitHudLines(statusLines, maxLines);
@@ -6050,21 +6181,27 @@ public class Renderer {
         if (image == null) return false;
 
         Color base = (accent == null) ? new Color(150, 190, 235, 180) : accent;
-        Paint oldPaint = g2.getPaint();
-        Composite oldComposite = g2.getComposite();
-
-        g2.setPaint(new GradientPaint(x, y, new Color(6, 12, 22, 224), x, y + h, new Color(4, 8, 16, 212)));
-        g2.fillRoundRect(x, y, w, h, arc, arc);
-        g2.setPaint(new GradientPaint(
-                x + w * 0.14f, y + h * 0.10f, withAlpha(base, 42),
-                x + w * 0.48f, y + h * 0.42f, withAlpha(base, 0)));
-        g2.fillRoundRect(x + 6, y + 6, Math.max(8, w - 12), Math.max(8, h - 12),
-                Math.max(8, arc - 4), Math.max(8, arc - 4));
-        g2.setComposite(AlphaComposite.SrcOver);
-        g2.drawImage(image, x, y, w, h, null);
-
-        g2.setComposite(oldComposite);
-        g2.setPaint(oldPaint);
+        String cacheKey = slot + "|" + w + "x" + h + "|" + arc + "|" + base.getRGB();
+        BufferedImage cached = HUD_FRAME_CACHE.get(cacheKey);
+        if (cached == null) {
+            cached = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D cg = cached.createGraphics();
+            try {
+                cg.setPaint(new GradientPaint(0, 0, new Color(6, 12, 22, 224), 0, h, new Color(4, 8, 16, 212)));
+                cg.fillRoundRect(0, 0, w, h, arc, arc);
+                cg.setPaint(new GradientPaint(
+                        w * 0.14f, h * 0.10f, withAlpha(base, 42),
+                        w * 0.48f, h * 0.42f, withAlpha(base, 0)));
+                cg.fillRoundRect(6, 6, Math.max(8, w - 12), Math.max(8, h - 12),
+                        Math.max(8, arc - 4), Math.max(8, arc - 4));
+                cg.setComposite(AlphaComposite.SrcOver);
+                cg.drawImage(image, 0, 0, w, h, null);
+            } finally {
+                cg.dispose();
+            }
+            HUD_FRAME_CACHE.put(cacheKey, cached);
+        }
+        g2.drawImage(cached, x, y, null);
         return true;
     }
 
@@ -14777,6 +14914,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
     private static void drawTacticalShip(Graphics2D g2, Ship ship) {
         if (g2 == null || ship == null || !ship.alive) return;
+        if (useHullSpritesForTacticalShips()) {
+            ShipRenderer.drawShip(g2, ship, false, false, false);
+            return;
+        }
         boolean multipartDying = ship.dying && ShipPartLibrary.hasDestroyedParts(ship.role, ship.faction);
         int wx = (int) Math.round(ship.x);
         int wy = (int) Math.round(ship.y);
@@ -14806,15 +14947,6 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
 
         ShipVisual visual = ShipRenderer.getVisual(ship);
-        for (Polygon poly : visual.hullPolys) {
-            g.setColor(withAlpha(hull, 188));
-            g.fillPolygon(poly);
-        }
-        for (Polygon poly : visual.superPolys) {
-            g.setColor(withAlpha(trim, 58));
-            g.fillPolygon(poly);
-        }
-
         Stroke old = g.getStroke();
         g.setStroke(new BasicStroke((float) Math.max(1.0, Math.min(2.5, ship.radius * 0.04)),
                 BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
@@ -14847,6 +14979,10 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
         }
     }
 
+    private static boolean useHullSpritesForTacticalShips() {
+        return false;
+    }
+
     /**
      * Modular ship visual pipeline:
      * - Role-based local-coordinate silhouettes
@@ -14855,6 +14991,7 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
      */
     private static final class ShipRenderer {
         private static final Map<String, ShipVisual> CACHE = new BoundedCache<>(256);
+        private static final Map<String, BufferedImage> HULL_SPRITE_CACHE = new BoundedCache<>(1024);
 
         static void drawShip(Graphics2D g2, Ship ship) {
             drawShip(g2, ship, true, true, true);
@@ -14905,24 +15042,43 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             ShipSkinSet skinSet = ShipSkinLibrary.getSkinSet(ship.role, ship.faction);
             boolean hasAlbedoSkin = skinSet != null && skinSet.hasAlbedo();
 
+            long partStart;
             if (!hasAlbedoSkin) {
+                partStart = System.nanoTime();
                 drawHullShadow(g, visual);
                 drawHullAndSuper(g, visual, hull, trim);
+                frameShipSkinNs += System.nanoTime() - partStart;
             }
+            partStart = System.nanoTime();
             drawHullSkin(g, ship, visual, hullArea, hull, trim, skinSet);
+            frameShipSkinNs += System.nanoTime() - partStart;
+            partStart = System.nanoTime();
             drawPanelsAndWindows(g, ship, visual, hullArea, hasAlbedoSkin);
-            drawEngines(g, ship, visual);
-            drawHardpoints(g, ship, visual);
+            frameShipDetailNs += System.nanoTime() - partStart;
+            if (fullDamageFx) {
+                partStart = System.nanoTime();
+                drawEngines(g, ship, visual);
+                frameShipEngineNs += System.nanoTime() - partStart;
+                partStart = System.nanoTime();
+                drawHardpoints(g, ship, visual);
+                frameShipHardpointNs += System.nanoTime() - partStart;
+            }
 
             if (drawEnergyFx) {
+                partStart = System.nanoTime();
                 drawShipShieldFaces(g, ship, hullArea, visual);
+                frameShipEnergyNs += System.nanoTime() - partStart;
             }
 
             if (hullArea != null && fullDamageFx) {
+                partStart = System.nanoTime();
                 drawDamageDecals(g, ship, hullArea);
+                frameShipDamageNs += System.nanoTime() - partStart;
             }
             if (drawEnergyFx && hullArea != null) {
+                partStart = System.nanoTime();
                 drawWarpChargeHullFx(g, ship, hullArea, visual);
+                frameShipEnergyNs += System.nanoTime() - partStart;
             }
 
             if (fullDamageFx && DevTools.isDebugOverlay()) {
@@ -14938,9 +15094,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             g.dispose();
 
             if (drawName && !isTinyStrikeCraft(ship.role)) {
+                long nameStart = System.nanoTime();
                 g2.setFont(new Font("Consolas", Font.PLAIN, 12));
                 g2.setColor(new Color(255, 255, 255, 130));
                 g2.drawString(ship.name, wx - 18, wy - (int) ship.radius - 10);
+                frameShipNameNs += System.nanoTime() - nameStart;
             }
         }
 
@@ -15328,6 +15486,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             int sx = -sw / 2;
             int sy = -sh / 2;
 
+            BufferedImage cachedHull = cachedHullSprite(ship, v, hullArea, bounds, hull, trim, skinSet, sw, sh);
+            if (cachedHull != null) {
+                g.drawImage(cachedHull, sx, sy, null);
+                return;
+            }
+
             if (drawMultipartDamageStage(g, ship, sw, sh)) {
                 // Multipart hulls can swap staged baked damage art directly.
             } else {
@@ -15369,6 +15533,77 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
 
             applyFactionSkinLighting(g, bounds, ship.faction, hull, trim);
             g.setClip(oldClip);
+        }
+
+        private static BufferedImage cachedHullSprite(Ship ship, ShipVisual visual, Area hullArea, Rectangle2D bounds,
+                                                      Color hull, Color trim, ShipSkinSet skinSet, int sw, int sh) {
+            if (ship == null || visual == null || skinSet == null || sw <= 0 || sh <= 0) return null;
+            if (visual.station || ship.role == ShipRole.BASE) return null;
+            String key = hullSpriteCacheKey(ship, hull, trim, sw, sh);
+            BufferedImage cached = HULL_SPRITE_CACHE.get(key);
+            if (cached != null) return cached;
+
+            BufferedImage image = new BufferedImage(sw, sh, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D cg = image.createGraphics();
+            try {
+                cg.translate(sw / 2.0, sh / 2.0);
+                if (!drawMultipartDamageStage(cg, ship, sw, sh)) {
+                    drawSkinLayer(cg, skinSet.albedo, -sw / 2, -sh / 2, sw, sh, 0.98f);
+                }
+
+                boolean hasAuxLayers = skinSet.panel != null || skinSet.ao != null
+                        || skinSet.emissive != null || skinSet.damage != null;
+                Shape oldClip = cg.getClip();
+                if (hullArea != null) {
+                    cg.setClip(hullArea);
+                }
+                if (hasAuxLayers) {
+                    drawSkinLayer(cg, skinSet.panel, -sw / 2, -sh / 2, sw, sh, 0.46f);
+                    drawSkinLayer(cg, skinSet.ao, -sw / 2, -sh / 2, sw, sh, 0.50f);
+
+                    if (skinSet.damage != null && ship.hpMax > 0) {
+                        double damageFrac = damageFractionForHullCache(ship);
+                        float damageAlpha = (float) Math.min(0.88, 0.18 + damageFrac * 0.72);
+                        if (damageAlpha > 0.16f) {
+                            drawSkinLayer(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha);
+                            if (damageFrac > 0.50) {
+                                drawSkinLayer(cg, skinSet.damage, -sw / 2, -sh / 2, sw, sh, damageAlpha * 0.36f);
+                            }
+                        }
+                    }
+
+                    if (skinSet.emissive != null) {
+                        drawSkinLayer(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.50f);
+                        drawSkinLayer(cg, skinSet.emissive, -sw / 2, -sh / 2, sw, sh, 0.17f);
+                    }
+                }
+                applyFactionSkinLighting(cg, bounds, ship.faction, hull, trim);
+                cg.setClip(oldClip);
+            } finally {
+                cg.dispose();
+            }
+
+            HULL_SPRITE_CACHE.put(key, image);
+            return image;
+        }
+
+        private static String hullSpriteCacheKey(Ship ship, Color hull, Color trim, int sw, int sh) {
+            int damageBucket = hullDamageBucket(ship);
+            return ship.role + "|" + ship.faction + "|" + Math.round(ship.radius)
+                    + "|" + sw + "x" + sh
+                    + "|" + damageBucket
+                    + "|" + hull.getRGB() + "|" + trim.getRGB();
+        }
+
+        private static int hullDamageBucket(Ship ship) {
+            if (ship == null || ship.hpMax <= 0) return 0;
+            double damageFrac = MathUtil.clamp(1.0 - ship.hp / (double) ship.hpMax, 0.0, 1.0);
+            return MathUtil.clamp((int) Math.round(damageFrac * 8.0), 0, 8);
+        }
+
+        private static double damageFractionForHullCache(Ship ship) {
+            int bucket = hullDamageBucket(ship);
+            return MathUtil.clamp(bucket / 8.0, 0.0, 1.0);
         }
 
         private static void drawStationUpgradeModules(Graphics2D g, Ship ship, Area hullArea) {

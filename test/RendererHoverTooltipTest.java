@@ -351,6 +351,7 @@ class RendererHoverTooltipTest {
         BufferedImage canvas = new BufferedImage(220, 220, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = canvas.createGraphics();
         try {
+            Renderer.beginFramePerfCapture();
             Renderer.drawSpaceBackground(g2, ctx, 0.0, 0.0, 220, 220, 1234L);
             Renderer.drawShips(g2, java.util.List.of(ctx.player, ship), 0.0, 0.0, 220.0, 220.0, null, null, ctx);
         } finally {
@@ -358,7 +359,9 @@ class RendererHoverTooltipTest {
         }
 
         assertTrue((canvas.getRGB(5, 5) & 0x00FFFFFF) != 0, "FPS view should use the simple performance background, not pure black");
-        assertFalse(Renderer.shouldDrawPerformanceToken(ctx, ship), "near/front ships should keep readable full ship rendering");
+        assertFalse(Renderer.shouldDrawPerformanceToken(ctx, ship), "legacy token gate remains disabled; FPS view uses tactical outlines directly");
+        assertEquals(0.0, Renderer.frameShipSkinMs(), 0.0001,
+                "FPS view should not touch baked hull skin rendering for ship silhouettes");
 
         boolean foundShipPixel = false;
         for (int y = 70; y <= 150 && !foundShipPixel; y++) {

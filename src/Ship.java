@@ -397,6 +397,12 @@ public abstract class Ship {
     public double aiLastEngagementY = Double.NaN;
     public int aiCommittedTargetId = -1;
     public double aiTargetCommitTimer = 0.0;
+    public int aiIntentTypeOrdinal = -1;
+    public int aiIntentTargetId = -1;
+    public double aiIntentRetargetTimer = 0.0;
+    public double aiMovementThinkTimer = 0.0;
+    public double aiCachedDesiredRange = Double.NaN;
+    public int aiCachedMovementMode = 0;
     public boolean surrendered = false;
     public double surrenderLockTimer = 0.0;
     public double surrenderSelfDestructTimer = 0.0;
@@ -6052,11 +6058,15 @@ public abstract class Ship {
     }
 
     public void tryCIWS(double dt, GameContext ctx) {
+        tryCIWS(dt, ctx, ctx == null ? null : ProjectileScalePolicy.planFor(ctx, 0L));
+    }
+
+    public void tryCIWS(double dt, GameContext ctx, ProjectileScalePolicy.FramePlan projectilePlan) {
         if (ctx == null) {
             tryCIWS(dt, null, null, null);
             return;
         }
-        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery);
+        tryCIWS(dt, ctx.projectiles, ctx.ships, ctx.entityQuery, projectilePlan);
     }
 
     /**
@@ -6071,6 +6081,11 @@ public abstract class Ship {
     }
 
     private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query) {
+        tryCIWS(dt, projectiles, ships, query, null);
+    }
+
+    private void tryCIWS(double dt, List<Projectile> projectiles, List<Ship> ships, EntityQueryIndex query,
+                         ProjectileScalePolicy.FramePlan projectilePlan) {
         if (!alive || !hasCIWS || !canUseCombatSystems()) return;
         if (ciwsTimer > 0) return;
         if ((projectiles == null || projectiles.isEmpty()) && (ships == null || ships.isEmpty())) return;
@@ -6093,19 +6108,20 @@ public abstract class Ship {
 
         // Fire!
         ciwsTimer = ciwsCooldown;
+        if (projectilePlan != null && !projectilePlan.allowCiwsBurst(faction, x, y)) return;
 
         if (targetMissile) {
             double aim = computeCiwsLeadAim(dt, closestMissile.x, closestMissile.y, closestMissile.vx, closestMissile.vy);
             if (faction == Faction.TEAM_C) {
-                firePointDefenseLaser(dt, projectiles, closestMissile, aim);
+                firePointDefenseLaser(dt, projectiles, closestMissile, aim, projectilePlan);
             } else {
-                fireCiwsPellets(dt, projectiles, aim);
+                fireCiwsPellets(dt, projectiles, aim, projectilePlan);
             }
             return;
         }
 
         double aim = computeCiwsLeadAim(dt, closestSmallCraft.x, closestSmallCraft.y, closestSmallCraft.vx, closestSmallCraft.vy);
-        fireCiwsPellets(dt, projectiles, aim);
+        fireCiwsPellets(dt, projectiles, aim, projectilePlan);
     }
 
     private Missile findClosestCiwsMissile(List<Projectile> projectiles, EntityQueryIndex query) {
@@ -6172,8 +6188,14 @@ public abstract class Ship {
     }
 
     private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim) {
+        fireCiwsPellets(dt, projectiles, aim, null);
+    }
+
+    private void fireCiwsPellets(double dt, List<Projectile> projectiles, double aim,
+                                 ProjectileScalePolicy.FramePlan projectilePlan) {
         if (projectiles == null) return;
         int pellets = Math.max(1, ciwsPelletsPerBurst);
+        if (projectilePlan != null) pellets = projectilePlan.ciwsPelletsForBurst(pellets);
         double muzzleForward = radius + 8.0;
         double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));
         double lateralStep = (pellets <= 1) ? 0.0 : (maxLateral * 2.0) / (pellets - 1);
@@ -6192,7 +6214,7 @@ public abstract class Ship {
                     dt,
                     ciwsPelletSpeed,
                     ciwsPelletDamage,
-                    ciwsPelletLife,
+                    projectilePlan == null ? ciwsPelletLife : projectilePlan.ciwsLifeFor(ciwsPelletLife),
                     ciwsPelletRadius,
                     faction
             );
@@ -6202,11 +6224,17 @@ public abstract class Ship {
     }
 
     private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim) {
+        firePointDefenseLaser(dt, projectiles, target, aim, null);
+    }
+
+    private void firePointDefenseLaser(double dt, List<Projectile> projectiles, Missile target, double aim,
+                                       ProjectileScalePolicy.FramePlan projectilePlan) {
         if (projectiles == null || target == null || !target.alive) return;
 
         int pulses = Math.max(1, ciwsPelletsPerBurst);
+        if (projectilePlan != null) pulses = projectilePlan.ciwsPelletsForBurst(pulses);
         int pulseDamage = Math.max(1, Math.min(2, (int) Math.round(ciwsPelletDamage * 0.75)));
-        int pulseLife = 2;
+        int pulseLife = projectilePlan == null ? 2 : projectilePlan.ciwsLifeFor(2);
         double beamWidth = Math.max(1.0, ciwsPelletRadius * 0.85);
         double muzzleForward = radius + 8.0;
         double maxLateral = Math.max(0.0, Math.min(radius * 0.55, 14.0));

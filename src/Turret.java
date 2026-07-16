@@ -306,7 +306,7 @@ public class Turret {
                 int beamLife = Math.max(2, (int) Math.round(shotInterval / GameContext.DT));
                 double baseDps = gunDamage / shotInterval;
                 double beamDps = baseDps * 1.08;
-                double beamLength = Math.max(2400.0, projectileSpeed * 2.75);
+                double beamLength = greenBeamLength(host, missileTarget, projectileSpeed);
                 double beamWidth = Math.max(4.5, radius * 0.95);
                 PhaserBeam p = new PhaserBeam(
                         host,
@@ -428,6 +428,13 @@ public class Turret {
             }
             return p;
         }
+    }
+
+    static double greenBeamLength(Ship host, Ship target, double projectileSpeed) {
+        double nominal = Math.max(360.0, projectileSpeed * 0.72);
+        double cap = (host != null && host.role != null && host.role.isTitanOrMothership()) ? 980.0 : 760.0;
+        double floor = (host == null || target == null) ? 300.0 : host.radius + target.radius + 190.0;
+        return Math.max(floor, Math.min(cap, nominal));
     }
 
     private boolean isWithinHullWeaponArc(Ship host) {

@@ -14,7 +14,9 @@ public final class AISystem {
         final Map<Integer, Ship> flagships = new HashMap<>();
         final Map<Integer, List<Ship>> members = new HashMap<>();
         final Map<Integer, Faction> teamFactions = new HashMap<>();
+        final Map<Integer, Integer> shipGroupKeys = new HashMap<>();
         final Map<Integer, Ship> sharedTargets = new HashMap<>();
+        final Map<Integer, List<Ship>> focusTargets = new HashMap<>();
         final Map<Integer, Double> sharedTargetConfidence = new HashMap<>();
         final Map<Integer, Ship> missileThreatFocus = new HashMap<>();
         final Map<Integer, DangerMemory> dangerMemory = new HashMap<>();
@@ -162,6 +164,7 @@ public final class AISystem {
         final Map<Integer, Ship> preferredEnemyTargets = new HashMap<>();
         final Map<Long, Ship> immediateThreats = new HashMap<>();
         List<FogOfWarSystem.SensorInterestSignal> sensorInterestSignals = null;
+        final Map<Long, FleetStateBuilder.StrengthSummary> strengthSummaries = new HashMap<>();
         long queryComputeNs = 0L;
         int preferredTargetHits = 0;
         int preferredTargetMisses = 0;
@@ -169,12 +172,21 @@ public final class AISystem {
         int immediateThreatMisses = 0;
         int sensorSignalHits = 0;
         int sensorSignalMisses = 0;
+        int intentCacheHits = 0;
+        int intentCacheMisses = 0;
+        int intentInvalidations = 0;
+        int cheapTargetScores = 0;
+        int mediumTargetScores = 0;
+        int expensiveTargetScores = 0;
+        int movementReuseFrames = 0;
     }
 
     private static long shipCombatTargetNs = 0L;
     private static long shipCombatFightNs = 0L;
     private static long shipCombatFireNs = 0L;
+    private static long aiFrameIndex = 0L;
     private static final ThreadLocal<AIFrameCache> ACTIVE_FRAME_CACHE = new ThreadLocal<>();
+    private static final ThreadLocal<AiScalePolicy.FramePlan> ACTIVE_SCALE_PLAN = new ThreadLocal<>();
 
     public static void update(GameContext ctx, double dt) {
         if (ctx.gameOver) return;
@@ -194,6 +206,8 @@ public final class AISystem {
         shipCombatFightNs = 0L;
         shipCombatFireNs = 0L;
         ACTIVE_FRAME_CACHE.set(new AIFrameCache());
+        AiScalePolicy.FramePlan scalePlan = AiScalePolicy.planFor(ctx, aiFrameIndex++);
+        ACTIVE_SCALE_PLAN.set(scalePlan);
 
         try {
             long phaseStart = System.nanoTime();
@@ -296,6 +310,7 @@ public final class AISystem {
                     s.aiCommittedTargetId = -1;
                 }
             }
+            tickCachedAiIntent(ctx, s, dt);
             if (s.surrendered) {
                 s.vx *= 0.88;
                 s.vy *= 0.88;
@@ -309,8 +324,7 @@ public final class AISystem {
             if (tryRunSpecializedShipAI(ctx, s, dt)) {
                 shipCombatNs += System.nanoTime() - combatStart;
                 long avoidStart = System.nanoTime();
-                applyAsteroidAvoidance(ctx, s, dt);
-                applyProjectileLaneAvoidance(ctx, s, dt);
+                applyAvoidanceForScale(ctx, scalePlan, s, dt);
                 avoidanceNs += System.nanoTime() - avoidStart;
                 continue;
             }
@@ -319,8 +333,7 @@ public final class AISystem {
             runCombatShipAI(ctx, fleetState, s, dt);
             shipCombatNs += System.nanoTime() - combatStart;
             long avoidStart = System.nanoTime();
-            applyAsteroidAvoidance(ctx, s, dt);
-            applyProjectileLaneAvoidance(ctx, s, dt);
+            applyAvoidanceForScale(ctx, scalePlan, s, dt);
             avoidanceNs += System.nanoTime() - avoidStart;
             }
 
@@ -359,9 +372,41 @@ public final class AISystem {
                 ctx.perf.aiImmediateThreatMisses = (cache == null) ? 0 : cache.immediateThreatMisses;
                 ctx.perf.aiSensorSignalHits = (cache == null) ? 0 : cache.sensorSignalHits;
                 ctx.perf.aiSensorSignalMisses = (cache == null) ? 0 : cache.sensorSignalMisses;
+                ctx.perf.aiIntentCacheHits = (cache == null) ? 0 : cache.intentCacheHits;
+                ctx.perf.aiIntentCacheMisses = (cache == null) ? 0 : cache.intentCacheMisses;
+                ctx.perf.aiIntentInvalidations = (cache == null) ? 0 : cache.intentInvalidations;
+                ctx.perf.aiCheapTargetScores = (cache == null) ? 0 : cache.cheapTargetScores;
+                ctx.perf.aiMediumTargetScores = (cache == null) ? 0 : cache.mediumTargetScores;
+                ctx.perf.aiExpensiveTargetScores = (cache == null) ? 0 : cache.expensiveTargetScores;
+                ctx.perf.aiMovementReuseFrames = (cache == null) ? 0 : cache.movementReuseFrames;
             }
         } finally {
             ACTIVE_FRAME_CACHE.remove();
+            ACTIVE_SCALE_PLAN.remove();
+        }
+    }
+
+    private static void applyAvoidanceForScale(GameContext ctx, AiScalePolicy.FramePlan scalePlan, Ship ship, double dt) {
+        if (scalePlan == null || scalePlan.shouldRunAvoidance(ship)) {
+            applyAsteroidAvoidance(ctx, ship, dt);
+            applyProjectileLaneAvoidance(ctx, ship, dt);
+        }
+    }
+
+    private static void tickCachedAiIntent(GameContext ctx, Ship ship, double dt) {
+        if (ship == null) return;
+        double step = Math.max(0.0, dt);
+        if (ship.aiIntentRetargetTimer > 0.0) {
+            ship.aiIntentRetargetTimer = Math.max(0.0, ship.aiIntentRetargetTimer - step);
+        }
+        if (ship.aiMovementThinkTimer > 0.0) {
+            ship.aiMovementThinkTimer = Math.max(0.0, ship.aiMovementThinkTimer - step);
+        }
+        if (ship.aiIntentTargetId > 0 && ctx != null && ctx.entityQuery != null) {
+            Ship target = ctx.entityQuery.findShipById(ship.aiIntentTargetId);
+            if (!isAlive(target)) {
+                clearCachedAiIntent(ship, true);
+            }
         }
     }
 
@@ -563,7 +608,7 @@ public final class AISystem {
                 }
             }
             case FLEET_ACTION -> {
-                if (!applyFleetBehavior(ctx, fleetState, ship, dt)) {
+                if (!applyFleetBehavior(ctx, fleetState, ship, dt, intent.target)) {
                     if (isAlive(intent.target)) {
                         fight(ctx, ship, intent.target, dt);
                     } else {
@@ -577,7 +622,7 @@ public final class AISystem {
 
     private static boolean shouldYieldToFleetExecution(GameContext ctx, FleetState fleetState, Ship ship) {
         if (ctx == null || fleetState == null || ship == null || ship.faction == null) return false;
-        int teamId = ship.faction.teamId();
+        int teamId = fleetGroupKeyForShip(fleetState, ship);
         Ship flagship = fleetState.flagships.get(teamId);
         if (flagship == null) return false;
         List<Ship> members = fleetState.members.get(teamId);
@@ -586,6 +631,68 @@ public final class AISystem {
 
     private static AIFrameCache currentFrameCache() {
         return ACTIVE_FRAME_CACHE.get();
+    }
+
+    private static AiScalePolicy.FramePlan currentScalePlan() {
+        return ACTIVE_SCALE_PLAN.get();
+    }
+
+    private static Ship cachedIntentTarget(GameContext ctx, FleetState state, Ship seeker, Ship sharedHint) {
+        AIFrameCache cache = currentFrameCache();
+        if (ctx == null || seeker == null || seeker.aiIntentRetargetTimer <= 0.0 || seeker.aiIntentTargetId <= 0) {
+            if (cache != null) cache.intentCacheMisses++;
+            return null;
+        }
+        Ship target = (ctx.entityQuery == null)
+                ? findLiveShipById(ctx.ships, seeker.aiIntentTargetId)
+                : ctx.entityQuery.findShipById(seeker.aiIntentTargetId);
+        if (!isCachedIntentTargetValid(ctx, state, seeker, target, sharedHint)) {
+            clearCachedAiIntent(seeker, true);
+            if (cache != null) {
+                cache.intentCacheMisses++;
+            }
+            return null;
+        }
+        if (cache != null) cache.intentCacheHits++;
+        return target;
+    }
+
+    private static boolean isCachedIntentTargetValid(GameContext ctx, FleetState state, Ship seeker, Ship target, Ship sharedHint) {
+        if (!CombatFireControl.canKeepCachedTarget(seeker, target)) return false;
+        if (!TargetingSystem.isDetectableToObserver(seeker, target)) return false;
+        if (!canShipThreatenTarget(ctx, seeker, target)) return false;
+        double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
+        double keepRange = Math.max(520.0, preferredRange(seeker) * 2.05 + target.radius);
+        if (d > keepRange && target != sharedHint) return false;
+        if (forcedToHoldFight(seeker, target)) return true;
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null && scalePlan.isLargeBattle()) {
+            if (target == sharedHint && shouldCommitToSharedTarget(state, seeker, target)) return true;
+            return quickCanTakeFightEstimate(seeker, target, d);
+        }
+        return canTakeFightMetric(ctx, seeker, target);
+    }
+
+    private static Ship rememberCachedAiIntent(Ship seeker, IntentType type, Ship target) {
+        if (seeker == null || !isAlive(target)) return target;
+        seeker.aiIntentTypeOrdinal = (type == null) ? -1 : type.ordinal();
+        seeker.aiIntentTargetId = target.id;
+        seeker.aiIntentRetargetTimer = Math.max(seeker.aiIntentRetargetTimer,
+                CombatTargeting.intentReuseSeconds(currentScalePlan(), seeker));
+        return target;
+    }
+
+    private static void clearCachedAiIntent(Ship seeker, boolean countInvalidation) {
+        if (seeker == null) return;
+        seeker.aiIntentTypeOrdinal = -1;
+        seeker.aiIntentTargetId = -1;
+        seeker.aiIntentRetargetTimer = 0.0;
+        seeker.aiCachedDesiredRange = Double.NaN;
+        seeker.aiCachedMovementMode = 0;
+        if (countInvalidation) {
+            AIFrameCache cache = currentFrameCache();
+            if (cache != null) cache.intentInvalidations++;
+        }
     }
 
     private static Ship preferredEnemyTargetCached(GameContext ctx, Ship seeker) {
@@ -756,22 +863,26 @@ public final class AISystem {
 
         Map<Integer, Double> bestScore = new HashMap<>();
         for (Ship s : ctx.ships) {
-            if (s == null) continue;
-            if (!s.alive || s.dying || s.hp <= 0) continue;
-            if (s.role == ShipRole.BASE || s.role == ShipRole.STATIC_TURRET) continue;
-            if (s.faction == null) continue;
+            if (!FleetStateBuilder.isFleetMemberCandidate(s)) continue;
 
-            int teamId = s.faction.teamId();
-            out.members.computeIfAbsent(teamId, k -> new ArrayList<>()).add(s);
-            out.teamFactions.putIfAbsent(teamId, s.faction);
+            int groupKey = fleetGroupKeyForShip(ctx, s);
+            out.shipGroupKeys.put(s.id, groupKey);
+            out.members.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(s);
+            out.teamFactions.putIfAbsent(groupKey, s.faction);
 
             if (canLeadFleetFormation(s)) {
                 double score = flagshipScore(s);
-                Double current = bestScore.get(teamId);
+                Double current = bestScore.get(groupKey);
                 if (current == null || score > current) {
-                    bestScore.put(teamId, score);
-                    out.flagships.put(teamId, s);
+                    bestScore.put(groupKey, score);
+                    out.flagships.put(groupKey, s);
                 }
+            }
+        }
+        if (ctx.player != null && isAlive(ctx.player)) {
+            int playerGroup = playerFleetGroupKey(ctx);
+            if (out.members.containsKey(playerGroup)) {
+                out.flagships.put(playerGroup, ctx.player);
             }
         }
 
@@ -798,6 +909,8 @@ public final class AISystem {
             if (threatened != null) out.missileThreatFocus.put(teamId, threatened);
             assignSquadObjectives(out, teamId, members, flagship, (shared == null) ? null : shared.target, threatened);
             assignSquadronIdentities(out, teamId, members, flagship);
+            List<Ship> focusTargets = buildTeamFocusTargets(ctx, members, flagship, (shared == null) ? null : shared.target, threatened);
+            if (!focusTargets.isEmpty()) out.focusTargets.put(teamId, focusTargets);
         }
         pruneTeamTransientState(out.members.keySet());
 
@@ -807,13 +920,18 @@ public final class AISystem {
         for (Map.Entry<Integer, Ship> e : out.flagships.entrySet()) {
             Faction f = out.teamFactions.get(e.getKey());
             if (f != null && ctx.command.fleetCommandShips != null) {
-                ctx.command.fleetCommandShips.put(f, e.getValue());
+                if (shouldPublishFleetCommandShip(ctx, f, e.getValue())) {
+                    ctx.command.fleetCommandShips.put(f, e.getValue());
+                }
             }
         }
         for (Map.Entry<Integer, Ship> e : out.sharedTargets.entrySet()) {
             Faction f = out.teamFactions.get(e.getKey());
             if (f != null && ctx.command.fleetSharedTargets != null) {
-                ctx.command.fleetSharedTargets.put(f, e.getValue());
+                Ship flagship = out.flagships.get(e.getKey());
+                if (shouldPublishFleetCommandShip(ctx, f, flagship)) {
+                    ctx.command.fleetSharedTargets.put(f, e.getValue());
+                }
             }
         }
         syncFleetPresentation(ctx, out);
@@ -920,16 +1038,20 @@ public final class AISystem {
         Ship best = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         double bestConfidence = 0.0;
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        int observerSampleCap = (scalePlan != null && scalePlan.isLargeBattle()) ? 28 : Integer.MAX_VALUE;
         try {
             for (Ship enemy : candidates) {
                 if (!isAlive(enemy)) continue;
                 if (enemy.role == ShipRole.BASE) continue;
 
                 int observers = 0;
+                int observerSamples = 0;
                 double observerPriority = 0.0;
                 double observerConfidence = 0.0;
                 for (Ship observer : members) {
                     if (!isAlive(observer)) continue;
+                    observerSamples++;
                     if (isDetectableToObserverCached(ctx, observer, enemy, buildCache)) {
                         double dObs = Math.hypot(enemy.x - observer.x, enemy.y - observer.y);
                         double ewConf = observerEWConfidence(ctx, observer, enemy, dObs, buildCache);
@@ -937,10 +1059,14 @@ public final class AISystem {
                         observerPriority += threatPriority(observer.role, enemy.role) * ewConf;
                         observerConfidence += ewConf;
                     }
+                    if (observerSamples >= observerSampleCap) break;
                 }
                 if (observers <= 0) continue;
 
-                double confidence = Math.max(0.0, Math.min(1.0, (observerConfidence / Math.max(1e-9, aliveCount))));
+                double confidenceDenom = (observerSampleCap == Integer.MAX_VALUE)
+                        ? Math.max(1e-9, aliveCount)
+                        : Math.max(1.0, observerSamples);
+                double confidence = Math.max(0.0, Math.min(1.0, observerConfidence / confidenceDenom));
                 double avgPriority = observerPriority / Math.max(1.0, observerConfidence);
                 double hpFrac = (enemy.hpMax <= 0) ? 1.0 : (enemy.hp / (double) enemy.hpMax);
                 double d = Math.hypot(enemy.x - cx, enemy.y - cy);
@@ -964,6 +1090,78 @@ public final class AISystem {
             releaseShipScratch(candidates);
         }
         return (best == null) ? null : new SharedTargetChoice(best, bestConfidence);
+    }
+
+    private static List<Ship> buildTeamFocusTargets(GameContext ctx, List<Ship> members, Ship flagship,
+                                                    Ship primary, Ship threatenedAlly) {
+        ArrayList<Ship> focus = new ArrayList<>(4);
+        if (ctx == null || members == null || members.isEmpty()) return focus;
+        Ship anchor = isAlive(flagship) ? flagship : members.get(0);
+        if (anchor == null || anchor.faction == null) return focus;
+        addFocusTarget(focus, primary);
+        if (isAlive(threatenedAlly)) {
+            Ship threat = findImmediateThreat(ctx, threatenedAlly,
+                    Math.max(720.0, preferredRange(threatenedAlly) * 1.8));
+            addFocusTarget(focus, threat);
+        }
+
+        double cx = 0.0;
+        double cy = 0.0;
+        int live = 0;
+        for (Ship member : members) {
+            if (!isAlive(member)) continue;
+            cx += member.x;
+            cy += member.y;
+            live++;
+        }
+        if (live <= 0) return focus;
+        cx /= live;
+        cy /= live;
+
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            double radius = Math.max(1800.0, maxThreatSearchRadius(ctx, anchor) + 800.0);
+            ctx.entityQuery.collectHostileShipsNear(anchor.faction, cx, cy, radius, nearby);
+            for (int pick = focus.size(); pick < 4; pick++) {
+                Ship best = null;
+                double bestScore = Double.NEGATIVE_INFINITY;
+                for (Ship enemy : nearby) {
+                    if (!isAlive(enemy) || containsShip(focus, enemy)) continue;
+                    if (enemy.role == ShipRole.BASE) continue;
+                    if (!TargetingSystem.isDetectableToObserver(anchor, enemy)) continue;
+                    double d = Math.hypot(enemy.x - cx, enemy.y - cy);
+                    double hpFrac = enemy.hpMax <= 0 ? 1.0 : enemy.hp / (double) enemy.hpMax;
+                    double score = roleWeightForFlagship(enemy.role) * 28.0
+                            + threatPriority(anchor.role, enemy.role) * 96.0
+                            + (1.0 - hpFrac) * 280.0
+                            + Math.max(0.0, 1500.0 - d) * 0.12
+                            + targetVulnerabilityScore(anchor, enemy);
+                    if (enemy == ctx.lockedTarget) score += 240.0;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = enemy;
+                    }
+                }
+                if (!addFocusTarget(focus, best)) break;
+            }
+        } finally {
+            releaseShipScratch(nearby);
+        }
+        return focus;
+    }
+
+    private static boolean addFocusTarget(List<Ship> focus, Ship target) {
+        if (focus == null || !isAlive(target) || containsShip(focus, target)) return false;
+        focus.add(target);
+        return true;
+    }
+
+    private static boolean containsShip(List<Ship> ships, Ship target) {
+        if (ships == null || target == null) return false;
+        for (Ship ship : ships) {
+            if (ship == target || (ship != null && ship.id == target.id)) return true;
+        }
+        return false;
     }
 
     private static boolean isDetectableToObserverCached(GameContext ctx, Ship observer, Ship target,
@@ -990,6 +1188,14 @@ public final class AISystem {
         Ship anchor = isAlive(flagship) ? flagship : members.get(0);
         if (anchor == null || anchor.faction == null || cached.faction == null) return null;
         if (anchor.faction.isFriendlyTo(cached.faction)) return null;
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null && scalePlan.isLargeBattle()) {
+            double maxRange = Math.max(2600.0, maxThreatSearchRadius(ctx, anchor) + 900.0);
+            if (Math.hypot(cached.x - anchor.x, cached.y - anchor.y) <= maxRange) {
+                double confidence = TEAM_STABLE_SHARED_TARGET_CONFIDENCE.getOrDefault(teamId, 0.42);
+                return new SharedTargetChoice(cached, Math.max(0.24, confidence * 0.96));
+            }
+        }
 
         double cx = 0.0;
         double cy = 0.0;
@@ -1037,7 +1243,11 @@ public final class AISystem {
         }
         TEAM_STABLE_SHARED_TARGET_IDS.put(teamId, shared.target.id);
         TEAM_STABLE_SHARED_TARGET_CONFIDENCE.put(teamId, shared.confidence);
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
         double ttl = 0.14 + Math.max(0.0, Math.min(0.22, shared.confidence * 0.16));
+        if (scalePlan != null && scalePlan.isLargeBattle()) {
+            ttl = Math.max(ttl, 0.36 + Math.max(0.0, Math.min(0.32, shared.confidence * 0.22)));
+        }
         TEAM_STABLE_SHARED_TARGET_TTL.put(teamId, ttl);
     }
 
@@ -1103,7 +1313,8 @@ public final class AISystem {
             if (teamFaction == null || !isAlive(flagship)) continue;
 
             GameContext.FleetCommand command = resolveFleetCommand(ctx, flagship, flagship);
-            if (ctx.command.fleetResolvedCommands != null) {
+            boolean publish = shouldPublishFleetCommandShip(ctx, teamFaction, flagship);
+            if (publish && ctx.command.fleetResolvedCommands != null) {
                 ctx.command.fleetResolvedCommands.put(teamFaction,
                         (command == null) ? GameContext.FleetCommand.AUTO : command);
             }
@@ -1112,7 +1323,7 @@ public final class AISystem {
             GameContext.FleetFormation formation = playerDirected
                     ? ctx.command.alliedFleetFormation
                     : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
-            if (ctx.command.fleetResolvedFormations != null) {
+            if (publish && ctx.command.fleetResolvedFormations != null) {
                 ctx.command.fleetResolvedFormations.put(teamFaction,
                         (formation == null) ? GameContext.FleetFormation.WEDGE : formation);
             }
@@ -1121,7 +1332,7 @@ public final class AISystem {
 
     private static void updateFleetNetTraffic(GameContext ctx, FleetState state) {
         if (ctx == null || state == null || ctx.player == null || ctx.player.faction == null) return;
-        int playerTeamId = ctx.player.faction.teamId();
+        int playerTeamId = playerFleetGroupKey(ctx);
         java.util.HashSet<Integer> activeKeys = borrowIntSetScratch();
         try {
             for (Map.Entry<Integer, String> e : state.squadLabels.entrySet()) {
@@ -1130,7 +1341,7 @@ public final class AISystem {
                 Integer leaderId = state.squadLeaders.get(shipId);
                 if (leaderId == null || leaderId.intValue() != shipId.intValue()) continue;
                 Ship leader = findShipById(ctx.ships, shipId);
-                if (!isAlive(leader) || leader.faction == null || leader.faction.teamId() != playerTeamId) continue;
+                if (!isAlive(leader) || leader.faction == null || fleetGroupKeyForShip(state, leader) != playerTeamId) continue;
 
                 Ship flagship = state.flagships.get(playerTeamId);
                 SquadObjective objective = state.squadObjectives.getOrDefault(shipId, SquadObjective.HOLD);
@@ -1667,6 +1878,39 @@ public final class AISystem {
         return false;
     }
 
+    private static int playerFleetGroupKey(GameContext ctx) {
+        return (ctx != null && ctx.player != null && ctx.player.faction != null)
+                ? ctx.player.faction.teamId()
+                : 0;
+    }
+
+    private static int fleetGroupKeyForShip(GameContext ctx, Ship ship) {
+        if (ship == null || ship.faction == null) return 0;
+        int teamId = ship.faction.teamId();
+        if (ctx == null || ctx.player == null || ctx.player.faction == null) return teamId;
+        if (!CampaignSystem.isCampaignActive(ctx)) return teamId;
+        if (!ship.faction.isFriendlyTo(ctx.player.faction)) return teamId;
+        if (ship == ctx.player || ship.minerHomeBase == ctx.player) return playerFleetGroupKey(ctx);
+        int subzone = ship.campaignMissionSubzone;
+        int subzoneBucket = subzone >= 0 ? Math.min(999, subzone) : 999;
+        return 100_000 + teamId * 1_000 + subzoneBucket;
+    }
+
+    private static int fleetGroupKeyForShip(FleetState state, Ship ship) {
+        if (state != null && ship != null) {
+            Integer key = state.shipGroupKeys.get(ship.id);
+            if (key != null) return key;
+        }
+        return (ship != null && ship.faction != null) ? ship.faction.teamId() : 0;
+    }
+
+    private static boolean shouldPublishFleetCommandShip(GameContext ctx, Faction faction, Ship flagship) {
+        if (faction == null || flagship == null) return false;
+        if (ctx == null || ctx.player == null || ctx.player.faction == null) return true;
+        if (!faction.isFriendlyTo(ctx.player.faction)) return true;
+        return flagship == ctx.player;
+    }
+
     private static double flagshipScore(Ship s) {
         if (s == null) return 0.0;
         return roleWeightForFlagship(s.role) * 1000.0 + s.hpMax * 3.0 + s.radius * 8.0 + s.id * 0.0001;
@@ -1701,10 +1945,10 @@ public final class AISystem {
         };
     }
 
-    private static boolean applyFleetBehavior(GameContext ctx, FleetState state, Ship s, double dt) {
+    private static boolean applyFleetBehavior(GameContext ctx, FleetState state, Ship s, double dt, Ship targetHint) {
         if (ctx == null || state == null || s == null) return false;
         if (s.faction == null) return false;
-        int teamId = s.faction.teamId();
+        int teamId = fleetGroupKeyForShip(state, s);
         Ship flagship = state.flagships.get(teamId);
         if (flagship == null || !flagship.alive || flagship.dying || flagship.hp <= 0) return false;
         if (s.role == ShipRole.MINER) return false;
@@ -1717,9 +1961,12 @@ public final class AISystem {
         }
         applyHazardCommandPosture(s, cmd);
 
-        long targetStart = System.nanoTime();
-        Ship target = selectEngagementTarget(ctx, state, s, dt);
-        shipCombatTargetNs += System.nanoTime() - targetStart;
+        Ship target = isAlive(targetHint) ? targetHint : null;
+        if (!isAlive(target)) {
+            long targetStart = System.nanoTime();
+            target = selectEngagementTarget(ctx, state, s, dt);
+            shipCombatTargetNs += System.nanoTime() - targetStart;
+        }
         Ship base = TeamSystem.getBaseForTeam(ctx, s.faction);
         Ship escortAnchor = escortAnchorForCommand(ctx, s, cmd);
         target = constrainTargetForCommand(ctx, s, flagship, base, cmd, target);
@@ -1851,7 +2098,7 @@ public final class AISystem {
         if (squadLeaderId != null && squadLeaderId != s.id) {
             Ship squadLeader = findShipById(ctx.ships, squadLeaderId);
             if (isAlive(squadLeader) && squadLeader.faction != null && s.faction != null
-                    && squadLeader.faction.teamId() == s.faction.teamId()) {
+                    && fleetGroupKeyForShip(state, squadLeader) == fleetGroupKeyForShip(state, s)) {
                 double squadPull = switch (objective) {
                     case INTERCEPT -> 0.58;
                     case FLANK -> 0.64;
@@ -2107,7 +2354,19 @@ public final class AISystem {
 
     private static Ship sharedTargetForTeam(FleetState state, Ship s) {
         if (state == null || s == null || s.faction == null) return null;
-        return state.sharedTargets.get(s.faction.teamId());
+        return state.sharedTargets.get(fleetGroupKeyForShip(state, s));
+    }
+
+    private static Ship focusTargetForShip(FleetState state, Ship s) {
+        if (state == null || s == null || s.faction == null) return null;
+        int teamId = fleetGroupKeyForShip(state, s);
+        List<Ship> focus = state.focusTargets.get(teamId);
+        if (focus != null && !focus.isEmpty()) {
+            int squadIndex = state.squadIndexes.getOrDefault(s.id, 0);
+            Ship target = CombatTargeting.focusTargetForSquad(focus, squadIndex);
+            if (isAlive(target)) return target;
+        }
+        return state.sharedTargets.get(teamId);
     }
 
     private static Ship selectEngagementTarget(GameContext ctx, FleetState state, Ship seeker, double dt) {
@@ -2116,63 +2375,80 @@ public final class AISystem {
         if (isAlive(fighterIntercept) && TargetingSystem.isDetectableToObserver(seeker, fighterIntercept)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, fighterIntercept, targetCommitDuration(seeker, fighterIntercept, SquadObjective.INTERCEPT));
-            return fighterIntercept;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, fighterIntercept);
         }
-        Ship shared = sharedTargetForTeam(state, seeker);
+        Ship shared = focusTargetForShip(state, seeker);
         Ship immediate = scanImmediateThreatWithBackoff(
                 ctx, seeker, Math.max(0.0, dt), Math.max(210.0, preferredRange(seeker) * 0.62));
         if (isAlive(immediate)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, immediate, targetCommitDuration(seeker, immediate, SquadObjective.INTERCEPT));
-            return immediate;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, immediate);
         }
+
+        Ship cached = cachedIntentTarget(ctx, state, seeker, shared);
+        if (isAlive(cached)) return cached;
 
         Ship committed = committedTarget(ctx, seeker);
         Ship preferred = null;
         if (shouldMaintainCommittedTarget(ctx, state, seeker, committed, shared, preferred)) {
             clearEngagementScanBackoff(seeker);
-            return committed;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, committed);
         }
 
         Ship periodic = periodicClosestRetargetTarget(ctx, seeker);
         if (isAlive(periodic)
                 && canShipThreatenTarget(ctx, seeker, periodic)
-                && canTakeFightMetric(ctx, seeker, periodic)) {
+                && canTakeFightForTargetSelection(ctx, seeker, periodic)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, periodic, targetCommitDuration(seeker, periodic, SquadObjective.HOLD));
-            return periodic;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, periodic);
         }
 
         if (shouldCommitToSharedTarget(state, seeker, shared)
                 && canShipThreatenTarget(ctx, seeker, shared)
-                && canTakeFightMetric(ctx, seeker, shared)) {
+                && canTakeFightForTargetSelection(ctx, seeker, shared)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, shared, targetCommitDuration(seeker, shared, SquadObjective.HOLD));
-            return shared;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, shared);
+        }
+
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null && !scalePlan.shouldRunFullDecisionScan(seeker)) {
+            if (isAlive(committed)) return committed;
+            if (isAlive(periodic)) return periodic;
+            if (isAlive(shared)) return shared;
+            return null;
         }
 
         if (shouldDeferEngagementScan(seeker, Math.max(0.0, dt))) {
-            if (isAlive(committed) && canTakeFightMetric(ctx, seeker, committed)) return committed;
-            if (isAlive(shared) && canTakeFightMetric(ctx, seeker, shared)) return shared;
+            if (isAlive(committed) && canTakeFightForTargetSelection(ctx, seeker, committed)) {
+                return rememberCachedAiIntent(seeker, IntentType.FIGHT, committed);
+            }
+            if (isAlive(shared) && canTakeFightForTargetSelection(ctx, seeker, shared)) {
+                return rememberCachedAiIntent(seeker, IntentType.FIGHT, shared);
+            }
             preferred = preferredEnemyTargetCached(ctx, seeker);
-            if (isAlive(preferred) && canTakeFightMetric(ctx, seeker, preferred)) return preferred;
+            if (isAlive(preferred) && canTakeFightForTargetSelection(ctx, seeker, preferred)) {
+                return rememberCachedAiIntent(seeker, IntentType.FIGHT, preferred);
+            }
             return null;
         }
 
         preferred = preferredEnemyTargetCached(ctx, seeker);
         if (isAlive(preferred)
                 && canShipThreatenTarget(ctx, seeker, preferred)
-                && canTakeFightMetric(ctx, seeker, preferred)) {
+                && canTakeFightForTargetSelection(ctx, seeker, preferred)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, preferred, targetCommitDuration(seeker, preferred, SquadObjective.HOLD));
-            return preferred;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, preferred);
         }
 
         Ship reachable = findBestReachableEnemyTarget(ctx, state, seeker, shared, preferred);
         if (isAlive(reachable)) {
             clearEngagementScanBackoff(seeker);
             commitToTarget(seeker, reachable, targetCommitDuration(seeker, reachable, SquadObjective.HOLD));
-            return reachable;
+            return rememberCachedAiIntent(seeker, IntentType.FIGHT, reachable);
         }
 
         if (isAlive(preferred) || isAlive(shared)) {
@@ -2181,9 +2457,10 @@ public final class AISystem {
             armEngagementScanBackoff(ctx, seeker, true);
         }
 
-        if (isAlive(preferred)) return preferred;
-        if (isAlive(shared)) return shared;
-        if (isAlive(committed)) return committed;
+        if (isAlive(preferred)) return rememberCachedAiIntent(seeker, IntentType.FIGHT, preferred);
+        if (isAlive(shared)) return rememberCachedAiIntent(seeker, IntentType.FIGHT, shared);
+        if (isAlive(committed)) return rememberCachedAiIntent(seeker, IntentType.FIGHT, committed);
+        clearCachedAiIntent(seeker, false);
         return null;
     }
 
@@ -2199,6 +2476,10 @@ public final class AISystem {
         double baseCadence = isAlive(immediate)
                 ? 0.08
                 : idleImmediateThreatCadence(seeker.role);
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null) {
+            baseCadence *= scalePlan.immediateThreatCadenceMultiplier;
+        }
         IMMEDIATE_THREAT_SCAN_TIMERS.put(seeker.id, baseCadence * (0.88 + jitter * 0.42));
         return immediate;
     }
@@ -2236,6 +2517,10 @@ public final class AISystem {
         if (seeker == null) return;
         double jitter = (ctx == null || ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
         double base = hardMiss ? hardMissScanBackoff(seeker.role) : softMissScanBackoff(seeker.role);
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null) {
+            base *= scalePlan.engagementScanBackoffMultiplier;
+        }
         ENGAGEMENT_SCAN_BACKOFF_TIMERS.put(seeker.id, base * (0.85 + jitter * 0.45));
     }
 
@@ -2460,8 +2745,11 @@ public final class AISystem {
                 && TargetingSystem.isDetectableToObserver(seeker, fighterIntercept)) {
             return fighterIntercept;
         }
-        Ship best = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        int cap = CombatTargeting.targetCandidateCap(scalePlan);
+        Ship[] candidates = new Ship[cap];
+        double[] cheapScores = new double[cap];
+        int candidateCount = 0;
         double focusBias = factionSharedFocusBias(seeker.faction);
         double aggressionBias = factionAggressionBias(seeker.faction);
         double standoffBias = factionStandoffBias(seeker.faction);
@@ -2474,21 +2762,57 @@ public final class AISystem {
                 if (!TargetingSystem.isDetectableToObserver(seeker, enemy)) continue;
                 if (!canShipThreatenTarget(ctx, seeker, enemy)) continue;
                 double d = Math.hypot(enemy.x - seeker.x, enemy.y - seeker.y);
-                double ewConf = observerEWConfidence(ctx, seeker, enemy, d);
-                double score = Math.max(0.0, 1500.0 - d) * 0.92;
-                score += roleWeightForFlagship(enemy.role) * 18.0;
-                score += (ewConf - 0.42) * 150.0;
-                if (enemy == sharedHint) score += 180.0 + focusBias * 95.0;
-                if (enemy == preferredHint) score += 140.0;
-                if (enemy == committed) score += 170.0 + Math.max(0.0, seeker.aiTargetCommitTimer) * 32.0;
-                if (d < 240.0) score += 360.0;
-                score += threatPriority(seeker.role, enemy.role) * 72.0;
-                score += aggressiveFighterTargetBias(seeker, enemy);
-                score += targetVulnerabilityScore(seeker, enemy);
-                score += targetAngleAdvantageScore(seeker, enemy);
-                score -= hostileBasePressurePenalty(ctx, seeker, enemy);
-                score += sectorTargetPriorityBias(ctx, seeker, enemy);
-            double fightMargin = canTakeFightMargin(ctx, seeker, enemy);
+                double score = cheapTargetCandidateScore(ctx, seeker, enemy, sharedHint, preferredHint, committed, d, focusBias);
+                AIFrameCache cache = currentFrameCache();
+                if (cache != null) cache.cheapTargetScores++;
+                if (candidateCount < cap) {
+                    candidates[candidateCount] = enemy;
+                    cheapScores[candidateCount] = score;
+                    candidateCount++;
+                } else {
+                    int worst = 0;
+                    double worstScore = cheapScores[0];
+                    for (int i = 1; i < cap; i++) {
+                        if (cheapScores[i] < worstScore) {
+                            worstScore = cheapScores[i];
+                            worst = i;
+                        }
+                    }
+                    if (score > worstScore) {
+                        candidates[worst] = enemy;
+                        cheapScores[worst] = score;
+                    }
+                }
+            }
+        } finally {
+            releaseShipScratch(nearby);
+        }
+
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < candidateCount; i++) {
+            Ship enemy = candidates[i];
+            if (!isAlive(enemy)) continue;
+            double d = Math.hypot(enemy.x - seeker.x, enemy.y - seeker.y);
+            double ewConf = observerEWConfidence(ctx, seeker, enemy, d);
+            double score = cheapScores[i];
+            score += (ewConf - 0.42) * 150.0;
+            score += targetAngleAdvantageScore(seeker, enemy);
+            score -= hostileBasePressurePenalty(ctx, seeker, enemy);
+            score += sectorTargetPriorityBias(ctx, seeker, enemy);
+            score -= killConfirmTargetPenalty(enemy, hullFrac(enemy)) * Math.max(0.40, 1.0 - focusBias * 0.18);
+            if (ewConf < 0.22) {
+                score -= (0.22 - ewConf) * 280.0;
+            }
+            if (state != null && shouldCommitToSharedTarget(state, seeker, enemy)) {
+                score += 36.0 + sharedTargetConfidence(state, seeker) * 42.0;
+            }
+            AIFrameCache cache = currentFrameCache();
+            if (cache != null) cache.mediumTargetScores++;
+
+            if (CombatTargeting.shouldRunFullCandidateScore(scalePlan, seeker, enemy)) {
+                if (cache != null) cache.expensiveTargetScores++;
+                double fightMargin = canTakeFightMargin(ctx, seeker, enemy);
                 score += fightMargin * 165.0;
                 if (fightMargin < 0.0 && combinedDurabilityFrac(enemy) > 0.32) {
                     score -= 180.0 + Math.abs(fightMargin) * 120.0;
@@ -2507,22 +2831,34 @@ public final class AISystem {
                 if (enemy == sharedHint) overCommitPenalty *= Math.max(0.42, 1.0 - focusBias * 0.28);
                 if (targetValue > 4.4 || combinedDurabilityFrac(enemy) < 0.34) overCommitPenalty *= 0.62;
                 score -= overCommitPenalty;
-                score -= killConfirmTargetPenalty(enemy, hullFrac(enemy)) * Math.max(0.40, 1.0 - focusBias * 0.18);
-                if (ewConf < 0.22) {
-                    score -= (0.22 - ewConf) * 280.0;
-                }
-                if (state != null && shouldCommitToSharedTarget(state, seeker, enemy)) {
-                    score += 36.0 + sharedTargetConfidence(state, seeker) * 42.0;
-                }
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = enemy;
-                }
+            } else if (!quickCanTakeFightEstimate(seeker, enemy, d) && combinedDurabilityFrac(enemy) > 0.34) {
+                score -= 260.0;
             }
-        } finally {
-            releaseShipScratch(nearby);
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = enemy;
+            }
         }
         return best;
+    }
+
+    private static double cheapTargetCandidateScore(GameContext ctx, Ship seeker, Ship enemy,
+                                                    Ship sharedHint, Ship preferredHint, Ship committed,
+                                                    double distance, double focusBias) {
+        double score = Math.max(0.0, 1500.0 - distance) * 0.92;
+        score += roleWeightForFlagship(enemy.role) * 18.0;
+        if (enemy == sharedHint) score += 180.0 + focusBias * 95.0;
+        if (enemy == preferredHint) score += 140.0;
+        if (enemy == committed) score += 170.0 + Math.max(0.0, seeker.aiTargetCommitTimer) * 32.0;
+        if (distance < 240.0) score += 360.0;
+        score += threatPriority(seeker.role, enemy.role) * 72.0;
+        score += aggressiveFighterTargetBias(seeker, enemy);
+        score += targetVulnerabilityScore(seeker, enemy);
+        if (ctx != null && BattlefieldSectorSystem.isEnabled(ctx)) {
+            score += sectorTargetPriorityBias(ctx, seeker, enemy) * 0.35;
+        }
+        return score;
     }
 
     private static double aggressiveFighterTargetBias(Ship seeker, Ship enemy) {
@@ -2611,10 +2947,31 @@ public final class AISystem {
         return dist <= sustainedEngagementRangeForTarget(null, seeker, target);
     }
 
+    private static boolean hasFireAuthorityContact(GameContext ctx, Ship shooter, Ship target) {
+        if (!isAlive(shooter) || !isAlive(target)) return false;
+        if (TargetingSystem.isDetectableToObserver(ctx, shooter, target)) return true;
+        return blueCommandContactAvailable(ctx, shooter, target);
+    }
+
+    private static boolean blueCommandContactAvailable(GameContext ctx, Ship shooter, Ship target) {
+        if (ctx == null || shooter == null || target == null || ctx.player == null) return false;
+        if (shooter == ctx.player || !isFriendlyToPlayer(ctx, shooter)) return false;
+        if (!isAlive(ctx.player)) return false;
+        if (shooter.faction == null || target.faction == null || shooter.faction.isFriendlyTo(target.faction)) return false;
+        return TargetingSystem.isDetectableToObserver(ctx, ctx.player, target);
+    }
+
+    private static double blueCommandFireSensorConfidence(GameContext ctx, Ship shooter, Ship target, double shooterDist) {
+        double own = observerEWConfidence(ctx, shooter, target, shooterDist);
+        if (!blueCommandContactAvailable(ctx, shooter, target)) return own;
+        double commandDist = Math.hypot(target.x - ctx.player.x, target.y - ctx.player.y);
+        return Math.max(own, observerEWConfidence(ctx, ctx.player, target, commandDist));
+    }
+
     private static boolean shouldCommitToSharedTarget(FleetState state, Ship s, Ship target) {
         if (!isAlive(target)) return false;
         if (state == null || s == null || s.faction == null) return true;
-        Double conf = state.sharedTargetConfidence.get(s.faction.teamId());
+        Double conf = state.sharedTargetConfidence.get(fleetGroupKeyForShip(state, s));
         if (conf == null) return true;
         double c = Math.max(0.0, Math.min(1.0, conf));
         c += factionSharedFocusBias(s.faction) * 0.10;
@@ -2670,6 +3027,19 @@ public final class AISystem {
         if (!canShipThreatenTarget(ctx, seeker, target)) return false;
         if (forcedToHoldFight(seeker, target)) return true;
         if (target == sharedHint && shouldCommitToSharedTarget(state, seeker, target)) return true;
+        double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null && scalePlan.isLargeBattle()
+                && !CombatTargeting.shouldRunFullCandidateScore(scalePlan, seeker, target)) {
+            if (!quickCanTakeFightEstimate(seeker, target, d) && combinedDurabilityFrac(target) > 0.34) {
+                return false;
+            }
+            if (target == preferredHint && seeker.aiTargetCommitTimer > 0.18) return true;
+            if (combinedDurabilityFrac(target) < 0.38) return true;
+            double quickKeepRange = Math.max(420.0,
+                    preferredRange(seeker) * (1.55 + factionCommitmentBias(seeker.faction) * 0.08));
+            return seeker.aiTargetCommitTimer > 0.0 && d <= quickKeepRange;
+        }
         double support = localSupportBalance(ctx, seeker, target, Math.max(620.0, preferredRange(seeker) * 1.55));
         double selfDur = combinedDurabilityFrac(seeker);
         if (!isCapitalRole(seeker.role) && support < -1.35 && selfDur < 0.44 + factionRetreatBias(seeker.faction) * 0.04) {
@@ -2681,7 +3051,6 @@ public final class AISystem {
         if (target == preferredHint && seeker.aiTargetCommitTimer > 0.18) return true;
         if (combinedDurabilityFrac(target) < 0.38) return true;
         double keepRange = Math.max(420.0, preferredRange(seeker) * (1.55 + factionCommitmentBias(seeker.faction) * 0.08));
-        double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
         return seeker.aiTargetCommitTimer > 0.0 && d <= keepRange;
     }
 
@@ -2741,6 +3110,10 @@ public final class AISystem {
 
         double jitter = (ctx.rng == null) ? Math.random() : ctx.rng.nextDouble();
         double nextRetarget = 4.3 + jitter * 1.6; // ~5 seconds average, slightly desynced.
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (scalePlan != null) {
+            nextRetarget *= scalePlan.closestRetargetCadenceMultiplier;
+        }
         CLOSEST_RETARGET_TIMERS.put(seeker.id, nextRetarget);
     }
 
@@ -2881,7 +3254,8 @@ public final class AISystem {
         double outrunnerPenalty = 0.0;
         double crossfireBonus = 0.0;
 
-        if (isAlive(target)) {
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        if (isAlive(target) && (scalePlan == null || !scalePlan.isLargeBattle())) {
             double tx = target.x - flagship.x;
             double ty = target.y - flagship.y;
             double tl = Math.hypot(tx, ty) + 1e-9;
@@ -3086,7 +3460,7 @@ public final class AISystem {
 
     private static double sharedTargetConfidence(FleetState state, Ship ship) {
         if (state == null || ship == null || ship.faction == null) return 1.0;
-        Double c = state.sharedTargetConfidence.get(ship.faction.teamId());
+        Double c = state.sharedTargetConfidence.get(fleetGroupKeyForShip(state, ship));
         if (c == null) return 1.0;
         return Math.max(0.0, Math.min(1.0, c));
     }
@@ -3419,6 +3793,19 @@ public final class AISystem {
                 s.tryCIWS(dt, ctx);
                 return;
             }
+            if (CombatMovement.shouldReuseMovementThink(currentScalePlan(), s)) {
+                double d = Math.hypot(target.x - s.x, target.y - s.y);
+                rotateShipTowardAssist(s, Math.atan2(target.y - s.y, target.x - s.x), dt,
+                        maxTurnRateRadPerSec(s) * 0.72);
+                int shotsFired = fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
+                updateEngagementMemory(s, target, dt, d,
+                        Double.isFinite(s.aiCachedDesiredRange) ? s.aiCachedDesiredRange : preferredRange(s),
+                        shotsFired > 0, objective);
+                AIFrameCache cache = currentFrameCache();
+                if (cache != null) cache.movementReuseFrames++;
+                s.tryCIWS(dt, ctx);
+                return;
+            }
             double baseRange = preferredRange(s);
             double range = baseRange;
             double aggression = roleAggressionBias(s.role) + factionAggressionBias(s.faction);
@@ -3450,7 +3837,12 @@ public final class AISystem {
             boolean push = (selfHull > pushHullReq && selfShield > pushShieldReq && targetHull < targetVulnReq);
             boolean fallBack = (selfHull < fallbackHullReq || selfShield < fallbackShieldReq);
             if (forceFallback) fallBack = true;
-            double supportBalance = localSupportBalance(ctx, s, target, Math.max(560.0, range * 1.55));
+            double d2 = dist2(s.x, s.y, target.x, target.y);
+            double d = Math.sqrt(d2);
+            boolean detailedFightAssessment = shouldRunDetailedFightAssessment(s);
+            double supportBalance = detailedFightAssessment
+                    ? localSupportBalance(ctx, s, target, Math.max(560.0, range * 1.55))
+                    : 0.0;
             if (!isCapitalRole(s.role) && supportBalance < -0.95) fallBack = true;
             if (supportBalance > 1.15 && selfHull > 0.52 && selfShield > 0.30) push = true;
             if (push && supportBalance < -0.45) push = false;
@@ -3472,9 +3864,9 @@ public final class AISystem {
                     range = Math.min(range, desiredOrbitRange);
                 }
             }
-            double d2 = dist2(s.x, s.y, target.x, target.y);
-            double d = Math.sqrt(d2);
-            boolean canTakeFight = canTakeFightMetric(ctx, s, target);
+            boolean canTakeFight = detailedFightAssessment
+                    ? canTakeFightMetric(ctx, s, target)
+                    : quickCanTakeFightEstimate(s, target, d);
             if (!canTakeFight) {
                 fallBack = true;
                 push = false;
@@ -3534,6 +3926,9 @@ public final class AISystem {
 
             int shotsFired = fireIfAble(ctx, s, target, dt, d, teamConfidence, objective);
             updateEngagementMemory(s, target, dt, d, range, shotsFired > 0, objective);
+            s.aiCachedDesiredRange = range;
+            s.aiMovementThinkTimer = Math.max(s.aiMovementThinkTimer,
+                    CombatMovement.movementThinkSeconds(currentScalePlan(), s));
             s.tryCIWS(dt, ctx);
         } finally {
             shipCombatFightNs += System.nanoTime() - fightStart;
@@ -3671,13 +4066,14 @@ public final class AISystem {
         long fireStart = System.nanoTime();
         try {
             if (ctx == null || s == null || target == null || ctx.projectiles == null) return 0;
+            if (!CombatFireControl.canConsiderTarget(s, target)) return 0;
             if (s.aiArrivalFireDelayTimer > 0.0) return 0;
-            if (!TargetingSystem.isDetectableToObserver(ctx, s, target)) return 0;
+            if (!hasFireAuthorityContact(ctx, s, target)) return 0;
             boolean ciwsIntercept = Turret.usesCiwsPelletsAgainst(s, firstGunTurret(s), target);
             if (TargetingSystem.isCiwsOnlyTarget(target) && !ciwsIntercept) return 0;
             if (objective == null) objective = SquadObjective.HOLD;
             double rangeMul = CampaignSystem.targetingRangeMul(ctx);
-            double sensorConfidence = observerEWConfidence(ctx, s, target, dist);
+            double sensorConfidence = blueCommandFireSensorConfidence(ctx, s, target, dist);
             double confidence = Math.max(0.0, Math.min(1.0, sensorConfidence * Math.max(0.20, teamConfidence)));
             boolean killConfirm = isKillConfirmActive(target);
             boolean overkillLikely = isOverkillLikely(ctx, s, target);
@@ -3814,7 +4210,8 @@ public final class AISystem {
             volleyReady = true;
             for (int idx : mainGunIndices) {
                         Turret t = s.turrets.get(idx);
-                        if (!isGunTurretReadyToFire(s, t, target, dist, gunRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
+                        double authorityRange = gunFireAuthorityRange(ctx, s, t, target, gunRange);
+                        if (!isGunTurretReadyToFire(s, t, target, dist, authorityRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
                             volleyReady = false;
                             break;
                         }
@@ -3829,7 +4226,8 @@ public final class AISystem {
                 int ord = (start + i) % mainGunCount;
                 int idx = mainGunIndices.get(ord);
                 Turret t = s.turrets.get(idx);
-                if (!isGunTurretReadyToFire(s, t, target, dist, gunRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
+                double authorityRange = gunFireAuthorityRange(ctx, s, t, target, gunRange);
+                if (!isGunTurretReadyToFire(s, t, target, dist, authorityRange, dogfightRole, objective, killConfirm, overkillLikely, targetHull)) {
                     continue;
                 }
                 selectedGunIndex = idx;
@@ -3877,7 +4275,7 @@ public final class AISystem {
 
                 // --- GUN turrets ---
                 boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
-                double allowedGunRange = effectiveGunRangeForTarget(s, t, target, gunRange);
+                double allowedGunRange = gunFireAuthorityRange(ctx, s, t, target, gunRange);
                 if (dist > allowedGunRange) continue;
                 if (!ciwsStyle) {
                     if (useVolley && !volleyReady) continue;
@@ -4080,14 +4478,7 @@ public final class AISystem {
     }
 
     private static <V> void syncFleetMap(Map<Integer, V> destination, Map<Integer, V> source) {
-        if (destination == null || source == null) return;
-        if (!destination.isEmpty()) {
-            destination.entrySet().removeIf(e -> e == null || !source.containsKey(e.getKey()));
-        }
-        for (Map.Entry<Integer, V> entry : source.entrySet()) {
-            if (entry == null) continue;
-            destination.put(entry.getKey(), entry.getValue());
-        }
+        FleetPresentationSync.syncMap(destination, source);
     }
 
 
@@ -4099,6 +4490,23 @@ public final class AISystem {
         double pelletReach = Turret.effectiveInterceptorProjectileSpeed(host, turret) * GameContext.DT * pelletLife;
         double practicalRange = Math.min(ciwsEnvelope, pelletReach * 0.92);
         return Math.max(host.radius + target.radius + 24.0, Math.min(Math.max(0.0, baseGunRange), practicalRange));
+    }
+
+    static double gunFireAuthorityRange(GameContext ctx, Ship host, Turret turret, Ship target, double baseGunRange) {
+        double weaponRange = effectiveGunRangeForTarget(host, turret, target, baseGunRange);
+        if (host == null || turret == null || target == null) return weaponRange;
+        if (Turret.usesCiwsPelletsAgainst(host, turret, target)) return weaponRange;
+        if (host.faction == Faction.TEAM_C) return greenMainGunAuthorityRange(host, target, weaponRange);
+        if (!blueCommandContactAvailable(ctx, host, target)) return weaponRange;
+        double commandRange = sustainedEngagementRangeForTarget(ctx, ctx.player, target);
+        return Math.max(weaponRange, commandRange);
+    }
+
+    static double greenMainGunAuthorityRange(Ship host, Ship target, double baseGunRange) {
+        double range = Math.max(0.0, baseGunRange) * 0.58;
+        double floor = (host == null || target == null) ? 260.0 : host.radius + target.radius + 190.0;
+        double cap = (host != null && host.role != null && host.role.isTitanOrMothership()) ? 980.0 : 760.0;
+        return Math.max(floor, Math.min(cap, range));
     }
 
     static double effectivePrimaryGunRangeAgainstTarget(Ship host, Ship target, double baseGunRange) {
@@ -4709,6 +5117,7 @@ public final class AISystem {
     }
 
     private static void moveToward(Ship s, double tx, double ty, double speedPerSec, double dt) {
+        speedPerSec = CombatMovement.finiteSpeed(speedPerSec);
         double dx = tx - s.x;
         double dy = ty - s.y;
         double len = Math.sqrt(dx*dx + dy*dy) + 1e-9;
@@ -5099,28 +5508,8 @@ public final class AISystem {
     }
 
     private static double localSupportBiasAtPoint(GameContext ctx, Faction perspective, double x, double y, double radius) {
-        if (ctx == null || perspective == null || radius <= 0.0) return 0.0;
-        double r2 = radius * radius;
-        double friendly = 0.0;
-        double hostile = 0.0;
-        ArrayList<Ship> nearby = borrowShipScratch();
-        try {
-            ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
-            for (Ship s : nearby) {
-                if (!isAlive(s) || s.faction == null) continue;
-                if (!isSupportRelevantCombatant(s.role)) continue;
-                double d2 = dist2(s.x, s.y, x, y);
-                if (d2 > r2) continue;
-                double dist = Math.sqrt(Math.max(0.0, d2));
-                double falloff = Math.max(0.35, 1.0 - (dist / radius) * 0.45);
-                double w = supportCombatWeight(s.role) * falloff;
-                if (perspective.isFriendlyTo(s.faction)) friendly += w;
-                else hostile += w;
-            }
-        } finally {
-            releaseShipScratch(nearby);
-        }
-        return friendly - hostile;
+        FleetStateBuilder.StrengthSummary summary = localStrengthSummary(ctx, perspective, x, y, radius);
+        return summary.supportFriendly - summary.supportHostile;
     }
 
 
@@ -5132,6 +5521,32 @@ public final class AISystem {
             return true;
         }
         return canTakeFightMargin(ctx, seeker, target) >= 0.0;
+    }
+
+    private static boolean canTakeFightForTargetSelection(GameContext ctx, Ship seeker, Ship target) {
+        if (!isAlive(seeker) || !isAlive(target)) return false;
+        AiScalePolicy.FramePlan scalePlan = currentScalePlan();
+        double d = Math.hypot(target.x - seeker.x, target.y - seeker.y);
+        if (CombatTargeting.shouldRunFullCandidateScore(scalePlan, seeker, target)) {
+            return canTakeFightMetric(ctx, seeker, target);
+        }
+        return quickCanTakeFightEstimate(seeker, target, d);
+    }
+
+    private static boolean shouldRunDetailedFightAssessment(Ship ship) {
+        return CombatTargeting.shouldRunDetailedFightAssessment(currentScalePlan(), ship);
+    }
+
+    private static boolean quickCanTakeFightEstimate(Ship seeker, Ship target, double dist) {
+        if (!isAlive(seeker) || !isAlive(target)) return false;
+        if (forcedToHoldFight(seeker, target)) return true;
+        double immediateRange = Math.max(220.0, seeker.radius + target.radius + 140.0);
+        if (dist <= immediateRange) return true;
+        if (combinedDurabilityFrac(target) < 0.30) return true;
+        double durability = combinedDurabilityFrac(seeker);
+        if (isCapitalRole(seeker.role)) return durability >= 0.24;
+        if (isDogfightRole(seeker.role)) return durability >= 0.22;
+        return durability >= 0.34;
     }
 
     private static double canTakeFightMargin(GameContext ctx, Ship seeker, Ship target) {
@@ -5221,34 +5636,33 @@ public final class AISystem {
     }
 
     private static double combatStrengthNearPoint(GameContext ctx, Faction perspective, double x, double y, double radius, boolean friendly) {
-        if (ctx == null || perspective == null || radius <= 0.0) return 0.0;
-        double r2 = radius * radius;
-        double total = 0.0;
-        ArrayList<Ship> nearby = borrowShipScratch();
-        try {
-            ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
-            for (Ship s : nearby) {
-                if (!isAlive(s) || s.faction == null) continue;
-                if (!isSupportRelevantCombatant(s.role)) continue;
-                boolean isFriendly = perspective.isFriendlyTo(s.faction);
-                if (friendly != isFriendly) continue;
-                double d2 = dist2(s.x, s.y, x, y);
-                if (d2 > r2) continue;
-                double dist = Math.sqrt(Math.max(0.0, d2));
-                double falloff = Math.max(0.35, 1.0 - (dist / radius) * 0.42);
-                total += projectedCombatStrength(s) * falloff;
-            }
-        } finally {
-            releaseShipScratch(nearby);
-        }
-        return total;
+        FleetStateBuilder.StrengthSummary summary = localStrengthSummary(ctx, perspective, x, y, radius);
+        return friendly ? summary.combatFriendly : summary.combatHostile;
     }
 
     private static double[] combatStrengthSplitNearPoint(GameContext ctx, Faction perspective, double x, double y, double radius) {
-        if (ctx == null || perspective == null || radius <= 0.0) return new double[]{0.0, 0.0};
+        FleetStateBuilder.StrengthSummary summary = localStrengthSummary(ctx, perspective, x, y, radius);
+        return new double[]{summary.combatFriendly, summary.combatHostile};
+    }
+
+    private static FleetStateBuilder.StrengthSummary localStrengthSummary(GameContext ctx, Faction perspective,
+                                                                          double x, double y, double radius) {
+        if (ctx == null || perspective == null || radius <= 0.0) {
+            return new FleetStateBuilder.StrengthSummary(0.0, 0.0, 0.0, 0.0, 0, 0);
+        }
+        long key = FleetStateBuilder.strengthCacheKey(perspective, x, y, radius);
+        AIFrameCache cache = currentFrameCache();
+        if (cache != null) {
+            FleetStateBuilder.StrengthSummary cached = cache.strengthSummaries.get(key);
+            if (cached != null) return cached;
+        }
         double r2 = radius * radius;
-        double friendly = 0.0;
-        double hostile = 0.0;
+        double combatFriendly = 0.0;
+        double combatHostile = 0.0;
+        double supportFriendly = 0.0;
+        double supportHostile = 0.0;
+        int countFriendly = 0;
+        int countHostile = 0;
         ArrayList<Ship> nearby = borrowShipScratch();
         try {
             ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
@@ -5258,15 +5672,26 @@ public final class AISystem {
                 double d2 = dist2(s.x, s.y, x, y);
                 if (d2 > r2) continue;
                 double dist = Math.sqrt(Math.max(0.0, d2));
-                double falloff = Math.max(0.35, 1.0 - (dist / radius) * 0.42);
-                double weighted = projectedCombatStrength(s) * falloff;
-                if (perspective.isFriendlyTo(s.faction)) friendly += weighted;
-                else hostile += weighted;
+                double combatFalloff = Math.max(0.35, 1.0 - (dist / radius) * 0.42);
+                double supportFalloff = Math.max(0.35, 1.0 - (dist / radius) * 0.45);
+                boolean friendly = perspective.isFriendlyTo(s.faction);
+                if (friendly) {
+                    combatFriendly += projectedCombatStrength(s) * combatFalloff;
+                    supportFriendly += supportCombatWeight(s.role) * supportFalloff;
+                    countFriendly++;
+                } else {
+                    combatHostile += projectedCombatStrength(s) * combatFalloff;
+                    supportHostile += supportCombatWeight(s.role) * supportFalloff;
+                    countHostile++;
+                }
             }
         } finally {
             releaseShipScratch(nearby);
         }
-        return new double[]{friendly, hostile};
+        FleetStateBuilder.StrengthSummary summary = new FleetStateBuilder.StrengthSummary(
+                combatFriendly, combatHostile, supportFriendly, supportHostile, countFriendly, countHostile);
+        if (cache != null) cache.strengthSummaries.put(key, summary);
+        return summary;
     }
 
     private static double projectedCombatStrength(Ship ship) {
@@ -5296,24 +5721,8 @@ public final class AISystem {
     }
 
     private static int[] countCombatantsSplitNearPoint(GameContext ctx, Faction perspective, double x, double y, double radius) {
-        if (ctx == null || perspective == null || radius <= 0.0) return new int[]{0, 0};
-        int friendly = 0;
-        int hostile = 0;
-        double r2 = radius * radius;
-        ArrayList<Ship> nearby = borrowShipScratch();
-        try {
-            ctx.entityQuery.collectAliveShipsNear(x, y, radius, nearby);
-            for (Ship s : nearby) {
-                if (!isAlive(s) || s.faction == null) continue;
-                if (!isSupportRelevantCombatant(s.role)) continue;
-                if (dist2(s.x, s.y, x, y) > r2) continue;
-                if (perspective.isFriendlyTo(s.faction)) friendly++;
-                else hostile++;
-            }
-        } finally {
-            releaseShipScratch(nearby);
-        }
-        return new int[]{friendly, hostile};
+        FleetStateBuilder.StrengthSummary summary = localStrengthSummary(ctx, perspective, x, y, radius);
+        return new int[]{summary.countFriendly, summary.countHostile};
     }
 
 

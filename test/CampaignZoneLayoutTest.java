@@ -2,7 +2,9 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -77,6 +79,58 @@ class CampaignZoneLayoutTest {
                 .orElse(ctx.player.x);
         assertTrue(maxEnemyX - minEnemyX > 900.0,
                 "campaign sectors should distribute enemy contacts across the zone instead of one local cluster");
+    }
+
+    @Test
+    void tacticalZoneEntryRebuildsPersistentFleetNearPlayerDespiteStaleSavedOffsets() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 4321L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        replacePersistentFleetWithStaleOffsets(ctx.campaign);
+
+        startSector(ctx, 2);
+
+        int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        List<Ship> deployed = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.name != null && ship.name.startsWith("Stale Deploy "))
+                .filter(ship -> ship.alive && !ship.dying && ship.hp > 0)
+                .toList();
+
+        assertEquals(10, deployed.size(), "all committed persistent hulls should materialize on tactical entry");
+        for (Ship ship : deployed) {
+            double dist = Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y);
+            assertTrue(dist < 1600.0,
+                    "stale saved offsets should not scatter " + ship.name + " away from the entry formation");
+            assertEquals(loadedSubzone, ship.campaignMissionSubzone,
+                    "persistent fleet hulls should be stamped into the loaded tactical pocket");
+        }
+    }
+
+    @Test
+    void campaignFleetMinersHoldNearMothershipUnlessMiningIsOrdered() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 9876L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        Ship miner = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.role == ShipRole.MINER && ship.minerHomeBase == ctx.player)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("expected persistent campaign miner"));
+        int loadedSubzone = CampaignSystem.currentLoadedMissionSubzone(ctx);
+        miner.x = ctx.player.x + 1800.0;
+        miner.y = ctx.player.y + 1200.0;
+        miner.minerState = Ship.MinerState.SEEK_ASTEROID;
+        miner.minerTarget = new Asteroid(miner.x + 300.0, miner.y, 40.0, 400);
+        ctx.command.alliedFleetCommand = GameContext.FleetCommand.AUTO;
+
+        EconomySystem.update(ctx, 1.0);
+
+        assertEquals(Ship.MinerState.IDLE, miner.minerState,
+                "campaign fleet miners should hold escort formation unless the fleet is explicitly ordered to mine");
+        assertEquals(loadedSubzone, miner.campaignMissionSubzone,
+                "held campaign miners should remain visible in the loaded tactical pocket");
+        assertTrue(miner.minerTarget == null, "held campaign miners should drop remote asteroid targets");
     }
 
     @Test
@@ -172,10 +226,83 @@ class CampaignZoneLayoutTest {
                 "Red ships spawned during the opening grace period should not pile directly onto the player");
     }
 
+    @Test
+    void nonPlayerFriendlyOffsetSpawnsUseSeparateRallyPocket() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 101L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        startSector(ctx, 2);
+
+        Ship green = invokeSpawnCampaignFactionAtPlayerOffset(
+                ctx, ShipRole.FRIGATE, Faction.TEAM_C, -120.0, 70.0, "Green Test Guard");
+
+        double dist = Math.hypot(green.x - ctx.player.x, green.y - ctx.player.y);
+        assertTrue(dist >= 900.0,
+                "non-player friendly support should spawn near the player but outside the player formation pocket");
+        assertTrue(green.minerHomeBase != ctx.player,
+                "local friendly support should not be tagged as part of the persistent player formation");
+    }
+
+    @Test
+    void joinedGreenCoalitionSupportSpawnsOutsidePlayerFormationAtMissionStart() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CAMPAIGN_OPS, 5000, 5000, true, 102L, false));
+        ctx.campaignUnlockProfile = null;
+        SpawnSystem.initWorld(ctx);
+        ctx.campaign.greenContractFleetJoined = true;
+        ctx.campaign.greenContractFavor = Math.max(ctx.campaign.greenContractFavor, 4);
+
+        startSector(ctx, 13);
+
+        List<Ship> greenContractShips = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.name != null && ship.name.startsWith("Green Contract"))
+                .filter(ship -> ship.role != ShipRole.STATIC_TURRET && ship.role != ShipRole.BASE)
+                .toList();
+        assertTrue(!greenContractShips.isEmpty(), "expected joined Green support ships to spawn");
+        for (Ship ship : greenContractShips) {
+            double dist = Math.hypot(ship.x - ctx.player.x, ship.y - ctx.player.y);
+            assertTrue(dist >= 900.0,
+                    "joined Green support should spawn as its own nearby formation, not inside the player formation: " + ship.name);
+        }
+    }
+
     private static void startSector(GameContext ctx, int sector) throws Exception {
         Method startSector = CampaignSystem.class.getDeclaredMethod("startSector", GameContext.class, int.class);
         startSector.setAccessible(true);
         startSector.invoke(null, ctx, sector);
+    }
+
+    private static void replacePersistentFleetWithStaleOffsets(CampaignSystem.CampaignState st) throws Exception {
+        Field field = CampaignSystem.CampaignState.class.getDeclaredField("persistentBlueFleet");
+        field.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<CampaignSystem.PersistentFleetEntry> entries = (List<CampaignSystem.PersistentFleetEntry>) field.get(st);
+        entries.clear();
+
+        ShipRole[] roles = {
+                ShipRole.CARRIER_SUPPORT_TITAN,
+                ShipRole.BATTLESHIP,
+                ShipRole.BATTLECRUISER,
+                ShipRole.CRUISER,
+                ShipRole.FRIGATE,
+                ShipRole.PICKET,
+                ShipRole.CIWS_CORVETTE,
+                ShipRole.MINER,
+                ShipRole.MISSILE_BOAT,
+                ShipRole.HAULER
+        };
+        for (int i = 0; i < roles.length; i++) {
+            CampaignSystem.PersistentFleetEntry entry = CampaignSystem.addPersistentFleetEntry(
+                    st,
+                    roles[i],
+                    "Stale Deploy " + (i + 1),
+                    CampaignSystem.CAMPAIGN_FLAGSHIP_COMMAND_GROUP,
+                    Faction.ALLY
+            );
+            entry.tacticalCommitmentId = CampaignSystem.FleetCommitment.COMMIT.name();
+            entry.relX = 8000.0 + i * 900.0;
+            entry.relY = (i % 2 == 0 ? 1.0 : -1.0) * (6400.0 + i * 700.0);
+            entry.relAngle = Math.PI;
+        }
     }
 
     private static Ship invokeSpawnEnemyAtPoint(GameContext ctx, ShipRole role, double x, double y) throws Exception {
@@ -188,6 +315,20 @@ class CampaignZoneLayoutTest {
         );
         method.setAccessible(true);
         return (Ship) method.invoke(null, ctx, role, x, y);
+    }
+
+    private static Ship invokeSpawnCampaignFactionAtPlayerOffset(GameContext ctx, ShipRole role, Faction faction,
+                                                                 double ox, double oy, String name) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "spawnCampaignFactionAtPlayerOffset",
+                GameContext.class,
+                ShipRole.class,
+                Faction.class,
+                double.class,
+                double.class,
+                String.class);
+        method.setAccessible(true);
+        return (Ship) method.invoke(null, ctx, role, faction, ox, oy, name);
     }
 
     private static void invokeForceSimulation(GameContext ctx, double dt) throws Exception {

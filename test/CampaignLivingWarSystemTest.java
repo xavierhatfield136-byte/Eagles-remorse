@@ -265,6 +265,52 @@ class CampaignLivingWarSystemTest {
     }
 
     @Test
+    void tacticalPlayAdvancesBackgroundFleetBattleAndRemovesDestroyedLoser() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object red = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Red Tactical Background Battle Loser", "red regression yard",
+                "Verify tactical background battle cleanup", 4900.0, 4900.0);
+        Object green = invokePrivate("ensureCampaignForce",
+                new Class[]{CampaignSystem.CampaignState.class, CampaignSystem.CampaignForceKind.class,
+                        Faction.class, String.class, String.class, String.class, double.class, double.class},
+                st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.TEAM_C,
+                "Green Tactical Background Battle Winner", "green regression yard",
+                "Verify tactical background battle cleanup", 4940.0, 4900.0);
+        assertNotNull(red);
+        assertNotNull(green);
+        setDouble(red, "x", 4900.0);
+        setDouble(red, "y", 4900.0);
+        setDouble(green, "x", 4940.0);
+        setDouble(green, "y", 4900.0);
+        setDouble(red, "strength", 5.0);
+        setDouble(red, "readiness", 5.0);
+        setDouble(green, "strength", 95.0);
+        setDouble(green, "readiness", 95.0);
+        st.playerGalaxyX = 800.0;
+        st.playerGalaxyY = 800.0;
+
+        invokePrivate("formCampaignBattle",
+                new Class[]{GameContext.class, CampaignSystem.CampaignState.class,
+                        findNestedClass("CampaignForce"), findNestedClass("CampaignForce")},
+                ctx, st, red, green);
+        ctx.ui.clearStrategicEncounterPrompt();
+        st.strategicOvermapMode = false;
+        st.galaxyEncounterActive = true;
+        st.introSequenceActive = false;
+        ctx.state = GameState.RUNNING;
+
+        CampaignSystem.update(ctx, 12.0);
+
+        assertTrue(getBoolean(red, "destroyed"));
+        assertFalse(st.campaignForces.contains(red),
+                "background battle losers destroyed during tactical play should be gone before the overmap returns");
+    }
+
+    @Test
     void factionDirectorBriefsPersistAcrossCheckpointRestore() throws Exception {
         GameContext ctx = initializedCampaignContext();
         invokePrivate("updateFactionDirectors",

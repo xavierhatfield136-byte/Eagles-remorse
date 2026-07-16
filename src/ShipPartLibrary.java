@@ -109,6 +109,20 @@ final class ShipPartLibrary {
         cachesPrewarmed = true;
     }
 
+    static synchronized void prewarmDamageCachesForShips(Iterable<Ship> ships) {
+        damageFocusManifest();
+        if (ships == null) return;
+        Set<String> seen = new HashSet<>();
+        for (Ship ship : ships) {
+            if (ship == null) continue;
+            String key = keyForRole(ship.role) + "|" + keyForFaction(ship.faction);
+            if (!seen.add(key)) continue;
+            getSet(ship.role, ship.faction, Variant.DAMAGED);
+            getSet(ship.role, ship.faction, Variant.CRITICAL);
+            getSet(ship.role, ship.faction, Variant.DESTROYED);
+        }
+    }
+
     static int imageDecodeCount() {
         return imageDecodeCount;
     }

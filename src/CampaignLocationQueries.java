@@ -52,7 +52,13 @@ final class CampaignLocationQueries {
         CampaignSystem.CampaignLocation selected = CampaignSystem.campaignLocationById(st, st.selectedGalaxyLocationId);
         if (selected != null) return selected;
         if (CampaignSystem.hasSelectedFreeTravelTarget(ctx)) return selected;
+        if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)
+                && ctx != null && ctx.ui != null && ctx.ui.selectedCampaignContactTrackable) {
+            return null;
+        }
+        CampaignSystem.CampaignLocation nearby = CampaignSystem.nearestDockingRangeCampaignLocation(st);
+        if (nearby != null) return nearby;
         if (CampaignSystem.hasSelectedCampaignContactTarget(ctx)) return null;
-        return CampaignSystem.nearestDockingRangeCampaignLocation(st);
+        return null;
     }
 }

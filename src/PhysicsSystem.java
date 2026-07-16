@@ -10,6 +10,7 @@ import java.util.Iterator;
  * It mirrors the original monolithic GamePanel update order, but operates on GameContext.
  */
 public final class PhysicsSystem {
+    private static long physicsFrameIndex = 0L;
 
     private PhysicsSystem() {}
 
@@ -18,6 +19,25 @@ public final class PhysicsSystem {
         if (TacticalCombatDepthSystem.isTacticalPause(ctx)) return;
         ctx.battleElapsed += Math.max(0.0, dt);
         TargetingSystem.enforceCloakLockRules(ctx);
+        long frameIndex = physicsFrameIndex++;
+        ProjectileScalePolicy.FramePlan projectilePlan = ProjectileScalePolicy.planFor(ctx, frameIndex);
+        long projectileUpdateNs = 0L;
+        long projectileIndexNs = 0L;
+        long projectileCiwsNs = 0L;
+        long projectileVsProjectileNs = 0L;
+        long shipAsteroidNs = 0L;
+        long projectileVsAsteroidNs = 0L;
+        long projectileVsShipNs = 0L;
+        long projectileCleanupNs = 0L;
+        long physicsShipUpdateNs = 0L;
+        long physicsSuperweaponPollNs = 0L;
+        long physicsPlayerWeaponNs = 0L;
+        long physicsPlayerTargetingNs = 0L;
+        long physicsPlayerAimNs = 0L;
+        long physicsPlayerPrimaryNs = 0L;
+        long physicsPlayerSecondaryNs = 0L;
+        long physicsPostCollisionNs = 0L;
+        long phaseStart = System.nanoTime();
 
         // --- Ship movement / regen / turret cooldowns ---
         for (Ship s : ctx.ships) {
@@ -27,6 +47,8 @@ public final class PhysicsSystem {
         constrainPlayerToLoadedSector(ctx);
         constrainWarpChargingShipsToSourceSector(ctx);
         constrainShipsToCampaignSubzones(ctx);
+        physicsShipUpdateNs += System.nanoTime() - phaseStart;
+        phaseStart = System.nanoTime();
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             boolean superFired = false;
@@ -75,13 +97,16 @@ public final class PhysicsSystem {
             }
             AudioSystem.onSuperweaponFired(ctx, s);
         }
+        physicsSuperweaponPollNs += System.nanoTime() - phaseStart;
 
         if (ctx.config != null && ctx.config.mode == GameMode.SHOWCASE) {
             return;
         }
 
         // --- Player weapons ---
+        phaseStart = System.nanoTime();
         if (ctx.player != null && ctx.player.alive) {
+            long playerPhaseStart = System.nanoTime();
             if (ctx.lockedTarget != null
                     && (!TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)
                     || TargetingSystem.isCiwsOnlyTarget(ctx.lockedTarget))) {
@@ -110,10 +135,17 @@ public final class PhysicsSystem {
                         && !TargetingSystem.isMainBatteryScreenTarget(ctx.player, ctx.lockedTarget)
                         && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)) {
                     autoTarget = ctx.lockedTarget;
+                    ctx.playerAutoTargetCache = autoTarget;
+                    ctx.playerAutoTargetCacheFrame = frameIndex;
+                } else if (!shouldRefreshPlayerAutoTarget(ctx, frameIndex, rangeMul)
+                        && isValidPlayerAutoTarget(ctx, ctx.playerAutoTargetCache, rangeMul)) {
+                    autoTarget = ctx.playerAutoTargetCache;
                 } else {
                     autoTarget = TargetingSystem.findClosestEngagementTarget(
                             ctx, ctx.player, ctx.player.x, ctx.player.y, 1600 * rangeMul
                     );
+                    ctx.playerAutoTargetCache = autoTarget;
+                    ctx.playerAutoTargetCacheFrame = frameIndex;
                 }
             }
 
@@ -129,18 +161,22 @@ public final class PhysicsSystem {
                     && TargetingSystem.isDetectableToObserver(ctx, ctx.player, ctx.lockedTarget)) {
                 aimTarget = ctx.lockedTarget;
             }
+            physicsPlayerTargetingNs += System.nanoTime() - playerPhaseStart;
 
             // Turrets track continuously even when not firing.
+            playerPhaseStart = System.nanoTime();
             if (aimTarget != null) {
                 ctx.player.aimAllTurretsAtTarget(aimTarget, dt);
             } else {
                 ctx.player.aimPrimaryTurretsAt(ctx.cursorWorldX, ctx.cursorWorldY, dt);
             }
+            physicsPlayerAimNs += System.nanoTime() - playerPhaseStart;
 
             if (!manualAllowed && !ctx.firingPrimaryAuto) {
                 ctx.player.primaryGunStaggerBurstRemaining = 0;
             }
 
+            playerPhaseStart = System.nanoTime();
             boolean continuePrimary = firePrimary || (manualAllowed && ctx.player.primaryGunStaggerBurstRemaining > 0);
             if (continuePrimary) {
                 int beforePrimary = ctx.projectiles.size();
@@ -160,7 +196,9 @@ public final class PhysicsSystem {
                     }
                 }
             }
+            physicsPlayerPrimaryNs += System.nanoTime() - playerPhaseStart;
 
+            playerPhaseStart = System.nanoTime();
             boolean manualSecondaryRequested = manualAllowed
                     && ctx.firingSecondaryManual
                     && !ctx.firingSecondaryManualLatched;
@@ -185,14 +223,18 @@ public final class PhysicsSystem {
                     ctx.firingSecondaryManualLatched = true;
                 }
             }
+            physicsPlayerSecondaryNs += System.nanoTime() - playerPhaseStart;
         }
+        physicsPlayerWeaponNs += System.nanoTime() - phaseStart;
 
         // --- CIWS (fires pellets) ---
+        phaseStart = System.nanoTime();
         for (Ship s : ctx.ships) {
             if (s == null) continue;
             if (!s.alive) continue;
+            if (projectilePlan != null && !projectilePlan.shouldRunCiwsAcquisition(s)) continue;
             int beforeCiws = ctx.projectiles.size();
-            s.tryCIWS(dt, ctx);
+            s.tryCIWS(dt, ctx, projectilePlan);
             if (ctx.projectiles.size() <= beforeCiws) continue;
             boolean ciwsBurst = false;
             for (int i = beforeCiws; i < ctx.projectiles.size(); i++) {
@@ -207,8 +249,10 @@ public final class PhysicsSystem {
                 AudioSystem.onCiwsFire(ctx, s);
             }
         }
+        projectileCiwsNs += System.nanoTime() - phaseStart;
 
         // --- Projectiles update / cull ---
+        phaseStart = System.nanoTime();
         for (Iterator<Projectile> it = ctx.projectiles.iterator(); it.hasNext(); ) {
             Projectile p = it.next();
             if (p == null) {
@@ -216,24 +260,38 @@ public final class PhysicsSystem {
                 continue;
             }
             if (p instanceof Missile missile) {
-                updateMissileTargeting(ctx, missile);
+                updateMissileTargeting(ctx, missile, projectilePlan);
             }
             p.update(dt);
             if (!p.alive) it.remove();
         }
+        projectileUpdateNs += System.nanoTime() - phaseStart;
 
+        phaseStart = System.nanoTime();
         ctx.entityQuery.rebuild(ctx);
+        projectileIndexNs += System.nanoTime() - phaseStart;
 
         // --- Collisions ---
+        phaseStart = System.nanoTime();
         CollisionSystem.handleProjectilesVsProjectiles(ctx, ctx.projectiles);
+        projectileVsProjectileNs += System.nanoTime() - phaseStart;
+        phaseStart = System.nanoTime();
         CollisionSystem.handleShipsVsAsteroids(ctx.ships, ctx.asteroids);
+        shipAsteroidNs += System.nanoTime() - phaseStart;
         TacticalCombatDepthSystem.handleRamming(ctx);
+        phaseStart = System.nanoTime();
         CollisionSystem.handleProjectilesVsAsteroids(ctx, ctx.projectiles, ctx.asteroids);
+        projectileVsAsteroidNs += System.nanoTime() - phaseStart;
+        phaseStart = System.nanoTime();
         CollisionSystem.handleProjectilesVsShips(ctx, ctx.projectiles, ctx.ships);
+        projectileVsShipNs += System.nanoTime() - phaseStart;
         awardPlayerKillAssistCredits(ctx);
+        phaseStart = System.nanoTime();
         CollisionSystem.cleanupProjectiles(ctx.projectiles);
+        projectileCleanupNs += System.nanoTime() - phaseStart;
 
         // --- Cleanup destroyed ships (keep player object even if dead) ---
+        phaseStart = System.nanoTime();
         ctx.ships.removeIf(s -> s == null || (s != ctx.player && !s.alive && !s.dying));
 
         // --- VFX / explosions ---
@@ -258,8 +316,26 @@ public final class PhysicsSystem {
         } catch (Throwable ignored) {
         }
         TacticalCombatDepthSystem.update(ctx, dt);
+        physicsPostCollisionNs += System.nanoTime() - phaseStart;
 
-        ctx.entityQuery.rebuild(ctx);
+        if (ctx.perf != null) {
+            ctx.perf.physicsShipUpdateMs = physicsShipUpdateNs / 1_000_000.0;
+            ctx.perf.physicsSuperweaponPollMs = physicsSuperweaponPollNs / 1_000_000.0;
+            ctx.perf.physicsPlayerWeaponMs = physicsPlayerWeaponNs / 1_000_000.0;
+            ctx.perf.physicsPlayerTargetingMs = physicsPlayerTargetingNs / 1_000_000.0;
+            ctx.perf.physicsPlayerAimMs = physicsPlayerAimNs / 1_000_000.0;
+            ctx.perf.physicsPlayerPrimaryMs = physicsPlayerPrimaryNs / 1_000_000.0;
+            ctx.perf.physicsPlayerSecondaryMs = physicsPlayerSecondaryNs / 1_000_000.0;
+            ctx.perf.physicsPostCollisionMs = physicsPostCollisionNs / 1_000_000.0;
+            ctx.perf.projectileUpdateMs = projectileUpdateNs / 1_000_000.0;
+            ctx.perf.projectileIndexMs = projectileIndexNs / 1_000_000.0;
+            ctx.perf.projectileCiwsMs = projectileCiwsNs / 1_000_000.0;
+            ctx.perf.projectileVsProjectileMs = projectileVsProjectileNs / 1_000_000.0;
+            ctx.perf.shipAsteroidMs = shipAsteroidNs / 1_000_000.0;
+            ctx.perf.projectileVsAsteroidMs = projectileVsAsteroidNs / 1_000_000.0;
+            ctx.perf.projectileVsShipMs = projectileVsShipNs / 1_000_000.0;
+            ctx.perf.projectileCleanupMs = projectileCleanupNs / 1_000_000.0;
+        }
     }
 
     private static void constrainPlayerToLoadedSector(GameContext ctx) {
@@ -385,6 +461,29 @@ public final class PhysicsSystem {
         return range;
     }
 
+    private static boolean shouldRefreshPlayerAutoTarget(GameContext ctx, long frameIndex, double rangeMul) {
+        if (ctx == null) return true;
+        if (ctx.playerAutoTargetCache == null) return true;
+        if (!isValidPlayerAutoTarget(ctx, ctx.playerAutoTargetCache, rangeMul)) return true;
+        if (ctx.firingPrimaryManual || ctx.firingSecondaryManual) return true;
+        int shipCount = ctx.ships == null ? 0 : ctx.ships.size();
+        int stride = shipCount >= 260 ? 10 : (shipCount >= 160 ? 6 : (shipCount >= 96 ? 3 : 1));
+        if (stride <= 1) return true;
+        long last = ctx.playerAutoTargetCacheFrame;
+        return last == Long.MIN_VALUE || frameIndex - last >= stride;
+    }
+
+    private static boolean isValidPlayerAutoTarget(GameContext ctx, Ship target, double rangeMul) {
+        if (ctx == null || ctx.player == null || target == null) return false;
+        if (!isAlive(target)) return false;
+        if (!TeamSystem.isHostileToPlayer(ctx, target.faction)) return false;
+        if (TargetingSystem.isCiwsOnlyTarget(target)) return false;
+        if (TargetingSystem.isMainBatteryScreenTarget(ctx.player, target)) return false;
+        double range = 1600.0 * Math.max(0.25, rangeMul) * 1.18;
+        if (GameMath.dist2(ctx.player.x, ctx.player.y, target.x, target.y) > range * range) return false;
+        return TargetingSystem.isDetectableToObserver(ctx, ctx.player, target);
+    }
+
     private static Ship preferredSecondaryTarget(GameContext ctx, double searchRange) {
         if (ctx == null || ctx.player == null) return null;
         if (isAlive(ctx.lockedTarget)
@@ -410,10 +509,12 @@ public final class PhysicsSystem {
         return false;
     }
 
-    private static void updateMissileTargeting(GameContext ctx, Missile missile) {
+    private static void updateMissileTargeting(GameContext ctx, Missile missile, ProjectileScalePolicy.FramePlan projectilePlan) {
         if (ctx == null || missile == null || !missile.alive || !missile.hasGuidance()) return;
+        boolean targetDied = false;
         if (missile.projectileTarget != null && !missile.projectileTarget.alive) {
             missile.projectileTarget = null;
+            targetDied = true;
         }
         if (missile.projectileTarget != null && missile.projectileTarget.faction != null
                 && missile.faction != null
@@ -430,7 +531,12 @@ public final class PhysicsSystem {
                 && (!missile.preferSmallCraft || missile.target.isSmallCraft())) {
             return;
         }
+        if (missile.target != null && (!missile.target.alive || missile.target.dying || missile.target.hp <= 0)) {
+            targetDied = true;
+        }
         if (!missile.canRetarget) return;
+        boolean urgent = targetDied || missile.role == Turret.MissileRole.INTERCEPT;
+        if (projectilePlan != null && !projectilePlan.shouldRetargetMissile(missile, urgent)) return;
         missile.target = findMissileRetarget(ctx, missile);
     }
 
