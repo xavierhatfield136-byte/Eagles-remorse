@@ -2061,11 +2061,17 @@ public final class AISystem {
                 : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
         double spacingMul = state.autoFormationSpacing.getOrDefault(teamId, 1.0);
         Ship commandAnchor = (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null) ? escortAnchor : flagship;
+        if (desiredFormation == GameContext.FleetFormation.ASSAULT) {
+            Ship assaultContact = assaultFormationContact(ctx, state, s, commandAnchor, target);
+            if (isAlive(assaultContact)) {
+                target = assaultContact;
+            }
+        }
         int slot = formationSlotIndex(members, flagship, s);
         int wingCount = formationWingCount(members, flagship);
         double formationSpacing = preferredRange(s) * 0.35 * spacingMul;
         double[] anchor = (desiredFormation == GameContext.FleetFormation.ASSAULT)
-                ? assaultFormationAnchor(commandAnchor, members, flagship, s, formationSpacing, cmd)
+                ? assaultFormationAnchor(commandAnchor, members, flagship, s, formationSpacing, cmd, target)
                 : formationAnchor(commandAnchor, slot, wingCount, s.radius, formationSpacing, desiredFormation, cmd);
         Ship threatFocus = state.missileThreatFocus.get(teamId);
         if (isPointDefenseRole(s) && isAlive(threatFocus) && threatFocus != s) {
@@ -2140,6 +2146,9 @@ public final class AISystem {
             s.tryCIWS(dt, ctx);
             return true;
         }
+        boolean assaultConfrontation = desiredFormation == GameContext.FleetFormation.ASSAULT
+                && isAlive(target)
+                && shouldAssaultShipSeekConfrontation(s);
 
         switch (cmd) {
             case RETREAT, RTB, REPAIR -> {
@@ -2157,9 +2166,13 @@ public final class AISystem {
             }
             case DEFEND, FORM_UP, ESCORT -> {
                 double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
-                if (ad > Math.max(70.0, s.radius * 2.5)) {
+                if (assaultConfrontation && ad <= Math.max(120.0, s.radius * 4.0)) {
+                    s.aiForcedEngageTimer = Math.max(s.aiForcedEngageTimer, 0.75);
+                    fight(ctx, s, target, dt, teamConfidence, SquadObjective.INTERCEPT);
+                } else if (ad > Math.max(70.0, s.radius * 2.5)) {
                     double spdMul = (objective == SquadObjective.INTERCEPT) ? 1.06 : (objective == SquadObjective.RESERVE ? 0.82 : 0.92);
-                    moveToward(s, anchor[0], anchor[1], speed * spdMul * coherenceSpeedMul, dt);
+                    double assaultMul = assaultConfrontation ? 1.12 : 1.0;
+                    moveToward(s, anchor[0], anchor[1], speed * spdMul * assaultMul * coherenceSpeedMul, dt);
                 } else {
                     Ship followAnchor = (commandAnchor == null) ? flagship : commandAnchor;
                     setVelPerSec(s, followAnchor.vx / Math.max(1e-9, dt), followAnchor.vy / Math.max(1e-9, dt), dt);
@@ -2188,7 +2201,15 @@ public final class AISystem {
                 }
             }
             case ATTACK -> {
-                if (playerDirected) {
+                if (assaultConfrontation) {
+                    s.aiForcedEngageTimer = Math.max(s.aiForcedEngageTimer, 0.75);
+                    double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
+                    if (ad > Math.max(150.0, s.radius * 4.8)) {
+                        moveToward(s, anchor[0], anchor[1], speed * 1.10 * coherenceSpeedMul, dt);
+                    } else {
+                        fight(ctx, s, target, dt, teamConfidence, SquadObjective.INTERCEPT);
+                    }
+                } else if (playerDirected) {
                     double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
                     double anchorHold = Math.max(120.0, s.radius * 3.8);
                     if (ad > anchorHold) {
@@ -3506,9 +3527,9 @@ public final class AISystem {
     }
 
     private static double[] assaultFormationAnchor(Ship flagship, List<Ship> members, Ship teamFlagship, Ship ship,
-                                                   double baseSpacing, GameContext.FleetCommand command) {
+                                                   double baseSpacing, GameContext.FleetCommand command, Ship contact) {
         if (flagship == null) return new double[]{0.0, 0.0};
-        return assaultFormationAnchorAt(flagship.x, flagship.y, flagship.angle, members, teamFlagship, ship, baseSpacing, command);
+        return assaultFormationAnchorAt(flagship.x, flagship.y, flagship.angle, members, teamFlagship, ship, baseSpacing, command, contact);
     }
 
     private static double[] formationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
@@ -3558,11 +3579,14 @@ public final class AISystem {
 
     private static double[] assaultFormationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
                                                      List<Ship> members, Ship flagship, Ship ship,
-                                                     double baseSpacing, GameContext.FleetCommand command) {
+                                                     double baseSpacing, GameContext.FleetCommand command, Ship contact) {
         if (ship == null) return new double[]{flagshipX, flagshipY};
         double spacing = Math.max(76.0, baseSpacing + ship.radius * 1.15);
-        double fx = Math.cos(flagshipAngle);
-        double fy = Math.sin(flagshipAngle);
+        double dx = isAlive(contact) ? contact.x - flagshipX : 0.0;
+        double dy = isAlive(contact) ? contact.y - flagshipY : 0.0;
+        double contactDist = Math.hypot(dx, dy);
+        double fx = (contactDist > 1e-6) ? dx / contactDist : Math.cos(flagshipAngle);
+        double fy = (contactDist > 1e-6) ? dy / contactDist : Math.sin(flagshipAngle);
         double rx = -fy;
         double ry = fx;
 
@@ -3593,12 +3617,80 @@ public final class AISystem {
         double layerDepth = assaultLayerDepth(shipLayer);
         double[] layout = assaultLayerLayout(shipLayer, shipIndex, layerCounts[shipLayer.ordinal()], spacing);
         double offForward = spacing * (layerDepth + commandAdvance) - layout[1];
+        if (contactDist > spacing * 2.0) {
+            double desiredBetween = contactDist * assaultLayerContactFraction(shipLayer);
+            double layeredForward = spacing * (layerDepth + commandAdvance);
+            double minForward = Math.max(0.0, ship.radius + 90.0);
+            double maxForward = Math.max(minForward, contactDist - contact.radius - ship.radius - 80.0);
+            offForward = MathUtil.clamp(Math.max(layeredForward, desiredBetween) - layout[1], minForward, maxForward);
+        }
         double offSide = layout[0];
 
         return new double[]{
                 flagshipX + fx * offForward + rx * offSide,
                 flagshipY + fy * offForward + ry * offSide
         };
+    }
+
+    private static double assaultLayerContactFraction(AssaultLayer layer) {
+        return switch (layer) {
+            case ESCORT -> 0.66;
+            case LINE -> 0.56;
+            case CAPITAL -> 0.42;
+            case CENTRAL_TITAN -> 0.30;
+            case MOTHERSHIP -> 0.0;
+            case REAR_SUPPORT -> 0.12;
+        };
+    }
+
+    private static Ship assaultFormationContact(GameContext ctx, FleetState state, Ship seeker,
+                                                Ship protectedAnchor, Ship current) {
+        if (ctx == null || seeker == null || seeker.faction == null) return null;
+        if (isAssaultContactUsable(ctx, seeker, current)) return current;
+
+        Ship shared = focusTargetForShip(state, seeker);
+        if (isAssaultContactUsable(ctx, seeker, shared)) return shared;
+
+        Ship anchor = isAlive(protectedAnchor) ? protectedAnchor : seeker;
+        double searchRange = Math.max(1650.0, preferredRange(seeker) * 2.75);
+        Ship best = null;
+        double bestScore = Double.NEGATIVE_INFINITY;
+        ArrayList<Ship> nearby = borrowShipScratch();
+        try {
+            ctx.entityQuery.collectHostileShipsNear(seeker.faction, anchor.x, anchor.y, searchRange, nearby);
+            for (Ship enemy : nearby) {
+                if (!isAssaultContactUsable(ctx, seeker, enemy)) continue;
+                double anchorDist = Math.hypot(enemy.x - anchor.x, enemy.y - anchor.y);
+                double seekerDist = Math.hypot(enemy.x - seeker.x, enemy.y - seeker.y);
+                double score = roleWeightForFlagship(enemy.role) * 85.0
+                        + threatPriority(seeker.role, enemy.role) * 60.0
+                        - anchorDist * 0.42
+                        - seekerDist * 0.18;
+                if (isMissileThreatRole(enemy.role)) score += 95.0;
+                if (enemy.role == ShipRole.CARRIER || enemy.role == ShipRole.DRONE_CARRIER) score += 70.0;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = enemy;
+                }
+            }
+        } finally {
+            releaseShipScratch(nearby);
+        }
+        return best;
+    }
+
+    private static boolean isAssaultContactUsable(GameContext ctx, Ship seeker, Ship contact) {
+        if (!isAlive(seeker) || !isAlive(contact)) return false;
+        if (seeker.faction == null || contact.faction == null || seeker.faction.isFriendlyTo(contact.faction)) return false;
+        return hasFireAuthorityContact(ctx, seeker, contact);
+    }
+
+    private static boolean shouldAssaultShipSeekConfrontation(Ship ship) {
+        if (!isAlive(ship) || ship.role == null) return false;
+        if (ship.role == ShipRole.PICKET) return true;
+        if (assaultLayerForShip(ship) != AssaultLayer.LINE) return false;
+        if (hullFrac(ship) < 0.42) return false;
+        return ship.shieldMax <= 1e-6 || shieldFrac(ship) >= 0.16;
     }
 
     private static AssaultLayer assaultLayerForShip(Ship ship) {
@@ -3739,6 +3831,9 @@ public final class AISystem {
                 if (cmd == null || cmd == GameContext.FleetCommand.AUTO) cmd = GameContext.FleetCommand.FORM_UP;
                 int slot = formationSlotIndex(members, flagship, member);
                 double memberSpacing = preferredRange(member) * 0.35 * spacingMul;
+                Ship assaultContact = (desiredFormation == GameContext.FleetFormation.ASSAULT)
+                        ? assaultFormationContact(ctx, state, member, flagship, null)
+                        : null;
                 double[] exit = (desiredFormation == GameContext.FleetFormation.ASSAULT)
                         ? assaultFormationAnchorAt(
                                 flagship.warpExitX(),
@@ -3748,7 +3843,8 @@ public final class AISystem {
                                 flagship,
                                 member,
                                 memberSpacing,
-                                cmd)
+                                cmd,
+                                assaultContact)
                         : formationAnchorAt(
                                 flagship.warpExitX(),
                                 flagship.warpExitY(),

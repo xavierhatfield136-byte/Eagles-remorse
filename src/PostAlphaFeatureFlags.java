@@ -1,53 +1,32 @@
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.Locale;
-import java.util.Properties;
 
-/** Central feature gate; unfinished post-alpha systems never infer enablement from save data. */
+/** Default-package compatibility wrapper for the packaged post-alpha feature gate. */
 public final class PostAlphaFeatureFlags {
     public enum Feature {
-        TERRITORY_FRONTS(true), YELLOW_SPLIT(true), STRATEGIC_OPERATIONS(true),
-        YELLOW_CIVIL_WAR(true), SUPPLY_PRESSURE(true), WAR_MEMORY(false),
-        RIVAL_COMMANDERS(false), FLAGSHIP_OPERATIONS(false), BOARDING_RESCUE(false),
-        FOCUSED_FACTION_ATTACKS(false),
-        ALTERNATIVE_CAMPAIGNS(false), COOPERATIVE_COMMAND_PROTOTYPE(false);
+        TERRITORY_FRONTS, YELLOW_SPLIT, STRATEGIC_OPERATIONS,
+        YELLOW_CIVIL_WAR, SUPPLY_PRESSURE, WAR_MEMORY,
+        RIVAL_COMMANDERS, FLAGSHIP_OPERATIONS, BOARDING_RESCUE,
+        FOCUSED_FACTION_ATTACKS,
+        ALTERNATIVE_CAMPAIGNS, COOPERATIVE_COMMAND_PROTOTYPE,
+        MULTIPLAYER_CUSTOM_BATTLE;
 
-        final boolean safeDefault;
-        Feature(boolean safeDefault) { this.safeDefault = safeDefault; }
         public String key() { return name().toLowerCase(Locale.ROOT); }
     }
-
-    private static final Path CONFIG = Path.of("config", "post_alpha_feature_flags.properties");
-    private static final EnumMap<Feature, Boolean> VALUES = load();
 
     private PostAlphaFeatureFlags() {}
 
     public static boolean enabled(Feature feature) {
         if (feature == null) return false;
-        String override = System.getProperty("game.feature." + feature.key(), "").trim();
-        if (!override.isEmpty()) return Boolean.parseBoolean(override);
-        return VALUES.getOrDefault(feature, feature.safeDefault);
+        return app.config.PostAlphaFeatureFlags.enabled(
+                app.config.PostAlphaFeatureFlags.Feature.valueOf(feature.name()));
     }
 
-    public static EnumMap<Feature, Boolean> snapshot() { return new EnumMap<>(VALUES); }
-
-    private static EnumMap<Feature, Boolean> load() {
-        Properties properties = new Properties();
-        if (Files.isRegularFile(CONFIG)) {
-            try (InputStream input = Files.newInputStream(CONFIG)) {
-                properties.load(input);
-            } catch (IOException ignored) {
-                // Safe defaults keep foundational systems available and prototypes disabled.
-            }
-        }
-        EnumMap<Feature, Boolean> values = new EnumMap<>(Feature.class);
+    public static EnumMap<Feature, Boolean> snapshot() {
+        EnumMap<Feature, Boolean> out = new EnumMap<>(Feature.class);
         for (Feature feature : Feature.values()) {
-            values.put(feature, Boolean.parseBoolean(properties.getProperty(feature.key(),
-                    Boolean.toString(feature.safeDefault))));
+            out.put(feature, enabled(feature));
         }
-        return values;
+        return out;
     }
 }

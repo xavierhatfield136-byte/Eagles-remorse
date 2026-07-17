@@ -17,6 +17,7 @@ class PostAlphaGovernanceTest {
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.BOARDING_RESCUE));
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.ALTERNATIVE_CAMPAIGNS));
         assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.COOPERATIVE_COMMAND_PROTOTYPE));
+        assertFalse(PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE));
     }
 
     @Test
@@ -25,4 +26,3 @@ class PostAlphaGovernanceTest {
         assertTrue(Files.isRegularFile(Path.of("docs", "POST_ALPHA_IMPLEMENTATION_EVIDENCE_2026-06-29.md")));
     }
 }
-

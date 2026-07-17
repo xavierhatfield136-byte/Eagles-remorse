@@ -3,7 +3,9 @@ package app.ui;
 import app.config.GameConfig;
 import app.config.GameMode;
 import app.config.ExperienceSettings;
+import app.config.MultiplayerLaunchConfig;
 import app.config.PlayerTeamChoice;
+import app.config.PostAlphaFeatureFlags;
 import app.persistence.ExperienceSettingsStore;
 import app.persistence.MenuSettingsStore;
 import app.support.AppInfo;
@@ -105,6 +107,14 @@ public final class MainMenuPanel extends JPanel {
         JButton tutorialStart = createMenuButton("Command School", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
         JButton alphaReadiness = createMenuButton("Alpha Readiness", new Color(82, 92, 128), uiScale);
+        JButton hostBattle = createMenuButton("Host Battle", new Color(53, 123, 126), uiScale);
+        JButton joinBattle = createMenuButton("Join Battle", new Color(79, 102, 151), uiScale);
+        hostBattle.setName("multiplayerHostBattleButton");
+        joinBattle.setName("multiplayerJoinBattleButton");
+        JTextField directAddressField = new JTextField("127.0.0.1:46717", 16);
+        directAddressField.setName("multiplayerDirectAddressField");
+        styleField(directAddressField);
+        scaleField(directAddressField, uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(188, 201, 216));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
@@ -251,6 +261,16 @@ public final class MainMenuPanel extends JPanel {
                     1, "", "",
                     "galaxy_map_test").withExperience(experience[0]));
         });
+        hostBattle.addActionListener(e -> {
+            int port = multiplayerPortFromAddress(directAddressField.getText());
+            String hostAddress = multiplayerHostFromAddress(directAddressField.getText());
+            onStart.accept(multiplayerLaunchConfig(
+                    MultiplayerLaunchConfig.host(port, hostAddress)).withExperience(experience[0]));
+        });
+        joinBattle.addActionListener(e -> onStart.accept(multiplayerLaunchConfig(
+                MultiplayerLaunchConfig.client(
+                        multiplayerDirectAddressOrDefault(directAddressField.getText()),
+                        "")).withExperience(experience[0])));
 
         JPanel titleStack = transparentPanel();
         titleStack.setLayout(new BoxLayout(titleStack, BoxLayout.Y_AXIS));
@@ -367,6 +387,10 @@ public final class MainMenuPanel extends JPanel {
         missionActions.add(start);
         missionActions.add(credits);
         missionCard.add(missionActions);
+        if (multiplayerEntryPointEnabled()) {
+            missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
+            missionCard.add(buildMultiplayerEntryPanel(hostBattle, joinBattle, directAddressField, uiScale));
+        }
 
         JPanel mainColumns = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(24, uiScale), 0));
         mainColumns.setOpaque(false);
@@ -440,6 +464,10 @@ public final class MainMenuPanel extends JPanel {
         g2.dispose();
     }
 
+    void stopBackgroundTimerForTests() {
+        backgroundTimer.stop();
+    }
+
     private static JLabel label(String text, double scale) {
         JLabel l = new JLabel(text);
         l.setForeground(new Color(255, 255, 255, 210));
@@ -485,6 +513,161 @@ public final class MainMenuPanel extends JPanel {
 
     private static JButton createMenuButton(String text, Color fill, double scale) {
         return new MenuButton(text, fill, scale);
+    }
+
+    static boolean multiplayerEntryPointEnabled() {
+        return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
+    }
+
+    private static JPanel buildMultiplayerEntryPanel(JButton hostBattle,
+                                                     JButton joinBattle,
+                                                     JTextField directAddressField,
+                                                     double uiScale) {
+        JPanel panel = createInsetPanel(new Color(8, 26, 33, 196), new Color(64, 151, 158, 135), uiScale);
+        panel.setName("multiplayerEntryPanel");
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+        JLabel title = eyebrowLabel("Multiplayer Duel", uiScale, new Color(119, 217, 208));
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(title);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+
+        JPanel addressRow = transparentPanel();
+        addressRow.setName("multiplayerDirectAddressRow");
+        addressRow.setLayout(new BorderLayout(MenuDisplay.scaled(8, uiScale), 0));
+        addressRow.add(label("Address:", uiScale), BorderLayout.WEST);
+        addressRow.add(directAddressField, BorderLayout.CENTER);
+        panel.add(addressRow);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+
+        JLabel debugInfo = metaLabel("Protocol 1  |  Build " + AppInfo.VERSION + "  |  Manifest V1", uiScale);
+        debugInfo.setName("multiplayerDebugInfoLabel");
+        debugInfo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        panel.add(debugInfo);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+
+        JPanel actions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(10, uiScale), 0));
+        actions.setName("multiplayerActionRow");
+        actions.setOpaque(false);
+        actions.add(hostBattle);
+        actions.add(joinBattle);
+        panel.add(actions);
+        return panel;
+    }
+
+    private static void showMultiplayerHostDialog(Component parent, String directAddress, double uiScale) {
+        JOptionPane.showMessageDialog(parent,
+                multiplayerDialogBody("Host Battle", directAddress, uiScale),
+                "Multiplayer Custom Battle",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private static void showMultiplayerJoinDialog(Component parent, String directAddress, double uiScale) {
+        JOptionPane.showMessageDialog(parent,
+                multiplayerDialogBody("Join Battle", directAddress, uiScale),
+                "Multiplayer Custom Battle",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private static JComponent multiplayerDialogBody(String action, String directAddress, double uiScale) {
+        JPanel panel = new JPanel();
+        panel.setOpaque(true);
+        panel.setBackground(new Color(9, 17, 29));
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                MenuDisplay.scaled(10, uiScale),
+                MenuDisplay.scaled(12, uiScale),
+                MenuDisplay.scaled(10, uiScale),
+                MenuDisplay.scaled(12, uiScale)));
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        JLabel title = sectionTitle(action, uiScale);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        String addressText = multiplayerDirectAddressOrDefault(directAddress);
+        JLabel address = metaLabel("Direct address: " + addressText, uiScale);
+        address.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel status = bodyLabel("<html><div style='width:390px;'>"
+                + "V1 acceptance launcher is ready for test builds. Use the command below from the project root."
+                + "</div></html>", uiScale);
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JTextArea command = new JTextArea(multiplayerAcceptanceCommand(action, addressText));
+        command.setName("multiplayerAcceptanceCommandText");
+        command.setEditable(false);
+        command.setLineWrap(true);
+        command.setWrapStyleWord(true);
+        command.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 12, uiScale));
+        command.setForeground(new Color(211, 232, 228));
+        command.setBackground(new Color(4, 10, 18));
+        command.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(64, 132, 150, 140)),
+                BorderFactory.createEmptyBorder(
+                        MenuDisplay.scaled(8, uiScale),
+                        MenuDisplay.scaled(8, uiScale),
+                        MenuDisplay.scaled(8, uiScale),
+                        MenuDisplay.scaled(8, uiScale))));
+        panel.add(title);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+        panel.add(address);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        panel.add(status);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
+        panel.add(command);
+        return panel;
+    }
+
+    static String multiplayerAcceptanceCommandForTests(String action, String directAddress) {
+        return multiplayerAcceptanceCommand(action, multiplayerDirectAddressOrDefault(directAddress));
+    }
+
+    static GameConfig multiplayerLaunchConfigForTests(String action, String directAddress) {
+        boolean host = action != null && action.toLowerCase(java.util.Locale.ROOT).contains("host");
+        if (host) {
+            return multiplayerLaunchConfig(MultiplayerLaunchConfig.host(
+                    multiplayerPortFromAddress(directAddress),
+                    multiplayerHostFromAddress(directAddress)));
+        }
+        return multiplayerLaunchConfig(MultiplayerLaunchConfig.client(
+                multiplayerDirectAddressOrDefault(directAddress), ""));
+    }
+
+    private static String multiplayerAcceptanceCommand(String action, String directAddress) {
+        boolean host = action != null && action.toLowerCase(java.util.Locale.ROOT).contains("host");
+        if (host) {
+            return ".\\gradlew.bat \"-PmpPort=46717\" \"-PmpTimeoutMs=60000\" "
+                    + "\"-PmpReport=build/reports/multiplayer-lan-host-acceptance.txt\" "
+                    + "multiplayerLanAcceptanceHost";
+        }
+        return ".\\gradlew.bat \"-PmpAddress=" + directAddress + "\" \"-PmpTimeoutMs=60000\" "
+                + "\"-PmpReport=build/reports/multiplayer-lan-client-acceptance.txt\" "
+                + "multiplayerLanAcceptanceClient";
+    }
+
+    private static String multiplayerDirectAddressOrDefault(String directAddress) {
+        String trimmed = directAddress == null ? "" : directAddress.trim();
+        return trimmed.isEmpty() ? "127.0.0.1:46717" : trimmed;
+    }
+
+    private static GameConfig multiplayerLaunchConfig(MultiplayerLaunchConfig launch) {
+        return new GameConfig(GameMode.CUSTOM_BATTLES, 3600, 2200, true,
+                System.nanoTime(), false, 0, false,
+                1, "FRIGATE", "FRIGATE").withMultiplayerLaunch(launch);
+    }
+
+    private static int multiplayerPortFromAddress(String directAddress) {
+        String text = multiplayerDirectAddressOrDefault(directAddress);
+        int colon = text.lastIndexOf(':');
+        if (colon >= 0 && colon + 1 < text.length()) {
+            try {
+                int port = Integer.parseInt(text.substring(colon + 1).trim());
+                if (port > 0 && port <= 65_535) return port;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return 46717;
+    }
+
+    private static String multiplayerHostFromAddress(String directAddress) {
+        String text = multiplayerDirectAddressOrDefault(directAddress);
+        int colon = text.lastIndexOf(':');
+        return colon > 0 ? text.substring(0, colon).trim() : "";
     }
 
     private static JPanel createMenuContent(double scale) {

@@ -165,6 +165,8 @@ tasks.named("test") {
 
 tasks.named("run") {
     dependsOn("purgeStraySourceClasses")
+    systemProperty "game.feature.multiplayer_custom_battle",
+            (findProperty("enableMultiplayerCustomBattle") ?: "true").toString()
 }
 
 tasks.named("check") {
@@ -196,6 +198,261 @@ tasks.register("focusedFactionAttackSoak", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "FocusedFactionAttackSoakHarness"
     args("--seeds=3", "--seconds=1200", "--report=build/reports/focused-faction-attack-soak.csv")
+}
+
+tasks.register("multiplayerLanAcceptanceHost", JavaExec) {
+    group = "verification"
+    description = "Run the V1 multiplayer direct-LAN acceptance host. Override with -PmpPort, -PmpHostAddress, -PmpReport, -PmpMatch, -PmpTimeoutMs, -PmpLoopback."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerLanDuelAcceptanceHarness"
+    doFirst {
+        def port = (findProperty("mpPort") ?: "46717").toString()
+        def report = (findProperty("mpReport") ?: "build/reports/multiplayer-lan-host-acceptance.txt").toString()
+        def match = (findProperty("mpMatch") ?: "manual-lan-acceptance").toString()
+        def timeout = (findProperty("mpTimeoutMs") ?: "30000").toString()
+        def hostAddress = (findProperty("mpHostAddress") ?: "").toString()
+        args("host", "--port=${port}", "--host-address=${hostAddress}", "--match=${match}", "--timeout-ms=${timeout}", "--report=${report}")
+        if ((findProperty("mpLoopback") ?: "false").toString().toBoolean()) {
+            args("--loopback=true")
+        }
+    }
+}
+
+tasks.register("multiplayerLanPreflight", JavaExec) {
+    group = "verification"
+    description = "Write a V1 multiplayer LAN host preflight report. Override with -PmpPort, -PmpReport, and -PmpStrict."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerLanPreflightHarness"
+    doFirst {
+        def port = (findProperty("mpPort") ?: "46717").toString()
+        def report = (findProperty("mpReport") ?: "build/reports/multiplayer-lan-preflight.txt").toString()
+        def strict = (findProperty("mpStrict") ?: "false").toString()
+        args("--port=${port}", "--report=${report}", "--strict=${strict}")
+    }
+}
+
+tasks.register("multiplayerLanAcceptanceClient", JavaExec) {
+    group = "verification"
+    description = "Run the V1 multiplayer direct-LAN acceptance client. Override with -PmpAddress, -PmpClientAddress, -PmpReport, -PmpMatch, -PmpTimeoutMs."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerLanDuelAcceptanceHarness"
+    doFirst {
+        def address = (findProperty("mpAddress") ?: "127.0.0.1:46717").toString()
+        def report = (findProperty("mpReport") ?: "build/reports/multiplayer-lan-client-acceptance.txt").toString()
+        def match = (findProperty("mpMatch") ?: "manual-lan-acceptance").toString()
+        def timeout = (findProperty("mpTimeoutMs") ?: "30000").toString()
+        def clientAddress = (findProperty("mpClientAddress") ?: "").toString()
+        args("client", "--connect=${address}", "--client-address=${clientAddress}", "--match=${match}", "--timeout-ms=${timeout}", "--report=${report}")
+    }
+}
+
+tasks.register("multiplayerLanAcceptanceValidate", JavaExec) {
+    group = "verification"
+    description = "Validate host/client V1 multiplayer LAN acceptance reports. Override with -PmpHostReport and -PmpClientReport."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerLanDuelAcceptanceHarness"
+    doFirst {
+        def hostReport = (findProperty("mpHostReport") ?: "build/reports/multiplayer-lan-host-acceptance.txt").toString()
+        def clientReport = (findProperty("mpClientReport") ?: "build/reports/multiplayer-lan-client-acceptance.txt").toString()
+        args("validate", "--host-report=${hostReport}", "--client-report=${clientReport}")
+    }
+}
+
+tasks.register("multiplayerTwoProcessAcceptance", JavaExec) {
+    group = "verification"
+    description = "Run the V1 multiplayer two-process loopback acceptance duel and write a report. Override with -PmpReport and -PmpTimeoutMs."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerTwoProcessAcceptanceRunner"
+    doFirst {
+        def report = (findProperty("mpReport") ?: "build/reports/multiplayer-two-process-acceptance.txt").toString()
+        def timeout = (findProperty("mpTimeoutMs") ?: "15000").toString()
+        args("--report=${report}", "--timeout-ms=${timeout}")
+    }
+}
+
+tasks.register("multiplayerAcceptanceAudit", JavaExec) {
+    group = "verification"
+    description = "Write a V1 multiplayer acceptance audit. Override with -PmpTwoProcessReport, -PmpPreflightReport, -PmpHostReport, -PmpClientReport, -PmpInteractiveReport, -PmpFinalReport, -PmpTwoMachineLog, -PmpReadinessReport, -PmpAuditReport, -PmpStrict."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerAcceptanceAuditHarness"
+    doFirst {
+        def twoProcessReport = (findProperty("mpTwoProcessReport") ?: "build/reports/multiplayer-two-process-acceptance.txt").toString()
+        def preflightReport = (findProperty("mpPreflightReport") ?: "build/reports/multiplayer-lan-preflight.txt").toString()
+        def hostReport = (findProperty("mpHostReport") ?: "build/reports/multiplayer-lan-host-acceptance.txt").toString()
+        def clientReport = (findProperty("mpClientReport") ?: "build/reports/multiplayer-lan-client-acceptance.txt").toString()
+        def interactiveReport = (findProperty("mpInteractiveReport") ?: "build/reports/multiplayer-interactive-two-process-manual.txt").toString()
+        def finalReport = (findProperty("mpFinalReport") ?: "build/reports/multiplayer-final-two-machine-manual.txt").toString()
+        def twoMachineLog = (findProperty("mpTwoMachineLog") ?: "build/reports/multiplayer-two-machine-acceptance-log.md").toString()
+        def readinessReport = (findProperty("mpReadinessReport") ?: "build/reports/multiplayer-two-machine-readiness.txt").toString()
+        def auditReport = (findProperty("mpAuditReport") ?: "build/reports/multiplayer-acceptance-audit.txt").toString()
+        def strict = (findProperty("mpStrict") ?: "false").toString()
+        args("--two-process-report=${twoProcessReport}",
+                "--preflight-report=${preflightReport}",
+                "--host-report=${hostReport}",
+                "--client-report=${clientReport}",
+                "--interactive-report=${interactiveReport}",
+                "--final-report=${finalReport}",
+                "--two-machine-log=${twoMachineLog}",
+                "--readiness-report=${readinessReport}",
+                "--report=${auditReport}",
+                "--strict=${strict}")
+    }
+}
+
+tasks.register("multiplayerReleaseGate", JavaExec) {
+    group = "verification"
+    description = "Fail if multiplayer custom battle is enabled without complete V1 acceptance evidence. Override report paths with the same properties as multiplayerAcceptanceAudit."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerReleaseGateHarness"
+    doFirst {
+        def twoProcessReport = (findProperty("mpTwoProcessReport") ?: "build/reports/multiplayer-two-process-acceptance.txt").toString()
+        def preflightReport = (findProperty("mpPreflightReport") ?: "build/reports/multiplayer-lan-preflight.txt").toString()
+        def hostReport = (findProperty("mpHostReport") ?: "build/reports/multiplayer-lan-host-acceptance.txt").toString()
+        def clientReport = (findProperty("mpClientReport") ?: "build/reports/multiplayer-lan-client-acceptance.txt").toString()
+        def interactiveReport = (findProperty("mpInteractiveReport") ?: "build/reports/multiplayer-interactive-two-process-manual.txt").toString()
+        def finalReport = (findProperty("mpFinalReport") ?: "build/reports/multiplayer-final-two-machine-manual.txt").toString()
+        def twoMachineLog = (findProperty("mpTwoMachineLog") ?: "build/reports/multiplayer-two-machine-acceptance-log.md").toString()
+        def readinessReport = (findProperty("mpReadinessReport") ?: "build/reports/multiplayer-two-machine-readiness.txt").toString()
+        args("--two-process-report=${twoProcessReport}",
+                "--preflight-report=${preflightReport}",
+                "--host-report=${hostReport}",
+                "--client-report=${clientReport}",
+                "--interactive-report=${interactiveReport}",
+                "--final-report=${finalReport}",
+                "--two-machine-log=${twoMachineLog}",
+                "--readiness-report=${readinessReport}")
+    }
+}
+
+tasks.register("multiplayerEvidenceBundle", JavaExec) {
+    group = "verification"
+    description = "Write a hash manifest for V1 multiplayer acceptance evidence. Override report paths with the same properties as multiplayerAcceptanceAudit plus -PmpReadinessReport, -PmpTwoMachineLog, and -PmpBundleReport."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerEvidenceBundleHarness"
+    doFirst {
+        def twoProcessReport = (findProperty("mpTwoProcessReport") ?: "build/reports/multiplayer-two-process-acceptance.txt").toString()
+        def preflightReport = (findProperty("mpPreflightReport") ?: "build/reports/multiplayer-lan-preflight.txt").toString()
+        def hostReport = (findProperty("mpHostReport") ?: "build/reports/multiplayer-lan-host-acceptance.txt").toString()
+        def clientReport = (findProperty("mpClientReport") ?: "build/reports/multiplayer-lan-client-acceptance.txt").toString()
+        def interactiveReport = (findProperty("mpInteractiveReport") ?: "build/reports/multiplayer-interactive-two-process-manual.txt").toString()
+        def finalReport = (findProperty("mpFinalReport") ?: "build/reports/multiplayer-final-two-machine-manual.txt").toString()
+        def auditReport = (findProperty("mpAuditReport") ?: "build/reports/multiplayer-acceptance-audit.txt").toString()
+        def readinessReport = (findProperty("mpReadinessReport") ?: "build/reports/multiplayer-two-machine-readiness.txt").toString()
+        def twoMachineLog = (findProperty("mpTwoMachineLog") ?: "build/reports/multiplayer-two-machine-acceptance-log.md").toString()
+        def bundleReport = (findProperty("mpBundleReport") ?: "build/reports/multiplayer-evidence-bundle.txt").toString()
+        args("--two-process-report=${twoProcessReport}",
+                "--preflight-report=${preflightReport}",
+                "--host-report=${hostReport}",
+                "--client-report=${clientReport}",
+                "--interactive-report=${interactiveReport}",
+                "--final-report=${finalReport}",
+                "--audit-report=${auditReport}",
+                "--readiness-report=${readinessReport}",
+                "--two-machine-log=${twoMachineLog}",
+                "--report=${bundleReport}")
+    }
+}
+
+tasks.register("multiplayerManualAcceptanceReport", JavaExec) {
+    group = "verification"
+    description = "Create or validate a V1 multiplayer manual acceptance report. Override with -PmpMode=template|validate, -PmpScope, -PmpReport, and -PmpRealLan."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerManualAcceptanceReportHarness"
+    doFirst {
+        def mode = (findProperty("mpMode") ?: "template").toString()
+        def scope = (findProperty("mpScope") ?: "interactive-two-process").toString()
+        def report = (findProperty("mpReport") ?: (scope.equalsIgnoreCase("final-two-machine")
+                ? "build/reports/multiplayer-final-two-machine-manual.txt"
+                : "build/reports/multiplayer-interactive-two-process-manual.txt")).toString()
+        def defaultRealLan = scope.equalsIgnoreCase("final-two-machine") ? "true" : "false"
+        def realLan = (findProperty("mpRealLan") ?: defaultRealLan).toString()
+        args("--mode=${mode}", "--scope=${scope}", "--report=${report}", "--real-lan=${realLan}")
+    }
+}
+
+tasks.register("multiplayerManualAcceptanceTemplates", JavaExec) {
+    group = "verification"
+    description = "Create both default V1 multiplayer manual acceptance templates. Override with -PmpInteractiveReport and -PmpFinalReport."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerManualAcceptanceTemplateSetHarness"
+    doFirst {
+        def interactiveReport = (findProperty("mpInteractiveReport") ?: "build/reports/multiplayer-interactive-two-process-manual.txt").toString()
+        def finalReport = (findProperty("mpFinalReport") ?: "build/reports/multiplayer-final-two-machine-manual.txt").toString()
+        args("--interactive-report=${interactiveReport}", "--final-report=${finalReport}")
+    }
+}
+
+tasks.register("multiplayerTwoMachineAcceptanceLog", JavaExec) {
+    group = "verification"
+    description = "Create or validate the V1 real two-machine acceptance log. Override with -PmpMode=template|validate and -PmpTwoMachineLog."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerTwoMachineAcceptanceLogHarness"
+    doFirst {
+        def mode = (findProperty("mpMode") ?: "template").toString()
+        def log = (findProperty("mpTwoMachineLog") ?: "build/reports/multiplayer-two-machine-acceptance-log.md").toString()
+        args("--mode=${mode}", "--log=${log}")
+    }
+}
+
+tasks.register("multiplayerTwoMachineReadiness", JavaExec) {
+    group = "verification"
+    description = "Write a local readiness report before the external V1 two-machine acceptance pass. Override with -PmpPort, -PmpRunDir, report paths, -PmpReadinessReport, and -PmpStrict."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerTwoMachineReadinessHarness"
+    doFirst {
+        def port = (findProperty("mpPort") ?: "46717").toString()
+        def runDir = (findProperty("mpRunDir") ?: "build/reports/multiplayer-two-machine-run").toString()
+        def twoProcessReport = (findProperty("mpTwoProcessReport") ?: "build/reports/multiplayer-two-process-acceptance.txt").toString()
+        def interactiveReport = (findProperty("mpInteractiveReport") ?: "build/reports/multiplayer-interactive-two-process-manual.txt").toString()
+        def finalReport = (findProperty("mpFinalReport") ?: "build/reports/multiplayer-final-two-machine-manual.txt").toString()
+        def readinessReport = (findProperty("mpReadinessReport") ?: "build/reports/multiplayer-two-machine-readiness.txt").toString()
+        def strict = (findProperty("mpStrict") ?: "false").toString()
+        args("--port=${port}",
+                "--runbook-dir=${runDir}",
+                "--two-process-report=${twoProcessReport}",
+                "--interactive-report=${interactiveReport}",
+                "--final-report=${finalReport}",
+                "--report=${readinessReport}",
+                "--strict=${strict}")
+    }
+}
+
+tasks.register("multiplayerTwoMachineRunbook", JavaExec) {
+    group = "verification"
+    description = "Generate a V1 multiplayer two-machine acceptance runbook. Override with -PmpRunDir, -PmpHostAddress, -PmpClientAddress, -PmpPort, -PmpTimeoutMs, -PmpMatch, -PmpTester, and -PmpBuild."
+    dependsOn(tasks.named("classes"))
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "MultiplayerTwoMachineRunbookHarness"
+    doFirst {
+        def dir = (findProperty("mpRunDir") ?: "build/reports/multiplayer-two-machine-run").toString()
+        def hostAddress = (findProperty("mpHostAddress") ?: "<host-lan-ip>").toString()
+        def clientAddress = (findProperty("mpClientAddress") ?: "<client-lan-ip>").toString()
+        def port = (findProperty("mpPort") ?: "46717").toString()
+        def timeout = (findProperty("mpTimeoutMs") ?: "60000").toString()
+        def match = (findProperty("mpMatch") ?: "manual-lan-acceptance").toString()
+        def tester = (findProperty("mpTester") ?: "").toString()
+        def buildId = (findProperty("mpBuild") ?: "local-dev-build").toString()
+        args("--dir=${dir}",
+                "--host-address=${hostAddress}",
+                "--client-address=${clientAddress}",
+                "--port=${port}",
+                "--timeout-ms=${timeout}",
+                "--match=${match}",
+                "--tester=${tester}",
+                "--build=${buildId}")
+    }
 }
 
 tasks.register("phase9PerformanceOrdinary", JavaExec) {

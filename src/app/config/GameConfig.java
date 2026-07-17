@@ -18,6 +18,7 @@ public class GameConfig {
     public final String startupPreset;
     public final ExperienceSettings experience;
     public final boolean autoLaunchCampaignStartSite;
+    public final MultiplayerLaunchConfig multiplayerLaunch;
 
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false, 1, "", "");
@@ -59,6 +60,16 @@ public class GameConfig {
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
                       String startupPreset, ExperienceSettings experience, boolean autoLaunchCampaignStartSite) {
+        this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, experience,
+                autoLaunchCampaignStartSite, null);
+    }
+
+    public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
+                      int playerTeamId, boolean resumeCampaign,
+                      int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
+                      String startupPreset, ExperienceSettings experience, boolean autoLaunchCampaignStartSite,
+                      MultiplayerLaunchConfig multiplayerLaunch) {
         this.mode = mode;
         this.worldW = worldW;
         this.worldH = worldH;
@@ -74,17 +85,24 @@ public class GameConfig {
         this.experience = (experience == null) ? ExperienceSettings.defaults() : experience.copy();
         this.experience.normalize();
         this.autoLaunchCampaignStartSite = autoLaunchCampaignStartSite;
+        this.multiplayerLaunch = multiplayerLaunch;
     }
 
     public GameConfig withExperience(ExperienceSettings settings) {
         return new GameConfig(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
                 customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, settings,
-                autoLaunchCampaignStartSite);
+                autoLaunchCampaignStartSite, multiplayerLaunch);
     }
 
     public GameConfig withAutoLaunchCampaignStartSite(boolean enabled) {
         return new GameConfig(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
                 customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, experience,
-                enabled);
+                enabled, multiplayerLaunch);
+    }
+
+    public GameConfig withMultiplayerLaunch(MultiplayerLaunchConfig launch) {
+        return new GameConfig(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign,
+                customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, experience,
+                autoLaunchCampaignStartSite, launch);
     }
 }

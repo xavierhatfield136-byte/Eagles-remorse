@@ -10,6 +10,8 @@ public final class GameSimulationRuntime {
     private static final double BATTLEFIELD_WARP_DISRUPT_TOLERANCE_SECONDS = 0.05;
 
     private final GameContext ctx;
+    private final SinglePlayerCustomBattleCommandPath customBattleCommandPath =
+            new SinglePlayerCustomBattleCommandPath();
 
     private long lastTickNs = 0L;
     private double accumulatorNs = 0.0;
@@ -86,31 +88,74 @@ public final class GameSimulationRuntime {
             return;
         }
 
-        applyPlayerInput(dt, input);
-        if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
-            CampaignSystem.enforceCampaignMapDiscipline(ctx);
-            UISystem.updateStrategicMapCameraPan(ctx, dt);
-            long campaignStart = System.nanoTime();
-            CampaignSystem.update(ctx, dt);
-            ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
-            UISystem.updatePings(ctx, dt);
-            EventSystem.update(ctx, dt);
-            AudioSystem.update(ctx, dt);
-            syncPlayerWarpHudState();
-            return;
-        }
+        ManualFireRestore manualFireRestore = applyPlayerInput(dt, input);
+        try {
+            if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
+                CampaignSystem.enforceCampaignMapDiscipline(ctx);
+                UISystem.updateStrategicMapCameraPan(ctx, dt);
+                long campaignStart = System.nanoTime();
+                CampaignSystem.update(ctx, dt);
+                ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
+                UISystem.updatePings(ctx, dt);
+                EventSystem.update(ctx, dt);
+                AudioSystem.update(ctx, dt);
+                syncPlayerWarpHudState();
+                return;
+            }
 
-        BattlefieldSectorSystem.ensureLoadedSector(ctx);
+            BattlefieldSectorSystem.ensureLoadedSector(ctx);
 
-        if (CampaignSystem.isFleetHubSession(ctx)) {
+            if (CampaignSystem.isFleetHubSession(ctx)) {
+                PhysicsSystem.update(ctx, dt);
+                ctx.entityQuery.rebuild(ctx);
+                AISystem.update(ctx, dt);
+                CarrierSystem.update(ctx, dt);
+                EconomySystem.update(ctx, dt);
+                long campaignStart = System.nanoTime();
+                CampaignSystem.update(ctx, dt);
+                ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
+                UISystem.updatePings(ctx, dt);
+                EventSystem.update(ctx, dt);
+                AudioSystem.update(ctx, dt);
+                CameraSystem.update(ctx, viewportW, viewportH);
+                if (FogOfWarSystem.isCombatFogEnabled(ctx)) {
+                    FogOfWarSystem.update(ctx);
+                }
+                syncPlayerWarpHudState();
+                return;
+            }
+
+            applyPlayerRepairOrderInstantHeal();
+
+            if (ctx.config.mode == GameMode.SHOWCASE) {
+                PhysicsSystem.update(ctx, dt);
+                ctx.entityQuery.rebuild(ctx);
+                updatePlayerRespawn(dt);
+                updateBattlefieldWarpCharges(dt);
+                if (ctx.player != null) {
+                    ctx.player.x = GameMath.clamp(ctx.player.x, 0, ctx.WORLD_W);
+                    ctx.player.y = GameMath.clamp(ctx.player.y, 0, ctx.WORLD_H);
+                }
+                UISystem.updatePings(ctx, dt);
+                CameraSystem.update(ctx, viewportW, viewportH);
+                syncPlayerWarpHudState();
+                return;
+            }
+
             PhysicsSystem.update(ctx, dt);
             ctx.entityQuery.rebuild(ctx);
+            updatePlayerRespawn(dt);
+            updateBattlefieldWarpCharges(dt);
+            TitanAbilitySystem.update(ctx, dt);
             AISystem.update(ctx, dt);
             CarrierSystem.update(ctx, dt);
             EconomySystem.update(ctx, dt);
+            TutorialSystem.update(ctx, dt);
+            FirstHourOnboardingSystem.update(ctx, dt);
             long campaignStart = System.nanoTime();
             CampaignSystem.update(ctx, dt);
             ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
+            LastStandSystem.update(ctx, dt);
             UISystem.updatePings(ctx, dt);
             EventSystem.update(ctx, dt);
             AudioSystem.update(ctx, dt);
@@ -119,48 +164,9 @@ public final class GameSimulationRuntime {
                 FogOfWarSystem.update(ctx);
             }
             syncPlayerWarpHudState();
-            return;
+        } finally {
+            manualFireRestore.restore(ctx);
         }
-
-        applyPlayerRepairOrderInstantHeal();
-
-        if (ctx.config.mode == GameMode.SHOWCASE) {
-            PhysicsSystem.update(ctx, dt);
-            ctx.entityQuery.rebuild(ctx);
-            updatePlayerRespawn(dt);
-            updateBattlefieldWarpCharges(dt);
-            if (ctx.player != null) {
-                ctx.player.x = GameMath.clamp(ctx.player.x, 0, ctx.WORLD_W);
-                ctx.player.y = GameMath.clamp(ctx.player.y, 0, ctx.WORLD_H);
-            }
-            UISystem.updatePings(ctx, dt);
-            CameraSystem.update(ctx, viewportW, viewportH);
-            syncPlayerWarpHudState();
-            return;
-        }
-
-        PhysicsSystem.update(ctx, dt);
-        ctx.entityQuery.rebuild(ctx);
-        updatePlayerRespawn(dt);
-        updateBattlefieldWarpCharges(dt);
-        TitanAbilitySystem.update(ctx, dt);
-        AISystem.update(ctx, dt);
-        CarrierSystem.update(ctx, dt);
-        EconomySystem.update(ctx, dt);
-        TutorialSystem.update(ctx, dt);
-        FirstHourOnboardingSystem.update(ctx, dt);
-        long campaignStart = System.nanoTime();
-        CampaignSystem.update(ctx, dt);
-        ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
-        LastStandSystem.update(ctx, dt);
-        UISystem.updatePings(ctx, dt);
-        EventSystem.update(ctx, dt);
-        AudioSystem.update(ctx, dt);
-        CameraSystem.update(ctx, viewportW, viewportH);
-        if (FogOfWarSystem.isCombatFogEnabled(ctx)) {
-            FogOfWarSystem.update(ctx);
-        }
-        syncPlayerWarpHudState();
     }
 
     private void applyPlayerRepairOrderInstantHeal() {
@@ -414,23 +420,37 @@ public final class GameSimulationRuntime {
         return ctx.command.alliedFleetCommand == GameContext.FleetCommand.REPAIR;
     }
 
-    private void applyPlayerInput(double dt, InputSnapshot input) {
+    private ManualFireRestore applyPlayerInput(double dt, InputSnapshot input) {
         InputSnapshot snap = (input == null)
                 ? new InputSnapshot(false, false, false, false, false, 0, 0)
                 : input;
+        snap = sanitizeInputSnapshot(snap);
 
         double mouseWorldX = CameraSystem.screenToWorldX(ctx, snap.mouseX);
         double mouseWorldY = CameraSystem.screenToWorldY(ctx, snap.mouseY);
+        ManualFireRestore manualFireRestore = ManualFireRestore.NOOP;
+        if (ctx.config != null && ctx.config.mode == GameMode.CUSTOM_BATTLES) {
+            SinglePlayerCustomBattleCommandPath.RoutedInput routed =
+                    customBattleCommandPath.route(ctx, snap, mouseWorldX, mouseWorldY);
+            snap = routed.movementInput;
+            if (!routed.accepted()) {
+                manualFireRestore = ManualFireRestore.capture(ctx);
+                ctx.firingPrimaryManual = false;
+                ctx.firingPrimaryManualLatched = false;
+                ctx.firingSecondaryManual = false;
+                ctx.firingSecondaryManualLatched = false;
+            }
+        }
         ctx.cursorScreenX = snap.mouseX;
         ctx.cursorScreenY = snap.mouseY;
         ctx.cursorWorldX = mouseWorldX;
         ctx.cursorWorldY = mouseWorldY;
         if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
-            return;
+            return manualFireRestore;
         }
 
         Player p = ctx.player;
-        if (p == null) return;
+        if (p == null) return manualFireRestore;
         boolean fleetHubSession = CampaignSystem.isFleetHubSession(ctx);
         if (!ctx.ui.powerManagementOpen && !ctx.ui.crewStationsOpen && !ctx.ui.flightDeckOpen) {
             CameraSystem.updateManualPan(ctx, dt);
@@ -438,25 +458,25 @@ public final class GameSimulationRuntime {
         if (!p.alive || p.dying || p.hp <= 0 || ctx.playerRespawnPending) {
             p.vx = 0.0;
             p.vy = 0.0;
-            return;
+            return manualFireRestore;
         }
         if (CampaignSystem.isPlayerControlLocked(ctx)) {
             p.vx = 0.0;
             p.vy = 0.0;
-            return;
+            return manualFireRestore;
         }
         if (p.hasSuperweapon) p.trackSuperweaponAim(mouseWorldX, mouseWorldY);
 
         boolean helmAutoApplied = CrewStationsSystem.updatePlayerAutomation(ctx, snap, dt);
 
         if (ctx.state != GameState.RUNNING && !(fleetHubSession && ctx.state == GameState.FLEET)) {
-            if (helmAutoApplied) return;
+            if (helmAutoApplied) return manualFireRestore;
             p.vx = 0.0;
             p.vy = 0.0;
-            return;
+            return manualFireRestore;
         }
 
-        if (helmAutoApplied) return;
+        if (helmAutoApplied) return manualFireRestore;
 
         // Manual WASD uses the same speed ceiling basis as AI/autopilot movement.
         double speed = MovementModel.speedCeiling(p);
@@ -489,6 +509,41 @@ public final class GameSimulationRuntime {
             MovementModel.applyDesiredVelocity(p, 0.0, 0.0, dt, false);
         } else {
             MovementModel.applyDesiredVelocity(p, desiredVxPerSec, desiredVyPerSec, dt, true);
+        }
+        return manualFireRestore;
+    }
+
+    MultiplayerCommandGate.CommandResult lastCustomBattleCommandResultForTests() {
+        return customBattleCommandPath.lastResult();
+    }
+
+    private static InputSnapshot sanitizeInputSnapshot(InputSnapshot input) {
+        if (input == null) return new InputSnapshot(false, false, false, false, false, 0.0, 0.0);
+        double mouseX = Double.isFinite(input.mouseX) ? input.mouseX : 0.0;
+        double mouseY = Double.isFinite(input.mouseY) ? input.mouseY : 0.0;
+        return new InputSnapshot(input.up, input.down, input.left, input.right, input.boost, mouseX, mouseY);
+    }
+
+    private record ManualFireRestore(boolean active,
+                                     boolean primary,
+                                     boolean primaryLatched,
+                                     boolean secondary,
+                                     boolean secondaryLatched) {
+        private static final ManualFireRestore NOOP =
+                new ManualFireRestore(false, false, false, false, false);
+
+        private static ManualFireRestore capture(GameContext ctx) {
+            if (ctx == null) return NOOP;
+            return new ManualFireRestore(true, ctx.firingPrimaryManual, ctx.firingPrimaryManualLatched,
+                    ctx.firingSecondaryManual, ctx.firingSecondaryManualLatched);
+        }
+
+        private void restore(GameContext ctx) {
+            if (!active || ctx == null) return;
+            ctx.firingPrimaryManual = primary;
+            ctx.firingPrimaryManualLatched = primaryLatched;
+            ctx.firingSecondaryManual = secondary;
+            ctx.firingSecondaryManualLatched = secondaryLatched;
         }
     }
 

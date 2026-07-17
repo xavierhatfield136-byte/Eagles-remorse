@@ -19,6 +19,25 @@ public class Main {
                 () -> System.exit(0));
     }
     private AppShell.GameView createGameView(GameConfig config, Runnable showMenu, Runnable toggleFullscreen) {
+        if (config != null && config.multiplayerLaunch != null) {
+            MultiplayerInGameLaunchPanel panel = new MultiplayerInGameLaunchPanel(config.multiplayerLaunch, showMenu);
+            return new AppShell.GameView() {
+                @Override
+                public JComponent component() {
+                    return panel;
+                }
+
+                @Override
+                public void shutdown() {
+                    panel.shutdown();
+                }
+
+                @Override
+                public void requestFocusInWindow() {
+                    panel.requestFocusInWindow();
+                }
+            };
+        }
         GamePanel panel = new GamePanel(config, showMenu, toggleFullscreen);
         return new AppShell.GameView() {
             @Override
