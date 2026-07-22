@@ -7,7 +7,7 @@ public final class MultiplayerReplicationV1 {
     public static final int TARGET_SNAPSHOT_BYTES = 12 * 1024;
     public static final int PEAK_SNAPSHOT_BYTES = MultiplayerProtocolV1.MAX_MESSAGE_BYTES;
     public static final int TARGET_BYTES_PER_SECOND_PER_CLIENT = 96 * 1024;
-    public static final int MAX_REPLICATED_SHIPS_V1 = 2;
+    public static final int MAX_REPLICATED_SHIPS_V1 = 4;
     public static final int MAX_REPLICATED_PROJECTILES_V1 = 128;
 
     private MultiplayerReplicationV1() {}
@@ -33,6 +33,13 @@ public final class MultiplayerReplicationV1 {
         PLAYER_DISCONNECTED,
         VICTORY_DECLARED,
         CONTROL_OWNERSHIP_CHANGED
+    }
+
+    public enum ReliableLifecycleEventPurpose {
+        CREATION,
+        DESTRUCTION,
+        OWNERSHIP_CHANGE,
+        MATCH_RESULT
     }
 
     public enum ProjectileKind {
@@ -187,6 +194,31 @@ public final class MultiplayerReplicationV1 {
 
     public static boolean isReliableAuthoritativeEvent(AuthoritativeEvent event) {
         return event != null;
+    }
+
+    public static EventType reliableLifecycleEventFor(ReliableLifecycleEventPurpose purpose) {
+        return switch (purpose == null ? ReliableLifecycleEventPurpose.MATCH_RESULT : purpose) {
+            case CREATION -> EventType.SHIP_SPAWNED;
+            case DESTRUCTION -> EventType.SHIP_DESTROYED;
+            case OWNERSHIP_CHANGE -> EventType.CONTROL_OWNERSHIP_CHANGED;
+            case MATCH_RESULT -> EventType.VICTORY_DECLARED;
+        };
+    }
+
+    public static boolean isReliableLifecycleEvent(EventType type) {
+        if (type == null) return false;
+        for (ReliableLifecycleEventPurpose purpose : ReliableLifecycleEventPurpose.values()) {
+            if (reliableLifecycleEventFor(purpose) == type) return true;
+        }
+        return false;
+    }
+
+    public static Set<EventType> reliableLifecycleEvents() {
+        EnumSet<EventType> events = EnumSet.noneOf(EventType.class);
+        for (ReliableLifecycleEventPurpose purpose : ReliableLifecycleEventPurpose.values()) {
+            events.add(reliableLifecycleEventFor(purpose));
+        }
+        return Set.copyOf(events);
     }
 
     public static boolean eventRequiresEntity(EventType type) {

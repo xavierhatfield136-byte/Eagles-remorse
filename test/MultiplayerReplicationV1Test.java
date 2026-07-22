@@ -83,6 +83,41 @@ class MultiplayerReplicationV1Test {
     }
 
     @Test
+    void reliableLifecycleEventsDefineCreationDestructionOwnershipAndMatchResult() {
+        assertEquals(MultiplayerReplicationV1.EventType.SHIP_SPAWNED,
+                MultiplayerReplicationV1.reliableLifecycleEventFor(
+                        MultiplayerReplicationV1.ReliableLifecycleEventPurpose.CREATION));
+        assertEquals(MultiplayerReplicationV1.EventType.SHIP_DESTROYED,
+                MultiplayerReplicationV1.reliableLifecycleEventFor(
+                        MultiplayerReplicationV1.ReliableLifecycleEventPurpose.DESTRUCTION));
+        assertEquals(MultiplayerReplicationV1.EventType.CONTROL_OWNERSHIP_CHANGED,
+                MultiplayerReplicationV1.reliableLifecycleEventFor(
+                        MultiplayerReplicationV1.ReliableLifecycleEventPurpose.OWNERSHIP_CHANGE));
+        assertEquals(MultiplayerReplicationV1.EventType.VICTORY_DECLARED,
+                MultiplayerReplicationV1.reliableLifecycleEventFor(
+                        MultiplayerReplicationV1.ReliableLifecycleEventPurpose.MATCH_RESULT));
+
+        Set<MultiplayerReplicationV1.EventType> lifecycleEvents =
+                MultiplayerReplicationV1.reliableLifecycleEvents();
+        assertEquals(MultiplayerReplicationV1.ReliableLifecycleEventPurpose.values().length,
+                lifecycleEvents.size());
+        for (MultiplayerReplicationV1.EventType type : lifecycleEvents) {
+            MultiplayerReplicationV1.AuthoritativeEvent event =
+                    new MultiplayerReplicationV1.AuthoritativeEvent(type,
+                            type == MultiplayerReplicationV1.EventType.VICTORY_DECLARED
+                                    ? null
+                                    : new MultiplayerEntityIdAllocator.NetworkEntityId(1, 1),
+                            11L, 22L, 1, 2, type.name());
+
+            assertTrue(MultiplayerReplicationV1.isReliableLifecycleEvent(type));
+            assertTrue(MultiplayerReplicationV1.isReliableAuthoritativeEvent(event));
+        }
+
+        assertFalse(MultiplayerReplicationV1.isReliableLifecycleEvent(
+                MultiplayerReplicationV1.EventType.WEAPON_FIRED));
+    }
+
+    @Test
     void delayedShipSnapshotsForDestroyedEntitiesAreIgnored() {
         MultiplayerEntityIdAllocator allocator = new MultiplayerEntityIdAllocator();
         MultiplayerEntityIdAllocator.NetworkEntityId id = allocator.allocate();

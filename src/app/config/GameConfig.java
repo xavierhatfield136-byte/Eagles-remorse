@@ -20,18 +20,38 @@ public class GameConfig {
     public final boolean autoLaunchCampaignStartSite;
     public final MultiplayerLaunchConfig multiplayerLaunch;
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, 0, false, 1, "", "");
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, false, 1, "", "");
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen, int playerTeamId, boolean resumeCampaign) {
         this(mode, worldW, worldH, randomEvents, seed, fullscreen, playerTeamId, resumeCampaign, 1, "", "");
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster) {
@@ -40,6 +60,11 @@ public class GameConfig {
                 customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, "", null);
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
@@ -48,6 +73,11 @@ public class GameConfig {
                 customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, null);
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,
@@ -56,6 +86,11 @@ public class GameConfig {
                 customBattleEnemyTeamId, customBattleFriendlyRoster, customBattleEnemyRoster, startupPreset, experience, false);
     }
 
+    /**
+     * @deprecated Prefer explicit launch construction at the menu boundary and
+     * `GameLaunchRequest.fromGameConfig(...)` for launch resolution.
+     */
+    @Deprecated(since = "multiplayer-custom-mission-lobby", forRemoval = false)
     public GameConfig(GameMode mode, int worldW, int worldH, boolean randomEvents, long seed, boolean fullscreen,
                       int playerTeamId, boolean resumeCampaign,
                       int customBattleEnemyTeamId, String customBattleFriendlyRoster, String customBattleEnemyRoster,

@@ -13,11 +13,13 @@ class MultiplayerReleaseGateHarnessTest {
     @AfterEach
     void clearFlagOverride() {
         System.clearProperty("game.feature.multiplayer_custom_battle");
+        System.clearProperty("game.feature.multiplayer_custom_missions");
     }
 
     @Test
     void releaseGateAllowsDisabledFeatureWithIncompleteEvidence() throws Exception {
         System.setProperty("game.feature.multiplayer_custom_battle", "false");
+        System.setProperty("game.feature.multiplayer_custom_missions", "false");
         Path dir = Files.createTempDirectory("mp-release-gate-disabled");
 
         MultiplayerReleaseReadinessV1.MultiplayerReleaseGate gate =

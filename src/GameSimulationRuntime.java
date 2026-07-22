@@ -2,6 +2,8 @@ import app.config.GameMode;
 public final class GameSimulationRuntime {
     private static final int TARGET_FPS = 60;
     private static final double TARGET_FRAME_MS = 1000.0 / TARGET_FPS;
+    private static final int MULTIPLAYER_SNAPSHOT_INTERVAL_TICKS =
+            Math.max(1, TARGET_FPS / MultiplayerProtocolV1.SNAPSHOT_RATE_HZ);
     private static final long STEP_NS = 1_000_000_000L / TARGET_FPS;
     private static final long MAX_ELAPSED_NS = 250_000_000L;
     private static final int MAX_UPDATE_STEPS = 6;
@@ -20,6 +22,9 @@ public final class GameSimulationRuntime {
     private double emaUpdateMs = 0.0;
     private double emaRenderMs = 0.0;
     private int droppedUpdateSteps = 0;
+    private long multiplayerHostTick = 0L;
+    private long multiplayerEventSequence = 0L;
+    private boolean multiplayerVictoryPublished = false;
 
     public GameSimulationRuntime(GameContext ctx) {
         this.ctx = ctx;
@@ -38,7 +43,8 @@ public final class GameSimulationRuntime {
         emaFrameMs = smooth(emaFrameMs, frameMs, 0.15);
         emaJitterMs = smooth(emaJitterMs, Math.abs(frameMs - TARGET_FRAME_MS), 0.15);
 
-        accumulatorNs += elapsedNs * Math.max(0.0, timeScale);
+        double effectiveTimeScale = ctx != null && ctx.multiplayerBattle ? 1.0 : Math.max(0.0, timeScale);
+        accumulatorNs += elapsedNs * effectiveTimeScale;
 
         int steps = 0;
         long updateNsTotal = 0L;
@@ -83,12 +89,23 @@ public final class GameSimulationRuntime {
 
     private void tick(double dt, InputSnapshot input, int viewportW, int viewportH) {
         UISystem.auditAndRecoverOverlayState(ctx);
+        if (ctx.multiplayerBattle && ctx.state == GameState.PAUSED) {
+            ctx.state = GameState.RUNNING;
+        }
         if (ctx.state == GameState.PAUSED) {
             if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
             return;
         }
+        if (ctx.multiplayerBattle && ctx.multiplayerAuthorityMode == MultiplayerAuthorityMode.CLIENT_PRESENTATION) {
+            tickClientPresentation(dt, input, viewportW, viewportH);
+            return;
+        }
 
+        long authoritativeHostTick = isAuthoritativeMultiplayerHost() ? ++multiplayerHostTick : 0L;
         ManualFireRestore manualFireRestore = applyPlayerInput(dt, input);
+        if (isAuthoritativeMultiplayerHost()) {
+            MultiplayerInGameDuelInputApplier.drainAndApply(ctx, dt, authoritativeHostTick);
+        }
         try {
             if (CampaignSystem.isCampaignMapScreenActive(ctx)) {
                 CampaignSystem.enforceCampaignMapDiscipline(ctx);
@@ -165,8 +182,98 @@ public final class GameSimulationRuntime {
             }
             syncPlayerWarpHudState();
         } finally {
+            if (isAuthoritativeMultiplayerHost()) {
+                evaluateAndPublishMultiplayerVictory(authoritativeHostTick);
+                publishMultiplayerSnapshot(authoritativeHostTick);
+            }
             manualFireRestore.restore(ctx);
         }
+    }
+
+    private void tickClientPresentation(double dt, InputSnapshot input, int viewportW, int viewportH) {
+        InputSnapshot snap = sanitizeInputSnapshot(input);
+        ctx.cursorScreenX = snap.mouseX;
+        ctx.cursorScreenY = snap.mouseY;
+        ctx.cursorWorldX = CameraSystem.screenToWorldX(ctx, snap.mouseX);
+        ctx.cursorWorldY = CameraSystem.screenToWorldY(ctx, snap.mouseY);
+        MultiplayerInGameDuelSnapshotApplier.applyLatest(ctx);
+        applyClientAuthoritativeEvents();
+        sendClientPresentationInput(snap);
+        UISystem.updatePings(ctx, dt);
+        AudioSystem.update(ctx, dt);
+        CameraSystem.update(ctx, viewportW, viewportH);
+        if (ctx.eventBannerT > 0) ctx.eventBannerT -= dt;
+    }
+
+    private boolean isAuthoritativeMultiplayerHost() {
+        return ctx != null
+                && ctx.multiplayerBattle
+                && ctx.multiplayerAuthorityMode == MultiplayerAuthorityMode.HOST
+                && ctx.multiplayerBattleRuntime != null;
+    }
+
+    private void evaluateAndPublishMultiplayerVictory(long authoritativeHostTick) {
+        if (multiplayerVictoryPublished || authoritativeHostTick <= 0L) return;
+        MultiplayerInGameVictoryCoordinator.HostVictory victory =
+                MultiplayerInGameVictoryCoordinator.evaluateHostVictory(
+                        ctx,
+                        authoritativeHostTick,
+                        ++multiplayerEventSequence);
+        if (victory == null) {
+            multiplayerEventSequence = Math.max(0L, multiplayerEventSequence - 1L);
+            return;
+        }
+        multiplayerVictoryPublished = true;
+        if (ctx.multiplayerInGameSession != null) {
+            ctx.multiplayerInGameSession.publishHostEvent(victory.event());
+            ctx.multiplayerInGameSession.requestReturnToLobby(victory.event().detail());
+        }
+    }
+
+    private void applyClientAuthoritativeEvents() {
+        if (ctx == null || ctx.multiplayerInGameSession == null) return;
+        MultiplayerInGameVictoryCoordinator.applyClientEvents(
+                ctx,
+                ctx.multiplayerInGameSession.drainEvents());
+    }
+
+    private void publishMultiplayerSnapshot(long authoritativeHostTick) {
+        if (ctx.multiplayerInGameSession == null) return;
+        if (authoritativeHostTick <= 0L) return;
+        if (authoritativeHostTick == 1L
+                || authoritativeHostTick % MULTIPLAYER_SNAPSHOT_INTERVAL_TICKS == 0L) {
+            ctx.multiplayerInGameSession.publishHostSnapshot(
+                    ctx.multiplayerBattleRuntime.snapshot(authoritativeHostTick));
+        }
+    }
+
+    private void sendClientPresentationInput(InputSnapshot snap) {
+        if (!clientPresentationInputAllowed(ctx)) return;
+        if (!ctx.multiplayerInGameSession.connected()) return;
+        int controlledNetworkShipId = ctx.multiplayerLocalNetworkShipId;
+        if (controlledNetworkShipId <= 0) return;
+        double aimAngle = Math.atan2(ctx.cursorWorldY - ctx.player.y, ctx.cursorWorldX - ctx.player.x);
+        boolean primaryHeld = ctx.firingPrimaryManual || ctx.firingPrimaryManualLatched || ctx.firingPrimaryAuto;
+        boolean secondaryHeld = ctx.firingSecondaryManual || ctx.firingSecondaryManualLatched || ctx.firingSecondaryAuto;
+        MultiplayerCommandGate.PlayerInputFrame frame = MultiplayerInputFrameAdapter.fromLocalInput(
+                ctx.multiplayerMatchId,
+                ctx.multiplayerSessionNonce,
+                ctx.multiplayerLocalPlayerId,
+                ctx.multiplayerLocalSlotId,
+                controlledNetworkShipId,
+                ctx.multiplayerInGameSession.nextClientInputSequence(),
+                ctx.multiplayerInGameSession.nextClientTick(),
+                snap,
+                aimAngle,
+                primaryHeld,
+                secondaryHeld);
+        ctx.multiplayerInGameSession.sendClientInput(frame);
+    }
+
+    static boolean clientPresentationInputAllowed(GameContext ctx) {
+        if (ctx == null || ctx.multiplayerInGameSession == null || ctx.player == null) return false;
+        if (ctx.gameOver) return false;
+        return ctx.player.alive && !ctx.player.dying && ctx.player.hp > 0;
     }
 
     private void applyPlayerRepairOrderInstantHeal() {
@@ -225,6 +332,7 @@ public final class GameSimulationRuntime {
 
     private boolean supportsPlayerRespawn() {
         if (ctx == null || ctx.config == null) return false;
+        if (ctx.multiplayerBattle) return false;
         return switch (ctx.config.mode) {
             case CAMPAIGN_OPS, LAST_STAND, FLEET -> false;
             default -> true;

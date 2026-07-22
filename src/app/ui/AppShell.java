@@ -38,6 +38,7 @@ public final class AppShell {
                     MainMenuPanel.ResumeCampaignProvider resumeCampaignProvider,
                     MainMenuPanel.SpaceBackgroundPainter spaceBackgroundPainter,
                     Runnable quitAction) {
+        requireEventDispatchThread("AppShell construction");
         this.gameViewFactory = gameViewFactory;
         this.device = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
 
@@ -76,6 +77,7 @@ public final class AppShell {
     }
 
     public void showWindow() {
+        requireEventDispatchThread("showWindow");
         frame.setVisible(true);
         if (AppInfo.SKIP_TITLE_SEQUENCE) {
             showMenu();
@@ -86,6 +88,7 @@ public final class AppShell {
     }
 
     private void startGame(GameConfig config) {
+        requireEventDispatchThread("startGame");
         removeActiveGameView();
         setFullscreen(config.fullscreen);
 
@@ -95,20 +98,24 @@ public final class AppShell {
     }
 
     private void showMenu() {
+        requireEventDispatchThread("showMenu");
         removeActiveGameView();
         menuPanel.refreshCampaignCheckpointState();
         showCard(CARD_MENU);
     }
 
     private void showCredits() {
+        requireEventDispatchThread("showCredits");
         showCard(CARD_CREDITS);
     }
 
     private void showAlphaReadiness() {
+        requireEventDispatchThread("showAlphaReadiness");
         showCard(CARD_ALPHA_READINESS);
     }
 
     private void removeActiveGameView() {
+        requireEventDispatchThread("removeActiveGameView");
         if (gameView == null) return;
         gameView.shutdown();
         root.remove(gameView.component());
@@ -116,6 +123,7 @@ public final class AppShell {
     }
 
     private void showCard(String cardName) {
+        requireEventDispatchThread("showCard");
         cards.show(root, cardName);
         activeCard = cardName;
         root.revalidate();
@@ -124,10 +132,12 @@ public final class AppShell {
     }
 
     private void toggleFullscreen() {
+        requireEventDispatchThread("toggleFullscreen");
         setFullscreen(!fullscreen);
     }
 
     private void setFullscreen(boolean on) {
+        requireEventDispatchThread("setFullscreen");
         if (on == fullscreen) return;
 
         if (on) {
@@ -158,6 +168,7 @@ public final class AppShell {
     }
 
     private void restoreFocusForActiveCard() {
+        requireEventDispatchThread("restoreFocusForActiveCard");
         switch (activeCard) {
             case CARD_GAME -> {
                 if (gameView != null && root.isAncestorOf(gameView.component())) {
@@ -168,6 +179,12 @@ public final class AppShell {
             case CARD_ALPHA_READINESS -> alphaReadinessPanel.requestFocusInWindow();
             case CARD_TITLE -> titlePanel.requestFocusInWindow();
             default -> menuPanel.requestFocusInWindow();
+        }
+    }
+
+    private static void requireEventDispatchThread(String action) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException(action + " must run on the Swing Event Dispatch Thread");
         }
     }
 

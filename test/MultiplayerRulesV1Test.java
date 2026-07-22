@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MultiplayerRulesV1Test {
 
     @Test
-    void multiplayerCustomBattleFeatureFlagDefaultsOff() {
-        assertFalse(MultiplayerRulesV1.entryPointEnabled(),
-                "unfinished multiplayer custom battle entry points should remain disabled by default");
+    void multiplayerCustomMissionEntryPointDefaultsOn() {
+        assertTrue(MultiplayerRulesV1.entryPointEnabled(),
+                "multiplayer custom mission entry points should be available from the main menu");
     }
 
     @Test
@@ -27,7 +27,8 @@ class MultiplayerRulesV1Test {
     void v1ScopeConstantsRecordLockedRules() {
         assertFalse(MultiplayerRulesV1.CAMPAIGN_MULTIPLAYER_SUPPORTED);
         assertFalse(MultiplayerRulesV1.SAME_TEAM_COOP_SUPPORTED);
-        assertFalse(MultiplayerRulesV1.AI_SHIPS_SUPPORTED);
+        assertTrue(MultiplayerRulesV1.AI_SHIPS_SUPPORTED);
+        assertTrue(MultiplayerRulesV1.AI_SUPPORT_RULES_PROFILE_ID.equals("multiplayer:v1_ai_support"));
         assertFalse(MultiplayerRulesV1.RESPAWNS_SUPPORTED);
         assertFalse(MultiplayerRulesV1.RECONNECT_SUPPORTED);
         assertFalse(MultiplayerRulesV1.MID_MATCH_JOIN_SUPPORTED);
@@ -37,6 +38,21 @@ class MultiplayerRulesV1Test {
         assertFalse(MultiplayerRulesV1.BATTLEFIELD_WARP_SUPPORTED);
         assertTrue(MultiplayerRulesV1.PLAYER_COUNT == 2);
         assertTrue(MultiplayerRulesV1.VictoryRule.ELIMINATION != null);
+        assertTrue(MultiplayerRulesV1.supportedCapabilities().contains(MultiplayerCapability.OPPOSING_PLAYERS));
+        assertFalse(MultiplayerRulesV1.supportedCapabilities().contains(MultiplayerCapability.AI_REPLICATION));
+        assertFalse(MultiplayerRulesV1.supportedCapabilities().contains(MultiplayerCapability.OBJECTIVE_REPLICATION));
+    }
+
+    @Test
+    void futureCustomMissionRulesProfileExpandsCapabilitiesWithoutChangingV1() {
+        assertTrue(MultiplayerRulesV1.RULES_PROFILE_ID.equals("multiplayer:v1"));
+        assertTrue(MultiplayerRulesCustomMission.RULES_PROFILE_ID.equals("multiplayer:custom_mission_v2"));
+        assertTrue(MultiplayerRulesCustomMission.supportedCapabilities()
+                .contains(MultiplayerCapability.AI_REPLICATION));
+        assertTrue(MultiplayerRulesCustomMission.supportedCapabilities()
+                .contains(MultiplayerCapability.OBJECTIVE_REPLICATION));
+        assertFalse(MultiplayerRulesV1.supportedCapabilities()
+                .contains(MultiplayerCapability.AI_REPLICATION));
     }
 
     @Test
@@ -84,7 +100,6 @@ class MultiplayerRulesV1Test {
 
         assertFalse(result.accepted());
         assertTrue(errors.contains("Same-team co-op is unsupported in V1"));
-        assertTrue(errors.contains("AI ships are unsupported in V1"));
         assertTrue(errors.contains("Escorts are unsupported in V1"));
         assertTrue(errors.contains("Formations and fleet-wide orders are unsupported in V1"));
         assertTrue(errors.contains("Fog of war and sensor-filtered replication are unsupported in V1"));

@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.Test;
 
+import java.net.InetAddress;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +47,14 @@ class MultiplayerLanTransportV1Test {
     }
 
     @Test
+    void privateLanAddressClassificationExcludesLoopbackAndPublicAddresses() throws Exception {
+        assertTrue(MultiplayerLanTransportV1.isPrivateLanAddress(InetAddress.getByName("192.168.1.20")));
+        assertTrue(MultiplayerLanTransportV1.isPrivateLanAddress(InetAddress.getByName("10.0.0.4")));
+        assertFalse(MultiplayerLanTransportV1.isPrivateLanAddress(InetAddress.getByName("127.0.0.1")));
+        assertFalse(MultiplayerLanTransportV1.isPrivateLanAddress(InetAddress.getByName("8.8.8.8")));
+    }
+
+    @Test
     void directLoopbackTcpConnectionHandshakeHeartbeatDisconnectAndLogs() throws Exception {
         MultiplayerLanTransportV1.LifecycleLog hostLog = new MultiplayerLanTransportV1.LifecycleLog();
         MultiplayerLanTransportV1.LifecycleLog clientLog = new MultiplayerLanTransportV1.LifecycleLog();
@@ -82,13 +91,18 @@ class MultiplayerLanTransportV1Test {
             MultiplayerLanTransportV1.WireMessage hostMessage = hostAccepted.peer().readNextMessage();
             assertEquals(MultiplayerLanTransportV1.WireKind.HEARTBEAT, hostMessage.kind());
             assertEquals(25L, hostMessage.hostTick());
+            assertEquals(25L, hostAccepted.peer().lastHeartbeatTick());
+            assertEquals(25L, hostAccepted.peer().lastValidMessageTick());
             assertFalse(hostAccepted.peer().heartbeatTimedOut(
                     25L + MultiplayerLanTransportV1.HEARTBEAT_TIMEOUT_TICKS));
 
-            hostAccepted.peer().sendHeartbeat(26L);
+            assertFalse(hostAccepted.peer().sendHeartbeatIfIdle(26L));
+            assertTrue(hostAccepted.peer().sendHeartbeatIfIdle(MultiplayerLanTransportV1.HEARTBEAT_INTERVAL_TICKS));
             MultiplayerLanTransportV1.WireMessage clientMessage = connected.peer().readNextMessage();
             assertEquals(MultiplayerLanTransportV1.WireKind.HEARTBEAT, clientMessage.kind());
-            assertEquals(26L, clientMessage.hostTick());
+            assertEquals(MultiplayerLanTransportV1.HEARTBEAT_INTERVAL_TICKS, clientMessage.hostTick());
+            assertEquals(MultiplayerLanTransportV1.HEARTBEAT_INTERVAL_TICKS,
+                    connected.peer().lastValidMessageTick());
 
             connected.peer().sendDisconnect("client exit");
             MultiplayerLanTransportV1.WireMessage disconnect = hostAccepted.peer().readNextMessage();
@@ -144,14 +158,25 @@ class MultiplayerLanTransportV1Test {
 
             MultiplayerCommandGate.PlayerInputFrame input =
                     new MultiplayerCommandGate.PlayerInputFrame(
+                            matchId,
+                            MultiplayerProtocolV1.sessionNonceForMatch(matchId),
+                            MultiplayerProtocolV1.playerIdForSlot(MultiplayerRulesV1.CLIENT_SLOT_ID),
                             MultiplayerRulesV1.CLIENT_SLOT_ID, 202, 4L, 5L,
                             1.0f, -0.25f, Math.PI, true, false);
             connected.peer().sendInputFrame(input);
             MultiplayerLanTransportV1.WireMessage inputMessage = hostAccepted.peer().readNextMessage();
             assertEquals(MultiplayerLanTransportV1.WireKind.CLIENT_INPUT, inputMessage.kind());
             assertEquals(input, inputMessage.inputFrame());
+            assertEquals(5L, hostAccepted.peer().lastValidMessageTick());
+            assertFalse(hostAccepted.peer().peerTimedOut(
+                    5L + MultiplayerLanTransportV1.HEARTBEAT_TIMEOUT_TICKS));
+            assertEquals(matchId, inputMessage.inputFrame().matchId());
+            assertEquals(MultiplayerCommandGate.GameplayCommandType.DIRECT_SHIP_INPUT,
+                    inputMessage.inputFrame().commandType());
+            assertEquals(MultiplayerProtocolV1.playerIdForSlot(MultiplayerRulesV1.CLIENT_SLOT_ID),
+                    inputMessage.inputFrame().playerId());
 
-            MultiplayerBattleSnapshot snapshot = new MultiplayerBattleSnapshot(9L, List.of(
+            MultiplayerBattleSnapshot snapshot = new MultiplayerBattleSnapshot(9L, 4L, List.of(
                     new MultiplayerBattleSnapshot.ShipSnapshot(
                             202, ShipRole.FRIGATE, Faction.ENEMY, 10.0, 20.0,
                             1.0, 2.0, 0.5, 300, 20.0, true)
@@ -177,8 +202,10 @@ class MultiplayerLanTransportV1Test {
             assertEquals(MultiplayerLanTransportV1.WireKind.FULL_SNAPSHOT, snapshotMessage.kind());
             assertEquals(7L, snapshotMessage.sequence());
             assertEquals(snapshot, snapshotMessage.snapshot());
+            assertEquals(4L, snapshotMessage.snapshot().lastProcessedInputSequence());
             assertEquals(MultiplayerLanTransportV1.WireKind.AUTHORITATIVE_EVENT, eventMessage.kind());
             assertEquals("Elimination victory", eventMessage.event().detail());
+            assertEquals(9L, connected.peer().lastValidMessageTick());
 
             connected.peer().close();
             hostAccepted.peer().close();
@@ -194,6 +221,44 @@ class MultiplayerLanTransportV1Test {
         assertTrue(clientLog.containsEvent("ack_receive"));
         assertTrue(clientLog.containsEvent("snapshot_receive"));
         assertTrue(clientLog.containsEvent("event_receive"));
+    }
+
+    @Test
+    void peerTimeoutMarksDisconnectAndWritesSpecificLifecycleLog() throws Exception {
+        MultiplayerLanTransportV1.LifecycleLog hostLog = new MultiplayerLanTransportV1.LifecycleLog();
+        MultiplayerLanTransportV1.LifecycleLog clientLog = new MultiplayerLanTransportV1.LifecycleLog();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        String matchId = "match-lan-timeout";
+
+        try (MultiplayerLanTransportV1.Host host =
+                     MultiplayerLanTransportV1.bindLoopback(0, matchId, hostLog)) {
+            CompletableFuture<MultiplayerLanTransportV1.TransportResult> accepted =
+                    CompletableFuture.supplyAsync(() -> host.acceptOnce(
+                            MultiplayerProtocolV1.localFingerprint(),
+                            MultiplayerRulesV1.CLIENT_SLOT_ID,
+                            MultiplayerLanTransportV1.DEFAULT_ACCEPT_TIMEOUT_MS), executor);
+
+            MultiplayerLanTransportV1.TransportResult connected = MultiplayerLanTransportV1.connect(
+                    host.boundAddress(),
+                    MultiplayerProtocolV1.localFingerprint(),
+                    MultiplayerRulesV1.CLIENT_SLOT_ID,
+                    matchId,
+                    clientLog,
+                    MultiplayerLanTransportV1.DEFAULT_CONNECT_TIMEOUT_MS);
+            MultiplayerLanTransportV1.TransportResult hostAccepted =
+                    accepted.get(3, TimeUnit.SECONDS);
+
+            assertTrue(connected.accepted());
+            assertTrue(hostAccepted.accepted());
+            assertTrue(hostAccepted.peer().markDisconnectedIfTimedOut(
+                    MultiplayerLanTransportV1.HEARTBEAT_TIMEOUT_TICKS + 1L));
+            assertTrue(hostAccepted.peer().disconnected());
+            connected.peer().close();
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertTrue(hostLog.containsEvent("peer_timeout"));
     }
 
     @Test

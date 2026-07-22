@@ -1,12 +1,17 @@
 package app.ui;
 
 import app.config.GameConfig;
+import app.config.GameMode;
+import app.config.MultiplayerMissionChoice;
 
 import javax.swing.JComponent;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JTextField;
 import java.awt.Component;
 import java.awt.Container;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -22,25 +27,62 @@ class MainMenuPanelMultiplayerEntryTest {
     @AfterEach
     void clearFeatureOverride() {
         System.clearProperty("game.feature.multiplayer_custom_battle");
+        System.clearProperty("game.feature.multiplayer_custom_missions");
     }
 
     @Test
     void multiplayerEntryIsHiddenWhenFeatureFlagIsDisabled() {
         System.setProperty("game.feature.multiplayer_custom_battle", "false");
+        System.setProperty("game.feature.multiplayer_custom_missions", "false");
         MainMenuPanel panel = menu();
 
         try {
             assertNull(findByName(panel, "multiplayerEntryPanel"));
             assertNull(findByName(panel, "multiplayerHostBattleButton"));
             assertNull(findByName(panel, "multiplayerJoinBattleButton"));
+            assertNull(findByName(panel, "multiplayerDiagnosticsButton"));
             assertNull(findByName(panel, "multiplayerDirectAddressField"));
+            assertNull(findByName(panel, "multiplayerPlayerNameField"));
         } finally {
             panel.stopBackgroundTimerForTests();
         }
     }
 
     @Test
-    void multiplayerEntryShowsHostJoinAndDirectAddressWhenFeatureFlagIsEnabled() {
+    void customBattleHasDirectMainMenuEntry() {
+        MainMenuPanel panel = menu();
+
+        try {
+            JButton customBattle = (JButton) findByName(panel, "customBattleButton");
+
+            assertNotNull(customBattle);
+            assertEquals("Custom Battle", customBattle.getText());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void multiplayerEntryShowsHostJoinAndDirectAddressWhenMissionFeatureFlagIsEnabled() {
+        System.setProperty("game.feature.multiplayer_custom_missions", "true");
+        MainMenuPanel panel = menu();
+
+        try {
+            assertNotNull(findByName(panel, "multiplayerEntryPanel"));
+            assertNotNull(findByName(panel, "multiplayerHostBattleButton"));
+            assertNotNull(findByName(panel, "multiplayerJoinBattleButton"));
+            assertNotNull(findByName(panel, "multiplayerDiagnosticsButton"));
+            assertNotNull(findByName(panel, "multiplayerDirectAddressField"));
+            assertNotNull(findByName(panel, "multiplayerPlayerNameField"));
+            assertNotNull(findByName(panel, "multiplayerMissionSelector"));
+            assertNotNull(findByName(panel, "multiplayerDebugInfoLabel"));
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void multiplayerEntryStillSupportsLegacyCustomBattleFeatureFlagAlias() {
         System.setProperty("game.feature.multiplayer_custom_battle", "true");
         MainMenuPanel panel = menu();
 
@@ -48,8 +90,6 @@ class MainMenuPanelMultiplayerEntryTest {
             assertNotNull(findByName(panel, "multiplayerEntryPanel"));
             assertNotNull(findByName(panel, "multiplayerHostBattleButton"));
             assertNotNull(findByName(panel, "multiplayerJoinBattleButton"));
-            assertNotNull(findByName(panel, "multiplayerDirectAddressField"));
-            assertNotNull(findByName(panel, "multiplayerDebugInfoLabel"));
         } finally {
             panel.stopBackgroundTimerForTests();
         }
@@ -69,6 +109,55 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
+    void multiplayerMissionSelectorExposesEveryMenuMissionMode() {
+        System.setProperty("game.feature.multiplayer_custom_battle", "true");
+        MainMenuPanel panel = menu();
+
+        try {
+            JComboBox<?> missions = (JComboBox<?>) findByName(panel, "multiplayerMissionSelector");
+            assertNotNull(missions);
+            Set<String> missionIds = new HashSet<>();
+            for (int i = 0; i < missions.getItemCount(); i++) {
+                Object item = missions.getItemAt(i);
+                assertTrue(item instanceof MultiplayerMissionChoice);
+                missionIds.add(((MultiplayerMissionChoice) item).missionId());
+            }
+
+            Set<String> expected = java.util.Arrays.stream(MultiplayerMissionChoice.values())
+                    .map(MultiplayerMissionChoice::missionId)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+            assertEquals(expected, missionIds);
+            assertTrue(missionIds.contains(MultiplayerMissionChoice.LAST_STAND.missionId()));
+            assertTrue(missionIds.contains(MultiplayerMissionChoice.RESOURCE_RUSH.missionId()));
+            assertTrue(missionIds.contains(MultiplayerMissionChoice.FOUR_TEAM_DOMINATION.missionId()));
+            assertTrue(missionIds.contains(MultiplayerMissionChoice.SHOOTING_RANGE.missionId()));
+            assertTrue(missionIds.contains(MultiplayerMissionChoice.SHOWCASE.missionId()));
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void visibleModeDropdownCanSelectMatchingMultiplayerMission() {
+        System.setProperty("game.feature.multiplayer_custom_battle", "true");
+        MainMenuPanel panel = menu();
+
+        try {
+            JComboBox<?> mode = findComboContaining(panel, GameMode.RESOURCE_RUSH);
+            JComboBox<?> missions = (JComboBox<?>) findByName(panel, "multiplayerMissionSelector");
+            assertNotNull(mode);
+            assertNotNull(missions);
+
+            mode.setSelectedItem(GameMode.RESOURCE_RUSH);
+
+            assertEquals(MultiplayerMissionChoice.RESOURCE_RUSH, missions.getSelectedItem());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
     void multiplayerHostButtonStartsInGameHostLaunchConfig() {
         System.setProperty("game.feature.multiplayer_custom_battle", "true");
         AtomicReference<GameConfig> launched = new AtomicReference<>();
@@ -78,6 +167,12 @@ class MainMenuPanelMultiplayerEntryTest {
             JTextField address = (JTextField) findByName(panel, "multiplayerDirectAddressField");
             assertNotNull(address);
             address.setText("192.168.1.20:46718");
+            JComboBox<?> missions = (JComboBox<?>) findByName(panel, "multiplayerMissionSelector");
+            assertNotNull(missions);
+            missions.setSelectedItem(MultiplayerMissionChoice.HEAVY_DUEL);
+            JTextField name = (JTextField) findByName(panel, "multiplayerPlayerNameField");
+            assertNotNull(name);
+            name.setText("Ada");
             JButton host = (JButton) findByName(panel, "multiplayerHostBattleButton");
             assertNotNull(host);
 
@@ -88,6 +183,10 @@ class MainMenuPanelMultiplayerEntryTest {
             assertTrue(launched.get().multiplayerLaunch.host());
             assertEquals(46718, launched.get().multiplayerLaunch.port);
             assertEquals("192.168.1.20", launched.get().multiplayerLaunch.advertisedHostAddress);
+            assertEquals(MultiplayerMissionChoice.HEAVY_DUEL.missionId(),
+                    launched.get().multiplayerLaunch.missionId);
+            assertEquals("Ada", launched.get().multiplayerLaunch.hostPlayerName);
+            assertEquals("Client", launched.get().multiplayerLaunch.clientPlayerName);
         } finally {
             panel.stopBackgroundTimerForTests();
         }
@@ -103,6 +202,12 @@ class MainMenuPanelMultiplayerEntryTest {
             JTextField address = (JTextField) findByName(panel, "multiplayerDirectAddressField");
             assertNotNull(address);
             address.setText("192.168.1.20:46718");
+            JComboBox<?> missions = (JComboBox<?>) findByName(panel, "multiplayerMissionSelector");
+            assertNotNull(missions);
+            missions.setSelectedItem(MultiplayerMissionChoice.HEAVY_DUEL);
+            JTextField name = (JTextField) findByName(panel, "multiplayerPlayerNameField");
+            assertNotNull(name);
+            name.setText("Grace");
             JButton join = (JButton) findByName(panel, "multiplayerJoinBattleButton");
             assertNotNull(join);
 
@@ -112,6 +217,45 @@ class MainMenuPanelMultiplayerEntryTest {
             assertNotNull(launched.get().multiplayerLaunch);
             assertTrue(!launched.get().multiplayerLaunch.host());
             assertEquals("192.168.1.20:46718", launched.get().multiplayerLaunch.resolvedDirectAddress());
+            assertEquals(MultiplayerMissionChoice.HEAVY_DUEL.missionId(),
+                    launched.get().multiplayerLaunch.missionId);
+            assertEquals("Host", launched.get().multiplayerLaunch.hostPlayerName);
+            assertEquals("Grace", launched.get().multiplayerLaunch.clientPlayerName);
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
+    void multiplayerDiagnosticsButtonStartsHarnessLaunchConfig() {
+        System.setProperty("game.feature.multiplayer_custom_battle", "true");
+        AtomicReference<GameConfig> launched = new AtomicReference<>();
+        MainMenuPanel panel = menu(launched);
+
+        try {
+            JTextField address = (JTextField) findByName(panel, "multiplayerDirectAddressField");
+            assertNotNull(address);
+            address.setText("192.168.1.20:46718");
+            JComboBox<?> missions = (JComboBox<?>) findByName(panel, "multiplayerMissionSelector");
+            assertNotNull(missions);
+            missions.setSelectedItem(MultiplayerMissionChoice.HEAVY_DUEL);
+            JTextField name = (JTextField) findByName(panel, "multiplayerPlayerNameField");
+            assertNotNull(name);
+            name.setText("Lin");
+            JButton diagnostics = (JButton) findByName(panel, "multiplayerDiagnosticsButton");
+            assertNotNull(diagnostics);
+
+            diagnostics.doClick();
+
+            assertNotNull(launched.get());
+            assertNotNull(launched.get().multiplayerLaunch);
+            assertTrue(launched.get().multiplayerLaunch.host());
+            assertTrue(launched.get().multiplayerLaunch.diagnosticsHarness);
+            assertEquals(46718, launched.get().multiplayerLaunch.port);
+            assertEquals("192.168.1.20", launched.get().multiplayerLaunch.advertisedHostAddress);
+            assertEquals(MultiplayerMissionChoice.HEAVY_DUEL.missionId(),
+                    launched.get().multiplayerLaunch.missionId);
+            assertEquals("Lin", launched.get().multiplayerLaunch.hostPlayerName);
         } finally {
             panel.stopBackgroundTimerForTests();
         }
@@ -139,6 +283,21 @@ class MainMenuPanelMultiplayerEntryTest {
         if (root instanceof Container container) {
             for (Component child : container.getComponents()) {
                 Component found = findByName(child, name);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static JComboBox<?> findComboContaining(Component root, Object item) {
+        if (root instanceof JComboBox<?> combo) {
+            for (int i = 0; i < combo.getItemCount(); i++) {
+                if (item.equals(combo.getItemAt(i))) return combo;
+            }
+        }
+        if (root instanceof Container container) {
+            for (Component child : container.getComponents()) {
+                JComboBox<?> found = findComboContaining(child, item);
                 if (found != null) return found;
             }
         }

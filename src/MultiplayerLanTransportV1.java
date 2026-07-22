@@ -6,11 +6,15 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -18,9 +22,10 @@ import java.util.UUID;
 /** Direct TCP LAN transport slice for V1 multiplayer custom battles. */
 public final class MultiplayerLanTransportV1 {
     public static final int DEFAULT_PORT = 46717;
-    public static final int DEFAULT_CONNECT_TIMEOUT_MS = 2_000;
-    public static final int DEFAULT_ACCEPT_TIMEOUT_MS = 2_000;
-    public static final int HEARTBEAT_TIMEOUT_TICKS = MultiplayerLoopbackTransport.HEARTBEAT_TIMEOUT_TICKS;
+    public static final int DEFAULT_CONNECT_TIMEOUT_MS = MultiplayerTimeoutsV1.HANDSHAKE_TIMEOUT_MS;
+    public static final int DEFAULT_ACCEPT_TIMEOUT_MS = MultiplayerTimeoutsV1.HANDSHAKE_TIMEOUT_MS;
+    public static final int HEARTBEAT_INTERVAL_TICKS = MultiplayerTimeoutsV1.MATCH_HEARTBEAT_INTERVAL_TICKS;
+    public static final int HEARTBEAT_TIMEOUT_TICKS = MultiplayerTimeoutsV1.MATCH_HEARTBEAT_TIMEOUT_TICKS;
 
     private static final String HELLO = "HELLO";
     private static final String ACCEPT = "ACCEPT";
@@ -31,6 +36,8 @@ public final class MultiplayerLanTransportV1 {
     private static final String SNAPSHOT = "SNAPSHOT";
     private static final String ACK = "ACK";
     private static final String EVENT = "EVENT";
+    private static final String LOBBY_STATE = "LOBBY_STATE";
+    private static final String LOBBY_COMMAND = "LOBBY_COMMAND";
 
     private MultiplayerLanTransportV1() {}
 
@@ -134,6 +141,8 @@ public final class MultiplayerLanTransportV1 {
         CLIENT_INPUT,
         FULL_SNAPSHOT,
         INPUT_ACK,
+        LOBBY_STATE,
+        LOBBY_COMMAND,
         AUTHORITATIVE_EVENT,
         HEARTBEAT,
         DISCONNECT,
@@ -199,6 +208,37 @@ public final class MultiplayerLanTransportV1 {
             throw new IllegalArgumentException("IPv6 LAN address must use [host]:port format");
         }
         return new DirectAddress(text, DEFAULT_PORT);
+    }
+
+    public static List<DirectAddress> detectedPrivateLanAddresses(int port) {
+        ArrayList<DirectAddress> out = new ArrayList<>();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                NetworkInterface network = interfaces.nextElement();
+                if (network == null || !network.isUp() || network.isLoopback()) continue;
+                Enumeration<InetAddress> addresses = network.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (isPrivateLanAddress(address)) {
+                        out.add(new DirectAddress(address.getHostAddress(), port));
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            return List.of();
+        }
+        out.sort(Comparator.comparing(DirectAddress::host).thenComparingInt(DirectAddress::port));
+        return List.copyOf(out);
+    }
+
+    public static boolean isPrivateLanAddress(InetAddress address) {
+        return address != null
+                && !address.isAnyLocalAddress()
+                && !address.isLoopbackAddress()
+                && !address.isLinkLocalAddress()
+                && address.isSiteLocalAddress()
+                && !address.getHostAddress().contains(":");
     }
 
     public static Host bindLoopback(int port, String matchId, LifecycleLog log) throws IOException {
@@ -336,6 +376,9 @@ public final class MultiplayerLanTransportV1 {
         private final String remoteAddress;
         private final LifecycleLog log;
         private long lastHeartbeatTick;
+        private long lastValidMessageTick;
+        private long lastOutboundMessageTick;
+        private boolean disconnected;
 
         private ConnectedPeer(Socket socket, BufferedReader reader, BufferedWriter writer,
                               String matchId, String connectionId, int playerSlotId,
@@ -355,6 +398,14 @@ public final class MultiplayerLanTransportV1 {
             return connectionId;
         }
 
+        public int playerSlotId() {
+            return playerSlotId;
+        }
+
+        public String matchId() {
+            return matchId;
+        }
+
         public String localEndpoint() {
             return endpoint(socket.getLocalSocketAddress());
         }
@@ -367,8 +418,44 @@ public final class MultiplayerLanTransportV1 {
             return lastHeartbeatTick;
         }
 
+        public long lastValidMessageTick() {
+            return lastValidMessageTick;
+        }
+
+        public long lastOutboundMessageTick() {
+            return lastOutboundMessageTick;
+        }
+
+        public boolean disconnected() {
+            return disconnected;
+        }
+
+        public void noteValidTraffic(long currentHostTick) {
+            markValidMessage(currentHostTick);
+        }
+
         public boolean heartbeatTimedOut(long currentHostTick) {
-            return Math.max(0L, currentHostTick) - lastHeartbeatTick > HEARTBEAT_TIMEOUT_TICKS;
+            return peerTimedOut(currentHostTick);
+        }
+
+        public boolean peerTimedOut(long currentHostTick) {
+            return Math.max(0L, currentHostTick) - lastValidMessageTick > HEARTBEAT_TIMEOUT_TICKS;
+        }
+
+        public boolean markDisconnectedIfTimedOut(long currentHostTick) {
+            if (!peerTimedOut(currentHostTick)) return false;
+            disconnected = true;
+            if (log != null) {
+                log.record("peer_timeout", matchId, connectionId, playerSlotId,
+                        Math.max(0L, currentHostTick), -1L, -1L,
+                        gameBuild, remoteAddress, "Heartbeat timeout");
+            }
+            closeQuietly(socket);
+            return true;
+        }
+
+        public void setReadTimeoutMs(int timeoutMs) throws IOException {
+            socket.setSoTimeout(Math.max(1, timeoutMs));
         }
 
         public synchronized void sendHeartbeat(long hostTick) throws IOException {
@@ -376,10 +463,18 @@ public final class MultiplayerLanTransportV1 {
             writer.write(HEARTBEAT + "|" + safeTick);
             writer.newLine();
             writer.flush();
+            markOutboundMessage(safeTick);
             if (log != null) {
                 log.record("heartbeat_send", matchId, connectionId, playerSlotId,
                         safeTick, -1L, -1L, gameBuild, remoteAddress, "");
             }
+        }
+
+        public synchronized boolean sendHeartbeatIfIdle(long currentHostTick) throws IOException {
+            long safeTick = Math.max(0L, currentHostTick);
+            if (safeTick - lastOutboundMessageTick < HEARTBEAT_INTERVAL_TICKS) return false;
+            sendHeartbeat(safeTick);
+            return true;
         }
 
         public synchronized void sendDisconnect(String reason) throws IOException {
@@ -387,6 +482,8 @@ public final class MultiplayerLanTransportV1 {
             writer.write(DISCONNECT + "|" + encodeText(cleanReason));
             writer.newLine();
             writer.flush();
+            markOutboundMessage(lastOutboundMessageTick);
+            disconnected = true;
             if (log != null) {
                 log.record("disconnect_send", matchId, connectionId, playerSlotId,
                         -1L, -1L, -1L, gameBuild, remoteAddress, cleanReason);
@@ -396,6 +493,10 @@ public final class MultiplayerLanTransportV1 {
         public synchronized void sendInputFrame(MultiplayerCommandGate.PlayerInputFrame frame) throws IOException {
             if (frame == null) throw new IOException("Missing LAN input frame");
             writer.write(INPUT + "|"
+                    + encodeText(frame.matchId()) + '|'
+                    + encodeText(frame.sessionNonce()) + '|'
+                    + encodeText(frame.playerId()) + '|'
+                    + frame.commandType().name() + '|'
                     + frame.slotId() + '|'
                     + frame.controlledShipId() + '|'
                     + frame.sequence() + '|'
@@ -407,6 +508,7 @@ public final class MultiplayerLanTransportV1 {
                     + frame.secondaryHeld());
             writer.newLine();
             writer.flush();
+            markOutboundMessage(frame.clientTick());
             if (log != null) {
                 log.record("input_send", matchId, connectionId, playerSlotId,
                         frame.clientTick(), frame.sequence(), -1L, gameBuild, remoteAddress, "");
@@ -424,6 +526,7 @@ public final class MultiplayerLanTransportV1 {
                     + encodeBytes(payload));
             writer.newLine();
             writer.flush();
+            markOutboundMessage(hostTick);
             if (log != null) {
                 log.record("snapshot_send", matchId, connectionId, playerSlotId,
                         hostTick, -1L, snapshotSequence, gameBuild, remoteAddress, "");
@@ -438,10 +541,25 @@ public final class MultiplayerLanTransportV1 {
                     + ack.authoritativeTick());
             writer.newLine();
             writer.flush();
+            markOutboundMessage(ack.authoritativeTick());
             if (log != null) {
                 log.record("ack_send", matchId, connectionId, playerSlotId,
                         ack.authoritativeTick(), ack.inputSequence(), -1L, gameBuild, remoteAddress, "");
             }
+        }
+
+        public synchronized void sendLobbyState(String payload) throws IOException {
+            writer.write(LOBBY_STATE + "|" + encodeText(payload));
+            writer.newLine();
+            writer.flush();
+            markOutboundMessage(lastOutboundMessageTick);
+        }
+
+        public synchronized void sendLobbyCommand(String payload) throws IOException {
+            writer.write(LOBBY_COMMAND + "|" + encodeText(payload));
+            writer.newLine();
+            writer.flush();
+            markOutboundMessage(lastOutboundMessageTick);
         }
 
         public synchronized void sendEvent(MultiplayerReplicationV1.AuthoritativeEvent event) throws IOException {
@@ -454,6 +572,7 @@ public final class MultiplayerLanTransportV1 {
             writer.write(EVENT + "|" + sequence + "|" + encodeBytes(payload));
             writer.newLine();
             writer.flush();
+            markOutboundMessage(hostTick);
             if (log != null) {
                 log.record("event_send", matchId, connectionId, playerSlotId,
                         hostTick, -1L, -1L, gameBuild, remoteAddress, "");
@@ -461,8 +580,30 @@ public final class MultiplayerLanTransportV1 {
         }
 
         public WireMessage readNextMessage() throws IOException {
-            String line = reader.readLine();
-            if (line == null) return new WireMessage(WireKind.DISCONNECT, lastHeartbeatTick, "Peer closed");
+            String line;
+            try {
+                line = reader.readLine();
+            } catch (SocketTimeoutException ex) {
+                if (log != null) {
+                    log.record("peer_read_timeout", matchId, connectionId, playerSlotId,
+                            lastValidMessageTick, -1L, -1L, gameBuild, remoteAddress, ex.getMessage());
+                }
+                throw ex;
+            } catch (IOException ex) {
+                if (log != null) {
+                    log.record("peer_read_failure", matchId, connectionId, playerSlotId,
+                            lastValidMessageTick, -1L, -1L, gameBuild, remoteAddress, ex.getMessage());
+                }
+                throw ex;
+            }
+            if (line == null) {
+                disconnected = true;
+                if (log != null) {
+                    log.record("peer_closed_graceful", matchId, connectionId, playerSlotId,
+                            lastValidMessageTick, -1L, -1L, gameBuild, remoteAddress, "Peer closed");
+                }
+                return new WireMessage(WireKind.DISCONNECT, lastValidMessageTick, "Peer closed");
+            }
             if (line.getBytes(StandardCharsets.UTF_8).length > MultiplayerProtocolV1.MAX_MESSAGE_BYTES) {
                 throw new IOException("LAN message exceeds size limit");
             }
@@ -471,6 +612,7 @@ public final class MultiplayerLanTransportV1 {
             if (HEARTBEAT.equals(kind)) {
                 long tick = parseLong(parts.length > 1 ? parts[1] : "0");
                 lastHeartbeatTick = tick;
+                markValidMessage(tick);
                 if (log != null) {
                     log.record("heartbeat_receive", matchId, connectionId, playerSlotId,
                             tick, -1L, -1L, gameBuild, remoteAddress, "");
@@ -479,6 +621,8 @@ public final class MultiplayerLanTransportV1 {
             }
             if (DISCONNECT.equals(kind)) {
                 String reason = parts.length > 1 ? decodeText(parts[1]) : "Disconnected";
+                disconnected = true;
+                markValidMessage(lastValidMessageTick);
                 if (log != null) {
                     log.record("disconnect_receive", matchId, connectionId, playerSlotId,
                             -1L, -1L, -1L, gameBuild, remoteAddress, reason);
@@ -487,6 +631,7 @@ public final class MultiplayerLanTransportV1 {
             }
             if (INPUT.equals(kind)) {
                 MultiplayerCommandGate.PlayerInputFrame frame = decodeInput(parts.length > 1 ? parts[1] : "");
+                markValidMessage(frame.clientTick());
                 if (log != null) {
                     log.record("input_receive", matchId, connectionId, playerSlotId,
                             frame.clientTick(), frame.sequence(), -1L, gameBuild, remoteAddress, "");
@@ -499,6 +644,7 @@ public final class MultiplayerLanTransportV1 {
                 long sequence = parseLong(fields[0]);
                 MultiplayerBattleSnapshot snapshot =
                         MultiplayerSerializationV1.decodeSnapshot(decodeBytes(fields[1]));
+                markValidMessage(snapshot.hostTick());
                 if (log != null) {
                     log.record("snapshot_receive", matchId, connectionId, playerSlotId,
                             snapshot.hostTick(), -1L, sequence, gameBuild, remoteAddress, "");
@@ -510,6 +656,7 @@ public final class MultiplayerLanTransportV1 {
                 String[] fields = splitFields(parts.length > 1 ? parts[1] : "", 3, "Malformed LAN input acknowledgement");
                 MultiplayerProtocolV1.InputAck ack = new MultiplayerProtocolV1.InputAck(
                         parseInt(fields[0]), parseLong(fields[1]), parseLong(fields[2]));
+                markValidMessage(ack.authoritativeTick());
                 if (log != null) {
                     log.record("ack_receive", matchId, connectionId, playerSlotId,
                             ack.authoritativeTick(), ack.inputSequence(), -1L, gameBuild, remoteAddress, "");
@@ -517,11 +664,22 @@ public final class MultiplayerLanTransportV1 {
                 return new WireMessage(WireKind.INPUT_ACK, ack.authoritativeTick(), "",
                         ack.inputSequence(), null, null, ack, null);
             }
+            if (LOBBY_STATE.equals(kind)) {
+                String payload = parts.length > 1 ? decodeText(parts[1]) : "";
+                markValidMessage(lastValidMessageTick);
+                return new WireMessage(WireKind.LOBBY_STATE, lastHeartbeatTick, payload);
+            }
+            if (LOBBY_COMMAND.equals(kind)) {
+                String payload = parts.length > 1 ? decodeText(parts[1]) : "";
+                markValidMessage(lastValidMessageTick);
+                return new WireMessage(WireKind.LOBBY_COMMAND, lastHeartbeatTick, payload);
+            }
             if (EVENT.equals(kind)) {
                 String[] fields = splitFields(parts.length > 1 ? parts[1] : "", 2, "Malformed LAN event");
                 long sequence = parseLong(fields[0]);
                 MultiplayerReplicationV1.AuthoritativeEvent event =
                         MultiplayerSerializationV1.decodeEvent(decodeBytes(fields[1]));
+                markValidMessage(event.hostTick());
                 if (log != null) {
                     log.record("event_receive", matchId, connectionId, playerSlotId,
                             event.hostTick(), -1L, -1L, gameBuild, remoteAddress, "");
@@ -534,7 +692,16 @@ public final class MultiplayerLanTransportV1 {
 
         @Override
         public void close() throws IOException {
+            disconnected = true;
             socket.close();
+        }
+
+        private void markValidMessage(long hostTick) {
+            lastValidMessageTick = Math.max(lastValidMessageTick, Math.max(0L, hostTick));
+        }
+
+        private void markOutboundMessage(long hostTick) {
+            lastOutboundMessageTick = Math.max(lastOutboundMessageTick, Math.max(0L, hostTick));
         }
     }
 
@@ -661,7 +828,39 @@ public final class MultiplayerLanTransportV1 {
     }
 
     private static MultiplayerCommandGate.PlayerInputFrame decodeInput(String payload) {
-        String[] fields = splitFields(payload, 9, "Malformed LAN input frame");
+        String[] fields = (payload == null ? "" : payload).split("\\|", -1);
+        if (fields.length == 13) {
+            return new MultiplayerCommandGate.PlayerInputFrame(
+                    decodeText(fields[0]),
+                    decodeText(fields[1]),
+                    decodeText(fields[2]),
+                    parseGameplayCommandType(fields[3]),
+                    parseInt(fields[4]),
+                    parseInt(fields[5]),
+                    parseLong(fields[6]),
+                    parseLong(fields[7]),
+                    parseFloat(fields[8]),
+                    parseFloat(fields[9]),
+                    parseDouble(fields[10]),
+                    Boolean.parseBoolean(fields[11]),
+                    Boolean.parseBoolean(fields[12]));
+        }
+        if (fields.length == 12) {
+            return new MultiplayerCommandGate.PlayerInputFrame(
+                    decodeText(fields[0]),
+                    decodeText(fields[1]),
+                    decodeText(fields[2]),
+                    parseInt(fields[3]),
+                    parseInt(fields[4]),
+                    parseLong(fields[5]),
+                    parseLong(fields[6]),
+                    parseFloat(fields[7]),
+                    parseFloat(fields[8]),
+                    parseDouble(fields[9]),
+                    Boolean.parseBoolean(fields[10]),
+                    Boolean.parseBoolean(fields[11]));
+        }
+        if (fields.length != 9) throw new IllegalArgumentException("Malformed LAN input frame");
         return new MultiplayerCommandGate.PlayerInputFrame(
                 parseInt(fields[0]),
                 parseInt(fields[1]),
@@ -672,6 +871,16 @@ public final class MultiplayerLanTransportV1 {
                 parseDouble(fields[6]),
                 Boolean.parseBoolean(fields[7]),
                 Boolean.parseBoolean(fields[8]));
+    }
+
+    private static MultiplayerCommandGate.GameplayCommandType parseGameplayCommandType(String text) {
+        try {
+            return MultiplayerCommandGate.GameplayCommandType.valueOf(
+                    clean(text, MultiplayerCommandGate.GameplayCommandType.DIRECT_SHIP_INPUT.name())
+                            .toUpperCase(Locale.ROOT));
+        } catch (RuntimeException ex) {
+            return MultiplayerCommandGate.GameplayCommandType.DIRECT_SHIP_INPUT;
+        }
     }
 
     private static String[] splitFields(String payload, int expected, String message) {

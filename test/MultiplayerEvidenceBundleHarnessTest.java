@@ -15,6 +15,7 @@ class MultiplayerEvidenceBundleHarnessTest {
     @AfterEach
     void clearFlagOverride() {
         System.clearProperty("game.feature.multiplayer_custom_battle");
+        System.clearProperty("game.feature.multiplayer_custom_missions");
     }
 
     @Test
@@ -37,6 +38,7 @@ class MultiplayerEvidenceBundleHarnessTest {
     @Test
     void mainWritesBundleWithArtifactsAndGateStatus() throws Exception {
         System.setProperty("game.feature.multiplayer_custom_battle", "false");
+        System.setProperty("game.feature.multiplayer_custom_missions", "false");
         Path dir = Files.createTempDirectory("mp-evidence-bundle");
         Path twoProcess = dir.resolve("two-process.txt");
         Path preflight = dir.resolve("preflight.txt");

@@ -13,12 +13,29 @@ public final class GameplayActions {
         }
         if (ctx.ui.hasBlockingOverlay()) {
             UISystem.closeAllOverlays(ctx);
+            if (ctx.multiplayerBattle && ctx.state == GameState.PAUSED) {
+                ctx.state = GameState.RUNNING;
+            }
             UISystem.observeStateTransition(ctx, "escape closed overlay");
+            return;
+        }
+        if (ctx.multiplayerBattle) {
+            releaseMultiplayerPresentationInputs(ctx);
+            ctx.state = GameState.RUNNING;
+            ctx.ui.modalPauseOwned = false;
+            EventSystem.showBanner(ctx, "MULTIPLAYER CANNOT BE PAUSED", 1.0);
+            UISystem.observeStateTransition(ctx, "escape released multiplayer controls");
             return;
         }
         ctx.state = (ctx.state == GameState.PAUSED) ? GameState.RUNNING : GameState.PAUSED;
         ctx.ui.modalPauseOwned = false;
         UISystem.observeStateTransition(ctx, "escape toggled manual pause");
+    }
+
+    private static void releaseMultiplayerPresentationInputs(GameContext ctx) {
+        ExperienceRuntime.releaseHeldInputs(ctx);
+        ctx.firingPrimaryManualLatched = false;
+        ctx.firingSecondaryManualLatched = false;
     }
 
     public static boolean canIssueCombatAction(GameContext ctx) {
@@ -66,14 +83,27 @@ public final class GameplayActions {
 
     public static void lockUnderMouse(GameContext ctx, PlayerControl controls) {
         if (ctx == null || controls == null) return;
+        if (!canMutateTargetSelection(ctx)) return;
         ctx.command.scienceAutomation = false;
         TargetingSystem.lockClosestToMouse(ctx, controls);
     }
 
     public static void cycleLockedTarget(GameContext ctx, int dir) {
         if (ctx == null) return;
+        if (!canMutateTargetSelection(ctx)) return;
         ctx.command.scienceAutomation = false;
         TargetingSystem.cycleLockedTarget(ctx, dir);
+    }
+
+    private static boolean canMutateTargetSelection(GameContext ctx) {
+        return canPerformAuthorityOperation(ctx, BattleAuthorityOperation.TARGET_SELECTION);
+    }
+
+    private static boolean canPerformAuthorityOperation(GameContext ctx, BattleAuthorityOperation operation) {
+        BattleAuthority.Decision decision = BattleAuthority.forContext(ctx).evaluate(operation);
+        if (decision.accepted()) return true;
+        EventSystem.showBanner(ctx, decision.reason(), 1.0);
+        return false;
     }
 
     public static void hailCurrentContact(GameContext ctx) {
@@ -174,11 +204,13 @@ public final class GameplayActions {
 
     public static void tryShieldOvercharge(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         ctx.player.tryShieldOvercharge();
     }
 
     public static void trySuperweapon(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         if (!ctx.player.hasSuperweapon) return;
 
         Projectile shot = ctx.player.tryFireSuperweaponAt(ctx.cursorWorldX, ctx.cursorWorldY, GameContext.DT);
@@ -193,26 +225,31 @@ public final class GameplayActions {
 
     public static void tryCarrierLaunch(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         UISystem.tryCarrierLaunch(ctx);
     }
 
     public static void tryCarrierRecall(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         UISystem.tryCarrierRecall(ctx);
     }
 
     public static void tryCarrierToggleMode(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         UISystem.tryCarrierToggleMode(ctx);
     }
 
     public static void tryCarrierToggleAutoLaunch(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         UISystem.tryCarrierToggleAutoLaunch(ctx);
     }
 
     public static void cyclePowerPreset(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
         Ship.PowerPreset preset = ctx.player.cyclePowerPreset();
         ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "POWER: " + preset.name(), 0.8);
@@ -220,6 +257,7 @@ public final class GameplayActions {
 
     public static void cycleCrewOrder(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
         Ship.CrewOrder order = ctx.player.cycleCrewOrder();
         ctx.command.engineeringAutomation = false;
         EventSystem.showBanner(ctx, "CREW ORDER: " + order.name(), 0.8);
@@ -227,17 +265,26 @@ public final class GameplayActions {
 
     public static void cycleShieldFacingMode(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
         Ship.ShieldFacingMode mode = ctx.player.cycleShieldFacingMode();
         EventSystem.showBanner(ctx, "SHIELD MODE: " + mode.name(), 0.8);
     }
 
     public static void toggleEmergencyThrust(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
         UISystem.toggleEmergencyThrustMode(ctx);
+    }
+
+    public static void cycleTacticalOrder(GameContext ctx) {
+        if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return;
+        TacticalCombatDepthSystem.cycleOrder(ctx);
     }
 
     public static void tryTeleportToBase(GameContext ctx) {
         if (!canIssueCombatAction(ctx)) return;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return;
         Player player = ctx.player;
         if (player == null) return;
         if (!player.canUseBattlefieldWarp()) {
@@ -333,6 +380,7 @@ public final class GameplayActions {
             return true;
         }
         if (!canIssueCombatAction(ctx)) return false;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ABILITY_ACTIVATION)) return true;
         if (CampaignSystem.isTransitioning(ctx)) {
             EventSystem.showBanner(ctx, "SAFE EXIT UNAVAILABLE DURING TRANSITION", 1.3);
             return true;
@@ -621,6 +669,7 @@ public final class GameplayActions {
             }
         }
         if (handled) return true;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ORDER_ISSUANCE)) return true;
 
         switch (ctx.command.activeCrewStation) {
             case CAPTAIN -> {
@@ -741,6 +790,7 @@ public final class GameplayActions {
         };
 
         if (role == null) return false;
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
         SpawnSystem.spawnAlly(ctx, role, ctx.player.x, ctx.player.y);
         return true;
     }
@@ -753,12 +803,14 @@ public final class GameplayActions {
 
         if (e.isControlDown() && e.isShiftDown()) {
             if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
+                if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
                 ctx.player.applyHull(ShipRole.FRIGATE, ctx.player.x, ctx.player.y);
                 keepShootingRangeInCombatView(ctx);
                 EventSystem.showBanner(ctx, "PLAYER HULL: FRIGATE", 1.0);
                 return true;
             }
             if (keyCode == java.awt.event.KeyEvent.VK_M) {
+                if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
                 ctx.player.applyHull(ShipRole.MOTHERSHIP, ctx.player.x, ctx.player.y);
                 keepShootingRangeInCombatView(ctx);
                 EventSystem.showBanner(ctx, "PLAYER HULL: MOTHERSHIP", 1.1);
@@ -784,6 +836,7 @@ public final class GameplayActions {
             };
             if (playerArchetype == null) return false;
 
+            if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
             ShipRole hullRole = playerArchetype.shipRole();
             ctx.player.applyHull(hullRole, ctx.player.x, ctx.player.y);
             keepShootingRangeInCombatView(ctx);
@@ -793,6 +846,7 @@ public final class GameplayActions {
 
         if (e.isShiftDown()) {
             if (keyCode == java.awt.event.KeyEvent.VK_BACK_SPACE) {
+                if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.ENTITY_DELETION)) return true;
                 return SpawnSystem.clearShootingRangeTitanLayout(ctx);
             }
 
@@ -814,6 +868,7 @@ public final class GameplayActions {
                 default -> null;
             };
             if (archetype == null) return false;
+            if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
             return SpawnSystem.setShootingRangeTitanLayout(ctx, archetype);
         }
 
@@ -830,6 +885,7 @@ public final class GameplayActions {
             EventSystem.showBanner(ctx, "SHOOTING RANGE TARGETS MUST BE HOSTILE", 1.2);
             return true;
         }
+        if (!canPerformAuthorityOperation(ctx, BattleAuthorityOperation.SPAWNING)) return true;
         return SpawnSystem.setShootingRangeTargetFaction(ctx, targetFaction);
     }
 

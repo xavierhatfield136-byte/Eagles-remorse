@@ -4,6 +4,7 @@ import app.config.GameConfig;
 import app.config.GameMode;
 import app.config.ExperienceSettings;
 import app.config.MultiplayerLaunchConfig;
+import app.config.MultiplayerMissionChoice;
 import app.config.PlayerTeamChoice;
 import app.config.PostAlphaFeatureFlags;
 import app.persistence.ExperienceSettingsStore;
@@ -103,18 +104,31 @@ public final class MainMenuPanel extends JPanel {
         JButton quit = createMenuButton("Quit", new Color(100, 63, 73), uiScale);
         continueCampaignButton = createMenuButton("Continue Campaign", new Color(71, 139, 96), uiScale);
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(41, 112, 170), uiScale);
+        JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Command School", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
         JButton alphaReadiness = createMenuButton("Alpha Readiness", new Color(82, 92, 128), uiScale);
-        JButton hostBattle = createMenuButton("Host Battle", new Color(53, 123, 126), uiScale);
-        JButton joinBattle = createMenuButton("Join Battle", new Color(79, 102, 151), uiScale);
+        customBattle.setName("customBattleButton");
+        JButton hostBattle = createMenuButton("Create Lobby", new Color(53, 123, 126), uiScale);
+        JButton joinBattle = createMenuButton("Join Lobby", new Color(79, 102, 151), uiScale);
+        JButton diagnosticsBattle = createMenuButton("Diagnostics", new Color(86, 77, 122), uiScale);
         hostBattle.setName("multiplayerHostBattleButton");
         joinBattle.setName("multiplayerJoinBattleButton");
+        diagnosticsBattle.setName("multiplayerDiagnosticsButton");
         JTextField directAddressField = new JTextField("127.0.0.1:46717", 16);
         directAddressField.setName("multiplayerDirectAddressField");
         styleField(directAddressField);
         scaleField(directAddressField, uiScale);
+        JTextField multiplayerNameField = new JTextField("Player", 16);
+        multiplayerNameField.setName("multiplayerPlayerNameField");
+        styleField(multiplayerNameField);
+        scaleField(multiplayerNameField, uiScale);
+        JComboBox<MultiplayerMissionChoice> multiplayerMissionBox =
+                new JComboBox<>(MultiplayerMissionChoice.values());
+        multiplayerMissionBox.setName("multiplayerMissionSelector");
+        styleCombo(multiplayerMissionBox);
+        scaleCombo(multiplayerMissionBox, uiScale);
         JLabel versionLabel = new JLabel("Version " + AppInfo.VERSION);
         versionLabel.setForeground(new Color(188, 201, 216));
         versionLabel.setFont(MenuDisplay.font("Consolas", Font.PLAIN, 14, uiScale));
@@ -138,6 +152,9 @@ public final class MainMenuPanel extends JPanel {
         mapBox.setSelectedIndex(Math.max(0, Math.min(mapBox.getItemCount() - 1, persisted.mapIndex)));
         syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, persisted.playerTeamId);
         seedField.setText(persisted.seedText);
+        directAddressField.setText(persisted.multiplayerDirectAddress);
+        multiplayerNameField.setText(persisted.multiplayerPlayerName);
+        multiplayerMissionBox.setSelectedItem(MultiplayerMissionChoice.fromMissionId(persisted.multiplayerMissionId));
 
         java.util.function.Consumer<GameMode> persistSettings = (selectedMode) -> {
             MenuSettingsStore.MenuSettings save = new MenuSettingsStore.MenuSettings();
@@ -148,6 +165,9 @@ public final class MainMenuPanel extends JPanel {
             save.seedText = seedField.getText();
             PlayerTeamChoice choice = (PlayerTeamChoice) teamBox.getSelectedItem();
             save.playerTeamId = (choice == null) ? 0 : choice.teamId();
+            save.multiplayerDirectAddress = multiplayerDirectAddressOrDefault(directAddressField.getText());
+            save.multiplayerMissionId = multiplayerSelectedMissionId(multiplayerMissionBox);
+            save.multiplayerPlayerName = multiplayerPlayerNameOrDefault(multiplayerNameField.getText());
             MenuSettingsStore.save(save);
         };
 
@@ -216,10 +236,14 @@ public final class MainMenuPanel extends JPanel {
         });
 
         modeBox.addActionListener(e -> {
+            GameMode selectedMode = (GameMode) modeBox.getSelectedItem();
             PlayerTeamChoice selected = (PlayerTeamChoice) teamBox.getSelectedItem();
             int preferredTeamId = (selected == null) ? 0 : selected.teamId();
-            syncTeamOptionsForMode((GameMode) modeBox.getSelectedItem(), teamBox, preferredTeamId);
-            persistSettings.accept((GameMode) modeBox.getSelectedItem());
+            syncTeamOptionsForMode(selectedMode, teamBox, preferredTeamId);
+            if (selectedMode != null) {
+                multiplayerMissionBox.setSelectedItem(MultiplayerMissionChoice.fromGameMode(selectedMode));
+            }
+            persistSettings.accept(selectedMode);
         });
         mapBox.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
         seedField.addActionListener(e -> persistSettings.accept((GameMode) modeBox.getSelectedItem()));
@@ -241,6 +265,10 @@ public final class MainMenuPanel extends JPanel {
             onStart.accept(checkpoint.config().withExperience(experience[0]));
         });
         campaignOps.addActionListener(e -> startWithMode.accept(GameMode.CAMPAIGN_OPS));
+        customBattle.addActionListener(e -> {
+            modeBox.setSelectedItem(GameMode.CUSTOM_BATTLES);
+            startWithMode.accept(GameMode.CUSTOM_BATTLES);
+        });
         galaxyMapTest.addActionListener(e -> {
             persistSettings.accept(GameMode.CAMPAIGN_OPS);
             int w = 20000;
@@ -262,15 +290,36 @@ public final class MainMenuPanel extends JPanel {
                     "galaxy_map_test").withExperience(experience[0]));
         });
         hostBattle.addActionListener(e -> {
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
             int port = multiplayerPortFromAddress(directAddressField.getText());
             String hostAddress = multiplayerHostFromAddress(directAddressField.getText());
             onStart.accept(multiplayerLaunchConfig(
-                    MultiplayerLaunchConfig.host(port, hostAddress)).withExperience(experience[0]));
+                    MultiplayerLaunchConfig.host(port, hostAddress)
+                            .withMissionId(multiplayerSelectedMissionId(multiplayerMissionBox))
+                            .withPlayerName(multiplayerPlayerNameOrDefault(multiplayerNameField.getText())))
+                    .withExperience(experience[0]));
         });
-        joinBattle.addActionListener(e -> onStart.accept(multiplayerLaunchConfig(
-                MultiplayerLaunchConfig.client(
-                        multiplayerDirectAddressOrDefault(directAddressField.getText()),
-                        "")).withExperience(experience[0])));
+        joinBattle.addActionListener(e -> {
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
+            onStart.accept(multiplayerLaunchConfig(
+                    MultiplayerLaunchConfig.client(
+                            multiplayerDirectAddressOrDefault(directAddressField.getText()),
+                            "")
+                            .withMissionId(multiplayerSelectedMissionId(multiplayerMissionBox))
+                            .withPlayerName(multiplayerPlayerNameOrDefault(multiplayerNameField.getText())))
+                    .withExperience(experience[0]));
+        });
+        diagnosticsBattle.addActionListener(e -> {
+            persistSettings.accept((GameMode) modeBox.getSelectedItem());
+            int port = multiplayerPortFromAddress(directAddressField.getText());
+            String hostAddress = multiplayerHostFromAddress(directAddressField.getText());
+            onStart.accept(multiplayerLaunchConfig(
+                    MultiplayerLaunchConfig.host(port, hostAddress)
+                            .withDiagnosticsHarness(true)
+                            .withMissionId(multiplayerSelectedMissionId(multiplayerMissionBox))
+                            .withPlayerName(multiplayerPlayerNameOrDefault(multiplayerNameField.getText())))
+                    .withExperience(experience[0]));
+        });
 
         JPanel titleStack = transparentPanel();
         titleStack.setLayout(new BoxLayout(titleStack, BoxLayout.Y_AXIS));
@@ -353,6 +402,7 @@ public final class MainMenuPanel extends JPanel {
         campaignActions.setLayout(new GridLayout(0, 1, 0, MenuDisplay.scaled(10, uiScale)));
         campaignActions.add(campaignOps);
         campaignActions.add(continueCampaignButton);
+        campaignActions.add(customBattle);
         campaignActions.add(tutorialStart);
         campaignActions.add(galaxyMapTest);
         campaignActions.add(experienceButton);
@@ -378,6 +428,11 @@ public final class MainMenuPanel extends JPanel {
         missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
         missionCard.add(missionLead);
         missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(18, uiScale)));
+        if (multiplayerEntryPointEnabled()) {
+            missionCard.add(buildMultiplayerEntryPanel(hostBattle, joinBattle, diagnosticsBattle,
+                    directAddressField, multiplayerNameField, multiplayerMissionBox, uiScale));
+            missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
+        }
         missionCard.add(missionFormShell);
         missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(14, uiScale)));
 
@@ -387,10 +442,6 @@ public final class MainMenuPanel extends JPanel {
         missionActions.add(start);
         missionActions.add(credits);
         missionCard.add(missionActions);
-        if (multiplayerEntryPointEnabled()) {
-            missionCard.add(Box.createVerticalStrut(MenuDisplay.scaled(12, uiScale)));
-            missionCard.add(buildMultiplayerEntryPanel(hostBattle, joinBattle, directAddressField, uiScale));
-        }
 
         JPanel mainColumns = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(24, uiScale), 0));
         mainColumns.setOpaque(false);
@@ -516,18 +567,22 @@ public final class MainMenuPanel extends JPanel {
     }
 
     static boolean multiplayerEntryPointEnabled() {
-        return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
+        return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_MISSIONS)
+                || PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
     }
 
     private static JPanel buildMultiplayerEntryPanel(JButton hostBattle,
                                                      JButton joinBattle,
+                                                     JButton diagnosticsBattle,
                                                      JTextField directAddressField,
+                                                     JTextField playerNameField,
+                                                     JComboBox<MultiplayerMissionChoice> missionBox,
                                                      double uiScale) {
         JPanel panel = createInsetPanel(new Color(8, 26, 33, 196), new Color(64, 151, 158, 135), uiScale);
         panel.setName("multiplayerEntryPanel");
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        JLabel title = eyebrowLabel("Multiplayer Duel", uiScale, new Color(119, 217, 208));
+        JLabel title = eyebrowLabel("Multiplayer Setup", uiScale, new Color(119, 217, 208));
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
         panel.add(title);
         panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
@@ -540,17 +595,34 @@ public final class MainMenuPanel extends JPanel {
         panel.add(addressRow);
         panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
 
+        JPanel nameRow = transparentPanel();
+        nameRow.setName("multiplayerPlayerNameRow");
+        nameRow.setLayout(new BorderLayout(MenuDisplay.scaled(8, uiScale), 0));
+        nameRow.add(label("Name:", uiScale), BorderLayout.WEST);
+        nameRow.add(playerNameField, BorderLayout.CENTER);
+        panel.add(nameRow);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+
+        JPanel missionRow = transparentPanel();
+        missionRow.setName("multiplayerMissionRow");
+        missionRow.setLayout(new BorderLayout(MenuDisplay.scaled(8, uiScale), 0));
+        missionRow.add(label("Mission:", uiScale), BorderLayout.WEST);
+        missionRow.add(missionBox, BorderLayout.CENTER);
+        panel.add(missionRow);
+        panel.add(Box.createVerticalStrut(MenuDisplay.scaled(8, uiScale)));
+
         JLabel debugInfo = metaLabel("Protocol 1  |  Build " + AppInfo.VERSION + "  |  Manifest V1", uiScale);
         debugInfo.setName("multiplayerDebugInfoLabel");
         debugInfo.setAlignmentX(Component.LEFT_ALIGNMENT);
         panel.add(debugInfo);
         panel.add(Box.createVerticalStrut(MenuDisplay.scaled(10, uiScale)));
 
-        JPanel actions = new JPanel(new GridLayout(1, 2, MenuDisplay.scaled(10, uiScale), 0));
+        JPanel actions = new JPanel(new GridLayout(1, 3, MenuDisplay.scaled(10, uiScale), 0));
         actions.setName("multiplayerActionRow");
         actions.setOpaque(false);
         actions.add(hostBattle);
         actions.add(joinBattle);
+        actions.add(diagnosticsBattle);
         panel.add(actions);
         return panel;
     }
@@ -618,14 +690,25 @@ public final class MainMenuPanel extends JPanel {
     }
 
     static GameConfig multiplayerLaunchConfigForTests(String action, String directAddress) {
+        return multiplayerLaunchConfigForTests(action, directAddress, MultiplayerMissionChoice.DEFAULT_MISSION_ID);
+    }
+
+    static GameConfig multiplayerLaunchConfigForTests(String action, String directAddress, String missionId) {
+        return multiplayerLaunchConfigForTests(action, directAddress, missionId, "Player");
+    }
+
+    static GameConfig multiplayerLaunchConfigForTests(String action, String directAddress,
+                                                      String missionId, String playerName) {
         boolean host = action != null && action.toLowerCase(java.util.Locale.ROOT).contains("host");
         if (host) {
             return multiplayerLaunchConfig(MultiplayerLaunchConfig.host(
                     multiplayerPortFromAddress(directAddress),
-                    multiplayerHostFromAddress(directAddress)));
+                    multiplayerHostFromAddress(directAddress)).withMissionId(missionId)
+                    .withPlayerName(multiplayerPlayerNameOrDefault(playerName)));
         }
         return multiplayerLaunchConfig(MultiplayerLaunchConfig.client(
-                multiplayerDirectAddressOrDefault(directAddress), ""));
+                multiplayerDirectAddressOrDefault(directAddress), "").withMissionId(missionId)
+                .withPlayerName(multiplayerPlayerNameOrDefault(playerName)));
     }
 
     private static String multiplayerAcceptanceCommand(String action, String directAddress) {
@@ -645,10 +728,22 @@ public final class MainMenuPanel extends JPanel {
         return trimmed.isEmpty() ? "127.0.0.1:46717" : trimmed;
     }
 
+    private static String multiplayerPlayerNameOrDefault(String playerName) {
+        String trimmed = playerName == null ? "" : playerName.trim();
+        if (trimmed.isEmpty()) return "Player";
+        return trimmed.length() > 32 ? trimmed.substring(0, 32) : trimmed;
+    }
+
     private static GameConfig multiplayerLaunchConfig(MultiplayerLaunchConfig launch) {
         return new GameConfig(GameMode.CUSTOM_BATTLES, 3600, 2200, true,
                 System.nanoTime(), false, 0, false,
                 1, "FRIGATE", "FRIGATE").withMultiplayerLaunch(launch);
+    }
+
+    private static String multiplayerSelectedMissionId(JComboBox<MultiplayerMissionChoice> missionBox) {
+        Object selected = missionBox == null ? null : missionBox.getSelectedItem();
+        if (selected instanceof MultiplayerMissionChoice choice) return choice.missionId();
+        return MultiplayerMissionChoice.DEFAULT_MISSION_ID;
     }
 
     private static int multiplayerPortFromAddress(String directAddress) {

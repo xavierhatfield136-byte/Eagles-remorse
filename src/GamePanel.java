@@ -28,16 +28,26 @@ public class GamePanel extends JPanel implements ActionListener {
     private boolean controllerPrimaryHeld = false;
     private boolean controllerSecondaryHeld = false;
     private boolean checkpointPersistedForShutdown = false;
+    private boolean multiplayerTransportExitHandled = false;
+    private boolean multiplayerMatchCompletionExitHandled = false;
 
     public GamePanel(GameConfig config, Runnable exitToMenu) {
         this(config, exitToMenu, null);
     }
 
     public GamePanel(GameConfig config, Runnable exitToMenu, Runnable toggleFullscreen) {
+        this(new GameContext(config), true, exitToMenu, toggleFullscreen);
+    }
+
+    public GamePanel(GameContext context, Runnable exitToMenu, Runnable toggleFullscreen) {
+        this(context, false, exitToMenu, toggleFullscreen);
+    }
+
+    private GamePanel(GameContext context, boolean initializeWorld, Runnable exitToMenu, Runnable toggleFullscreen) {
         this.exitToMenu = exitToMenu;
         this.toggleFullscreen = toggleFullscreen;
 
-        this.ctx = new GameContext(config);
+        this.ctx = context;
         this.runtime = new GameSimulationRuntime(this.ctx);
 
         setPreferredSize(new Dimension(VIEW_W, VIEW_H));
@@ -46,7 +56,9 @@ public class GamePanel extends JPanel implements ActionListener {
         setFocusTraversalKeysEnabled(false);
 
         // World init
-        SpawnSystem.initWorld(ctx);
+        if (initializeWorld) {
+            SpawnSystem.initWorld(ctx);
+        }
         ExperienceRuntime.activate(ctx.experience);
         FirstHourOnboardingSystem.init(ctx);
         TacticalCombatDepthSystem.init(ctx);
@@ -60,7 +72,7 @@ public class GamePanel extends JPanel implements ActionListener {
                 ExperienceRuntime.releaseHeldInputs(ctx);
                 controllerPrimaryHeld = false;
                 controllerSecondaryHeld = false;
-                if (ctx.experience.pauseOnFocusLoss && ctx.state == GameState.RUNNING) {
+                if (ctx.experience.pauseOnFocusLoss && ctx.state == GameState.RUNNING && !ctx.multiplayerBattle) {
                     ctx.state = GameState.PAUSED;
                     EventSystem.showBanner(ctx, "PAUSED: WINDOW FOCUS LOST", 1.2);
                 }
@@ -85,6 +97,12 @@ public class GamePanel extends JPanel implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
+        if (handleMultiplayerTransportAbort()) {
+            return;
+        }
+        if (handleMultiplayerMatchCompletionReturn()) {
+            return;
+        }
         ExperienceRuntime.update(ctx);
         boolean controllerPrimary = ControllerInputSystem.isActionPressed("primaryDown");
         boolean controllerSecondary = ControllerInputSystem.isActionPressed("secondaryDown");
@@ -101,6 +119,12 @@ public class GamePanel extends JPanel implements ActionListener {
                 viewportW(),
                 viewportH(),
                 Math.max(0.0, DevTools.getTimeScale()));
+        if (handleMultiplayerTransportAbort()) {
+            return;
+        }
+        if (handleMultiplayerMatchCompletionReturn()) {
+            return;
+        }
         if (runtime.consumeSafeMissionExitReady()) {
             exitToMenu();
             return;
@@ -129,8 +153,12 @@ public class GamePanel extends JPanel implements ActionListener {
     }
 
     public void shutdown() {
-        persistCheckpointForShutdown();
         if (timer.isRunning()) timer.stop();
+        if (ctx.multiplayerInGameSession != null) {
+            ctx.multiplayerInGameSession.close();
+            ctx.multiplayerInGameSession = null;
+        }
+        persistCheckpointForShutdown();
     }
 
     @Override
@@ -142,6 +170,44 @@ public class GamePanel extends JPanel implements ActionListener {
     private void exitToMenu() {
         persistCheckpointForShutdown();
         if (exitToMenu != null) exitToMenu.run();
+    }
+
+    private boolean handleMultiplayerTransportAbort() {
+        if (multiplayerTransportExitHandled || !ctx.multiplayerBattle || ctx.multiplayerInGameSession == null) {
+            return false;
+        }
+        MultiplayerInGameDuelSession.State state = ctx.multiplayerInGameSession.state();
+        if (state != MultiplayerInGameDuelSession.State.DISCONNECTED
+                && state != MultiplayerInGameDuelSession.State.ERROR) {
+            return false;
+        }
+        multiplayerTransportExitHandled = true;
+        String status = ctx.multiplayerInGameSession.status();
+        if (status == null || status.isBlank()) {
+            status = state == MultiplayerInGameDuelSession.State.ERROR
+                    ? "Multiplayer connection failed"
+                    : "Multiplayer connection closed";
+        }
+        EventSystem.showBanner(ctx, status, 1.4);
+        exitToMenu();
+        return true;
+    }
+
+    private boolean handleMultiplayerMatchCompletionReturn() {
+        if (multiplayerMatchCompletionExitHandled || !ctx.multiplayerBattle || !ctx.gameOver) {
+            return false;
+        }
+        MultiplayerInGameDuelSession session = ctx.multiplayerInGameSession;
+        if (session != null) {
+            session.requestReturnToLobby(ctx.gameOverText);
+            if (!session.readyToReleasePeerForLobby()) {
+                repaint();
+                return true;
+            }
+        }
+        multiplayerMatchCompletionExitHandled = true;
+        exitToMenu();
+        return true;
     }
 
     private void persistCheckpointForShutdown() {
@@ -265,8 +331,14 @@ public class GamePanel extends JPanel implements ActionListener {
             else FirstHourOnboardingSystem.toggleArchive(ctx);
         });
         bind(im, am, "toggleTacticalOrders", () -> TacticalCombatDepthSystem.toggleOverlay(ctx));
-        bind(im, am, "cycleTacticalOrder", () -> TacticalCombatDepthSystem.cycleOrder(ctx));
-        bind(im, am, "toggleTacticalPause", () -> TacticalCombatDepthSystem.togglePause(ctx));
+        bind(im, am, "cycleTacticalOrder", () -> GameplayActions.cycleTacticalOrder(ctx));
+        bind(im, am, "toggleTacticalPause", () -> {
+            if (ctx.multiplayerBattle) {
+                EventSystem.showBanner(ctx, "PAUSE DISABLED IN MULTIPLAYER", 1.1);
+                return;
+            }
+            TacticalCombatDepthSystem.togglePause(ctx);
+        });
         bind(im, am, "cycleSupportMode", () -> TacticalCombatDepthSystem.cycleSupportMode(ctx));
         bind(im, am, "activateSupportMode", () -> TacticalCombatDepthSystem.activateSupportAtCursor(ctx));
         bind(im, am, "toggleOrientationHold", () -> TacticalCombatDepthSystem.toggleOrientationHold(ctx));

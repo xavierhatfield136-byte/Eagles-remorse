@@ -21,9 +21,25 @@ public final class MultiplayerCommandGate {
         RECONNECT
     }
 
-    public record SlotOwnership(int slotId, int controlledShipId, boolean connected, boolean ready) {}
+    public enum GameplayCommandType {
+        DIRECT_SHIP_INPUT
+    }
+
+    public record SlotOwnership(int slotId, int controlledShipId, boolean connected, boolean ready, String playerId) {
+        public SlotOwnership(int slotId, int controlledShipId, boolean connected, boolean ready) {
+            this(slotId, controlledShipId, connected, ready, "");
+        }
+
+        public SlotOwnership {
+            playerId = clean(playerId);
+        }
+    }
 
     public record PlayerInputFrame(
+            String matchId,
+            String sessionNonce,
+            String playerId,
+            GameplayCommandType commandType,
             int slotId,
             int controlledShipId,
             long sequence,
@@ -32,7 +48,50 @@ public final class MultiplayerCommandGate {
             float turn,
             double aimAngle,
             boolean primaryHeld,
-            boolean secondaryHeld) {}
+            boolean secondaryHeld) {
+        public PlayerInputFrame(int slotId,
+                                int controlledShipId,
+                                long sequence,
+                                long clientTick,
+                                float thrust,
+                                float turn,
+                                double aimAngle,
+                                boolean primaryHeld,
+                                boolean secondaryHeld) {
+            this("", "", "", GameplayCommandType.DIRECT_SHIP_INPUT,
+                    slotId, controlledShipId, sequence, clientTick, thrust, turn,
+                    aimAngle, primaryHeld, secondaryHeld);
+        }
+
+        public PlayerInputFrame(String matchId,
+                                String sessionNonce,
+                                String playerId,
+                                int slotId,
+                                int controlledShipId,
+                                long sequence,
+                                long clientTick,
+                                float thrust,
+                                float turn,
+                                double aimAngle,
+                                boolean primaryHeld,
+                                boolean secondaryHeld) {
+            this(matchId, sessionNonce, playerId, GameplayCommandType.DIRECT_SHIP_INPUT,
+                    slotId, controlledShipId, sequence, clientTick, thrust, turn,
+                    aimAngle, primaryHeld, secondaryHeld);
+        }
+
+        public PlayerInputFrame {
+            matchId = clean(matchId);
+            sessionNonce = clean(sessionNonce);
+            playerId = clean(playerId);
+            if (commandType == null) commandType = GameplayCommandType.DIRECT_SHIP_INPUT;
+        }
+
+        public PlayerInputFrame withIdentity(String matchId, String sessionNonce, String playerId) {
+            return new PlayerInputFrame(matchId, sessionNonce, playerId, commandType, slotId, controlledShipId,
+                    sequence, clientTick, thrust, turn, aimAngle, primaryHeld, secondaryHeld);
+        }
+    }
 
     public record DiscreteCommand(int slotId, int controlledShipId, long sequence, DiscreteCommandType type) {}
 
@@ -50,14 +109,25 @@ public final class MultiplayerCommandGate {
                                  float thrust, float turn, long lastHostTick) {}
 
     private final Map<Integer, SlotOwnership> slots = new HashMap<>();
+    private final Map<Integer, String> playerIdsBySlot = new HashMap<>();
     private final Map<Integer, Long> lastInputSequenceBySlot = new HashMap<>();
     private final Map<Integer, Long> lastInputClientTickBySlot = new HashMap<>();
     private final Map<Integer, Long> lastDiscreteSequenceBySlot = new HashMap<>();
     private final Map<Integer, HeldInputState> heldInputsBySlot = new HashMap<>();
+    private String expectedMatchId = "";
+    private String expectedSessionNonce = "";
+
+    public void configureMatchIdentity(String matchId, String sessionNonce) {
+        expectedMatchId = clean(matchId);
+        expectedSessionNonce = clean(sessionNonce);
+    }
 
     public void registerSlot(SlotOwnership ownership) {
         if (ownership == null || ownership.slotId() <= 0) return;
         slots.put(ownership.slotId(), ownership);
+        if (!ownership.playerId().isBlank()) {
+            playerIdsBySlot.put(ownership.slotId(), ownership.playerId());
+        }
     }
 
     public CommandResult validateInputFrame(PlayerInputFrame frame) {
@@ -66,9 +136,13 @@ public final class MultiplayerCommandGate {
 
     public CommandResult validateInputFrame(PlayerInputFrame frame, long authoritativeTick) {
         if (frame == null) return new CommandResult(false, "Missing input frame", -1L);
+        CommandResult identityResult = validateInputIdentity(frame);
+        if (!identityResult.accepted()) return identityResult;
         SlotOwnership ownership = slots.get(frame.slotId());
         CommandResult ownershipResult = validateOwnership(ownership, frame.controlledShipId(), frame.sequence());
         if (!ownershipResult.accepted()) return ownershipResult;
+        CommandResult commandTypeResult = validateGameplayCommandType(frame.commandType(), frame.sequence());
+        if (!commandTypeResult.accepted()) return commandTypeResult;
         if (frame.sequence() <= lastInputSequenceBySlot.getOrDefault(frame.slotId(), Long.MIN_VALUE)) {
             return new CommandResult(false, "Stale or duplicate input sequence", frame.sequence());
         }
@@ -106,6 +180,11 @@ public final class MultiplayerCommandGate {
         if (command.type() == null) {
             return new CommandResult(false, "Missing command type", command.sequence());
         }
+        BattleAuthority.Decision authority =
+                HostBattleAuthority.INSTANCE.evaluate(BattleAuthorityOperation.forDiscreteCommand(command.type()));
+        if (!authority.accepted()) {
+            return new CommandResult(false, authority.reason(), command.sequence());
+        }
         CommandResult ruleResult = validateV1Rule(command.type(), command.sequence());
         if (!ruleResult.accepted()) return ruleResult;
         lastDiscreteSequenceBySlot.put(command.slotId(), command.sequence());
@@ -115,6 +194,14 @@ public final class MultiplayerCommandGate {
     public HeldInputState heldInputState(int slotId) {
         HeldInputState state = heldInputsBySlot.get(slotId);
         return state == null ? new HeldInputState(false, false, false, 0.0f, 0.0f, -1L) : state;
+    }
+
+    public long lastProcessedInputSequence() {
+        long max = 0L;
+        for (Long sequence : lastInputSequenceBySlot.values()) {
+            if (sequence != null) max = Math.max(max, sequence);
+        }
+        return max;
     }
 
     public boolean clearStaleHeldInput(int slotId, long currentHostTick) {
@@ -136,6 +223,23 @@ public final class MultiplayerCommandGate {
         return new CommandResult(true, "Accepted", sequence);
     }
 
+    private CommandResult validateInputIdentity(PlayerInputFrame frame) {
+        if (!expectedMatchId.isBlank() && !expectedMatchId.equals(frame.matchId())) {
+            return new CommandResult(false, "Input match ID does not match the active match", frame.sequence());
+        }
+        if (!expectedSessionNonce.isBlank() && !expectedSessionNonce.equals(frame.sessionNonce())) {
+            return new CommandResult(false, "Input session nonce is invalid", frame.sequence());
+        }
+        String expectedPlayerId = playerIdsBySlot.getOrDefault(frame.slotId(), "");
+        boolean identityRequired = !expectedMatchId.isBlank()
+                || !expectedSessionNonce.isBlank()
+                || !frame.playerId().isBlank();
+        if (identityRequired && !expectedPlayerId.isBlank() && !expectedPlayerId.equals(frame.playerId())) {
+            return new CommandResult(false, "Player ID does not own this slot", frame.sequence());
+        }
+        return new CommandResult(true, "Accepted", frame.sequence());
+    }
+
     private CommandResult validateV1Rule(DiscreteCommandType type, long sequence) {
         return switch (type) {
             case SELECT_TARGET, ACTIVATE_ABILITY, READY, LOBBY_CHANGE -> new CommandResult(true, "Accepted", sequence);
@@ -150,11 +254,22 @@ public final class MultiplayerCommandGate {
         };
     }
 
+    private CommandResult validateGameplayCommandType(GameplayCommandType type, long sequence) {
+        if (type == GameplayCommandType.DIRECT_SHIP_INPUT) {
+            return new CommandResult(true, "Accepted", sequence);
+        }
+        return new CommandResult(false, "Unsupported gameplay command type", sequence);
+    }
+
     private CommandResult reject(MultiplayerRulesV1.UnsupportedFeature feature, long sequence) {
         return new CommandResult(false, feature.rejectionMessage(), sequence);
     }
 
     private static boolean finite(double value) {
         return Double.isFinite(value);
+    }
+
+    private static String clean(String value) {
+        return value == null ? "" : value.trim();
     }
 }

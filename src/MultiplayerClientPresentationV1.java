@@ -6,6 +6,7 @@ import java.util.List;
 public final class MultiplayerClientPresentationV1 {
     public static final int INTERPOLATION_DELAY_TICKS =
             Math.max(1, MultiplayerRulesV1.AUTHORITATIVE_TICK_RATE / MultiplayerProtocolV1.SNAPSHOT_RATE_HZ);
+    public static final int PRESENTATION_BUFFER_CAPACITY = 2;
 
     public enum ClientCapability {
         INTERPOLATION,
@@ -66,7 +67,7 @@ public final class MultiplayerClientPresentationV1 {
     }
 
     private final int localSlotId;
-    private final ArrayList<MultiplayerBattleSnapshot> snapshots = new ArrayList<>(2);
+    private final PresentationBuffer presentationBuffer = new PresentationBuffer(PRESENTATION_BUFFER_CAPACITY);
     private MultiplayerReplicationV1.AuthoritativeEvent victoryEvent;
 
     public MultiplayerClientPresentationV1(int localSlotId) {
@@ -74,12 +75,7 @@ public final class MultiplayerClientPresentationV1 {
     }
 
     public void receiveSnapshot(MultiplayerBattleSnapshot snapshot) {
-        if (snapshot == null) return;
-        snapshots.add(snapshot);
-        snapshots.sort(Comparator.comparingLong(MultiplayerBattleSnapshot::hostTick));
-        while (snapshots.size() > 2) {
-            snapshots.remove(0);
-        }
+        presentationBuffer.add(snapshot);
     }
 
     public void receiveEvent(MultiplayerReplicationV1.AuthoritativeEvent event) {
@@ -89,14 +85,14 @@ public final class MultiplayerClientPresentationV1 {
     }
 
     public RenderState render() {
-        if (snapshots.isEmpty()) {
+        if (presentationBuffer.isEmpty()) {
             return new RenderState(List.of(), emptyHud(), List.of(),
                     new DebugMetrics(0L, 0L, INTERPOLATION_DELAY_TICKS, 0L, 0L, 0.0),
                     true);
         }
 
-        MultiplayerBattleSnapshot newest = snapshots.get(snapshots.size() - 1);
-        MultiplayerBattleSnapshot oldest = snapshots.get(0);
+        MultiplayerBattleSnapshot newest = presentationBuffer.newest();
+        MultiplayerBattleSnapshot oldest = presentationBuffer.oldest();
         long renderedTick = Math.max(0L, newest.hostTick() - INTERPOLATION_DELAY_TICKS);
         long gap = Math.max(0L, newest.hostTick() - oldest.hostTick());
         long extrapolation = renderedTick > newest.hostTick() ? renderedTick - newest.hostTick() : 0L;
@@ -121,6 +117,57 @@ public final class MultiplayerClientPresentationV1 {
                     AUTHORITATIVE_OBJECTIVE_COMPLETION, AUTHORITATIVE_SHIP_SPAWNING,
                     AUTHORITATIVE_TARGET_VALIDITY, AUTHORITATIVE_VICTORY_EVALUATION -> false;
         };
+    }
+
+    public int bufferedSnapshotCountForTests() {
+        return presentationBuffer.size();
+    }
+
+    public List<Long> bufferedSnapshotTicksForTests() {
+        return presentationBuffer.hostTicks();
+    }
+
+    private static final class PresentationBuffer {
+        private final int capacity;
+        private final ArrayList<MultiplayerBattleSnapshot> snapshots;
+
+        private PresentationBuffer(int capacity) {
+            this.capacity = Math.max(1, capacity);
+            this.snapshots = new ArrayList<>(this.capacity);
+        }
+
+        private void add(MultiplayerBattleSnapshot snapshot) {
+            if (snapshot == null) return;
+            snapshots.add(snapshot);
+            snapshots.sort(Comparator.comparingLong(MultiplayerBattleSnapshot::hostTick));
+            while (snapshots.size() > capacity) {
+                snapshots.remove(0);
+            }
+        }
+
+        private boolean isEmpty() {
+            return snapshots.isEmpty();
+        }
+
+        private int size() {
+            return snapshots.size();
+        }
+
+        private MultiplayerBattleSnapshot oldest() {
+            return snapshots.get(0);
+        }
+
+        private MultiplayerBattleSnapshot newest() {
+            return snapshots.get(snapshots.size() - 1);
+        }
+
+        private List<Long> hostTicks() {
+            ArrayList<Long> ticks = new ArrayList<>(snapshots.size());
+            for (MultiplayerBattleSnapshot snapshot : snapshots) {
+                ticks.add(snapshot.hostTick());
+            }
+            return List.copyOf(ticks);
+        }
     }
 
     private RenderedShip renderShip(MultiplayerBattleSnapshot.ShipSnapshot previous,

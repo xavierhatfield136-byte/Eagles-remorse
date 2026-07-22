@@ -58,6 +58,21 @@ public class GameContext {
     public final List<AudioEvent> audioEvents = new ArrayList<>();
     public final List<FleetCommMessage> fleetCommLog = new ArrayList<>();
     public final EntityQueryIndex entityQuery = new EntityQueryIndex();
+    public boolean multiplayerBattle = false;
+    public MultiplayerAuthorityMode multiplayerAuthorityMode = MultiplayerAuthorityMode.NONE;
+    public int multiplayerLocalSlotId = MultiplayerRulesV1.HOST_SLOT_ID;
+    public final Set<Integer> multiplayerPlayerControlledShipIds = new HashSet<>();
+    public MultiplayerBattleRuntime multiplayerBattleRuntime = null;
+    public MultiplayerInGameDuelSession multiplayerInGameSession = null;
+    public MultiplayerBattleThreadGuard multiplayerClientSnapshotThreadGuard = null;
+    public int multiplayerLocalNetworkShipId = 0;
+    public final Map<Integer, Integer> multiplayerNetworkShipIdToLocalShipId = new HashMap<>();
+    public String multiplayerLobbyId = "lobby:local";
+    public String multiplayerMatchId = "match:local";
+    public String multiplayerSessionNonce = "";
+    public long multiplayerLockedConfigRevision = 0L;
+    public long multiplayerMatchStartTick = 0L;
+    public String multiplayerLocalPlayerId = "";
 
     // Bases
     public Ship allyBase;

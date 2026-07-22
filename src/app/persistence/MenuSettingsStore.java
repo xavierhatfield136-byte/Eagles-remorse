@@ -1,6 +1,7 @@
 package app.persistence;
 
 import app.config.GameMode;
+import app.config.MultiplayerMissionChoice;
 import app.support.ErrorLog;
 import app.support.UserDataPaths;
 import java.io.IOException;
@@ -32,6 +33,9 @@ public final class MenuSettingsStore {
         public boolean randomEvents = true;
         public String seedText = "0";
         public int playerTeamId = 0;
+        public String multiplayerDirectAddress = "127.0.0.1:46717";
+        public String multiplayerMissionId = MultiplayerMissionChoice.DEFAULT_MISSION_ID;
+        public String multiplayerPlayerName = "Player";
         public boolean voiceCaptionsEnabled = true;
         public double voiceVolumeCaptain = 1.0;
         public double voiceVolumeHelm = 1.0;
@@ -50,6 +54,19 @@ public final class MenuSettingsStore {
             seedText = seedText.trim();
             if (seedText.isBlank()) seedText = "0";
             if (seedText.length() > 32) seedText = seedText.substring(0, 32);
+            if (multiplayerDirectAddress == null) multiplayerDirectAddress = "127.0.0.1:46717";
+            multiplayerDirectAddress = multiplayerDirectAddress.trim();
+            if (multiplayerDirectAddress.isBlank()) multiplayerDirectAddress = "127.0.0.1:46717";
+            if (multiplayerDirectAddress.length() > 128) {
+                multiplayerDirectAddress = multiplayerDirectAddress.substring(0, 128);
+            }
+            multiplayerMissionId = MultiplayerMissionChoice.fromMissionId(multiplayerMissionId).missionId();
+            if (multiplayerPlayerName == null) multiplayerPlayerName = "Player";
+            multiplayerPlayerName = multiplayerPlayerName.trim();
+            if (multiplayerPlayerName.isBlank()) multiplayerPlayerName = "Player";
+            if (multiplayerPlayerName.length() > 32) {
+                multiplayerPlayerName = multiplayerPlayerName.substring(0, 32);
+            }
 
             voiceVolumeCaptain = clampVoiceVolume(voiceVolumeCaptain);
             voiceVolumeHelm = clampVoiceVolume(voiceVolumeHelm);
@@ -74,6 +91,10 @@ public final class MenuSettingsStore {
                 s.randomEvents = true;
                 s.seedText = props.getProperty("seedText", s.seedText);
                 s.playerTeamId = parseInt(props, "playerTeamId", s.playerTeamId);
+                s.multiplayerDirectAddress = props.getProperty(
+                        "multiplayerDirectAddress", s.multiplayerDirectAddress);
+                s.multiplayerMissionId = props.getProperty("multiplayerMissionId", s.multiplayerMissionId);
+                s.multiplayerPlayerName = props.getProperty("multiplayerPlayerName", s.multiplayerPlayerName);
                 s.voiceCaptionsEnabled = parseBoolean(props, "voiceCaptionsEnabled", s.voiceCaptionsEnabled);
                 s.voiceVolumeCaptain = parseDouble(props, "voiceVolumeCaptain", s.voiceVolumeCaptain);
                 s.voiceVolumeHelm = parseDouble(props, "voiceVolumeHelm", s.voiceVolumeHelm);
@@ -108,6 +129,9 @@ public final class MenuSettingsStore {
             props.setProperty("randomEvents", String.valueOf(s.randomEvents));
             props.setProperty("seedText", s.seedText);
             props.setProperty("playerTeamId", String.valueOf(s.playerTeamId));
+            props.setProperty("multiplayerDirectAddress", s.multiplayerDirectAddress);
+            props.setProperty("multiplayerMissionId", s.multiplayerMissionId);
+            props.setProperty("multiplayerPlayerName", s.multiplayerPlayerName);
             props.setProperty("voiceCaptionsEnabled", String.valueOf(s.voiceCaptionsEnabled));
             props.setProperty("voiceVolumeCaptain", String.valueOf(s.voiceVolumeCaptain));
             props.setProperty("voiceVolumeHelm", String.valueOf(s.voiceVolumeHelm));

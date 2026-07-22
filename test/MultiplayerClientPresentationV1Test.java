@@ -57,6 +57,20 @@ class MultiplayerClientPresentationV1Test {
     }
 
     @Test
+    void minimalPresentationBufferKeepsNewestOrderedSnapshotsOnly() {
+        MultiplayerClientPresentationV1 presentation =
+                new MultiplayerClientPresentationV1(MultiplayerRulesV1.CLIENT_SLOT_ID);
+
+        presentation.receiveSnapshot(snapshot(20L, 100.0, 500.0, 100, 100));
+        presentation.receiveSnapshot(snapshot(24L, 120.0, 480.0, 95, 90));
+        presentation.receiveSnapshot(snapshot(22L, 110.0, 490.0, 98, 95));
+
+        assertEquals(MultiplayerClientPresentationV1.PRESENTATION_BUFFER_CAPACITY,
+                presentation.bufferedSnapshotCountForTests());
+        assertEquals(List.of(22L, 24L), presentation.bufferedSnapshotTicksForTests());
+    }
+
+    @Test
     void clientCanOnlyRunPresentationWork() {
         assertTrue(MultiplayerClientPresentationV1.canClientRun(
                 MultiplayerClientPresentationV1.ClientCapability.INTERPOLATION));

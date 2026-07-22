@@ -51,6 +51,44 @@ class MultiplayerProtocolV1Test {
     }
 
     @Test
+    void compatibilityClassifierReturnsReadableMismatchCategories() {
+        MultiplayerProtocolV1.CompatibilityFingerprint host =
+                MultiplayerProtocolV1.localFingerprint();
+        MultiplayerProtocolV1.CompatibilityFingerprint oldProtocol =
+                new MultiplayerProtocolV1.CompatibilityFingerprint(
+                        MultiplayerProtocolV1.PROTOCOL_VERSION + 1,
+                        host.gameBuild(),
+                        host.manifest());
+        MultiplayerProtocolV1.CompatibilityFingerprint wrongManifest =
+                new MultiplayerProtocolV1.CompatibilityFingerprint(
+                        MultiplayerProtocolV1.PROTOCOL_VERSION,
+                        host.gameBuild(),
+                        new MultiplayerProtocolV1.ContentManifest(
+                                "different-rules", "hulls", "weapons", "abilities",
+                                "arena", "mods", "assets"));
+
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.NONE,
+                MultiplayerProtocolV1.classifyCompatibility(host, host).category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.PROTOCOL_VERSION_MISMATCH,
+                MultiplayerProtocolV1.classifyCompatibility(host, oldProtocol).category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.HULL_OR_CONTENT_MANIFEST_MISMATCH,
+                MultiplayerProtocolV1.classifyCompatibility(host, wrongManifest).category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.SELECTED_MISSION_UNAVAILABLE,
+                MultiplayerProtocolV1.selectedMissionUnavailable("core:missing").category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.MISSION_DEFINITION_HASH_MISMATCH,
+                MultiplayerProtocolV1.missionDefinitionHashMismatch("core:v1_duel").category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.LOCKED_LAUNCH_SPEC_HASH_MISMATCH,
+                MultiplayerProtocolV1.lockedLaunchSpecHashMismatch("match-1").category());
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.RULES_PROFILE_UNSUPPORTED,
+                MultiplayerProtocolV1.rulesProfileUnsupported("multiplayer:future").category());
+        MultiplayerProtocolV1.CompatibilityIssue catalog =
+                MultiplayerProtocolV1.globalCatalogRevisionWarning("catalog differs");
+        assertEquals(MultiplayerProtocolV1.CompatibilityMismatchCategory.GLOBAL_CATALOG_REVISION_WARNING,
+                catalog.category());
+        assertFalse(catalog.blocking());
+    }
+
+    @Test
     void messageFamiliesAndDeliveryModesAreExplicit() {
         assertEquals(MultiplayerProtocolV1.MessageFamily.HANDSHAKE,
                 MultiplayerProtocolV1.MessageKind.HELLO.family());

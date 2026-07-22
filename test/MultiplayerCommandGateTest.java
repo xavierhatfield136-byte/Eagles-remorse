@@ -79,6 +79,37 @@ class MultiplayerCommandGateTest {
     }
 
     @Test
+    void rejectsInputWithMismatchedMatchIdentity() {
+        MultiplayerCommandGate gate = new MultiplayerCommandGate();
+        gate.configureMatchIdentity("match-42", "nonce-42");
+        gate.registerSlot(new MultiplayerCommandGate.SlotOwnership(
+                MultiplayerRulesV1.CLIENT_SLOT_ID, 202, true, true, "player-slot-2"));
+
+        MultiplayerCommandGate.CommandResult wrongMatch = gate.validateInputFrame(
+                new MultiplayerCommandGate.PlayerInputFrame(
+                        "match-41", "nonce-42", "player-slot-2",
+                        MultiplayerRulesV1.CLIENT_SLOT_ID, 202, 1L, 1L,
+                        0.0f, 0.0f, 0.0, false, false));
+        MultiplayerCommandGate.CommandResult wrongNonce = gate.validateInputFrame(
+                new MultiplayerCommandGate.PlayerInputFrame(
+                        "match-42", "nonce-41", "player-slot-2",
+                        MultiplayerRulesV1.CLIENT_SLOT_ID, 202, 1L, 1L,
+                        0.0f, 0.0f, 0.0, false, false));
+        MultiplayerCommandGate.CommandResult wrongPlayer = gate.validateInputFrame(
+                new MultiplayerCommandGate.PlayerInputFrame(
+                        "match-42", "nonce-42", "player-slot-1",
+                        MultiplayerRulesV1.CLIENT_SLOT_ID, 202, 1L, 1L,
+                        0.0f, 0.0f, 0.0, false, false));
+
+        assertFalse(wrongMatch.accepted());
+        assertTrue(wrongMatch.reason().contains("match ID"));
+        assertFalse(wrongNonce.accepted());
+        assertTrue(wrongNonce.reason().contains("session nonce"));
+        assertFalse(wrongPlayer.accepted());
+        assertTrue(wrongPlayer.reason().contains("Player ID"));
+    }
+
+    @Test
     void clearsStaleHeldInputAfterHostOwnedTimeout() {
         MultiplayerCommandGate gate = readyGate();
         gate.validateInputFrame(new MultiplayerCommandGate.PlayerInputFrame(
@@ -157,6 +188,20 @@ class MultiplayerCommandGateTest {
         assertTrue(frame.turn() < 0.0f);
         assertTrue(frame.primaryHeld());
         assertTrue(Double.isFinite(frame.aimAngle()));
+    }
+
+    @Test
+    void localInputAdapterCanStampGameplayEnvelopeIdentity() {
+        InputSnapshot input = new InputSnapshot(true, false, false, false, false, 0.0, 10.0);
+
+        MultiplayerCommandGate.PlayerInputFrame frame = MultiplayerInputFrameAdapter.fromLocalInput(
+                "match-42", "nonce-42", "player-slot-2",
+                MultiplayerRulesV1.CLIENT_SLOT_ID, 202, 7L, 12L, input, true, false);
+
+        assertTrue("match-42".equals(frame.matchId()));
+        assertTrue("nonce-42".equals(frame.sessionNonce()));
+        assertTrue("player-slot-2".equals(frame.playerId()));
+        assertTrue(frame.commandType() == MultiplayerCommandGate.GameplayCommandType.DIRECT_SHIP_INPUT);
     }
 
     private static MultiplayerCommandGate readyGate() {

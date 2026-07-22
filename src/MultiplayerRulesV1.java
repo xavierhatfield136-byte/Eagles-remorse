@@ -2,7 +2,9 @@ import app.config.GameConfig;
 import app.config.GameMode;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Scope guard for the first custom-battle multiplayer slice.
@@ -18,9 +20,12 @@ public final class MultiplayerRulesV1 {
     public static final int MAX_INPUT_FRAMES_PER_SECOND = AUTHORITATIVE_TICK_RATE;
     public static final int INPUT_STALE_TIMEOUT_TICKS = 15;
     public static final String DEFAULT_ARENA_ID = "duel-arena-v1";
+    public static final String RULES_PROFILE_ID = "multiplayer:v1";
+    public static final String AI_SUPPORT_RULES_PROFILE_ID = "multiplayer:v1_ai_support";
     public static final boolean CAMPAIGN_MULTIPLAYER_SUPPORTED = false;
     public static final boolean SAME_TEAM_COOP_SUPPORTED = false;
-    public static final boolean AI_SHIPS_SUPPORTED = false;
+    public static final boolean AI_SHIPS_SUPPORTED = true;
+    public static final int AI_SUPPORT_SHIPS_PER_TEAM = 1;
     public static final boolean RESPAWNS_SUPPORTED = false;
     public static final boolean RECONNECT_SUPPORTED = false;
     public static final boolean MID_MATCH_JOIN_SUPPORTED = false;
@@ -124,7 +129,8 @@ public final class MultiplayerRulesV1 {
     }
 
     public static boolean entryPointEnabled() {
-        return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
+        return PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_MISSIONS)
+                || PostAlphaFeatureFlags.enabled(PostAlphaFeatureFlags.Feature.MULTIPLAYER_CUSTOM_BATTLE);
     }
 
     public static BattleSetup defaultDuel(long seed, ShipRole hostHull, ShipRole clientHull) {
@@ -146,6 +152,10 @@ public final class MultiplayerRulesV1 {
                 false,
                 false,
                 false);
+    }
+
+    public static Set<MultiplayerCapability> supportedCapabilities() {
+        return EnumSet.of(MultiplayerCapability.OPPOSING_PLAYERS);
     }
 
     public static ValidationResult validateBattleOnlyConfig(GameConfig config) {
@@ -179,7 +189,6 @@ public final class MultiplayerRulesV1 {
             errors.add("Only elimination victory is supported in V1");
         }
         rejectIf(setup.sameTeamCoop, UnsupportedFeature.SAME_TEAM_COOP, errors);
-        rejectIf(setup.aiShips, UnsupportedFeature.AI_SHIPS, errors);
         rejectIf(setup.escorts, UnsupportedFeature.ESCORTS, errors);
         rejectIf(setup.formations, UnsupportedFeature.FORMATIONS, errors);
         rejectIf(setup.fogOfWar, UnsupportedFeature.FOG_OF_WAR, errors);

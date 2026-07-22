@@ -101,6 +101,17 @@ public final class MultiplayerProtocolV1 {
         DISCONNECT_PEER
     }
 
+    public enum CompatibilityMismatchCategory {
+        NONE,
+        PROTOCOL_VERSION_MISMATCH,
+        SELECTED_MISSION_UNAVAILABLE,
+        MISSION_DEFINITION_HASH_MISMATCH,
+        LOCKED_LAUNCH_SPEC_HASH_MISMATCH,
+        HULL_OR_CONTENT_MANIFEST_MISMATCH,
+        RULES_PROFILE_UNSUPPORTED,
+        GLOBAL_CATALOG_REVISION_WARNING
+    }
+
     public record ContentManifest(String rulesHash,
                                   String hullDefinitionsHash,
                                   String weaponsHash,
@@ -136,6 +147,17 @@ public final class MultiplayerProtocolV1 {
         }
     }
 
+    public record CompatibilityIssue(CompatibilityMismatchCategory category,
+                                     boolean blocking,
+                                     String message) {
+        public CompatibilityIssue {
+            if (category == null) category = CompatibilityMismatchCategory.NONE;
+            message = (message == null || message.isBlank())
+                    ? (blocking ? "Incompatible multiplayer content" : "Compatible")
+                    : message.trim();
+        }
+    }
+
     public record Envelope(MessageKind kind,
                            long sequence,
                            long hostTick,
@@ -163,6 +185,18 @@ public final class MultiplayerProtocolV1 {
             slotId = Math.max(0, slotId);
             inputSequence = Math.max(0L, inputSequence);
             authoritativeTick = Math.max(0L, authoritativeTick);
+        }
+    }
+
+    public record MatchIdentity(String lobbyId,
+                                String matchId,
+                                String sessionNonce,
+                                long lockedConfigRevision) {
+        public MatchIdentity {
+            lobbyId = cleanIdentity(lobbyId, "lobby:local");
+            matchId = cleanIdentity(matchId, "match:local");
+            sessionNonce = cleanIdentity(sessionNonce, sessionNonceForMatch(matchId));
+            lockedConfigRevision = Math.max(0L, lockedConfigRevision);
         }
     }
 
@@ -212,6 +246,70 @@ public final class MultiplayerProtocolV1 {
         return new CompatibilityResult(true, "Compatible");
     }
 
+    public static CompatibilityIssue classifyCompatibility(CompatibilityFingerprint host,
+                                                           CompatibilityFingerprint client) {
+        if (host == null || client == null) {
+            return new CompatibilityIssue(
+                    CompatibilityMismatchCategory.PROTOCOL_VERSION_MISMATCH,
+                    true,
+                    "Missing compatibility fingerprint");
+        }
+        if (host.protocolVersion() != client.protocolVersion()) {
+            return new CompatibilityIssue(
+                    CompatibilityMismatchCategory.PROTOCOL_VERSION_MISMATCH,
+                    true,
+                    "Protocol version mismatch");
+        }
+        if (!Objects.equals(host.manifest(), client.manifest())) {
+            return new CompatibilityIssue(
+                    CompatibilityMismatchCategory.HULL_OR_CONTENT_MANIFEST_MISMATCH,
+                    true,
+                    "Hull/content manifest mismatch");
+        }
+        if (!Objects.equals(host.gameBuild(), client.gameBuild())) {
+            return new CompatibilityIssue(
+                    CompatibilityMismatchCategory.HULL_OR_CONTENT_MANIFEST_MISMATCH,
+                    true,
+                    "Game build mismatch");
+        }
+        return new CompatibilityIssue(CompatibilityMismatchCategory.NONE, false, "Compatible");
+    }
+
+    public static CompatibilityIssue selectedMissionUnavailable(String missionId) {
+        return new CompatibilityIssue(
+                CompatibilityMismatchCategory.SELECTED_MISSION_UNAVAILABLE,
+                true,
+                "Selected mission unavailable: " + trim(missionId));
+    }
+
+    public static CompatibilityIssue missionDefinitionHashMismatch(String missionId) {
+        return new CompatibilityIssue(
+                CompatibilityMismatchCategory.MISSION_DEFINITION_HASH_MISMATCH,
+                true,
+                "Mission definition hash mismatch: " + trim(missionId));
+    }
+
+    public static CompatibilityIssue lockedLaunchSpecHashMismatch(String matchId) {
+        return new CompatibilityIssue(
+                CompatibilityMismatchCategory.LOCKED_LAUNCH_SPEC_HASH_MISMATCH,
+                true,
+                "Locked launch-spec hash mismatch: " + trim(matchId));
+    }
+
+    public static CompatibilityIssue rulesProfileUnsupported(String rulesProfileId) {
+        return new CompatibilityIssue(
+                CompatibilityMismatchCategory.RULES_PROFILE_UNSUPPORTED,
+                true,
+                "Rules profile unsupported: " + trim(rulesProfileId));
+    }
+
+    public static CompatibilityIssue globalCatalogRevisionWarning(String detail) {
+        return new CompatibilityIssue(
+                CompatibilityMismatchCategory.GLOBAL_CATALOG_REVISION_WARNING,
+                false,
+                "Global catalog revision warning: " + trim(detail));
+    }
+
     public static ProtocolValidation validateEnvelope(Envelope envelope) {
         if (envelope == null) {
             return new ProtocolValidation(false, "Missing multiplayer message envelope",
@@ -245,6 +343,14 @@ public final class MultiplayerProtocolV1 {
         return allocator != null && allocator.acceptsUpdate(id);
     }
 
+    public static String playerIdForSlot(int slotId) {
+        return "player-slot-" + Math.max(0, slotId);
+    }
+
+    public static String sessionNonceForMatch(String matchId) {
+        return stableHash("session:" + cleanIdentity(matchId, "match:local"));
+    }
+
     public static String stableHash(String value) {
         String normalized = (value == null) ? "" : value;
         byte[] bytes = normalized.getBytes(StandardCharsets.UTF_8);
@@ -276,5 +382,10 @@ public final class MultiplayerProtocolV1 {
 
     private static String trim(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String cleanIdentity(String value, String fallback) {
+        String trimmed = trim(value);
+        return trimmed.isEmpty() ? fallback : trimmed;
     }
 }

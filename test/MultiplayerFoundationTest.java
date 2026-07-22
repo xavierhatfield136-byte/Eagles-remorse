@@ -1,7 +1,14 @@
 import org.junit.jupiter.api.Test;
 
+import javax.swing.SwingUtilities;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultiplayerFoundationTest {
@@ -87,5 +94,27 @@ class MultiplayerFoundationTest {
         assertEquals(1, queue.drainInputs().size());
         assertTrue(queue.drainInputs().isEmpty());
         assertTrue(queue.drainCommands().isEmpty());
+    }
+
+    @Test
+    void networkWriteQueueRunsWritesOffEventDispatchThread() throws Exception {
+        MultiplayerNetworkWriteQueue queue = new MultiplayerNetworkWriteQueue("mp-write-test");
+        AtomicReference<CompletableFuture<Boolean>> future = new AtomicReference<>();
+        AtomicReference<Thread> writeThread = new AtomicReference<>();
+        AtomicBoolean writeRanOnEdt = new AtomicBoolean(true);
+
+        SwingUtilities.invokeAndWait(() -> future.set(queue.submit(() -> {
+            writeThread.set(Thread.currentThread());
+            writeRanOnEdt.set(SwingUtilities.isEventDispatchThread());
+        })));
+
+        assertTrue(future.get().get(1, TimeUnit.SECONDS));
+        assertFalse(writeRanOnEdt.get());
+        assertNotNull(writeThread.get());
+        assertEquals("mp-write-test", writeThread.get().getName());
+        assertEquals(writeThread.get(), queue.writerThread());
+
+        queue.close();
+        assertTrue(queue.closed());
     }
 }

@@ -9,7 +9,7 @@ public final class PostAlphaFeatureFlags {
         RIVAL_COMMANDERS, FLAGSHIP_OPERATIONS, BOARDING_RESCUE,
         FOCUSED_FACTION_ATTACKS,
         ALTERNATIVE_CAMPAIGNS, COOPERATIVE_COMMAND_PROTOTYPE,
-        MULTIPLAYER_CUSTOM_BATTLE;
+        MULTIPLAYER_CUSTOM_BATTLE, MULTIPLAYER_CUSTOM_MISSIONS;
 
         public String key() { return name().toLowerCase(Locale.ROOT); }
     }

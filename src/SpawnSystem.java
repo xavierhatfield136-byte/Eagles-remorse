@@ -641,28 +641,22 @@ public final class SpawnSystem {
     private static void initCustomBattles(GameContext ctx) {
         ctx.teamBases.clear();
 
-        int playerTeamId = (ctx.config == null) ? 0 : ctx.config.playerTeamId;
-        int enemyTeamId = (ctx.config == null) ? 1 : ctx.config.customBattleEnemyTeamId;
-        if (enemyTeamId == playerTeamId) {
-            enemyTeamId = (playerTeamId == 0) ? 1 : 0;
-        }
+        MissionLaunchSpec spec = ctx.config == null
+                ? null
+                : SinglePlayerLaunchAdapter.fromGameConfig(ctx.config);
+        CustomBattleSpawnPlan plan = CustomBattleSpawnPlan.create(spec, ctx.rng);
 
-        Faction playerFaction = playerFactionForTeamId(playerTeamId);
-        Faction playerTeamFaction = Faction.forTeamId(playerTeamId);
-        Faction enemyFaction = Faction.forTeamId(enemyTeamId);
-
-        double[] friendlyBasePos = edgeBasePosition(ctx, true);
-        double[] enemyBasePos = edgeBasePosition(ctx, false);
-
-        Ship friendlyBase = new FleetShip(ShipRole.BASE, playerTeamFaction, friendlyBasePos[0], friendlyBasePos[1]);
-        Ship hostileBase = new FleetShip(ShipRole.BASE, enemyFaction, enemyBasePos[0], enemyBasePos[1]);
+        Ship friendlyBase = new FleetShip(ShipRole.BASE, plan.friendlyBase().faction(),
+                plan.friendlyBase().x(), plan.friendlyBase().y());
+        Ship hostileBase = new FleetShip(ShipRole.BASE, plan.enemyBase().faction(),
+                plan.enemyBase().x(), plan.enemyBase().y());
         clampBaseToBounds(ctx, friendlyBase);
         clampBaseToBounds(ctx, hostileBase);
 
         ctx.ships.add(friendlyBase);
         ctx.ships.add(hostileBase);
-        ctx.teamBases.put(playerTeamFaction, friendlyBase);
-        ctx.teamBases.put(enemyFaction, hostileBase);
+        ctx.teamBases.put(plan.friendlyBase().faction(), friendlyBase);
+        ctx.teamBases.put(plan.enemyBase().faction(), hostileBase);
         ctx.allyBase = friendlyBase;
         ctx.enemyBase = hostileBase;
 
@@ -673,21 +667,16 @@ public final class SpawnSystem {
         ctx.baseUpgrades.put(friendlyBase, friendlyUpgrades);
         ctx.baseUpgrades.put(hostileBase, enemyUpgrades);
 
-        double[] spawn = inwardSpawnNearBase(ctx, friendlyBase);
-        ctx.player = new Player(ShipRole.MOTHERSHIP, spawn[0], spawn[1]);
-        ctx.player.faction = playerFaction;
+        CustomBattleSpawnPlan.ShipSpawn playerSpawn = plan.playerSpawn();
+        ctx.player = new Player(playerSpawn.role(), playerSpawn.x(), playerSpawn.y());
+        ctx.player.faction = playerSpawn.faction();
         ctx.player.name = "Player";
         ctx.ships.add(ctx.player);
 
-        java.util.LinkedHashMap<ShipRole, Integer> friendlyRoster =
-                parseCustomBattleRoster(ctx.config == null ? "" : ctx.config.customBattleFriendlyRoster);
-        java.util.LinkedHashMap<ShipRole, Integer> enemyRoster =
-                parseCustomBattleRoster(ctx.config == null ? "" : ctx.config.customBattleEnemyRoster);
-        if (friendlyRoster.isEmpty()) friendlyRoster = defaultCustomBattleRoster(true);
-        if (enemyRoster.isEmpty()) enemyRoster = defaultCustomBattleRoster(false);
-
-        spawnCustomBattleRoster(ctx, playerTeamFaction, friendlyBase, friendlyRoster, true);
-        spawnCustomBattleRoster(ctx, enemyFaction, hostileBase, enemyRoster, false);
+        for (CustomBattleSpawnPlan.ShipSpawn spawn : plan.rosterSpawns()) {
+            Ship ship = spawnExactTeamShip(ctx, spawn.role(), spawn.faction(), spawn.x(), spawn.y());
+            if (ship != null) ship.angle = spawn.angle();
+        }
 
         tryApplyDoctrine(ctx);
     }

@@ -10,7 +10,8 @@ public final class MultiplayerSerializationV1 {
     public static byte[] encodeSnapshot(MultiplayerBattleSnapshot snapshot) {
         if (snapshot == null) snapshot = new MultiplayerBattleSnapshot(0L, List.of(), List.of());
         StringBuilder out = new StringBuilder();
-        out.append("SNAP|").append(snapshot.hostTick());
+        out.append("SNAP3|").append(snapshot.hostTick())
+                .append('|').append(snapshot.lastProcessedInputSequence());
         out.append('|').append(snapshot.ships().size());
         for (MultiplayerBattleSnapshot.ShipSnapshot ship : snapshot.ships()) {
             out.append('|')
@@ -36,17 +37,30 @@ public final class MultiplayerSerializationV1 {
                     .append(slot.connectionState().name()).append(',')
                     .append(encodeText(slot.displayName()));
         }
+        MultiplayerBattleSnapshot.ObjectiveSummarySnapshot objective = snapshot.objectiveSummary();
+        out.append('|')
+                .append(encodeText(objective.objectiveTypeId())).append(',')
+                .append(objective.active()).append(',')
+                .append(objective.complete()).append(',')
+                .append(objective.owningTeamId()).append(',')
+                .append(objective.progress()).append(',')
+                .append(encodeText(objective.summary()));
         return out.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     public static MultiplayerBattleSnapshot decodeSnapshot(byte[] payload) {
         validatePayload(payload);
         String[] parts = new String(payload, StandardCharsets.UTF_8).split("\\|", -1);
-        if (parts.length < 4 || !"SNAP".equals(parts[0])) {
+        if (parts.length < 4
+                || (!"SNAP".equals(parts[0]) && !"SNAP2".equals(parts[0]) && !"SNAP3".equals(parts[0]))) {
             throw new IllegalArgumentException("Malformed multiplayer snapshot payload");
         }
         int index = 1;
         long hostTick = Long.parseLong(parts[index++]);
+        long lastProcessedInputSequence = 0L;
+        if ("SNAP2".equals(parts[0]) || "SNAP3".equals(parts[0])) {
+            lastProcessedInputSequence = Long.parseLong(parts[index++]);
+        }
         int shipCount = Integer.parseInt(parts[index++]);
         ArrayList<MultiplayerBattleSnapshot.ShipSnapshot> ships = new ArrayList<>();
         for (int i = 0; i < shipCount; i++) {
@@ -78,8 +92,21 @@ public final class MultiplayerSerializationV1 {
                     MultiplayerRulesV1.ConnectionState.valueOf(fields[4]),
                     decodeText(fields[5])));
         }
+        MultiplayerBattleSnapshot.ObjectiveSummarySnapshot objective =
+                MultiplayerBattleSnapshot.ObjectiveSummarySnapshot.none();
+        if ("SNAP3".equals(parts[0])) {
+            String[] fields = parts[index++].split(",", -1);
+            if (fields.length != 6) throw new IllegalArgumentException("Malformed objective summary snapshot");
+            objective = new MultiplayerBattleSnapshot.ObjectiveSummarySnapshot(
+                    decodeText(fields[0]),
+                    Boolean.parseBoolean(fields[1]),
+                    Boolean.parseBoolean(fields[2]),
+                    Integer.parseInt(fields[3]),
+                    Double.parseDouble(fields[4]),
+                    decodeText(fields[5]));
+        }
         if (index != parts.length) throw new IllegalArgumentException("Trailing snapshot payload fields");
-        return new MultiplayerBattleSnapshot(hostTick, ships, slots);
+        return new MultiplayerBattleSnapshot(hostTick, lastProcessedInputSequence, ships, slots, objective);
     }
 
     public static byte[] encodeEvent(MultiplayerReplicationV1.AuthoritativeEvent event) {

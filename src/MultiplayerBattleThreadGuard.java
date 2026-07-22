@@ -4,9 +4,17 @@
  */
 public final class MultiplayerBattleThreadGuard {
     private final Thread owner;
+    private final String ownerDescription;
 
     public MultiplayerBattleThreadGuard() {
+        this("authoritative simulation thread");
+    }
+
+    public MultiplayerBattleThreadGuard(String ownerDescription) {
         this.owner = Thread.currentThread();
+        this.ownerDescription = (ownerDescription == null || ownerDescription.isBlank())
+                ? "authoritative simulation thread"
+                : ownerDescription.trim();
     }
 
     public Thread owner() {
@@ -20,7 +28,7 @@ public final class MultiplayerBattleThreadGuard {
     public void assertOwnerThread(String action) {
         if (!isOwnerThread()) {
             String label = (action == null || action.isBlank()) ? "battle-state mutation" : action.trim();
-            throw new IllegalStateException(label + " must run on the authoritative simulation thread");
+            throw new IllegalStateException(label + " must run on the " + ownerDescription);
         }
     }
 }

@@ -216,7 +216,8 @@ public final class AISystem {
             pruneClosestRetargetState(ctx.ships);
 
             // Generic wave spawner (disabled for Last Stand and 4-team, which have custom pacing).
-            if (ctx.config.mode != GameMode.LAST_STAND
+            if (!ctx.multiplayerBattle
+                    && ctx.config.mode != GameMode.LAST_STAND
                     && ctx.config.mode != GameMode.FOUR_TEAM_DOMINATION
                     && !CampaignSystem.useAuthoredWaveSchedule(ctx)) {
                 ctx.enemyWaveTimer -= dt;
@@ -279,6 +280,7 @@ public final class AISystem {
             if (s == null) continue;
             if (!s.alive || s.dying) continue;
             if (s == ctx.player) continue;
+            if (ctx.multiplayerBattle && ctx.multiplayerPlayerControlledShipIds.contains(s.id)) continue;
             if (s.isWarpCharging()) {
                 long utilityStart = System.nanoTime();
                 steerWarpChargingShip(s, dt);

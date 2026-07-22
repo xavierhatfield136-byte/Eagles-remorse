@@ -59,10 +59,11 @@ public final class SinglePlayerCustomBattleCommandPath {
                     ctx != null && ctx.firingSecondaryManual);
         }
 
-        ensureRegistered(ctx.player);
+        int slotId = localSlotId(ctx);
+        ensureRegistered(slotId, ctx.player);
         double aimAngle = Math.atan2(cursorWorldY - ctx.player.y, cursorWorldX - ctx.player.x);
         MultiplayerCommandGate.PlayerInputFrame frame = MultiplayerInputFrameAdapter.fromLocalInput(
-                MultiplayerRulesV1.HOST_SLOT_ID,
+                slotId,
                 ctx.player.id,
                 sequence,
                 hostTick,
@@ -82,15 +83,22 @@ public final class SinglePlayerCustomBattleCommandPath {
                 frame.primaryHeld(), frame.secondaryHeld());
     }
 
-    private void ensureRegistered(Player player) {
+    private void ensureRegistered(int slotId, Player player) {
         if (player == null || player.id <= 0 || player.id == registeredShipId) return;
         registeredShipId = player.id;
         commandGate.registerSlot(new MultiplayerCommandGate.SlotOwnership(
-                MultiplayerRulesV1.HOST_SLOT_ID, registeredShipId, true, true));
+                slotId, registeredShipId, true, true));
     }
 
     private static boolean isCustomBattle(GameContext ctx) {
         return ctx != null && ctx.config != null && ctx.config.mode == GameMode.CUSTOM_BATTLES;
+    }
+
+    private static int localSlotId(GameContext ctx) {
+        if (ctx != null && ctx.multiplayerBattle) {
+            return ctx.multiplayerLocalSlotId <= 0 ? MultiplayerRulesV1.HOST_SLOT_ID : ctx.multiplayerLocalSlotId;
+        }
+        return MultiplayerRulesV1.HOST_SLOT_ID;
     }
 
     private static InputSnapshot safeInput(InputSnapshot input) {

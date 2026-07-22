@@ -15,6 +15,21 @@ public final class MultiplayerInputFrameAdapter {
     }
 
     public static MultiplayerCommandGate.PlayerInputFrame fromLocalInput(
+            String matchId,
+            String sessionNonce,
+            String playerId,
+            int slotId,
+            int controlledShipId,
+            long sequence,
+            long clientTick,
+            InputSnapshot input,
+            boolean primaryHeld,
+            boolean secondaryHeld) {
+        return fromLocalInput(matchId, sessionNonce, playerId, slotId, controlledShipId,
+                sequence, clientTick, input, localAimAngle(input), primaryHeld, secondaryHeld);
+    }
+
+    public static MultiplayerCommandGate.PlayerInputFrame fromLocalInput(
             int slotId,
             int controlledShipId,
             long sequence,
@@ -41,6 +56,23 @@ public final class MultiplayerInputFrameAdapter {
                 finiteOrZero(aimAngle),
                 primaryHeld,
                 secondaryHeld);
+    }
+
+    public static MultiplayerCommandGate.PlayerInputFrame fromLocalInput(
+            String matchId,
+            String sessionNonce,
+            String playerId,
+            int slotId,
+            int controlledShipId,
+            long sequence,
+            long clientTick,
+            InputSnapshot input,
+            double aimAngle,
+            boolean primaryHeld,
+            boolean secondaryHeld) {
+        return fromLocalInput(slotId, controlledShipId, sequence, clientTick, input,
+                aimAngle, primaryHeld, secondaryHeld)
+                .withIdentity(matchId, sessionNonce, playerId);
     }
 
     private static double localAimAngle(InputSnapshot input) {
