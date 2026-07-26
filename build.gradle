@@ -154,6 +154,36 @@ tasks.register("currentReleaseVerification", Test) {
     }
 }
 
+tasks.register("currentReleaseVerificationHeadless", Test) {
+    group = "verification"
+    description = "Run the current release validation slice without display-dependent Swing tests."
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    systemProperty "codex.disableAudio", "true"
+    systemProperty "game.userDataDir", layout.buildDirectory.dir("current-release-headless-test-user-data").get().asFile.absolutePath
+    doFirst {
+        delete(layout.buildDirectory.dir("current-release-headless-test-user-data"))
+    }
+    forkEvery = 3
+    maxHeapSize = "2048m"
+    filter {
+        includeTestsMatching "CampaignSensorSuiteTest"
+        includeTestsMatching "PlayerResourceSimplificationTest"
+        includeTestsMatching "TacticalCombatDepthSystemTest"
+        includeTestsMatching "CampaignFleetBuildingIntegrationTest"
+        includeTestsMatching "MissileRoleBehaviorTest"
+        includeTestsMatching "TitanAbilitySystemTest"
+        includeTestsMatching "WarpAndStrikeCraftRegressionTest"
+        includeTestsMatching "ProjectileScalePolicyTest"
+        includeTestsMatching "AISystemSmallCraftRangeTest"
+        includeTestsMatching "CampaignTacticalAlignmentTest"
+        includeTestsMatching "PowerManagementControlTest"
+        includeTestsMatching "AISystemEscortFormationTest"
+        includeTestsMatching "RendererHudLayoutTest"
+    }
+}
+
 tasks.named("compileJava") {
     dependsOn("purgeStraySourceClasses")
 }
