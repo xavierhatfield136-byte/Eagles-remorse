@@ -168,7 +168,9 @@ public class GameContext {
         WEDGE,
         LINE,
         ASSAULT,
-        SCREEN
+        SCREEN,
+        DEFENSIVE,
+        OFFENSIVE
     }
     public enum HudDetail {
         FULL,

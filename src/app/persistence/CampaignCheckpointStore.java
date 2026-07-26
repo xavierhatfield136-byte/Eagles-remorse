@@ -192,6 +192,9 @@ public final class CampaignCheckpointStore {
         public int strategicTorpedoCharges = 0;
         public int strategicSortiesLaunched = 0;
         public int strategicAtomicCharges = 0;
+        public double torpedoStrikeCooldownSec = 0.0;
+        public double carrierSortieCooldownSec = 0.0;
+        public double atomicStrikeCooldownSec = 0.0;
         public int nextGalaxySearchGroupId = 1;
         public int nextStrategicStrikeObjectId = 1;
         public int nextCampaignForceId = 1;
@@ -369,6 +372,9 @@ public final class CampaignCheckpointStore {
             strategicTorpedoCharges = Math.max(0, strategicTorpedoCharges);
             strategicSortiesLaunched = Math.max(0, strategicSortiesLaunched);
             strategicAtomicCharges = Math.max(0, strategicAtomicCharges);
+            torpedoStrikeCooldownSec = Math.max(0.0, finiteOr(torpedoStrikeCooldownSec, 0.0));
+            carrierSortieCooldownSec = Math.max(0.0, finiteOr(carrierSortieCooldownSec, 0.0));
+            atomicStrikeCooldownSec = Math.max(0.0, finiteOr(atomicStrikeCooldownSec, 0.0));
             nextGalaxySearchGroupId = Math.max(1, nextGalaxySearchGroupId);
             nextStrategicStrikeObjectId = Math.max(1, nextStrategicStrikeObjectId);
             nextCampaignForceId = Math.max(1, nextCampaignForceId);
@@ -598,6 +604,9 @@ public final class CampaignCheckpointStore {
                 cp.strategicTorpedoCharges = parseInt(props, "strategicTorpedoCharges", cp.strategicTorpedoCharges);
                 cp.strategicSortiesLaunched = parseInt(props, "strategicSortiesLaunched", cp.strategicSortiesLaunched);
                 cp.strategicAtomicCharges = parseInt(props, "strategicAtomicCharges", cp.strategicAtomicCharges);
+                cp.torpedoStrikeCooldownSec = parseDouble(props, "torpedoStrikeCooldownSec", cp.torpedoStrikeCooldownSec);
+                cp.carrierSortieCooldownSec = parseDouble(props, "carrierSortieCooldownSec", cp.carrierSortieCooldownSec);
+                cp.atomicStrikeCooldownSec = parseDouble(props, "atomicStrikeCooldownSec", cp.atomicStrikeCooldownSec);
                 cp.nextGalaxySearchGroupId = parseInt(props, "nextGalaxySearchGroupId", cp.nextGalaxySearchGroupId);
                 cp.nextStrategicStrikeObjectId = parseInt(props, "nextStrategicStrikeObjectId", cp.nextStrategicStrikeObjectId);
                 cp.nextCampaignForceId = parseInt(props, "nextCampaignForceId", cp.nextCampaignForceId);
@@ -741,6 +750,18 @@ public final class CampaignCheckpointStore {
         if (!props.containsKey("campaignSalvage")) {
             cp.campaignSalvage = 0;
             repairs.add("salvage ledger");
+        }
+        int migratedOre = Math.max(0, cp.campaignFuel)
+                + Math.max(0, cp.campaignSupplies)
+                + Math.max(0, cp.campaignAmmo)
+                + Math.max(0, cp.campaignSalvage) * 100;
+        if (migratedOre > 0) {
+            cp.campaignOre = Math.max(0, cp.campaignOre) + migratedOre;
+            cp.campaignFuel = 0;
+            cp.campaignSupplies = 0;
+            cp.campaignAmmo = 0;
+            cp.campaignSalvage = 0;
+            repairs.add("legacy resource conversion");
         }
         if (!props.containsKey("strategicTorpedoCharges")) {
             cp.strategicTorpedoCharges = 2;
@@ -1021,6 +1042,9 @@ public final class CampaignCheckpointStore {
             props.setProperty("strategicTorpedoCharges", String.valueOf(cp.strategicTorpedoCharges));
             props.setProperty("strategicSortiesLaunched", String.valueOf(cp.strategicSortiesLaunched));
             props.setProperty("strategicAtomicCharges", String.valueOf(cp.strategicAtomicCharges));
+            props.setProperty("torpedoStrikeCooldownSec", String.valueOf(cp.torpedoStrikeCooldownSec));
+            props.setProperty("carrierSortieCooldownSec", String.valueOf(cp.carrierSortieCooldownSec));
+            props.setProperty("atomicStrikeCooldownSec", String.valueOf(cp.atomicStrikeCooldownSec));
             props.setProperty("nextGalaxySearchGroupId", String.valueOf(cp.nextGalaxySearchGroupId));
             props.setProperty("nextStrategicStrikeObjectId", String.valueOf(cp.nextStrategicStrikeObjectId));
             props.setProperty("nextCampaignForceId", String.valueOf(cp.nextCampaignForceId));

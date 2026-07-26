@@ -7,16 +7,6 @@ final class CampaignTerritoryPresenter {
     private CampaignTerritoryPresenter() {}
 
     static List<CampaignSystem.CampaignTerritoryOverlayView> overlayViews(GameContext ctx) {
-        return legacyOverlayViews(ctx);
-    }
-
-    static List<String> detailLines(GameContext ctx, boolean expanded) {
-        List<String> lines = CampaignSystem.campaignSelectedTerritoryLines(ctx);
-        if (expanded || lines.size() <= 4) return lines;
-        return List.copyOf(lines.subList(0, 4));
-    }
-
-    static List<CampaignSystem.CampaignTerritoryOverlayView> legacyOverlayViews(GameContext ctx) {
         CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
         if (ctx == null || st == null) return List.of();
         CampaignSystem.synchronizeStrategicExpansionFromLive(st);
@@ -51,6 +41,12 @@ final class CampaignTerritoryPresenter {
         }
         out.sort(Comparator.comparing(CampaignSystem.CampaignTerritoryOverlayView::id));
         return List.copyOf(out);
+    }
+
+    static List<String> detailLines(GameContext ctx, boolean expanded) {
+        List<String> lines = CampaignSystem.campaignSelectedTerritoryLines(ctx);
+        if (expanded || lines.size() <= 4) return lines;
+        return List.copyOf(lines.subList(0, 4));
     }
 
     static List<CampaignSystem.CampaignBattleScarView> battleScarViews(GameContext ctx) {

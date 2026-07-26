@@ -138,20 +138,19 @@ final class CampaignProductionSystem {
         if (ctx == null || st == null || order == null) return;
         if (order.kind == CampaignSystem.CampaignYardOrderKind.CONSTRUCTION) {
             CampaignSystem.PersistentFleetEntry predecessor = CampaignSystem.latestDestroyedPersistentFleetEntry(st, order.role);
-            String buildName = (predecessor == null)
-                    ? order.sourceLabel + " Yard Build"
-                    : CampaignSystem.basePersistentFleetName(predecessor.name) + " II";
-            CampaignSystem.CampaignLocation producingYard = CampaignSystem.campaignLocationById(st, order.sourceLocationId);
-            Faction producingFaction = producingYard == null || producingYard.ownerFaction == null
-                    || producingYard.ownerFaction == Faction.ENEMY
+            Faction producingFaction = order.producingFaction == null || order.producingFaction == Faction.ENEMY
                     ? Faction.ALLY
-                    : producingYard.ownerFaction;
+                    : order.producingFaction;
+            String buildName = (predecessor == null)
+                    ? CampaignSystem.factionBoardName(producingFaction) + " " + order.sourceLabel + " Yard Build"
+                    : CampaignSystem.basePersistentFleetName(predecessor.name) + " II";
             CampaignSystem.PersistentFleetEntry built = CampaignSystem.addPersistentFleetEntry(st, order.role, buildName,
                     CampaignSystem.CAMPAIGN_FLAGSHIP_COMMAND_GROUP, producingFaction);
             if (built != null) {
                 built.hullConditionFrac = 1.0;
                 built.shieldConditionFrac = 1.0;
-                CampaignSystem.appendPersistentServiceHistory(built, "COMMISSIONED AT " + order.sourceLabel);
+                CampaignSystem.appendPersistentServiceHistory(built, "COMMISSIONED AT " + order.sourceLabel
+                        + " FOR " + CampaignSystem.factionBoardName(producingFaction));
                 if (predecessor != null) {
                     built.crewExperience = predecessor.crewExperience / 4;
                     CampaignSystem.appendPersistentServiceHistory(built, "SUCCESSOR TO SLOT " + predecessor.slotId);

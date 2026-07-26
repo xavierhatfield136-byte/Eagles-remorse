@@ -96,10 +96,7 @@ final class CampaignAfterActionSystem {
         out.add("Friendly Fleet: " + campaignAfterActionFleetDamageLabel(st));
         out.add("Resources: credits " + Math.max(0, ctx.credits)
                 + "  ore " + CampaignSystem.currentCampaignOre(ctx)
-                + "  fuel " + CampaignSystem.campaignFuel(ctx)
-                + "  supplies " + CampaignSystem.campaignSupplies(ctx)
-                + "  ammo " + CampaignSystem.campaignAmmo(ctx)
-                + "  salvage " + CampaignSystem.campaignSalvageStock(ctx));
+                + "  fleet " + CampaignSystem.campaignFleetStrainReadout(ctx));
         out.add("Reputation: " + CampaignSystem.campaignReputationReadout(ctx));
         out.add("Intel: " + CampaignSystem.campaignIntelReadout(ctx)
                 + "  |  Exposure " + CampaignSystem.campaignExposureReadout(ctx));

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -95,12 +96,13 @@ class CampaignTacticalAlignmentTest {
     }
 
     @Test
-    void tacticalProjectileSpeedBudgetLeavesMoreTimeToReadImpacts() {
+    void tacticalProjectileSpeedBudgetKeepsGunsReadableAndMakesMissilesFast() {
         double energyNavyProjectileSpeed = DoctrineRegistry.ENERGY_NAVY.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double kineticProjectileSpeed = DoctrineRegistry.KINETIC_CONSORTIUM.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double aegisProjectileSpeed = DoctrineRegistry.AEGIS_LATTICE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
         double viperProjectileSpeed = DoctrineRegistry.VIPER_BARRAGE.mainProjectileSpeed * Turret.GUN_PROJECTILE_SPEED_MULT;
-        double baselineMissileSpeed = 220.0 * Turret.MISSILE_SPEED_MULT;
+        double baselineMissileSpeed = 220.0 * Turret.MISSILE_SPEED_MULT
+                * Missile.GLOBAL_SPEED_MULT * 2.35;
         double interceptorMissileSpeed = baselineMissileSpeed * 1.18;
 
         assertTrue(energyNavyProjectileSpeed <= 640.0,
@@ -111,8 +113,9 @@ class CampaignTacticalAlignmentTest {
                 "aegis bolts should remain anticipatable, got " + aegisProjectileSpeed);
         assertTrue(viperProjectileSpeed <= 840.0,
                 "backup barrage guns should remain readable, got " + viperProjectileSpeed);
-        assertTrue(interceptorMissileSpeed <= 236.0,
-                "missiles should stay slow enough for anticipation, got " + interceptorMissileSpeed);
+        assertTrue(interceptorMissileSpeed >= 1000.0,
+                "missiles should now be fast enough to force real point-defense reactions, got " + interceptorMissileSpeed);
+        assertEquals(2.0, Missile.GLOBAL_SPEED_MULT, 0.0);
         assertTrue(Ship.BEAM_BOLT_SPEED <= 700.0);
         assertTrue(Turret.GUN_PROJECTILE_SPEED_MULT <= 0.84);
         assertTrue(Turret.MISSILE_SPEED_MULT <= 0.90);

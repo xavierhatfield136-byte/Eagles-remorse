@@ -3,7 +3,7 @@ import java.util.List;
 
 final class TacticalMapActionCatalog {
     private static final List<TacticalMapActionProvider> PROVIDERS = List.of(
-            new LegacyTacticalMapActionProvider()
+            (ctx, actions) -> actions.addAll(CampaignSystem.legacyTacticalMapVisibleActions(ctx))
     );
 
     private TacticalMapActionCatalog() {}

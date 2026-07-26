@@ -54,7 +54,7 @@ public final class EconomySystem {
     private static final WeakHashMap<GameContext, Map<Integer, Double>> SHIP_REFIT_COOLDOWNS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, Double>> ESCORT_RESPAWN_TIMERS = new WeakHashMap<>();
     private static final WeakHashMap<GameContext, Map<Integer, HaulerLogisticsState>> HAULER_LOGISTICS = new WeakHashMap<>();
-    private static final int DEBRIS_PELLET_ORE_REWARD = 65;
+    private static final int DEBRIS_PELLET_ORE_REWARD = 100;
     private static final double SALVAGE_PICKUP_RADIUS_BONUS = 38.0;
 
     private enum CommanderPersonality {

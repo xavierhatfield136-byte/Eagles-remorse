@@ -270,7 +270,6 @@ class MainMenuPanelMultiplayerEntryTest {
                 launched::set,
                 () -> {},
                 () -> {},
-                () -> {},
                 () -> MainMenuPanel.ResumeCampaignState.unavailable("No checkpoint"),
                 null);
     }

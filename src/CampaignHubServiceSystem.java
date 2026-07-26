@@ -95,8 +95,8 @@ final class CampaignHubServiceSystem {
                     quantity = profile.alignment == CampaignSystem.HubAlignment.GREEN ? 6 : 3;
                 }
                 case SALVAGE -> {
-                    quantity = st == null ? 0 : Math.min(st.campaignSalvage, 16);
-                    payoutCredits = GameContext.scaleCreditReward((int) Math.round(quantity * 11 * profile.tradeMul));
+                    quantity = Math.min(Math.max(0, availableOre / 25), 16);
+                    payoutCredits = GameContext.scaleCreditReward((int) Math.round(quantity * 25 * 1.4 * profile.tradeMul));
                 }
                 case FUEL -> creditCost = GameContext.scaleCreditEarnings((int) Math.round(70 * priceMul));
             }

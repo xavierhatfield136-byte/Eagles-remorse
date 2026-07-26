@@ -395,6 +395,8 @@ public abstract class Ship {
     public double aiArrivalFireDelayTimer = 0.0;
     public double aiLastEngagementX = Double.NaN;
     public double aiLastEngagementY = Double.NaN;
+    public double aiMissileStandoffTimer = 0.0;
+    public int aiMissileStandoffTargetId = -1;
     public int aiCommittedTargetId = -1;
     public double aiTargetCommitTimer = 0.0;
     public int aiIntentTypeOrdinal = -1;
@@ -412,7 +414,8 @@ public abstract class Ship {
         BALANCED,
         ATTACK,
         DEFENSE,
-        PURSUIT
+        PURSUIT,
+        CUSTOM
     }
     public enum PowerBus {
         PROPULSION,
@@ -2555,8 +2558,19 @@ public abstract class Ship {
     }
 
     public PowerPreset cyclePowerPreset() {
-        PowerPreset[] presets = PowerPreset.values();
-        int idx = powerPreset.ordinal() + 1;
+        PowerPreset[] presets = {
+                PowerPreset.BALANCED,
+                PowerPreset.ATTACK,
+                PowerPreset.DEFENSE,
+                PowerPreset.PURSUIT
+        };
+        int idx = 0;
+        for (int i = 0; i < presets.length; i++) {
+            if (presets[i] == powerPreset) {
+                idx = i + 1;
+                break;
+            }
+        }
         if (idx >= presets.length) idx = 0;
         setPowerPreset(presets[idx]);
         return powerPreset;
@@ -2569,6 +2583,7 @@ public abstract class Ship {
             case ATTACK -> setPowerBusAllocation(0.16, 0.13, 0.31, 0.12, 0.16, 0.12);
             case DEFENSE -> setPowerBusAllocation(0.13, 0.30, 0.14, 0.14, 0.19, 0.10);
             case PURSUIT -> setPowerBusAllocation(0.33, 0.12, 0.18, 0.12, 0.14, 0.11);
+            case CUSTOM -> normalizePowerAllocation();
             default -> setPowerBusAllocation(0.18, 0.18, 0.19, 0.15, 0.18, 0.12);
         }
     }
@@ -2599,6 +2614,16 @@ public abstract class Ship {
         powerEngineering = Math.max(0.0, engineering);
         powerAuxiliary = Math.max(0.0, auxiliary);
         normalizePowerAllocation();
+    }
+
+    public void setCustomPowerBusAllocation(double propulsion,
+                                            double shield,
+                                            double tactical,
+                                            double sensor,
+                                            double engineering,
+                                            double auxiliary) {
+        setPowerBusAllocation(propulsion, shield, tactical, sensor, engineering, auxiliary);
+        powerPreset = PowerPreset.CUSTOM;
     }
 
     public double powerBusFraction(PowerBus bus) {
@@ -6799,6 +6824,8 @@ public abstract class Ship {
         crewOrder = CrewOrder.DAMAGE_CONTROL;
         aiCommittedTargetId = -1;
         aiTargetCommitTimer = 0.0;
+        aiMissileStandoffTimer = 0.0;
+        aiMissileStandoffTargetId = -1;
         aiForcedEngageTimer = 0.0;
         aiArrivalFireDelayTimer = Math.max(aiArrivalFireDelayTimer, 1.5);
         applyTemporaryDisable(Math.min(4.0, Math.max(1.5, seconds * 0.2)));

@@ -306,10 +306,15 @@ public final class AISystem {
             if (s.aiArrivalFireDelayTimer > 0.0) {
                 s.aiArrivalFireDelayTimer = Math.max(0.0, s.aiArrivalFireDelayTimer - Math.max(0.0, dt));
             }
+            if (s.aiMissileStandoffTimer > 0.0) {
+                s.aiMissileStandoffTimer = Math.max(0.0, s.aiMissileStandoffTimer - Math.max(0.0, dt));
+                if (s.aiMissileStandoffTimer <= 0.0) s.aiMissileStandoffTargetId = -1;
+            }
             if (s.aiTargetCommitTimer > 0.0) {
                 s.aiTargetCommitTimer = Math.max(0.0, s.aiTargetCommitTimer - Math.max(0.0, dt));
                 if (s.aiTargetCommitTimer <= 0.0) {
                     s.aiCommittedTargetId = -1;
+                    s.aiMissileStandoffTargetId = -1;
                 }
             }
             tickCachedAiIntent(ctx, s, dt);
@@ -1925,6 +1930,11 @@ public final class AISystem {
         return s.role != ShipRole.HAULER && s.role != ShipRole.TRANSPORT;
     }
 
+    private static boolean ignoresPlayerFormationOrders(Ship ship) {
+        if (ship == null) return false;
+        return ship.role == ShipRole.MINER || ship.role == ShipRole.HAULER;
+    }
+
     private static double roleWeightForFlagship(ShipRole role) {
         if (role == null) return 1.0;
         Double titanWeight = titanFlagshipWeight(role);
@@ -1953,7 +1963,7 @@ public final class AISystem {
         int teamId = fleetGroupKeyForShip(state, s);
         Ship flagship = state.flagships.get(teamId);
         if (flagship == null || !flagship.alive || flagship.dying || flagship.hp <= 0) return false;
-        if (s.role == ShipRole.MINER) return false;
+        if (ignoresPlayerFormationOrders(s)) return false;
 
         boolean playerDirected = playerCanDirectTeamFleet(ctx, s, flagship);
         GameContext.FleetCommand cmd = resolveFleetCommand(ctx, s, flagship);
@@ -2063,7 +2073,7 @@ public final class AISystem {
                 : state.autoFormation.getOrDefault(teamId, GameContext.FleetFormation.WEDGE);
         double spacingMul = state.autoFormationSpacing.getOrDefault(teamId, 1.0);
         Ship commandAnchor = (cmd == GameContext.FleetCommand.ESCORT && escortAnchor != null) ? escortAnchor : flagship;
-        if (desiredFormation == GameContext.FleetFormation.ASSAULT) {
+        if (usesEnemyFacingFormation(desiredFormation)) {
             Ship assaultContact = assaultFormationContact(ctx, state, s, commandAnchor, target);
             if (isAlive(assaultContact)) {
                 target = assaultContact;
@@ -2072,8 +2082,8 @@ public final class AISystem {
         int slot = formationSlotIndex(members, flagship, s);
         int wingCount = formationWingCount(members, flagship);
         double formationSpacing = preferredRange(s) * 0.35 * spacingMul;
-        double[] anchor = (desiredFormation == GameContext.FleetFormation.ASSAULT)
-                ? assaultFormationAnchor(commandAnchor, members, flagship, s, formationSpacing, cmd, target)
+        double[] anchor = usesEnemyFacingFormation(desiredFormation)
+                ? assaultFormationAnchor(commandAnchor, members, flagship, s, formationSpacing, cmd, target, desiredFormation)
                 : formationAnchor(commandAnchor, slot, wingCount, s.radius, formationSpacing, desiredFormation, cmd);
         Ship threatFocus = state.missileThreatFocus.get(teamId);
         if (isPointDefenseRole(s) && isAlive(threatFocus) && threatFocus != s) {
@@ -2151,6 +2161,9 @@ public final class AISystem {
         boolean assaultConfrontation = desiredFormation == GameContext.FleetFormation.ASSAULT
                 && isAlive(target)
                 && shouldAssaultShipSeekConfrontation(s);
+        boolean offensiveConfrontation = desiredFormation == GameContext.FleetFormation.OFFENSIVE
+                && isAlive(target)
+                && shouldOffensiveShipSeekConfrontation(s);
 
         switch (cmd) {
             case RETREAT, RTB, REPAIR -> {
@@ -2168,12 +2181,12 @@ public final class AISystem {
             }
             case DEFEND, FORM_UP, ESCORT -> {
                 double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
-                if (assaultConfrontation && ad <= Math.max(120.0, s.radius * 4.0)) {
+                if ((assaultConfrontation || offensiveConfrontation) && ad <= Math.max(120.0, s.radius * 4.0)) {
                     s.aiForcedEngageTimer = Math.max(s.aiForcedEngageTimer, 0.75);
                     fight(ctx, s, target, dt, teamConfidence, SquadObjective.INTERCEPT);
                 } else if (ad > Math.max(70.0, s.radius * 2.5)) {
                     double spdMul = (objective == SquadObjective.INTERCEPT) ? 1.06 : (objective == SquadObjective.RESERVE ? 0.82 : 0.92);
-                    double assaultMul = assaultConfrontation ? 1.12 : 1.0;
+                    double assaultMul = (assaultConfrontation || offensiveConfrontation) ? 1.12 : 1.0;
                     moveToward(s, anchor[0], anchor[1], speed * spdMul * assaultMul * coherenceSpeedMul, dt);
                 } else {
                     Ship followAnchor = (commandAnchor == null) ? flagship : commandAnchor;
@@ -2203,7 +2216,7 @@ public final class AISystem {
                 }
             }
             case ATTACK -> {
-                if (assaultConfrontation) {
+                if (assaultConfrontation || offensiveConfrontation) {
                     s.aiForcedEngageTimer = Math.max(s.aiForcedEngageTimer, 0.75);
                     double ad = Math.hypot(anchor[0] - s.x, anchor[1] - s.y);
                     if (ad > Math.max(150.0, s.radius * 4.8)) {
@@ -3022,14 +3035,21 @@ public final class AISystem {
 
     private static void commitToTarget(Ship seeker, Ship target, double duration) {
         if (seeker == null || !isAlive(target)) return;
+        boolean newTarget = seeker.aiCommittedTargetId != target.id;
         seeker.aiCommittedTargetId = target.id;
         seeker.aiTargetCommitTimer = Math.max(seeker.aiTargetCommitTimer, Math.max(0.3, duration));
+        if (newTarget && hasOffensiveMissileTurret(seeker)) {
+            seeker.aiMissileStandoffTargetId = target.id;
+            seeker.aiMissileStandoffTimer = Math.max(seeker.aiMissileStandoffTimer, openingMissileStandoffSeconds(seeker));
+        }
     }
 
     private static void clearTargetCommitment(Ship seeker) {
         if (seeker == null) return;
         seeker.aiCommittedTargetId = -1;
         seeker.aiTargetCommitTimer = 0.0;
+        seeker.aiMissileStandoffTimer = 0.0;
+        seeker.aiMissileStandoffTargetId = -1;
     }
 
     private static double targetCommitDuration(Ship seeker, Ship target, SquadObjective objective) {
@@ -3530,8 +3550,22 @@ public final class AISystem {
 
     private static double[] assaultFormationAnchor(Ship flagship, List<Ship> members, Ship teamFlagship, Ship ship,
                                                    double baseSpacing, GameContext.FleetCommand command, Ship contact) {
+        return assaultFormationAnchor(flagship, members, teamFlagship, ship, baseSpacing, command, contact,
+                GameContext.FleetFormation.ASSAULT);
+    }
+
+    private static double[] assaultFormationAnchor(Ship flagship, List<Ship> members, Ship teamFlagship, Ship ship,
+                                                   double baseSpacing, GameContext.FleetCommand command, Ship contact,
+                                                   GameContext.FleetFormation formation) {
         if (flagship == null) return new double[]{0.0, 0.0};
-        return assaultFormationAnchorAt(flagship.x, flagship.y, flagship.angle, members, teamFlagship, ship, baseSpacing, command, contact);
+        return assaultFormationAnchorAt(flagship.x, flagship.y, flagship.angle, members, teamFlagship, ship,
+                baseSpacing, command, contact, formation);
+    }
+
+    private static boolean usesEnemyFacingFormation(GameContext.FleetFormation formation) {
+        return formation == GameContext.FleetFormation.ASSAULT
+                || formation == GameContext.FleetFormation.DEFENSIVE
+                || formation == GameContext.FleetFormation.OFFENSIVE;
     }
 
     private static double[] formationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
@@ -3582,6 +3616,14 @@ public final class AISystem {
     private static double[] assaultFormationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
                                                      List<Ship> members, Ship flagship, Ship ship,
                                                      double baseSpacing, GameContext.FleetCommand command, Ship contact) {
+        return assaultFormationAnchorAt(flagshipX, flagshipY, flagshipAngle, members, flagship, ship,
+                baseSpacing, command, contact, GameContext.FleetFormation.ASSAULT);
+    }
+
+    private static double[] assaultFormationAnchorAt(double flagshipX, double flagshipY, double flagshipAngle,
+                                                     List<Ship> members, Ship flagship, Ship ship,
+                                                     double baseSpacing, GameContext.FleetCommand command, Ship contact,
+                                                     GameContext.FleetFormation formation) {
         if (ship == null) return new double[]{flagshipX, flagshipY};
         double spacing = Math.max(76.0, baseSpacing + ship.radius * 1.15);
         double dx = isAlive(contact) ? contact.x - flagshipX : 0.0;
@@ -3616,11 +3658,16 @@ public final class AISystem {
             case RETREAT, RTB, REPAIR -> -0.28;
             default -> 0.12;
         };
+        if (formation == GameContext.FleetFormation.DEFENSIVE) {
+            commandAdvance = Math.min(commandAdvance, 0.08);
+        } else if (formation == GameContext.FleetFormation.OFFENSIVE) {
+            commandAdvance = Math.max(commandAdvance, 0.48);
+        }
         double layerDepth = assaultLayerDepth(shipLayer);
         double[] layout = assaultLayerLayout(shipLayer, shipIndex, layerCounts[shipLayer.ordinal()], spacing);
         double offForward = spacing * (layerDepth + commandAdvance) - layout[1];
         if (contactDist > spacing * 2.0) {
-            double desiredBetween = contactDist * assaultLayerContactFraction(shipLayer);
+            double desiredBetween = contactDist * assaultLayerContactFraction(shipLayer, formation);
             double layeredForward = spacing * (layerDepth + commandAdvance);
             double minForward = Math.max(0.0, ship.radius + 90.0);
             double maxForward = Math.max(minForward, contactDist - contact.radius - ship.radius - 80.0);
@@ -3635,6 +3682,30 @@ public final class AISystem {
     }
 
     private static double assaultLayerContactFraction(AssaultLayer layer) {
+        return assaultLayerContactFraction(layer, GameContext.FleetFormation.ASSAULT);
+    }
+
+    private static double assaultLayerContactFraction(AssaultLayer layer, GameContext.FleetFormation formation) {
+        if (formation == GameContext.FleetFormation.DEFENSIVE) {
+            return switch (layer) {
+                case ESCORT -> 0.78;
+                case LINE -> 0.68;
+                case CAPITAL -> 0.56;
+                case CENTRAL_TITAN -> 0.42;
+                case MOTHERSHIP -> 0.0;
+                case REAR_SUPPORT -> 0.20;
+            };
+        }
+        if (formation == GameContext.FleetFormation.OFFENSIVE) {
+            return switch (layer) {
+                case ESCORT -> 0.72;
+                case LINE -> 0.64;
+                case CAPITAL -> 0.50;
+                case CENTRAL_TITAN -> 0.36;
+                case MOTHERSHIP -> 0.0;
+                case REAR_SUPPORT -> 0.16;
+            };
+        }
         return switch (layer) {
             case ESCORT -> 0.66;
             case LINE -> 0.56;
@@ -3693,6 +3764,13 @@ public final class AISystem {
         if (assaultLayerForShip(ship) != AssaultLayer.LINE) return false;
         if (hullFrac(ship) < 0.42) return false;
         return ship.shieldMax <= 1e-6 || shieldFrac(ship) >= 0.16;
+    }
+
+    private static boolean shouldOffensiveShipSeekConfrontation(Ship ship) {
+        if (!isAlive(ship) || ship.role == null) return false;
+        if (isSupportRole(ship.role)) return false;
+        if (hullFrac(ship) < 0.34) return false;
+        return ship.shieldMax <= 1e-6 || shieldFrac(ship) >= 0.12;
     }
 
     private static AssaultLayer assaultLayerForShip(Ship ship) {
@@ -3833,10 +3911,10 @@ public final class AISystem {
                 if (cmd == null || cmd == GameContext.FleetCommand.AUTO) cmd = GameContext.FleetCommand.FORM_UP;
                 int slot = formationSlotIndex(members, flagship, member);
                 double memberSpacing = preferredRange(member) * 0.35 * spacingMul;
-                Ship assaultContact = (desiredFormation == GameContext.FleetFormation.ASSAULT)
+                Ship assaultContact = usesEnemyFacingFormation(desiredFormation)
                         ? assaultFormationContact(ctx, state, member, flagship, null)
                         : null;
-                double[] exit = (desiredFormation == GameContext.FleetFormation.ASSAULT)
+                double[] exit = usesEnemyFacingFormation(desiredFormation)
                         ? assaultFormationAnchorAt(
                                 flagship.warpExitX(),
                                 flagship.warpExitY(),
@@ -3846,7 +3924,8 @@ public final class AISystem {
                                 member,
                                 memberSpacing,
                                 cmd,
-                                assaultContact)
+                                assaultContact,
+                                desiredFormation)
                         : formationAnchorAt(
                                 flagship.warpExitX(),
                                 flagship.warpExitY(),
@@ -3954,6 +4033,10 @@ public final class AISystem {
                     ? s.radius + target.radius + 64.0
                     : Math.max(baseRange * 0.88, s.radius + target.radius + 220.0);
             if (range < standoffFloor) range = standoffFloor;
+            double openingMissileRange = openingMissileStandoffRange(ctx, s, target);
+            if (openingMissileRange > 0.0 && !smallCraftDogfight && !push && !fallBack) {
+                range = Math.max(range, openingMissileRange);
+            }
             if (smallCraftDogfight) {
                 double dogfightGunRange = effectivePrimaryGunRangeAgainstTarget(
                         s, target, 720.0 * gunRangeRoleMul(s.role) * CampaignSystem.targetingRangeMul(ctx));
@@ -4286,6 +4369,7 @@ public final class AISystem {
         gunRange = gunRange * gunRangeRoleMul(s.role) * rangeMul;
         missileRange = missileRange * missileRangeRoleMul(s.role) * rangeMul;
         double sustainedRange = sustainedEngagementRangeForTarget(ctx, s, target);
+        boolean openingMissileStandoff = openingMissileStandoffRange(ctx, s, target) > 0.0;
 
         ArrayList<Integer> mainGunIndices = null;
         int mainGunCount = 0;
@@ -4373,6 +4457,10 @@ public final class AISystem {
 
                 // --- GUN turrets ---
                 boolean ciwsStyle = Turret.usesCiwsPelletsAgainst(s, t, target);
+                if (!ciwsStyle && openingMissileStandoff
+                        && dist > effectiveGunRangeForTarget(s, t, target, gunRange) * 1.04) {
+                    continue;
+                }
                 double allowedGunRange = gunFireAuthorityRange(ctx, s, t, target, gunRange);
                 if (dist > allowedGunRange) continue;
                 if (!ciwsStyle) {
@@ -4615,6 +4703,51 @@ public final class AISystem {
             best = Math.max(best, effectiveGunRangeForTarget(host, turret, target, baseGunRange));
         }
         return (best > 0.0) ? best : Math.max(0.0, baseGunRange);
+    }
+
+    private static double openingMissileStandoffRange(GameContext ctx, Ship host, Ship target) {
+        if (!isAlive(host) || !isAlive(target) || host.turrets == null) return 0.0;
+        if (host.aiMissileStandoffTimer <= 0.0 || host.aiMissileStandoffTargetId != target.id) return 0.0;
+        double rangeMul = CampaignSystem.targetingRangeMul(ctx);
+        double baseMissileRange = ((host.role == ShipRole.BASE || host.role == ShipRole.STATIC_TURRET) ? 2450.0 : 1780.0)
+                * missileRangeRoleMul(host.role) * rangeMul;
+        double bestMissileRange = 0.0;
+        for (Turret turret : host.turrets) {
+            if (!isOffensiveMissileTurret(turret)) continue;
+            bestMissileRange = Math.max(bestMissileRange, missileRangeForTurret(turret, baseMissileRange));
+        }
+        if (bestMissileRange <= 0.0) return 0.0;
+
+        double baseGunRange = ((host.role == ShipRole.BASE || host.role == ShipRole.STATIC_TURRET) ? 760.0 : 460.0)
+                * gunRangeRoleMul(host.role) * rangeMul;
+        double gunRange = effectivePrimaryGunRangeAgainstTarget(host, target, baseGunRange);
+        double preferred = preferredRange(host);
+        double floor = Math.max(preferred * 1.18, gunRange + Math.max(180.0, host.radius + target.radius + 80.0));
+        double desired = Math.max(floor, bestMissileRange * 0.68);
+        return Math.min(bestMissileRange * 0.82, desired);
+    }
+
+    private static boolean hasOffensiveMissileTurret(Ship ship) {
+        if (ship == null || ship.turrets == null) return false;
+        for (Turret turret : ship.turrets) {
+            if (isOffensiveMissileTurret(turret)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isOffensiveMissileTurret(Turret turret) {
+        if (turret == null || turret.kind != Turret.Kind.MISSILE) return false;
+        Turret.MissileRole role = (turret.missileRole == null) ? Turret.MissileRole.ANTI_MEDIUM : turret.missileRole;
+        return role != Turret.MissileRole.INTERCEPT;
+    }
+
+    private static double openingMissileStandoffSeconds(Ship ship) {
+        if (ship == null) return 0.0;
+        return switch (ship.role) {
+            case MISSILE_BOAT, ARTILLERY_SHIP, BOMBER -> 7.0;
+            case CARRIER, DRONE_CARRIER, BATTLESHIP, DREADNOUGHT, SUPERSHIP -> 6.0;
+            default -> 5.0;
+        };
     }
 
     static double sustainedEngagementRangeForTarget(GameContext ctx, Ship observer, Ship target) {
@@ -6108,7 +6241,7 @@ public final class AISystem {
         if (!isAlive(ship) || !isAlive(flagship)) return false;
         if (ship == flagship) return false;
         if (ctx != null && ship == ctx.player) return false;
-        if (ship.role == ShipRole.MINER) return false;
+        if (ignoresPlayerFormationOrders(ship)) return false;
         if (!ship.canUseBattlefieldWarp()) return false;
         if (ship.faction == null || flagship.faction == null) return false;
         if (ship.faction.teamId() != flagship.faction.teamId()) return false;

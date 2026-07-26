@@ -97,10 +97,6 @@ public final class FirstHourOnboardingSystem {
         if (ctx.campaign != null) {
             state.startCredits = ctx.credits;
             state.startOre = CampaignSystem.currentCampaignOre(ctx);
-            state.startFuel = CampaignSystem.campaignFuel(ctx);
-            state.startSupplies = CampaignSystem.campaignSupplies(ctx);
-            state.startAmmo = CampaignSystem.campaignAmmo(ctx);
-            state.startSalvage = CampaignSystem.campaignSalvageStock(ctx);
             state.startIntel = ctx.campaign.campaignIntelLevel;
             state.startGreenFavor = ctx.campaign.greenContractFavor;
             state.startYellowLeverage = ctx.campaign.yellowLiberationFavor;
@@ -171,7 +167,7 @@ public final class FirstHourOnboardingSystem {
         }
         Beat beat = state.current;
         if (beat == Beat.COMPLETE) return;
-        int w = Math.min(560, Math.max(340, viewW - 40));
+        int w = Math.min(660, Math.max(320, viewW - 40));
         int x = (viewW - w) / 2;
         int y = 18;
         g2.setColor(new Color(5, 12, 24, 226));
@@ -181,15 +177,19 @@ public final class FirstHourOnboardingSystem {
         g2.setFont(new Font("Consolas", Font.BOLD, 13));
         g2.setColor(new Color(140, 206, 255));
         int beatCount = Math.max(1, Beat.values().length - 1);
-        g2.drawString("FIRST-HOUR COMMAND BRIEFING  " + (beat.ordinal() + 1) + "/" + beatCount, x + 14, y + 22);
+        g2.drawString(fitLine(g2.getFontMetrics(),
+                "FIRST-HOUR COMMAND BRIEFING  " + (beat.ordinal() + 1) + "/" + beatCount,
+                w - 28), x + 14, y + 22);
         g2.setFont(new Font("Consolas", Font.BOLD, 17));
         g2.setColor(Color.WHITE);
-        g2.drawString(beat.title, x + 14, y + 45);
+        g2.drawString(fitLine(g2.getFontMetrics(), beat.title, w - 28), x + 14, y + 45);
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(214, 228, 244));
-        g2.drawString(trim(beat.detail, 82), x + 14, y + 65);
+        g2.drawString(fitLine(g2.getFontMetrics(), beat.detail, w - 28), x + 14, y + 65);
         g2.setColor(shouldShowReminder(ctx) ? ExperienceRuntime.warningColor() : new Color(158, 180, 204));
-        g2.drawString((shouldShowReminder(ctx) ? "Reminder: " : "") + reminderFor(beat), x + 14, y + 84);
+        g2.drawString(fitLine(g2.getFontMetrics(),
+                (shouldShowReminder(ctx) ? "Reminder: " : "") + reminderFor(beat),
+                w - 28), x + 14, y + 84);
     }
 
     private static void drawArchive(State state, Graphics2D g2, int viewW, int viewH) {
@@ -310,10 +310,7 @@ public final class FirstHourOnboardingSystem {
             }
             if (ctx.credits != state.startCredits
                     || CampaignSystem.currentCampaignOre(ctx) != state.startOre
-                    || CampaignSystem.campaignFuel(ctx) != state.startFuel
-                    || CampaignSystem.campaignSupplies(ctx) != state.startSupplies
-                    || CampaignSystem.campaignAmmo(ctx) != state.startAmmo
-                    || CampaignSystem.campaignSalvageStock(ctx) != state.startSalvage) {
+                    || CampaignSystem.campaignFleetRosterEntries(ctx).size() != state.startFleetSize) {
                 state.complete.add(Beat.ECONOMY);
                 state.complete.add(Beat.RESOURCE_RECOVERY);
             }
@@ -337,10 +334,6 @@ public final class FirstHourOnboardingSystem {
         if (state.tacticalEngagementSeen && ctx.campaign != null && CampaignSystem.isStrategicOvermapMode(ctx)) {
             state.complete.add(Beat.SALVAGE_EXTRACTION);
         }
-        if (CampaignSystem.campaignSupplies(ctx) < 26) {
-            state.shortageSeen = true;
-            state.complete.add(Beat.SHORTAGE);
-        }
         if (state.checkpointSeen) state.complete.add(Beat.SAVE);
     }
 
@@ -363,6 +356,18 @@ public final class FirstHourOnboardingSystem {
     private static String trim(String value, int max) {
         if (value == null) return "";
         return value.length() <= max ? value : value.substring(0, Math.max(0, max - 3)) + "...";
+    }
+
+    private static String fitLine(FontMetrics metrics, String value, int maxWidth) {
+        if (value == null) return "";
+        if (metrics == null || maxWidth <= 0 || metrics.stringWidth(value) <= maxWidth) return value;
+        String ellipsis = "...";
+        int ellipsisWidth = metrics.stringWidth(ellipsis);
+        int end = value.length();
+        while (end > 1 && metrics.stringWidth(value.substring(0, end)) + ellipsisWidth > maxWidth) {
+            end--;
+        }
+        return value.substring(0, Math.max(1, end)) + ellipsis;
     }
 
     private static Beat[] activeBeats() {

@@ -87,9 +87,11 @@ public final class ThemeArt {
                         clamp((int) Math.round(height * 0.280), 20, 32));
             }
             case HUD_SPECIAL_FRAME -> {
-                int left = clamp((int) Math.round(width * 0.048), 24, 42);
-                int top = clamp((int) Math.round(height * 0.120), 42, 74);
-                yield new FrameMetrics(left, top, left, clamp((int) Math.round(height * 0.070), 18, 32),
+                int left = clamp((int) Math.round(width * 0.060), 36, 68);
+                int top = clamp((int) Math.round(height * 0.120), 44, 78);
+                int right = clamp((int) Math.round(width * 0.064), 40, 74);
+                int bottom = clamp((int) Math.round(height * 0.078), 24, 44);
+                yield new FrameMetrics(left, top, right, bottom,
                         clamp((int) Math.round(height * 0.072), 24, 38),
                         clamp((int) Math.round(height * 0.102), 34, 50));
             }

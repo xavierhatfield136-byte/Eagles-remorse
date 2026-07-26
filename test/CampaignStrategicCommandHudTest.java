@@ -1813,6 +1813,37 @@ class CampaignStrategicCommandHudTest {
     }
 
     @Test
+    void tacticalReconActionRequiresTheSameSuppliesItReports() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        ctx.campaign.strategicOvermapMode = false;
+        ctx.campaign.campaignSupplies = 1;
+        ctx.ui.tacticalMapTab = UiState.TacticalMapTab.CONTACTS;
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Enemy Patrol",
+                "Local contact",
+                "Tracked",
+                2200.0,
+                1800.0,
+                true,
+                true);
+        ctx.ui.tacticalMapSelectionKind = UiState.TacticalMapSelectionKind.CONTACT;
+        ctx.ui.tacticalMapSelectionLabel = "Enemy Patrol";
+        ctx.ui.tacticalMapSelectionSubtitle = "Local contact";
+        ctx.ui.tacticalMapSelectionDetail = "Tracked";
+        ctx.ui.tacticalMapSelectionX = 2200.0;
+        ctx.ui.tacticalMapSelectionY = 1800.0;
+        ctx.ui.tacticalMapSelectionHostile = true;
+
+        CampaignSystem.CampaignAction recon = CampaignSystem.tacticalMapVisibleActions(ctx).stream()
+                .filter(action -> "TACTICAL_SEND_RECON".equals(action.id))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(false, recon.enabled);
+        assertEquals("insufficient supplies", recon.disabledReason);
+    }
+
+    @Test
     void strategicAndTacticalTopTabsFitTheirRenderedChipRects() throws Exception {
         BufferedImage image = new BufferedImage(640, 360, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = image.createGraphics();

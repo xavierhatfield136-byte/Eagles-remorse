@@ -35,6 +35,9 @@ public final class CampaignSystem extends CampaignSystemModels {
     static final int STARTING_TORPEDO_INVENTORY = 6;
     private static final int STARTING_SORTIE_INVENTORY = 4;
     static final int STARTING_ATOMIC_INVENTORY = 1;
+    static final double TORPEDO_STRIKE_COOLDOWN_SEC = 60.0;
+    static final double CARRIER_SORTIE_COOLDOWN_SEC = 60.0;
+    static final double ATOMIC_STRIKE_COOLDOWN_SEC = 300.0;
     private static final int TORPEDO_STRIKE_BASE_AMMO_COST = 28;
     private static final int TORPEDO_STRIKE_BASE_FUEL_COST = 14;
     private static final int SORTIE_STRIKE_BASE_AMMO_COST = 20;
@@ -250,32 +253,16 @@ public final class CampaignSystem extends CampaignSystemModels {
         return CampaignLocationQueries.mainCampaignLocations(ctx);
     }
 
-    static List<CampaignLocation> legacyMainCampaignLocations(GameContext ctx) {
-        return CampaignLocationQueries.legacyMainCampaignLocations(ctx);
-    }
-
     public static List<CampaignLocation> campaignAreasOfInterest(GameContext ctx) {
         return CampaignLocationQueries.campaignAreasOfInterest(ctx);
-    }
-
-    static List<CampaignLocation> legacyCampaignAreasOfInterest(GameContext ctx) {
-        return CampaignLocationQueries.legacyCampaignAreasOfInterest(ctx);
     }
 
     public static CampaignLocation currentCampaignLocation(GameContext ctx) {
         return CampaignLocationQueries.currentCampaignLocation(ctx);
     }
 
-    static CampaignLocation legacyCurrentCampaignLocation(GameContext ctx) {
-        return CampaignLocationQueries.legacyCurrentCampaignLocation(ctx);
-    }
-
     public static CampaignLocation selectedCampaignLocation(GameContext ctx) {
         return CampaignLocationQueries.selectedCampaignLocation(ctx);
-    }
-
-    static CampaignLocation legacySelectedCampaignLocation(GameContext ctx) {
-        return CampaignLocationQueries.legacySelectedCampaignLocation(ctx);
     }
 
     static CampaignLocation nearestDockingRangeCampaignLocation(CampaignState st) {
@@ -371,18 +358,7 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     public static boolean consumeTransportRepairSupport(GameContext ctx, double supplyPerSecond, double dt) {
         CampaignState st = state(ctx);
-        if (ctx == null || st == null || !st.enabled || dt <= 0.0) return true;
-        st.transportRepairSupplyRemainder += Math.max(0.0, supplyPerSecond) * dt;
-        int whole = (int) Math.floor(st.transportRepairSupplyRemainder);
-        if (whole <= 0) return st.campaignSupplies > 0;
-        if (st.campaignSupplies < whole) {
-            st.transportRepairSupplyRemainder = 0.0;
-            st.transportRepairSupportActive = false;
-            st.transportRepairSupportShips = 0;
-            return false;
-        }
-        st.campaignSupplies -= whole;
-        st.transportRepairSupplyRemainder -= whole;
+        if (st != null) st.transportRepairSupplyRemainder = 0.0;
         return true;
     }
 
@@ -390,7 +366,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (st == null) return;
         st.transportRepairSupportShips = Math.max(0, supportingShips);
-        st.transportRepairSupportActive = st.transportRepairSupportShips > 0 && st.campaignSupplies > 0;
+        st.transportRepairSupportActive = st.transportRepairSupportShips > 0;
     }
 
     public static List<String> campaignTransportRepairSupportLines(GameContext ctx) {
@@ -873,12 +849,10 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static String correctiveActionLine(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "CORRECTIVE ACTION  |  OFFLINE";
-        if (campaignFuel(ctx) < 24) return "CORRECTIVE ACTION  |  DOCK OR CALL TRADERS FOR FUEL";
-        if (campaignSupplies(ctx) < 18) return "CORRECTIVE ACTION  |  DOCK, TRADE, OR PAUSE SENSOR TEMPO";
-        if (campaignAmmo(ctx) < 24) return "CORRECTIVE ACTION  |  REARM BEFORE ANOTHER STRIKE";
-        if (campaignSalvageStock(ctx) < 10) return "CORRECTIVE ACTION  |  SALVAGE OR DOCK BEFORE FIELD REPAIR";
+        if (currentCampaignOre(ctx) < 80) return "CORRECTIVE ACTION  |  MINE OR COLLECT SALVAGE FOR ORE";
+        if (ctx.credits < 100) return "CORRECTIVE ACTION  |  COMPLETE CONTRACTS OR SELL ORE";
         if (campaignFleetStrainPercent(ctx) >= 68.0) return "CORRECTIVE ACTION  |  SHIFT TO LOGISTICS CONSERVATION";
-        return "CORRECTIVE ACTION  |  STORES HOLD FOR CURRENT PLAN";
+        return "CORRECTIVE ACTION  |  FLEET READY FOR CURRENT PLAN";
     }
 
     public static String campaignExposureReadout(GameContext ctx) {
@@ -1231,10 +1205,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         return CampaignSidebarPresenter.summaryLines(ctx);
     }
 
-    static List<String> legacyCampaignSummarySidebarLines(GameContext ctx) {
-        return CampaignSidebarPresenter.legacySummaryLines(ctx);
-    }
-
     public static List<String> campaignStrategicExpansionLines(GameContext ctx) {
         CampaignState st = state(ctx);
         if (st == null) return List.of("Strategic campaign data unavailable.");
@@ -1400,10 +1370,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         return CampaignWarPresenter.baselineTelemetryLines(ctx);
     }
 
-    static List<String> legacyCampaignWarBaselineTelemetryLines(GameContext ctx) {
-        return CampaignWarPresenter.legacyBaselineTelemetryLines(ctx);
-    }
-
     public static List<String> campaignTerritoryDetailLines(GameContext ctx, boolean expanded) {
         return CampaignTerritoryPresenter.detailLines(ctx, expanded);
     }
@@ -1473,10 +1439,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     public static List<CampaignTerritoryOverlayView> campaignTerritoryOverlayViews(GameContext ctx) {
         return CampaignTerritoryPresenter.overlayViews(ctx);
-    }
-
-    static List<CampaignTerritoryOverlayView> legacyCampaignTerritoryOverlayViews(GameContext ctx) {
-        return CampaignTerritoryPresenter.legacyOverlayViews(ctx);
     }
 
     public static List<CampaignBattleScarView> campaignBattleScarViews(GameContext ctx) {
@@ -1568,10 +1530,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     public static List<String> campaignBattleWarningLines(GameContext ctx, int maxLines) {
         return CampaignWarPresenter.battleWarningLines(ctx, maxLines);
-    }
-
-    static List<String> legacyCampaignBattleWarningLines(GameContext ctx, int maxLines) {
-        return CampaignWarPresenter.legacyBattleWarningLines(ctx, maxLines);
     }
 
     public static List<String> campaignStalemateOpportunityLines(GameContext ctx) {
@@ -4827,6 +4785,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             case LINE -> "broadside control, slower turns";
             case ASSAULT -> "tight strike push, higher exposure";
             case SCREEN -> "escort coverage and missile defense";
+            case DEFENSIVE -> "enemy-facing wall, flagship held back";
+            case OFFENSIVE -> "forward attack wall, escorts seek hostiles";
         };
     }
 
@@ -5084,10 +5044,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         EconomyLogisticsIndustrySystem.LogisticsLedger ledger = st.economyExpansion.logistics;
         ArrayList<String> out = new ArrayList<>();
         out.add("Credits: " + ctx.credits + "  |  Ore " + currentCampaignOre(ctx));
-        out.add("Operational State: Fuel " + logisticsStateLabel(campaignFuel(ctx), 42, 84)
-                + "  |  Supply " + logisticsStateLabel(campaignSupplies(ctx), 34, 76));
-        out.add("Strike Availability: Ammo " + campaignAmmo(ctx) + "  |  Torpedo Packages " + Math.max(0, st.strategicTorpedoCharges));
-        out.add("Recovery Resources: Salvage " + campaignSalvageStock(ctx) + "  |  Supplies " + campaignSupplies(ctx));
+        out.add("Operational State: Fleet " + campaignFleetStrainReadout(ctx)
+                + "  |  Ore " + currentCampaignOre(ctx));
+        out.add("Strike Cooldowns: Torpedo " + strikeCooldownChip(st, "TORPEDO_STRIKE")
+                + "  |  Bomber " + strikeCooldownChip(st, "CARRIER_SORTIE")
+                + "  |  Nuclear " + strikeCooldownChip(st, "ATOMIC_STRIKE"));
+        out.add("Recovery Resources: Credits " + ctx.credits + "  |  Ore " + currentCampaignOre(ctx));
         out.add("Blue Intervention Reserve: " + (int) Math.round(MathUtil.clamp(st.blueInterventionReserve, 0.0, 100.0)) + "%");
         out.add("Pressure: Intel " + campaignIntelReadout(ctx) + "  |  Exposure " + campaignExposureReadout(ctx));
         out.add("Fleet Strain: " + campaignFleetStrainReadout(ctx));
@@ -5121,10 +5083,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("No logistics trend.");
         ArrayList<String> out = new ArrayList<>();
-        out.add("Fuel State: " + logisticsStateLabel(campaignFuel(ctx), 42, 84));
-        out.add("Supply State: " + logisticsStateLabel(campaignSupplies(ctx), 34, 76));
-        out.add("Ammo State: " + logisticsStateLabel(campaignAmmo(ctx), 44, 88));
-        out.add("Salvage State: " + logisticsStateLabel(campaignSalvageStock(ctx), 10, 28));
+        out.add("Credit State: " + logisticsStateLabel(ctx.credits, 120, 420));
+        out.add("Ore State: " + logisticsStateLabel(currentCampaignOre(ctx), 140, 500));
+        out.add("Fleet State: " + campaignFleetStrainReadout(ctx));
+        out.add("Strike State: T " + strikeCooldownChip(st, "TORPEDO_STRIKE")
+                + "  B " + strikeCooldownChip(st, "CARRIER_SORTIE")
+                + "  N " + strikeCooldownChip(st, "ATOMIC_STRIKE"));
         out.add("Blue Reserve State: " + logisticsStateLabel((int) Math.round(st.blueInterventionReserve), 32, 70));
         out.add(routeCostForecastLine(ctx));
         out.add(strikeCostForecastLine(ctx));
@@ -5138,14 +5102,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("No route selected.");
         ArrayList<String> out = new ArrayList<>();
-        if (campaignFuel(ctx) < 36) out.add("FUEL LOW  |  LONG BURNS RISKY");
-        if (campaignSupplies(ctx) < 28) out.add("SUPPLIES LOW  |  SWEEPS / REFIT LIMITED");
-        if (campaignAmmo(ctx) < 36) out.add("AMMO LOW  |  STRIKES CONSTRAINED");
-        if (campaignSalvageStock(ctx) < 8) out.add("SALVAGE LOW  |  REPAIR FLEX THIN");
         if (st.blueInterventionReserve < 22.0) out.add("BLUE RESERVE LOW  |  THEATER OPS LIMITED");
         if (campaignFleetStrainPercent(ctx) >= 72.0) out.add("FLEET STRAIN HIGH  |  RECOVERY EFFICIENCY FALLING");
         out.addAll(EconomyLogisticsIndustrySystem.shortageWarningLines(st.economyExpansion));
-        if (out.isEmpty()) out.add("LOGISTICS STABLE  |  NO IMMEDIATE SHORTFALL");
+        if (out.isEmpty()) out.add("FLEET ECONOMY STABLE  |  NO IMMEDIATE SHORTFALL");
         out.add(routeSupportPreviewLine(ctx));
         out.add(logisticsBlockerLine(ctx));
         out.add(correctiveActionLine(ctx));
@@ -5171,8 +5131,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                     "Engagement: Use direct intercept once a hostile search group is tracked."
             );
         }
-        int sortieCap = strategicSortieCapacity(ctx);
-        int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
         StrikePreflight torpedo = buildStrikePreflight(ctx, "TORPEDO_STRIKE");
         StrikePreflight sortie = buildStrikePreflight(ctx, "CARRIER_SORTIE");
         StrikePreflight atomic = buildStrikePreflight(ctx, "ATOMIC_STRIKE");
@@ -5181,9 +5139,9 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : ("Max Range " + (int) Math.round(maxStrategicStrikeRange(ctx, st))
                 + "  |  Sensor Horizon " + (int) Math.round(maxStrategicSensorRange(ctx, st)));
         return List.of(
-                "Torpedo Strikes Ready: " + Math.max(0, st.strategicTorpedoCharges)
-                        + "  |  Sorties " + sortiesLeft + "/" + Math.max(0, sortieCap)
-                        + "  |  Atomic " + Math.max(0, st.strategicAtomicCharges),
+                "Strike Cooldowns: Torpedo " + strikeCooldownChip(st, "TORPEDO_STRIKE")
+                        + "  |  Bomber " + strikeCooldownChip(st, "CARRIER_SORTIE")
+                        + "  |  Nuclear " + strikeCooldownChip(st, "ATOMIC_STRIKE"),
                 "Target Window: " + selectedStrikeOpportunityLine(ctx),
                 "Range Gate: " + rangeLine,
                 "Strike Status: T " + (torpedo.valid ? "READY" : torpedo.reason.toUpperCase(Locale.US))
@@ -5197,26 +5155,24 @@ public final class CampaignSystem extends CampaignSystemModels {
         ensureStrategicOvermapReady(ctx);
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of();
-        int sortieCapacity = strategicSortieCapacity(ctx);
-        int sortiesReady = Math.max(0, sortieCapacity - st.strategicSortiesLaunched);
         String recovery = strikeReplenishmentExplanation(ctx);
         return List.of(
                 strikeAvailabilityBrief(buildStrikePreflight(ctx, "TORPEDO_STRIKE"),
                         "Torpedo Strike",
-                        Math.max(0, st.strategicTorpedoCharges) + "/" + strategicTorpedoCapacity(ctx) + " expendable torpedo packages",
-                        "1 torpedo package",
+                        strikeCooldownChip(st, "TORPEDO_STRIKE"),
+                        "60s battle cooldown",
                         "Tracked",
                         recovery),
                 strikeAvailabilityBrief(buildStrikePreflight(ctx, "CARRIER_SORTIE"),
                         "Carrier Sortie",
-                        sortiesReady + "/" + Math.max(0, sortieCapacity) + " reusable carrier deck slots ready",
-                        "1 carrier deck slot until recovered",
+                        strikeCooldownChip(st, "CARRIER_SORTIE"),
+                        "60s battle cooldown",
                         "Identified",
                         recovery),
                 strikeAvailabilityBrief(buildStrikePreflight(ctx, "ATOMIC_STRIKE"),
                         "Atomic Strike",
-                        Math.max(0, st.strategicAtomicCharges) + "/" + strategicAtomicCapacity(ctx) + " expendable atomic devices",
-                        "1 atomic device",
+                        strikeCooldownChip(st, "ATOMIC_STRIKE"),
+                        "300s battle cooldown",
                         "Target-Quality",
                         recovery)
         );
@@ -5228,13 +5184,10 @@ public final class CampaignSystem extends CampaignSystemModels {
                                                                     String capacityCost,
                                                                     String requiredIntel,
                                                                     String replenishment) {
-        String resourceCost = "Ammo " + preflight.ammoCost
-                + "  |  Fuel " + preflight.fuelCost
-                + "  |  Supplies " + preflight.supplyCost;
         return new StrikeAvailabilityBrief(
                 strikeName,
                 inventory,
-                resourceCost,
+                "No ammo, fuel, supply, or charge cost",
                 capacityCost,
                 requiredIntel,
                 preflight.effect,
@@ -5246,11 +5199,7 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     public static String strikeReplenishmentExplanation(GameContext ctx) {
         CampaignState st = state(ctx);
-        CampaignLocation hub = st == null ? null : nearestStrikeRecoveryHub(st);
-        String hubName = hub == null ? "a discovered friendly installation with Strike Rearm" : hub.name;
-        return "Rearm at " + hubName
-                + "; recover limited packages from supply caches and mission rewards; "
-                + "industrial hubs rebuild expendable torpedoes/atomic devices while carrier deck slots recover for reuse.";
+        return "Strikes recover on per-battle cooldowns: torpedo 60s, heavy bomber 60s, nuclear 300s.";
     }
 
     public static List<String> campaignStrikeReadinessLines(GameContext ctx) {
@@ -5265,12 +5214,10 @@ public final class CampaignSystem extends CampaignSystemModels {
                     "RELAY NET " + st.sensorRelayNodes.size() + " ACTIVE"
             );
         }
-        int sortieCap = strategicSortieCapacity(ctx);
-        int sortiesLeft = Math.max(0, sortieCap - st.strategicSortiesLaunched);
         return List.of(
-                "TORPEDO READY " + Math.max(0, st.strategicTorpedoCharges)
-                        + "  |  SORTIE " + sortiesLeft + "/" + Math.max(0, sortieCap)
-                        + "  |  ATOMIC " + Math.max(0, st.strategicAtomicCharges),
+                "TORPEDO " + strikeCooldownChip(st, "TORPEDO_STRIKE")
+                        + "  |  BOMBER " + strikeCooldownChip(st, "CARRIER_SORTIE")
+                        + "  |  NUCLEAR " + strikeCooldownChip(st, "ATOMIC_STRIKE"),
                 "RANGE " + (int) Math.round(maxStrategicStrikeRange(ctx, st))
                         + "  |  SENSOR " + (int) Math.round(maxStrategicSensorRange(ctx, st)),
                 "RECON " + campaignIntelReadout(ctx),
@@ -5631,9 +5578,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         PersistentFleetEntry focusedFleet = campaignFleetFocusEntry(ctx);
         FleetCommitment focusedCommitment = (focusedFleet == null) ? FleetCommitment.AUTO : resolveFleetCommitment(focusedFleet.tacticalCommitmentId);
         FleetPosture currentPosture = resolveFleetPosture(st.selectedFleetPostureId);
-        int sweepCost = sweepSupplyCost(currentPosture);
         double sweepCooldown = campaignSensorSweepCooldownRemaining(ctx);
-        boolean sweepReady = st.campaignSupplies >= sweepCost && sweepCooldown <= 0.0;
+        boolean sweepReady = sweepCooldown <= 0.0;
         StrikePreflight torpedoPreflight = buildStrikePreflight(ctx, "TORPEDO_STRIKE");
         StrikePreflight sortiePreflight = buildStrikePreflight(ctx, "CARRIER_SORTIE");
         StrikePreflight atomicPreflight = buildStrikePreflight(ctx, "ATOMIC_STRIKE");
@@ -5711,7 +5657,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         out.add(action("OPEN_TRADE",
                 "OPEN TRADE",
                 selectedHasTrade ? "Open trade at the selected station." : "No trade-capable station selected.",
-                selectedHasTrade ? "Dock at the selected trade hub to buy fuel, sell salvage, or use local markets."
+                selectedHasTrade ? "Dock at the selected trade hub to exchange ore, credits, and local services."
                         : "Select a station with trade service first.",
                 CampaignActionCategory.SERVICES,
                 true,
@@ -5725,7 +5671,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 actionCtx -> openSelectedHubService(actionCtx, HubService.TRADE)));
         out.add(action("REQUEST_GREEN_SUPPORT",
                 "REQUEST GREEN SUPPORT",
-                "Spend Green Reputation for allied supplies, intel, or route support.",
+                "Spend Green Reputation for allied intel, repairs, or route support.",
                 "Green support depends on favors earned through convoy, station, and miner outcomes.",
                 CampaignActionCategory.SUPPORT,
                 true,
@@ -5855,11 +5801,9 @@ public final class CampaignSystem extends CampaignSystemModels {
 
         if (tab == UiState.CampaignCommandTab.NAV || tab == UiState.CampaignCommandTab.RESOURCES) {
             String routeBlocker = "";
-            if (campaignFuel(ctx) < 8) routeBlocker = "fuel critically low";
-            else if (campaignSupplies(ctx) < 6) routeBlocker = "supplies critically low";
-            else if (hasCourse) routeBlocker = routeSustainabilityBlocker(ctx, st, selected, freeTarget);
+            if (hasCourse) routeBlocker = routeSustainabilityBlocker(ctx, st, selected, freeTarget);
             CampaignLocation recoveryRoute = nearestRecoveryRouteLocation(st);
-            boolean needsRecoveryRoute = recoveryRoute != null && (campaignFuel(ctx) < 34 || campaignSupplies(ctx) < 26);
+            boolean needsRecoveryRoute = recoveryRoute != null && campaignFleetStrainPercent(ctx) >= 70.0;
             out.add(action("PLOT_COURSE",
                     freeTarget ? "PLOT COURSE HERE" : "PLOT COURSE",
                     freeTarget ? "Free-space destination selected and ready for engagement." : "Use the current selection as the next route lock.",
@@ -6224,12 +6168,11 @@ public final class CampaignSystem extends CampaignSystemModels {
             out.add(action("SIGNAL_SWEEP",
                     (tab == UiState.CampaignCommandTab.STRIKES) ? "RECON SWEEP" : "SIGNAL SWEEP",
                     "Scan nearby space and identify uncertain contacts.",
-                    "Spend supplies to reveal nearby contacts, find sites, and improve map intel.",
+                    "Reveal nearby contacts, find sites, and improve map intel.",
                     CampaignActionCategory.SENSORS,
                     true,
                     sweepReady,
-                    sweepCooldown > 0.0 ? "cooldown " + (int) Math.ceil(sweepCooldown) + "s"
-                            : (st.campaignSupplies >= sweepCost ? "" : "insufficient supplies for scan"),
+                    sweepCooldown > 0.0 ? "cooldown " + (int) Math.ceil(sweepCooldown) + "s" : "",
                     sweepReady ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
                     tab == UiState.CampaignCommandTab.STRIKES && !hasStrikeTarget,
                     "",
@@ -6238,13 +6181,13 @@ public final class CampaignSystem extends CampaignSystemModels {
                     "FOCUSED TRACK",
                     hasSelectedStrikeTarget ? "Refine one hostile contact into a strike-quality firing solution." : "No hostile contact selected.",
                     hasSelectedStrikeTarget
-                            ? "Spend light stores to hold the selected target in the net and improve strike reliability."
+                            ? "Hold the selected target in the net and improve strike reliability."
                             : "Select a hostile contact on the map first.",
                     CampaignActionCategory.SENSORS,
                     true,
-                    hasSelectedStrikeTarget && st.campaignSupplies >= 2,
-                    hasSelectedStrikeTarget ? ((st.campaignSupplies >= 2) ? "" : "insufficient supplies for focused track") : "no hostile contact selected",
-                    hasSelectedStrikeTarget && st.campaignSupplies >= 2 ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
+                    hasSelectedStrikeTarget,
+                    hasSelectedStrikeTarget ? "" : "no hostile contact selected",
+                    hasSelectedStrikeTarget ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
                     tab != UiState.CampaignCommandTab.STRIKES,
                     "",
                     CampaignSystem::requestCampaignFocusedTrack));
@@ -6254,36 +6197,12 @@ public final class CampaignSystem extends CampaignSystemModels {
                     "Check nearby trade and service traffic to reveal hubs and side sites.",
                     CampaignActionCategory.SENSORS,
                     true,
-                    st.campaignSupplies >= 3,
-                    (st.campaignSupplies >= 3) ? "" : "insufficient supplies for traffic audit",
-                    st.campaignSupplies >= 3 ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
+                    true,
+                    "",
+                    CampaignActionState.AVAILABLE,
                     false,
                     "",
                     CampaignSystem::requestCampaignTrafficAudit));
-            out.add(action("DEPLOY_RELAY",
-                    "DEPLOY RELAY",
-                    "Drop a persistent relay drone to extend sensor ownership over one area.",
-                    "Spend supplies to anchor a relay drone over the selected contact or current fleet position.",
-                    CampaignActionCategory.SENSORS,
-                    true,
-                    st.campaignSupplies >= 4,
-                    (st.campaignSupplies >= 4) ? "" : "insufficient supplies for relay drone",
-                    st.campaignSupplies >= 4 ? CampaignActionState.AVAILABLE : CampaignActionState.DISABLED,
-                    false,
-                    "",
-                    CampaignSystem::requestCampaignDeployRelay));
-            out.add(action("SCOUT_SURGE",
-                    "SCOUT SURGE",
-                    "Push a short-lived scout net for sharper fixes and faster hostile classification.",
-                    "Spend supplies to send scouts through the selected area and identify more contacts.",
-                    CampaignActionCategory.SENSORS,
-                    true,
-                    st.campaignSupplies >= 5,
-                    (st.campaignSupplies >= 5) ? "" : "insufficient supplies for scout surge",
-                    st.campaignSupplies >= 5 ? CampaignActionState.RECOMMENDED : CampaignActionState.DISABLED,
-                    false,
-                    "",
-                    CampaignSystem::requestCampaignScoutSurge));
             GalaxySearchGroup selectedSearchGroup = selectedCampaignSearchGroup(ctx);
             out.add(action("TRACK_TARGET",
                     "TRACK CONTACT",
@@ -6561,7 +6480,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (!overmapMode) {
                 out.add(action("TORPEDO_STRIKE",
                         "TORPEDO STRIKE",
-                        "Launch a long-range torpedo strike. Cost A" + torpedoPreflight.ammoCost + " F" + torpedoPreflight.fuelCost + ".",
+                        "Launch a long-range torpedo strike. " + strikeCooldownChip(st, "TORPEDO_STRIKE") + ".",
                         torpedoPreflight.effect + " " + torpedoPreflight.retaliation,
                         CampaignActionCategory.STRIKES,
                         true,
@@ -6573,7 +6492,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         CampaignSystem::launchSelectedCampaignTorpedoStrike));
                 out.add(action("CARRIER_SORTIE",
                         "CARRIER SORTIE",
-                        "Launch a carrier sortie. Cost A" + sortiePreflight.ammoCost + " F" + sortiePreflight.fuelCost + " S" + sortiePreflight.supplyCost + ".",
+                        "Launch a carrier sortie. " + strikeCooldownChip(st, "CARRIER_SORTIE") + ".",
                         sortiePreflight.effect + " " + sortiePreflight.retaliation,
                         CampaignActionCategory.STRIKES,
                         true,
@@ -6585,7 +6504,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                         CampaignSystem::launchSelectedCampaignSortie));
                 out.add(action("ATOMIC_STRIKE",
                         "ATOMIC STRIKE",
-                        "Commit the atomic option. Cost A" + atomicPreflight.ammoCost + " F" + atomicPreflight.fuelCost + " S" + atomicPreflight.supplyCost + ".",
+                        "Commit the atomic option. " + strikeCooldownChip(st, "ATOMIC_STRIKE") + ".",
                         atomicPreflight.effect + " " + atomicPreflight.retaliation,
                         CampaignActionCategory.STRIKES,
                         true,
@@ -6848,11 +6767,11 @@ public final class CampaignSystem extends CampaignSystemModels {
             out.add(action("TACTICAL_SEND_RECON",
                     "SEND RECON",
                     hasHostileContact ? "Sharpen the selected contact and refresh the local picture." : "Refresh local reconnaissance around the mission space.",
-                    hasHostileContact ? "Burn light stores to hold the selected hostile on a firmer track." : "Refresh the mission sensor picture and spike active markers.",
+                    hasHostileContact ? "Hold the selected hostile on a firmer track." : "Refresh the mission sensor picture and spike active markers.",
                     CampaignActionCategory.SENSORS,
                     true,
-                    st.campaignSupplies >= (hasHostileContact ? 1 : 2),
-                    st.campaignSupplies >= (hasHostileContact ? 2 : 3) ? "" : "insufficient supplies",
+                    true,
+                    "",
                     hasHostileContact ? CampaignActionState.RECOMMENDED : CampaignActionState.AVAILABLE,
                     false,
                     "",
@@ -7012,7 +6931,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     CampaignSystem::trackSelectedCampaignContact));
             out.add(action("TACTICAL_TORPEDO_STRIKE",
                     "TORPEDO STRIKE",
-                    "Launch a long-range torpedo strike. Cost A" + torpedoPreflight.ammoCost + " F" + torpedoPreflight.fuelCost + ".",
+                    "Launch a long-range torpedo strike. " + strikeCooldownChip(st, "TORPEDO_STRIKE") + ".",
                     torpedoPreflight.effect + " " + torpedoPreflight.retaliation,
                     CampaignActionCategory.STRIKES,
                     true,
@@ -7024,7 +6943,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     CampaignSystem::launchSelectedCampaignTorpedoStrike));
             out.add(action("TACTICAL_CARRIER_SORTIE",
                     "CARRIER SORTIE",
-                    "Launch a carrier sortie. Cost A" + sortiePreflight.ammoCost + " F" + sortiePreflight.fuelCost + " S" + sortiePreflight.supplyCost + ".",
+                    "Launch a carrier sortie. " + strikeCooldownChip(st, "CARRIER_SORTIE") + ".",
                     sortiePreflight.effect + " " + sortiePreflight.retaliation,
                     CampaignActionCategory.STRIKES,
                     true,
@@ -7036,7 +6955,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                     CampaignSystem::launchSelectedCampaignSortie));
             out.add(action("TACTICAL_ATOMIC_STRIKE",
                     "ATOMIC STRIKE",
-                    "Commit the atomic option. Cost A" + atomicPreflight.ammoCost + " F" + atomicPreflight.fuelCost + " S" + atomicPreflight.supplyCost + ".",
+                    "Commit the atomic option. " + strikeCooldownChip(st, "ATOMIC_STRIKE") + ".",
                     atomicPreflight.effect + " " + atomicPreflight.retaliation,
                     CampaignActionCategory.STRIKES,
                     true,
@@ -7582,35 +7501,27 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         switch (id) {
             case "TORPEDO_STRIKE" -> {
-                effect = "Heavy direct damage to a tracked hostile; spends a scarce torpedo package.";
+                effect = "Heavy direct damage to a tracked hostile; limited by battle cooldown.";
                 retaliation = "High alert and exposure spike.";
                 if (!hostile) reason = "no tracked hostile contact selected";
                 else if (!trackedIntel) reason = "target intel below Tracked";
-                else if (st.strategicTorpedoCharges <= 0) reason = "no torpedo strikes ready";
-                else if (st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (st.campaignFuel < fuelCost) reason = "insufficient fuel";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             case "CARRIER_SORTIE" -> {
-                effect = "Flexible strike package with recon follow-through; ties up carrier readiness.";
+                effect = "Flexible strike package with recon follow-through; limited by battle cooldown.";
                 retaliation = "High alert and exposure increase.";
                 int sortieCap = strategicSortieCapacity(ctx);
                 if (!hostile) reason = "no identified hostile contact selected";
                 else if (!identifiedIntel) reason = "target intel below Identified";
                 else if (sortieCap <= 0) reason = "no carrier sorties available";
-                else if (st.strategicSortiesLaunched >= sortieCap) reason = "sortie decks committed";
-                else if (st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (st.campaignFuel < fuelCost) reason = "insufficient fuel";
-                else if (st.campaignSupplies < supplyCost) reason = "insufficient supplies";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             case "ATOMIC_STRIKE" -> {
-                effect = "Devastating strike with severe theater consequence.";
+                effect = "Devastating strike with severe theater consequence; limited by a long battle cooldown.";
                 retaliation = "Massive alert, exposure, and political blowback.";
                 if (!hostile) reason = "no target-quality hostile contact selected";
                 else if (!"Target-Quality".equalsIgnoreCase(intel)) reason = "target intel below Target-Quality";
-                else if (st.strategicAtomicCharges <= 0) reason = "atomic option unavailable";
-                else if (st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (st.campaignFuel < fuelCost) reason = "insufficient fuel";
-                else if (st.campaignSupplies < supplyCost) reason = "insufficient supplies";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             default -> {
                 reason = "unknown strike action";
@@ -7629,51 +7540,16 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static StrikeCost strikeCost(GameContext ctx, CampaignState st, String actionId, String intelLabel, boolean tactical) {
         String id = (actionId == null) ? "" : actionId.trim().toUpperCase(Locale.US);
-        int ammo = 0;
-        int fuel = 0;
-        int supplies = 0;
-        int charges = 0;
         switch (id) {
-            case "TORPEDO_STRIKE", "TACTICAL_TORPEDO_STRIKE" -> {
-                ammo = TORPEDO_STRIKE_BASE_AMMO_COST;
-                fuel = TORPEDO_STRIKE_BASE_FUEL_COST;
-                charges = 1;
-            }
-            case "CARRIER_SORTIE", "TACTICAL_CARRIER_SORTIE" -> {
-                ammo = SORTIE_STRIKE_BASE_AMMO_COST;
-                fuel = SORTIE_STRIKE_BASE_FUEL_COST;
-                supplies = SORTIE_STRIKE_BASE_SUPPLY_COST;
-            }
-            case "ATOMIC_STRIKE", "TACTICAL_ATOMIC_STRIKE" -> {
-                ammo = ATOMIC_STRIKE_BASE_AMMO_COST;
-                fuel = ATOMIC_STRIKE_BASE_FUEL_COST;
-                supplies = ATOMIC_STRIKE_BASE_SUPPLY_COST;
-                charges = 1;
+            case "TORPEDO_STRIKE", "TACTICAL_TORPEDO_STRIKE",
+                 "CARRIER_SORTIE", "TACTICAL_CARRIER_SORTIE",
+                 "ATOMIC_STRIKE", "TACTICAL_ATOMIC_STRIKE" -> {
+                return new StrikeCost(0, 0, 0, 0);
             }
             default -> {
                 return new StrikeCost(0, 0, 0, 0);
             }
         }
-        if (tactical) {
-            return new StrikeCost(ammo, fuel, supplies, charges);
-        }
-        double multiplier = 1.0;
-        if ("Target-Quality".equalsIgnoreCase(intelLabel)) {
-            multiplier += 0.18;
-        } else if ("Tracked".equalsIgnoreCase(intelLabel)) {
-            multiplier += 0.08;
-        }
-        double heat = (st == null) ? 0.0 : MathUtil.clamp(st.recentStrikePressure / 100.0, 0.0, 1.0);
-        multiplier += heat * 0.35;
-        StrategicRoleProfile profile = friendlyStrategicRoleProfile(ctx, st);
-        multiplier -= profile.logisticsSupport() * 0.14;
-        multiplier -= profile.carrierProjection() * 0.08;
-        multiplier = MathUtil.clamp(multiplier, 0.92, 1.55);
-        return new StrikeCost(
-                (int) Math.ceil(ammo * multiplier),
-                (int) Math.ceil(fuel * multiplier),
-                (int) Math.ceil(supplies * multiplier),
-                charges);
     }
 
     private static String strategicStrikeCostIntelLabel(GameContext ctx) {
@@ -8175,30 +8051,21 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static String routeCostForecastLine(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "2-JUMP FORECAST  |  OFFLINE";
-        FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        int fuel = Math.max(1, (int) Math.ceil(postureTravelFuelCostPerTick(posture, 20.0)));
-        int supplies = Math.max(0, (int) Math.ceil(postureTravelSupplyCostPerTick(posture, 20.0)));
-        int ammo = Math.max(0, (int) Math.ceil(postureTravelAmmoCostPerTick(posture, 20.0)));
-        return "2-JUMP FORECAST  |  FUEL " + (fuel * 2) + "  SUP " + (supplies * 2) + "  AMMO " + (ammo * 2);
+        return "2-JUMP FORECAST  |  risk, intel, enemy pressure, and fleet strain";
     }
 
     private static String strikeCostForecastLine(GameContext ctx) {
-        StrikePreflight torpedo = buildStrikePreflight(ctx, "TORPEDO_STRIKE");
-        StrikePreflight sortie = buildStrikePreflight(ctx, "CARRIER_SORTIE");
-        return "STRIKE FORECAST  |  TORP " + torpedo.ammoCost + "/" + torpedo.fuelCost
-                + "  SORTIE " + sortie.ammoCost + "/" + sortie.fuelCost + "/" + sortie.supplyCost;
+        CampaignState st = state(ctx);
+        if (st == null) return "STRIKE FORECAST  |  OFFLINE";
+        return "STRIKE FORECAST  |  T " + strikeCooldownChip(st, "TORPEDO_STRIKE")
+                + "  B " + strikeCooldownChip(st, "CARRIER_SORTIE")
+                + "  N " + strikeCooldownChip(st, "ATOMIC_STRIKE");
     }
 
     private static String strikeRecoveryForecastLine(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "STRIKE RECOVERY  |  OFFLINE";
-        CampaignLocation hub = nearestStrikeRecoveryHub(st);
-        HubProfile profile = hubProfile(ctx, hub);
-        int credits = strikeRearmCreditCost(profile);
-        int ore = strikeRearmOreCost(profile);
-        int supplies = Math.max(3, (int) Math.round(5 / Math.max(0.70, profile.supportMul)));
-        return "STRIKE RECOVERY  |  REARM C" + credits + " O" + ore + " S" + supplies
-                + "  |  BUY fuel/supplies, SELL salvage" + strikeRecoveryHubSuffix(hub);
+        return "STRIKE RECOVERY  |  cooldowns reset per battle; no ammo, fuel, supply, or charge stockpile";
     }
 
     private static CampaignLocation nearestStrikeRecoveryHub(CampaignState st) {
@@ -8223,23 +8090,18 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static String repairCostForecastLine(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "REPAIR FORECAST  |  OFFLINE";
-        StrategicRoleProfile profile = friendlyStrategicRoleProfile(ctx, st);
         int damagedShips = Math.max(1, damagedPersistentFleetCount(ctx, st));
-        double supportMul = Math.max(0.7, 0.85 + profile.logisticsSupport());
-        int supplyCost = Math.max(1, (int) Math.round((4 + damagedShips * 2) / supportMul));
-        int salvageCost = Math.max(1, damagedShips);
+        int oreCost = Math.max(10, damagedShips * 20);
         int minutes = Math.max(1, damagedShips * 2);
-        return "REPAIR FORECAST  |  FIELD " + minutes + "m  SUP " + supplyCost + "  SALV " + salvageCost
+        return "REPAIR FORECAST  |  FIELD " + minutes + "m  ORE " + oreCost
                 + "  |  full armor/systems require a repair hub";
     }
 
     private static String logisticsBlockerLine(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return "LIMITER  |  OFFLINE";
-        if (campaignFuel(ctx) < 16) return "LIMITER  |  LONG MOVES BLOCKED BY FUEL SHORTAGE";
-        if (campaignSupplies(ctx) < 12) return "LIMITER  |  SWEEP / REPAIR TEMPO COLLAPSING";
-        if (campaignAmmo(ctx) < 18) return "LIMITER  |  LONG-RANGE STRIKES NEARLY DRY";
-        return "LIMITER  |  NO HARD OPERATIONAL BLOCKER";
+        if (campaignFleetStrainPercent(ctx) >= 86.0) return "LIMITER  |  FLEET STRAIN CRITICAL";
+        return "LIMITER  |  NO RESOURCE STOCKPILE BLOCKER";
     }
 
     private static String pressureBandLabel(double value) {
@@ -8406,6 +8268,8 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     public static boolean beginCampaignAtomicStrikeConfirm(GameContext ctx) {
         if (ctx == null || ctx.ui == null) return false;
+        CampaignState st = state(ctx);
+        if (st == null) return false;
         boolean targetReady = isMissionTacticalStrikeMode(ctx)
                 ? tacticalStrikeTargetReady(ctx, "ATOMIC_STRIKE")
                 : (hasSelectedCampaignContactTarget(ctx)
@@ -8419,8 +8283,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 ? buildTacticalStrikePreflight(ctx, "ATOMIC_STRIKE")
                 : buildStrikePreflight(ctx, "ATOMIC_STRIKE");
         String body = "Target: " + preflight.targetLabel
-                + "  |  Cost: " + preflight.chargeCost + " atomic, A" + preflight.ammoCost
-                + " F" + preflight.fuelCost + " S" + preflight.supplyCost
+                + "  |  Cooldown: " + strikeCooldownChip(st, "ATOMIC_STRIKE")
                 + "  |  Risk: " + preflight.retaliation
                 + (preflight.valid ? "" : "  |  CURRENT BLOCKER: " + preflight.reason.toUpperCase(Locale.US));
         ctx.ui.showCampaignActionConfirm("ATOMIC_STRIKE", "ATOMIC STRIKE CONFIRMATION", body);
@@ -8468,7 +8331,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static StrikePreflight buildTacticalStrikePreflight(GameContext ctx, String actionId) {
         CampaignState st = state(ctx);
-        boolean infiniteStrikeStores = hasInfiniteTacticalStrikeStores(ctx);
         String id = (actionId == null) ? "" : actionId.trim().toUpperCase(Locale.US);
         String targetLabel = tacticalStrikeTargetLabel(ctx);
         boolean hostile = hasAnyTacticalStrikeTarget(ctx);
@@ -8488,37 +8350,23 @@ public final class CampaignSystem extends CampaignSystemModels {
                 effect = "Inbound torpedo homes on the selected hostile contact and slams the heaviest target.";
                 retaliation = "High exposure spike while hostile contacts react.";
                 if (!hostile) reason = "no hostile contact selected";
-                else if (!infiniteStrikeStores && st.strategicTorpedoCharges <= 0) reason = "no torpedo strikes ready";
-                else if (!infiniteStrikeStores && st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (!infiniteStrikeStores && st.campaignFuel < fuelCost) reason = "insufficient fuel";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             case "CARRIER_SORTIE" -> {
                 effect = "Strike craft dash to the contact, dump heavy ordnance, and immediately egress.";
                 retaliation = "High strike heat and hostile alert increase.";
                 int sortieCap = strategicSortieCapacity(ctx);
                 if (!hostile) reason = "no hostile contact selected";
-                else if (!infiniteStrikeStores && sortieCap <= 0) reason = "no carrier sorties available";
-                else if (!infiniteStrikeStores && st.strategicSortiesLaunched >= sortieCap) reason = "sortie decks committed";
-                else if (!infiniteStrikeStores && st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (!infiniteStrikeStores && st.campaignFuel < fuelCost) reason = "insufficient fuel";
-                else if (!infiniteStrikeStores && st.campaignSupplies < supplyCost) reason = "insufficient supplies";
+                else if (sortieCap <= 0) reason = "no carrier sorties available";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             case "ATOMIC_STRIKE" -> {
                 effect = "Large blast radius strike scourges the selected hostile contact.";
                 retaliation = "Severe theater consequence and major exposure increase.";
                 if (!hostile) reason = "no hostile contact selected";
-                else if (!infiniteStrikeStores && st.strategicAtomicCharges <= 0) reason = "atomic option unavailable";
-                else if (!infiniteStrikeStores && st.campaignAmmo < ammoCost) reason = "insufficient ammo";
-                else if (!infiniteStrikeStores && st.campaignFuel < fuelCost) reason = "insufficient fuel";
-                else if (!infiniteStrikeStores && st.campaignSupplies < supplyCost) reason = "insufficient supplies";
+                else if (strikeCooldownRemaining(st, id) > 0.0) reason = strikeCooldownReason(st, id);
             }
             default -> reason = "unknown strike action";
-        }
-        if (infiniteStrikeStores) {
-            ammoCost = 0;
-            fuelCost = 0;
-            supplyCost = 0;
-            chargeCost = 0;
         }
         return new StrikePreflight(id, targetLabel, reason.isBlank(), reason, ammoCost, fuelCost, supplyCost, chargeCost, effect, retaliation);
     }
@@ -8733,7 +8581,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static boolean launchSelectedTacticalTorpedoStrike(GameContext ctx) {
         CampaignState st = state(ctx);
-        boolean infiniteStrikeStores = hasInfiniteTacticalStrikeStores(ctx);
         StrikePreflight preflight = buildTacticalStrikePreflight(ctx, "TORPEDO_STRIKE");
         if (!preflight.valid) {
             recordStrikeDenial(ctx, preflight);
@@ -8758,23 +8605,14 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "TORPEDO STRIKE  |  NO HOSTILE HULLS AT SELECTED CONTACT", 1.2);
             return hasAnyTacticalStrikeTarget(ctx);
         }
-        if (!infiniteStrikeStores) {
-            st.strategicTorpedoCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - preflight.ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - preflight.fuelCost);
-        }
         double damageBudget = torpedoStrikeDamageBudget(target);
         Missile missile = spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.TORPEDO, target, target.x, target.y, 0.0,
                 Math.max(18, (int) Math.round(damageBudget)), Math.max(90.0, target.radius * 2.2));
         if (missile == null) {
-            if (!infiniteStrikeStores) {
-                st.strategicTorpedoCharges++;
-                st.campaignAmmo += preflight.ammoCost;
-                st.campaignFuel += preflight.fuelCost;
-            }
             EventSystem.showBanner(ctx, "TORPEDO STRIKE  |  LAUNCH FAILED", 1.2);
             return false;
         }
+        startStrikeCooldown(st, "TORPEDO_STRIKE");
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 4.0, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 6.0, 0.0, 100.0);
         setLastStrikeReport(st, "TORPEDO", target.name == null ? tacticalStrikeTargetLabel(ctx) : target.name, 0.0, false, false);
@@ -8804,7 +8642,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static boolean launchSelectedTacticalSortie(GameContext ctx) {
         CampaignState st = state(ctx);
-        boolean infiniteStrikeStores = hasInfiniteTacticalStrikeStores(ctx);
         StrikePreflight preflight = buildTacticalStrikePreflight(ctx, "CARRIER_SORTIE");
         if (!preflight.valid) {
             recordStrikeDenial(ctx, preflight);
@@ -8822,12 +8659,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             return hasAnyTacticalStrikeTarget(ctx);
         }
         StrategicTaskForce taskForce = selectedTacticalStrikeTaskForce(ctx);
-        if (!infiniteStrikeStores) {
-            st.strategicSortiesLaunched++;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - preflight.ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - preflight.fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - preflight.supplyCost);
-        }
         Ship lockedTarget = tacticalLockedHostileStrikeShip(ctx);
         double tx = hasTacticalHostileStrikeSelection(ctx)
                 ? ctx.ui.tacticalMapSelectionX
@@ -8859,15 +8690,10 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
         }
         if (spawnedBombers <= 0) {
-            if (!infiniteStrikeStores) {
-                st.strategicSortiesLaunched = Math.max(0, st.strategicSortiesLaunched - 1);
-                st.campaignAmmo += preflight.ammoCost;
-                st.campaignFuel += preflight.fuelCost;
-                st.campaignSupplies += preflight.supplyCost;
-            }
             EventSystem.showBanner(ctx, "CARRIER SORTIE  |  LAUNCH FAILED", 1.2);
             return false;
         }
+        startStrikeCooldown(st, "CARRIER_SORTIE");
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 5.5, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 7.5, 0.0, 100.0);
         setLastStrikeReport(st, "SORTIE", tacticalStrikeTargetLabel(ctx), 0.0, false, false);
@@ -8881,7 +8707,6 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static boolean launchSelectedTacticalAtomicStrike(GameContext ctx) {
         CampaignState st = state(ctx);
-        boolean infiniteStrikeStores = hasInfiniteTacticalStrikeStores(ctx);
         StrikePreflight preflight = buildTacticalStrikePreflight(ctx, "ATOMIC_STRIKE");
         if (!preflight.valid) {
             recordStrikeDenial(ctx, preflight);
@@ -8899,12 +8724,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             return hasAnyTacticalStrikeTarget(ctx);
         }
         StrategicTaskForce taskForce = selectedTacticalStrikeTaskForce(ctx);
-        if (!infiniteStrikeStores) {
-            st.strategicAtomicCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - preflight.ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - preflight.fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - preflight.supplyCost);
-        }
         Ship lockedTarget = tacticalLockedHostileStrikeShip(ctx);
         double tx = hasTacticalHostileStrikeSelection(ctx)
                 ? ctx.ui.tacticalMapSelectionX
@@ -8919,15 +8738,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         Missile missile = spawnTacticalStrikeMissile(ctx, StrategicStrikePayload.ATOMIC, target, tx, ty, 0.0,
                 Math.max(42, (int) Math.round(target.hpMax * 0.72)), blastRadius);
         if (missile == null) {
-            if (!infiniteStrikeStores) {
-                st.strategicAtomicCharges++;
-                st.campaignAmmo += preflight.ammoCost;
-                st.campaignFuel += preflight.fuelCost;
-                st.campaignSupplies += preflight.supplyCost;
-            }
             EventSystem.showBanner(ctx, "ATOMIC STRIKE  |  LAUNCH FAILED", 1.2);
             return false;
         }
+        startStrikeCooldown(st, "ATOMIC_STRIKE");
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 18.0, 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel + 20.0, 0.0, 100.0);
         setLastStrikeReport(st, "ATOMIC", tacticalStrikeTargetLabel(ctx), 0.0, false, true);
@@ -9532,18 +9346,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        int cost = sweepSupplyCost(posture);
         double cooldown = campaignSensorSweepCooldownRemaining(ctx);
         if (cooldown > 0.0) {
             EventSystem.showBanner(ctx, "RECON SWEEP COOLING DOWN  " + (int) Math.ceil(cooldown) + "S", 1.3);
             return true;
         }
-        if (st.campaignSupplies < cost) {
-            EventSystem.showBanner(ctx, "SCAN SWEEP REQUIRES " + cost + " SUPPLIES", 1.3);
-            return true;
-        }
         if (!isStrategicGalaxyMapMode(ctx)) {
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
             st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 8.0 + postureSweepIntelBonus(posture) * 0.5, 0.0, 100.0);
             st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + Math.max(0.5, postureSweepExposureShift(posture) * 0.5), 0.0, 100.0);
             int pings = 0;
@@ -9571,7 +9379,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         SweepContactPicture before = sweepContactPicture(st, siteRadius, hostileRadius);
         int siteHits = revealCampaignSweepSites(ctx, st, siteRadius);
         int hostileHits = revealCampaignSweepHostiles(ctx, st, hostileRadius, identifyHostiles);
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
         st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 18.0 + postureSweepIntelBonus(posture), 0.0, 100.0);
         st.enemyAlertLevel = MathUtil.clamp(st.enemyAlertLevel - 3.0 + postureSweepAlertShift(posture), 0.0, 100.0);
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + postureSweepExposureShift(posture), 0.0, 100.0);
@@ -9585,7 +9392,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                 : "new sites " + newSites + "  new tracks " + newTracks + "  IDs improved " + improvedIds;
         st.lastContactScanSummary = "Recon Sweep Result  |  " + outcome
                 + "  |  returns " + hostileHits
-                + "  |  supplies -" + cost
                 + "  exposure " + signedOneDecimal(postureSweepExposureShift(posture));
         st.lastSensorSweepAtSec = st.sectorElapsed;
         pushTheaterEvent(st, st.lastContactScanSummary);
@@ -9610,7 +9416,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null) return List.of("Recon Sweep unavailable.");
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        int cost = sweepSupplyCost(posture);
         double siteRadius = 1650.0 + st.campaignIntelLevel * 8.5 + postureSweepRadiusBonus(posture);
         double hostileRadius = siteRadius + 520.0 + Math.max(120.0, postureSweepRadiusBonus(posture) * 0.45);
         SweepContactPicture picture = sweepContactPicture(st, siteRadius, hostileRadius);
@@ -9618,12 +9423,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         int uncertain = picture.uncertainHostiles;
         double cooldown = campaignSensorSweepCooldownRemaining(ctx);
         return List.of(
-                "Recon Sweep  |  cost " + cost + " supplies  |  radius " + (int) Math.round(hostileRadius),
+                "Recon Sweep  |  radius " + (int) Math.round(hostileRadius),
                 "Targets  |  unknown sites " + unknownSites + "  |  uncertain/stale contacts " + uncertain,
                 "Consequence  |  exposure " + signedOneDecimal(postureSweepExposureShift(posture))
                         + "  |  alert " + signedOneDecimal(postureSweepAlertShift(posture)),
                 cooldown > 0.0 ? "Blocked  |  cooldown " + (int) Math.ceil(cooldown) + "s"
-                        : (st.campaignSupplies < cost ? "Blocked  |  supplies " + st.campaignSupplies + "/" + cost : "Ready")
+                        : "Ready"
         );
     }
 
@@ -9679,11 +9484,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "SELECT A HOSTILE CONTACT BEFORE FOCUSING TRACK", 1.3);
             return true;
         }
-        int cost = 1;
-        if (st.campaignSupplies < cost) {
-            EventSystem.showBanner(ctx, "FOCUSED TRACK REQUIRES " + cost + " SUPPLIES", 1.2);
-            return true;
-        }
         GalaxySearchGroup group = selectedCampaignSearchGroup(ctx);
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx,
                 ctx.ui.selectedCampaignContactX, ctx.ui.selectedCampaignContactY, 260.0);
@@ -9691,7 +9491,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "FOCUSED TRACK FOUND NO FIRM RETURN", 1.2);
             return true;
         }
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
         st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 12.0, 0.0, 100.0);
         st.strategicExposureLevel = MathUtil.clamp(st.strategicExposureLevel + 1.4, 0.0, 100.0);
         if (group != null) {
@@ -9721,12 +9520,6 @@ public final class CampaignSystem extends CampaignSystemModels {
     public static boolean requestCampaignTrafficAudit(GameContext ctx) {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
-        int cost = 2;
-        if (st.campaignSupplies < cost) {
-            EventSystem.showBanner(ctx, "TRAFFIC AUDIT REQUIRES " + cost + " SUPPLIES", 1.2);
-            return true;
-        }
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
         double radius = 2100.0 + st.campaignIntelLevel * 7.0;
         int siteHits = revealCampaignSweepSites(ctx, st, radius);
         int trafficHits = 0;
@@ -9758,45 +9551,11 @@ public final class CampaignSystem extends CampaignSystemModels {
     }
 
     public static boolean requestCampaignDeployRelay(GameContext ctx) {
-        CampaignState st = state(ctx);
-        if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
-        int cost = 4;
-        if (st.campaignSupplies < cost) {
-            EventSystem.showBanner(ctx, "RELAY DRONE REQUIRES " + cost + " SUPPLIES", 1.2);
-            return true;
-        }
-        double rx = hasSelectedCampaignContactTarget(ctx) ? ctx.ui.selectedCampaignContactX : st.playerGalaxyX;
-        double ry = hasSelectedCampaignContactTarget(ctx) ? ctx.ui.selectedCampaignContactY : st.playerGalaxyY;
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
-        st.sensorRelayNodes.add(new SensorRelayNode(st.nextSensorRelayId++, "Relay Drone", rx, ry, 1750.0, 90.0, false));
-        UISystem.addPing(ctx, rx, ry, 2.2);
-        EventSystem.showBanner(ctx, "RELAY DRONE DEPLOYED  |  SENSOR COVERAGE EXTENDED", 1.4);
-        return true;
+        return false;
     }
 
     public static boolean requestCampaignScoutSurge(GameContext ctx) {
-        CampaignState st = state(ctx);
-        if (ctx == null || st == null || !isStrategicGalaxyMapMode(ctx)) return false;
-        int cost = 5;
-        if (st.campaignSupplies < cost) {
-            EventSystem.showBanner(ctx, "SCOUT SURGE REQUIRES " + cost + " SUPPLIES", 1.2);
-            return true;
-        }
-        double sx = hasSelectedCampaignContactTarget(ctx) ? ctx.ui.selectedCampaignContactX : st.playerGalaxyX;
-        double sy = hasSelectedCampaignContactTarget(ctx) ? ctx.ui.selectedCampaignContactY : st.playerGalaxyY;
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - cost);
-        st.sensorRelayNodes.add(new SensorRelayNode(st.nextSensorRelayId++, "Scout Net", sx, sy, 2200.0, 48.0, true));
-        int hostileHits = revealCampaignSweepHostiles(ctx, st, 2200.0, true);
-        st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + 12.0, 0.0, 100.0);
-        for (GalaxySearchGroup group : st.galaxySearchGroups) {
-            if (group == null || Math.hypot(group.x - sx, group.y - sy) > 2200.0) continue;
-            group.scoutPressureSec = Math.max(group.scoutPressureSec, 22.0);
-            group.trackIntegrity = MathUtil.clamp(group.trackIntegrity + 28.0, 0.0, 100.0);
-        }
-        st.lastContactScanSummary = "Scout Surge  |  route intent and cargo signatures sharpened for " + hostileHits + " hostile returns";
-        UISystem.addPing(ctx, sx, sy, 2.4);
-        EventSystem.showBanner(ctx, "SCOUT SURGE ACTIVE  |  " + hostileHits + " HOSTILE RETURNS SHARPENED", 1.5);
-        return true;
+        return false;
     }
 
     private static int revealCampaignSweepSites(GameContext ctx, CampaignState st, double radius) {
@@ -9899,16 +9658,14 @@ public final class CampaignSystem extends CampaignSystemModels {
                 default -> 1.0;
             };
             int credits = GameContext.scaleCreditReward((int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 240 : 170) * (1.0 - strainPenalty * 0.25) * relationshipMul * stabilityMul));
-            int fuel = Math.max(16, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 36 : 24) * (1.0 - strainPenalty * 0.30) * relationshipMul * stabilityMul));
-            int salvage = Math.max(6, (int) Math.round(((reputation == CampaignReputationState.RAIDER_THREAT) ? 12 : 8) * (1.0 - strainPenalty * 0.20) * relationshipMul * stabilityMul));
+            int ore = Math.max(80, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 180 : 120) * (1.0 - strainPenalty * 0.30) * relationshipMul * stabilityMul));
             ctx.credits += credits;
-            st.campaignFuel += fuel;
-            st.campaignSalvage += salvage;
+            grantCampaignOre(ctx, ore);
             st.recentStrikePressure = Math.max(0.0, st.recentStrikePressure - 6.0);
             st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel - 2.0);
             stabilizeSupportRouteFromFavor(ctx, st, true, relationshipMul);
             adjustFleetStrain(st, -7.0);
-            EventSystem.showBanner(ctx, "YELLOW ROUTES FORCED OPEN  +" + fuel + " FUEL  +" + salvage + " SALVAGE", 1.5);
+            EventSystem.showBanner(ctx, "YELLOW ROUTES FORCED OPEN  +" + credits + " CREDITS  +" + ore + " ORE", 1.5);
             return true;
         }
         if (st.greenContractFavor <= 0) {
@@ -9923,16 +9680,14 @@ public final class CampaignSystem extends CampaignSystemModels {
             case HOSTILE -> 0.78;
             default -> 1.0;
         };
-        int supplies = Math.max(12, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 26 : 18) * (1.0 - strainPenalty * 0.35) * relationshipMul * stabilityMul));
-        int ammo = Math.max(12, (int) Math.round(((reputation == CampaignReputationState.LIBERATION_SYMBOL) ? 24 : 18) * (1.0 - strainPenalty * 0.25) * relationshipMul * stabilityMul));
-        st.campaignSupplies += supplies;
-        st.campaignAmmo += ammo;
+        int ore = Math.max(70, (int) Math.round(((reputation == CampaignReputationState.OVEREXTENDED_COMMAND) ? 150 : 95) * (1.0 - strainPenalty * 0.35) * relationshipMul * stabilityMul));
+        grantCampaignOre(ctx, ore);
         st.campaignIntelLevel = MathUtil.clamp(st.campaignIntelLevel + ((reputation == CampaignReputationState.RELIABLE_RESCUE_FORCE) ? 18.0 : 12.0) * relationshipMul, 0.0, 100.0);
         st.blueInterventionReserve = MathUtil.clamp(st.blueInterventionReserve + 8.0 * relationshipMul, 0.0, 100.0);
         st.enemyAlertLevel = Math.max(0.0, st.enemyAlertLevel - 4.0);
         stabilizeSupportRouteFromFavor(ctx, st, false, relationshipMul);
         adjustFleetStrain(st, -7.0);
-        EventSystem.showBanner(ctx, "GREEN RELAY SUPPORT INBOUND  +" + supplies + " SUP  +" + ammo + " AMMO", 1.5);
+        EventSystem.showBanner(ctx, "GREEN RELAY SUPPORT INBOUND  +" + ore + " ORE  INTEL BOOST", 1.5);
         return true;
     }
 
@@ -9948,8 +9703,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (anchor != null) {
             setLocationRouteState(anchor,
                     yellowChannel
-                            ? "Yellow traffic is forcing fuel and salvage through this route"
-                            : "Green relays are covering this route with stores and combat overwatch",
+                            ? "Yellow traffic is forcing ore, trade, and recovery crews through this route"
+                            : "Green relays are covering this route with intel and combat overwatch",
                     true);
             setLocationRecurringContact(anchor, yellowChannel ? "MARR" : "VOSS",
                     yellowChannel
@@ -9965,8 +9720,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                 yellowChannel ? "Yellow Forced Route Column" : "Green Relay Support Screen",
                 anchor == null ? "Coalition support channel" : anchor.name,
                 yellowChannel
-                        ? "Move fuel, salvage, and trade leverage into the player's route"
-                        : "Provide relay intel, stores, and combat support for the player's route",
+                        ? "Move ore, recovery crews, and trade leverage into the player's route"
+                        : "Provide relay intel and combat support for the player's route",
                 st.playerGalaxyX + (yellowChannel ? 140.0 : -140.0),
                 st.playerGalaxyY + (yellowChannel ? -70.0 : 70.0));
         force.visibleToPlayer = true;
@@ -12389,25 +12144,14 @@ public final class CampaignSystem extends CampaignSystemModels {
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx, worldX, worldY, 240.0);
         CampaignLocation missionLocation = nearestMissionOuterThreatLocation(st, worldX, worldY, 240.0);
         CampaignForce campaignForce = nearestStrikeableCampaignForce(st, worldX, worldY, 420.0);
-        if (st.strategicTorpedoCharges <= 0) {
-            EventSystem.showBanner(ctx, "NO TORPEDO STRIKES READY", 1.2);
-            return true;
-        }
         StrikeCost cost = strikeCost(ctx, st, "TORPEDO_STRIKE", strategicStrikeCostIntelLabel(ctx), false);
         int ammoCost = cost.ammo;
         int fuelCost = cost.fuel;
-        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost) {
-            EventSystem.showBanner(ctx, "TORPEDO STRIKE REQUIRES AMMO AND FUEL", 1.2);
-            return true;
-        }
         if (strikeGroup != null) {
             if (isStrategicOvermapMode(st) && !isWithinStrategicStrikeRange(ctx, st, strikeGroup.x, strikeGroup.y)) {
                 EventSystem.showBanner(ctx, "TORPEDO TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, strikeGroup.x, strikeGroup.y), 1.3);
                 return true;
             }
-            st.strategicTorpedoCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.TORPEDO,
                     StrategicStrikeTargetKind.SEARCH_GROUP, strikeGroup.id, "", hostileSearchGroupDisplayName(st, strikeGroup),
                     strikeGroup.x, strikeGroup.y);
@@ -12419,9 +12163,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "TORPEDO TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, tx, ty), 1.3);
                 return true;
             }
-            st.strategicTorpedoCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.TORPEDO,
                     StrategicStrikeTargetKind.CAMPAIGN_FORCE, campaignForce.id, "", campaignForce.name,
                     tx, ty);
@@ -12431,22 +12172,13 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "TORPEDO TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, missionLocation.x, missionLocation.y), 1.3);
                 return true;
             }
-            st.strategicTorpedoCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.TORPEDO,
                     StrategicStrikeTargetKind.MISSION_OUTER_THREAT, 0, missionLocation.id, missionLocation.name,
                     missionLocation.x, missionLocation.y);
         }
         if (taskForce == null) {
-            st.strategicTorpedoCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
             boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "TORPEDO");
             if (!result) {
-                st.strategicTorpedoCharges++;
-                st.campaignAmmo += ammoCost;
-                st.campaignFuel += fuelCost;
             }
             return result;
         }
@@ -12458,9 +12190,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "TORPEDO TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, worldX, worldY), 1.3);
             return true;
         }
-        st.strategicTorpedoCharges--;
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
         return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.TORPEDO,
                 StrategicStrikeTargetKind.TASK_FORCE, taskForce.id, "", taskForce.label,
                 worldX, worldY);
@@ -12481,27 +12210,15 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "NO CARRIER SORTIES AVAILABLE", 1.2);
             return true;
         }
-        if (st.strategicSortiesLaunched >= sortieCap) {
-            EventSystem.showBanner(ctx, "SORTIE DECKS COMMITTED", 1.2);
-            return true;
-        }
         StrikeCost cost = strikeCost(ctx, st, "CARRIER_SORTIE", strategicStrikeCostIntelLabel(ctx), false);
         int ammoCost = cost.ammo;
         int fuelCost = cost.fuel;
         int supplyCost = cost.supplies;
-        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
-            EventSystem.showBanner(ctx, "SORTIE STRIKE REQUIRES FUEL, AMMO, AND SUPPLIES", 1.2);
-            return true;
-        }
         if (strikeGroup != null) {
             if (isStrategicOvermapMode(st) && !isWithinStrategicStrikeRange(ctx, st, strikeGroup.x, strikeGroup.y)) {
                 EventSystem.showBanner(ctx, "SORTIE TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, strikeGroup.x, strikeGroup.y), 1.3);
                 return true;
             }
-            st.strategicSortiesLaunched++;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.SORTIE,
                     StrategicStrikeTargetKind.SEARCH_GROUP, strikeGroup.id, "", hostileSearchGroupDisplayName(st, strikeGroup),
                     strikeGroup.x, strikeGroup.y);
@@ -12513,10 +12230,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "SORTIE TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, tx, ty), 1.3);
                 return true;
             }
-            st.strategicSortiesLaunched++;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.SORTIE,
                     StrategicStrikeTargetKind.CAMPAIGN_FORCE, campaignForce.id, "", campaignForce.name,
                     tx, ty);
@@ -12526,25 +12239,13 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "SORTIE TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, missionLocation.x, missionLocation.y), 1.3);
                 return true;
             }
-            st.strategicSortiesLaunched++;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.SORTIE,
                     StrategicStrikeTargetKind.MISSION_OUTER_THREAT, 0, missionLocation.id, missionLocation.name,
                     missionLocation.x, missionLocation.y);
         }
         if (taskForce == null) {
-            st.strategicSortiesLaunched++;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "SORTIE");
             if (!result) {
-                st.strategicSortiesLaunched = Math.max(0, st.strategicSortiesLaunched - 1);
-                st.campaignAmmo += ammoCost;
-                st.campaignFuel += fuelCost;
-                st.campaignSupplies += supplyCost;
             }
             return result;
         }
@@ -12556,10 +12257,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             EventSystem.showBanner(ctx, "SORTIE TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, worldX, worldY), 1.3);
             return true;
         }
-        st.strategicSortiesLaunched++;
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
         return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.SORTIE,
                 StrategicStrikeTargetKind.TASK_FORCE, taskForce.id, "", taskForce.label,
                 worldX, worldY);
@@ -12575,27 +12272,15 @@ public final class CampaignSystem extends CampaignSystemModels {
         StrategicTaskForce taskForce = nearestHostileStrategicTaskForce(ctx, worldX, worldY, 240.0);
         CampaignLocation missionLocation = nearestMissionOuterThreatLocation(st, worldX, worldY, 240.0);
         CampaignForce campaignForce = nearestStrikeableCampaignForce(st, worldX, worldY, 420.0);
-        if (st.strategicAtomicCharges <= 0) {
-            EventSystem.showBanner(ctx, "ATOMIC OPTION UNAVAILABLE", 1.2);
-            return true;
-        }
         StrikeCost cost = strikeCost(ctx, st, "ATOMIC_STRIKE", strategicStrikeCostIntelLabel(ctx), false);
         int ammoCost = cost.ammo;
         int fuelCost = cost.fuel;
         int supplyCost = cost.supplies;
-        if (st.campaignAmmo < ammoCost || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost) {
-            EventSystem.showBanner(ctx, "ATOMIC STRIKE REQUIRES HEAVY FUEL, AMMO, AND SUPPLIES", 1.3);
-            return true;
-        }
         if (strikeGroup != null) {
             if (isStrategicOvermapMode(st) && !isWithinStrategicStrikeRange(ctx, st, strikeGroup.x, strikeGroup.y)) {
                 EventSystem.showBanner(ctx, "ATOMIC TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, strikeGroup.x, strikeGroup.y), 1.3);
                 return true;
             }
-            st.strategicAtomicCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.ATOMIC,
                     StrategicStrikeTargetKind.SEARCH_GROUP, strikeGroup.id, "", hostileSearchGroupDisplayName(st, strikeGroup),
                     strikeGroup.x, strikeGroup.y);
@@ -12607,10 +12292,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "ATOMIC TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, tx, ty), 1.3);
                 return true;
             }
-            st.strategicAtomicCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.ATOMIC,
                     StrategicStrikeTargetKind.CAMPAIGN_FORCE, campaignForce.id, "", campaignForce.name,
                     tx, ty);
@@ -12620,25 +12301,13 @@ public final class CampaignSystem extends CampaignSystemModels {
                 EventSystem.showBanner(ctx, "ATOMIC TARGET OUT OF RANGE  |  " + strategicRangeReadout(ctx, st, missionLocation.x, missionLocation.y), 1.3);
                 return true;
             }
-            st.strategicAtomicCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.ATOMIC,
                     StrategicStrikeTargetKind.MISSION_OUTER_THREAT, 0, missionLocation.id, missionLocation.name,
                     missionLocation.x, missionLocation.y);
         }
         if (taskForce == null) {
-            st.strategicAtomicCharges--;
-            st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-            st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-            st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
             boolean result = launchStrategicStrikeAgainstSearchGroup(ctx, st, worldX, worldY, "ATOMIC");
             if (!result) {
-                st.strategicAtomicCharges++;
-                st.campaignAmmo += ammoCost;
-                st.campaignFuel += fuelCost;
-                st.campaignSupplies += supplyCost;
             }
             return result;
         }
@@ -12651,10 +12320,6 @@ public final class CampaignSystem extends CampaignSystemModels {
             return true;
         }
 
-        st.strategicAtomicCharges--;
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
         return queueStrategicStrikeObject(ctx, st, StrategicStrikePayload.ATOMIC,
                 StrategicStrikeTargetKind.TASK_FORCE, taskForce.id, "", taskForce.label,
                 worldX, worldY);
@@ -16020,46 +15685,37 @@ public final class CampaignSystem extends CampaignSystemModels {
         boolean completed = switch (service) {
             case REPAIR -> {
                 int cost = quote.creditCost;
-                int salvageCost = quote.salvageCost;
-                int supplyCost = quote.supplyCost;
-                if (ctx.credits < cost || st.campaignSupplies < supplyCost || st.campaignSalvage < salvageCost) {
-                    EventSystem.showBanner(ctx, "REPAIR REQUIRES CREDITS, SUPPLIES, AND SALVAGE", 1.4);
+                int oreCost = Math.max(15, quote.salvageCost * 25 + quote.supplyCost * 5);
+                if (ctx.credits < cost || currentCampaignOre(ctx) < oreCost) {
+                    EventSystem.showBanner(ctx, "REPAIR REQUIRES CREDITS AND ORE", 1.4);
                     yield false;
                 }
                 ctx.credits -= cost;
-                st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
-                st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
+                setCampaignOre(ctx, st, currentCampaignOre(ctx) - oreCost);
                 restorePersistentFleetCondition(ctx, st, 0.34 * profile.supportMul / strainPenalty, 0.46 * profile.supportMul / strainPenalty);
                 adjustFleetStrain(st, -14.0);
                 setRelationshipState(st, "VOSS", CampaignRelationshipState.TRUSTED);
                 setLocationRouteState(location, "Repair traffic is now flowing cleanly through this anchorage", true);
                 setLocationRecurringContact(location, "VOSS", "service crews know your fleet and are waving you through faster");
-                EventSystem.showBanner(ctx, "FLEET REPAIRED  -" + cost + " CREDITS  -" + supplyCost + " SUP  -" + salvageCost + " SALV", 1.6);
+                EventSystem.showBanner(ctx, "FLEET REPAIRED  -" + cost + " CREDITS  -" + oreCost + " ORE", 1.6);
                 yield true;
             }
             case TRADE -> {
                 int soldOre = quote.selectedOre;
                 if (soldOre <= 0 || quote.availableOre <= 0) {
                     int creditCost = quote.creditCost;
-                    int salvageCost = quote.salvageCost;
-                    if (ctx.credits < creditCost || st.campaignSalvage < salvageCost) {
-                        EventSystem.showBanner(ctx, "TRADE REQUIRES CREDITS AND SALVAGE", 1.3);
+                    if (ctx.credits < creditCost) {
+                        EventSystem.showBanner(ctx, "TRADE REQUIRES CREDITS", 1.3);
                         yield false;
                     }
-                    int oreGain = Math.max(18, (int) Math.round(28 * profile.logisticsMul));
-                    int fuelGain = Math.max(4, (int) Math.round(8 * profile.logisticsMul));
-                    int supplyGain = Math.max(3, (int) Math.round(6 * profile.supportMul));
+                    int oreGain = Math.max(40, (int) Math.round(70 * profile.logisticsMul));
                     ctx.credits -= creditCost;
-                    st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
                     setCampaignOre(ctx, st, currentCampaignOre(ctx) + oreGain);
-                    st.campaignFuel += fuelGain;
-                    st.campaignSupplies += supplyGain;
                     adjustFleetStrain(st, -5.0);
                     setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
                     setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
                     setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
-                    EventSystem.showBanner(ctx, "STORES BOUGHT: +" + oreGain + " ORE  +" + fuelGain
-                            + " FUEL  +" + supplyGain + " SUP  -" + creditCost + " CREDITS", 1.6);
+                    EventSystem.showBanner(ctx, "ORE BOUGHT: +" + oreGain + " ORE  -" + creditCost + " CREDITS", 1.6);
                     yield true;
                 }
                 int sale = quote.payoutCredits;
@@ -16067,37 +15723,30 @@ public final class CampaignSystem extends CampaignSystemModels {
                     EventSystem.showBanner(ctx, "ORE SALE FAILED", 1.3);
                     yield false;
                 }
-                int fuelGain = Math.max(2, (int) Math.round(soldOre * 0.08 * profile.logisticsMul));
-                int supplyGain = Math.max(1, (int) Math.round(soldOre * 0.06 * profile.logisticsMul));
                 ctx.credits += sale;
                 recordCampaignLedger(st, "trade_credits", sale);
                 recordCampaignLedger(st, "trade_ore", soldOre);
                 HubTradeHireResult hire = tryHireHubTradeEscort(ctx, st, location, profile);
-                st.campaignFuel += fuelGain;
-                st.campaignSupplies += supplyGain;
                 adjustFleetStrain(st, -6.0);
                 ctx.ui.campaignOreSaleAmount = MathUtil.clamp(ctx.ui.campaignOreSaleAmount, 1, Math.max(1, currentCampaignOre(ctx)));
                 setRelationshipState(st, "MARR", CampaignRelationshipState.HELPED);
                 setLocationRecurringContact(location, "MARR", "Marr's brokers are moving product through this lane for you");
                 setLocationRouteState(location, "Trade traffic around this hub is steadier after your market exchange", true);
                 String hireText = hire.hired ? ("  HIRED " + hire.role.name() + " -" + hire.cost + "C") : "";
-                EventSystem.showBanner(ctx, "ORE SOLD: " + soldOre + "  +" + sale + " CREDITS  +"
-                        + fuelGain + " FUEL  +" + supplyGain + " SUP" + hireText, 1.6);
+                EventSystem.showBanner(ctx, "ORE SOLD: " + soldOre + "  +" + sale + " CREDITS" + hireText, 1.6);
                 yield true;
             }
             case SHIPYARD -> {
                 ShipRole buildRole = quote.role;
                 int creditCost = quote.creditCost;
                 int oreCost = quote.oreCost;
-                int salvageCost = quote.salvageCost;
-                if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost || st.campaignSalvage < salvageCost) {
-                    EventSystem.showBanner(ctx, "SHIPYARD ORDER REQUIRES CREDITS, ORE, AND SALVAGE", 1.4);
+                if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost) {
+                    EventSystem.showBanner(ctx, "SHIPYARD ORDER REQUIRES CREDITS AND ORE", 1.4);
                     yield false;
                 }
                 ctx.credits -= creditCost;
                 setCampaignOre(ctx, st, Math.max(0, currentCampaignOre(ctx) - oreCost));
-                st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
-                queueCampaignConstructionOrder(ctx, st, location, buildRole, creditCost, oreCost, salvageCost);
+                queueCampaignConstructionOrder(ctx, st, location, buildRole, creditCost, oreCost, 0);
                 adjustFleetStrain(st, -5.0);
                 EventSystem.showBanner(ctx, "SHIPYARD WORK QUEUED: " + buildRole.name() + "  -" + creditCost + "C  -" + oreCost + " ORE", 1.7);
                 yield true;
@@ -16105,17 +15754,15 @@ public final class CampaignSystem extends CampaignSystemModels {
             case SUPPLY -> {
                 int cost = quote.creditCost;
                 if (ctx.credits < cost) {
-                    EventSystem.showBanner(ctx, "SUPPLY ORDER REQUIRES " + cost + " CREDITS", 1.4);
+                    EventSystem.showBanner(ctx, "ORE ORDER REQUIRES " + cost + " CREDITS", 1.4);
                     yield false;
                 }
                 ctx.credits -= cost;
                 recordCampaignLedger(st, "trade_credits", cost);
-                int supplyGain = Math.max(12, (int) Math.round(18 * profile.logisticsMul));
-                int ammoGain = Math.max(10, (int) Math.round(20 * profile.supportMul));
-                st.campaignSupplies += supplyGain;
-                st.campaignAmmo += ammoGain;
+                int oreGain = Math.max(80, (int) Math.round(120 * profile.logisticsMul));
+                grantCampaignOre(ctx, oreGain);
                 adjustFleetStrain(st, -8.0);
-                EventSystem.showBanner(ctx, "SUPPLIES PURCHASED  +" + supplyGain + " SUP  +" + ammoGain + " AMMO", 1.5);
+                EventSystem.showBanner(ctx, "ORE PURCHASED  +" + oreGain + " ORE", 1.5);
                 yield true;
             }
             case STRIKE_REARM -> {
@@ -16127,40 +15774,25 @@ public final class CampaignSystem extends CampaignSystemModels {
                 }
                 ctx.credits -= creditCost;
                 setCampaignOre(ctx, st, Math.max(0, currentCampaignOre(ctx) - oreCost));
-                int supplyCost = quote.supplyCost;
-                if (st.campaignSupplies < supplyCost) {
-                    EventSystem.showBanner(ctx, "STRIKE REBUILD REQUIRES " + supplyCost + " SUPPLIES", 1.4);
-                    ctx.credits += creditCost;
-                    setCampaignOre(ctx, st, currentCampaignOre(ctx) + oreCost);
-                    yield false;
-                }
-                st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
-                int torpedoCap = strategicTorpedoCapacity(ctx);
-                int atomicCap = strategicAtomicCapacity(ctx);
-                int sortieRecovered = Math.max(1, (int) Math.round(1.0 + profile.supportMul * 0.65));
-                st.strategicTorpedoCharges = Math.min(torpedoCap, Math.max(st.strategicTorpedoCharges, 0) + 1);
-                st.strategicSortiesLaunched = Math.max(0, st.strategicSortiesLaunched - sortieRecovered);
-                if (profile.alignment == HubAlignment.GREEN || profile.quality >= 1.08) {
-                    st.strategicAtomicCharges = Math.min(atomicCap, Math.max(st.strategicAtomicCharges, 0) + 1);
-                }
-                st.campaignAmmo += Math.max(3, (int) Math.round(5 * profile.supportMul));
+                st.torpedoStrikeCooldownSec = 0.0;
+                st.carrierSortieCooldownSec = 0.0;
+                st.atomicStrikeCooldownSec = Math.max(0.0, st.atomicStrikeCooldownSec - 120.0 * profile.supportMul);
                 setLocationRouteState(location, "Strike tenders are rebuilding long-range weapons at this installation", true);
                 EventSystem.showBanner(ctx,
-                        "STRIKE STORES REBUILT  +TORPEDO  +SORTIE READY"
-                                + ((profile.alignment == HubAlignment.GREEN || profile.quality >= 1.08) ? "  +ATOMIC" : ""),
+                        "STRIKE COOLDOWNS SERVICED  TORPEDO READY  BOMBER READY",
                         1.7);
                 yield true;
             }
             case REFIT -> {
                 int cost = quote.creditCost;
-                int salvageCost = quote.salvageCost;
-                if (ctx.credits < cost || st.campaignSalvage < salvageCost) {
-                    EventSystem.showBanner(ctx, "REFIT REQUIRES CREDITS AND SALVAGE", 1.4);
+                int oreCost = Math.max(25, quote.salvageCost * 30);
+                if (ctx.credits < cost || currentCampaignOre(ctx) < oreCost) {
+                    EventSystem.showBanner(ctx, "REFIT REQUIRES CREDITS AND ORE", 1.4);
                     yield false;
                 }
                 ctx.credits -= cost;
-                st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
-                queueCampaignRefitOrder(ctx, st, location, profile, cost, salvageCost);
+                setCampaignOre(ctx, st, currentCampaignOre(ctx) - oreCost);
+                queueCampaignRefitOrder(ctx, st, location, profile, cost, 0);
                 adjustFleetStrain(st, -10.0);
                 setRelationshipState(st, "VOSS", CampaignRelationshipState.TRUSTED);
                 EventSystem.showBanner(ctx, "FLEET REFIT QUEUED  -" + cost + " CREDITS", 1.4);
@@ -16186,9 +15818,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
             case CONTRACTS -> {
                 int payout = quote.payoutCredits;
-                int supplies = quote.quantity;
+                int ore = Math.max(60, quote.quantity * 10);
                 ctx.credits += payout;
-                st.campaignSupplies += supplies;
+                grantCampaignOre(ctx, ore);
                 revealNearbyCampaignSites(st, location, 2100.0,
                         CampaignLocationType.RESOURCE_ZONE,
                         CampaignLocationType.DISTRESS_SIGNAL,
@@ -16202,35 +15834,35 @@ public final class CampaignSystem extends CampaignSystemModels {
                         (profile.alignment == HubAlignment.GREEN)
                                 ? "green handlers are now treating this hub as part of your trusted circuit"
                                 : "broker intermediaries are now routing favors through this port");
-                EventSystem.showBanner(ctx, "JOB BOARD ACCEPTED  +" + payout + " CREDITS  +" + supplies + " SUP  LEADS REVEALED", 1.5);
+                EventSystem.showBanner(ctx, "JOB BOARD ACCEPTED  +" + payout + " CREDITS  +" + ore + " ORE  LEADS REVEALED", 1.5);
                 yield true;
             }
             case SALVAGE -> {
-                int soldSalvage = quote.quantity;
-                if (soldSalvage <= 0) {
-                    EventSystem.showBanner(ctx, "NO SALVAGE TO SELL", 1.3);
+                int availableOre = currentCampaignOre(ctx);
+                int soldOre = Math.min(availableOre, Math.max(25, quote.quantity * 25));
+                if (soldOre <= 0 || !spendCampaignOre(ctx, soldOre)) {
+                    EventSystem.showBanner(ctx, "NO ORE TO SELL", 1.3);
                     yield false;
                 }
-                int payout = quote.payoutCredits;
+                int payout = Math.max(quote.payoutCredits, GameContext.scaleCreditReward((int) Math.round(soldOre * 1.4 * profile.priceMul)));
                 ctx.credits += payout;
                 recordCampaignLedger(st, "trade_credits", payout);
-                st.campaignSalvage -= soldSalvage;
                 adjustFleetStrain(st, -3.0);
-                EventSystem.showBanner(ctx, "SALVAGE SOLD  +" + payout + " CREDITS", 1.5);
+                EventSystem.showBanner(ctx, "ORE LOT SOLD  +" + payout + " CREDITS", 1.5);
                 yield true;
             }
             case FUEL -> {
                 int cost = quote.creditCost;
                 if (ctx.credits < cost) {
-                    EventSystem.showBanner(ctx, "FUEL ORDER REQUIRES " + cost + " CREDITS", 1.4);
+                    EventSystem.showBanner(ctx, "ORE ORDER REQUIRES " + cost + " CREDITS", 1.4);
                     yield false;
                 }
                 ctx.credits -= cost;
                 recordCampaignLedger(st, "trade_credits", cost);
-                int fuelGain = Math.max(14, (int) Math.round(24 * profile.logisticsMul));
-                st.campaignFuel += fuelGain;
+                int oreGain = Math.max(60, (int) Math.round(90 * profile.logisticsMul));
+                grantCampaignOre(ctx, oreGain);
                 adjustFleetStrain(st, -8.0);
-                EventSystem.showBanner(ctx, "FUEL STORES TOPPED UP  +" + fuelGain + " FUEL", 1.5);
+                EventSystem.showBanner(ctx, "ORE DELIVERED  +" + oreGain + " ORE", 1.5);
                 yield true;
             }
         };
@@ -20288,22 +19920,114 @@ public final class CampaignSystem extends CampaignSystemModels {
     }
 
     static ShipRole shipyardOfferRole(CampaignLocation location, HubProfile profile) {
+        ShipRole namedOffer = namedShipyardOfferRole(location);
+        if (namedOffer != null) return namedOffer;
+        ShipRole[] catalog = shipyardOfferCatalog(location, profile);
+        if (catalog.length == 0) return ShipRole.FRIGATE;
+        int missionIndex = location == null ? 0 : Math.max(0, location.missionIndex);
+        int roll = Objects.hash(
+                location == null ? "" : location.id,
+                location == null ? "" : location.name,
+                location == null || location.ownerFaction == null ? Faction.ALLY : location.ownerFaction,
+                missionIndex,
+                shipyardOfferTier(location, profile));
+        return catalog[Math.floorMod(roll, catalog.length)];
+    }
+
+    private static ShipRole namedShipyardOfferRole(CampaignLocation location) {
         String upper = (location == null || location.name == null) ? "" : location.name.toUpperCase(Locale.US);
-        if (upper.contains("PERIMETER") || upper.contains("ARSENAL")) return ShipRole.LIGHT_CRUISER;
-        if (upper.contains("DRYDOCK") || upper.contains("FOUNDRY")) return ShipRole.FRIGATE;
-        if (profile != null && profile.alignment == HubAlignment.YELLOW) return ShipRole.TRANSPORT;
-        return ShipRole.CIWS_CORVETTE;
+        if (upper.contains("ARSENAL")) return ShipRole.BATTLESHIP;
+        if (upper.contains("DRYDOCK")) return ShipRole.CARRIER;
+        if (upper.contains("FOUNDRY")) return ShipRole.BATTLECRUISER;
+        if (upper.contains("PERIMETER")) return ShipRole.LIGHT_CRUISER;
+        return null;
+    }
+
+    private static ShipRole[] shipyardOfferCatalog(CampaignLocation location, HubProfile profile) {
+        int tier = shipyardOfferTier(location, profile);
+        Faction owner = (location == null || location.ownerFaction == null) ? Faction.ALLY : location.ownerFaction;
+        HubAlignment alignment = (profile == null) ? HubAlignment.FRONTIER : profile.alignment;
+        if (owner == Faction.TEAM_C || alignment == HubAlignment.GREEN) {
+            if (tier >= 5) {
+                return new ShipRole[] {
+                        ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP,
+                        ShipRole.CARRIER_SUPPORT_TITAN, ShipRole.SHIELD_BASTION_TITAN, ShipRole.COMMAND_INTEL_TITAN
+                };
+            }
+            if (tier >= 4) {
+                return new ShipRole[] {
+                        ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER,
+                        ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.CARRIER
+                };
+            }
+            if (tier >= 3) {
+                return new ShipRole[] {
+                        ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE, ShipRole.LIGHT_CRUISER,
+                        ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER
+                };
+            }
+            return new ShipRole[] { ShipRole.PICKET, ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE };
+        }
+        if (owner.isYellowLineage() || alignment == HubAlignment.YELLOW) {
+            if (tier >= 5) {
+                return new ShipRole[] {
+                        ShipRole.BATTLECRUISER, ShipRole.CARRIER, ShipRole.DRONE_CARRIER,
+                        ShipRole.TRANSPORT_TITAN, ShipRole.MOBILE_STATION_TITAN, ShipRole.BOARDING_RECOVERY_TITAN
+                };
+            }
+            if (tier >= 4) {
+                return new ShipRole[] {
+                        ShipRole.TRANSPORT, ShipRole.HAULER, ShipRole.LIGHT_CRUISER,
+                        ShipRole.CRUISER, ShipRole.BATTLECRUISER, ShipRole.CARRIER
+                };
+            }
+            if (tier >= 3) {
+                return new ShipRole[] {
+                        ShipRole.TRANSPORT, ShipRole.HAULER, ShipRole.FRIGATE,
+                        ShipRole.MISSILE_BOAT, ShipRole.LIGHT_CRUISER, ShipRole.DRONE_CARRIER
+                };
+            }
+            return new ShipRole[] { ShipRole.TRANSPORT, ShipRole.HAULER, ShipRole.PATROL, ShipRole.FRIGATE };
+        }
+        if (tier >= 5) {
+            return new ShipRole[] {
+                    ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.DREADNOUGHT,
+                    ShipRole.CARRIER, ShipRole.ARTILLERY_TITAN, ShipRole.BULWARK_TITAN
+            };
+        }
+        if (tier >= 4) {
+            return new ShipRole[] {
+                    ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER, ShipRole.CRUISER,
+                    ShipRole.BATTLECRUISER, ShipRole.BATTLESHIP, ShipRole.CARRIER
+            };
+        }
+        if (tier >= 3) {
+            return new ShipRole[] {
+                    ShipRole.FRIGATE, ShipRole.ARTILLERY_SHIP, ShipRole.MISSILE_BOAT,
+                    ShipRole.LIGHT_CRUISER, ShipRole.MEDIUM_CRUISER
+            };
+        }
+        return new ShipRole[] { ShipRole.PICKET, ShipRole.PATROL, ShipRole.FRIGATE, ShipRole.CIWS_CORVETTE };
+    }
+
+    private static int shipyardOfferTier(CampaignLocation location, HubProfile profile) {
+        int missionIndex = location == null ? 1 : Math.max(1, location.missionIndex);
+        int tier = 1;
+        if (missionIndex >= 6) tier = 2;
+        if (missionIndex >= 10) tier = 3;
+        if (missionIndex >= 15) tier = 4;
+        if (missionIndex >= 20) tier = 5;
+        if (location != null && location.strategicValue >= 4) tier++;
+        if (profile != null && profile.quality >= 1.12) tier++;
+        String upper = (location == null || location.name == null) ? "" : location.name.toUpperCase(Locale.US);
+        if (upper.contains("ARSENAL") || upper.contains("DRYDOCK") || upper.contains("FOUNDRY")) tier++;
+        return MathUtil.clamp(tier, 1, 5);
     }
 
     static int shipyardOfferCreditCost(ShipRole role) {
         if (role == null) return 320;
-        return switch (role) {
-            case LIGHT_CRUISER -> 520;
-            case TRANSPORT -> 280;
-            case FRIGATE -> 340;
-            case CIWS_CORVETTE -> 300;
-            default -> 320;
-        };
+        int marketCost = marketCreditCostForRole(role);
+        return marketCost > 0 ? marketCost : 320;
     }
 
     static int campaignHubShipyardOreCost(ShipRole role, int creditCost, HubProfile profile) {
@@ -20333,6 +20057,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             FlagshipOperationsSystem.update(st.flagshipOperations, Math.max(0.0, dt));
             FlagshipOperationsSystem.applyToShip(st.flagshipOperations, ctx.player);
         }
+        tickBattleStrikeCooldowns(st, dt);
         if (!isCommandLayerMode(ctx)) {
             updateStrikeCinematic(ctx, st, dt);
             updateTacticalStrikeBombers(ctx, st, dt);
@@ -20450,6 +20175,47 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st.objectiveSecured) {
             return;
         }
+    }
+
+    private static void tickBattleStrikeCooldowns(CampaignState st, double dt) {
+        if (st == null || dt <= 0.0) return;
+        st.torpedoStrikeCooldownSec = Math.max(0.0, st.torpedoStrikeCooldownSec - dt);
+        st.carrierSortieCooldownSec = Math.max(0.0, st.carrierSortieCooldownSec - dt);
+        st.atomicStrikeCooldownSec = Math.max(0.0, st.atomicStrikeCooldownSec - dt);
+    }
+
+    private static double strikeCooldownRemaining(CampaignState st, String actionId) {
+        if (st == null || actionId == null) return 0.0;
+        return switch (actionId.trim().toUpperCase(Locale.US)) {
+            case "TORPEDO_STRIKE", "TACTICAL_TORPEDO_STRIKE", "TORPEDO" -> Math.max(0.0, st.torpedoStrikeCooldownSec);
+            case "CARRIER_SORTIE", "TACTICAL_CARRIER_SORTIE", "SORTIE" -> Math.max(0.0, st.carrierSortieCooldownSec);
+            case "ATOMIC_STRIKE", "TACTICAL_ATOMIC_STRIKE", "ATOMIC" -> Math.max(0.0, st.atomicStrikeCooldownSec);
+            default -> 0.0;
+        };
+    }
+
+    private static String strikeCooldownReason(CampaignState st, String actionId) {
+        double cooldown = strikeCooldownRemaining(st, actionId);
+        return cooldown <= 0.0 ? "" : "cooldown " + (int) Math.ceil(cooldown) + "s";
+    }
+
+    private static void startStrikeCooldown(CampaignState st, String actionId) {
+        if (st == null || actionId == null) return;
+        switch (actionId.trim().toUpperCase(Locale.US)) {
+            case "TORPEDO_STRIKE", "TACTICAL_TORPEDO_STRIKE", "TORPEDO" ->
+                    st.torpedoStrikeCooldownSec = TORPEDO_STRIKE_COOLDOWN_SEC;
+            case "CARRIER_SORTIE", "TACTICAL_CARRIER_SORTIE", "SORTIE" ->
+                    st.carrierSortieCooldownSec = CARRIER_SORTIE_COOLDOWN_SEC;
+            case "ATOMIC_STRIKE", "TACTICAL_ATOMIC_STRIKE", "ATOMIC" ->
+                    st.atomicStrikeCooldownSec = ATOMIC_STRIKE_COOLDOWN_SEC;
+            default -> {
+            }
+        }
+    }
+
+    private static String strikeCooldownChip(CampaignState st, String actionId) {
+        double cooldown = strikeCooldownRemaining(st, actionId);
+        return cooldown <= 0.0 ? "READY" : "CD " + (int) Math.ceil(cooldown) + "S";
     }
 
     private static void applyLiveTacticalEnvironment(GameContext ctx, CampaignState st, double dt) {
@@ -23034,21 +22800,11 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st.processedResourceTransactionIds.contains(key)) return false;
         int creditCost = Math.max(0, credits);
         int oreCost = Math.max(0, ore);
-        int fuelCost = Math.max(0, fuel);
-        int supplyCost = Math.max(0, supplies);
-        int ammoCost = Math.max(0, ammo);
-        int salvageCost = Math.max(0, salvage);
-        if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost
-                || st.campaignFuel < fuelCost || st.campaignSupplies < supplyCost
-                || st.campaignAmmo < ammoCost || st.campaignSalvage < salvageCost) {
+        if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost) {
             return false;
         }
         ctx.credits -= creditCost;
         setCampaignOre(ctx, st, currentCampaignOre(ctx) - oreCost);
-        st.campaignFuel -= fuelCost;
-        st.campaignSupplies -= supplyCost;
-        st.campaignAmmo -= ammoCost;
-        st.campaignSalvage -= salvageCost;
         st.processedResourceTransactionIds.add(key);
         while (st.processedResourceTransactionIds.size() > 128) {
             Iterator<String> iterator = st.processedResourceTransactionIds.iterator();
@@ -31491,26 +31247,11 @@ public final class CampaignSystem extends CampaignSystemModels {
             return;
         }
         FleetPosture posture = resolveFleetPosture(st.selectedFleetPostureId);
-        double attrition = ctx.experience.attrition;
         double pressure = regionPressureAt(ctx, st.playerGalaxyX, st.playerGalaxyY);
-        double fuelAccrued = st.travelFuelAttritionRemainder + postureTravelFuelCostPerTick(posture, dt) * attrition;
-        double supplyAccrued = st.travelSupplyAttritionRemainder + postureTravelSupplyCostPerTick(posture, dt) * attrition;
-        double ammoAccrued = st.travelAmmoAttritionRemainder + postureTravelAmmoCostPerTick(posture, dt) * attrition;
-        int fuelCost = (int) Math.floor(fuelAccrued);
-        int supplyCost = (int) Math.floor(supplyAccrued);
-        int ammoCost = (int) Math.floor(ammoAccrued);
-        st.travelFuelAttritionRemainder = fuelAccrued - fuelCost;
-        st.travelSupplyAttritionRemainder = supplyAccrued - supplyCost;
-        st.travelAmmoAttritionRemainder = ammoAccrued - ammoCost;
-        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
-        EconomyLogisticsIndustrySystem.recordLiveTravelAttrition(st.economyExpansion, fuelCost, supplyCost, ammoCost, pressure >= 0.45);
-        synchronizeCampaignEconomyLedger(ctx, st);
-        double strainGain = 0.10 + pressure * 0.18;
-        if (st.campaignFuel < 34) strainGain += 0.18;
-        if (st.campaignSupplies < 26) strainGain += 0.22;
-        if (st.campaignAmmo < 30) strainGain += 0.08;
+        st.travelFuelAttritionRemainder = 0.0;
+        st.travelSupplyAttritionRemainder = 0.0;
+        st.travelAmmoAttritionRemainder = 0.0;
+        double strainGain = 0.08 + pressure * 0.16;
         if (posture == FleetPosture.COMBAT_PATROL || posture == FleetPosture.RAIDER_DOCTRINE) strainGain += 0.10;
         if (posture == FleetPosture.LOGISTICS_CONSERVATION) strainGain -= 0.05;
         adjustFleetStrain(st, strainGain * dt);
@@ -31573,21 +31314,13 @@ public final class CampaignSystem extends CampaignSystemModels {
                                                  CampaignLocation destination,
                                                  CampaignTravelState travel) {
         if (st == null || destination == null || travel == null) return "";
-        boolean depleted = campaignFuel(ctx) < 16 || campaignSupplies(ctx) < 12 || st.campaignAmmo < 14;
         boolean timedContact = destination.type == CampaignLocationType.DISTRESS_SIGNAL
                 || destination.type == CampaignLocationType.SALVAGE_FIELD
                 || destination.type == CampaignLocationType.HIDDEN_CACHE
                 || destination.type == CampaignLocationType.STORY_EVENT;
         boolean late = timedContact && (destination.escalationStage >= 2 || destination.unresolvedAgeSec >= 94.0);
         boolean early = timedContact && destination.escalationStage <= 0 && destination.unresolvedAgeSec <= 24.0;
-        boolean overprepared = campaignFuel(ctx) >= 108
-                && campaignSupplies(ctx) >= 82
-                && st.campaignAmmo >= 96
-                && travel.interceptionRisk <= 24.0;
-        if (depleted) {
-            return "Arrival Consequence: depleted arrival; crew strain rises and retreat planning matters at "
-                    + destination.name + ".";
-        }
+        boolean hotArrival = travel.interceptionRisk >= 70.0;
         if (late) {
             return "Arrival Consequence: late arrival; the contact escalated before Blue command reached "
                     + destination.name + ".";
@@ -31596,8 +31329,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             return "Arrival Consequence: early arrival; the window is stable and optional rewards remain intact at "
                     + destination.name + ".";
         }
-        if (overprepared) {
-            return "Arrival Consequence: overprepared arrival; safe reserves can be spent on mining, salvage, or support actions at "
+        if (hotArrival) {
+            return "Arrival Consequence: hot arrival; enemy pressure may force immediate tactical choices at "
                     + destination.name + ".";
         }
         return "Arrival Consequence: on-time arrival; route risk converted cleanly into local options at "
@@ -36563,10 +36296,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         double fleetStrength = galaxyCampaignFleetStrength(ctx, st);
         double threat = Math.max(35.0, force.strength * 1.25);
         double ratio = fleetStrength / threat;
-        double stress = MathUtil.clamp(1.35 - ratio, 0.0, 1.0);
-        st.campaignFuel = Math.max(0, st.campaignFuel - (int) Math.round(4 + stress * 10.0));
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - (int) Math.round(3 + stress * 8.0));
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - (int) Math.round(5 + stress * 11.0));
         force.strength = Math.max(0.0, force.strength - Math.max(24.0, 58.0 * Math.max(0.35, ratio)));
         force.readiness = Math.max(0.0, force.readiness - 26.0);
         force.intent = CampaignForceIntent.RETREATING;
@@ -36672,9 +36401,6 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static void applyGalaxySearchGroupAutoResolveWear(GameContext ctx, CampaignState st, double ratio, GalaxySearchGroup group) {
         if (ctx == null || st == null || group == null) return;
         double stress = MathUtil.clamp(1.35 - ratio, 0.0, 1.0);
-        st.campaignFuel = Math.max(0, st.campaignFuel - (int) Math.round(5 + group.tier * 3 + stress * 10.0));
-        st.campaignSupplies = Math.max(0, st.campaignSupplies - (int) Math.round(4 + group.tier * 2 + stress * 8.0));
-        st.campaignAmmo = Math.max(0, st.campaignAmmo - (int) Math.round(6 + group.tier * 4 + stress * 12.0));
         st.enemyAlertLevel = MathUtil.clamp(
                 st.enemyAlertLevel + 5.0 + group.threatLevel * 10.0 + stress * 8.0,
                 0.0,
@@ -44806,10 +44532,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         cp.galaxyAmbientEncounterActive = st.galaxyAmbientEncounterActive;
         cp.activeMapModifiers = serializeMapModifiers(st.activeModifiers);
         cp.environmentHazardPulseIndex = st.environmentHazardPulseIndex;
-        cp.campaignFuel = st.campaignFuel;
-        cp.campaignSupplies = st.campaignSupplies;
-        cp.campaignAmmo = st.campaignAmmo;
-        cp.campaignSalvage = st.campaignSalvage;
+        cp.campaignFuel = 0;
+        cp.campaignSupplies = 0;
+        cp.campaignAmmo = 0;
+        cp.campaignSalvage = 0;
         cp.travelFuelAttritionRemainder = st.travelFuelAttritionRemainder;
         cp.travelSupplyAttritionRemainder = st.travelSupplyAttritionRemainder;
         cp.travelAmmoAttritionRemainder = st.travelAmmoAttritionRemainder;
@@ -44827,6 +44553,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         cp.strategicTorpedoCharges = st.strategicTorpedoCharges;
         cp.strategicSortiesLaunched = st.strategicSortiesLaunched;
         cp.strategicAtomicCharges = st.strategicAtomicCharges;
+        cp.torpedoStrikeCooldownSec = st.torpedoStrikeCooldownSec;
+        cp.carrierSortieCooldownSec = st.carrierSortieCooldownSec;
+        cp.atomicStrikeCooldownSec = st.atomicStrikeCooldownSec;
         cp.nextStrategicStrikeObjectId = st.nextStrategicStrikeObjectId;
         cp.strategicStrikeObjects = serializeStrategicStrikeObjects(st);
         cp.strategicDivisions = serializeStrategicDivisions(st);
@@ -45006,13 +44735,13 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.galaxyAmbientEncounterActive = cp.galaxyAmbientEncounterActive;
         st.activeModifiers = restoreMapModifiers(cp.activeMapModifiers);
         st.environmentHazardPulseIndex = cp.environmentHazardPulseIndex;
-        st.campaignFuel = Math.max(0, cp.campaignFuel);
-        st.campaignSupplies = Math.max(0, cp.campaignSupplies);
-        st.campaignAmmo = Math.max(0, cp.campaignAmmo);
-        st.campaignSalvage = Math.max(0, cp.campaignSalvage);
-        st.travelFuelAttritionRemainder = MathUtil.clamp(cp.travelFuelAttritionRemainder, 0.0, 0.999999);
-        st.travelSupplyAttritionRemainder = MathUtil.clamp(cp.travelSupplyAttritionRemainder, 0.0, 0.999999);
-        st.travelAmmoAttritionRemainder = MathUtil.clamp(cp.travelAmmoAttritionRemainder, 0.0, 0.999999);
+        st.campaignFuel = 0;
+        st.campaignSupplies = 0;
+        st.campaignAmmo = 0;
+        st.campaignSalvage = 0;
+        st.travelFuelAttritionRemainder = 0.0;
+        st.travelSupplyAttritionRemainder = 0.0;
+        st.travelAmmoAttritionRemainder = 0.0;
         st.playerGalaxyX = cp.playerGalaxyX;
         st.playerGalaxyY = cp.playerGalaxyY;
         st.playerGalaxyHeadingDeg = cp.playerGalaxyHeadingDeg;
@@ -45027,6 +44756,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.strategicTorpedoCharges = Math.max(0, cp.strategicTorpedoCharges);
         st.strategicSortiesLaunched = Math.max(0, cp.strategicSortiesLaunched);
         st.strategicAtomicCharges = Math.max(0, cp.strategicAtomicCharges);
+        st.torpedoStrikeCooldownSec = Math.max(0.0, cp.torpedoStrikeCooldownSec);
+        st.carrierSortieCooldownSec = Math.max(0.0, cp.carrierSortieCooldownSec);
+        st.atomicStrikeCooldownSec = Math.max(0.0, cp.atomicStrikeCooldownSec);
         st.nextStrategicStrikeObjectId = Math.max(1, cp.nextStrategicStrikeObjectId);
         restoreStrategicStrikeObjects(st, cp.strategicStrikeObjects);
         restoreStrategicDivisions(st, cp.strategicDivisions);

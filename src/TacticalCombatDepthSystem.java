@@ -226,8 +226,7 @@ public final class TacticalCombatDepthSystem {
                 if (tactical.doctrine == Doctrine.AVOID_COLLATERAL
                         && collateralRiskNear(ctx, ctx.cursorWorldX, ctx.cursorWorldY, 190.0)) {
                     marker(ctx, "MINE DEPLOYMENT BLOCKED: COLLATERAL RISK");
-                } else if (tactical.mineAmmo > 0) {
-                    tactical.mineAmmo--;
+                } else {
                     state.mines.add(new Mine(ctx.player.faction, ctx.cursorWorldX, ctx.cursorWorldY));
                     marker(ctx, "MINEFIELD DEPLOYED");
                 }
@@ -290,7 +289,7 @@ public final class TacticalCombatDepthSystem {
             ShipState tactical = state.ships.get(ship.id);
             if (tactical == null) continue;
             if (tactical.weaponHeat >= 0.98) return false;
-            return turret.kind == Turret.Kind.MISSILE ? tactical.missileAmmo > 0 : tactical.ballisticAmmo > 0;
+            return true;
         }
         return true;
     }
@@ -301,8 +300,6 @@ public final class TacticalCombatDepthSystem {
             ShipState tactical = state.ships.get(ship.id);
             if (tactical == null) continue;
             tactical.weaponHeat = Math.min(1.0, tactical.weaponHeat + (turret.kind == Turret.Kind.MISSILE ? 0.035 : 0.018));
-            if (turret.kind == Turret.Kind.MISSILE) tactical.missileAmmo = Math.max(0, tactical.missileAmmo - 1);
-            else if (!(ship instanceof Player)) tactical.ballisticAmmo = Math.max(0, tactical.ballisticAmmo - 1);
         }
     }
 
@@ -401,7 +398,7 @@ public final class TacticalCombatDepthSystem {
         if (ctx.player != null) {
             ShipState tactical = shipState(state, ctx.player);
             g2.drawString("Doctrine " + tactical.doctrine + "   PD " + tactical.pointDefensePriority, x + 16, y + 146);
-            g2.drawString("Ammo INF/" + tactical.missileAmmo + "/" + tactical.mineAmmo
+            g2.drawString("Weapons " + (tactical.weaponHeat >= 0.98 ? "HEAT LOCK" : "READY")
                     + "   Heat " + (int) Math.round(tactical.weaponHeat * 100.0) + "%   Scars " + tactical.persistentScars,
                     x + 16, y + 164);
             if (!ctx.player.turrets.isEmpty()) {

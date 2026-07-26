@@ -57,7 +57,7 @@ class CampaignSensorSuiteTest {
     }
 
     @Test
-    void relayDroneExtendsCoverageIntoDistantSearchArea() throws Exception {
+    void relayDronePlayerActionIsRemoved() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object group = firstSearchGroup(st);
@@ -71,17 +71,16 @@ class CampaignSensorSuiteTest {
         setBoolean(group, "visible", false);
 
         CampaignSystem.selectCampaignContactTarget(ctx, "Distant Return", "", "", getDouble(group, "x"), getDouble(group, "y"), true, true);
-        assertTrue(CampaignSystem.requestCampaignDeployRelay(ctx));
+        assertFalse(CampaignSystem.requestCampaignDeployRelay(ctx));
         invokeGalaxyGroupUpdate(ctx, st, 1.0);
 
         List<?> relayNodes = relayNodes(st);
-        assertFalse(relayNodes.isEmpty(), "relay deployment should create a persistent sensor node");
-        assertTrue(getBoolean(group, "visible"), "relay coverage should surface contacts beyond direct fleet coverage");
-        assertTrue(getDouble(group, "trackIntegrity") > 6.0, "relay coverage should strengthen remote tracks");
+        assertTrue(relayNodes.isEmpty(), "removed player relay action should not create sensor nodes");
+        assertFalse(getBoolean(group, "visible"), "removed player relay action should not boost remote tracking");
     }
 
     @Test
-    void scoutSurgeSeedsTemporaryForwardSensorPressure() throws Exception {
+    void scoutSurgePlayerActionIsRemoved() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
         Object group = firstSearchGroup(st);
@@ -92,13 +91,12 @@ class CampaignSensorSuiteTest {
         setDouble(group, "trackIntegrity", 14.0);
         CampaignSystem.selectCampaignContactTarget(ctx, "Scout Return", "", "", getDouble(group, "x"), getDouble(group, "y"), true, true);
 
-        assertTrue(CampaignSystem.requestCampaignScoutSurge(ctx));
+        assertFalse(CampaignSystem.requestCampaignScoutSurge(ctx));
 
         List<?> relayNodes = relayNodes(st);
-        assertFalse(relayNodes.isEmpty());
-        Object node = relayNodes.get(relayNodes.size() - 1);
-        assertTrue(getBoolean(node, "scout"), "scout surge should create a scout-type relay node");
-        assertTrue(getDouble(group, "scoutPressureSec") > 0.0, "scout surge should apply temporary forward sensor pressure");
+        assertTrue(relayNodes.isEmpty(), "removed scout surge action should not create a scout relay node");
+        assertEquals(0.0, getDouble(group, "scoutPressureSec"), 1e-9,
+                "removed scout surge action should not apply temporary sensor pressure");
     }
 
     @Test

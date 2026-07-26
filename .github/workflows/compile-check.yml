@@ -25,4 +25,4 @@ jobs:
 
       - name: Verification
         shell: pwsh
-        run: ./gradlew --no-daemon check
+        run: ./gradlew --no-daemon currentReleaseVerification

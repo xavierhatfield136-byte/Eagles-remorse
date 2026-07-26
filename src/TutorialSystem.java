@@ -347,7 +347,7 @@ public final class TutorialSystem {
         List<ChecklistItem> items = checklist(ctx, st, lesson);
         ChecklistItem next = nextIncompleteItem(items);
 
-        int panelW = Math.max(280, Math.min(350, viewportW / 4));
+        int panelW = Math.min(560, Math.max(280, viewportW - 36));
         int contentW = panelW - 24;
 
         Graphics2D gx = (Graphics2D) g2.create();
@@ -411,6 +411,7 @@ public final class TutorialSystem {
         gx.setFont(bodyFont);
         gx.setColor(new Color(196, 214, 236, 210));
         String counter = (lesson == LessonId.COMPLETE) ? "Sandbox complete" : "Lesson " + (st.lessonIndex + 1) + " of " + LESSON_COUNT;
+        counter = fitLine(bodyFm, counter, Math.max(80, panelW - 210));
         gx.drawString(counter, panelW - 14 - bodyFm.stringWidth(counter), 34);
 
         int cursorY = 74;
@@ -463,7 +464,9 @@ public final class TutorialSystem {
             }
         }
         gx.setColor(new Color(176, 188, 206, 188));
-        gx.drawString("Ctrl+F1 skip  Ctrl+F2 archive  F10 menu.", 14, panelH - 10);
+        gx.drawString(fitLine(gx.getFontMetrics(),
+                "Ctrl+F1 skip  Ctrl+F2 archive  F10 menu.",
+                contentW), 14, panelH - 10);
         gx.dispose();
     }
 
@@ -1415,6 +1418,18 @@ public final class TutorialSystem {
             lines.add(text.trim());
         }
         return lines;
+    }
+
+    private static String fitLine(FontMetrics fm, String text, int maxWidth) {
+        if (text == null) return "";
+        if (fm == null || maxWidth <= 0 || fm.stringWidth(text) <= maxWidth) return text;
+        String ellipsis = "...";
+        int ellipsisWidth = fm.stringWidth(ellipsis);
+        int end = text.length();
+        while (end > 1 && fm.stringWidth(text.substring(0, end)) + ellipsisWidth > maxWidth) {
+            end--;
+        }
+        return text.substring(0, Math.max(1, end)) + ellipsis;
     }
 
     private static int combinedOreTotal(GameContext ctx, int baseId) {

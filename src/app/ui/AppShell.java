@@ -60,7 +60,7 @@ public final class AppShell {
         root = new JPanel(cards);
 
         titlePanel = new TitleSequencePanel(this::showMenu);
-        menuPanel = new MainMenuPanel(this::startGame, this::showCredits, this::showAlphaReadiness, quitAction,
+        menuPanel = new MainMenuPanel(this::startGame, this::showCredits, quitAction,
                 resumeCampaignProvider, spaceBackgroundPainter);
         creditsPanel = new CreditsPanel(this::showMenu);
         alphaReadinessPanel = new AlphaReadinessPanel(this::showMenu);

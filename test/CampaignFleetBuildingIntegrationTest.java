@@ -5,11 +5,58 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class CampaignFleetBuildingIntegrationTest {
+    @Test
+    void shipyardOffersIncludeBroaderFactionCapitalCatalogs() {
+        GameContext ctx = campaignContext();
+        Set<ShipRole> offers = new HashSet<>();
+        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location == null || !location.services.contains(CampaignSystem.HubService.SHIPYARD)) continue;
+            offers.add(CampaignSystem.shipyardOfferRole(location, CampaignSystem.hubProfile(ctx, location)));
+        }
+
+        assertTrue(offers.size() > 3, "campaign shipyards should expose more than the old tiny offer set");
+        assertTrue(offers.stream().anyMatch(role -> role == ShipRole.BATTLECRUISER
+                        || role == ShipRole.BATTLESHIP
+                        || role == ShipRole.CARRIER
+                        || role == ShipRole.DREADNOUGHT
+                        || role.isTitan()),
+                "later shipyards should sell larger vessels the player needs for fleet growth");
+    }
+
+    @Test
+    void factionShipyardPurchasePreservesSellerHullIdentity() throws Exception {
+        GameContext ctx = campaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignLocation yard = shipyard(ctx);
+        yard.ownerFaction = Faction.TEAM_C;
+        ctx.credits = 1_000_000;
+        CampaignSystem.grantCampaignOre(ctx, 1_000_000);
+        int fleetBefore = liveFleetCount(st);
+
+        assertTrue(invokeHubService(ctx, st, yard, CampaignSystem.HubService.SHIPYARD));
+        CampaignSystem.CampaignYardOrder order = CampaignSystem.campaignYardOrders(ctx).get(0);
+        assertEquals(Faction.TEAM_C, order.producingFaction);
+
+        invokeAdvanceYardOrders(ctx, st, 5_000.0);
+
+        Object entry = newestFleetEntry(st);
+        assertEquals(fleetBefore + 1, liveFleetCount(st));
+        assertEquals(Faction.TEAM_C.name(), getString(entry, "factionName"));
+        assertEquals(order.role, getField(entry, "role"));
+        int activeShipId = getInt(entry, "activeShipId");
+        Ship delivered = findShipById(ctx, activeShipId);
+        assertNotNull(delivered);
+        assertEquals(Faction.TEAM_C, delivered.faction);
+        assertEquals(order.role, delivered.role);
+    }
+
     @Test
     void shipyardConstructionAndRefitAdvanceThroughCampaignTimeAndCheckpoint() throws Exception {
         GameContext ctx = campaignContext();
@@ -70,6 +117,10 @@ class CampaignFleetBuildingIntegrationTest {
                 predecessor = candidate;
                 break;
             }
+        }
+        if (predecessor == null) {
+            predecessor = CampaignSystem.addPersistentFleetEntry(st, order.role, "Blue Guard Legacy",
+                    CampaignSystem.CAMPAIGN_FLAGSHIP_COMMAND_GROUP, Faction.ALLY);
         }
         assertNotNull(predecessor);
         setBoolean(predecessor, "destroyed", true);
@@ -165,6 +216,14 @@ class CampaignFleetBuildingIntegrationTest {
     private static Object newestFleetEntry(CampaignSystem.CampaignState st) {
         if (st.persistentBlueFleet.isEmpty()) throw new AssertionError("missing persistent fleet entry");
         return st.persistentBlueFleet.get(st.persistentBlueFleet.size() - 1);
+    }
+
+    private static Ship findShipById(GameContext ctx, int id) {
+        if (ctx == null || id < 0) return null;
+        for (Ship ship : ctx.ships) {
+            if (ship != null && ship.id == id) return ship;
+        }
+        return null;
     }
 
     private static boolean invokeHubService(GameContext ctx, CampaignSystem.CampaignState st,

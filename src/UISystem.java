@@ -913,7 +913,7 @@ public final class UISystem {
         }
 
         normalizePower(p);
-        ctx.player.setPowerBusAllocation(p[0], p[1], p[2], p[3], p[4], p[5]);
+        ctx.player.setCustomPowerBusAllocation(p[0], p[1], p[2], p[3], p[4], p[5]);
         // Manual engineering input immediately overrides automation.
         ctx.command.engineeringAutomation = false;
     }

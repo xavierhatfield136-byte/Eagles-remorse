@@ -8,14 +8,6 @@ final class CampaignWarPresenter {
     private CampaignWarPresenter() {}
 
     static List<String> baselineTelemetryLines(GameContext ctx) {
-        return legacyBaselineTelemetryLines(ctx);
-    }
-
-    static List<String> battleWarningLines(GameContext ctx, int maxLines) {
-        return legacyBattleWarningLines(ctx, maxLines);
-    }
-
-    static List<String> legacyBaselineTelemetryLines(GameContext ctx) {
         CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
         if (st == null) return List.of();
         ArrayList<String> out = new ArrayList<>();
@@ -40,7 +32,7 @@ final class CampaignWarPresenter {
         return List.copyOf(out);
     }
 
-    static List<String> legacyBattleWarningLines(GameContext ctx, int maxLines) {
+    static List<String> battleWarningLines(GameContext ctx, int maxLines) {
         CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
         if (ctx == null || st == null) return List.of("BATTLE WARNING  |  unavailable");
         ArrayList<String> out = new ArrayList<>();

@@ -24,7 +24,7 @@ jobs:
           cache: gradle
 
       - name: Verification
-        run: ./gradlew --no-daemon check
+        run: ./gradlew --no-daemon currentReleaseVerification
 
       - name: Build Linux package
         run: ./gradlew --no-daemon phase11LinuxPackaging

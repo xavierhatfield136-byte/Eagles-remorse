@@ -1133,12 +1133,12 @@ class CampaignSystemModels {
         TRADE("Request Trade"),
         REFIT("Refit Ships"),
         SHIPYARD("Purchase Ships"),
-        SUPPLY("Request Replenishment"),
-        STRIKE_REARM("Rearm Strikes"),
+        SUPPLY("Buy Ore"),
+        STRIKE_REARM("Service Strikes"),
         INTEL("Gather Intel"),
         CONTRACTS("Job Board"),
-        SALVAGE("Sell Salvage"),
-        FUEL("Buy Fuel");
+        SALVAGE("Sell Ore Lot"),
+        FUEL("Ore Delivery");
 
         public final String label;
 
@@ -3447,6 +3447,9 @@ class CampaignSystemModels {
         public int strategicTorpedoCharges = CampaignSystem.STARTING_TORPEDO_INVENTORY;
         public int strategicSortiesLaunched = 0;
         public int strategicAtomicCharges = CampaignSystem.STARTING_ATOMIC_INVENTORY;
+        public double torpedoStrikeCooldownSec = 0.0;
+        public double carrierSortieCooldownSec = 0.0;
+        public double atomicStrikeCooldownSec = 0.0;
         public final List<Integer> pendingReserveReinforcementSlots = new ArrayList<>();
         public double reserveReinforcementTimerSec = 0.0;
         public final java.util.Map<Integer, CampaignSystem.StrategicDivisionState> strategicDivisions = new java.util.LinkedHashMap<>();

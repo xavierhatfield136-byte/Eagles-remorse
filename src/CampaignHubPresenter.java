@@ -26,9 +26,9 @@ final class CampaignHubPresenter {
         out.add("Service Quality: " + CampaignSystem.routeTempoLabel(
                 new CampaignSystem.GalaxyRouteAssessment(0, 0, 0, 0, 0, 0, 0, 150 + profile.quality * 120, 0)));
         if (profile.alignment == CampaignSystem.HubAlignment.GREEN) {
-            out.add("Strengths: repair, refit, military logistics, contracts, intel");
+            out.add("Strengths: repair, refit, military escort contracts, intel");
         } else if (profile.alignment == CampaignSystem.HubAlignment.YELLOW) {
-            out.add("Strengths: trade, fuel, salvage sale, cargo economy, industrial throughput");
+            out.add("Strengths: ore trade, cargo economy, recovery crews, industrial throughput");
         } else {
             out.add("Strengths: mixed frontier support under tighter stock and harsher prices");
         }
@@ -80,13 +80,13 @@ final class CampaignHubPresenter {
                 lines.add("Hub Capability: " + CampaignSystem.installationQuality(profile).name().replace('_', ' ')
                         + "  |  support x" + String.format(Locale.US, "%.2f", profile.supportMul)
                         + "  |  local repair stock " + Math.max(0, location.repairSupplyStockpile));
-                lines.add("Recovery Limit: one visit is partial; repeated repairs, supplies, and salvage are required to erase heavy attrition.");
-                lines.add("Cost: " + quote.creditCost + " credits  |  " + quote.supplyCost
-                        + " supplies  |  " + quote.salvageCost + " salvage");
+                lines.add("Recovery Limit: one visit is partial; repeated repairs and ore investment erase heavy attrition.");
+                int oreCost = Math.max(15, quote.salvageCost * 25 + quote.supplyCost * 5);
+                lines.add("Cost: " + quote.creditCost + " credits  |  " + oreCost + " ore");
             }
             case TRADE -> {
                 lines.add("Request Trade");
-                lines.add("Market exchange can buy stores or sell salvage/ore.");
+                lines.add("Market exchange can buy ore or sell fleet ore for credits.");
                 lines.add("Selected ore sale: " + quote.selectedOre + " / " + quote.availableOre
                         + " ore  |  Payout: " + quote.payoutCredits + " credits");
                 lines.add("Market Bias: " + (profile.alignment == CampaignSystem.HubAlignment.YELLOW
@@ -97,37 +97,37 @@ final class CampaignHubPresenter {
                 FleetBuildingSystem.HullProfile hull = FleetBuildingSystem.hullProfile(role);
                 lines.add("Purchase Ships");
                 lines.add("Current Yard Offer: " + role.name());
-                lines.add("Station hulls are not for sale.");
-                lines.add("Fleet Ore pays player purchases; Yard Ore feeds local faction construction.");
+                lines.add("Seller: " + CampaignSystem.factionBoardName(location.ownerFaction)
+                        + "  |  delivered hull keeps seller doctrine and skin.");
+                lines.add("Fleet Ore pays purchases; Yard Ore feeds local faction construction.");
                 lines.add("Fleet Ore: " + CampaignSystem.currentCampaignOre(ctx) + "  |  Yard Ore: " + Math.max(0, location.oreStockpile)
                         + "  |  Required Fleet Ore: " + quote.oreCost);
                 lines.add("Role: " + hull.battlefieldRole + "  |  Counter: " + hull.counter + "  |  Weakness: " + hull.weakness);
                 lines.add("Maintenance: " + hull.budgets.maintenance + "  |  Variant: " + hull.factionVariant);
                 lines.add("Silhouette: " + hull.silhouetteCheck);
                 lines.add("Cost: " + quote.creditCost + " credits  |  " + quote.oreCost
-                        + " Fleet Ore  |  " + quote.salvageCost + " salvage");
+                        + " Fleet Ore");
             }
             case SUPPLY -> {
-                lines.add("Request Replenishment");
-                lines.add("Reloads campaign supplies and ammunition for future travel and combat.");
-                lines.add("Supply Focus: " + (profile.alignment == CampaignSystem.HubAlignment.GREEN
-                        ? "military resupply" : "civilian trade goods"));
+                lines.add("Buy Ore");
+                lines.add("Converts credits into fleet ore for repairs, refits, and commissions.");
+                lines.add("Ore Focus: " + (profile.alignment == CampaignSystem.HubAlignment.GREEN
+                        ? "military fabrication stock" : "civilian industrial cargo"));
             }
             case STRIKE_REARM -> {
-                lines.add("Request Replenishment");
-                lines.add("Rearms torpedoes, carrier strike readiness, atomic charges when allowed, and limited strike stores.");
-                lines.add("Cost: " + quote.creditCost + " credits  |  "
-                        + quote.oreCost + " ore  |  " + quote.supplyCost + " supplies");
+                lines.add("Service Strikes");
+                lines.add("Clears torpedo and bomber cooldowns and reduces nuclear cooldown when active.");
+                lines.add("Cost: " + quote.creditCost + " credits  |  " + quote.oreCost + " ore");
             }
             case FUEL -> {
-                lines.add("Fuel Purchase");
-                lines.add("Top up long-range fuel reserves for travel legs between hubs.");
-                lines.add("Fuel Yield scales with local logistics throughput.");
+                lines.add("Ore Delivery");
+                lines.add("Buy a delivered ore lot from local logistics traffic.");
+                lines.add("Ore yield scales with local logistics throughput.");
             }
             case SALVAGE -> {
-                lines.add("Sell Salvage");
-                lines.add("Converts recovered salvage stock into credits.");
-                lines.add("Current salvage stock: " + CampaignSystem.campaignSalvageStock(ctx));
+                lines.add("Sell Ore Lot");
+                lines.add("Converts a chunk of fleet ore into credits.");
+                lines.add("Fleet ore: " + CampaignSystem.currentCampaignOre(ctx));
             }
             case INTEL -> {
                 lines.add("Intel Exchange");
@@ -262,7 +262,8 @@ final class CampaignHubPresenter {
         return switch (service) {
             case REPAIR, REFIT -> "Request support";
             case TRADE, SALVAGE, FUEL -> "Request trade";
-            case SUPPLY, STRIKE_REARM -> "Request replenishment";
+            case SUPPLY -> "Buy ore";
+            case STRIKE_REARM -> "Service strike cooldowns";
             case CONTRACTS, INTEL -> "Bounty / job board";
             case SHIPYARD -> "Purchase ships";
         };

@@ -5,10 +5,6 @@ final class CampaignSidebarPresenter {
     private CampaignSidebarPresenter() {}
 
     static List<String> summaryLines(GameContext ctx) {
-        return legacySummaryLines(ctx);
-    }
-
-    static List<String> legacySummaryLines(GameContext ctx) {
         CampaignSystem.CampaignState st = CampaignSystem.state(ctx);
         if (ctx == null || st == null) return List.of("Campaign data unavailable.");
         CampaignSystem.CampaignLocation current = CampaignSystem.currentCampaignLocation(ctx);

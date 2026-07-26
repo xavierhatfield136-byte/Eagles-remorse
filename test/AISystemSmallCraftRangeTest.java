@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AISystemSmallCraftRangeTest {
@@ -110,7 +111,7 @@ class AISystemSmallCraftRangeTest {
     }
 
     @Test
-    void blueEscortFiresBeyondOldGunGateWhenMothershipHasContact() {
+    void blueEscortFiresBeyondOldGunGateWhenMothershipHasContact() throws Exception {
         GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3200, 1800, true, 48L, false));
         ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);
         ctx.player.faction = Faction.ALLY;
@@ -122,14 +123,46 @@ class AISystemSmallCraftRangeTest {
         ctx.ships.add(enemyCruiser);
         ctx.entityQuery.rebuild(ctx);
 
-        for (int i = 0; i < 3 * 60; i++) {
-            AISystem.update(ctx, 1.0 / 60.0);
-            for (Ship ship : ctx.ships) ship.update(1.0 / 60.0);
-            ctx.entityQuery.rebuild(ctx);
-        }
-
+        int shots = invokeFireIfAble(ctx, escort, enemyCruiser, GameContext.DT, 1700.0);
+        assertTrue(shots > 0);
         assertTrue(ctx.projectiles.stream().anyMatch(projectile -> projectile.sourceShipId == escort.id),
-                "blue escort should open fire using mothership-grade contact authority");
+                "blue escort should engage using mothership-grade contact authority");
+    }
+
+    @Test
+    void missileShipsOpenAtStandoffBeforeUsingSensorAuthorizedGuns() throws Exception {
+        GameContext ctx = new GameContext(new GameConfig(GameMode.CUSTOM_BATTLES, 3600, 1800, true, 49L, false));
+        ctx.player = new Player(ShipRole.MOTHERSHIP, 0.0, 900.0);
+        ctx.player.faction = Faction.ALLY;
+        FleetShip missileBoat = new FleetShip(ShipRole.MISSILE_BOAT, Faction.ALLY, 0.0, 900.0);
+        FleetShip enemyCruiser = new FleetShip(ShipRole.CRUISER, Faction.ENEMY, 1700.0, 900.0);
+        ctx.ships.clear();
+        ctx.ships.add(ctx.player);
+        ctx.ships.add(missileBoat);
+        ctx.ships.add(enemyCruiser);
+        ctx.entityQuery.rebuild(ctx);
+
+        invokeCommitToTarget(missileBoat, enemyCruiser, 5.0);
+        assertTrue(missileBoat.aiMissileStandoffTimer > 0.0);
+
+        int openingShots = invokeFireIfAble(ctx, missileBoat, enemyCruiser, GameContext.DT, 1700.0);
+        assertTrue(openingShots > 0);
+        assertTrue(ctx.projectiles.stream()
+                        .filter(projectile -> projectile.sourceShipId == missileBoat.id)
+                        .allMatch(projectile -> projectile instanceof Missile),
+                "opening standoff should spend missile racks without starting long-range gunfire");
+
+        ctx.projectiles.clear();
+        missileBoat.aiMissileStandoffTimer = 0.0;
+        missileBoat.aiMissileStandoffTargetId = -1;
+        for (Turret turret : missileBoat.turrets) turret.setReady();
+
+        int followUpShots = invokeFireIfAble(ctx, missileBoat, enemyCruiser, GameContext.DT, 1700.0);
+        assertTrue(followUpShots > 0);
+        assertTrue(ctx.projectiles.stream()
+                        .filter(projectile -> projectile.sourceShipId == missileBoat.id)
+                        .anyMatch(projectile -> !(projectile instanceof Missile)),
+                "after the opening standoff expires, sensor-authorized guns should join the engagement");
     }
 
     @Test
@@ -201,5 +234,20 @@ class AISystemSmallCraftRangeTest {
                 && (blue.aiCommittedTargetId == red.id || red.aiCommittedTargetId == blue.id);
         assertTrue(damageExchanged || deliberateReposition,
                 "opposing fighters must fire, disengage, or deliberately reposition instead of orbiting indefinitely");
+    }
+
+    private static void invokeCommitToTarget(Ship seeker, Ship target, double duration) throws Exception {
+        Method method = AISystem.class.getDeclaredMethod("commitToTarget", Ship.class, Ship.class, double.class);
+        method.setAccessible(true);
+        method.invoke(null, seeker, target, duration);
+    }
+
+    private static int invokeFireIfAble(GameContext ctx, Ship shooter, Ship target, double dt, double dist) throws Exception {
+        Method method = AISystem.class.getDeclaredMethod(
+                "fireIfAble", GameContext.class, Ship.class, Ship.class, double.class, double.class);
+        method.setAccessible(true);
+        Object result = method.invoke(null, ctx, shooter, target, dt, dist);
+        assertNotNull(result);
+        return (int) result;
     }
 }

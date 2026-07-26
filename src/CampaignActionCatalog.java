@@ -3,7 +3,7 @@ import java.util.ArrayList;
 
 final class CampaignActionCatalog {
     private static final List<CampaignActionProvider> PROVIDERS = List.of(
-            new LegacyCampaignActionProvider()
+            (ctx, actions) -> actions.addAll(CampaignSystem.legacyCampaignVisibleActions(ctx))
     );
 
     private CampaignActionCatalog() {}

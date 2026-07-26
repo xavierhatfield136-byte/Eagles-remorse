@@ -69,6 +69,16 @@ class RendererHudLayoutTest {
         }
     }
 
+    @Test
+    void formationMenuFitsAllFormationCardsInPanel() {
+        Rectangle panel = Renderer.formationMenuRect(1280, 720);
+
+        for (GameContext.FleetFormation formation : GameContext.FleetFormation.values()) {
+            Rectangle card = Renderer.formationMenuOptionRect(1280, 720, formation);
+            assertTrue(panel.contains(card), "formation card should stay inside the menu: " + formation);
+        }
+    }
+
     private static void assertPanelLayoutReadable(int viewW, int viewH, boolean cloak, boolean strike) {
         List<Rectangle> panels = Renderer.combatHudPanelRects(viewW, viewH, cloak, strike);
         Rectangle coreMenu = Renderer.getCoreMenuBarRect(viewW, viewH);

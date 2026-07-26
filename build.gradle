@@ -123,6 +123,37 @@ test {
     maxHeapSize = "2048m"
 }
 
+tasks.register("currentReleaseVerification", Test) {
+    group = "verification"
+    description = "Run the current release validation slice for Phase 9 completion and 1.0.1.3 packaging."
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    systemProperty "codex.disableAudio", "true"
+    systemProperty "game.userDataDir", layout.buildDirectory.dir("current-release-test-user-data").get().asFile.absolutePath
+    doFirst {
+        delete(layout.buildDirectory.dir("current-release-test-user-data"))
+    }
+    forkEvery = 3
+    maxHeapSize = "2048m"
+    filter {
+        includeTestsMatching "CampaignSensorSuiteTest"
+        includeTestsMatching "PlayerResourceSimplificationTest"
+        includeTestsMatching "TacticalCombatDepthSystemTest"
+        includeTestsMatching "CampaignFleetBuildingIntegrationTest"
+        includeTestsMatching "MissileRoleBehaviorTest"
+        includeTestsMatching "TitanAbilitySystemTest"
+        includeTestsMatching "WarpAndStrikeCraftRegressionTest"
+        includeTestsMatching "ProjectileScalePolicyTest"
+        includeTestsMatching "AISystemSmallCraftRangeTest"
+        includeTestsMatching "CampaignTacticalAlignmentTest"
+        includeTestsMatching "PowerManagementControlTest"
+        includeTestsMatching "AISystemEscortFormationTest"
+        includeTestsMatching "RendererHudLayoutTest"
+        includeTestsMatching "MainMenuPanelMultiplayerEntryTest"
+    }
+}
+
 tasks.named("compileJava") {
     dependsOn("purgeStraySourceClasses")
 }
