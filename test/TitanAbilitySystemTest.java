@@ -403,6 +403,28 @@ class TitanAbilitySystemTest {
     }
 
     @Test
+    void nonCapitalHullFlaggedAsCarrierDoesNotAutoLaunchEscortCraft() {
+        GameContext ctx = testContext();
+        FleetShip frigate = new FleetShip(ShipRole.FRIGATE, Faction.ALLY, 1200.0, 1200.0);
+        frigate.isCarrier = true;
+        frigate.carrierAutoLaunch = true;
+        frigate.maxFighters = 4;
+        ctx.ships.add(frigate);
+
+        assertEquals(0, CarrierSystem.tryLaunchFlight(ctx, frigate));
+        CarrierSystem.update(ctx, GameContext.DT);
+
+        long launchedCraft = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.carrierOwnerId == frigate.id)
+                .count();
+        long passiveEscorts = ctx.ships.stream()
+                .filter(ship -> ship != null && ship.role == ShipRole.PD_CRAFT && ship.minerHomeBase == frigate)
+                .count();
+        assertEquals(0, launchedCraft);
+        assertEquals(0, passiveEscorts);
+    }
+
+    @Test
     void shootingRangeShopUsesInfiniteCredits() {
         GameContext ctx = testContext();
         SpawnSystem.initWorld(ctx);

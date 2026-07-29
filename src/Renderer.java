@@ -666,12 +666,12 @@ public class Renderer {
     }
 
     public static Rectangle getShopOverlayRect(int viewW, int viewH) {
-        int padX = 36;
-        int padY = 44;
-        int w = Math.min(1260, Math.max(820, viewW - padX * 2));
-        int h = Math.min(Math.min(720, viewH - 16), Math.max(560, viewH - padY * 2));
+        int padX = Math.max(6, Math.min(18, viewW / 90));
+        int padY = Math.max(6, Math.min(14, viewH / 80));
+        int w = Math.min(1320, Math.max(920, viewW - padX * 2));
+        int h = Math.min(Math.min(780, viewH - padY * 2), Math.max(620, viewH - padY * 2));
         int x = (viewW - w) / 2;
-        int y = Math.max(8, (viewH - h) / 2);
+        int y = Math.max(4, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
     }
 
@@ -1509,11 +1509,12 @@ public class Renderer {
     }
 
     private static HoverTooltip baseUpgradeHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
-        Rectangle panel = getBaseUpgradeOverlayRect(viewW);
+        Rectangle panel = getBaseUpgradeOverlayRect(viewW, viewH);
         if (!panel.contains(mouseX, mouseY)) return null;
-        int lineY = panel.y + 124;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
+        int lineY = inner.y + 94;
         for (int i = 0; i < 5; i++) {
-            Rectangle row = new Rectangle(panel.x + 18, lineY - 12 + i * 26, 480, 22);
+            Rectangle row = new Rectangle(inner.x, lineY - 12 + i * 26, inner.width, 22);
             if (!row.contains(mouseX, mouseY)) continue;
             return switch (i) {
                 case 0 -> new HoverTooltip("base:1", "Hull Fortification",
@@ -1534,11 +1535,12 @@ public class Renderer {
 
     private static HoverTooltip powerManagementHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        int w = Math.min(700, viewW - 110);
-        int h = 462;
+        int w = Math.min(1040, Math.max(640, viewW - 32));
+        int h = Math.min(660, Math.max(540, viewH - 32));
         int x = (viewW - w) / 2;
-        int y = Math.max(54, (viewH - h) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         String[] titles = {"Propulsion", "Shield", "Tactical", "Sensor", "Engineering", "Supercharge"};
         String[] bodies = {
@@ -1549,9 +1551,9 @@ public class Renderer {
                 "Controls repair throughput and ship survivability under load.",
                 "Controls superweapon recharge tempo and burst readiness."
         };
-        int rowY = y + 96;
+        int rowY = inner.y + 66;
         for (int i = 0; i < titles.length; i++) {
-            Rectangle row = new Rectangle(x + 18, rowY + i * 28 - 2, w - 36, 22);
+            Rectangle row = new Rectangle(inner.x, rowY + i * 28 - 2, inner.width, 22);
             if (!row.contains(mouseX, mouseY)) continue;
             return new HoverTooltip("power:" + i, titles[i],
                     bodies[i] + " Current allocation: " + (int) Math.round(ctx.player.powerBusFractions()[i] * 100.0) + "%.");
@@ -1562,18 +1564,19 @@ public class Renderer {
 
     private static HoverTooltip flightDeckHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null || !ctx.player.isCarrier) return null;
-        int w = Math.min(820, viewW - 100);
-        int h = 356;
+        int w = Math.min(980, Math.max(760, viewW - 32));
+        int h = Math.min(520, Math.max(420, viewH - 32));
         int x = (viewW - w) / 2;
-        int y = Math.max(48, (viewH - h) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         int slotGap = 12;
-        int slotW = (w - 36 - slotGap * 4) / 5;
+        int slotW = (inner.width - slotGap * 4) / 5;
         int slotH = 132;
-        int slotY = y + 108;
+        int slotY = inner.y + 84;
         for (int i = 0; i < 5; i++) {
-            Rectangle slot = new Rectangle(x + 18 + i * (slotW + slotGap), slotY, slotW, slotH);
+            Rectangle slot = new Rectangle(inner.x + i * (slotW + slotGap), slotY, slotW, slotH);
             if (!slot.contains(mouseX, mouseY)) continue;
             ShipRole role = ctx.player.flightDeckRoleAt(i);
             return new HoverTooltip("deck:" + i, "Squad " + (i + 1),
@@ -1585,17 +1588,18 @@ public class Renderer {
 
     private static HoverTooltip crewStationsHoverTooltipAt(GameContext ctx, int viewW, int viewH, int mouseX, int mouseY) {
         if (ctx == null || ctx.player == null) return null;
-        int w = Math.min(1010, viewW - 56);
-        int h = 438;
+        int w = Math.min(1160, Math.max(860, viewW - 32));
+        int h = Math.min(680, Math.max(580, viewH - 32));
         int x = (viewW - w) / 2;
-        int y = Math.max(34, (viewH - h) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         if (!new Rectangle(x, y, w, h).contains(mouseX, mouseY)) return null;
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
 
         int portraitPaneW = 232;
-        int panelX = x + 18 + portraitPaneW + 14;
-        int panelW = x + w - panelX - 14;
+        int panelX = inner.x + portraitPaneW + 14;
+        int panelW = inner.x + inner.width - panelX;
         int tabX = panelX + 8;
-        int tabY = y + 70;
+        int tabY = inner.y + 36;
         int tabGap = 8;
         int stationCount = GameContext.CrewStation.values().length;
         int tw = Math.max(104, (panelW - 16 - tabGap * (stationCount - 1)) / stationCount);
@@ -1656,12 +1660,12 @@ public class Renderer {
         return new HoverTooltip("ship:" + best.id, title, body);
     }
 
-    private static Rectangle getBaseUpgradeOverlayRect(int viewW) {
-        int w = 520;
-        int h = 284;
-        int pad = 22;
-        int x = viewW - w - pad;
-        int y = 240;
+    private static Rectangle getBaseUpgradeOverlayRect(int viewW, int viewH) {
+        int pad = 14;
+        int w = Math.min(760, Math.max(580, viewW - pad * 2));
+        int h = Math.min(440, Math.max(360, viewH - 80));
+        int x = Math.max(pad, viewW - w - pad);
+        int y = Math.max(16, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
     }
 
@@ -2082,9 +2086,9 @@ public class Renderer {
     private static Rectangle getShopUpgradeArea(Rectangle panel) {
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, panel.x, panel.y, panel.width, panel.height);
         int x = inner.x;
-        int y = inner.y + 142;
+        int y = inner.y + 116;
         int w = Math.min(404, Math.max(332, (int) Math.round(inner.width * 0.34)));
-        int h = Math.max(210, inner.y + inner.height - y - 34);
+        int h = Math.max(260, inner.y + inner.height - y - 34);
         return new Rectangle(x, y, w, h);
     }
 
@@ -2102,12 +2106,14 @@ public class Renderer {
         Rectangle area = getShopUpgradeArea(panel);
         int cols = 2;
         int gap = 12;
+        int rows = 4;
+        int topOffset = 24;
         int cardW = (area.width - gap) / cols;
-        int cardH = 96;
+        int cardH = Math.max(92, Math.min(102, (area.height - topOffset - gap * (rows - 1)) / rows));
         int col = Math.max(0, index % cols);
         int row = Math.max(0, index / cols);
         int x = area.x + col * (cardW + gap);
-        int y = area.y + 28 + row * (cardH + gap);
+        int y = area.y + topOffset + row * (cardH + gap);
         return new Rectangle(x, y, cardW, cardH);
     }
 
@@ -6531,10 +6537,10 @@ public class Renderer {
     }
 
     public static Rectangle commsPanelRect(int viewW, int viewH) {
-        int w = Math.min(1040, Math.max(640, viewW - 64));
-        int h = Math.min(620, Math.max(430, viewH - 96));
-        int x = Math.max(16, (viewW - w) / 2);
-        int y = Math.max(24, (viewH - h) / 2 - 10);
+        int w = Math.min(1160, Math.max(720, viewW - 28));
+        int h = Math.min(720, Math.max(520, viewH - 36));
+        int x = Math.max(8, (viewW - w) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
     }
 
@@ -6822,10 +6828,10 @@ public class Renderer {
     }
 
     public static Rectangle commTradeMenuRect(int viewW, int viewH) {
-        int w = Math.min(920, Math.max(620, viewW - 32));
-        int h = Math.min(620, Math.max(470, viewH - 44));
+        int w = Math.min(1080, Math.max(720, viewW - 28));
+        int h = Math.min(720, Math.max(540, viewH - 32));
         int x = Math.max(8, (viewW - w) / 2);
-        int y = Math.max(10, (viewH - h) / 2);
+        int y = Math.max(8, (viewH - h) / 2);
         return new Rectangle(x, y, w, h);
     }
 
@@ -8170,10 +8176,10 @@ public class Renderer {
         if (g2 == null || player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(860, Math.max(560, clip.width - 80));
-        int h = Math.min(520, Math.max(462, clip.height - 70));
+        int w = Math.min(1040, Math.max(640, clip.width - 32));
+        int h = Math.min(660, Math.max(540, clip.height - 32));
         int x = (clip.width - w) / 2;
-        int y = Math.max(54, (clip.height - h) / 2);
+        int y = Math.max(8, (clip.height - h) / 2);
 
         drawHudPanelFrame(g2, x, y, w, h, "POWER MANAGEMENT", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
@@ -8343,25 +8349,34 @@ public class Renderer {
         if (g2 == null || carrier == null || !carrier.isCarrier) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(820, clip.width - 100);
-        int h = 356;
+        int w = Math.min(980, Math.max(760, clip.width - 32));
+        int h = Math.min(520, Math.max(420, clip.height - 32));
         int x = (clip.width - w) / 2;
-        int y = Math.max(48, (clip.height - h) / 2);
+        int y = Math.max(8, (clip.height - h) / 2);
 
         drawHudPanelFrame(g2, x, y, w, h, "FLIGHT DECK CONTROL", new Color(146, 210, 255, 225), ThemeArt.HUD_SPECIAL_FRAME);
+        Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
+        Shape oldClip = g2.getClip();
+        g2.clip(inner);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(225, 236, 250, 188));
-        g2.drawString("/ or ESC close   F1-F5 select slot   [ ] move focus   -/+ cycle role", x + 18, y + 46);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "/ or ESC close   F1-F5 select slot   [ ] move focus   -/+ cycle role",
+                inner.width), inner.x, inner.y + 18);
         boolean picketDeck = carrier.supportsPicketFlightDeck();
-        g2.drawString("Each slot launches a 2-ship small-craft pair, or 1 picket on Mothership / Mobile Dockyard decks.", x + 18, y + 62);
-        g2.drawString((picketDeck ? "5 picket   " : "") + "6 fighter   7 drone   8 bomber   9 all fighters   0 all bombers   Backspace default", x + 18, y + 78);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Each slot launches a 2-ship small-craft pair, or 1 picket on Mothership / Mobile Dockyard decks.",
+                inner.width), inner.x, inner.y + 34);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                (picketDeck ? "5 picket   " : "") + "6 fighter   7 drone   8 bomber   9 all fighters   0 all bombers   Backspace default",
+                inner.width), inner.x, inner.y + 50);
 
         int focus = Math.max(0, Math.min(4, focusSlot));
         int slotGap = 12;
-        int slotW = (w - 36 - slotGap * 4) / 5;
+        int slotW = (inner.width - slotGap * 4) / 5;
         int slotH = 132;
-        int slotY = y + 108;
+        int slotY = inner.y + 84;
         int fighters = 0;
         int bombers = 0;
         int drones = 0;
@@ -8374,7 +8389,7 @@ public class Renderer {
             else if (role == ShipRole.DRONE) drones += 2;
             else fighters += 2;
 
-            int slotX = x + 18 + i * (slotW + slotGap);
+            int slotX = inner.x + i * (slotW + slotGap);
             boolean selected = (i == focus);
             Color accent = flightDeckRoleColor(role);
 
@@ -8403,20 +8418,26 @@ public class Renderer {
         }
 
         int summaryY = slotY + slotH + 34;
-        drawHudStatusChip(g2, "PAIR SIZE 2", x + 18, summaryY, 104, 18, new Color(140, 210, 255, 214), true);
-        drawHudStatusChip(g2, "PICKET " + pickets, x + 132, summaryY, 102, 18, flightDeckRoleColor(ShipRole.PICKET), pickets > 0);
-        drawHudStatusChip(g2, "FIGHTER " + fighters, x + 244, summaryY, 102, 18, flightDeckRoleColor(ShipRole.FIGHTER), fighters > 0);
-        drawHudStatusChip(g2, "DRONE " + drones, x + 356, summaryY, 94, 18, flightDeckRoleColor(ShipRole.DRONE), drones > 0);
-        drawHudStatusChip(g2, "BOMBER " + bombers, x + 460, summaryY, 104, 18, flightDeckRoleColor(ShipRole.BOMBER), bombers > 0);
-        drawHudStatusChip(g2, "MODE " + carrier.carrierCommandMode.name(), x + 574, summaryY, 122, 18,
+        int chipX = inner.x;
+        chipX = drawHudChipAuto(g2, "PAIR SIZE 2", chipX, summaryY, new Color(140, 210, 255, 214), true);
+        chipX = drawHudChipAuto(g2, "PICKET " + pickets, chipX, summaryY, flightDeckRoleColor(ShipRole.PICKET), pickets > 0);
+        chipX = drawHudChipAuto(g2, "FIGHTER " + fighters, chipX, summaryY, flightDeckRoleColor(ShipRole.FIGHTER), fighters > 0);
+        chipX = drawHudChipAuto(g2, "DRONE " + drones, chipX, summaryY, flightDeckRoleColor(ShipRole.DRONE), drones > 0);
+        chipX = drawHudChipAuto(g2, "BOMBER " + bombers, chipX, summaryY, flightDeckRoleColor(ShipRole.BOMBER), bombers > 0);
+        chipX = drawHudChipAuto(g2, "MODE " + carrier.carrierCommandMode.name(), chipX, summaryY,
                 new Color(236, 196, 132, 214), carrier.carrierCommandMode == Ship.CarrierCommandMode.DEFEND);
-        drawHudStatusChip(g2, "AUTO " + (carrier.carrierAutoLaunch ? "ON" : "OFF"), x + 706, summaryY, 96, 18,
+        drawHudChipAuto(g2, "AUTO " + (carrier.carrierAutoLaunch ? "ON" : "OFF"), chipX, summaryY,
                 new Color(148, 228, 182, 214), carrier.carrierAutoLaunch);
 
         g2.setFont(new Font("Consolas", Font.PLAIN, 12));
         g2.setColor(new Color(216, 228, 240, 190));
-        g2.drawString("Launch rhythm: each launch call emits one 2-ship squad from the next squad slot in sequence.", x + 18, y + h - 38);
-        g2.drawString("Picket decks emit one larger escort at a time; defend mode recalls bombers before the next pair leaves.", x + 18, y + h - 20);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Launch rhythm: each launch call emits one 2-ship squad from the next squad slot in sequence.",
+                inner.width), inner.x, inner.y + inner.height - 32);
+        g2.drawString(fitShopText(g2.getFontMetrics(),
+                "Picket decks emit one larger escort at a time; defend mode recalls bombers before the next pair leaves.",
+                inner.width), inner.x, inner.y + inner.height - 14);
+        g2.setClip(oldClip);
     }
 
     private static String shortSystemName(Ship.InternalSystem system) {
@@ -8465,10 +8486,10 @@ public class Renderer {
         if (g2 == null || ctx == null || ctx.player == null) return;
 
         Rectangle clip = g2.getClipBounds();
-        int w = Math.min(1010, clip.width - 56);
-        int h = 560;
+        int w = Math.min(1160, Math.max(860, clip.width - 32));
+        int h = Math.min(680, Math.max(580, clip.height - 32));
         int x = (clip.width - w) / 2;
-        int y = Math.max(34, (clip.height - h) / 2);
+        int y = Math.max(8, (clip.height - h) / 2);
 
         drawHudPanelFrame(g2, x, y, w, h, "CREW STATIONS", new Color(255, 214, 150, 225), ThemeArt.HUD_SPECIAL_FRAME);
         Rectangle inner = themedContentRect(ThemeArt.HUD_SPECIAL_FRAME, x, y, w, h);
@@ -9500,13 +9521,14 @@ public class Renderer {
                                               int hullLv, int shieldLv, int turretLv, int miningLv, int hangarLv,
                                               int maxHangarTier, boolean fleetHub) {
         // "B" style: a diegetic sci-fi console panel (glow edges, grid, bars, subtle scanline).
-        int pad = 22;
         Rectangle clip = g2.getClipBounds();
         int viewW = clip == null ? 1280 : clip.width;
-        int w = Math.min(620, Math.max(460, viewW - pad * 2));
-        int h = 304;
-        int x = Math.max(pad, viewW - w - pad);
-        int y = 240;
+        int viewH = clip == null ? 720 : clip.height;
+        Rectangle panel = getBaseUpgradeOverlayRect(viewW, viewH);
+        int x = panel.x;
+        int y = panel.y;
+        int w = panel.width;
+        int h = panel.height;
 
         double t = animationTimeSeconds();
         int glowA = 55 + (int) Math.round(25 * (0.5 + 0.5 * Math.sin(t * 2.2)));

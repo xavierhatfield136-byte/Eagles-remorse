@@ -31,6 +31,12 @@ class CampaignNpcFleetAiTest {
             CampaignSystem.CampaignState.class,
             double.class
     );
+    private static final Method UPDATE_OVERMAP_GHOST_FLEET_SWEEP = declaredMethod(
+            "updateOvermapGhostFleetSweep",
+            GameContext.class,
+            CampaignSystem.CampaignState.class,
+            double.class
+    );
 
     @Test
     void ambientTheaterFleetsSeedAcrossCampaignFromStart() throws Exception {
@@ -105,6 +111,170 @@ class CampaignNpcFleetAiTest {
 
         assertNull(forceNamed(st, "Disposable Memory Picket Patrol"),
                 "contact memory must not manufacture a surviving physical fleet");
+    }
+
+    @Test
+    void overmapSweepRemovesVisibleShiplessConcreteForce() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicOvermapMode = true;
+        ctx.state = GameState.MAP;
+        ctx.ui.mapOpen = true;
+
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP,
+                Faction.ENEMY, "Ghost Sweep Red Patrol", "test-red-base",
+                "verify overworld sweep removes empty concrete fleets", st.playerGalaxyX + 300.0, st.playerGalaxyY);
+        assertNotNull(force);
+        setDouble(force, "strength", 64.0);
+        setDouble(force, "readiness", 90.0);
+        setDouble(force, "hullIntegrity", 90.0);
+        setDouble(force, "contactConfidence", 0.96);
+        setBoolean(force, "visibleToPlayer", true);
+        setBoolean(force, "hadTacticalMembers", true);
+        setInt(force, "linkedSearchGroupId", 0);
+        setEnumByName(force, "contactState", "KNOWN");
+        ((java.util.Set<?>) getObject(force, "shipIds")).clear();
+        st.campaignShipPool.clear();
+
+        invokeOvermapGhostFleetSweep(ctx, st, 14.9);
+        assertNotNull(forceNamed(st, "Ghost Sweep Red Patrol"),
+                "ghost sweep should wait for the periodic overworld interval");
+
+        invokeOvermapGhostFleetSweep(ctx, st, 0.2);
+
+        assertNull(forceNamed(st, "Ghost Sweep Red Patrol"),
+                "shipless concrete fleets should be removed from the overworld map on the sweep");
+    }
+
+    @Test
+    void overmapSweepRemovesShiplessForceWithoutPriorTacticalMembership() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.strategicOvermapMode = true;
+        ctx.state = GameState.MAP;
+
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP,
+                Faction.ENEMY, "Never Materialized Ghost Patrol", "test-red-base",
+                "verify strength alone is not physical fleet evidence", st.playerGalaxyX + 360.0, st.playerGalaxyY + 40.0);
+        assertNotNull(force);
+        setDouble(force, "strength", 78.0);
+        setDouble(force, "readiness", 90.0);
+        setDouble(force, "hullIntegrity", 90.0);
+        setBoolean(force, "hadTacticalMembers", false);
+        setInt(force, "linkedSearchGroupId", 0);
+        setEnumByName(force, "contactState", "KNOWN");
+        ((java.util.Set<?>) getObject(force, "shipIds")).clear();
+        st.campaignShipPool.clear();
+
+        invokeOvermapGhostFleetSweep(ctx, st, 15.1);
+
+        assertNull(forceNamed(st, "Never Materialized Ghost Patrol"),
+                "positive strength without concrete roster membership must not preserve a physical fleet");
+    }
+
+    @Test
+    void poolBackedForceSummaryUsesConcreteRosterCount() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        Object force = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE,
+                Faction.ENEMY, "Pool Backed Count Test Force", "test-red-base",
+                "verify pool records are the concrete roster", st.playerGalaxyX + 420.0, st.playerGalaxyY);
+        assertNotNull(force);
+        ((java.util.Set<?>) getObject(force, "shipIds")).clear();
+        st.campaignShipPool.clear();
+        addPoolRecord(st, Faction.ENEMY, ShipRole.FRIGATE, getInt(force, "id"), "Count Test Frigate");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(force, "id"), "Count Test Missile Boat");
+
+        CampaignSystem.CampaignForceSummary summary = CampaignSystem.campaignForceSummaries(ctx).stream()
+                .filter(entry -> entry != null && entry.id == getIntUnchecked(force, "id"))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(summary, "pool-backed concrete fleet should remain visible to force summaries");
+        assertEquals(2, summary.shipCount, "summary count should come from concrete pool roster, not empty shipIds");
+    }
+
+    @Test
+    void concreteRosterDeduplicatesTacticalShipAndPoolRecordIdentity() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        CampaignSystem.CampaignForce force = (CampaignSystem.CampaignForce) invokeEnsureCampaignForce(
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.ENEMY,
+                "Deduplicated Roster Test Force", "test-red-base",
+                "verify tactical and pool views collapse to one identity", st.playerGalaxyX + 480.0, st.playerGalaxyY);
+        assertNotNull(force);
+        st.campaignShipPool.clear();
+        CampaignSystem.CampaignShipPoolRecord record = addPoolRecord(
+                st, Faction.ENEMY, ShipRole.FRIGATE, force.id, "Dedup Frigate");
+        FleetShip ship = new FleetShip(ShipRole.FRIGATE, Faction.ENEMY, st.playerGalaxyX + 20.0, st.playerGalaxyY);
+        ship.name = "Dedup Frigate";
+        ctx.ships.add(ship);
+        force.shipIds.add(ship.id);
+        st.shipCampaignForceIds.put(ship.id, force.id);
+        st.tacticalShipPoolRecordIds.put(ship.id, record.id);
+
+        CampaignForceRosterSystem.ConcreteForceRoster roster =
+                CampaignForceRosterSystem.resolveConcreteRoster(ctx, st, force);
+
+        assertEquals(1, roster.concreteShipCount(),
+                "one persistent ship represented by a tactical ship and pool record must count once");
+        assertEquals(1, roster.liveTacticalShipIds.size());
+        assertEquals(1, roster.viablePoolRecordIds.size());
+    }
+
+    @Test
+    void genericOvermapSearchEncounterDoesNotSpawnNamedGreenContractShips() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        invokeForceSimulation(ctx, st, 0.2);
+        assertFalse(st.galaxySearchGroups.isEmpty(), "test requires at least one seeded search group");
+        st.greenContractFleetJoined = true;
+        st.greenContractFavor = 4;
+        st.sector = 13;
+
+        invokePrepareGalaxySearchGroupEncounterWorld(ctx, st, st.galaxySearchGroups.get(0));
+
+        assertFalse(hasNamedShip(ctx, "Green Contract Cruiser"));
+        assertFalse(hasNamedShip(ctx, "Green Contract Flak"));
+        assertFalse(hasNamedShip(ctx, "Green Contract Frigate"));
+    }
+
+    @Test
+    void nearbyCoalitionSupportSelectsOneConcreteForceAndCapsSpawnedShips() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        ctx.ships.removeIf(ship -> ship != null && ship != ctx.player);
+        st.campaignForces.clear();
+        st.campaignShipPool.clear();
+
+        CampaignSystem.CampaignForce supportA = (CampaignSystem.CampaignForce) invokeEnsureCampaignForce(
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
+                "Green Nearby Support A", "green-base", "Eligible support A",
+                st.playerGalaxyX + 120.0, st.playerGalaxyY);
+        CampaignSystem.CampaignForce supportB = (CampaignSystem.CampaignForce) invokeEnsureCampaignForce(
+                st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
+                "Green Nearby Support B", "green-base", "Eligible support B",
+                st.playerGalaxyX + 140.0, st.playerGalaxyY + 10.0);
+        setEnumByName(supportA, "intent", "REINFORCING");
+        setEnumByName(supportB, "intent", "REINFORCING");
+        for (int i = 0; i < 5; i++) {
+            addPoolRecord(st, Faction.TEAM_C, i == 0 ? ShipRole.LIGHT_CRUISER : ShipRole.FRIGATE,
+                    supportA.id, "Support A " + i);
+            addPoolRecord(st, Faction.TEAM_C, i == 0 ? ShipRole.LIGHT_CRUISER : ShipRole.FRIGATE,
+                    supportB.id, "Support B " + i);
+        }
+
+        invokeSpawnCoalitionSupportFleet(ctx, st, false, true, null);
+
+        long greenSpawned = ctx.ships.stream()
+                .filter(ship -> ship != null && ship != ctx.player && ship.faction == Faction.TEAM_C)
+                .count();
+        assertEquals(1, st.activeCoalitionParticipations.size(),
+                "routine nearby support should commit only one support force");
+        assertTrue(greenSpawned <= 3,
+                "routine nearby support should cap spawned hulls; spawned=" + greenSpawned);
+        assertEquals(supportA.id, st.activeCoalitionParticipations.get(0).sourceForceId,
+                "nearest eligible force should win deterministic support selection");
     }
 
     @Test
@@ -4241,6 +4411,64 @@ class CampaignNpcFleetAiTest {
 
     private static void invokeStrikeObjectUpdate(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
         UPDATE_STRATEGIC_STRIKE_OBJECTS.invoke(null, ctx, st, dt);
+    }
+
+    private static void invokeOvermapGhostFleetSweep(GameContext ctx, CampaignSystem.CampaignState st, double dt) throws Exception {
+        UPDATE_OVERMAP_GHOST_FLEET_SWEEP.invoke(null, ctx, st, dt);
+    }
+
+    private static void invokePrepareGalaxySearchGroupEncounterWorld(GameContext ctx,
+                                                                      CampaignSystem.CampaignState st,
+                                                                      CampaignSystem.GalaxySearchGroup group) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "prepareGalaxySearchGroupEncounterWorld",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                CampaignSystem.GalaxySearchGroup.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, group);
+    }
+
+    private static void invokeSpawnCoalitionSupportFleet(GameContext ctx,
+                                                         CampaignSystem.CampaignState st,
+                                                         boolean allowNamedSupport,
+                                                         boolean allowNearbySupport,
+                                                         CampaignSystem.CampaignForce primaryOwner) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "spawnCoalitionSupportFleet",
+                GameContext.class,
+                CampaignSystem.CampaignState.class,
+                boolean.class,
+                boolean.class,
+                CampaignSystem.CampaignForce.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, ctx, st, allowNamedSupport, allowNearbySupport, primaryOwner);
+    }
+
+    private static CampaignSystem.CampaignShipPoolRecord addPoolRecord(CampaignSystem.CampaignState st,
+                                                                        Faction faction,
+                                                                        ShipRole role,
+                                                                        int forceId,
+                                                                        String name) {
+        CampaignSystem.CampaignShipPoolRecord record = new CampaignSystem.CampaignShipPoolRecord(
+                st.nextCampaignShipRecordId++,
+                faction,
+                role,
+                CampaignSystem.CampaignShipPoolStatus.ACTIVE,
+                "test-base",
+                forceId,
+                100.0,
+                name
+        );
+        st.campaignShipPool.put(record.id, record);
+        return record;
+    }
+
+    private static boolean hasNamedShip(GameContext ctx, String name) {
+        if (ctx == null || ctx.ships == null) return false;
+        return ctx.ships.stream().anyMatch(ship -> ship != null && name.equals(ship.name));
     }
 
     private static Method declaredMethod(String name, Class<?>... parameterTypes) {

@@ -61,6 +61,7 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static final double SHIPYARD_READINESS_RATE_PER_TICK = 0.75;
     private static final double SHIPYARD_SUPPLY_RATE_PER_TICK = 0.70;
     private static final double CAMPAIGN_FORCE_SIM_TICK_SEC = 0.20; // 5 Hz
+    private static final double OVERMAP_GHOST_FLEET_SWEEP_SEC = 15.0;
     private static final int CAMPAIGN_FORCE_MAX_ACTIVE_NPC = 160;
     private static final double CAMPAIGN_FORCE_ENCOUNTER_RANGE = 240.0;
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_HOSTILE_JOINERS = 7;
@@ -976,7 +977,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         double bestDist = Double.POSITIVE_INFINITY;
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || force.faction != Faction.ENEMY || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
-            if (force.strength <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) continue;
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(null, st, force);
+            if (rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE
+                    && rosterState != CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY) continue;
             double fx = forceMarkerX(force);
             double fy = forceMarkerY(force);
             if (!Double.isFinite(fx) || !Double.isFinite(fy)) continue;
@@ -8179,7 +8183,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         ArrayList<CampaignForce> hostile = new ArrayList<>();
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || !force.simulationActive || force.faction != Faction.ENEMY || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
-            if (force.strength <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) continue;
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+            if (rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE
+                    && rosterState != CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY) continue;
             hostile.add(force);
         }
         hostile.sort((a, b) -> {
@@ -10839,7 +10846,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         double r2 = Math.max(1.0, radius) * Math.max(1.0, radius);
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || !force.simulationActive || force.faction != Faction.ENEMY) continue;
-            if (force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0 && force.strength <= 12.0) continue;
+            if (!CampaignForceRosterSystem.hasConcreteFleetRoster(null, st, force)) continue;
             if (GameMath.dist2(force.x, force.y, location.x, location.y) <= r2) return true;
         }
         for (GalaxySearchGroup group : st.galaxySearchGroups) {
@@ -12346,6 +12353,15 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static CampaignSupportMarker supportMarkerForCampaignForce(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.destroyed || !force.simulationActive) return null;
         if (force.kind == CampaignForceKind.PLAYER_FLEET) return null;
+        CampaignForceRosterSystem.ConcreteForceRoster roster =
+                CampaignForceRosterSystem.resolveConcreteRoster(ctx, st, force);
+        CampaignForceRosterSystem.ForceRosterState rosterState = roster.state;
+        boolean physicalFleet = rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE;
+        if (!physicalFleet
+                && rosterState != CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY
+                && rosterState != CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL) {
+            return null;
+        }
         CampaignIntelResolution intel = campaignFleetIntelResolution(ctx, force.id, st.campaignIntelTick);
         if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY) {
             if (intel == null || intel.precision == CampaignIntelPrecision.UNKNOWN
@@ -12369,11 +12385,23 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (!intel.exactPosition()) return null;
         } else if (!DevTools.isDebugOverlay()) {
             if (st.campaignIntelTick > 0 && (intel == null || !intel.exactPosition())) return null;
+            if (!physicalFleet) return null;
             if (!campaignForceVisibleOnMap(force)) return null;
         }
         double markerX = intel != null && intel.exactPosition() ? intel.knownX : forceMarkerX(force);
         double markerY = intel != null && intel.exactPosition() ? intel.knownY : forceMarkerY(force);
         SupportMarkerType type = campaignForceMarkerType(force);
+        if (!physicalFleet && !DevTools.isDebugOverlay()) {
+            if (force.faction != Faction.ENEMY) return null;
+            String label = rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL
+                    ? "Hostile Operation Trace"
+                    : "Hostile Intel Trace";
+            String subtitle = "NON-PHYSICAL CONTACT  |  roster " + rosterState.name().replace('_', ' ')
+                    + "  |  concrete ships " + roster.concreteShipCount()
+                    + "  |  source " + (intel == null ? "last known" : intel.source.name().replace('_', ' '));
+            return new CampaignSupportMarker(SupportMarkerType.INTEL, label, subtitle, force.faction, markerX, markerY,
+                    Math.max(90.0, force.uncertaintyRadius), 34, false, force.id);
+        }
         if (!DevTools.isDebugOverlay() && force.faction == Faction.ENEMY && intel != null) {
             String label = intel.confidence >= 0.80 ? force.name : "Live Hostile Contact";
             String subtitle = "EXACT LIVE CONTACT  |  source " + intel.source.name().replace('_', ' ')
@@ -12409,6 +12437,11 @@ public final class CampaignSystem extends CampaignSystemModels {
                     + "  |  realTrack " + campaignForceHasConfirmedRealTrack(force)
                     + "  |  drawVector " + campaignForceCanDrawLiveMovementVector(force)
                     + "  |  drawChase " + isConfirmedPlayerInterceptForce(st, force)
+                    + "  |  roster " + rosterState.name()
+                    + "  |  concrete " + roster.concreteShipCount()
+                    + "  |  pool " + roster.viablePoolRecordIds.size()
+                    + "  |  live " + roster.liveTacticalShipIds.size()
+                    + "  |  dup " + roster.duplicateAssignments.size()
                     + "  |  routePts " + force.routePoints.size()
                     + "  |  target " + (int) Math.round(force.targetX) + "," + (int) Math.round(force.targetY);
         }
@@ -16033,13 +16066,13 @@ public final class CampaignSystem extends CampaignSystemModels {
         ArrayList<CampaignForceSummary> out = new ArrayList<>();
         for (CampaignForce force : st.campaignForces) {
             if (force == null || force.destroyed || !force.simulationActive) continue;
-            if (force.shipIds.isEmpty()
-                    && force.linkedSearchGroupId <= 0
-                    && force.strength <= 1.0
-                    && force.kind != CampaignForceKind.PLAYER_FLEET) {
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+            if (force.kind != CampaignForceKind.PLAYER_FLEET
+                    && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE) {
                 continue;
             }
-            out.add(new CampaignForceSummary(force));
+            out.add(new CampaignForceSummary(ctx, st, force));
         }
         out.sort((a, b) -> {
             if (a.hostile != b.hostile) return a.hostile ? -1 : 1;
@@ -19253,8 +19286,26 @@ public final class CampaignSystem extends CampaignSystemModels {
     }
 
     private static EncounterForceManifest encounterManifestForForce(GameContext ctx, CampaignState st, CampaignForce force, int maxShips) {
+        return encounterManifestForForce(ctx, st, force, maxShips, true);
+    }
+
+    private static EncounterForceManifest encounterManifestForConcreteForce(GameContext ctx, CampaignState st, CampaignForce force, int maxShips) {
+        return encounterManifestForForce(ctx, st, force, maxShips, false);
+    }
+
+    private static EncounterForceManifest encounterManifestForForce(GameContext ctx,
+                                                                    CampaignState st,
+                                                                    CampaignForce force,
+                                                                    int maxShips,
+                                                                    boolean allowAbstractFallback) {
         if (force == null) return null;
-        if (CampaignForceRosterSystem.hasDepletedConcreteRoster(st, force)) return null;
+        CampaignForceRosterSystem.ForceRosterState rosterState =
+                CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+        if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
+                || rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID
+                || (!allowAbstractFallback && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE)) {
+            return null;
+        }
         EncounterForceManifest manifest = new EncounterForceManifest(force.id, force.kind, force.faction, force.name, force.purpose);
         int slots = Math.max(1, Math.min(12, maxShips));
         if (ctx != null && ctx.ships != null && !force.shipIds.isEmpty()) {
@@ -19312,6 +19363,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 return manifest;
             }
         }
+        if (!allowAbstractFallback) return null;
         double strength = MathUtil.clamp(force.strength, 0.0, 100.0);
         switch (force.kind) {
             case PLAYER_FLEET -> {
@@ -19684,7 +19736,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || force == null || force.destroyed || force == primaryOwner) return false;
         if (primaryOwner != null && force.id == primaryOwner.id) return false;
         if (force.kind == CampaignForceKind.PLAYER_FLEET) return false;
-        if (force.strength <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) return false;
+        if (!CampaignForceRosterSystem.hasConcreteFleetRoster(ctx, st, force)) return false;
         if (force.faction == null) return false;
         if (force.faction == Faction.ENEMY && !campaignForceVisibleOnMap(force) && !force.visibleToPlayer) return false;
         if (!Double.isFinite(force.x) || !Double.isFinite(force.y)) return false;
@@ -21059,6 +21111,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.galaxyAmbientEncounterActive = false;
         st.galaxyAmbientSupportRequested = false;
         st.galaxyAmbientHiredShipIds.clear();
+        st.activeCoalitionParticipations.clear();
         st.activeInstallationThreatCaseId = 0;
         st.activeSiteResolutionModeId = "";
         st.galaxyAmbientPocketCenterX = Double.NaN;
@@ -21101,6 +21154,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.galaxyAmbientEncounterActive = false;
         st.galaxyAmbientSupportRequested = false;
         st.galaxyAmbientHiredShipIds.clear();
+        st.activeCoalitionParticipations.clear();
         st.activeInstallationThreatCaseId = 0;
         st.activeSiteResolutionModeId = "";
         st.galaxyAmbientPocketCenterX = Double.NaN;
@@ -21671,7 +21725,9 @@ public final class CampaignSystem extends CampaignSystemModels {
                         destroyed ? "destroyed" : (disabled ? "disabled" : (condition < 72.0 ? "damaged" : "operational"))));
             }
         }
-        if (ships.isEmpty()) {
+        if (ships.isEmpty()
+                && CampaignForceRosterSystem.resolveRosterState(ctx, st, force)
+                == CampaignForceRosterSystem.ForceRosterState.CONCRETE) {
             int estimate = estimatedShipCountForForce(force);
             for (int i = 0; i < estimate; i++) {
                 ShipRole role = defaultShipRoleForForce(force);
@@ -23779,6 +23835,8 @@ public final class CampaignSystem extends CampaignSystemModels {
         updateGalaxySearchGroups(ctx, st, dt);
         migrateLegacyFactionAttackCommitments(st);
         updateCampaignForceSimulationTicked(ctx, st, dt);
+        CampaignForceRosterSystem.updateRosterTransitions(st, dt);
+        updateOvermapGhostFleetSweep(ctx, st, dt);
         updateFactionAttackCommitments(st);
         updateCampaignTheaterWar(ctx, st, dt);
         updateFactionDirectors(ctx, st, dt);
@@ -26244,6 +26302,45 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
     }
 
+    private static void updateOvermapGhostFleetSweep(GameContext ctx, CampaignState st, double dt) {
+        if (ctx == null || st == null || !isStrategicOvermapMode(st) || dt <= 0.0) return;
+        st.overmapGhostFleetSweepAccumulatorSec += Math.max(0.0, dt);
+        if (st.overmapGhostFleetSweepAccumulatorSec < OVERMAP_GHOST_FLEET_SWEEP_SEC) return;
+        st.overmapGhostFleetSweepAccumulatorSec = 0.0;
+        int removed = sweepOvermapGhostFleets(ctx, st);
+        if (removed <= 0) return;
+        cleanupInvalidCampaignForceReferences(st);
+        removeDestroyedCampaignForces(ctx, st);
+    }
+
+    private static int sweepOvermapGhostFleets(GameContext ctx, CampaignState st) {
+        if (ctx == null || st == null || st.campaignForces.isEmpty()) return 0;
+        int removed = 0;
+        for (CampaignForce force : st.campaignForces) {
+            if (force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) continue;
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+            if (rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE
+                    || rosterState == CampaignForceRosterSystem.ForceRosterState.TEMPORARILY_TRANSITIONING
+                    || rosterState == CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY
+                    || rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL) {
+                continue;
+            }
+            if (rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID) {
+                recordStructuredCampaignEvent(st, "campaign.fleet.invalid_roster",
+                        "forceId=" + force.id
+                                + " name=" + safeTelemetryValue(force.name)
+                                + " strength=" + Math.round(force.strength));
+            }
+            markCampaignForceDefeated(st, force,
+                    rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID
+                            ? "invalid_empty_overworld_roster"
+                            : "empty_overworld_roster");
+            removed++;
+        }
+        return removed;
+    }
+
     private static void updateCampaignForceLifecycleBeforeOrders(CampaignState st, CampaignForce force, double dt) {
         if (st == null || force == null || force.destroyed || force.kind == CampaignForceKind.PLAYER_FLEET) return;
         primeCampaignForceLifecycleDefaults(force);
@@ -28192,7 +28289,8 @@ public final class CampaignSystem extends CampaignSystemModels {
                 && !force.destroyed
                 && force.simulationActive
                 && force.kind != CampaignForceKind.PLAYER_FLEET
-                && !CampaignForceRosterSystem.hasDepletedConcreteRoster(st, force);
+                && CampaignForceRosterSystem.resolveRosterState(null, st, force)
+                == CampaignForceRosterSystem.ForceRosterState.CONCRETE;
     }
 
     private static CampaignBattle campaignBattleForParticipant(CampaignState st, int forceId) {
@@ -28586,7 +28684,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
         }
         applyFiniteInventoryBattleLoss(st, force, loss, loser);
-        if (force.strength <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) {
+        if (force.strength <= 1.0
+                && !CampaignForceRosterSystem.hasConcreteFleetRoster(null, st, force)
+                && force.linkedSearchGroupId <= 0) {
             markCampaignForceRemoved(force, "destroyed_in_fleet_battle");
             leaveCampaignForceScar(st, force);
         }
@@ -28836,7 +28936,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         force.supply = MathUtil.clamp(force.supply - dt * supplyDrainForForce(force), 0.0, 100.0);
         force.fuelPressure = MathUtil.clamp(force.fuelPressure + dt * fuelPressureGainForForce(force), 0.0, 100.0);
-        if (force.strength <= 1.0 && force.linkedSearchGroupId <= 0 && force.shipIds.isEmpty() && force.kind != CampaignForceKind.PLAYER_FLEET) {
+        if (force.strength <= 1.0
+                && force.linkedSearchGroupId <= 0
+                && !CampaignForceRosterSystem.hasConcreteFleetRoster(null, st, force)
+                && force.kind != CampaignForceKind.PLAYER_FLEET) {
             markCampaignForceRemoved(force, "lost_all_tactical_members");
             leaveCampaignForceScar(st, force);
         }
@@ -31155,7 +31258,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
             force.reportedSurvivingStrength = surviving;
         }
-        if (surviving <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) {
+        if (surviving <= 1.0
+                && !CampaignForceRosterSystem.hasConcreteFleetRoster(null, st, force)
+                && force.linkedSearchGroupId <= 0) {
             markCampaignForceRemoved(force, "detachment_destroyed_after_losses");
             leaveCampaignForceScar(st, force);
         }
@@ -32676,7 +32781,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (!force.simulationActive || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
         if (force.faction != Faction.ENEMY) return false;
         if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) return false;
-        if (force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0 && force.strength <= 1.0) return false;
         if (campaignFleetHasExactIntel(ctx, force.id, st.campaignIntelTick)) return true;
         CampaignForceContactState contactState = force.contactState == null
                 ? CampaignForceContactState.STALE
@@ -34089,7 +34193,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         positionPlayerForOpenSpaceFleetClash(ctx, st, oppositeApproachDirection(hostileApproach));
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
-        spawnCoalitionSupportFleet(ctx, st);
+        spawnCoalitionSupportFleet(ctx, st, false, true, campaignForceForLinkedSearchGroup(st, group));
         seedBaselineCampaignForceOwnership(ctx, st);
         syncCampaignForceSimulationSeeds(ctx, st);
 
@@ -34183,7 +34287,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         clearLocalEncounterMapIdentity(st);
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
-        spawnCoalitionSupportFleet(ctx, st);
+        spawnCoalitionSupportFleet(ctx, st, false, true, null);
         seedBaselineCampaignForceOwnership(ctx, st);
         syncCampaignForceSimulationSeeds(ctx, st);
 
@@ -36261,7 +36365,10 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static boolean launchCampaignForceEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.destroyed || ctx.player == null) return false;
         if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) {
-            if (CampaignForceRosterSystem.hasDepletedConcreteRoster(st, force)) {
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+            if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
+                    || rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID) {
                 markCampaignForceRemoved(force, "lost_all_tactical_members");
                 leaveCampaignForceScar(st, force);
             }
@@ -36287,7 +36394,10 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static boolean autoResolveCampaignForceEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.destroyed) return false;
         if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) {
-            if (CampaignForceRosterSystem.hasDepletedConcreteRoster(st, force)) {
+            CampaignForceRosterSystem.ForceRosterState rosterState =
+                    CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+            if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
+                    || rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID) {
                 markCampaignForceRemoved(force, "lost_all_tactical_members");
                 leaveCampaignForceScar(st, force);
             }
@@ -36299,7 +36409,9 @@ public final class CampaignSystem extends CampaignSystemModels {
         force.strength = Math.max(0.0, force.strength - Math.max(24.0, 58.0 * Math.max(0.35, ratio)));
         force.readiness = Math.max(0.0, force.readiness - 26.0);
         force.intent = CampaignForceIntent.RETREATING;
-        if (force.strength <= 1.0 && force.shipIds.isEmpty() && force.linkedSearchGroupId <= 0) {
+        if (force.strength <= 1.0
+                && !CampaignForceRosterSystem.hasConcreteFleetRoster(ctx, st, force)
+                && force.linkedSearchGroupId <= 0) {
             markCampaignForceRemoved(force, "destroyed_by_auto_resolve");
             leaveCampaignForceScar(st, force);
         }
@@ -36328,7 +36440,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         positionPlayerForOpenSpaceFleetClash(ctx, st, oppositeApproachDirection(hostileApproach));
         resetPersistentFleetSpawnHandles(st);
         spawnPersistentBlueFleet(ctx, st);
-        spawnCoalitionSupportFleet(ctx, st);
+        spawnCoalitionSupportFleet(ctx, st, false, true, force);
         seedBaselineCampaignForceOwnership(ctx, st);
         syncCampaignForceSimulationSeeds(ctx, st);
         st.sectorElapsed = 0.0;
@@ -36347,7 +36459,13 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.authoredObjectiveKills = 0;
         int hostileZone = missionSubzoneIndex(2, 1);
         double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 150.0);
-        EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force, 4);
+        EncounterForceManifest manifest = encounterManifestForConcreteForce(ctx, st, force, 4);
+        if (manifest == null || manifest.ships.isEmpty()) {
+            markCampaignForceRemoved(force, "empty_overworld_roster");
+            leaveCampaignForceScar(st, force);
+            setObjective(st, ObjectiveType.DESTROY, "Break the hostile contact", 1);
+            return;
+        }
         int spawned = spawnNamedEncounterManifest(ctx, st, "campaign_force_encounter",
                 force, manifest, ingress[0], ingress[1], 130.0, 100.0, true);
         spawned += spawnSensorBubbleCampaignForceParticipants(ctx, st, force, hostileApproach,
@@ -36597,7 +36715,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         force.readiness = Math.max(0.0, force.readiness - damageFrac * 42.0);
         force.supply = Math.max(0.0, force.supply - damageFrac * 20.0);
         force.intent = broken ? CampaignForceIntent.RETREATING : CampaignForceIntent.REGROUPING;
-        if (broken && force.shipIds.isEmpty()) {
+        if (broken && !CampaignForceRosterSystem.hasConcreteFleetRoster(null, st, force)) {
             markCampaignForceRemoved(force, "destroyed_by_strategic_strike");
             leaveCampaignForceScar(st, force);
         }
@@ -38138,7 +38256,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (!campaignMapMode) {
             initializeStrategicTaskForces(ctx, st);
             spawnPersistentBlueFleet(ctx, st);
-            spawnCoalitionSupportFleet(ctx, st);
+            spawnCoalitionSupportFleet(ctx, st, true, false, null);
             captureSideObjectiveProtectedShip(ctx, st);
             seedBaselineCampaignForceOwnership(ctx, st);
             String forceBriefing = sectorForceBriefingLine(st, 4);
@@ -41951,12 +42069,54 @@ public final class CampaignSystem extends CampaignSystemModels {
         return titan;
     }
 
-    private static void spawnCoalitionSupportFleet(GameContext ctx, CampaignState st) {
+    private static void spawnCoalitionSupportFleet(GameContext ctx,
+                                                   CampaignState st,
+                                                   boolean allowNamedSupport,
+                                                   boolean allowNearbySupport,
+                                                   CampaignForce primaryOwner) {
         if (ctx == null || st == null || ctx.player == null) return;
-        spawnNamedCoalitionTaskGroups(ctx, st);
+        st.activeCoalitionParticipations.clear();
+        if (allowNamedSupport) {
+            spawnNamedCoalitionTaskGroups(ctx, st);
+        }
+        if (!allowNearbySupport) return;
+        CampaignForce support = selectNearbyCoalitionSupportForce(ctx, st, primaryOwner);
+        if (support == null) return;
+        EncounterForceManifest manifest = encounterManifestForConcreteForce(ctx, st, support, 3);
+        if (manifest == null || manifest.ships.isEmpty()) return;
+        while (manifest.ships.size() > 3) {
+            manifest.ships.remove(manifest.ships.size() - 1);
+        }
+        CoalitionParticipation participation = beginCoalitionParticipation(
+                st, support, CoalitionSupportReason.NEARBY_RESPONSE, manifest);
+        if (participation == null) return;
+        Set<Integer> before = liveShipIdSet(ctx);
+        double[] rally = coalitionSupportRallyPoint(ctx, support.faction, support.id,
+                -260.0 - support.id * 8.0,
+                180.0 + support.id * 12.0);
+        int spawned = spawnEncounterForceManifest(ctx, st, manifest,
+                rally[0],
+                rally[1],
+                120.0, 90.0, false);
+        finishCoalitionParticipation(ctx, st, participation, before, support);
+        if (spawned > 0) {
+            EventSystem.showBanner(ctx,
+                    "COALITION SUPPORT: " + support.name.toUpperCase(Locale.US)
+                            + "  |  " + spawned + " SHIPS FROM NEARBY CONTACT",
+                    1.6);
+        }
+    }
+
+    private static CampaignForce selectNearbyCoalitionSupportForce(GameContext ctx,
+                                                                   CampaignState st,
+                                                                   CampaignForce primaryOwner) {
+        if (ctx == null || st == null || ctx.player == null) return null;
+        ArrayList<CampaignForce> candidates = new ArrayList<>();
         for (CampaignForce support : campaignForcesNear(st, st.playerGalaxyX, st.playerGalaxyY, 520.0, null,
                 CampaignForceKind.TRADE_GROUP, CampaignForceKind.INSTALLATION_TRAFFIC,
                 CampaignForceKind.MINING_GROUP, CampaignForceKind.CONVOY, CampaignForceKind.TASK_FORCE)) {
+            if (support == null) continue;
+            if (primaryOwner != null && support.id == primaryOwner.id) continue;
             if (support.faction == null || support.faction == Faction.ENEMY || support.kind == CampaignForceKind.PLAYER_FLEET) continue;
             if (support.intent != CampaignForceIntent.ESCORTING
                     && support.intent != CampaignForceIntent.REINFORCING
@@ -41964,16 +42124,118 @@ public final class CampaignSystem extends CampaignSystemModels {
                     && support.intent != CampaignForceIntent.GUARDING) {
                 continue;
             }
-            EncounterForceManifest manifest = encounterManifestForForce(ctx, st, support, 3);
-            if (manifest == null) continue;
-            double[] rally = coalitionSupportRallyPoint(ctx, support.faction, support.id,
-                    -260.0 - support.id * 8.0,
-                    180.0 + support.id * 12.0);
-            spawnEncounterForceManifest(ctx, st, manifest,
-                    rally[0],
-                    rally[1],
-                    120.0, 90.0, false);
+            if (campaignBattleForParticipant(st, support.id) != null) continue;
+            if (!CampaignForceRosterSystem.hasConcreteFleetRoster(ctx, st, support)) continue;
+            if (coalitionForceAlreadyCommitted(st, support)) continue;
+            candidates.add(support);
         }
+        candidates.sort(Comparator
+                .comparingDouble((CampaignForce force) -> GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY))
+                .thenComparingInt(force -> coalitionSupportIntentPriority(force.intent))
+                .thenComparingInt(force -> force.id));
+        return candidates.isEmpty() ? null : candidates.get(0);
+    }
+
+    private static int coalitionSupportIntentPriority(CampaignForceIntent intent) {
+        if (intent == null) return 99;
+        return switch (intent) {
+            case REINFORCING -> 0;
+            case ESCORTING -> 1;
+            case GUARDING -> 2;
+            case PATROLLING -> 3;
+            default -> 9;
+        };
+    }
+
+    private static boolean coalitionForceAlreadyCommitted(CampaignState st, CampaignForce force) {
+        if (st == null || force == null || st.activeCoalitionParticipations.isEmpty()) return false;
+        for (CoalitionParticipation participation : st.activeCoalitionParticipations) {
+            if (participation != null && participation.sourceForceId == force.id) return true;
+        }
+        return false;
+    }
+
+    private static CoalitionParticipation beginCoalitionParticipation(CampaignState st,
+                                                                      CampaignForce source,
+                                                                      CoalitionSupportReason reason,
+                                                                      EncounterForceManifest manifest) {
+        if (st == null || source == null || manifest == null || manifest.ships.isEmpty()) return null;
+        CoalitionParticipation participation = new CoalitionParticipation(
+                source.id,
+                source.faction,
+                reason,
+                manifest.ships.size(),
+                source.name);
+        for (EncounterShipManifestEntry entry : manifest.ships) {
+            if (entry == null || entry.shipRecordId <= 0) continue;
+            String key = "pool:" + entry.shipRecordId;
+            if (coalitionShipKeyAlreadyCommitted(st, key)) return null;
+            participation.committedCampaignShipKeys.add(key);
+        }
+        st.activeCoalitionParticipations.add(participation);
+        return participation;
+    }
+
+    private static boolean coalitionShipKeyAlreadyCommitted(CampaignState st, String key) {
+        if (st == null || key == null || key.isBlank()) return false;
+        for (CoalitionParticipation participation : st.activeCoalitionParticipations) {
+            if (participation != null && participation.committedCampaignShipKeys.contains(key)) return true;
+        }
+        return false;
+    }
+
+    private static void finishCoalitionParticipation(GameContext ctx,
+                                                     CampaignState st,
+                                                     CoalitionParticipation participation,
+                                                     Set<Integer> before,
+                                                     CampaignForce source) {
+        if (ctx == null || st == null || participation == null || source == null) return;
+        Set<Integer> oldIds = before == null ? Set.of() : before;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || oldIds.contains(ship.id)) continue;
+            if (ship.faction != source.faction) continue;
+            if (st.shipCampaignForceIds.getOrDefault(ship.id, 0) != source.id) continue;
+            participation.tacticalShipIds.add(ship.id);
+        }
+        participation.spawnedShipCount = participation.tacticalShipIds.size();
+        recordStructuredCampaignEvent(st, "campaign.coalition.support_committed",
+                "forceId=" + source.id
+                        + " faction=" + safeTelemetryValue(source.faction == null ? "none" : source.faction.name())
+                        + " reason=" + participation.reason
+                        + " requested=" + participation.requestedShipCount
+                        + " spawned=" + participation.spawnedShipCount);
+    }
+
+    private static Set<Integer> liveShipIdSet(GameContext ctx) {
+        HashSet<Integer> ids = new HashSet<>();
+        if (ctx == null || ctx.ships == null) return ids;
+        for (Ship ship : ctx.ships) {
+            if (ship != null) ids.add(ship.id);
+        }
+        return ids;
+    }
+
+    static boolean coalitionSupportSmallCraftBudgetExceeded(GameContext ctx, Ship carrier) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || carrier == null || st.activeCoalitionParticipations.isEmpty()) return false;
+        boolean supportCarrier = false;
+        for (CoalitionParticipation participation : st.activeCoalitionParticipations) {
+            if (participation != null && participation.tacticalShipIds.contains(carrier.id)) {
+                supportCarrier = true;
+                break;
+            }
+        }
+        if (!supportCarrier) return false;
+        HashSet<Integer> supportCarrierIds = new HashSet<>();
+        for (CoalitionParticipation participation : st.activeCoalitionParticipations) {
+            if (participation != null) supportCarrierIds.addAll(participation.tacticalShipIds);
+        }
+        int activeCraft = 0;
+        for (Ship ship : ctx.ships) {
+            if (ship == null || !ship.alive || ship.dying || ship.hp <= 0) continue;
+            if (ship.carrierOwnerId >= 0 && supportCarrierIds.contains(ship.carrierOwnerId)) activeCraft++;
+        }
+        return activeCraft >= 6;
     }
 
     private static void spawnNamedCoalitionTaskGroups(GameContext ctx, CampaignState st) {
@@ -42744,6 +43006,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         removeDestroyedCampaignForces(ctx, st);
         st.galaxyEncounterActive = false;
         st.galaxyAmbientEncounterActive = false;
+        st.activeCoalitionParticipations.clear();
         st.activeGalaxyEncounterLocationId = "";
         st.activeGalaxyEncounterSearchGroupId = 0;
         CampaignForceRosterSystem.clearActiveEncounterRefs(st);
@@ -42796,6 +43059,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.galaxyAmbientEncounterActive = false;
         st.galaxyAmbientSupportRequested = false;
         st.galaxyAmbientHiredShipIds.clear();
+        st.activeCoalitionParticipations.clear();
         st.activeInstallationThreatCaseId = 0;
         st.activeSiteResolutionModeId = "";
         st.galaxyAmbientPocketCenterX = Double.NaN;
@@ -46683,7 +46947,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         ship.angle = angle;
         ship.vx = vx;
         ship.vy = vy;
-        ship.minerHomeBase = ctx.player;
+        ship.minerHomeBase = isPlayerCommandedPersistentFaction(ctx, spawnFaction) ? ctx.player : null;
         assignPersistentShipToLoadedMissionSubzone(ctx, ship);
         ctx.ships.add(ship);
         BaseUpgrades upgrades = ctx.baseUpgrades.computeIfAbsent(ship, ignored -> new BaseUpgrades().bindTo(ship));
@@ -46705,6 +46969,11 @@ public final class CampaignSystem extends CampaignSystemModels {
         applyPersistentEntryCondition(entry, ship);
         entry.activeShipId = ship.id;
         return ship;
+    }
+
+    private static boolean isPlayerCommandedPersistentFaction(GameContext ctx, Faction faction) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || faction == null) return false;
+        return faction == ctx.player.faction || faction == Faction.ALLY || faction == Faction.PLAYER;
     }
 
     private static void assignPersistentShipToLoadedMissionSubzone(GameContext ctx, Ship ship) {
@@ -47141,5 +47410,3 @@ public final class CampaignSystem extends CampaignSystemModels {
     }
 
 }
-
-

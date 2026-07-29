@@ -23,6 +23,7 @@ Start here. The docs are organized by purpose so the next work is visible withou
 13. `CAMPAIGN_MAP_REWORK_SOURCE_OF_TRUTH.md` - canonical provenance, completed work, conflict resolutions, and milestone roadmap for the current campaign map/intelligence/invasion rework.
 14. `CAMPAIGN_MAP_REWORK_IMPLEMENTATION_CHECKLIST.md` - actionable Milestones 2–11 checklist derived from the campaign map rework source of truth.
 15. `CAMPAIGN_FLEET_AUTHORITY.md` - canonical strategic fleet identity, position-writer, lifecycle, operation-assignment, and save/load decisions.
+16. `CAMPAIGN_GHOST_FLEET_AND_COALITION_SUPPORT_FIX_CHECKLIST.md` - active fix checklist for empty overworld fleets and unexplained Green/Yellow tactical support swarms.
 
 ## Alpha Reference Library
 

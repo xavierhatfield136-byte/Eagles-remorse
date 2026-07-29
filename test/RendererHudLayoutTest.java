@@ -70,6 +70,21 @@ class RendererHudLayoutTest {
     }
 
     @Test
+    void shopUpgradeCardsFitInsideEnlargedUpgradeArea() throws Exception {
+        Rectangle panel = Renderer.getShopOverlayRect(1280, 720);
+        Method upgradeAreaMethod = Renderer.class.getDeclaredMethod("getShopUpgradeArea", Rectangle.class);
+        upgradeAreaMethod.setAccessible(true);
+        Method cardMethod = Renderer.class.getDeclaredMethod("getShopUpgradeCardRect", Rectangle.class, int.class);
+        cardMethod.setAccessible(true);
+        Rectangle upgradeArea = (Rectangle) upgradeAreaMethod.invoke(null, panel);
+
+        for (int slot = 0; slot < 7; slot++) {
+            Rectangle card = (Rectangle) cardMethod.invoke(null, panel, slot);
+            assertTrue(upgradeArea.contains(card), "upgrade card should stay inside the upgrade bay");
+        }
+    }
+
+    @Test
     void formationMenuFitsAllFormationCardsInPanel() {
         Rectangle panel = Renderer.formationMenuRect(1280, 720);
 

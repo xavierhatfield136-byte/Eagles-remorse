@@ -1897,7 +1897,9 @@ public final class AISystem {
         if (ctx == null || ctx.player == null || ctx.player.faction == null) return teamId;
         if (!CampaignSystem.isCampaignActive(ctx)) return teamId;
         if (!ship.faction.isFriendlyTo(ctx.player.faction)) return teamId;
-        if (ship == ctx.player || ship.minerHomeBase == ctx.player) return playerFleetGroupKey(ctx);
+        if (ship == ctx.player || (ship.minerHomeBase == ctx.player && isPlayerCommandedFleetFaction(ctx, ship.faction))) {
+            return playerFleetGroupKey(ctx);
+        }
         int subzone = ship.campaignMissionSubzone;
         int subzoneBucket = subzone >= 0 ? Math.min(999, subzone) : 999;
         return 100_000 + teamId * 1_000 + subzoneBucket;
@@ -3198,7 +3200,12 @@ public final class AISystem {
         if (ctx == null || ship == null || flagship == null || ctx.player == null) return false;
         if (!isAlive(flagship) || flagship != ctx.player) return false;
         if (ship.faction == null || ctx.player.faction == null) return false;
-        return ship.faction.isFriendlyTo(ctx.player.faction);
+        return isPlayerCommandedFleetFaction(ctx, ship.faction);
+    }
+
+    private static boolean isPlayerCommandedFleetFaction(GameContext ctx, Faction faction) {
+        if (ctx == null || ctx.player == null || ctx.player.faction == null || faction == null) return false;
+        return faction == ctx.player.faction || faction == Faction.ALLY || faction == Faction.PLAYER;
     }
 
     private static boolean isPointDefenseRole(Ship s) {

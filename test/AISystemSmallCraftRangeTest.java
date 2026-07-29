@@ -26,12 +26,15 @@ class AISystemSmallCraftRangeTest {
         playerEscort.minerHomeBase = ctx.player;
         FleetShip localLeader = new FleetShip(ShipRole.BATTLECRUISER, Faction.ALLY, 2100.0, 1300.0);
         FleetShip localEscort = new FleetShip(ShipRole.PICKET, Faction.ALLY, 2180.0, 1400.0);
+        FleetShip coalitionEscort = new FleetShip(ShipRole.FRIGATE, Faction.TEAM_C, 1120.0, 1180.0);
+        coalitionEscort.minerHomeBase = ctx.player;
 
         ctx.ships.clear();
         ctx.ships.add(ctx.player);
         ctx.ships.add(playerEscort);
         ctx.ships.add(localLeader);
         ctx.ships.add(localEscort);
+        ctx.ships.add(coalitionEscort);
         ctx.entityQuery.rebuild(ctx);
 
         Method buildFleetState = AISystem.class.getDeclaredMethod("buildFleetState", GameContext.class, double.class);
@@ -47,6 +50,9 @@ class AISystemSmallCraftRangeTest {
         assertTrue(playerGroup.contains(playerEscort), "player-owned persistent escorts should stay in the Mothership formation");
         assertFalse(playerGroup.contains(localLeader), "local friendly fleets should keep a separate formation anchor");
         assertFalse(playerGroup.contains(localEscort), "local friendly escorts should not consume player formation slots");
+        assertFalse(playerGroup.contains(coalitionEscort), "coalition-faction hulls should not become player escorts just because they are friendly");
+        assertTrue(members.values().stream().anyMatch(group -> group.contains(coalitionEscort)),
+                "coalition-faction hulls should keep their own local command group");
     }
 
     @Test

@@ -60,7 +60,9 @@ public final class CarrierSystem {
 
         for (Ship carrier : carriers) {
             if (globalCraft >= globalCap) break;
+            if (!canUseAutomaticCraft(carrier)) continue;
             if (!carrier.carrierAutoLaunch) continue;
+            if (CampaignSystem.coalitionSupportSmallCraftBudgetExceeded(ctx, carrier)) continue;
 
             // Don't auto-launch from player while in overlays.
             if (carrier == ctx.player && ctx.ui.hasBlockingOverlay()) continue;
@@ -75,6 +77,8 @@ public final class CarrierSystem {
         if (ctx == null || carrier == null) return 0;
         if (!carrier.alive || carrier.dying || carrier.hp <= 0) return 0;
         if (!carrier.isCarrier) return 0;
+        if (!canUseAutomaticCraft(carrier)) return 0;
+        if (CampaignSystem.coalitionSupportSmallCraftBudgetExceeded(ctx, carrier)) return 0;
         if (!carrier.canLaunchFighter()) return 0;
         if (countGlobalLaunchedCraft(ctx) >= globalLaunchedCraftCap(ctx)) return 0;
         return launchFlight(ctx, carrier, GameContext.DT);
@@ -595,6 +599,8 @@ public final class CarrierSystem {
         for (Ship carrier : carriers) {
             if (carrier == null || !carrier.alive || carrier.dying || carrier.hp <= 0) continue;
             if (!carrier.isCarrier || carrier.faction == null) continue;
+            if (!canUseAutomaticCraft(carrier)) continue;
+            if (CampaignSystem.coalitionSupportSmallCraftBudgetExceeded(ctx, carrier)) continue;
 
             int desired = (carrier.role == ShipRole.DRONE_CARRIER) ? 2 : 1;
             int active = countPdEscortsForCarrier(ctx, carrier);
@@ -665,6 +671,12 @@ public final class CarrierSystem {
             return escort;
         }
         return null;
+    }
+
+    private static boolean canUseAutomaticCraft(Ship carrier) {
+        if (carrier == null || carrier.role == null) return false;
+        ShopHullCategory category = ShopHullCategory.forRole(carrier.role);
+        return category == ShopHullCategory.CAPITAL || category == ShopHullCategory.TITAN;
     }
 
     private static Map<Integer, Double> pdEscortCooldowns(GameContext ctx) {

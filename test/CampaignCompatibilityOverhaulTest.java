@@ -427,6 +427,30 @@ class CampaignCompatibilityOverhaulTest {
     }
 
     @Test
+    void coalitionPersistentShipsSpawnOutsidePlayerEscortOwnership() {
+        GameContext ctx = campaignShopContext(20_000, 4_000);
+        CampaignSystem.PersistentFleetEntry green = CampaignSystem.addPersistentFleetEntry(
+                ctx.campaign,
+                ShipRole.FRIGATE,
+                "Green Detached Frigate",
+                0,
+                Faction.TEAM_C);
+        assertNotNull(green);
+        CampaignSystem.markPlayerPurchasedEntryCommitted(green);
+
+        CampaignSystem.spawnPurchasedPersistentBlueShip(ctx, ctx.campaign, green);
+
+        Ship spawned = ctx.ships.stream()
+                .filter(ship -> ship != null && "Green Detached Frigate".equals(ship.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(spawned);
+        assertEquals(Faction.TEAM_C, spawned.faction);
+        assertFalse(spawned.minerHomeBase == ctx.player,
+                "coalition persistent hulls should not silently become Mothership-owned escorts");
+    }
+
+    @Test
     void lateDestroySectorsAccumulatePressureReinforcements() throws Exception {
         GameContext ctx = initializedCampaignContext();
         startSector(ctx, 15);

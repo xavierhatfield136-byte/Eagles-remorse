@@ -2487,13 +2487,17 @@ class CampaignSystemModels {
         public final List<String> tooltipLines;
 
         CampaignForceSummary(CampaignForce force) {
+            this(null, null, force);
+        }
+
+        CampaignForceSummary(GameContext ctx, CampaignState st, CampaignForce force) {
             this.id = force == null ? 0 : force.id;
             this.kind = force == null ? CampaignForceKind.LOCAL_FORCE : force.kind;
             this.faction = force == null ? null : force.faction;
             this.name = force == null ? "" : force.name;
             this.origin = force == null ? "" : force.origin;
             this.purpose = force == null ? "" : force.purpose;
-            this.shipCount = force == null ? 0 : force.shipIds.size();
+            this.shipCount = force == null ? 0 : CampaignForceRosterSystem.concreteShipCount(ctx, st, force);
             this.hostile = force != null && force.faction == Faction.ENEMY;
             this.intent = force == null ? CampaignForceIntent.HOLDING : force.intent;
             this.strength = force == null ? 0.0 : force.strength;
@@ -2622,6 +2626,8 @@ class CampaignSystemModels {
         boolean simulationActive = true;
         boolean protectedCivilianTraffic = false;
         boolean hadTacticalMembers = false;
+        double rosterTransitionGraceSec = 0.0;
+        String rosterTransitionReason = "";
         CampaignForceContactState contactState = CampaignForceContactState.KNOWN;
         final List<double[]> routePoints = new ArrayList<>();
         final List<double[]> patrolWaypoints = new ArrayList<>();
@@ -2774,6 +2780,36 @@ class CampaignSystemModels {
             this.faction = faction;
             this.name = (name == null || name.isBlank()) ? "Encounter Force" : name.trim();
             this.purpose = (purpose == null || purpose.isBlank()) ? "Commit campaign force ships into battle" : purpose.trim();
+        }
+    }
+
+    enum CoalitionSupportReason {
+        PLAYER_REQUEST,
+        SELECTED_PARTICIPANT,
+        NEARBY_RESPONSE,
+        AUTHORED_MISSION
+    }
+
+    static final class CoalitionParticipation {
+        final int sourceForceId;
+        final Faction faction;
+        final CoalitionSupportReason reason;
+        final Set<String> committedCampaignShipKeys = new HashSet<>();
+        final Set<Integer> tacticalShipIds = new HashSet<>();
+        int requestedShipCount;
+        int spawnedShipCount;
+        String sourceForceName = "";
+
+        CoalitionParticipation(int sourceForceId,
+                               Faction faction,
+                               CoalitionSupportReason reason,
+                               int requestedShipCount,
+                               String sourceForceName) {
+            this.sourceForceId = Math.max(0, sourceForceId);
+            this.faction = faction;
+            this.reason = reason == null ? CoalitionSupportReason.NEARBY_RESPONSE : reason;
+            this.requestedShipCount = Math.max(0, requestedShipCount);
+            this.sourceForceName = trimmedOrFallback(sourceForceName, "Coalition support");
         }
     }
 
@@ -3388,6 +3424,7 @@ class CampaignSystemModels {
         public int activeInstallationThreatCaseId = 0;
         public boolean galaxyAmbientSupportRequested = false;
         public final Set<Integer> galaxyAmbientHiredShipIds = new HashSet<>();
+        public final List<CoalitionParticipation> activeCoalitionParticipations = new ArrayList<>();
         public double galaxyAmbientPocketCenterX = Double.NaN;
         public double galaxyAmbientPocketCenterY = Double.NaN;
         public double galaxyAmbientPocketRadius = 0.0;
@@ -3458,6 +3495,7 @@ class CampaignSystemModels {
         public final PlayerContact enemyPlayerContact = new PlayerContact();
         public double campaignForceSimAccumulatorSec = 0.0;
         public int campaignForceSimTickCount = 0;
+        public double overmapGhostFleetSweepAccumulatorSec = 0.0;
         public int proximityAlertForceId = 0;
         public int proximityAlertStage = 0;
         public double proximityAlertCooldownSec = 0.0;
