@@ -24,22 +24,21 @@ public final class CampaignEconomyBalanceAudit {
 
     public static EconomyLoopMeasurement oneLoopMeasurement(long seed, int loops) {
         GameContext ctx = campaign(seed);
-        CampaignSystem.CampaignState st = ctx.campaign;
         int boundedLoops = Math.max(1, loops);
         int startingOre = CampaignSystem.currentCampaignOre(ctx);
-        int startingFleet = st.persistentBlueFleet.size();
-        int startingPower = persistentFleetPower(st);
+        int startingFleet = CampaignSystem.campaignPersistentFleetCount(ctx);
+        int startingPower = persistentFleetPower(ctx);
         for (int i = 0; i < boundedLoops; i++) {
             int oreGain = Math.min(UNATTENDED_MINING_MAX_ORE, measureMining("loop-miner", ShipRole.MINER, UNATTENDED_MINING_SECONDS, 1.0, 1.0, 4_000).oreMined());
             CampaignSystem.grantCampaignOre(ctx, oreGain);
-            st.campaignSalvage += Math.max(6, oreGain / 70);
+            CampaignSystem.grantCampaignSalvage(ctx, Math.max(6, oreGain / 70));
             ctx.credits += GameContext.scaleCreditReward(Math.max(120, oreGain / 2));
             attemptOneShipyardCommission(ctx);
         }
         return new EconomyLoopMeasurement(seed, boundedLoops,
                 startingOre, CampaignSystem.currentCampaignOre(ctx),
-                startingFleet, st.persistentBlueFleet.size(),
-                startingPower, persistentFleetPower(st));
+                startingFleet, CampaignSystem.campaignPersistentFleetCount(ctx),
+                startingPower, persistentFleetPower(ctx));
     }
 
     public static List<String> balanceAuditLines() {
@@ -103,30 +102,22 @@ public final class CampaignEconomyBalanceAudit {
     }
 
     private static void attemptOneShipyardCommission(GameContext ctx) {
-        CampaignSystem.CampaignState st = ctx == null ? null : ctx.campaign;
-        if (st == null) return;
-        CampaignSystem.CampaignLocation yard = null;
-        for (CampaignSystem.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
-            if (location != null && location.services.contains(CampaignSystem.HubService.SHIPYARD)) {
+        if (ctx == null || ctx.campaign == null) return;
+        CampaignSystemModels.CampaignLocation yard = null;
+        for (CampaignSystemModels.CampaignLocation location : CampaignSystem.mainCampaignLocations(ctx)) {
+            if (location != null && location.services.contains(CampaignSystemModels.HubService.SHIPYARD)) {
                 yard = location;
                 break;
             }
         }
         if (yard == null) return;
-        st.selectedGalaxyLocationId = yard.id;
-        st.currentGalaxyLocationId = yard.id;
-        st.dockedGalaxyLocationId = yard.id;
-        st.playerGalaxyX = yard.x;
-        st.playerGalaxyY = yard.y;
-        CampaignSystem.openSelectedHubService(ctx, CampaignSystem.HubService.SHIPYARD);
+        CampaignSystem.setCampaignDockedLocationForAudit(ctx, yard);
+        CampaignSystem.openSelectedHubService(ctx, CampaignSystemModels.HubService.SHIPYARD);
         CampaignSystem.confirmSelectedHubService(ctx);
     }
 
-    private static int persistentFleetPower(CampaignSystem.CampaignState st) {
-        if (st == null) return 0;
-        int power = 0;
-        for (Object ignored : st.persistentBlueFleet) power += 10;
-        return power;
+    private static int persistentFleetPower(GameContext ctx) {
+        return CampaignSystem.campaignPersistentFleetCount(ctx) * 10;
     }
 
     public record MiningRateMeasurement(String label,

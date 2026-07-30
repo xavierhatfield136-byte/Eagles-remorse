@@ -230,6 +230,7 @@ class CampaignOvermapEncounterFlowTest {
         setDouble(hostile, "lastKnownAgeSec", 0.0);
         setBoolean(hostile, "visibleToPlayer", true);
         setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.SUSPECTED);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(hostile, "id"), "Shadow Patrol");
 
         invokeForceEncounterUpdate(ctx, st);
 
@@ -261,6 +262,7 @@ class CampaignOvermapEncounterFlowTest {
         setDouble(hostile, "lastKnownAgeSec", 0.0);
         setBoolean(hostile, "visibleToPlayer", true);
         setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(hostile, "id"), "Opening Interceptor");
 
         invokeForceEncounterUpdate(ctx, st);
 
@@ -297,6 +299,9 @@ class CampaignOvermapEncounterFlowTest {
             setBoolean(force, "visibleToPlayer", true);
             setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
         }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(primary, "id"), "Primary Sensor Patrol");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(nearby, "id"), "Nearby Sensor Spear");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.MISSILE_BOAT, getInt(distant, "id"), "Distant Sensor Spear");
 
         assertTrue(launchCampaignForceEncounter(ctx, st, primary));
 
@@ -351,6 +356,40 @@ class CampaignOvermapEncounterFlowTest {
     }
 
     @Test
+    void friendlySensorBubbleJoinerMustBePhysicallyCloseToThePlayerContact() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.selectedGalaxyLocationId = "";
+        st.playerGalaxyX = 2500.0;
+        st.playerGalaxyY = 2500.0;
+
+        Object primary = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Primary For Friendly Pull", "Red base lane", "primary intercept",
+                st.playerGalaxyX + 40.0, st.playerGalaxyY);
+        Object distantFriendly = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.TASK_FORCE, Faction.TEAM_C,
+                "Regression Green Distant Support Pull", "Green support lane", "should not teleport into contact",
+                st.playerGalaxyX + 980.0, st.playerGalaxyY + 20.0);
+        for (Object force : List.of(primary, distantFriendly)) {
+            setBoolean(force, "simulationActive", true);
+            setDouble(force, "strength", 70.0);
+            setDouble(force, "readiness", 80.0);
+            setDouble(force, "contactConfidence", 0.95);
+            setDouble(force, "lastKnownAgeSec", 0.0);
+            setBoolean(force, "visibleToPlayer", true);
+            setObject(force, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        }
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(primary, "id"), "Primary Patrol");
+        addPoolRecord(st, Faction.TEAM_C, ShipRole.FRIGATE, getInt(distantFriendly, "id"), "Distant Green Frigate");
+
+        assertTrue(launchCampaignForceEncounter(ctx, st, primary));
+
+        assertTrue(hasTacticalShipForCampaignForce(st, getInt(primary, "id")),
+                "the primary hostile force should still spawn into the tactical battle");
+        assertFalse(hasTacticalShipForCampaignForce(st, getInt(distantFriendly, "id")),
+                "friendly forces outside the physical response radius must not be pulled in by broad allied intel");
+    }
+
+    @Test
     void alliedGreenAndRedFleetOverlapFormsNpcBattle() throws Exception {
         GameContext ctx = initializedCampaignContext();
         CampaignSystem.CampaignState st = ctx.campaign;
@@ -372,6 +411,8 @@ class CampaignOvermapEncounterFlowTest {
         setEnumByName(green, "intent", "INTERCEPTING");
         setEnumByName(red, "state", "IDLE");
         setEnumByName(green, "state", "IDLE");
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(red, "id"), "Stack Red Patrol");
+        addPoolRecord(st, Faction.ALLY, ShipRole.PATROL, getInt(green, "id"), "Stack Green Patrol");
 
         invokeNpcBattleResolution(ctx, st, 0.2);
 
@@ -684,6 +725,7 @@ class CampaignOvermapEncounterFlowTest {
         setDouble(hostile, "lastKnownAgeSec", 0.0);
         setBoolean(hostile, "visibleToPlayer", true);
         setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(hostile, "id"), "Direct Engage Patrol");
 
         CampaignSystem.selectCampaignContactTarget(ctx,
                 "Live Hostile Contact",
@@ -721,6 +763,46 @@ class CampaignOvermapEncounterFlowTest {
                 true);
 
         assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertFalse(ctx.ui.strategicEncounterPrompt.active);
+    }
+
+    @Test
+    void engagingShiplessForceRunsImmediateGhostSweepBeforePrompt() throws Exception {
+        GameContext ctx = initializedCampaignContext();
+        CampaignSystem.CampaignState st = ctx.campaign;
+        st.playerGalaxyX = 2600.0;
+        st.playerGalaxyY = 2600.0;
+        st.strategicOvermapMode = true;
+        ctx.state = GameState.MAP;
+
+        Object ghost = invokeEnsureCampaignForce(st, CampaignSystem.CampaignForceKind.PATROL_GROUP, Faction.ENEMY,
+                "Regression Red Immediate Ghost Sweep", "direct contact", "test immediate ghost cleanup",
+                st.playerGalaxyX + 70.0, st.playerGalaxyY);
+        setBoolean(ghost, "simulationActive", true);
+        setDouble(ghost, "strength", 62.0);
+        setDouble(ghost, "readiness", 90.0);
+        setDouble(ghost, "hullIntegrity", 90.0);
+        setDouble(ghost, "contactConfidence", 0.95);
+        setDouble(ghost, "lastKnownAgeSec", 0.0);
+        setBoolean(ghost, "visibleToPlayer", true);
+        setBoolean(ghost, "hadTacticalMembers", false);
+        setInt(ghost, "linkedSearchGroupId", 0);
+        setObject(ghost, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        ((java.util.Set<?>) getObject(ghost, "shipIds")).clear();
+        st.campaignShipPool.clear();
+
+        CampaignSystem.selectCampaignContactTarget(ctx,
+                "Regression Red Immediate Ghost Sweep",
+                "EXACT LIVE CONTACT",
+                "Tracked",
+                st.playerGalaxyX + 70.0,
+                st.playerGalaxyY,
+                true,
+                true);
+
+        assertFalse(CampaignSystem.engageSelectedCampaignContact(ctx));
+        assertNull(forceNamed(st, "Regression Red Immediate Ghost Sweep"),
+                "engage should sweep and delete shipless ghost fleets before opening the auto-battle prompt");
         assertFalse(ctx.ui.strategicEncounterPrompt.active);
     }
 
@@ -781,6 +863,7 @@ class CampaignOvermapEncounterFlowTest {
         setDouble(hostile, "lastKnownAgeSec", 0.0);
         setBoolean(hostile, "visibleToPlayer", true);
         setObject(hostile, "contactState", CampaignSystem.CampaignForceContactState.KNOWN);
+        addPoolRecord(st, Faction.ENEMY, ShipRole.PATROL, getInt(hostile, "id"), "Manual Fight Patrol");
 
         CampaignSystem.selectCampaignContactTarget(ctx,
                 "Regression Red Manual Fight",
@@ -1040,6 +1123,27 @@ class CampaignOvermapEncounterFlowTest {
         method.invoke(null, st, ship, force);
     }
 
+    private static void addPoolRecord(CampaignSystem.CampaignState st,
+                                      Faction faction,
+                                      ShipRole role,
+                                      int forceId,
+                                      String name) throws Exception {
+        Method method = CampaignSystem.class.getDeclaredMethod(
+                "addCampaignShipPoolRecord",
+                CampaignSystem.CampaignState.class,
+                Faction.class,
+                ShipRole.class,
+                CampaignSystem.CampaignShipPoolStatus.class,
+                String.class,
+                int.class,
+                double.class,
+                String.class
+        );
+        method.setAccessible(true);
+        method.invoke(null, st, faction, role, CampaignSystem.CampaignShipPoolStatus.ACTIVE,
+                "", forceId, 100.0, name);
+    }
+
     private static boolean launchGalaxySearchGroupEncounter(GameContext ctx, CampaignSystem.CampaignState st, Object group) throws Exception {
         Method method = CampaignSystem.class.getDeclaredMethod(
                 "launchGalaxySearchGroupEncounter",
@@ -1087,6 +1191,13 @@ class CampaignOvermapEncounterFlowTest {
     private static Object linkedForceForSearchGroup(CampaignSystem.CampaignState st, int groupId) throws Exception {
         for (Object force : st.campaignForces) {
             if (force != null && getInt(force, "linkedSearchGroupId") == groupId) return force;
+        }
+        return null;
+    }
+
+    private static Object forceNamed(CampaignSystem.CampaignState st, String name) throws Exception {
+        for (Object force : st.campaignForces) {
+            if (force != null && name.equals(getObject(force, "name"))) return force;
         }
         return null;
     }

@@ -197,7 +197,7 @@ final class CampaignForceRosterSystem {
         ForceRosterState state = resolveRosterState(ctx, st, force);
         return state == ForceRosterState.CONCRETE
                 || state == ForceRosterState.TEMPORARILY_TRANSITIONING
-                || state == ForceRosterState.INTEL_ONLY
+                || state == ForceRosterState.INTEL_ONLY && hasNonPhysicalStrategicAnchor(force)
                 || state == ForceRosterState.SCRIPTED_NON_PHYSICAL;
     }
 
@@ -205,7 +205,14 @@ final class CampaignForceRosterSystem {
                                                    CampaignSystem.CampaignState st,
                                                    CampaignSystem.CampaignForce force) {
         ForceRosterState state = resolveRosterState(ctx, st, force);
-        return state == ForceRosterState.INTEL_ONLY || state == ForceRosterState.SCRIPTED_NON_PHYSICAL;
+        return state == ForceRosterState.INTEL_ONLY && hasNonPhysicalStrategicAnchor(force)
+                || state == ForceRosterState.SCRIPTED_NON_PHYSICAL;
+    }
+
+    private static boolean hasNonPhysicalStrategicAnchor(CampaignSystem.CampaignForce force) {
+        if (force == null) return false;
+        return force.linkedSearchGroupId > 0
+                || force.assignedOperationId != null && !force.assignedOperationId.isBlank();
     }
 
     static int concreteShipCount(GameContext ctx,
@@ -314,6 +321,15 @@ final class CampaignForceRosterSystem {
         }
         if (force.assignedOperationId != null && !force.assignedOperationId.isBlank()) {
             return ForceRosterState.SCRIPTED_NON_PHYSICAL;
+        }
+        if (!force.hadTacticalMembers
+                && force.simulationActive
+                && force.strength > 1.0
+                && force.contactConfidence > 0.0
+                && (force.visibleToPlayer
+                || force.contactState == CampaignSystem.CampaignForceContactState.KNOWN
+                || force.contactState == CampaignSystem.CampaignForceContactState.SUSPECTED)) {
+            return ForceRosterState.INTEL_ONLY;
         }
         if (force.contactState == CampaignSystem.CampaignForceContactState.STALE
                 && force.contactConfidence > 0.0

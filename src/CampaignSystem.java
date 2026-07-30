@@ -65,8 +65,10 @@ public final class CampaignSystem extends CampaignSystemModels {
     private static final int CAMPAIGN_FORCE_MAX_ACTIVE_NPC = 160;
     private static final double CAMPAIGN_FORCE_ENCOUNTER_RANGE = 240.0;
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_HOSTILE_JOINERS = 7;
-    private static final int CAMPAIGN_SENSOR_BATTLE_MAX_FRIENDLY_JOINERS = 4;
+    private static final int CAMPAIGN_SENSOR_BATTLE_MAX_FRIENDLY_JOINERS = 1;
     private static final int CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER = 3;
+    private static final double CAMPAIGN_SENSOR_BATTLE_PHYSICAL_JOIN_RANGE = 1_150.0;
+    private static final double CAMPAIGN_SENSOR_BATTLE_FRIENDLY_JOIN_RANGE = 650.0;
     private static final double CAMPAIGN_OPENING_ENCOUNTER_GRACE_SEC = 180.0;
     private static final double CAMPAIGN_START_SPAWN_PROTECTION_RADIUS = 2600.0;
     private static final double CAMPAIGN_SENSOR_SWEEP_COOLDOWN_SEC = 18.0;
@@ -355,6 +357,19 @@ public final class CampaignSystem extends CampaignSystemModels {
     public static int campaignSalvageStock(GameContext ctx) {
         CampaignState st = state(ctx);
         return (st == null) ? 0 : Math.max(0, st.campaignSalvage);
+    }
+
+    public static int campaignPersistentFleetCount(GameContext ctx) {
+        CampaignState st = state(ctx);
+        return (st == null) ? 0 : st.persistentBlueFleet.size();
+    }
+
+    public static void grantCampaignSalvage(GameContext ctx, int amount) {
+        CampaignState st = state(ctx);
+        if (st == null || !st.enabled) return;
+        int delta = Math.max(0, amount);
+        if (delta <= 0) return;
+        st.campaignSalvage += delta;
     }
 
     public static boolean consumeTransportRepairSupport(GameContext ctx, double supplyPerSecond, double dt) {
@@ -7325,7 +7340,11 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || !hasSelectedCampaignContactTarget(ctx) || !selectedCampaignContactHostile(ctx)) return false;
         CampaignForce force = campaignForceBySelectedContact(ctx);
         if (force != null && campaignForceCanTriggerPlayerEncounter(ctx, st, force)) {
-            showCampaignForceEncounterChoice(ctx, force);
+            if (!showCampaignForceEncounterChoice(ctx, force)) {
+                clearSelectedCampaignContact(ctx);
+                EventSystem.showBanner(ctx, "CONTACT LOST: NO PHYSICAL FLEET REMAINS", 1.2);
+                return false;
+            }
             st.galaxyTravel.clear();
             EventSystem.showBanner(ctx, "HOSTILE FORCE MARKED FOR INTERCEPT", 1.4);
             return true;
@@ -8828,6 +8847,17 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.selectedFreeGalaxyTargetY = Double.NaN;
         if (st.commandSchoolTraining) st.commandSchoolLastActionId = "SELECT_LOCATION";
         EventSystem.showBanner(ctx, "DESTINATION SELECTED: " + location.name.toUpperCase(Locale.US), 1.2);
+        return true;
+    }
+
+    static boolean setCampaignDockedLocationForAudit(GameContext ctx, CampaignLocation location) {
+        CampaignState st = state(ctx);
+        if (ctx == null || st == null || location == null || location.id == null || location.id.isBlank()) return false;
+        st.selectedGalaxyLocationId = location.id;
+        st.currentGalaxyLocationId = location.id;
+        st.dockedGalaxyLocationId = location.id;
+        st.playerGalaxyX = location.x;
+        st.playerGalaxyY = location.y;
         return true;
     }
 
@@ -11396,7 +11426,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
             case CAMPAIGN_FORCE -> {
                 CampaignForce force = campaignForceById(st, prompt.campaignForceId);
-                yield CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force);
+                yield campaignForceCanOpenPlayerEncounter(ctx, st, force);
             }
             case CAMPAIGN_BATTLE -> {
                 CampaignBattle battle = campaignBattleById(st, prompt.campaignBattleId);
@@ -16069,7 +16099,8 @@ public final class CampaignSystem extends CampaignSystemModels {
             CampaignForceRosterSystem.ForceRosterState rosterState =
                     CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
             if (force.kind != CampaignForceKind.PLAYER_FLEET
-                    && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE) {
+                    && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE
+                    && rosterState != CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY) {
                 continue;
             }
             out.add(new CampaignForceSummary(ctx, st, force));
@@ -16890,19 +16921,6 @@ public final class CampaignSystem extends CampaignSystemModels {
         return created;
     }
 
-    private static CampaignForce ensureCampaignForce(CampaignState st,
-                                                     CampaignSystem$CampaignForceKind kind,
-                                                     Faction faction,
-                                                     String name,
-                                                     String origin,
-                                                     String purpose,
-                                                     double x,
-                                                     double y) {
-        return ensureCampaignForce(st,
-                kind == null ? null : CampaignForceKind.valueOf(kind.name()),
-                faction, name, origin, purpose, x, y);
-    }
-
     private static CampaignForce ensureCampaignForceWithoutDeploymentCost(CampaignState st,
                                                                           CampaignForceKind kind,
                                                                           Faction faction,
@@ -16940,19 +16958,6 @@ public final class CampaignSystem extends CampaignSystemModels {
                         + " reason=" + safeTelemetryValue(purpose)
                         + " deploymentCost=waived");
         return created;
-    }
-
-    private static CampaignForce ensureCampaignForceWithoutDeploymentCost(CampaignState st,
-                                                                          CampaignSystem$CampaignForceKind kind,
-                                                                          Faction faction,
-                                                                          String name,
-                                                                          String origin,
-                                                                          String purpose,
-                                                                          double x,
-                                                                          double y) {
-        return ensureCampaignForceWithoutDeploymentCost(st,
-                kind == null ? null : CampaignForceKind.valueOf(kind.name()),
-                faction, name, origin, purpose, x, y);
     }
 
     private static void ensureRedForceNamedSource(CampaignState st, CampaignForce force, double x, double y) {
@@ -19301,9 +19306,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force == null) return null;
         CampaignForceRosterSystem.ForceRosterState rosterState =
                 CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
-        if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
-                || rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID
-                || (!allowAbstractFallback && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE)) {
+        if (rosterState == CampaignForceRosterSystem.ForceRosterState.INVALID
+                || (!allowAbstractFallback && rosterState != CampaignForceRosterSystem.ForceRosterState.CONCRETE)
+                || (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
+                && (!allowAbstractFallback || force.hadTacticalMembers || force.destroyed || force.strength <= 1.0))) {
             return null;
         }
         EncounterForceManifest manifest = new EncounterForceManifest(force.id, force.kind, force.faction, force.name, force.purpose);
@@ -19703,7 +19709,9 @@ public final class CampaignSystem extends CampaignSystemModels {
             }
 
             EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force,
-                    force.kind == CampaignForceKind.BASE_DEFENSE
+                    !hostile
+                            ? Math.min(2, CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER)
+                            : force.kind == CampaignForceKind.BASE_DEFENSE
                             ? Math.min(2, CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER)
                             : CAMPAIGN_SENSOR_BATTLE_MAX_SHIPS_PER_JOINER);
             if (manifest == null || manifest.ships.isEmpty()) continue;
@@ -19741,7 +19749,12 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (force.faction == Faction.ENEMY && !campaignForceVisibleOnMap(force) && !force.visibleToPlayer) return false;
         if (!Double.isFinite(force.x) || !Double.isFinite(force.y)) return false;
         if (!Double.isFinite(st.playerGalaxyX) || !Double.isFinite(st.playerGalaxyY)) return false;
-        return GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY) <= radius2;
+        if (!campaignForceHasConfirmedRealTrack(force)) return false;
+        double physicalRange = force.faction == Faction.ENEMY
+                ? CAMPAIGN_SENSOR_BATTLE_PHYSICAL_JOIN_RANGE
+                : CAMPAIGN_SENSOR_BATTLE_FRIENDLY_JOIN_RANGE;
+        double effectiveRadius2 = Math.min(radius2, physicalRange * physicalRange);
+        return GameMath.dist2(force.x, force.y, st.playerGalaxyX, st.playerGalaxyY) <= effectiveRadius2;
     }
 
     private static String ambientLocalSiteEscortForceName(CampaignLocation location) {
@@ -22856,11 +22869,24 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (st.processedResourceTransactionIds.contains(key)) return false;
         int creditCost = Math.max(0, credits);
         int oreCost = Math.max(0, ore);
-        if (ctx.credits < creditCost || currentCampaignOre(ctx) < oreCost) {
+        int fuelCost = Math.max(0, fuel);
+        int supplyCost = Math.max(0, supplies);
+        int ammoCost = Math.max(0, ammo);
+        int salvageCost = Math.max(0, salvage);
+        if (ctx.credits < creditCost
+                || currentCampaignOre(ctx) < oreCost
+                || st.campaignFuel < fuelCost
+                || st.campaignSupplies < supplyCost
+                || st.campaignAmmo < ammoCost
+                || st.campaignSalvage < salvageCost) {
             return false;
         }
         ctx.credits -= creditCost;
         setCampaignOre(ctx, st, currentCampaignOre(ctx) - oreCost);
+        st.campaignFuel = Math.max(0, st.campaignFuel - fuelCost);
+        st.campaignSupplies = Math.max(0, st.campaignSupplies - supplyCost);
+        st.campaignAmmo = Math.max(0, st.campaignAmmo - ammoCost);
+        st.campaignSalvage = Math.max(0, st.campaignSalvage - salvageCost);
         st.processedResourceTransactionIds.add(key);
         while (st.processedResourceTransactionIds.size() > 128) {
             Iterator<String> iterator = st.processedResourceTransactionIds.iterator();
@@ -26323,6 +26349,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             if (rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE
                     || rosterState == CampaignForceRosterSystem.ForceRosterState.TEMPORARILY_TRANSITIONING
                     || rosterState == CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY
+                    && CampaignForceRosterSystem.shouldRetainAsNonPhysicalRecord(ctx, st, force)
                     || rosterState == CampaignForceRosterSystem.ForceRosterState.SCRIPTED_NON_PHYSICAL) {
                 continue;
             }
@@ -32771,7 +32798,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         }
         if (stage < 3) return;
         if (openingGrace && bestD > CAMPAIGN_FORCE_ENCOUNTER_RANGE) return;
-        showCampaignForceEncounterChoice(ctx, best);
+        if (!showCampaignForceEncounterChoice(ctx, best)) return;
         st.galaxyTravel.clear();
         EventSystem.showBanner(ctx, "HOSTILE FORCE IN ENGAGEMENT RANGE", 1.4);
     }
@@ -32780,7 +32807,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         if (ctx == null || st == null || force == null || force.destroyed) return false;
         if (!force.simulationActive || force.kind == CampaignForceKind.PLAYER_FLEET) return false;
         if (force.faction != Faction.ENEMY) return false;
-        if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) return false;
+        if (!campaignForceCanOpenPlayerEncounter(ctx, st, force)) return false;
         if (campaignFleetHasExactIntel(ctx, force.id, st.campaignIntelTick)) return true;
         CampaignForceContactState contactState = force.contactState == null
                 ? CampaignForceContactState.STALE
@@ -32789,8 +32816,10 @@ public final class CampaignSystem extends CampaignSystemModels {
         return force.contactConfidence >= 0.34 && force.lastKnownAgeSec < 20.0;
     }
 
-    private static void showCampaignForceEncounterChoice(GameContext ctx, CampaignForce force) {
-        if (ctx == null || ctx.ui == null || force == null) return;
+    private static boolean showCampaignForceEncounterChoice(GameContext ctx, CampaignForce force) {
+        CampaignState st = state(ctx);
+        if (ctx == null || ctx.ui == null || st == null || force == null) return false;
+        if (!sweepGhostFleetsBeforeForceEncounterPrompt(ctx, st, force)) return false;
         String body = "Direct hostile fleet contact. Engage now to command the battle, or auto-resolve and accept campaign-layer attrition.";
         String location = "Overmap force contact";
         String strength = "CONTACT " + (int) Math.round(force.strength)
@@ -32803,6 +32832,19 @@ public final class CampaignSystem extends CampaignSystemModels {
                 location,
                 strength);
         ctx.state = GameState.PAUSED;
+        return true;
+    }
+
+    private static boolean sweepGhostFleetsBeforeForceEncounterPrompt(GameContext ctx, CampaignState st, CampaignForce candidate) {
+        if (ctx == null || st == null || candidate == null) return false;
+        int removed = sweepOvermapGhostFleets(ctx, st);
+        if (removed > 0) {
+            cleanupInvalidCampaignForceReferences(st);
+            removeDestroyedCampaignForces(ctx, st);
+        }
+        return !candidate.destroyed
+                && st.campaignForces.contains(candidate)
+                && campaignForceCanTriggerPlayerEncounter(ctx, st, candidate);
     }
 
     private static void beginCampaignLocationEncounterChoice(GameContext ctx, CampaignState st, CampaignLocation location) {
@@ -34275,6 +34317,8 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static void prepareAmbientCampaignLocationEncounterWorld(GameContext ctx, CampaignState st, CampaignLocation location) {
         if (ctx == null || st == null || location == null || ctx.player == null) return;
+        st.activeGalaxyEncounterLocationId = trimmedOrFallback(location.id, st.activeGalaxyEncounterLocationId);
+        st.galaxyAmbientEncounterActive = true;
         CampaignInstallationThreatCase installationThreat = installationThreatCaseById(st, st.activeInstallationThreatCaseId);
         if (installationThreat == null || location.id == null || !location.id.equals(installationThreat.locationId)) {
             st.activeInstallationThreatCaseId = 0;
@@ -36364,7 +36408,7 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     private static boolean launchCampaignForceEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.destroyed || ctx.player == null) return false;
-        if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) {
+        if (!campaignForceCanOpenPlayerEncounter(ctx, st, force)) {
             CampaignForceRosterSystem.ForceRosterState rosterState =
                     CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
             if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
@@ -36391,9 +36435,18 @@ public final class CampaignSystem extends CampaignSystemModels {
         return true;
     }
 
+    private static boolean campaignForceCanOpenPlayerEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
+        if (force == null || force.destroyed) return false;
+        if (force.kind == CampaignForceKind.PLAYER_FLEET) return true;
+        CampaignForceRosterSystem.ForceRosterState rosterState =
+                CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
+        return rosterState == CampaignForceRosterSystem.ForceRosterState.CONCRETE
+                || rosterState == CampaignForceRosterSystem.ForceRosterState.INTEL_ONLY;
+    }
+
     private static boolean autoResolveCampaignForceEncounter(GameContext ctx, CampaignState st, CampaignForce force) {
         if (ctx == null || st == null || force == null || force.destroyed) return false;
-        if (!CampaignForceRosterSystem.hasViableEncounterRoster(ctx, st, force)) {
+        if (!campaignForceCanOpenPlayerEncounter(ctx, st, force)) {
             CampaignForceRosterSystem.ForceRosterState rosterState =
                     CampaignForceRosterSystem.resolveRosterState(ctx, st, force);
             if (rosterState == CampaignForceRosterSystem.ForceRosterState.DEPLETED
@@ -36459,7 +36512,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.authoredObjectiveKills = 0;
         int hostileZone = missionSubzoneIndex(2, 1);
         double[] ingress = openSpaceFleetClashApproachPoint(ctx, st, 1, hostileApproach, 150.0);
-        EncounterForceManifest manifest = encounterManifestForConcreteForce(ctx, st, force, 4);
+        EncounterForceManifest manifest = encounterManifestForForce(ctx, st, force, 4);
         if (manifest == null || manifest.ships.isEmpty()) {
             markCampaignForceRemoved(force, "empty_overworld_roster");
             leaveCampaignForceScar(st, force);
