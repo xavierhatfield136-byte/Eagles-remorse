@@ -95,6 +95,25 @@ class ShipDamagePatchLibraryTest {
         }
     }
 
+    @Test
+    void healthyAuthoredShipsUseAlbedoInsteadOfMultipartPieces() {
+        ShipPartLibrary.clearCachesForTest();
+        FleetShip ship = new FleetShip(ShipRole.HAULER, Faction.ALLY, 160.0, 120.0);
+        ship.hp = ship.hpMax;
+
+        BufferedImage canvas = new BufferedImage(360, 260, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = canvas.createGraphics();
+        try {
+            Renderer.drawShips(g2, List.of(ship));
+            assertTrue(ShipPartLibrary.imageDecodeCount() == 0,
+                    "healthy ships with authored albedo skins should not render from multipart hull chunks");
+        } finally {
+            g2.dispose();
+            canvas.flush();
+            ShipPartLibrary.clearCachesForTest();
+        }
+    }
+
     private static void loadMultipartWorkingSet(ShipRole[] roles,
                                                 Faction[] factions,
                                                 ShipPartLibrary.Variant[] variants) {

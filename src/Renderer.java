@@ -15579,7 +15579,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 return;
             }
 
-            if (drawMultipartDamageStage(g, ship, sw, sh)) {
+            boolean allowHealthyMultipart = skinSet.albedo == null;
+            if (drawMultipartDamageStage(g, ship, sw, sh, allowHealthyMultipart)) {
                 // Multipart hulls can swap staged baked damage art directly.
             } else {
                 drawSkinLayer(g, skinSet.albedo, sx, sy, sw, sh, 0.98f);
@@ -15634,7 +15635,8 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             Graphics2D cg = image.createGraphics();
             try {
                 cg.translate(sw / 2.0, sh / 2.0);
-                if (!drawMultipartDamageStage(cg, ship, sw, sh)) {
+                boolean allowHealthyMultipart = skinSet.albedo == null;
+                if (!drawMultipartDamageStage(cg, ship, sw, sh, allowHealthyMultipart)) {
                     drawSkinLayer(cg, skinSet.albedo, -sw / 2, -sh / 2, sw, sh, 0.98f);
                 }
 
@@ -15775,13 +15777,18 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             return new Point2D.Double(lastInsideX, lastInsideY);
         }
 
-        private static boolean drawMultipartDamageStage(Graphics2D g, Ship ship, int sw, int sh) {
-            ShipPartLibrary.PartSet normal = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.NORMAL);
-            if (!normal.hasParts()) return false;
-
+        private static boolean drawMultipartDamageStage(Graphics2D g, Ship ship, int sw, int sh,
+                                                        boolean allowHealthyMultipart) {
             double hpFrac = (ship == null || ship.hpMax <= 0)
                     ? 1.0
                     : MathUtil.clamp(ship.hp / (double) ship.hpMax, 0.0, 1.0);
+
+            if (hpFrac > 2.0 / 3.0 && !allowHealthyMultipart) {
+                return false;
+            }
+
+            ShipPartLibrary.PartSet normal = ShipPartLibrary.getSet(ship.role, ship.faction, ShipPartLibrary.Variant.NORMAL);
+            if (!normal.hasParts()) return false;
 
             if (hpFrac > 2.0 / 3.0) {
                 drawSkinParts(g, normal.parts, sw, sh, 1.0f);
