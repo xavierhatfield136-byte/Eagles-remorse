@@ -716,6 +716,21 @@ def configureWindowsJpackageTask = { Exec task, String type ->
         argsList.addAll(["--win-dir-chooser", "--win-menu", "--win-shortcut"])
     }
     task.commandLine("jpackage", *argsList)
+    task.doLast {
+        if (type != "exe" || project.version.toString() == packageVersion) {
+            return
+        }
+        def packageDir = layout.buildDirectory.dir("package/windows").get().asFile
+        def normalizedExe = new File(packageDir, "${appBundleName}-${packageVersion}.exe")
+        def releaseExe = new File(packageDir, "${appBundleName}-${project.version}.exe")
+        if (!normalizedExe.exists()) {
+            return
+        }
+        delete(releaseExe)
+        if (!normalizedExe.renameTo(releaseExe)) {
+            throw new GradleException("Could not rename ${normalizedExe.name} to ${releaseExe.name}.")
+        }
+    }
 }
 
 tasks.register("packageWindowsAppImage", Exec) {
