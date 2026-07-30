@@ -36,7 +36,7 @@ class HotkeyRegistryTest {
         assertEquals("RT", HotkeyRegistry.glyph("primaryDown"));
 
         GameContext ctx = new GameContext(null);
-        assertTrue(HotkeyRegistry.currentContextLegend(ctx).stream().anyMatch(row -> row.contains("RT/LMB fire")));
+        assertTrue(HotkeyRegistry.currentContextLegend(ctx).stream().anyMatch(row -> row.contains("RT/LMB fire all")));
         HotkeyRegistry.noteKeyboardInput();
         assertTrue(HotkeyRegistry.currentContextLegend(ctx).stream().anyMatch(row -> row.contains("H crew")));
     }

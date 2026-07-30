@@ -14093,7 +14093,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 3320.0,
                 CampaignLocationType.REPAIR_SITE,
                 0.05f,
-                "Command School safe harbor: Green-controlled training dock, repair support, and route practice.",
+                "Tutorial safe harbor: Green-controlled training dock, repair support, and route practice.",
                 Faction.ALLY,
                 CampaignFacilityType.REPAIR_YARD,
                 5,
@@ -14108,7 +14108,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 2780.0,
                 CampaignLocationType.STORY_EVENT,
                 0.12f,
-                "Command School Yellow station: trade, fuel, contracts, and neutral-service explanation.",
+                "Tutorial Yellow station: trade, fuel, contracts, and neutral-service explanation.",
                 Faction.BRIGHT_YELLOW,
                 CampaignFacilityType.CIVILIAN_HUB,
                 4,
@@ -14123,7 +14123,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 3480.0,
                 CampaignLocationType.RESOURCE_ZONE,
                 0.03f,
-                "Command School resource site: safe ore pocket with starfield presentation and no station backdrop.",
+                "Tutorial resource site: safe ore pocket with starfield presentation and no station backdrop.",
                 Faction.ALLY,
                 CampaignFacilityType.MINING_OPERATION,
                 2,
@@ -14137,7 +14137,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 2500.0,
                 CampaignLocationType.REPAIR_SITE,
                 0.32f,
-                "Command School hostile pocket: controlled Red drone site for practicing enter-site transition.",
+                "Tutorial practice pocket: controlled Red drone site for practicing enter-site transition.",
                 Faction.ENEMY,
                 CampaignFacilityType.LISTENING_POST,
                 3,
@@ -14151,7 +14151,7 @@ public final class CampaignSystem extends CampaignSystemModels {
                 1960.0,
                 CampaignLocationType.DISTRESS_SIGNAL,
                 0.08f,
-                "Command School optional contact: a harmless distress-style ping for explaining side contacts.",
+                "Tutorial optional contact: a harmless distress-style ping for explaining side contacts.",
                 Faction.TEAM_C,
                 CampaignFacilityType.RELAY,
                 2,
@@ -14172,7 +14172,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         st.selectedFreeGalaxyTargetY = Double.NaN;
         st.selectedFleetPostureId = FleetPosture.RECON_SWEEP.name();
 
-        st.campaignTheaters.add(new CampaignTheaterState(TheaterId.SOUTHERN, "Command School Training Sector", 0.0, 1.0));
+        st.campaignTheaters.add(new CampaignTheaterState(TheaterId.SOUTHERN, "Tutorial Training Sector", 0.0, 1.0));
         st.strategicNodes.add(new StrategicNodeState(anchorage.id, TheaterId.SOUTHERN, TheaterNodeType.DEFENSE_ANCHOR, TheaterNodeOwner.BLUE_GREEN));
         st.strategicNodes.add(new StrategicNodeState(trade.id, TheaterId.SOUTHERN, TheaterNodeType.LOGISTICS_HUB, TheaterNodeOwner.NEUTRAL));
         st.strategicNodes.add(new StrategicNodeState(ore.id, TheaterId.SOUTHERN, TheaterNodeType.RESOURCE_FIELD, TheaterNodeOwner.BLUE_GREEN));
@@ -14202,7 +14202,7 @@ public final class CampaignSystem extends CampaignSystemModels {
 
         addPersistentFleetEntry(st, ShipRole.FRIGATE, "Training Frigate");
         addPersistentFleetEntry(st, ShipRole.CIWS_CORVETTE, "Training Screen");
-        addCampaignMemoryFlag(st, "Command School sample overworld initialized; no normal campaign save is touched.");
+        addCampaignMemoryFlag(st, "Tutorial sample overworld initialized; no normal campaign save is touched.");
         if (ctx.ui != null) {
             ctx.ui.mapOpen = true;
             ctx.ui.strategicMapZoom = Math.max(2.2, ctx.ui.strategicMapZoom);
@@ -14213,7 +14213,7 @@ public final class CampaignSystem extends CampaignSystemModels {
             ctx.ui.clearSelectedCampaignContact();
         }
         ctx.state = GameState.MAP;
-        EventSystem.showBanner(ctx, "COMMAND SCHOOL: SAMPLE OVERWORLD ONLINE", 2.2);
+        EventSystem.showBanner(ctx, "TUTORIAL: SAMPLE ROUTE MAP ONLINE", 2.2);
     }
 
     private static CampaignLocation commandSchoolLocation(String id,
@@ -21099,7 +21099,7 @@ public final class CampaignSystem extends CampaignSystemModels {
         CampaignState st = state(ctx);
         if (ctx == null || st == null || !st.enabled) return false;
         if (st.commandSchoolTraining) {
-            returnCommandSchoolToOverworld(ctx, st, "COMMAND SCHOOL: RETURNED TO SAMPLE OVERWORLD");
+            returnCommandSchoolToOverworld(ctx, st, "TUTORIAL: ROUTE MAP OPEN");
             return true;
         }
         if (canExtractFromCurrentSector(ctx)) return completeMissionExtraction(ctx);

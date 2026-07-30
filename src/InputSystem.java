@@ -106,13 +106,19 @@ public final class InputSystem {
                 }
 
                 HotkeyRegistry.noteMouseInput();
-                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) ExperienceRuntime.firingPressed(ctx, false);
+                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) {
+                    ExperienceRuntime.firingPressed(ctx, false);
+                    ExperienceRuntime.firingPressed(ctx, true);
+                }
                 if (e.getButton() == HotkeyRegistry.mouseButton("secondaryDown")) ExperienceRuntime.firingPressed(ctx, true);
                 if (e.getButton() == HotkeyRegistry.mouseButton("lockUnderMouse")) GameplayActions.lockUnderMouse(ctx, controls);
             }
 
             @Override public void mouseReleased(MouseEvent e) {
-                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) ExperienceRuntime.firingReleased(ctx, false);
+                if (e.getButton() == HotkeyRegistry.mouseButton("primaryDown")) {
+                    ExperienceRuntime.firingReleased(ctx, false);
+                    ExperienceRuntime.firingReleased(ctx, true);
+                }
                 if (e.getButton() == HotkeyRegistry.mouseButton("secondaryDown")) ExperienceRuntime.firingReleased(ctx, true);
             }
         });

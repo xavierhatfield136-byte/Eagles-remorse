@@ -11,14 +11,25 @@ import static org.junit.jupiter.api.Assertions.*;
 class CommandSchoolOverworldExpansionTest {
 
     @Test
-    void tutorialModeStartsWithSafeSampleOverworld() {
+    void tutorialModeStartsInsideSafeTacticalTrainingZone() {
         GameContext ctx = tutorialContext();
         SpawnSystem.initWorld(ctx);
 
         assertNotNull(ctx.campaign);
         assertTrue(ctx.campaign.commandSchoolTraining);
-        assertTrue(ctx.campaign.strategicOvermapMode);
-        assertEquals(GameState.MAP, ctx.state);
+        assertFalse(ctx.campaign.strategicOvermapMode);
+        assertTrue(ctx.campaign.galaxyAmbientEncounterActive);
+        assertEquals(GameState.RUNNING, ctx.state);
+        assertFalse(ctx.ui.mapOpen);
+        assertTrue(TutorialSystem.hudTitle(ctx).contains("TUTORIAL"));
+
+        Ship practiceDrone = ctx.ships.stream()
+                .filter(ship -> ship != null && "Tutorial Drone".equals(ship.name))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(practiceDrone);
+        assertTrue(practiceDrone.surrendered, "tutorial practice drone should not move or fight back");
+        assertEquals(0.0, practiceDrone.desiredSpeedBase, 1e-6);
 
         CampaignSystem.CampaignLocation anchorage = location(ctx, CampaignSystem.COMMAND_SCHOOL_ANCHORAGE_ID);
         CampaignSystem.CampaignLocation hub = location(ctx, CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID);
@@ -41,6 +52,7 @@ class CommandSchoolOverworldExpansionTest {
     void sampleOverworldUsesRealSelectionTravelAndArrivalState() {
         GameContext ctx = tutorialContext();
         SpawnSystem.initWorld(ctx);
+        CampaignSystem.returnCommandSchoolToOverworld(ctx, "test overmap");
         CampaignSystem.CampaignLocation hub = location(ctx, CampaignSystem.COMMAND_SCHOOL_TRADE_HUB_ID);
         assertNotNull(hub);
 
@@ -82,8 +94,8 @@ class CommandSchoolOverworldExpansionTest {
             assertFalse(ctx.campaign.strategicOvermapMode, "training mission ejected on frame " + i);
             assertTrue(ctx.campaign.galaxyAmbientEncounterActive, "training site ended on frame " + i);
         }
-        assertTrue(TutorialSystem.hudTitle(ctx).contains("COMMAND SCHOOL"));
-        assertTrue(TutorialSystem.hudDetail(ctx).contains("Tactical Command School"));
+        assertTrue(TutorialSystem.hudTitle(ctx).contains("TUTORIAL"));
+        assertTrue(TutorialSystem.hudDetail(ctx).contains("complete"));
     }
 
     @Test

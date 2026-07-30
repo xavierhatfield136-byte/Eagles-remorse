@@ -21,8 +21,6 @@ public final class TutorialSystem {
     private static final double MINING_RADIUS = 180.0;
     private static final double WEAPON_RANGE_RADIUS = 170.0;
     private static final double PING_MATCH_RADIUS = 220.0;
-    private static final int LESSON_COUNT = 13;
-
     private enum LessonId {
         OVERWORLD_MAP_READING,
         SITE_SELECTION,
@@ -39,6 +37,24 @@ public final class TutorialSystem {
         CARRIER_AND_WARP,
         COMPLETE
     }
+
+    private static final LessonId[] LESSON_FLOW = new LessonId[]{
+            LessonId.FLIGHT_BASICS,
+            LessonId.TARGETING_AND_SENSORS,
+            LessonId.LOGISTICS_AND_REFIT,
+            LessonId.BRIDGE_SYSTEMS,
+            LessonId.CARRIER_AND_WARP,
+            LessonId.OVERWORLD_MAP_READING,
+            LessonId.SITE_SELECTION,
+            LessonId.PLOT_MOVEMENT,
+            LessonId.SCAN_AND_INTEL,
+            LessonId.RESOURCE_SITE,
+            LessonId.STATION_SERVICES,
+            LessonId.FLEET_ORGANIZATION,
+            LessonId.OVERWORLD_TO_MISSION,
+            LessonId.COMPLETE
+    };
+    private static final int LESSON_COUNT = LESSON_FLOW.length - 1;
 
     private static final class Marker {
         final String label;
@@ -79,8 +95,6 @@ public final class TutorialSystem {
         double weaponsY;
         double miningX;
         double miningY;
-        double gammaX;
-        double gammaY;
         double pingTimer = 0.0;
         int lessonIndex = 0;
         double lessonElapsedSec = 0.0;
@@ -123,8 +137,7 @@ public final class TutorialSystem {
         boolean launchedWing = false;
         boolean carrierModeChanged = false;
         boolean carrierAutoLaunchChanged = false;
-        boolean gammaWaypointSet = false;
-        boolean warpChargeStarted = false;
+        boolean withdrewToOverworld = false;
         Ship.PowerPreset baselinePowerPreset = Ship.PowerPreset.BALANCED;
         double[] baselinePowerBuses = new double[]{};
         GameContext.CaptainDirective baselineCaptainDirective = GameContext.CaptainDirective.BALANCED;
@@ -166,71 +179,9 @@ public final class TutorialSystem {
         TutorialState st = new TutorialState();
         st.playerFaction = (playerFaction == null) ? Faction.ALLY : playerFaction;
         st.hostileFaction = defaultHostileFaction(st.playerFaction);
-
-        double baseX = GameMath.clamp(ctx.WORLD_W * 0.15, 220.0, ctx.WORLD_W - 260.0);
-        double baseY = GameMath.clamp(ctx.WORLD_H * 0.58, 220.0, ctx.WORLD_H - 220.0);
-        double playerX = GameMath.clamp(baseX + 180.0, 90.0, ctx.WORLD_W - 90.0);
-        double playerY = baseY;
-
-        st.alphaX = GameMath.clamp(ctx.WORLD_W * 0.28, 260.0, ctx.WORLD_W - 260.0);
-        st.alphaY = GameMath.clamp(ctx.WORLD_H * 0.28, 220.0, ctx.WORLD_H - 220.0);
-        st.betaX = GameMath.clamp(ctx.WORLD_W * 0.48, 260.0, ctx.WORLD_W - 260.0);
-        st.betaY = GameMath.clamp(ctx.WORLD_H * 0.70, 220.0, ctx.WORLD_H - 220.0);
-        st.weaponsX = GameMath.clamp(ctx.WORLD_W * 0.72, 260.0, ctx.WORLD_W - 260.0);
-        st.weaponsY = GameMath.clamp(ctx.WORLD_H * 0.48, 220.0, ctx.WORLD_H - 220.0);
-        st.miningX = GameMath.clamp(ctx.WORLD_W * 0.38, 260.0, ctx.WORLD_W - 260.0);
-        st.miningY = GameMath.clamp(ctx.WORLD_H * 0.18, 220.0, ctx.WORLD_H - 220.0);
-        st.gammaX = GameMath.clamp(ctx.WORLD_W * 0.82, 260.0, ctx.WORLD_W - 260.0);
-        st.gammaY = GameMath.clamp(ctx.WORLD_H * 0.16, 220.0, ctx.WORLD_H - 220.0);
-
-        Ship homeBase = new FleetShip(ShipRole.BASE, st.playerFaction, baseX, baseY);
-        homeBase.name = "Tutorial Base";
-        homeBase.oreStockpile = 1800;
-        ctx.ships.add(homeBase);
-        ctx.teamBases.put(st.playerFaction, homeBase);
-        BaseUpgrades tutorialUpgrades = new BaseUpgrades();
-        tutorialUpgrades.hullLv = 1;
-        tutorialUpgrades.shieldLv = 1;
-        tutorialUpgrades.turretLv = 1;
-        tutorialUpgrades.miningLv = 1;
-        tutorialUpgrades.hangarLv = 2;
-        tutorialUpgrades.bindTo(homeBase);
-        ctx.baseUpgrades.put(homeBase, tutorialUpgrades);
-        st.homeBaseId = homeBase.id;
-        if (st.playerFaction == Faction.ALLY) ctx.allyBase = homeBase;
-        if (st.playerFaction == Faction.ENEMY) ctx.enemyBase = homeBase;
-
-        ctx.player = new Player(ShipRole.FRIGATE, playerX, playerY);
-        ctx.player.faction = st.playerFaction;
-        ctx.player.name = "Player";
-        ctx.player.angle = 0.0;
-        ctx.player.vx = 0.0;
-        ctx.player.vy = 0.0;
-        ctx.player.setPowerPreset(Ship.PowerPreset.BALANCED);
-        ctx.ships.add(ctx.player);
-
-        Ship target = new FleetShip(ShipRole.PATROL, st.hostileFaction, st.weaponsX + 70.0, st.weaponsY);
-        configureTutorialTarget(target, "Tutorial Drone");
-        ctx.ships.add(target);
-        st.combatTargetId = target.id;
-
-        addAsteroid(ctx, st.miningX - 80.0, st.miningY + 24.0, 34.0, 620);
-        addAsteroid(ctx, st.miningX + 30.0, st.miningY - 36.0, 28.0, 520);
-        addAsteroid(ctx, st.miningX + 110.0, st.miningY + 42.0, 30.0, 560);
-
-        try {
-            DoctrineRegistry.applyToShip(homeBase);
-            DoctrineRegistry.applyToShip(ctx.player);
-            DoctrineRegistry.applyToShip(target);
-        } catch (Throwable ignored) {}
-
-        st.startingOreTotal = combinedOreTotal(ctx, st.homeBaseId);
-        st.startingPlayerCargo = (ctx.player == null) ? 0 : ctx.player.cargo;
-        st.miningPocketOreStart = miningPocketOreTotal(ctx, st);
-        st.tacticalSandboxPrepared = true;
         STATES.put(ctx, st);
         CampaignSystem.initCommandSchoolOverworld(ctx, st.playerFaction);
-        enterLesson(ctx, st, LessonId.OVERWORLD_MAP_READING, true);
+        enterLesson(ctx, st, LessonId.FLIGHT_BASICS, true);
     }
 
     public static boolean isActive(GameContext ctx) {
@@ -289,11 +240,8 @@ public final class TutorialSystem {
         TutorialState st = state(ctx);
         if (st == null) return "";
         LessonId lesson = currentLesson(st);
-        if (lesson == LessonId.COMPLETE) return "COMMAND SCHOOL   COMPLETE";
-        if (isOverworldLesson(lesson)) {
-            return "COMMAND SCHOOL   OVERWORLD " + (st.lessonIndex + 1) + "/8";
-        }
-        return "COMMAND SCHOOL   TACTICAL " + (st.lessonIndex - LessonId.FLIGHT_BASICS.ordinal() + 1) + "/5";
+        if (lesson == LessonId.COMPLETE) return "TUTORIAL   COMPLETE";
+        return "TUTORIAL   " + (lessonFlowPosition(lesson) + 1) + "/" + LESSON_COUNT;
     }
 
     public static String hudDetail(GameContext ctx) {
@@ -360,19 +308,18 @@ public final class TutorialSystem {
 
         FontMetrics bodyFm = gx.getFontMetrics(bodyFont);
         List<String> summaryLines = wrapLines(lesson == LessonId.COMPLETE
-                        ? "You have cleared the full command school and can keep experimenting in this controlled sector."
+                        ? "Tutorial complete. Keep practicing or return to the menu."
                         : lessonSummary(lesson),
                 bodyFm,
                 contentW);
 
         int headerH = 62;
         int summaryH = Math.max(16, summaryLines.size() * 14);
-        int checklistH = 0;
-        for (ChecklistItem item : items) {
-            int lineCount = Math.max(1, wrapLines(item.label, bodyFm, contentW - 36).size());
-            checklistH += 10 + (lineCount * 14);
-        }
-        int footerH = (next == null) ? 28 : 42;
+        List<String> nextLabelLines = next == null ? List.of("Step complete.") : wrapLines(next.label, bodyFm, contentW - 36);
+        List<String> nextHintLines = next == null ? List.of() : wrapLines(next.hint, bodyFm, contentW);
+        int checklistH = 24 + Math.max(1, nextLabelLines.size()) * 15
+                + Math.min(2, nextHintLines.size()) * 14;
+        int footerH = 28;
         int panelH = headerH + summaryH + checklistH + footerH + 22;
         Rectangle panelRect = tutorialOverlayPanelRect(viewportW, viewportH, panelW, panelH);
         int x = panelRect.x;
@@ -392,7 +339,8 @@ public final class TutorialSystem {
         int progressOuterY = 14;
         int progressOuterW = panelW - 32;
         int progressOuterH = 8;
-        int completedLessons = Math.min(LESSON_COUNT, lesson == LessonId.COMPLETE ? LESSON_COUNT : st.lessonIndex);
+        int completedLessons = Math.min(LESSON_COUNT,
+                lesson == LessonId.COMPLETE ? LESSON_COUNT : lessonFlowPosition(lesson));
         int filledW = (int) Math.round(progressOuterW * (completedLessons / (double) LESSON_COUNT));
         gx.setColor(new Color(255, 255, 255, 18));
         gx.fillRoundRect(progressOuterX, progressOuterY, progressOuterW, progressOuterH, 8, 8);
@@ -402,7 +350,7 @@ public final class TutorialSystem {
 
         gx.setFont(eyebrowFont);
         gx.setColor(new Color(142, 198, 255, 210));
-        gx.drawString("COMMAND SCHOOL", 14, 34);
+        gx.drawString("TUTORIAL", 14, 34);
 
         gx.setFont(titleFont);
         gx.setColor(Color.WHITE);
@@ -410,7 +358,8 @@ public final class TutorialSystem {
 
         gx.setFont(bodyFont);
         gx.setColor(new Color(196, 214, 236, 210));
-        String counter = (lesson == LessonId.COMPLETE) ? "Sandbox complete" : "Lesson " + (st.lessonIndex + 1) + " of " + LESSON_COUNT;
+        String counter = (lesson == LessonId.COMPLETE) ? "Sandbox complete"
+                : "Step " + (lessonFlowPosition(lesson) + 1) + " of " + LESSON_COUNT;
         counter = fitLine(bodyFm, counter, Math.max(80, panelW - 210));
         gx.drawString(counter, panelW - 14 - bodyFm.stringWidth(counter), 34);
 
@@ -420,49 +369,28 @@ public final class TutorialSystem {
             cursorY += 14;
         }
 
-        cursorY += 4;
-        for (ChecklistItem item : items) {
-            List<String> wrapped = wrapLines(item.label, bodyFm, contentW - 36);
-            boolean pending = !item.complete && next != null && next.label.equals(item.label);
-            int boxX = 14;
-            int boxY = cursorY - 10;
-
-            gx.setColor(item.complete ? new Color(74, 204, 132, 228)
-                    : pending ? new Color(255, 216, 120, 220)
-                    : new Color(118, 140, 164, 170));
-            gx.setStroke(new BasicStroke(1.6f));
-            gx.drawRoundRect(boxX, boxY, 16, 16, 6, 6);
-            if (item.complete) {
-                gx.setColor(new Color(74, 204, 132, 70));
-                gx.fillRoundRect(boxX, boxY, 16, 16, 6, 6);
-                gx.setColor(new Color(232, 255, 240, 230));
-                gx.drawLine(boxX + 4, boxY + 8, boxX + 7, boxY + 12);
-                gx.drawLine(boxX + 7, boxY + 12, boxX + 13, boxY + 4);
-            } else if (pending) {
-                gx.setColor(new Color(255, 216, 120, 42));
-                gx.fillRoundRect(boxX, boxY, 16, 16, 6, 6);
-            }
-
-            gx.setColor(item.complete ? new Color(216, 245, 226, 230)
-                    : pending ? new Color(255, 240, 190, 235)
-                    : new Color(198, 214, 232, 205));
-            for (String line : wrapped) {
-                gx.drawString(line, 38, cursorY);
-                cursorY += 14;
-            }
-            cursorY += 1;
+        cursorY += 8;
+        int boxX = 14;
+        int boxY = cursorY - 12;
+        gx.setColor(new Color(255, 216, 120, 220));
+        gx.setStroke(new BasicStroke(1.6f));
+        gx.drawRoundRect(boxX, boxY, 16, 16, 6, 6);
+        gx.setColor(new Color(255, 216, 120, 42));
+        gx.fillRoundRect(boxX, boxY, 16, 16, 6, 6);
+        gx.setColor(new Color(255, 240, 190, 235));
+        for (String line : nextLabelLines) {
+            gx.drawString(line, 38, cursorY);
+            cursorY += 15;
+        }
+        gx.setColor(new Color(218, 230, 246, 220));
+        int hintLines = 0;
+        for (String line : nextHintLines) {
+            gx.drawString(line, 14, cursorY + 2);
+            cursorY += 14;
+            if (++hintLines >= 2) break;
         }
 
         gx.setFont(footerFont);
-        if (next != null) {
-            gx.setColor(new Color(255, 214, 140, 220));
-            gx.drawString("Focus", 14, panelH - 26);
-            gx.setColor(new Color(218, 230, 246, 220));
-            for (String line : wrapLines(next.hint, gx.getFontMetrics(footerFont), panelW - 72)) {
-                gx.drawString(line, 50, panelH - 26);
-                break;
-            }
-        }
         gx.setColor(new Color(176, 188, 206, 188));
         gx.drawString(fitLine(gx.getFontMetrics(),
                 "Ctrl+F1 skip  Ctrl+F2 archive  F10 menu.",
@@ -483,7 +411,7 @@ public final class TutorialSystem {
         gx.drawRoundRect(x, y, panelW - 1, panelH - 1, 24, 24);
         gx.setFont(new Font("Consolas", Font.BOLD, 20));
         gx.setColor(Color.WHITE);
-        gx.drawString("COMMAND SCHOOL ARCHIVE", x + 20, y + 34);
+        gx.drawString("TUTORIAL ARCHIVE", x + 20, y + 34);
         gx.setFont(new Font("Consolas", Font.PLAIN, 12));
         gx.setColor(new Color(196, 214, 236, 220));
         gx.drawString("Ctrl+F2 closes. Completed and skipped lessons stay visible for replay reference.", x + 20, y + panelH - 18);
@@ -492,9 +420,10 @@ public final class TutorialSystem {
         FontMetrics fm = gx.getFontMetrics(rowFont);
         gx.setFont(rowFont);
         int cy = y + 66;
-        for (LessonId lesson : LessonId.values()) {
+        for (LessonId lesson : LESSON_FLOW) {
             if (lesson == LessonId.COMPLETE) continue;
-            boolean done = lesson.ordinal() < st.lessonIndex || currentLesson(st) == LessonId.COMPLETE;
+            boolean done = lessonFlowPosition(lesson) < lessonFlowPosition(currentLesson(st))
+                    || currentLesson(st) == LessonId.COMPLETE;
             boolean current = lesson == currentLesson(st);
             boolean skipped = st.skippedLessons.contains(lesson);
             String label = (done ? "[x] " : current ? "[>] " : "[ ] ")
@@ -525,10 +454,11 @@ public final class TutorialSystem {
         Rectangle rightHudReserve = new Rectangle(Math.max(margin, viewportW - 250), margin, 232,
                 Math.max(170, Math.min(360, viewportH - margin * 2)));
         Rectangle[] candidates = new Rectangle[]{
-                new Rectangle(margin, Math.max(margin, coreMenu.y - h - margin), w, h),
+                new Rectangle(Math.max(margin, (viewportW - w) / 2), margin, w, h),
                 new Rectangle(margin, margin, w, h),
-                new Rectangle(margin, Math.min(Math.max(margin, coreMenu.y - h - margin), viewportH - h - margin), w, h),
-                new Rectangle(Math.max(margin, viewportW - w - margin), Math.max(margin, coreMenu.y - h - margin), w, h)
+                new Rectangle(Math.max(margin, viewportW - w - margin), margin, w, h),
+                new Rectangle(Math.max(margin, (viewportW - w) / 2),
+                        Math.max(margin, coreMenu.y - h - margin), w, h)
         };
         for (Rectangle candidate : candidates) {
             if (candidate.x < margin || candidate.y < margin) continue;
@@ -539,7 +469,7 @@ public final class TutorialSystem {
             return candidate;
         }
         int fallbackY = Math.max(margin, Math.min(coreMenu.y - h - margin, viewportH - h - margin));
-        return new Rectangle(margin, fallbackY, w, h);
+        return new Rectangle(Math.max(margin, (viewportW - w) / 2), fallbackY, w, h);
     }
 
     public static void drawMinimapOverlay(GameContext ctx, Graphics2D g2, int viewW, int viewH) {
@@ -635,10 +565,13 @@ public final class TutorialSystem {
                     && campaign.galaxyAmbientEncounterActive
                     && CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID.equals(campaign.activeGalaxyEncounterLocationId)
                     && !campaign.strategicOvermapMode;
+            st.withdrewToOverworld |= !campaign.galaxyEncounterActive
+                    && campaign.strategicOvermapMode
+                    && currentLesson(st) == LessonId.CARRIER_AND_WARP
+                    && st.lessonElapsedSec >= 0.5;
         }
 
         st.betaWaypointSet |= nearPoint(ctx.ui.waypointX, ctx.ui.waypointY, st.betaX, st.betaY, 150.0);
-        st.gammaWaypointSet |= nearPoint(ctx.ui.waypointX, ctx.ui.waypointY, st.gammaX, st.gammaY, 150.0);
         st.reachedAlpha |= near(ctx.player, st.alphaX, st.alphaY, POINT_REACHED_RADIUS);
         st.reachedBeta |= near(ctx.player, st.betaX, st.betaY, POINT_REACHED_RADIUS);
         st.pingedWeaponsRange |= hasPingNear(ctx, st.weaponsX, st.weaponsY, PING_MATCH_RADIUS);
@@ -656,8 +589,6 @@ public final class TutorialSystem {
         st.dockedAtHome |= docked != null && docked.id == st.homeBaseId;
         st.swappedToCarrier |= ctx.player != null && ctx.player.isCarrier;
         st.fireSuppressed |= st.seededDamageControlFire && ctx.player != null && ctx.player.totalFireIntensity() <= 0.05;
-        st.warpChargeStarted |= st.gammaWaypointSet && ctx.command.playerTeleportCharging;
-
         if (ctx.player != null && ctx.player.isCarrier) {
             if (!st.flightDeckBaselineCaptured && currentLesson(st) == LessonId.CARRIER_AND_WARP) {
                 captureCarrierBaseline(ctx, st);
@@ -728,10 +659,6 @@ public final class TutorialSystem {
             if (ctx.player != null && ctx.player.isCarrier && !st.flightDeckBaselineCaptured) {
                 captureCarrierBaseline(ctx, st);
             }
-            if (carrierWarpObjectiveReady(st) && !st.warpChargeStarted) {
-                focusGammaWaypoint(ctx, st);
-                st.gammaWaypointSet = true;
-            }
         } else if (lesson == LessonId.COMPLETE) {
             ctx.ui.waypointX = Double.NaN;
             ctx.ui.waypointY = Double.NaN;
@@ -749,26 +676,28 @@ public final class TutorialSystem {
         return lessons[idx];
     }
 
+    private static int lessonFlowPosition(LessonId lesson) {
+        if (lesson == null) return 0;
+        for (int i = 0; i < LESSON_FLOW.length; i++) {
+            if (LESSON_FLOW[i] == lesson) return i;
+        }
+        return LESSON_FLOW.length - 1;
+    }
+
     private static boolean isOverworldLesson(LessonId lesson) {
-        return lesson != null && lesson.ordinal() < LessonId.FLIGHT_BASICS.ordinal();
+        if (lesson == null) return false;
+        return switch (lesson) {
+            case OVERWORLD_MAP_READING, SITE_SELECTION, PLOT_MOVEMENT, SCAN_AND_INTEL,
+                    RESOURCE_SITE, STATION_SERVICES, FLEET_ORGANIZATION, OVERWORLD_TO_MISSION -> true;
+            case FLIGHT_BASICS, TARGETING_AND_SENSORS, LOGISTICS_AND_REFIT, BRIDGE_SYSTEMS,
+                    CARRIER_AND_WARP, COMPLETE -> false;
+        };
     }
 
     private static LessonId nextLesson(LessonId lesson) {
-        return switch (lesson) {
-            case OVERWORLD_MAP_READING -> LessonId.SITE_SELECTION;
-            case SITE_SELECTION -> LessonId.PLOT_MOVEMENT;
-            case PLOT_MOVEMENT -> LessonId.SCAN_AND_INTEL;
-            case SCAN_AND_INTEL -> LessonId.RESOURCE_SITE;
-            case RESOURCE_SITE -> LessonId.STATION_SERVICES;
-            case STATION_SERVICES -> LessonId.FLEET_ORGANIZATION;
-            case FLEET_ORGANIZATION -> LessonId.OVERWORLD_TO_MISSION;
-            case OVERWORLD_TO_MISSION -> LessonId.FLIGHT_BASICS;
-            case FLIGHT_BASICS -> LessonId.TARGETING_AND_SENSORS;
-            case TARGETING_AND_SENSORS -> LessonId.LOGISTICS_AND_REFIT;
-            case LOGISTICS_AND_REFIT -> LessonId.BRIDGE_SYSTEMS;
-            case BRIDGE_SYSTEMS -> LessonId.CARRIER_AND_WARP;
-            case CARRIER_AND_WARP, COMPLETE -> LessonId.COMPLETE;
-        };
+        int pos = lessonFlowPosition(lesson);
+        if (pos >= LESSON_FLOW.length - 1) return LessonId.COMPLETE;
+        return LESSON_FLOW[pos + 1];
     }
 
     private static boolean lessonComplete(GameContext ctx, TutorialState st, LessonId lesson) {
@@ -867,15 +796,16 @@ public final class TutorialSystem {
                 st.launchedWing = false;
                 st.carrierModeChanged = false;
                 st.carrierAutoLaunchChanged = false;
+                st.withdrewToOverworld = false;
                 if (ctx.player != null && ctx.player.isCarrier) {
                     captureCarrierBaseline(ctx, st);
                 }
-                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 5: CARRIER + WARP", 2.4);
+                if (announce) EventSystem.showBanner(ctx, "TACTICAL SCHOOL 5: CARRIER + WITHDRAW", 2.4);
             }
             case COMPLETE -> {
                 ctx.ui.waypointX = Double.NaN;
                 ctx.ui.waypointY = Double.NaN;
-                EventSystem.showBanner(ctx, "TACTICAL COMMAND SCHOOL COMPLETE", 3.0);
+                EventSystem.showBanner(ctx, "TUTORIAL COMPLETE", 3.0);
             }
         }
     }
@@ -894,15 +824,15 @@ public final class TutorialSystem {
             case TARGETING_AND_SENSORS -> "Targeting And Sensors";
             case LOGISTICS_AND_REFIT -> "Logistics And Refit";
             case BRIDGE_SYSTEMS -> "Bridge Systems";
-            case CARRIER_AND_WARP -> "Carrier And Warp";
-            case COMPLETE -> "Command School Clear";
+            case CARRIER_AND_WARP -> "Carrier And Withdraw";
+            case COMPLETE -> "Tutorial Clear";
         };
     }
 
     private static String lessonSummary(LessonId lesson) {
         return switch (lesson) {
             case OVERWORLD_MAP_READING ->
-                    "Overworld Command School: read the sample sector, owner colors, route arrows, site labels, and training-safe map controls.";
+                    "Read the route map: colors show owners, labels show sites, and the sidebar shows what is selected.";
             case SITE_SELECTION ->
                     "Select a major site and learn what the sidebar tells you: owner, services, threat, and whether the site can be entered.";
             case PLOT_MOVEMENT ->
@@ -916,9 +846,9 @@ public final class TutorialSystem {
             case FLEET_ORGANIZATION ->
                     "Review the persistent fleet roster and change one tactical commitment so you know what deploys into a mission.";
             case OVERWORLD_TO_MISSION ->
-                    "Enter a controlled Red training site. This connects overworld choices to the in-mission tactical command school.";
+                    "Enter a controlled training site. This shows how route-map choices load a local zone.";
             case FLIGHT_BASICS ->
-                    "Tactical Command School: learn ship movement, waypoint flow, and how the local view supports a simple navigation run.";
+                    "Start in the safe zone. Learn movement first, then use the map waypoint.";
             case TARGETING_AND_SENSORS ->
                     "Practice tactical pings, target locking, live-fire damage confirmation, and the x-ray room inspection tools.";
             case LOGISTICS_AND_REFIT ->
@@ -926,9 +856,9 @@ public final class TutorialSystem {
             case BRIDGE_SYSTEMS ->
                     "Refit into a carrier, touch power management, touch crew command, then clear an engineering emergency.";
             case CARRIER_AND_WARP ->
-                    "Open the flight deck, launch a wing, change carrier behavior, and finish with a controlled warp setup.";
+                    "Try the carrier deck, then use Withdraw to leave the safe zone and open the route map.";
             case COMPLETE ->
-                    "Every overworld and tactical command lesson is complete. You can replay Command School or start Campaign Ops with the same controls.";
+                    "Every tutorial lesson is complete. You can keep practicing here or start Campaign Ops with the same controls.";
         };
     }
 
@@ -1015,8 +945,8 @@ public final class TutorialSystem {
                         "Move the cursor over WEAPONS RANGE and press P to drop a tactical ping.",
                         st.pingedWeaponsRange));
                 items.add(new ChecklistItem(
-                        "[L / SPACE] Lock and damage the tutorial drone.",
-                        "Lock the tutorial drone with L and land any hit with SPACE or SHIFT.",
+                        "[L / LMB] Lock and damage the practice drone.",
+                        "Lock the stationary drone with L, then hold LMB or SPACE to fire guns and missiles.",
                         st.tutorialDroneDamaged));
                 items.add(new ChecklistItem(
                         "[` + click] Cycle x-ray and focus a room.",
@@ -1069,9 +999,9 @@ public final class TutorialSystem {
                         "Toggle wing mode with V or auto-launch with Z to change carrier behavior.",
                         st.carrierModeChanged || st.carrierAutoLaunchChanged));
                 items.add(new ChecklistItem(
-                        "[-] Begin warp charge to NAV GAMMA.",
-                        "Once the carrier tasks are complete, the tutorial locks your active waypoint onto NAV GAMMA. Open the map if you want to confirm it, then start battlefield warp with - or Backspace.",
-                        st.warpChargeStarted));
+                        "[Withdraw] Leave the training zone.",
+                        "Click Withdraw when you are ready. After the short spool, the tutorial opens the route map.",
+                        st.withdrewToOverworld));
             }
             case COMPLETE -> {
                 items.add(new ChecklistItem(
@@ -1190,9 +1120,6 @@ public final class TutorialSystem {
         st.weaponsY = GameMath.clamp(ctx.WORLD_H * 0.48, 220.0, ctx.WORLD_H - 220.0);
         st.miningX = GameMath.clamp(ctx.WORLD_W * 0.38, 260.0, ctx.WORLD_W - 260.0);
         st.miningY = GameMath.clamp(ctx.WORLD_H * 0.18, 220.0, ctx.WORLD_H - 220.0);
-        st.gammaX = GameMath.clamp(ctx.WORLD_W * 0.82, 260.0, ctx.WORLD_W - 260.0);
-        st.gammaY = GameMath.clamp(ctx.WORLD_H * 0.16, 220.0, ctx.WORLD_H - 220.0);
-
         Ship homeBase = new FleetShip(ShipRole.BASE, st.playerFaction, baseX, baseY);
         homeBase.name = "Tutorial Base";
         homeBase.oreStockpile = 1800;
@@ -1267,19 +1194,6 @@ public final class TutorialSystem {
         }
     }
 
-    private static void focusGammaWaypoint(GameContext ctx, TutorialState st) {
-        if (ctx == null || st == null) return;
-        ctx.ui.waypointX = st.gammaX;
-        ctx.ui.waypointY = st.gammaY;
-    }
-
-    private static boolean carrierWarpObjectiveReady(TutorialState st) {
-        return st != null
-                && st.openedFlightDeck
-                && st.launchedWing
-                && (st.carrierModeChanged || st.carrierAutoLaunchChanged);
-    }
-
     private static void capturePowerAndCrewBaseline(GameContext ctx, TutorialState st) {
         if (ctx == null || st == null || ctx.player == null) return;
         st.powerCrewBaselineCaptured = true;
@@ -1341,7 +1255,6 @@ public final class TutorialSystem {
         out.add(new Marker("NAV BETA", st.betaX, st.betaY, POINT_REACHED_RADIUS));
         out.add(new Marker("WEAPONS RANGE", st.weaponsX, st.weaponsY, WEAPON_RANGE_RADIUS));
         out.add(new Marker("MINING POCKET", st.miningX, st.miningY, MINING_RADIUS));
-        out.add(new Marker("NAV GAMMA", st.gammaX, st.gammaY, POINT_REACHED_RADIUS));
         return out;
     }
 
@@ -1359,9 +1272,7 @@ public final class TutorialSystem {
                     ? new Marker("MINING POCKET", st.miningX, st.miningY, MINING_RADIUS)
                     : homeBaseMarker(ctx, st);
             case BRIDGE_SYSTEMS -> st.swappedToCarrier ? null : homeBaseMarker(ctx, st);
-            case CARRIER_AND_WARP -> carrierWarpObjectiveReady(st)
-                    ? new Marker("NAV GAMMA", st.gammaX, st.gammaY, POINT_REACHED_RADIUS)
-                    : null;
+            case CARRIER_AND_WARP -> null;
             case COMPLETE -> null;
         };
     }
@@ -1470,7 +1381,6 @@ public final class TutorialSystem {
         return switch (label) {
             case "NAV ALPHA" -> "A";
             case "NAV BETA" -> "B";
-            case "NAV GAMMA" -> "G";
             case "WEAPONS RANGE" -> "WR";
             case "MINING POCKET" -> "MP";
             case "HOME BASE" -> "HB";
@@ -1522,6 +1432,12 @@ public final class TutorialSystem {
         s.desiredSpeedBase = 0.0;
         s.bountyValue = 0;
         s.turrets.clear();
+        s.surrendered = true;
+        s.surrenderLockTimer = Double.POSITIVE_INFINITY;
+        s.surrenderSelfDestructTimer = 0.0;
+        s.aiCommittedTargetId = -1;
+        s.aiForcedEngageTimer = 0.0;
+        s.aiArrivalFireDelayTimer = Double.POSITIVE_INFINITY;
         s.hasCIWS = false;
         s.isCarrier = false;
         s.carrierAutoLaunch = false;

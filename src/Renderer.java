@@ -6115,8 +6115,8 @@ public class Renderer {
 
     private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
         ArrayList<String> out = new ArrayList<>();
-        out.add(HotkeyRegistry.label("primaryDown") + "/LMB FIRE");
-        out.add(HotkeyRegistry.label("secondaryDown") + "/RMB SECONDARY");
+        out.add(HotkeyRegistry.label("primaryDown") + "/LMB FIRE ALL");
+        out.add(HotkeyRegistry.label("secondaryDown") + " MISSILES");
         out.add(HotkeyRegistry.label("lockUnderMouse") + "/MMB LOCK");
         out.add(HotkeyRegistry.label("toggleTacticalView") + " FPS VIEW");
         out.add("WASD MOVE / ARROWS PAN");
@@ -7258,8 +7258,8 @@ public class Renderer {
 
         int horizontalGap = 16;
         int verticalGap = 24;
-        drawHudHintChip(g2, "LMB guns", mx - horizontalGap, my, -1);
-        drawHudHintChip(g2, "RMB missiles", mx + horizontalGap, my, +1);
+        drawHudHintChip(g2, "LMB fire all", mx - horizontalGap, my, -1);
+        drawHudHintChip(g2, "SHIFT missiles", mx + horizontalGap, my, +1);
         if (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon) {
             drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
         }
@@ -8691,7 +8691,7 @@ public class Renderer {
         g2.drawString("Voice: C captions   Z/X focus   ,/. volume", readoutX, ly);
         ly += 16;
         g2.setColor(new Color(206, 224, 244, 190));
-        g2.drawString("Combat: SPACE/LMB fire   SHIFT/RMB secondary   L/MMB lock", readoutX, ly);
+        g2.drawString("Combat: SPACE/LMB fire all   SHIFT missiles   RMB comms   L/MMB lock", readoutX, ly);
         ly += 16;
         g2.drawString("Systems: O power   H crew   M map   TAB fleet   ESC pause", readoutX, ly);
         ly += 16;

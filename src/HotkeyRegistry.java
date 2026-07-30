@@ -144,7 +144,7 @@ public final class HotkeyRegistry {
         else if (ctx.ui.shopOpen) rows.add(glyph("toggleShop") + " close  arrows browse");
         else if (ctx.ui.mapOpen) rows.add("LMB waypoint  RMB ping  Ctrl +/- zoom");
         else {
-            rows.add("WASD move  " + glyph("primaryDown") + "/LMB fire");
+            rows.add("WASD move  " + glyph("primaryDown") + "/LMB fire all");
             rows.add(glyph("toggleMap") + " map  " + glyph("toggleCrewStations") + " crew");
         }
         return rows;
@@ -187,8 +187,9 @@ public final class HotkeyRegistry {
             return rows;
         }
 
-        rows.add("COMBAT: " + label("primaryDown") + "/LMB fire | " + label("secondaryDown")
-                + "/RMB secondary | " + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " FPS view");
+        rows.add("COMBAT: " + label("primaryDown") + "/LMB guns+missiles | "
+                + label("secondaryDown") + " missiles | RMB comms | "
+                + label("lockUnderMouse") + "/MMB lock | " + label("toggleTacticalView") + " FPS view");
         rows.add("NAV: WASD move | arrows pan | " + label("toggleShop") + " fleet management | "
                 + label("toggleBaseMenu") + " command upgrades | " + label("toggleMap") + " map | "
                 + label("cycleHudDetail") + " HUD");

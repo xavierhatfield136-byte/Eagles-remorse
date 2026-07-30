@@ -6,13 +6,13 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TutorialWarpRegressionTest {
 
     @Test
-    void carrierWarpLessonLocksWaypointToGammaWhenWarpStepUnlocks() throws Exception {
+    void carrierWithdrawLessonUsesSafeExitToOpenRouteMap() throws Exception {
         GameContext ctx = tutorialContext();
         TutorialSystem.init(ctx, Faction.ALLY);
         ctx.player.applyHull(ShipRole.CARRIER, ctx.player.x, ctx.player.y);
@@ -23,18 +23,25 @@ class TutorialWarpRegressionTest {
         setBoolean(state, "openedFlightDeck", true);
         setBoolean(state, "launchedWing", true);
         setBoolean(state, "carrierModeChanged", true);
-        ctx.ui.waypointX = Double.NaN;
-        ctx.ui.waypointY = Double.NaN;
 
-        TutorialSystem.update(ctx, GameContext.DT);
+        assertTrue(GameplayActions.trySafeMissionExit(ctx));
+        assertTrue(ctx.command.safeMissionExitPending);
+        assertFalse(ctx.campaign.strategicOvermapMode);
 
-        assertEquals(getDouble(state, "gammaX"), ctx.ui.waypointX, 1e-6);
-        assertEquals(getDouble(state, "gammaY"), ctx.ui.waypointY, 1e-6);
-        assertTrue(getBoolean(state, "gammaWaypointSet"));
+        GameSimulationRuntime runtime = new GameSimulationRuntime(ctx);
+        Method completeSafeMissionExit = GameSimulationRuntime.class.getDeclaredMethod("completeSafeMissionExit", Ship.class);
+        completeSafeMissionExit.setAccessible(true);
+        completeSafeMissionExit.invoke(runtime, ctx.player);
+        TutorialSystem.update(ctx, 1.0);
+
+        assertTrue(ctx.campaign.strategicOvermapMode);
+        assertFalse(ctx.campaign.galaxyEncounterActive);
+        assertTrue(ctx.ui.mapOpen);
+        assertTrue(TutorialSystem.hudTitle(ctx).contains("TUTORIAL"));
     }
 
     @Test
-    void carrierWarpLessonWarpUsesGammaInsteadOfBaseFallback() throws Exception {
+    void carrierWithdrawLessonDoesNotForceOldGammaWaypoint() throws Exception {
         GameContext ctx = tutorialContext();
         TutorialSystem.init(ctx, Faction.ALLY);
         ctx.player.applyHull(ShipRole.CARRIER, ctx.player.x, ctx.player.y);
@@ -42,18 +49,14 @@ class TutorialWarpRegressionTest {
 
         Object state = tutorialState(ctx);
         enterLesson(ctx, state, "CARRIER_AND_WARP");
-        setBoolean(state, "openedFlightDeck", true);
-        setBoolean(state, "launchedWing", true);
-        setBoolean(state, "carrierModeChanged", true);
         ctx.ui.waypointX = Double.NaN;
         ctx.ui.waypointY = Double.NaN;
 
         TutorialSystem.update(ctx, GameContext.DT);
-        GameplayActions.tryTeleportToBase(ctx);
 
-        assertTrue(ctx.player.isWarpCharging());
-        assertEquals(getDouble(state, "gammaX"), ctx.player.warpExitX(), 1e-6);
-        assertEquals(getDouble(state, "gammaY"), ctx.player.warpExitY(), 1e-6);
+        assertFalse(Double.isFinite(ctx.ui.waypointX));
+        assertFalse(Double.isFinite(ctx.ui.waypointY));
+        assertFalse(ctx.command.playerTeleportCharging);
     }
 
     private static GameContext tutorialContext() {
@@ -82,17 +85,5 @@ class TutorialWarpRegressionTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.setBoolean(target, value);
-    }
-
-    private static boolean getBoolean(Object target, String fieldName) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.getBoolean(target);
-    }
-
-    private static double getDouble(Object target, String fieldName) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        return field.getDouble(target);
     }
 }
