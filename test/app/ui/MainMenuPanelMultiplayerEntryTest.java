@@ -63,6 +63,20 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
+    void tutorialEntryUsesPlainTutorialLabel() {
+        MainMenuPanel panel = menu();
+
+        try {
+            JButton tutorial = (JButton) findByName(panel, "tutorialStartButton");
+
+            assertNotNull(tutorial);
+            assertEquals("Tutorial", tutorial.getText());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
     void multiplayerEntryShowsHostJoinAndDirectAddressWhenMissionFeatureFlagIsEnabled() {
         System.setProperty("game.feature.multiplayer_custom_missions", "true");
         MainMenuPanel panel = menu();

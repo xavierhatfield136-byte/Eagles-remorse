@@ -128,6 +128,7 @@ public final class GameSimulationRuntime {
                 AISystem.update(ctx, dt);
                 CarrierSystem.update(ctx, dt);
                 EconomySystem.update(ctx, dt);
+                UISystem.updateStrategicMapCameraPan(ctx, dt);
                 long campaignStart = System.nanoTime();
                 CampaignSystem.update(ctx, dt);
                 ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;
@@ -169,6 +170,7 @@ public final class GameSimulationRuntime {
             EconomySystem.update(ctx, dt);
             TutorialSystem.update(ctx, dt);
             FirstHourOnboardingSystem.update(ctx, dt);
+            UISystem.updateStrategicMapCameraPan(ctx, dt);
             long campaignStart = System.nanoTime();
             CampaignSystem.update(ctx, dt);
             ctx.perf.campaignMs = (System.nanoTime() - campaignStart) / 1_000_000.0;

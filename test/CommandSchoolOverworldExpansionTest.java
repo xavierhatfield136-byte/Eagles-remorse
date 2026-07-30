@@ -87,6 +87,37 @@ class CommandSchoolOverworldExpansionTest {
     }
 
     @Test
+    void tutorialMissionMapUsesSubzoneFramingAndArrowPan() throws Exception {
+        GameContext ctx = tutorialContext();
+        SpawnSystem.initWorld(ctx);
+        Object tutorialState = tutorialState(ctx);
+        setLesson(ctx, tutorialState, "OVERWORLD_TO_MISSION");
+        CampaignSystem.CampaignLocation red = location(ctx, CampaignSystem.COMMAND_SCHOOL_RED_SITE_ID);
+        assertNotNull(red);
+        ctx.campaign.playerGalaxyX = red.x;
+        ctx.campaign.playerGalaxyY = red.y;
+        ctx.campaign.currentGalaxyLocationId = red.id;
+        ctx.campaign.dockedGalaxyLocationId = red.id;
+        ctx.campaign.selectedGalaxyLocationId = red.id;
+
+        assertTrue(CampaignSystem.executeCampaignAction(ctx, "ENTER_SITE"));
+        if (!ctx.ui.mapOpen) UISystem.toggleMap(ctx);
+        double before = UISystem.strategicMapFocusX(ctx);
+        boolean panLeft = before > ctx.WORLD_W * 0.5;
+        ctx.cameraPanLeft = panLeft;
+        ctx.cameraPanRight = !panLeft;
+
+        UISystem.updateStrategicMapCameraPan(ctx, 1.0);
+
+        assertTrue(CampaignSystem.usesMissionSubzones(ctx), "tutorial missions should use campaign mission map framing");
+        assertTrue(UISystem.strategicMapViewWidth(ctx) < ctx.WORLD_W,
+                "tutorial mission map should frame the active training sector instead of the full world");
+        double after = UISystem.strategicMapFocusX(ctx);
+        assertTrue(panLeft ? after < before : after > before,
+                "arrow keys should pan the open tutorial mission map");
+    }
+
+    @Test
     void commandSchoolLessonsCanBeSkippedAndArchived() {
         GameContext ctx = tutorialContext();
         SpawnSystem.initWorld(ctx);

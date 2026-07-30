@@ -105,9 +105,10 @@ public final class MainMenuPanel extends JPanel {
         JButton campaignOps = createMenuButton("Campaign Ops", new Color(41, 112, 170), uiScale);
         JButton customBattle = createMenuButton("Custom Battle", new Color(64, 126, 177), uiScale);
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
-        JButton tutorialStart = createMenuButton("Command School", new Color(60, 118, 186), uiScale);
+        JButton tutorialStart = createMenuButton("Tutorial", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
         customBattle.setName("customBattleButton");
+        tutorialStart.setName("tutorialStartButton");
         JButton hostBattle = createMenuButton("Create Lobby", new Color(53, 123, 126), uiScale);
         JButton joinBattle = createMenuButton("Join Lobby", new Color(79, 102, 151), uiScale);
         JButton diagnosticsBattle = createMenuButton("Diagnostics", new Color(86, 77, 122), uiScale);

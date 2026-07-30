@@ -6,9 +6,16 @@ plugins {
 def appDisplayName = "Eagles Remorse"
 def appBundleName = "EaglesRemorse"
 def rawVersion = file("VERSION").exists() ? file("VERSION").text.trim() : "dev"
-def versionMatcher = (rawVersion =~ /(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
+def versionMatcher = (rawVersion =~ /(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:\.(\d+))?/)
 def packageVersion = versionMatcher.find()
-        ? [versionMatcher.group(1), versionMatcher.group(2) ?: "0", versionMatcher.group(3) ?: "0"].join(".")
+        ? [
+            versionMatcher.group(1),
+            versionMatcher.group(2) ?: "0",
+            String.valueOf(versionMatcher.group(4) == null
+                    ? (versionMatcher.group(3) ?: "0").toInteger()
+                    : (versionMatcher.group(3) ?: "0").toInteger() * 1000
+                            + versionMatcher.group(4).toInteger())
+        ].join(".")
         : "0.0.0"
 
 version = rawVersion
@@ -125,7 +132,7 @@ test {
 
 tasks.register("currentReleaseVerification", Test) {
     group = "verification"
-    description = "Run the current release validation slice for Phase 9 completion and 1.0.1.3 packaging."
+    description = "Run the current release validation slice for campaign, performance, and packaging readiness."
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform()

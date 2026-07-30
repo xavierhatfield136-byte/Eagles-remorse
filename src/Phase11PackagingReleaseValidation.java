@@ -168,9 +168,14 @@ public final class Phase11PackagingReleaseValidation {
             if (!version.equals(manifestVersion)) errors.add("JAR version mismatch: " + manifestVersion + " expected " + version);
             requireEntry(jf, "VERSION", errors);
             requirePrefix(jf, "ship_skins/", errors);
+            requirePrefix(jf, "ship_parts/", errors);
+            requirePrefix(jf, "ship_wrecks/", errors);
             requirePrefix(jf, "turret_skins/", errors);
+            requirePrefix(jf, "station_modules/", errors);
+            requirePrefix(jf, "environment_overhaul_dropzone/", errors);
             requirePrefix(jf, "ui_theme/", errors);
             requirePrefix(jf, "audio/", errors);
+            requirePrefix(jf, "voice/", errors);
             rejectPrefix(jf, "ai_pipeline/", errors);
             rejectPrefix(jf, "newshipskins/", errors);
             rejectSuffix(jf, ".psd", errors);

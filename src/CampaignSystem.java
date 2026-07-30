@@ -175,7 +175,7 @@ public final class CampaignSystem extends CampaignSystemModels {
 
     static boolean usesMissionSubzones(GameContext ctx) {
         CampaignState st = state(ctx);
-        return st != null && st.enabled && ctx != null && ctx.config != null && ctx.config.mode == GameMode.CAMPAIGN_OPS;
+        return st != null && st.enabled && isCommandLayerMode(ctx);
     }
 
     static boolean missionSubzoneBoundaryConstraintsEnabled(GameContext ctx) {

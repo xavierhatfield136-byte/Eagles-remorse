@@ -13,7 +13,7 @@ public final class UISystem {
     private static final double STRATEGIC_GALAXY_MAP_MIN_ZOOM = 1.85;
     private static final double STRATEGIC_MAP_MAX_ZOOM = 18.0;
     private static final double STRATEGIC_MAP_ZOOM_STEP = 1.22;
-    private static final double MISSION_MAP_MIN_ZOOM = 0.42;
+    private static final double MISSION_MAP_MIN_ZOOM = 1.25;
 
     private enum PrimaryOverlay {
         NONE,
@@ -2086,7 +2086,7 @@ public final class UISystem {
         if (subzone < 0) return false;
         double zoomForWidth = ctx.WORLD_W / Math.max(1.0, CampaignSystem.missionSubzoneWidth(ctx) * 1.75);
         double zoomForHeight = ctx.WORLD_H / Math.max(1.0, CampaignSystem.missionSubzoneHeight(ctx) * 1.55);
-        ctx.ui.strategicMapZoom = MathUtil.clamp(Math.min(zoomForWidth, zoomForHeight), 1.15, 9.0);
+        ctx.ui.strategicMapZoom = MathUtil.clamp(Math.min(zoomForWidth, zoomForHeight), MISSION_MAP_MIN_ZOOM, 9.0);
         double focusX = CampaignSystem.missionSubzoneCenterX(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         double focusY = CampaignSystem.missionSubzoneCenterY(ctx, ctx.campaign == null ? 1 : ctx.campaign.sector, subzone);
         if (ctx.player != null && Double.isFinite(ctx.player.x) && Double.isFinite(ctx.player.y)) {

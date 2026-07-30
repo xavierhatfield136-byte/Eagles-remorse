@@ -28,6 +28,9 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import javax.imageio.ImageIO;
 
 public class Renderer {
@@ -16643,6 +16646,11 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                             + f.getAbsolutePath() + " :: " + ex.getMessage());
                 }
             }
+            if (!hasAnyAsteroidSprites()) {
+                for (String resourcePath : bundledImageResourcePaths(AST_RESOURCE_DIR, ".png")) {
+                    loadBundledAsteroid(resourcePath);
+                }
+            }
         }
 
         private static void ensureCampaignBackgroundsLoaded() {
@@ -16674,6 +16682,44 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 }
                 if (!CAMPAIGN_BG.isEmpty()) break;
             }
+            if (CAMPAIGN_BG.isEmpty()) {
+                for (String resourcePath : bundledImageResourcePaths(CAMPAIGN_BG_RESOURCE_DIR, ".png", ".jpg", ".jpeg")) {
+                    String stem = fileStem(resourceFileName(resourcePath));
+                    String key = normalizeCampaignKey(stem);
+                    if (key.isBlank() || CAMPAIGN_BG.containsKey(key)) continue;
+                    BufferedImage img = loadBundledImageByPath(resourcePath, "campaign-bg");
+                    if (img != null) CAMPAIGN_BG.put(key, img);
+                }
+            }
+        }
+
+        private static boolean hasAnyAsteroidSprites() {
+            for (List<BufferedImage> sprites : AST_NORMAL.values()) {
+                if (sprites != null && !sprites.isEmpty()) return true;
+            }
+            for (List<BufferedImage> sprites : AST_ORE.values()) {
+                if (sprites != null && !sprites.isEmpty()) return true;
+            }
+            return false;
+        }
+
+        private static void loadBundledAsteroid(String resourcePath) {
+            String name = resourceFileName(resourcePath).toLowerCase(Locale.ROOT);
+            if (!name.startsWith("ast_") || !name.endsWith(".png")) return;
+
+            String stem = name.substring(0, name.length() - 4);
+            boolean ore = stem.endsWith("_ore");
+            if (ore) stem = stem.substring(0, stem.length() - 4);
+
+            String[] parts = stem.split("_");
+            if (parts.length < 3) return;
+            String size = normalizeAstSize(parts[1]);
+            if (size == null) return;
+
+            BufferedImage img = loadBundledImageByPath(resourcePath, "asteroid");
+            if (img != null) {
+                (ore ? AST_ORE : AST_NORMAL).get(size).add(img);
+            }
         }
 
         private static String normalizeAstSize(String raw) {
@@ -16702,6 +16748,12 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
             if (name == null || name.isBlank()) return "";
             int dot = name.lastIndexOf('.');
             return (dot <= 0) ? name : name.substring(0, dot);
+        }
+
+        private static String resourceFileName(String path) {
+            if (path == null || path.isBlank()) return "";
+            int slash = path.lastIndexOf('/');
+            return slash >= 0 ? path.substring(slash + 1) : path;
         }
 
         private static int stableVariantIndex(Asteroid a, int modulo) {
@@ -16734,6 +16786,46 @@ public static void drawMinimap(Graphics2D g2, List<Ship> ships, Player player, i
                 }
             }
             return null;
+        }
+
+        private static List<String> bundledImageResourcePaths(String resourceDir, String... extensions) {
+            List<String> out = new ArrayList<>();
+            if (resourceDir == null || resourceDir.isBlank() || extensions == null || extensions.length == 0) {
+                return out;
+            }
+            String prefix = resourceDir.endsWith("/") ? resourceDir : resourceDir + "/";
+            try {
+                File codeSource = new File(Renderer.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+                if (!codeSource.isFile()) return out;
+                try (JarFile jar = new JarFile(codeSource)) {
+                    Enumeration<JarEntry> entries = jar.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        if (entry == null || entry.isDirectory()) continue;
+                        String name = entry.getName();
+                        if (!name.startsWith(prefix)) continue;
+                        String lower = name.toLowerCase(Locale.ROOT);
+                        for (String extension : extensions) {
+                            if (extension != null && lower.endsWith(extension.toLowerCase(Locale.ROOT))) {
+                                out.add(name);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            out.sort(String.CASE_INSENSITIVE_ORDER);
+            return out;
+        }
+
+        private static BufferedImage loadBundledImageByPath(String resourcePath, String category) {
+            if (resourcePath == null || resourcePath.isBlank()) return null;
+            try (InputStream in = Renderer.class.getResourceAsStream("/" + resourcePath)) {
+                if (in == null) return null;
+                return AssetLoadGuard.read(in, category, resourcePath);
+            } catch (IOException ignored) {
+                return null;
+            }
         }
 
         private static List<File> resolveRoots(String relativeDir) {

@@ -4,7 +4,7 @@ This release focuses on campaign fleet correctness, coalition support clarity, s
 
 ## Downloads
 
-- Windows installer: `EaglesRemorse-1.0.1.exe`, when the Windows packaging workflow completes the WiX installer step.
+- Windows installer: `EaglesRemorse-1.0.1.4.exe`, when the Windows packaging workflow completes the WiX installer step.
 - Windows portable build: `EaglesRemorse-1.0.1.4.zip`
 - Linux portable build: `EaglesRemorse-1.0.1.4-linux-x64.tar.gz`
 
