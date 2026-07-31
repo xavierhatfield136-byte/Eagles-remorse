@@ -588,7 +588,7 @@ public final class GameSimulationRuntime {
 
         if (helmAutoApplied) return manualFireRestore;
 
-        // Manual WASD uses the same speed ceiling basis as AI/autopilot movement.
+        // Manual movement uses the same speed ceiling basis as AI/autopilot movement.
         double speed = MovementModel.speedCeiling(p);
 
         // Hull steering: A/D rotate the craft, with larger ships turning more slowly.

@@ -77,6 +77,20 @@ class MainMenuPanelMultiplayerEntryTest {
     }
 
     @Test
+    void mainMenuExposesControlsSettingsButton() {
+        MainMenuPanel panel = menu();
+
+        try {
+            JButton controls = (JButton) findByName(panel, InputBindingsDialog.CONTROLS_BUTTON_NAME);
+
+            assertNotNull(controls);
+            assertEquals("Controls", controls.getText());
+        } finally {
+            panel.stopBackgroundTimerForTests();
+        }
+    }
+
+    @Test
     void multiplayerEntryShowsHostJoinAndDirectAddressWhenMissionFeatureFlagIsEnabled() {
         System.setProperty("game.feature.multiplayer_custom_missions", "true");
         MainMenuPanel panel = menu();

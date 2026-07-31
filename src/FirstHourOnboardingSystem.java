@@ -14,7 +14,7 @@ import java.util.WeakHashMap;
  */
 public final class FirstHourOnboardingSystem {
     public enum Beat {
-        MOVEMENT("Movement", "Use WASD to move the flagship. Your formation follows your command ship."),
+        MOVEMENT("Movement", "Use your movement keys to fly the flagship. Your formation follows your command ship."),
         MINING("Mining", "Move beside an asteroid and use F to mine. Ore and supplies keep the fleet moving."),
         DOCKING("Docking", "Return to a friendly installation. Docking opens refit, repair, and recovery options."),
         MAP("Map Use", "Open the map with M. Set waypoints before committing the fleet to a route."),

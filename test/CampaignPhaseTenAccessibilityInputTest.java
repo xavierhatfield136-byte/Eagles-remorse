@@ -34,14 +34,14 @@ class CampaignPhaseTenAccessibilityInputTest {
         HotkeyRegistry.RemapResult keyboard = HotkeyRegistry.remapKeyboardDetailed(
                 "toggleShop",
                 KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
-        HotkeyRegistry.RemapResult mouse = HotkeyRegistry.remapMouseDetailed("primaryDown", 3);
+        HotkeyRegistry.RemapResult mouse = HotkeyRegistry.remapMouseDetailed("lockUnderMouse", 1);
         HotkeyRegistry.RemapResult controller = HotkeyRegistry.remapControllerDetailed("primaryDown", "LT");
 
         assertFalse(keyboard.accepted());
         assertTrue(keyboard.message().contains("escape") || keyboard.message().contains("ESC"));
         assertTrue(keyboard.message().contains("escape"));
         assertFalse(mouse.accepted());
-        assertTrue(mouse.message().contains("secondaryDown"));
+        assertTrue(mouse.message().contains("primaryDown"));
         assertFalse(controller.accepted());
         assertTrue(controller.message().contains("secondaryDown"));
     }

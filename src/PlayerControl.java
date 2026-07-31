@@ -58,28 +58,18 @@ public class PlayerControl implements KeyListener, MouseMotionListener {
     @Override
     public void keyPressed(KeyEvent e) {
         HotkeyRegistry.noteKeyboardInput();
-        switch (e.getKeyCode()) {
-            case KeyEvent.VK_W -> up = true;
-            case KeyEvent.VK_S -> down = true;
-            case KeyEvent.VK_A -> left = true;
-            case KeyEvent.VK_D -> right = true;
-            case KeyEvent.VK_SHIFT -> boost = true;
-            default -> {
-            }
-        }
+        if (HotkeyRegistry.matches("moveForward", e)) up = true;
+        if (HotkeyRegistry.matches("moveBackward", e)) down = true;
+        if (HotkeyRegistry.matches("turnLeft", e)) left = true;
+        if (HotkeyRegistry.matches("turnRight", e)) right = true;
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
-        switch (e.getKeyCode()) {
-            case KeyEvent.VK_W -> up = false;
-            case KeyEvent.VK_S -> down = false;
-            case KeyEvent.VK_A -> left = false;
-            case KeyEvent.VK_D -> right = false;
-            case KeyEvent.VK_SHIFT -> boost = false;
-            default -> {
-            }
-        }
+        if (HotkeyRegistry.sameKeyCode("moveForward", e)) up = false;
+        if (HotkeyRegistry.sameKeyCode("moveBackward", e)) down = false;
+        if (HotkeyRegistry.sameKeyCode("turnLeft", e)) left = false;
+        if (HotkeyRegistry.sameKeyCode("turnRight", e)) right = false;
     }
 
     @Override public void keyTyped(KeyEvent e) {}

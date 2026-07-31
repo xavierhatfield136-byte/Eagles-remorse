@@ -107,8 +107,10 @@ public final class MainMenuPanel extends JPanel {
         JButton galaxyMapTest = createMenuButton("Galaxy Map Test", new Color(72, 103, 150), uiScale);
         JButton tutorialStart = createMenuButton("Tutorial", new Color(60, 118, 186), uiScale);
         JButton experienceButton = createMenuButton("Difficulty / Accessibility", new Color(64, 80, 116), uiScale);
+        JButton controlsButton = createMenuButton("Controls", new Color(65, 91, 126), uiScale);
         customBattle.setName("customBattleButton");
         tutorialStart.setName("tutorialStartButton");
+        controlsButton.setName(InputBindingsDialog.CONTROLS_BUTTON_NAME);
         JButton hostBattle = createMenuButton("Create Lobby", new Color(53, 123, 126), uiScale);
         JButton joinBattle = createMenuButton("Join Lobby", new Color(79, 102, 151), uiScale);
         JButton diagnosticsBattle = createMenuButton("Diagnostics", new Color(86, 77, 122), uiScale);
@@ -214,6 +216,7 @@ public final class MainMenuPanel extends JPanel {
                 ExperienceSettingsStore.save(edited);
             }
         });
+        controlsButton.addActionListener(e -> InputBindingsDialog.show(this, uiScale));
 
         start.addActionListener(e -> startWithMode.accept(null));
 
@@ -398,6 +401,7 @@ public final class MainMenuPanel extends JPanel {
         campaignActions.add(tutorialStart);
         campaignActions.add(galaxyMapTest);
         campaignActions.add(experienceButton);
+        campaignActions.add(controlsButton);
 
         JPanel singlePlayerCard = createSectionPanel(new Color(48, 146, 197, 160), uiScale);
         singlePlayerCard.add(eyebrowLabel("Campaign", uiScale, new Color(115, 204, 225)));

@@ -6116,10 +6116,10 @@ public class Renderer {
     private static List<String> buildActionStripLabels(Player player, GameContext.HudDetail detail) {
         ArrayList<String> out = new ArrayList<>();
         out.add(HotkeyRegistry.label("primaryDown") + "/LMB FIRE ALL");
-        out.add(HotkeyRegistry.label("secondaryDown") + " MISSILES");
+        out.add(HotkeyRegistry.label("secondaryDown") + " MISSILE FOCUS");
         out.add(HotkeyRegistry.label("lockUnderMouse") + "/MMB LOCK");
         out.add(HotkeyRegistry.label("toggleTacticalView") + " FPS VIEW");
-        out.add("WASD MOVE / ARROWS PAN");
+        out.add(HotkeyRegistry.movementLabel() + " MOVE / ARROWS PAN");
         out.add(HotkeyRegistry.label("toggleShop") + " SHOP / " + HotkeyRegistry.label("escape") + " PAUSE");
         out.add(HotkeyRegistry.label("toggleMap") + " MAP / " + HotkeyRegistry.label("cycleHudDetail") + " HUD / "
                 + HotkeyRegistry.label("toggleCrewStations") + " CREW");
@@ -7259,7 +7259,7 @@ public class Renderer {
         int horizontalGap = 16;
         int verticalGap = 24;
         drawHudHintChip(g2, "LMB fire all", mx - horizontalGap, my, -1);
-        drawHudHintChip(g2, "SHIFT missiles", mx + horizontalGap, my, +1);
+        drawHudHintChip(g2, HotkeyRegistry.label("secondaryDown") + " missile focus", mx + horizontalGap, my, +1);
         if (player.role == ShipRole.SUPERSHIP || player.hasSuperweapon) {
             drawHudHintChip(g2, "X superweapon", mx, my - verticalGap, 0);
         }
@@ -8691,9 +8691,15 @@ public class Renderer {
         g2.drawString("Voice: C captions   Z/X focus   ,/. volume", readoutX, ly);
         ly += 16;
         g2.setColor(new Color(206, 224, 244, 190));
-        g2.drawString("Combat: SPACE/LMB fire all   SHIFT missiles   RMB comms   L/MMB lock", readoutX, ly);
+        g2.drawString("Combat: " + HotkeyRegistry.label("primaryDown") + "/LMB fire all   "
+                + HotkeyRegistry.label("secondaryDown") + " missile focus   RMB comms   "
+                + HotkeyRegistry.label("lockUnderMouse") + "/MMB lock", readoutX, ly);
         ly += 16;
-        g2.drawString("Systems: O power   H crew   M map   TAB fleet   ESC pause", readoutX, ly);
+        g2.drawString("Systems: " + HotkeyRegistry.label("togglePowerManagement") + " power   "
+                + HotkeyRegistry.label("toggleCrewStations") + " crew   "
+                + HotkeyRegistry.label("toggleMap") + " map   "
+                + HotkeyRegistry.label("toggleShop") + " fleet   "
+                + HotkeyRegistry.label("escape") + " pause", readoutX, ly);
         ly += 16;
         g2.drawString("Automation: manual flight, fire, or power input disables matching AI.", readoutX, ly);
 

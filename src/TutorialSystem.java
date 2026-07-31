@@ -927,7 +927,7 @@ public final class TutorialSystem {
             }
             case FLIGHT_BASICS -> {
                 items.add(new ChecklistItem(
-                        "[WASD] Reach NAV ALPHA.",
+                        "[" + HotkeyRegistry.movementLabel() + "] Reach NAV ALPHA.",
                         "Use thrust and steering to fly into the NAV ALPHA ring.",
                         st.reachedAlpha));
                 items.add(new ChecklistItem(
